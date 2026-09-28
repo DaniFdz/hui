@@ -1500,6 +1500,28 @@ test("a propose_changes decision is answered by the card or replaced by a compos
   assert.equal(manager.snapshot("decision").queue.items?.at(-1)?.text, "and then summarize");
 });
 
+test("Stop on a waiting propose_changes call leaves an idle session, not a stale card", async () => {
+  const started: FakeSession[] = [];
+  const manager = new LiveSessions(factory(started));
+  manager.ensure(recordFor("stopped-card"));
+  await waitForBoot(manager, "stopped-card");
+  await manager.prompt("stopped-card", "ship it when done");
+  const decision: RuntimeQuestion = { id: "d-1", method: "input", title: CHANGES_DECISION_TITLE, placeholder: "{}" };
+  started[0]!.questions = [decision];
+  started[0]!.emit({ type: "question", question: decision });
+  assert.equal(manager.status("stopped-card"), "waiting");
+
+  // Stop aborts the waiting tool; PI ends the turn and drops its UI request.
+  await manager.abort("stopped-card");
+  started[0]!.questions = [];
+  started[0]!.emit({ type: "settled" });
+
+  assert.equal(manager.status("stopped-card"), "idle");
+  assert.deepEqual(manager.snapshot("stopped-card").questions, []);
+  await manager.rewind("stopped-card", "user-1");
+  assert.equal(started[0]!.rewoundTo.at(-1)?.entryId, "user-1");
+});
+
 test("HUI-owned follow-ups can be edited, reordered, removed and steered before delivery", async () => {
   const started: FakeSession[] = [];
   const manager = new LiveSessions(factory(started));

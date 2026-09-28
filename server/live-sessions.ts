@@ -1093,6 +1093,9 @@ export class LiveSessions {
     } else if (event.type === "settled") {
       recordDiagnosticEvent({ area: "session", level: event.historyRefreshed === false ? "warning" : "info", action: "settled", summary: event.historyRefreshed === false ? "Turn settled without refreshed history" : "Agent turn settled", sessionId: live.record.id });
       live.promptPending = false;
+      // PI drops UI requests when their turn ends (Stop aborts a waiting tool).
+      // One it no longer holds must not leave the session waiting forever.
+      live.questions = new Map((runtime.pendingQuestions?.() ?? []).map((question) => [question.id, question]));
       // PI owns durability. Once it settles, replace the replay projection
       // rather than trying to reconcile streamed fragments with JSONL history.
       // If that authoritative refresh failed, retain the complete projected
