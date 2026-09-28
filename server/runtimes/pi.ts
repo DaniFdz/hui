@@ -1269,9 +1269,12 @@ async function startPi(options: {
     ...piEnvironment(), ...agentToolEnv, PI_CODING_AGENT_DIR: agentDir,
     HUI_DISABLED_SKILLS: JSON.stringify(disabledSkills),
   };
+  // The launch travels in the environment, not argv: endpoint security agents
+  // can SIGKILL an exec whose cwd plus one argument reaches MAXPATHLEN (1024).
+  const launch = JSON.stringify({ ...options, agentDir, disabledPluginIds, bundledSkillPaths, browserTool, changesTool });
   const child = backend === "sdk"
-    ? spawn(process.execPath, [fileURLToPath(new URL(import.meta.url.endsWith(".ts") ? "./pi-sdk-worker.ts" : "./pi-sdk-worker.js", import.meta.url)), JSON.stringify({ ...options, agentDir, disabledPluginIds, bundledSkillPaths, browserTool, changesTool })], {
-        cwd: options.cwd, stdio: ["pipe", "pipe", "pipe", "ipc"], env,
+    ? spawn(process.execPath, [fileURLToPath(new URL(import.meta.url.endsWith(".ts") ? "./pi-sdk-worker.ts" : "./pi-sdk-worker.js", import.meta.url))], {
+        cwd: options.cwd, stdio: ["pipe", "pipe", "pipe", "ipc"], env: { ...env, HUI_PI_WORKER_LAUNCH: launch },
       }) as ChildProcessWithoutNullStreams
     : spawn(cli.command, cli.args, { cwd: options.cwd, stdio: ["pipe", "pipe", "pipe"], env });
 
