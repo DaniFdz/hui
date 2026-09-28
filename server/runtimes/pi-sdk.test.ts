@@ -1,6 +1,6 @@
 import type { TranscriptEntry } from "./types.ts";
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { once } from "node:events";
 import { mkdtemp, mkdir, readFile, writeFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -204,6 +204,24 @@ test("SDK safe probes skip broken packages and never create transcripts; unknown
   assert.equal((await session.inspect!()).tools.length, 8);
   assert(!(await readdir(f.agentDir)).includes("sessions"));
   await assert.rejects(f.start({ safeProbe: true, noSession: true, model: "hui-e2e/missing" }), /Unknown PI model/u);
+});
+
+test("SDK resumes long worktree transcripts without putting the launch in the worker's argv", { timeout: 45_000 }, async (t) => {
+  // Endpoint security agents can SIGKILL an exec whose cwd plus one argument
+  // reaches MAXPATHLEN (1024); a long worktree and transcript path crossed it.
+  const f = await fixture(t);
+  const cwd = join(f.cwd, "long-worktree-".padEnd(150, "x"));
+  await mkdir(cwd);
+  const first = await f.start({ cwd });
+  const settled = nextEvent(first, (event) => event.type === "settled");
+  await first.prompt("Create the transcript"); await settled;
+  const sessionFile = first.sessionFile;
+  assert(sessionFile);
+  first.dispose();
+  const resumed = await f.start({ cwd, sessionFile, title: "Long worktree fixture" });
+  assert.equal(resumed.sessionFile, sessionFile);
+  const args = execFileSync("ps", ["-ww", "-o", "args=", "-p", String(resumed.processId)], { encoding: "utf8" });
+  assert.match(args.trim(), /pi-sdk-worker\.ts$/u, "nothing may follow the worker's script path");
 });
 
 for (const backend of ["sdk", "cli"] as const) {

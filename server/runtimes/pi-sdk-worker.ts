@@ -35,7 +35,9 @@ type Launch = {
 globalThis.console = new Console({ stdout: process.stderr, stderr: process.stderr });
 
 async function main() {
-  const launch = JSON.parse(process.argv[2] ?? "{}") as Launch;
+  // Passed out of argv (see startPi); tools and extensions must not inherit it.
+  const launch = JSON.parse(process.env["HUI_PI_WORKER_LAUNCH"] ?? "{}") as Launch;
+  delete process.env["HUI_PI_WORKER_LAUNCH"];
   if (!launch.cwd || !launch.agentDir || !process.send) throw new Error("Invalid HUI worker launch.");
   const disabledSkills = new Set((launch.safeProbe ? [] : disabledSkillsFrom(process.env["HUI_DISABLED_SKILLS"])).map((skill) => skill.path));
   const disabledPluginIds = new Set(launch.safeProbe ? [] : launch.disabledPluginIds ?? []);
