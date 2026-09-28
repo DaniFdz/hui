@@ -222,8 +222,7 @@ test("SDK resumes long worktree transcripts without putting the launch in the wo
   const resumed = await f.start({ cwd, sessionFile, title: "Long worktree fixture" });
   assert.equal(resumed.sessionFile, sessionFile);
   const args = execFileSync("ps", ["-ww", "-o", "args=", "-p", String(resumed.processId)], { encoding: "utf8" });
-  assert.match(args, /pi-sdk-worker\.ts/u);
-  assert(!args.includes(cwd), "session paths must not be serialized into the worker command line");
+  assert.match(args.trim(), /pi-sdk-worker\.ts$/u, "nothing may follow the worker's script path");
 });
 
 for (const backend of ["sdk", "cli"] as const) {
