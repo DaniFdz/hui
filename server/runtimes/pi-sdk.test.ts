@@ -207,9 +207,8 @@ test("SDK safe probes skip broken packages and never create transcripts; unknown
 });
 
 test("SDK resumes long worktree transcripts without putting the launch in the worker's argv", { timeout: 45_000 }, async (t) => {
-  // Endpoint security agents can SIGKILL an exec whose working directory plus
-  // one argument reaches MAXPATHLEN (1024 bytes). A long worktree and its PI
-  // transcript path crossed that when the launch was a single JSON argument.
+  // Endpoint security agents can SIGKILL an exec whose cwd plus one argument
+  // reaches MAXPATHLEN (1024); a long worktree and transcript path crossed it.
   const f = await fixture(t);
   const cwd = join(f.cwd, "long-worktree-".padEnd(150, "x"));
   await mkdir(cwd);

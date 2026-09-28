@@ -124,12 +124,11 @@ over that child's stdin/stdout. A cold open starts PI with the stored
 events to the browser through this HTTP API. Gateway restarts discard child
 processes but not PI conversation files; the next open resumes them.
 
-The worker's command line carries only its script path. Its launch settings,
-such as the working directory, transcript and model, travel in the private
-`HUI_PI_WORKER_LAUNCH` environment variable, which the worker removes before
-PI, extensions or tools start. Endpoint security agents can SIGKILL a script
-launch whose working directory plus one argument reaches `MAXPATHLEN` (1024
-bytes), and long worktree and transcript paths reach it.
+The worker's command line is only its script path. Launch settings such as the
+working directory, transcript and model travel in the private
+`HUI_PI_WORKER_LAUNCH` environment variable, removed before PI, extensions or
+tools start: endpoint security agents can SIGKILL a script launch whose working
+directory plus one argument reaches `MAXPATHLEN` (1024 bytes).
 
 The worker pins `@earendil-works/pi-coding-agent@0.87.1` and uses its public
 `runRpcMode`. `HUI_PI_BACKEND=cli` opts into the previous adapter;
