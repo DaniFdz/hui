@@ -1,0 +1,1444 @@
+{
+  "note": "Superseded diagnostic runs, not passing evidence. See the Browser report for product fixes and oracle context/state corrections.",
+  "runs": [
+    {
+      "state": "automation-dark-desktop-schedule-open",
+      "path": "/settings/automation",
+      "viewport": [
+        1440,
+        900
+      ],
+      "controls": [
+        {
+          "id": "wa-switch[0]",
+          "open": false,
+          "checked": false,
+          "disabled": false
+        },
+        {
+          "id": "wa-select[1]",
+          "open": false,
+          "disabled": false
+        },
+        {
+          "id": "wa-select[2]",
+          "open": true,
+          "disabled": false
+        }
+      ],
+      "records": [
+        {
+          "control": "wa-switch[0]",
+          "part": "host",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[0]",
+          "part": "shadow/label[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[0]",
+          "part": "shadow/label[0]/input[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[0]",
+          "part": "shadow/label[0]/span[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[0]",
+          "part": "shadow/label[0]/span[1]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[0]",
+          "part": "light/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[1]",
+          "part": "host",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[1]",
+          "part": "shadow/div[0]/label[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[1]",
+          "part": "shadow/div[0]/div[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[1]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[1]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[1]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]/div[0]/input[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[1]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]/div[0]/slot[4]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[1]",
+          "part": "light/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "host",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "shadow/div[0]/label[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "shadow/div[0]/div[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]::shadow/div[2]",
+          "differences": {
+            "height": {
+              "hui": "92.7656px",
+              "original": "96.1719px"
+            }
+          }
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]/div[0]",
+          "differences": {
+            "border-top-color": {
+              "hui": "color(srgb 0.602941 0.254902 0.26902)",
+              "original": "oklab(0.494226 0.111863 0.0408272 / 0.999815)"
+            },
+            "border-bottom-color": {
+              "hui": "color(srgb 0.602941 0.254902 0.26902)",
+              "original": "oklab(0.494226 0.111863 0.0408272 / 0.999815)"
+            }
+          }
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]/div[0]/input[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]/div[0]/slot[4]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]/div[1]",
+          "differences": {
+            "height": {
+              "hui": "92.7656px",
+              "original": "96.1719px"
+            }
+          }
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]/div[1]/slot[0]",
+          "differences": {
+            "width": {
+              "hui": "175px",
+              "original": "190px"
+            }
+          }
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "light/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "light/wa-option[1]",
+          "differences": {
+            "width": {
+              "hui": "175px",
+              "original": "190px"
+            }
+          }
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "light/wa-option[1]::shadow/slot[2]",
+          "differences": {
+            "width": {
+              "hui": "137px",
+              "original": "152px"
+            }
+          }
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "light/wa-option[2]",
+          "differences": {
+            "width": {
+              "hui": "175px",
+              "original": "190px"
+            }
+          }
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "light/wa-option[2]::shadow/slot[2]",
+          "differences": {
+            "width": {
+              "hui": "137px",
+              "original": "152px"
+            }
+          }
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "light/wa-option[3]",
+          "differences": {
+            "width": {
+              "hui": "175px",
+              "original": "190px"
+            }
+          }
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "light/wa-option[3]::shadow/slot[2]",
+          "differences": {
+            "width": {
+              "hui": "137px",
+              "original": "152px"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "state": "automation-dark-desktop-schedule-open-v8",
+      "path": "/settings/automation",
+      "viewport": [
+        1440,
+        900
+      ],
+      "controls": [
+        {
+          "id": "wa-switch[0]",
+          "open": false,
+          "checked": false,
+          "disabled": false
+        },
+        {
+          "id": "wa-select[1]",
+          "open": false,
+          "disabled": false
+        },
+        {
+          "id": "wa-select[2]",
+          "open": true,
+          "disabled": false
+        }
+      ],
+      "records": [
+        {
+          "control": "wa-switch[0]",
+          "part": "host",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[0]",
+          "part": "shadow/label[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[0]",
+          "part": "shadow/label[0]/input[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[0]",
+          "part": "shadow/label[0]/span[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[0]",
+          "part": "shadow/label[0]/span[1]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[0]",
+          "part": "light/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[1]",
+          "part": "host",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[1]",
+          "part": "shadow/div[0]/label[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[1]",
+          "part": "shadow/div[0]/div[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[1]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[1]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[1]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]/div[0]/input[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[1]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]/div[0]/slot[4]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[1]",
+          "part": "light/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "host",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "shadow/div[0]/label[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "shadow/div[0]/div[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]::shadow/div[2]",
+          "differences": {
+            "height": {
+              "hui": "92.7656px",
+              "original": "96.1719px"
+            }
+          }
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]/div[0]/input[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]/div[0]/slot[4]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]/div[1]",
+          "differences": {
+            "height": {
+              "hui": "92.7656px",
+              "original": "96.1719px"
+            }
+          }
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]/div[1]/slot[0]",
+          "differences": {
+            "width": {
+              "hui": "175px",
+              "original": "190px"
+            }
+          }
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "light/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "light/wa-option[1]",
+          "differences": {
+            "width": {
+              "hui": "175px",
+              "original": "190px"
+            }
+          }
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "light/wa-option[1]::shadow/slot[2]",
+          "differences": {
+            "width": {
+              "hui": "137px",
+              "original": "152px"
+            }
+          }
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "light/wa-option[2]",
+          "differences": {
+            "width": {
+              "hui": "175px",
+              "original": "190px"
+            }
+          }
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "light/wa-option[2]::shadow/slot[2]",
+          "differences": {
+            "width": {
+              "hui": "137px",
+              "original": "152px"
+            }
+          }
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "light/wa-option[3]",
+          "differences": {
+            "width": {
+              "hui": "175px",
+              "original": "190px"
+            }
+          }
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "light/wa-option[3]::shadow/slot[2]",
+          "differences": {
+            "width": {
+              "hui": "137px",
+              "original": "152px"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "state": "group-dark-desktop-menu-open",
+      "path": "/",
+      "viewport": [
+        1440,
+        900
+      ],
+      "controls": [
+        {
+          "id": "wa-dropdown[0]",
+          "open": true
+        }
+      ],
+      "records": [
+        {
+          "control": "wa-dropdown[0]",
+          "part": "shadow/wa-popup[0]::shadow/div[2]",
+          "differences": {
+            "color": {
+              "hui": "color(srgb 0.598902 0.598902 0.628706)",
+              "original": "rgb(139, 139, 148)"
+            },
+            "border-top-color": {
+              "hui": "color(srgb 0.598902 0.598902 0.628706)",
+              "original": "rgb(139, 139, 148)"
+            },
+            "height": {
+              "hui": "132px",
+              "original": "140px"
+            },
+            "border-bottom-color": {
+              "hui": "color(srgb 0.598902 0.598902 0.628706)",
+              "original": "rgb(139, 139, 148)"
+            }
+          }
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "shadow/wa-popup[0]/div[1]",
+          "differences": {
+            "height": {
+              "hui": "132px",
+              "original": "140px"
+            }
+          }
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[1]::shadow/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[1]::shadow/span[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[2]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[2]::shadow/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[2]::shadow/span[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[3]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[3]::shadow/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[3]::shadow/span[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[5]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[5]::shadow/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[5]::shadow/span[1]",
+          "differences": {}
+        }
+      ]
+    },
+    {
+      "state": "session-dark-desktop-menu-open",
+      "path": "/",
+      "viewport": [
+        1440,
+        900
+      ],
+      "controls": [
+        {
+          "id": "wa-dropdown[0]",
+          "open": true
+        }
+      ],
+      "records": [
+        {
+          "control": "wa-dropdown[0]",
+          "part": "shadow/wa-popup[0]::shadow/div[2]",
+          "differences": {
+            "color": {
+              "hui": "rgb(139, 139, 148)",
+              "original": "rgb(188, 188, 192)"
+            },
+            "border-top-color": {
+              "hui": "rgb(139, 139, 148)",
+              "original": "rgb(188, 188, 192)"
+            },
+            "border-bottom-color": {
+              "hui": "rgb(139, 139, 148)",
+              "original": "rgb(188, 188, 192)"
+            }
+          }
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "shadow/wa-popup[0]/div[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[1]",
+          "differences": {
+            "background-color": {
+              "hui": "rgba(0, 0, 0, 0)",
+              "original": "rgb(31, 35, 48)"
+            }
+          }
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[1]::shadow/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[1]::shadow/span[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[1]/span[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[2]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[2]::shadow/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[2]::shadow/span[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[2]/span[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[3]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[3]::shadow/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[3]::shadow/span[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[3]/span[1]",
+          "differences": {}
+        }
+      ]
+    },
+    {
+      "state": "appearance-dark-portrait-rest",
+      "path": "/settings/appearance",
+      "viewport": [
+        390,
+        844
+      ],
+      "controls": [
+        {
+          "id": "wa-select[0]",
+          "open": false,
+          "disabled": true
+        },
+        {
+          "id": "hui-select-picker[1]",
+          "open": false
+        },
+        {
+          "id": "hui-select-picker[2]",
+          "open": false
+        },
+        {
+          "id": "wa-switch[3]",
+          "open": false,
+          "checked": false,
+          "disabled": false
+        },
+        {
+          "id": "hui-select-picker[4]",
+          "open": false
+        },
+        {
+          "id": "hui-select-picker[5]",
+          "open": false
+        }
+      ],
+      "records": [
+        {
+          "control": "wa-select[0]",
+          "part": "host",
+          "differences": {
+            "font-size": {
+              "hui": "16px",
+              "original": "12px"
+            },
+            "line-height": {
+              "hui": "24.8px",
+              "original": "18.6px"
+            },
+            "height": {
+              "hui": "52px",
+              "original": "38px"
+            },
+            "width": {
+              "hui": "322px",
+              "original": "220px"
+            },
+            "max-width": {
+              "hui": "100%",
+              "original": "none"
+            }
+          }
+        },
+        {
+          "control": "wa-select[0]",
+          "part": "shadow/div[0]/label[0]",
+          "differences": {
+            "font-size": {
+              "hui": "16px",
+              "original": "12px"
+            },
+            "line-height": {
+              "hui": "19.2px",
+              "original": "14.4px"
+            },
+            "width": {
+              "hui": "322px",
+              "original": "220px"
+            }
+          }
+        },
+        {
+          "control": "wa-select[0]",
+          "part": "shadow/div[0]/div[1]",
+          "differences": {
+            "font-size": {
+              "hui": "16px",
+              "original": "12px"
+            },
+            "line-height": {
+              "hui": "24.8px",
+              "original": "18.6px"
+            },
+            "height": {
+              "hui": "44px",
+              "original": "32px"
+            },
+            "width": {
+              "hui": "322px",
+              "original": "220px"
+            }
+          }
+        },
+        {
+          "control": "wa-select[0]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]",
+          "differences": {
+            "font-size": {
+              "hui": "16px",
+              "original": "12px"
+            },
+            "line-height": {
+              "hui": "24.8px",
+              "original": "18.6px"
+            },
+            "height": {
+              "hui": "44px",
+              "original": "32px"
+            },
+            "width": {
+              "hui": "322px",
+              "original": "220px"
+            }
+          }
+        },
+        {
+          "control": "wa-select[0]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]/div[0]",
+          "differences": {
+            "font-size": {
+              "hui": "16px",
+              "original": "12px"
+            },
+            "line-height": {
+              "hui": "19.2px",
+              "original": "14.4px"
+            },
+            "min-height": {
+              "hui": "44px",
+              "original": "32px"
+            },
+            "height": {
+              "hui": "44px",
+              "original": "32px"
+            },
+            "width": {
+              "hui": "322px",
+              "original": "220px"
+            }
+          }
+        },
+        {
+          "control": "wa-select[0]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]/div[0]/input[1]",
+          "differences": {
+            "font-size": {
+              "hui": "16px",
+              "original": "12px"
+            },
+            "line-height": {
+              "hui": "19.2px",
+              "original": "14.4px"
+            },
+            "height": {
+              "hui": "19.1875px",
+              "original": "14.3906px"
+            },
+            "width": {
+              "hui": "277px",
+              "original": "175px"
+            }
+          }
+        },
+        {
+          "control": "wa-select[0]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]/div[0]/slot[4]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[0]",
+          "part": "light/span[0]",
+          "differences": {
+            "font-size": {
+              "hui": "16px",
+              "original": "12px"
+            },
+            "line-height": {
+              "hui": "19.2px",
+              "original": "14.4px"
+            }
+          }
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "host",
+          "differences": {
+            "height": {
+              "hui": "44px",
+              "original": "32px"
+            },
+            "max-width": {
+              "hui": "100%",
+              "original": "none"
+            }
+          }
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "light/div[0]",
+          "differences": {
+            "height": {
+              "hui": "44px",
+              "original": "32px"
+            }
+          }
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "light/div[0]/button[0]",
+          "differences": {
+            "min-height": {
+              "hui": "44px",
+              "original": "32px"
+            },
+            "height": {
+              "hui": "44px",
+              "original": "32px"
+            }
+          }
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "light/div[0]/button[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "light/div[0]/button[0]/span[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[2]",
+          "part": "host",
+          "differences": {
+            "height": {
+              "hui": "44px",
+              "original": "32px"
+            },
+            "max-width": {
+              "hui": "100%",
+              "original": "none"
+            }
+          }
+        },
+        {
+          "control": "hui-select-picker[2]",
+          "part": "light/div[0]",
+          "differences": {
+            "height": {
+              "hui": "44px",
+              "original": "32px"
+            }
+          }
+        },
+        {
+          "control": "hui-select-picker[2]",
+          "part": "light/div[0]/button[0]",
+          "differences": {
+            "min-height": {
+              "hui": "44px",
+              "original": "32px"
+            },
+            "height": {
+              "hui": "44px",
+              "original": "32px"
+            }
+          }
+        },
+        {
+          "control": "hui-select-picker[2]",
+          "part": "light/div[0]/button[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[2]",
+          "part": "light/div[0]/button[0]/span[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[3]",
+          "part": "host",
+          "differences": {
+            "min-height": {
+              "hui": "44px",
+              "original": "auto"
+            },
+            "height": {
+              "hui": "44px",
+              "original": "18px"
+            },
+            "width": {
+              "hui": "44px",
+              "original": "38.5px"
+            }
+          }
+        },
+        {
+          "control": "wa-switch[3]",
+          "part": "shadow/label[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[3]",
+          "part": "shadow/label[0]/input[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[3]",
+          "part": "shadow/label[0]/span[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[3]",
+          "part": "shadow/label[0]/span[1]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[3]",
+          "part": "light/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[4]",
+          "part": "host",
+          "differences": {
+            "height": {
+              "hui": "44px",
+              "original": "32px"
+            },
+            "max-width": {
+              "hui": "100%",
+              "original": "none"
+            }
+          }
+        },
+        {
+          "control": "hui-select-picker[4]",
+          "part": "light/div[0]",
+          "differences": {
+            "height": {
+              "hui": "44px",
+              "original": "32px"
+            }
+          }
+        },
+        {
+          "control": "hui-select-picker[4]",
+          "part": "light/div[0]/button[0]",
+          "differences": {
+            "min-height": {
+              "hui": "44px",
+              "original": "32px"
+            },
+            "height": {
+              "hui": "44px",
+              "original": "32px"
+            }
+          }
+        },
+        {
+          "control": "hui-select-picker[4]",
+          "part": "light/div[0]/button[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[4]",
+          "part": "light/div[0]/button[0]/span[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[5]",
+          "part": "host",
+          "differences": {
+            "height": {
+              "hui": "44px",
+              "original": "32px"
+            },
+            "max-width": {
+              "hui": "100%",
+              "original": "none"
+            }
+          }
+        },
+        {
+          "control": "hui-select-picker[5]",
+          "part": "light/div[0]",
+          "differences": {
+            "height": {
+              "hui": "44px",
+              "original": "32px"
+            }
+          }
+        },
+        {
+          "control": "hui-select-picker[5]",
+          "part": "light/div[0]/button[0]",
+          "differences": {
+            "min-height": {
+              "hui": "44px",
+              "original": "32px"
+            },
+            "height": {
+              "hui": "44px",
+              "original": "32px"
+            }
+          }
+        },
+        {
+          "control": "hui-select-picker[5]",
+          "part": "light/div[0]/button[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[5]",
+          "part": "light/div[0]/button[0]/span[0]/span[0]",
+          "differences": {}
+        }
+      ]
+    },
+    {
+      "state": "automation-dark-portrait-schedule-open-v11",
+      "path": "/settings/automation",
+      "viewport": [
+        390,
+        844
+      ],
+      "controls": [
+        {
+          "id": "wa-switch[0]",
+          "open": false,
+          "checked": false,
+          "disabled": false
+        },
+        {
+          "id": "wa-select[1]",
+          "open": false,
+          "disabled": false
+        },
+        {
+          "id": "wa-select[2]",
+          "open": true,
+          "disabled": false
+        }
+      ],
+      "records": [
+        {
+          "control": "wa-switch[0]",
+          "part": "host",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[0]",
+          "part": "shadow/label[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[0]",
+          "part": "shadow/label[0]/input[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[0]",
+          "part": "shadow/label[0]/span[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[0]",
+          "part": "shadow/label[0]/span[1]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[0]",
+          "part": "light/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[1]",
+          "part": "host",
+          "differences": {
+            "max-width": {
+              "hui": "none",
+              "original": "100%"
+            }
+          }
+        },
+        {
+          "control": "wa-select[1]",
+          "part": "shadow/div[0]/label[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[1]",
+          "part": "shadow/div[0]/div[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[1]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[1]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[1]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]/div[0]/input[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[1]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]/div[0]/slot[4]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[1]",
+          "part": "light/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "host",
+          "differences": {
+            "max-width": {
+              "hui": "none",
+              "original": "100%"
+            }
+          }
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "shadow/div[0]/label[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "shadow/div[0]/div[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]::shadow/div[2]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]/div[0]/input[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]/div[0]/slot[4]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]/div[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]/div[1]/slot[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "light/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "light/wa-option[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "light/wa-option[1]::shadow/slot[2]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "light/wa-option[2]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "light/wa-option[2]::shadow/slot[2]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "light/wa-option[3]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "light/wa-option[3]::shadow/slot[2]",
+          "differences": {}
+        }
+      ]
+    },
+    {
+      "state": "session-dark-portrait-menu-open",
+      "path": "/capabilities/sessions",
+      "viewport": [
+        390,
+        844
+      ],
+      "controls": [
+        {
+          "id": "wa-dropdown[0]",
+          "open": true
+        },
+        {
+          "id": "wa-tab-group[1]",
+          "open": false
+        }
+      ],
+      "records": [
+        {
+          "control": "wa-dropdown[0]",
+          "part": "shadow/wa-popup[0]::shadow/div[2]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "shadow/wa-popup[0]/div[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[1]",
+          "differences": {
+            "background-color": {
+              "hui": "rgb(31, 35, 48)",
+              "original": "rgba(0, 0, 0, 0)"
+            }
+          }
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[1]::shadow/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[1]::shadow/span[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[1]/span[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[2]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[2]::shadow/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[2]::shadow/span[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[2]/span[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[3]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[3]::shadow/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[3]::shadow/span[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[3]/span[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-tab-group[1]",
+          "part": "host",
+          "differences": {}
+        },
+        {
+          "control": "wa-tab-group[1]",
+          "part": "shadow/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-tab-group[1]",
+          "part": "shadow/div[0]/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-tab-group[1]",
+          "part": "shadow/div[0]/div[0]/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-tab-group[1]",
+          "part": "shadow/div[0]/div[0]/div[0]/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-tab-group[1]",
+          "part": "light/wa-tab[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-tab-group[1]",
+          "part": "light/wa-tab[0]::shadow/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-tab-group[1]",
+          "part": "light/wa-tab[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-tab-group[1]",
+          "part": "light/wa-tab[1]::shadow/div[0]",
+          "differences": {}
+        }
+      ]
+    }
+  ]
+}

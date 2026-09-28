@@ -1,0 +1,629 @@
+@import "./openclaw-reference/page-chrome.css";
+@import "./openclaw-reference/hub-tabs.css";
+@import "./openclaw-reference/settings-controls.css";
+@import "./openclaw-reference/select-picker.css";
+@import "./openclaw-reference/settings-sidebar.css";
+@import "./openclaw-reference/settings.css";
+@import "./openclaw-reference/plugins.css";
+@import "./openclaw-reference/appearance.css";
+@import "./openclaw-reference/sessions.css";
+@import "./openclaw-reference/profile.css";
+@import "./openclaw-reference/about.css";
+@import "./openclaw-reference/logs.css";
+@import "./openclaw-reference/activity.css";
+@import "./openclaw-reference/usage.css";
+@import "./openclaw-reference/cron.css";
+@import "./openclaw-reference/model-providers.css";
+
+/*
+ * Workspace presentation adapted from OpenClaw Control UI v2026.9.5.
+ * Copyright (c) 2026 OpenClaw Foundation. Licensed under the MIT License.
+ *
+ * This file intentionally contains presentation only. HUI remains the owner of
+ * navigation, PI session state, persistence, and all user actions.
+ */
+
+/* Settings takeover ----------------------------------------------------- */
+
+.settings-shell {
+  grid-template-columns: 288px minmax(0, 1fr);
+  grid-template-rows: 0 minmax(0, 1fr);
+  grid-template-areas: "nav topbar" "nav content";
+}
+
+.settings-shell > .shell-nav {
+  grid-area: nav;
+  position: relative;
+  z-index: 10;
+  min-height: 100%;
+  overflow: visible;
+  border-inline-end: var(--resize-handle-line-size) solid var(--resize-handle-rest-color);
+}
+
+/* The keyboard hint belongs to the parent Exit Settings click target. */
+.settings-sidebar__esc { pointer-events: none; }
+
+/* HUI's scheduler retains form-associated controls and the reference rows. */
+.hui-automation-form:not([data-schedule="cron"]) .automation-field--cron,
+.hui-automation-form:not([data-schedule="every"]) .automation-field--every,
+.hui-automation-form:not([data-schedule="at"]) .automation-field--at { display: none; }
+.observability-stream--dense .log-row { padding-block: var(--space-1); }
+
+/* A failure's redacted cause sits under its summary in Logs and Activity. */
+.log-detail {
+  display: block;
+  margin-top: var(--space-1);
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.activity-entry__detail {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: var(--control-ui-text-sm);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Sessions runtime telemetry ------------------------------------------- */
+
+.sessions-runtime-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--card);
+}
+
+.sessions-runtime-summary__item {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+  padding: var(--space-3);
+  border-inline-start: 1px solid var(--border);
+}
+
+.sessions-runtime-summary__item:first-child { border-inline-start: 0; }
+
+.sessions-runtime-summary__item > span,
+.sessions-runtime-summary__item > small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: var(--control-ui-text-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sessions-runtime-summary__item > strong {
+  overflow: hidden;
+  color: var(--text-strong);
+  font-family: var(--mono);
+  font-size: var(--control-ui-text-lg);
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sessions-table { min-width: 910px; }
+
+.sessions-table .session-runtime-col {
+  min-width: 84px;
+}
+
+.session-runtime-name,
+.session-runtime-state {
+  display: block;
+}
+
+.session-runtime-name {
+  color: var(--text-strong);
+  font-family: var(--mono);
+  font-size: var(--control-ui-text-sm);
+}
+
+.session-runtime-state {
+  color: var(--muted);
+  font-size: var(--control-ui-text-xs);
+}
+
+.session-memory-cell,
+.session-startup-cell {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 760px) {
+  .sessions-runtime-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .sessions-runtime-summary__item:nth-child(3) {
+    border-block-start: 1px solid var(--border);
+    border-inline-start: 0;
+  }
+  .sessions-runtime-summary__item:nth-child(4) { border-block-start: 1px solid var(--border); }
+}
+
+.observability-stream--dense .activity-entry__summary { padding-block: var(--space-2); }
+
+.settings-shell .settings-sidebar__drawer {
+  overflow: hidden;
+}
+
+.settings-save-indicator {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.settings-save-indicator--danger { color: var(--danger); }
+.sidebar-footer-build { margin-left: auto; font-variant-numeric: tabular-nums; }
+
+.settings-shell .settings-main {
+  grid-area: content;
+  min-height: 0;
+  overflow-x: hidden;
+  padding: 44px clamp(28px, 5vw, 72px) 72px;
+}
+
+.settings-shell .settings-workspace { width: 100%; max-width: 1120px; margin-inline: auto; }
+
+.settings-main > .content-header,
+.settings-main > .settings-workspace__body {
+  width: 100%;
+  max-width: 760px;
+  margin-inline: auto;
+}
+
+.settings-main:has(.settings-page--wide) > .content-header,
+.settings-main:has(.settings-page--wide) > .settings-workspace__body {
+  max-width: 1120px;
+}
+
+.settings-main > .content-header { padding-inline: var(--space-4); }
+
+.settings-shell .content-header { max-height: none; }
+@media (min-width: 901px) {
+  .settings-shell .page-title { font-size: 26px; }
+}
+
+.content-header + .settings-workspace__body { margin-top: var(--space-5); }
+
+/* Shared settings workspace --------------------------------------------- */
+
+.row { display: flex; gap: 12px; align-items: center; }
+
+/* Reference content padding. HUI puts routed fragments directly in .content. */
+.app-shell > .content:not(.content--chat) {
+  --content-inline-padding: 20px;
+  padding: 16px var(--content-inline-padding) 32px;
+  display: block;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+.app-shell > .content:not(.content--chat) > * + * { margin-top: 20px; }
+.app-shell:not(.shell--mobile-nav) > .content:not(.content--chat):has(.content-header) { padding-top: 0; }
+
+.pi-operation { display: flex; align-items: baseline; gap: var(--space-2); }
+.pi-operation--ok strong { color: var(--success); }
+.pi-operation--error strong { color: var(--danger); }
+/* Sessions -------------------------------------------------------------- */
+
+.hui-workspace-page {
+  width: 100%;
+}
+
+/* HUI's filter panel stacks labelled segmented controls instead of OpenClaw's
+   gateway-only numeric fields; the trigger geometry stays reference-owned. */
+.sessions-filter-popover__panel { gap: var(--space-3); }
+.sessions-filter-popover__field { display: grid; gap: var(--space-1); }
+.sessions-filter-popover__segment { display: flex; flex-wrap: nowrap; width: 100%; }
+.sessions-filter-popover__segment > .settings-segmented__btn { flex: 1 1 auto; justify-content: center; padding: 0 6px; }
+.sessions-filter-popover__reset { justify-self: end; }
+
+/* OpenClaw switches Settings to the same platform-aware navigation drawer as
+   the main shell at its platform-aware 900px breakpoint. Keep the shared geometry so
+   tablet widths do not retain a narrow, permanently docked settings rail. */
+@media (max-width: 900px), (max-width: 932px) and (max-height: 500px) and (orientation: landscape) {
+  .settings-shell {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: 58px minmax(0, 1fr);
+    grid-template-areas: "nav" "content";
+  }
+
+  .settings-shell .settings-mobile-topbar {
+    position: relative;
+    z-index: 52;
+    display: grid;
+    grid-template-columns: 40px auto minmax(0, 1fr);
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    min-height: 58px;
+    padding: 8px 12px;
+    border: 0;
+    border-bottom: 1px solid var(--border);
+    background: color-mix(in srgb, var(--bg) 92%, transparent);
+    color: var(--text);
+    font: inherit;
+    text-align: left;
+    backdrop-filter: blur(12px);
+  }
+
+  .settings-shell .settings-mobile-topbar > :first-child {
+    display: grid;
+    width: 40px;
+    height: 40px;
+    place-items: center;
+    color: var(--muted);
+  }
+
+  .settings-shell .settings-mobile-topbar strong {
+    overflow: hidden;
+    color: var(--muted);
+    font-size: var(--text-sm);
+    font-weight: 500;
+    text-align: right;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .settings-shell .settings-sidebar__drawer {
+    position: fixed;
+    z-index: 70;
+    top: max(8px, env(safe-area-inset-top, 0px));
+    bottom: max(8px, env(safe-area-inset-bottom, 0px));
+    left: 0;
+    display: flex;
+    width: min(86vw, 320px);
+    border: 0;
+    border-radius: 0 22px 22px 0;
+    background: var(--bg-accent);
+    box-shadow: 0 16px 48px rgb(0 0 0 / 30%);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transform: translateX(-100%);
+    transition: transform 160ms cubic-bezier(0.32, 0.72, 0, 1), opacity 100ms ease-out;
+  }
+
+  .settings-shell .settings-sidebar[data-open="true"] > .settings-sidebar__drawer {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transform: translateX(0);
+  }
+
+  .settings-shell .settings-backdrop {
+    position: fixed;
+    z-index: 65;
+    inset: 0;
+    display: block;
+    width: auto;
+    height: auto;
+    padding: 0;
+    border: 0;
+    background: rgb(0 0 0 / 44%);
+    opacity: 0;
+    pointer-events: none;
+    visibility: hidden;
+  }
+
+  .settings-shell .settings-sidebar[data-open="true"] > .settings-backdrop {
+    opacity: 1;
+    pointer-events: auto;
+    visibility: visible;
+  }
+
+  .settings-shell .settings-main {
+    min-width: 0;
+    min-height: 0;
+    padding: 16px 20px 32px;
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+
+  .settings-main > .content-header,
+  .settings-main > .settings-workspace__body {
+    max-width: 760px;
+  }
+}
+
+@media (max-width: 768px), (max-width: 932px) and (max-height: 500px) and (orientation: landscape) {
+  .settings-shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .settings-shell .settings-main {
+    padding: 4px 4px 16px;
+  }
+  .app-shell > .content:not(.content--chat) { --content-inline-padding: 4px; padding: 4px var(--content-inline-padding) 16px; }
+}
+
+@media (max-width: 640px) {
+  .settings-shell .settings-main { padding: var(--space-3) var(--space-3) var(--space-4); }
+  .settings-main > .content-header { padding-inline: 0; }
+}
+
+/* Gateway states retain the settings status anatomy with semantic emphasis. */
+.gateway-status {
+  --gateway-tone: var(--muted);
+  color: var(--gateway-tone);
+  font-weight: 600;
+}
+
+.gateway-status--ok { --gateway-tone: var(--ok); }
+.gateway-status--danger { --gateway-tone: var(--danger); }
+.gateway-status--warn { --gateway-tone: var(--warn); }
+
+.gateway-status .settings-status__dot {
+  background: var(--gateway-tone);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--gateway-tone) 12%, transparent);
+}
+
+.gateway-metric {
+  color: var(--text);
+  font-size: var(--control-ui-text-md);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.gateway-error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  overflow-wrap: anywhere;
+}
+
+/* Worktrees table ------------------------------------------------------- */
+
+/* The reference key column sticks after a checkbox column; this table has
+   none, so the sticky offset must start at the table edge. */
+.data-table.worktrees-table {
+  --data-table-checkbox-col-width: 0px;
+}
+
+/* Long paths and branches need room; the key column is the widest. */
+.worktrees-table .data-table-key-col {
+  min-width: 340px;
+  max-width: 460px;
+}
+
+.worktrees-table .session-key-cell__text,
+.sessions-table .session-key-cell__text {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.worktrees-table .worktree-origin-chip {
+  flex: none;
+}
+
+/* Paths truncate from the start so the distinguishing tail stays visible. */
+:is(.worktrees-table, .sessions-table) .worktree-path {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+:is(.worktrees-table, .sessions-table) .worktree-path__text {
+  direction: rtl;
+  text-align: left;
+}
+
+:is(.worktrees-table, .sessions-table) .worktree-path__copy {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted);
+  opacity: 0;
+  cursor: pointer;
+}
+
+:is(.worktrees-table, .sessions-table) tr:hover .worktree-path__copy,
+:is(.worktrees-table, .sessions-table) .worktree-path__copy:focus-visible,
+:is(.worktrees-table, .sessions-table) .worktree-path__copy[data-copied] {
+  opacity: 1;
+}
+
+:is(.worktrees-table, .sessions-table) .worktree-path__copy[data-copied] { color: var(--ok); }
+:is(.worktrees-table, .sessions-table) .worktree-path__copy:hover { background: var(--bg-hover); color: var(--text); }
+
+:is(.worktrees-table, .sessions-table) .worktree-path__copy svg {
+  width: 13px;
+  height: 13px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.7px;
+}
+
+@media (hover: none), (pointer: coarse) {
+  :is(.worktrees-table, .sessions-table) .worktree-path__copy { opacity: 1; }
+}
+
+/* Branch names wrap instead of truncating: hover is no help on touch and
+   the tail usually carries the ticket or topic. */
+.worktrees-table .session-key-cell__primary {
+  flex-wrap: wrap;
+  row-gap: 2px;
+}
+
+.worktrees-table .session-key-cell__primary > .worktree-branch {
+  overflow: visible;
+  color: var(--text-strong);
+  font-weight: 600;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+
+.worktrees-table .worktree-sessions-col {
+  max-width: 240px;
+}
+
+.worktrees-table .worktree-sessions {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+  max-width: 240px;
+}
+
+.worktrees-table .worktree-session-link {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.worktrees-table .worktree-prs {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.worktrees-table .worktree-pr {
+  --session-pr-color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  color: var(--session-pr-color);
+  font-family: var(--mono);
+  font-size: var(--control-ui-text-sm);
+  text-decoration: none;
+}
+
+.worktrees-table .worktree-pr[data-state="open"] { --session-pr-color: var(--ok); }
+.worktrees-table .worktree-pr[data-state="merged"] { --session-pr-color: var(--pr-merged); }
+.worktrees-table .worktree-pr[data-state="closed"] { --session-pr-color: var(--danger); }
+.worktrees-table .worktree-pr:hover { background: color-mix(in srgb, var(--session-pr-color) 14%, transparent); }
+.worktrees-table .worktree-pr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+.worktrees-table .worktree-pr svg {
+  width: 13px;
+  height: 13px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.8px;
+}
+
+.worktrees-table .worktree-size {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.worktrees-table .session-actions-cell .btn svg,
+.worktrees-workspace .settings-section__actions .btn svg {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.7px;
+}
+
+.worktree-cleanup {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+  padding: var(--space-3);
+}
+
+.worktree-cleanup__copy {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.worktree-cleanup__list {
+  margin: var(--space-1) 0 0;
+  padding-inline-start: var(--space-4);
+  max-height: 180px;
+  overflow: auto;
+}
+
+.worktree-cleanup__actions {
+  display: inline-flex;
+  gap: var(--space-2);
+}
+
+.worktree-results {
+  margin-bottom: var(--space-3);
+  overflow-wrap: anywhere;
+}
+
+.worktree-results {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.worktree-results p { margin: 0; }
+
+.worktree-results__body {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.worktree-results__list {
+  margin: 0;
+  padding-inline-start: var(--space-4);
+}
+
+.worktree-results .btn svg {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.7px;
+}
+
+.worktree-tooltip-wrap { display: inline-flex; }
+:is(.worktrees-table, .sessions-table) .worktree-path__text { cursor: default; }
+.worktrees-table .worktree-unavailable:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+.worktrees-table .worktree-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.worktrees-table .worktree-risk {
+  color: var(--muted);
+  font-size: var(--control-ui-text-sm);
+  white-space: nowrap;
+}
+
+.worktrees-table .worktree-risk[data-risk="dirty"],
+.worktrees-table .worktree-risk[data-risk="running"] { color: var(--warn); }
+
+.worktree-remove-dialog__path {
+  overflow-wrap: anywhere;
+}
+
+.worktree-remove-dialog__risks {
+  display: grid;
+  gap: var(--space-1);
+  margin: var(--space-3) 0;
+  padding-inline-start: var(--space-4);
+  font-size: var(--control-ui-text-sm);
+}
+
+.worktree-remove-dialog__risks li[data-risk="dirty"] strong,
+.worktree-remove-dialog__risks li[data-risk="unknown"] strong,
+.worktree-remove-dialog__risks li[data-risk="running"] strong { color: var(--danger); }

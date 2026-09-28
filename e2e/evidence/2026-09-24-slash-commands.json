@@ -1,0 +1,7 @@
+{
+  "provider_requests": 3,
+  "user_skill_expanded": true,
+  "project_skill_expanded": true,
+  "template_expanded_with_argument": true,
+  "extension_commands_sent_to_model": false
+}

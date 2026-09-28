@@ -1,0 +1,248 @@
+import { execFile } from "node:child_process";
+import { lstat, readdir, realpath, stat } from "node:fs/promises";
+import { homedir } from "node:os";
+import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { promisify } from "node:util";
+
+import { liveSessions, type SessionStatus } from "./live-sessions.ts";
+import { readRegistry, type SessionRecord } from "./sessions.ts";
+
+const execFileAsync = promisify(execFile);
+const COMMAND_TIMEOUT_MS = 5_000;
+const MAX_COMMAND_OUTPUT = 512 * 1024;
+const MAX_MEMORY_FILES = 200;
+
+export type GatewayHealth = {
+  status: "online";
+  transport: "HTTP + SSE";
+  uptimeSeconds: number;
+  access: "Full Access";
+  sessions: Record<SessionStatus | "registered" | "processes", number>;
+};
+
+export type MemorySource = {
+  workspace: string;
+  path: string;
+  relativePath: string;
+  kind: "context" | "memory";
+  bytes: number;
+  modifiedAt: string;
+};
+
+export type WorktreeView = {
+  repository: string;
+  path: string;
+  branch: string;
+  head: string;
+  bare: boolean;
+  detached: boolean;
+  sessionIds: readonly string[];
+};
+
+export type WorkspaceInspection = {
+  workspaces: readonly string[];
+  memory: readonly MemorySource[];
+  worktrees: readonly WorktreeView[];
+  diagnostics: readonly string[];
+};
+
+type CommandResult = { stdout: string; stderr: string };
+type CommandRunner = (file: string, args: readonly string[]) => Promise<CommandResult>;
+
+const runCommand: CommandRunner = async (file, args) => {
+  const result = await execFileAsync(file, [...args], {
+    timeout: COMMAND_TIMEOUT_MS,
+    maxBuffer: MAX_COMMAND_OUTPUT,
+    encoding: "utf8",
+  });
+  return { stdout: result.stdout, stderr: result.stderr };
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isWithin(root: string, candidate: string): boolean {
+  const path = relative(root, candidate);
+  return path === "" || (!path.startsWith(`..${sep}`) && path !== ".." && !isAbsolute(path));
+}
+
+async function canonicalDirectory(path: string): Promise<string | undefined> {
+  try {
+    const canonical = await realpath(path);
+    return (await stat(canonical)).isDirectory() ? canonical : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+async function safeMemoryFile(
+  workspace: string,
+  candidate: string,
+  kind: MemorySource["kind"],
+): Promise<MemorySource | undefined> {
+  try {
+    const link = await lstat(candidate);
+    if (link.isSymbolicLink() || !link.isFile()) return undefined;
+    const canonical = await realpath(candidate);
+    if (!isWithin(workspace, canonical)) return undefined;
+    const info = await stat(canonical);
+    return {
+      workspace,
+      path: canonical,
+      relativePath: relative(workspace, canonical),
+      kind,
+      bytes: info.size,
+      modifiedAt: info.mtime.toISOString(),
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+async function memorySources(workspace: string): Promise<MemorySource[]> {
+  const direct = [
+    ["AGENTS.md", "context"],
+    ["CLAUDE.md", "context"],
+    [join(".pi", "SYSTEM.md"), "context"],
+    [join(".pi", "APPEND_SYSTEM.md"), "context"],
+    ["MEMORY.md", "memory"],
+  ] as const;
+  const found = (
+    await Promise.all(
+      direct.map(([path, kind]) => safeMemoryFile(workspace, join(workspace, path), kind)),
+    )
+  ).filter((item): item is MemorySource => item !== undefined);
+
+  const memoryDir = join(workspace, "memory");
+  let entries: string[] = [];
+  try {
+    entries = (await readdir(memoryDir))
+      .filter((name) => name.endsWith(".md") && !name.startsWith("."))
+      .toSorted()
+      .slice(0, MAX_MEMORY_FILES);
+  } catch {
+    return found;
+  }
+  for (const entry of entries) {
+    const source = await safeMemoryFile(workspace, join(memoryDir, entry), "memory");
+    if (source) found.push(source);
+  }
+  return found;
+}
+
+export function parseWorktreePorcelain(source: string): Omit<WorktreeView, "repository" | "sessionIds">[] {
+  const records: Omit<WorktreeView, "repository" | "sessionIds">[] = [];
+  const blocks = source.includes("\0") ? source.split("\0\0") : source.trim().split(/\n\n+/u);
+  for (const block of blocks) {
+    if (!block.trim()) continue;
+    const lines = block.split(source.includes("\0") ? "\0" : "\n");
+    const path = lines.find((line) => line.startsWith("worktree "))?.slice(9) ?? "";
+    if (!path) continue;
+    const branchRef = lines.find((line) => line.startsWith("branch "))?.slice(7) ?? "";
+    records.push({
+      path,
+      branch: branchRef.replace(/^refs\/heads\//u, ""),
+      head: lines.find((line) => line.startsWith("HEAD "))?.slice(5) ?? "",
+      bare: lines.includes("bare"),
+      detached: lines.includes("detached"),
+    });
+  }
+  return records;
+}
+
+async function repositoryFor(workspace: string, run: CommandRunner): Promise<string | undefined> {
+  try {
+    const { stdout } = await run("git", ["-C", workspace, "rev-parse", "--show-toplevel"]);
+    return canonicalDirectory(stdout.trim());
+  } catch {
+    return undefined;
+  }
+}
+
+function associatedSessions(path: string, sessions: readonly SessionRecord[]): string[] {
+  return sessions
+    .filter((session) => {
+      const cwd = resolve(session.cwd);
+      return isWithin(path, cwd) || isWithin(cwd, path);
+    })
+    .map((session) => session.id);
+}
+
+export async function inspectWorkspaces(
+  sessions: readonly SessionRecord[],
+  run: CommandRunner = runCommand,
+  home = homedir(),
+): Promise<WorkspaceInspection> {
+  const diagnostics: string[] = [];
+  const canonical = (
+    await Promise.all([...new Set(sessions.map((session) => session.cwd))].map(canonicalDirectory))
+  ).filter((path): path is string => path !== undefined);
+  const workspaces = [...new Set(canonical)].toSorted();
+  const configuredOpenClawRoot = resolve(home, ".openclaw");
+  const openClawRoot = (await canonicalDirectory(configuredOpenClawRoot)) ?? configuredOpenClawRoot;
+  const memory: MemorySource[] = [];
+  for (const workspace of workspaces) {
+    if (isWithin(openClawRoot, workspace)) {
+      diagnostics.push(`OpenClaw-owned memory was excluded from ${workspace}.`);
+      continue;
+    }
+    memory.push(...(await memorySources(workspace)));
+  }
+
+  const repositories = new Set<string>();
+  for (const workspace of workspaces) {
+    const repository = await repositoryFor(workspace, run);
+    if (repository) repositories.add(repository);
+  }
+  const worktrees: WorktreeView[] = [];
+  for (const repository of [...repositories].toSorted()) {
+    try {
+      const { stdout } = await run("git", ["-C", repository, "worktree", "list", "--porcelain", "-z"]);
+      for (const record of parseWorktreePorcelain(stdout)) {
+        const canonicalPath = (await canonicalDirectory(record.path)) ?? resolve(record.path);
+        worktrees.push({
+          ...record,
+          repository,
+          path: canonicalPath,
+          sessionIds: associatedSessions(canonicalPath, sessions),
+        });
+      }
+    } catch (error) {
+      diagnostics.push(
+        `Could not inspect worktrees for ${basename(repository)}: ${
+          isRecord(error) && typeof error["message"] === "string" ? error["message"] : "git failed"
+        }`,
+      );
+    }
+  }
+  return { workspaces, memory, worktrees, diagnostics };
+}
+
+export async function readWorkspaceInspection(): Promise<WorkspaceInspection> {
+  return inspectWorkspaces(await readRegistry());
+}
+
+export async function readGatewayHealth(): Promise<GatewayHealth> {
+  const records = await readRegistry();
+  const sessions: GatewayHealth["sessions"] = {
+    registered: records.length,
+    starting: 0,
+    idle: 0,
+    running: 0,
+    waiting: 0,
+    error: 0,
+    processes: 0,
+  };
+  for (const record of records) {
+    if (liveSessions.isLive(record.id)) sessions[liveSessions.status(record.id)] += 1;
+    if (liveSessions.hasRuntime(record.id)) sessions.processes += 1;
+  }
+  return {
+    status: "online",
+    transport: "HTTP + SSE",
+    uptimeSeconds: Math.floor(process.uptime()),
+    access: "Full Access",
+    sessions,
+  };
+}

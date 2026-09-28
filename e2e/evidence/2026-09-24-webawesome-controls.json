@@ -1,0 +1,3293 @@
+{
+  "reference": {
+    "version": "OpenClaw 2026.9.5",
+    "commit": "ec9c1a13db8938e5a3eaa51fca2e981cde2395a9",
+    "webAwesome": "3.12.0"
+  },
+  "method": "Independent original renderer/runtime in a disposable iframe. Match input data, viewport, theme and owning CSS context. Mirror observed light-DOM hover/focus selectors with original declarations. Await component updates, fonts, animations and observable stable geometry. Not a pixel diff or whole-page equivalence proof.",
+  "runs": [
+    {
+      "state": "appearance-dark-desktop-rest",
+      "path": "/settings/appearance",
+      "viewport": [
+        1440,
+        900
+      ],
+      "controls": [
+        {
+          "id": "wa-select[0]",
+          "open": false,
+          "disabled": true
+        },
+        {
+          "id": "hui-select-picker[1]",
+          "open": false
+        },
+        {
+          "id": "hui-select-picker[2]",
+          "open": false
+        },
+        {
+          "id": "wa-switch[3]",
+          "open": false,
+          "checked": false,
+          "disabled": false
+        },
+        {
+          "id": "hui-select-picker[4]",
+          "open": false
+        },
+        {
+          "id": "hui-select-picker[5]",
+          "open": false
+        }
+      ],
+      "records": [
+        {
+          "control": "wa-select[0]",
+          "part": "host",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[0]",
+          "part": "shadow/div[0]/label[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[0]",
+          "part": "shadow/div[0]/div[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[0]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[0]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[0]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]/div[0]/input[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[0]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]/div[0]/slot[4]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[0]",
+          "part": "light/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "host",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "light/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "light/div[0]/button[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "light/div[0]/button[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "light/div[0]/button[0]/span[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[2]",
+          "part": "host",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[2]",
+          "part": "light/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[2]",
+          "part": "light/div[0]/button[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[2]",
+          "part": "light/div[0]/button[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[2]",
+          "part": "light/div[0]/button[0]/span[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[3]",
+          "part": "host",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[3]",
+          "part": "shadow/label[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[3]",
+          "part": "shadow/label[0]/input[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[3]",
+          "part": "shadow/label[0]/span[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[3]",
+          "part": "shadow/label[0]/span[1]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[3]",
+          "part": "light/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[4]",
+          "part": "host",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[4]",
+          "part": "light/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[4]",
+          "part": "light/div[0]/button[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[4]",
+          "part": "light/div[0]/button[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[4]",
+          "part": "light/div[0]/button[0]/span[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[5]",
+          "part": "host",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[5]",
+          "part": "light/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[5]",
+          "part": "light/div[0]/button[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[5]",
+          "part": "light/div[0]/button[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[5]",
+          "part": "light/div[0]/button[0]/span[0]/span[0]",
+          "differences": {}
+        }
+      ]
+    },
+    {
+      "state": "appearance-light-desktop-rest",
+      "path": "/settings/appearance",
+      "viewport": [
+        1440,
+        900
+      ],
+      "controls": [
+        {
+          "id": "wa-select[0]",
+          "open": false,
+          "disabled": true
+        },
+        {
+          "id": "hui-select-picker[1]",
+          "open": false
+        },
+        {
+          "id": "hui-select-picker[2]",
+          "open": false
+        },
+        {
+          "id": "wa-switch[3]",
+          "open": false,
+          "checked": false,
+          "disabled": false
+        },
+        {
+          "id": "hui-select-picker[4]",
+          "open": false
+        },
+        {
+          "id": "hui-select-picker[5]",
+          "open": false
+        }
+      ],
+      "records": [
+        {
+          "control": "wa-select[0]",
+          "part": "host",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[0]",
+          "part": "shadow/div[0]/label[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[0]",
+          "part": "shadow/div[0]/div[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[0]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[0]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[0]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]/div[0]/input[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[0]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]/div[0]/slot[4]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[0]",
+          "part": "light/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "host",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "light/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "light/div[0]/button[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "light/div[0]/button[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "light/div[0]/button[0]/span[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[2]",
+          "part": "host",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[2]",
+          "part": "light/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[2]",
+          "part": "light/div[0]/button[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[2]",
+          "part": "light/div[0]/button[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[2]",
+          "part": "light/div[0]/button[0]/span[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[3]",
+          "part": "host",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[3]",
+          "part": "shadow/label[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[3]",
+          "part": "shadow/label[0]/input[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[3]",
+          "part": "shadow/label[0]/span[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[3]",
+          "part": "shadow/label[0]/span[1]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[3]",
+          "part": "light/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[4]",
+          "part": "host",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[4]",
+          "part": "light/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[4]",
+          "part": "light/div[0]/button[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[4]",
+          "part": "light/div[0]/button[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[4]",
+          "part": "light/div[0]/button[0]/span[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[5]",
+          "part": "host",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[5]",
+          "part": "light/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[5]",
+          "part": "light/div[0]/button[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[5]",
+          "part": "light/div[0]/button[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[5]",
+          "part": "light/div[0]/button[0]/span[0]/span[0]",
+          "differences": {}
+        }
+      ]
+    },
+    {
+      "state": "appearance-light-desktop-picker-open",
+      "path": "/settings/appearance",
+      "viewport": [
+        1440,
+        900
+      ],
+      "controls": [
+        {
+          "id": "wa-select[0]",
+          "open": false,
+          "disabled": true
+        },
+        {
+          "id": "hui-select-picker[1]",
+          "open": true
+        },
+        {
+          "id": "hui-select-picker[2]",
+          "open": false
+        },
+        {
+          "id": "wa-switch[3]",
+          "open": false,
+          "checked": false,
+          "disabled": false
+        },
+        {
+          "id": "hui-select-picker[4]",
+          "open": false
+        },
+        {
+          "id": "hui-select-picker[5]",
+          "open": false
+        }
+      ],
+      "records": [
+        {
+          "control": "wa-select[0]",
+          "part": "host",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[0]",
+          "part": "shadow/div[0]/label[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[0]",
+          "part": "shadow/div[0]/div[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[0]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[0]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[0]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]/div[0]/input[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[0]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]/div[0]/slot[4]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[0]",
+          "part": "light/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "host",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "light/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "light/div[0]/button[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "light/div[0]/button[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "light/div[0]/button[0]/span[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "light/div[0]/wa-popup[1]::shadow/div[2]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "light/div[0]/wa-popup[1]/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "light/div[0]/wa-popup[1]/div[0]/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "light/div[0]/wa-popup[1]/div[0]/div[0]/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "light/div[0]/wa-popup[1]/div[0]/div[0]/div[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "light/div[0]/wa-popup[1]/div[0]/div[0]/div[0]/span[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "light/div[0]/wa-popup[1]/div[0]/div[0]/div[1]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "light/div[0]/wa-popup[1]/div[0]/div[0]/div[1]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "light/div[0]/wa-popup[1]/div[0]/div[0]/div[1]/span[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "light/div[0]/wa-popup[1]/div[0]/div[0]/div[2]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "light/div[0]/wa-popup[1]/div[0]/div[0]/div[2]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "light/div[0]/wa-popup[1]/div[0]/div[0]/div[2]/span[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "light/div[0]/wa-popup[1]/div[0]/div[0]/div[3]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "light/div[0]/wa-popup[1]/div[0]/div[0]/div[3]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "light/div[0]/wa-popup[1]/div[0]/div[0]/div[3]/span[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[2]",
+          "part": "host",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[2]",
+          "part": "light/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[2]",
+          "part": "light/div[0]/button[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[2]",
+          "part": "light/div[0]/button[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[2]",
+          "part": "light/div[0]/button[0]/span[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[3]",
+          "part": "host",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[3]",
+          "part": "shadow/label[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[3]",
+          "part": "shadow/label[0]/input[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[3]",
+          "part": "shadow/label[0]/span[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[3]",
+          "part": "shadow/label[0]/span[1]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[3]",
+          "part": "light/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[4]",
+          "part": "host",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[4]",
+          "part": "light/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[4]",
+          "part": "light/div[0]/button[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[4]",
+          "part": "light/div[0]/button[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[4]",
+          "part": "light/div[0]/button[0]/span[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[5]",
+          "part": "host",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[5]",
+          "part": "light/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[5]",
+          "part": "light/div[0]/button[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[5]",
+          "part": "light/div[0]/button[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[5]",
+          "part": "light/div[0]/button[0]/span[0]/span[0]",
+          "differences": {}
+        }
+      ]
+    },
+    {
+      "state": "automation-dark-desktop-schedule-open-v9",
+      "path": "/settings/automation",
+      "viewport": [
+        1440,
+        900
+      ],
+      "controls": [
+        {
+          "id": "wa-switch[0]",
+          "open": false,
+          "checked": false,
+          "disabled": false
+        },
+        {
+          "id": "wa-select[1]",
+          "open": false,
+          "disabled": false
+        },
+        {
+          "id": "wa-select[2]",
+          "open": true,
+          "disabled": false
+        }
+      ],
+      "records": [
+        {
+          "control": "wa-switch[0]",
+          "part": "host",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[0]",
+          "part": "shadow/label[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[0]",
+          "part": "shadow/label[0]/input[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[0]",
+          "part": "shadow/label[0]/span[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[0]",
+          "part": "shadow/label[0]/span[1]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[0]",
+          "part": "light/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[1]",
+          "part": "host",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[1]",
+          "part": "shadow/div[0]/label[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[1]",
+          "part": "shadow/div[0]/div[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[1]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[1]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[1]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]/div[0]/input[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[1]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]/div[0]/slot[4]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[1]",
+          "part": "light/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "host",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "shadow/div[0]/label[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "shadow/div[0]/div[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]::shadow/div[2]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]/div[0]/input[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]/div[0]/slot[4]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]/div[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]/div[1]/slot[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "light/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "light/wa-option[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "light/wa-option[1]::shadow/slot[2]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "light/wa-option[2]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "light/wa-option[2]::shadow/slot[2]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "light/wa-option[3]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "light/wa-option[3]::shadow/slot[2]",
+          "differences": {}
+        }
+      ]
+    },
+    {
+      "state": "automation-dark-desktop-menu-open",
+      "path": "/settings/automation",
+      "viewport": [
+        1440,
+        900
+      ],
+      "controls": [
+        {
+          "id": "wa-switch[0]",
+          "open": false,
+          "checked": false,
+          "disabled": false
+        },
+        {
+          "id": "wa-dropdown[1]",
+          "open": true
+        },
+        {
+          "id": "wa-select[2]",
+          "open": false,
+          "disabled": false
+        },
+        {
+          "id": "wa-select[3]",
+          "open": false,
+          "disabled": false
+        }
+      ],
+      "records": [
+        {
+          "control": "wa-switch[0]",
+          "part": "host",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[0]",
+          "part": "shadow/label[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[0]",
+          "part": "shadow/label[0]/input[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[0]",
+          "part": "shadow/label[0]/span[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[0]",
+          "part": "shadow/label[0]/span[1]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[0]",
+          "part": "light/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[1]",
+          "part": "shadow/wa-popup[0]::shadow/div[2]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[1]",
+          "part": "shadow/wa-popup[0]/div[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[1]",
+          "part": "light/wa-dropdown-item[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[1]",
+          "part": "light/wa-dropdown-item[1]::shadow/span[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[1]",
+          "part": "light/wa-dropdown-item[2]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[1]",
+          "part": "light/wa-dropdown-item[2]::shadow/span[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "host",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "shadow/div[0]/label[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "shadow/div[0]/div[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]/div[0]/input[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]/div[0]/slot[4]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "light/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[3]",
+          "part": "host",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[3]",
+          "part": "shadow/div[0]/label[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[3]",
+          "part": "shadow/div[0]/div[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[3]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[3]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[3]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]/div[0]/input[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[3]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]/div[0]/slot[4]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[3]",
+          "part": "light/span[0]",
+          "differences": {}
+        }
+      ]
+    },
+    {
+      "state": "group-dark-desktop-menu-open-v10",
+      "path": "/",
+      "viewport": [
+        1440,
+        900
+      ],
+      "controls": [
+        {
+          "id": "wa-dropdown[0]",
+          "open": true
+        }
+      ],
+      "records": [
+        {
+          "control": "wa-dropdown[0]",
+          "part": "shadow/wa-popup[0]::shadow/div[2]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "shadow/wa-popup[0]/div[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[1]::shadow/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[1]::shadow/span[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[1]/span[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[2]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[2]::shadow/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[2]::shadow/span[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[2]/span[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[3]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[3]::shadow/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[3]::shadow/span[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[3]/span[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[5]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[5]::shadow/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[5]::shadow/span[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[5]/span[1]",
+          "differences": {}
+        }
+      ]
+    },
+    {
+      "state": "appearance-dark-portrait-rest-v11",
+      "path": "/settings/appearance",
+      "viewport": [
+        390,
+        844
+      ],
+      "controls": [
+        {
+          "id": "wa-select[0]",
+          "open": false,
+          "disabled": true
+        },
+        {
+          "id": "hui-select-picker[1]",
+          "open": false
+        },
+        {
+          "id": "hui-select-picker[2]",
+          "open": false
+        },
+        {
+          "id": "wa-switch[3]",
+          "open": false,
+          "checked": false,
+          "disabled": false
+        },
+        {
+          "id": "hui-select-picker[4]",
+          "open": false
+        },
+        {
+          "id": "hui-select-picker[5]",
+          "open": false
+        }
+      ],
+      "records": [
+        {
+          "control": "wa-select[0]",
+          "part": "host",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[0]",
+          "part": "shadow/div[0]/label[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[0]",
+          "part": "shadow/div[0]/div[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[0]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[0]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[0]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]/div[0]/input[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[0]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]/div[0]/slot[4]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[0]",
+          "part": "light/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "host",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "light/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "light/div[0]/button[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "light/div[0]/button[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "light/div[0]/button[0]/span[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[2]",
+          "part": "host",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[2]",
+          "part": "light/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[2]",
+          "part": "light/div[0]/button[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[2]",
+          "part": "light/div[0]/button[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[2]",
+          "part": "light/div[0]/button[0]/span[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[3]",
+          "part": "host",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[3]",
+          "part": "shadow/label[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[3]",
+          "part": "shadow/label[0]/input[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[3]",
+          "part": "shadow/label[0]/span[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[3]",
+          "part": "shadow/label[0]/span[1]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[3]",
+          "part": "light/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[4]",
+          "part": "host",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[4]",
+          "part": "light/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[4]",
+          "part": "light/div[0]/button[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[4]",
+          "part": "light/div[0]/button[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[4]",
+          "part": "light/div[0]/button[0]/span[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[5]",
+          "part": "host",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[5]",
+          "part": "light/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[5]",
+          "part": "light/div[0]/button[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[5]",
+          "part": "light/div[0]/button[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[5]",
+          "part": "light/div[0]/button[0]/span[0]/span[0]",
+          "differences": {}
+        }
+      ]
+    },
+    {
+      "state": "appearance-dark-portrait-picker-open",
+      "path": "/settings/appearance",
+      "viewport": [
+        390,
+        844
+      ],
+      "controls": [
+        {
+          "id": "wa-select[0]",
+          "open": false,
+          "disabled": true
+        },
+        {
+          "id": "hui-select-picker[1]",
+          "open": true
+        },
+        {
+          "id": "hui-select-picker[2]",
+          "open": false
+        },
+        {
+          "id": "wa-switch[3]",
+          "open": false,
+          "checked": false,
+          "disabled": false
+        },
+        {
+          "id": "hui-select-picker[4]",
+          "open": false
+        },
+        {
+          "id": "hui-select-picker[5]",
+          "open": false
+        }
+      ],
+      "records": [
+        {
+          "control": "wa-select[0]",
+          "part": "host",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[0]",
+          "part": "shadow/div[0]/label[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[0]",
+          "part": "shadow/div[0]/div[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[0]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[0]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[0]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]/div[0]/input[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[0]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]/div[0]/slot[4]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[0]",
+          "part": "light/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "host",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "light/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "light/div[0]/button[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "light/div[0]/button[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "light/div[0]/button[0]/span[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "light/div[0]/wa-popup[1]::shadow/div[2]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "light/div[0]/wa-popup[1]/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "light/div[0]/wa-popup[1]/div[0]/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "light/div[0]/wa-popup[1]/div[0]/div[0]/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "light/div[0]/wa-popup[1]/div[0]/div[0]/div[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "light/div[0]/wa-popup[1]/div[0]/div[0]/div[0]/span[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "light/div[0]/wa-popup[1]/div[0]/div[0]/div[1]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "light/div[0]/wa-popup[1]/div[0]/div[0]/div[1]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "light/div[0]/wa-popup[1]/div[0]/div[0]/div[1]/span[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "light/div[0]/wa-popup[1]/div[0]/div[0]/div[2]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "light/div[0]/wa-popup[1]/div[0]/div[0]/div[2]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "light/div[0]/wa-popup[1]/div[0]/div[0]/div[2]/span[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "light/div[0]/wa-popup[1]/div[0]/div[0]/div[3]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "light/div[0]/wa-popup[1]/div[0]/div[0]/div[3]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "light/div[0]/wa-popup[1]/div[0]/div[0]/div[3]/span[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[2]",
+          "part": "host",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[2]",
+          "part": "light/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[2]",
+          "part": "light/div[0]/button[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[2]",
+          "part": "light/div[0]/button[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[2]",
+          "part": "light/div[0]/button[0]/span[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[3]",
+          "part": "host",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[3]",
+          "part": "shadow/label[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[3]",
+          "part": "shadow/label[0]/input[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[3]",
+          "part": "shadow/label[0]/span[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[3]",
+          "part": "shadow/label[0]/span[1]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[3]",
+          "part": "light/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[4]",
+          "part": "host",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[4]",
+          "part": "light/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[4]",
+          "part": "light/div[0]/button[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[4]",
+          "part": "light/div[0]/button[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[4]",
+          "part": "light/div[0]/button[0]/span[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[5]",
+          "part": "host",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[5]",
+          "part": "light/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[5]",
+          "part": "light/div[0]/button[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[5]",
+          "part": "light/div[0]/button[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[5]",
+          "part": "light/div[0]/button[0]/span[0]/span[0]",
+          "differences": {}
+        }
+      ]
+    },
+    {
+      "state": "appearance-light-portrait-rest",
+      "path": "/settings/appearance",
+      "viewport": [
+        390,
+        844
+      ],
+      "controls": [
+        {
+          "id": "wa-select[0]",
+          "open": false,
+          "disabled": true
+        },
+        {
+          "id": "hui-select-picker[1]",
+          "open": false
+        },
+        {
+          "id": "hui-select-picker[2]",
+          "open": false
+        },
+        {
+          "id": "wa-switch[3]",
+          "open": false,
+          "checked": false,
+          "disabled": false
+        },
+        {
+          "id": "hui-select-picker[4]",
+          "open": false
+        },
+        {
+          "id": "hui-select-picker[5]",
+          "open": false
+        }
+      ],
+      "records": [
+        {
+          "control": "wa-select[0]",
+          "part": "host",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[0]",
+          "part": "shadow/div[0]/label[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[0]",
+          "part": "shadow/div[0]/div[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[0]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[0]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[0]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]/div[0]/input[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[0]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]/div[0]/slot[4]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[0]",
+          "part": "light/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "host",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "light/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "light/div[0]/button[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "light/div[0]/button[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "light/div[0]/button[0]/span[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[2]",
+          "part": "host",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[2]",
+          "part": "light/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[2]",
+          "part": "light/div[0]/button[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[2]",
+          "part": "light/div[0]/button[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[2]",
+          "part": "light/div[0]/button[0]/span[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[3]",
+          "part": "host",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[3]",
+          "part": "shadow/label[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[3]",
+          "part": "shadow/label[0]/input[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[3]",
+          "part": "shadow/label[0]/span[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[3]",
+          "part": "shadow/label[0]/span[1]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[3]",
+          "part": "light/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[4]",
+          "part": "host",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[4]",
+          "part": "light/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[4]",
+          "part": "light/div[0]/button[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[4]",
+          "part": "light/div[0]/button[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[4]",
+          "part": "light/div[0]/button[0]/span[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[5]",
+          "part": "host",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[5]",
+          "part": "light/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[5]",
+          "part": "light/div[0]/button[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[5]",
+          "part": "light/div[0]/button[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[5]",
+          "part": "light/div[0]/button[0]/span[0]/span[0]",
+          "differences": {}
+        }
+      ]
+    },
+    {
+      "state": "automation-dark-portrait-schedule-open-v12",
+      "path": "/settings/automation",
+      "viewport": [
+        390,
+        844
+      ],
+      "controls": [
+        {
+          "id": "wa-switch[0]",
+          "open": false,
+          "checked": false,
+          "disabled": false
+        },
+        {
+          "id": "wa-select[1]",
+          "open": false,
+          "disabled": false
+        },
+        {
+          "id": "wa-select[2]",
+          "open": true,
+          "disabled": false
+        }
+      ],
+      "records": [
+        {
+          "control": "wa-switch[0]",
+          "part": "host",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[0]",
+          "part": "shadow/label[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[0]",
+          "part": "shadow/label[0]/input[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[0]",
+          "part": "shadow/label[0]/span[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[0]",
+          "part": "shadow/label[0]/span[1]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[0]",
+          "part": "light/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[1]",
+          "part": "host",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[1]",
+          "part": "shadow/div[0]/label[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[1]",
+          "part": "shadow/div[0]/div[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[1]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[1]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[1]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]/div[0]/input[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[1]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]/div[0]/slot[4]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[1]",
+          "part": "light/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "host",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "shadow/div[0]/label[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "shadow/div[0]/div[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]::shadow/div[2]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]/div[0]/input[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]/div[0]/slot[4]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]/div[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]/div[1]/slot[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "light/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "light/wa-option[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "light/wa-option[1]::shadow/slot[2]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "light/wa-option[2]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "light/wa-option[2]::shadow/slot[2]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "light/wa-option[3]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[2]",
+          "part": "light/wa-option[3]::shadow/slot[2]",
+          "differences": {}
+        }
+      ]
+    },
+    {
+      "state": "sessions-dark-portrait-rest",
+      "path": "/capabilities/sessions",
+      "viewport": [
+        390,
+        844
+      ],
+      "controls": [
+        {
+          "id": "wa-tab-group[0]",
+          "open": false
+        }
+      ],
+      "records": [
+        {
+          "control": "wa-tab-group[0]",
+          "part": "host",
+          "differences": {}
+        },
+        {
+          "control": "wa-tab-group[0]",
+          "part": "shadow/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-tab-group[0]",
+          "part": "shadow/div[0]/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-tab-group[0]",
+          "part": "shadow/div[0]/div[0]/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-tab-group[0]",
+          "part": "shadow/div[0]/div[0]/div[0]/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-tab-group[0]",
+          "part": "light/wa-tab[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-tab-group[0]",
+          "part": "light/wa-tab[0]::shadow/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-tab-group[0]",
+          "part": "light/wa-tab[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-tab-group[0]",
+          "part": "light/wa-tab[1]::shadow/div[0]",
+          "differences": {}
+        }
+      ]
+    },
+    {
+      "state": "group-dark-portrait-menu-open",
+      "path": "/capabilities/sessions",
+      "viewport": [
+        390,
+        844
+      ],
+      "controls": [
+        {
+          "id": "wa-dropdown[0]",
+          "open": true
+        },
+        {
+          "id": "wa-tab-group[1]",
+          "open": false
+        }
+      ],
+      "records": [
+        {
+          "control": "wa-dropdown[0]",
+          "part": "shadow/wa-popup[0]::shadow/div[2]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "shadow/wa-popup[0]/div[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[1]::shadow/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[1]::shadow/span[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[1]/span[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[2]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[2]::shadow/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[2]::shadow/span[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[2]/span[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[3]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[3]::shadow/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[3]::shadow/span[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[3]/span[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[5]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[5]::shadow/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[5]::shadow/span[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[5]/span[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-tab-group[1]",
+          "part": "host",
+          "differences": {}
+        },
+        {
+          "control": "wa-tab-group[1]",
+          "part": "shadow/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-tab-group[1]",
+          "part": "shadow/div[0]/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-tab-group[1]",
+          "part": "shadow/div[0]/div[0]/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-tab-group[1]",
+          "part": "shadow/div[0]/div[0]/div[0]/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-tab-group[1]",
+          "part": "light/wa-tab[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-tab-group[1]",
+          "part": "light/wa-tab[0]::shadow/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-tab-group[1]",
+          "part": "light/wa-tab[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-tab-group[1]",
+          "part": "light/wa-tab[1]::shadow/div[0]",
+          "differences": {}
+        }
+      ]
+    },
+    {
+      "state": "session-dark-portrait-menu-open-v13",
+      "path": "/capabilities/sessions",
+      "viewport": [
+        390,
+        844
+      ],
+      "controls": [
+        {
+          "id": "wa-dropdown[0]",
+          "open": true
+        },
+        {
+          "id": "wa-tab-group[1]",
+          "open": false
+        }
+      ],
+      "records": [
+        {
+          "control": "wa-dropdown[0]",
+          "part": "shadow/wa-popup[0]::shadow/div[2]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "shadow/wa-popup[0]/div[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[1]::shadow/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[1]::shadow/span[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[1]/span[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[2]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[2]::shadow/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[2]::shadow/span[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[2]/span[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[3]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[3]::shadow/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[3]::shadow/span[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[3]/span[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-tab-group[1]",
+          "part": "host",
+          "differences": {}
+        },
+        {
+          "control": "wa-tab-group[1]",
+          "part": "shadow/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-tab-group[1]",
+          "part": "shadow/div[0]/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-tab-group[1]",
+          "part": "shadow/div[0]/div[0]/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-tab-group[1]",
+          "part": "shadow/div[0]/div[0]/div[0]/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-tab-group[1]",
+          "part": "light/wa-tab[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-tab-group[1]",
+          "part": "light/wa-tab[0]::shadow/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-tab-group[1]",
+          "part": "light/wa-tab[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-tab-group[1]",
+          "part": "light/wa-tab[1]::shadow/div[0]",
+          "differences": {}
+        }
+      ]
+    },
+    {
+      "state": "appearance-dark-landscape-rest",
+      "path": "/settings/appearance",
+      "viewport": [
+        844,
+        390
+      ],
+      "controls": [
+        {
+          "id": "wa-select[0]",
+          "open": false,
+          "disabled": true
+        },
+        {
+          "id": "hui-select-picker[1]",
+          "open": false
+        },
+        {
+          "id": "hui-select-picker[2]",
+          "open": false
+        },
+        {
+          "id": "wa-switch[3]",
+          "open": false,
+          "checked": false,
+          "disabled": false
+        },
+        {
+          "id": "hui-select-picker[4]",
+          "open": false
+        },
+        {
+          "id": "hui-select-picker[5]",
+          "open": false
+        }
+      ],
+      "records": [
+        {
+          "control": "wa-select[0]",
+          "part": "host",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[0]",
+          "part": "shadow/div[0]/label[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[0]",
+          "part": "shadow/div[0]/div[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[0]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[0]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[0]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]/div[0]/input[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[0]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]/div[0]/slot[4]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[0]",
+          "part": "light/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "host",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "light/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "light/div[0]/button[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "light/div[0]/button[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "light/div[0]/button[0]/span[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[2]",
+          "part": "host",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[2]",
+          "part": "light/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[2]",
+          "part": "light/div[0]/button[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[2]",
+          "part": "light/div[0]/button[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[2]",
+          "part": "light/div[0]/button[0]/span[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[3]",
+          "part": "host",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[3]",
+          "part": "shadow/label[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[3]",
+          "part": "shadow/label[0]/input[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[3]",
+          "part": "shadow/label[0]/span[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[3]",
+          "part": "shadow/label[0]/span[1]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[3]",
+          "part": "light/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[4]",
+          "part": "host",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[4]",
+          "part": "light/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[4]",
+          "part": "light/div[0]/button[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[4]",
+          "part": "light/div[0]/button[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[4]",
+          "part": "light/div[0]/button[0]/span[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[5]",
+          "part": "host",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[5]",
+          "part": "light/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[5]",
+          "part": "light/div[0]/button[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[5]",
+          "part": "light/div[0]/button[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[5]",
+          "part": "light/div[0]/button[0]/span[0]/span[0]",
+          "differences": {}
+        }
+      ]
+    },
+    {
+      "state": "sessions-dark-landscape-rest",
+      "path": "/capabilities/sessions",
+      "viewport": [
+        844,
+        390
+      ],
+      "controls": [
+        {
+          "id": "wa-tab-group[0]",
+          "open": false
+        }
+      ],
+      "records": [
+        {
+          "control": "wa-tab-group[0]",
+          "part": "host",
+          "differences": {}
+        },
+        {
+          "control": "wa-tab-group[0]",
+          "part": "shadow/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-tab-group[0]",
+          "part": "shadow/div[0]/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-tab-group[0]",
+          "part": "shadow/div[0]/div[0]/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-tab-group[0]",
+          "part": "shadow/div[0]/div[0]/div[0]/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-tab-group[0]",
+          "part": "light/wa-tab[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-tab-group[0]",
+          "part": "light/wa-tab[0]::shadow/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-tab-group[0]",
+          "part": "light/wa-tab[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-tab-group[0]",
+          "part": "light/wa-tab[1]::shadow/div[0]",
+          "differences": {}
+        }
+      ]
+    },
+    {
+      "state": "appearance-rose-dark-desktop-rest",
+      "path": "/settings/appearance",
+      "viewport": [
+        1440,
+        900
+      ],
+      "controls": [
+        {
+          "id": "wa-select[0]",
+          "open": false,
+          "disabled": true
+        },
+        {
+          "id": "hui-select-picker[1]",
+          "open": false
+        },
+        {
+          "id": "hui-select-picker[2]",
+          "open": false
+        },
+        {
+          "id": "wa-switch[3]",
+          "open": false,
+          "checked": false,
+          "disabled": false
+        },
+        {
+          "id": "hui-select-picker[4]",
+          "open": false
+        },
+        {
+          "id": "hui-select-picker[5]",
+          "open": false
+        }
+      ],
+      "records": [
+        {
+          "control": "wa-select[0]",
+          "part": "host",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[0]",
+          "part": "shadow/div[0]/label[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[0]",
+          "part": "shadow/div[0]/div[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[0]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[0]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[0]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]/div[0]/input[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[0]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]/div[0]/slot[4]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[0]",
+          "part": "light/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "host",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "light/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "light/div[0]/button[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "light/div[0]/button[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "light/div[0]/button[0]/span[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[2]",
+          "part": "host",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[2]",
+          "part": "light/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[2]",
+          "part": "light/div[0]/button[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[2]",
+          "part": "light/div[0]/button[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[2]",
+          "part": "light/div[0]/button[0]/span[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[3]",
+          "part": "host",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[3]",
+          "part": "shadow/label[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[3]",
+          "part": "shadow/label[0]/input[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[3]",
+          "part": "shadow/label[0]/span[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[3]",
+          "part": "shadow/label[0]/span[1]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[3]",
+          "part": "light/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[4]",
+          "part": "host",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[4]",
+          "part": "light/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[4]",
+          "part": "light/div[0]/button[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[4]",
+          "part": "light/div[0]/button[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[4]",
+          "part": "light/div[0]/button[0]/span[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[5]",
+          "part": "host",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[5]",
+          "part": "light/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[5]",
+          "part": "light/div[0]/button[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[5]",
+          "part": "light/div[0]/button[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[5]",
+          "part": "light/div[0]/button[0]/span[0]/span[0]",
+          "differences": {}
+        }
+      ]
+    },
+    {
+      "state": "sessions-dark-desktop-rest",
+      "path": "/capabilities/sessions",
+      "viewport": [
+        1440,
+        900
+      ],
+      "controls": [
+        {
+          "id": "wa-tab-group[0]",
+          "open": false
+        }
+      ],
+      "records": [
+        {
+          "control": "wa-tab-group[0]",
+          "part": "host",
+          "differences": {}
+        },
+        {
+          "control": "wa-tab-group[0]",
+          "part": "shadow/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-tab-group[0]",
+          "part": "shadow/div[0]/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-tab-group[0]",
+          "part": "shadow/div[0]/div[0]/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-tab-group[0]",
+          "part": "shadow/div[0]/div[0]/div[0]/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-tab-group[0]",
+          "part": "light/wa-tab[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-tab-group[0]",
+          "part": "light/wa-tab[0]::shadow/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-tab-group[0]",
+          "part": "light/wa-tab[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-tab-group[0]",
+          "part": "light/wa-tab[1]::shadow/div[0]",
+          "differences": {}
+        }
+      ]
+    },
+    {
+      "state": "session-dark-desktop-menu-open-v13",
+      "path": "/capabilities/sessions",
+      "viewport": [
+        1440,
+        900
+      ],
+      "controls": [
+        {
+          "id": "wa-dropdown[0]",
+          "open": true
+        },
+        {
+          "id": "wa-tab-group[1]",
+          "open": false
+        }
+      ],
+      "records": [
+        {
+          "control": "wa-dropdown[0]",
+          "part": "shadow/wa-popup[0]::shadow/div[2]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "shadow/wa-popup[0]/div[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[1]::shadow/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[1]::shadow/span[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[1]/span[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[2]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[2]::shadow/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[2]::shadow/span[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[2]/span[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[3]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[3]::shadow/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[3]::shadow/span[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-dropdown[0]",
+          "part": "light/wa-dropdown-item[3]/span[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-tab-group[1]",
+          "part": "host",
+          "differences": {}
+        },
+        {
+          "control": "wa-tab-group[1]",
+          "part": "shadow/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-tab-group[1]",
+          "part": "shadow/div[0]/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-tab-group[1]",
+          "part": "shadow/div[0]/div[0]/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-tab-group[1]",
+          "part": "shadow/div[0]/div[0]/div[0]/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-tab-group[1]",
+          "part": "light/wa-tab[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-tab-group[1]",
+          "part": "light/wa-tab[0]::shadow/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-tab-group[1]",
+          "part": "light/wa-tab[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-tab-group[1]",
+          "part": "light/wa-tab[1]::shadow/div[0]",
+          "differences": {}
+        }
+      ]
+    },
+    {
+      "state": "appearance-dark-desktop-checked",
+      "path": "/settings/appearance",
+      "viewport": [
+        1440,
+        900
+      ],
+      "controls": [
+        {
+          "id": "wa-select[0]",
+          "open": false,
+          "disabled": true
+        },
+        {
+          "id": "hui-select-picker[1]",
+          "open": false
+        },
+        {
+          "id": "hui-select-picker[2]",
+          "open": false
+        },
+        {
+          "id": "wa-switch[3]",
+          "open": false,
+          "checked": true,
+          "disabled": false
+        },
+        {
+          "id": "hui-select-picker[4]",
+          "open": false
+        },
+        {
+          "id": "hui-select-picker[5]",
+          "open": false
+        }
+      ],
+      "records": [
+        {
+          "control": "wa-select[0]",
+          "part": "host",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[0]",
+          "part": "shadow/div[0]/label[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[0]",
+          "part": "shadow/div[0]/div[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[0]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[0]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[0]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]/div[0]/input[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[0]",
+          "part": "shadow/div[0]/div[1]/wa-popup[0]/div[0]/slot[4]",
+          "differences": {}
+        },
+        {
+          "control": "wa-select[0]",
+          "part": "light/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "host",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "light/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "light/div[0]/button[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "light/div[0]/button[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[1]",
+          "part": "light/div[0]/button[0]/span[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[2]",
+          "part": "host",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[2]",
+          "part": "light/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[2]",
+          "part": "light/div[0]/button[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[2]",
+          "part": "light/div[0]/button[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[2]",
+          "part": "light/div[0]/button[0]/span[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[3]",
+          "part": "host",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[3]",
+          "part": "shadow/label[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[3]",
+          "part": "shadow/label[0]/input[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[3]",
+          "part": "shadow/label[0]/span[1]",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[3]",
+          "part": "shadow/label[0]/span[1]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "wa-switch[3]",
+          "part": "light/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[4]",
+          "part": "host",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[4]",
+          "part": "light/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[4]",
+          "part": "light/div[0]/button[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[4]",
+          "part": "light/div[0]/button[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[4]",
+          "part": "light/div[0]/button[0]/span[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[5]",
+          "part": "host",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[5]",
+          "part": "light/div[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[5]",
+          "part": "light/div[0]/button[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[5]",
+          "part": "light/div[0]/button[0]/span[0]",
+          "differences": {}
+        },
+        {
+          "control": "hui-select-picker[5]",
+          "part": "light/div[0]/button[0]/span[0]/span[0]",
+          "differences": {}
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,224 @@
+{
+  "viewport": [
+    1440,
+    900
+  ],
+  "routes": [
+    {
+      "path": "/capabilities/about",
+      "overflow": [],
+      "alerts": [],
+      "placeholder": false
+    },
+    {
+      "path": "/capabilities/activity",
+      "overflow": [],
+      "alerts": [],
+      "placeholder": false
+    },
+    {
+      "path": "/capabilities/chat",
+      "overflow": [],
+      "alerts": [],
+      "placeholder": true
+    },
+    {
+      "path": "/capabilities/config",
+      "overflow": [],
+      "alerts": [],
+      "placeholder": false
+    },
+    {
+      "path": "/capabilities/connection",
+      "overflow": [],
+      "alerts": [],
+      "placeholder": false
+    },
+    {
+      "path": "/capabilities/cron",
+      "overflow": [],
+      "alerts": [],
+      "placeholder": false
+    },
+    {
+      "path": "/capabilities/debug",
+      "overflow": [],
+      "alerts": [],
+      "placeholder": false
+    },
+    {
+      "path": "/capabilities/labs",
+      "overflow": [],
+      "alerts": [],
+      "placeholder": false
+    },
+    {
+      "path": "/capabilities/logs",
+      "overflow": [],
+      "alerts": [],
+      "placeholder": false
+    },
+    {
+      "path": "/capabilities/memory-import",
+      "overflow": [],
+      "alerts": [],
+      "placeholder": false
+    },
+    {
+      "path": "/capabilities/model-providers",
+      "overflow": [],
+      "alerts": [],
+      "placeholder": false
+    },
+    {
+      "path": "/capabilities/model-setup",
+      "overflow": [],
+      "alerts": [],
+      "placeholder": false
+    },
+    {
+      "path": "/capabilities/new-session",
+      "overflow": [],
+      "alerts": [],
+      "placeholder": false
+    },
+    {
+      "path": "/capabilities/permissions",
+      "overflow": [],
+      "alerts": [],
+      "placeholder": true
+    },
+    {
+      "path": "/capabilities/plugin",
+      "overflow": [],
+      "alerts": [],
+      "placeholder": false
+    },
+    {
+      "path": "/capabilities/plugins",
+      "overflow": [],
+      "alerts": [],
+      "placeholder": false
+    },
+    {
+      "path": "/capabilities/profile",
+      "overflow": [],
+      "alerts": [],
+      "placeholder": false
+    },
+    {
+      "path": "/capabilities/question",
+      "overflow": [],
+      "alerts": [],
+      "placeholder": true
+    },
+    {
+      "path": "/capabilities/secrets",
+      "overflow": [],
+      "alerts": [],
+      "placeholder": true
+    },
+    {
+      "path": "/capabilities/sessions",
+      "overflow": [],
+      "alerts": [],
+      "placeholder": false
+    },
+    {
+      "path": "/capabilities/skill-workshop",
+      "overflow": [],
+      "alerts": [],
+      "placeholder": false
+    },
+    {
+      "path": "/capabilities/skills",
+      "overflow": [],
+      "alerts": [],
+      "placeholder": false
+    },
+    {
+      "path": "/capabilities/tasks",
+      "overflow": [],
+      "alerts": [],
+      "placeholder": false
+    },
+    {
+      "path": "/capabilities/usage",
+      "overflow": [],
+      "alerts": [],
+      "placeholder": false
+    },
+    {
+      "path": "/capabilities/worktrees",
+      "overflow": [],
+      "alerts": [],
+      "placeholder": false
+    },
+    {
+      "path": "/settings/appearance",
+      "overflow": [],
+      "alerts": [],
+      "placeholder": false
+    },
+    {
+      "path": "/settings/connection",
+      "overflow": [],
+      "alerts": [],
+      "placeholder": false
+    },
+    {
+      "path": "/settings/models",
+      "overflow": [],
+      "alerts": [],
+      "placeholder": false
+    },
+    {
+      "path": "/settings/plugins",
+      "overflow": [],
+      "alerts": [],
+      "placeholder": false
+    },
+    {
+      "path": "/settings/skills",
+      "overflow": [],
+      "alerts": [],
+      "placeholder": false
+    },
+    {
+      "path": "/settings/tools",
+      "overflow": [],
+      "alerts": [],
+      "placeholder": false
+    },
+    {
+      "path": "/settings/memory",
+      "overflow": [],
+      "alerts": [],
+      "placeholder": false
+    },
+    {
+      "path": "/settings/automation",
+      "overflow": [],
+      "alerts": [],
+      "placeholder": false
+    },
+    {
+      "path": "/settings/security",
+      "overflow": [],
+      "alerts": [],
+      "placeholder": false
+    },
+    {
+      "path": "/settings/sessions",
+      "overflow": [],
+      "alerts": [],
+      "placeholder": false
+    },
+    {
+      "path": "/settings/diagnostics",
+      "overflow": [],
+      "alerts": [],
+      "placeholder": false
+    }
+  ]
+}

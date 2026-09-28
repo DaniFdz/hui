@@ -1,0 +1,44 @@
+/* HUI's PI folder/group/worktree controls reuse the upstream launch chip family. */
+@import "./openclaw-reference/new-session.css";
+.agent-chat__welcome-avatar > img { width: 100%; height: 100%; object-fit: contain; }
+.new-session-page__directory-picker { position: relative; flex: 1 1 100px; min-width: 0; }
+.new-session-page__directory-picker > input { width: 100%; min-width: 0; }
+.new-session-page__group-picker { position: relative; min-width: 0; }
+.new-session-page__group-value { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.new-session-page__directory-menu, .new-session-page__group-menu { position: absolute; z-index: 100; top: calc(100% + 6px); left: 0; width: max-content; min-width: 180px; max-width: min(380px, calc(100vw - 24px)); max-height: min(280px, 42vh); padding: var(--menu-padding); overflow: auto; border: 1px solid var(--overlay-border); border-radius: var(--menu-radius); background: var(--bg-elevated); box-shadow: var(--overlay-shadow); }
+.new-session-page__directory-menu { display: none; }
+.new-session-page__directory-picker:focus-within > input[aria-expanded="true"] ~ .new-session-page__directory-menu { display: grid; }
+.group-action-dialog .new-session-page__directory-picker { flex: none; }
+.group-action-dialog .new-session-page__directory-menu { position: relative; top: auto; margin-top: 6px; width: 100%; min-width: 0; max-width: 100%; }
+.new-session-page__group-menu { display: grid; }
+.new-session-page__directory-menu button, .new-session-page__group-menu button { min-width: 0; min-height: var(--menu-item-height); padding: 6px 9px; overflow: hidden; border: 0; border-radius: var(--menu-item-radius); background: transparent; color: var(--text); font: inherit; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
+.new-session-page__directory-menu button:hover, .new-session-page__directory-menu button:focus-visible, .new-session-page__group-menu button:hover, .new-session-page__group-menu button[aria-checked="true"] { background: var(--menu-selected); outline: 0; }
+.new-session-page__checkout-option { display: grid; grid-template-columns: 18px minmax(0, 1fr) 18px; align-items: center; gap: 8px; width: 100%; min-height: var(--menu-item-height); padding: 6px 8px; border: 0; border-radius: var(--menu-item-radius); background: transparent; color: var(--text); font: inherit; text-align: left; cursor: var(--cursor-action); }
+.new-session-page__checkout-option:hover, .new-session-page__checkout-option:focus-visible, .new-session-page__checkout-option[aria-checked="true"] { background: var(--menu-selected); outline: 0; }
+.new-session-page__checkout-option-icon, .new-session-page__checkout-option-check { display: inline-flex; align-items: center; justify-content: center; color: var(--muted); }
+.new-session-page__checkout-option-check { color: var(--accent); }
+.new-session-page__checkout-option-icon svg, .new-session-page__checkout-option-check svg { width: 14px; height: 14px; }
+.new-session-page__checkout-option-copy { display: grid; min-width: 0; gap: 1px; }
+.new-session-page__checkout-option-copy strong, .new-session-page__checkout-option-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.new-session-page__checkout-option-copy strong { color: var(--text); font-size: 12px; font-weight: 500; }
+.new-session-page__checkout-option-copy small { color: var(--muted); font-size: 11px; }
+.new-session-page__checkout-option--action { margin-top: 6px; }
+.new-session-page__branch-suggestions { display: grid; gap: 1px; max-height: 132px; margin-top: 4px; overflow: auto; }
+.new-session-page__branch-option { display: grid; grid-template-columns: 18px minmax(0, 1fr); align-items: center; gap: 8px; min-height: var(--menu-item-height); padding: 5px 8px; border: 0; border-radius: var(--menu-item-radius); background: transparent; color: var(--text); font: inherit; text-align: left; cursor: var(--cursor-action); }
+.new-session-page__branch-option:hover, .new-session-page__branch-option:focus-visible, .new-session-page__branch-option[aria-selected="true"] { background: var(--menu-selected); outline: 0; }
+.new-session-page__branch-option-icon { display: inline-flex; align-items: center; justify-content: center; color: var(--muted); }
+.new-session-page__branch-option-icon svg { width: 14px; height: 14px; }
+.new-session-page__branch-option-label { overflow: hidden; color: var(--text); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.new-session-page__creating { position: absolute; inset: 0; z-index: 3; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 20px; border-radius: inherit; background: color-mix(in srgb, var(--popover) 94%, transparent); color: var(--text-strong); font-size: var(--control-ui-text-md); }
+.new-session-page__creating-copy { display: flex; align-items: baseline; justify-content: space-between; gap: 18px; width: min(260px, 100%); }
+.new-session-page__creating-copy strong { color: var(--accent); font-variant-numeric: tabular-nums; }
+.new-session-page__creating wa-progress-bar { width: min(260px, 100%); --track-height: 4px; --track-color: color-mix(in srgb, var(--text-strong) 10%, transparent); --indicator-color: var(--accent); }
+@media (prefers-reduced-motion: reduce) {
+  .new-session-page__creating wa-progress-bar::part(indicator) { transition-duration: 0ms; }
+  .new-session-page__creating wa-progress-bar[indeterminate]::part(indicator) { inset-inline-start: 0; width: 100%; animation: none; opacity: .45; }
+}
+.new-session-page__attach { opacity: .4; }
+/* Keep launch failures attached to the same responsive grid as the input. */
+.new-session-page__composer > .new-session-page__feedback { width: 100%; max-width: none; margin: 4px 0 0; }
+.new-session-page__feedback .new-session-page__alert-message { display: grid; gap: 2px; }
+.new-session-page__feedback-detail { color: var(--text); }

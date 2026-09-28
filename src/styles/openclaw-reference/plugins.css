@@ -1,0 +1,78 @@
+/* OpenClaw v2026.9.5 plugins.css: implemented inventory rows/groups. MIT. */
+.skills-group__summary {
+  align-items: center;
+  cursor: var(--cursor-action);
+  list-style: none;
+}
+
+.skills-group__summary::-webkit-details-marker {
+  display: none;
+}
+
+.skills-group__chevron {
+  display: inline-flex;
+  align-items: center;
+  color: var(--muted);
+  opacity: 0.6;
+  transition: transform var(--duration-fast) ease;
+}
+
+.skills-group__chevron svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2px;
+}
+
+.skills-group[open] > .skills-group__summary .skills-group__chevron {
+  transform: rotate(90deg);
+}
+.plugins-item {
+  flex-wrap: wrap;
+  content-visibility: auto;
+  contain-intrinsic-block-size: auto 73px;
+}
+
+.plugins-item--clickable {
+  cursor: var(--cursor-action);
+  transition: background var(--duration-fast) var(--ease-out);
+}
+
+.plugins-item--clickable:hover {
+  background: var(--bg-hover);
+}
+.plugins-item__detail-button {
+  border: 0;
+  border-radius: var(--radius-sm);
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: var(--cursor-action);
+}
+
+.plugins-item__detail-button:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+.plugins-item > .plugins-row-message {
+  flex: 1 1 100%;
+}
+
+@media (max-width: 768px) {
+  .plugins-item > .settings-row__control {
+    width: auto;
+    max-width: none;
+    margin-left: auto;
+    flex-wrap: nowrap;
+    justify-content: flex-end;
+  }
+}
+
+@media (pointer: coarse), (max-width: 640px) {
+  .plugins-item wa-switch.settings-toggle::part(base) {
+    min-height: 44px;
+  }
+}

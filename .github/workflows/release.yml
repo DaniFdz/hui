@@ -1,0 +1,95 @@
+name: Release
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+    tags: ["v*.*.*"]
+permissions:
+  contents: read
+jobs:
+  plan:
+    if: github.event.repository.private == false
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.release.outputs.changed }}
+      tag: ${{ steps.release.outputs.tag }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+      - name: Test release planning
+        run: node --test cli/release-workflow.test.mjs
+      - name: Detect version bump and generate changelog
+        id: release
+        run: node scripts/release.mjs
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: steps.release.outputs.changed == 'true'
+        with:
+          name: release-changelog
+          path: release-changelog.md
+          if-no-files-found: error
+  package:
+    needs: plan
+    if: needs.plan.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+          cache: npm
+      # Match the npm major used to generate the committed lockfile.
+      - run: npm install -g npm@11
+      - run: npm ci --ignore-scripts
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run test:package
+      - name: Pack and checksum
+        run: |
+          npm pack --ignore-scripts
+          sha256sum hui-*.tgz > "$(node -p "'hui-' + require('./package.json').version + '.tgz.sha256'")"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release-changelog
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ${{ needs.plan.outputs.tag }}-package
+          path: |
+            hui-*.tgz
+            hui-*.tgz.sha256
+            release-changelog.md
+          if-no-files-found: error
+  nix:
+    needs: plan
+    if: needs.plan.outputs.changed == 'true'
+    uses: ./.github/workflows/nix.yml
+  publish:
+    needs: [plan, package, nix]
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: publish-${{ needs.plan.outputs.tag }}
+      cancel-in-progress: false
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: ${{ needs.plan.outputs.tag }}-package
+      - name: Publish release and tag the validated commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.plan.outputs.tag }}
+          RELEASE_SHA: ${{ github.sha }}
+        run: |
+          if gh release view "$RELEASE_TAG" > /dev/null 2>&1; then
+            echo "Release $RELEASE_TAG already exists; leaving it unchanged."
+            exit 0
+          fi
+          gh release create "$RELEASE_TAG" hui-*.tgz hui-*.tgz.sha256 release-changelog.md \
+            --target "$RELEASE_SHA" --title "$RELEASE_TAG" --notes-file release-changelog.md

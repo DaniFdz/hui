@@ -1,0 +1,3034 @@
+{
+  "reference": "OpenClaw 2026.9.5 ec9c1a13db8938e5a3eaa51fca2e981cde2395a9",
+  "date": "2026-09-24",
+  "method": "Original Iv renderer, independent original Lit and styles; real normalized PI bash calls. Controls toggled through the Browser tool.",
+  "count": 630,
+  "limits": [
+    "Component boundary only; PI has no workspace sidebar action or normalized exitCode field.",
+    "First in-flight curl comparison raced live progress output; not counted. Replaced with silent curl waiting on an explicit release signal and input-snapshot guard.",
+    "Fixture restart initially omitted HUI_E2E_REAL_PI and failed cold-start; corrected before repeating all 630 records. A mismatched model-selector waiter also failed; inspected live state rather than assuming readiness."
+  ],
+  "records": {
+    "success-desktop": {
+      "collapsed": {
+        "viewport": [
+          1440,
+          900
+        ],
+        "state": "collapsed",
+        "tool": "bash",
+        "records": [
+          {
+            "selector": ".chat-tool-msg-collapse",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-summary",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-summary__icon",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-summary__icon svg",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-disclosure__content",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__verb",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__target",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__chevron",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__chevron svg",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-body",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__header",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__detail",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__actions",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__block",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__block-content",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__outcome",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-failure",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__block-label",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__prompt",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__cmd",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term__cmd",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term__prompt",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term__cmd > code",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term__out",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-kv",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-kv__row",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-kv__key",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-kv__value",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--name",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--str",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--num",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--flag",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--op",
+            "differences": {}
+          }
+        ]
+      },
+      "expanded": {
+        "viewport": [
+          1440,
+          900
+        ],
+        "state": "expanded",
+        "tool": "bash",
+        "records": [
+          {
+            "selector": ".chat-tool-msg-collapse",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-summary",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-summary__icon",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-summary__icon svg",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-disclosure__content",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__verb",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__target",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__chevron",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__chevron svg",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-body",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__header",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__detail",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__actions",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__block",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__block-content",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__outcome",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-failure",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__block-label",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__prompt",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__cmd",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term__cmd",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term__prompt",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term__cmd > code",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term__out",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-kv",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-kv__row",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-kv__key",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-kv__value",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--name",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--str",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--num",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--flag",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--op",
+            "differences": {}
+          }
+        ]
+      }
+    },
+    "success-mobile": {
+      "collapsed": {
+        "viewport": [
+          390,
+          844
+        ],
+        "state": "collapsed",
+        "tool": "bash",
+        "records": [
+          {
+            "selector": ".chat-tool-msg-collapse",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-summary",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-summary__icon",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-summary__icon svg",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-disclosure__content",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__verb",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__target",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__chevron",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__chevron svg",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-body",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__header",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__detail",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__actions",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__block",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__block-content",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__outcome",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-failure",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__block-label",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__prompt",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__cmd",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term__cmd",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term__prompt",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term__cmd > code",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term__out",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-kv",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-kv__row",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-kv__key",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-kv__value",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--name",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--str",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--num",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--flag",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--op",
+            "differences": {}
+          }
+        ]
+      },
+      "expanded": {
+        "viewport": [
+          390,
+          844
+        ],
+        "state": "expanded",
+        "tool": "bash",
+        "records": [
+          {
+            "selector": ".chat-tool-msg-collapse",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-summary",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-summary__icon",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-summary__icon svg",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-disclosure__content",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__verb",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__target",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__chevron",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__chevron svg",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-body",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__header",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__detail",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__actions",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__block",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__block-content",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__outcome",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-failure",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__block-label",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__prompt",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__cmd",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term__cmd",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term__prompt",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term__cmd > code",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term__out",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-kv",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-kv__row",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-kv__key",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-kv__value",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--name",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--str",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--num",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--flag",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--op",
+            "differences": {}
+          }
+        ]
+      }
+    },
+    "success-landscape": {
+      "collapsed": {
+        "viewport": [
+          844,
+          390
+        ],
+        "state": "collapsed",
+        "tool": "bash",
+        "records": [
+          {
+            "selector": ".chat-tool-msg-collapse",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-summary",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-summary__icon",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-summary__icon svg",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-disclosure__content",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__verb",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__target",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__chevron",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__chevron svg",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-body",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__header",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__detail",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__actions",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__block",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__block-content",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__outcome",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-failure",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__block-label",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__prompt",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__cmd",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term__cmd",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term__prompt",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term__cmd > code",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term__out",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-kv",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-kv__row",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-kv__key",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-kv__value",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--name",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--str",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--num",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--flag",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--op",
+            "differences": {}
+          }
+        ]
+      },
+      "expanded": {
+        "viewport": [
+          844,
+          390
+        ],
+        "state": "expanded",
+        "tool": "bash",
+        "records": [
+          {
+            "selector": ".chat-tool-msg-collapse",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-summary",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-summary__icon",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-summary__icon svg",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-disclosure__content",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__verb",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__target",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__chevron",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__chevron svg",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-body",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__header",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__detail",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__actions",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__block",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__block-content",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__outcome",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-failure",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__block-label",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__prompt",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__cmd",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term__cmd",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term__prompt",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term__cmd > code",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term__out",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-kv",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-kv__row",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-kv__key",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-kv__value",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--name",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--str",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--num",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--flag",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--op",
+            "differences": {}
+          }
+        ]
+      }
+    },
+    "failure-desktop": {
+      "collapsed": {
+        "viewport": [
+          1440,
+          900
+        ],
+        "state": "collapsed",
+        "tool": "bash",
+        "records": [
+          {
+            "selector": ".chat-tool-msg-collapse",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-summary",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-summary__icon",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-summary__icon svg",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-disclosure__content",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__verb",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__target",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__chevron",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__chevron svg",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-body",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__header",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__detail",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__actions",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__block",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__block-content",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__outcome",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-failure",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__block-label",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__prompt",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__cmd",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term__cmd",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term__prompt",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term__cmd > code",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term__out",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-kv",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-kv__row",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-kv__key",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-kv__value",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--name",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--str",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--num",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--flag",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--op",
+            "expectedAbsent": true,
+            "differences": {}
+          }
+        ]
+      },
+      "expanded": {
+        "viewport": [
+          1440,
+          900
+        ],
+        "state": "expanded",
+        "tool": "bash",
+        "records": [
+          {
+            "selector": ".chat-tool-msg-collapse",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-summary",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-summary__icon",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-summary__icon svg",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-disclosure__content",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__verb",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__target",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__chevron",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__chevron svg",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-body",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__header",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__detail",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__actions",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__block",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__block-content",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__outcome",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-failure",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__block-label",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__prompt",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__cmd",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term__cmd",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term__prompt",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term__cmd > code",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term__out",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-kv",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-kv__row",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-kv__key",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-kv__value",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--name",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--str",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--num",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--flag",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--op",
+            "expectedAbsent": true,
+            "differences": {}
+          }
+        ]
+      }
+    },
+    "failure-mobile": {
+      "collapsed": {
+        "viewport": [
+          390,
+          844
+        ],
+        "state": "collapsed",
+        "tool": "bash",
+        "records": [
+          {
+            "selector": ".chat-tool-msg-collapse",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-summary",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-summary__icon",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-summary__icon svg",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-disclosure__content",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__verb",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__target",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__chevron",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__chevron svg",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-body",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__header",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__detail",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__actions",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__block",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__block-content",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__outcome",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-failure",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__block-label",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__prompt",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__cmd",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term__cmd",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term__prompt",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term__cmd > code",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term__out",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-kv",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-kv__row",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-kv__key",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-kv__value",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--name",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--str",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--num",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--flag",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--op",
+            "expectedAbsent": true,
+            "differences": {}
+          }
+        ]
+      },
+      "expanded": {
+        "viewport": [
+          390,
+          844
+        ],
+        "state": "expanded",
+        "tool": "bash",
+        "records": [
+          {
+            "selector": ".chat-tool-msg-collapse",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-summary",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-summary__icon",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-summary__icon svg",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-disclosure__content",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__verb",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__target",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__chevron",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__chevron svg",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-body",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__header",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__detail",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__actions",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__block",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__block-content",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__outcome",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-failure",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__block-label",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__prompt",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__cmd",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term__cmd",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term__prompt",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term__cmd > code",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term__out",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-kv",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-kv__row",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-kv__key",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-kv__value",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--name",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--str",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--num",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--flag",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--op",
+            "expectedAbsent": true,
+            "differences": {}
+          }
+        ]
+      }
+    },
+    "failure-landscape": {
+      "collapsed": {
+        "viewport": [
+          844,
+          390
+        ],
+        "state": "collapsed",
+        "tool": "bash",
+        "records": [
+          {
+            "selector": ".chat-tool-msg-collapse",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-summary",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-summary__icon",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-summary__icon svg",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-disclosure__content",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__verb",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__target",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__chevron",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__chevron svg",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-body",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__header",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__detail",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__actions",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__block",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__block-content",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__outcome",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-failure",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__block-label",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__prompt",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__cmd",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term__cmd",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term__prompt",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term__cmd > code",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term__out",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-kv",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-kv__row",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-kv__key",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-kv__value",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--name",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--str",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--num",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--flag",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--op",
+            "expectedAbsent": true,
+            "differences": {}
+          }
+        ]
+      },
+      "expanded": {
+        "viewport": [
+          844,
+          390
+        ],
+        "state": "expanded",
+        "tool": "bash",
+        "records": [
+          {
+            "selector": ".chat-tool-msg-collapse",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-summary",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-summary__icon",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-summary__icon svg",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-disclosure__content",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__verb",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__target",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__chevron",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__chevron svg",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-body",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__header",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__detail",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__actions",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__block",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__block-content",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__outcome",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-failure",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__block-label",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__prompt",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__cmd",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term__cmd",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term__prompt",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term__cmd > code",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term__out",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-kv",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-kv__row",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-kv__key",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-kv__value",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--name",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--str",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--num",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--flag",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--op",
+            "expectedAbsent": true,
+            "differences": {}
+          }
+        ]
+      }
+    },
+    "running-desktop": {
+      "collapsed": {
+        "viewport": [
+          1440,
+          900
+        ],
+        "state": "collapsed",
+        "tool": "bash",
+        "records": [
+          {
+            "selector": ".chat-tool-msg-collapse",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-summary",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-summary__icon",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-summary__icon svg",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-disclosure__content",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__verb",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__target",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__chevron",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__chevron svg",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-body",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__header",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__detail",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__actions",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__block",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__block-content",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__outcome",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-failure",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__block-label",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__prompt",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__cmd",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term__cmd",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term__prompt",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term__cmd > code",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term__out",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-kv",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-kv__row",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-kv__key",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-kv__value",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--name",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--str",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--num",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--flag",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--op",
+            "expectedAbsent": true,
+            "differences": {}
+          }
+        ]
+      },
+      "expanded": {
+        "viewport": [
+          1440,
+          900
+        ],
+        "state": "expanded",
+        "tool": "bash",
+        "records": [
+          {
+            "selector": ".chat-tool-msg-collapse",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-summary",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-summary__icon",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-summary__icon svg",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-disclosure__content",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__verb",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__target",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__chevron",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__chevron svg",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-body",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__header",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__detail",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__actions",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__block",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__block-content",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__outcome",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-failure",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__block-label",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__prompt",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__cmd",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term__cmd",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term__prompt",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term__cmd > code",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term__out",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-kv",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-kv__row",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-kv__key",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-kv__value",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--name",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--str",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--num",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--flag",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--op",
+            "expectedAbsent": true,
+            "differences": {}
+          }
+        ]
+      }
+    },
+    "running-mobile": {
+      "collapsed": {
+        "viewport": [
+          390,
+          844
+        ],
+        "state": "collapsed",
+        "tool": "bash",
+        "records": [
+          {
+            "selector": ".chat-tool-msg-collapse",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-summary",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-summary__icon",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-summary__icon svg",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-disclosure__content",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__verb",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__target",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__chevron",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__chevron svg",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-body",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__header",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__detail",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__actions",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__block",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__block-content",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__outcome",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-failure",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__block-label",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__prompt",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__cmd",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term__cmd",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term__prompt",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term__cmd > code",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term__out",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-kv",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-kv__row",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-kv__key",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-kv__value",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--name",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--str",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--num",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--flag",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--op",
+            "expectedAbsent": true,
+            "differences": {}
+          }
+        ]
+      },
+      "expanded": {
+        "viewport": [
+          390,
+          844
+        ],
+        "state": "expanded",
+        "tool": "bash",
+        "records": [
+          {
+            "selector": ".chat-tool-msg-collapse",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-summary",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-summary__icon",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-summary__icon svg",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-disclosure__content",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__verb",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__target",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__chevron",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__chevron svg",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-body",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__header",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__detail",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__actions",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__block",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__block-content",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__outcome",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-failure",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__block-label",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__prompt",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__cmd",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term__cmd",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term__prompt",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term__cmd > code",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term__out",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-kv",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-kv__row",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-kv__key",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-kv__value",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--name",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--str",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--num",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--flag",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--op",
+            "expectedAbsent": true,
+            "differences": {}
+          }
+        ]
+      }
+    },
+    "running-landscape": {
+      "collapsed": {
+        "viewport": [
+          844,
+          390
+        ],
+        "state": "collapsed",
+        "tool": "bash",
+        "records": [
+          {
+            "selector": ".chat-tool-msg-collapse",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-summary",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-summary__icon",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-summary__icon svg",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-disclosure__content",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__verb",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__target",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__chevron",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__chevron svg",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-body",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__header",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__detail",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__actions",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__block",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__block-content",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__outcome",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-failure",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__block-label",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__prompt",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__cmd",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term__cmd",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term__prompt",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term__cmd > code",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term__out",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-kv",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-kv__row",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-kv__key",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-kv__value",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--name",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--str",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--num",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--flag",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--op",
+            "expectedAbsent": true,
+            "differences": {}
+          }
+        ]
+      },
+      "expanded": {
+        "viewport": [
+          844,
+          390
+        ],
+        "state": "expanded",
+        "tool": "bash",
+        "records": [
+          {
+            "selector": ".chat-tool-msg-collapse",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-summary",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-summary__icon",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-summary__icon svg",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-disclosure__content",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__verb",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__target",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__chevron",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__chevron svg",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-body",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__header",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__detail",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__actions",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__block",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__block-content",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__outcome",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-failure",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__block-label",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__prompt",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__cmd",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term__cmd",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term__prompt",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term__cmd > code",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-term__out",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-kv",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-kv__row",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-kv__key",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-kv__value",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--name",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--str",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--num",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--flag",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-cmd--op",
+            "expectedAbsent": true,
+            "differences": {}
+          }
+        ]
+      }
+    }
+  },
+  "emptyOutput": {
+    "runtime": "real PI bash",
+    "inFlightOutput": "",
+    "terminalOutputBlockAbsent": true,
+    "completedOutput": "{\"command\":\"released\"}"
+  }
+}

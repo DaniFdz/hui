@@ -1,0 +1,322 @@
+{
+  "reference": "OpenClaw 2026.9.5, ec9c1a13db8938e5a3eaa51fca2e981cde2395a9",
+  "normalization": "SVG body, whitespace collapsed and trimmed",
+  "icons": [
+    {"name": "messageSquare", "upstream": "messageSquare", "source": "ui/src/components/icons.ts", "sha256": "10f15e7022dc00b406543caffb28a9321246d64662a6d312ad48ec73b35a5497"},
+    { "name": "columns2", "upstream": "columns2", "source": "ui/src/components/icons.ts", "sha256": "f69f94308da71d0958abf939d3210f26d4e477ed726708a0035717d91d4d5dfd" },
+    { "name": "panelRightOpen", "upstream": "panelRightOpen", "source": "ui/src/components/icons.ts", "sha256": "78f0cb00859c07cffd695493b96985ce93d7ed959875af92fba3ec72704f0f9a" },
+    { "name": "panelBottomOpen", "upstream": "panelBottomOpen", "source": "ui/src/components/icons.ts", "sha256": "25a807d5405c8eae4020ba8abc85032d7fb34dcc21a7c5b2593e01cb8a3b6f44" },
+    {
+      "name": "squareTerminal",
+      "upstream": "squareTerminal",
+      "source": "ui/src/components/icons-tools.ts",
+      "sha256": "458d9628228b7f9d843b3bc7e939162eed3721ddb1d2eb34810977f36b737e78"
+    },
+    {
+      "name": "arrowLeft",
+      "upstream": "arrowLeft",
+      "source": "ui/src/components/icons.ts",
+      "sha256": "8252f47766ac7cd801ba627c5aa233732854e7e4cc494cc4dc17a7fb8a2b4871"
+    },
+    {
+      "name": "arrowDown",
+      "upstream": "arrowDown",
+      "source": "ui/src/components/icons.ts",
+      "sha256": "507a3486b1370dba54f625b4a9dab8c8246d27c85e477ae01104bad88a7a8315"
+    },
+    {
+      "name": "externalLink",
+      "upstream": "externalLink",
+      "source": "ui/src/components/icons-tools.ts",
+      "sha256": "cf1dd09d520833f669746c5321feab0e1d15804b66ef4f3a55998e59c693e2a2"
+    },
+    {
+      "name": "eye",
+      "upstream": "eye",
+      "source": "ui/src/components/icons.ts",
+      "sha256": "cb512bc1a85788de62b5886469fd3ce472c2cd4f3dabab7e55518e710c455a59"
+    },
+    {
+      "name": "download",
+      "upstream": "download",
+      "source": "ui/src/components/icons-tools.ts",
+      "sha256": "d8966e0d746ebe307e1fc32d2899f04ed6ca51e1a0f29882846fbcfb5fec7078"
+    },
+    {
+      "name": "check",
+      "upstream": "check",
+      "source": "ui/src/components/icons.ts",
+      "sha256": "b1fae48e85719ffb4fc7c4bad64bdd2417de1911186b00482e8bb2df73983c2d"
+    },
+    {
+      "name": "circleX",
+      "upstream": "circleX",
+      "source": "ui/src/components/icons.ts",
+      "sha256": "2974f816ff172c326b76be4d9842c330179d8254af118abe6771108961988686"
+    },
+    {
+      "name": "pin",
+      "upstream": "pin",
+      "source": "ui/src/components/icons-tools.ts",
+      "sha256": "7a8ad75cc7d2f41eb14b505c9ae75d12bedcd457f220061d3b17872bb671df27"
+    },
+    {
+      "name": "rotateCcw",
+      "upstream": "rotateCcw",
+      "source": "ui/src/components/icons-tools.ts",
+      "sha256": "6bf43fd8176cd82c956bd004c3a47e5c66b3ca62286c756c9ae015071f193772"
+    },
+    {
+      "name": "chevron",
+      "upstream": "chevronRight",
+      "source": "ui/src/components/icons-tools.ts",
+      "sha256": "76e22f82e620aec21d1b670d40d50779b847b70ebcf961adbda00738a2f35842"
+    },
+    {
+      "name": "home",
+      "upstream": "home",
+      "source": "ui/src/components/icons-tools.ts",
+      "sha256": "0ee11887f36c816bc96e3a0fea6171cf89bf67cf6d17da5ecbc589f15d8da28e"
+    },
+    {
+      "name": "grid",
+      "upstream": "layoutGrid",
+      "source": "ui/src/components/icons.ts",
+      "sha256": "2624a8b6c5b1e8631747e5b1da6ef468e33be38ec25f6bd7b58aca0ae3af4004"
+    },
+    {
+      "name": "calendarClock",
+      "upstream": "calendarClock",
+      "source": "ui/src/components/icons.ts",
+      "sha256": "e68c6c3dd7e3646c698ba087c093c86b79f41bfee7bc49ad15a679843fe951dd"
+    },
+    {
+      "name": "plug",
+      "upstream": "plug",
+      "source": "ui/src/components/icons-tools.ts",
+      "sha256": "a2dda2460536b75142049c6b4dbd4ad52ac5f1aa427a0f518bc0e1e9d0b56172"
+    },
+    {
+      "name": "palette",
+      "upstream": "palette",
+      "source": "ui/src/components/icons-tools.ts",
+      "sha256": "6b3f48bf7bcde087c14f66e03bf896c5fc5ed963176e07c9632261707dc53254"
+    },
+    {
+      "name": "pipette",
+      "upstream": "pipette",
+      "source": "ui/src/components/icons.ts",
+      "sha256": "68561c4096e5ccb90738153a9d85bea1d726c67019b8607a3b3164dd00df5082"
+    },
+    {
+      "name": "radio",
+      "upstream": "radio",
+      "source": "ui/src/components/icons.ts",
+      "sha256": "3fb26d272fa9fd39ab32ffaa7e1eb09f7bff3a29d3815f194ce62f2c4165bc0e"
+    },
+    {
+      "name": "fileText",
+      "upstream": "fileText",
+      "source": "ui/src/components/icons.ts",
+      "sha256": "3d19989aabbafd59c7f019ab829db6b86ca52af0d5b94dd1812f81c7ec9b76f5"
+    },
+    {
+      "name": "box",
+      "upstream": "box",
+      "source": "ui/src/components/icons.ts",
+      "sha256": "f09a19945bb371e89172ff8af9013cdefa0ed3344bafacc1207a609391f44707"
+    },
+    {
+      "name": "zap",
+      "upstream": "zap",
+      "source": "ui/src/components/icons.ts",
+      "sha256": "4a4b4f4033c2dfe23f93b284ba23ad2fa9fe5af7c31bbe62f4cf6a8464b93e9c"
+    },
+    {
+      "name": "wrench",
+      "upstream": "wrench",
+      "source": "ui/src/components/icons-tools.ts",
+      "sha256": "8c3026bed563186dd1ed60ca6a3b2a99afb2aa948b721906b4634f1d3e17ce73"
+    },
+    {
+      "name": "book",
+      "upstream": "book",
+      "source": "ui/src/components/icons.ts",
+      "sha256": "0a3dfc0960b80b465411bca494526aa7087686224f25cf8e097f0c5e5bd0695b"
+    },
+    {
+      "name": "terminal",
+      "upstream": "terminal",
+      "source": "ui/src/components/icons-tools.ts",
+      "sha256": "d6bf054f0b628cf6e71a39249faea0fe5aaaf0f515c04b907a27837d2a469dc0"
+    },
+    {
+      "name": "shieldCheck",
+      "upstream": "shieldCheck",
+      "source": "ui/src/components/icons-tools.ts",
+      "sha256": "ede75af8cf047d0effa3d10359a3fe7615efcb084813857205d334dbe7bc349e"
+    },
+    {
+      "name": "bug",
+      "upstream": "bug",
+      "source": "ui/src/components/icons.ts",
+      "sha256": "9acef54827b5600b6e7d0de6a22f4136c71d39ca8e1c33a19800efeb69c9d192"
+    },
+    {
+      "name": "menu",
+      "upstream": "menu",
+      "source": "ui/src/components/icons.ts",
+      "sha256": "5adea332f64be6dc4f01e31bb38e6d667e54f6bcf72336465bf3a6fbb5076ce9"
+    },
+    {
+      "name": "moreHorizontal",
+      "upstream": "moreHorizontal",
+      "source": "ui/src/components/icons.ts",
+      "sha256": "0be09ab50d2154e1dd6ec973fb24866943f20b8929594d4cfbf67fdaae3e689a"
+    },
+    {
+      "name": "hand",
+      "upstream": "hand",
+      "source": "ui/src/components/icons.ts",
+      "sha256": "f938594192c855fc055b3141a406a118501ac0ebcc8db1be5d4a0c8b0f1e9bb8"
+    },
+    {
+      "name": "alertTriangle",
+      "upstream": "alertTriangle",
+      "source": "ui/src/components/icons.ts",
+      "sha256": "f90071762fe9405148ccc62115456fe5c5d8612492728bc395ef71968cbc5919"
+    },
+    {
+      "name": "search",
+      "upstream": "search",
+      "source": "ui/src/components/icons.ts",
+      "sha256": "c7d9835ed60c772f595318cfb3b250383a2e57ea61cfe97a47e14500db668982"
+    },
+    {
+      "name": "refresh",
+      "upstream": "refresh",
+      "source": "ui/src/components/icons-tools.ts",
+      "sha256": "a9631fd23e80ae912456c77375f8a37c90a949e0d8684ec31a965d06710f6ce4"
+    },
+    {
+      "name": "filter",
+      "upstream": "listFilter",
+      "source": "ui/src/components/icons.ts",
+      "sha256": "4d40cc1452762fdf434e34123b944f552c9b3ff45731b26d95cc0bc5df2c6d1c"
+    },
+    {
+      "name": "panelLeftClose",
+      "upstream": "panelLeftClose",
+      "source": "ui/src/components/icons-tools.ts",
+      "sha256": "ed98423493ccd18278467e88ed3224d7ef5462895bb6fba2ca9c34f28e7ae1dc"
+    },
+    {
+      "name": "panelLeftOpen",
+      "upstream": "panelLeftOpen",
+      "source": "ui/src/components/icons-tools.ts",
+      "sha256": "909976a17c62d18995835423c5e0cee539d71a9e1901bdbd74022cbdf05ba58d"
+    },
+    {
+      "name": "plus",
+      "upstream": "plus",
+      "source": "ui/src/components/icons-tools.ts",
+      "sha256": "bdc33b78e4582d233a80639a7d1b910ae2d439f90c0bf93b5f1ab10c8dc0351a"
+    },
+    {
+      "name": "camera",
+      "upstream": "camera",
+      "source": "ui/src/components/icons-tools.ts",
+      "sha256": "a94adb6debbf6aaca443bdd0a71a7669120629c182a618ac1ef3aabb6ae206d6"
+    },
+    {
+      "name": "image",
+      "upstream": "image",
+      "source": "ui/src/components/icons-tools.ts",
+      "sha256": "76ec95a15e6daf74b7d898ecc26be828dc094de7177f1701f92309e3437f5281"
+    },
+    {
+      "name": "paperclip",
+      "upstream": "paperclip",
+      "source": "ui/src/components/icons-tools.ts",
+      "sha256": "b0ff5639f1b9d8de4bf1ae67093e08a046723a735ab454a65491d616c38bb42e"
+    },
+    {
+      "name": "globe",
+      "upstream": "globe",
+      "source": "ui/src/components/icons-tools.ts",
+      "sha256": "c6a3d95be08d06687a4cecd51826e3779954c26545cbce3818e0987953233843"
+    },
+    {
+      "name": "settings",
+      "upstream": "settings",
+      "source": "ui/src/components/icons.ts",
+      "sha256": "ef58ac68ae59d5ccfe4a16bf193d6138137d778b65c16f2ee7be3b032357f0d6"
+    },
+    {
+      "name": "edit",
+      "upstream": "edit",
+      "source": "ui/src/components/icons-tools.ts",
+      "sha256": "3a40d509e82be8431190da98198e30040fd42f0f9803312dabbeb6248d8c7661"
+    },
+    {
+      "name": "folder",
+      "upstream": "folder",
+      "source": "ui/src/components/icons.ts",
+      "sha256": "9d3e634d01520b98d37ea7af5c72d81987cd286da2cb87e3a2eff0ec894da259"
+    },
+    {
+      "name": "gitBranch",
+      "upstream": "gitBranch",
+      "source": "ui/src/components/icons.ts",
+      "sha256": "986e1f1fd7340651a54594e874e4dbfed5fcb6b1ee41346a2c68b483ec8bf7d6"
+    },
+    {
+      "name": "trash",
+      "upstream": "trash",
+      "source": "ui/src/components/icons-tools.ts",
+      "sha256": "97f8ab10cad7fd04cbe58a5726b5242741e49bf1d943f7b78674ca8a067846dd"
+    },
+    {
+      "name": "close",
+      "upstream": "x",
+      "source": "ui/src/components/icons.ts",
+      "sha256": "da77ddd5cb8dcaec3320ce7322a4478c4efa66033dff4bb7cdbabce3a7ae28da"
+    },
+    {
+      "name": "arrowUp",
+      "upstream": "arrowUp",
+      "source": "ui/src/components/icons.ts",
+      "sha256": "9969063d8d5e2df34962837b9b3351510f3b411af651d4ea5ea08c8d4c617f67"
+    },
+    {
+      "name": "chevronUp",
+      "upstream": "chevronUp",
+      "source": "ui/src/components/icons.ts",
+      "sha256": "b222f522398c82966177495d45298926a4ccf613c82310ac90e930c1c5e5eb28"
+    },
+    {
+      "name": "chevronDown",
+      "upstream": "chevronDown",
+      "source": "ui/src/components/icons-tools.ts",
+      "sha256": "094ede48cd9b6d18cbcc2fac39c3f3cdd62c32b94ac323fdb5d84e21f334a728"
+    },
+    {
+      "name": "circle",
+      "upstream": "circle",
+      "source": "ui/src/components/icons-tools.ts",
+      "sha256": "cda5a1d48659b859d1e17444021ef825fdb1410af58bc30cdef3f4c1ff0aae8b"
+    },
+    {
+      "name": "copy",
+      "upstream": "copy",
+      "source": "ui/src/components/icons.ts",
+      "sha256": "cc35b6ca38550b0e04022da3ed0e69be489a0fd4ef1fc0366bf21228185a3862"
+    },
+    {
+      "name": "stop",
+      "upstream": "stop",
+      "source": "ui/src/components/icons-tools.ts",
+      "sha256": "14c496d78b4673c4b3e6524bcd6354c97a3287c5e93925439011c10ef8547048"
+    }
+  ]
+}

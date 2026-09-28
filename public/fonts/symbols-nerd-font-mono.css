@@ -1,0 +1,18 @@
+/*
+ * Nerd Font icon fallback for terminal text (Symbols Nerd Font Mono, v3.5.1).
+ * MIT; bundled icon-set licenses are in symbols-nerd-font-mono-LICENSE.txt.
+ * Gateway-hosted like the other faces, so the browser and desktop app render
+ * prompt icons even when the chosen local font is missing or unmatched.
+ * A HUI-specific family name keeps local installs from shadowing this face.
+ * unicode-range limits it to Nerd Font code points (Private Use Areas and the
+ * IEC power symbols); the file downloads only when such a glyph is drawn.
+ */
+
+@font-face {
+  font-family: "HUI Nerd Font Symbols";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: block;
+  src: url("symbols-nerd-font-mono.woff2") format("woff2");
+  unicode-range: U+23FB-23FE, U+2B58, U+E000-F8FF, U+F0000-FFFFD;
+}

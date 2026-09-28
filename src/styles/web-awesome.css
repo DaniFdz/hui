@@ -1,0 +1,15 @@
+/* OpenClaw v2026.9.5 base.css Web Awesome bridge (MIT). */
+wa-switch {
+  --wa-form-control-activated-color: var(--accent);
+  --wa-color-focus: var(--ring);
+}
+
+wa-dropdown-item {
+  --wa-color-neutral-fill-normal: var(--bg-hover);
+  cursor: var(--cursor-action);
+}
+
+wa-dropdown-item[disabled] { cursor: not-allowed; }
+
+/* The original select-picker uses light DOM too, with a different tag name. */
+hui-select-picker { display: block; min-width: 0; }

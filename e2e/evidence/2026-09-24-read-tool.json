@@ -1,0 +1,694 @@
+{
+  "reference": "OpenClaw 2026.9.5 ec9c1a13db8938e5a3eaa51fca2e981cde2395a9",
+  "scope": "Read tool only: original private renderer with actual PI fixture input. Other tool-kind renderers are not certified.",
+  "success": [
+    {
+      "collapsed": {
+        "viewport": [
+          1440,
+          900
+        ],
+        "state": "collapsed",
+        "tool": "read",
+        "records": [
+          {
+            "selector": ".chat-tool-msg-collapse",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-summary",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-summary__icon",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-summary__icon svg",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-disclosure__content",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__verb",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__target",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__chevron",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__chevron svg",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-body",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__header",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__detail",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__actions",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__block",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__block-content",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__outcome",
+            "expectedAbsent": true,
+            "differences": {}
+          }
+        ]
+      },
+      "expanded": {
+        "viewport": [
+          1440,
+          900
+        ],
+        "state": "expanded",
+        "tool": "read",
+        "records": [
+          {
+            "selector": ".chat-tool-msg-collapse",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-summary",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-summary__icon",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-summary__icon svg",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-disclosure__content",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__verb",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__target",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__chevron",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__chevron svg",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-body",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__header",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__detail",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__actions",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__block",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__block-content",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__outcome",
+            "differences": {}
+          }
+        ]
+      }
+    },
+    {
+      "collapsed": {
+        "viewport": [
+          390,
+          844
+        ],
+        "state": "collapsed",
+        "tool": "read",
+        "records": [
+          {
+            "selector": ".chat-tool-msg-collapse",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-summary",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-summary__icon",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-summary__icon svg",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-disclosure__content",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__verb",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__target",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__chevron",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__chevron svg",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-body",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__header",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__detail",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__actions",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__block",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__block-content",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__outcome",
+            "expectedAbsent": true,
+            "differences": {}
+          }
+        ]
+      },
+      "expanded": {
+        "viewport": [
+          390,
+          844
+        ],
+        "state": "expanded",
+        "tool": "read",
+        "records": [
+          {
+            "selector": ".chat-tool-msg-collapse",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-summary",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-summary__icon",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-summary__icon svg",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-disclosure__content",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__verb",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__target",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__chevron",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__chevron svg",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-body",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__header",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__detail",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__actions",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__block",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__block-content",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__outcome",
+            "differences": {}
+          }
+        ]
+      }
+    },
+    {
+      "collapsed": {
+        "viewport": [
+          844,
+          390
+        ],
+        "state": "collapsed",
+        "tool": "read",
+        "records": [
+          {
+            "selector": ".chat-tool-msg-collapse",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-summary",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-summary__icon",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-summary__icon svg",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-disclosure__content",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__verb",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__target",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__chevron",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__chevron svg",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-body",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__header",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__detail",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__actions",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__block",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__block-content",
+            "expectedAbsent": true,
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__outcome",
+            "expectedAbsent": true,
+            "differences": {}
+          }
+        ]
+      },
+      "expanded": {
+        "viewport": [
+          844,
+          390
+        ],
+        "state": "expanded",
+        "tool": "read",
+        "records": [
+          {
+            "selector": ".chat-tool-msg-collapse",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-summary",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-summary__icon",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-summary__icon svg",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-disclosure__content",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__verb",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__target",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__chevron",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-row__chevron svg",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-msg-body",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__header",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__detail",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__actions",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__block",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__block-content",
+            "differences": {}
+          },
+          {
+            "selector": ".chat-tool-card__outcome",
+            "differences": {}
+          }
+        ]
+      }
+    }
+  ],
+  "failureDesktop": {
+    "collapsed": {
+      "viewport": [
+        1440,
+        900
+      ],
+      "state": "collapsed",
+      "tool": "read",
+      "records": [
+        {
+          "selector": ".chat-tool-msg-collapse",
+          "differences": {}
+        },
+        {
+          "selector": ".chat-tool-msg-summary",
+          "differences": {}
+        },
+        {
+          "selector": ".chat-tool-msg-summary__icon",
+          "differences": {}
+        },
+        {
+          "selector": ".chat-tool-msg-summary__icon svg",
+          "differences": {}
+        },
+        {
+          "selector": ".chat-tool-disclosure__content",
+          "differences": {}
+        },
+        {
+          "selector": ".chat-tool-row__verb",
+          "differences": {}
+        },
+        {
+          "selector": ".chat-tool-row__target",
+          "differences": {}
+        },
+        {
+          "selector": ".chat-tool-row__chevron",
+          "differences": {}
+        },
+        {
+          "selector": ".chat-tool-row__chevron svg",
+          "differences": {}
+        },
+        {
+          "selector": ".chat-tool-msg-body",
+          "expectedAbsent": true,
+          "differences": {}
+        },
+        {
+          "selector": ".chat-tool-card",
+          "expectedAbsent": true,
+          "differences": {}
+        },
+        {
+          "selector": ".chat-tool-card__header",
+          "expectedAbsent": true,
+          "differences": {}
+        },
+        {
+          "selector": ".chat-tool-card__detail",
+          "expectedAbsent": true,
+          "differences": {}
+        },
+        {
+          "selector": ".chat-tool-card__actions",
+          "expectedAbsent": true,
+          "differences": {}
+        },
+        {
+          "selector": ".chat-tool-card__block",
+          "expectedAbsent": true,
+          "differences": {}
+        },
+        {
+          "selector": ".chat-tool-card__block-content",
+          "expectedAbsent": true,
+          "differences": {}
+        },
+        {
+          "selector": ".chat-tool-card__outcome",
+          "expectedAbsent": true,
+          "differences": {}
+        },
+        {
+          "selector": ".chat-tool-failure",
+          "differences": {}
+        },
+        {
+          "selector": ".chat-tool-card__block-label",
+          "expectedAbsent": true,
+          "differences": {}
+        }
+      ]
+    },
+    "expanded": {
+      "viewport": [
+        1440,
+        900
+      ],
+      "state": "expanded",
+      "tool": "read",
+      "records": [
+        {
+          "selector": ".chat-tool-msg-collapse",
+          "differences": {}
+        },
+        {
+          "selector": ".chat-tool-msg-summary",
+          "differences": {}
+        },
+        {
+          "selector": ".chat-tool-msg-summary__icon",
+          "differences": {}
+        },
+        {
+          "selector": ".chat-tool-msg-summary__icon svg",
+          "differences": {}
+        },
+        {
+          "selector": ".chat-tool-disclosure__content",
+          "differences": {}
+        },
+        {
+          "selector": ".chat-tool-row__verb",
+          "differences": {}
+        },
+        {
+          "selector": ".chat-tool-row__target",
+          "differences": {}
+        },
+        {
+          "selector": ".chat-tool-row__chevron",
+          "differences": {}
+        },
+        {
+          "selector": ".chat-tool-row__chevron svg",
+          "differences": {}
+        },
+        {
+          "selector": ".chat-tool-msg-body",
+          "differences": {}
+        },
+        {
+          "selector": ".chat-tool-card",
+          "differences": {}
+        },
+        {
+          "selector": ".chat-tool-card__header",
+          "differences": {}
+        },
+        {
+          "selector": ".chat-tool-card__detail",
+          "differences": {}
+        },
+        {
+          "selector": ".chat-tool-card__actions",
+          "differences": {}
+        },
+        {
+          "selector": ".chat-tool-card__block",
+          "differences": {}
+        },
+        {
+          "selector": ".chat-tool-card__block-content",
+          "differences": {}
+        },
+        {
+          "selector": ".chat-tool-card__outcome",
+          "differences": {}
+        },
+        {
+          "selector": ".chat-tool-failure",
+          "expectedAbsent": true,
+          "differences": {}
+        },
+        {
+          "selector": ".chat-tool-card__block-label",
+          "differences": {}
+        }
+      ]
+    }
+  },
+  "copy": {
+    "method": "Native keyboard Shift+F10 then visible Copy as markdown action. Pass-through clipboard write observer, original method restored afterward.",
+    "copiedExactOutput": true,
+    "bytes": 41,
+    "menuDismissed": true
+  }
+}

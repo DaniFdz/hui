@@ -1,0 +1,383 @@
+/* HUI-only host, native modal/drawer transports and contract-specific content.
+ * Reference components are imported once by main.ts; do not restyle them here. */
+
+.settings-shell { display: grid; height: 100%; }
+.settings-main { min-width: 0; overflow-y: auto; }
+hui-app {
+  display: block;
+  height: 100dvh;
+}
+/* Native hidden flags must beat class-level flex/grid presentation. */
+hui-app [hidden] { display: none !important; }
+/* Native transport for ui/src/components/modal-dialog.ts. Content uses the
+ * original confirmation/input card classes, not a separate HUI design. */
+.hui-modal-dialog {
+  width: min(540px, calc(100vw - 48px));
+  max-width: calc(100vw - 48px);
+  max-height: calc(100dvh - 48px);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  overflow: auto;
+}
+.hui-modal-dialog::backdrop {
+  background: var(--wa-color-overlay-modal, oklab(0% none none / .6));
+  backdrop-filter: blur(4px);
+}
+.hui-update-status { overflow-wrap: anywhere; }
+.hui-update-dialog .exec-approval-title { margin: 0; }
+.pi-resource-reader-modal {
+  --openclaw-modal-height-limit: calc(100dvh - 48px);
+
+  width: min(920px, calc(100vw - 48px));
+  max-width: calc(100vw - 48px);
+  overflow: hidden;
+}
+.pi-resource-reader-modal .md-preview-dialog__title {
+  margin: 0;
+}
+.pi-resource-reader-modal .md-preview-dialog__meta {
+  padding-block: 12px;
+}
+.pi-resource-read-button {
+  margin-inline-end: var(--space-1);
+}
+.pi-resource-reader__status {
+  display: grid;
+  min-height: 14rem;
+  place-items: center;
+  color: var(--muted);
+}
+.pi-resource-reader__source {
+  max-width: 100%;
+  margin: 0 auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono);
+  font-size: calc(13px * var(--control-ui-text-scale));
+  line-height: 1.6;
+}
+.hui-application { display: flex; flex-direction: column; height: 100%; min-width: 0; }
+.hui-workspace { position: relative; flex: 1; min-height: 0; min-width: 0; }
+.hui-workspace .app-shell .shell-chrome-controls { position: absolute; }
+.hui-embedded-session {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  background: var(--bg);
+}
+hui-session-multiplexer {
+  display: flex;
+  flex: 1 1 0;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+.chat-split-view.hui-pane-viewport { display: block; position: relative; }
+.hui-pane-canvas { position: relative; }
+.hui-pane-canvas > .chat-split-view__cell,
+.hui-pane-canvas > resizable-divider { position: absolute; box-sizing: border-box; }
+.hui-pane-canvas > resizable-divider { z-index: 2; }
+.hui-pane-canvas:has(> .chat-split-view__cell--active) > .chat-split-view__cell:not(.chat-split-view__cell--active) { filter: saturate(0.45); }
+.hui-pane-canvas:has(> .chat-split-view__cell--active) > .chat-split-view__cell:not(.chat-split-view__cell--active) .chat-pane__actions { display: none; }
+.chat-pane__header[draggable="true"], .hui-pane-move-handle { cursor: grab; }
+.chat-pane__header[draggable="true"] { user-select: none; }
+.chat-pane__header .hui-pane-move-handle { flex: 0 0 24px; width: 24px; min-width: 24px; color: var(--muted); }
+.hui-pane-move-handle svg { width: 16px; height: 16px; }
+.hui-pane-dragging { opacity: 0.6; }
+.hui-pane-announcement { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.chat-pane-cache__pane { display: flex; min-width: 0; min-height: 0; overflow: hidden; }
+.hui-session-pane-app { display: block; width: 100%; height: 100%; min-width: 0; min-height: 0; border: 0; background: var(--bg); outline: 0; }
+.app-shell > .content--chat:has(> hui-session-multiplexer) { gap: 0; padding: 0; }
+.chat-pane__header { container-type: inline-size; }
+.chat-pane__actions > .chat-pane__split-menu { display: none; }
+@container (max-width: 800px) {
+  .chat-pane__actions > .chat-pane__split-menu { display: inline-flex; }
+}
+/* HUI merges its mobile shell navigation into the active pane header. Keep
+   that route reachable when upstream sheds desktop split-header controls. */
+.app-shell.shell--mobile-nav .chat-split-view--narrow .chat-pane__header .chat-pane__nav-toggle {
+  display: inline-flex;
+}
+.hui-update-notice {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  flex: 0 0 auto;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg));
+  color: var(--text);
+  font-size: var(--control-ui-text-sm);
+}
+.hui-update-notice__message { display: flex; align-items: center; gap: 8px; min-width: 0; overflow-wrap: anywhere; }
+.hui-update-notice__icon { display: inline-flex; flex-shrink: 0; color: var(--accent); }
+.hui-update-notice svg { width: 16px; height: 16px; }
+.hui-update-notice .hui-update-notice__review { min-height: 32px; flex-shrink: 0; margin-inline: 2px; padding: 3px 8px; font-size: inherit; }
+.hui-update-notice__dismiss {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px; flex-shrink: 0;
+  border: 0; border-radius: var(--radius-md); background: transparent; color: var(--muted); cursor: pointer;
+}
+.hui-update-notice__dismiss:hover { background: var(--bg-hover); color: var(--text); }
+.hui-update-notice button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (max-width: 640px) {
+  .hui-update-notice { gap: 8px; padding: 4px 8px; }
+  .hui-update-notice__icon { display: none; }
+  .hui-update-notice .hui-update-notice__review, .hui-update-notice__dismiss { min-height: 44px; }
+  .hui-update-notice__dismiss { width: 44px; }
+}
+:root[data-theme-mode="light"] .hui-modal-dialog::backdrop {
+  background: var(--wa-color-overlay-modal, color-mix(in oklab, #101219 50%, transparent));
+}
+@media (max-width: 640px) {
+  .hui-modal-dialog { width: min(540px, calc(100vw - 24px)); max-width: calc(100vw - 24px); max-height: 90dvh; }
+  .pi-resource-reader-modal {
+    --openclaw-modal-height-limit: 90dvh;
+
+    width: calc(100vw - 16px);
+    max-width: calc(100vw - 16px);
+  }
+}
+@media (max-width: 768px) {
+  .pi-resource-reader-modal .md-preview-dialog__header {
+    flex-direction: row;
+    align-items: flex-start;
+  }
+  .pi-resource-reader-modal .md-preview-dialog__actions {
+    margin-left: auto;
+  }
+  .pi-resource-reader-modal .md-preview-icon-btn {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+  }
+}
+/* Stacked install rows hold one URL field and its submit button. The reference
+   :only-child rule would push this shrink-to-fit cluster to the right edge;
+   give the field the row width and keep the button at its natural size. */
+.settings-row--stacked > .settings-row__control.pi-install-form {
+  width: 100%;
+  margin-left: 0;
+}
+.pi-install-form > .settings-input {
+  flex: 1 1 12rem;
+  width: auto;
+  /* Match the adjacent button instead of the shared 16px input floor. */
+  font-size: calc(13px * var(--control-ui-text-scale));
+}
+/* base.css forces 16px on coarse pointers to stop iOS focus zoom; the
+   viewport's maximum-scale=1 prevents that zoom, so this field keeps 13px. */
+@media (pointer: coarse) {
+  .pi-install-form > .settings-input {
+    font-size: calc(13px * var(--control-ui-text-scale)) !important;
+  }
+}
+.pi-install-form > .btn {
+  flex: 0 0 auto;
+}
+@media (pointer: coarse), (max-width: 640px) {
+  .settings-row__control .btn.pi-resource-read-button {
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
+  }
+}
+.command-palette-dialog {
+  width: min(640px, calc(100vw - 32px));
+  max-width: none;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+}
+
+.command-palette-dialog::backdrop {
+  background: color-mix(in srgb, var(--background) 68%, transparent);
+  backdrop-filter: blur(3px);
+}
+
+@media (max-width: 520px) {
+  .command-palette-dialog { width: calc(100vw - 20px); }
+}
+
+.settings-mobile-topbar,
+.settings-backdrop {
+  display: none;
+}
+
+.settings-sidebar__drawer {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.automation-action-error {
+  border: 1px solid var(--danger);
+  border-radius: var(--radius);
+  padding: var(--space-2) var(--space-3);
+  background: var(--danger-subtle);
+  color: var(--text-strong);
+}
+.automation-form:not([data-schedule="cron"]) .automation-field--cron,
+.automation-form:not([data-schedule="every"]) .automation-field--every,
+.automation-form:not([data-schedule="at"]) .automation-field--at {
+  display: none;
+}
+
+@media (max-width: 768px), (max-width: 932px) and (max-height: 500px) and (orientation: landscape) {
+
+  .settings-mobile-topbar {
+    position: relative;
+    z-index: 52;
+    display: grid;
+    grid-template-columns: 40px auto minmax(0, 1fr);
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    min-height: 58px;
+    padding: 8px 12px;
+    border: 0;
+    border-bottom: 1px solid var(--border);
+    background: color-mix(in srgb, var(--bg) 92%, transparent);
+    color: var(--text);
+    font: inherit;
+    text-align: left;
+    backdrop-filter: blur(12px);
+  }
+
+  .settings-mobile-topbar > :first-child {
+    display: grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    color: var(--muted);
+  }
+
+  .settings-mobile-topbar strong {
+    overflow: hidden;
+    color: var(--muted);
+    font-size: var(--text-sm);
+    font-weight: 500;
+    text-align: right;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .settings-sidebar__drawer {
+    position: fixed;
+    z-index: 51;
+    inset: 58px auto 0 0;
+    display: none;
+    width: min(86vw, 320px);
+    border-right: 1px solid var(--border);
+    background: var(--bg-accent);
+    box-shadow: 0 16px 48px rgb(0 0 0 / 30%);
+  }
+
+  .settings-backdrop {
+    position: fixed;
+    z-index: 49;
+    inset: 58px 0 0;
+    width: auto;
+    height: auto;
+    padding: 0;
+    border: 0;
+    background: rgb(0 0 0 / 42%);
+  }
+
+  .settings-sidebar[data-open="true"] > .settings-backdrop,
+  .settings-sidebar[data-open="true"] > .settings-sidebar__drawer {
+    display: flex;
+  }
+}
+
+.settings-import-note {
+  margin: 0;
+  padding: 0 var(--space-4) var(--space-4);
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.settings-import-note.is-error {
+  color: var(--text);
+}
+.delete-session-dialog .transcript__actions {
+  justify-content: flex-end;
+  margin-top: var(--space-4);
+}
+
+.capability-badge{padding:.2rem .4rem;border:1px solid var(--border);border-radius:999px;color:var(--muted);font-size:.65rem;font-weight:700}
+.surface-header-actions { display: flex; gap: 8px; align-items: center; }
+
+@media (max-width: 768px) {
+  .surface-header-actions { width: 100%; justify-content: flex-end; }
+}
+
+/* Create Jira work item dialog. */
+.jira-create-dialog { width: min(600px, calc(100vw - 48px)); }
+.jira-create { display: grid; gap: 14px; }
+.jira-create__header { display: flex; align-items: center; gap: 12px; }
+.jira-create__header > div { flex: 1 1 auto; min-width: 0; }
+.jira-create__header .exec-approval-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.jira-create__logo {
+  display: inline-flex; flex: none; align-items: center; justify-content: center;
+  width: 36px; height: 36px; border-radius: var(--radius-md); background: #1868db; color: #fff;
+}
+.jira-create__logo svg { width: 20px; height: 20px; }
+.jira-create__close { flex: none; font-size: 20px; line-height: 1; }
+.jira-create__fields { display: grid; gap: 12px; }
+.jira-create__field > span { display: flex; align-items: baseline; gap: 6px; }
+.jira-create__hint { color: var(--muted); font-size: 11.5px; font-style: normal; font-weight: 400; }
+.jira-create__field-note { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.4; overflow-wrap: anywhere; }
+.jira-create__description {
+  min-height: 170px; max-height: 45dvh; padding: 8px 10px; resize: vertical;
+  border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--bg-elevated, var(--card));
+  color: var(--text); font: 13px/1.5 var(--mono); white-space: pre-wrap;
+}
+.jira-create__assign { display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; }
+.jira-create__assign input { margin: 0; accent-color: var(--accent); }
+.jira-create__status { display: flex; align-items: center; gap: 8px; min-height: 18px; margin: 0; color: var(--muted); font-size: 12.5px; }
+.jira-create__error, .jira-settings__error { margin: 0; color: var(--danger); font-size: 13px; overflow-wrap: anywhere; }
+.jira-create .exec-approval-actions { justify-content: flex-end; }
+
+/* Settings → Jira. */
+.jira-settings__form { display: grid; gap: 12px; width: 100%; }
+.jira-settings__steps { margin: 0; padding-left: 20px; color: var(--text); font-size: 13px; line-height: 1.6; }
+.jira-settings__steps a { display: inline-flex; align-items: center; gap: 4px; }
+.jira-settings__steps a svg { width: 12px; height: 12px; }
+.jira-settings__actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.jira-settings__notice { margin: 0 0 12px; color: var(--ok); font-size: 13px; }
+.jira-settings__error { margin-bottom: 12px; }
+
+/* Settings → GitHub (device code styling follows OpenClaw's GitHub identity view). */
+.github-settings__code { display: inline-flex; align-items: center; gap: 8px; }
+.github-settings__code .btn svg { width: 14px; height: 14px; }
+.github-device-code { color: var(--text-strong, var(--text)); font-size: var(--control-ui-text-lg, 16px); font-weight: 700; letter-spacing: .08em; user-select: all; -webkit-user-select: all; }
+[data-integration="github"] .settings-row--actions .btn svg { width: 12px; height: 12px; }
+
+/* Link Jira work item dialog. */
+.jira-link__search { width: 100%; }
+.jira-link__heading { color: var(--muted); font-size: 11.5px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+.jira-link__results {
+  display: grid; gap: 2px; max-height: min(360px, 50dvh); margin: -6px 0 0; padding: 0;
+  overflow-y: auto; overscroll-behavior: contain; list-style: none;
+}
+.jira-link__result {
+  --jira-link-color: var(--muted);
+  display: grid; grid-template-columns: auto 1fr; align-items: baseline; gap: 2px 10px;
+  padding: 8px 10px; border-radius: var(--radius-md); cursor: pointer;
+}
+.jira-link__result[data-state="new"] { --jira-link-color: #2684ff; }
+.jira-link__result[data-state="indeterminate"] { --jira-link-color: #0065ff; }
+.jira-link__result[data-state="done"] { --jira-link-color: var(--ok); }
+.jira-link__result[data-active] { background: var(--bg-hover); }
+.jira-link__key { color: var(--jira-link-color); font: 600 12px var(--mono); white-space: nowrap; }
+.jira-link__summary { overflow: hidden; color: var(--text); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.jira-link__meta { grid-column: 2; color: var(--muted); font-size: 11.5px; }

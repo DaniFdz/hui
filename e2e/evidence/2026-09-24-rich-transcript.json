@@ -1,0 +1,993 @@
+{
+  "reference": "OpenClaw 2026.9.5 ec9c1a13db8938e5a3eaa51fca2e981cde2395a9",
+  "scope": "Original-renderer comparison of implemented Markdown subset, interactive fences, and compact attachment cards. Actual fixture PI transcript data. No arbitrary Markdown equivalence, downloadable media/preview, or tool card claim.",
+  "rich": [
+    {
+      "viewport": [
+        1440,
+        900
+      ],
+      "records": {
+        "markdown": [
+          {
+            "role": "assistant",
+            "records": [
+              {
+                "selector": ".chat-bubble",
+                "differences": {}
+              },
+              {
+                "selector": ".chat-text",
+                "differences": {}
+              },
+              {
+                "selector": ".chat-text h1",
+                "differences": {}
+              },
+              {
+                "selector": ".chat-text h2",
+                "differences": {}
+              },
+              {
+                "selector": ".chat-text strong",
+                "differences": {}
+              },
+              {
+                "selector": ".chat-text em",
+                "differences": {}
+              },
+              {
+                "selector": ".chat-text s",
+                "differences": {}
+              },
+              {
+                "selector": ".chat-text a",
+                "differences": {}
+              },
+              {
+                "selector": ".chat-text ul",
+                "differences": {}
+              },
+              {
+                "selector": ".chat-text ol",
+                "differences": {}
+              },
+              {
+                "selector": ".chat-text li",
+                "differences": {}
+              },
+              {
+                "selector": ".chat-text blockquote",
+                "differences": {}
+              },
+              {
+                "selector": ".chat-text blockquote p",
+                "differences": {}
+              },
+              {
+                "selector": ".chat-text hr",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-wrapper",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-header",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-lang",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-actions",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-copy",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-copy__idle",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-viewport",
+                "differences": {}
+              },
+              {
+                "selector": ".chat-text pre",
+                "differences": {}
+              },
+              {
+                "selector": ".chat-text pre code",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-wrap",
+                "differences": {}
+              }
+            ]
+          }
+        ],
+        "collapsed": [
+          {
+            "role": "assistant",
+            "records": [
+              {
+                "selector": ".chat-bubble",
+                "differences": {}
+              },
+              {
+                "selector": ".chat-text",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-wrapper",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-header",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-actions",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-copy",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-wrap",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-viewport",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-viewport pre",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-viewport code",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-expand",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-chevron",
+                "differences": {}
+              }
+            ]
+          }
+        ],
+        "expanded": [
+          {
+            "role": "assistant",
+            "records": [
+              {
+                "selector": ".chat-bubble",
+                "differences": {}
+              },
+              {
+                "selector": ".chat-text",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-wrapper",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-header",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-actions",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-copy",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-wrap",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-viewport",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-viewport pre",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-viewport code",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-expand",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-chevron",
+                "differences": {}
+              }
+            ]
+          }
+        ],
+        "wrapped": [
+          {
+            "role": "assistant",
+            "records": [
+              {
+                "selector": ".chat-bubble",
+                "differences": {}
+              },
+              {
+                "selector": ".chat-text",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-wrapper",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-header",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-actions",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-copy",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-wrap",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-viewport",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-viewport pre",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-viewport code",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-expand",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-chevron",
+                "differences": {}
+              }
+            ]
+          }
+        ]
+      },
+      "actions": [
+        "expand",
+        "wrap",
+        "unwrap"
+      ],
+      "wrappedOverflow": 0
+    },
+    {
+      "viewport": [
+        390,
+        844
+      ],
+      "records": {
+        "markdown": [
+          {
+            "role": "assistant",
+            "records": [
+              {
+                "selector": ".chat-bubble",
+                "differences": {}
+              },
+              {
+                "selector": ".chat-text",
+                "differences": {}
+              },
+              {
+                "selector": ".chat-text h1",
+                "differences": {}
+              },
+              {
+                "selector": ".chat-text h2",
+                "differences": {}
+              },
+              {
+                "selector": ".chat-text strong",
+                "differences": {}
+              },
+              {
+                "selector": ".chat-text em",
+                "differences": {}
+              },
+              {
+                "selector": ".chat-text s",
+                "differences": {}
+              },
+              {
+                "selector": ".chat-text a",
+                "differences": {}
+              },
+              {
+                "selector": ".chat-text ul",
+                "differences": {}
+              },
+              {
+                "selector": ".chat-text ol",
+                "differences": {}
+              },
+              {
+                "selector": ".chat-text li",
+                "differences": {}
+              },
+              {
+                "selector": ".chat-text blockquote",
+                "differences": {}
+              },
+              {
+                "selector": ".chat-text blockquote p",
+                "differences": {}
+              },
+              {
+                "selector": ".chat-text hr",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-wrapper",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-header",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-lang",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-actions",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-copy",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-copy__idle",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-viewport",
+                "differences": {}
+              },
+              {
+                "selector": ".chat-text pre",
+                "differences": {}
+              },
+              {
+                "selector": ".chat-text pre code",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-wrap",
+                "differences": {}
+              }
+            ]
+          }
+        ],
+        "collapsed": [
+          {
+            "role": "assistant",
+            "records": [
+              {
+                "selector": ".chat-bubble",
+                "differences": {}
+              },
+              {
+                "selector": ".chat-text",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-wrapper",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-header",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-actions",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-copy",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-wrap",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-viewport",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-viewport pre",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-viewport code",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-expand",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-chevron",
+                "differences": {}
+              }
+            ]
+          }
+        ],
+        "expanded": [
+          {
+            "role": "assistant",
+            "records": [
+              {
+                "selector": ".chat-bubble",
+                "differences": {}
+              },
+              {
+                "selector": ".chat-text",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-wrapper",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-header",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-actions",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-copy",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-wrap",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-viewport",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-viewport pre",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-viewport code",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-expand",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-chevron",
+                "differences": {}
+              }
+            ]
+          }
+        ],
+        "wrapped": [
+          {
+            "role": "assistant",
+            "records": [
+              {
+                "selector": ".chat-bubble",
+                "differences": {}
+              },
+              {
+                "selector": ".chat-text",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-wrapper",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-header",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-actions",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-copy",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-wrap",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-viewport",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-viewport pre",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-viewport code",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-expand",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-chevron",
+                "differences": {}
+              }
+            ]
+          }
+        ]
+      },
+      "actions": [
+        "expand",
+        "wrap",
+        "unwrap"
+      ],
+      "wrappedOverflow": 0
+    },
+    {
+      "viewport": [
+        844,
+        390
+      ],
+      "records": {
+        "markdown": [
+          {
+            "role": "assistant",
+            "records": [
+              {
+                "selector": ".chat-bubble",
+                "differences": {}
+              },
+              {
+                "selector": ".chat-text",
+                "differences": {}
+              },
+              {
+                "selector": ".chat-text h1",
+                "differences": {}
+              },
+              {
+                "selector": ".chat-text h2",
+                "differences": {}
+              },
+              {
+                "selector": ".chat-text strong",
+                "differences": {}
+              },
+              {
+                "selector": ".chat-text em",
+                "differences": {}
+              },
+              {
+                "selector": ".chat-text s",
+                "differences": {}
+              },
+              {
+                "selector": ".chat-text a",
+                "differences": {}
+              },
+              {
+                "selector": ".chat-text ul",
+                "differences": {}
+              },
+              {
+                "selector": ".chat-text ol",
+                "differences": {}
+              },
+              {
+                "selector": ".chat-text li",
+                "differences": {}
+              },
+              {
+                "selector": ".chat-text blockquote",
+                "differences": {}
+              },
+              {
+                "selector": ".chat-text blockquote p",
+                "differences": {}
+              },
+              {
+                "selector": ".chat-text hr",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-wrapper",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-header",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-lang",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-actions",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-copy",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-copy__idle",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-viewport",
+                "differences": {}
+              },
+              {
+                "selector": ".chat-text pre",
+                "differences": {}
+              },
+              {
+                "selector": ".chat-text pre code",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-wrap",
+                "differences": {}
+              }
+            ]
+          }
+        ],
+        "collapsed": [
+          {
+            "role": "assistant",
+            "records": [
+              {
+                "selector": ".chat-bubble",
+                "differences": {}
+              },
+              {
+                "selector": ".chat-text",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-wrapper",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-header",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-actions",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-copy",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-wrap",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-viewport",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-viewport pre",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-viewport code",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-expand",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-chevron",
+                "differences": {}
+              }
+            ]
+          }
+        ],
+        "expanded": [
+          {
+            "role": "assistant",
+            "records": [
+              {
+                "selector": ".chat-bubble",
+                "differences": {}
+              },
+              {
+                "selector": ".chat-text",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-wrapper",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-header",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-actions",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-copy",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-wrap",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-viewport",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-viewport pre",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-viewport code",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-expand",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-chevron",
+                "differences": {}
+              }
+            ]
+          }
+        ],
+        "wrapped": [
+          {
+            "role": "assistant",
+            "records": [
+              {
+                "selector": ".chat-bubble",
+                "differences": {}
+              },
+              {
+                "selector": ".chat-text",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-wrapper",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-header",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-actions",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-copy",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-wrap",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-viewport",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-viewport pre",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-viewport code",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-expand",
+                "differences": {}
+              },
+              {
+                "selector": ".code-block-chevron",
+                "differences": {}
+              }
+            ]
+          }
+        ]
+      },
+      "actions": [
+        "expand",
+        "wrap",
+        "unwrap"
+      ],
+      "wrappedOverflow": 0
+    }
+  ],
+  "attachments": [
+    {
+      "viewport": "Desktop",
+      "records": [
+        {
+          "role": "user",
+          "records": [
+            {
+              "selector": ".chat-assistant-attachment-card",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-assistant-attachment-card__header",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-assistant-attachment-card__identity",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-assistant-attachment-card__details",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-assistant-attachment-card__title",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-assistant-attachment-card__meta",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-assistant-attachment-card__actions",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-attachment-file-icon",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-attachment-file-icon__overlay",
+              "differences": {}
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "viewport": "Mobile",
+      "records": [
+        {
+          "role": "user",
+          "records": [
+            {
+              "selector": ".chat-assistant-attachment-card",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-assistant-attachment-card__header",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-assistant-attachment-card__identity",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-assistant-attachment-card__details",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-assistant-attachment-card__title",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-assistant-attachment-card__meta",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-assistant-attachment-card__actions",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-attachment-file-icon",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-attachment-file-icon__overlay",
+              "differences": {}
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "viewport": "Landscape",
+      "records": [
+        {
+          "role": "user",
+          "records": [
+            {
+              "selector": ".chat-assistant-attachment-card",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-assistant-attachment-card__header",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-assistant-attachment-card__identity",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-assistant-attachment-card__details",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-assistant-attachment-card__title",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-assistant-attachment-card__meta",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-assistant-attachment-card__actions",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-attachment-file-icon",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-attachment-file-icon__overlay",
+              "differences": {}
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "method": "Private original function exports are hash-guarded. Pseudo-class state is projected into original selectors, not original declarations. Compact cards use the source parent classes with the same names-only PI contract."
+}

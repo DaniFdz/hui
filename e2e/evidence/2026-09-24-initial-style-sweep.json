@@ -1,0 +1,560 @@
+{
+  "reference": "OpenClaw v2026.9.5 ec9c1a13db8938e5a3eaa51fca2e981cde2395a9",
+  "method": "Same rendered HUI DOM under original source stylesheets; resting state, animations settled. This detects cascade drift, not original DOM equivalence.",
+  "viewport": [
+    1440,
+    900
+  ],
+  "theme": "Claw dark",
+  "surfaces": [
+    {
+      "id": "about",
+      "styles": [
+        {
+          "selector": "main .page-title",
+          "differences": {}
+        },
+        {
+          "selector": "main .settings-row",
+          "differences": {}
+        },
+        {
+          "selector": "main .settings-group",
+          "differences": {}
+        }
+      ]
+    },
+    {
+      "id": "profile",
+      "styles": [
+        {
+          "selector": "main .page-title",
+          "differences": {}
+        },
+        {
+          "selector": "main .settings-row",
+          "differences": {}
+        },
+        {
+          "selector": "main .settings-group",
+          "differences": {}
+        },
+        {
+          "selector": "main .btn",
+          "differences": {}
+        },
+        {
+          "selector": "main .profile-hero",
+          "differences": {}
+        }
+      ]
+    },
+    {
+      "id": "labs",
+      "styles": [
+        {
+          "selector": "main .page-title",
+          "differences": {}
+        },
+        {
+          "selector": "main .settings-row",
+          "differences": {}
+        },
+        {
+          "selector": "main .settings-group",
+          "differences": {}
+        }
+      ]
+    },
+    {
+      "id": "activity",
+      "styles": [
+        {
+          "selector": "main .page-title",
+          "differences": {}
+        },
+        {
+          "selector": "main .settings-group",
+          "differences": {}
+        },
+        {
+          "selector": "main .btn",
+          "differences": {}
+        },
+        {
+          "selector": "main .activity-entry__summary",
+          "differences": {}
+        }
+      ]
+    },
+    {
+      "id": "logs",
+      "styles": [
+        {
+          "selector": "main .page-title",
+          "differences": {}
+        },
+        {
+          "selector": "main .btn",
+          "differences": {}
+        },
+        {
+          "selector": "main .log-row",
+          "differences": {}
+        }
+      ]
+    },
+    {
+      "id": "usage",
+      "styles": [
+        {
+          "selector": "main .page-title",
+          "differences": {}
+        },
+        {
+          "selector": "main .settings-row",
+          "differences": {}
+        },
+        {
+          "selector": "main .settings-group",
+          "differences": {}
+        },
+        {
+          "selector": "main .btn",
+          "differences": {}
+        },
+        {
+          "selector": "main .usage-summary-card",
+          "differences": {}
+        }
+      ]
+    },
+    {
+      "id": "debug",
+      "styles": [
+        {
+          "selector": "main .page-title",
+          "differences": {}
+        },
+        {
+          "selector": "main .settings-row",
+          "differences": {}
+        },
+        {
+          "selector": "main .settings-group",
+          "differences": {}
+        },
+        {
+          "selector": "main .btn",
+          "differences": {}
+        }
+      ]
+    },
+    {
+      "id": "config",
+      "styles": [
+        {
+          "selector": "main .page-title",
+          "differences": {}
+        },
+        {
+          "selector": "main .settings-row",
+          "differences": {}
+        },
+        {
+          "selector": "main .settings-group",
+          "differences": {}
+        },
+        {
+          "selector": "main .btn",
+          "differences": {}
+        },
+        {
+          "selector": "main .settings-section__heading",
+          "differences": {}
+        }
+      ]
+    },
+    {
+      "id": "connection",
+      "styles": [
+        {
+          "selector": "main .page-title",
+          "differences": {}
+        },
+        {
+          "selector": "main .settings-row",
+          "differences": {}
+        },
+        {
+          "selector": "main .settings-group",
+          "differences": {}
+        },
+        {
+          "selector": "main .btn",
+          "differences": {}
+        },
+        {
+          "selector": "main .settings-section__heading",
+          "differences": {}
+        }
+      ]
+    },
+    {
+      "id": "model-providers",
+      "styles": [
+        {
+          "selector": "main .page-title",
+          "differences": {}
+        },
+        {
+          "selector": "main .settings-row",
+          "differences": {}
+        },
+        {
+          "selector": "main .settings-group",
+          "differences": {}
+        },
+        {
+          "selector": "main .btn",
+          "differences": {}
+        },
+        {
+          "selector": "main .settings-section__heading",
+          "differences": {}
+        }
+      ]
+    },
+    {
+      "id": "model-setup",
+      "styles": [
+        {
+          "selector": "main .page-title",
+          "differences": {}
+        },
+        {
+          "selector": "main .settings-row",
+          "differences": {}
+        },
+        {
+          "selector": "main .settings-group",
+          "differences": {}
+        },
+        {
+          "selector": "main .btn",
+          "differences": {}
+        },
+        {
+          "selector": "main .settings-section__heading",
+          "differences": {}
+        }
+      ]
+    },
+    {
+      "id": "skills",
+      "styles": [
+        {
+          "selector": "main .page-title",
+          "differences": {}
+        },
+        {
+          "selector": "main .settings-row",
+          "differences": {
+            "height": {
+              "hui": "62.1406px",
+              "upstream": "94.1406px"
+            }
+          }
+        },
+        {
+          "selector": "main .settings-group",
+          "differences": {
+            "height": {
+              "hui": "64.1406px",
+              "upstream": "96.1406px"
+            }
+          }
+        },
+        {
+          "selector": "main .btn",
+          "differences": {}
+        },
+        {
+          "selector": "main .settings-input",
+          "differences": {
+            "width": {
+              "hui": "956.016px",
+              "upstream": "1054px"
+            }
+          }
+        },
+        {
+          "selector": "main .settings-section__heading",
+          "differences": {}
+        }
+      ]
+    },
+    {
+      "id": "plugins",
+      "styles": [
+        {
+          "selector": "main .page-title",
+          "differences": {}
+        },
+        {
+          "selector": "main .settings-row",
+          "differences": {
+            "height": {
+              "hui": "62.1406px",
+              "upstream": "94.1406px"
+            }
+          }
+        },
+        {
+          "selector": "main .settings-group",
+          "differences": {
+            "height": {
+              "hui": "64.1406px",
+              "upstream": "96.1406px"
+            }
+          }
+        },
+        {
+          "selector": "main .btn",
+          "differences": {}
+        },
+        {
+          "selector": "main .settings-input",
+          "differences": {
+            "width": {
+              "hui": "927.969px",
+              "upstream": "1054px"
+            }
+          }
+        },
+        {
+          "selector": "main .settings-section__heading",
+          "differences": {}
+        }
+      ]
+    },
+    {
+      "id": "plugin",
+      "styles": [
+        {
+          "selector": "main .page-title",
+          "differences": {}
+        },
+        {
+          "selector": "main .settings-row",
+          "differences": {
+            "height": {
+              "hui": "62.1406px",
+              "upstream": "94.1406px"
+            }
+          }
+        },
+        {
+          "selector": "main .settings-group",
+          "differences": {
+            "height": {
+              "hui": "64.1406px",
+              "upstream": "96.1406px"
+            }
+          }
+        },
+        {
+          "selector": "main .btn",
+          "differences": {}
+        },
+        {
+          "selector": "main .settings-input",
+          "differences": {
+            "width": {
+              "hui": "927.969px",
+              "upstream": "1054px"
+            }
+          }
+        },
+        {
+          "selector": "main .settings-section__heading",
+          "differences": {}
+        }
+      ]
+    },
+    {
+      "id": "skill-workshop",
+      "styles": [
+        {
+          "selector": "main .page-title",
+          "differences": {}
+        },
+        {
+          "selector": "main .settings-row",
+          "differences": {}
+        },
+        {
+          "selector": "main .settings-group",
+          "differences": {}
+        },
+        {
+          "selector": "main .btn",
+          "differences": {}
+        },
+        {
+          "selector": "main .settings-section__heading",
+          "differences": {}
+        }
+      ]
+    },
+    {
+      "id": "memory-import",
+      "styles": [
+        {
+          "selector": "main .page-title",
+          "differences": {}
+        },
+        {
+          "selector": "main .settings-row",
+          "differences": {}
+        },
+        {
+          "selector": "main .settings-group",
+          "differences": {}
+        },
+        {
+          "selector": "main .btn",
+          "differences": {}
+        },
+        {
+          "selector": "main .settings-section__heading",
+          "differences": {}
+        }
+      ]
+    },
+    {
+      "id": "worktrees",
+      "styles": [
+        {
+          "selector": "main .page-title",
+          "differences": {}
+        },
+        {
+          "selector": "main .settings-row",
+          "differences": {}
+        },
+        {
+          "selector": "main .settings-group",
+          "differences": {}
+        },
+        {
+          "selector": "main .btn",
+          "differences": {}
+        },
+        {
+          "selector": "main .settings-section__heading",
+          "differences": {}
+        }
+      ]
+    },
+    {
+      "id": "sessions",
+      "styles": [
+        {
+          "selector": "main .page-title",
+          "differences": {}
+        },
+        {
+          "selector": "main .settings-group",
+          "differences": {}
+        },
+        {
+          "selector": "main .btn",
+          "differences": {}
+        },
+        {
+          "selector": "main .data-table",
+          "differences": {}
+        },
+        {
+          "selector": "main .session-avatar",
+          "differences": {}
+        },
+        {
+          "selector": "main .session-link",
+          "differences": {}
+        },
+        {
+          "selector": "main .settings-section__heading",
+          "differences": {}
+        }
+      ]
+    },
+    {
+      "id": "cron",
+      "styles": [
+        {
+          "selector": "main .page-title",
+          "differences": {}
+        },
+        {
+          "selector": "main .settings-row",
+          "differences": {}
+        },
+        {
+          "selector": "main .settings-group",
+          "differences": {}
+        },
+        {
+          "selector": "main .btn",
+          "differences": {}
+        },
+        {
+          "selector": "main .settings-input",
+          "differences": {}
+        },
+        {
+          "selector": "main .settings-select",
+          "differences": {}
+        },
+        {
+          "selector": "main .settings-section__heading",
+          "differences": {}
+        }
+      ]
+    },
+    {
+      "id": "tasks",
+      "styles": [
+        {
+          "selector": "main .page-title",
+          "differences": {}
+        },
+        {
+          "selector": "main .settings-row",
+          "differences": {}
+        },
+        {
+          "selector": "main .settings-group",
+          "differences": {}
+        },
+        {
+          "selector": "main .btn",
+          "differences": {}
+        },
+        {
+          "selector": "main .settings-input",
+          "differences": {}
+        },
+        {
+          "selector": "main .settings-select",
+          "differences": {}
+        },
+        {
+          "selector": "main .settings-section__heading",
+          "differences": {}
+        }
+      ]
+    }
+  ]
+}

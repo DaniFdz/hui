@@ -1,0 +1,45 @@
+import "@awesome.me/webawesome/dist/styles/themes/default.css";
+import "./styles/tokens.css";
+import "./styles/app.css";
+import "./styles/openclaw-reference/components.css";
+import "./styles/openclaw-shell.css";
+import "./styles/openclaw-workspaces.css";
+import "./styles/openclaw-chat.css";
+import "./styles/openclaw-launch.css";
+import "./styles/web-awesome.css";
+import "./styles/terminal.css";
+import "./styles/browser-pane.css";
+import "./styles/media-viewer.css";
+
+// Pin the original component runtime; avoid the all-components loader and CDN.
+import "@awesome.me/webawesome/dist/components/tab-group/tab-group.js";
+import "@awesome.me/webawesome/dist/components/tab/tab.js";
+import "@awesome.me/webawesome/dist/components/tab-panel/tab-panel.js";
+import "@awesome.me/webawesome/dist/components/switch/switch.js";
+import "@awesome.me/webawesome/dist/components/select/select.js";
+import "@awesome.me/webawesome/dist/components/option/option.js";
+import "@awesome.me/webawesome/dist/components/dropdown/dropdown.js";
+import "@awesome.me/webawesome/dist/components/dropdown-item/dropdown-item.js";
+import "@awesome.me/webawesome/dist/components/popover/popover.js";
+import "@awesome.me/webawesome/dist/components/progress-bar/progress-bar.js";
+import "katex/dist/katex.min.css";
+import "./components/select-picker.ts";
+import "./components/rich-embeds.ts";
+import "./components/media-viewer.ts";
+
+import { installUiErrorReporting } from "./lib/ui-errors.ts";
+import { applyThemeMode } from "./lib/theme.ts";
+import { loadSettings } from "./lib/settings-store.ts";
+import { applyTheme, loadThemes } from "./lib/theme-store.ts";
+
+// First, so failures while the app starts are reported too.
+installUiErrorReporting();
+
+// Resolve the theme, the type stack and the color mode before the app renders,
+// so a saved appearance never paints its fallback first. Every step degrades to
+// the tokens.css defaults when the config backend is unreachable.
+await loadThemes();
+const settings = await loadSettings();
+applyThemeMode(settings.themeMode, (await applyTheme(settings.theme)) ?? "both");
+
+await import("./hui-app.ts");

@@ -1,0 +1,97 @@
+.hui-providers { min-width: 0; }
+.hui-provider-field { display: flex; flex-direction: column; gap: 8px; font-size: 13px; margin: 12px 0; }
+.hui-provider-field input, .hui-provider-field select { width: 100%; min-width: 0; border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; background: var(--bg); color: var(--text); font: inherit; }
+.hui-provider-field input:focus-visible, .hui-provider-field select:focus-visible, .hui-provider-model input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.hui-provider-detail { border: 1px solid var(--border); border-radius: 12px; padding: 20px; }
+.hui-provider-heading { display: flex; align-items: center; gap: 12px; justify-content: space-between; flex-wrap: wrap; }
+.hui-provider-heading > div { flex: 1; min-width: 0; }
+.hui-provider-heading h3, .hui-provider-heading h4 { margin: 0; }
+.hui-provider-heading p, .hui-provider-quota p { color: var(--muted); font-size: 13px; line-height: 1.6; }
+.hui-provider-icon { width: 28px; height: 28px; flex: 0 0 28px; }
+.hui-provider-actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 14px 0; }
+.hui-provider-actions .btn { white-space: normal; text-align: left; }
+.hui-provider-method { color: var(--muted); }
+.hui-provider-quota { border-block: 1px solid var(--border); padding: 16px 0; margin: 20px 0; }
+.hui-provider-window { margin: 12px 0; }
+.hui-provider-window > div { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; }
+.hui-provider-window progress { width: 100%; accent-color: var(--accent); height: 8px; }
+.hui-provider-quota small { color: var(--muted); font-size: 12px; }
+.hui-provider-models { max-height: 340px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; }
+.hui-provider-model { display: flex; gap: 12px; padding: 12px; align-items: flex-start; cursor: pointer; }
+.hui-provider-model + .hui-provider-model { border-top: 1px solid var(--border); }
+.hui-provider-model:hover { background: var(--bg-hover); }
+.hui-provider-model input { margin-top: 4px; accent-color: var(--accent); }
+.hui-provider-model > span { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.hui-provider-model strong { font-size: 13px; }
+.hui-provider-model code { font-size: 11px; overflow-wrap: anywhere; }
+.hui-provider-model small { color: var(--muted); font-size: 11px; }
+.hui-provider-login { padding: 14px; border: 1px solid var(--border); border-radius: 8px; margin: 12px 0; }
+.hui-provider-login p { overflow-wrap: anywhere; font-size: 13px; }
+.hui-provider-login form { margin-block: 12px; }
+.hui-provider-error { color: var(--danger); font-size: 13px; }
+.hui-provider-notice { color: var(--accent); font-size: 13px; }
+@media (max-width: 600px) { .hui-provider-detail { padding: 12px; } .hui-provider-method { display: none; } }
+
+.hui-provider-cards { display: grid; gap: 16px; }
+.hui-provider-empty { padding: 32px 16px; margin: 0; border: 1px dashed var(--border); border-radius: 12px; text-align: center; color: var(--muted); font-size: 13px; }
+.hui-provider-dialog { box-sizing: border-box; width: min(480px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); padding: 24px; border: 1px solid var(--border); border-radius: 16px; background: var(--bg); color: var(--text); box-shadow: 0 24px 80px #0006; overflow-y: auto; }
+.hui-provider-dialog::backdrop { background: #0009; backdrop-filter: blur(4px); }
+.hui-provider-dialog .settings-section__desc { margin: 12px 0 20px; }
+.hui-provider-dialog h3 { font-size: 18px; }
+.hui-provider-choices { display: grid; gap: 10px; }
+.hui-provider-choice { display: flex; align-items: center; gap: 16px; width: 100%; padding: 16px; text-align: left; font: inherit; color: var(--text); background: var(--bg-elevated, var(--bg)); border: 1px solid var(--border); border-radius: 10px; cursor: pointer; }
+.hui-provider-choice:hover { background: var(--bg-hover); border-color: var(--accent); }
+.hui-provider-choice > span:not([aria-hidden]) { flex: 1; min-width: 0; }
+.hui-provider-choice strong { display: block; font-size: 14px; }
+.hui-provider-choice small { display: block; color: var(--muted); font-size: 12px; line-height: 1.6; margin-top: 4px; }
+.hui-provider-choice:focus-visible, .hui-provider-picker > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.hui-provider-picker { border: 1px solid var(--border); border-radius: 8px; }
+.hui-provider-picker > summary { cursor: pointer; padding: 12px; font-size: 13px; }
+.hui-provider-picker > summary span { float: right; color: var(--muted); }
+.hui-provider-picker-panel { padding: 0 12px; border-top: 1px solid var(--border); }
+.hui-provider-picker-panel .hui-provider-models { max-height: min(300px, 40dvh); }
+.hui-provider-catalog { margin-top: 20px; }
+.hui-provider-catalog > summary { cursor: pointer; padding: 12px 0; font-size: 13px; color: var(--muted); }
+@media (max-width: 600px) {
+  .hui-provider-dialog { padding: 16px; }
+  .hui-provider-heading h3 { font-size: 14px; }
+  .hui-provider-cards .hui-provider-quota { margin: 12px 0; }
+  .hui-provider-heading .btn { padding: 8px 10px; }
+}
+
+.hui-provider-accounts { margin-top: 18px; }
+.hui-provider-account { margin-top: 10px; padding: 14px; border: 1px solid var(--border); border-radius: 8px; }
+.hui-provider-account .hui-provider-heading { flex-wrap: wrap; }
+.hui-provider-account p { margin: 4px 0; color: var(--muted); font-size: 12px; }
+.hui-provider-accounts > .hui-provider-heading { flex-wrap: wrap; }
+/* The generic description pulls upward; this header contains full-height actions. */
+.hui-provider-accounts > .hui-provider-heading + .settings-section__desc { margin-top: var(--space-3); }
+
+.hui-account-drag-help { color: var(--muted); font-size: 12px; line-height: 1.6; }
+.hui-account-grip { display: grid; place-items: center; flex: 0 0 44px; width: 44px; height: 44px; padding: 0; color: var(--muted); background: transparent; border: 0; border-radius: 6px; cursor: grab; touch-action: none; user-select: none; }
+.hui-account-grip:hover { color: var(--text); background: var(--bg-hover); }
+.hui-account-grip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.hui-account-grip:disabled { opacity: .4; cursor: default; }
+.hui-provider-account { position: relative; overflow-wrap: anywhere; }
+.hui-provider-account.is-dragging { border-color: var(--accent); background: var(--bg-hover); }
+.hui-provider-account.is-dragging .hui-account-grip { cursor: grabbing; color: var(--accent); }
+.hui-provider-account.drop-before::before, .hui-provider-account.drop-after::after { content: ""; position: absolute; left: 0; right: 0; height: 3px; border-radius: 2px; background: var(--accent); pointer-events: none; }
+.hui-provider-account.drop-before::before { top: -7px; }
+.hui-provider-account.drop-after::after { bottom: -7px; }
+.hui-account-drag-status { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+.hui-subscription-status { display: flex; flex-wrap: wrap; gap: 12px 28px; margin: 16px 0 8px; font-size: 13px; }
+.hui-subscription-status dt { color: var(--muted); font-size: 12px; margin-bottom: 4px; }
+.hui-subscription-status dd { margin: 0; font-weight: 600; }
+.hui-provider-account .hui-subscription-note { font-size: 11px; margin-bottom: 12px; }
+.hui-provider-windows { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); gap: 12px 24px; }
+.hui-provider-window { min-width: 0; margin: 0 0 10px; }
+.hui-provider-window > div > span { flex-shrink: 0; }
+.hui-provider-window[data-exhausted="true"] progress { accent-color: var(--danger); }
+.hui-provider-account .hui-provider-quota { border-bottom: 0; margin: 12px 0 0; padding-bottom: 0; }
+
+.hui-account-name { display: flex; align-items: baseline; gap: 6px; }
+.hui-account-name > span:last-child { min-width: 0; overflow-wrap: anywhere; }
+.hui-account-name > span:first-child { flex: 0 0 auto; white-space: nowrap; }
+
+.hui-provider-field-help { color: var(--muted); font-size: 12px; line-height: 1.5; }

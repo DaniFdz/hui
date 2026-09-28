@@ -1,0 +1,651 @@
+{
+  "reference": "OpenClaw 2026.9.5 ec9c1a13db8938e5a3eaa51fca2e981cde2395a9",
+  "method": "Original shipped theme mapper and accent function; no derived HUI palette values copied into reference",
+  "states": [
+    {
+      "family": "claw",
+      "mode": "light",
+      "accent": "",
+      "source": "original-palette-css",
+      "count": 53,
+      "differences": []
+    },
+    {
+      "family": "claw",
+      "mode": "light",
+      "accent": "#ff5c5c",
+      "source": "original-palette-css",
+      "count": 53,
+      "differences": []
+    },
+    {
+      "family": "claw",
+      "mode": "light",
+      "accent": "#ff8066",
+      "source": "original-palette-css",
+      "count": 53,
+      "differences": []
+    },
+    {
+      "family": "claw",
+      "mode": "light",
+      "accent": "#f5b942",
+      "source": "original-palette-css",
+      "count": 53,
+      "differences": []
+    },
+    {
+      "family": "claw",
+      "mode": "light",
+      "accent": "#52c99a",
+      "source": "original-palette-css",
+      "count": 53,
+      "differences": []
+    },
+    {
+      "family": "claw",
+      "mode": "light",
+      "accent": "#35b9b0",
+      "source": "original-palette-css",
+      "count": 53,
+      "differences": []
+    },
+    {
+      "family": "claw",
+      "mode": "light",
+      "accent": "#5b9cf6",
+      "source": "original-palette-css",
+      "count": 53,
+      "differences": []
+    },
+    {
+      "family": "claw",
+      "mode": "light",
+      "accent": "#a78bfa",
+      "source": "original-palette-css",
+      "count": 53,
+      "differences": []
+    },
+    {
+      "family": "claw",
+      "mode": "light",
+      "accent": "#f472b6",
+      "source": "original-palette-css",
+      "count": 53,
+      "differences": []
+    },
+    {
+      "family": "claw",
+      "mode": "light",
+      "accent": "#8795a8",
+      "source": "original-palette-css",
+      "count": 53,
+      "differences": []
+    },
+    {
+      "family": "claw",
+      "mode": "dark",
+      "accent": "",
+      "source": "original-palette-css",
+      "count": 53,
+      "differences": []
+    },
+    {
+      "family": "claw",
+      "mode": "dark",
+      "accent": "#ff5c5c",
+      "source": "original-palette-css",
+      "count": 53,
+      "differences": []
+    },
+    {
+      "family": "claw",
+      "mode": "dark",
+      "accent": "#ff8066",
+      "source": "original-palette-css",
+      "count": 53,
+      "differences": []
+    },
+    {
+      "family": "claw",
+      "mode": "dark",
+      "accent": "#f5b942",
+      "source": "original-palette-css",
+      "count": 53,
+      "differences": []
+    },
+    {
+      "family": "claw",
+      "mode": "dark",
+      "accent": "#52c99a",
+      "source": "original-palette-css",
+      "count": 53,
+      "differences": []
+    },
+    {
+      "family": "claw",
+      "mode": "dark",
+      "accent": "#35b9b0",
+      "source": "original-palette-css",
+      "count": 53,
+      "differences": []
+    },
+    {
+      "family": "claw",
+      "mode": "dark",
+      "accent": "#5b9cf6",
+      "source": "original-palette-css",
+      "count": 53,
+      "differences": []
+    },
+    {
+      "family": "claw",
+      "mode": "dark",
+      "accent": "#a78bfa",
+      "source": "original-palette-css",
+      "count": 53,
+      "differences": []
+    },
+    {
+      "family": "claw",
+      "mode": "dark",
+      "accent": "#f472b6",
+      "source": "original-palette-css",
+      "count": 53,
+      "differences": []
+    },
+    {
+      "family": "claw",
+      "mode": "dark",
+      "accent": "#8795a8",
+      "source": "original-palette-css",
+      "count": 53,
+      "differences": []
+    },
+    {
+      "family": "rose",
+      "mode": "light",
+      "accent": "",
+      "source": "original-palette-css",
+      "count": 53,
+      "differences": []
+    },
+    {
+      "family": "rose",
+      "mode": "light",
+      "accent": "#ff5c5c",
+      "source": "original-palette-css",
+      "count": 53,
+      "differences": []
+    },
+    {
+      "family": "rose",
+      "mode": "light",
+      "accent": "#ff8066",
+      "source": "original-palette-css",
+      "count": 53,
+      "differences": []
+    },
+    {
+      "family": "rose",
+      "mode": "light",
+      "accent": "#f5b942",
+      "source": "original-palette-css",
+      "count": 53,
+      "differences": []
+    },
+    {
+      "family": "rose",
+      "mode": "light",
+      "accent": "#52c99a",
+      "source": "original-palette-css",
+      "count": 53,
+      "differences": []
+    },
+    {
+      "family": "rose",
+      "mode": "light",
+      "accent": "#35b9b0",
+      "source": "original-palette-css",
+      "count": 53,
+      "differences": []
+    },
+    {
+      "family": "rose",
+      "mode": "light",
+      "accent": "#5b9cf6",
+      "source": "original-palette-css",
+      "count": 53,
+      "differences": []
+    },
+    {
+      "family": "rose",
+      "mode": "light",
+      "accent": "#a78bfa",
+      "source": "original-palette-css",
+      "count": 53,
+      "differences": []
+    },
+    {
+      "family": "rose",
+      "mode": "light",
+      "accent": "#f472b6",
+      "source": "original-palette-css",
+      "count": 53,
+      "differences": []
+    },
+    {
+      "family": "rose",
+      "mode": "light",
+      "accent": "#8795a8",
+      "source": "original-palette-css",
+      "count": 53,
+      "differences": []
+    },
+    {
+      "family": "rose",
+      "mode": "dark",
+      "accent": "",
+      "source": "original-palette-css",
+      "count": 53,
+      "differences": []
+    },
+    {
+      "family": "rose",
+      "mode": "dark",
+      "accent": "#ff5c5c",
+      "source": "original-palette-css",
+      "count": 53,
+      "differences": []
+    },
+    {
+      "family": "rose",
+      "mode": "dark",
+      "accent": "#ff8066",
+      "source": "original-palette-css",
+      "count": 53,
+      "differences": []
+    },
+    {
+      "family": "rose",
+      "mode": "dark",
+      "accent": "#f5b942",
+      "source": "original-palette-css",
+      "count": 53,
+      "differences": []
+    },
+    {
+      "family": "rose",
+      "mode": "dark",
+      "accent": "#52c99a",
+      "source": "original-palette-css",
+      "count": 53,
+      "differences": []
+    },
+    {
+      "family": "rose",
+      "mode": "dark",
+      "accent": "#35b9b0",
+      "source": "original-palette-css",
+      "count": 53,
+      "differences": []
+    },
+    {
+      "family": "rose",
+      "mode": "dark",
+      "accent": "#5b9cf6",
+      "source": "original-palette-css",
+      "count": 53,
+      "differences": []
+    },
+    {
+      "family": "rose",
+      "mode": "dark",
+      "accent": "#a78bfa",
+      "source": "original-palette-css",
+      "count": 53,
+      "differences": []
+    },
+    {
+      "family": "rose",
+      "mode": "dark",
+      "accent": "#f472b6",
+      "source": "original-palette-css",
+      "count": 53,
+      "differences": []
+    },
+    {
+      "family": "rose",
+      "mode": "dark",
+      "accent": "#8795a8",
+      "source": "original-palette-css",
+      "count": 53,
+      "differences": []
+    },
+    {
+      "family": "catppuccin",
+      "mode": "light",
+      "accent": "",
+      "source": "original-tweakcn-mapper",
+      "count": 53,
+      "differences": []
+    },
+    {
+      "family": "catppuccin",
+      "mode": "light",
+      "accent": "#ff5c5c",
+      "source": "original-tweakcn-mapper",
+      "count": 53,
+      "differences": []
+    },
+    {
+      "family": "catppuccin",
+      "mode": "light",
+      "accent": "#ff8066",
+      "source": "original-tweakcn-mapper",
+      "count": 53,
+      "differences": []
+    },
+    {
+      "family": "catppuccin",
+      "mode": "light",
+      "accent": "#f5b942",
+      "source": "original-tweakcn-mapper",
+      "count": 53,
+      "differences": []
+    },
+    {
+      "family": "catppuccin",
+      "mode": "light",
+      "accent": "#52c99a",
+      "source": "original-tweakcn-mapper",
+      "count": 53,
+      "differences": []
+    },
+    {
+      "family": "catppuccin",
+      "mode": "light",
+      "accent": "#35b9b0",
+      "source": "original-tweakcn-mapper",
+      "count": 53,
+      "differences": []
+    },
+    {
+      "family": "catppuccin",
+      "mode": "light",
+      "accent": "#5b9cf6",
+      "source": "original-tweakcn-mapper",
+      "count": 53,
+      "differences": []
+    },
+    {
+      "family": "catppuccin",
+      "mode": "light",
+      "accent": "#a78bfa",
+      "source": "original-tweakcn-mapper",
+      "count": 53,
+      "differences": []
+    },
+    {
+      "family": "catppuccin",
+      "mode": "light",
+      "accent": "#f472b6",
+      "source": "original-tweakcn-mapper",
+      "count": 53,
+      "differences": []
+    },
+    {
+      "family": "catppuccin",
+      "mode": "light",
+      "accent": "#8795a8",
+      "source": "original-tweakcn-mapper",
+      "count": 53,
+      "differences": []
+    },
+    {
+      "family": "catppuccin",
+      "mode": "dark",
+      "accent": "",
+      "source": "original-tweakcn-mapper",
+      "count": 53,
+      "differences": []
+    },
+    {
+      "family": "catppuccin",
+      "mode": "dark",
+      "accent": "#ff5c5c",
+      "source": "original-tweakcn-mapper",
+      "count": 53,
+      "differences": []
+    },
+    {
+      "family": "catppuccin",
+      "mode": "dark",
+      "accent": "#ff8066",
+      "source": "original-tweakcn-mapper",
+      "count": 53,
+      "differences": []
+    },
+    {
+      "family": "catppuccin",
+      "mode": "dark",
+      "accent": "#f5b942",
+      "source": "original-tweakcn-mapper",
+      "count": 53,
+      "differences": []
+    },
+    {
+      "family": "catppuccin",
+      "mode": "dark",
+      "accent": "#52c99a",
+      "source": "original-tweakcn-mapper",
+      "count": 53,
+      "differences": []
+    },
+    {
+      "family": "catppuccin",
+      "mode": "dark",
+      "accent": "#35b9b0",
+      "source": "original-tweakcn-mapper",
+      "count": 53,
+      "differences": []
+    },
+    {
+      "family": "catppuccin",
+      "mode": "dark",
+      "accent": "#5b9cf6",
+      "source": "original-tweakcn-mapper",
+      "count": 53,
+      "differences": []
+    },
+    {
+      "family": "catppuccin",
+      "mode": "dark",
+      "accent": "#a78bfa",
+      "source": "original-tweakcn-mapper",
+      "count": 53,
+      "differences": []
+    },
+    {
+      "family": "catppuccin",
+      "mode": "dark",
+      "accent": "#f472b6",
+      "source": "original-tweakcn-mapper",
+      "count": 53,
+      "differences": []
+    },
+    {
+      "family": "catppuccin",
+      "mode": "dark",
+      "accent": "#8795a8",
+      "source": "original-tweakcn-mapper",
+      "count": 53,
+      "differences": []
+    },
+    {
+      "family": "amethyst-haze",
+      "mode": "light",
+      "accent": "",
+      "source": "original-tweakcn-mapper",
+      "count": 53,
+      "differences": []
+    },
+    {
+      "family": "amethyst-haze",
+      "mode": "light",
+      "accent": "#ff5c5c",
+      "source": "original-tweakcn-mapper",
+      "count": 53,
+      "differences": []
+    },
+    {
+      "family": "amethyst-haze",
+      "mode": "light",
+      "accent": "#ff8066",
+      "source": "original-tweakcn-mapper",
+      "count": 53,
+      "differences": []
+    },
+    {
+      "family": "amethyst-haze",
+      "mode": "light",
+      "accent": "#f5b942",
+      "source": "original-tweakcn-mapper",
+      "count": 53,
+      "differences": []
+    },
+    {
+      "family": "amethyst-haze",
+      "mode": "light",
+      "accent": "#52c99a",
+      "source": "original-tweakcn-mapper",
+      "count": 53,
+      "differences": []
+    },
+    {
+      "family": "amethyst-haze",
+      "mode": "light",
+      "accent": "#35b9b0",
+      "source": "original-tweakcn-mapper",
+      "count": 53,
+      "differences": []
+    },
+    {
+      "family": "amethyst-haze",
+      "mode": "light",
+      "accent": "#5b9cf6",
+      "source": "original-tweakcn-mapper",
+      "count": 53,
+      "differences": []
+    },
+    {
+      "family": "amethyst-haze",
+      "mode": "light",
+      "accent": "#a78bfa",
+      "source": "original-tweakcn-mapper",
+      "count": 53,
+      "differences": []
+    },
+    {
+      "family": "amethyst-haze",
+      "mode": "light",
+      "accent": "#f472b6",
+      "source": "original-tweakcn-mapper",
+      "count": 53,
+      "differences": []
+    },
+    {
+      "family": "amethyst-haze",
+      "mode": "light",
+      "accent": "#8795a8",
+      "source": "original-tweakcn-mapper",
+      "count": 53,
+      "differences": []
+    },
+    {
+      "family": "amethyst-haze",
+      "mode": "dark",
+      "accent": "",
+      "source": "original-tweakcn-mapper",
+      "count": 53,
+      "differences": []
+    },
+    {
+      "family": "amethyst-haze",
+      "mode": "dark",
+      "accent": "#ff5c5c",
+      "source": "original-tweakcn-mapper",
+      "count": 53,
+      "differences": []
+    },
+    {
+      "family": "amethyst-haze",
+      "mode": "dark",
+      "accent": "#ff8066",
+      "source": "original-tweakcn-mapper",
+      "count": 53,
+      "differences": []
+    },
+    {
+      "family": "amethyst-haze",
+      "mode": "dark",
+      "accent": "#f5b942",
+      "source": "original-tweakcn-mapper",
+      "count": 53,
+      "differences": []
+    },
+    {
+      "family": "amethyst-haze",
+      "mode": "dark",
+      "accent": "#52c99a",
+      "source": "original-tweakcn-mapper",
+      "count": 53,
+      "differences": []
+    },
+    {
+      "family": "amethyst-haze",
+      "mode": "dark",
+      "accent": "#35b9b0",
+      "source": "original-tweakcn-mapper",
+      "count": 53,
+      "differences": []
+    },
+    {
+      "family": "amethyst-haze",
+      "mode": "dark",
+      "accent": "#5b9cf6",
+      "source": "original-tweakcn-mapper",
+      "count": 53,
+      "differences": []
+    },
+    {
+      "family": "amethyst-haze",
+      "mode": "dark",
+      "accent": "#a78bfa",
+      "source": "original-tweakcn-mapper",
+      "count": 53,
+      "differences": []
+    },
+    {
+      "family": "amethyst-haze",
+      "mode": "dark",
+      "accent": "#f472b6",
+      "source": "original-tweakcn-mapper",
+      "count": 53,
+      "differences": []
+    },
+    {
+      "family": "amethyst-haze",
+      "mode": "dark",
+      "accent": "#8795a8",
+      "source": "original-tweakcn-mapper",
+      "count": 53,
+      "differences": []
+    }
+  ],
+  "comparisonCount": 4240,
+  "limitations": [
+    "Explicit HUI typeface choice retained; no claim that all upstream typeface choices are implemented.",
+    "Partial HUI/Dracula themes have no complete upstream tweakcn input and are not counted."
+  ]
+}

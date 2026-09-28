@@ -1,0 +1,51 @@
+/* OpenClaw 2026.9.5 owns the design system. These are shadcn/type-scale name
+ * bridges and runtime-status mappings, not a second palette or geometry scale.
+ * See openclaw-reference/README.md for provenance. */
+@import "./openclaw-reference/base.css";
+@import url("/themes/rose.css");
+@import url("/themes/miami.css");
+@import url("/fonts/atkinson-hyperlegible.css");
+@import url("/fonts/dm-sans.css");
+@import url("/fonts/fraunces.css");
+@import url("/fonts/geist.css");
+@import url("/fonts/ibm-plex-sans.css");
+@import url("/fonts/instrument-sans.css");
+@import url("/fonts/jetbrains-mono.css");
+@import url("/fonts/lora.css");
+@import url("/fonts/space-grotesk.css");
+@import url("/fonts/symbols-nerd-font-mono.css");
+
+/* custom-theme-import.ts uses a 16px glow in both modes (base light is 12px).
+ * The ring itself is already mode-dependent in the original base stylesheet. */
+:root:is([data-theme="custom"], [data-theme="custom-light"]) {
+  --focus-glow: 0 0 0 2px var(--bg), 0 0 0 3px var(--ring), 0 0 16px var(--accent-glow);
+}
+
+:root {
+  color-scheme: light dark;
+  --background: var(--bg);
+  --font-sans: var(--font-body);
+  --font-mono: var(--mono);
+  --text-scale: var(--control-ui-text-scale);
+  --text-sm: var(--control-ui-text-sm);
+  --text-base: var(--control-ui-text-md);
+  --text-lg: var(--control-ui-text-lg);
+  --text-xl: calc(24px * var(--control-ui-text-scale));
+  --font-size-xs: var(--control-ui-text-xs);
+  --font-size-xl: var(--text-xl);
+  --shadow: var(--shadow-md);
+  --hover: var(--panel-hover);
+  --sidebar-width: 258px;
+  --status-running: var(--ok);
+  --status-starting: var(--warn);
+  --status-error: var(--danger);
+  --status-idle: var(--muted);
+  --status-stopped: var(--muted);
+  --status-waiting: var(--warn);
+  /* Development-stage palette, shared by the Kanban board and session rows. */
+  --stage-backlog: var(--muted);
+  --stage-investigation: var(--session-color-green);
+  --stage-implementation: var(--session-color-blue);
+  --stage-testing: var(--session-color-yellow);
+  --stage-done: var(--session-color-purple);
+}

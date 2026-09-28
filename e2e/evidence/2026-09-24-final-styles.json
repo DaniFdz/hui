@@ -1,0 +1,1793 @@
+{
+  "reference": "OpenClaw 2026.9.5 ec9c1a13db8938e5a3eaa51fca2e981cde2395a9",
+  "checkpoint": "Earlier cascade/state checkpoint, before the final icon and original-composer controller port. See 2026-09-24-final-verification.json for fresh route, Settings, original composer and switch measurements. Retained as historical interaction-state evidence, not a fresh whole-app certificate.",
+  "method": "Same-DOM cascade probe, except finalNativeSwitch uses the shipped Web Awesome runtime in an isolated frame. Not a whole-app screenshot pixel diff.",
+  "results": {
+    "finalSurfaces1": [
+      {
+        "id": "about",
+        "styles": [
+          {
+            "selector": "main .page-title",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .settings-row",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .settings-group",
+            "state": [],
+            "differences": {}
+          }
+        ]
+      },
+      {
+        "id": "profile",
+        "styles": [
+          {
+            "selector": "main .page-title",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .settings-row",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .settings-group",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .btn",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .profile-hero",
+            "state": [],
+            "differences": {}
+          }
+        ]
+      },
+      {
+        "id": "labs",
+        "styles": [
+          {
+            "selector": "main .page-title",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .settings-row",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .settings-group",
+            "state": [],
+            "differences": {}
+          }
+        ]
+      },
+      {
+        "id": "activity",
+        "styles": [
+          {
+            "selector": "main .page-title",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .settings-group",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .btn",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .activity-entry__summary",
+            "state": [],
+            "differences": {}
+          }
+        ]
+      },
+      {
+        "id": "logs",
+        "styles": [
+          {
+            "selector": "main .page-title",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .btn",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .log-row",
+            "state": [],
+            "differences": {}
+          }
+        ]
+      },
+      {
+        "id": "usage",
+        "styles": [
+          {
+            "selector": "main .page-title",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .settings-row",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .settings-group",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .btn",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .usage-summary-card",
+            "state": [],
+            "differences": {}
+          }
+        ]
+      },
+      {
+        "id": "debug",
+        "styles": [
+          {
+            "selector": "main .page-title",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .settings-row",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .settings-group",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .btn",
+            "state": [],
+            "differences": {}
+          }
+        ]
+      },
+      {
+        "id": "config",
+        "styles": [
+          {
+            "selector": "main .page-title",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .settings-row",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .settings-group",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .btn",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .settings-section__heading",
+            "state": [],
+            "differences": {}
+          }
+        ]
+      },
+      {
+        "id": "connection",
+        "styles": [
+          {
+            "selector": "main .page-title",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .settings-row",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .settings-group",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .btn",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .settings-section__heading",
+            "state": [],
+            "differences": {}
+          }
+        ]
+      },
+      {
+        "id": "model-providers",
+        "styles": [
+          {
+            "selector": "main .page-title",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .settings-row",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .settings-group",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .btn",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .settings-section__heading",
+            "state": [],
+            "differences": {}
+          }
+        ]
+      }
+    ],
+    "finalSurfaces2": [
+      {
+        "id": "model-setup",
+        "styles": [
+          {
+            "selector": "main .page-title",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .settings-row",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .settings-group",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .btn",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .settings-section__heading",
+            "state": [],
+            "differences": {}
+          }
+        ]
+      },
+      {
+        "id": "skills",
+        "styles": [
+          {
+            "selector": "main .page-title",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .settings-row",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .settings-group",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .btn",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .settings-input",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .settings-section__heading",
+            "state": [],
+            "differences": {}
+          }
+        ]
+      },
+      {
+        "id": "plugins",
+        "styles": [
+          {
+            "selector": "main .page-title",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .settings-row",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .settings-group",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .btn",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .settings-input",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .settings-section__heading",
+            "state": [],
+            "differences": {}
+          }
+        ]
+      },
+      {
+        "id": "plugin",
+        "styles": [
+          {
+            "selector": "main .page-title",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .settings-row",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .settings-group",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .btn",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .settings-input",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .settings-section__heading",
+            "state": [],
+            "differences": {}
+          }
+        ]
+      },
+      {
+        "id": "skill-workshop",
+        "styles": [
+          {
+            "selector": "main .page-title",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .settings-row",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .settings-group",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .btn",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .settings-section__heading",
+            "state": [],
+            "differences": {}
+          }
+        ]
+      },
+      {
+        "id": "memory-import",
+        "styles": [
+          {
+            "selector": "main .page-title",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .settings-row",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .settings-group",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .btn",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .settings-section__heading",
+            "state": [],
+            "differences": {}
+          }
+        ]
+      },
+      {
+        "id": "worktrees",
+        "styles": [
+          {
+            "selector": "main .page-title",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .settings-row",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .settings-group",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .btn",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .settings-section__heading",
+            "state": [],
+            "differences": {}
+          }
+        ]
+      },
+      {
+        "id": "sessions",
+        "styles": [
+          {
+            "selector": "main .page-title",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .settings-group",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .btn",
+            "state": [
+              "disabled"
+            ],
+            "differences": {}
+          },
+          {
+            "selector": "main .data-table",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .session-avatar",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .session-link",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .settings-section__heading",
+            "state": [],
+            "differences": {}
+          }
+        ]
+      },
+      {
+        "id": "cron",
+        "styles": [
+          {
+            "selector": "main .page-title",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .settings-row",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .settings-group",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .btn",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .settings-input",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .settings-select",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .settings-section__heading",
+            "state": [],
+            "differences": {}
+          }
+        ]
+      },
+      {
+        "id": "tasks",
+        "styles": [
+          {
+            "selector": "main .page-title",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .settings-row",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .settings-group",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .btn",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .settings-input",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .settings-select",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "main .settings-section__heading",
+            "state": [],
+            "differences": {}
+          }
+        ]
+      }
+    ],
+    "finalSettingsStyles": [
+      {
+        "page": "appearance",
+        "styles": [
+          {
+            "selector": ".settings-main .page-title",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".settings-workspace",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".settings-page__intro",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".settings-group",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".settings-row",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".settings-row__control",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".picker-select__trigger",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".settings-switch",
+            "state": [],
+            "differences": {
+              "display": {
+                "hui": "flex",
+                "upstream": "block"
+              },
+              "height": {
+                "hui": "18px",
+                "upstream": "22.6875px"
+              },
+              "width": {
+                "hui": "31.5px",
+                "upstream": "20px"
+              },
+              "align-items": {
+                "hui": "center",
+                "upstream": "normal"
+              },
+              "justify-content": {
+                "hui": "center",
+                "upstream": "normal"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "page": "connection",
+        "styles": [
+          {
+            "selector": ".settings-main .page-title",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".settings-workspace",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".settings-page__intro",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".settings-group",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".settings-row",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".settings-row__control",
+            "state": [],
+            "differences": {}
+          }
+        ]
+      },
+      {
+        "page": "models",
+        "styles": [
+          {
+            "selector": ".settings-main .page-title",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".settings-workspace",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".settings-page__intro",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".settings-group",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".settings-row",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".settings-row__control",
+            "state": [],
+            "differences": {}
+          }
+        ]
+      },
+      {
+        "page": "plugins",
+        "styles": [
+          {
+            "selector": ".settings-main .page-title",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".settings-workspace",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".settings-page__intro",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".settings-group",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".settings-row",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".settings-row__control",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".settings-main .btn",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".settings-main .settings-input",
+            "state": [],
+            "differences": {}
+          }
+        ]
+      },
+      {
+        "page": "skills",
+        "styles": [
+          {
+            "selector": ".settings-main .page-title",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".settings-workspace",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".settings-page__intro",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".settings-group",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".settings-row",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".settings-row__control",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".settings-main .btn",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".settings-main .settings-input",
+            "state": [],
+            "differences": {}
+          }
+        ]
+      },
+      {
+        "page": "tools",
+        "styles": [
+          {
+            "selector": ".settings-main .page-title",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".settings-workspace",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".settings-page__intro",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".settings-group",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".settings-row",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".settings-row__control",
+            "state": [],
+            "differences": {}
+          }
+        ]
+      },
+      {
+        "page": "memory",
+        "styles": [
+          {
+            "selector": ".settings-main .page-title",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".settings-workspace",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".settings-page__intro",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".settings-group",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".settings-row",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".settings-row__control",
+            "state": [],
+            "differences": {}
+          }
+        ]
+      },
+      {
+        "page": "automation",
+        "styles": [
+          {
+            "selector": ".settings-main .page-title",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".settings-workspace",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".settings-page__intro",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".settings-group",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".settings-row",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".settings-row__control",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".settings-main .btn",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".settings-main .settings-input",
+            "state": [],
+            "differences": {}
+          }
+        ]
+      },
+      {
+        "page": "security",
+        "styles": [
+          {
+            "selector": ".settings-main .page-title",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".settings-workspace",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".settings-page__intro",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".settings-group",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".settings-row",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".settings-row__control",
+            "state": [],
+            "differences": {}
+          }
+        ]
+      },
+      {
+        "page": "sessions",
+        "styles": [
+          {
+            "selector": ".settings-main .page-title",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".settings-workspace",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".settings-page__intro",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".settings-group",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".settings-row",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".settings-row__control",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".settings-main .btn",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".settings-main .settings-input",
+            "state": [],
+            "differences": {}
+          }
+        ]
+      },
+      {
+        "page": "diagnostics",
+        "styles": [
+          {
+            "selector": ".settings-main .page-title",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".settings-workspace",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".settings-page__intro",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".settings-group",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".settings-row",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".settings-row__control",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".settings-main .btn",
+            "state": [],
+            "differences": {}
+          }
+        ]
+      }
+    ],
+    "finalAutomationStyles": [
+      {
+        "value": "cron",
+        "visible": [
+          "Name",
+          "Description",
+          "Session",
+          "Schedule",
+          "Cron expression",
+          "Cron timezone",
+          "Prompt",
+          "Timeout (seconds)"
+        ],
+        "styles": [
+          {
+            "selector": ".settings-workspace",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".hui-automation-form",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".settings-row--stacked",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".settings-row--stacked textarea",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".cron-editor-actions",
+            "state": [],
+            "differences": {}
+          }
+        ]
+      },
+      {
+        "value": "every",
+        "visible": [
+          "Name",
+          "Description",
+          "Session",
+          "Schedule",
+          "Repeat every (minutes)",
+          "Prompt",
+          "Timeout (seconds)"
+        ],
+        "styles": [
+          {
+            "selector": ".settings-workspace",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".hui-automation-form",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".settings-row--stacked",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".settings-row--stacked textarea",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".cron-editor-actions",
+            "state": [],
+            "differences": {}
+          }
+        ]
+      },
+      {
+        "value": "at",
+        "visible": [
+          "Name",
+          "Description",
+          "Session",
+          "Schedule",
+          "Run once at",
+          "Prompt",
+          "Timeout (seconds)"
+        ],
+        "styles": [
+          {
+            "selector": ".settings-workspace",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".hui-automation-form",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".settings-row--stacked",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".settings-row--stacked textarea",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".cron-editor-actions",
+            "state": [],
+            "differences": {}
+          }
+        ]
+      }
+    ],
+    "finalSidebarHover": [
+      {
+        "selector": ".sidebar",
+        "state": [
+          "hover"
+        ],
+        "differences": {}
+      },
+      {
+        "selector": ".sidebar-brand",
+        "state": [],
+        "differences": {}
+      },
+      {
+        "selector": ".sidebar-brand__icon",
+        "state": [],
+        "differences": {}
+      },
+      {
+        "selector": ".sidebar-recent-session",
+        "state": [
+          "hover"
+        ],
+        "differences": {}
+      },
+      {
+        "selector": ".sidebar-recent-session__link",
+        "state": [
+          "hover"
+        ],
+        "differences": {}
+      },
+      {
+        "selector": ".sidebar-recent-session__text",
+        "state": [
+          "hover"
+        ],
+        "differences": {}
+      },
+      {
+        "selector": ".sidebar-recent-session__name",
+        "state": [
+          "hover"
+        ],
+        "differences": {}
+      },
+      {
+        "selector": ".sidebar-session-indicator",
+        "state": [],
+        "differences": {}
+      },
+      {
+        "selector": ".sidebar-recent-session__aside",
+        "state": [],
+        "differences": {}
+      },
+      {
+        "selector": ".session-action",
+        "state": [],
+        "differences": {}
+      },
+      {
+        "selector": ".sidebar-footer-bar",
+        "state": [],
+        "differences": {}
+      }
+    ],
+    "finalSessionMenu": [
+      {
+        "selector": ".session-menu",
+        "state": [],
+        "differences": {}
+      },
+      {
+        "selector": ".session-menu__item",
+        "state": [],
+        "differences": {}
+      },
+      {
+        "selector": ".session-menu__icon",
+        "state": [],
+        "differences": {}
+      },
+      {
+        "selector": ".session-menu__item--destructive",
+        "state": [],
+        "differences": {}
+      }
+    ],
+    "finalComposerProgress": [
+      {
+        "selector": ".agent-chat__composer-input-row",
+        "state": [],
+        "differences": {}
+      },
+      {
+        "selector": ".agent-chat__composer-footer",
+        "state": [],
+        "differences": {}
+      },
+      {
+        "selector": ".agent-chat__input-btn--attach",
+        "state": [],
+        "differences": {}
+      },
+      {
+        "selector": ".session-progress-card",
+        "state": [],
+        "differences": {}
+      },
+      {
+        "selector": ".session-progress-card__summary",
+        "state": [],
+        "differences": {}
+      },
+      {
+        "selector": ".session-progress-card__body",
+        "state": [],
+        "differences": {}
+      }
+    ],
+    "finalEffort": {
+      "rect": {
+        "x": 858,
+        "y": 730.90625,
+        "width": 330,
+        "height": 105.09375,
+        "top": 730.90625,
+        "right": 1188,
+        "bottom": 836,
+        "left": 858
+      },
+      "styles": [
+        {
+          "selector": ".chat-controls__effort-picker > summary",
+          "state": [
+            "hover",
+            "focus"
+          ],
+          "differences": {}
+        },
+        {
+          "selector": ".chat-controls__effort-menu",
+          "state": [],
+          "differences": {}
+        },
+        {
+          "selector": ".chat-controls__effort-value",
+          "state": [],
+          "differences": {}
+        },
+        {
+          "selector": ".chat-send-btn",
+          "state": [
+            "disabled"
+          ],
+          "differences": {}
+        }
+      ]
+    },
+    "finalModelPicker": {
+      "styles": [
+        {
+          "selector": ".chat-controls__model-trigger",
+          "state": [
+            "hover",
+            "focus"
+          ],
+          "differences": {}
+        },
+        {
+          "selector": ".chat-controls__model-menu",
+          "state": [],
+          "differences": {}
+        },
+        {
+          "selector": ".chat-controls__model-search",
+          "state": [],
+          "differences": {}
+        },
+        {
+          "selector": ".chat-controls__model-option",
+          "state": [],
+          "differences": {}
+        },
+        {
+          "selector": ".chat-controls__provider-icon",
+          "state": [],
+          "differences": {}
+        }
+      ],
+      "rect": {
+        "x": 786.078125,
+        "y": 695,
+        "width": 340,
+        "height": 141,
+        "top": 695,
+        "right": 1126.078125,
+        "bottom": 836,
+        "left": 786.078125
+      }
+    },
+    "finalExpandedTool": {
+      "styles": [
+        {
+          "selector": ".chat-activity-group[open]",
+          "state": [],
+          "differences": {}
+        },
+        {
+          "selector": ".chat-activity-group[open] .chat-tool-msg-summary",
+          "state": [],
+          "differences": {}
+        },
+        {
+          "selector": ".chat-tool-msg-collapse[open] .chat-tool-msg-body",
+          "state": [],
+          "differences": {}
+        },
+        {
+          "selector": ".chat-tool-msg-collapse[open] .chat-copy-btn",
+          "state": [],
+          "differences": {}
+        },
+        {
+          "selector": ".chat-tool-msg-collapse[open] .chat-tool-card__block-content",
+          "state": [],
+          "differences": {}
+        }
+      ],
+      "desktopNavButton": false
+    },
+    "finalMobileQuestion": {
+      "styles": [
+        {
+          "selector": ".agent-chat__question-dock",
+          "state": [],
+          "differences": {}
+        },
+        {
+          "selector": ".chat-question-panel",
+          "state": [],
+          "differences": {}
+        },
+        {
+          "selector": ".chat-question-panel__option",
+          "state": [
+            "focus",
+            "focus-visible"
+          ],
+          "differences": {}
+        },
+        {
+          "selector": ".chat-question-panel__footer",
+          "state": [],
+          "differences": {}
+        },
+        {
+          "selector": ".chat-question-panel__footer .primary",
+          "state": [],
+          "differences": {}
+        }
+      ],
+      "viewport": [
+        390,
+        844
+      ]
+    },
+    "finalConfirmStyles": {
+      "method": "confirm",
+      "styles": [
+        {
+          "selector": ".agent-chat__question-dock",
+          "state": [],
+          "differences": {}
+        },
+        {
+          "selector": ".chat-question-panel",
+          "state": [],
+          "differences": {}
+        },
+        {
+          "selector": ".chat-question-panel__prompt",
+          "state": [],
+          "differences": {}
+        },
+        {
+          "selector": ".chat-question-panel__option",
+          "state": [
+            "focus",
+            "focus-visible"
+          ],
+          "differences": {}
+        },
+        {
+          "selector": ".chat-question-panel__footer .primary",
+          "state": [],
+          "differences": {}
+        }
+      ],
+      "answered": true,
+      "viewport": [
+        390,
+        844
+      ]
+    },
+    "finalThemeStyles": {
+      "light": {
+        "chat": [
+          {
+            "selector": ".agent-chat__composer-shell",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".agent-chat__input",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": "textarea",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".chat-send-btn",
+            "state": [
+              "disabled"
+            ],
+            "differences": {}
+          },
+          {
+            "selector": ".chat-controls__inline-select-trigger",
+            "state": [],
+            "differences": {}
+          }
+        ],
+        "settings": [
+          {
+            "selector": ".settings-row",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".settings-theme-card--active",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".settings-segmented__btn",
+            "state": [],
+            "differences": {}
+          },
+          {
+            "selector": ".picker-select__trigger",
+            "state": [],
+            "differences": {}
+          }
+        ]
+      },
+      "catppuccinDark": [
+        {
+          "selector": ".agent-chat__composer-shell",
+          "state": [],
+          "differences": {}
+        },
+        {
+          "selector": ".agent-chat__input",
+          "state": [],
+          "differences": {}
+        },
+        {
+          "selector": "textarea",
+          "state": [],
+          "differences": {}
+        },
+        {
+          "selector": ".chat-send-btn",
+          "state": [
+            "disabled"
+          ],
+          "differences": {}
+        },
+        {
+          "selector": ".chat-controls__inline-select-trigger",
+          "state": [],
+          "differences": {}
+        }
+      ]
+    },
+    "finalNativeSwitch": [
+      {
+        "mode": "dark",
+        "checked": true,
+        "comparisons": [
+          {
+            "part": "control",
+            "hui": {
+              "font-size": "14px",
+              "width": "31.5px",
+              "height": "18px",
+              "border-top-width": "1px",
+              "border-radius": "18px",
+              "background-color": "rgb(255, 92, 92)",
+              "translate": "none"
+            },
+            "reference": {
+              "font-size": "14px",
+              "width": "31.5px",
+              "height": "18px",
+              "border-top-width": "1px",
+              "border-radius": "18px",
+              "background-color": "rgb(255, 92, 92)",
+              "translate": "none"
+            },
+            "differences": {}
+          },
+          {
+            "part": "thumb",
+            "hui": {
+              "font-size": "14px",
+              "width": "10.5px",
+              "height": "10.5px",
+              "border-top-width": "0px",
+              "border-radius": "50%",
+              "background-color": "rgb(16, 18, 25)",
+              "translate": "6.75px"
+            },
+            "reference": {
+              "font-size": "14px",
+              "width": "10.5px",
+              "height": "10.5px",
+              "border-top-width": "0px",
+              "border-radius": "50%",
+              "background-color": "rgb(16, 18, 25)",
+              "translate": "6.75px"
+            },
+            "differences": {}
+          }
+        ]
+      },
+      {
+        "mode": "dark",
+        "checked": false,
+        "comparisons": [
+          {
+            "part": "control",
+            "hui": {
+              "font-size": "14px",
+              "width": "31.5px",
+              "height": "18px",
+              "border-top-width": "1px",
+              "border-radius": "18px",
+              "background-color": "rgb(16, 18, 25)",
+              "translate": "none"
+            },
+            "reference": {
+              "font-size": "14px",
+              "width": "31.5px",
+              "height": "18px",
+              "border-top-width": "1px",
+              "border-radius": "18px",
+              "background-color": "rgb(16, 18, 25)",
+              "translate": "none"
+            },
+            "differences": {}
+          },
+          {
+            "part": "thumb",
+            "hui": {
+              "font-size": "14px",
+              "width": "10.5px",
+              "height": "10.5px",
+              "border-top-width": "0px",
+              "border-radius": "50%",
+              "background-color": "rgb(84, 88, 104)",
+              "translate": "-6.75px"
+            },
+            "reference": {
+              "font-size": "14px",
+              "width": "10.5px",
+              "height": "10.5px",
+              "border-top-width": "0px",
+              "border-radius": "50%",
+              "background-color": "rgb(84, 88, 104)",
+              "translate": "-6.75px"
+            },
+            "differences": {}
+          }
+        ]
+      },
+      {
+        "mode": "light",
+        "checked": false,
+        "comparisons": [
+          {
+            "part": "control",
+            "hui": {
+              "font-size": "14px",
+              "width": "31.5px",
+              "height": "18px",
+              "border-top-width": "1px",
+              "border-radius": "18px",
+              "background-color": "rgb(255, 255, 255)",
+              "translate": "none"
+            },
+            "reference": {
+              "font-size": "14px",
+              "width": "31.5px",
+              "height": "18px",
+              "border-top-width": "1px",
+              "border-radius": "18px",
+              "background-color": "rgb(255, 255, 255)",
+              "translate": "none"
+            },
+            "differences": {}
+          },
+          {
+            "part": "thumb",
+            "hui": {
+              "font-size": "14px",
+              "width": "10.5px",
+              "height": "10.5px",
+              "border-top-width": "0px",
+              "border-radius": "50%",
+              "background-color": "rgb(145, 148, 162)",
+              "translate": "-6.75px"
+            },
+            "reference": {
+              "font-size": "14px",
+              "width": "10.5px",
+              "height": "10.5px",
+              "border-top-width": "0px",
+              "border-radius": "50%",
+              "background-color": "rgb(145, 148, 162)",
+              "translate": "-6.75px"
+            },
+            "differences": {}
+          }
+        ]
+      },
+      {
+        "mode": "light",
+        "checked": true,
+        "comparisons": [
+          {
+            "part": "control",
+            "hui": {
+              "font-size": "14px",
+              "width": "31.5px",
+              "height": "18px",
+              "border-top-width": "1px",
+              "border-radius": "18px",
+              "background-color": "rgb(189, 69, 49)",
+              "translate": "none"
+            },
+            "reference": {
+              "font-size": "14px",
+              "width": "31.5px",
+              "height": "18px",
+              "border-top-width": "1px",
+              "border-radius": "18px",
+              "background-color": "rgb(189, 69, 49)",
+              "translate": "none"
+            },
+            "differences": {}
+          },
+          {
+            "part": "thumb",
+            "hui": {
+              "font-size": "14px",
+              "width": "10.5px",
+              "height": "10.5px",
+              "border-top-width": "0px",
+              "border-radius": "50%",
+              "background-color": "rgb(255, 255, 255)",
+              "translate": "6.75px"
+            },
+            "reference": {
+              "font-size": "14px",
+              "width": "10.5px",
+              "height": "10.5px",
+              "border-top-width": "0px",
+              "border-radius": "50%",
+              "background-color": "rgb(255, 255, 255)",
+              "translate": "6.75px"
+            },
+            "differences": {}
+          }
+        ]
+      }
+    ]
+  }
+}

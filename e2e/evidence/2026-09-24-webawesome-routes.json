@@ -1,0 +1,785 @@
+{
+  "note": "UI navigation through the real command palette; the four existing contract-only destinations remain explicitly reported.",
+  "runs": [
+    {
+      "viewport": [
+        1440,
+        900
+      ],
+      "routes": [
+        {
+          "path": "/capabilities/about",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/activity",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/chat",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": true,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/config",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/connection",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/cron",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/debug",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/labs",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/logs",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/memory-import",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/model-providers",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/model-setup",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/new-session",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/permissions",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": true,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/plugin",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/plugins",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/profile",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/question",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": true,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/secrets",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": true,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/sessions",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/skill-workshop",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/skills",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/tasks",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/usage",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/worktrees",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/settings/appearance",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/settings/connection",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/settings/models",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/settings/plugins",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/settings/skills",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/settings/tools",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/settings/memory",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/settings/automation",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/settings/security",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/settings/sessions",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/settings/diagnostics",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        }
+      ]
+    },
+    {
+      "viewport": [
+        390,
+        844
+      ],
+      "routes": [
+        {
+          "path": "/capabilities/about",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/activity",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/chat",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": true,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/config",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/connection",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/cron",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/debug",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/labs",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/logs",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/memory-import",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/model-providers",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/model-setup",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/new-session",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/permissions",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": true,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/plugin",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/plugins",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/profile",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/question",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": true,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/secrets",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": true,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/sessions",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/skill-workshop",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/skills",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/tasks",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/usage",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/worktrees",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/settings/appearance",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/settings/connection",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/settings/models",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/settings/plugins",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/settings/skills",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/settings/tools",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/settings/memory",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/settings/automation",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/settings/security",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/settings/sessions",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/settings/diagnostics",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        }
+      ]
+    },
+    {
+      "viewport": [
+        844,
+        390
+      ],
+      "routes": [
+        {
+          "path": "/capabilities/about",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/activity",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/chat",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": true,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/config",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/connection",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/cron",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/debug",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/labs",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/logs",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/memory-import",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/model-providers",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/model-setup",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/new-session",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/permissions",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": true,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/plugin",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/plugins",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/profile",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/question",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": true,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/secrets",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": true,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/sessions",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/skill-workshop",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/skills",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/tasks",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/usage",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/worktrees",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/settings/appearance",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/settings/connection",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/settings/models",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/settings/plugins",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/settings/skills",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/settings/tools",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/settings/memory",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/settings/automation",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/settings/security",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/settings/sessions",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/settings/diagnostics",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        }
+      ]
+    }
+  ]
+}

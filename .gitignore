@@ -1,0 +1,39 @@
+# macOS
+.DS_Store
+
+# Dependencies & Build
+node_modules
+dist/
+build/
+npm-shrinkwrap.json
+*.tgz
+.next/
+
+# Environment files
+.env*.local
+
+# Logs
+*.log
+
+# Transient verification images (attach to PR/chat; never version)
+/e2e/**/*.png
+/e2e/**/*.jpg
+/e2e/**/*.jpeg
+/e2e/**/*.webp
+/e2e/**/*.gif
+/e2e/**/*.avif
+/docs/assets/*-overview.png
+/screenshots/
+/test-results/
+/playwright-report/
+
+# Nix build result symlinks
+/result
+/result-*
+
+# Personal OpenClaw workspace state (never part of HUI)
+/IDENTITY.md
+/SOUL.md
+/USER.md
+/MEMORY.md
+/memory/

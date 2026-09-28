@@ -1,0 +1,3009 @@
+{
+  "reference": {
+    "release": "2026.9.5",
+    "commit": "ec9c1a13db8938e5a3eaa51fca2e981cde2395a9",
+    "chatModuleSha256": "fd7013446c3acb3a71d93a3d95486936f62bc016499cc83a5368a5a983a5160f"
+  },
+  "methods": {
+    "routes": "Real command-palette navigation, isolated HUI state and real PI RPC. Inner overflow, alerts and oversized SVG diagnostics.",
+    "cascade": "Same HUI DOM under original styles, not independent DOM proof.",
+    "originalComposer": "Unmodified original private render functions and textarea controller from the hash-pinned shipped module, original Lit and WA runtimes. Matched deterministic props; no copied HUI child DOM.",
+    "switch": "Actual original WA control and thumb in four light/dark × off/on states.",
+    "limit": "Not an independent whole-app pixel diff. Fast mode is not implemented by PI; the original extra row is retained and its measured height difference recorded as an explicit adaptation."
+  },
+  "routes": [
+    {
+      "viewport": [
+        1440,
+        900
+      ],
+      "routes": [
+        {
+          "path": "/capabilities/about",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/activity",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/chat",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": true,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/config",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/connection",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/cron",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/debug",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/labs",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/logs",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/memory-import",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/model-providers",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/model-setup",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/new-session",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/permissions",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": true,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/plugin",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/plugins",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/profile",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/question",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": true,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/secrets",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": true,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/sessions",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/skill-workshop",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/skills",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/tasks",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/usage",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/worktrees",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/settings/appearance",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/settings/connection",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/settings/models",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/settings/plugins",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/settings/skills",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/settings/tools",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/settings/memory",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/settings/automation",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/settings/security",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/settings/sessions",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/settings/diagnostics",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        }
+      ]
+    },
+    {
+      "viewport": [
+        390,
+        844
+      ],
+      "routes": [
+        {
+          "path": "/capabilities/about",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/activity",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/chat",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": true,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/config",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/connection",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/cron",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/debug",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/labs",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/logs",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/memory-import",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/model-providers",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/model-setup",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/new-session",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/permissions",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": true,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/plugin",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/plugins",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/profile",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/question",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": true,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/secrets",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": true,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/sessions",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/skill-workshop",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/skills",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/tasks",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/usage",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/worktrees",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/settings/appearance",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/settings/connection",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/settings/models",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/settings/plugins",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/settings/skills",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/settings/tools",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/settings/memory",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/settings/automation",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/settings/security",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/settings/sessions",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/settings/diagnostics",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        }
+      ]
+    },
+    {
+      "viewport": [
+        844,
+        390
+      ],
+      "routes": [
+        {
+          "path": "/capabilities/about",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/activity",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/chat",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": true,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/config",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/connection",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/cron",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/debug",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/labs",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/logs",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/memory-import",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/model-providers",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/model-setup",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/new-session",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/permissions",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": true,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/plugin",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/plugins",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/profile",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/question",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": true,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/secrets",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": true,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/sessions",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/skill-workshop",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/skills",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/tasks",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/usage",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/capabilities/worktrees",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/settings/appearance",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/settings/connection",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/settings/models",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/settings/plugins",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/settings/skills",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/settings/tools",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/settings/memory",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/settings/automation",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/settings/security",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/settings/sessions",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        },
+        {
+          "path": "/settings/diagnostics",
+          "overflow": [],
+          "alerts": [],
+          "placeholder": false,
+          "oversizedIcons": []
+        }
+      ]
+    }
+  ],
+  "cascade": [
+    {
+      "viewport": [
+        1440,
+        900
+      ],
+      "results": [
+        {
+          "id": "about",
+          "styles": [
+            {
+              "selector": "main .page-title",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .settings-row",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .settings-group",
+              "state": [],
+              "differences": {}
+            }
+          ]
+        },
+        {
+          "id": "profile",
+          "styles": [
+            {
+              "selector": "main .page-title",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .settings-row",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .settings-group",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .btn",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .profile-hero",
+              "state": [],
+              "differences": {}
+            }
+          ]
+        },
+        {
+          "id": "labs",
+          "styles": [
+            {
+              "selector": "main .page-title",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .settings-row",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .settings-group",
+              "state": [],
+              "differences": {}
+            }
+          ]
+        },
+        {
+          "id": "activity",
+          "styles": [
+            {
+              "selector": "main .page-title",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .settings-group",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .btn",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .activity-entry__summary",
+              "state": [],
+              "differences": {}
+            }
+          ]
+        },
+        {
+          "id": "logs",
+          "styles": [
+            {
+              "selector": "main .page-title",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .btn",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .log-row",
+              "state": [],
+              "differences": {}
+            }
+          ]
+        },
+        {
+          "id": "usage",
+          "styles": [
+            {
+              "selector": "main .page-title",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .settings-row",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .settings-group",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .btn",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .usage-summary-card",
+              "state": [],
+              "differences": {}
+            }
+          ]
+        },
+        {
+          "id": "debug",
+          "styles": [
+            {
+              "selector": "main .page-title",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .settings-row",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .settings-group",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .btn",
+              "state": [],
+              "differences": {}
+            }
+          ]
+        },
+        {
+          "id": "config",
+          "styles": [
+            {
+              "selector": "main .page-title",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .settings-row",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .settings-group",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .btn",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .settings-section__heading",
+              "state": [],
+              "differences": {}
+            }
+          ]
+        },
+        {
+          "id": "connection",
+          "styles": [
+            {
+              "selector": "main .page-title",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .settings-row",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .settings-group",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .btn",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .settings-section__heading",
+              "state": [],
+              "differences": {}
+            }
+          ]
+        },
+        {
+          "id": "model-providers",
+          "styles": [
+            {
+              "selector": "main .page-title",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .settings-row",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .settings-group",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .btn",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .settings-section__heading",
+              "state": [],
+              "differences": {}
+            }
+          ]
+        },
+        {
+          "id": "model-setup",
+          "styles": [
+            {
+              "selector": "main .page-title",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .settings-row",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .settings-group",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .btn",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .settings-section__heading",
+              "state": [],
+              "differences": {}
+            }
+          ]
+        },
+        {
+          "id": "skills",
+          "styles": [
+            {
+              "selector": "main .page-title",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .settings-row",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .settings-group",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .btn",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .settings-input",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .settings-section__heading",
+              "state": [],
+              "differences": {}
+            }
+          ]
+        },
+        {
+          "id": "plugins",
+          "styles": [
+            {
+              "selector": "main .page-title",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .settings-row",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .settings-group",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .btn",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .settings-input",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .settings-section__heading",
+              "state": [],
+              "differences": {}
+            }
+          ]
+        },
+        {
+          "id": "plugin",
+          "styles": [
+            {
+              "selector": "main .page-title",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .settings-row",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .settings-group",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .btn",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .settings-input",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .settings-section__heading",
+              "state": [],
+              "differences": {}
+            }
+          ]
+        },
+        {
+          "id": "skill-workshop",
+          "styles": [
+            {
+              "selector": "main .page-title",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .settings-row",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .settings-group",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .btn",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .settings-section__heading",
+              "state": [],
+              "differences": {}
+            }
+          ]
+        },
+        {
+          "id": "memory-import",
+          "styles": [
+            {
+              "selector": "main .page-title",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .settings-row",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .settings-group",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .btn",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .settings-section__heading",
+              "state": [],
+              "differences": {}
+            }
+          ]
+        },
+        {
+          "id": "worktrees",
+          "styles": [
+            {
+              "selector": "main .page-title",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .settings-row",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .settings-group",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .btn",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .settings-section__heading",
+              "state": [],
+              "differences": {}
+            }
+          ]
+        },
+        {
+          "id": "sessions",
+          "styles": [
+            {
+              "selector": "main .page-title",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .settings-group",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .btn",
+              "state": [
+                "disabled"
+              ],
+              "differences": {}
+            },
+            {
+              "selector": "main .data-table",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .session-avatar",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .session-link",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .settings-section__heading",
+              "state": [],
+              "differences": {}
+            }
+          ]
+        },
+        {
+          "id": "cron",
+          "styles": [
+            {
+              "selector": "main .page-title",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .settings-row",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .settings-group",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .btn",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .settings-input",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .settings-select",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .settings-section__heading",
+              "state": [],
+              "differences": {}
+            }
+          ]
+        },
+        {
+          "id": "tasks",
+          "styles": [
+            {
+              "selector": "main .page-title",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .settings-row",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .settings-group",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .btn",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .settings-input",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .settings-select",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": "main .settings-section__heading",
+              "state": [],
+              "differences": {}
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "viewport": [
+        1440,
+        900
+      ],
+      "results": [
+        {
+          "id": "appearance",
+          "styles": [
+            {
+              "selector": ".settings-main .page-title",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": ".settings-workspace",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": ".settings-page__intro",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": ".settings-group",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": ".settings-row",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": ".settings-row__control",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": ".picker-select__trigger",
+              "state": [],
+              "differences": {}
+            }
+          ],
+          "excluded": [
+            {
+              "selector": ".settings-switch",
+              "reason": "HUI native host has no original DOM equivalent; actual WA control/thumb tested separately."
+            }
+          ]
+        },
+        {
+          "id": "connection",
+          "styles": [
+            {
+              "selector": ".settings-main .page-title",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": ".settings-workspace",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": ".settings-page__intro",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": ".settings-group",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": ".settings-row",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": ".settings-row__control",
+              "state": [],
+              "differences": {}
+            }
+          ],
+          "excluded": []
+        },
+        {
+          "id": "models",
+          "styles": [
+            {
+              "selector": ".settings-main .page-title",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": ".settings-workspace",
+              "state": [
+                "hover"
+              ],
+              "differences": {}
+            },
+            {
+              "selector": ".settings-page__intro",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": ".settings-group",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": ".settings-row",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": ".settings-row__control",
+              "state": [],
+              "differences": {}
+            }
+          ],
+          "excluded": []
+        },
+        {
+          "id": "plugins",
+          "styles": [
+            {
+              "selector": ".settings-main .page-title",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": ".settings-workspace",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": ".settings-page__intro",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": ".settings-group",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": ".settings-row",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": ".settings-row__control",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": ".settings-main .btn",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": ".settings-main .settings-input",
+              "state": [],
+              "differences": {}
+            }
+          ],
+          "excluded": []
+        },
+        {
+          "id": "skills",
+          "styles": [
+            {
+              "selector": ".settings-main .page-title",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": ".settings-workspace",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": ".settings-page__intro",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": ".settings-group",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": ".settings-row",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": ".settings-row__control",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": ".settings-main .btn",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": ".settings-main .settings-input",
+              "state": [],
+              "differences": {}
+            }
+          ],
+          "excluded": []
+        },
+        {
+          "id": "tools",
+          "styles": [
+            {
+              "selector": ".settings-main .page-title",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": ".settings-workspace",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": ".settings-page__intro",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": ".settings-group",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": ".settings-row",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": ".settings-row__control",
+              "state": [],
+              "differences": {}
+            }
+          ],
+          "excluded": []
+        },
+        {
+          "id": "memory",
+          "styles": [
+            {
+              "selector": ".settings-main .page-title",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": ".settings-workspace",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": ".settings-page__intro",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": ".settings-group",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": ".settings-row",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": ".settings-row__control",
+              "state": [],
+              "differences": {}
+            }
+          ],
+          "excluded": []
+        },
+        {
+          "id": "automation",
+          "styles": [
+            {
+              "selector": ".settings-main .page-title",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": ".settings-workspace",
+              "state": [
+                "hover"
+              ],
+              "differences": {}
+            },
+            {
+              "selector": ".settings-page__intro",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": ".settings-group",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": ".settings-row",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": ".settings-row__control",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": ".settings-main .btn",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": ".settings-main .settings-input",
+              "state": [],
+              "differences": {}
+            }
+          ],
+          "excluded": []
+        },
+        {
+          "id": "security",
+          "styles": [
+            {
+              "selector": ".settings-main .page-title",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": ".settings-workspace",
+              "state": [
+                "hover"
+              ],
+              "differences": {}
+            },
+            {
+              "selector": ".settings-page__intro",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": ".settings-group",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": ".settings-row",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": ".settings-row__control",
+              "state": [],
+              "differences": {}
+            }
+          ],
+          "excluded": []
+        },
+        {
+          "id": "sessions",
+          "styles": [
+            {
+              "selector": ".settings-main .page-title",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": ".settings-workspace",
+              "state": [
+                "hover"
+              ],
+              "differences": {}
+            },
+            {
+              "selector": ".settings-page__intro",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": ".settings-group",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": ".settings-row",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": ".settings-row__control",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": ".settings-main .btn",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": ".settings-main .settings-input",
+              "state": [],
+              "differences": {}
+            }
+          ],
+          "excluded": []
+        },
+        {
+          "id": "diagnostics",
+          "styles": [
+            {
+              "selector": ".settings-main .page-title",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": ".settings-workspace",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": ".settings-page__intro",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": ".settings-group",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": ".settings-row",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": ".settings-row__control",
+              "state": [],
+              "differences": {}
+            },
+            {
+              "selector": ".settings-main .btn",
+              "state": [],
+              "differences": {}
+            }
+          ],
+          "excluded": []
+        }
+      ]
+    }
+  ],
+  "originalComposer": [
+    {
+      "viewport": [
+        1440,
+        900
+      ],
+      "coarsePointer": false,
+      "states": [
+        {
+          "state": "idle",
+          "components": [
+            {
+              "selector": ".agent-chat__input",
+              "differences": {}
+            },
+            {
+              "selector": ".agent-chat__composer-input-row",
+              "differences": {}
+            },
+            {
+              "selector": ".agent-chat__composer-combobox",
+              "differences": {}
+            },
+            {
+              "selector": "textarea",
+              "differences": {}
+            },
+            {
+              "selector": ".agent-chat__composer-footer",
+              "differences": {}
+            },
+            {
+              "selector": ".agent-chat__input-btn--attach",
+              "differences": {}
+            },
+            {
+              "selector": ".agent-chat__input-btn--attach svg",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-send-btn",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-send-btn svg",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-controls__effort-trigger",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-controls__effort-gauge svg",
+              "differences": {}
+            }
+          ]
+        },
+        {
+          "state": "draft-focused",
+          "components": [
+            {
+              "selector": ".agent-chat__input",
+              "differences": {}
+            },
+            {
+              "selector": ".agent-chat__composer-input-row",
+              "differences": {}
+            },
+            {
+              "selector": ".agent-chat__composer-combobox",
+              "differences": {}
+            },
+            {
+              "selector": "textarea",
+              "differences": {}
+            },
+            {
+              "selector": ".agent-chat__composer-footer",
+              "differences": {}
+            },
+            {
+              "selector": ".agent-chat__input-btn--attach",
+              "differences": {}
+            },
+            {
+              "selector": ".agent-chat__input-btn--attach svg",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-send-btn",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-send-btn svg",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-controls__effort-trigger",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-controls__effort-gauge svg",
+              "differences": {}
+            }
+          ]
+        },
+        {
+          "state": "running-stop; effort disabled by PI",
+          "components": [
+            {
+              "selector": ".agent-chat__input",
+              "differences": {}
+            },
+            {
+              "selector": ".agent-chat__composer-input-row",
+              "differences": {}
+            },
+            {
+              "selector": ".agent-chat__composer-combobox",
+              "differences": {}
+            },
+            {
+              "selector": "textarea",
+              "differences": {}
+            },
+            {
+              "selector": ".agent-chat__composer-footer",
+              "differences": {}
+            },
+            {
+              "selector": ".agent-chat__input-btn--attach",
+              "differences": {}
+            },
+            {
+              "selector": ".agent-chat__input-btn--attach svg",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-send-btn",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-send-btn svg",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-controls__effort-trigger",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-controls__effort-gauge svg",
+              "differences": {}
+            }
+          ]
+        },
+        {
+          "state": "running-follow-up; effort disabled by PI",
+          "components": [
+            {
+              "selector": ".agent-chat__input",
+              "differences": {}
+            },
+            {
+              "selector": ".agent-chat__composer-input-row",
+              "differences": {}
+            },
+            {
+              "selector": ".agent-chat__composer-combobox",
+              "differences": {}
+            },
+            {
+              "selector": "textarea",
+              "differences": {}
+            },
+            {
+              "selector": ".agent-chat__composer-footer",
+              "differences": {}
+            },
+            {
+              "selector": ".agent-chat__input-btn--attach",
+              "differences": {}
+            },
+            {
+              "selector": ".agent-chat__input-btn--attach svg",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-send-btn",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-send-btn svg",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-controls__effort-trigger",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-controls__effort-gauge svg",
+              "differences": {}
+            }
+          ]
+        },
+        {
+          "state": "effort-open",
+          "components": [
+            {
+              "selector": ".agent-chat__input",
+              "differences": {}
+            },
+            {
+              "selector": ".agent-chat__composer-input-row",
+              "differences": {}
+            },
+            {
+              "selector": ".agent-chat__composer-combobox",
+              "differences": {}
+            },
+            {
+              "selector": "textarea",
+              "differences": {}
+            },
+            {
+              "selector": ".agent-chat__composer-footer",
+              "differences": {}
+            },
+            {
+              "selector": ".agent-chat__input-btn--attach",
+              "differences": {}
+            },
+            {
+              "selector": ".agent-chat__input-btn--attach svg",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-send-btn",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-send-btn svg",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-controls__effort-trigger",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-controls__effort-gauge svg",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-controls__effort-menu",
+              "differences": {},
+              "adaptations": [
+                {
+                  "property": "height",
+                  "hui": "105.094px",
+                  "original": "160.688px",
+                  "omittedFastModeRow": 55.59375
+                }
+              ]
+            },
+            {
+              "selector": ".chat-controls__reasoning-panel",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-controls__reasoning-head",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-controls__reasoning-range",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-controls__effort-scale",
+              "differences": {}
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "viewport": [
+        390,
+        844
+      ],
+      "coarsePointer": true,
+      "states": [
+        {
+          "state": "idle",
+          "components": [
+            {
+              "selector": ".agent-chat__input",
+              "differences": {}
+            },
+            {
+              "selector": ".agent-chat__composer-input-row",
+              "differences": {}
+            },
+            {
+              "selector": ".agent-chat__composer-combobox",
+              "differences": {}
+            },
+            {
+              "selector": "textarea",
+              "differences": {}
+            },
+            {
+              "selector": ".agent-chat__composer-footer",
+              "differences": {}
+            },
+            {
+              "selector": ".agent-chat__input-btn--attach",
+              "differences": {}
+            },
+            {
+              "selector": ".agent-chat__input-btn--attach svg",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-send-btn",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-send-btn svg",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-controls__effort-trigger",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-controls__effort-gauge svg",
+              "differences": {}
+            }
+          ]
+        },
+        {
+          "state": "draft-focused",
+          "components": [
+            {
+              "selector": ".agent-chat__input",
+              "differences": {}
+            },
+            {
+              "selector": ".agent-chat__composer-input-row",
+              "differences": {}
+            },
+            {
+              "selector": ".agent-chat__composer-combobox",
+              "differences": {}
+            },
+            {
+              "selector": "textarea",
+              "differences": {}
+            },
+            {
+              "selector": ".agent-chat__composer-footer",
+              "differences": {}
+            },
+            {
+              "selector": ".agent-chat__input-btn--attach",
+              "differences": {}
+            },
+            {
+              "selector": ".agent-chat__input-btn--attach svg",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-send-btn",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-send-btn svg",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-controls__effort-trigger",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-controls__effort-gauge svg",
+              "differences": {}
+            }
+          ]
+        },
+        {
+          "state": "running-stop; effort disabled by PI",
+          "components": [
+            {
+              "selector": ".agent-chat__input",
+              "differences": {}
+            },
+            {
+              "selector": ".agent-chat__composer-input-row",
+              "differences": {}
+            },
+            {
+              "selector": ".agent-chat__composer-combobox",
+              "differences": {}
+            },
+            {
+              "selector": "textarea",
+              "differences": {}
+            },
+            {
+              "selector": ".agent-chat__composer-footer",
+              "differences": {}
+            },
+            {
+              "selector": ".agent-chat__input-btn--attach",
+              "differences": {}
+            },
+            {
+              "selector": ".agent-chat__input-btn--attach svg",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-send-btn",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-send-btn svg",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-controls__effort-trigger",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-controls__effort-gauge svg",
+              "differences": {}
+            }
+          ]
+        },
+        {
+          "state": "running-follow-up; effort disabled by PI",
+          "components": [
+            {
+              "selector": ".agent-chat__input",
+              "differences": {}
+            },
+            {
+              "selector": ".agent-chat__composer-input-row",
+              "differences": {}
+            },
+            {
+              "selector": ".agent-chat__composer-combobox",
+              "differences": {}
+            },
+            {
+              "selector": "textarea",
+              "differences": {}
+            },
+            {
+              "selector": ".agent-chat__composer-footer",
+              "differences": {}
+            },
+            {
+              "selector": ".agent-chat__input-btn--attach",
+              "differences": {}
+            },
+            {
+              "selector": ".agent-chat__input-btn--attach svg",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-send-btn",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-send-btn svg",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-controls__effort-trigger",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-controls__effort-gauge svg",
+              "differences": {}
+            }
+          ]
+        },
+        {
+          "state": "effort-open",
+          "components": [
+            {
+              "selector": ".agent-chat__input",
+              "differences": {}
+            },
+            {
+              "selector": ".agent-chat__composer-input-row",
+              "differences": {}
+            },
+            {
+              "selector": ".agent-chat__composer-combobox",
+              "differences": {}
+            },
+            {
+              "selector": "textarea",
+              "differences": {}
+            },
+            {
+              "selector": ".agent-chat__composer-footer",
+              "differences": {}
+            },
+            {
+              "selector": ".agent-chat__input-btn--attach",
+              "differences": {}
+            },
+            {
+              "selector": ".agent-chat__input-btn--attach svg",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-send-btn",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-send-btn svg",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-controls__effort-trigger",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-controls__effort-gauge svg",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-controls__effort-menu",
+              "differences": {},
+              "adaptations": [
+                {
+                  "property": "height",
+                  "hui": "105.094px",
+                  "original": "160.688px",
+                  "omittedFastModeRow": 55.59375
+                }
+              ]
+            },
+            {
+              "selector": ".chat-controls__reasoning-panel",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-controls__reasoning-head",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-controls__reasoning-range",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-controls__effort-scale",
+              "differences": {}
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "viewport": [
+        844,
+        390
+      ],
+      "coarsePointer": true,
+      "states": [
+        {
+          "state": "idle",
+          "components": [
+            {
+              "selector": ".agent-chat__input",
+              "differences": {}
+            },
+            {
+              "selector": ".agent-chat__composer-input-row",
+              "differences": {}
+            },
+            {
+              "selector": ".agent-chat__composer-combobox",
+              "differences": {}
+            },
+            {
+              "selector": "textarea",
+              "differences": {}
+            },
+            {
+              "selector": ".agent-chat__composer-footer",
+              "differences": {}
+            },
+            {
+              "selector": ".agent-chat__input-btn--attach",
+              "differences": {}
+            },
+            {
+              "selector": ".agent-chat__input-btn--attach svg",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-send-btn",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-send-btn svg",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-controls__effort-trigger",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-controls__effort-gauge svg",
+              "differences": {}
+            }
+          ]
+        },
+        {
+          "state": "draft-focused",
+          "components": [
+            {
+              "selector": ".agent-chat__input",
+              "differences": {}
+            },
+            {
+              "selector": ".agent-chat__composer-input-row",
+              "differences": {}
+            },
+            {
+              "selector": ".agent-chat__composer-combobox",
+              "differences": {}
+            },
+            {
+              "selector": "textarea",
+              "differences": {}
+            },
+            {
+              "selector": ".agent-chat__composer-footer",
+              "differences": {}
+            },
+            {
+              "selector": ".agent-chat__input-btn--attach",
+              "differences": {}
+            },
+            {
+              "selector": ".agent-chat__input-btn--attach svg",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-send-btn",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-send-btn svg",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-controls__effort-trigger",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-controls__effort-gauge svg",
+              "differences": {}
+            }
+          ]
+        },
+        {
+          "state": "running-stop; effort disabled by PI",
+          "components": [
+            {
+              "selector": ".agent-chat__input",
+              "differences": {}
+            },
+            {
+              "selector": ".agent-chat__composer-input-row",
+              "differences": {}
+            },
+            {
+              "selector": ".agent-chat__composer-combobox",
+              "differences": {}
+            },
+            {
+              "selector": "textarea",
+              "differences": {}
+            },
+            {
+              "selector": ".agent-chat__composer-footer",
+              "differences": {}
+            },
+            {
+              "selector": ".agent-chat__input-btn--attach",
+              "differences": {}
+            },
+            {
+              "selector": ".agent-chat__input-btn--attach svg",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-send-btn",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-send-btn svg",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-controls__effort-trigger",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-controls__effort-gauge svg",
+              "differences": {}
+            }
+          ]
+        },
+        {
+          "state": "running-follow-up; effort disabled by PI",
+          "components": [
+            {
+              "selector": ".agent-chat__input",
+              "differences": {}
+            },
+            {
+              "selector": ".agent-chat__composer-input-row",
+              "differences": {}
+            },
+            {
+              "selector": ".agent-chat__composer-combobox",
+              "differences": {}
+            },
+            {
+              "selector": "textarea",
+              "differences": {}
+            },
+            {
+              "selector": ".agent-chat__composer-footer",
+              "differences": {}
+            },
+            {
+              "selector": ".agent-chat__input-btn--attach",
+              "differences": {}
+            },
+            {
+              "selector": ".agent-chat__input-btn--attach svg",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-send-btn",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-send-btn svg",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-controls__effort-trigger",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-controls__effort-gauge svg",
+              "differences": {}
+            }
+          ]
+        },
+        {
+          "state": "effort-open",
+          "components": [
+            {
+              "selector": ".agent-chat__input",
+              "differences": {}
+            },
+            {
+              "selector": ".agent-chat__composer-input-row",
+              "differences": {}
+            },
+            {
+              "selector": ".agent-chat__composer-combobox",
+              "differences": {}
+            },
+            {
+              "selector": "textarea",
+              "differences": {}
+            },
+            {
+              "selector": ".agent-chat__composer-footer",
+              "differences": {}
+            },
+            {
+              "selector": ".agent-chat__input-btn--attach",
+              "differences": {}
+            },
+            {
+              "selector": ".agent-chat__input-btn--attach svg",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-send-btn",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-send-btn svg",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-controls__effort-trigger",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-controls__effort-gauge svg",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-controls__effort-menu",
+              "differences": {},
+              "adaptations": [
+                {
+                  "property": "height",
+                  "hui": "105.094px",
+                  "original": "160.688px",
+                  "omittedFastModeRow": 55.59375
+                }
+              ]
+            },
+            {
+              "selector": ".chat-controls__reasoning-panel",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-controls__reasoning-head",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-controls__reasoning-range",
+              "differences": {}
+            },
+            {
+              "selector": ".chat-controls__effort-scale",
+              "differences": {}
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "switches": [
+    {
+      "mode": "light",
+      "checked": false,
+      "comparisons": [
+        {
+          "part": "control",
+          "hui": {
+            "font-size": "14px",
+            "width": "31.5px",
+            "height": "18px",
+            "border-top-width": "1px",
+            "border-radius": "18px",
+            "background-color": "rgb(255, 255, 255)",
+            "translate": "none"
+          },
+          "reference": {
+            "font-size": "14px",
+            "width": "31.5px",
+            "height": "18px",
+            "border-top-width": "1px",
+            "border-radius": "18px",
+            "background-color": "rgb(255, 255, 255)",
+            "translate": "none"
+          },
+          "differences": {}
+        },
+        {
+          "part": "thumb",
+          "hui": {
+            "font-size": "14px",
+            "width": "10.5px",
+            "height": "10.5px",
+            "border-top-width": "0px",
+            "border-radius": "50%",
+            "background-color": "rgb(145, 148, 162)",
+            "translate": "-6.75px"
+          },
+          "reference": {
+            "font-size": "14px",
+            "width": "10.5px",
+            "height": "10.5px",
+            "border-top-width": "0px",
+            "border-radius": "50%",
+            "background-color": "rgb(145, 148, 162)",
+            "translate": "-6.75px"
+          },
+          "differences": {}
+        }
+      ]
+    },
+    {
+      "mode": "light",
+      "checked": true,
+      "comparisons": [
+        {
+          "part": "control",
+          "hui": {
+            "font-size": "14px",
+            "width": "31.5px",
+            "height": "18px",
+            "border-top-width": "1px",
+            "border-radius": "18px",
+            "background-color": "rgb(189, 69, 49)",
+            "translate": "none"
+          },
+          "reference": {
+            "font-size": "14px",
+            "width": "31.5px",
+            "height": "18px",
+            "border-top-width": "1px",
+            "border-radius": "18px",
+            "background-color": "rgb(189, 69, 49)",
+            "translate": "none"
+          },
+          "differences": {}
+        },
+        {
+          "part": "thumb",
+          "hui": {
+            "font-size": "14px",
+            "width": "10.5px",
+            "height": "10.5px",
+            "border-top-width": "0px",
+            "border-radius": "50%",
+            "background-color": "rgb(255, 255, 255)",
+            "translate": "6.75px"
+          },
+          "reference": {
+            "font-size": "14px",
+            "width": "10.5px",
+            "height": "10.5px",
+            "border-top-width": "0px",
+            "border-radius": "50%",
+            "background-color": "rgb(255, 255, 255)",
+            "translate": "6.75px"
+          },
+          "differences": {}
+        }
+      ]
+    },
+    {
+      "mode": "dark",
+      "checked": false,
+      "comparisons": [
+        {
+          "part": "control",
+          "hui": {
+            "font-size": "14px",
+            "width": "31.5px",
+            "height": "18px",
+            "border-top-width": "1px",
+            "border-radius": "18px",
+            "background-color": "rgb(16, 18, 25)",
+            "translate": "none"
+          },
+          "reference": {
+            "font-size": "14px",
+            "width": "31.5px",
+            "height": "18px",
+            "border-top-width": "1px",
+            "border-radius": "18px",
+            "background-color": "rgb(16, 18, 25)",
+            "translate": "none"
+          },
+          "differences": {}
+        },
+        {
+          "part": "thumb",
+          "hui": {
+            "font-size": "14px",
+            "width": "10.5px",
+            "height": "10.5px",
+            "border-top-width": "0px",
+            "border-radius": "50%",
+            "background-color": "rgb(84, 88, 104)",
+            "translate": "-6.75px"
+          },
+          "reference": {
+            "font-size": "14px",
+            "width": "10.5px",
+            "height": "10.5px",
+            "border-top-width": "0px",
+            "border-radius": "50%",
+            "background-color": "rgb(84, 88, 104)",
+            "translate": "-6.75px"
+          },
+          "differences": {}
+        }
+      ]
+    },
+    {
+      "mode": "dark",
+      "checked": true,
+      "comparisons": [
+        {
+          "part": "control",
+          "hui": {
+            "font-size": "14px",
+            "width": "31.5px",
+            "height": "18px",
+            "border-top-width": "1px",
+            "border-radius": "18px",
+            "background-color": "rgb(255, 92, 92)",
+            "translate": "none"
+          },
+          "reference": {
+            "font-size": "14px",
+            "width": "31.5px",
+            "height": "18px",
+            "border-top-width": "1px",
+            "border-radius": "18px",
+            "background-color": "rgb(255, 92, 92)",
+            "translate": "none"
+          },
+          "differences": {}
+        },
+        {
+          "part": "thumb",
+          "hui": {
+            "font-size": "14px",
+            "width": "10.5px",
+            "height": "10.5px",
+            "border-top-width": "0px",
+            "border-radius": "50%",
+            "background-color": "rgb(16, 18, 25)",
+            "translate": "6.75px"
+          },
+          "reference": {
+            "font-size": "14px",
+            "width": "10.5px",
+            "height": "10.5px",
+            "border-top-width": "0px",
+            "border-radius": "50%",
+            "background-color": "rgb(16, 18, 25)",
+            "translate": "6.75px"
+          },
+          "differences": {}
+        }
+      ]
+    }
+  ],
+  "nativeTouchQueue": {
+    "text": "Follow upQueued visual regression",
+    "paths": [
+      "M16 5H3",
+      "M16 12H3",
+      "M9 19H3",
+      "m16 16-3 3 3 3",
+      "M21 5v12a2 2 0 0 1-2 2h-6"
+    ],
+    "size": [
+      14,
+      14
+    ],
+    "overflow": []
+  },
+  "textareaScroll": {
+    "before": {
+      "scrollTop": 424,
+      "scrollHeight": 588,
+      "height": 156
+    },
+    "stable": {
+      "scrollTop": 424,
+      "scrollHeight": 588,
+      "height": 156
+    },
+    "restoredHeight": 36,
+    "restoredEmpty": true
+  },
+  "packageConfirmations": [
+    {
+      "surface": "Plugins capability",
+      "styles": [
+        {
+          "selector": ".settings-row__control .btn.danger",
+          "state": [],
+          "differences": {}
+        }
+      ]
+    },
+    {
+      "viewport": [
+        390,
+        844
+      ],
+      "overflow": [],
+      "styles": [
+        {
+          "selector": ".settings-row__control .btn.danger",
+          "state": [],
+          "differences": {}
+        }
+      ]
+    },
+    {
+      "surface": "Settings Plugins",
+      "viewport": [
+        390,
+        844
+      ],
+      "styles": [
+        {
+          "selector": ".settings-row__control .btn.danger",
+          "state": [],
+          "differences": {}
+        }
+      ],
+      "fixtureRemoved": true
+    }
+  ],
+  "summary": {
+    "routeVisits": 108,
+    "cascadeComparisons": 177,
+    "additionalPackageConfirmationComparisons": 3,
+    "originalComposerComparisons": 180,
+    "originalSwitchComparisons": 8,
+    "unexpectedDifferences": 0,
+    "explicitFastModeHeightAdaptations": 3
+  }
+}

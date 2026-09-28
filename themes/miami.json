@@ -1,0 +1,23 @@
+{
+  "name": "Miami",
+  "light": {
+    "background": "#f7f3f6",
+    "foreground": "#3c3244",
+    "card": "#fefcfe",
+    "card-foreground": "#241c2b",
+    "accent": "#b0246f",
+    "ring": "#b0246f",
+    "primary": "#b0246f",
+    "primary-foreground": "#ffffff"
+  },
+  "dark": {
+    "background": "#140f1e",
+    "foreground": "#cfc7e8",
+    "card": "#1c1530",
+    "card-foreground": "#efeaf9",
+    "accent": "#f472b6",
+    "ring": "#f472b6",
+    "primary": "#f472b6",
+    "primary-foreground": "#3c0a24"
+  }
+}

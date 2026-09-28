@@ -1,0 +1,131 @@
+/* OpenClaw v2026.9.5, ec9c1a13db8938e5a3eaa51fca2e981cde2395a9.
+ * Source: ui/src/styles/layout.css. MIT; OpenClaw contributors.
+ * Selected content-header rules; original shell--mobile-nav predicate retained.
+ */
+/* Content header */
+.content-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 4px 8px;
+  overflow: hidden;
+  transform-origin: top center;
+  transition:
+    opacity var(--shell-focus-duration) var(--shell-focus-ease),
+    transform var(--shell-focus-duration) var(--shell-focus-ease),
+    max-height var(--shell-focus-duration) var(--shell-focus-ease),
+    padding var(--shell-focus-duration) var(--shell-focus-ease);
+  max-height: 80px;
+}
+
+/* Page toolbar row. Outside chat, settings, and mobile drawers every page
+   header is one row: the title (or a hub's tabs) centered like a window title,
+   the trailing cell (actions, counts) at the right edge, intro text below. The
+   row matches the Mac app titlebar (52px injected by DashboardWindowController;
+   50px mirrors .macos-titlebar-controls for older builds) so the traffic lights
+   and hosted buttons share its centerline; the collapsed-sidebar web cluster in
+   browsers (top: 10px, 32px buttons) lands on the same centerline. The side
+   columns reserve that cluster on the left and the trailing cell on the right,
+   so the centered cell stays exact at normal widths and merely shifts, never
+   overlaps, in narrow columns. Older Mac builds drop the web cluster below the
+   drag region (top: 52px), so collapsed navigation there keeps an extra band
+   under the row. */
+.shell:not(.shell--mobile-nav):not(.shell--settings) .content:not(.content--chat) {
+  --page-toolbar-height: 52px;
+  --page-toolbar-clearance: 0px;
+  --page-toolbar-reserve: 0px;
+
+  &:has(.content-header):not(:has(> .connection-action-block)) {
+    padding-top: 0;
+  }
+
+  .content-header {
+    position: relative;
+    display: grid;
+    /* Equal side columns center the middle cell; the leading one cannot
+       shrink under floating chrome, the trailing one under its actions
+       (max-content, since action cells opt out of the automatic minimum). */
+    grid-template-columns: minmax(var(--page-toolbar-reserve), 1fr) auto minmax(max-content, 1fr);
+    grid-template-rows: var(--page-toolbar-height) var(--page-toolbar-clearance) auto;
+    align-items: center;
+    column-gap: 12px;
+    row-gap: 0;
+    margin-top: 0;
+    padding-top: 0;
+    max-height: none;
+  }
+
+  /* The title block only wraps title and intro; its children become row cells. */
+  .content-header > :first-child:not(.page-title) {
+    display: contents;
+  }
+
+  .content-header .page-title,
+  .content-header .hub-page-header__tabs {
+    grid-area: 1 / 2;
+    justify-self: center;
+  }
+
+  .content-header .page-title {
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    line-height: 1;
+    color: var(--text);
+    white-space: nowrap;
+  }
+
+  /* Hub tabs are the page identity in the row; the heading stays for
+     assistive tech (same recipe as .sr-only). */
+  .content-header.hub-page-header .page-title {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    clip-path: inset(50%);
+  }
+
+  .content-header :is(.page-subtitle, .page-sub) {
+    grid-area: 3 / 1 / 4 / -1;
+    margin-top: 8px;
+  }
+
+  .content-header > :last-child:not(:first-child) {
+    grid-area: 1 / 3;
+    justify-self: end;
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 10px;
+  }
+}
+
+.content-header--page + * {
+  margin-top: 20px;
+}
+
+.page-header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  min-width: 0;
+}
+
+.page-title {
+  font-size: 22px;
+  font-weight: 650;
+  letter-spacing: -0.03em;
+  line-height: 1.2;
+  color: var(--accent);
+}
+
+.page-subtitle {
+  max-width: 52ch;
+  margin-top: 2px;
+  font-size: var(--control-ui-text-sm);
+  line-height: 1.45;
+  color: var(--muted);
+}

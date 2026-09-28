@@ -1,0 +1,502 @@
+#!/usr/bin/env node
+/** Deterministic Anthropic-compatible provider for Browser E2E.
+ * It is not a PI replacement: the real `pi --mode rpc` process talks to this
+ * local provider, executes its real read tool and persists its real JSONL. */
+import { appendFile } from "node:fs/promises";
+import { createServer } from "node:http";
+
+let port = Number(process.env.HUI_E2E_PROVIDER_PORT ?? 43127);
+const workspace = process.env.HUI_E2E_WORKSPACE;
+const logFile = process.env.HUI_E2E_PROVIDER_LOG;
+if (!workspace || !logFile) throw new Error("HUI_E2E_WORKSPACE and HUI_E2E_PROVIDER_LOG are required");
+
+const replayWaiters = new Set();
+const replayReadyWaiters = new Set();
+const signalReplayReady = () => {
+  for (const ready of replayReadyWaiters) ready();
+  replayReadyWaiters.clear();
+};
+const subagentSteeringWaiters = new Set();
+let subagentParentWaiting = false;
+const json = (response, status, body) => {
+  response.writeHead(status, { "content-type": "application/json" });
+  response.end(JSON.stringify(body));
+};
+const event = (response, value) => response.write(`event: ${value.type}\ndata: ${JSON.stringify(value)}\n\n`);
+const messageStart = (response) => event(response, {
+  type: "message_start",
+  message: { id: `msg_${Date.now()}`, type: "message", role: "assistant", model: "fixture", content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 1, output_tokens: 0 } },
+});
+const finish = (response, reason = "end_turn") => {
+  event(response, { type: "message_delta", delta: { stop_reason: reason, stop_sequence: null }, usage: { output_tokens: 1 } });
+  event(response, { type: "message_stop" });
+  response.end();
+};
+const text = (response, value, index = 0) => {
+  event(response, { type: "content_block_start", index, content_block: { type: "text", text: "", citations: null } });
+  event(response, { type: "content_block_delta", index, delta: { type: "text_delta", text: value } });
+  event(response, { type: "content_block_stop", index });
+};
+const toolUse = (response, id, name, input, index = 0) => {
+  event(response, { type: "content_block_start", index, content_block: { type: "tool_use", id, name, input: {} } });
+  event(response, { type: "content_block_delta", index, delta: { type: "input_json_delta", partial_json: JSON.stringify(input) } });
+  event(response, { type: "content_block_stop", index });
+};
+const flattenedText = (value) => JSON.stringify(value ?? []);
+/** Plain text of every tool result so far, so a multi-step fixture can reuse
+ * refs from an earlier browser snapshot without JSON escaping. */
+const toolResultTexts = (messages) => (Array.isArray(messages) ? messages : []).flatMap((message) =>
+  (Array.isArray(message?.content) ? message.content : []).filter((block) => block?.type === "tool_result").map((block) =>
+    typeof block.content === "string" ? block.content : Array.isArray(block.content) ? block.content.map((item) => item?.text ?? "").join("") : ""));
+/** `E2E_BROWSER_SLOW` paces each browser step like a model that thinks for a
+ * moment, so the chat's live browser preview can be observed mid-run. */
+const browserPace = (body) => flattenedText(body.messages).includes("E2E_BROWSER_SLOW")
+  ? new Promise((resolve) => setTimeout(resolve, 1_500))
+  : Promise.resolve();
+const BROWSER_FIXTURE_PAGE = `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>HUI browser fixture</title>
+  <style>
+    body { margin: 0; font: 16px/1.5 system-ui, sans-serif; color: #1f2328; background: #f6f8fa; }
+    main { max-width: 560px; margin: 48px auto; padding: 32px; border-radius: 12px; background: #fff; box-shadow: 0 1px 3px rgb(0 0 0 / 12%); }
+    h1 { margin-top: 0; font-size: 28px; }
+    label { display: block; margin: 20px 0 8px; font-weight: 600; }
+    input { width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid #d0d7de; border-radius: 6px; font: inherit; }
+    button { margin-top: 16px; padding: 10px 18px; border: 0; border-radius: 6px; color: #fff; background: #0969da; font: inherit; cursor: pointer; }
+    #greeting { min-height: 1.5em; margin: 20px 0 0; font-size: 20px; font-weight: 600; color: #1a7f37; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>HUI browser fixture</h1>
+    <p>Served by the deterministic E2E provider and driven by an agent through HUI's managed browser.</p>
+    <label for="name">Name</label>
+    <input id="name" autocomplete="off">
+    <button type="button" id="greet">Greet</button>
+    <p id="greeting" role="status"></p>
+  </main>
+  <script>
+    document.getElementById("greet").addEventListener("click", () => {
+      const name = document.getElementById("name").value;
+      document.getElementById("greeting").textContent = "Hello, " + name + "! Rendered by page JavaScript.";
+      console.log("greeted", name);
+    });
+  </script>
+</body>
+</html>`;
+const toolResultFrom = (message) => {
+  const blocks = Array.isArray(message?.content) ? message.content : [];
+  const block = blocks.find((item) => item?.type === "tool_result");
+  if (!block) return undefined;
+  const content = typeof block.content === "string"
+    ? block.content
+    : Array.isArray(block.content)
+      ? block.content.map((item) => item?.text ?? "").join("")
+      : "";
+  let result;
+  try { result = JSON.parse(content); } catch { result = content; }
+  return { id: block.tool_use_id, result };
+};
+
+const server = createServer(async (request, response) => {
+  const url = new URL(request.url ?? "/", `http://127.0.0.1:${port}`);
+  if (request.method === "GET" && url.pathname === "/health") return json(response, 200, { ok: true });
+  if (request.method === "GET" && url.pathname === "/browser-fixture") {
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+    return response.end(BROWSER_FIXTURE_PAGE);
+  }
+  if (request.method === "GET" && url.pathname === "/control/wait-subagent-parent") {
+    subagentParentWaiting = true;
+    const release = () => json(response, 200, { command: "released" });
+    replayWaiters.add(release);
+    request.on("close", () => replayWaiters.delete(release));
+    for (const complete of subagentSteeringWaiters) complete();
+    subagentSteeringWaiters.clear();
+    return;
+  }
+  if (request.method === "GET" && url.pathname === "/control/wait-command") {
+    const release = () => json(response, 200, { command: "released" });
+    replayWaiters.add(release);
+    signalReplayReady();
+    request.on("close", () => replayWaiters.delete(release));
+    return;
+  }
+  if (request.method === "GET" && url.pathname === "/control/wait-replay-ready") {
+    const ready = () => json(response, 200, { ready: true });
+    if (replayWaiters.size > 0) return ready();
+    replayReadyWaiters.add(ready);
+    request.on("close", () => replayReadyWaiters.delete(ready));
+    return;
+  }
+  if (request.method === "POST" && url.pathname === "/control/release-replay") {
+    for (const release of replayWaiters) release();
+    replayWaiters.clear();
+    return json(response, 200, { ok: true });
+  }
+  if (request.method !== "POST" || url.pathname !== "/v1/messages") {
+    process.stderr.write(`HUI E2E provider rejected ${request.method} ${url.pathname}\n`);
+    return json(response, 404, { error: "not found" });
+  }
+
+  const chunks = [];
+  for await (const chunk of request) chunks.push(chunk);
+  const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  await appendFile(logFile, `${JSON.stringify(body)}\n`, "utf8");
+  const source = flattenedText(body.messages?.at(-1));
+  const latestToolResult = toolResultFrom(body.messages?.at(-1));
+  if (source.includes("E2E_ERROR")) return json(response, 500, { type: "error", error: { type: "api_error", message: "fixture provider error" } });
+
+  response.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-store", connection: "keep-alive" });
+  messageStart(response);
+
+  if (source.includes("E2E_SHARED_TERMINAL")) {
+    toolUse(response, "tool-terminal-list", "terminal", { action: "list" });
+    return finish(response, "tool_use");
+  }
+  if (latestToolResult?.id === "tool-terminal-list") {
+    const terminal = latestToolResult.result?.terminals?.[0];
+    if (!terminal) { text(response, "No shared terminal was opened."); return finish(response); }
+    toolUse(response, "tool-terminal-read", "terminal", { action: "read", sessionId: terminal.id });
+    return finish(response, "tool_use");
+  }
+  if (latestToolResult?.id === "tool-terminal-read") {
+    toolUse(response, "tool-terminal-input", "terminal", { action: "input", sessionId: latestToolResult.result.terminal.id, data: "printf '%s%s\\n' PI_SHARED_ TERMINAL; printf 'Shared variable: %s\\n' \"$shared_from_user\"\r" });
+    return finish(response, "tool_use");
+  }
+  if (latestToolResult?.id === "tool-terminal-input") {
+    text(response, "I sent the command to your shared terminal. The output appears in the same panel; your shell state is preserved.");
+    return finish(response);
+  }
+
+  // A real PI browser tool call against HUI's managed headless browser:
+  // open the fixture page, type into the field found in the snapshot, click,
+  // read the text page JavaScript rendered, then capture a screenshot.
+  if (source.includes("E2E_BROWSER") && !source.includes("Name this coding-agent session")) {
+    if (!(Array.isArray(body.tools) ? body.tools : []).some((tool) => tool?.name === "browser")) {
+      text(response, "The browser tool is not available in this session.");
+      return finish(response);
+    }
+    await browserPace(body);
+    toolUse(response, "tool-e2e-browser-open", "browser", { action: "open", url: `http://127.0.0.1:${port}/browser-fixture` });
+    return finish(response, "tool_use");
+  }
+  if (latestToolResult?.id?.startsWith("tool-e2e-browser-")) {
+    await browserPace(body);
+    const snapshots = toolResultTexts(body.messages).join("\n");
+    const ref = (pattern) => pattern.exec(snapshots)?.[1];
+    const step = latestToolResult.id.slice("tool-e2e-browser-".length);
+    const next = {
+      open: ["type", { action: "act", kind: "type", ref: ref(/textbox "Name" \[ref=(e\d+)\]/u), text: "HUI agent" }],
+      type: ["click", { action: "act", kind: "click", ref: ref(/button "Greet" \[ref=(e\d+)\]/u) }],
+      click: ["text", { action: "text", selector: "#greeting" }],
+      text: ["screenshot", { action: "screenshot" }],
+    }[step];
+    if (next && (next[1].action !== "act" || next[1].ref)) {
+      toolUse(response, `tool-e2e-browser-${next[0]}`, "browser", next[1]);
+      return finish(response, "tool_use");
+    }
+    const greeting = /Hello, [^\n]*/u.exec(snapshots)?.[0];
+    text(response, greeting
+      ? `The headless browser rendered: **${greeting}**\n\nI opened the fixture page, typed into the Name field, clicked Greet and captured a screenshot, all without a browser window.`
+      : `The browser fixture did not reach the expected state after ${step}.`);
+    return finish(response);
+  }
+
+  // propose_changes blocks on HUI's changes card like a question; the reply
+  // quotes the decision the tool returned so the Browser check can read it.
+  if (source.includes("E2E_PROPOSE") && !source.includes("Name this coding-agent session")) {
+    toolUse(response, "tool-e2e-propose", "propose_changes", {
+      action: source.includes("E2E_PROPOSE_COMMIT") ? "commit" : "pr",
+      commitMessage: "Animate the marketing hero on load\n\nFade the hero up so the headline draws attention without a layout shift.",
+      prTitle: "Animate the marketing hero",
+      prBody: "## Summary\n- Fade the hero up on load\n\n## Testing\n- Checked the hero in the browser",
+    });
+    return finish(response, "tool_use");
+  }
+  if (latestToolResult?.id === "tool-e2e-propose") {
+    text(response, `Decision received: ${String(latestToolResult.result).split(". ")[0]}.`);
+    return finish(response);
+  }
+
+  if (source.includes("E2E_CODE_PARITY")) {
+    text(response, `\`\`\`unknown\n${Array.from({ length: 10 }, (_, index) => `line ${index + 1}: ${"fixture ".repeat(24)}`).join("\n")}\n\`\`\``);
+    return finish(response);
+  }
+
+  if (source.includes("E2E_MARKDOWN_PARITY")) {
+    text(response, "# Markdown parity\n\nParagraph with **bold**, *emphasis*, ~~removed~~, `inline code` and [a link](https://example.com).\n\n## Subheading\n\n- First item\n- Second item\n\n1. First ordered\n2. Second ordered\n\n> A quoted paragraph.\n> Its second line.\n\n---\n\n```text\nfixture code\nsecond line\n```\n\nFinal paragraph.");
+    return finish(response);
+  }
+
+  if (source.includes("E2E_RICH_EMBEDS")) {
+    text(response, "# Model the idea\n\n```mermaid\nflowchart LR\n  Idea[Idea] --> Model{Useful model}\n  Model -->|yes| Explain[Explain clearly]\n  Model -->|no| Prose[Use concise prose]\n```\n\n## Compare the evidence\n\n```chart\n{\"$schema\":\"https://vega.github.io/schema/vega-lite/v6.json\",\"title\":\"Clarity by format\",\"width\":\"container\",\"height\":220,\"data\":{\"values\":[{\"format\":\"Prose\",\"score\":48},{\"format\":\"Diagram\",\"score\":82},{\"format\":\"Chart\",\"score\":91}]},\"mark\":{\"type\":\"bar\",\"cornerRadiusEnd\":4},\"encoding\":{\"x\":{\"field\":\"format\",\"type\":\"nominal\",\"axis\":{\"labelAngle\":0}},\"y\":{\"field\":\"score\",\"type\":\"quantitative\",\"scale\":{\"domain\":[0,100]}},\"color\":{\"field\":\"format\",\"legend\":null}}}\n```\n\nInline identity: $e^{i\\pi}+1=0$.\n\n$$\n\\int_0^1 x^2 \\, dx = \\frac{1}{3}\n$$\n\n> [!TIP]\n> Pick the smallest visual model that makes the relationship obvious.\n\nhttps://x.com/jack/status/20\n\n[This labeled X link stays a link](https://x.com/jack/status/20)");
+    return finish(response);
+  }
+
+  if (source.includes("https://acme.slack.com/archives/C01234567/p1723456789012345")) {
+    text(response, "https://app.slack.com/client/T01234567/C01234567");
+    return finish(response);
+  }
+
+  if (source.includes("E2E_PRESENT_MEDIA")) {
+    toolUse(response, "tool-e2e-present-media", "present_media", {
+      paths: [
+        `${workspace}/media-sample.png`,
+        `${workspace}/media-sample.mp4`,
+        `${workspace}/media-sample.mp3`,
+        `${workspace}/media-notes.pdf`,
+      ],
+    });
+    return finish(response, "tool_use");
+  }
+
+  if (latestToolResult?.id === "tool-e2e-present-media") {
+    text(response, "The image, video, audio and download are attached above using HUI's media contract.");
+    return finish(response);
+  }
+
+  if (source.includes("[HUI subagent completion event]") && source.includes("E2E_STEERING_CHILD")) {
+    text(response, "Parent incorporated the child result through steering.");
+    return finish(response);
+  }
+  if (latestToolResult?.id === "tool-e2e-steering-spawn") {
+    toolUse(response, "tool-e2e-steering-parent-work", "bash", {
+      command: `curl --silent --show-error --noproxy '*' --fail http://127.0.0.1:${port}/control/wait-subagent-parent`,
+      timeout: 120,
+    });
+    return finish(response, "tool_use");
+  }
+  if (source.includes("E2E_STEERING_CHILD")) {
+    const complete = () => {
+      text(response, "Child steering result ready.");
+      finish(response);
+    };
+    if (subagentParentWaiting) complete();
+    else subagentSteeringWaiters.add(complete);
+    response.on("close", () => subagentSteeringWaiters.delete(complete));
+    return;
+  }
+  if (source.includes("E2E_SUBAGENTS_STEERING")) {
+    subagentParentWaiting = false;
+    toolUse(response, "tool-e2e-steering-spawn", "sessions_spawn", {
+      task: "E2E_STEERING_CHILD",
+      label: "Steering researcher",
+    });
+    return finish(response, "tool_use");
+  }
+  if (latestToolResult?.id === "tool-e2e-subagent-spawn") {
+    text(response, "Subagent started in its own session.");
+    return finish(response);
+  }
+  if (source.includes("[HUI subagent completion event]")) {
+    const count = /count: (\d+)/.exec(source)?.[1] ?? "1";
+    text(response, `Parent reviewed ${count} subagent result(s) against the task and continued on its own.`);
+    return finish(response);
+  }
+  if (source.includes("E2E_SUBAGENTS_COORDINATE")) {
+    toolUse(response, "tool-e2e-sessions-list", "sessions_list", {});
+    return finish(response, "tool_use");
+  }
+  if (latestToolResult?.id === "tool-e2e-sessions-list") {
+    const sessions = latestToolResult.result?.sessions ?? [];
+    const child = sessions.find((session) => session.parentSessionKey || session.subagentStatus);
+    if (!child?.sessionKey) {
+      text(response, "No child session was visible.");
+      return finish(response);
+    }
+    toolUse(response, "tool-e2e-sessions-history", "sessions_history", {
+      sessionKey: child.sessionKey,
+      limit: 20,
+    });
+    return finish(response, "tool_use");
+  }
+  if (latestToolResult?.id === "tool-e2e-sessions-history") {
+    const sessionKey = latestToolResult.result?.sessionKey;
+    toolUse(response, "tool-e2e-sessions-send", "sessions_send", {
+      sessionKey,
+      message: "E2E_CROSS_SESSION",
+      timeoutSeconds: 10,
+    });
+    return finish(response, "tool_use");
+  }
+  if (latestToolResult?.id === "tool-e2e-sessions-send") {
+    text(response, `Coordination complete: ${latestToolResult.result?.reply ?? "no reply"}`);
+    return finish(response);
+  }
+  // Inter-session prompts include the sender title. Check the payload before
+  // the title-based launch fixture so a parent named E2E_SUBAGENTS_START does
+  // not make its child spawn another agent.
+  if (source.includes("E2E_CROSS_SESSION")) {
+    text(response, "Cross-session reply from child.");
+    return finish(response);
+  }
+  if (source.includes("E2E_SUBAGENTS_MULTI")) {
+    toolUse(response, "tool-e2e-subagent-a", "sessions_spawn", { task: "E2E_SUBAGENT_CHILD quick", label: "Quick researcher" }, 0);
+    toolUse(response, "tool-e2e-subagent-b", "sessions_spawn", { task: "E2E_SUBAGENT_CHILD_SLOW", label: "Slow verifier" }, 1);
+    return finish(response, "tool_use");
+  }
+  if (source.includes("E2E_SUBAGENT_CHILD_SLOW")) {
+    await new Promise((resolve) => setTimeout(resolve, 4000));
+    text(response, "Slow verifier result: all checks passed.");
+    return finish(response);
+  }
+  if (source.includes("E2E_SUBAGENTS_START")) {
+    toolUse(response, "tool-e2e-subagent-spawn", "sessions_spawn", {
+      task: "E2E_SUBAGENT_CHILD",
+      label: "Fixture researcher",
+    });
+    return finish(response, "tool_use");
+  }
+  if (source.includes("E2E_SUBAGENT_CHILD")) {
+    text(response, "Subagent child result: the fixture contract is working.");
+    return finish(response);
+  }
+  // A tool result means PI has completed the real tool call and is asking the
+  // fixture for the final assistant message.
+  if (latestToolResult?.id === "tool-e2e-suggest-b" || latestToolResult?.id === "tool-e2e-suggest-a") {
+    text(response, "I flagged two follow-ups as suggestion cards instead of doing them now.");
+    return finish(response);
+  }
+  if (source.includes("tool_result")) {
+    text(response, "# Tool complete\n\n- output received\n- **Markdown verified**\n\n```text\nfixture-ok\n```\n\n| Check | Result |\n| --- | --- |\n| Tool | Passed |");
+    return finish(response);
+  }
+  if (source.includes("Draft a Jira work item")) {
+    // Utility-model draft for the Jira create dialog: picks CI-1 when offered.
+    // "Docs cleanup" names a key outside the candidates to show that state.
+    const parent = source.includes("SESSION TITLE: Docs cleanup") ? "DOCS-7" : source.includes("CI-1 | Epic") ? "CI-1" : "";
+    const description = "## Context\n\nThe retry wrapper in `ci/run.sh` hides flaky failures.\n\n## Scope\n\n- Surface the first failure\n- Keep one retry for network errors\n\n## Acceptance criteria\n\n- Flaky jobs report the original error\n- Retries are logged with their cause";
+    text(response, JSON.stringify({ summary: "Surface flaky CI failures instead of retrying silently", description, parent }));
+    return finish(response);
+  }
+  if (source.includes("Name this coding-agent session and its Git branch")) {
+    // Utility-model names for a new worktree session without an operator
+    // branch name: a descriptive title plus a branch HUI must strip of its prefix.
+    // A prompt containing E2E_HOLD_NAMING waits for POST
+    // /control/release-replay, so a check can observe "Naming worktree".
+    if (source.includes("E2E_HOLD_NAMING")) {
+      const released = await new Promise((resolve) => {
+        const release = () => { replayWaiters.delete(release); resolve(true); };
+        replayWaiters.add(release);
+        response.once("close", () => { replayWaiters.delete(release); resolve(false); });
+        signalReplayReady();
+      });
+      if (!released) return;
+    }
+    text(response, "Title: Improve session naming\nBranch: feature/improve-session-naming");
+    return finish(response);
+  }
+  if (source.includes("Generate a concise session title (3-6 words, max 60 characters)")) {
+    text(response, "Improve session naming");
+    return finish(response);
+  }
+  if (source.includes("Name the Git branch")) {
+    // Utility-model worktree name for the backlog start dialog, deliberately
+    // with a prefix, type word and Jira key that HUI must strip. A task titled
+    // with E2E_HOLD_BRANCH waits for POST /control/release-replay, so a check
+    // can type its own name before this late suggestion arrives.
+    if (source.includes("E2E_HOLD_BRANCH")) {
+      const released = await new Promise((resolve) => {
+        const release = () => { replayWaiters.delete(release); resolve(true); };
+        replayWaiters.add(release);
+        response.once("close", () => { replayWaiters.delete(release); resolve(false); });
+        signalReplayReady();
+      });
+      if (!released) return;
+    }
+    text(response, "feature/CI-2-fix-rate-limit-jira-proxy");
+    return finish(response);
+  }
+  if (source.includes("E2E_PULL_REQUEST")) {
+    // Prints a PR URL from a command HUI recognizes as `gh pr create`, so the
+    // session row gets a pull request badge without touching GitHub.
+    const input = { command: "printf '%s\\n' 'https://github.com/hui-e2e/fixture/pull/7' # gh pr create", timeout: 120 };
+    event(response, { type: "content_block_start", index: 0, content_block: { type: "tool_use", id: "tool-e2e-pull-request", name: "bash", input: {} } });
+    event(response, { type: "content_block_delta", index: 0, delta: { type: "input_json_delta", partial_json: JSON.stringify(input) } });
+    event(response, { type: "content_block_stop", index: 0 });
+    return finish(response, "tool_use");
+  }
+  if (source.includes("E2E_COMMAND")) {
+    const command = source.includes("E2E_COMMAND_RUNNING")
+      ? `curl --silent --show-error --noproxy '*' --fail http://127.0.0.1:${port}/control/wait-command`
+      : source.includes("E2E_COMMAND_FAILURE") ? "false" : "printf '%s\\n' 'command fixture' 42 | head -n 2";
+    const input = { command, timeout: 120 };
+    event(response, { type: "content_block_start", index: 0, content_block: { type: "tool_use", id: "tool-e2e-command", name: "bash", input: {} } });
+    event(response, { type: "content_block_delta", index: 0, delta: { type: "input_json_delta", partial_json: JSON.stringify(input) } });
+    event(response, { type: "content_block_stop", index: 0 });
+    return finish(response, "tool_use");
+  }
+  if (source.includes("E2E_SUGGEST_TASK")) {
+    toolUse(response, "tool-e2e-suggest-a", "suggest_task", {
+      title: "Replace native terminal switcher select with HUI picker",
+      problem: "The terminal pane header in `src/components/terminal-pane.ts` still switches terminals with a native `<select>`. It renders the browser's own dropdown, so it looks different from every other HUI picker and ignores the theme.",
+      fix: "Render the switcher with `renderPicker` from `src/views/settings-picker.ts`, as the panel selector already does, and cover keyboard selection with a focused test.",
+    }, 0);
+    toolUse(response, "tool-e2e-suggest-b", "suggest_task", {
+      title: "Investigate transcript jump after reconnect",
+      problem: "After the event stream reconnects, the transcript sometimes scrolls back to the top even though auto-follow was on. Seen twice with long sessions; not reproduced on demand yet.",
+    }, 1);
+    return finish(response, "tool_use");
+  }
+  if (source.includes("E2E_PROGRESS") || source.includes("E2E_CLEAR_PROGRESS")) {
+    const input = source.includes("E2E_CLEAR_PROGRESS")
+      ? { markdown: "", plan: [] }
+      : { markdown: "**Browser fixture** · real PI tool signal", plan: [
+          { step: "Read fixture", status: "completed" },
+          { step: "Verify presentation", status: "in_progress" },
+        ] };
+    event(response, { type: "content_block_start", index: 0, content_block: { type: "tool_use", id: "tool-e2e-progress", name: "progress_card", input: {} } });
+    event(response, { type: "content_block_delta", index: 0, delta: { type: "input_json_delta", partial_json: JSON.stringify(input) } });
+    event(response, { type: "content_block_stop", index: 0 });
+    return finish(response, "tool_use");
+  }
+  if (source.includes("E2E_RICH") || source.includes("E2E_TOOL_FAILURE")) {
+    event(response, { type: "content_block_start", index: 0, content_block: { type: "thinking", thinking: "", signature: "" } });
+    event(response, { type: "content_block_delta", index: 0, delta: { type: "thinking_delta", thinking: "Inspecting the fixture." } });
+    event(response, { type: "content_block_delta", index: 0, delta: { type: "signature_delta", signature: "e2e-signature" } });
+    event(response, { type: "content_block_stop", index: 0 });
+    const path = source.includes("E2E_TOOL_FAILURE") ? `${workspace}/missing.txt` : `${workspace}/fixture.txt`;
+    event(response, { type: "content_block_start", index: 1, content_block: { type: "tool_use", id: "tool-e2e-1", name: "read", input: {} } });
+    event(response, { type: "content_block_delta", index: 1, delta: { type: "input_json_delta", partial_json: JSON.stringify({ path }) } });
+    event(response, { type: "content_block_stop", index: 1 });
+    return finish(response, "tool_use");
+  }
+  if (source.includes("E2E_ABORT")) {
+    event(response, { type: "content_block_start", index: 0, content_block: { type: "text", text: "", citations: null } });
+    event(response, { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "Abort prefix" } });
+    request.on("close", () => response.end());
+    return;
+  }
+  if (source.includes("E2E_REPLAY")) {
+    event(response, { type: "content_block_start", index: 0, content_block: { type: "text", text: "", citations: null } });
+    event(response, { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "Replay prefix — " } });
+    const released = await new Promise((resolve) => {
+      const release = () => {
+        replayWaiters.delete(release);
+        response.off("close", disconnected);
+        resolve(true);
+      };
+      const disconnected = () => {
+        replayWaiters.delete(release);
+        resolve(false);
+      };
+      replayWaiters.add(release);
+      response.once("close", disconnected);
+      signalReplayReady();
+    });
+    if (!released) return;
+    event(response, { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "replay suffix" } });
+    event(response, { type: "content_block_stop", index: 0 });
+    return finish(response);
+  }
+
+  // Attachment requests reach this branch. The request log is the proof that
+  // PI, not merely HUI's HTTP boundary, received the image/file-expanded input.
+  text(response, source.includes("image") ? "Attachment received by PI." : "Fixture response.");
+  finish(response);
+}).listen(port, "127.0.0.1", () => {
+  port = server.address().port;
+  process.stdout.write(`HUI E2E provider: http://127.0.0.1:${port}/v1\n`);
+});

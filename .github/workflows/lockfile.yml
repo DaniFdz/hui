@@ -1,0 +1,24 @@
+name: Lockfile
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  lockfile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+          cache: npm
+      # npm 10 (bundled with Node 22) misreads the lockfile's nested
+      # electron/@types/node entry that npm 11 writes; use the same npm as
+      # development so `npm ci` checks the lockfile we actually commit.
+      - run: npm install -g npm@11
+      # Fails when package.json and package-lock.json are out of sync.
+      - run: npm ci --ignore-scripts
+      - name: Verify isolated visual-test runner
+        run: node --test e2e/visual-verification.test.mjs

@@ -1,0 +1,266 @@
+{
+  "release": "2026.9.5",
+  "commit": "ec9c1a13db8938e5a3eaa51fca2e981cde2395a9",
+  "normalization": "Remove HUI provenance header and trim outer whitespace; preserve every CSS declaration.",
+  "files": [
+    {
+      "file": "about.css",
+      "source": "ui/src/styles/about.css",
+      "kind": "verbatim",
+      "sha256": "b675793b85dec490043f96fc120e68681ce742922a66087c98a476a1344e466e",
+      "sourceSha256": "b675793b85dec490043f96fc120e68681ce742922a66087c98a476a1344e466e"
+    },
+    {
+      "file": "activity.css",
+      "source": "ui/src/styles/activity.css",
+      "kind": "verbatim",
+      "sha256": "d5605b2594a186fb3c17bab35124acacca338554b5fc25a690099dc9e1581d0f",
+      "sourceSha256": "d5605b2594a186fb3c17bab35124acacca338554b5fc25a690099dc9e1581d0f"
+    },
+    {
+      "file": "appearance.css",
+      "source": "ui/src/styles/config.css",
+      "kind": "excerpt",
+      "sha256": "bc7e3fd3a063b8b2602ecd5b55b77fce7f1bd28f7f090ee9069e0de583054b58",
+      "sourceSha256": "3f29849b67c1a2a90c7edb9e35c1d61f0c516ad8846dfcb72c0ecb1677b3b0ca"
+    },
+    {
+      "file": "base.css",
+      "source": "ui/src/styles/base.css",
+      "kind": "verbatim",
+      "sha256": "fa8ced2ada608efe523e1154aaf15b4fc57d04cc5c8aec2f7ac263e63e36cd63",
+      "sourceSha256": "fa8ced2ada608efe523e1154aaf15b4fc57d04cc5c8aec2f7ac263e63e36cd63"
+    },
+    {
+      "file": "chat/attachments.css",
+      "source": "ui/src/styles/chat/attachments.css",
+      "kind": "verbatim",
+      "sha256": "58323453ab664047ab57e1677f4a66f7fab3d0ed188bb54ab9af55880a804a21",
+      "sourceSha256": "58323453ab664047ab57e1677f4a66f7fab3d0ed188bb54ab9af55880a804a21"
+    },
+    {
+      "file": "chat/composer-progress.css",
+      "source": "ui/src/styles/chat/composer-progress.css",
+      "kind": "verbatim",
+      "sha256": "7d4368fffea88a62485c49bb23cbe97781b30a960b9f6e2d58a0c56bbf8e8fea",
+      "sourceSha256": "7d4368fffea88a62485c49bb23cbe97781b30a960b9f6e2d58a0c56bbf8e8fea"
+    },
+    {
+      "file": "chat/composer-queue.css",
+      "source": "ui/src/styles/chat/composer-queue.css",
+      "kind": "verbatim",
+      "sha256": "242cbe71dbac7585b33be3dc1066feaff7261ff3875e7e172fb780d5a4b7499c",
+      "sourceSha256": "242cbe71dbac7585b33be3dc1066feaff7261ff3875e7e172fb780d5a4b7499c"
+    },
+    {
+      "file": "chat/composer-status.css",
+      "source": "ui/src/styles/chat/composer-status.css",
+      "kind": "verbatim",
+      "sha256": "2d664cb37bba4afcdd7036e23af00490e9b10e32a65ee4f5d4e3f9999e2cc3ac",
+      "sourceSha256": "2d664cb37bba4afcdd7036e23af00490e9b10e32a65ee4f5d4e3f9999e2cc3ac"
+    },
+    {
+      "file": "chat/composer-surface.css",
+      "source": "ui/src/styles/chat/composer-surface.css",
+      "kind": "verbatim",
+      "sha256": "5fd1c343992971fc686ab42b8c109258895f275c5346a8fedf0e6bd3b1864655",
+      "sourceSha256": "5fd1c343992971fc686ab42b8c109258895f275c5346a8fedf0e6bd3b1864655"
+    },
+    {
+      "file": "chat/composer.css",
+      "source": "ui/src/styles/chat/composer.css",
+      "kind": "verbatim",
+      "sha256": "b470caccf5c7eff138716f8aed224413c6b6b28492d3117987fd3038b5b9b68f",
+      "sourceSha256": "b470caccf5c7eff138716f8aed224413c6b6b28492d3117987fd3038b5b9b68f"
+    },
+    {
+      "file": "chat/grouped.css",
+      "source": "ui/src/styles/chat/grouped.css",
+      "kind": "verbatim",
+      "sha256": "2276b7dda11b6ed2f04a89cc97524aa17311a2b7b9bcad9859b05e890eddc5a5",
+      "sourceSha256": "2276b7dda11b6ed2f04a89cc97524aa17311a2b7b9bcad9859b05e890eddc5a5"
+    },
+    {
+      "file": "chat/layout.css",
+      "source": "ui/src/styles/chat/layout.css",
+      "kind": "verbatim",
+      "sha256": "7b31b1fa3787b287920d8fda228758af0d6dedb91e3e9a23209c50bab1166187",
+      "sourceSha256": "7b31b1fa3787b287920d8fda228758af0d6dedb91e3e9a23209c50bab1166187"
+    },
+    {
+      "file": "chat/message-layout.css",
+      "source": "ui/src/styles/chat/message-layout.css",
+      "kind": "verbatim",
+      "sha256": "d5b8a9a2368229877c704d18831cc371e05d10f5afd462618bca9cbc3948f369",
+      "sourceSha256": "d5b8a9a2368229877c704d18831cc371e05d10f5afd462618bca9cbc3948f369"
+    },
+    {
+      "file": "chat/progress-card.css",
+      "source": "ui/src/styles/chat/progress-card.css",
+      "kind": "verbatim",
+      "sha256": "24759ea863a29919d837e2c9809cc9104f8c8efee8d6ffa810bfa860f05339fc",
+      "sourceSha256": "24759ea863a29919d837e2c9809cc9104f8c8efee8d6ffa810bfa860f05339fc"
+    },
+    {
+      "file": "chat/question-card.css",
+      "source": "ui/src/styles/chat/question-card.css",
+      "kind": "verbatim",
+      "sha256": "d58a2f222cc600ae8e2d96c1e5bf4cd2a0d15584e7d37d73038e0bbc50f53dfe",
+      "sourceSha256": "d58a2f222cc600ae8e2d96c1e5bf4cd2a0d15584e7d37d73038e0bbc50f53dfe"
+    },
+    {
+      "file": "chat/sidebar.css",
+      "source": "ui/src/styles/chat/sidebar.css",
+      "kind": "verbatim",
+      "sha256": "9406166f7042e78884118c275481008ce9f94bff3b97df9c1ecca95fed0ee26b",
+      "sourceSha256": "9406166f7042e78884118c275481008ce9f94bff3b97df9c1ecca95fed0ee26b"
+    },
+    {
+      "file": "chat/split-view.css",
+      "source": "ui/src/styles/chat/split-view.css",
+      "kind": "verbatim",
+      "sha256": "1e6e996f44da3d641ffe0ae1fe42db9b27abf94c2b1a48cdb31f09dd4369d238",
+      "sourceSha256": "1e6e996f44da3d641ffe0ae1fe42db9b27abf94c2b1a48cdb31f09dd4369d238"
+    },
+    {
+      "file": "chat/startup-layout.css",
+      "source": "ui/src/styles/chat/startup-layout.css",
+      "kind": "verbatim",
+      "sha256": "68735321dcdb98b9c9e19991a3a7b5c53703c932f0f2b5993a9226a1e0ff2bc3",
+      "sourceSha256": "68735321dcdb98b9c9e19991a3a7b5c53703c932f0f2b5993a9226a1e0ff2bc3"
+    },
+    {
+      "file": "chat/text.css",
+      "source": "ui/src/styles/chat/text.css",
+      "kind": "verbatim",
+      "sha256": "dc5fe3b9070a33a43940336f9fc7c8f310c0d05e7505aa08594d689b6c4c0f04",
+      "sourceSha256": "dc5fe3b9070a33a43940336f9fc7c8f310c0d05e7505aa08594d689b6c4c0f04"
+    },
+    {
+      "file": "chat/tool-cards.css",
+      "source": "ui/src/styles/chat/tool-cards.css",
+      "kind": "verbatim",
+      "sha256": "1b1af34b0c1968f87b9e7fcf55d8ca420d4bc020f20f7756880e90e720e9138a",
+      "sourceSha256": "1b1af34b0c1968f87b9e7fcf55d8ca420d4bc020f20f7756880e90e720e9138a"
+    },
+    {
+      "file": "components.css",
+      "source": "ui/src/styles/components.css",
+      "kind": "verbatim",
+      "sha256": "d74f39fb4e8f23b913394dd2e8a8d8b62031960bb6d1d9f06b28759ce0fc8800",
+      "sourceSha256": "d74f39fb4e8f23b913394dd2e8a8d8b62031960bb6d1d9f06b28759ce0fc8800"
+    },
+    {
+      "file": "cron.css",
+      "source": "ui/src/styles/cron.css",
+      "kind": "verbatim",
+      "sha256": "348161a066382bbcd93dc5e6edaf6369c4f16aa76d949e16f98f06e02a2f5074",
+      "sourceSha256": "348161a066382bbcd93dc5e6edaf6369c4f16aa76d949e16f98f06e02a2f5074"
+    },
+    {
+      "file": "hub-tabs.css",
+      "source": "ui/src/styles/hub-tabs.css",
+      "kind": "verbatim",
+      "sha256": "529db7cee2e5f22eef070d3b237cec188bd6376570b0451e90a452344edc1da0",
+      "sourceSha256": "529db7cee2e5f22eef070d3b237cec188bd6376570b0451e90a452344edc1da0"
+    },
+    {
+      "file": "logs.css",
+      "source": "ui/src/styles/logs.css",
+      "kind": "verbatim",
+      "sha256": "66e8614fd3126fe85840ef1941efae2988ac9df20a8dc954a53c07ccf9f1d384",
+      "sourceSha256": "66e8614fd3126fe85840ef1941efae2988ac9df20a8dc954a53c07ccf9f1d384"
+    },
+    {
+      "file": "model-providers.css",
+      "source": "ui/src/styles/model-providers.css",
+      "kind": "verbatim",
+      "sha256": "bedcd7374a900021ecbfd94ceddde5487ae5f9afd78ceec8e537015702ca7d48",
+      "sourceSha256": "bedcd7374a900021ecbfd94ceddde5487ae5f9afd78ceec8e537015702ca7d48"
+    },
+    {
+      "file": "new-session.css",
+      "source": "ui/src/styles/new-session.css",
+      "kind": "verbatim",
+      "sha256": "b84f0d8868db5cfd9701a4b45782bd85025cb17686aef854a7f701146f7cc89a",
+      "sourceSha256": "b84f0d8868db5cfd9701a4b45782bd85025cb17686aef854a7f701146f7cc89a"
+    },
+    {
+      "file": "page-chrome.css",
+      "source": "ui/src/styles/layout.css",
+      "kind": "excerpt",
+      "sha256": "be7d9557e1dc67268b92cae75661fcb9037ef89329e05b06dfc2b11522586948",
+      "sourceSha256": "cc246fbd963e1b4e68c330fd386519abe8726b26be69b153d7c1c94002e274ac"
+    },
+    {
+      "file": "plugins.css",
+      "source": "ui/src/styles/plugins.css",
+      "kind": "excerpt",
+      "sha256": "9e3c9c8aeed8bc29c28a21265fcaeed9f415c099d70d824ef5626ac40cb717a4",
+      "sourceSha256": "ecee5c498bb936879ccee4e68ef861c1ba294891882e9e0b5edd25454bd5d01d"
+    },
+    {
+      "file": "profile.css",
+      "source": "ui/src/styles/profile.css",
+      "kind": "verbatim",
+      "sha256": "2dd7d120c9b71592a49a92e1b99d55edca161f01b330a9fc5049c0d59f729c34",
+      "sourceSha256": "2dd7d120c9b71592a49a92e1b99d55edca161f01b330a9fc5049c0d59f729c34"
+    },
+    {
+      "file": "select-picker.css",
+      "source": "ui/src/styles/select-picker.css",
+      "kind": "verbatim",
+      "sha256": "a8439e4a4a25f8e62b5487686a2743c1c1519b9e72afd2a5e024afdd2cefb082",
+      "sourceSha256": "a8439e4a4a25f8e62b5487686a2743c1c1519b9e72afd2a5e024afdd2cefb082"
+    },
+    {
+      "file": "session-menu.css",
+      "source": "ui/src/styles/session-menu.css",
+      "kind": "verbatim",
+      "sha256": "e67981bbf52f80163ae8b9ef8c25ed0577c2c34b04339813340d5a42f6ab5612",
+      "sourceSha256": "e67981bbf52f80163ae8b9ef8c25ed0577c2c34b04339813340d5a42f6ab5612"
+    },
+    {
+      "file": "sessions.css",
+      "source": "ui/src/styles/sessions.css",
+      "kind": "verbatim",
+      "sha256": "831d8468ee52afae7811fdba66eb444699f07f1c22ee8096411358ef5a78e283",
+      "sourceSha256": "831d8468ee52afae7811fdba66eb444699f07f1c22ee8096411358ef5a78e283"
+    },
+    {
+      "file": "settings-controls.css",
+      "source": "ui/src/styles/settings-controls.css",
+      "kind": "verbatim",
+      "sha256": "3e130e207928f9affc6a78c60b195af2a49138840d1ae85ffd75508898803b59",
+      "sourceSha256": "3e130e207928f9affc6a78c60b195af2a49138840d1ae85ffd75508898803b59"
+    },
+    {
+      "file": "settings-sidebar.css",
+      "source": "ui/src/styles/layout.css",
+      "kind": "excerpt",
+      "sha256": "ce08a527473d4ff78a8351501ad9cc9cbc1852e4ee74f665a89f11ae7587e8f5",
+      "sourceSha256": "cc246fbd963e1b4e68c330fd386519abe8726b26be69b153d7c1c94002e274ac"
+    },
+    {
+      "file": "settings.css",
+      "source": "ui/src/styles/settings.css",
+      "kind": "verbatim",
+      "sha256": "b8ba6c3ce27bbec75c5dfc7de9230d248dad6330ddd284a1135f8174a35d9563",
+      "sourceSha256": "b8ba6c3ce27bbec75c5dfc7de9230d248dad6330ddd284a1135f8174a35d9563"
+    },
+    {
+      "file": "sidebar-session.css",
+      "source": "ui/src/styles/layout.css",
+      "kind": "excerpt",
+      "sha256": "bfd02ae4d899ff86742a34dd72a0b18a4a3ce58a40b20865068b046fad9df6ae",
+      "sourceSha256": "cc246fbd963e1b4e68c330fd386519abe8726b26be69b153d7c1c94002e274ac"
+    },
+    {
+      "file": "usage.css",
+      "source": "ui/src/styles/usage.css",
+      "kind": "verbatim",
+      "sha256": "94776a00d8ac8b748c5f417fd134843143363b25abd000a1e109c80616a0edff",
+      "sourceSha256": "94776a00d8ac8b748c5f417fd134843143363b25abd000a1e109c80616a0edff"
+    }
+  ]
+}
