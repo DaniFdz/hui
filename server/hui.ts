@@ -1436,6 +1436,8 @@ export async function startWorktreeSession(
     entry.error = error instanceof Error ? error.message : "Could not create the Git worktree.";
     publishPendingStatus(pendingStatus(entry));
   }).catch((error: unknown) => {
+    // ponytail: the session shows its runtime error, but this prompt is only logged;
+    // hand it back like a failed checkout's `initialPrompt` if runtimes fail here in practice.
     recordDiagnosticEvent({
       area: "session",
       level: "error",
