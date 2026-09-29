@@ -877,6 +877,9 @@ destructive cleanup remains a separate future contract.
 While Git materializes the checkout, the session and its sidebar row show Git's
 reported percentage for the active checkout or content-filter phase. Setup and finalization remain
 indeterminate rather than presenting a fabricated whole-operation percentage.
+If Git fails, the session stays listed in an error state showing Git's error;
+deleting it returns its prompt to New Session. A gateway restart forgets an
+unfinished session.
 
 ## Decisions
 
