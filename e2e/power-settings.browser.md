@@ -32,14 +32,30 @@ transcripts were read or changed. The host Mac already had `SleepDisabled 1`.
   no horizontal overflow is visible. Keyboard focus ring is visible on the switch.
 - Console: only Lit development-mode warnings.
 
+## Real administrator prompt (2026-09-29, commit 8402bbc)
+
+The operator first ran `sudo pmset -a disablesleep 0`, then on a fresh isolated
+instance the lid switch was operated from the Gateway page:
+
+- Turning it on opened the real macOS password dialog (`osascript … with
+  administrator privileges`); the row showed **Pending** with "Waiting for
+  administrator approval on this Mac."
+- The first attempt ended without approval (the operator's password failed):
+  the row showed **Failed** with "Administrator approval was cancelled.",
+  `SleepDisabled` stayed `0` and no watcher was left.
+- Off, then on again, opened a fresh dialog. After approval `pmset -g` showed
+  `SleepDisabled 1`, a root `/bin/sh` watcher for the gateway PID was running,
+  the flag `lid-awake-<gateway pid>-<uuid>` existed and the row showed
+  **Active** with no outside-HUI note.
+- Turning it off restored `SleepDisabled 0` within about a second without any
+  prompt; the watcher exited, the flag directory was empty and the row showed
+  **Off**. Stopping the instance ended its `caffeinate` child.
+
 ## Proof limits
 
-The administrator prompt path (Pending → Active/Failed, watcher restoring
-`disablesleep 0` on off, stop and crash) was not exercised against real `pmset`
-here: it needs an operator's password on a Mac with `SleepDisabled 0`. That
-path is covered by `server/power.test.ts`, which runs the real root watcher
-script through fake `osascript`/`pmset` executables: a killed gateway process,
-a quick restart during watcher wind-down, a reboot leftover, a withdrawn and a
-cancelled prompt. Whether killing `osascript` also closes macOS's dialog is
-unverified. Linux hosts omit `power` from health, so the section is absent there
-(covered by `src/views/settings-gateway.test.ts`).
+Not exercised against real `pmset`: restoring on gateway stop and crash, reboot
+leftovers, a withdrawn prompt and a quick restart. Those are covered by
+`server/power.test.ts`, which runs the real root watcher script through fake
+`osascript`/`pmset` executables. Whether killing `osascript` also closes macOS's
+dialog is unverified. Linux hosts omit `power` from health, so the section is
+absent there (covered by `src/views/settings-gateway.test.ts`).
