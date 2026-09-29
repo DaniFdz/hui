@@ -805,7 +805,7 @@ function renderPowerSection(props: SettingsProps, status: NonNullable<GatewayHea
     ${renderPowerRow(
       "Stay awake with the lid closed",
       html`<span class="settings-row__desc">Like <code>sudo pmset -a disablesleep 1</code>. Turning it off or stopping the gateway restores normal sleep.</span>
-        <span class="settings-row__desc"><strong>Requires administrator permission.</strong> macOS asks for your password each time this turns on, including whenever the gateway starts with it on.</span>`,
+        <span class="settings-row__desc"><strong>Requires administrator permission.</strong> macOS asks for your password each time this turns on, including whenever the gateway starts with it on, and to undo it if the Mac restarted while it was on.</span>`,
       status.lidAwake,
       power.lidAwake,
       (lidAwake) => props.onChangePower({ ...power, lidAwake }),

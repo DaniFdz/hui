@@ -12,7 +12,8 @@ const OSASCRIPT = {
   // Runs the root script as this user, so the real watcher drives the fake pmset.
   approve: `eval "root=\\\${$#}"; exec /bin/sh -c "$root"`,
   cancel: `echo "execution error: User canceled. (-128)" >&2; exit 1`,
-  hang: "exec sleep 30",
+  // Waits for the test to "answer" the prompt, then approves it.
+  gate: `while [ ! -e "$(dirname "$0")/go" ]; do sleep 0.05; done; echo ran >> "$(dirname "$0")/ran"; eval "root=\\\${$#}"; exec /bin/sh -c "$root"`,
 };
 
 /** Fake macOS commands; the fake pmset keeps `SleepDisabled` in a file. */
@@ -36,16 +37,19 @@ async function fixture(t: TestContext, { osascript = "approve" as keyof typeof O
   t.after(async () => { for (const power of instances) power.dispose(); await rm(dir, { recursive: true, force: true }); });
   const read = (name: string) => readFile(join(dir, name), "utf8").then((text) => text.trim(), () => "");
   const prompts = async () => (await read("prompts")).split("\n").filter(Boolean);
-  return { power: make(), make, read, prompts, flagDir: options.flagDir };
+  const answer = () => writeFile(join(dir, "go"), "");
+  return { power: make(), make, read, prompts, answer, flagDir: options.flagDir };
 }
 
-async function eventually(check: () => Promise<boolean> | boolean): Promise<void> {
-  for (let i = 0; i < 100; i++) {
+async function eventually(check: () => Promise<boolean> | boolean, timeoutMs = 5_000): Promise<void> {
+  for (const deadline = Date.now() + timeoutMs; Date.now() < deadline; await delay(50)) {
     if (await check()) return;
-    await delay(50);
   }
   assert.fail("condition was not reached");
 }
+
+/** Leftover flags are only trusted after MacPower's ~3s wait for their watchers. */
+const PAST_LEFTOVER_WAIT_MS = 15_000;
 
 const alive = (pid: number) => { try { process.kill(pid, 0); return true; } catch { return false; } };
 
@@ -107,18 +111,46 @@ test("a restarted gateway waits for the previous watcher instead of calling its 
   assert.equal(await read("sleep-disabled"), "1");
 });
 
-test("a flag left by a reboot makes HUI restore lid sleep rather than call it outside HUI", async (t) => {
-  const { power, read, prompts, flagDir } = await fixture(t, { sleepDisabled: "1" });
+test("a flag left by a reboot makes HUI restore or take over lid sleep rather than call it outside HUI", async (t) => {
+  for (const lidAwake of [false, true]) {
+    const { power, read, prompts, flagDir } = await fixture(t, { sleepDisabled: "1" });
+    await mkdir(flagDir);
+    await writeFile(join(flagDir, "lid-awake-left-by-reboot"), "");
+    await power.apply({ keepAwake: false, lidAwake });
+    assert.deepEqual(power.status().lidAwake, { state: lidAwake ? "active" : "off", detail: "" });
+    assert.equal((await prompts()).length, 1);
+    assert.equal(await read("sleep-disabled"), lidAwake ? "1" : "0");
+  }
+});
+
+test("an unrelated save lets a restore prompt finish", async (t) => {
+  const { power, read, prompts, answer, flagDir } = await fixture(t, { osascript: "gate", sleepDisabled: "1" });
   await mkdir(flagDir);
   await writeFile(join(flagDir, "lid-awake-left-by-reboot"), "");
-  await power.apply({ keepAwake: false, lidAwake: false });
+  void power.apply({ keepAwake: false, lidAwake: false });
+  await eventually(async () => (await prompts()).length === 1, PAST_LEFTOVER_WAIT_MS);
+  const unrelated = power.apply({ keepAwake: true, lidAwake: false });
+  await answer();
+  await unrelated;
   assert.deepEqual(power.status().lidAwake, { state: "off", detail: "" });
-  assert.equal((await prompts()).length, 1);
   assert.equal(await read("sleep-disabled"), "0");
 });
 
+test("stopping the gateway withdraws an open prompt and never prompts for queued changes", async (t) => {
+  const { power, read, prompts, answer } = await fixture(t, { osascript: "gate" });
+  void power.apply({ keepAwake: false, lidAwake: true });
+  await eventually(async () => (await prompts()).length === 1);
+  const queued = power.apply({ keepAwake: true, lidAwake: true });
+  power.dispose();
+  await answer();
+  await queued;
+  assert.equal(await read("ran"), "");
+  assert.equal((await prompts()).length, 1);
+  assert.deepEqual(power.status().lidAwake, { state: "off", detail: "" });
+});
+
 test("turning lid awake off withdraws an unanswered approval", async (t) => {
-  const { power, read, prompts } = await fixture(t, { osascript: "hang" });
+  const { power, read, prompts } = await fixture(t, { osascript: "gate" });
   void power.apply({ keepAwake: false, lidAwake: true });
   await eventually(async () => (await prompts()).length === 1);
   assert.equal(power.status().lidAwake.state, "pending");

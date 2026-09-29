@@ -650,7 +650,8 @@ the live view section of `e2e/browser-tool.browser.md`.
 Settings → Gateway → Power keeps a macOS gateway host awake (`caffeinate -i`, on
 by default) and optionally awake with the lid closed (`pmset -a disablesleep`,
 off by default, one administrator prompt per enable). Both end with the gateway,
-including a crash; a reboot's leftover is restored on the next start. Proof: `server/power.test.ts` (real watcher script against fake
+including a crash; after a reboot HUI takes over the leftover or asks to undo
+it. Proof: `server/power.test.ts` (real watcher script against fake
 macOS commands), `src/lib/settings.test.ts`, `src/views/settings-gateway.test.ts`
 and `e2e/power-settings.browser.md`.
 

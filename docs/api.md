@@ -426,14 +426,16 @@ macOS, and only while that gateway process runs:
   ends the child, and `-w` ends it if the gateway is killed.
 - `lidAwake` runs `pmset -a disablesleep 1` through one macOS administrator
   prompt (`osascript … with administrator privileges`, abandoned after two
-  minutes; turning the setting off withdraws a prompt still open). The same root
-  script leaves a watcher that runs `pmset -a disablesleep 0` and deletes its flag
-  file under `~/.config/hui/power/` once HUI renames that flag to `.stop`
-  (turned off, gateway stop) or the gateway PID is gone (crash). Only a changed
+  minutes; turning the setting off withdraws a prompt still asking to turn it on,
+  and stopping the gateway withdraws any prompt). The same root script leaves a
+  watcher that runs `pmset -a disablesleep 0` and deletes its flag file under
+  `~/.config/hui/power/` once HUI renames that flag to `.stop` (turned off,
+  gateway stop) or the gateway PID is gone (crash). Only a changed
   choice prompts, so unrelated saves and a cancelled prompt are not retried; each
   gateway start with it on prompts again.
-- Before deciding, HUI waits briefly for earlier watchers to finish, so a quick
-  restart never mistakes a winding-down watcher for an outside setting. A flag
+- Before deciding, HUI stops every watcher it finds and waits briefly for each to
+  restore sleep, so a quick restart never mistakes a winding-down watcher for an
+  outside setting. A flag
   that outlives its watcher (reboot, power loss) means HUI left
   `disablesleep 1`: HUI takes it over when on and asks for approval to restore it
   when off. Otherwise, when `pmset -g` already reports `SleepDisabled 1`, HUI

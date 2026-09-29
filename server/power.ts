@@ -60,6 +60,8 @@ export class MacPower {
   #caffeinate?: ChildProcess;
   #flag?: string;
   #prompt?: AbortController;
+  /** Aborted by dispose, so queued lid work never prompts after the gateway stops. */
+  #life = new AbortController();
   #lidWanted?: boolean;
   /** An earlier HUI run left `disablesleep 1` without a watcher. */
   #leftover = false;
@@ -74,22 +76,25 @@ export class MacPower {
   }
 
   /** Idle sleep changes immediately. The lid change may wait on a password
-   * dialog, so it is serialized and the returned promise can be left running;
-   * turning it off withdraws a dialog that is still open. */
+   * dialog, so it is serialized and the returned promise can be left running.
+   * Turning it off withdraws a dialog still asking to turn it on; a dialog
+   * restoring sleep is left to finish. */
   apply(power: Settings["power"]): Promise<void> {
     this.#applyKeepAwake(power.keepAwake);
-    if (!power.lidAwake) this.#prompt?.abort();
+    if (!power.lidAwake && this.#lidWanted) this.#prompt?.abort();
+    const life = this.#life.signal;
     this.#lidQueue = this.#lidQueue
-      .then(() => this.#applyLidAwake(power.lidAwake))
+      .then(() => this.#applyLidAwake(power.lidAwake, life))
       .catch((error: unknown) => {
-        this.#lidAwake = { state: "error", detail: error instanceof Error ? error.message : String(error) };
+        if (!life.aborted) this.#lidAwake = { state: "error", detail: error instanceof Error ? error.message : String(error) };
       });
     return this.#lidQueue;
   }
 
   dispose(): void {
     this.#applyKeepAwake(false);
-    this.#prompt?.abort();
+    this.#life.abort();
+    this.#life = new AbortController();
     // A running watcher restores on `.stop`, and a quickly restarted gateway
     // waits for it; a flag still waiting on approval has no watcher yet.
     try {
@@ -127,15 +132,12 @@ export class MacPower {
     child.once("exit", (code, signal) => fail(`caffeinate exited (${signal ?? `code ${code}`}).`));
   }
 
-  async #applyLidAwake(want: boolean): Promise<void> {
+  async #applyLidAwake(want: boolean, life: AbortSignal): Promise<void> {
     // Only a changed choice acts, so unrelated settings saves never re-prompt.
-    if (want === this.#lidWanted) return;
+    if (life.aborted || want === this.#lidWanted) return;
     this.#lidWanted = want;
-    if (this.#flag) {
-      // A vanished flag already stopped its watcher; #settle handles the rest.
-      await rename(this.#flag, `${this.#flag}.stop`).catch(() => undefined);
-      this.#flag = undefined;
-    }
+    // #settle stops this flag's watcher along with any other.
+    this.#flag = undefined;
     if (await this.#settle()) this.#leftover = true;
     const disabled = await this.#sleepDisabled();
     if (!want) {
@@ -143,7 +145,7 @@ export class MacPower {
       else if (!this.#leftover) this.#lidAwake = { state: "off", detail: "Still on for this Mac outside HUI." };
       else {
         this.#lidAwake = { state: "pending", detail: "Waiting for administrator approval to restore lid-close sleep." };
-        await this.#admin(`${quote(this.#options.pmset)} -a disablesleep 0`).catch((error: Error) => {
+        await this.#admin(`${quote(this.#options.pmset)} -a disablesleep 0`, life).catch((error: Error) => {
           throw new Error(`An earlier HUI run left lid-close sleep off. ${error.message}`);
         });
         this.#leftover = false;
@@ -161,7 +163,7 @@ export class MacPower {
     try {
       await mkdir(this.#options.flagDir, { recursive: true });
       await writeFile(flag, "");
-      await this.#admin(this.#watcherScript(flag));
+      await this.#admin(this.#watcherScript(flag), life);
     } catch (error) {
       await rm(flag, { force: true });
       if (this.#flag === flag) this.#flag = undefined;
@@ -179,11 +181,15 @@ export class MacPower {
     ].join("\n");
   }
 
-  async #admin(script: string): Promise<void> {
+  async #admin(script: string, life: AbortSignal): Promise<void> {
+    life.throwIfAborted();
     const prompt = new AbortController();
     this.#prompt = prompt;
     try {
-      await execFileAsync(this.#options.osascript, [...ADMIN_SCRIPT, PROMPT, script], { timeout: APPROVAL_TIMEOUT_MS, signal: prompt.signal });
+      await execFileAsync(this.#options.osascript, [...ADMIN_SCRIPT, PROMPT, script], {
+        timeout: APPROVAL_TIMEOUT_MS,
+        signal: AbortSignal.any([prompt.signal, life]),
+      });
     } catch (error) {
       throw new Error(approvalError(error));
     } finally {
@@ -191,16 +197,20 @@ export class MacPower {
     }
   }
 
-  /** Waits for watchers to restore sleep and delete their flags. Flags left after
-   * a few watcher polls outlived their watcher (reboot, crash with a reused PID):
-   * they are deleted, and true says HUI left `disablesleep` as it was set. */
+  /** Stops every watcher and waits until each has restored sleep and deleted its
+   * flag. A flag still there after a few watcher polls has no watcher (reboot):
+   * it is deleted, and true says HUI left `disablesleep` as it was set. */
   async #settle(): Promise<boolean> {
-    const flags = async () => (await readdir(this.#options.flagDir).catch(() => [] as string[])).filter((name) => name.startsWith(FLAG_PREFIX));
+    const dir = this.#options.flagDir;
+    const flags = async () => (await readdir(dir).catch(() => [] as string[])).filter((name) => name.startsWith(FLAG_PREFIX));
+    for (const name of await flags()) {
+      if (!name.endsWith(".stop")) await rename(join(dir, name), join(dir, `${name}.stop`)).catch(() => undefined);
+    }
     for (let i = 0; i < 12; i++) {
       if (!(await flags()).length) return false;
       await delay(250);
     }
-    await Promise.all((await flags()).map((name) => rm(join(this.#options.flagDir, name), { force: true })));
+    await Promise.all((await flags()).map((name) => rm(join(dir, name), { force: true })));
     return true;
   }
 
