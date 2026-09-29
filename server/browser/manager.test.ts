@@ -82,6 +82,15 @@ const PAGES: Record<string, string> = {
     </script>`,
   "/next": "<!doctype html><title>Next</title><h1>Second page</h1><script>console.error('boom from next')</script>",
   "/popup": "<!doctype html><title>Popup</title><h1>Popup page</h1>",
+  "/overlay": `<!doctype html><title>Pseudo overlay</title>
+    <style>
+      .surface { position: relative; }
+      .surface::after { content: ""; position: absolute; inset: 0; z-index: 1; }
+      #clear::after { pointer-events: none; }
+    </style>
+    <div class="surface" id="clear"><button onclick="document.getElementById('out').textContent = 'sent'">Send</button></div>
+    <div class="surface" id="opaque"><button onclick="document.getElementById('out').textContent = 'blocked'">Blocked</button></div>
+    <p id="out">idle</p>`,
 };
 
 async function eventually<T>(read: () => Promise<T>, accept: (value: T) => boolean, timeoutMs = 10_000): Promise<T> {
@@ -202,6 +211,49 @@ test("a real headless browser serves agent tabs end to end", {
   await browser.applySettings(settings);
   assert.equal(browser.running, false);
   assert.equal((await browser.status()).state, "stopped");
+});
+
+test("a click passes through a transparent pseudo overlay but not an opaque one", {
+  skip: detected.executable ? false : "no Chromium-family browser is installed",
+  timeout: 60_000,
+}, async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "hui-browser-overlay-"));
+  const server = createServer((request, response) => {
+    const page = PAGES[request.url ?? ""];
+    response.writeHead(page ? 200 : 404, { "content-type": "text/html" });
+    response.end(page ?? "missing");
+  }).listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  const origin = `http://127.0.0.1:${address.port}`;
+  const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "" };
+  const browser = new ManagedBrowser({ profileDir: join(dir, "profile"), readSettings: async () => settings });
+  t.after(async () => {
+    await browser.stop();
+    server.close();
+    await rm(dir, { recursive: true, force: true });
+  });
+  const call = (params: Record<string, unknown>) => browser.tool("alpha", params, { cwd: dir });
+  const refIn = (text: string, pattern: RegExp) => {
+    const ref = pattern.exec(text)?.[1];
+    assert.ok(ref, `missing ${pattern} in:\n${text}`);
+    return ref;
+  };
+
+  // HUI paints decorative `::after` covers over its composers, and Chromium's
+  // hit test reports that pseudo-element even when it is pointer-transparent.
+  const opened = await call({ action: "open", url: `${origin}/overlay` });
+  await call({ action: "act", kind: "click", ref: refIn(opened.text, /button "Send" \[ref=(e\d+)\]/u) });
+  assert.match((await call({ action: "text", selector: "#out" })).text, /\n\nsent$/u);
+
+  // The same overlay with pointer events enabled owns the hit point, so the
+  // guard still refuses to click through it.
+  await assert.rejects(
+    call({ action: "act", kind: "click", ref: refIn(opened.text, /button "Blocked" \[ref=(e\d+)\]/u) }),
+    /covered by div#opaque/u,
+  );
+  assert.match((await call({ action: "text", selector: "#out" })).text, /\n\nsent$/u);
 });
 
 test("stopped or idle conversations never leave a headless browser running", {

@@ -280,7 +280,23 @@ function screenshotPath(cwd: string, raw: unknown): string {
   return path;
 }
 
-const CONTAINS_HIT = String.raw`function (other) {
+const CONTAINS_HIT = String.raw`function (other, x, y) {
+  if (other && typeof other.type === "string" && other.element instanceof Element) {
+    // Chromium's hit test reports the CSS pseudo-element it finds (for example a
+    // decorative ::after overlay), and ignorePointerEventsNone does not filter
+    // those. A pseudo-element never receives the pointer event itself: its
+    // originating element does, unless the pseudo is transparent to the pointer,
+    // and then the click reaches whatever is below it at the click point.
+    let style;
+    try { style = getComputedStyle(other.element, other.type); } catch { /* Unknown pseudo type; treat it as painted opaquely. */ }
+    if (style && style.pointerEvents === "none") {
+      const view = other.element.ownerDocument.defaultView;
+      other = window === window.top && view && view === view.top ? other.element.ownerDocument.elementFromPoint(x, y) : null;
+      if (!other) return { contains: true };
+    } else {
+      other = other.element;
+    }
+  }
   for (let node = other; node; node = node instanceof ShadowRoot ? node.host : node.parentNode) {
     if (node === this) return { contains: true };
   }
@@ -1438,7 +1454,8 @@ export class ManagedBrowser {
     }
     if (!other) return;
     const result = await instance.connection.send("Runtime.callFunctionOn", {
-      objectId: element, functionDeclaration: CONTAINS_HIT, arguments: [{ objectId: other }], returnByValue: true,
+      objectId: element, functionDeclaration: CONTAINS_HIT,
+      arguments: [{ objectId: other }, { value: Math.round(x) }, { value: Math.round(y) }], returnByValue: true,
     }, tab.session);
     const value = isRecord(result["result"]) ? result["result"]["value"] : undefined;
     if (isRecord(value) && value["contains"] === false) {
