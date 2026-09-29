@@ -527,7 +527,7 @@ function groupSection(group: SidebarSessionGroup, props: ShellProps, filtering: 
       const rendered = tree.map(({ session, depth, hasChildren, collapsed }) =>
         sessionRow(session, session.id === props.selectedSessionId, props, depth, hasChildren, collapsed));
       return tree.length > 1 && tree.some(({ session }) => session.id === props.selectedSessionId)
-        ? html`<div class="session-tree session-tree--active">${rendered}</div>`
+        ? html`<div class="session-tree session-tree--active" data-session-stage=${isSessionStage(tree[0]!.session.stage) ? tree[0]!.session.stage : nothing}>${rendered}</div>`
         : rendered;
     });
   };

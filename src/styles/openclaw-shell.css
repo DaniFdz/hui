@@ -702,6 +702,7 @@
 /* The selected session's open tree shares one panel; the selected row keeps
  * its stronger fill on top, like Orca's active workspace card. */
 .app-shell .session-tree--active {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -784,7 +785,8 @@
 /* Development stage bar. Child rows keep their tree guide. Every session sits
  * in a work stage (Investigation first); only a missing stage from an older
  * gateway draws no bar. */
-.app-shell .sidebar-recent-session--staged:not(.sidebar-recent-session--child)::before {
+.app-shell .sidebar-recent-session--staged:not(.sidebar-recent-session--child)::before,
+.app-shell .session-tree--active[data-session-stage]::before {
   position: absolute;
   inset-block: 5px;
   inset-inline-start: -5px;
@@ -794,6 +796,8 @@
   content: "";
   pointer-events: none;
 }
+/* In the selected open tree the root's bar runs the height of the whole panel. */
+.app-shell .session-tree--active > .sidebar-recent-session--staged:not(.sidebar-recent-session--child)::before { content: none; }
 .app-shell [data-session-stage="investigation"] { --session-stage-color: var(--stage-investigation); }
 .app-shell [data-session-stage="implementation"] { --session-stage-color: var(--stage-implementation); }
 .app-shell [data-session-stage="testing"] { --session-stage-color: var(--stage-testing); }
