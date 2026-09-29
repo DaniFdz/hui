@@ -2047,7 +2047,7 @@ function renderTranscript(props: HomeProps, session: SessionView) {
             <div class="chat-main">
               <div class="chat-main__conversation-column">
                 ${renderNote(props)} ${renderConnection(props)}
-                ${session.status === "error"
+                ${session.status === "error" && !props.worktreeError
                   ? html`<div class="chat-error" role="alert"><div class="chat-error__content">The runtime could not start.</div><button type="button" class="btn btn--sm retry-session" @click=${props.onRetry}>Retry session</button></div>`
                   : nothing}
                 <div class="chat-main__conversation">
