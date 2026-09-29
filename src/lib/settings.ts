@@ -33,6 +33,13 @@ export type Settings = {
   branchPrefix: string;
   /** Settings → Tools → Browser: HUI's managed, agent-only browser profile. */
   browser: BrowserSettings;
+  /** Settings → Gateway → Power. macOS only; both hold only while the gateway runs. */
+  power: {
+    /** Prevent idle sleep, like `caffeinate -i`. */
+    keepAwake: boolean;
+    /** Stay awake with the lid closed, like `sudo pmset -a disablesleep 1`. Needs admin approval. */
+    lidAwake: boolean;
+  };
   /** HUI-owned model routing. Empty values inherit PI's configured default. */
   models: {
     primary: string;
@@ -77,6 +84,7 @@ export const DEFAULT_SETTINGS: Settings = {
   git: { changesCard: true },
   branchPrefix: DEFAULT_BRANCH_PREFIX,
   browser: DEFAULT_BROWSER_SETTINGS,
+  power: { keepAwake: true, lidAwake: false },
   models: { primary: "", fallback: "", utility: "" },
   disabledSkills: [],
   disabledPlugins: [],
@@ -103,6 +111,7 @@ export function normalizeSettings(raw: unknown): Settings {
     git: { changesCard: !(isRecord(source["git"]) && source["git"]["changesCard"] === false) },
     branchPrefix: normalizeBranchPrefix(source["branchPrefix"]),
     browser: normalizeBrowserSettings(source["browser"]),
+    power: normalizePower(source["power"]),
     models: normalizeModels(source["models"]),
     disabledSkills: normalizeDisabledSkills(source["disabledSkills"]),
     disabledPlugins: normalizeDisabledPlugins(source["disabledPlugins"]),
@@ -121,6 +130,12 @@ export function normalizeBrowserSettings(value: unknown): BrowserSettings {
     headless: source["headless"] !== false,
     executablePath: path.length <= 4_096 && !/[\p{Cc}]/u.test(path) ? path : "",
   };
+}
+
+/** Keeping the Mac awake is opt-out; staying awake with the lid closed is opt-in. */
+function normalizePower(value: unknown): Settings["power"] {
+  const source = isRecord(value) ? value : {};
+  return { keepAwake: source["keepAwake"] !== false, lidAwake: source["lidAwake"] === true };
 }
 
 function normalizeModelRef(value: unknown): string {

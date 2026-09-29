@@ -46,6 +46,14 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   is visible. Failed checks label cached runtime values as last known; retry
   and subsequent successful checks restore the connected state. Uptime uses
   compact days/hours/minutes (seconds only below one minute).
+- On macOS, Gateway settings adds **Power**, bounded by the gateway process:
+  **Keep Mac awake** (on by default, like `caffeinate -i`) and **Stay awake with
+  the lid closed** (off by default, like `sudo pmset -a disablesleep 1`). The
+  latter is marked as needing administrator permission: macOS asks for a password
+  whenever it turns on, and turning it off, stopping the gateway or a gateway
+  crash restores normal sleep; after a reboot HUI asks to restore a setting it
+  left behind. Each switch shows what the gateway actually holds (Off, Pending,
+  Active, Failed with its reason), not just the saved choice.
 - Groups are flat: one label per group.
 - Groups collapse; the choice is remembered in the browser.
 - The group menu's **New session defaults** stores directory, runtime and optional

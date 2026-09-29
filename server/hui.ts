@@ -38,6 +38,7 @@ import { PullRequestStatuses, pullRequestsFromTranscript } from "./pull-requests
 
 import { CONFIG_DIR, ATTACHMENTS_DIR, AUTOMATION_FILE, BROWSER_PROFILE_DIR, USER_THEME_DIR } from "./paths.ts";
 import { BrowserToolError, ManagedBrowser } from "./browser/manager.ts";
+import { MacPower } from "./power.ts";
 import { attachBrowserTransport, browserViewTicket } from "./browser-transport.ts";
 import type { EventEmitter } from "node:events";
 import type { BrowserStatus } from "../shared/browser.ts";
@@ -222,6 +223,8 @@ const managedBrowser = new ManagedBrowser({
   profileDir: BROWSER_PROFILE_DIR,
   readSettings: async () => (await readSettings()).browser,
 });
+/** macOS sleep prevention lives and dies with this gateway process. */
+const macPower = process.platform === "darwin" ? new MacPower() : undefined;
 liveSessions.setTaskSuggestionProvider((id) => taskSuggestions.list(id));
 // A stopped turn must not leave its pages running in the headless browser.
 liveSessions.setAbortListener((id) => managedBrowser.closeOwner(id));
@@ -336,6 +339,8 @@ async function writeSettings(raw: unknown): Promise<Settings> {
   await writeFile(SETTINGS_FILE, `${JSON.stringify(settings, null, 2)}\n`, "utf8");
   // A changed browser mode or executable must not leave the old process running.
   await managedBrowser.applySettings(settings.browser);
+  // Not awaited: turning on lid-close prevention may wait on a password dialog.
+  void macPower?.apply(settings.power);
   return settings;
 }
 
@@ -2086,7 +2091,7 @@ async function handleRequest(
 
   if (path === HEALTH_ROUTE) {
     if (request.method === "GET") {
-      sendJson(response, 200, await readGatewayHealth());
+      sendJson(response, 200, { ...await readGatewayHealth(), power: macPower?.status() });
       return;
     }
     sendJson(response, 405, { error: "method not allowed" });
@@ -3179,6 +3184,7 @@ export async function startBackend(): Promise<void> {
   // gateway appends it to gateway.log and a development server prints it.
   mirrorDiagnosticLogs((line) => process.stderr.write(line));
   await ensureConfigDir();
+  void macPower?.apply((await readSettings()).power);
   await automation.start();
   initializeSubagents();
   recoverInterruptedSessions(await readRegistry());
@@ -3198,6 +3204,7 @@ export function recoverInterruptedSessions(
 }
 
 export function stopBackend(): void {
+  macPower?.dispose();
   managedBrowser.dispose();
   terminals.dispose();
   githubCli.dispose();

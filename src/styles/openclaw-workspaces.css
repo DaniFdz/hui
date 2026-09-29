@@ -360,6 +360,11 @@
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--gateway-tone) 12%, transparent);
 }
 
+/* Touch sizing makes switches 44px tall; center the track beside its status. */
+@media (pointer: coarse), (max-width: 640px) {
+  .power-row wa-switch.settings-toggle::part(base) { min-height: 44px; }
+}
+
 .gateway-metric {
   color: var(--text);
   font-size: var(--control-ui-text-md);

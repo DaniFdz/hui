@@ -1,3 +1,4 @@
+import type { PowerStatus } from "../../shared/power.ts";
 import { fetchJson } from "./settings-store.ts";
 
 export type GatewayHealth = {
@@ -13,6 +14,8 @@ export type GatewayHealth = {
     error: number;
     processes: number;
   };
+  /** Present only when the gateway runs on macOS. */
+  power?: PowerStatus;
 };
 
 export type MemorySource = {

@@ -43,3 +43,20 @@ test("initial loading, initial failure and idle are distinct", () => {
   assert.doesNotMatch(failed, /Uptime/);
   assert.match(render({ health: { ...health, sessions: { ...health.sessions, running: 0 } } }), /Idle/);
 });
+
+test("macOS power shows each saved choice beside what the gateway holds", () => {
+  const settings = { power: { keepAwake: true, lidAwake: true } } as SettingsProps["settings"];
+  const power = {
+    keepAwake: { state: "active", detail: "" },
+    lidAwake: { state: "error", detail: "Administrator approval was cancelled." },
+  } as const;
+  const result = render({ health: { ...health, power }, settings });
+  assert.match(result, /Keep Mac awake/);
+  assert.match(result, /settings-status--ok[^>]*>.*Active/s);
+  assert.match(result, /settings-status--danger[^>]*>.*Failed/s);
+  assert.match(result, /Administrator approval was cancelled\./);
+  assert.match(result, /Requires administrator permission/);
+  // Not on macOS, or no live gateway to hold it: no Power section.
+  assert.doesNotMatch(render({ health, settings }), /Keep Mac awake/);
+  assert.doesNotMatch(render({ health: { ...health, power }, healthError: "Network unavailable", settings }), /Keep Mac awake/);
+});

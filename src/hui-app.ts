@@ -4009,6 +4009,7 @@ export class HuiApp extends HuiElement {
           onChangeChat: (chat) => void this.save({ chat }),
           onChangeGit: (git) => void this.save({ git }),
           onChangeBrowser: (browser) => this.save({ browser }),
+          onChangePower: (power) => void this.save({ power }).then(() => this.refreshGatewayHealth()),
           onChangeModels: (models) => {
             this.launchModel = models.primary;
             void this.save({ models });
