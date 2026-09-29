@@ -51,11 +51,35 @@ instance the lid switch was operated from the Gateway page:
   prompt; the watcher exited, the flag directory was empty and the row showed
   **Off**. Stopping the instance ended its `caffeinate` child.
 
+## Lid awake per gateway run and top notice (2026-09-29, commit 53c7f3c)
+
+From Settings → Gateway on fresh isolated instances, with the operator present:
+
+- A new gateway started with the lid switch off, no HUI `osascript` prompt and
+  no top notice; `SleepDisabled` stayed `0`.
+- Turning the switch on opened the macOS dialog; after approval `SleepDisabled`
+  was `1`, a root watcher ran and the top notice "This Mac won't sleep with the
+  lid closed." appeared with **Turn off** and a dismiss button, on desktop
+  (1440×900) and mobile (390×844), in Settings and on Home, and again after a
+  page reload.
+- Dismiss hid the notice, kept it hidden across later status polls and moved
+  focus to the composer; a reload showed it again while still on.
+- **Turn off** in the notice restored `SleepDisabled 0` at once without a
+  prompt; the watcher exited, the flag directory emptied, the notice left and
+  focus moved to the composer.
+- On again (approved), then stopping the instance restored `SleepDisabled 0`
+  about a second later; the watcher and `caffeinate` exited. The next fresh
+  start again began off with no prompt and no notice.
+- Two unanswered dialogs closed after about 30 seconds and were reported as
+  "Administrator approval was cancelled or timed out." with the switch off.
+- Console: only Lit development-mode warnings.
+
 ## Proof limits
 
-Not exercised against real `pmset`: restoring on gateway stop and crash, reboot
-leftovers, a withdrawn prompt and a quick restart. Those are covered by
+Not exercised against real `pmset`: a gateway crash, reboot leftovers, a
+withdrawn prompt and a quick restart. Those are covered by
 `server/power.test.ts`, which runs the real root watcher script through fake
 `osascript`/`pmset` executables. Whether killing `osascript` also closes macOS's
-dialog is unverified. Linux hosts omit `power` from health, so the section is
-absent there (covered by `src/views/settings-gateway.test.ts`).
+dialog is unverified. Off macOS, `GET /__hui/power` returns `null`, so the
+section and notice are absent (covered by `server/power-routes.test.ts` and
+`src/views/settings-gateway.test.ts`).
