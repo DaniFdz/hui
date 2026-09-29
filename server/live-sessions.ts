@@ -202,6 +202,7 @@ export class LiveSessions {
   #readSettings: () => Promise<Settings>;
   #subagentSnapshot: (parentId: string) => readonly SubagentTaskView[] = () => [];
   #suggestionSnapshot: (sessionId: string) => readonly TaskSuggestion[] = () => [];
+  #aborted: (sessionId: string) => void = () => {};
 
   /** Injectable so the state machine can be exercised without waiting to boot a
    * real tool. A single runtime stands in for one tool, an array for several. */
@@ -289,6 +290,11 @@ export class LiveSessions {
 
   setTaskSuggestionProvider(provider: (sessionId: string) => readonly TaskSuggestion[]): void {
     this.#suggestionSnapshot = provider;
+  }
+
+  /** Every stop (the Stop button, rewind, automations, subagents) passes here. */
+  setAbortListener(listener: (sessionId: string) => void): void {
+    this.#aborted = listener;
   }
 
   /** Re-emits a complete snapshot after coordination state changes outside the
@@ -625,6 +631,7 @@ export class LiveSessions {
       runRecoveryAttempts: undefined,
     });
     await live.runtime.abort();
+    this.#aborted(id);
     live.promptPending = false;
     this.#setStatus(live, this.#reported(live));
   }

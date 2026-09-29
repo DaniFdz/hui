@@ -453,12 +453,16 @@ headless page. Changing the mode or executable stops a running browser; the next
 agent action launches it with the new configuration. Turning the tool off removes
 it from new or restarted sessions and refuses calls from running ones.
 
-The browser starts lazily on the first page an agent opens and stops with the
-gateway. HUI drives it over Chrome DevTools Protocol on a private pipe
+The browser starts lazily on the first page an agent opens and stops once its
+last agent tab closes (the next page launches it again), or with the gateway.
+HUI drives it over Chrome DevTools Protocol on a private pipe
 (`--remote-debugging-pipe`), so no debugging port is opened and the browser exits
 when the gateway does. Tabs belong to the conversation that opened them, like
-shared terminals; popups join their opener's conversation, and removing a
-conversation closes its tabs. Agents read pages as accessibility snapshots with
+shared terminals; popups join their opener's conversation. Removing a
+conversation or stopping its turn closes its tabs, including one an interrupted
+call was still opening, and tabs close after 10 minutes without a browser call
+from their conversation, so no headless page outlives the work it served.
+Agents read pages as accessibility snapshots with
 element refs, act on those refs with real input events, and can read text,
 console output and screenshots. Page content is untrusted tool output. The
 existing Full Access contract applies without a new approval surface; downloads

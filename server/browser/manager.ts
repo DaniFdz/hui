@@ -63,6 +63,8 @@ export const MAX_TABS_TOTAL = 32;
 const DEFAULT_WINDOW = { width: 1280, height: 800 } as const;
 const DEFAULT_TIMEOUT_MS = 30_000;
 const MAX_TIMEOUT_MS = 60_000;
+/** A conversation's tabs close after this long without a browser call from it. */
+const IDLE_TAB_MS = 10 * 60_000;
 /** A click that navigates starts doing so within a few frames. */
 const NAVIGATION_START_MS = 300;
 const CONSOLE_LIMIT = 200;
@@ -126,6 +128,7 @@ export type ManagedBrowserOptions = {
   probe?: ExecutableProbe;
   env?: NodeJS.ProcessEnv;
   window?: { width: number; height: number };
+  idleTabMs?: number;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -338,6 +341,7 @@ export class ManagedBrowser {
   readonly #probe: ExecutableProbe;
   readonly #env: NodeJS.ProcessEnv;
   readonly #window: { width: number; height: number };
+  readonly #idleTabMs: number;
   #instance: Instance | undefined;
   #starting: Promise<Instance> | undefined;
   #stopping: Promise<void> | undefined;
@@ -350,6 +354,13 @@ export class ManagedBrowser {
   readonly #bySession = new Map<string, Tab>();
   readonly #current = new Map<string, string>();
   #nextTab = 0;
+  /** Tool calls still running; the browser never stops under one. */
+  #calls = 0;
+  /** Bumped when a conversation's tabs are closed, so a call already in
+   * flight (an interrupted open) cannot leave a new tab behind. Never
+   * deleted: restarting at 0 would let such a call through. */
+  readonly #epochs = new Map<string, number>();
+  readonly #idle = new Map<string, ReturnType<typeof setTimeout>>();
   readonly #viewers = new Set<Viewer>();
   /** Each conversation's latest agent action, for viewers that join later. */
   readonly #lastActions = new Map<string, BrowserViewAction>();
@@ -365,6 +376,7 @@ export class ManagedBrowser {
     this.#probe = options.probe ?? defaultExecutableProbe();
     this.#env = options.env ?? process.env;
     this.#window = options.window ?? { ...DEFAULT_WINDOW };
+    this.#idleTabMs = options.idleTabMs ?? IDLE_TAB_MS;
   }
 
   get running(): boolean {
@@ -461,8 +473,12 @@ export class ManagedBrowser {
     if (!next.enabled || instance.headless !== next.headless || instance.configuredPath !== next.executablePath) await this.stop();
   }
 
-  /** Tabs belong to a conversation; removing it closes them. */
+  /** Tabs belong to a conversation; removing it, stopping its turn or leaving
+   * the browser unused closes them. */
   closeOwner(owner: string): void {
+    this.#epochs.set(owner, this.#epoch(owner) + 1);
+    clearTimeout(this.#idle.get(owner));
+    this.#idle.delete(owner);
     const instance = this.#instance;
     for (const tab of this.#ownerTabs(owner)) {
       this.#drop(tab.targetId);
@@ -507,12 +523,36 @@ export class ManagedBrowser {
     if (typeof action !== "string" || !(BROWSER_ACTIONS as readonly string[]).includes(action)) {
       throw new BrowserToolError(`action must be one of: ${BROWSER_ACTIONS.join(", ")}.`);
     }
-    const settings = await this.#readSettings();
-    if (!settings.enabled) throw new BrowserToolError("The browser tool is turned off in HUI Settings → Tools → Browser.", 409);
-    const name = action as BrowserAction;
-    const result = await this.#run(owner, name, params, settings, context);
-    this.#narrate(owner, name, params, result);
-    return result;
+    const epoch = this.#epoch(owner);
+    clearTimeout(this.#idle.get(owner));
+    this.#idle.delete(owner);
+    this.#calls += 1;
+    try {
+      const settings = await this.#readSettings();
+      if (!settings.enabled) throw new BrowserToolError("The browser tool is turned off in HUI Settings → Tools → Browser.", 409);
+      const name = action as BrowserAction;
+      const result = await this.#run(owner, name, params, settings, context, epoch);
+      this.#narrate(owner, name, params, result);
+      return result;
+    } finally {
+      this.#calls -= 1;
+      if (this.#ownerTabs(owner).length) {
+        const timer = setTimeout(() => this.closeOwner(owner), this.#idleTabMs);
+        timer.unref();
+        this.#idle.set(owner, timer);
+      }
+      this.#stopIfUnused();
+    }
+  }
+
+  #epoch(owner: string): number {
+    return this.#epochs.get(owner) ?? 0;
+  }
+
+  /** Chromium runs for agent tabs: once none is open and no call is running,
+   * it stops and the next open launches it again. */
+  #stopIfUnused(): void {
+    if (this.#instance && !this.#tabs.size && !this.#calls) void this.stop();
   }
 
   async #run(
@@ -521,12 +561,13 @@ export class ManagedBrowser {
     params: Record<string, unknown>,
     settings: BrowserSettings,
     context: { cwd: string },
+    epoch: number,
   ): Promise<BrowserToolResult> {
     const name = action;
     switch (name) {
       case "status": return this.#statusResult(owner, settings);
       case "tabs": return this.#tabsResult(owner);
-      case "open": return this.#open(owner, params, settings);
+      case "open": return this.#open(owner, params, settings, epoch);
       case "navigate": {
         const tab = this.#tabFor(owner, params["tabId"]);
         const instance = this.#live();
@@ -735,6 +776,8 @@ export class ManagedBrowser {
     for (const cast of this.#casts.values()) for (const timer of cast.timers) clearTimeout(timer);
     this.#casts.clear();
     this.#lastActions.clear();
+    for (const timer of this.#idle.values()) clearTimeout(timer);
+    this.#idle.clear();
   }
 
   // ── Live view ─────────────────────────────────────────────────────────────
@@ -982,13 +1025,13 @@ export class ManagedBrowser {
       await instance.connection.send("Target.closeTarget", { targetId }).catch(() => undefined);
       return;
     }
-    const popup = await this.#attach(instance, targetId, opener.owner).catch(() => undefined);
+    const popup = await this.#attach(instance, targetId, opener.owner, this.#epoch(opener.owner)).catch(() => undefined);
     // A headless popup opens in its opener's window and hides it. Keep the
     // agent's current tab painting until it focuses the popup.
     if (popup && instance.headless && this.#current.get(opener.owner) === opener.id) await this.#ensureVisible(instance, opener);
   }
 
-  async #attach(instance: Instance, targetId: string, owner: string): Promise<Tab> {
+  async #attach(instance: Instance, targetId: string, owner: string, epoch: number): Promise<Tab> {
     const connection = instance.connection;
     const attached = await connection.send("Target.attachToTarget", { targetId, flatten: true });
     const session = str(attached["sessionId"]);
@@ -1019,8 +1062,10 @@ export class ManagedBrowser {
         tab.url = str(frame["url"]) || tab.url;
         tab.loaderId = str(frame["loaderId"]);
       }
+      if (epoch !== this.#epoch(owner)) throw new BrowserToolError("This conversation's browser tabs were closed.", 409);
     } catch (error) {
       this.#drop(targetId);
+      void connection.send("Target.closeTarget", { targetId }).catch(() => undefined);
       throw error;
     }
     this.#changed(owner);
@@ -1044,6 +1089,7 @@ export class ManagedBrowser {
       else this.#current.delete(tab.owner);
     }
     this.#changed(tab.owner);
+    this.#stopIfUnused();
   }
 
   #ownerTabs(owner: string): Tab[] {
@@ -1250,7 +1296,7 @@ export class ManagedBrowser {
     return this.#pageResult(instance, tab, action, `${verb} tab ${tab.id}.`, outcome, params);
   }
 
-  async #open(owner: string, params: Record<string, unknown>, settings: BrowserSettings): Promise<BrowserToolResult> {
+  async #open(owner: string, params: Record<string, unknown>, settings: BrowserSettings, epoch: number): Promise<BrowserToolResult> {
     const url = normalizeBrowserUrl(params["url"] ?? "about:blank");
     const timeoutMs = timeoutFrom(params["timeoutMs"]);
     if (this.#ownerTabs(owner).length >= MAX_TABS_PER_CONVERSATION) {
@@ -1261,7 +1307,7 @@ export class ManagedBrowser {
     // Headless windows are free: one per tab keeps every conversation's tab
     // visible, so none stops painting (or stalls input) when another opens.
     const created = await instance.connection.send("Target.createTarget", { url: "about:blank", ...(instance.headless ? { newWindow: true } : {}) });
-    const tab = await this.#attach(instance, str(created["targetId"]), owner);
+    const tab = await this.#attach(instance, str(created["targetId"]), owner, epoch);
     this.#current.set(owner, tab.id);
     this.#changed(owner);
     this.#closeStartupPages(instance);

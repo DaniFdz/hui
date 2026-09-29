@@ -166,7 +166,7 @@ export class HuiBrowserSettings extends LitElement {
     const started = status.startedAt ? new Date(status.startedAt) : undefined;
     const description = running
       ? `${browserVersionLabel(status)} · ${status.mode === "windowed" ? "visible window" : "headless, no window"}${started ? ` · started ${started.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : ""}`
-      : "Starts automatically the first time an agent opens a page, and stops when HUI stops.";
+      : "Starts when an agent opens a page and stops when its last tab closes. Stopping a turn closes its tabs; unused tabs close after 10 minutes.";
     return html`<div class="settings-row" data-browser-process=${status.state}>
       <div class="settings-row__text">
         <span class="settings-row__title">Managed browser</span>

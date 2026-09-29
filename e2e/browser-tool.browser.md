@@ -79,6 +79,23 @@ real model would take, so the preview can be watched mid-run.
   the panel selector.
 - No page errors or console errors were reported.
 
+## Stopping a turn
+
+Verified on 2026-09-29 on macOS with Google Chrome (auto-detected) in the same
+fixture at 1440×900 and 390×844.
+
+- After a finished `E2E_BROWSER_SLOW` run, Settings → Tools → Browser showed
+  "Running · headless" and its tab, which stays open for a follow-up.
+- A second `E2E_BROWSER_SLOW` prompt in the same session was stopped with
+  **Stop** after "Typed 9 characters into e1". The chat showed "This operation
+  was aborted" and the preview card turned **Closed** with its last frame.
+- Settings then showed "Stopped", no open tabs (the finished run's tab closed
+  too) and "Starts when an agent opens a page and stops when its last tab
+  closes. Stopping a turn closes its tabs; unused tabs close after 10 minutes."
+  No Chrome process remained for the temporary profile.
+- The 10-minute expiry is proven by `server/browser/manager.test.ts` with a
+  short timeout, not by waiting in the Browser check.
+
 ## Limits
 
 - Windowed mode was verified only as a refusal on a display-less Linux host;
