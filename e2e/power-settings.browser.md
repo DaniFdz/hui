@@ -8,7 +8,7 @@ transcripts were read or changed. The host Mac already had `SleepDisabled 1`.
 ## Reproduce
 
 1. Launch and `doctor` as in the visual verification skill; open the receipt
-   URL, then Settings → Gateway at 1440×900 and 390×844.
+   URL, then Home → Settings → Gateway at 1440×900 and 390×844.
 2. Operate the switches with the keyboard (focus, Space). Pointer clicks land on
    Web Awesome's inner `span.switch`, which the Browser tool reports as covering.
 3. Inspect helper processes with `pgrep -fl "caffeinate -i -w"` and the Mac's
@@ -25,6 +25,9 @@ transcripts were read or changed. The host Mac already had `SleepDisabled 1`.
   on for this Mac outside HUI, so HUI leaves it unchanged." No `osascript`
   prompt ran and no flag directory was created. Turning it off showed **Off**
   with "Still on for this Mac outside HUI." and `SleepDisabled` stayed `1`.
+- With lid-close off at startup, the row showed **Off** with "Still on for this
+  Mac outside HUI." rather than a bare Off.
+- Stopping the instance (`cleanup`) ended its `caffeinate` child.
 - Mobile: rows stack; the status pill and switch are vertically aligned and
   no horizontal overflow is visible. Keyboard focus ring is visible on the switch.
 - Console: only Lit development-mode warnings.
