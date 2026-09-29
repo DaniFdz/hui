@@ -1699,6 +1699,7 @@ export class HuiApp extends HuiElement {
     this.resetCommands();
     // Nothing to open until the gateway has created the worktree session.
     if (this.paneCreating || this.paneCreationError) {
+      if (this.paneCreationError && this.selected) this.selected = { ...this.selected, status: "error" };
       this.opening = false;
       return;
     }

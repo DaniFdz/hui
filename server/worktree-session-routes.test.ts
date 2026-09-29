@@ -50,7 +50,7 @@ test("a failed worktree launch stays listed with its prompt until dismissed", { 
     if (!failed) await new Promise((resolve) => setTimeout(resolve, 10));
   }
   assert.equal(failed.creating, undefined);
-  assert.match(failed.creationError ?? "", /Git/);
+  assert.match(failed.creationError ?? "", /requires a Git repository/);
   assert.equal(failed.initialPrompt, "keep this prompt");
   const opened = await route(`/__hui/sessions/${id}/open`, "POST", {});
   assert.equal(opened.status, 409);
