@@ -425,16 +425,17 @@ Staying awake with the lid closed is never saved: it lasts one gateway run.
   actually holds; `lidOn` is the lid switch. The UI polls it every three seconds
   while visible and shows a top notice while `lidOn` is true and `lidAwake` is
   active.
-- `PUT /__hui/power` with `{ "lidAwake": boolean }` (anything else is 400; 404
-  off macOS) sets the switch and returns the status at once; the outcome of a
-  password prompt appears in later reads.
+- `PUT /__hui/power` with `{ "lidAwake": boolean }` sets the switch and returns
+  the status at once; the outcome of a password prompt appears in later reads.
+  JSON without a boolean `lidAwake` is 400, and off macOS it is 404.
 - Turning it on runs `pmset -a disablesleep 1` through one macOS administrator
-  prompt (`osascript … with administrator privileges`, abandoned after two
-  minutes). The same root script leaves a watcher that runs
+  prompt (`osascript … with administrator privileges`; macOS closes an
+  unanswered dialog after about 30 seconds, and HUI abandons it after two
+  minutes at the latest). The same root script leaves a watcher that runs
   `pmset -a disablesleep 0` and deletes its flag file under
   `~/.config/hui/power/` once HUI renames that flag to `.stop` (turned off,
-  gateway stop) or the gateway PID is gone (crash). A cancelled or failed prompt
-  turns the switch back off with the reason. Turning it off withdraws a prompt
+  gateway stop) or the gateway PID is gone (crash). A cancelled, timed-out or
+  failed prompt turns the switch back off with the reason. Turning it off withdraws a prompt
   still asking to turn it on; a switch changed again before its prompt opens
   gives way to the newer choice.
 - Every gateway start begins with the switch off and never prompts. It first
@@ -442,9 +443,10 @@ Staying awake with the lid closed is never saved: it lasts one gateway run.
   Flags are named with their gateway PID; another live gateway's flag (a
   development server sharing the config dir) is left alone unless it predates
   the last boot. A flag that outlives its watcher (reboot, power loss) means HUI
-  left `disablesleep 1`: that run starts with the switch on and a note saying
-  so, and turning it off asks for approval to restore sleep. The flag stays
-  until that approval succeeds.
+  left `disablesleep 1`: the switch shows on with a note saying so, without a
+  prompt (also when turned on while such a flag holds it), and turning it off
+  asks for approval to restore sleep. The flag stays until that approval
+  succeeds.
 - When `pmset -g` already reports `SleepDisabled 1` without a HUI flag, turning
   the switch on reports it active and changes nothing, and turning it off
   reports that it is still on outside HUI.

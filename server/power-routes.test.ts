@@ -33,4 +33,5 @@ test("the power route reports the platform and rejects a malformed lid switch", 
   for (const body of ["{}", '{"lidAwake":"yes"}', "[]", "null"]) {
     assert.equal((await fetch(url, { method: "PUT", headers, body })).status, 400, body);
   }
+  assert.equal((await fetch(url, { method: "DELETE", headers })).status, 405);
 });

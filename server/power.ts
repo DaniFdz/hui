@@ -12,7 +12,8 @@ import { CONFIG_DIR } from "./paths.ts";
 
 const execFileAsync = promisify(execFile);
 const OFF: PowerState = { state: "off", detail: "" };
-/** An unanswered macOS password dialog is abandoned after this long. */
+/** An unanswered password dialog is abandoned after this long, unless macOS
+ * closes it first (observed after about 30 seconds). */
 const APPROVAL_TIMEOUT_MS = 120_000;
 const PROMPT = "HUI needs administrator permission to change whether this Mac sleeps with the lid closed.";
 /** `do shell script` runs the shell script it is given as root. */
@@ -197,6 +198,11 @@ export class MacPower {
       this.#lidAwake = { state: "active", detail: "Already on for this Mac outside HUI, so HUI leaves it unchanged." };
       return;
     }
+    // A reboot's leftover already holds it; turning that off is what prompts.
+    if (ours) {
+      this.#adoptLeftover("");
+      return;
+    }
     this.#lidAwake = { state: "pending", detail: "Waiting for administrator approval on this Mac." };
     const flag = join(this.#options.flagDir, `${FLAG_PREFIX}${this.#options.pid}-${randomUUID()}`);
     this.#flag = flag;
@@ -212,7 +218,6 @@ export class MacPower {
       if (current() && this.#lidWanted === want) this.#lidTarget = this.#lidWanted = false;
       throw error;
     }
-    await forget(leftovers);
     this.#lidAwake = { state: "active", detail: "" };
   }
 
@@ -279,6 +284,7 @@ function approvalError(error: unknown): string {
   const failure = error as { name?: string; killed?: boolean; stderr?: string };
   if (failure.name === "AbortError") return "Administrator approval was withdrawn.";
   if (failure.killed) return "Administrator approval timed out.";
-  if (/-128/u.test(failure.stderr ?? "")) return "Administrator approval was cancelled.";
+  // macOS reports its own dialog timeout as a cancel too.
+  if (/-128/u.test(failure.stderr ?? "")) return "Administrator approval was cancelled or timed out.";
   return failure.stderr?.trim() || "Could not change the lid-close sleep setting.";
 }

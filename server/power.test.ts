@@ -153,6 +153,17 @@ test("a declined restore keeps the leftover on, including after a restart", asyn
   assert.equal((await prompts()).length, 1);
 });
 
+test("turning lid awake on while a reboot's leftover holds it shows it on without prompting", async (t) => {
+  const { power, prompts, leaveRebootFlag, flagDir } = await fixture(t, { sleepDisabled: "1" });
+  const leftover = await leaveRebootFlag();
+  void power.start(false);
+  await eventually(async () => (await readdir(flagDir)).includes(`${leftover}.stop`));
+  await power.setLidAwake(true);
+  assert.equal(power.status().lidOn, true);
+  assert.match(power.status().lidAwake.detail, /before this Mac restarted/);
+  assert.equal((await prompts()).length, 0);
+});
+
 test("switching lid awake off while it is still settling never prompts", async (t) => {
   const { power, prompts, leaveRebootFlag, flagDir } = await fixture(t);
   const leftover = await leaveRebootFlag();
@@ -214,7 +225,7 @@ test("switching lid awake off and on again while its prompt is open asks again",
 test("a cancelled approval turns the switch back off and says why", async (t) => {
   const { power, read, prompts } = await fixture(t, { osascript: "cancel" });
   await power.setLidAwake(true);
-  assert.deepEqual(power.status().lidAwake, { state: "error", detail: "Administrator approval was cancelled." });
+  assert.deepEqual(power.status().lidAwake, { state: "error", detail: "Administrator approval was cancelled or timed out." });
   assert.equal(power.status().lidOn, false);
   assert.equal(await read("sleep-disabled"), "0");
   await power.setLidAwake(true);

@@ -609,20 +609,20 @@ export class HuiApp extends HuiElement {
     }
   }
 
-  private powerPending = false;
+  private powerRequest = 0;
 
+  /** The newest request wins, so an older poll never undoes a click. */
   private async refreshPower(next?: Promise<PowerStatus | null>) {
-    if (this.powerPending && !next) return;
-    this.powerPending = true;
+    const request = ++this.powerRequest;
+    let power: PowerStatus | null | undefined;
     try {
-      this.power = await (next ?? loadPower());
+      power = await (next ?? loadPower());
     } catch {
       // Unknown rather than stale: no banner or switches until the gateway answers.
-      this.power = undefined;
-    } finally {
-      this.powerPending = false;
     }
-    if (!this.power?.lidOn) this.powerNoticeDismissed = false;
+    if (request !== this.powerRequest) return;
+    this.power = power;
+    if (!power?.lidOn) this.powerNoticeDismissed = false;
   }
 
   private setLidAwakeFromUi = (on: boolean) => void this.refreshPower(setLidAwake(on));
@@ -3923,8 +3923,8 @@ export class HuiApp extends HuiElement {
         power: this.power,
         dismissed: this.powerNoticeDismissed,
         inert: noticesInert,
-        onTurnOff: () => this.setLidAwakeFromUi(false),
-        onDismiss: () => { this.powerNoticeDismissed = true; },
+        onTurnOff: () => { this.setLidAwakeFromUi(false); this.composerTextarea?.focus(); },
+        onDismiss: () => { this.powerNoticeDismissed = true; this.composerTextarea?.focus(); },
       })}
       <div class="hui-workspace">${this.renderWorkspace()}</div>
       ${this.archiveToast ? html`<div class="app-toast session-archive-toast"
