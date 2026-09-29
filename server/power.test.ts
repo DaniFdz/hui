@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { chmod, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readdir, readFile, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test, { type TestContext } from "node:test";
@@ -38,9 +38,13 @@ async function fixture(t: TestContext, { osascript = "approve" as keyof typeof O
   const read = (name: string) => readFile(join(dir, name), "utf8").then((text) => text.trim(), () => "");
   const prompts = async () => (await read("prompts")).split("\n").filter(Boolean);
   const answer = () => writeFile(join(dir, "go"), "");
+  /** Written before the last boot and named with a PID that is live again now. */
   const leaveRebootFlag = async () => {
+    const name = `lid-awake-${process.ppid}-left-by-reboot`;
     await mkdir(options.flagDir, { recursive: true });
-    await writeFile(join(options.flagDir, "lid-awake-left-by-reboot"), "");
+    await writeFile(join(options.flagDir, name), "");
+    await utimes(join(options.flagDir, name), 0, 0);
+    return name;
   };
   return { power: make(), make, read, prompts, answer, leaveRebootFlag, flagDir: options.flagDir };
 }
@@ -140,9 +144,9 @@ test("a declined restore is offered again after a restart", async (t) => {
 
 test("switching lid awake off while it is still settling never prompts", async (t) => {
   const { power, prompts, leaveRebootFlag, flagDir } = await fixture(t);
-  await leaveRebootFlag();
+  const leftover = await leaveRebootFlag();
   void power.apply({ keepAwake: false, lidAwake: true });
-  await eventually(async () => (await readdir(flagDir)).includes("lid-awake-left-by-reboot.stop"));
+  await eventually(async () => (await readdir(flagDir)).includes(`${leftover}.stop`));
   await power.apply({ keepAwake: false, lidAwake: false });
   assert.deepEqual(power.status().lidAwake, { state: "off", detail: "" });
   assert.equal((await prompts()).length, 0);
@@ -193,6 +197,18 @@ test("turning lid awake off withdraws an unanswered approval", async (t) => {
   assert.deepEqual(power.status().lidAwake, { state: "off", detail: "" });
   await eventually(async () => !alive(Number((await prompts())[0])));
   assert.equal(await read("sleep-disabled"), "0");
+});
+
+test("switching lid awake off and on again while its prompt is open asks again", async (t) => {
+  const { power, prompts, answer } = await fixture(t, { osascript: "gate" });
+  void power.apply({ keepAwake: false, lidAwake: true });
+  await eventually(async () => (await prompts()).length === 1);
+  void power.apply({ keepAwake: false, lidAwake: false });
+  const again = power.apply({ keepAwake: false, lidAwake: true });
+  await eventually(async () => (await prompts()).length === 2);
+  await answer();
+  await again;
+  assert.deepEqual(power.status().lidAwake, { state: "active", detail: "" });
 });
 
 test("a cancelled approval is reported and not retried until the choice changes", async (t) => {

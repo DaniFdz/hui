@@ -1,7 +1,8 @@
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { renameSync, rmSync } from "node:fs";
+import { renameSync, rmSync, statSync } from "node:fs";
 import { mkdir, readdir, rename, rm, writeFile } from "node:fs/promises";
+import { uptime } from "node:os";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { promisify } from "node:util";
@@ -45,12 +46,14 @@ const quote = (value: string) => `'${value.replaceAll("'", `'\\''`)}'`;
 const forget = (paths: readonly string[]) => Promise.all(paths.map((path) => rm(path, { force: true })));
 
 /** Another live gateway's flag, such as a development server sharing this config
- * dir. Gateways run as this user, so a PID we cannot signal is not one. */
-function othersActiveFlag(name: string, ownPid: number): boolean {
-  const pid = Number(name.slice(FLAG_PREFIX.length).split("-")[0]);
-  if (name.endsWith(".stop") || !Number.isInteger(pid) || pid === ownPid) return false;
+ * dir. Gateways run as this user, so a PID we cannot signal is not one, and a
+ * flag from before the last boot never is: its PID may belong to anything now.
+ * ponytail: a crashed gateway's PID reused within a second keeps its watcher. */
+function othersActiveFlag(dir: string, name: string, ownPid: number): boolean {
+  const pid = Number(/^lid-awake-(\d+)-/u.exec(name)?.[1]);
+  if (name.endsWith(".stop") || !(pid > 0) || pid === ownPid) return false;
   try {
-    return process.kill(pid, 0);
+    return statSync(join(dir, name)).mtimeMs > Date.now() - uptime() * 1_000 && process.kill(pid, 0);
   } catch {
     return false;
   }
@@ -93,7 +96,11 @@ export class MacPower {
    * restoring sleep is left to finish. */
   apply(power: Settings["power"]): Promise<void> {
     this.#applyKeepAwake(power.keepAwake);
-    if (!power.lidAwake && this.#lidWanted) this.#prompt?.abort();
+    if (!power.lidAwake && this.#lidWanted) {
+      // Withdraw a dialog still asking to turn it on; the next step re-decides.
+      this.#prompt?.abort();
+      this.#lidWanted = undefined;
+    }
     this.#lidTarget = power.lidAwake;
     const life = this.#life.signal;
     this.#lidQueue = this.#lidQueue
@@ -146,15 +153,17 @@ export class MacPower {
   }
 
   async #applyLidAwake(want: boolean, life: AbortSignal): Promise<void> {
+    // Stopped, or switched again since: the later step decides.
+    const current = () => !life.aborted && want === this.#lidTarget;
     // Only a changed choice acts, so unrelated settings saves never re-prompt.
-    if (life.aborted || want !== this.#lidTarget || want === this.#lidWanted) return;
+    if (!current() || want === this.#lidWanted) return;
     this.#lidWanted = want;
     // #settle stops this flag's watcher along with any other.
     this.#flag = undefined;
     const leftovers = await this.#settle();
     const disabled = await this.#sleepDisabled();
-    // Stopped, or switched again while settling: the later step decides.
-    if (life.aborted || want !== this.#lidTarget) return;
+    if (!current()) return;
+    this.#lidWanted = want;
     if (!disabled) await forget(leftovers);
     const ours = disabled && leftovers.length > 0;
     if (!want) {
@@ -162,7 +171,7 @@ export class MacPower {
       else if (!ours) this.#lidAwake = { state: "off", detail: "Still on for this Mac outside HUI." };
       else {
         this.#lidAwake = { state: "pending", detail: "Waiting for administrator approval to restore lid-close sleep." };
-        await this.#admin(`${quote(this.#options.pmset)} -a disablesleep 0`, life).catch((error: Error) => {
+        await this.#admin(`${quote(this.#options.pmset)} -a disablesleep 0`, life, current).catch((error: Error) => {
           throw new Error(`An earlier HUI run left lid-close sleep off. ${error.message}`);
         });
         await forget(leftovers);
@@ -180,7 +189,7 @@ export class MacPower {
     try {
       await mkdir(this.#options.flagDir, { recursive: true });
       await writeFile(flag, "");
-      await this.#admin(this.#watcherScript(flag), life);
+      await this.#admin(this.#watcherScript(flag), life, current);
     } catch (error) {
       await rm(flag, { force: true });
       if (this.#flag === flag) this.#flag = undefined;
@@ -198,8 +207,8 @@ export class MacPower {
     ].join("\n");
   }
 
-  async #admin(script: string, life: AbortSignal): Promise<void> {
-    life.throwIfAborted();
+  async #admin(script: string, life: AbortSignal, current: () => boolean): Promise<void> {
+    if (!current()) throw new Error("Superseded by a newer choice.");
     const prompt = new AbortController();
     this.#prompt = prompt;
     try {
@@ -221,7 +230,7 @@ export class MacPower {
   async #settle(): Promise<string[]> {
     const dir = this.#options.flagDir;
     const flags = async () => (await readdir(dir).catch(() => [] as string[]))
-      .filter((name) => name.startsWith(FLAG_PREFIX) && !othersActiveFlag(name, this.#options.pid));
+      .filter((name) => name.startsWith(FLAG_PREFIX) && !othersActiveFlag(dir, name, this.#options.pid));
     for (const name of await flags()) {
       if (!name.endsWith(".stop")) await rename(join(dir, name), join(dir, `${name}.stop`)).catch(() => undefined);
     }

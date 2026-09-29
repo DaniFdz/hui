@@ -436,7 +436,8 @@ macOS, and only while that gateway process runs:
 - Before deciding, HUI stops every watcher it finds and waits briefly for each to
   restore sleep, so a quick restart never mistakes a winding-down watcher for an
   outside setting. Flags are named with their gateway PID; another live gateway's
-  flag (a development server sharing the config dir) is left alone. A flag that
+  flag (a development server sharing the config dir) is left alone unless it
+  predates the last boot. A flag that
   outlives its watcher (reboot, power loss) means HUI left `disablesleep 1`: HUI
   takes it over when on and asks for approval to restore it when off, keeping the
   flag until that approval succeeds, so a declined prompt is offered again on the
@@ -444,7 +445,8 @@ macOS, and only while that gateway process runs:
   reports it active and leaves it unchanged, and when off reports that it is
   still on outside HUI.
 - A switch changed again before its prompt opens gives way to the newer choice,
-  so a quick on-then-off never prompts.
+  so a quick on-then-off never prompts; turning it off and on again while the
+  prompt is open withdraws it and asks again.
 
 The settings write does not wait for the prompt; its outcome appears in `power`.
 
