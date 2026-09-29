@@ -18,6 +18,7 @@ const {
   sessionMutationErrorStatus,
   storeAttachmentFile,
   streamSession,
+  startWorktreeSession,
   streamSessionStatuses,
   setAgentStage,
   updateSession,
@@ -27,6 +28,7 @@ const { SessionRegistryError } = await import("./sessions.ts");
 const { runGit } = await import("./worktrees.ts");
 type SessionStreamMessage = import("./live-sessions.ts").SessionStreamMessage;
 type SessionStatusUpdate = import("./live-sessions.ts").SessionStatusUpdate;
+type SessionSnapshot = import("./live-sessions.ts").SessionSnapshot;
 type SessionRecord = import("./sessions.ts").SessionRecord;
 
 test("gateway startup eagerly opens only interrupted sessions", () => {
@@ -425,6 +427,59 @@ test("a prompt-named worktree reports its naming step before any Git progress", 
     (progress) => { named.push(progress.phase); },
   );
   assert.equal(named.includes("naming"), false, "an operator branch name skips naming");
+});
+
+test("a worktree session returns before Git finishes and the gateway sends its prompt", { timeout: 20_000 }, async () => {
+  const response = new FakeResponse();
+  streamSessionStatuses(response as unknown as ServerResponse, {
+    watchStatuses: () => ({ statuses: [], unsubscribe: () => undefined }),
+  });
+  const statuses = () => response.chunks.join("").split("\n")
+    .filter((line) => line.startsWith("data: {\"id\""))
+    .map((line) => JSON.parse(line.slice(6)) as SessionStatusUpdate & { creating?: { phase: string } });
+
+  await assert.rejects(() => startWorktreeSession({ cwd: tmpdir(), worktree: true, model: "bad" }), /provider\/id/);
+  assert.deepEqual(statuses(), [], "invalid input is refused without a pending session");
+
+  const settled = async (id: string, status: string) => {
+    while (!statuses().some((update) => update.id === id && update.status === status && !update.creating)) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+  };
+
+  const repo = await gitRepository();
+  let stored: SessionRecord[] = [];
+  const calls: string[] = [];
+  const pending = await startWorktreeSession(
+    {
+      cwd: repo,
+      title: "Background checkout",
+      initialPrompt: " first turn ",
+      initialAttachments: [{ kind: "image", name: "shot.png", mimeType: "image/png", dataBase64: "iVBORw0K" }],
+      worktree: true,
+    },
+    {
+      accept: () => undefined,
+      ensure: (record) => { calls.push(`ensure ${stored.some(({ id }) => id === record.id)}`); return true; },
+      status: () => "starting",
+      watch: () => ({ snapshot: { status: "idle" } as SessionSnapshot, unsubscribe: () => undefined }),
+      prompt: async (id, text, attachments) => {
+        calls.push(`prompt ${id === pending.id} ${text} ${attachments?.map(({ name }) => name).join()}`);
+      },
+    },
+    async (mutate) => { stored = [...mutate([])]; return stored; },
+  );
+  assert.equal(pending.title, "Background checkout");
+  assert.equal(pending.status, "starting");
+  assert.ok(pending.creating, "the browser can show progress before Git finishes");
+  assert.equal(stored.length, 0, "nothing is persisted before the worktree exists");
+  await settled(pending.id, "starting");
+  assert.equal(stored[0]?.id, pending.id, "the finished record keeps the pending id");
+  assert.notEqual(stored[0]?.cwd, repo);
+  while (calls.length < 2) await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.deepEqual(calls, ["ensure true", "prompt true first turn shot.png"], "the gateway sends the first prompt once, after persisting");
+
+  response.emit("close");
 });
 
 test("create preserves namespaced model ids through persistence and runtime startup", async () => {

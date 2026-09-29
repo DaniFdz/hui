@@ -19,6 +19,8 @@ export type SessionStatusUpdate = {
   id: string;
   status: SessionStatus;
   unread?: boolean;
+  creating?: WorktreeProgress;
+  creationError?: string;
 };
 
 export type WorktreeProgress = {
@@ -52,6 +54,11 @@ export type SessionView = {
   displayCwd?: string;
   tool: string;
   status: SessionStatus;
+  /** Git worktree progress while the gateway still creates this session. */
+  creating?: WorktreeProgress;
+  /** Why the gateway could not create this worktree session, and its unsent prompt. */
+  creationError?: string;
+  initialPrompt?: string;
   /** Ephemeral process telemetry; absent for cold or failed sessions. */
   runtime?: {
     active: true;
@@ -340,66 +347,25 @@ export async function reorderSessionGroups(order: readonly string[]): Promise<Se
   return body.groups ?? [];
 }
 
-/** Registers a session and starts its runtime. Returns it once registered. */
+/** Registers a session and starts its runtime. A worktree session returns at
+ * once with `creating` set; the gateway finishes it and sends its prompt. */
 export async function createSession(input: {
   cwd: string;
   title?: string;
   initialPrompt?: string;
+  /** Sent by the gateway with a worktree session's first prompt. */
+  initialAttachments?: readonly Attachment[];
   group?: string;
   model?: string;
   thinking?: string;
   worktree?: boolean;
   branchName?: string;
   baseRef?: string;
-}, onWorktreeProgress?: (progress: WorktreeProgress) => void): Promise<SessionView> {
-  if (input.worktree) {
-    const response = await trackedFetch(SESSIONS_URL, {
-      method: "POST",
-      headers: {
-        ...CLIENT_HEADERS,
-        accept: "application/x-ndjson",
-        "content-type": "application/json",
-      },
-      body: JSON.stringify(input),
-      cache: "no-store",
-      signal: AbortSignal.timeout(30 * 60_000),
-    });
-    if (!response.ok || !response.body) {
-      const detail = (await response.json().catch(() => undefined)) as { error?: string } | undefined;
-      throw new Error(detail?.error ?? `${SESSIONS_URL} returned HTTP ${response.status}`);
-    }
-    const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
-    let buffer = "";
-    let session: SessionView | undefined;
-    let streamError = "";
-    while (true) {
-      const { done, value } = await reader.read();
-      buffer += value ?? "";
-      const lines = buffer.split("\n");
-      buffer = lines.pop() ?? "";
-      for (const line of lines) {
-        if (!line.trim()) continue;
-        const event = JSON.parse(line) as {
-          type?: string;
-          progress?: WorktreeProgress;
-          session?: SessionView;
-          error?: string;
-        };
-        if (event.type === "progress" && event.progress) onWorktreeProgress?.(event.progress);
-        if (event.type === "result" && event.session) session = event.session;
-        if (event.type === "error") streamError = event.error ?? "Could not start that session.";
-      }
-      if (done) break;
-    }
-    if (streamError) throw new Error(streamError);
-    if (!session) throw new Error("The session started but could not be read back.");
-    return session;
-  }
+}): Promise<SessionView> {
   const body = await fetchJson<{ session?: SessionView }>(SESSIONS_URL, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(input),
-    signal: input.worktree ? AbortSignal.timeout(30 * 60_000) : undefined,
   });
   if (!body.session) {
     throw new Error("The session started but could not be read back.");

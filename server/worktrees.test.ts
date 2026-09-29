@@ -189,6 +189,15 @@ test("uses the next readable suffix when the generated branch already exists", a
   await first.rollback();
 });
 
+test("parallel creations with one name take separate suffixes", async () => {
+  const repo = await repository();
+  const root = join(repo, "..", "managed-worktrees-parallel");
+  const created = await Promise.all([1, 2, 3].map(() =>
+    createSessionWorktree({ sourceDirectory: repo, title: "Task", branchPrefix: "feature/", root })));
+  assert.deepEqual(created.map(({ branch }) => branch).sort(), ["feature/task", "feature/task-2", "feature/task-3"]);
+  for (const worktree of created) await worktree.rollback();
+});
+
 test("refuses workspace creation outside a Git repository", async () => {
   const directory = await mkdtemp(join(tmpdir(), "hui-not-a-repo-"));
   await assert.rejects(

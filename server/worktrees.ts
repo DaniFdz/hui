@@ -172,7 +172,9 @@ async function exists(path: string): Promise<boolean> {
 }
 
 function gitFailure(action: string, result: GitResult): WorktreeInputError {
-  const detail = (result.stderr || result.stdout).trim().split("\n", 1)[0];
+  // Git prints progress before the actual failure.
+  const lines = (result.stderr || result.stdout).trim().split("\n");
+  const detail = lines.find((line) => /^(fatal|error):/.test(line)) ?? lines[0];
   return new WorktreeInputError(detail ? `${action}: ${detail}` : `${action} failed.`);
 }
 
@@ -244,7 +246,8 @@ export async function createSessionWorktree(options: {
     );
     if (added.code !== 0) {
       const raced = await git(repoRoot, ["show-ref", "--quiet", "--verify", `refs/heads/${branch}`]);
-      if (raced.code === 0 && !(await exists(path))) continue;
+      // A parallel creation took this name first (git runs with LC_ALL=C).
+      if (raced.code === 0 && /already exists|File exists/.test(added.stderr)) continue;
       throw gitFailure("Could not create Git workspace", added);
     }
     options.onProgress?.({ phase: "finalizing" });

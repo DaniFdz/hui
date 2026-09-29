@@ -29,14 +29,7 @@
 .new-session-page__branch-option-icon { display: inline-flex; align-items: center; justify-content: center; color: var(--muted); }
 .new-session-page__branch-option-icon svg { width: 14px; height: 14px; }
 .new-session-page__branch-option-label { overflow: hidden; color: var(--text); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
-.new-session-page__creating { position: absolute; inset: 0; z-index: 3; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 20px; border-radius: inherit; background: color-mix(in srgb, var(--popover) 94%, transparent); color: var(--text-strong); font-size: var(--control-ui-text-md); }
-.new-session-page__creating-copy { display: flex; align-items: baseline; justify-content: space-between; gap: 18px; width: min(260px, 100%); }
-.new-session-page__creating-copy strong { color: var(--accent); font-variant-numeric: tabular-nums; }
-.new-session-page__creating wa-progress-bar { width: min(260px, 100%); --track-height: 4px; --track-color: color-mix(in srgb, var(--text-strong) 10%, transparent); --indicator-color: var(--accent); }
-@media (prefers-reduced-motion: reduce) {
-  .new-session-page__creating wa-progress-bar::part(indicator) { transition-duration: 0ms; }
-  .new-session-page__creating wa-progress-bar[indeterminate]::part(indicator) { inset-inline-start: 0; width: 100%; animation: none; opacity: .45; }
-}
+.new-session-page__attach { opacity: .4; }
 /* Keep launch failures attached to the same responsive grid as the input. */
 .new-session-page__composer > .new-session-page__feedback { width: 100%; max-width: none; margin: 4px 0 0; }
 .new-session-page__feedback .new-session-page__alert-message { display: grid; gap: 2px; }

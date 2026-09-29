@@ -17,7 +17,7 @@ function truncateTitle(text: string): string {
   return text.slice(0, end);
 }
 
-function fallbackTitle(prompt: string): string {
+export function fallbackTitle(prompt: string): string {
   const first = prompt.trim().split(/\r?\n/u, 1)[0] ?? "";
   return truncateTitle(cleanTitleLine(first)) || "New session";
 }

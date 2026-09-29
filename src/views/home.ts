@@ -305,8 +305,10 @@ export type HomeProps = {
   workspaceBaseRef: string;
   workspaceBranchSuggestionsOpen: boolean;
   workspaceBranch: string;
-  creatingWorkspace: boolean;
+  /** Set while the gateway still creates the shown session's Git worktree. */
   worktreeProgress?: WorktreeProgress;
+  /** Why the gateway could not create this session's Git worktree. */
+  worktreeError?: string;
   onWorkspaceMode: (worktree: boolean) => void;
   onWorkspaceBaseRef: (baseRef: string) => void;
   onWorkspaceBranchSuggestionsOpen: (open: boolean) => void;
@@ -630,21 +632,6 @@ function renderLaunchForm(props: HomeProps) {
                       : nothing}></textarea>
               </div>
             </div>
-            ${props.creatingWorkspace ? html`
-              <div class="new-session-page__creating" role="status" aria-live="polite">
-                <div class="new-session-page__creating-copy">
-                  <span>${worktreeProgressLabel(props.worktreeProgress)}</span>
-                  ${props.worktreeProgress?.percent !== undefined
-                    ? html`<strong>${props.worktreeProgress.percent}%</strong>`
-                    : nothing}
-                </div>
-                <wa-progress-bar
-                  label="Git worktree creation progress"
-                  .value=${props.worktreeProgress?.percent ?? 0}
-                  ?indeterminate=${props.worktreeProgress?.percent === undefined}
-                ></wa-progress-bar>
-              </div>
-            ` : nothing}
             <div class="agent-chat__composer-footer">
               <div class="agent-chat__composer-lead">
                 ${renderAttachmentPicker(props, props.launching)}
@@ -1016,6 +1003,26 @@ function renderTranscriptRows(props: HomeProps, rows: readonly ChatProjectionRow
 }
 
 function renderTranscriptBody(props: HomeProps, rows: readonly ChatProjectionRow[]) {
+  if (props.worktreeProgress) {
+    return html`<div class="agent-chat__empty agent-chat__creating" role="status" aria-live="polite">
+      <div class="agent-chat__creating-copy">
+        <span>${worktreeProgressLabel(props.worktreeProgress)}</span>
+        ${props.worktreeProgress.percent !== undefined ? html`<strong>${props.worktreeProgress.percent}%</strong>` : nothing}
+      </div>
+      <wa-progress-bar
+        label="Git worktree creation progress"
+        .value=${props.worktreeProgress.percent ?? 0}
+        ?indeterminate=${props.worktreeProgress.percent === undefined}
+      ></wa-progress-bar>
+    </div>`;
+  }
+  if (props.worktreeError) {
+    return html`<div class="agent-chat__empty" role="alert">
+      <strong>Could not create the Git worktree</strong>
+      <span>${props.worktreeError}</span>
+      <span>Delete this session to return its prompt to New Session.</span>
+    </div>`;
+  }
   if (props.opening) {
     return html`<div class="agent-chat__empty" role="status">Opening the session…</div>`;
   }
@@ -2040,7 +2047,7 @@ function renderTranscript(props: HomeProps, session: SessionView) {
             <div class="chat-main">
               <div class="chat-main__conversation-column">
                 ${renderNote(props)} ${renderConnection(props)}
-                ${session.status === "error"
+                ${session.status === "error" && !props.worktreeError
                   ? html`<div class="chat-error" role="alert"><div class="chat-error__content">The runtime could not start.</div><button type="button" class="btn btn--sm retry-session" @click=${props.onRetry}>Retry session</button></div>`
                   : nothing}
                 <div class="chat-main__conversation">

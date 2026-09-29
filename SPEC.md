@@ -864,16 +864,22 @@ checkout operation in the existing repository before the session is registered;
 Git rejects dirty checkouts that would lose work. In New worktree mode, HUI
 uses the operator's branch name or, when none is given, a short kebab-case name
 the utility model writes from the prompt (the first meaningful words of the
-title or prompt without a utility model or on failure). While it is chosen, New
-Session shows *Naming worktree* before the Git worktree progress. It uses the HUI-local
+title or prompt without a utility model or on failure). New Session returns
+as soon as the request is valid: the session appears in the sidebar and opens
+at once, so another session can be started while Git works. The session shows
+*Naming worktree* while it is chosen, then the Git worktree progress; the
+gateway sends the first prompt once the checkout and runtime are ready. It uses the HUI-local
 `branchPrefix` setting (`feature/` by default), and places the checkout under
 `~/.config/hui/worktrees/`. Session registration and worktree creation form one
 operation: if the registry write fails, HUI removes only the new worktree and
 branch it just created. Removing a session never removes its worktree or branch;
 destructive cleanup remains a separate future contract.
-While Git materializes the checkout, New Session shows Git's reported percentage
-for the active checkout or content-filter phase. Setup and finalization remain
+While Git materializes the checkout, the session and its sidebar row show Git's
+reported percentage for the active checkout or content-filter phase. Setup and finalization remain
 indeterminate rather than presenting a fabricated whole-operation percentage.
+If Git fails, the session stays listed in an error state showing Git's error;
+deleting it returns its prompt to New Session. A gateway restart forgets an
+unfinished session.
 
 ## Decisions
 
