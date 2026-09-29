@@ -244,7 +244,8 @@ export async function createSessionWorktree(options: {
     );
     if (added.code !== 0) {
       const raced = await git(repoRoot, ["show-ref", "--quiet", "--verify", `refs/heads/${branch}`]);
-      if (raced.code === 0 && !(await exists(path))) continue;
+      // A parallel creation took this name first (git runs with LC_ALL=C).
+      if (raced.code === 0 && /already exists|File exists/.test(added.stderr)) continue;
       throw gitFailure("Could not create Git workspace", added);
     }
     options.onProgress?.({ phase: "finalizing" });

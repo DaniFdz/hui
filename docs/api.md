@@ -510,6 +510,8 @@ type SessionView = {
   displayCwd: string;   // cwd with home shortened to "~/", display only
   tool: string;         // "pi"
   status: SessionStatus;
+  creating?: WorktreeProgress; // Git worktree still being created (see POST)
+  initialPrompt?: string; // only on a failed pending worktree session
   runtime?: {             // ephemeral; absent for cold/failed sessions
     active: true;
     memoryBytes?: number; // RSS of the runtime root and current descendants
@@ -937,10 +939,8 @@ normalized like the backlog branch-name suggestion (prefix, path segments,
 quotes and leading type words such as `feature`/`fix` removed, at most 40
 characters). Without a prompt, without a utility model, on failure or on an
 empty answer, the branch uses the first meaningful words of the operator
-`title` or the first prompt line. With the `application/x-ndjson` progress
-stream, this step is reported as `{ "type": "progress", "progress": { "phase":
-"naming" } }` before any Git progress. An operator
-`title` is never replaced.
+`title` or the first prompt line. This step is reported as the `naming`
+worktree phase before any Git progress. An operator `title` is never replaced.
 
 `model` and `thinking` are optional initial session preferences selected in New
 Session. `model` uses canonical `provider/id` form: the first slash separates the
@@ -969,22 +969,36 @@ modes preserves the ref. Only Worktree asks for and submits `branchName`.
 
 `branchName` is an optional human-entered suffix; when absent it is generated as
 described above. HUI normalizes it and applies the configured branch prefix.
-Workspace creation allows up to 30 minutes for
-large repositories and checkout filters, and the browser keeps the request
-alive while presenting an explicit creation state. The browser requests an
-`application/x-ndjson` response for worktree-backed sessions. That stream emits
-an optional `naming` progress record while HUI chooses the branch name, then
-`progress` records for Git's current checkout or content-filter phase, followed
-by a `result` record containing the session (or an `error` record). Percentages
-are phase-local values reported by Git; naming, preparation and finalization
-remain indeterminate. Clients that do not request the stream retain the JSON response.
+
+A worktree request responds as soon as its input is valid, before naming or Git
+work, with a provisional `SessionView`: status `starting`, the source `cwd`, the
+operator title or first prompt line, and `creating: { phase, percent?,
+completed?, total? }`. The gateway keeps that session in memory, lists it in
+`GET /__hui/sessions` and its group, and reports each phase on
+`GET /__hui/sessions/events` as a `status` frame carrying `creating`. Phases are
+`naming`, `preparing`, `checkout`, `filtering` and `finalizing`; percentages are
+phase-local values reported by Git, and the other phases stay indeterminate.
+Creation allows up to 30 minutes for large repositories and checkout filters.
+When the worktree exists, the record is persisted under the same id, a status
+frame without `creating` follows and the runtime starts; the gateway then sends
+`initialPrompt` itself once the runtime is idle, so closing or reloading the
+browser loses nothing. If creation fails, the session reports status `error`
+and carries its `initialPrompt`; `open`, `prompt` and other session actions
+answer 409 with the Git error, `PATCH` answers 409, and `DELETE` dismisses it
+(the browser then returns the prompt to the New Session draft). While Git works,
+the same routes, `DELETE` included, answer 409. Attachment, Jira, suggestion
+and change routes answer 404 until the record exists. A gateway restart forgets
+unfinished sessions. Parallel creations that pick the same branch name take the
+next free suffix.
 
 ### `GET /__hui/sessions/events`
 
 Gateway-wide server-sent events for session lifecycle multiplexing. The first
 application frame is a complete snapshot of live runtimes; registry ids omitted
-from it are cold and therefore `idle`. Later frames identify the session whose
-status changed:
+from it are cold and therefore `idle`. The snapshot also includes pending
+worktree sessions that are not registered yet. Their frames carry `creating`
+while Git works, and use status `error` if creation fails. Later frames identify
+the session whose status changed:
 
 ```text
 event: snapshot

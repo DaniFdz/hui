@@ -186,7 +186,6 @@ import { activeSessionPane, browserPaneFor, closeSessionPane, focusSessionPane, 
 import { createTerminal, listTerminals } from "./lib/terminals-store.ts";
 import "./components/terminal-pane.ts";
 import "./components/browser-pane.ts";
-import { launchNamesWorktree } from "./lib/worktree-progress.ts";
 import { SessionMultiplexer, type PanePresentation } from "./components/session-multiplexer.ts";
 import {
   isRoutablePage,
@@ -403,8 +402,6 @@ export class HuiApp extends HuiElement {
   @state() private workspaceBranchSuggestionsOpen = false;
   @state() private gitCheckout: GitCheckoutInfo | undefined;
   @state() private gitCheckoutLoading = false;
-  @state() private creatingWorkspace = false;
-  @state() private worktreeProgress: WorktreeProgress | undefined;
   @state() private draftSessionIds: ReadonlySet<string> = new Set();
   /** Picked but not yet sent; cleared on send and on switching session. */
   @state() private attachments: readonly Attachment[] = [];
@@ -434,6 +431,10 @@ export class HuiApp extends HuiElement {
   @state() private terminalError = "";
   @property({ attribute: false }) onPaneNavigate: ((id: string) => void) | undefined;
   @property({ attribute: false }) onPaneRegistryChange: (() => void) | undefined;
+  /** Worktree progress while the gateway still creates this pane's session;
+   * the pane opens it once this clears. */
+  @property({ attribute: false }) paneCreating: WorktreeProgress | undefined;
+  @property({ attribute: false }) paneCreationError: string | undefined;
   @property({ attribute: false }) onPaneUpdate: ((text: string, attachments: readonly Attachment[]) => boolean) | undefined;
   /** Embedded panes own the composer but not the sidebar; report draft
    * presence so the shell can project the pencil onto the session row. */
@@ -673,9 +674,11 @@ export class HuiApp extends HuiElement {
     }));
   };
 
-  private applySessionStatusUpdate = ({ id, status, unread }: SessionStatusUpdate) => {
+  private applySessionStatusUpdate = ({ id, status, unread, creating, creationError }: SessionStatusUpdate) => {
     const presented = this.isSessionPresented(id);
     this.sessionStatuses.set(id, status);
+    // A settled worktree session now has its real title and directory, or its error.
+    const created = Boolean(this.listedSession(id)?.creating) && !creating;
     this.groups = this.groups.map((group) => ({
       ...group,
       sessions: group.sessions.map((session) => session.id === id
@@ -685,9 +688,12 @@ export class HuiApp extends HuiElement {
             unread: presented
               ? undefined
               : unread === undefined ? session.unread : unread || undefined,
+            creating,
+            creationError,
           }
         : session),
     }));
+    if (created) void this.refreshSessions(true);
     if (!this.embeddedPane && this.selected?.id === id) this.selected = { ...this.selected, status };
   };
 
@@ -744,6 +750,9 @@ export class HuiApp extends HuiElement {
     // Subagent trees follow the selection: moving elsewhere folds the old tree.
     if (changed.has("selected") && (changed.get("selected") as SessionView | undefined)?.id !== this.selected?.id) {
       this.toggledSessionTrees = new Set();
+    }
+    if (changed.has("paneCreating") && !this.paneCreating && changed.get("paneCreating") && this.selected?.id === this.paneSessionId) {
+      void this.openSelected(this.selected.id);
     }
     if (changed.has("queueEditingId") && this.embeddedPane) {
       this.dispatchEvent(new CustomEvent("hui-queue-edit-retention", { bubbles: true }));
@@ -1688,6 +1697,11 @@ export class HuiApp extends HuiElement {
     this.usage = undefined;
     this.modelsRequestedFor = "";
     this.resetCommands();
+    // Nothing to open until the gateway has created the worktree session.
+    if (this.paneCreating || this.paneCreationError) {
+      this.opening = false;
+      return;
+    }
     try {
       const opened = await openSession(id);
       if (!isCurrentSessionRequest(id, this.selected?.id, requestToken, this.openRequestToken)) {
@@ -2848,8 +2862,14 @@ export class HuiApp extends HuiElement {
     if (!session || targetId !== session.id) {
       return;
     }
+    // A failed worktree launch hands its prompt back to New Session.
+    const unsent = this.listedSession(targetId)?.initialPrompt;
     void deleteSession(targetId)
-      .then(() => {
+      .then(async () => {
+        if (unsent) {
+          const stored = await readComposerDraft(NEW_SESSION_DRAFT_KEY);
+          await writeComposerDraft(NEW_SESSION_DRAFT_KEY, mergeComposerDraft(stored, { text: unsent, attachments: [] }));
+        }
         if (isSelectedSession(targetId, this.selected?.id)) {
           this.clearSessionState();
           this.navigate({ kind: "home" }, true);
@@ -2870,16 +2890,12 @@ export class HuiApp extends HuiElement {
     if (input.prompt && this.handleUpdateCommand(input.prompt)) return;
     if (this.launching) return;
     this.launching = true;
-    this.creatingWorkspace = input.worktree === true;
-    this.worktreeProgress = input.worktree === true
-      ? { phase: launchNamesWorktree(input) ? "naming" : "preparing" }
-      : undefined;
     this.note = "";
     this.noteFailed = false;
     const { prompt, commandDraft, ...sessionInput } = input;
     this.pendingLaunchPrompt = prompt?.trim() ?? "";
     const launchAttachments = this.attachments;
-    void createSession({ ...sessionInput, ...(prompt?.trim() ? { initialPrompt: prompt.trim() } : {}) }, (progress) => { this.worktreeProgress = progress; })
+    void createSession({ ...sessionInput, ...(prompt?.trim() ? { initialPrompt: prompt.trim() } : {}) })
       .then(async (session) => {
         await deleteComposerDraft(NEW_SESSION_DRAFT_KEY);
         this.composerDraftKey = sessionDraftKey(session.id);
@@ -2896,7 +2912,8 @@ export class HuiApp extends HuiElement {
         this.selected = session;
         await this.refreshSessions();
         this.navigate({ kind: "session", id: session.id });
-        const pendingPrompt = this.pendingLaunchPrompt;
+        // The gateway sends a worktree session's prompt once its checkout exists.
+        const pendingPrompt = session.creating ? "" : this.pendingLaunchPrompt;
         this.pendingLaunchPrompt = "";
         await this.withSessionPane(session, (app) => {
           app.pendingLaunchPrompt = pendingPrompt;
@@ -2920,8 +2937,6 @@ export class HuiApp extends HuiElement {
       })
       .finally(() => {
         this.launching = false;
-        this.creatingWorkspace = false;
-        this.worktreeProgress = undefined;
       });
   };
 
@@ -3872,8 +3887,8 @@ export class HuiApp extends HuiElement {
       workspaceBaseRef: this.workspaceBaseRef,
       workspaceBranchSuggestionsOpen: this.workspaceBranchSuggestionsOpen,
       workspaceBranch: this.workspaceBranch,
-      creatingWorkspace: this.creatingWorkspace,
-      worktreeProgress: this.worktreeProgress,
+      worktreeProgress: this.paneCreating,
+      worktreeError: this.paneCreationError,
       onWorkspaceMode: (worktree) => {
         this.workspaceWorktree = worktree;
         this.workspaceBranchSuggestionsOpen = false;
@@ -3979,9 +3994,15 @@ export class HuiApp extends HuiElement {
       .onPaneBrowser=${() => this.openBrowserPane(pane)}
       .onPaneNavigate=${(id: string) => this.changePaneSession(pane.id, id)}
       .onPaneRegistryChange=${() => void this.refreshSessions()}
+      .paneCreating=${this.listedSession(pane.sessionId)?.creating}
+      .paneCreationError=${this.listedSession(pane.sessionId)?.creationError}
       .onPaneUpdate=${(text: string, attachments: readonly Attachment[]) => this.handleUpdateCommand(text, attachments)}
       .onPaneDraftChange=${(sessionId: string, hasDraft: boolean) => this.markSessionDraft(sessionId, hasDraft)}
     ></hui-app>`;
+
+  private listedSession(id: string): SessionView | undefined {
+    return this.groups.flatMap((group) => group.sessions).find((session) => session.id === id);
+  }
 
   private renderSessionMultiplex() {
     if (!this.selected || !this.sessionLayout) return renderHome(this.homeProps());

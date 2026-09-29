@@ -239,7 +239,7 @@ test("session rows mirror OpenClaw run and attention states", () => {
 
   assert.match(source, /session\.status === "waiting"[\s\S]*?Waiting for your answer/);
   assert.match(source, /session\.status === "error"[\s\S]*?Session failed/);
-  assert.match(source, /session\.status === "running" \? html`<span class="session-glyph session-glyph--running session-glyph--bare"/);
+  assert.match(source, /session\.status === "running" \|\| session\.creating \? html`<span class="session-glyph session-glyph--running session-glyph--bare"/);
   assert.match(source, /class="session-glyph__ring"/);
   assert.match(components, /\.session-glyph__ring[\s\S]*?animation: session-run-spin 1\.6s linear infinite/);
   assert.match(styles, /\.sidebar-session-attention__icon--question \{ color: var\(--warn\)/);

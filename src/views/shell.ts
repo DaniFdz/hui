@@ -19,6 +19,7 @@ import { pullRequestAccessibleLabel } from "../../shared/pull-requests.ts";
 import { pullRequestStateIcon } from "../components/pull-request-hovercard.ts";
 import { jiraIssueAccessibleLabel, primaryJiraIssue } from "../../shared/jira.ts";
 import { brandIcons } from "../lib/brand-icons.ts";
+import { worktreeProgressLabel } from "../lib/worktree-progress.ts";
 import type { JiraBadgeData } from "../components/jira-hovercard.ts";
 
 // Node's focused view tests import this module without a CSS loader. The real
@@ -187,7 +188,7 @@ export function sessionMoveGroupOptions(groups: readonly SessionGroup[]): Array<
 export function sessionAccessibleName(session: SessionView): string {
   return [
     session.title,
-    `status ${session.status}`,
+    session.creating ? worktreeProgressLabel(session.creating) : `status ${session.status}`,
     `tool ${session.tool}`,
     ...(isSessionStage(session.stage) ? [`stage ${SESSION_STAGE_LABELS[session.stage].toLocaleLowerCase()}`] : []),
     ...(session.pinned ? ["pinned"] : []),
@@ -410,10 +411,10 @@ function sessionRow(session: SessionView, selected: boolean, props: ShellProps, 
           props.onSelectSession(session);
         }}
       >
-        <span class="sidebar-session-indicator" title=${attention?.label ?? (unread ? "Unread activity" : nothing)} aria-hidden="true">
+        <span class="sidebar-session-indicator" title=${attention?.label ?? (session.creating ? worktreeProgressLabel(session.creating) : unread ? "Unread activity" : nothing)} aria-hidden="true">
           ${attention ? html`<span class="session-glyph"><span class="session-glyph__content"><span class="sidebar-session-attention__icon sidebar-session-attention__icon--${session.status === "waiting" ? "question" : "error"}">${attention.icon}</span></span></span>` : nothing}
           ${!attention && session.status !== "running" && depth > 0 && session.subagent ? renderChildStatus(session.subagent.status) : nothing}
-          ${session.status === "running" ? html`<span class="session-glyph session-glyph--running session-glyph--bare"><span class="session-glyph__content"></span><span class="session-glyph__ring"></span></span>` : nothing}
+          ${session.status === "running" || session.creating ? html`<span class="session-glyph session-glyph--running session-glyph--bare"><span class="session-glyph__content"></span><span class="session-glyph__ring"></span></span>` : nothing}
           ${showJiraLead ? renderJiraBadge(session) : nothing}
           ${session.status !== "running" && !attention && !showJiraLead && session.icon ? html`<span class="sidebar-session-custom-icon">${session.icon}</span>` : nothing}
           ${unread
@@ -426,6 +427,7 @@ function sessionRow(session: SessionView, selected: boolean, props: ShellProps, 
           <span class="sidebar-recent-session__title-row">${renderHoverMarquee(session.title, "sidebar-recent-session__name")}</span>
           <span class="sidebar-recent-session__details"></span>
           ${depth > 0 && session.subagent ? html`<span class="sidebar-recent-session__duration">${subagentElapsed(session.subagent) ?? ""}</span>` : nothing}
+          ${session.creating?.percent !== undefined ? html`<span class="sidebar-recent-session__duration">${session.creating.percent}%</span>` : nothing}
         </span>
       </a>
       ${renderPullRequestBadges(session)}

@@ -81,7 +81,7 @@ import { parseUiErrorBatch, UI_ERROR_BODY_LIMIT, uiErrorLog } from "./ui-errors.
 import { runtimeMemoryByPid } from "./runtime-resources.ts";
 import { checkoutSessionRef, createSessionWorktree, inspectGitCheckout, type WorktreeProgress } from "./worktrees.ts";
 import { fallbackBranchName } from "../shared/branch-names.ts";
-import { answerSideQuestion, generateSessionNames, suggestWorktreeName } from "./model-routing.ts";
+import { answerSideQuestion, fallbackTitle, generateSessionNames, suggestWorktreeName } from "./model-routing.ts";
 import { sessionDigest } from "./session-digest.ts";
 import { runPiUtilityPrompt } from "./runtimes/pi.ts";
 import type { SessionJiraIssue } from "../shared/jira.ts";
@@ -708,6 +708,11 @@ type SessionView = {
   displayCwd: string;
   tool: string;
   status: SessionStatus;
+  /** Git worktree progress while the session's checkout is still created. */
+  creating?: WorktreeProgress;
+  /** Why a pending worktree session could not be created, and its unsent prompt. */
+  creationError?: string;
+  initialPrompt?: string;
   /** Ephemeral process telemetry. Absent when this session is cold or failed. */
   runtime?: {
     active: true;
@@ -1071,6 +1076,9 @@ export async function setAgentStage(
 /** The stored record has no idea whether a runtime is booting, so the live
  * status is layered on at read time. */
 async function listSessionViews(): Promise<{ label: string; sessions: SessionView[] }[]> {
+  // Taken before the registry read: a record is persisted before its pending
+  // entry is dropped, so every list contains a finishing session once.
+  const pendingSnapshot = [...pendingSessions.values()];
   const registry = await readSessionRegistry();
   const runtimes = liveSessions.runtimeTelemetry();
   const memoryByPid = await runtimeMemoryByPid([...runtimes.values()].flatMap(({ pid }) => pid ? [pid] : []));
@@ -1079,12 +1087,17 @@ async function listSessionViews(): Promise<{ label: string; sessions: SessionVie
     ...(runtime.pid && memoryByPid.has(runtime.pid) ? { memoryBytes: memoryByPid.get(runtime.pid)! } : {}),
     ...(runtime.bootDurationMs !== undefined ? { bootDurationMs: runtime.bootDurationMs } : {}),
   }]));
-  const views = groupSessions(registry.sessions, registry.groups).map((group) => ({
+  const registered = new Set(registry.sessions.map(({ id }) => id));
+  const pending = new Map(pendingSnapshot.filter(({ record }) => !registered.has(record.id)).map((entry) => [entry.record.id, entry]));
+  const views = groupSessions([...registry.sessions, ...[...pending.values()].map(({ record }) => record)], registry.groups).map((group) => ({
     label: group.label,
     ...(group.cwd ? { cwd: group.cwd } : {}),
     ...(group.workspaceMode ? { workspaceMode: group.workspaceMode } : {}),
     ...(group.baseRef ? { baseRef: group.baseRef } : {}),
-    sessions: group.sessions.map((record) => toView(record, liveSessions.status(record.id), runtimeViews.get(record.id))),
+    sessions: group.sessions.map((record) => {
+      const entry = pending.get(record.id);
+      return entry ? pendingView(entry) : toView(record, liveSessions.status(record.id), runtimeViews.get(record.id));
+    }),
   }));
   persistInferredStages(registry.sessions, views.flatMap((group) => group.sessions));
   return views;
@@ -1221,8 +1234,9 @@ export async function createSession(
   registryUpdater: typeof updateRegistry = updateRegistry,
   onWorktreeProgress?: (progress: WorktreeProgress) => void,
   /** Server-decided fields, never taken from a browser body: an operator
-   * stage placement (a started backlog item). */
-  seed: { stage?: SessionStage } = {},
+   * stage placement (a started backlog item). `onPending` receives the
+   * provisional record once the body is valid, again once it is named. */
+  seed: { stage?: SessionStage; onPending?: (record: SessionRecord) => void } = {},
 ): Promise<SessionRecord> {
   if (typeof body["cwd"] !== "string") throw new Error("Working directory must be text.");
   let cwd = resolveWorkingDirectory(body["cwd"]);
@@ -1285,9 +1299,25 @@ export async function createSession(
   }
   const runtimeTool = tool || "pi";
   const settings = await readSettings();
+  const id = randomUUID();
+  const now = new Date().toISOString();
+  const recordNamed = (named: string): SessionRecord => ({
+    id,
+    title: named,
+    group,
+    cwd,
+    tool: runtimeTool,
+    ...(model ? { model } : {}),
+    ...(thinking ? { thinking } : {}),
+    ...(seed.stage ? { stage: seed.stage, stageSource: "operator" as const } : {}),
+    createdAt: now,
+    updatedAt: now,
+    source: "hui",
+  });
   // Without an operator branch name, a new worktree gets a short generated
   // one, asked for in the same utility call that names the session.
   if (initialPrompt && requestedWorktree && !branchName) onWorktreeProgress?.({ phase: "naming" });
+  seed.onPending?.(recordNamed(title ?? (initialPrompt ? fallbackTitle(initialPrompt) : basename(cwd))));
   const names = initialPrompt
     ? await generateSessionNames({
         cwd,
@@ -1298,6 +1328,7 @@ export async function createSession(
       })
     : undefined;
   const effectiveTitle = title ?? names?.title ?? basename(cwd);
+  if (names) seed.onPending?.(recordNamed(effectiveTitle));
   const effectiveBranchName = branchName
     ?? names?.branchName
     ?? (requestedWorktree ? fallbackBranchName(effectiveTitle) : undefined);
@@ -1313,20 +1344,7 @@ export async function createSession(
     : undefined;
   if (createdWorktree) cwd = createdWorktree.cwd;
   if (!createdWorktree && baseRef) await checkoutSessionRef(cwd, baseRef);
-  const now = new Date().toISOString();
-  const record: SessionRecord = {
-    id: randomUUID(),
-    title: effectiveTitle,
-    group,
-    cwd,
-    tool: runtimeTool,
-    ...(model ? { model } : {}),
-    ...(thinking ? { thinking } : {}),
-    ...(seed.stage ? { stage: seed.stage, stageSource: "operator" as const } : {}),
-    createdAt: now,
-    updatedAt: now,
-    source: "hui",
-  };
+  const record = recordNamed(effectiveTitle);
   // Persisted before the runtime starts, so a second connection can find it
   // while pi is still booting.
   try {
@@ -1346,8 +1364,96 @@ export async function createSession(
   return record;
 }
 
+/** Worktree sessions whose checkout is still being created, shown in the
+ * sidebar before their record exists. Memory only: a restart forgets them. */
+type PendingSession = { record: SessionRecord; creating?: WorktreeProgress; error?: string; prompt: string };
+type PendingStatusUpdate = Pick<SessionStatusUpdate, "id" | "status"> & Pick<SessionView, "creating" | "creationError">;
+const pendingSessions = new Map<string, PendingSession>();
+const pendingStatusSubscribers = new Set<(update: PendingStatusUpdate) => void>();
+
+function pendingStatus({ record, creating, error }: PendingSession): PendingStatusUpdate {
+  return {
+    id: record.id,
+    status: error ? "error" : "starting",
+    ...(creating ? { creating } : {}),
+    ...(error ? { creationError: error } : {}),
+  };
+}
+
+function publishPendingStatus(update: PendingStatusUpdate): void {
+  for (const subscriber of pendingStatusSubscribers) subscriber(update);
+}
+
+function pendingView(entry: PendingSession): SessionView {
+  const { id: _id, status, ...creation } = pendingStatus(entry);
+  return {
+    ...toView(entry.record, status),
+    ...creation,
+    // A failed launch hands its prompt back so dismissing it loses nothing.
+    ...(entry.error && entry.prompt ? { initialPrompt: entry.prompt } : {}),
+  };
+}
+
+/**
+ * Returns as soon as a worktree session's input is valid, so the browser can
+ * show it and start others while Git works. The gateway sends the first prompt
+ * once the runtime is ready: nothing depends on the launching page staying open.
+ */
+export async function startWorktreeSession(
+  body: Record<string, unknown>,
+  sessions: Pick<typeof liveSessions, "accept" | "ensure" | "status" | "watch" | "prompt"> = liveSessions,
+  registryUpdater: typeof updateRegistry = updateRegistry,
+): Promise<SessionView> {
+  const prompt = typeof body["initialPrompt"] === "string" ? body["initialPrompt"].trim() : "";
+  let entry: PendingSession | undefined;
+  let creating: WorktreeProgress = { phase: "preparing" };
+  let accept!: (view: SessionView) => void;
+  const accepted = new Promise<SessionView>((resolve) => { accept = resolve; });
+  const created = createSession(body, sessions, registryUpdater, (progress) => {
+    creating = progress;
+    if (!entry) return;
+    entry.creating = progress;
+    publishPendingStatus(pendingStatus(entry));
+  }, {
+    onPending: (record) => {
+      entry = { record, creating, prompt };
+      pendingSessions.set(record.id, entry);
+      publishPendingStatus(pendingStatus(entry));
+      accept(pendingView(entry));
+    },
+  });
+  void created.then(async (record) => {
+    pendingSessions.delete(record.id);
+    publishPendingStatus({ id: record.id, status: sessions.status(record.id) });
+    if (!prompt) return;
+    // No browser is waiting on this, so allow a slow runtime boot.
+    await waitForSessionReady(record.id, 10 * 60_000, sessions);
+    await sessions.prompt(record.id, prompt);
+  }, (error: unknown) => {
+    // Invalid input rejects before `onPending` and is answered by the request.
+    if (!entry) return;
+    entry.creating = undefined;
+    entry.error = error instanceof Error ? error.message : "Could not create the Git worktree.";
+    publishPendingStatus(pendingStatus(entry));
+  }).catch((error: unknown) => {
+    recordDiagnosticEvent({
+      area: "session",
+      level: "error",
+      action: "session_initial_prompt_failed",
+      summary: error instanceof Error ? error.message : "Could not send the first prompt.",
+    });
+  });
+  // Invalid input rejects before `onPending`; otherwise the pending view wins.
+  await Promise.race([accepted, created]);
+  return accepted;
+}
+
 /** Resolves once a freshly created session can accept its first prompt. */
-function waitForSessionReady(id: string, timeoutMs = SUGGESTION_READY_TIMEOUT_MS): Promise<void> {
+function waitForSessionReady(
+  id: string,
+  timeoutMs = SUGGESTION_READY_TIMEOUT_MS,
+  sessions: Pick<typeof liveSessions, "watch"> = liveSessions,
+): Promise<void> {
   return new Promise((resolve, reject) => {
     let settled = false;
     const finish = (error?: Error) => {
@@ -1364,7 +1470,7 @@ function waitForSessionReady(id: string, timeoutMs = SUGGESTION_READY_TIMEOUT_MS
     };
     const timer = setTimeout(() => finish(new Error("The new session did not start in time.")), timeoutMs);
     timer.unref();
-    const watched = liveSessions.watch(id, (message) => {
+    const watched = sessions.watch(id, (message) => {
       if (message.kind === "status") inspect(message.status);
       else if (message.kind === "snapshot") inspect(message.snapshot.status);
       else if (message.kind === "closed") finish(new Error("The new session runtime exited."));
@@ -1741,10 +1847,10 @@ export function streamSessionStatuses(
   });
   response.flushHeaders();
 
-  const watched = sessions.watchStatuses((update: SessionStatusUpdate) => {
-    writeEvent(response, "status", update);
-  });
-  writeEvent(response, "snapshot", { statuses: watched.statuses });
+  const write = (update: PendingStatusUpdate) => writeEvent(response, "status", update);
+  const watched = sessions.watchStatuses(write);
+  pendingStatusSubscribers.add(write);
+  writeEvent(response, "snapshot", { statuses: [...watched.statuses, ...[...pendingSessions.values()].map(pendingStatus)] });
 
   const heartbeat = setInterval(() => {
     if (!response.writableEnded) response.write(": heartbeat\n\n");
@@ -1754,6 +1860,7 @@ export function streamSessionStatuses(
   response.on("close", () => {
     clearInterval(heartbeat);
     watched.unsubscribe();
+    pendingStatusSubscribers.delete(write);
   });
 }
 
@@ -2549,30 +2656,14 @@ async function handleRequest(
         });
         return;
       }
-      const streamsProgress = body["worktree"] === true
-        && request.headers.accept?.includes("application/x-ndjson");
-      if (streamsProgress) {
-        response.writeHead(200, {
-          "content-type": "application/x-ndjson; charset=utf-8",
-          "cache-control": "no-store",
-        });
-        const write = (event: unknown) => {
-          if (!response.writableEnded && !response.destroyed) {
-            response.write(`${JSON.stringify(event)}\n`);
-          }
-        };
+      if (body["worktree"] === true) {
         try {
-          const record = await createSession(body, liveSessions, updateRegistry, (progress) => {
-            write({ type: "progress", progress });
-          });
-          write({ type: "result", session: toView(record, liveSessions.status(record.id)) });
+          sendJson(response, 200, { session: await startWorktreeSession(body) });
         } catch (error) {
-          write({
-            type: "error",
+          sendJson(response, sessionMutationErrorStatus(error), {
             error: error instanceof Error ? error.message : "Could not start that session.",
           });
         }
-        response.end();
         return;
       }
       try {
@@ -2750,6 +2841,17 @@ async function handleRequest(
   if (one && (request.method === "PATCH" || request.method === "DELETE")) {
     const id = decodeURIComponent(one[1] ?? "");
 
+    const pending = pendingSessions.get(id);
+    if (pending) {
+      if (request.method === "DELETE" && pending.error) {
+        pendingSessions.delete(id);
+        sendJson(response, 200, { ok: true });
+      } else {
+        sendJson(response, 409, { error: pending.error ?? "The Git worktree is still being created." });
+      }
+      return;
+    }
+
     if (request.method === "DELETE") {
       // Block stale opens first, but keep the runtime and streams alive until
       // registry removal commits. A storage failure rolls the tombstone back.
@@ -2886,7 +2988,10 @@ async function handleRequest(
     const id = decodeURIComponent(action[1] ?? "");
     const record = (await readRegistry()).find((session) => session.id === id);
     if (!record) {
-      sendJson(response, 404, { error: `unknown session: ${id}` });
+      const pending = pendingSessions.get(id);
+      sendJson(response, pending ? 409 : 404, {
+        error: pending ? pending.error ?? "The Git worktree is still being created." : `unknown session: ${id}`,
+      });
       return;
     }
     if (action[2] === "open" && request.method === "POST") {

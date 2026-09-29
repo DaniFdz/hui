@@ -226,6 +226,14 @@
 .agent-chat__empty { display: flex; min-height: 40dvh; flex-direction: column; align-items: center; justify-content: center; gap: 6px; color: var(--muted); text-align: center; }
 .agent-chat__empty strong { color: var(--text-strong); font-size: var(--control-ui-text-lg); font-weight: 600; }
 .agent-chat__empty span { font-size: var(--control-ui-text-sm); }
+.agent-chat__creating { gap: 12px; color: var(--text-strong); font-size: var(--control-ui-text-md); }
+.agent-chat__creating-copy { display: flex; align-items: baseline; justify-content: space-between; gap: 18px; width: min(260px, 100%); }
+.agent-chat__creating-copy strong { color: var(--accent); font-variant-numeric: tabular-nums; }
+.agent-chat__creating wa-progress-bar { width: min(260px, 100%); --track-height: 4px; --track-color: color-mix(in srgb, var(--text-strong) 10%, transparent); --indicator-color: var(--accent); }
+@media (prefers-reduced-motion: reduce) {
+  .agent-chat__creating wa-progress-bar::part(indicator) { transition-duration: 0ms; }
+  .agent-chat__creating wa-progress-bar[indeterminate]::part(indicator) { inset-inline-start: 0; width: 100%; animation: none; opacity: .45; }
+}
 .chat-session-rail { display: flex; flex: 0 0 min(360px, 36vw); min-width: 280px; min-height: 0; flex-direction: column; border-left: 1px solid var(--border); background: var(--panel); }
 .chat-session-rail__header { display: flex; min-height: 52px; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 10px 8px 14px; border-bottom: 1px solid var(--border); }
 .chat-session-rail__header > div { display: grid; gap: 2px; min-width: 0; }
