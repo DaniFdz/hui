@@ -630,7 +630,7 @@ session-tool contract (see also [Suggested tasks](#suggested-tasks)):
 
 | Tool | Contract |
 |---|---|
-| `sessions_spawn` | Persist and start one isolated child session; accepts task, optional label/model/thinking and a bounded run timeout; returns immediately with task and child session ids |
+| `sessions_spawn` | Persist and start one isolated child session; accepts task, optional label/model/thinking and a bounded run timeout; a model missing from the caller's available models is rejected before any child is created, naming close matches (an unavailable or empty catalog does not block); returns immediately with task and child session ids |
 | `sessions_list` | Return metadata for at most 100 sessions in the caller's parent/child tree |
 | `sessions_history` | Return at most 100 recent structured entries from a visible session; tool entries are opt-in and the UTF-8 serialized result is capped at 80 KiB. A single entry larger than the cap becomes an explicit omission error entry |
 | `sessions_send` | Prompt or queue a message to a visible session; `timeoutSeconds: 0` is fire-and-forget, otherwise waits up to 120 seconds for the correlated reply |

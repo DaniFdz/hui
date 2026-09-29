@@ -7,6 +7,7 @@ import { SubagentService } from "./subagents.ts";
 import type {
   AgentRuntime,
   RuntimeEvent,
+  RuntimeModel,
   RuntimeSession,
   StartOptions,
   TranscriptEntry,
@@ -37,6 +38,7 @@ class CoordinatedSession implements RuntimeSession {
   readonly history: TranscriptEntry[];
   aborts = 0;
   disposed = false;
+  models: RuntimeModel[] = [];
   readonly disposedPromise: Promise<void>;
   #resolveDisposed!: () => void;
   #streaming = false;
@@ -84,6 +86,10 @@ class CoordinatedSession implements RuntimeSession {
     this.aborts += 1;
     this.#streaming = false;
     this.emit({ type: "settled" });
+  }
+
+  async listModels(): Promise<readonly RuntimeModel[]> {
+    return this.models;
   }
 
   subscribe(listener: (event: RuntimeEvent) => void): () => void {
@@ -229,6 +235,30 @@ test("a spawned child runs independently and announces its result to the parent"
   assert.equal(state.sessions.get("child-1")?.prompts[0], "[Subagent Task]\nInspect the implementation");
   assert.equal(state.manager.snapshot(parent.id).subagents[0]?.title, "Inspector");
   assert.equal(state.manager.isLive("child-1"), false);
+
+  state.service.dispose();
+  state.manager.disposeAll();
+});
+
+test("spawn rejects a model missing from the caller's catalog before creating a child", async () => {
+  const parent = record("parent");
+  const state = harness([parent]);
+  state.manager.ensure(parent);
+  await waitForStatus(state.manager, parent.id, "idle");
+  await state.service.initialize();
+  const spawn = (model: string) => state.service.handle(parent.id, "sessions_spawn", { task: "Work", model });
+
+  // An empty catalog cannot prove a model is missing, so it does not block.
+  assert.equal((await spawn("gateway/unlisted") as { status: string }).status, "accepted");
+  state.sessions.get(parent.id)!.models = [
+    { provider: "gateway", id: "anthropic/claude-opus", name: "Opus" },
+    { provider: "openai", id: "gpt-5", name: "GPT-5" },
+  ];
+  await assert.rejects(() => spawn("gateway/claude-opus"), /Unknown model: gateway\/claude-opus\. Did you mean gateway\/anthropic\/claude-opus\?/);
+  await assert.rejects(() => spawn("gateway/nope"), /Available models include gateway\/anthropic\/claude-opus, openai\/gpt-5\./);
+  await assert.rejects(() => spawn("other/gpt-5"), /Did you mean openai\/gpt-5\?/);
+  assert.equal(state.records().filter((item) => item.parentId === parent.id).length, 1);
+  assert.equal((await spawn("gateway/anthropic/claude-opus") as { status: string }).status, "accepted");
 
   state.service.dispose();
   state.manager.disposeAll();
