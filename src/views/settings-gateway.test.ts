@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import type { PowerStatus } from "../../shared/power.ts";
+import { lidAwakeNoticeShown } from "./power-notice.ts";
 import { renderConnectionPage, type SettingsProps } from "./settings.ts";
 
 function text(value: unknown): string {
@@ -44,19 +46,29 @@ test("initial loading, initial failure and idle are distinct", () => {
   assert.match(render({ health: { ...health, sessions: { ...health.sessions, running: 0 } } }), /Idle/);
 });
 
-test("macOS power shows each saved choice beside what the gateway holds", () => {
-  const settings = { power: { keepAwake: true, lidAwake: true } } as SettingsProps["settings"];
-  const power = {
-    keepAwake: { state: "active", detail: "" },
-    lidAwake: { state: "error", detail: "Administrator approval was cancelled." },
-  } as const;
-  const result = render({ health: { ...health, power }, settings });
+const settings = { power: { keepAwake: true } } as SettingsProps["settings"];
+const power: PowerStatus = {
+  keepAwake: { state: "active", detail: "" },
+  lidAwake: { state: "error", detail: "Administrator approval was cancelled." },
+  lidOn: false,
+};
+
+test("macOS power shows each choice beside what the gateway holds", () => {
+  const result = render({ health, power, settings });
   assert.match(result, /Keep Mac awake/);
   assert.match(result, /settings-status--ok[^>]*>.*Active/s);
   assert.match(result, /settings-status--danger[^>]*>.*Failed/s);
   assert.match(result, /Administrator approval was cancelled\./);
   assert.match(result, /Requires administrator permission/);
-  // Not on macOS, or no live gateway to hold it: no Power section.
-  assert.doesNotMatch(render({ health, settings }), /Keep Mac awake/);
-  assert.doesNotMatch(render({ health: { ...health, power }, healthError: "Network unavailable", settings }), /Keep Mac awake/);
+  // Not on macOS, or not known yet: no Power section.
+  assert.doesNotMatch(render({ health, power: null, settings }), /Keep Mac awake/);
+  assert.doesNotMatch(render({ health, power: undefined, settings }), /Keep Mac awake/);
+});
+
+test("the top notice shows only while the Mac is actually held awake with the lid closed", () => {
+  const lid = (state: PowerStatus["lidAwake"]["state"], lidOn: boolean) => ({ ...power, lidAwake: { state, detail: "" }, lidOn });
+  assert.equal(lidAwakeNoticeShown(lid("active", true)), true);
+  assert.equal(lidAwakeNoticeShown(lid("pending", true)), false);
+  assert.equal(lidAwakeNoticeShown(lid("active", false)), false);
+  assert.equal(lidAwakeNoticeShown(null), false);
 });

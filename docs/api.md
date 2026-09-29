@@ -408,46 +408,46 @@ cheap, fast, tool-free route for generated session titles and `/btw`. Example:
 Returns gateway uptime, `HTTP + SSE`, the fixed `Full Access` product mode and
 registered/live PI runtime counts. This endpoint is diagnostic and read-only.
 
-On macOS it also returns `power: { keepAwake, lidAwake }`, each
-`{ state: "off" | "pending" | "active" | "error", detail }`: what the gateway
-actually holds for the [power settings](#macos-power), which can differ from the
-saved choice (starting, waiting for approval, cancelled or failed). Other
-platforms omit `power`.
-
 ### macOS power
 
-`Settings.power` holds `keepAwake` (default `true`; only an explicit `false`
-turns it off) and `lidAwake` (default `false`; only an explicit `true` turns it
-on). Both apply at gateway startup and on each `PUT /__hui/settings`, only on
-macOS, and only while that gateway process runs:
+`Settings.power.keepAwake` (default `true`; only an explicit `false` turns it
+off) is the one saved power choice. On macOS the gateway applies it at startup
+and on each `PUT /__hui/settings` by running
+`/usr/bin/caffeinate -i -w <gateway pid>`, which prevents idle sleep while the
+display can still sleep. Turning it off or stopping the gateway ends the child,
+and `-w` ends it if the gateway is killed.
 
-- `keepAwake` runs `/usr/bin/caffeinate -i -w <gateway pid>`, preventing idle
-  sleep; the display can still sleep. Turning it off or stopping the gateway
-  ends the child, and `-w` ends it if the gateway is killed.
-- `lidAwake` runs `pmset -a disablesleep 1` through one macOS administrator
+Staying awake with the lid closed is never saved: it lasts one gateway run.
+
+- `GET /__hui/power` returns `{ power: null }` off macOS, otherwise
+  `{ power: { keepAwake, lidAwake, lidOn } }`. `keepAwake` and `lidAwake` are
+  `{ state: "off" | "pending" | "active" | "error", detail }`, what the gateway
+  actually holds; `lidOn` is the lid switch. The UI polls it every three seconds
+  while visible and shows a top notice while `lidOn` is true and `lidAwake` is
+  active.
+- `PUT /__hui/power` with `{ "lidAwake": boolean }` (anything else is 400; 404
+  off macOS) sets the switch and returns the status at once; the outcome of a
+  password prompt appears in later reads.
+- Turning it on runs `pmset -a disablesleep 1` through one macOS administrator
   prompt (`osascript … with administrator privileges`, abandoned after two
-  minutes; turning the setting off withdraws a prompt still asking to turn it on,
-  and stopping the gateway withdraws any prompt). The same root script leaves a
-  watcher that runs `pmset -a disablesleep 0` and deletes its flag file under
+  minutes). The same root script leaves a watcher that runs
+  `pmset -a disablesleep 0` and deletes its flag file under
   `~/.config/hui/power/` once HUI renames that flag to `.stop` (turned off,
-  gateway stop) or the gateway PID is gone (crash). Only a changed
-  choice prompts, so unrelated saves and a cancelled prompt are not retried; each
-  gateway start with it on prompts again.
-- Before deciding, HUI stops every watcher it finds and waits briefly for each to
-  restore sleep, so a quick restart never mistakes a winding-down watcher for an
-  outside setting. Flags are named with their gateway PID; another live gateway's
-  flag (a development server sharing the config dir) is left alone unless it
-  predates the last boot. A flag that outlives its watcher (reboot, power loss)
-  means HUI left `disablesleep 1`: HUI takes it over when on and asks for
-  approval to restore it when off, keeping the flag until that approval
-  succeeds, so a declined prompt is offered again on the next start. Otherwise, when `pmset -g` already reports `SleepDisabled 1`, HUI
-  reports it active and leaves it unchanged, and when off reports that it is
-  still on outside HUI.
-- A switch changed again before its prompt opens gives way to the newer choice,
-  so a quick on-then-off never prompts; turning it off and on again while the
-  prompt is open withdraws it and asks again.
-
-The settings write does not wait for the prompt; its outcome appears in `power`.
+  gateway stop) or the gateway PID is gone (crash). A cancelled or failed prompt
+  turns the switch back off with the reason. Turning it off withdraws a prompt
+  still asking to turn it on; a switch changed again before its prompt opens
+  gives way to the newer choice.
+- Every gateway start begins with the switch off and never prompts. It first
+  stops every watcher it finds and waits briefly for each to restore sleep.
+  Flags are named with their gateway PID; another live gateway's flag (a
+  development server sharing the config dir) is left alone unless it predates
+  the last boot. A flag that outlives its watcher (reboot, power loss) means HUI
+  left `disablesleep 1`: that run starts with the switch on and a note saying
+  so, and turning it off asks for approval to restore sleep. The flag stays
+  until that approval succeeds.
+- When `pmset -g` already reports `SleepDisabled 1` without a HUI flag, turning
+  the switch on reports it active and changes nothing, and turning it off
+  reports that it is still on outside HUI.
 
 ### `GET /__hui/workspaces`
 

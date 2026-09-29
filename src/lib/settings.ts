@@ -33,12 +33,11 @@ export type Settings = {
   branchPrefix: string;
   /** Settings → Tools → Browser: HUI's managed, agent-only browser profile. */
   browser: BrowserSettings;
-  /** Settings → Gateway → Power. macOS only; both hold only while the gateway runs. */
+  /** Settings → Gateway → Power (macOS). Lid-close prevention is deliberately not
+   * saved: it lasts one gateway run (`/__hui/power`). */
   power: {
-    /** Prevent idle sleep, like `caffeinate -i`. */
+    /** Prevent idle sleep while the gateway runs, like `caffeinate -i`. */
     keepAwake: boolean;
-    /** Stay awake with the lid closed, like `sudo pmset -a disablesleep 1`. Needs admin approval. */
-    lidAwake: boolean;
   };
   /** HUI-owned model routing. Empty values inherit PI's configured default. */
   models: {
@@ -84,7 +83,7 @@ export const DEFAULT_SETTINGS: Settings = {
   git: { changesCard: true },
   branchPrefix: DEFAULT_BRANCH_PREFIX,
   browser: DEFAULT_BROWSER_SETTINGS,
-  power: { keepAwake: true, lidAwake: false },
+  power: { keepAwake: true },
   models: { primary: "", fallback: "", utility: "" },
   disabledSkills: [],
   disabledPlugins: [],
@@ -132,10 +131,9 @@ export function normalizeBrowserSettings(value: unknown): BrowserSettings {
   };
 }
 
-/** Keeping the Mac awake is opt-out; staying awake with the lid closed is opt-in. */
+/** Opt-out: only an explicit false lets the Mac idle-sleep. */
 function normalizePower(value: unknown): Settings["power"] {
-  const source = isRecord(value) ? value : {};
-  return { keepAwake: source["keepAwake"] !== false, lidAwake: source["lidAwake"] === true };
+  return { keepAwake: !(isRecord(value) && value["keepAwake"] === false) };
 }
 
 function normalizeModelRef(value: unknown): string {

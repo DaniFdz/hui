@@ -59,10 +59,10 @@ test("the managed browser is on and headless unless explicitly changed", () => {
   assert.equal(normalizeSettings({ browser: { executablePath: `/${"x".repeat(5_000)}` } }).browser.executablePath, "");
 });
 
-test("keeping the Mac awake is opt-out and lid-close prevention is opt-in", () => {
-  assert.deepEqual(normalizeSettings({}).power, { keepAwake: true, lidAwake: false });
-  assert.deepEqual(normalizeSettings({ power: { keepAwake: "no", lidAwake: "yes" } }).power, { keepAwake: true, lidAwake: false });
-  assert.deepEqual(normalizeSettings({ power: { keepAwake: false, lidAwake: true } }).power, { keepAwake: false, lidAwake: true });
+test("keeping the Mac awake is opt-out and lid-close prevention is never saved", () => {
+  assert.deepEqual(normalizeSettings({}).power, { keepAwake: true });
+  assert.deepEqual(normalizeSettings({ power: { keepAwake: "no" } }).power, { keepAwake: true });
+  assert.deepEqual(normalizeSettings({ power: { keepAwake: false, lidAwake: true } }).power, { keepAwake: false });
 });
 
 test("normalizes OpenClaw-compatible chat preferences", () => {

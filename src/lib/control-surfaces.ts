@@ -14,8 +14,6 @@ export type GatewayHealth = {
     error: number;
     processes: number;
   };
-  /** Present only when the gateway runs on macOS. */
-  power?: PowerStatus;
 };
 
 export type MemorySource = {
@@ -46,6 +44,19 @@ export type WorkspaceInspection = {
 
 export function loadGatewayHealth(): Promise<GatewayHealth> {
   return fetchJson<GatewayHealth>("/__hui/health");
+}
+
+/** `null` when the gateway does not run on macOS. */
+export async function loadPower(): Promise<PowerStatus | null> {
+  return (await fetchJson<{ power: PowerStatus | null }>("/__hui/power")).power;
+}
+
+export async function setLidAwake(lidAwake: boolean): Promise<PowerStatus | null> {
+  return (await fetchJson<{ power: PowerStatus | null }>("/__hui/power", {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ lidAwake }),
+  })).power;
 }
 
 export function loadWorkspaceInspection(): Promise<WorkspaceInspection> {

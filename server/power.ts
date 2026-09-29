@@ -8,7 +8,6 @@ import { setTimeout as delay } from "node:timers/promises";
 import { promisify } from "node:util";
 
 import type { PowerState, PowerStatus } from "../shared/power.ts";
-import type { Settings } from "../src/lib/settings.ts";
 import { CONFIG_DIR } from "./paths.ts";
 
 const execFileAsync = promisify(execFile);
@@ -23,6 +22,7 @@ const ADMIN_SCRIPT = [
   "-e", "end run",
 ];
 const FLAG_PREFIX = "lid-awake-";
+const LEFTOVER = "Left on from before this Mac restarted; stopping the gateway will not undo it. Turn this off to restore normal sleep.";
 
 export type PowerOptions = {
   caffeinate: string;
@@ -65,9 +65,10 @@ function othersActiveFlag(dir: string, name: string, ownPid: number): boolean {
  * is killed. Lid close: `pmset -a disablesleep 1` needs root, so one password
  * prompt starts a root watcher. It restores `disablesleep 0` and deletes its flag
  * once the flag is renamed to `.stop` (off, gateway stop) or the gateway process
- * is gone (crash). A flag that outlives its watcher (reboot) marks the setting as
- * HUI's until HUI takes it over or restores it, rather than an outside setting.
- * Flags carry their gateway PID, so another live gateway's flag is left alone. */
+ * is gone (crash). Every gateway run starts with lid awake off and never
+ * prompts on its own: a flag that outlived its watcher (reboot) is shown as on
+ * until the operator turns it off, which asks to restore normal sleep. Flags
+ * carry their gateway PID, so another live gateway's flag is left alone. */
 export class MacPower {
   readonly #options: PowerOptions;
   #keepAwake: PowerState = OFF;
@@ -87,24 +88,32 @@ export class MacPower {
   }
 
   status(): PowerStatus {
-    return { keepAwake: this.#keepAwake, lidAwake: this.#lidAwake };
+    return { keepAwake: this.#keepAwake, lidAwake: this.#lidAwake, lidOn: this.#lidTarget };
   }
 
-  /** Idle sleep changes immediately. The lid change may wait on a password
-   * dialog, so it is serialized and the returned promise can be left running.
-   * Turning it off withdraws a dialog still asking to turn it on; a dialog
-   * restoring sleep is left to finish. */
-  apply(power: Settings["power"]): Promise<void> {
-    this.#applyKeepAwake(power.keepAwake);
-    if (!power.lidAwake && this.#lidWanted && this.#prompt) {
-      // Withdraw a dialog still asking to turn it on; the next step re-decides.
+  /** Gateway start: idle sleep follows the saved choice, lid awake starts off. */
+  start(keepAwake: boolean): Promise<void> {
+    this.setKeepAwake(keepAwake);
+    return this.#queueLid(false, true);
+  }
+
+  /** The operator's lid switch. It may wait on a password dialog, so it is
+   * serialized and the returned promise can be left running. Turning it off
+   * withdraws a dialog still asking to turn it on; one restoring sleep finishes. */
+  setLidAwake(want: boolean): Promise<void> {
+    if (!want && this.#lidWanted && this.#prompt) {
+      // The next step re-decides.
       this.#prompt.abort();
       this.#lidWanted = undefined;
     }
-    this.#lidTarget = power.lidAwake;
+    return this.#queueLid(want, false);
+  }
+
+  #queueLid(want: boolean, passive: boolean): Promise<void> {
+    this.#lidTarget = want;
     const life = this.#life.signal;
     this.#lidQueue = this.#lidQueue
-      .then(() => this.#applyLidAwake(power.lidAwake, life))
+      .then(() => this.#applyLidAwake(want, life, passive))
       .catch((error: unknown) => {
         if (!life.aborted) this.#lidAwake = { state: "error", detail: error instanceof Error ? error.message : String(error) };
       });
@@ -112,7 +121,7 @@ export class MacPower {
   }
 
   dispose(): void {
-    this.#applyKeepAwake(false);
+    this.setKeepAwake(false);
     this.#life.abort();
     this.#life = new AbortController();
     // A running watcher restores on `.stop`, and a quickly restarted gateway
@@ -125,10 +134,11 @@ export class MacPower {
     }
     this.#flag = undefined;
     this.#lidWanted = undefined;
+    this.#lidTarget = false;
     this.#lidAwake = OFF;
   }
 
-  #applyKeepAwake(want: boolean): void {
+  setKeepAwake(want: boolean): void {
     if (!want) {
       const child = this.#caffeinate;
       this.#caffeinate = undefined;
@@ -152,10 +162,10 @@ export class MacPower {
     child.once("exit", (code, signal) => fail(`caffeinate exited (${signal ?? `code ${code}`}).`));
   }
 
-  async #applyLidAwake(want: boolean, life: AbortSignal): Promise<void> {
+  /** `passive` (gateway start) never prompts. */
+  async #applyLidAwake(want: boolean, life: AbortSignal, passive: boolean): Promise<void> {
     // Stopped, or switched again since: the later step decides.
     const current = () => !life.aborted && want === this.#lidTarget;
-    // Only a changed choice acts, so unrelated settings saves never re-prompt.
     if (!current() || want === this.#lidWanted) return;
     this.#lidWanted = want;
     // #settle stops this flag's watcher along with any other.
@@ -168,11 +178,16 @@ export class MacPower {
     if (!want) {
       if (!disabled) this.#lidAwake = OFF;
       else if (!ours) this.#lidAwake = { state: "off", detail: "Still on for this Mac outside HUI." };
+      else if (passive) this.#adoptLeftover("");
       else {
         this.#lidAwake = { state: "pending", detail: "Waiting for administrator approval to restore lid-close sleep." };
-        await this.#admin(`${quote(this.#options.pmset)} -a disablesleep 0`, life, current).catch((error: Error) => {
-          throw new Error(`An earlier HUI run left lid-close sleep off. ${error.message}`);
-        });
+        try {
+          await this.#admin(`${quote(this.#options.pmset)} -a disablesleep 0`, life, current);
+        } catch (error) {
+          if (!current()) throw error;
+          this.#adoptLeftover((error as Error).message);
+          return;
+        }
         await forget(leftovers);
         this.#lidAwake = OFF;
       }
@@ -192,10 +207,19 @@ export class MacPower {
     } catch (error) {
       await rm(flag, { force: true });
       if (this.#flag === flag) this.#flag = undefined;
+      // Nothing is held, so the switch goes back off and the error says why,
+      // unless the prompt was withdrawn (that already cleared #lidWanted).
+      if (current() && this.#lidWanted === want) this.#lidTarget = this.#lidWanted = false;
       throw error;
     }
     await forget(leftovers);
     this.#lidAwake = { state: "active", detail: "" };
+  }
+
+  /** A reboot's leftover still keeps the Mac awake with the lid closed. */
+  #adoptLeftover(reason: string): void {
+    this.#lidTarget = this.#lidWanted = true;
+    this.#lidAwake = { state: "active", detail: reason ? `${LEFTOVER} ${reason}` : LEFTOVER };
   }
 
   #watcherScript(flag: string): string {

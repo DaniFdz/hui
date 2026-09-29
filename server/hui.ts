@@ -160,6 +160,8 @@ const PI_PACKAGE_REMOVE_ROUTE = `${PI_ROUTE}/packages/remove`;
 const PI_SKILL_INSTALL_ROUTE = `${PI_ROUTE}/skills/install`;
 const PI_RESOURCE_READ_ROUTE = /^\/__hui\/pi\/resources\/(skill|plugin)\/([a-f0-9]{24})$/;
 const HEALTH_ROUTE = `${PREFIX}health`;
+/** macOS sleep prevention status (GET) and the lid switch (PUT { lidAwake }). */
+const POWER_ROUTE = `${PREFIX}power`;
 const WORKSPACES_ROUTE = `${PREFIX}workspaces`;
 const WORKTREES_ROUTE = `${PREFIX}worktrees`;
 const WORKTREES_REMOVE_ROUTE = `${PREFIX}worktrees/remove`;
@@ -339,8 +341,7 @@ async function writeSettings(raw: unknown): Promise<Settings> {
   await writeFile(SETTINGS_FILE, `${JSON.stringify(settings, null, 2)}\n`, "utf8");
   // A changed browser mode or executable must not leave the old process running.
   await managedBrowser.applySettings(settings.browser);
-  // Not awaited: turning on lid-close prevention may wait on a password dialog.
-  void macPower?.apply(settings.power);
+  macPower?.setKeepAwake(settings.power.keepAwake);
   return settings;
 }
 
@@ -2089,9 +2090,34 @@ async function handleRequest(
     return;
   }
 
+  if (path === POWER_ROUTE) {
+    if (request.method === "GET") {
+      sendJson(response, 200, { power: macPower?.status() ?? null });
+      return;
+    }
+    if (request.method === "PUT") {
+      const body = await readBody(request);
+      const lidAwake = typeof body === "object" && body !== null ? (body as Record<string, unknown>)["lidAwake"] : undefined;
+      if (typeof lidAwake !== "boolean") {
+        sendJson(response, 400, { error: "lidAwake must be a boolean" });
+        return;
+      }
+      if (!macPower) {
+        sendJson(response, 404, { error: "sleep prevention is only available on macOS" });
+        return;
+      }
+      // Not awaited: turning it on waits on a macOS password dialog.
+      void macPower.setLidAwake(lidAwake);
+      sendJson(response, 200, { power: macPower.status() });
+      return;
+    }
+    sendJson(response, 405, { error: "method not allowed" });
+    return;
+  }
+
   if (path === HEALTH_ROUTE) {
     if (request.method === "GET") {
-      sendJson(response, 200, { ...await readGatewayHealth(), power: macPower?.status() });
+      sendJson(response, 200, await readGatewayHealth());
       return;
     }
     sendJson(response, 405, { error: "method not allowed" });
@@ -3184,7 +3210,7 @@ export async function startBackend(): Promise<void> {
   // gateway appends it to gateway.log and a development server prints it.
   mirrorDiagnosticLogs((line) => process.stderr.write(line));
   await ensureConfigDir();
-  void macPower?.apply((await readSettings()).power);
+  void macPower?.start((await readSettings()).power.keepAwake);
   await automation.start();
   initializeSubagents();
   recoverInterruptedSessions(await readRegistry());

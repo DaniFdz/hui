@@ -3,7 +3,7 @@ import { TERMINAL_FONTS, normalizeTerminalFont, terminalFontStack } from "../lib
 import { TEXT_SCALE_STOPS, TYPEFACES, type TextScaleStop } from "../lib/appearance.ts";
 import { modeIsSelectable, THEME_MODES, type ThemeMode, type ThemeVariant } from "../lib/theme.ts";
 import type { Settings } from "../lib/settings.ts";
-import type { PowerState } from "../../shared/power.ts";
+import type { PowerState, PowerStatus } from "../../shared/power.ts";
 import type { ThemePreview } from "../lib/theme-store.ts";
 import type { ThemeSwatches } from "../lib/shadcn-theme.ts";
 import { skillIsEnabled, type PiMutationState, type PiSnapshot } from "../lib/pi.ts";
@@ -81,6 +81,8 @@ export type SettingsProps = AutomationProps & {
   piError: string;
   health: GatewayHealth | undefined;
   healthError: string;
+  /** Unknown while loading or unreachable; `null` when the gateway is not on macOS. */
+  power: PowerStatus | null | undefined;
   workspaces: WorkspaceInspection | undefined;
   workspaceError: string;
   observability: ObservabilitySnapshot | undefined;
@@ -107,6 +109,7 @@ export type SettingsProps = AutomationProps & {
   onChangeBrowser: (next: Settings["browser"]) => Promise<unknown> | void;
   onChangeModels: (next: Settings["models"]) => void;
   onChangePower: (next: Settings["power"]) => void;
+  onSetLidAwake: (on: boolean) => void;
   onImportTheme: (url: string) => void;
   onClose: () => void;
   piOperation?: PiMutationState;
@@ -774,7 +777,7 @@ const POWER_PILLS: Record<PowerState["state"], { label: string; tone: string }> 
   error: { label: "Failed", tone: "danger" },
 };
 
-/** The switch is the saved choice; the pill is what the gateway actually holds. */
+/** The switch is the operator's choice; the pill is what the gateway actually holds. */
 function renderPowerRow(title: string, notes: TemplateResult, status: PowerState, checked: boolean, onChange: (checked: boolean) => void) {
   const pill = POWER_PILLS[status.state];
   return html`
@@ -792,7 +795,7 @@ function renderPowerRow(title: string, notes: TemplateResult, status: PowerState
   `;
 }
 
-function renderPowerSection(props: SettingsProps, status: NonNullable<GatewayHealth["power"]>) {
+function renderPowerSection(props: SettingsProps, status: PowerStatus) {
   const power = props.settings.power;
   return renderSection("Power", "macOS only. Both apply only while this gateway is running.", html`
     ${renderPowerRow(
@@ -804,11 +807,11 @@ function renderPowerSection(props: SettingsProps, status: NonNullable<GatewayHea
     )}
     ${renderPowerRow(
       "Stay awake with the lid closed",
-      html`<span class="settings-row__desc">Like <code>sudo pmset -a disablesleep 1</code>. Turning it off or stopping the gateway restores normal sleep.</span>
-        <span class="settings-row__desc"><strong>Requires administrator permission.</strong> macOS asks for your password each time this turns on, including whenever the gateway starts with it on, and to undo it if the Mac restarted while it was on.</span>`,
+      html`<span class="settings-row__desc">Like <code>sudo pmset -a disablesleep 1</code>. Lasts until you turn it off or the gateway stops; every gateway start begins with it off.</span>
+        <span class="settings-row__desc"><strong>Requires administrator permission.</strong> macOS asks for your password each time you turn this on.</span>`,
       status.lidAwake,
-      power.lidAwake,
-      (lidAwake) => props.onChangePower({ ...power, lidAwake }),
+      status.lidOn,
+      props.onSetLidAwake,
     )}
   `);
 }
@@ -834,7 +837,7 @@ export function renderConnectionPage(props: SettingsProps) {
         ${renderRow("Registered sessions", "HUI session registry.", html`<span class="settings-row__value gateway-metric">${health.sessions.registered.toLocaleString()}</span>`)}
         ${renderRow("Running", "PI sessions processing a turn.", html`<span class="settings-status gateway-status gateway-status--${failed || !health.sessions.running ? "idle" : "ok"}"><span class="settings-status__dot" aria-hidden="true"></span>${health.sessions.running ? `${health.sessions.running.toLocaleString()} active` : "Idle"}</span>`)}`,
     ) : nothing}
-    ${health?.power && !failed ? renderPowerSection(props, health.power) : nothing}
+    ${props.power ? renderPowerSection(props, props.power) : nothing}
     ${renderPiOrigin(props)}
   `;
 }
