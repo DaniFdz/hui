@@ -3,6 +3,7 @@ import { TERMINAL_FONTS, normalizeTerminalFont, terminalFontStack } from "../lib
 import { TEXT_SCALE_STOPS, TYPEFACES, type TextScaleStop } from "../lib/appearance.ts";
 import { modeIsSelectable, THEME_MODES, type ThemeMode, type ThemeVariant } from "../lib/theme.ts";
 import type { Settings } from "../lib/settings.ts";
+import type { PowerState, PowerStatus } from "../../shared/power.ts";
 import type { ThemePreview } from "../lib/theme-store.ts";
 import type { ThemeSwatches } from "../lib/shadcn-theme.ts";
 import { skillIsEnabled, type PiMutationState, type PiSnapshot } from "../lib/pi.ts";
@@ -80,6 +81,8 @@ export type SettingsProps = AutomationProps & {
   piError: string;
   health: GatewayHealth | undefined;
   healthError: string;
+  /** Unknown while loading or unreachable; `null` when the gateway is not on macOS. */
+  power: PowerStatus | null | undefined;
   workspaces: WorkspaceInspection | undefined;
   workspaceError: string;
   observability: ObservabilitySnapshot | undefined;
@@ -105,6 +108,8 @@ export type SettingsProps = AutomationProps & {
   /** Resolves once the settings write lands, so the Browser section can re-read status. */
   onChangeBrowser: (next: Settings["browser"]) => Promise<unknown> | void;
   onChangeModels: (next: Settings["models"]) => void;
+  onChangePower: (next: Settings["power"]) => void;
+  onSetLidAwake: (on: boolean) => void;
   onImportTheme: (url: string) => void;
   onClose: () => void;
   piOperation?: PiMutationState;
@@ -765,6 +770,52 @@ function renderModelsPage(props: SettingsProps) {
   `;
 }
 
+const POWER_PILLS: Record<PowerState["state"], { label: string; tone: string }> = {
+  off: { label: "Off", tone: "" },
+  pending: { label: "Pending", tone: "warn" },
+  active: { label: "Active", tone: "ok" },
+  error: { label: "Failed", tone: "danger" },
+};
+
+/** The switch is the operator's choice; the pill is what the gateway actually holds. */
+function renderPowerRow(title: string, notes: TemplateResult, status: PowerState, checked: boolean, onChange: (checked: boolean) => void) {
+  const pill = POWER_PILLS[status.state];
+  return html`
+    <div class="settings-row power-row">
+      <div class="settings-row__text">
+        <span class="settings-row__title">${title}</span>
+        ${notes}
+        ${status.detail ? html`<span class="settings-row__desc">${status.detail}</span>` : nothing}
+      </div>
+      <div class="settings-row__control">
+        <span class="settings-status ${pill.tone ? `settings-status--${pill.tone}` : ""}" role="status"><span class="settings-status__dot" aria-hidden="true"></span>${pill.label}</span>
+        ${renderSettingsToggle(title, checked, onChange)}
+      </div>
+    </div>
+  `;
+}
+
+function renderPowerSection(props: SettingsProps, status: PowerStatus) {
+  const power = props.settings.power;
+  return renderSection("Power", "macOS only. Both apply only while this gateway is running.", html`
+    ${renderPowerRow(
+      "Keep Mac awake",
+      html`<span class="settings-row__desc">Prevents idle sleep, like <code>caffeinate -i</code>. The display can still turn off.</span>`,
+      status.keepAwake,
+      power.keepAwake,
+      (keepAwake) => props.onChangePower({ ...power, keepAwake }),
+    )}
+    ${renderPowerRow(
+      "Stay awake with the lid closed",
+      html`<span class="settings-row__desc">Like <code>sudo pmset -a disablesleep 1</code>. Lasts until you turn it off or the gateway stops; every gateway start begins with it off.</span>
+        <span class="settings-row__desc"><strong>Requires administrator permission.</strong> macOS asks for your password each time you turn this on.</span>`,
+      status.lidAwake,
+      status.lidOn,
+      props.onSetLidAwake,
+    )}
+  `);
+}
+
 export function renderConnectionPage(props: SettingsProps) {
   const health = props.health;
   const failed = Boolean(props.healthError);
@@ -786,6 +837,7 @@ export function renderConnectionPage(props: SettingsProps) {
         ${renderRow("Registered sessions", "HUI session registry.", html`<span class="settings-row__value gateway-metric">${health.sessions.registered.toLocaleString()}</span>`)}
         ${renderRow("Running", "PI sessions processing a turn.", html`<span class="settings-status gateway-status gateway-status--${failed || !health.sessions.running ? "idle" : "ok"}"><span class="settings-status__dot" aria-hidden="true"></span>${health.sessions.running ? `${health.sessions.running.toLocaleString()} active` : "Idle"}</span>`)}`,
     ) : nothing}
+    ${props.power ? renderPowerSection(props, props.power) : nothing}
     ${renderPiOrigin(props)}
   `;
 }

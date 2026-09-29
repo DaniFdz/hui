@@ -1,3 +1,4 @@
+import type { PowerStatus } from "../../shared/power.ts";
 import { fetchJson } from "./settings-store.ts";
 
 export type GatewayHealth = {
@@ -43,6 +44,19 @@ export type WorkspaceInspection = {
 
 export function loadGatewayHealth(): Promise<GatewayHealth> {
   return fetchJson<GatewayHealth>("/__hui/health");
+}
+
+/** `null` when the gateway does not run on macOS. */
+export async function loadPower(): Promise<PowerStatus | null> {
+  return (await fetchJson<{ power: PowerStatus | null }>("/__hui/power")).power;
+}
+
+export async function setLidAwake(lidAwake: boolean): Promise<PowerStatus | null> {
+  return (await fetchJson<{ power: PowerStatus | null }>("/__hui/power", {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ lidAwake }),
+  })).power;
 }
 
 export function loadWorkspaceInspection(): Promise<WorkspaceInspection> {

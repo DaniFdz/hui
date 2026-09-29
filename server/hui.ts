@@ -38,6 +38,7 @@ import { PullRequestStatuses, pullRequestsFromTranscript } from "./pull-requests
 
 import { CONFIG_DIR, ATTACHMENTS_DIR, AUTOMATION_FILE, BROWSER_PROFILE_DIR, USER_THEME_DIR } from "./paths.ts";
 import { BrowserToolError, ManagedBrowser } from "./browser/manager.ts";
+import { MacPower } from "./power.ts";
 import { attachBrowserTransport, browserViewTicket } from "./browser-transport.ts";
 import type { EventEmitter } from "node:events";
 import type { BrowserStatus } from "../shared/browser.ts";
@@ -159,6 +160,8 @@ const PI_PACKAGE_REMOVE_ROUTE = `${PI_ROUTE}/packages/remove`;
 const PI_SKILL_INSTALL_ROUTE = `${PI_ROUTE}/skills/install`;
 const PI_RESOURCE_READ_ROUTE = /^\/__hui\/pi\/resources\/(skill|plugin)\/([a-f0-9]{24})$/;
 const HEALTH_ROUTE = `${PREFIX}health`;
+/** macOS sleep prevention status (GET) and the lid switch (PUT { lidAwake }). */
+const POWER_ROUTE = `${PREFIX}power`;
 const WORKSPACES_ROUTE = `${PREFIX}workspaces`;
 const WORKTREES_ROUTE = `${PREFIX}worktrees`;
 const WORKTREES_REMOVE_ROUTE = `${PREFIX}worktrees/remove`;
@@ -222,6 +225,8 @@ const managedBrowser = new ManagedBrowser({
   profileDir: BROWSER_PROFILE_DIR,
   readSettings: async () => (await readSettings()).browser,
 });
+/** macOS sleep prevention lives and dies with this gateway process. */
+const macPower = process.platform === "darwin" ? new MacPower() : undefined;
 liveSessions.setTaskSuggestionProvider((id) => taskSuggestions.list(id));
 // A stopped turn must not leave its pages running in the headless browser.
 liveSessions.setAbortListener((id) => managedBrowser.closeOwner(id));
@@ -336,6 +341,7 @@ async function writeSettings(raw: unknown): Promise<Settings> {
   await writeFile(SETTINGS_FILE, `${JSON.stringify(settings, null, 2)}\n`, "utf8");
   // A changed browser mode or executable must not leave the old process running.
   await managedBrowser.applySettings(settings.browser);
+  macPower?.setKeepAwake(settings.power.keepAwake);
   return settings;
 }
 
@@ -2084,6 +2090,31 @@ async function handleRequest(
     return;
   }
 
+  if (path === POWER_ROUTE) {
+    if (request.method === "GET") {
+      sendJson(response, 200, { power: macPower?.status() ?? null });
+      return;
+    }
+    if (request.method === "PUT") {
+      const body = await readBody(request);
+      const lidAwake = typeof body === "object" && body !== null ? (body as Record<string, unknown>)["lidAwake"] : undefined;
+      if (typeof lidAwake !== "boolean") {
+        sendJson(response, 400, { error: "lidAwake must be a boolean" });
+        return;
+      }
+      if (!macPower) {
+        sendJson(response, 404, { error: "sleep prevention is only available on macOS" });
+        return;
+      }
+      // Not awaited: turning it on waits on a macOS password dialog.
+      void macPower.setLidAwake(lidAwake);
+      sendJson(response, 200, { power: macPower.status() });
+      return;
+    }
+    sendJson(response, 405, { error: "method not allowed" });
+    return;
+  }
+
   if (path === HEALTH_ROUTE) {
     if (request.method === "GET") {
       sendJson(response, 200, await readGatewayHealth());
@@ -3179,6 +3210,7 @@ export async function startBackend(): Promise<void> {
   // gateway appends it to gateway.log and a development server prints it.
   mirrorDiagnosticLogs((line) => process.stderr.write(line));
   await ensureConfigDir();
+  void macPower?.start((await readSettings()).power.keepAwake);
   await automation.start();
   initializeSubagents();
   recoverInterruptedSessions(await readRegistry());
@@ -3198,6 +3230,7 @@ export function recoverInterruptedSessions(
 }
 
 export function stopBackend(): void {
+  macPower?.dispose();
   managedBrowser.dispose();
   terminals.dispose();
   githubCli.dispose();

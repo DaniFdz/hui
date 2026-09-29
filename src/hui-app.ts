@@ -65,6 +65,7 @@ import { availableUpdate, watchUpdateAvailability } from "./lib/update-notice.ts
 import type { UpdateSnapshot } from "./lib/update-types.ts";
 import { renderUpdateDialog } from "./views/update-dialog.ts";
 import { renderUpdateNotice } from "./views/update-notice.ts";
+import { renderPowerNotice } from "./views/power-notice.ts";
 import {
   completeLocalPath,
   loadLocalPathSuggestions,
@@ -143,10 +144,13 @@ import {
 } from "./lib/automation.ts";
 import {
   loadGatewayHealth,
+  loadPower,
   loadWorkspaceInspection,
+  setLidAwake,
   type GatewayHealth,
   type WorkspaceInspection,
 } from "./lib/control-surfaces.ts";
+import type { PowerStatus } from "../shared/power.ts";
 import { downloadDiagnostics, loadObservability, type ObservabilitySnapshot } from "./lib/observability.ts";
 import { renderHome, renderNewSession, type HomeProps } from "./views/home.ts";
 import { DEFAULT_SESSIONS_PAGE_FILTERS, renderSessionsPage, type SessionsPageFilters, type SessionsPageState } from "./views/sessions.ts";
@@ -346,6 +350,9 @@ export class HuiApp extends HuiElement {
   @state() private piResourceReader: PiResourceReaderState | undefined;
   @state() private health: GatewayHealth | undefined;
   @state() private healthError = "";
+  /** macOS sleep prevention; `null` when the gateway is not on macOS. */
+  @state() private power: PowerStatus | null | undefined;
+  @state() private powerNoticeDismissed = false;
   @state() private workspaceInspection: WorkspaceInspection | undefined;
   @state() private workspaceError = "";
   @state() private controlLoading = false;
@@ -602,8 +609,29 @@ export class HuiApp extends HuiElement {
     }
   }
 
+  private powerRequest = 0;
+
+  /** The newest request wins, so an older poll never undoes a click. */
+  private async refreshPower(next?: Promise<PowerStatus | null>) {
+    const request = ++this.powerRequest;
+    let power: PowerStatus | null | undefined;
+    try {
+      power = await (next ?? loadPower());
+    } catch {
+      // Unknown rather than stale: no banner or switches until the gateway answers.
+    }
+    if (request !== this.powerRequest) return;
+    this.power = power;
+    if (!power?.lidOn) this.powerNoticeDismissed = false;
+  }
+
+  private setLidAwakeFromUi = (on: boolean) => void this.refreshPower(setLidAwake(on));
+
   override firstUpdated() {
+    if (!this.embeddedPane) void this.refreshPower();
     this.sessionProgressPoll = window.setInterval(() => {
+      // Not on macOS stays not on macOS; otherwise the banner follows the gateway.
+      if (!this.embeddedPane && !document.hidden && this.power !== null) void this.refreshPower();
       if (!document.hidden && this.transcript.length) this.requestUpdate();
       if (!this.embeddedPane && !document.hidden && this.settingsOpen && this.settingsPage === "connection") {
         void this.refreshGatewayHealth();
@@ -3880,15 +3908,23 @@ export class HuiApp extends HuiElement {
   }
 
   override render() {
+    const noticesInert = this.mobileNavLayout && Boolean(this.renderRoot.querySelector('.sidebar[data-open="true"], .settings-sidebar[data-open="true"]'));
     return html`<div class="hui-application">
       ${this.embeddedPane ? null : renderUpdateNotice({
         release: availableUpdate(this.updateSnapshot, this.dismissedUpdateVersion),
-        inert: this.mobileNavLayout && Boolean(this.renderRoot.querySelector('.sidebar[data-open="true"], .settings-sidebar[data-open="true"]')),
+        inert: noticesInert,
         onReview: this.reviewUpdate,
         onDismiss: () => {
           this.dismissedUpdateVersion = this.updateSnapshot?.check?.latest?.version ?? "";
           this.composerTextarea?.focus();
         },
+      })}
+      ${this.embeddedPane ? null : renderPowerNotice({
+        power: this.power,
+        dismissed: this.powerNoticeDismissed,
+        inert: noticesInert,
+        onTurnOff: () => { this.setLidAwakeFromUi(false); this.composerTextarea?.focus(); },
+        onDismiss: () => { this.powerNoticeDismissed = true; this.composerTextarea?.focus(); },
       })}
       <div class="hui-workspace">${this.renderWorkspace()}</div>
       ${this.archiveToast ? html`<div class="app-toast session-archive-toast"
@@ -3986,6 +4022,7 @@ export class HuiApp extends HuiElement {
           piError: this.piError,
           health: this.health,
           healthError: this.healthError,
+          power: this.power,
           workspaces: this.workspaceInspection,
           workspaceError: this.workspaceError,
           observability: this.observability,
@@ -4009,6 +4046,8 @@ export class HuiApp extends HuiElement {
           onChangeChat: (chat) => void this.save({ chat }),
           onChangeGit: (git) => void this.save({ git }),
           onChangeBrowser: (browser) => this.save({ browser }),
+          onChangePower: (power) => void this.save({ power }).then(() => this.refreshPower()),
+          onSetLidAwake: this.setLidAwakeFromUi,
           onChangeModels: (models) => {
             this.launchModel = models.primary;
             void this.save({ models });

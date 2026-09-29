@@ -408,6 +408,49 @@ cheap, fast, tool-free route for generated session titles and `/btw`. Example:
 Returns gateway uptime, `HTTP + SSE`, the fixed `Full Access` product mode and
 registered/live PI runtime counts. This endpoint is diagnostic and read-only.
 
+### macOS power
+
+`Settings.power.keepAwake` (default `true`; only an explicit `false` turns it
+off) is the one saved power choice. On macOS the gateway applies it at startup
+and on each `PUT /__hui/settings` by running
+`/usr/bin/caffeinate -i -w <gateway pid>`, which prevents idle sleep while the
+display can still sleep. Turning it off or stopping the gateway ends the child,
+and `-w` ends it if the gateway is killed.
+
+Staying awake with the lid closed is never saved: it lasts one gateway run.
+
+- `GET /__hui/power` returns `{ power: null }` off macOS, otherwise
+  `{ power: { keepAwake, lidAwake, lidOn } }`. `keepAwake` and `lidAwake` are
+  `{ state: "off" | "pending" | "active" | "error", detail }`, what the gateway
+  actually holds; `lidOn` is the lid switch. The UI polls it every three seconds
+  while visible and shows a top notice while `lidOn` is true and `lidAwake` is
+  active.
+- `PUT /__hui/power` with `{ "lidAwake": boolean }` sets the switch and returns
+  the status at once; the outcome of a password prompt appears in later reads.
+  JSON without a boolean `lidAwake` is 400, and off macOS it is 404.
+- Turning it on runs `pmset -a disablesleep 1` through one macOS administrator
+  prompt (`osascript … with administrator privileges`; macOS closes an
+  unanswered dialog after about 30 seconds, and HUI abandons it after two
+  minutes at the latest). The same root script leaves a watcher that runs
+  `pmset -a disablesleep 0` and deletes its flag file under
+  `~/.config/hui/power/` once HUI renames that flag to `.stop` (turned off,
+  gateway stop) or the gateway PID is gone (crash). A cancelled, timed-out or
+  failed prompt turns the switch back off with the reason. Turning it off withdraws a prompt
+  still asking to turn it on; a switch changed again before its prompt opens
+  gives way to the newer choice.
+- Every gateway start begins with the switch off and never prompts. It first
+  stops every watcher it finds and waits briefly for each to restore sleep.
+  Flags are named with their gateway PID; another live gateway's flag (a
+  development server sharing the config dir) is left alone unless it predates
+  the last boot. A flag that outlives its watcher (reboot, power loss) means HUI
+  left `disablesleep 1`: the switch shows on with a note saying so, without a
+  prompt (also when turned on while such a flag holds it), and turning it off
+  asks for approval to restore sleep. The flag stays until that approval
+  succeeds.
+- When `pmset -g` already reports `SleepDisabled 1` without a HUI flag, turning
+  the switch on reports it active and changes nothing, and turning it off
+  reports that it is still on outside HUI.
+
 ### `GET /__hui/workspaces`
 
 Returns a read-only inventory derived solely from canonical working directories
@@ -1369,7 +1412,7 @@ catalogue, a `fontTerminal` local family name (1–128 characters, default
 OpenClaw-compatible HUI chat preferences (`messageWidth`,
 `collapseTaskProgress`, `sendShortcut` and `githubEmbeds`),
 `git.changesCard` (default `true`; only an explicit `false` hides the
-[changes card](#session-changes)), the Git workspace `branchPrefix` (`feature/` by default), Profile presentation
+[changes card](#session-changes)), [`power`](#macos-power), the Git workspace `branchPrefix` (`feature/` by default), Profile presentation
 fields and reversible Labs flags. These values affect HUI
 only. They never change PI configuration, provider identity, runtime permissions
 or transcripts.

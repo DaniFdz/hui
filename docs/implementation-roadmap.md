@@ -645,6 +645,17 @@ it; both stream from a CDP screencast only while watched. Proof:
 `src/views/chat/projection.test.ts`, `src/lib/session-multiplexer.test.ts` and
 the live view section of `e2e/browser-tool.browser.md`.
 
+### HUI-16 — macOS sleep prevention
+
+Settings → Gateway → Power keeps a macOS gateway host awake (`caffeinate -i`, on
+by default) and optionally awake with the lid closed (`pmset -a disablesleep`,
+one administrator prompt per enable, never saved, so every gateway start begins
+off without prompting). Both end with the gateway, including a crash; a reboot's
+leftover shows as on until turned off. A top notice reminds while the lid is
+held awake. Proof: `server/power.test.ts` (real watcher script against fake
+macOS commands), `server/power-routes.test.ts`, `src/lib/settings.test.ts`,
+`src/views/settings-gateway.test.ts` and `e2e/power-settings.browser.md`.
+
 ## Recommended implementation order
 
 `HUI-01 → HUI-02 → HUI-03 → HUI-04 → HUI-05 → HUI-06`, then run HUI-07,
