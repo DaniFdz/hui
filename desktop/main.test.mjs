@@ -99,13 +99,15 @@ test('gateway startup failure is visible rather than loading an unrelated page',
   assert.equal(state.quits(), 1);
 });
 
-test('clipboard writes stay local and other renderer permissions remain denied', async (t) => {
+test('clipboard writes and fullscreen stay local and other renderer permissions remain denied', async (t) => {
   const state = await shell(t);
   state.complete(null, JSON.stringify({ status: 'running', url: 'http://127.0.0.1:5174/' }));
   await state.settle();
   const contents = state.windows[0].webContents;
   let granted;
   contents.session.permission(contents, 'clipboard-sanitized-write', (value) => { granted = value; });
+  assert.equal(granted, true);
+  contents.session.permission(contents, 'fullscreen', (value) => { granted = value; });
   assert.equal(granted, true);
   contents.session.permission(contents, 'media', (value) => { granted = value; });
   assert.equal(granted, false);

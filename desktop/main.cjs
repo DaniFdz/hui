@@ -69,7 +69,7 @@ function showWindow() {
     void window?.webContents.setVisualZoomLevelLimits(...PINCH_ZOOM_LIMITS).catch(() => {});
   });
   window.webContents.session.setPermissionRequestHandler((contents, permission, callback) => {
-    callback(permission === 'clipboard-sanitized-write' && isInternal(contents.getURL(), origin));
+    callback(['clipboard-sanitized-write', 'fullscreen'].includes(permission) && isInternal(contents.getURL(), origin));
   });
   // Re-read after an in-app Appearance change, or one made from another client.
   window.webContents.session.webRequest.onCompleted({ urls: [`${origin}/__hui/settings`] }, (details) => {
