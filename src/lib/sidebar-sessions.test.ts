@@ -171,26 +171,30 @@ test("spawned sessions render immediately below their parent at increasing depth
   );
 });
 
-test("folding hides all descendants without resurrecting them as roots", () => {
+test("only the selected session's tree is expanded, and toggles flip that default", () => {
   const source = [session("grandchild", { parentId: "child" }), session("child", { parentId: "parent" }), session("parent"), session("other")];
-  const folded = new Set(["parent", "child"]);
-  assert.deepEqual(sessionTreeRows(source, folded).map(({ session, hasChildren }) => [session.id, hasChildren]), [["parent", true], ["other", false]]);
-  folded.delete("parent");
-  assert.deepEqual(sessionTreeRows(source, folded).map(({ session, depth }) => [session.id, depth]), [["parent", 0], ["child", 1], ["other", 0]]);
-  folded.delete("child");
-  assert.equal(sessionTreeRows(source, folded).length, 4);
+  const ids = (selectedId: string, toggled: string[] = []) =>
+    sessionTreeRows(source, { selectedId, toggled: new Set(toggled) }).map(({ session }) => session.id);
+  assert.deepEqual(ids("other"), ["parent", "other"]);
+  assert.deepEqual(ids("parent"), ["parent", "child", "other"]);
+  assert.deepEqual(ids("grandchild"), ["parent", "child", "grandchild", "other"]);
+  assert.deepEqual(ids("grandchild", ["parent"]), ["parent", "other"]);
+  assert.deepEqual(ids("other", ["parent"]), ["parent", "child", "other"]);
+  assert.deepEqual(sessionTreeRows(source, { selectedId: "other", toggled: new Set() }).map(({ collapsed }) => collapsed), [true, false]);
+  assert.equal(sessionTreeRows(source).length, 4);
 });
 
 test("folding remains safe with missing parents, self-links and cycles", () => {
   const source = [session("a", { parentId: "b" }), session("b", { parentId: "a" }), session("self", { parentId: "self" }), session("orphan", { parentId: "missing" })];
-  assert.deepEqual(sessionTreeRows(source, new Set(["a"])).map(({ session }) => session.id), ["orphan", "a", "self"]);
+  assert.deepEqual(sessionTreeRows(source, { selectedId: "self", toggled: new Set() }).map(({ session }) => session.id), ["orphan", "a", "self"]);
+  assert.deepEqual(sessionTreeRows(source, { selectedId: "a", toggled: new Set() }).map(({ session }) => session.id), ["orphan", "a", "b", "self"]);
   assert.equal(sessionTreeRows(source).length, 4);
 });
 
 test("filtered children remain reachable while their absent parent is folded", () => {
   const source = [{ label: "Work", sessions: [session("parent"), session("child", { parentId: "parent", status: "running" })] }];
   const filtered = sidebarSessionGroups(source, "child", defaults);
-  assert.deepEqual(sessionTreeRows(filtered[0]!.sessions, new Set(["parent"])).map(({ session, depth, hasChildren }) => [session.id, depth, hasChildren]), [["child", 0, false]]);
+  assert.deepEqual(sessionTreeRows(filtered[0]!.sessions, { selectedId: "", toggled: new Set() }).map(({ session, depth, hasChildren }) => [session.id, depth, hasChildren]), [["child", 0, false]]);
 });
 
 test("session search also matches pull request references and titles", () => {

@@ -113,7 +113,7 @@ export type ShellProps = {
   groups: readonly SessionGroup[];
   draftSessionIds: ReadonlySet<string>;
   collapsed: ReadonlySet<string>;
-  collapsedSessionTrees: ReadonlySet<string>;
+  toggledSessionTrees: ReadonlySet<string>;
   onToggleSessionTree: (id: string) => void;
   loading: boolean;
   error: string;
@@ -514,9 +514,9 @@ function sessionRow(session: SessionView, selected: boolean, props: ShellProps, 
 }
 
 function groupSection(group: SidebarSessionGroup, props: ShellProps, filtering: boolean): TemplateResult {
-  const collapsedTrees = filtering ? new Set<string>() : props.collapsedSessionTrees;
-  const rows = () => sessionTreeRows(group.sessions, collapsedTrees).map(({ session, depth, hasChildren }) =>
-    sessionRow(session, session.id === props.selectedSessionId, props, depth, hasChildren, collapsedTrees.has(session.id)));
+  const fold = filtering ? undefined : { selectedId: props.selectedSessionId, toggled: props.toggledSessionTrees };
+  const rows = () => sessionTreeRows(group.sessions, fold).map(({ session, depth, hasChildren, collapsed }) =>
+    sessionRow(session, session.id === props.selectedSessionId, props, depth, hasChildren, collapsed));
   if (group.kind === "none") {
     return html`<div class="session-group__rows sidebar-recent-sessions__list">
       ${rows()}

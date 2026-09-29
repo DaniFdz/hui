@@ -229,7 +229,7 @@ export class HuiApp extends HuiElement {
   @state() private sessionsLoading = true;
   @state() private sessionsError = "";
   @state() private collapsed: ReadonlySet<string> = readCollapsed();
-  @state() private collapsedSessionTrees: ReadonlySet<string> = new Set();
+  @state() private toggledSessionTrees: ReadonlySet<string> = new Set();
   @state() private sessionOptions: SidebarSessionOptions = readSidebarSessionOptions();
   @state() private kanbanOptions: KanbanOptions = readKanbanOptions();
   @state() private kanbanQuery = "";
@@ -713,6 +713,10 @@ export class HuiApp extends HuiElement {
   }
 
   override willUpdate(changed: PropertyValues) {
+    // Subagent trees follow the selection: moving elsewhere folds the old tree.
+    if (changed.has("selected") && (changed.get("selected") as SessionView | undefined)?.id !== this.selected?.id) {
+      this.toggledSessionTrees = new Set();
+    }
     if (changed.has("queueEditingId") && this.embeddedPane) {
       this.dispatchEvent(new CustomEvent("hui-queue-edit-retention", { bubbles: true }));
     }
@@ -2996,10 +3000,10 @@ export class HuiApp extends HuiElement {
   }
 
   private toggleSessionTree = (id: string) => {
-    const next = new Set(this.collapsedSessionTrees);
+    const next = new Set(this.toggledSessionTrees);
     if (next.has(id)) next.delete(id);
     else next.add(id);
-    this.collapsedSessionTrees = next;
+    this.toggledSessionTrees = next;
   };
 
   private toggleGroup = (label: string) => {
@@ -4077,7 +4081,7 @@ export class HuiApp extends HuiElement {
       onSelectSession: this.selectSession,
       onSplitSession: this.openSplitSession,
       onToggleGroup: this.toggleGroup,
-      collapsedSessionTrees: this.collapsedSessionTrees,
+      toggledSessionTrees: this.toggledSessionTrees,
       onToggleSessionTree: this.toggleSessionTree,
       onToggleMenu: this.toggleMenu,
       onCloseMenu: () => {
