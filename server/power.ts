@@ -42,6 +42,19 @@ const MACOS: PowerOptions = {
 };
 
 const quote = (value: string) => `'${value.replaceAll("'", `'\\''`)}'`;
+const forget = (paths: readonly string[]) => Promise.all(paths.map((path) => rm(path, { force: true })));
+
+/** Another live gateway's flag, such as a development server sharing this config
+ * dir. Gateways run as this user, so a PID we cannot signal is not one. */
+function othersActiveFlag(name: string, ownPid: number): boolean {
+  const pid = Number(name.slice(FLAG_PREFIX.length).split("-")[0]);
+  if (name.endsWith(".stop") || !Number.isInteger(pid) || pid === ownPid) return false;
+  try {
+    return process.kill(pid, 0);
+  } catch {
+    return false;
+  }
+}
 
 /** macOS sleep prevention bounded by the gateway's lifetime.
  *
@@ -50,9 +63,8 @@ const quote = (value: string) => `'${value.replaceAll("'", `'\\''`)}'`;
  * prompt starts a root watcher. It restores `disablesleep 0` and deletes its flag
  * once the flag is renamed to `.stop` (off, gateway stop) or the gateway process
  * is gone (crash). A flag that outlives its watcher (reboot) marks the setting as
- * HUI's, so HUI restores it rather than calling it an outside setting.
- * ponytail: one gateway per config dir; two with lid-awake on would treat each
- * other's flags as leftovers. */
+ * HUI's until HUI takes it over or restores it, rather than an outside setting.
+ * Flags carry their gateway PID, so another live gateway's flag is left alone. */
 export class MacPower {
   readonly #options: PowerOptions;
   #keepAwake: PowerState = OFF;
@@ -63,8 +75,8 @@ export class MacPower {
   /** Aborted by dispose, so queued lid work never prompts after the gateway stops. */
   #life = new AbortController();
   #lidWanted?: boolean;
-  /** An earlier HUI run left `disablesleep 1` without a watcher. */
-  #leftover = false;
+  /** The latest requested choice; a step for an older one gives way to it. */
+  #lidTarget = false;
   #lidQueue = Promise.resolve();
 
   constructor(options: PowerOptions = MACOS) {
@@ -82,6 +94,7 @@ export class MacPower {
   apply(power: Settings["power"]): Promise<void> {
     this.#applyKeepAwake(power.keepAwake);
     if (!power.lidAwake && this.#lidWanted) this.#prompt?.abort();
+    this.#lidTarget = power.lidAwake;
     const life = this.#life.signal;
     this.#lidQueue = this.#lidQueue
       .then(() => this.#applyLidAwake(power.lidAwake, life))
@@ -134,31 +147,35 @@ export class MacPower {
 
   async #applyLidAwake(want: boolean, life: AbortSignal): Promise<void> {
     // Only a changed choice acts, so unrelated settings saves never re-prompt.
-    if (life.aborted || want === this.#lidWanted) return;
+    if (life.aborted || want !== this.#lidTarget || want === this.#lidWanted) return;
     this.#lidWanted = want;
     // #settle stops this flag's watcher along with any other.
     this.#flag = undefined;
-    if (await this.#settle()) this.#leftover = true;
+    const leftovers = await this.#settle();
     const disabled = await this.#sleepDisabled();
+    // Stopped, or switched again while settling: the later step decides.
+    if (life.aborted || want !== this.#lidTarget) return;
+    if (!disabled) await forget(leftovers);
+    const ours = disabled && leftovers.length > 0;
     if (!want) {
       if (!disabled) this.#lidAwake = OFF;
-      else if (!this.#leftover) this.#lidAwake = { state: "off", detail: "Still on for this Mac outside HUI." };
+      else if (!ours) this.#lidAwake = { state: "off", detail: "Still on for this Mac outside HUI." };
       else {
         this.#lidAwake = { state: "pending", detail: "Waiting for administrator approval to restore lid-close sleep." };
         await this.#admin(`${quote(this.#options.pmset)} -a disablesleep 0`, life).catch((error: Error) => {
           throw new Error(`An earlier HUI run left lid-close sleep off. ${error.message}`);
         });
-        this.#leftover = false;
+        await forget(leftovers);
         this.#lidAwake = OFF;
       }
       return;
     }
-    if (disabled && !this.#leftover) {
+    if (disabled && !ours) {
       this.#lidAwake = { state: "active", detail: "Already on for this Mac outside HUI, so HUI leaves it unchanged." };
       return;
     }
     this.#lidAwake = { state: "pending", detail: "Waiting for administrator approval on this Mac." };
-    const flag = join(this.#options.flagDir, `${FLAG_PREFIX}${randomUUID()}`);
+    const flag = join(this.#options.flagDir, `${FLAG_PREFIX}${this.#options.pid}-${randomUUID()}`);
     this.#flag = flag;
     try {
       await mkdir(this.#options.flagDir, { recursive: true });
@@ -169,7 +186,7 @@ export class MacPower {
       if (this.#flag === flag) this.#flag = undefined;
       throw error;
     }
-    this.#leftover = false;
+    await forget(leftovers);
     this.#lidAwake = { state: "active", detail: "" };
   }
 
@@ -197,21 +214,22 @@ export class MacPower {
     }
   }
 
-  /** Stops every watcher and waits until each has restored sleep and deleted its
-   * flag. A flag still there after a few watcher polls has no watcher (reboot):
-   * it is deleted, and true says HUI left `disablesleep` as it was set. */
-  async #settle(): Promise<boolean> {
+  /** Stops every watcher but another live gateway's and waits until each has
+   * restored sleep and deleted its flag. Flags still there after a few watcher
+   * polls have no watcher (reboot) and are returned: HUI left `disablesleep` as
+   * they set it, and they stay until HUI takes it over or restores it. */
+  async #settle(): Promise<string[]> {
     const dir = this.#options.flagDir;
-    const flags = async () => (await readdir(dir).catch(() => [] as string[])).filter((name) => name.startsWith(FLAG_PREFIX));
+    const flags = async () => (await readdir(dir).catch(() => [] as string[]))
+      .filter((name) => name.startsWith(FLAG_PREFIX) && !othersActiveFlag(name, this.#options.pid));
     for (const name of await flags()) {
       if (!name.endsWith(".stop")) await rename(join(dir, name), join(dir, `${name}.stop`)).catch(() => undefined);
     }
     for (let i = 0; i < 12; i++) {
-      if (!(await flags()).length) return false;
+      if (!(await flags()).length) return [];
       await delay(250);
     }
-    await Promise.all((await flags()).map((name) => rm(join(dir, name), { force: true })));
-    return true;
+    return (await flags()).map((name) => join(dir, name));
   }
 
   async #sleepDisabled(): Promise<boolean> {

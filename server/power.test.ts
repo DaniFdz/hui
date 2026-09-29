@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test, { type TestContext } from "node:test";
@@ -33,15 +33,19 @@ async function fixture(t: TestContext, { osascript = "approve" as keyof typeof O
     pid,
   };
   const instances: MacPower[] = [];
-  const make = () => { const power = new MacPower(options); instances.push(power); return power; };
+  const make = (gatewayPid = pid) => { const power = new MacPower({ ...options, pid: gatewayPid }); instances.push(power); return power; };
   t.after(async () => { for (const power of instances) power.dispose(); await rm(dir, { recursive: true, force: true }); });
   const read = (name: string) => readFile(join(dir, name), "utf8").then((text) => text.trim(), () => "");
   const prompts = async () => (await read("prompts")).split("\n").filter(Boolean);
   const answer = () => writeFile(join(dir, "go"), "");
-  return { power: make(), make, read, prompts, answer, flagDir: options.flagDir };
+  const leaveRebootFlag = async () => {
+    await mkdir(options.flagDir, { recursive: true });
+    await writeFile(join(options.flagDir, "lid-awake-left-by-reboot"), "");
+  };
+  return { power: make(), make, read, prompts, answer, leaveRebootFlag, flagDir: options.flagDir };
 }
 
-async function eventually(check: () => Promise<boolean> | boolean, timeoutMs = 5_000): Promise<void> {
+async function eventually(check: () => Promise<boolean> | boolean, timeoutMs = 10_000): Promise<void> {
   for (const deadline = Date.now() + timeoutMs; Date.now() < deadline; await delay(50)) {
     if (await check()) return;
   }
@@ -113,9 +117,8 @@ test("a restarted gateway waits for the previous watcher instead of calling its 
 
 test("a flag left by a reboot makes HUI restore or take over lid sleep rather than call it outside HUI", async (t) => {
   for (const lidAwake of [false, true]) {
-    const { power, read, prompts, flagDir } = await fixture(t, { sleepDisabled: "1" });
-    await mkdir(flagDir);
-    await writeFile(join(flagDir, "lid-awake-left-by-reboot"), "");
+    const { power, read, prompts, leaveRebootFlag } = await fixture(t, { sleepDisabled: "1" });
+    await leaveRebootFlag();
     await power.apply({ keepAwake: false, lidAwake });
     assert.deepEqual(power.status().lidAwake, { state: lidAwake ? "active" : "off", detail: "" });
     assert.equal((await prompts()).length, 1);
@@ -123,10 +126,42 @@ test("a flag left by a reboot makes HUI restore or take over lid sleep rather th
   }
 });
 
+test("a declined restore is offered again after a restart", async (t) => {
+  const { power, make, prompts, leaveRebootFlag } = await fixture(t, { osascript: "cancel", sleepDisabled: "1" });
+  await leaveRebootFlag();
+  await power.apply({ keepAwake: false, lidAwake: false });
+  assert.equal(power.status().lidAwake.state, "error");
+  power.dispose();
+  const restarted = make();
+  await restarted.apply({ keepAwake: false, lidAwake: false });
+  assert.equal(restarted.status().lidAwake.state, "error");
+  assert.equal((await prompts()).length, 2);
+});
+
+test("switching lid awake off while it is still settling never prompts", async (t) => {
+  const { power, prompts, leaveRebootFlag, flagDir } = await fixture(t);
+  await leaveRebootFlag();
+  void power.apply({ keepAwake: false, lidAwake: true });
+  await eventually(async () => (await readdir(flagDir)).includes("lid-awake-left-by-reboot.stop"));
+  await power.apply({ keepAwake: false, lidAwake: false });
+  assert.deepEqual(power.status().lidAwake, { state: "off", detail: "" });
+  assert.equal((await prompts()).length, 0);
+});
+
+test("another live gateway sharing the config dir keeps its lid watcher", async (t) => {
+  const gateway = spawn("sleep", ["30"]);
+  t.after(() => gateway.kill());
+  const { make, read } = await fixture(t);
+  await make(gateway.pid).apply({ keepAwake: false, lidAwake: true });
+  const other = make();
+  await other.apply({ keepAwake: false, lidAwake: false });
+  assert.deepEqual(other.status().lidAwake, { state: "off", detail: "Still on for this Mac outside HUI." });
+  assert.equal(await read("sleep-disabled"), "1");
+});
+
 test("an unrelated save lets a restore prompt finish", async (t) => {
-  const { power, read, prompts, answer, flagDir } = await fixture(t, { osascript: "gate", sleepDisabled: "1" });
-  await mkdir(flagDir);
-  await writeFile(join(flagDir, "lid-awake-left-by-reboot"), "");
+  const { power, read, prompts, answer, leaveRebootFlag } = await fixture(t, { osascript: "gate", sleepDisabled: "1" });
+  await leaveRebootFlag();
   void power.apply({ keepAwake: false, lidAwake: false });
   await eventually(async () => (await prompts()).length === 1, PAST_LEFTOVER_WAIT_MS);
   const unrelated = power.apply({ keepAwake: true, lidAwake: false });
