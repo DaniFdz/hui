@@ -187,12 +187,11 @@ test("a real headless browser serves agent tabs end to end", {
   const missing = await call("alpha", { action: "navigate", url: `${origin}/missing` });
   assert.match(missing.text, /Navigated tab t1/u);
 
-  // Removing a conversation closes its tabs; a new mode restarts the process.
-  browser.closeOwner("alpha");
-  assert.deepEqual((await browser.status()).tabs, []);
+  // A new mode stops the running process and its tabs.
   settings = { ...settings, headless: false };
   await browser.applySettings(settings);
   assert.equal(browser.running, false);
+  assert.deepEqual((await browser.status()).tabs, []);
   if (process.platform === "linux" && !process.env["DISPLAY"] && !process.env["WAYLAND_DISPLAY"]) {
     await assert.rejects(call("alpha", { action: "open", url: `${origin}/form` }), /needs a display/u);
   }
@@ -203,6 +202,51 @@ test("a real headless browser serves agent tabs end to end", {
   await browser.applySettings(settings);
   assert.equal(browser.running, false);
   assert.equal((await browser.status()).state, "stopped");
+});
+
+test("stopped or idle conversations never leave a headless browser running", {
+  skip: detected.executable ? false : "no Chromium-family browser is installed",
+  timeout: 60_000,
+}, async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "hui-browser-lifetime-"));
+  const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "" };
+  const browsers: ManagedBrowser[] = [];
+  t.after(async () => {
+    for (const browser of browsers) await browser.stop();
+    await rm(dir, { recursive: true, force: true });
+  });
+  const managed = (options: { idleTabMs?: number } = {}) => {
+    const browser = new ManagedBrowser({ profileDir: join(dir, "profile"), readSettings: async () => settings, ...options });
+    browsers.push(browser);
+    return browser;
+  };
+  const idle = async (browser: ManagedBrowser) => {
+    const status = await eventually(() => browser.status(), (value) => value.state === "stopped");
+    assert.equal(status.state, "stopped");
+    assert.deepEqual(status.tabs, []);
+  };
+
+  // The operator stops a turn while its first open is still launching the browser.
+  const browser = managed();
+  const call = (owner: string, params: Record<string, unknown>) => browser.tool(owner, params, { cwd: dir });
+  const interrupted = call("alpha", { action: "open" });
+  browser.closeOwner("alpha");
+  await assert.rejects(interrupted, /browser tabs were closed/u);
+  await idle(browser);
+
+  // Stopping one conversation keeps another's tab; closing the last one stops the browser.
+  await call("alpha", { action: "open" });
+  await call("beta", { action: "open" });
+  browser.closeOwner("alpha");
+  assert.deepEqual((await browser.status()).tabs.map((tab) => tab.ownerSessionId), ["beta"]);
+  assert.equal(browser.running, true);
+  assert.match((await call("beta", { action: "close" })).text, /No tabs remain open/u);
+  await idle(browser);
+
+  // Tabs nobody uses close by themselves, and the browser with them.
+  const unused = managed({ idleTabMs: 200 });
+  await unused.tool("gamma", { action: "open" }, { cwd: dir });
+  await idle(unused);
 });
 
 test("the live view follows the agent's tab, streams frames only while watched and marks clicks", {

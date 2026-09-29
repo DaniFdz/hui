@@ -105,13 +105,21 @@ test("browser routes are guarded and the agent bridge drives conversation-scoped
   assert.match(preview.body["image"], /^data:image\/jpeg;base64,\/9j\//u);
   assert.match((await tool("beta", { action: "tabs" })).body.result?.text ?? "", /No tabs are open/u);
 
-  // Deleting a conversation closes its tabs; a new mode stops the old process.
+  // Deleting a conversation closes its tabs, and the last tab takes the process with it.
   assert.equal((await api("/__hui/sessions/alpha", { method: "DELETE" })).status, 200);
   assert.deepEqual((await api("/__hui/browser")).body["tabs"], []);
+  const deadline = Date.now() + 10_000;
+  while ((await api("/__hui/browser")).body["state"] !== "stopped") {
+    assert.ok(Date.now() < deadline, "the browser stops once no tab is left");
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  // A Settings start runs without tabs; a new mode stops it.
+  const start = () => api("/__hui/browser", { method: "POST", body: JSON.stringify({ action: "start" }) });
+  assert.equal((await start()).body["state"], "running");
   await saveBrowser({ enabled: true, headless: false });
   assert.equal((await api("/__hui/browser")).body["state"], "stopped");
   await saveBrowser({ enabled: true, headless: true });
-  const started = await api("/__hui/browser", { method: "POST", body: JSON.stringify({ action: "start" }) });
+  const started = await start();
   assert.equal(started.status, 200, String(started.body["error"]));
   assert.equal(started.body["state"], "running");
   const stopped = await api("/__hui/browser", { method: "POST", body: JSON.stringify({ action: "stop" }) });

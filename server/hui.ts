@@ -223,6 +223,8 @@ const managedBrowser = new ManagedBrowser({
   readSettings: async () => (await readSettings()).browser,
 });
 liveSessions.setTaskSuggestionProvider((id) => taskSuggestions.list(id));
+// A stopped turn must not leave its pages running in the headless browser.
+liveSessions.setAbortListener((id) => managedBrowser.closeOwner(id));
 registerAgentToolHandler(async (invocation) => {
   if (invocation.action === "suggest_task" || invocation.action === "dismiss_task") {
     const caller = (await readRegistry()).find(({ id }) => id === invocation.callerSessionId);

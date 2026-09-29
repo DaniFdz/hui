@@ -1566,8 +1566,13 @@ http), and downloads are denied.
 
 Limits: 8 tabs per conversation, 32 in total. Tabs belong to the opening
 conversation; popups join the opener's conversation. Other conversations,
-including subagents, can neither list nor drive them. Removing a conversation
-closes its tabs; gateway shutdown ends the browser. The tool result stores
+including subagents, can neither list nor drive them. Removing a conversation,
+stopping its turn (any abort: Stop, rewind, automation or subagent cancellation)
+or 10 minutes without a browser call from it closes its tabs; a call still in
+flight when its tabs close cannot open a new one. The browser process stops once
+no agent tab is open and no call is running (checked whenever a tab closes or a
+call ends; one started from Settings runs until then), and gateway shutdown ends
+it. The tool result stores
 model-facing text, a PNG image for `screenshot`, and small `details` (`action`,
 tab id/title/URL and outcome flags) in PI's transcript; no route or registry
 format changes.

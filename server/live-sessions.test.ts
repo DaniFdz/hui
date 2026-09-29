@@ -1197,6 +1197,8 @@ test("a session with no runtime refuses model calls instead of pretending", asyn
 test("abort stops the turn but keeps the session usable", async () => {
   const started: FakeSession[] = [];
   const manager = new LiveSessions(factory(started));
+  const aborted: string[] = [];
+  manager.setAbortListener((id) => aborted.push(id));
   manager.ensure(recordFor("stop"));
   await waitForBoot(manager, "stop");
 
@@ -1206,6 +1208,7 @@ test("abort stops the turn but keeps the session usable", async () => {
 
   await manager.abort("stop");
   assert.equal(started[0]?.aborts, 1);
+  assert.deepEqual(aborted, ["stop"], "a stopped turn releases what it held, such as browser tabs");
   // The runtime is still there, so the next prompt does not have to reboot it.
   await manager.prompt("stop", "something else");
   assert.equal(started[0]?.prompts.at(-1), "something else");
