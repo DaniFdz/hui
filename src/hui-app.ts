@@ -435,6 +435,8 @@ export class HuiApp extends HuiElement {
    * the pane opens it once this clears. */
   @property({ attribute: false }) paneCreating: WorktreeProgress | undefined;
   @property({ attribute: false }) paneCreationError: string | undefined;
+  /** The failed launch's prompt, returned to New Session when this pane deletes it. */
+  @property({ attribute: false }) paneUnsentPrompt: string | undefined;
   @property({ attribute: false }) onPaneUpdate: ((text: string, attachments: readonly Attachment[]) => boolean) | undefined;
   /** Embedded panes own the composer but not the sidebar; report draft
    * presence so the shell can project the pencil onto the session row. */
@@ -2864,7 +2866,7 @@ export class HuiApp extends HuiElement {
       return;
     }
     // A failed worktree launch hands its prompt back to New Session.
-    const unsent = this.listedSession(targetId)?.initialPrompt;
+    const unsent = this.paneUnsentPrompt;
     void deleteSession(targetId)
       .then(async () => {
         if (unsent) {
@@ -3997,6 +3999,7 @@ export class HuiApp extends HuiElement {
       .onPaneRegistryChange=${() => void this.refreshSessions()}
       .paneCreating=${this.listedSession(pane.sessionId)?.creating}
       .paneCreationError=${this.listedSession(pane.sessionId)?.creationError}
+      .paneUnsentPrompt=${this.listedSession(pane.sessionId)?.initialPrompt}
       .onPaneUpdate=${(text: string, attachments: readonly Attachment[]) => this.handleUpdateCommand(text, attachments)}
       .onPaneDraftChange=${(sessionId: string, hasDraft: boolean) => this.markSessionDraft(sessionId, hasDraft)}
     ></hui-app>`;
