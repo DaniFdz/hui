@@ -96,9 +96,9 @@ export class MacPower {
    * restoring sleep is left to finish. */
   apply(power: Settings["power"]): Promise<void> {
     this.#applyKeepAwake(power.keepAwake);
-    if (!power.lidAwake && this.#lidWanted) {
+    if (!power.lidAwake && this.#lidWanted && this.#prompt) {
       // Withdraw a dialog still asking to turn it on; the next step re-decides.
-      this.#prompt?.abort();
+      this.#prompt.abort();
       this.#lidWanted = undefined;
     }
     this.#lidTarget = power.lidAwake;
@@ -163,7 +163,6 @@ export class MacPower {
     const leftovers = await this.#settle();
     const disabled = await this.#sleepDisabled();
     if (!current()) return;
-    this.#lidWanted = want;
     if (!disabled) await forget(leftovers);
     const ours = disabled && leftovers.length > 0;
     if (!want) {
