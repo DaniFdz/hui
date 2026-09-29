@@ -7,7 +7,7 @@ import { labelDropdown, closeDropdownOnEscape } from "../lib/web-awesome.ts";
 import { renderHoverMarquee } from "../lib/hover-marquee.ts";
 import { sessionGroupLabel, storedSessionGroup, type SessionGroup, type SessionView } from "../lib/sessions-store.ts";
 import { subagentElapsed, subagentVisualState } from "../lib/subagent-activity.ts";
-import { customGroupOrder, sessionTreeRows, sidebarSessionGroups, type SidebarSessionGroup, type SidebarSessionOptions } from "../lib/sidebar-sessions.ts";
+import { customGroupOrder, sessionTreeRows, sidebarSessionGroups, type SidebarSessionGroup, type SidebarSessionOptions, type SidebarSessionTreeRow } from "../lib/sidebar-sessions.ts";
 import { renderSidebarSessionOptions } from "./sidebar-session-options.ts";
 import { kanbanIcon } from "./kanban.ts";
 import { isSessionStage, SESSION_STAGE_LABELS } from "../../shared/session-stages.ts";
@@ -113,7 +113,7 @@ export type ShellProps = {
   groups: readonly SessionGroup[];
   draftSessionIds: ReadonlySet<string>;
   collapsed: ReadonlySet<string>;
-  collapsedSessionTrees: ReadonlySet<string>;
+  toggledSessionTrees: ReadonlySet<string>;
   onToggleSessionTree: (id: string) => void;
   loading: boolean;
   error: string;
@@ -514,9 +514,23 @@ function sessionRow(session: SessionView, selected: boolean, props: ShellProps, 
 }
 
 function groupSection(group: SidebarSessionGroup, props: ShellProps, filtering: boolean): TemplateResult {
-  const collapsedTrees = filtering ? new Set<string>() : props.collapsedSessionTrees;
-  const rows = () => sessionTreeRows(group.sessions, collapsedTrees).map(({ session, depth, hasChildren }) =>
-    sessionRow(session, session.id === props.selectedSessionId, props, depth, hasChildren, collapsedTrees.has(session.id)));
+  const fold = filtering ? undefined : { selectedId: props.selectedSessionId, toggled: props.toggledSessionTrees };
+  // Each root and its visible descendants form one tree; the selected session's
+  // open tree shares a panel so the parent and its subagents read as one unit.
+  const rows = () => {
+    const trees: SidebarSessionTreeRow[][] = [];
+    for (const row of sessionTreeRows(group.sessions, fold)) {
+      if (row.depth === 0 || !trees.length) trees.push([row]);
+      else trees.at(-1)!.push(row);
+    }
+    return trees.map((tree) => {
+      const rendered = tree.map(({ session, depth, hasChildren, collapsed }) =>
+        sessionRow(session, session.id === props.selectedSessionId, props, depth, hasChildren, collapsed));
+      return tree.length > 1 && tree.some(({ session }) => session.id === props.selectedSessionId)
+        ? html`<div class="session-tree session-tree--active" data-session-stage=${isSessionStage(tree[0]!.session.stage) ? tree[0]!.session.stage : nothing}>${rendered}</div>`
+        : rendered;
+    });
+  };
   if (group.kind === "none") {
     return html`<div class="session-group__rows sidebar-recent-sessions__list">
       ${rows()}

@@ -658,6 +658,9 @@ depending on undocumented process behaviour.
 The 2026-09-25 sidebar follow-up adds independent, keyboard-accessible disclosure
 buttons for parent sessions. Folding hides all descendants without changing the
 open chat, preserves nested fold choices, and reveals filtered matches.
+The 2026-09-29 follow-up makes trees follow the selection: only the selected
+session and its ancestors show their subagents, and choosing another session
+folds the previous tree and discards manual toggles.
 Verified desktop/mobile behavior and checks are recorded in
 [`e2e/subagent-tree-collapse.browser.md`](../e2e/subagent-tree-collapse.browser.md).
 

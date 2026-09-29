@@ -43,3 +43,21 @@ Screenshots were inspected and delivered in chat, never stored in the repository
 - npm run typecheck and npm run build passed.
 - Build retains its existing large-chunk advisory.
 - State is page-local, not persisted; no registry/API format change.
+
+## 2026-09-29: trees follow the selection
+
+Verified against the real Vite application from the visual-verification
+launcher (clean committed checkout, doctor passed) with a seeded registry:
+Alpha parent (two subagents), Beta parent (one subagent) and Gamma plain.
+
+- 1440x900, nothing selected: both parents show an Expand disclosure and no
+  subagent rows.
+- Open Alpha parent: its two subagents appear; Beta stays folded.
+- Open Alpha subagent B: Alpha's tree stays open.
+- Open Gamma plain: Alpha folds again.
+- Expand Beta with its disclosure while Gamma stays selected: Beta's subagent
+  appears and the open chat is unchanged.
+- Search "subagent A": matches under folded parents are shown.
+- 390x844, load /sessions/beta-a directly and open navigation: Beta is expanded,
+  Alpha folded, the subagent row is highlighted.
+- Browser console: no errors (Lit dev-mode warnings only).

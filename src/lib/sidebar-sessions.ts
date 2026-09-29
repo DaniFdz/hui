@@ -42,13 +42,18 @@ export type SidebarSessionGroup = SessionGroup & {
   kind: SidebarSessionOptions["groupBy"];
 };
 
-export type SidebarSessionTreeRow = { session: SessionView; depth: number; hasChildren: boolean };
+export type SidebarSessionTreeRow = { session: SessionView; depth: number; hasChildren: boolean; collapsed: boolean };
 
 /** Keeps spawned sessions immediately below their parent while preserving the
  * sort order already chosen for each sibling set. Missing parents and cycles
- * degrade to ordinary root rows instead of hiding a conversation. */
-export function sessionTreeRows(sessions: readonly SessionView[], collapsed: ReadonlySet<string> = new Set()): SidebarSessionTreeRow[] {
+ * degrade to ordinary root rows instead of hiding a conversation. With `fold`,
+ * only the selected session and its ancestors show their children and
+ * `toggled` flips that default; without it every tree is expanded. */
+export function sessionTreeRows(sessions: readonly SessionView[], fold?: { selectedId: string; toggled: ReadonlySet<string> }): SidebarSessionTreeRow[] {
   const byId = new Map(sessions.map((session) => [session.id, session]));
+  const openByDefault = new Set<string>();
+  for (let id = fold?.selectedId; id && byId.has(id) && !openByDefault.has(id); id = byId.get(id)!.parentId) openByDefault.add(id);
+  const folded = (id: string) => !!fold && openByDefault.has(id) === fold.toggled.has(id);
   const children = new Map<string, SessionView[]>();
   for (const session of sessions) {
     if (!session.parentId || !byId.has(session.parentId) || session.parentId === session.id) continue;
@@ -61,7 +66,7 @@ export function sessionTreeRows(sessions: readonly SessionView[], collapsed: Rea
   const append = (session: SessionView, depth: number) => {
     if (visited.has(session.id)) return;
     visited.add(session.id);
-    output.push({ session, depth, hasChildren: false });
+    output.push({ session, depth, hasChildren: false, collapsed: false });
     for (const child of children.get(session.id) ?? []) append(child, depth + 1);
   };
   for (const session of sessions) {
@@ -74,7 +79,8 @@ export function sessionTreeRows(sessions: readonly SessionView[], collapsed: Rea
   return output.filter((row, index) => {
     row.hasChildren = (output[index + 1]?.depth ?? 0) > row.depth;
     if (hiddenBelow !== undefined && row.depth > hiddenBelow) return false;
-    hiddenBelow = collapsed.has(row.session.id) ? row.depth : undefined;
+    row.collapsed = row.hasChildren && folded(row.session.id);
+    hiddenBelow = row.collapsed ? row.depth : undefined;
     return true;
   });
 }
