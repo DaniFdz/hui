@@ -547,7 +547,17 @@ export class ManagedBrowser {
       const settings = await this.#readSettings();
       if (!settings.enabled) throw new BrowserToolError("The browser tool is turned off in HUI Settings → Tools → Browser.", 409);
       const name = action as BrowserAction;
-      const result = await this.#run(owner, name, params, settings, context, epoch);
+      let result: BrowserToolResult;
+      try {
+        result = await this.#run(owner, name, params, settings, context, epoch);
+      } catch (error) {
+        // A browser killed under a live-looking instance closes the pipe
+        // mid-call; name the exit the agent can recover from, not the pipe.
+        if (error instanceof CdpError && (!this.#instance || this.#instance.connection.closed)) {
+          throw new BrowserToolError("The managed browser exited. Call open to start it again.", 409);
+        }
+        throw error;
+      }
       this.#narrate(owner, name, params, result);
       return result;
     } finally {

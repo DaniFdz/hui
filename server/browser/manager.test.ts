@@ -328,6 +328,32 @@ test("a browser killed behind the gateway's back is relaunched on the next open"
   assert.equal(browser.running, true, "the next open relaunches the browser");
 });
 
+test("an action racing an external kill names the exit instead of a protocol error", {
+  skip: detected.executable && process.platform !== "win32" ? false : "no Chromium-family browser or pkill is available",
+  timeout: 60_000,
+}, async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "hui-browser-kill-action-"));
+  const profileDir = join(dir, "profile");
+  const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "" };
+  const browser = new ManagedBrowser({ profileDir, readSettings: async () => settings });
+  t.after(async () => {
+    await browser.stop();
+    await rm(dir, { recursive: true, force: true });
+  });
+  const call = (params: Record<string, unknown>) => browser.tool("alpha", params, { cwd: dir });
+
+  await call({ action: "open", url: "about:blank" });
+
+  // The next action can arrive before the gateway has processed the process
+  // exit; it must report the restart it can recover from, not the raw pipe error.
+  execFileSync("pkill", ["-9", "-f", `user-data-dir=${profileDir}`]);
+  await assert.rejects(call({ action: "snapshot" }), (error: unknown) => {
+    assert.ok(error instanceof BrowserToolError, `raw error escaped: ${String(error)}`);
+    assert.ok(error.status < 500, `a server fault escaped: ${error.status}`);
+    return true;
+  });
+});
+
 test("another Chromium process owning the profile is reported instead of a connection error", {
   skip: detected.executable && process.platform !== "win32" ? false : "no Chromium-family browser is available",
   timeout: 60_000,

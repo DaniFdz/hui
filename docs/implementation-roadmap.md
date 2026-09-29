@@ -648,9 +648,11 @@ the live view section of `e2e/browser-tool.browser.md`.
 Follow-up 2026-09-29: the managed browser survives being killed behind the
 gateway's back (an operator cleanup script, a crash, or another Chromium
 process holding the shared HUI profile). An `open` that finds the dead process
-relaunches it instead of writing to the closed pipe, and a launch that loses the
-profile to another process reports that instead of "The browser connection
-closed." Proof: `server/browser/manager.test.ts`.
+relaunches it instead of writing to the closed pipe, another action caught by
+the kill says the browser exited and to open again instead of surfacing a
+protocol error, and a launch that loses the profile to another process reports
+that instead of "The browser connection closed." Proof:
+`server/browser/manager.test.ts`.
 
 ### HUI-16 — macOS sleep prevention
 
