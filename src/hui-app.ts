@@ -459,6 +459,7 @@ export class HuiApp extends HuiElement {
   private subagentExpiryTimer: number | undefined;
   /** First prompt composed on New Session, released only after PI reports idle. */
   private pendingLaunchPrompt = "";
+  private pendingLaunchAttachments: readonly Attachment[] = [];
   private commandPaletteReturnFocus: HTMLElement | undefined;
   private piResourceReaderReturnFocus: HTMLElement | undefined;
   private piResourceReaderRequest = 0;
@@ -1848,7 +1849,9 @@ export class HuiApp extends HuiElement {
     } else if (status === "error" && this.pendingLaunchPrompt) {
       this.composerDraftEdit += 1;
       this.draft = this.pendingLaunchPrompt;
+      this.attachments = this.pendingLaunchAttachments;
       this.pendingLaunchPrompt = "";
+      this.pendingLaunchAttachments = [];
       void this.persistComposerDraft();
     }
     // Keep the sidebar dot honest without a full re-fetch.
@@ -2255,8 +2258,10 @@ export class HuiApp extends HuiElement {
     if (!shouldFlushLaunchPrompt(prompt, this.selected?.status, this.connection, this.opening)) {
       return;
     }
+    const attachments = this.pendingLaunchAttachments;
     this.pendingLaunchPrompt = "";
-    this.send(prompt);
+    this.pendingLaunchAttachments = [];
+    this.send(prompt, attachments);
   }
 
   private send = (text: string, attachments: readonly Attachment[] = [], mode: PromptMode = "prompt") => {
@@ -2437,14 +2442,13 @@ export class HuiApp extends HuiElement {
   };
 
   private addAttachments = (files: readonly File[]) => {
-    const sessionId = this.selected?.id;
-    if (!sessionId || this.sending) {
+    const key = this.composerDraftKey;
+    if (this.sending || this.launching) {
       return;
     }
     void Promise.all(files.map((file) => readAttachment(file)))
       .then(async (added) => {
-        if (!isSelectedSession(sessionId, this.selected?.id)) {
-          const key = sessionDraftKey(sessionId);
+        if (key !== this.composerDraftKey) {
           const stored = await readComposerDraft(key);
           const attachments = [...stored.attachments, ...added];
           validateAttachmentTotal(attachments);
@@ -2458,7 +2462,7 @@ export class HuiApp extends HuiElement {
         await this.persistComposerDraft();
       })
       .catch((error: unknown) => {
-        if (!isSelectedSession(sessionId, this.selected?.id)) {
+        if (key !== this.composerDraftKey) {
           return;
         }
         this.note = error instanceof Error ? error.message : "Could not read that file.";
@@ -2842,6 +2846,7 @@ export class HuiApp extends HuiElement {
     this.noteFailed = false;
     const { prompt, commandDraft, ...sessionInput } = input;
     this.pendingLaunchPrompt = prompt?.trim() ?? "";
+    const launchAttachments = this.attachments;
     void createSession({ ...sessionInput, ...(prompt?.trim() ? { initialPrompt: prompt.trim() } : {}) }, (progress) => { this.worktreeProgress = progress; })
       .then(async (session) => {
         await deleteComposerDraft(NEW_SESSION_DRAFT_KEY);
@@ -2863,6 +2868,7 @@ export class HuiApp extends HuiElement {
         this.pendingLaunchPrompt = "";
         await this.withSessionPane(session, (app) => {
           app.pendingLaunchPrompt = pendingPrompt;
+          app.pendingLaunchAttachments = pendingPrompt ? launchAttachments : [];
           app.pendingCommandBrowse = commandDraft !== undefined;
           if (commandDraft !== undefined) app.updateDraft(commandDraft);
           app.flushPendingLaunchPrompt();
@@ -2928,6 +2934,7 @@ export class HuiApp extends HuiElement {
     this.streamStop?.();
     this.streamStop = undefined;
     this.pendingLaunchPrompt = "";
+    this.pendingLaunchAttachments = [];
     this.selected = undefined;
     const empty = emptySessionPresentation();
     this.transcript = empty.transcript;

@@ -37,7 +37,6 @@
   .new-session-page__creating wa-progress-bar::part(indicator) { transition-duration: 0ms; }
   .new-session-page__creating wa-progress-bar[indeterminate]::part(indicator) { inset-inline-start: 0; width: 100%; animation: none; opacity: .45; }
 }
-.new-session-page__attach { opacity: .4; }
 /* Keep launch failures attached to the same responsive grid as the input. */
 .new-session-page__composer > .new-session-page__feedback { width: 100%; max-width: none; margin: 4px 0 0; }
 .new-session-page__feedback .new-session-page__alert-message { display: grid; gap: 2px; }

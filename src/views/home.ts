@@ -589,10 +589,12 @@ function renderLaunchForm(props: HomeProps) {
             ${renderSlashMenu({ ...props.commandMenu, id: sessionControlId(props, SLASH_MENU_ID), loading: false, error: "", streaming: false,
               commands: props.commandMenu.commands, browseSession: !props.launching,
               open: props.commandMenu.open && slashCommandQuery(props.draft, props.draft.length) !== null })}
+            <div class="agent-chat__composer-lede">${renderAttachments(props)}</div>
             <div class="agent-chat__composer-input-row">
               <div class="agent-chat__composer-combobox">
                 <textarea id="launch-prompt" class="new-session-page__message" name="prompt" rows="1" dir="auto" required
                   placeholder="What should this session work on?" .value=${props.draft} ?disabled=${props.launching}
+                  @paste=${onComposerPaste(props)}
                   @input=${(event: Event) => updateComposerDraft(props, event.target as HTMLTextAreaElement)}
                   @keydown=${(event: KeyboardEvent) => {
                     props.onLocalPathKeydown(event);
@@ -645,7 +647,7 @@ function renderLaunchForm(props: HomeProps) {
             ` : nothing}
             <div class="agent-chat__composer-footer">
               <div class="agent-chat__composer-lead">
-                <span class="agent-chat__input-btn new-session-page__attach" aria-hidden="true">${icons.plus}</span>
+                ${renderAttachmentPicker(props, props.launching)}
               </div>
               <div class="agent-chat__composer-trail">
                 <div class="agent-chat__composer-controls new-session-page__launch-controls chat-controls__model-settings">
