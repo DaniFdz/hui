@@ -14,7 +14,7 @@ import type { Readable, Writable } from "node:stream";
 
 import type { BrowserStatus, BrowserViewAction, BrowserViewState } from "../../shared/browser.ts";
 import type { BrowserSettings } from "../../src/lib/settings.ts";
-import { CdpConnection, type CdpEvent } from "./cdp.ts";
+import { CdpConnection, CdpError, type CdpEvent } from "./cdp.ts";
 import { defaultExecutableProbe, resolveBrowserExecutable, type BrowserExecutable, type ExecutableProbe } from "./executable.ts";
 import { KeyParseError, parseKey, type KeyStroke } from "./keys.ts";
 import { clampSnapshotChars, renderSnapshot, SnapshotRefs, type AxNode, type SnapshotOptions, type SnapshotResult, type SnapshotTarget } from "./snapshot.ts";
@@ -736,11 +736,22 @@ export class ManagedBrowser {
       }
       if (generation !== this.#generation) throw new BrowserToolError("The managed browser was stopped while it was starting.", 409);
     } catch (error) {
+      const connectionDied = connection.closed;
       connection.close();
+      // Chromium's pipe closes before Node reaps the process, so give the exit a
+      // moment: its status and stderr explain the failure (another Chrome owns
+      // the profile, the process crashed) instead of the bare connection error.
+      if (connectionDied && child.exitCode === null && child.signalCode === null) {
+        await Promise.race([failed.catch(() => undefined), delay(1_000)]);
+      }
       child.kill("SIGKILL");
-      const message = error instanceof Error ? error.message : "The managed browser could not be started.";
+      const died = child.exitCode !== null || child.signalCode !== null;
+      const message = died
+        ? startupFailure(executable.name, child.exitCode, child.signalCode, stderr)
+        : error instanceof Error ? error.message : "The managed browser could not be started.";
       this.#fail(message, settings);
-      throw error instanceof BrowserToolError ? error : new BrowserToolError(message, 502);
+      if (died || !(error instanceof BrowserToolError)) throw new BrowserToolError(message, 502);
+      throw error;
     } finally {
       if (onExit) child.off("exit", onExit);
       if (onError) child.off("error", onError);
@@ -1319,18 +1330,30 @@ export class ManagedBrowser {
       throw new BrowserToolError(`This conversation already has ${MAX_TABS_PER_CONVERSATION} tabs open. Close one first.`, 409);
     }
     if (this.#tabs.size >= MAX_TABS_TOTAL) throw new BrowserToolError(`The managed browser already has ${MAX_TABS_TOTAL} tabs open.`, 409);
-    const instance = await this.#ensure(settings);
-    // Headless windows are free: one per tab keeps every conversation's tab
-    // visible, so none stops painting (or stalls input) when another opens.
-    const created = await instance.connection.send("Target.createTarget", { url: "about:blank", ...(instance.headless ? { newWindow: true } : {}) });
-    const tab = await this.#attach(instance, str(created["targetId"]), owner, epoch);
-    this.#current.set(owner, tab.id);
-    this.#changed(owner);
-    this.#closeStartupPages(instance);
-    const outcome = url === "about:blank"
-      ? { navigated: false, loaded: true, sameDocument: false }
-      : await this.#navigate(instance, tab, url, timeoutMs);
-    return this.#pageResult(instance, tab, "open", `Opened tab ${tab.id}.`, outcome, params);
+    // A browser killed between two calls can accept one more write before its
+    // pipe reports EOF; drop that dead process and relaunch instead of
+    // surfacing the connection error for an open that can still succeed.
+    for (let attempt = 0; ; attempt += 1) {
+      const instance = await this.#ensure(settings);
+      try {
+        // Headless windows are free: one per tab keeps every conversation's tab
+        // visible, so none stops painting (or stalls input) when another opens.
+        const created = await instance.connection.send("Target.createTarget", { url: "about:blank", ...(instance.headless ? { newWindow: true } : {}) });
+        const tab = await this.#attach(instance, str(created["targetId"]), owner, epoch);
+        this.#current.set(owner, tab.id);
+        this.#changed(owner);
+        this.#closeStartupPages(instance);
+        const outcome = url === "about:blank"
+          ? { navigated: false, loaded: true, sameDocument: false }
+          : await this.#navigate(instance, tab, url, timeoutMs);
+        return await this.#pageResult(instance, tab, "open", `Opened tab ${tab.id}.`, outcome, params);
+      } catch (error) {
+        if (attempt > 0 || !(error instanceof CdpError) || !instance.connection.closed) throw error;
+        // Another call may already have replaced the dead instance; stopping
+        // that replacement would kill a browser someone else is using.
+        if (this.#instance === instance) await this.stop();
+      }
+    }
   }
 
   async #pageResult(
