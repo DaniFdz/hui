@@ -35,6 +35,7 @@ type SessionAccess = Pick<
   | "close"
   | "ensure"
   | "followUp"
+  | "models"
   | "notifySnapshot"
   | "prompt"
   | "release"
@@ -254,6 +255,7 @@ export class SubagentService {
     if (thinking && !THINKING_LEVELS.has(thinking)) {
       throw new AgentToolInputError(`Unsupported thinking level: ${thinking}`);
     }
+    if (model) await this.#assertModelAvailable(callerId, model);
     const taskId = this.uuid();
     const sessionId = this.uuid();
     const now = this.now().toISOString();
@@ -322,6 +324,19 @@ export class SubagentService {
       childSessionKey: sessionId,
       label: child!.title,
     };
+  }
+
+  /** Reject an unknown model before a child exists, so the caller can retry in
+   * the same turn. An unavailable or empty catalog is not a reason to block. */
+  async #assertModelAvailable(callerId: string, model: string): Promise<void> {
+    const catalog = await this.sessions.models(callerId).catch(() => []);
+    const names = catalog.map((entry) => `${entry.provider}/${entry.id}`);
+    if (!names.length || names.includes(model)) return;
+    const id = model.slice(model.lastIndexOf("/") + 1);
+    const similar = names.filter((name) => name.endsWith(`/${id}`)).slice(0, 5);
+    throw new AgentToolInputError(similar.length
+      ? `Unknown model: ${model}. Did you mean ${similar.join(" or ")}?`
+      : `Unknown model: ${model}. Available models include ${names.slice(0, 10).join(", ")}.`);
   }
 
   async #run(child: SessionRecord, runTimeoutSeconds: number): Promise<void> {
