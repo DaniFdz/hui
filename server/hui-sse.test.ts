@@ -451,13 +451,21 @@ test("a worktree session returns before Git finishes and the gateway sends its p
   let stored: SessionRecord[] = [];
   const calls: string[] = [];
   const pending = await startWorktreeSession(
-    { cwd: repo, title: "Background checkout", initialPrompt: " first turn ", worktree: true },
+    {
+      cwd: repo,
+      title: "Background checkout",
+      initialPrompt: " first turn ",
+      initialAttachments: [{ kind: "image", name: "shot.png", mimeType: "image/png", dataBase64: "iVBORw0K" }],
+      worktree: true,
+    },
     {
       accept: () => undefined,
       ensure: (record) => { calls.push(`ensure ${stored.some(({ id }) => id === record.id)}`); return true; },
       status: () => "starting",
       watch: () => ({ snapshot: { status: "idle" } as SessionSnapshot, unsubscribe: () => undefined }),
-      prompt: async (id, text) => { calls.push(`prompt ${id === pending.id} ${text}`); },
+      prompt: async (id, text, attachments) => {
+        calls.push(`prompt ${id === pending.id} ${text} ${attachments?.map(({ name }) => name).join()}`);
+      },
     },
     async (mutate) => { stored = [...mutate([])]; return stored; },
   );
@@ -469,7 +477,7 @@ test("a worktree session returns before Git finishes and the gateway sends its p
   assert.equal(stored[0]?.id, pending.id, "the finished record keeps the pending id");
   assert.notEqual(stored[0]?.cwd, repo);
   while (calls.length < 2) await new Promise((resolve) => setTimeout(resolve, 10));
-  assert.deepEqual(calls, ["ensure true", "prompt true first turn"], "the gateway sends the first prompt once, after persisting");
+  assert.deepEqual(calls, ["ensure true", "prompt true first turn shot.png"], "the gateway sends the first prompt once, after persisting");
 
   response.emit("close");
 });

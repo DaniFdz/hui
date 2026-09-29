@@ -353,6 +353,8 @@ export async function createSession(input: {
   cwd: string;
   title?: string;
   initialPrompt?: string;
+  /** Sent by the gateway with a worktree session's first prompt. */
+  initialAttachments?: readonly Attachment[];
   group?: string;
   model?: string;
   thinking?: string;

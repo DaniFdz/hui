@@ -982,10 +982,13 @@ Creation allows up to 30 minutes for large repositories and checkout filters.
 When the worktree exists, the record is persisted under the same id, a status
 frame without `creating` follows and the runtime starts; the gateway then sends
 `initialPrompt` itself once the runtime is idle, so closing or reloading the
-browser loses nothing. If creation fails, the session reports status `error`
+browser loses nothing. An optional `initialAttachments` list (same shape and
+limits as the prompt route's `attachments`, request body up to 24 MB) goes with
+that prompt. If creation fails, the session reports status `error`
 and carries its `initialPrompt`; `open`, `prompt` and other session actions
 answer 409 with the Git error, `PATCH` answers 409, and `DELETE` dismisses it
-(the browser then returns the prompt to the New Session draft). While Git works,
+(the browser then returns the prompt, but not its attachments, to the New
+Session draft). While Git works,
 the same routes, `DELETE` included, answer 409. Attachment, Jira, suggestion
 and change routes answer 404 until the record exists. A gateway restart forgets
 unfinished sessions. Parallel creations that pick the same branch name take the

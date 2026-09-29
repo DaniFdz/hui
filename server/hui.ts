@@ -1428,7 +1428,11 @@ export async function startWorktreeSession(
     if (!prompt) return;
     // No browser is waiting on this, so allow a slow runtime boot.
     await waitForSessionReady(record.id, 10 * 60_000, sessions);
-    await sessions.prompt(record.id, prompt);
+    const prepared = await readAttachments(record.id, body["initialAttachments"]);
+    await sessions.prompt(record.id, prompt, prepared.attachments).catch(async (error: unknown) => {
+      await prepared.cleanupRejected();
+      throw error;
+    });
   }, (error: unknown) => {
     // Invalid input rejects before `onPending` and is answered by the request.
     if (!entry) return;
@@ -2651,7 +2655,8 @@ async function handleRequest(
     if (request.method === "POST") {
       let body: Record<string, unknown>;
       try {
-        body = (await readBody(request)) as Record<string, unknown>;
+        // A worktree launch may carry its first prompt's attachments.
+        body = (await readBody(request, MAX_PROMPT_BYTES)) as Record<string, unknown>;
       } catch (error) {
         sendJson(response, sessionMutationErrorStatus(error), {
           error: error instanceof Error ? error.message : "Could not read that session request.",

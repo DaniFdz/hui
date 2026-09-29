@@ -2898,7 +2898,12 @@ export class HuiApp extends HuiElement {
     const { prompt, commandDraft, ...sessionInput } = input;
     this.pendingLaunchPrompt = prompt?.trim() ?? "";
     const launchAttachments = this.attachments;
-    void createSession({ ...sessionInput, ...(prompt?.trim() ? { initialPrompt: prompt.trim() } : {}) })
+    void createSession({
+      ...sessionInput,
+      ...(prompt?.trim() ? { initialPrompt: prompt.trim() } : {}),
+      // The gateway sends a worktree session's first prompt, so it needs these too.
+      ...(input.worktree && prompt?.trim() && launchAttachments.length ? { initialAttachments: launchAttachments } : {}),
+    })
       .then(async (session) => {
         await deleteComposerDraft(NEW_SESSION_DRAFT_KEY);
         this.composerDraftKey = sessionDraftKey(session.id);
