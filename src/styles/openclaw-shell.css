@@ -699,6 +699,17 @@
   color: var(--text-strong);
 }
 
+/* The selected session's open tree shares one panel; the selected row keeps
+ * its stronger fill on top, like Orca's active workspace card. */
+.app-shell .session-tree--active {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--text) 5%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--border) 60%, transparent);
+}
+
 @media (hover: hover) and (pointer: fine) {
   .app-shell .session-row-wrap[draggable="true"] { cursor: grab; }
   .app-shell .session-row-wrap[draggable="true"] .session-row { cursor: inherit; }
