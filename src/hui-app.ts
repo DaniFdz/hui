@@ -1162,6 +1162,8 @@ export class HuiApp extends HuiElement {
     this.menuFor = "";
     const text = action === "id"
       ? session.id
+      : action === "jira"
+        ? session.jiraIssues?.at(-1)?.url ?? ""
       : action === "link"
         ? new URL(navigationPath({ kind: "session", id: session.id }), window.location.href).href
         : this.selected?.id === session.id
@@ -1174,7 +1176,7 @@ export class HuiApp extends HuiElement {
     }
     void writeClipboardText(text).then((copied) => {
       if (!copied) throw new Error("Clipboard write failed");
-      this.sessionMoveNotice = action === "id" ? "Session ID copied." : action === "link" ? "Session link copied." : "Conversation copied as Markdown.";
+      this.sessionMoveNotice = action === "id" ? "Session ID copied." : action === "jira" ? "Jira link copied." : action === "link" ? "Session link copied." : "Conversation copied as Markdown.";
       this.sessionMoveFailed = false;
     }).catch(() => {
       this.sessionMoveNotice = "Could not copy to the clipboard.";
@@ -1459,7 +1461,13 @@ export class HuiApp extends HuiElement {
 
   private kanbanSessionAction = (session: SessionView, action: SessionCardAction) => {
     if (action === "open:jira") this.openSessionElsewhere(session, "jira");
-    else if (action === "jira:create") this.openJiraCreate(session);
+    else if (action === "copy:jira") {
+      const url = session.jiraIssues?.at(-1)?.url;
+      void (url ? writeClipboardText(url) : Promise.resolve(false)).then((copied) => {
+        this.kanbanNotice = copied ? "Jira link copied." : "Could not copy to the clipboard.";
+        this.kanbanNoticeFailed = !copied;
+      });
+    } else if (action === "jira:create") this.openJiraCreate(session);
     else this.openJiraLink(session);
   };
 

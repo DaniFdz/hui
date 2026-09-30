@@ -100,7 +100,7 @@ export function unbindDrawerMedia(drawer: HTMLElement) {
 
 export type NavId = "home" | "surface" | "kanban";
 export type GroupMenuAction = "defaults" | "rename" | "new" | "delete";
-export type SessionCopyAction = "link" | "markdown" | "id";
+export type SessionCopyAction = "link" | "markdown" | "id" | "jira";
 export type SessionOpenAction = "tab" | "window" | "editor" | "jira";
 export type GroupDropTarget = { group: string; position: "before" | "after" };
 
@@ -360,6 +360,7 @@ function sessionRow(session: SessionView, selected: boolean, props: ShellProps, 
   const open = props.menuFor === session.id;
   const splitOpen = props.openSessionIds?.has(session.id) ?? props.splitSessionId === session.id;
   const hasDraft = props.draftSessionIds.has(session.id);
+  const linkedJira = session.jiraIssues?.at(-1);
   const canDrag = props.sessionMovePendingId !== session.id;
   const dragging = props.draggingSessionId === session.id;
   const attention = session.status === "waiting"
@@ -472,8 +473,9 @@ function sessionRow(session: SessionView, selected: boolean, props: ShellProps, 
         <wa-dropdown-item value="unread" aria-keyshortcuts="U" class="session-menu__item"><span slot="icon" class="session-menu__icon" aria-hidden="true">${icons.circle}</span><span class="session-menu__text">${session.unread ? "Mark as read" : "Mark as unread"}</span>${shortcut("U")}</wa-dropdown-item>
         <wa-dropdown-item value="archive" aria-keyshortcuts="A" class="session-menu__item"><span slot="icon" class="session-menu__icon" aria-hidden="true">${icons.box}</span><span class="session-menu__text">Archive session</span>${shortcut("A")}</wa-dropdown-item>
         <wa-dropdown-item value="split" class="session-menu__item" ?disabled=${!props.selectedSessionId || selected || splitOpen}><span class="session-menu__text">Open in split pane</span></wa-dropdown-item>
+        ${linkedJira ? nothing : html`
         <wa-dropdown-item value="jira:create" class="session-menu__item"><span slot="icon" class="session-menu__icon session-menu__icon--jira" aria-hidden="true">${brandIcons.jira}</span><span class="session-menu__text">Create Jira work item…</span></wa-dropdown-item>
-        <wa-dropdown-item value="jira:link" class="session-menu__item"><span slot="icon" class="session-menu__icon session-menu__icon--jira" aria-hidden="true">${brandIcons.jira}</span><span class="session-menu__text">Link Jira work item…</span></wa-dropdown-item>
+        <wa-dropdown-item value="jira:link" class="session-menu__item"><span slot="icon" class="session-menu__icon session-menu__icon--jira" aria-hidden="true">${brandIcons.jira}</span><span class="session-menu__text">Link Jira work item…</span></wa-dropdown-item>`}
         <div class="session-menu__separator" role="separator"></div>
         ${appearanceMenu(session, props)}
         <wa-dropdown-item class="session-menu__item session-menu__move-root">
@@ -490,13 +492,14 @@ function sessionRow(session: SessionView, selected: boolean, props: ShellProps, 
           <wa-dropdown-item slot="submenu" value="copy:link" class="session-menu__item"><span slot="icon" class="session-menu__icon">${icons.externalLink}</span><span class="session-menu__text">Session link</span></wa-dropdown-item>
           <wa-dropdown-item slot="submenu" value="copy:markdown" class="session-menu__item" ?disabled=${props.selectedSessionId !== session.id}><span slot="icon" class="session-menu__icon">${icons.fileText}</span><span class="session-menu__text">Conversation as Markdown</span></wa-dropdown-item>
           <wa-dropdown-item slot="submenu" value="copy:id" class="session-menu__item"><span slot="icon" class="session-menu__icon">${icons.copy}</span><span class="session-menu__text">Session ID</span></wa-dropdown-item>
+          ${linkedJira ? html`<wa-dropdown-item slot="submenu" value="copy:jira" class="session-menu__item"><span slot="icon" class="session-menu__icon session-menu__icon--jira">${brandIcons.jira}</span><span class="session-menu__text">Jira link · ${linkedJira.key}</span></wa-dropdown-item>` : nothing}
         </wa-dropdown-item>
         <wa-dropdown-item class="session-menu__item">
           <span slot="icon" class="session-menu__icon" aria-hidden="true">${icons.externalLink}</span><span class="session-menu__text">Open in</span>
           <wa-dropdown-item slot="submenu" value="open:tab" class="session-menu__item"><span slot="icon" class="session-menu__icon">${icons.externalLink}</span><span class="session-menu__text">New tab</span></wa-dropdown-item>
           <wa-dropdown-item slot="submenu" value="open:window" class="session-menu__item"><span slot="icon" class="session-menu__icon">${icons.grid}</span><span class="session-menu__text">New window</span></wa-dropdown-item>
           <wa-dropdown-item slot="submenu" value="open:editor" class="session-menu__item"><span slot="icon" class="session-menu__icon">${icons.squareTerminal}</span><span class="session-menu__text">Workspace · VS Code</span></wa-dropdown-item>
-          ${session.jiraIssues?.length ? html`<wa-dropdown-item slot="submenu" value="open:jira" class="session-menu__item"><span slot="icon" class="session-menu__icon session-menu__icon--jira">${brandIcons.jira}</span><span class="session-menu__text">Jira · ${session.jiraIssues.at(-1)!.key}</span></wa-dropdown-item>` : nothing}
+          ${linkedJira ? html`<wa-dropdown-item slot="submenu" value="open:jira" class="session-menu__item"><span slot="icon" class="session-menu__icon session-menu__icon--jira">${brandIcons.jira}</span><span class="session-menu__text">Jira · ${linkedJira.key}</span></wa-dropdown-item>` : nothing}
         </wa-dropdown-item>
         <div class="session-menu__separator" role="separator"></div>
         <wa-dropdown-item value="delete" aria-keyshortcuts="D" variant="danger" class="session-menu__item session-menu__item--destructive"><span slot="icon" class="session-menu__icon" aria-hidden="true">${icons.trash}</span><span class="session-menu__text">Delete…</span>${shortcut("D")}</wa-dropdown-item>
