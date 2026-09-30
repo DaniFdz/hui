@@ -154,7 +154,7 @@ import type { PowerStatus } from "../shared/power.ts";
 import { downloadDiagnostics, loadObservability, type ObservabilitySnapshot } from "./lib/observability.ts";
 import { renderHome, renderNewSession, type HomeProps } from "./views/home.ts";
 import { DEFAULT_SESSIONS_PAGE_FILTERS, renderSessionsPage, type SessionsPageFilters, type SessionsPageState } from "./views/sessions.ts";
-import { renderWorktreesPage, type WorktreeFilter } from "./views/worktrees.ts";
+import type { WorktreeFilter } from "./views/worktrees.ts";
 import { loadWorktrees, removeWorktrees, type WorktreeInventory, type WorktreeRemovalResult, type WorktreeRisk } from "./lib/worktrees.ts";
 import { renderPanelSelector } from "./views/panel-selector.ts";
 import { renderAutomationSurface } from "./views/automation.ts";
@@ -905,6 +905,11 @@ export class HuiApp extends HuiElement {
       this.settingsOpen = true;
       this.loadSettingsData();
       if (target.page === "diagnostics") this.loadOperationalData();
+      if (target.page === "worktrees") {
+        this.worktreeConfirm = "";
+        this.worktreeResults = [];
+        this.loadWorktreeInventory();
+      }
       if (target.page === "automation") this.startAutomationPolling();
       else this.stopAutomationPolling();
       return;
@@ -934,11 +939,6 @@ export class HuiApp extends HuiElement {
       this.activePage = target.page;
       this.view = "surface";
       if (isPiSurface(target.page)) this.loadControlSurfaceData();
-      if (target.page.id === "worktrees") {
-        this.worktreeConfirm = "";
-        this.worktreeResults = [];
-        this.loadWorktreeInventory();
-      }
       if (isObservabilitySurface(target.page) || isOwnedSurface(target.page)) this.loadOperationalData();
       if (target.page.id === "cron" || target.page.id === "tasks") {
         this.loadAutomationData();
@@ -3480,7 +3480,7 @@ export class HuiApp extends HuiElement {
       .catch((error: unknown) => { this.worktreesError = error instanceof Error ? error.message : "Could not read worktrees."; })
       .finally(() => {
         this.worktreesLoading = false;
-        if (this.worktreeInventory?.pending && this.view === "surface" && this.activePage?.id === "worktrees") {
+        if (this.worktreeInventory?.pending && this.settingsOpen && this.settingsPage === "worktrees") {
           this.worktreePoll = window.setTimeout(this.loadWorktreeInventory, 1500);
         }
       });
@@ -3521,7 +3521,7 @@ export class HuiApp extends HuiElement {
     });
   };
 
-  private openPageById(id: "new-session" | "sessions" | "worktrees") {
+  private openPageById(id: "new-session" | "sessions") {
     const page = HUI_PAGES.find((candidate) => candidate.id === id);
     if (page) this.openPage(page);
   }
@@ -4047,6 +4047,27 @@ export class HuiApp extends HuiElement {
       return html`<div class="shell shell--settings settings-shell ${this.mobileNavLayout ? "shell--mobile-nav" : ""}">
         ${renderSettingsPage({
           page: this.settingsPage,
+          worktrees: {
+            inventory: this.worktreeInventory,
+            loading: this.worktreesLoading,
+            error: this.worktreesError,
+            query: this.worktreeQuery,
+            filter: this.worktreeFilter,
+            confirm: this.worktreeConfirm,
+            removing: this.worktreesRemoving,
+            results: this.worktreeResults,
+            onQuery: (value) => { this.worktreeQuery = value; },
+            onFilter: (filter) => { this.worktreeFilter = filter; },
+            onRefresh: this.loadWorktreeInventory,
+            onOpenSession: (id) => this.navigate({ kind: "session", id }),
+            onRequestRemove: (path) => { this.worktreeConfirm = path; this.worktreeResults = []; },
+            onRequestCleanup: () => { this.worktreeConfirm = "merged"; this.worktreeResults = []; },
+            onCancel: () => { this.closeWorktreeDialog(); this.worktreeConfirm = ""; },
+            onDismissResults: () => { this.worktreeResults = []; },
+            onCopyPath: this.copyPath,
+            onConfirmRemove: (path, acknowledged) => this.removeWorktreePaths([path], "single", acknowledged),
+            onConfirmCleanup: (paths) => this.removeWorktreePaths(paths, "merged"),
+          },
           pi: this.pi,
           piLoading: this.piLoading,
           piError: this.piError,
@@ -4264,31 +4285,7 @@ export class HuiApp extends HuiElement {
                       onCopyPath: this.copyPath,
                       onNew: () => this.openPageById("new-session"),
                       onRefresh: () => void this.refreshSessions(),
-                      onWorktrees: () => this.openPageById("worktrees"),
                     })
-                  : this.activePage.id === "worktrees"
-                    ? renderWorktreesPage({
-                        inventory: this.worktreeInventory,
-                        loading: this.worktreesLoading,
-                        error: this.worktreesError,
-                        query: this.worktreeQuery,
-                        filter: this.worktreeFilter,
-                        confirm: this.worktreeConfirm,
-                        removing: this.worktreesRemoving,
-                        results: this.worktreeResults,
-                        onQuery: (value) => { this.worktreeQuery = value; },
-                        onFilter: (filter) => { this.worktreeFilter = filter; },
-                        onRefresh: this.loadWorktreeInventory,
-                        onSessions: () => this.openPageById("sessions"),
-                        onOpenSession: (id) => this.navigate({ kind: "session", id }),
-                        onRequestRemove: (path) => { this.worktreeConfirm = path; this.worktreeResults = []; },
-                        onRequestCleanup: () => { this.worktreeConfirm = "merged"; this.worktreeResults = []; },
-                        onCancel: () => { this.closeWorktreeDialog(); this.worktreeConfirm = ""; },
-                        onDismissResults: () => { this.worktreeResults = []; },
-                        onCopyPath: this.copyPath,
-                        onConfirmRemove: (path, acknowledged) => this.removeWorktreePaths([path], "single", acknowledged),
-                        onConfirmCleanup: (paths) => this.removeWorktreePaths(paths, "merged"),
-                      })
                   : isPiSurface(this.activePage)
                     ? renderPiSurface({
                         page: this.activePage,

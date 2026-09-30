@@ -26,12 +26,13 @@ test("worktree filters combine scope and free text across branch, session and PR
   assert.deepEqual(matchingWorktrees(rows, "signals", "all").map((r) => r.path), ["/c"]);
 });
 
-test("merged cleanup requires confirmed clean state, no sessions and no risk", () => {
+test("merged cleanup requires confirmed clean state, no active session and no risk", () => {
   assert.equal(isMergedCleanupCandidate(row({ merged: true })), true);
   assert.equal(isMergedCleanupCandidate(row({ merged: true, dirty: true })), false);
   const { dirty: _dirty, ...unknownDirty } = row({ merged: true });
   assert.equal(isMergedCleanupCandidate(unknownDirty), false);
-  assert.equal(isMergedCleanupCandidate(row({ merged: true, sessions: [{ id: "s", title: "t", archived: true }] })), false);
+  assert.equal(isMergedCleanupCandidate(row({ merged: true, sessions: [{ id: "s", title: "t", archived: true }] })), true);
+  assert.equal(isMergedCleanupCandidate(row({ merged: true, sessions: [{ id: "s", title: "t", archived: false }] })), false);
   assert.equal(isMergedCleanupCandidate(row({ merged: true, risks: ["locked"] })), false);
   assert.equal(isMergedCleanupCandidate(row({ merged: true, risks: ["running"] })), false);
   assert.equal(isMergedCleanupCandidate(row({ merged: true, managed: false })), false);

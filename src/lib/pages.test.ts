@@ -7,7 +7,7 @@ import { isOwnedSurface } from "../views/hui-owned-surfaces.ts";
 import { isPiSurface } from "../views/pi-surfaces.ts";
 
 /** Pages rendered by a dedicated branch in hui-app.ts rather than a surface family. */
-const DEDICATED = ["new-session", "cron", "tasks", "sessions", "worktrees"];
+const DEDICATED = ["new-session", "cron", "tasks", "sessions"];
 
 test("every routed page has a real renderer and no placeholder shell remains", () => {
   const app = readFileSync(new URL("../hui-app.ts", import.meta.url), "utf8");

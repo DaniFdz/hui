@@ -390,8 +390,8 @@
 
 /* Long paths and branches need room; the key column is the widest. */
 .worktrees-table .data-table-key-col {
-  min-width: 340px;
-  max-width: 460px;
+  min-width: 260px;
+  max-width: 300px;
 }
 
 .worktrees-table .session-key-cell__text,
@@ -525,7 +525,7 @@
 }
 
 .worktrees-table .session-actions-cell .btn svg,
-.worktrees-workspace .settings-section__actions .btn svg {
+.worktrees-section .settings-section__actions .btn svg {
   width: 14px;
   height: 14px;
   stroke: currentColor;

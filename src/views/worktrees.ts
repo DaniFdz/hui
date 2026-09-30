@@ -17,7 +17,6 @@ import {
   type WorktreeRisk,
   type WorktreeRow,
 } from "../lib/worktrees.ts";
-import { renderSessionsHubTabs } from "./hub-tabs.ts";
 
 if (typeof document !== "undefined") {
   await import("../styles/openclaw-workspaces.css");
@@ -38,7 +37,6 @@ export type WorktreesPageProps = {
   onQuery: (value: string) => void;
   onFilter: (filter: WorktreeFilter) => void;
   onRefresh: () => void;
-  onSessions: () => void;
   onOpenSession: (id: string) => void;
   onRequestRemove: (path: string) => void;
   onRequestCleanup: () => void;
@@ -239,7 +237,7 @@ function renderCleanupConfirm(props: WorktreesPageProps, candidates: readonly Wo
   return html`<div class="settings-group worktree-cleanup" role="region" aria-label="Confirm merged cleanup">
     <div class="worktree-cleanup__copy">
       <strong>Remove ${candidates.length} merged worktree${candidates.length === 1 ? "" : "s"}?</strong>
-      <span class="muted">Frees about ${formatBytes(bytes)}. Only worktrees HUI created with a merged pull request, no session and no local changes; nothing is forced. Their local branches are deleted when the merged head matches. Remove any other worktree from its row.</span>
+      <span class="muted">Frees about ${formatBytes(bytes)}. Only worktrees HUI created with a merged pull request, no active session and no local changes; nothing is forced. Their local branches are deleted when the merged head matches. Remove any other worktree from its row.</span>
       <ul class="worktree-cleanup__list">
         ${candidates.map((row) => html`<li><span class="mono">${row.branch}</span> <span class="muted">${formatBytes(row.bytes)}</span></li>`)}
       </ul>
@@ -282,18 +280,8 @@ export function renderWorktreesPage(props: WorktreesPageProps): TemplateResult {
   const candidates = rows.filter(isMergedCleanupCandidate);
   const managed = rows.filter((row) => row.managed).length;
   return html`
-    <section class="settings-workspace hui-workspace-page sessions-workspace worktrees-workspace">
-      <header class="content-header content-header--settings content-header--page hub-page-header sessions-hub-header">
-        <div class="hub-page-header__title">
-          <div class="page-title">Worktrees</div>
-          <div class="page-subtitle">Linked worktrees of the Git repositories your HUI sessions use, plus those New Session created in ~/.config/hui/worktrees. Main checkouts are not listed.</div>
-        </div>
-        <div class="hub-page-header__tabs">${renderSessionsHubTabs("worktrees", props.onSessions)}</div>
-        <div class="hub-page-header__actions"></div>
-      </header>
-      <div class="settings-workspace__body" id="sessions-hub-panel">
-        <div class="settings-page settings-page--wide sessions-page">
-          <section class="settings-section">
+    <p class="settings-page__intro">Linked worktrees of the Git repositories your HUI sessions use, plus those New Session created in ~/.config/hui/worktrees. Main checkouts are not listed.</p>
+          <section class="settings-section worktrees-section">
             <div class="settings-section__header">
               <div class="settings-section__copy">
                 <h2 class="settings-section__heading">
@@ -307,7 +295,7 @@ export function renderWorktreesPage(props: WorktreesPageProps): TemplateResult {
               </div>
               <div class="settings-section__actions">
                 <button type="button" class="btn btn--sm" ?disabled=${props.loading} @click=${props.onRefresh}>${icons.refresh} Refresh</button>
-                <span class="worktree-tooltip-wrap" data-hui-tooltip=${candidates.length ? "Remove HUI worktrees with a merged PR, no session and no local changes" : "No HUI worktree has a merged PR, no session and no local changes"}>
+                <span class="worktree-tooltip-wrap" data-hui-tooltip=${candidates.length ? "Remove HUI worktrees with a merged PR, no active session and no local changes" : "No HUI worktree has a merged PR, no active session and no local changes"}>
                   <button type="button" class="btn btn--sm" data-worktree-cleanup
                     ?disabled=${candidates.length === 0 || props.removing}
                     @click=${props.onRequestCleanup}>${icons.trash} Clean up merged${candidates.length ? ` (${candidates.length})` : ""}</button>
@@ -350,8 +338,5 @@ export function renderWorktreesPage(props: WorktreesPageProps): TemplateResult {
               </div>
             </div>
           </section>
-        </div>
-      </div>
-    </section>
   `;
 }

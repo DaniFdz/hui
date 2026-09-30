@@ -477,7 +477,8 @@ Body `{ "paths": ["/abs/path"], "mode": "single" | "merged", "acknowledged": [] 
 removal proceeds only when every current risk is in `acknowledged` (`unknown`
 also covers `dirty`); it then stops running linked sessions and forces only the
 acknowledged risks. `merged` rejects any `acknowledged` and requires a
-HUI-created worktree with no risk, a merged pull request and no session, all
+HUI-created worktree with no risk, a merged pull request and no active session (every
+linked session archived), all
 re-read at removal time, and never forces. The local branch is deleted only when
 a merged pull request's head equals the branch's commit. Returns
 `{ results: [{ path, removed, branchDeleted, error? }], inventory }`; refused

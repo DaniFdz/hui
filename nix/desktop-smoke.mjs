@@ -97,7 +97,7 @@ try {
       const check = () => {
         const app = document.querySelector('hui-app');
         const content = app ? text(app.shadowRoot ?? app) : '';
-        if (content.includes('Worktrees') && content.includes('Settings')) resolve({ title: document.title, url: location.href });
+        if (content.includes('Automations') && content.includes('Settings')) resolve({ title: document.title, url: location.href });
         else if (Date.now() > deadline) reject(new Error('HUI shell did not render'));
         else requestAnimationFrame(check);
       };
