@@ -1,4 +1,4 @@
-import { html, nothing, type TemplateResult } from "lit";
+import { html, nothing, render, type TemplateResult } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { repeat } from "lit/directives/repeat.js";
 import { HuiElement } from "../lit/hui-element.ts";
@@ -26,7 +26,6 @@ export class SessionMultiplexer extends HuiElement {
   @property() draggingSessionId = "";
   @property({ attribute: false }) sessionIds: ReadonlySet<string> | undefined;
   @state() narrow = false;
-  @state() private dropPreview: DropPreview | undefined;
   @state() private viewportWidth = 0;
   @state() private viewportHeight = 0;
   @state() private announcement = "";
@@ -37,7 +36,7 @@ export class SessionMultiplexer extends HuiElement {
   private media: MediaQueryList | undefined;
   private readonly retained = new Map<string, SessionViewCache>();
   private readonly viewport = (event: MediaQueryListEvent) => { this.narrow = event.matches; this.clearDrag(); };
-  private readonly clearDrop = () => { this.dropPreview = undefined; };
+  private readonly clearDrop = () => { this.showDrop(undefined); };
   private readonly clearDrag = () => {
     this.draggingPaneId = "";
     this.querySelectorAll(".hui-pane-dragging").forEach((cell) => cell.classList.remove("hui-pane-dragging"));
@@ -162,8 +161,17 @@ export class SessionMultiplexer extends HuiElement {
     event.preventDefault();
     event.stopPropagation();
     if (event.dataTransfer) event.dataTransfer.dropEffect = preview.moving ? "move" : "copy";
-    this.dropPreview = preview;
+    this.showDrop(preview);
   };
+
+  /** Dragover fires continuously. Rendering its preview apart from the panes
+   * keeps every pointer move from re-rendering each open session. */
+  private showDrop(preview: DropPreview | undefined) {
+    const host = this.querySelector<HTMLElement>(".hui-pane-drop-host");
+    if (host) render(preview ? html`<div class="chat-split-view__drop-indicator ${preview.zone.kind === "center" ? "chat-split-view__drop-indicator--center" : ""}" style=${rectStyle(preview.rect)}>
+      <span class="chat-split-view__drop-indicator-label">${preview.moving ? preview.zone.kind === "center" ? "Swap panels" : "Move panel" : preview.zone.kind === "center" ? "Open here" : "Split"}</span>
+    </div>` : nothing, host);
+  }
 
   private dragLeave = (event: DragEvent) => {
     if (!(event.relatedTarget instanceof Node) || !this.contains(event.relatedTarget)) this.clearDrop();
@@ -199,7 +207,6 @@ export class SessionMultiplexer extends HuiElement {
       )].filter((app) => app.hasQueuedMessageEdit).map((app) => app.paneSessionId));
       return [pane.id, cache.retain(pane.sessionId, protectedIds)] as const;
     }));
-    const preview = this.dropPreview;
     const geometry = sessionPaneGeometry(layout, this.viewportWidth, this.viewportHeight);
     const canvas = this.narrow ? { width: this.viewportWidth, height: this.viewportHeight } : geometry;
     // DOM order never follows layout order: even Lit's keyed reparenting would
@@ -235,9 +242,7 @@ export class SessionMultiplexer extends HuiElement {
           ></resizable-divider>`)}
         </div>
       </div>
-      ${preview ? html`<div class="chat-split-view__drop-indicator ${preview.zone.kind === "center" ? "chat-split-view__drop-indicator--center" : ""}" style=${rectStyle(preview.rect)}>
-        <span class="chat-split-view__drop-indicator-label">${preview.moving ? preview.zone.kind === "center" ? "Swap panels" : "Move panel" : preview.zone.kind === "center" ? "Open here" : "Split"}</span>
-      </div>` : nothing}
+      <div class="hui-pane-drop-host"></div>
       <span class="hui-pane-announcement" role="status">${this.announcement}</span>
     </div>`;
   }
