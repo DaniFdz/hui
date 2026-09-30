@@ -1327,8 +1327,6 @@ function renderComposer(props: HomeProps) {
         if (!props.sending && event.dataTransfer?.files.length) props.onAddAttachments(Array.from(event.dataTransfer.files));
       }}>
       ${renderQuestion(props)}
-      ${renderTaskProgress(props)}
-      ${renderQueue(props)}
       ${renderRunError(props, booting || disconnected)}
       ${props.session?.interrupted && !booting ? html`
         <div class="agent-chat__interrupted-recovery" role="status">
@@ -1339,6 +1337,8 @@ function renderComposer(props: HomeProps) {
           <button type="button" class="btn btn--sm" ?disabled=${props.sending || disconnected} @click=${props.onContinueInterrupted}>Continue run</button>
         </div>
       ` : nothing}
+      ${renderTaskProgress(props)}
+      ${renderQueue(props)}
       <form class="agent-chat__input agent-chat__input--chat agent-chat__input--mobile-toolbar ${disconnected ? "agent-chat__input--offline" : ""}"
         @submit=${onPromptSubmit(props)} @keydown=${onPromptKeydown(props)}
         @click=${focusComposerFromSurface}>
