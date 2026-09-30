@@ -12,6 +12,8 @@ configuration and transcript data was disposable and synthetic.
   overflow instead of shortening the persisted value.
 - Worktree branch naming remains a separate two- to four-word English
   kebab-case output, even when title and branch share one utility call.
+- A plain session never waits for the utility model: it opens at once under
+  its first prompt line and takes the generated title when the model answers.
 
 ## Browser journey
 
@@ -27,7 +29,16 @@ configuration and transcript data was disposable and synthetic.
 4. Inspect and capture the settled session at 1440×900 and 390×844. The desktop
    sidebar clips the row visually while the chat heading retains the complete
    title; mobile retains the complete title in its header.
-5. Check Browser page errors and error-level console output, then run the
+5. Slow utility model: start another plain session whose prompt contains
+   `E2E_HOLD_NAMING` (for example `Stop new sessions timing out
+   E2E_HOLD_NAMING`). The fixture holds the title call until
+   `POST <providerUrl>/control/release-replay`. The session must open and
+   answer under its first-line title with no timeout notice, and stay usable
+   past five seconds. Release the call within the 20-second naming limit and
+   observe **Improve session naming** replace the title in the document title,
+   sidebar row and chat heading without a reload. Exactly one new sidebar row
+   exists per Start click.
+6. Check Browser page errors and error-level console output, then run the
    launcher doctor again before capture handoff.
 
 The final Browser run reported no page errors or error-level console messages.

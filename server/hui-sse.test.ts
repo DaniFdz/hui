@@ -15,6 +15,7 @@ const {
   deleteSession,
   readAttachments,
   recoverInterruptedSessions,
+  renameWithGeneratedTitle,
   sessionMutationErrorStatus,
   storeAttachmentFile,
   streamSession,
@@ -364,6 +365,68 @@ test("PATCH persists archive, unread and appearance metadata together", async ()
     { archived: updated.archived, unread: updated.unread, icon: updated.icon },
     { archived: true, unread: true, icon: "🧪" },
   );
+});
+
+test("a plain session returns under its provisional title while the utility model names it", async () => {
+  let stored: SessionRecord[] = [];
+  const registry = async (mutate: (records: readonly SessionRecord[]) => readonly SessionRecord[]) => {
+    stored = [...mutate(stored)];
+    return stored;
+  };
+  let answer!: (names: { title: string }) => void;
+  let asked = 0;
+  const created = await createSession(
+    { cwd: tmpdir(), initialPrompt: "why do new sessions time out\nwith more detail" },
+    { accept: () => undefined, ensure: () => true },
+    registry,
+    undefined,
+    {
+      nameSession: () => {
+        asked += 1;
+        return new Promise((resolve) => { answer = resolve; });
+      },
+    },
+  );
+
+  // The request did not wait for the model, which has not answered yet.
+  assert.equal(asked, 1);
+  assert.equal(created.title, "why do new sessions time out");
+  assert.equal(stored[0]?.title, "why do new sessions time out");
+
+  answer({ title: "New session timeouts" });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(stored[0]?.id, created.id);
+  assert.equal(stored[0]?.title, "New session timeouts");
+});
+
+test("a generated title is published but never replaces an operator rename", async () => {
+  const provisional = { ...record(), title: "fix the thing" };
+  let stored: SessionRecord[] = [provisional];
+  const registry = async (mutate: (records: readonly SessionRecord[]) => readonly SessionRecord[]) => {
+    stored = [...mutate(stored)];
+    return stored;
+  };
+  const published: unknown[] = [];
+  const renamed = await renameWithGeneratedTitle(
+    provisional,
+    async () => ({ title: "Fix the thing" }),
+    registry,
+    (update) => published.push(update),
+    () => "running",
+  );
+  assert.equal(renamed?.title, "Fix the thing");
+  assert.deepEqual(published, [{ id: provisional.id, status: "running", title: "Fix the thing" }]);
+
+  const ignored: unknown[] = [];
+  const generate = async () => ({ title: "Model name" });
+  stored = [{ ...provisional, title: "Operator name" }];
+  assert.equal(await renameWithGeneratedTitle(provisional, generate, registry, (update) => ignored.push(update)), undefined);
+  assert.equal(stored[0]?.title, "Operator name");
+
+  stored = [];
+  assert.equal(await renameWithGeneratedTitle(provisional, generate, registry, (update) => ignored.push(update)), undefined);
+  assert.equal(stored.length, 0);
+  assert.equal(ignored.length, 0);
 });
 
 test("create can switch the current checkout before registering a non-worktree session", async () => {

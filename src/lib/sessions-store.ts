@@ -12,6 +12,7 @@ import { trackedFetch } from "./ui-errors.ts";
 import type { SessionStage, SessionStageOrigin } from "../../shared/session-stages.ts";
 
 const SESSIONS_URL = "/__hui/sessions";
+const CREATE_SESSION_TIMEOUT_MS = 120_000;
 /** Mirrors the server's close code for a session that no longer exists. */
 const SESSION_STREAM_GONE = 4404;
 const SESSION_STATUSES_URL = `${SESSIONS_URL}/events`;
@@ -23,6 +24,8 @@ export type SessionStatusUpdate = {
   unread?: boolean;
   creating?: WorktreeProgress;
   creationError?: string;
+  /** Present when the gateway renamed the session, e.g. its generated title. */
+  title?: string;
 };
 
 export type WorktreeProgress = {
@@ -368,6 +371,9 @@ export async function createSession(input: {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(input),
+    // Registration is quick, but a Current checkout switch runs Git first;
+    // the 5-second default would abandon a request the gateway still finishes.
+    signal: AbortSignal.timeout(CREATE_SESSION_TIMEOUT_MS),
   });
   if (!body.session) {
     throw new Error("The session started but could not be read back.");

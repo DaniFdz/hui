@@ -442,6 +442,7 @@ export class HuiApp extends HuiElement {
   /** Worktree progress while the gateway still creates this pane's session;
    * the pane opens it once this clears. */
   @property({ attribute: false }) paneCreating: WorktreeProgress | undefined;
+  @property({ attribute: false }) paneTitle: string | undefined;
   @property({ attribute: false }) paneCreationError: string | undefined;
   /** The failed launch's prompt, returned to New Session when this pane deletes it. */
   @property({ attribute: false }) paneUnsentPrompt: string | undefined;
@@ -684,7 +685,7 @@ export class HuiApp extends HuiElement {
     }));
   };
 
-  private applySessionStatusUpdate = ({ id, status, unread, creating, creationError }: SessionStatusUpdate) => {
+  private applySessionStatusUpdate = ({ id, status, unread, creating, creationError, title }: SessionStatusUpdate) => {
     const presented = this.isSessionPresented(id);
     this.sessionStatuses.set(id, status);
     // A settled worktree session now has its real title and directory, or its error.
@@ -700,11 +701,12 @@ export class HuiApp extends HuiElement {
               : unread === undefined ? session.unread : unread || undefined,
             creating,
             creationError,
+            ...(title ? { title } : {}),
           }
         : session),
     }));
     if (created) void this.refreshSessions(true);
-    if (!this.embeddedPane && this.selected?.id === id) this.selected = { ...this.selected, status };
+    if (!this.embeddedPane && this.selected?.id === id) this.selected = { ...this.selected, status, ...(title ? { title } : {}) };
   };
 
   private async refreshSessions(background = false) {
@@ -763,6 +765,10 @@ export class HuiApp extends HuiElement {
     }
     if (changed.has("paneCreating") && !this.paneCreating && changed.get("paneCreating") && this.selected?.id === this.paneSessionId) {
       void this.openSelected(this.selected.id);
+    }
+    // The shell's registry is the source of a title the gateway set later.
+    if (changed.has("paneTitle") && this.paneTitle && this.selected?.id === this.paneSessionId && this.selected.title !== this.paneTitle) {
+      this.selected = { ...this.selected, title: this.paneTitle };
     }
     if (changed.has("queueEditingId") && this.embeddedPane) {
       this.dispatchEvent(new CustomEvent("hui-queue-edit-retention", { bubbles: true }));
@@ -4039,6 +4045,7 @@ export class HuiApp extends HuiElement {
       .onPaneNavigate=${(id: string) => this.changePaneSession(pane.id, id)}
       .onPaneRegistryChange=${() => void this.refreshSessions()}
       .paneCreating=${this.listedSession(pane.sessionId)?.creating}
+      .paneTitle=${this.listedSession(pane.sessionId)?.title}
       .paneCreationError=${this.listedSession(pane.sessionId)?.creationError}
       .paneUnsentPrompt=${this.listedSession(pane.sessionId)?.initialPrompt}
       .onPaneUpdate=${(text: string, attachments: readonly Attachment[]) => this.handleUpdateCommand(text, attachments)}
