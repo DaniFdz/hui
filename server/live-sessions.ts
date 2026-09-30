@@ -682,6 +682,23 @@ export class LiveSessions {
     return snapshot;
   }
 
+  async reload(id: string): Promise<void> {
+    const live = this.#ready(id);
+    if (this.#reported(live) !== "idle" || live.followUps.length || live.questions.size) {
+      throw new SessionBusyError("Finish or stop active work before reloading the session.");
+    }
+    if (!live.runtime?.reload) throw new Error(`${live.record.tool} cannot reload sessions in this build.`);
+    // Claim the session so no prompt lands while extensions are being swapped.
+    live.promptPending = true;
+    this.#setStatus(live, "running");
+    try {
+      await live.runtime.reload();
+    } finally {
+      live.promptPending = false;
+      this.#setStatus(live, this.#reported(live));
+    }
+  }
+
   async checkpoints(id: string): Promise<readonly RuntimeCheckpoint[]> {
     const live = this.#ready(id);
     if (!live.runtime?.checkpoints) throw new Error(`${live.record.tool} cannot rewind in this build.`);

@@ -5,6 +5,7 @@ export type ComposerCommand = Omit<RuntimeCommand, "source"> & { source: Runtime
 export const HUI_COMMANDS: readonly ComposerCommand[] = [{ name: "update", description: "Check for HUI updates and install the latest release", source: "hui" }];
 export const HUI_SESSION_COMMANDS: readonly ComposerCommand[] = [
   { name: "clear", description: "Clear this session's context and start a fresh PI transcript", source: "hui" },
+  { name: "reload", description: "Reload extensions, skills, prompts and context files for this session", source: "hui" },
   { name: "btw", description: "Ask a quick side question without changing session context", source: "hui" },
   { name: "side", description: "Alias for /btw", source: "hui" },
 ];
@@ -23,12 +24,14 @@ export function parseUpdateCommand(text: string): "update" | "check" | "invalid"
   return "invalid";
 }
 
-/** Reserve /clear so malformed variants never become model prompts. */
-export function parseClearCommand(text: string): "clear" | "invalid" | null {
+/** Reserve bare session commands so malformed variants never become model prompts. */
+function parseBareCommand<Name extends string>(text: string, name: Name): Name | "invalid" | null {
   const trimmed = text.trim();
-  if (!/^\/clear(?:\s|$)/u.test(trimmed)) return null;
-  return trimmed === "/clear" ? "clear" : "invalid";
+  if (!new RegExp(`^/${name}(?:\\s|$)`, "u").test(trimmed)) return null;
+  return trimmed === `/${name}` ? name : "invalid";
 }
+export const parseClearCommand = (text: string) => parseBareCommand(text, "clear");
+export const parseReloadCommand = (text: string) => parseBareCommand(text, "reload");
 
 /** Discover leading commands; nested paths and prose use other completion modes. */
 export function slashCommandQuery(text: string, caret: number, selectionEnd = caret): string | null {

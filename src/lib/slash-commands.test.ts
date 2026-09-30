@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { completeCommandReference, completeSlashCommand, composerCommands, filterSlashCommands, parseClearCommand, parseUpdateCommand, slashCommandQuery } from "./slash-commands.ts";
+import { completeCommandReference, completeSlashCommand, composerCommands, filterSlashCommands, parseClearCommand, parseReloadCommand, parseUpdateCommand, slashCommandQuery } from "./slash-commands.ts";
 import type { RuntimeCommand } from "./sessions-store.ts";
 
 test("slash suggestions are limited to the leading token and current caret", () => {
@@ -20,7 +20,7 @@ test("HUI commands add btw and side without duplicating runtime names", () => {
     { name: "clear", description: "runtime copy", source: "extension" },
     { name: "review", description: "Review", source: "skill" },
   ], true);
-  assert.deepEqual(commands.map((command) => command.name), ["update", "clear", "btw", "side", "review"]);
+  assert.deepEqual(commands.map((command) => command.name), ["update", "clear", "reload", "btw", "side", "review"]);
 });
 
 test("search accepts skill names without their prefix and matches descriptions and sources", () => {
@@ -57,6 +57,9 @@ test("operational commands and invalid arguments cannot leak into model prompts"
   assert.equal(parseClearCommand(" /clear \n"), "clear");
   for (const command of ["/clear now", "/clear\nignore this"]) assert.equal(parseClearCommand(command), "invalid");
   for (const prompt of ["Explain /clear", "/clearly", "/skill:clear", "/clear-session"]) assert.equal(parseClearCommand(prompt), null);
+  assert.equal(parseReloadCommand(" /reload \n"), "reload");
+  assert.equal(parseReloadCommand("/reload now"), "invalid");
+  for (const prompt of ["Explain /reload", "/reloaded", "/clear"]) assert.equal(parseReloadCommand(prompt), null);
 });
 
 test("dollar discovery excludes templates and explicit nested paths leave command discovery", () => {
