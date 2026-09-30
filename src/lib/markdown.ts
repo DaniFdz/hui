@@ -445,9 +445,33 @@ export function createMarkdownParser(): MarkdownItParser {
 
 const markdownParser = createMarkdownParser();
 
-export function markdownToHtml(source: string): string {
-  return markdownParser.render(source);
+/** Sources retained before the cache is dropped entirely. A long transcript is
+ * a few hundred Markdown strings, so one session's worth fits comfortably. */
+const CACHE_LIMIT = 2_000;
+
+/** Memoises one parse per distinct source. Lit re-runs the whole template on
+ * every update — each keystroke in the composer, each streamed token and the
+ * 3s session poll — so an uncached parse would repeat the entire transcript's
+ * Markdown work every time any of those happens.
+ *
+ * `parse` is a parameter so the memoisation contract itself is testable. */
+export function createMarkdownCache(
+  parse: (source: string) => string = (source) => markdownParser.render(source),
+): (source: string) => string {
+  const cache = new Map<string, string>();
+  return (source) => {
+    const cached = cache.get(source);
+    if (cached !== undefined) return cached;
+    const html = parse(source);
+    // ponytail: clear-all eviction, bounded by CACHE_LIMIT; per-entry LRU only
+    // if a workload larger than that shows a measurable hit-rate loss.
+    if (cache.size >= CACHE_LIMIT) cache.clear();
+    cache.set(source, html);
+    return html;
+  };
 }
+
+export const markdownToHtml = createMarkdownCache();
 
 export function renderMarkdown(source: string) {
   return unsafeHTML(markdownToHtml(source));

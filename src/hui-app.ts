@@ -2139,6 +2139,13 @@ export class HuiApp extends HuiElement {
 
   private resetLocalPaths() {
     this.localPathsRequest += 1;
+    // Typing text that opens no `@` mention repeats this reset on every
+    // keystroke, and reassigning the values it already holds would schedule a
+    // second full app render alongside the draft's own update.
+    if (this.localPathQuery === null && this.localPaths.length === 0 && !this.localPathsLoading
+      && this.localPathsError === "" && this.localPathActiveIndex === 0 && this.localPathCwd === "") {
+      return;
+    }
     this.localPathQuery = null;
     this.localPaths = [];
     this.localPathsLoading = false;
@@ -2171,8 +2178,12 @@ export class HuiApp extends HuiElement {
   };
 
   private setCommandQuery = (query: string | null) => {
-    if (query !== this.slashQuery) this.slashActiveIndex = 0;
-    this.slashQuery = query;
+    // Assigning an equal value still schedules a Lit update, and this runs on
+    // every keystroke: only a changed query may schedule one.
+    if (query !== this.slashQuery) {
+      this.slashActiveIndex = 0;
+      this.slashQuery = query;
+    }
     if (query !== null && !this.commandsLoaded && !this.commandsError) this.requestCommands();
   };
 
