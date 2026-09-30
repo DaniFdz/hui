@@ -10,7 +10,7 @@
  * The repository's main checkout is not listed. A manual removal may force
  * past local changes or a lock and stops a running linked session, but only
  * for risks the user confirmed. The bulk merged cleanup is deliberately narrow:
- * HUI-created, merged, session-free and clean, always without `--force`. The
+ * HUI-created, merged, clean and with no active session, always without `--force`. The
  * local branch is deleted only when GitHub reports a merged pull request whose
  * head is exactly the branch's current commit.
  */
@@ -339,7 +339,7 @@ export class WorktreeService {
     const current = this.#finish(row.base, dirty, undefined, prs);
     if (mode === "merged" && !isMergedCleanupCandidate(current)) {
       return fail(current.managed
-        ? "No longer eligible: it needs a merged pull request, no sessions and no local changes."
+        ? "No longer eligible: it needs a merged pull request, no active session and no local changes."
         : "Clean up merged only removes worktrees HUI created; remove this one from its row.");
     }
     // Force only what the user saw and confirmed; anything new since then

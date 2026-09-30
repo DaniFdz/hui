@@ -14,7 +14,7 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
 |---|---|
 | `sidebar-agent-card` — identity card at the top | removed; HUI has no agent identity selector |
 | `sidebar-brand` — brand line with actions | new session then session search on the left; collapse on the right |
-| `sidebar-nav` — page destinations | Worktrees, Automations, Plugins, Skills, then Settings; no Home entry. Other retained pages stay reachable by URL and the command palette; dropped OpenClaw routes are absent |
+| `sidebar-nav` — page destinations | Automations, Plugins, Skills, then Settings; no Home entry. Other retained pages stay reachable by URL and the command palette; dropped OpenClaw routes are absent |
 | `sidebar-online` / session sections — collapsible groups of rows | groups, flattened, with session rows |
 | `sidebar-footer-bar` — identity + connection state | removed; Settings is the last sidebar destination |
 | main region — header, body, composer | session header, transcript, composer |
@@ -827,7 +827,7 @@ colour keeps its bar, and child rows keep their tree guide.
 
 ## Worktrees
 
-The Worktrees page lists the linked worktrees (never the main checkout) of the
+Settings → Worktrees (`/settings/worktrees`; the old `/worktrees` link redirects there) lists the linked worktrees (never the main checkout) of the
 repositories behind registered sessions and of HUI's own `~/.config/hui/worktrees/` root, in the Sessions table
 layout: branch and path, linked sessions, the branch's pull requests with state,
 local changes and disk usage. Local changes, size and pull requests (via the
@@ -847,8 +847,9 @@ button. HUI forces only the risks the user confirmed (`--force`, or `-f -f` for
 a lock); a clean, unlocked worktree still goes through Git's normal check, and a
 risk that appears after confirming stops the removal. Linked sessions stay in
 HUI. **Clean up merged** lists and removes, after one confirmation, only HUI-created
-worktrees with a merged pull request, no open or draft one, no registered
-session and a clean checkout. The local branch is deleted only when a merged
+worktrees with a merged pull request, no open or draft one, a clean checkout and
+no active session: every linked session must be archived (deleted sessions are
+no longer linked). The list is re-read each time the page opens. The local branch is deleted only when a merged
 pull request's head is exactly the branch's current commit; otherwise it is
 kept. Removals are serialized and each path is re-validated against a fresh
 inventory.

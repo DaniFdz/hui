@@ -85,7 +85,7 @@ function controlledMedia(initialMatches = true) {
 }
 
 test("the primary sidebar lists work destinations and ends with Settings", () => {
-  assert.deepEqual(PRIMARY_NAV.map((item) => item.id), ["worktrees", "cron", "plugins", "skills"]);
+  assert.deepEqual(PRIMARY_NAV.map((item) => item.id), ["cron", "plugins", "skills"]);
   const source = readFileSync(new URL("./shell.ts", import.meta.url), "utf8");
   const nav = source.slice(source.indexOf('<nav class="sidebar-nav"'), source.indexOf("</nav>", source.indexOf('<nav class="sidebar-nav"')));
   assert.doesNotMatch(nav, /(?<![A-Z_])NAV\.map|icons\.home/u);
@@ -94,7 +94,7 @@ test("the primary sidebar lists work destinations and ends with Settings", () =>
   assert.match(nav, /sidebar-nav__settings[\s\S]*props\.onOpenSettings\(\)[\s\S]*>Settings<\/span>\s*<\/a>\s*$/u);
 });
 
-test("settings navigation contains only the twelve accepted regions", () => {
+test("settings navigation contains only the thirteen accepted regions", () => {
   assert.deepEqual(
     SETTINGS_PAGES.map((page) => page.id),
     [
@@ -109,6 +109,7 @@ test("settings navigation contains only the twelve accepted regions", () => {
       "automation",
       "security",
       "sessions",
+      "worktrees",
       "diagnostics",
     ],
   );

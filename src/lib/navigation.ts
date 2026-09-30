@@ -5,6 +5,7 @@ export const ROUTABLE_SETTINGS_PAGES = [
   "connection",
   "integrations",
   "sessions",
+  "worktrees",
   "models",
   "tools",
   "skills",
@@ -50,6 +51,11 @@ export function resolveNavigation(pathname: string): NavigationResolution {
 
   if (segments.length === 1 && segments[0] === "kanban") {
     return { target: { kind: "kanban" }, path: "/kanban" };
+  }
+
+  // Worktrees moved into Settings; keep old links working.
+  if (segments.length === 1 && segments[0] === "worktrees") {
+    return { target: { kind: "settings", page: "worktrees" }, path: "/settings/worktrees" };
   }
 
   if (segments.length === 1) {

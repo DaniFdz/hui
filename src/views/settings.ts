@@ -20,6 +20,7 @@ import "./settings-jira.ts";
 import "./settings-github.ts";
 import "./settings-providers.ts";
 import { renderAutomationPage, type AutomationProps } from "./settings-automation.ts";
+import { renderWorktreesPage, type WorktreesPageProps } from "./worktrees.ts";
 import {
   bindDrawerToNarrowMedia,
   type DrawerMediaQuery,
@@ -57,6 +58,7 @@ export const SETTINGS_PAGES = [
   { id: "automation", label: "Automation", group: "Agents & Tools", icon: "terminal" },
   { id: "security", label: "Privacy & Security", group: "Privacy & Security", icon: "shieldCheck" },
   { id: "sessions", label: "Sessions", group: "System", icon: "fileText" },
+  { id: "worktrees", label: "Worktrees", group: "System", icon: "gitBranch" },
   { id: "diagnostics", label: "Diagnostics", group: "System", icon: "bug" },
 ] as const;
 
@@ -75,6 +77,7 @@ export function filterSettingsPages(query: string) {
 
 export type SettingsProps = AutomationProps & {
   page: SettingsPage;
+  worktrees: WorktreesPageProps;
   /** `undefined` while loading, so an empty list is never shown as "none". */
   pi: PiSnapshot | undefined;
   piLoading: boolean;
@@ -936,6 +939,14 @@ function renderSessionsSettingsPage(props: SettingsProps) {
       ${renderRow("Running now", "Live status is process state and is never persisted.", html`<strong>${running}</strong>`)}
     `)}
     ${renderSection("Runtimes", "The runtime is fixed when a session is registered.", html`${[...runtimes.entries()].map(([runtime, count]) => renderRow(runtime === "pi" ? "PI" : runtime, "Registered sessions using this adapter.", html`<span class="settings-row__value">${count}</span>`))}${runtimes.size ? nothing : renderRow("No sessions", "Create a session from Home to register a runtime.", html`<span class="settings-row__muted">—</span>`)}`)}
+    ${renderSection("Retention", "Deleting HUI metadata never deletes PI conversation files.", html`
+      ${renderRow("Transcript authority", "History is resumed directly from the runtime-owned session file.", html`<span class="settings-row__value">PI</span>`)}
+      ${renderRow("Remove from HUI", "Stops tracking the row and runtime without deleting the transcript.", html`<span class="settings-row__value">Metadata only</span>`)}
+    `)}`;
+}
+
+function renderWorktreesSettingsPage(props: SettingsProps) {
+  return html`${renderWorktreesPage(props.worktrees)}
     ${renderSection("Git worktrees", "New Session can create an isolated checkout from the selected repository.", html`
       ${renderRow("Default branch prefix", "Saved for future worktree branches; a trailing slash is added automatically.", html`
         <form class="row" @submit=${(event: SubmitEvent) => {
@@ -949,10 +960,6 @@ function renderSessionsSettingsPage(props: SettingsProps) {
           <button type="submit" class="btn">Save</button>
         </form>
       `)}
-    `)}
-    ${renderSection("Retention", "Deleting HUI metadata never deletes PI conversation files.", html`
-      ${renderRow("Transcript authority", "History is resumed directly from the runtime-owned session file.", html`<span class="settings-row__value">PI</span>`)}
-      ${renderRow("Remove from HUI", "Stops tracking the row and runtime without deleting the transcript.", html`<span class="settings-row__value">Metadata only</span>`)}
     `)}`;
 }
 
@@ -975,7 +982,7 @@ function renderSecurityPage(props: SettingsProps) {
     ${props.piError || props.healthError ? html`<div class="settings-page__note settings-page__intro" role="alert">${[props.piError, props.healthError].filter(Boolean).join(" ")}<button type="button" class="btn" @click=${props.onRetryPi}>Retry</button></div>` : nothing}`;
 }
 
-const SETTINGS_SUMMARIES: Record<Exclude<SettingsPage, "appearance" | "skills" | "tools" | "models" | "automation" | "sessions" | "security">, string> = {
+const SETTINGS_SUMMARIES: Record<Exclude<SettingsPage, "appearance" | "skills" | "tools" | "models" | "automation" | "sessions" | "security" | "worktrees">, string> = {
   connection: "HUI server, local PI runtime, reconnect behaviour and health.",
   integrations: "Connections to external services such as Jira and GitHub.",
   plugins: "Packages, extensions, permissions and provider adapters.",
@@ -1102,7 +1109,7 @@ export function renderSettingsPage(props: SettingsProps) {
         </div>
       </header>
       <div class="settings-workspace"><div class="settings-workspace__body">
-        <div class="settings-page ${["plugins", "skills", "automation", "sessions"].includes(props.page) ? "settings-page--wide" : ""}">
+        <div class="settings-page ${["plugins", "skills", "automation", "sessions", "worktrees"].includes(props.page) ? "settings-page--wide" : ""}">
           ${props.page === "appearance"
             ? renderAppearancePage(props)
             : props.page === "skills"
@@ -1127,6 +1134,8 @@ export function renderSettingsPage(props: SettingsProps) {
                               ? renderSessionsSettingsPage(props)
                               : props.page === "security"
                                 ? renderSecurityPage(props)
+                              : props.page === "worktrees"
+                                ? renderWorktreesSettingsPage(props)
                           : renderPendingSettingsPage(props.page)}
         </div>
       </div>

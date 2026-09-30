@@ -59,6 +59,10 @@ test("only retained settings areas are routable", () => {
   });
 });
 
+test("the old Worktrees page URL opens its Settings page", () => {
+  assert.deepEqual(resolveNavigation("/worktrees"), { target: { kind: "settings", page: "worktrees" }, path: "/settings/worktrees" });
+});
+
 test("session ids are encoded and decoded without changing identity", () => {
   const target = { kind: "session", id: "session id?#" } as const;
   const path = navigationPath(target);
