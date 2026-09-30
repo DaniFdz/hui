@@ -1193,8 +1193,13 @@ export async function createSession(
   onWorktreeProgress?: (progress: WorktreeProgress) => void,
   /** Server-decided fields, never taken from a browser body: an operator
    * stage placement (a started backlog item). `onPending` receives the
-   * provisional record once the body is valid, again once it is named. */
-  seed: { stage?: SessionStage; onPending?: (record: SessionRecord) => void } = {},
+   * provisional record once the body is valid, again once it is named.
+   * `nameSession` replaces the utility-model call in tests. */
+  seed: {
+    stage?: SessionStage;
+    onPending?: (record: SessionRecord) => void;
+    nameSession?: typeof generateSessionNames;
+  } = {},
 ): Promise<SessionRecord> {
   if (typeof body["cwd"] !== "string") throw new Error("Working directory must be text.");
   let cwd = resolveWorkingDirectory(body["cwd"]);
@@ -1275,9 +1280,16 @@ export async function createSession(
   // Without an operator branch name, a new worktree gets a short generated
   // one, asked for in the same utility call that names the session.
   if (initialPrompt && requestedWorktree && !branchName) onWorktreeProgress?.({ phase: "naming" });
-  seed.onPending?.(recordNamed(title ?? (initialPrompt ? fallbackTitle(initialPrompt) : basename(cwd))));
-  const names = initialPrompt
-    ? await generateSessionNames({
+  const provisionalTitle = title ?? (initialPrompt ? fallbackTitle(initialPrompt) : basename(cwd));
+  seed.onPending?.(recordNamed(provisionalTitle));
+  const nameSession = seed.nameSession ?? generateSessionNames;
+  // A worktree needs its branch name before Git starts, and its request has
+  // already returned. A plain session is registered under the provisional
+  // title at once and renamed when the utility model answers, so the request
+  // never waits on a model call.
+  const namesLater = Boolean(initialPrompt && !title && !requestedWorktree);
+  const names = initialPrompt && !namesLater
+    ? await nameSession({
         cwd,
         prompt: initialPrompt,
         settings,
@@ -1285,7 +1297,7 @@ export async function createSession(
         branch: requestedWorktree && !branchName,
       })
     : undefined;
-  const effectiveTitle = title ?? names?.title ?? basename(cwd);
+  const effectiveTitle = title ?? names?.title ?? provisionalTitle;
   if (names) seed.onPending?.(recordNamed(effectiveTitle));
   const effectiveBranchName = branchName
     ?? names?.branchName
@@ -1319,13 +1331,54 @@ export async function createSession(
   }
   sessions.accept(record.id);
   sessions.ensure(record);
+  if (namesLater && initialPrompt) {
+    void renameWithGeneratedTitle(record, () => nameSession({ cwd, prompt: initialPrompt, settings }), registryUpdater);
+  }
   return record;
+}
+
+/**
+ * Replaces a session's provisional title with the utility model's name. An
+ * operator rename or a delete in the meantime wins: only a record still
+ * carrying the provisional title changes. Open browsers learn the new title
+ * from the session status stream.
+ */
+export async function renameWithGeneratedTitle(
+  record: SessionRecord,
+  generate: () => Promise<{ title: string }>,
+  registryUpdater: typeof updateRegistry = updateRegistry,
+  publish: (update: PendingStatusUpdate) => void = publishPendingStatus,
+  status: (id: string) => SessionStatus = (id) => liveSessions.status(id),
+): Promise<SessionRecord | undefined> {
+  try {
+    const { title } = await generate();
+    if (!title || title === record.title) return undefined;
+    let renamed: SessionRecord | undefined;
+    await registryUpdater((records) => records.map((current) => {
+      if (current.id !== record.id || current.title !== record.title) return current;
+      renamed = { ...current, title };
+      return renamed;
+    }));
+    if (renamed) publish({ id: record.id, status: status(record.id), title });
+    return renamed;
+  } catch (error) {
+    recordDiagnosticEvent({
+      area: "session",
+      level: "warning",
+      action: "session_title_failed",
+      sessionId: record.id,
+      summary: error instanceof Error ? error.message : "Could not store the generated session title.",
+    });
+    return undefined;
+  }
 }
 
 /** Worktree sessions whose checkout is still being created, shown in the
  * sidebar before their record exists. Memory only: a restart forgets them. */
 type PendingSession = { record: SessionRecord; creating?: WorktreeProgress; error?: string; prompt: string };
-type PendingStatusUpdate = Pick<SessionStatusUpdate, "id" | "status"> & Pick<SessionView, "creating" | "creationError">;
+type PendingStatusUpdate = Pick<SessionStatusUpdate, "id" | "status">
+  & Pick<SessionView, "creating" | "creationError">
+  & { title?: string };
 const pendingSessions = new Map<string, PendingSession>();
 const pendingStatusSubscribers = new Set<(update: PendingStatusUpdate) => void>();
 

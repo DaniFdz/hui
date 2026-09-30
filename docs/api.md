@@ -926,11 +926,16 @@ another runtime fail closed when opened. PI's session file is learned during
 boot and stored in the record.
 
 When `title` is absent and `initialPrompt` is present, HUI asks the configured
-utility model for a concise three- to six-word name in the prompt's language before registration, kept to at most
+utility model for a concise three- to six-word name in the prompt's language, kept to at most
 60 characters. The stored name remains descriptive; the sidebar owns visual overflow. The utility call uses an
 in-memory session, no tools, no workspace instructions and thinking off. Failure
 falls back to the first prompt line within the same character limit,
-so naming never prevents session creation.
+so naming never prevents session creation. A session without `worktree` does
+not wait for the model: it is registered and returned under that first-line
+title, and the generated name replaces it once the model answers (20-second
+limit), announced as a `status` frame carrying `title` on
+`GET /__hui/sessions/events`. A rename or delete in the meantime wins. A
+worktree session is named before Git starts, because its branch depends on it.
 
 When `worktree` is true and `branchName` is absent, HUI also names the branch
 itself. With an `initialPrompt`, the same utility call (or a branch-only call
@@ -1010,6 +1015,9 @@ data: {"statuses":[{"id":"session-a","status":"running"},{"id":"session-b","stat
 event: status
 data: {"id":"session-a","status":"idle"}
 ```
+
+A `status` frame may also carry `title` when the gateway renamed the session
+itself, such as a new session's generated name.
 
 The stream does not start cold sessions and does not carry transcript content.
 The browser uses it to keep all sidebar rows current while retaining the
