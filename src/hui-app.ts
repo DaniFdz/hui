@@ -733,6 +733,8 @@ export class HuiApp extends HuiElement {
         } else if (this.view === "home" && this.selected && !this.settingsOpen) this.commitSessionLayout(this.sessionLayout);
       }
       this.sessionsError = "";
+      // Archiving, restoring or deleting a session changes which worktrees are ready to clean.
+      if (!background && this.view === "surface" && this.activePage?.id === "worktrees") this.loadWorktreeInventory();
     } catch (error) {
       const message = error instanceof Error ? error.message : "Could not read sessions.";
       if (this.groups.length === 0) {
