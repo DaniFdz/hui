@@ -204,22 +204,6 @@ const server = createServer(async (request, response) => {
     return finish(response);
   }
 
-  // propose_changes blocks on HUI's changes card like a question; the reply
-  // quotes the decision the tool returned so the Browser check can read it.
-  if (source.includes("E2E_PROPOSE") && !source.includes("Name this coding-agent session")) {
-    toolUse(response, "tool-e2e-propose", "propose_changes", {
-      action: source.includes("E2E_PROPOSE_COMMIT") ? "commit" : "pr",
-      commitMessage: "Animate the marketing hero on load\n\nFade the hero up so the headline draws attention without a layout shift.",
-      prTitle: "Animate the marketing hero",
-      prBody: "## Summary\n- Fade the hero up on load\n\n## Testing\n- Checked the hero in the browser",
-    });
-    return finish(response, "tool_use");
-  }
-  if (latestToolResult?.id === "tool-e2e-propose") {
-    text(response, `Decision received: ${String(latestToolResult.result).split(". ")[0]}.`);
-    return finish(response);
-  }
-
   if (source.includes("E2E_CODE_PARITY")) {
     text(response, `\`\`\`unknown\n${Array.from({ length: 10 }, (_, index) => `line ${index + 1}: ${"fixture ".repeat(24)}`).join("\n")}\n\`\`\``);
     return finish(response);

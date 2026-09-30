@@ -164,7 +164,7 @@ The source, compatibility notes and MIT attribution live together under
 HUI also bundles [git-selective-staging](skills/git-selective-staging/SKILL.md)
 with the same tag and toggle. It tells an agent how to commit only its own hunks
 when a shared or reused checkout already holds other uncommitted work, including
-another session's edits in the same file; the changes card commits whole files.
+another session's edits in the same file.
 When changing bundled resources or their default/opt-out behavior, run focused
 runtime tests, the package proof and the Browser Skills toggle journey.
 

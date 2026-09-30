@@ -13,10 +13,6 @@ must not commit: another session or agent sharing the checkout, the operator's
 work in progress, or a reused branch. `git add <path>` stages a whole file, so it
 would carry those changes along whenever they sit in a file you edited.
 
-HUI's changes card commits whole files (`git commit --only -- <files>`). When a
-file you changed also holds someone else's hunks, do not ship it from the card:
-stage your hunks with this procedure and commit yourself, or tell the operator.
-
 ## 1. Record what was already there
 
 Before editing, run `git status --porcelain` and `git diff --stat`. Files already

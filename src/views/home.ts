@@ -30,7 +30,6 @@ import { icons } from "../lib/icons.ts";
 import type { SplitDirection } from "../lib/session-multiplexer.ts";
 import { renderMarkdown } from "../lib/markdown.ts";
 import "../components/github-embeds.ts";
-import "../components/changes-card.ts";
 import "../components/browser-preview.ts";
 import { handleCodeBlockDisclosure, markdownBlocks } from "../lib/markdown-blocks.ts";
 import { openMessageContextMenu } from "../lib/message-context-menu.ts";
@@ -193,8 +192,6 @@ export type HomeProps = {
   continuing: boolean;
   rewindPending: boolean;
   draft: string;
-  /** Settings → Integrations → Git → Changes card. */
-  changesCard?: boolean;
   chatPreferences: {
     collapseTaskProgress: boolean;
     sendShortcut: "enter" | "modifierEnter";
@@ -2056,7 +2053,7 @@ function renderTranscript(props: HomeProps, session: SessionView) {
                     @scroll=${(event: Event) => props.onTranscriptScroll(event.currentTarget as HTMLElement)}
                     @click=${(event: Event) => { void copyCodeBlock(event, props); }}>
                     ${positionRail({ sessionId: session.id, markers: props.opening || session.status === "starting" ? [] : conversationMarkers(rows), onNavigate: props.onTranscriptNavigate })}
-                    <div class="chat-thread-inner" ${markdownBlocks()}>${renderTranscriptBody(props, rows)}${renderSubagentActivity(props)}${props.opening || session.status === "starting" || props.changesCard === false ? nothing : html`<hui-changes-card .sessionId=${session.id} .status=${session.status}></hui-changes-card>`}</div>
+                    <div class="chat-thread-inner" ${markdownBlocks()}>${renderTranscriptBody(props, rows)}${renderSubagentActivity(props)}</div>
                   </div>
                 </div>
                 <div class="chat-scroll-to-bottom-wrap"><button type="button" class="chat-scroll-to-bottom" data-visible=${String(props.showScrollToBottom)} ?inert=${!props.showScrollToBottom} aria-hidden=${String(!props.showScrollToBottom)} @click=${props.onScrollToBottom} aria-label="Scroll to latest">${icons.arrowDown}</button></div>

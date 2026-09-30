@@ -2,7 +2,7 @@
 /* Fake GitHub CLI for tests and Browser E2E. Implements only what HUI calls:
  * `--version`, `auth status --hostname github.com --json hosts` and
  * `auth login --web`, `config get git_protocol`, a few canned `api` reads and
- * `pr list`/`pr create` for the changes card (pull-requests.json, pr-create-args).
+ * `pr list` (pull-requests.json).
  * State lives in HUI_FAKE_GH_DIR:
  *   account  — the signed-in login (absent: signed out)
  *   approve  — created by the test to approve a pending login
@@ -50,19 +50,11 @@ if (args[0] === "--version") {
   }
   process.stdout.write(`${JSON.stringify(payload)}\n`);
 } else if (args[0] === "pr" && args[1] === "list") {
-  // Open pull requests for the changes card: pull-requests.json when present.
-  // Like `gh pr list --head`, entries with a headRefName only match their branch.
+  // Pull requests from pull-requests.json when present. Like `gh pr list
+  // --head`, entries with a headRefName only match their branch.
   const head = args.includes("--head") ? args[args.indexOf("--head") + 1] : undefined;
   const all = existsSync(file("pull-requests.json")) ? JSON.parse(readFileSync(file("pull-requests.json"), "utf8")) : [];
   process.stdout.write(`${JSON.stringify(all.filter((entry) => !head || !entry.headRefName || entry.headRefName === head))}\n`);
-} else if (args[0] === "pr" && args[1] === "create") {
-  // Records the arguments and remembers the draft so `pr list` reports it next.
-  writeFileSync(file("pr-create-args"), JSON.stringify(args));
-  const head = args[args.indexOf("--head") + 1] ?? "";
-  const title = args.includes("--title") ? args[args.indexOf("--title") + 1] : head;
-  const others = existsSync(file("pull-requests.json")) ? JSON.parse(readFileSync(file("pull-requests.json"), "utf8")).filter((entry) => entry.headRefName && entry.headRefName !== head) : [];
-  writeFileSync(file("pull-requests.json"), JSON.stringify([...others, { number: 42, url: "https://github.com/acme/web/pull/42", title, isDraft: true, headRefName: head }]));
-  process.stdout.write("https://github.com/acme/web/pull/42\n");
 } else if (args[0] === "config" && args[1] === "get" && args[2] === "git_protocol") {
   process.stdout.write(`${process.env.HUI_FAKE_GH_PROTOCOL || "https"}\n`);
 } else if (args[0] === "auth" && args[1] === "login") {

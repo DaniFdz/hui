@@ -40,13 +40,6 @@ test("normalizes HUI-owned profile and labs", () => {
   assert.deepEqual(settings.labs, { denseObservability: true, detailedDebug: false });
 });
 
-test("keeps the changes card on unless explicitly disabled", () => {
-  assert.equal(DEFAULT_SETTINGS.git.changesCard, true);
-  assert.equal(normalizeSettings({}).git.changesCard, true);
-  assert.equal(normalizeSettings({ git: { changesCard: "no" } }).git.changesCard, true);
-  assert.equal(normalizeSettings({ git: { changesCard: false } }).git.changesCard, false);
-});
-
 test("the managed browser is on and headless unless explicitly changed", () => {
   assert.deepEqual(DEFAULT_SETTINGS.browser, { enabled: true, headless: true, executablePath: "" });
   assert.deepEqual(normalizeSettings({}).browser, DEFAULT_SETTINGS.browser);

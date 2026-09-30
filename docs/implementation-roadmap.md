@@ -618,11 +618,9 @@ request and issue previews through `gh api`, and PR badges use the same lookup.
 Proof: `server/github-previews.test.ts`, `src/lib/github-links.test.ts`,
 `src/lib/github-previews.test.ts`, and `e2e/github-embeds.browser.md`.
 
-Follow-up 2026-09-26: the chat's changes card lists a session's prepared Git
-changes with inline diffs and ships them (commit, commit & push, draft pull
-request) deterministically, delegating a refused step to the session's agent.
-Proof: `server/session-changes.test.ts`, `src/lib/session-changes.test.ts`, and
-`e2e/session-changes.browser.md`.
+Follow-up 2026-09-30: removed the chat's changes card, its `propose_changes`
+tool and the Settings → Integrations → Git toggle; agents commit and open pull
+requests themselves when asked.
 
 ### HUI-15 — Managed browser tool
 
