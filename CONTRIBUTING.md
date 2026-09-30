@@ -112,7 +112,8 @@ The shell supplies Node.js 24/npm, Git, search tools and native build support.
 It does not install npm packages, start services, or modify your shell settings.
 The default package is web-only; `hui-desktop` adds nixpkgs Electron and a desktop
 entry without using npm's downloader. `nixosModules.default` provides service and
-GUI-installation options. See README for the configuration examples.
+GUI-installation options. See the [user guide](docs/guide.md#nix-and-nixos) for the
+configuration examples.
 
 ```sh
 nix build
