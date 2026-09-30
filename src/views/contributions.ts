@@ -165,7 +165,8 @@ export class HuiContributionsPage extends LitElement {
     const text = target?.getAttribute("data-tip");
     if (!target || !text) { this.#leave(); return; }
     const box = card.getBoundingClientRect();
-    const rect = target.getBoundingClientRect();
+    // A week points at its bar, not the full-height hover area around it.
+    const rect = (target.querySelector(".contributions-bar") ?? target).getBoundingClientRect();
     const x = rect.left + rect.width / 2 - box.left;
     // Past the middle the tip grows leftwards so it never leaves the card.
     this.#tip = { card: card.dataset.card ?? "", text, x, y: rect.top - box.top, end: x > box.width / 2 };

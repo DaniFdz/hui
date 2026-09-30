@@ -12,8 +12,7 @@ No operator GitHub account was read.
 1. Sidebar **Contributions** (first destination) opens `/contributions`: heading
    "1,015 commits in the last year", a 53-week calendar with month and
    Mon/Wed/Fri labels and a Less→More legend, then "Commits per week" with 53
-   bars. A cell's accessible name is e.g. "4 commits on Wed, Sep 30, 2026"; a
-   bar's is "3 pull requests · week of Sep 27, 2026".
+   bars.
 2. The year list shows *Last 12 months* (pressed), 2026 … 2019. **2025** shows
    "1,035 commits in 2025" (fixture: 807 + 228 in local 2025) with the calendar
    starting on Wednesday Jan 1; `<run>/gh/search-log` searched
@@ -35,6 +34,11 @@ No operator GitHub account was read.
    the charts, and both charts scroll horizontally, opening on the most recent
    weeks. Dark mode renders the GitHub-like green steps.
 
-`?year=2007`, `?year=abc` and `?year=2031` return 400. Native SVG `<title>`
-tooltips are not drawn by the headless browser; they were checked through the
-accessibility tree.
+`?year=2007`, `?year=abc` and `?year=2031` return 400.
+
+Hover (checked 2026-09-30 with a real mouse move over CDP, since Browser-tool
+refs do not reach SVG squares): a day shows a tip such as "4 commits on Sun,
+Sep 28, 2025" above an outlined square; a week shows "8 commits · week of Sep
+27, 2026" above its bar. Tips past the middle grow leftwards and stay inside
+the card at 1440×900 and 390×844. Choosing **Pull requests** and
+`hui-e2e-personal`, then reloading, keeps both choices.
