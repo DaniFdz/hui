@@ -28,7 +28,6 @@ const PAGE_ROWS = [
   ["skills", "Skills", "Extensions", "Installed skills, descriptions and discovery roots."],
   ["tasks", "Tasks", "Automation", "Durable tasks, run controls and task history."],
   ["usage", "Usage", "Models", "Token, cost and model usage reporting."],
-  ["worktrees", "Worktrees", "Development", "Git worktree inventory and session association."],
 ] as const;
 
 export type HuiPageId = (typeof PAGE_ROWS)[number][0];

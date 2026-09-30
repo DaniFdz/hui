@@ -44,7 +44,6 @@ if (typeof document !== "undefined") {
 /** Sidebar destinations. Sessions are opened from the list below and New
  * Session from the header, so there is no separate Home entry. */
 export const PRIMARY_NAV = [
-  { id: "worktrees", label: "Worktrees", icon: icons.gitBranch },
   { id: "cron", label: "Automations", icon: icons.calendarClock },
   { id: "plugins", label: "Plugins", icon: icons.plug },
   { id: "skills", label: "Skills", icon: icons.book },
