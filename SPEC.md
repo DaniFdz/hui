@@ -849,8 +849,7 @@ risk that appears after confirming stops the removal. Linked sessions stay in
 HUI. **Clean up merged** lists and removes, after one confirmation, only HUI-created
 worktrees with a merged pull request, no open or draft one, a clean checkout and
 no active session: every linked session must be archived (deleted sessions are
-no longer linked). Archiving, restoring or deleting a session while the page is
-open refreshes the list. The local branch is deleted only when a merged
+no longer linked). The list is re-read each time the page opens. The local branch is deleted only when a merged
 pull request's head is exactly the branch's current commit; otherwise it is
 kept. Removals are serialized and each path is re-validated against a fresh
 inventory.
