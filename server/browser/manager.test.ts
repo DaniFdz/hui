@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
+import { execFileSync, spawn } from "node:child_process";
 import { once } from "node:events";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -299,6 +300,90 @@ test("stopped or idle conversations never leave a headless browser running", {
   const unused = managed({ idleTabMs: 200 });
   await unused.tool("gamma", { action: "open" }, { cwd: dir });
   await idle(unused);
+});
+
+test("a browser killed behind the gateway's back is relaunched on the next open", {
+  skip: detected.executable && process.platform !== "win32" ? false : "no Chromium-family browser or pkill is available",
+  timeout: 60_000,
+}, async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "hui-browser-kill-"));
+  const profileDir = join(dir, "profile");
+  const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "" };
+  const browser = new ManagedBrowser({ profileDir, readSettings: async () => settings });
+  t.after(async () => {
+    await browser.stop();
+    await rm(dir, { recursive: true, force: true });
+  });
+  const call = (params: Record<string, unknown>) => browser.tool("alpha", params, { cwd: dir });
+
+  await call({ action: "open" });
+  assert.equal(browser.running, true);
+
+  // An operator cleanup script (`pkill -f user-data-dir=...`) or a crash takes
+  // the whole browser process down between calls; the open that follows must
+  // relaunch it instead of writing to the dead pipe.
+  execFileSync("pkill", ["-9", "-f", `user-data-dir=${profileDir}`]);
+  const reopened = await call({ action: "open", url: "about:blank" });
+  assert.match(reopened.text, /^Opened tab t\d+\./u);
+  assert.equal(browser.running, true, "the next open relaunches the browser");
+});
+
+test("an action racing an external kill names the exit instead of a protocol error", {
+  skip: detected.executable && process.platform !== "win32" ? false : "no Chromium-family browser or pkill is available",
+  timeout: 60_000,
+}, async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "hui-browser-kill-action-"));
+  const profileDir = join(dir, "profile");
+  const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "" };
+  const browser = new ManagedBrowser({ profileDir, readSettings: async () => settings });
+  t.after(async () => {
+    await browser.stop();
+    await rm(dir, { recursive: true, force: true });
+  });
+  const call = (params: Record<string, unknown>) => browser.tool("alpha", params, { cwd: dir });
+
+  await call({ action: "open", url: "about:blank" });
+
+  // The next action can arrive before the gateway has processed the process
+  // exit; it must report the restart it can recover from, not the raw pipe error.
+  execFileSync("pkill", ["-9", "-f", `user-data-dir=${profileDir}`]);
+  await assert.rejects(call({ action: "snapshot" }), (error: unknown) => {
+    assert.ok(error instanceof BrowserToolError, `raw error escaped: ${String(error)}`);
+    assert.ok(error.status < 500, `a server fault escaped: ${error.status}`);
+    return true;
+  });
+});
+
+test("another Chromium process owning the profile is reported instead of a connection error", {
+  skip: detected.executable && process.platform !== "win32" ? false : "no Chromium-family browser is available",
+  timeout: 60_000,
+}, async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "hui-browser-profile-in-use-"));
+  const profileDir = join(dir, "profile");
+  const executable = detected.executable;
+  assert.ok(executable);
+  // An operator tool (Google re-login) takes the shared profile exclusively.
+  const squatter = spawn(executable.path, browserLaunchArguments({ profileDir, headless: true, width: 1280, height: 800 }), { stdio: ["ignore", "ignore", "ignore", "pipe", "pipe"] });
+  t.after(() => { if (squatter.exitCode === null && squatter.signalCode === null) squatter.kill("SIGKILL"); });
+  assert.equal(await eventually(async () => (await readdir(profileDir).catch((): string[] => [])).includes("SingletonLock"), Boolean), true, "the squatter holds the profile");
+
+  const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "" };
+  const browser = new ManagedBrowser({ profileDir, readSettings: async () => settings });
+  t.after(async () => {
+    await browser.stop();
+    await rm(dir, { recursive: true, force: true });
+  });
+  const call = (params: Record<string, unknown>) => browser.tool("alpha", params, { cwd: dir });
+
+  await assert.rejects(call({ action: "open" }), (error: Error) => {
+    assert.match(error.message, /exited while starting/u);
+    assert.match(error.message, /profile is in use/u, "the profile conflict is named, not the closed pipe");
+    return true;
+  });
+
+  squatter.kill("SIGKILL");
+  await once(squatter, "exit");
+  assert.match((await call({ action: "open", url: "about:blank" })).text, /^Opened tab t\d+\./u);
 });
 
 test("the live view follows the agent's tab, streams frames only while watched and marks clicks", {
