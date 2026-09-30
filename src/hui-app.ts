@@ -786,6 +786,9 @@ export class HuiApp extends HuiElement {
             sessions: group.sessions.map((session) => session.id === selected.id ? { ...session, status: selected.status } : session),
           }))
         : this.paneGroups;
+      // Renames and other registry edits made on another screen reach the header.
+      const listed = selected && this.listedSession(selected.id);
+      if (listed) this.selected = { ...selected, ...listed, status: selected.status, interrupted: selected.interrupted };
       this.sessionsLoading = false;
       this.openPendingSession();
     }
