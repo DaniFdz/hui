@@ -1,0 +1,23 @@
+<!doctype html>
+<!--
+  App icon source. Regenerate from the repository root:
+    chrome="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+    "$chrome" --headless --hide-scrollbars --default-background-color=00000000 --window-size=256,256 \
+      --screenshot="$PWD/desktop/icon.png" "file://$PWD/docs/assets/icon.html"
+    "$chrome" --headless --hide-scrollbars --window-size=180,180 \
+      --screenshot="$PWD/public/apple-touch-icon.png" "file://$PWD/docs/assets/icon.html#ios"
+  The macOS tile is Apple's rounded square with margin; the #ios variant is
+  full-bleed and opaque because iOS applies its own mask.
+-->
+<meta charset="utf-8">
+<style>
+  html, body { margin: 0; background: transparent; }
+  .tile {
+    box-sizing: border-box; margin: 26px; width: 204px; height: 204px; padding: 30px; border-radius: 46px;
+    background: radial-gradient(circle at 50% 42%, #3d2c7c, #1c1638 64%, #16122a);
+    box-shadow: inset 0 0 0 1px rgb(255 255 255 / .08), 0 5px 10px rgb(0 0 0 / .3);
+  }
+  .tile:target { margin: 0; width: 180px; height: 180px; padding: 26px; border-radius: 0; box-shadow: none; }
+  img { display: block; width: 100%; height: 100%; object-fit: contain; filter: drop-shadow(0 6px 10px rgb(0 0 0 / .45)); }
+</style>
+<div class="tile" id="ios"><img src="../../public/hui-logo.png" alt=""></div>

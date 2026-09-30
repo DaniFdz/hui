@@ -307,11 +307,10 @@ test("PI questions use the inline OpenClaw card instead of a modal", () => {
   assert.match(styles, /\.chat-question-panel__option\s*\{[^}]*padding: 10px 11px;/s);
 });
 
-test("New Session uses the dedicated PI mascot", () => {
+test("New Session uses the HUI logo", () => {
   const source = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
 
-  assert.match(source, /src="\/pi-logo-3d\.png"/);
-  assert.doesNotMatch(source, /src="\/apple-touch-icon\.png"/);
+  assert.match(source, /src="\/hui-logo\.png"/);
 });
 
 test("New Session exposes real model and effort controls without a permission fiction", () => {

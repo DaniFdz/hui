@@ -16,6 +16,7 @@
     "npm-shrinkwrap.json",
     "desktop/*.cjs",
     "desktop/*.mjs",
+    "desktop/icon.png",
     "!desktop/*.test.mjs"
   ],
   "bin": {

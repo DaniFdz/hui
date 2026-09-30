@@ -424,11 +424,10 @@ test("the active session follows the reference neutral row state", () => {
   assert.doesNotMatch(source, /session-row__active-bar/u);
 });
 
-test("the mobile topbar uses PI branding instead of the OpenClaw app icon", () => {
+test("the mobile topbar uses HUI branding", () => {
   const source = readFileSync(new URL("./shell.ts", import.meta.url), "utf8");
-  assert.match(source, /class="topbar-brand" aria-label="PI"/);
-  assert.match(source, /class="topbar-brand__logo" src="\/pi-logo-3d\.png"/);
-  assert.doesNotMatch(source, /class="topbar-brand__logo" src="\/apple-touch-icon\.png"/);
+  assert.match(source, /class="topbar-brand" aria-label="HUI"/);
+  assert.match(source, /class="topbar-brand__logo" src="\/hui-logo\.png"/);
 });
 
 test("PI-backed settings distinguish loading, failure, empty and ready states", () => {
