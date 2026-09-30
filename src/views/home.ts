@@ -47,7 +47,7 @@ import { commandToolPresentation, renderCommandToolCard } from "./chat/command-t
 import { renderTaskSuggestionCard, type TaskSuggestionCardProps } from "./chat/task-suggestion-card.ts";
 import { browserToolSummary } from "../lib/browser-tool-display.ts";
 import { toggleNavigationDrawer } from "./shell.ts";
-import { parseUpdateCommand, slashCommandQuery } from "../lib/slash-commands.ts";
+import { slashCommandQuery } from "../lib/slash-commands.ts";
 import { renderSlashMenu, SLASH_MENU_ID, slashOptionId, type SlashMenuProps } from "./slash-menu.ts";
 import { localPathQuery, type LocalPathQuery } from "../lib/local-paths.ts";
 import { worktreeProgressLabel } from "../lib/worktree-progress.ts";
@@ -599,7 +599,15 @@ function renderLaunchForm(props: HomeProps) {
                     props.onLocalPathKeydown(event);
                     if (event.defaultPrevented) return;
                     props.onCommandKeydown(event);
-                    if (!event.defaultPrevented && parseUpdateCommand((event.target as HTMLTextAreaElement).value) && event.key === "Enter" && !event.shiftKey && !event.isComposing && !hasCoarsePointer()) {
+                    if (!event.defaultPrevented && event.key === "Enter" && composerEnterMode({
+                      streaming: false,
+                      shiftKey: event.shiftKey,
+                      ctrlKey: event.ctrlKey,
+                      metaKey: event.metaKey,
+                      isComposing: event.isComposing,
+                      coarsePointer: hasCoarsePointer(),
+                      sendShortcut: props.chatPreferences.sendShortcut,
+                    }) === "prompt") {
                       event.preventDefault();
                       (event.target as HTMLTextAreaElement).form?.requestSubmit();
                     }
