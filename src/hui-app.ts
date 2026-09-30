@@ -182,7 +182,7 @@ import { renderPiResourceReader, type PiResourceReaderState } from "./views/pi-r
 import { isObservabilitySurface, renderObservabilitySurface } from "./views/observability.ts";
 import { isOwnedSurface, renderOwnedSurface } from "./views/hui-owned-surfaces.ts";
 import { HUI_PAGES, type HuiPage } from "./lib/pages.ts";
-import { activeSessionPane, browserPaneFor, closeSessionPane, focusSessionPane, isChatPane, moveSessionPane, parseSessionLayout, replacePaneSession, replacePaneTerminal, resizeSessionLayout, SESSION_LAYOUT_KEY, sessionPanes, singleSessionLayout, splitBrowserPane, splitSessionPane, splitTerminalPane, type DropZone, type SessionLayout, type SessionPane, type SplitDirection } from "./lib/session-multiplexer.ts";
+import { activeSessionPane, addSessionTab, browserPaneFor, closeSessionPane, focusSessionPane, isChatPane, moveSessionPane, parseSessionLayout, replacePaneSession, replacePaneTerminal, resizeSessionLayout, SESSION_LAYOUT_KEY, sessionPanes, visibleSessionPanes, singleSessionLayout, splitBrowserPane, splitSessionPane, splitTerminalPane, type DropZone, type SessionLayout, type SessionPane, type SplitDirection } from "./lib/session-multiplexer.ts";
 import { createTerminal, listTerminals } from "./lib/terminals-store.ts";
 import "./components/terminal-pane.ts";
 import "./components/browser-pane.ts";
@@ -211,6 +211,13 @@ function readCollapsed(): Set<string> {
     return new Set();
   }
 }
+
+/** Pane callbacks are behavior, not render data: only their presence changes
+ * the output. The split parent recreates equivalent closures on every render;
+ * comparing identity re-rendered every pane's whole transcript on each unrelated
+ * update or resize step. Lit still stores the newest value, but a rendered
+ * button may keep an older one: capture only the pane/session id and the parent. */
+const paneCallback = { attribute: false, hasChanged: (value: unknown, old: unknown) => !value !== !old };
 
 @customElement("hui-app")
 export class HuiApp extends HuiElement {
@@ -422,25 +429,25 @@ export class HuiApp extends HuiElement {
   @property({ type: Boolean }) paneVisible = true;
   @property({ type: Boolean }) paneNarrow = false;
   @property({ type: Boolean }) paneMobileNav = false;
-  @property({ attribute: false }) onPaneClose: (() => void) | undefined;
-  @property({ attribute: false }) onPaneSplit: ((direction: SplitDirection) => void) | undefined;
-  @property({ attribute: false }) onPaneTerminal: (() => Promise<void>) | undefined;
+  @property(paneCallback) onPaneClose: (() => void) | undefined;
+  @property(paneCallback) onPaneSplit: ((direction: SplitDirection) => void) | undefined;
+  @property(paneCallback) onPaneTerminal: (() => Promise<void>) | undefined;
   /** Opens this session's browser panel: the larger live view beside the chat. */
-  @property({ attribute: false }) onPaneBrowser: (() => void) | undefined;
+  @property(paneCallback) onPaneBrowser: (() => void) | undefined;
   @state() private terminalOpening = false;
   @state() private terminalError = "";
-  @property({ attribute: false }) onPaneNavigate: ((id: string) => void) | undefined;
-  @property({ attribute: false }) onPaneRegistryChange: (() => void) | undefined;
+  @property(paneCallback) onPaneNavigate: ((id: string) => void) | undefined;
+  @property(paneCallback) onPaneRegistryChange: (() => void) | undefined;
   /** Worktree progress while the gateway still creates this pane's session;
    * the pane opens it once this clears. */
   @property({ attribute: false }) paneCreating: WorktreeProgress | undefined;
   @property({ attribute: false }) paneCreationError: string | undefined;
   /** The failed launch's prompt, returned to New Session when this pane deletes it. */
   @property({ attribute: false }) paneUnsentPrompt: string | undefined;
-  @property({ attribute: false }) onPaneUpdate: ((text: string, attachments: readonly Attachment[]) => boolean) | undefined;
+  @property(paneCallback) onPaneUpdate: ((text: string, attachments: readonly Attachment[]) => boolean) | undefined;
   /** Embedded panes own the composer but not the sidebar; report draft
    * presence so the shell can project the pencil onto the session row. */
-  @property({ attribute: false }) onPaneDraftChange: ((sessionId: string, hasDraft: boolean) => void) | undefined;
+  @property(paneCallback) onPaneDraftChange: ((sessionId: string, hasDraft: boolean) => void) | undefined;
   private mobileNavMedia: MediaQueryList | undefined;
   private composerTextarea: HTMLTextAreaElement | null = null;
   private readonly onMobileNavChange = (event: MediaQueryListEvent) => {
@@ -884,7 +891,7 @@ export class HuiApp extends HuiElement {
     if (this.embeddedPane) return this.paneVisible && this.paneSessionId === id;
     if (this.view === "home" && !this.settingsOpen && this.sessionLayout) {
       const narrow = this.renderRoot.querySelector<SessionMultiplexer>("hui-session-multiplexer")?.narrow;
-      return sessionPanes(this.sessionLayout).some((pane) => isChatPane(pane) && pane.sessionId === id && (!narrow || pane.id === this.sessionLayout?.activePaneId));
+      return visibleSessionPanes(this.sessionLayout).some((pane) => isChatPane(pane) && pane.sessionId === id && (!narrow || pane.id === this.sessionLayout?.activePaneId));
     }
     const target = resolveNavigation(window.location.pathname).target;
     return target.kind === "session" && target.id === id;
@@ -1639,7 +1646,8 @@ export class HuiApp extends HuiElement {
     this.draggingSessionId = "";
     this.commitSessionLayout(zone.kind === "center"
       ? replacePaneSession(focusSessionPane(this.sessionLayout, paneId), paneId, id)
-      : splitSessionPane(this.sessionLayout, paneId, id, zone.edge));
+      : zone.kind === "tab" ? addSessionTab(this.sessionLayout, paneId, id)
+        : splitSessionPane(this.sessionLayout, paneId, id, zone.edge));
   };
 
   private movePane = (sourceId: string, targetId: string, zone: DropZone) => {
@@ -4017,6 +4025,11 @@ export class HuiApp extends HuiElement {
       .onPaneDraftChange=${(sessionId: string, hasDraft: boolean) => this.markSessionDraft(sessionId, hasDraft)}
     ></hui-app>`;
 
+  private paneLabel = (pane: SessionPane) => {
+    const title = this.listedSession(pane.sessionId)?.title ?? "Session";
+    return pane.terminalId ? `Terminal · ${title}` : pane.browser ? `Browser · ${title}` : title;
+  };
+
   private listedSession(id: string): SessionView | undefined {
     return this.groups.flatMap((group) => group.sessions).find((session) => session.id === id);
   }
@@ -4036,6 +4049,8 @@ export class HuiApp extends HuiElement {
       .onFocusPane=${this.focusSessionPane}
       .onDropSession=${this.dropSession}
       .onMovePane=${this.movePane}
+      .onClosePane=${this.closePane}
+      .paneLabel=${this.paneLabel}
       .onResize=${(columnId: string | undefined, index: number, ratio: number) => {
         if (this.sessionLayout) this.sessionLayout = resizeSessionLayout(this.sessionLayout, columnId, index, ratio);
       }}

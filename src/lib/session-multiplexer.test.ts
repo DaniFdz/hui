@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { browserPaneFor, isChatPane, moveSessionPane, sessionPaneMoveTarget, replacePaneTerminal, splitBrowserPane, splitTerminalPane } from "./session-multiplexer.ts";
+import { addSessionTab, browserPaneFor, isChatPane, moveSessionPane, visibleSessionPanes, sessionPaneMoveTarget, replacePaneTerminal, splitBrowserPane, splitTerminalPane } from "./session-multiplexer.ts";
 import { activeSessionPane, closeSessionPane, focusSessionPane, locateSessionPane, parseSessionLayout, replacePaneSession, resizeSessionLayout, resizeSessionWeights, SESSION_SPLIT_MEDIA, sessionDropRect, sessionDropZone, sessionPanes, singleSessionLayout, splitSessionPane, type SessionLayout } from "./session-multiplexer.ts";
 
 test("all four edges insert alongside the targeted column or within its stack", () => {
@@ -214,4 +214,51 @@ test("repeated moves preserve a valid persisted layout and all session/terminal 
     assert.deepEqual(parseSessionLayout(moved), moved);
     layout = moved;
   }
+});
+
+test("tabs share a spot, show one pane and survive a save", () => {
+  const split = splitSessionPane(singleSessionLayout("alpha"), "p1", "beta", "right");
+  const tabbed = addSessionTab(split, "p1", "gamma");
+  assert.deepEqual(visibleSessionPanes(tabbed).map(({ id }) => id), ["p3", "p2"]);
+  assert.deepEqual(sessionPanes(tabbed).map(({ id, sessionId }) => `${id}:${sessionId}`), ["p1:alpha", "p3:gamma", "p2:beta"]);
+  assert.equal(tabbed.activePaneId, "p3");
+  assert.strictEqual(addSessionTab(tabbed, "p3", "alpha").columns[0]!.panes[0]!.id, "p1", "an open session's tab is reused");
+  assert.equal(sessionPanes(addSessionTab(tabbed, "p3", "alpha")).length, 3);
+  // Focusing a hidden tab shows it; closing the shown tab shows its neighbour.
+  const back = focusSessionPane(tabbed, "p1");
+  assert.deepEqual(visibleSessionPanes(back).map(({ id }) => id), ["p1", "p2"]);
+  const closed = closeSessionPane(tabbed, "p3");
+  assert.deepEqual(closed.columns[0]!.panes, [{ id: "p1", sessionId: "alpha" }]);
+  assert.equal(closed.activePaneId, "p1");
+  // Closing a hidden tab leaves the shown one alone.
+  assert.deepEqual(visibleSessionPanes(closeSessionPane(tabbed, "p1")).map(({ id }) => id), ["p3", "p2"]);
+  assert.equal(closeSessionPane(tabbed, "p1").activePaneId, "p3");
+  // A split requested from a tab that was hidden meanwhile still opens beside its spot.
+  assert.deepEqual(splitSessionPane(tabbed, "p1", "delta", "down").columns[0]!.panes.map(({ id }) => id), ["p3", "p4"]);
+  assert.deepEqual(parseSessionLayout(JSON.parse(JSON.stringify(tabbed))), tabbed);
+  const spot = tabbed.columns[0]!.panes[0]!;
+  const withSpot = (pane: object) => parseSessionLayout({ ...tabbed, columns: [{ ...tabbed.columns[0], panes: [pane] }, tabbed.columns[1]] });
+  assert.equal(withSpot({ ...spot, tabIndex: 9 }), undefined);
+  assert.equal(withSpot({ ...spot, tabs: [{ ...spot.tabs![0], tabs: [{ id: "p9", sessionId: "x" }], tabIndex: 0 }] }), undefined, "no tabs inside tabs");
+});
+
+test("moving a pane adds it as a tab, splits it out, or swaps just that pane", () => {
+  const split = splitSessionPane(singleSessionLayout("alpha"), "p1", "beta", "right");
+  const tabbed = moveSessionPane(split, "p2", "p1", { kind: "tab" });
+  assert.equal(tabbed.columns.length, 1);
+  assert.deepEqual(sessionPanes(tabbed).map(({ id }) => id), ["p1", "p2"]);
+  assert.equal(tabbed.activePaneId, "p2");
+  assert.strictEqual(moveSessionPane(tabbed, "p1", "p2", { kind: "tab" }), tabbed, "its own spot is a no-op");
+  // A hidden tab dragged to its own spot's edge becomes its own spot again.
+  const out = moveSessionPane(tabbed, "p1", "p2", { kind: "edge", edge: "right" });
+  assert.deepEqual(out.columns.map((column) => column.panes.map(({ id, tabs }) => `${id}${tabs ? "+" : ""}`)), [["p2"], ["p1"]]);
+  // Center swaps only the dragged pane; the target spot keeps its other tabs.
+  const three = addSessionTab(splitSessionPane(singleSessionLayout("alpha"), "p1", "beta", "right"), "p2", "gamma");
+  const swapped = moveSessionPane(three, "p1", "p3", { kind: "center" });
+  assert.deepEqual(visibleSessionPanes(swapped).map(({ id }) => id), ["p3", "p1"]);
+  assert.deepEqual(sessionPanes(swapped).map(({ id }) => id), ["p3", "p2", "p1"]);
+  // A hidden tab dropped on another spot's centre swaps in and its own spot keeps showing.
+  const hidden = moveSessionPane(three, "p2", "p1", { kind: "center" });
+  assert.deepEqual(visibleSessionPanes(hidden).map(({ id }) => id), ["p2", "p3"]);
+  assert.deepEqual(sessionPanes(hidden).map(({ id }) => id), ["p2", "p1", "p3"]);
 });

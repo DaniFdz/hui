@@ -131,6 +131,7 @@ import {
 import { backlogItemPrompt, type BacklogItem, type BacklogView } from "../shared/backlog.ts";
 import { TASK_SUGGESTION_START_MODES, taskSuggestionJiraDescription, taskSuggestionPrompt, type TaskSuggestionStartMode } from "../shared/task-suggestions.ts";
 import { terminals, TerminalError } from "./terminals.ts";
+import { attachSessionTransport, sessionStreamTicket } from "./session-transport.ts";
 import { attachTerminalTransport, terminalTicket } from "./terminal-transport.ts";
 import {
   createSessionGroup,
@@ -186,7 +187,7 @@ const SESSION_GROUP_MAX = 200;
 const SESSION_GROUP_ORDER_MAX = 1_000;
 /** Session actions and live catalogs, all addressed by HUI's own session id. */
 const SESSION_ACTION =
-  /^\/__hui\/sessions\/([^/]+)\/(open|prompt|continue|resume|steer|follow-up|btw|queue|events|models|commands|tools|model|thinking|question|abort|clear|checkpoints|rewind)$/;
+  /^\/__hui\/sessions\/([^/]+)\/(open|prompt|continue|resume|steer|follow-up|btw|queue|events|connect|models|commands|tools|model|thinking|question|abort|clear|checkpoints|rewind)$/;
 /** The session itself, for changing it rather than acting on it. */
 const SESSION_ONE = /^\/__hui\/sessions\/([^/]+)$/;
 const GITHUB_ROUTE = `${PREFIX}github`;
@@ -1773,10 +1774,46 @@ function writeEvent(response: ServerResponse, event: string, data: unknown): voi
 }
 
 /**
- * Paints the session once, then forwards everything that happens to it for as
- * long as the browser listens. The heartbeat keeps a proxy from dropping an
- * idle stream, and is unref'd so it never keeps the process alive by itself.
+ * Paints the session once, then forwards everything that happens to it until
+ * the returned unsubscribe runs. The caller has already ensured the runtime.
  */
+function watchSessionEvents(
+  id: string,
+  send: (event: string, data: unknown) => void,
+  sessions: Pick<typeof liveSessions, "watch"> = liveSessions,
+): () => void {
+  const watched = sessions.watch(id, (message) => {
+    switch (message.kind) {
+      case "snapshot":
+        send("snapshot", message.snapshot);
+        break;
+      case "transcript":
+        send("transcript", message.entries);
+        break;
+      case "status":
+        send("status", { status: message.status });
+        break;
+      case "event":
+        send("event", message.event);
+        break;
+      case "model":
+        send("model", message.model);
+        break;
+      case "thinking":
+        send("thinking_level", { level: message.level });
+        break;
+      case "closed":
+        send("closed", {});
+        break;
+    }
+  }, { reader: true });
+  send("snapshot", watched.snapshot);
+  return watched.unsubscribe;
+}
+
+/** The SSE form of a session's events, for scripts and other HTTP clients.
+ * The heartbeat keeps a proxy from dropping an idle stream, and is unref'd so
+ * it never keeps the process alive by itself. */
 export function streamSession(
   response: ServerResponse,
   record: SessionRecord,
@@ -1797,33 +1834,10 @@ export function streamSession(
   });
   response.flushHeaders();
 
-  const watched = sessions.watch(record.id, (message) => {
-    switch (message.kind) {
-      case "snapshot":
-        writeEvent(response, "snapshot", message.snapshot);
-        break;
-      case "transcript":
-        writeEvent(response, "transcript", message.entries);
-        break;
-      case "status":
-        writeEvent(response, "status", { status: message.status });
-        break;
-      case "event":
-        writeEvent(response, "event", message.event);
-        break;
-      case "model":
-        writeEvent(response, "model", message.model);
-        break;
-      case "thinking":
-        writeEvent(response, "thinking_level", { level: message.level });
-        break;
-      case "closed":
-        writeEvent(response, "closed", {});
-        response.end();
-        break;
-    }
-  }, { reader: true });
-  writeEvent(response, "snapshot", watched.snapshot);
+  const unsubscribe = watchSessionEvents(record.id, (event, data) => {
+    writeEvent(response, event, data);
+    if (event === "closed") response.end();
+  }, sessions);
 
   const heartbeat = setInterval(() => {
     if (!response.writableEnded) {
@@ -1834,7 +1848,7 @@ export function streamSession(
 
   response.on("close", () => {
     clearInterval(heartbeat);
-    watched.unsubscribe();
+    unsubscribe();
   });
 }
 
@@ -3284,6 +3298,11 @@ async function handleRequest(
       streamSession(response, record);
       return;
     }
+    if (action[2] === "connect" && request.method === "POST") {
+      const url = sessionStreamTicket(id);
+      sendJson(response, url ? 200 : 429, url ? { url } : { error: "Too many pending session connections." });
+      return;
+    }
     sendJson(response, 405, { error: "method not allowed" });
     return;
   }
@@ -3352,9 +3371,15 @@ export function stopBackend(): void {
   liveSessions.disposeAll();
 }
 
-/** Upgrade handler for browser panes; the gateway and Vite servers attach it next to terminals. */
-export function attachBrowserStream(server: EventEmitter, allowedHosts?: ReadonlySet<string>): () => void {
-  return attachBrowserTransport(server, managedBrowser, allowedHosts);
+/** Upgrade handlers for browser panes and session views; the gateway and Vite
+ * servers attach them next to terminals. */
+export function attachLiveStreams(server: EventEmitter, allowedHosts?: ReadonlySet<string>): () => void {
+  const detachBrowser = attachBrowserTransport(server, managedBrowser, allowedHosts);
+  const detachSessions = attachSessionTransport(server, async (id, send) => {
+    const record = (await readRegistry()).find((session) => session.id === id);
+    return record && liveSessions.ensure(record) ? watchSessionEvents(id, send) : undefined;
+  }, allowedHosts);
+  return () => { detachBrowser(); detachSessions(); };
 }
 
 export function huiConfig(): Plugin {
@@ -3364,16 +3389,16 @@ export function huiConfig(): Plugin {
       void startBackend();
       if (server.httpServer) {
         const detach = attachTerminalTransport(server.httpServer);
-        const detachBrowser = attachBrowserStream(server.httpServer);
-        server.httpServer.once("close", () => { detach(); detachBrowser(); });
+        const detachStreams = attachLiveStreams(server.httpServer);
+        server.httpServer.once("close", () => { detach(); detachStreams(); });
       }
       server.middlewares.use(middleware);
     },
     configurePreviewServer(server) {
       void startBackend();
       const detach = attachTerminalTransport(server.httpServer);
-      const detachBrowser = attachBrowserStream(server.httpServer);
-      server.httpServer.once("close", () => { detach(); detachBrowser(); });
+      const detachStreams = attachLiveStreams(server.httpServer);
+      server.httpServer.once("close", () => { detach(); detachStreams(); });
       server.middlewares.use(middleware);
     },
     closeBundle() {

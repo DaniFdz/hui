@@ -12,6 +12,8 @@ import { trackedFetch } from "./ui-errors.ts";
 import type { SessionStage, SessionStageOrigin } from "../../shared/session-stages.ts";
 
 const SESSIONS_URL = "/__hui/sessions";
+/** Mirrors the server's close code for a session that no longer exists. */
+const SESSION_STREAM_GONE = 4404;
 const SESSION_STATUSES_URL = `${SESSIONS_URL}/events`;
 
 export type SessionStatus = "idle" | "running" | "waiting" | "starting" | "error";
@@ -664,13 +666,15 @@ export function subscribeSessionStatuses(
  * Subscribes to a session's event stream, reconnecting on its own when it
  * drops. Returns a function that ends it for good.
  *
- * `EventSource` cannot set the `x-hui` header the backend requires, so this
- * reads the same `text/event-stream` framing off a `fetch` body instead.
+ * Each view uses a WebSocket, not a streaming fetch: browsers allow only six
+ * HTTP/1.1 connections per origin, so a few split panes would stall every other
+ * request. WebSocket cannot set the `x-hui` header, so a guarded POST first
+ * mints a one-use ticket for it.
  *
  * Only a network drop is retried. An `event: closed` from the server means the
- * runtime exited and there is nothing left to stream, and a 4xx means the
- * server will keep refusing this session; both stop the loop rather than
- * replaying a session that is gone.
+ * runtime exited and there is nothing left to stream, and a 4xx (or the gone
+ * close code) means the server will keep refusing this session; both stop the
+ * loop rather than replaying a session that is gone.
  */
 export function subscribeSession(id: string, handlers: SessionStreamHandlers): () => void {
   const abort = new AbortController();
@@ -722,54 +726,54 @@ async function connectOnce(
   signal: AbortSignal,
   onLive: () => void,
 ): Promise<StreamOutcome> {
-  let response: Response;
+  let socket: WebSocket;
   try {
-    response = await trackedFetch(`${SESSIONS_URL}/${encodeURIComponent(id)}/events`, {
-      headers: { ...CLIENT_HEADERS, accept: "text/event-stream" },
+    const response = await trackedFetch(`${SESSIONS_URL}/${encodeURIComponent(id)}/connect`, {
+      method: "POST",
+      headers: CLIENT_HEADERS,
       cache: "no-store",
       signal,
     });
+    if (!response.ok) {
+      return response.status >= 500 || response.status === 429
+        ? { kind: "dropped" }
+        : { kind: "refused", message: `The event stream returned HTTP ${response.status}.` };
+    }
+    const address = new URL(((await response.json()) as { url: string }).url, location.href);
+    address.protocol = address.protocol === "https:" ? "wss:" : "ws:";
+    if (signal.aborted) return { kind: "dropped" };
+    socket = new WebSocket(address);
   } catch {
     return { kind: "dropped" };
   }
-  if (!response.ok || !response.body) {
-    return response.status >= 500
-      ? { kind: "dropped" }
-      : { kind: "refused", message: `The event stream returned HTTP ${response.status}.` };
-  }
-
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  let live = false;
-  try {
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) {
-        break;
-      }
+  return new Promise((resolve) => {
+    let live = false;
+    const finish = (outcome: StreamOutcome) => {
+      signal.removeEventListener("abort", abort);
+      socket.onmessage = socket.onclose = null;
+      socket.close();
+      resolve(outcome);
+    };
+    const abort = () => finish({ kind: "dropped" });
+    signal.addEventListener("abort", abort, { once: true });
+    socket.onmessage = (message) => {
       if (!live) {
         live = true;
         onLive();
         handlers.onConnection("live", "");
       }
-      // Normalise CRLF as it arrives, so a chunk boundary inside `\r\n` cannot
-      // hide the blank line that separates two events.
-      buffer = (buffer + decoder.decode(value, { stream: true })).replace(/\r\n/g, "\n");
-      let at: number;
-      while ((at = buffer.indexOf("\n\n")) !== -1) {
-        const chunk = buffer.slice(0, at);
-        buffer = buffer.slice(at + 2);
-        if (dispatch(chunk, handlers)) {
-          return { kind: "ended" };
-        }
+      try {
+        const frame = JSON.parse(String(message.data)) as { event: string; data: unknown };
+        if (dispatch(frame.event, frame.data, handlers)) finish({ kind: "ended" });
+      } catch {
+        // A frame that cannot be applied is a drop; the reconnect snapshot resyncs.
+        finish({ kind: "dropped" });
       }
-    }
-  } catch {
-    // A read that fails mid-stream is a drop; the caller backs off and retries.
-    return { kind: "dropped" };
-  }
-  return { kind: "dropped" };
+    };
+    socket.onclose = (event) => finish(event.code === SESSION_STREAM_GONE
+      ? { kind: "refused", message: "This session no longer exists." }
+      : { kind: "dropped" });
+  });
 }
 
 async function connectStatusesOnce(
@@ -828,10 +832,7 @@ async function connectStatusesOnce(
 }
 
 /** Returns true for the server's terminal `closed` event. */
-function dispatch(chunk: string, handlers: SessionStreamHandlers): boolean {
-  const frame = decodeSseFrame(chunk);
-  if (!frame) return false;
-  const { name, payload } = frame;
+function dispatch(name: string, payload: unknown, handlers: SessionStreamHandlers): boolean {
   switch (name) {
     case "snapshot":
       handlers.onSnapshot(payload as SessionSnapshot);

@@ -508,8 +508,9 @@ registry format are unchanged.
 PI's JSONL remains the durable authority, while the gateway owns a temporary
 projection of the turn currently streaming. That projection includes text,
 thinking, correlated tool calls, queue state and pending extension-UI questions.
-Every SSE connection begins with one atomic snapshot; reconnecting during a
-turn therefore cannot lose the prefix already emitted. At `agent_end`, the
+Every event stream connection (SSE, or the WebSocket each browser view uses)
+begins with one atomic snapshot; reconnecting during a turn therefore cannot
+lose the prefix already emitted. At `agent_end`, the
 projection is replaced with PI's refreshed transcript rather than persisted by
 HUI as a competing conversation store. If that refresh fails, HUI retains the
 completed projection and reports the error instead of replacing it with stale

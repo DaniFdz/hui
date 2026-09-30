@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { atomicJson, GATEWAY_DIR, removeState, STATE_FILE, type GatewayState } from "../cli/state.ts";
 import { packageVersion } from "../cli/installation.ts";
 import { liveSessions } from "./live-sessions.ts";
-import { attachBrowserStream, middleware, startBackend, stopBackend } from "./hui.ts";
+import { attachLiveStreams, middleware, startBackend, stopBackend } from "./hui.ts";
 import { serveStatic } from "./static-files.ts";
 import { configureUpdates } from "./updates.ts";
 import { terminals } from "./terminals.ts";
@@ -59,7 +59,7 @@ export async function runGateway(options: GatewayOptions): Promise<{ state: Gate
   });
   let state: GatewayState;
   const detachTerminals = attachTerminalTransport(server, allowed);
-  const detachBrowser = attachBrowserStream(server, allowed);
+  const detachStreams = attachLiveStreams(server, allowed);
   const control = createServer((request, response) => {
     const auth = Buffer.from(request.headers.authorization ?? "");
     const expected = Buffer.from(`Bearer ${token}`);
@@ -84,7 +84,7 @@ export async function runGateway(options: GatewayOptions): Promise<{ state: Gate
     stopping ??= (async () => {
       closing = true;
       detachTerminals();
-      detachBrowser();
+      detachStreams();
       stopBackend();
       await Promise.all([close(server), close(control)]);
       await removeState(instance);
@@ -112,7 +112,7 @@ export async function runGateway(options: GatewayOptions): Promise<{ state: Gate
     return { state, closed, stop };
   } catch (error) {
     detachTerminals();
-    detachBrowser();
+    detachStreams();
     stopBackend(); await Promise.all([close(server), close(control)]); throw error;
   }
 }
