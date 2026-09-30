@@ -740,9 +740,9 @@ export function renderSidebar(props: ShellProps) {
           @click=${toggleNavigationDrawer}
         >${icons.menu}</button>
         <div class="topnav-shell__content">
-          <div class="topbar-brand" aria-label="HUI">
-            <img class="topbar-brand__logo" src="/hui-logo.png" alt="" aria-hidden="true" />
-            <span class="topbar-brand__title">HUI</span>
+          <div class="topbar-brand" aria-label="PI">
+            <img class="topbar-brand__logo" src="/pi-logo-3d.png" alt="" aria-hidden="true" />
+            <span class="topbar-brand__title">PI</span>
           </div>
         </div>
         <div class="topnav-shell__actions">

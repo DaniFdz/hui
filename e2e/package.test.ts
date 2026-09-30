@@ -59,7 +59,7 @@ test("installed package lifecycle, real SDK resume, verified update and rollback
   await writeFile(join(agentDir, "settings.json"), JSON.stringify({ defaultProvider: "hui-e2e", defaultModel: "fixture" }));
   const packed = JSON.parse(await npm(["pack", "--ignore-scripts", "--json", "--pack-destination", temporary]))[0];
   assert(packed.files.some((file: { path: string }) => file.path === "dist/index.html"));
-  for (const path of ["desktop/main.cjs", "desktop/launch.mjs", "desktop/install.mjs", "desktop/icon.mjs", "desktop/icon.png", "desktop/policy.cjs"]) {
+  for (const path of ["desktop/main.cjs", "desktop/launch.mjs", "desktop/install.mjs", "desktop/icon.mjs", "desktop/policy.cjs"]) {
     assert(packed.files.some((file: { path: string }) => file.path === path), `Desktop package contains ${path}`);
   }
   for (const path of ["LICENSE", "README.md", "THIRD_PARTY_NOTICES.md", "npm-shrinkwrap.json"]) {

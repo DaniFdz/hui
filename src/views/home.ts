@@ -551,8 +551,8 @@ function renderLaunchForm(props: HomeProps) {
   return html`
     <div class="agent-chat__welcome new-session-page__welcome">
       <div class="agent-chat__welcome-identity">
-        <span class="agent-chat__welcome-avatar"><img src="/hui-logo.png" alt="" aria-hidden="true" /></span>
-        <div class="agent-chat__welcome-identity-copy"><h2>HUI</h2>
+        <span class="agent-chat__welcome-avatar"><img src="/pi-logo-3d.png" alt="" aria-hidden="true" /></span>
+        <div class="agent-chat__welcome-identity-copy"><h2>PI</h2>
         <p class="agent-chat__hint">Pick where this session works, then say what to do.</p></div>
       </div>
       <form class="launch new-session-page__draft" aria-describedby=${props.note ? "launch-feedback" : nothing} @submit=${onSubmit(props)}>

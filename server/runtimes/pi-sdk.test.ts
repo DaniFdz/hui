@@ -114,7 +114,7 @@ test("SDK owns schemas and prompt, executes tools, preserves history, models, th
   assert.equal(session.currentModel()?.id, "group/second");
   await session.setThinking("low"); assert.equal(session.currentThinking(), "low");
   settled = nextEvent(session, (event) => event.type === "settled");
-  const image = await readFile(new URL("../../public/hui-logo.png", import.meta.url));
+  const image = await readFile(new URL("../../public/pi-logo-3d.png", import.meta.url));
   await session.prompt("attachment", [{ kind: "image", name: "fixture.png", mimeType: "image/png", dataBase64: image.toString("base64") }]);
   await settled;
   assert((await readFile(f.log, "utf8")).includes("image/png"), JSON.stringify(session.transcript().slice(-3)));
