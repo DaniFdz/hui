@@ -128,28 +128,6 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   detected only from a `gh pr create` (or create-pull-request tool) result in
   the live transcript; state and text come from the shared GitHub previews (`gh api`), cached
   in memory and never persisted. Unconfirmed PRs render neutral, never guessed.
-- When the session's agent hands code over with `propose_changes`, the call
-  waits for the operator like a question (the session shows *waiting*) and a
-  changes card closes the transcript until it is answered. Git state alone
-  never shows the card, and an answered call never brings it back: title and READY pill, `branch → base`, +/−, commit count, and
-  one row per changed file (checkbox for uncommitted files, preselecting the
-  files the session wrote, listed first; a click opens that file's diff inline).
-  Long lists show two and a half rows with *Show all N files*. The commit
-  message, PR title and PR description default to the agent's `propose_changes`
-  call and stay editable. The agent also chooses the action (`commit` to the
-  branch and its open PR, a new `pr`, or `stack` for a draft PR based on the
-  open one), which becomes the primary button (*Commit & push* / *Commit to #N*,
-  *Open draft PR*, *Open stacked PR*); the others stay available; empty fields are written by the utility model. Diffs are side by
-  side when the card is at least 640px wide and unified when narrower. Settings →
-  Integrations → Git → *Changes card* turns the whole card off. *View diff*
-  opens them all. *Commit & push* (or *Commit* without a remote) and *Open draft
-  PR* run Git and `gh` directly with utility-model messages and return the
-  outcome to the waiting agent; any failure past input validation (a refused
-  step or an unexpected error) is returned with the command HUI ran, its output
-  and instructions, so the agent finishes it. An open PR turns the action into
-  *View pull request*. *Keep iterating* (or ×) tells the agent not to ship and
-  to wait; typing in the composer instead dismisses the card and delivers the
-  message.
 - Sessions linked to Jira Cloud work items show a Jira mark in the leading status
   column (aligned with child status glyphs; live attention/running status wins),
   colored by status category. Hover opens a card with the key, type, status,

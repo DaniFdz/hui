@@ -107,7 +107,6 @@ export type SettingsProps = AutomationProps & {
   onChangeBranchPrefix: (prefix: string) => void;
   onChangeAppearance: (next: Partial<Pick<Settings, "fontUi" | "fontChat" | "fontTerminal" | "textScale">>) => void;
   onChangeChat: (next: Settings["chat"]) => void;
-  onChangeGit: (next: Settings["git"]) => void;
   /** Resolves once the settings write lands, so the Browser section can re-read status. */
   onChangeBrowser: (next: Settings["browser"]) => Promise<unknown> | void;
   onChangeModels: (next: Settings["models"]) => void;
@@ -637,22 +636,12 @@ function renderSkillsPage(props: SettingsProps) {
   `;
 }
 
-/** One section per external service: Jira, GitHub, then local Git tools. */
-function renderIntegrationsPage(props: SettingsProps) {
-  const git = props.settings.git;
+/** One section per external service: Jira, then GitHub. */
+function renderIntegrationsPage() {
   return html`
     <p class="settings-page__intro">Connect HUI to external services. Credentials stay on this machine and are never sent to the browser.</p>
     <hui-jira-settings></hui-jira-settings>
     <hui-github-settings></hui-github-settings>
-    ${renderSection(
-      "Git",
-      "Tools that read and change session checkouts.",
-      renderRow(
-        "Changes card",
-        "When a session has code ready, show its changed files and diffs after the conversation with Commit & push and Open draft PR. Off, HUI does not inspect the checkout.",
-        renderSettingsToggle("Changes card", git.changesCard, (checked) => props.onChangeGit({ ...git, changesCard: checked })),
-      ),
-    )}
   `;
 }
 
@@ -1121,7 +1110,7 @@ export function renderSettingsPage(props: SettingsProps) {
                   : props.page === "connection"
                     ? renderConnectionPage(props)
                     : props.page === "integrations"
-                    ? renderIntegrationsPage(props)
+                    ? renderIntegrationsPage()
                     : props.page === "plugins"
                       ? renderPluginsPage(props)
                       : props.page === "memory"

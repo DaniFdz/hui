@@ -24,11 +24,6 @@ export type Settings = {
   };
   profileName: string;
   profileHandle: string;
-  /** Settings → Integrations → Git. */
-  git: {
-    /** Show the chat's changes card (diffs, commit, push, draft pull request). */
-    changesCard: boolean;
-  };
   /** Prefix for branches created by New Session worktrees. Always ends in `/`. */
   branchPrefix: string;
   /** Settings → Tools → Browser: HUI's managed, agent-only browser profile. */
@@ -80,7 +75,6 @@ export const DEFAULT_SETTINGS: Settings = {
   },
   profileName: "HUI Operator",
   profileHandle: "",
-  git: { changesCard: true },
   branchPrefix: DEFAULT_BRANCH_PREFIX,
   browser: DEFAULT_BROWSER_SETTINGS,
   power: { keepAwake: true },
@@ -106,8 +100,6 @@ export function normalizeSettings(raw: unknown): Settings {
     chat: normalizeChat(source["chat"]),
     profileName: boundedText(source["profileName"], DEFAULT_SETTINGS.profileName, 80),
     profileHandle: boundedText(source["profileHandle"], "", 80),
-    // Opt-out: only an explicit false hides the changes card.
-    git: { changesCard: !(isRecord(source["git"]) && source["git"]["changesCard"] === false) },
     branchPrefix: normalizeBranchPrefix(source["branchPrefix"]),
     browser: normalizeBrowserSettings(source["browser"]),
     power: normalizePower(source["power"]),

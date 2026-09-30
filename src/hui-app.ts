@@ -2,7 +2,6 @@ import { renderPicker } from "./views/settings-picker.ts";
 import { groupCheckoutDefaults } from "./lib/group-session-defaults.ts";
 import { renderDirectoryPicker } from "./views/directory-picker.ts";
 import { sessionTreeIds } from "./lib/session-tree.ts";
-import { isChangesDecision } from "../shared/session-changes.ts";
 import { html, type PropertyValues } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { HuiElement } from "./lit/hui-element.ts";
@@ -1820,8 +1819,7 @@ export class HuiApp extends HuiElement {
       ? 0
       : clampSuggestionIndex(this.taskSuggestionIndex, this.taskSuggestions.length);
     if (previousTasks !== nextTasks) void this.refreshSessions();
-    // A propose_changes call is answered by the changes card, not the dock.
-    const question = snapshot.questions.find((candidate) => !isChangesDecision(candidate));
+    const question = snapshot.questions[0];
     if (question) this.showQuestion(question);
     else if (this.question) {
       this.question = undefined;
@@ -1858,7 +1856,7 @@ export class HuiApp extends HuiElement {
       return;
     }
     if (event.type === "question") {
-      if (!isChangesDecision(event.question)) this.showQuestion(event.question);
+      this.showQuestion(event.question);
       return;
     }
     if (event.type === "thinking_level") {
@@ -3766,7 +3764,6 @@ export class HuiApp extends HuiElement {
       rewindPending: this.rewindPending,
       draft: this.draft,
       chatPreferences: this.settings.chat,
-      changesCard: this.settings.git.changesCard,
       queue: this.queue,
       thinking: this.thinking,
       question: this.question,
@@ -4129,7 +4126,6 @@ export class HuiApp extends HuiElement {
           onChangeBranchPrefix: (branchPrefix) => void this.save({ branchPrefix }),
           onChangeAppearance: (next) => void this.save(next),
           onChangeChat: (chat) => void this.save({ chat }),
-          onChangeGit: (git) => void this.save({ git }),
           onChangeBrowser: (browser) => this.save({ browser }),
           onChangePower: (power) => void this.save({ power }).then(() => this.refreshPower()),
           onSetLidAwake: this.setLidAwakeFromUi,

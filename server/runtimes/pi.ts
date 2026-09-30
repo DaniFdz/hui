@@ -1221,10 +1221,8 @@ async function startPi(options: {
   const args = ["--mode", "rpc"];
   const huiSettings = options.safeProbe ? undefined : await readHuiSettings();
   const browserTool = !options.safeProbe && huiSettings?.browser.enabled !== false;
-  const changesTool = !options.safeProbe && huiSettings?.git.changesCard !== false;
   if (!options.safeProbe) {
     args.push("--extension", fileURLToPath(new URL("./progress-card-extension.mjs", import.meta.url)));
-    if (changesTool) args.push("--extension", fileURLToPath(new URL("./changes-proposal-extension.mjs", import.meta.url)));
     args.push("--extension", fileURLToPath(new URL("./agent-tools-extension.mjs", import.meta.url)));
     if (browserTool) args.push("--extension", fileURLToPath(new URL("./browser-tool-extension.mjs", import.meta.url)));
     args.push("--extension", fileURLToPath(new URL("./skill-policy-extension.mjs", import.meta.url)));
@@ -1274,7 +1272,7 @@ async function startPi(options: {
   const child = backend === "sdk"
     ? spawn(process.execPath, [fileURLToPath(new URL(import.meta.url.endsWith(".ts") ? "./pi-sdk-worker.ts" : "./pi-sdk-worker.js", import.meta.url))], {
         cwd: options.cwd, stdio: ["pipe", "pipe", "pipe", "ipc"],
-        env: { ...env, HUI_PI_WORKER_LAUNCH: JSON.stringify({ ...options, agentDir, disabledPluginIds, bundledSkillPaths, browserTool, changesTool }) },
+        env: { ...env, HUI_PI_WORKER_LAUNCH: JSON.stringify({ ...options, agentDir, disabledPluginIds, bundledSkillPaths, browserTool }) },
       }) as ChildProcessWithoutNullStreams
     : spawn(cli.command, cli.args, { cwd: options.cwd, stdio: ["pipe", "pipe", "pipe"], env });
 

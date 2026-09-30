@@ -116,8 +116,6 @@ import { GitHubCli, GitHubCliError } from "./github.ts";
 import { GitHubPreviews, ghApi, previewPullRequestFetcher } from "./github-previews.ts";
 import { MAX_GITHUB_EMBEDS, parseGitHubUrl } from "../shared/github-links.ts";
 import { TaskSuggestionInputError, TaskSuggestionNotFoundError, TaskSuggestionStore } from "./task-suggestions.ts";
-import { delegationPrompt, sessionEditedPaths, SessionChangesService, ShipInputError, ShipStepError, type ChangeWriter } from "./session-changes.ts";
-import { changesProposalFromDecision, shipSummary, SHIP_ACTIONS, type SessionChanges, type ShipAction, type ShipInput, type ShipResponse } from "../shared/session-changes.ts";
 import {
   BacklogInputError,
   BacklogJiraFeed,
@@ -201,11 +199,6 @@ const JIRA_ISSUES_ROUTE = `${JIRA_ROUTE}/issues`;
 /** Dismiss (DELETE), start (POST …/start) or save to the backlog (POST
  * …/backlog) one pending `suggest_task` card. */
 const SESSION_SUGGESTION = /^\/__hui\/sessions\/([^/]+)\/suggestions\/([^/]+?)(?:\/(start|backlog))?$/;
-/** The session checkout's prepared changes (GET), one file's diff (GET …/diff),
- * and the changes card's answers to a waiting `propose_changes` call: commit /
- * push / draft or stacked pull request (POST …/ship) or keep iterating (POST …/iterate). */
-const SESSION_CHANGES = /^\/__hui\/sessions\/([^/]+)\/changes(?:\/(diff|ship|iterate))?$/;
-const SHIP_FILES_MAX = 500;
 const BACKLOG_ROUTE = `${PREFIX}backlog`;
 /** One backlog item: PATCH group, DELETE (local), POST …/start, POST
  * …/branch-name (suggested worktree name), and for local tasks POST …/jira
@@ -839,43 +832,7 @@ const GH_COMMAND = process.env["HUI_GITHUB_CLI"] || "gh";
 const githubCli = new GitHubCli({ command: GH_COMMAND });
 const githubPreviews = new GitHubPreviews(ghApi(GH_COMMAND));
 const pullRequestStatuses = new PullRequestStatuses(previewPullRequestFetcher(githubPreviews));
-const sessionChanges = new SessionChangesService({ gh: GH_COMMAND });
 
-/** Commit messages and pull request drafts come from the utility model; without
- * one the service falls back to a file-list subject and `gh pr create --fill`. */
-async function changeWriter(cwd: string): Promise<ChangeWriter | undefined> {
-  const model = (await readSettings()).models.utility;
-  if (!model) return undefined;
-  return (prompt) => runPiUtilityPrompt({ cwd, model, prompt, timeoutMs: 45_000 });
-}
-
-/** Attaches the `propose_changes` call waiting for the operator, if any. */
-function withProposal(sessionId: string, changes: SessionChanges): SessionChanges {
-  const proposal = changesProposalFromDecision(liveSessions.changesDecision(sessionId));
-  return proposal ? { ...changes, proposal } : changes;
-}
-
-function parseShipBody(body: unknown): ShipInput & { files: string[] } {
-  const source = body && typeof body === "object" && !Array.isArray(body) ? body as Record<string, unknown> : {};
-  const action = source["action"];
-  if (typeof action !== "string" || !SHIP_ACTIONS.includes(action as ShipAction)) throw new ShipInputError("action must be commit, commit_push, draft_pr or stacked_pr.");
-  const files = source["files"] ?? [];
-  if (!Array.isArray(files) || files.length > SHIP_FILES_MAX || files.some((path) => typeof path !== "string" || !path || path.length > 4_096 || path.includes("\0"))) {
-    throw new ShipInputError(`files must be at most ${SHIP_FILES_MAX} repository-relative paths.`);
-  }
-  const text = (key: "message" | "prTitle" | "prBody", max: number) => {
-    const value = source[key];
-    if (value !== undefined && (typeof value !== "string" || value.length > max)) throw new ShipInputError(`${key} must be text of at most ${max} characters.`);
-    return typeof value === "string" && value.trim() ? { [key]: value } : {};
-  };
-  return {
-    action: action as ShipAction,
-    files: files as string[],
-    ...text("message", 4_000),
-    ...text("prTitle", 200),
-    ...text("prBody", 20_000),
-  };
-}
 const worktreeService = new WorktreeService({
   isRunning: (id) => liveSessions.hasRuntime(id),
   stopSession: (id) => liveSessions.close(id),
@@ -2904,102 +2861,6 @@ async function handleRequest(
             : 400,
         { error: error instanceof Error ? error.message : "Could not update that session." },
       );
-    }
-    return;
-  }
-
-  const changesRoute = path.match(SESSION_CHANGES);
-  if (changesRoute) {
-    const kind = changesRoute[2];
-    if (request.method !== (kind === "ship" || kind === "iterate" ? "POST" : "GET")) {
-      sendJson(response, 405, { error: "method not allowed" });
-      return;
-    }
-    const id = decodeURIComponent(changesRoute[1] ?? "");
-    const record = (await readRegistry()).find((session) => session.id === id);
-    if (!record) {
-      sendJson(response, 404, { error: `unknown session: ${id}` });
-      return;
-    }
-    const cwd = resolveWorkingDirectory(record.cwd);
-    const ownPaths = () => sessionEditedPaths(liveSessions.transcript(id), cwd);
-    if (!kind) {
-      sendJson(response, 200, { changes: withProposal(id, await sessionChanges.inspect(cwd, ownPaths())) });
-      return;
-    }
-    if (kind === "diff") {
-      const file = new URL(request.url ?? "/", "http://localhost").searchParams.get("path") ?? "";
-      try {
-        sendJson(response, 200, await sessionChanges.diff(cwd, file));
-      } catch (error) {
-        sendJson(response, error instanceof ShipInputError ? 400 : 500, { error: error instanceof Error ? error.message : "Could not read that diff." });
-      }
-      return;
-    }
-    // Like answering a question: only while the agent waits in propose_changes.
-    const decision = liveSessions.changesDecision(id);
-    if (!decision) {
-      sendJson(response, 409, { error: "The session's agent is not waiting for a shipping decision." });
-      return;
-    }
-    if (kind === "iterate") {
-      try {
-        await liveSessions.answerChangesDecision(id, { outcome: "iterate" }, decision.id);
-      } catch (error) {
-        sendJson(response, 409, { error: error instanceof Error ? error.message : "Could not answer the session's agent." });
-        return;
-      }
-      sendJson(response, 200, { changes: withProposal(id, await sessionChanges.inspect(cwd, ownPaths())) });
-      return;
-    }
-    // A step that already ran stays reported even if the run ended meanwhile.
-    const answer = async (value: Parameters<typeof liveSessions.answerChangesDecision>[1]) => {
-      try {
-        if (!(await liveSessions.answerChangesDecision(id, value, decision.id))) throw new Error("the decision was already answered");
-      } catch (error) {
-        recordDiagnosticEvent({ area: "session", level: "warning", action: "changes_decision_unanswered", summary: error instanceof Error ? error.message : "unknown error", sessionId: id });
-      }
-    };
-    let input: ReturnType<typeof parseShipBody>;
-    try {
-      input = parseShipBody(await readBody(request));
-    } catch (error) {
-      sendJson(response, 400, { error: error instanceof Error ? error.message : "Invalid request." });
-      return;
-    }
-    try {
-      const result = await sessionChanges.ship({
-        cwd,
-        ...input,
-        branchPrefix: (await readSettings()).branchPrefix,
-        sessionPaths: ownPaths(),
-        writer: await changeWriter(cwd),
-      });
-      await answer({ outcome: "shipped", summary: shipSummary(result), result });
-      const body: ShipResponse = { outcome: "completed", result, changes: withProposal(id, await sessionChanges.inspect(cwd, ownPaths())) };
-      sendJson(response, 200, body);
-    } catch (error) {
-      if (error instanceof ShipInputError) {
-        sendJson(response, 400, { error: error.message });
-        return;
-      }
-      // Every failure past input validation, expected or not, goes to the waiting
-      // agent as its tool result, with the request, the command and its output.
-      const failure = error instanceof ShipStepError
-        ? error
-        : new ShipStepError("prepare", error instanceof Error && error.message ? error.message : "HUI could not ship these changes.", {});
-      recordDiagnosticEvent({ area: "session", level: "warning", action: "changes_ship_delegated", summary: `${failure.step}: ${failure.message}` });
-      try {
-        if (!(await liveSessions.answerChangesDecision(id, { outcome: "failed", summary: failure.message, instructions: delegationPrompt({ ...input, error: failure }), result: failure.result }, decision.id))) {
-          throw new Error("it is no longer waiting");
-        }
-      } catch (delegation) {
-        sendJson(response, 502, { error: `${failure.message} The session could not take over: ${delegation instanceof Error ? delegation.message : "unknown error"}` });
-        return;
-      }
-      const changes = await sessionChanges.inspect(cwd, ownPaths()).catch((): SessionChanges => ({ available: false }));
-      const body: ShipResponse = { outcome: "delegated", error: failure.message, result: failure.result, changes: withProposal(id, changes) };
-      sendJson(response, 200, body);
     }
     return;
   }

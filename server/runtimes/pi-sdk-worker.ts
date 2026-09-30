@@ -27,7 +27,6 @@ type Launch = {
   bundledSkillPaths?: string[];
   /** Settings → Tools → Browser; absent means the default (on). */
   browserTool?: boolean;
-  changesTool?: boolean;
 };
 
 // Extensions sometimes log during initialization, before runRpcMode redirects
@@ -78,7 +77,7 @@ async function main() {
     const result = await createAgentSessionFromServices({
       services, sessionManager: target.sessionManager, sessionStartEvent: target.sessionStartEvent,
       ...(model ? { model } : {}), ...(thinking ? { thinkingLevel: thinking } : {}),
-      customTools: launch.safeProbe ? [] : huiToolDefinitions({ browser: launch.browserTool !== false, changes: launch.changesTool !== false }),
+      customTools: launch.safeProbe ? [] : huiToolDefinitions({ browser: launch.browserTool !== false }),
     });
     result.session.subscribe((event) => {
       if (event.type === "turn_start" || event.type === "turn_end") turnPrompts.set(result.session, result.session.systemPrompt);

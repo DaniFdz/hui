@@ -681,7 +681,6 @@ session-tool contract (see also [Suggested tasks](#suggested-tasks)):
 | `sessions_history` | Return at most 100 recent structured entries from a visible session; tool entries are opt-in and the UTF-8 serialized result is capped at 80 KiB. A single entry larger than the cap becomes an explicit omission error entry |
 | `sessions_send` | Prompt or queue a message to a visible session; `timeoutSeconds: 0` is fire-and-forget, otherwise waits up to 120 seconds for the correlated reply |
 | `subagents` | List visible spawned tasks, steer a running child, or cancel an active child |
-| `propose_changes` `{ action: "commit" \| "pr" \| "stack", commitMessage ≤4000, prTitle? ≤200, prBody? ≤20000 }` | A decision point like a question: the call blocks on a PI `input` UI request titled `hui:propose_changes` (arguments as JSON in `placeholder`), which HUI renders as the [changes card](#session-changes) instead of the question dock, and returns the operator's decision (shipped, failed with instructions, keep iterating, replied or dismissed). The tool itself never commits or pushes. Not registered while Settings → Git → *Changes card* is off, or without an operator UI |
 | `set_stage` `{ stage }` | Set the caller's own Kanban stage: `investigation`, `implementation`, `testing` or `done` (Backlog holds backlog items, never conversations, and is rejected). Refused (reported, not thrown) while an operator placement stands. See [Session stages](#session-stages) |
 
 The tools do not use `/__hui/` browser routes. Each PI child inherits an
@@ -1444,8 +1443,7 @@ catalogue, a `fontTerminal` local family name (1–128 characters, default
 `JetBrains Mono`; blank or invalid values reset to default), the shared `textScale`,
 OpenClaw-compatible HUI chat preferences (`messageWidth`,
 `collapseTaskProgress`, `sendShortcut` and `githubEmbeds`),
-`git.changesCard` (default `true`; only an explicit `false` hides the
-[changes card](#session-changes)), [`power`](#macos-power), the Git workspace `branchPrefix` (`feature/` by default), Profile presentation
+[`power`](#macos-power), the Git workspace `branchPrefix` (`feature/` by default), Profile presentation
 fields and reversible Labs flags. These values affect HUI
 only. They never change PI configuration, provider identity, runtime permissions
 or transcripts.
@@ -1774,142 +1772,6 @@ PRs refresh after 60 seconds, merged or closed after 15 minutes, failures after
 optional fields are absent, and a failed refresh keeps the last confirmed facts.
 Nothing is written to the registry. Like progress, PRs reappear after a gateway
 restart once the session's runtime restores its transcript.
-
-### Session changes
-
-The chat's changes card shows code a session has prepared in its Git checkout
-and ships it without leaving the conversation (adapted from T3 Code's stacked
-Git actions and Hermes' changed-files card).
-
-| Route | Behavior |
-| --- | --- |
-| `GET /__hui/sessions/:id/changes` | `{ changes: SessionChanges }` for the session's `cwd`. Read-only: never fetches, stages or writes. `gh pr list --head <branch> --state open` is cached for 60 seconds (15 when it finds none or fails) and looked up again when the branch's local or pushed commit changes |
-| `GET /__hui/sessions/:id/changes/diff?path=<repo-relative>` | `{ path, diff, truncated }` against the compared base (untracked files via `--no-index`); only listed paths are accepted (400 otherwise). Diffs over 200,000 characters are truncated |
-| `POST /__hui/sessions/:id/changes/ship` `{ action, files, message?, prTitle?, prBody? }` | Only while a `propose_changes` call waits (409 otherwise). `action` is `commit`, `commit_push`, `draft_pr` or `stacked_pr`; `message` ≤4000, `prTitle` ≤200 and `prBody` ≤20000 characters; `files` (≤500) must each have uncommitted changes. Answers the waiting call with the outcome and returns `ShipResponse`; 400 for invalid input or nothing to do, 502 when both HUI and the hand-off fail. Any other failure, including an unexpected one, is returned to the waiting agent (`outcome: "delegated"`) |
-| `POST /__hui/sessions/:id/changes/iterate` | *Keep iterating*: answers the waiting `propose_changes` call with `{ outcome: "iterate" }` without shipping and returns `{ changes }`; 409 when no call waits |
-
-```ts
-type SessionChanges =
-  | { available: false; proposal?: Proposal }  // not a Git checkout with a commit
-  | {
-      available: true;
-      branch: string;                          // "" on a detached HEAD
-      base: string;                            // origin/HEAD, else main/master
-      isDefaultBranch: boolean;
-      remote?: string; upstream?: string;
-      unpushed: number; behind: number;        // vs upstream; no upstream: vs the remote-tracking
-                                               // branch or the open PR's head, else commits
-      commits: number;                         // since the merge base with base
-      files: { path: string; status: "added" | "modified" | "deleted";
-               additions: number; deletions: number; binary?: true;
-               uncommitted: boolean;           // selectable and committable
-               session: boolean }[];           // written by this session's edit/write tools
-      totalFiles: number;                      // all changed paths; files lists ≤200:
-                                               // session-written uncommitted, other uncommitted, committed
-      additions: number; deletions: number;
-      pullRequest?: { number: number; url: string; title: string; draft: boolean };
-      proposal?: Proposal;                     // the propose_changes call waiting for a decision
-      signature: string;                       // changes whenever the checkout does
-    };
-type Proposal = { commitMessage: string; prTitle?: string; prBody?: string;
-  action?: "commit" | "pr" | "stack";          // the card's primary action
-  key: string };                               // id of the pending PI UI request
-
-// Returned to the agent as the propose_changes tool result.
-type ChangesDecision =
-  | { outcome: "shipped"; summary: string; result: ShipResult }
-  | { outcome: "failed"; summary: string; instructions: string; result: ShipResult }
-  | { outcome: "iterate" }                     // Keep iterating
-  | { outcome: "replied" };                    // a composer message instead of a choice
-
-type ShipResponse =
-  | { outcome: "completed"; result: ShipResult; changes: SessionChanges }
-  | { outcome: "delegated"; error: string; result: ShipResult; changes: SessionChanges };
-type ShipResult = { branch?: string; createdBranch?: string;
-  commit?: { sha: string; subject: string }; pushed?: boolean;
-  pullRequest?: { number: number; url: string; existing?: true };
-  stackedOn?: { branch: string; number: number; pushed?: true } };
-```
-
-A delegated ship prompts the session's agent (steering or queueing when it is
-busy) with the requested action, files and text, what already completed, and
-the step that failed: its first error line, the command HUI ran (long
-arguments shortened) and the last 40 lines (≤4000 characters) of that
-command's output, with credentials in URLs replaced by `***`. The full output
-matters when the useful line is not the first error, such as a repository that
-moved to another organization. A failure outside a Git or `gh` command is
-reported as the `prepare` step with its message and no command.
-
-`files` compares the working tree with the merge base, so it is what a pull
-request would contain once the uncommitted files are committed. The card is a
-pending decision, like a question: it is shown exactly while a `propose_changes`
-call waits (the session reports `waiting`), whatever the checkout holds, and
-disappears once that call is answered. Uncommitted or unpushed work alone never
-shows it, and a finished call in the transcript never brings it back. It
-preselects the uncommitted files this session wrote (every uncommitted file when
-it wrote none) and refreshes when the session starts waiting and when it becomes
-idle. Shipping answers the call with the outcome; *Keep iterating* (also the ×)
-answers `iterate`, so the agent stops without committing; a message sent from
-the composer while the card waits is queued first and then answers `replied`,
-so the agent reads it right after the tool result; stopping the run dismisses
-the call. Outside a Git checkout the card only offers *Continue*. Rows are ordered session-written uncommitted files
-first, then other uncommitted files, then committed ones. More than three rows
-collapse to two and a half (the clipped half row signals more) with a
-*Show all N files* toggle; opening a diff or *View diff* expands the list, which
-then scrolls inside the card. When `totalFiles` exceeds the 200 listed rows the
-card says so. A file's diff is side by side (old and new with line numbers,
-each run of deletions paired with the additions that follow it) while the card is
-at least 640px wide, and unified below that, so a phone or a narrow split pane
-gets the single-column view. Settings → Integrations → Git → *Changes card*
-(`git.changesCard: false`) removes the card, the browser then makes no
-changes requests, and sessions started afterwards do not get `propose_changes`
-(nothing could answer it).
-
-The session's agent proposes the text through the `propose_changes` tool when it
-hands the change over. The card prefills an editable commit message, pull
-request title and description from the waiting call (marked *from agent* until
-edited); a newer call replaces only fields the operator has not edited. Empty
-fields fall back to the utility model below.
-
-The agent hands every finished change over through `propose_changes` rather
-than committing itself (unless the current request asks it to), and chooses
-`action`: `commit` adds it to the current branch and its open pull request
-(review feedback, fixes, finishing its scope), `pr` opens a new draft pull
-request, and `stack` opens a draft pull request on top of the branch's open one
-for new scope that needs its unmerged code. It checks for an open pull request
-with `gh pr view` and decides between `commit` and `stack` from that pull
-request's description and diff. `proposedShipAction` turns the choice into the
-card's primary button: `commit` → *Commit & push* (*Commit to #N* with a pull
-request, *Commit* without a remote), `pr` → *Open draft PR*, `stack` → *Open
-stacked PR* (`stacked_pr`), the card then titled *Stack on #N* with the PR fields
-for the new pull request. An action the checkout cannot take falls back to
-*Open draft PR* without a pull request and *Commit & push* with one; the other
-actions stay available as secondary buttons.
-
-Shipping is deterministic first. HUI commits with `git commit --only -- <files>`
-(new files get `--intent-to-add` and are reset to untracked if the commit fails),
-so staged or unstaged work outside the selection is untouched. An empty
-`message` is written by the utility model from the selected diff and recent
-subjects, falling back to `Update <files>`. `commit_push` pushes, setting the
-upstream on the first push. `draft_pr` on the default branch first creates
-`<branchPrefix><slug of the commit subject>` (never moving or pushing the default
-branch), pushes, and runs `gh pr create --draft --base <base> --head <branch>`
-with the given `prTitle`/`prBody`, otherwise a utility-model title and body
-(`--fill` without a model). An existing open
-pull request is returned instead of creating another. `stacked_pr` needs an
-open pull request on the current branch and selected files: it pushes the
-branch's unpushed commits (they belong to that pull request), creates
-`<branchPrefix><slug>` from it, commits there, pushes with an upstream and runs
-`gh pr create --draft --base <current branch> --head <new branch>`; a drafted
-body covers only the new commits. The session's checkout stays on the new branch. One ship runs per
-checkout at a time. Nothing is stashed, reset, forced or rewritten.
-
-When Git or `gh` refuses a step after validation, or anything else fails
-unexpectedly, HUI returns the remainder to the waiting agent as its tool result
-(`outcome: "failed"`), with the failing step, the command HUI ran and the
-redacted tail of its output, what already completed and the selected files, and
-answers `outcome: "delegated"`. The hand-off is recorded as a `changes_ship_delegated`
-diagnostic event.
 
 ### Jira work items
 

@@ -20,7 +20,6 @@ import type {
 } from "./runtimes/types.ts";
 import { DEFAULT_SETTINGS } from "../src/lib/settings.ts";
 import { RuntimeOutputError } from "./runtimes/types.ts";
-import { CHANGES_DECISION_TITLE } from "../shared/session-changes.ts";
 
 // The registry path is read once, at import time, so the throwaway home has to
 // be in place before the module is loaded.
@@ -1469,52 +1468,18 @@ test("queue, thinking and questions share the reconnect snapshot and delegate co
   assert.deepEqual(started[0]?.questionResponses.at(-1), { id: "q-2", cancelled: true });
 });
 
-test("a propose_changes decision is answered by the card or replaced by a composer message", async () => {
-  const started: FakeSession[] = [];
-  const manager = new LiveSessions(factory(started));
-  manager.ensure(recordFor("decision"));
-  await waitForBoot(manager, "decision");
-  await manager.prompt("decision", "ship it when done");
-
-  const decision: RuntimeQuestion = { id: "d-1", method: "input", title: CHANGES_DECISION_TITLE, placeholder: JSON.stringify({ commitMessage: "Add hero", action: "pr" }) };
-  const plain: RuntimeQuestion = { id: "q-1", method: "input", title: "Name" };
-  started[0]?.emit({ type: "question", question: plain });
-  assert.equal(manager.changesDecision("decision"), undefined, "an ordinary question is not a shipping decision");
-  await manager.respondQuestion("decision", "q-1", { value: "Ada" });
-
-  started[0]?.emit({ type: "question", question: decision });
-  assert.equal(manager.status("decision"), "waiting", "the agent waits like it does on a question");
-  assert.equal(manager.changesDecision("decision")?.id, "d-1");
-  assert.equal(await manager.answerChangesDecision("decision", { outcome: "iterate" }, "other"), false, "a stale card cannot answer a newer call");
-  assert.equal(await manager.answerChangesDecision("decision", { outcome: "iterate" }, "d-1"), true);
-  assert.deepEqual(started[0]?.questionResponses.at(-1), { id: "d-1", response: { value: JSON.stringify({ outcome: "iterate" }) } });
-  assert.equal(manager.changesDecision("decision"), undefined);
-  assert.equal(await manager.answerChangesDecision("decision", { outcome: "iterate" }), false, "answered once");
-
-  started[0]?.emit({ type: "question", question: { ...decision, id: "d-2" } });
-  await manager.steer("decision", "rename the button first");
-  assert.deepEqual(started[0]?.steered, ["rename the button first"], "the message is queued before the dismissal");
-  assert.deepEqual(started[0]?.questionResponses.at(-1), { id: "d-2", response: { value: JSON.stringify({ outcome: "replied" }) } });
-  assert.equal(manager.status("decision"), "running");
-
-  started[0]?.emit({ type: "question", question: { ...decision, id: "d-3" } });
-  await manager.followUp("decision", "and then summarize");
-  assert.deepEqual(started[0]?.questionResponses.at(-1), { id: "d-3", response: { value: JSON.stringify({ outcome: "replied" }) } });
-  assert.equal(manager.snapshot("decision").queue.items?.at(-1)?.text, "and then summarize");
-});
-
-test("Stop on a waiting propose_changes call leaves an idle session, not a stale card", async () => {
+test("Stop on a waiting question leaves an idle session, not a stale question", async () => {
   const started: FakeSession[] = [];
   const manager = new LiveSessions(factory(started));
   manager.ensure(recordFor("stopped-card"));
   await waitForBoot(manager, "stopped-card");
   await manager.prompt("stopped-card", "ship it when done");
-  const decision: RuntimeQuestion = { id: "d-1", method: "input", title: CHANGES_DECISION_TITLE, placeholder: "{}" };
+  const decision: RuntimeQuestion = { id: "d-1", method: "input", title: "Ship it?" };
   started[0]!.questions = [decision];
   started[0]!.emit({ type: "question", question: decision });
   assert.equal(manager.status("stopped-card"), "waiting");
 
-  // Stop aborts the waiting tool; PI ends the turn and drops its UI request.
+  // Stop aborts the run; PI ends the turn and drops its UI request.
   await manager.abort("stopped-card");
   started[0]!.questions = [];
   started[0]!.emit({ type: "settled" });

@@ -33,7 +33,6 @@ import type {
 } from "./runtimes/types.ts";
 import { RuntimeOutputError } from "./runtimes/types.ts";
 import { recordDiagnosticEvent } from "./observability.ts";
-import { isChangesDecision, type ChangesDecision } from "../shared/session-changes.ts";
 import { readHuiSettings } from "./hui-settings.ts";
 import type { Settings } from "../src/lib/settings.ts";
 
@@ -745,8 +744,6 @@ export class LiveSessions {
     const live = this.#ready(id);
     if (!live.runtime?.steer) throw new Error(`${live.record.tool} cannot steer in this build.`);
     await live.runtime.steer(text, attachments);
-    // Queued first, so PI delivers it right after the dismissed tool result.
-    await this.#dismissChangesDecision(live);
   }
 
   async followUp(id: string, text: string, attachments?: readonly PromptAttachment[]): Promise<void> {
@@ -758,7 +755,6 @@ export class LiveSessions {
       ...(attachments?.length ? { attachments: [...attachments] } : {}),
     });
     this.#broadcastQueue(live);
-    await this.#dismissChangesDecision(live);
     if (this.#reported(live) === "idle") void this.#drainFollowUp(live);
   }
 
@@ -840,32 +836,6 @@ export class LiveSessions {
       throw new SessionRegistryError(message, { cause: persistenceError });
     }
     this.#broadcast(live, { kind: "thinking", level: live.thinking });
-  }
-
-  /** The pending `propose_changes` call, which the changes card answers. */
-  changesDecision(id: string): RuntimeQuestion | undefined {
-    const live = this.#live.get(id);
-    return live ? [...live.questions.values()].find((question) => isChangesDecision(question)) : undefined;
-  }
-
-  /** Answers the pending `propose_changes` call; false when none is waiting. */
-  async answerChangesDecision(id: string, decision: ChangesDecision, questionId?: string): Promise<boolean> {
-    const question = this.changesDecision(id);
-    if (!question || (questionId && question.id !== questionId)) return false;
-    await this.respondQuestion(id, question.id, { value: JSON.stringify(decision) });
-    return true;
-  }
-
-  /** A composer message while the card waits replaces the decision, like
-   * typing instead of picking an option; the message itself is delivered. */
-  async #dismissChangesDecision(live: Live): Promise<void> {
-    const question = [...live.questions.values()].find((candidate) => isChangesDecision(candidate));
-    if (!question) return;
-    try {
-      await this.respondQuestion(live.record.id, question.id, { value: JSON.stringify({ outcome: "replied" } satisfies ChangesDecision) });
-    } catch {
-      // Already answered or the run ended; the message is queued either way.
-    }
   }
 
   async respondQuestion(id: string, questionId: string, response: RuntimeQuestionResponse): Promise<void> {
