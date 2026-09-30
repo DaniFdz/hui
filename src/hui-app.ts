@@ -10,6 +10,7 @@ import {
   askSideQuestion,
   answerQuestion,
   clearSession,
+  reloadSession,
   createSession,
   createSessionGroup,
   reorderSessionGroups,
@@ -58,7 +59,7 @@ import {
 import { checkpointForTarget, type RewindTarget } from "./lib/rewind.ts";
 import { readAttachment, validateAttachmentTotal } from "./lib/attachments.ts";
 import { resolveLaunchModel } from "./lib/model-selection.ts";
-import { completeCommandReference, composerCommands, filterSlashCommands, parseClearCommand, parseUpdateCommand, slashCommandQuery, type ComposerCommand } from "./lib/slash-commands.ts";
+import { completeCommandReference, composerCommands, filterSlashCommands, parseClearCommand, parseReloadCommand, parseUpdateCommand, slashCommandQuery, type ComposerCommand } from "./lib/slash-commands.ts";
 import { checkUpdate, checkUpdateInBackground, installUpdate, loadUpdate } from "./lib/update-store.ts";
 import { availableUpdate, watchUpdateAvailability } from "./lib/update-notice.ts";
 import type { UpdateSnapshot } from "./lib/update-types.ts";
@@ -154,6 +155,7 @@ import { downloadDiagnostics, loadObservability, type ObservabilitySnapshot } fr
 import { renderHome, renderNewSession, type HomeProps } from "./views/home.ts";
 import { DEFAULT_SESSIONS_PAGE_FILTERS, renderSessionsPage, type SessionsPageFilters, type SessionsPageState } from "./views/sessions.ts";
 import type { WorktreeFilter } from "./views/worktrees.ts";
+import "./views/contributions.ts";
 import { loadWorktrees, removeWorktrees, type WorktreeInventory, type WorktreeRemovalResult, type WorktreeRisk } from "./lib/worktrees.ts";
 import { renderPanelSelector } from "./views/panel-selector.ts";
 import { renderAutomationSurface } from "./views/automation.ts";
@@ -2353,14 +2355,16 @@ export class HuiApp extends HuiElement {
       return;
     }
     const clearCommand = parseClearCommand(trimmed);
-    if (clearCommand) {
-      if (clearCommand === "invalid" || attachments.length) {
-        this.note = "Use /clear without arguments or attachments.";
+    const reloadCommand = parseReloadCommand(trimmed);
+    const command = clearCommand ? "clear" : reloadCommand ? "reload" : undefined;
+    if (command) {
+      if ((clearCommand ?? reloadCommand) === "invalid" || attachments.length) {
+        this.note = `Use /${command} without arguments or attachments.`;
         this.noteFailed = true;
         return;
       }
       if (mode !== "prompt" || this.streaming || session.status !== "idle") {
-        this.note = "Finish or stop active work before clearing the session.";
+        this.note = `Finish or stop active work before ${command}ing the session.`;
         this.noteFailed = true;
         return;
       }
@@ -2371,12 +2375,20 @@ export class HuiApp extends HuiElement {
       this.draft = "";
       this.attachments = [];
       void this.persistComposerDraft(sessionDraftKey(session.id), "", []);
-      void clearSession(session.id).then((snapshot) => {
-        if (!isSelectedSession(session.id, this.selected?.id)) return;
-        this.applySnapshot(snapshot);
-        this.sideChat = undefined;
-        this.note = "Session context cleared.";
-      }).catch(async (error: unknown) => {
+      const run = command === "clear"
+        ? clearSession(session.id).then((snapshot) => {
+          if (!isSelectedSession(session.id, this.selected?.id)) return;
+          this.applySnapshot(snapshot);
+          this.sideChat = undefined;
+          this.note = "Session context cleared.";
+        })
+        : reloadSession(session.id).then(() => {
+          if (!isSelectedSession(session.id, this.selected?.id)) return;
+          // Skills, prompts and extension commands may have changed.
+          this.resetCommands();
+          this.note = "Reloaded extensions, skills, prompts and context files.";
+        });
+      void run.catch(async (error: unknown) => {
         const stillSelected = isSelectedSession(session.id, this.selected?.id);
         const stored = stillSelected
           ? { text: this.draft, attachments: this.attachments }
@@ -2387,7 +2399,7 @@ export class HuiApp extends HuiElement {
         this.composerDraftEdit += 1;
         this.draft = restored.text;
         this.attachments = restored.attachments;
-        this.note = error instanceof Error ? error.message : "Could not clear that session.";
+        this.note = error instanceof Error ? error.message : `Could not ${command} that session.`;
         this.noteFailed = true;
       }).finally(() => {
         if (isSelectedSession(session.id, this.selected?.id)) this.sending = false;
@@ -4323,6 +4335,8 @@ export class HuiApp extends HuiElement {
                       onNew: () => this.openPageById("new-session"),
                       onRefresh: () => void this.refreshSessions(),
                     })
+                  : this.activePage.id === "contributions"
+                    ? html`<hui-contributions-page .onOpenSettings=${() => this.navigate({ kind: "settings", page: "integrations" })}></hui-contributions-page>`
                   : isPiSurface(this.activePage)
                     ? renderPiSurface({
                         page: this.activePage,

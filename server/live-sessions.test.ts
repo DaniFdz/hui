@@ -55,6 +55,8 @@ class FakeSession implements RuntimeSession {
   continuations = 0;
   clears = 0;
   clearGate: Promise<void> | undefined;
+  reloads = 0;
+  reloadGate: Promise<void> | undefined;
 
   #streaming = false;
   #listeners = new Set<(event: RuntimeEvent) => void>();
@@ -122,6 +124,11 @@ class FakeSession implements RuntimeSession {
   async abort(): Promise<void> {
     this.aborts += 1;
     this.#streaming = false;
+  }
+
+  async reload(): Promise<void> {
+    await this.reloadGate;
+    this.reloads += 1;
   }
 
   async clear(): Promise<void> {
@@ -341,6 +348,28 @@ test("clearing replaces PI context in place, persists its new identity, and reje
   const stored = (await readRegistry()).find((session) => session.id === "clear");
   assert.equal(stored?.piSessionFile, "/tmp/hui-cleared-1.jsonl");
   assert.equal(stored?.id, "clear", "HUI keeps the same registry row");
+  manager.disposeAll();
+});
+
+test("reloading keeps the PI session, holds off prompts meanwhile, and rejects active work", async () => {
+  const started: FakeSession[] = [];
+  const manager = new LiveSessions(factory(started));
+  manager.ensure(recordFor("reload"));
+  await waitForBoot(manager, "reload");
+
+  await manager.prompt("reload", "still working");
+  await assert.rejects(() => manager.reload("reload"), SessionBusyError);
+  started[0]!.emit({ type: "settled" });
+
+  let release!: () => void;
+  started[0]!.reloadGate = new Promise<void>((resolve) => { release = resolve; });
+  const reloading = manager.reload("reload");
+  await assert.rejects(() => manager.prompt("reload", "racing prompt"), SessionBusyError);
+  release();
+  await reloading;
+  assert.equal(started[0]!.reloads, 1);
+  assert.equal(started.length, 1, "no new runtime is spawned");
+  assert.equal(manager.snapshot("reload").status, "idle");
   manager.disposeAll();
 });
 

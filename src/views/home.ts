@@ -47,7 +47,7 @@ import { commandToolPresentation, renderCommandToolCard } from "./chat/command-t
 import { renderTaskSuggestionCard, type TaskSuggestionCardProps } from "./chat/task-suggestion-card.ts";
 import { browserToolSummary } from "../lib/browser-tool-display.ts";
 import { toggleNavigationDrawer } from "./shell.ts";
-import { parseUpdateCommand, slashCommandQuery } from "../lib/slash-commands.ts";
+import { slashCommandQuery } from "../lib/slash-commands.ts";
 import { renderSlashMenu, SLASH_MENU_ID, slashOptionId, type SlashMenuProps } from "./slash-menu.ts";
 import { localPathQuery, type LocalPathQuery } from "../lib/local-paths.ts";
 import { worktreeProgressLabel } from "../lib/worktree-progress.ts";
@@ -599,7 +599,15 @@ function renderLaunchForm(props: HomeProps) {
                     props.onLocalPathKeydown(event);
                     if (event.defaultPrevented) return;
                     props.onCommandKeydown(event);
-                    if (!event.defaultPrevented && parseUpdateCommand((event.target as HTMLTextAreaElement).value) && event.key === "Enter" && !event.shiftKey && !event.isComposing && !hasCoarsePointer()) {
+                    if (!event.defaultPrevented && event.key === "Enter" && composerEnterMode({
+                      streaming: false,
+                      shiftKey: event.shiftKey,
+                      ctrlKey: event.ctrlKey,
+                      metaKey: event.metaKey,
+                      isComposing: event.isComposing,
+                      coarsePointer: hasCoarsePointer(),
+                      sendShortcut: props.chatPreferences.sendShortcut,
+                    }) === "prompt") {
                       event.preventDefault();
                       (event.target as HTMLTextAreaElement).form?.requestSubmit();
                     }
@@ -1327,8 +1335,6 @@ function renderComposer(props: HomeProps) {
         if (!props.sending && event.dataTransfer?.files.length) props.onAddAttachments(Array.from(event.dataTransfer.files));
       }}>
       ${renderQuestion(props)}
-      ${renderTaskProgress(props)}
-      ${renderQueue(props)}
       ${renderRunError(props, booting || disconnected)}
       ${props.session?.interrupted && !booting ? html`
         <div class="agent-chat__interrupted-recovery" role="status">
@@ -1339,6 +1345,8 @@ function renderComposer(props: HomeProps) {
           <button type="button" class="btn btn--sm" ?disabled=${props.sending || disconnected} @click=${props.onContinueInterrupted}>Continue run</button>
         </div>
       ` : nothing}
+      ${renderTaskProgress(props)}
+      ${renderQueue(props)}
       <form class="agent-chat__input agent-chat__input--chat agent-chat__input--mobile-toolbar ${disconnected ? "agent-chat__input--offline" : ""}"
         @submit=${onPromptSubmit(props)} @keydown=${onPromptKeydown(props)}
         @click=${focusComposerFromSurface}>

@@ -11,6 +11,7 @@ const PAGE_ROWS = [
   ["about", "About", "System", "Version, runtime, licenses and diagnostic links."],
   ["activity", "Activity", "Operations", "Gateway activity and recent operational events."],
   ["config", "Config", "Settings", "PI configuration and its effective sources."],
+  ["contributions", "Contributions", "Development", "GitHub commits and pull requests of the connected accounts."],
   ["connection", "Connection", "System", "Gateway URL, authentication and connection diagnostics."],
   ["cron", "Automations", "Automation", "Scheduled jobs, run history and manual triggers."],
   ["debug", "Debug", "System", "Logs, RPC inspection and diagnostic actions."],

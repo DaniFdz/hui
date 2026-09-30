@@ -49,7 +49,7 @@ import { readPiConfig, invalidateModelCatalog } from "./pi-config.ts";
 import { PiResourceNotFoundError, readPiResourceDocument } from "./pi-resource-reader.ts";
 import { readToolsCatalog } from "./tools.ts";
 import { updates, UpdateConflict } from "./updates.ts";
-import { parseClearCommand, parseUpdateCommand } from "../src/lib/slash-commands.ts";
+import { parseClearCommand, parseReloadCommand, parseUpdateCommand } from "../src/lib/slash-commands.ts";
 import {
   PiMutationBusyError,
   PiMutationCommandError,
@@ -113,6 +113,7 @@ import { sessionTreeIds } from "../src/lib/session-tree.ts";
 import { SubagentService } from "./subagents.ts";
 import { presentMediaForSession, servePresentedMedia } from "./presented-media.ts";
 import { GitHubCli, GitHubCliError } from "./github.ts";
+import { FIRST_YEAR as GITHUB_FIRST_YEAR, GitHubContributionsReader, latestYear } from "./github-contributions.ts";
 import { GitHubPreviews, ghApi, previewPullRequestFetcher } from "./github-previews.ts";
 import { MAX_GITHUB_EMBEDS, parseGitHubUrl } from "../shared/github-links.ts";
 import { TaskSuggestionInputError, TaskSuggestionNotFoundError, TaskSuggestionStore } from "./task-suggestions.ts";
@@ -185,12 +186,13 @@ const SESSION_GROUP_MAX = 200;
 const SESSION_GROUP_ORDER_MAX = 1_000;
 /** Session actions and live catalogs, all addressed by HUI's own session id. */
 const SESSION_ACTION =
-  /^\/__hui\/sessions\/([^/]+)\/(open|prompt|continue|resume|steer|follow-up|btw|queue|events|connect|models|commands|tools|model|thinking|question|abort|clear|checkpoints|rewind)$/;
+  /^\/__hui\/sessions\/([^/]+)\/(open|prompt|continue|resume|steer|follow-up|btw|queue|events|connect|models|commands|tools|model|thinking|question|abort|clear|reload|checkpoints|rewind)$/;
 /** The session itself, for changing it rather than acting on it. */
 const SESSION_ONE = /^\/__hui\/sessions\/([^/]+)$/;
 const GITHUB_ROUTE = `${PREFIX}github`;
 const GITHUB_LOGIN_ROUTE = `${GITHUB_ROUTE}/login`;
 const GITHUB_PREVIEWS_ROUTE = `${GITHUB_ROUTE}/previews`;
+const GITHUB_CONTRIBUTIONS_ROUTE = `${GITHUB_ROUTE}/contributions`;
 const JIRA_ROUTE = `${PREFIX}jira`;
 const JIRA_PROJECTS_ROUTE = `${JIRA_ROUTE}/projects`;
 /** Create (POST) or draft (POST …/draft) a Jira work item for one session. */
@@ -831,6 +833,7 @@ export function sessionMutationErrorStatus(error: unknown): 400 | 500 {
 const GH_COMMAND = process.env["HUI_GITHUB_CLI"] || "gh";
 const githubCli = new GitHubCli({ command: GH_COMMAND });
 const githubPreviews = new GitHubPreviews(ghApi(GH_COMMAND));
+const githubContributions = new GitHubContributionsReader(GH_COMMAND);
 const pullRequestStatuses = new PullRequestStatuses(previewPullRequestFetcher(githubPreviews));
 
 const worktreeService = new WorktreeService({
@@ -2432,6 +2435,25 @@ async function handleRequest(
     return;
   }
 
+  if (path === GITHUB_CONTRIBUTIONS_ROUTE) {
+    if (request.method !== "GET") {
+      sendJson(response, 405, { error: "method not allowed" });
+      return;
+    }
+    const params = new URL(request.url ?? "/", "http://localhost").searchParams;
+    const year = params.has("year") ? Number(params.get("year")) : undefined;
+    if (year !== undefined && !(Number.isInteger(year) && year >= GITHUB_FIRST_YEAR && year <= latestYear())) {
+      sendJson(response, 400, { error: `year must be ${GITHUB_FIRST_YEAR}-${latestYear()}.` });
+      return;
+    }
+    try {
+      sendJson(response, 200, await githubContributions.read(year, params.get("refresh") === "1"));
+    } catch (error) {
+      sendJson(response, 502, { error: error instanceof Error ? error.message : "GitHub activity could not be read." });
+    }
+    return;
+  }
+
   if (path === GITHUB_LOGIN_ROUTE) {
     if (request.method !== "POST" && request.method !== "DELETE") {
       sendJson(response, 405, { error: "method not allowed" });
@@ -2962,6 +2984,10 @@ async function handleRequest(
         sendJson(response, 400, { error: "/clear is a HUI command. Use the clear endpoint, not the model prompt or queue." });
         return;
       }
+      if (parseReloadCommand(text)) {
+        sendJson(response, 400, { error: "/reload is a HUI command. Use the reload endpoint, not the model prompt or queue." });
+        return;
+      }
       let prepared: PreparedAttachments | undefined;
       try {
         prepared = await readAttachments(id, body["attachments"]);
@@ -3014,6 +3040,21 @@ async function handleRequest(
       } catch (error) {
         sendJson(response, error instanceof SessionBusyError ? 409 : error instanceof SessionRegistryError ? 500 : 400, {
           error: error instanceof Error ? error.message : "Could not clear that session.",
+        });
+      }
+      return;
+    }
+    if (action[2] === "reload" && request.method === "POST") {
+      try {
+        if (!liveSessions.ensure(record)) {
+          sendJson(response, 404, { error: `unknown session: ${id}` });
+          return;
+        }
+        await liveSessions.reload(id);
+        sendJson(response, 200, { ok: true });
+      } catch (error) {
+        sendJson(response, error instanceof SessionBusyError ? 409 : 400, {
+          error: error instanceof Error ? error.message : "Could not reload that session.",
         });
       }
       return;

@@ -85,7 +85,7 @@ function controlledMedia(initialMatches = true) {
 }
 
 test("the primary sidebar lists work destinations and ends with Settings", () => {
-  assert.deepEqual(PRIMARY_NAV.map((item) => item.id), ["cron", "plugins", "skills"]);
+  assert.deepEqual(PRIMARY_NAV.map((item) => item.id), ["contributions", "cron", "plugins", "skills"]);
   const source = readFileSync(new URL("./shell.ts", import.meta.url), "utf8");
   const nav = source.slice(source.indexOf('<nav class="sidebar-nav"'), source.indexOf("</nav>", source.indexOf('<nav class="sidebar-nav"')));
   assert.doesNotMatch(nav, /(?<![A-Z_])NAV\.map|icons\.home/u);

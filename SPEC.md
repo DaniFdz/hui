@@ -14,7 +14,7 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
 |---|---|
 | `sidebar-agent-card` — identity card at the top | removed; HUI has no agent identity selector |
 | `sidebar-brand` — brand line with actions | new session then session search on the left; collapse on the right |
-| `sidebar-nav` — page destinations | Automations, Plugins, Skills, then Settings; no Home entry. Other retained pages stay reachable by URL and the command palette; dropped OpenClaw routes are absent |
+| `sidebar-nav` — page destinations | Contributions, Automations, Plugins, Skills, then Settings; no Home entry. Other retained pages stay reachable by URL and the command palette; dropped OpenClaw routes are absent |
 | `sidebar-online` / session sections — collapsible groups of rows | groups, flattened, with session rows |
 | `sidebar-footer-bar` — identity + connection state | removed; Settings is the last sidebar destination |
 | main region — header, body, composer | session header, transcript, composer |
@@ -164,6 +164,24 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   OpenClaw's device-code layout; once GitHub confirms, the section turns
   Connected. Without `gh` on the gateway's PATH it shows "GitHub CLI required"
   with an install link instead of a sign-in button. The token stays in gh.
+- Contributions (first sidebar destination) charts the GitHub activity of every
+  account signed in to `gh` on the HUI machine: a GitHub-style calendar (a
+  square per local day, month and Mon/Wed/Fri labels, Less→More legend, hover
+  for the day's count) and a bar per week. One *Commits* / *Pull requests*
+  switch (default commits) drives both charts: commits authored on default
+  branches, as GitHub search indexes them, or pull requests opened. An *Account*
+  picker narrows both to one login (default *All accounts*). GitHub's year list
+  beside the charts (a scrolling row on narrow screens) picks *Last 12 months*
+  (default) or a calendar year, from this year back to the oldest account's
+  creation; the current year leaves its future days blank.
+  Data comes from GitHub search, not the contribution calendar API,
+  which is empty for Enterprise Managed Users. Accounts other than the active
+  one are read with their own `gh` token, used only on the gateway. Results are
+  cached for 15 minutes; *Refresh* reads again. Reaching GitHub's search rate
+  limit waits about a minute instead of failing. An account that fails shows
+  its error above the charts while the others still render, and a year that
+  fails to load leaves the previous one selected; with no account, the page
+  links to Settings → Integrations.
 - Chat messages unfurl GitHub repositories, pull requests and issues (URLs or
   `owner/repo#N`) as cards after the message, at most three per message like
   Slack: PRs show state, title, description snippet, author and diff stats;

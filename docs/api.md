@@ -803,7 +803,7 @@ runtime returns an empty list, not a fabricated terminal-command catalog.
 Discovery does not add support for arbitrary TUI-only custom extension widgets;
 extension interaction remains limited to the supported PI RPC UI requests.
 HUI merges its own session commands into the browser menu separately; `/clear`
-therefore remains available even though PI omits terminal built-ins from
+and `/reload` therefore remain available even though PI omits terminal built-ins from
 `get_commands`.
 
 As with `/models`, a registered cold session starts its runtime and returns `409`
@@ -1062,9 +1062,9 @@ interactive input. Receiving `extension_ui_request` is treated as acceptance so
 the HTTP request does not race the human; the original delayed RPC response is
 then the settle edge that refreshes history and unlocks the composer.
 
-`/clear` is reserved by HUI and is never accepted through the prompt or queue
-routes, including malformed variants with arguments. The browser calls the
-dedicated route below instead.
+`/clear` and `/reload` are reserved by HUI and are never accepted through the
+prompt or queue routes, including malformed variants with arguments. The browser
+calls the dedicated routes below instead.
 
 At most eight attachments are accepted. Each decoded item is limited to 12 MB
 and the decoded total to 16 MB. Base64 must be canonical; image MIME types are
@@ -1095,6 +1095,16 @@ preferences remain attached to that row. PI's previous JSONL is left untouched,
 and `/clear` itself is not added to either transcript. A registry persistence
 failure is explicit because the live runtime has already moved to the fresh
 session and a later reopen may otherwise resume the previous pointer.
+
+### `POST /__hui/sessions/:id/reload`
+
+Accepts an empty JSON body and returns `{ "ok": true }`. Busy rules match
+`/clear` (`409` otherwise). PI's RPC mode has no reload command, so the SDK
+worker calls PI's `AgentSession.reload()`, the same call as the terminal
+`/reload`: settings, extensions, skills, prompt templates and context files are
+re-read in place. The PI session, transcript, model and thinking level are
+unchanged. The CLI fallback backend returns `400`. The browser discards its
+cached command catalog so newly added skills and commands appear.
 
 ### `POST /__hui/sessions/:id/steer`
 
@@ -1864,6 +1874,42 @@ becomes `failed` with gh's last message (never the code or prompt lines). A stat
 pending login. The token never appears in any response: `gh auth status` is
 called without `--show-token` and only `login`, `host`, `scopes` and
 `tokenSource` are forwarded.
+
+### GitHub contributions
+
+The Contributions page (`/contributions`) charts a year of commits and pull
+requests of every account `gh auth status` lists for github.com.
+
+| Route | Behaviour |
+| --- | --- |
+| `GET /__hui/github/contributions[?year=YYYY][&refresh=1]` | `GitHubContributions`; 400 for a year outside 2008 to the current year at UTC+14 (the latest any browser can be in); 502 with `gh`'s message when the account list cannot be read (for example "GitHub CLI (gh) is required") |
+
+```ts
+type GitHubContributions = {
+  accounts: { login: string; createdAt?: string; commits: string[]; pullRequests: string[]; error?: string }[];
+};
+```
+
+Without `year`, searches cover the 372 UTC days ending today, enough for 53
+local calendar weeks. With it, they cover Dec 31 of the previous year through
+Jan 1 of the next (or today), so every browser time zone sees the whole local
+year. `createdAt` is `gh api user`'s `created_at` (omitted when that call
+fails); the page lists years back to the oldest one. `commits` are author dates from `search/commits` (`author:<login>
+author-date:<from>..<to>`, default branches only); `pullRequests` are creation
+times from `search/issues` (`author:<login> is:pr created:<from>..<to>`), sorted
+by that date so later pages continue page one. The first call per range prints
+`total_count` and page one; up to 100 results need
+no more calls, more than 1000 (GitHub's search cap) halve the range, otherwise
+`-f page=2 --paginate` reads the rest. A search call refused by GitHub's rate
+limit (30 searches a minute per account) waits 61 s and is retried once. The
+contribution calendar API is not used:
+it returns nothing for Enterprise Managed Users. The active account runs `gh`
+unchanged; every other account runs with `GH_TOKEN` from `gh auth token --user
+<login>`, set only in that child's environment and never logged, cached or
+returned. One account's failure becomes its `error` with empty lists. Results
+are cached in gateway memory per range for 15 minutes and shared by concurrent requests;
+`refresh=1` bypasses the cache, and a result with a failed account or no
+account is not cached. The browser buckets timestamps into local days and Sunday-first weeks.
 
 ### GitHub link previews
 

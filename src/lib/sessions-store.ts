@@ -473,6 +473,14 @@ export async function continueSession(id: string): Promise<void> {
   });
 }
 
+export async function reloadSession(id: string): Promise<void> {
+  await fetchJson<{ ok?: boolean }>(`${SESSIONS_URL}/${encodeURIComponent(id)}/reload`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: "{}",
+  });
+}
+
 export async function clearSession(id: string): Promise<SessionSnapshot> {
   const body = await fetchJson<{ snapshot?: SessionSnapshot }>(
     `${SESSIONS_URL}/${encodeURIComponent(id)}/clear`,

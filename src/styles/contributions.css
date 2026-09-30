@@ -1,0 +1,140 @@
+/* Contributions page. Only OpenClaw tokens; GitHub's green steps map to --ok. */
+hui-contributions-page {
+  display: contents;
+}
+
+.contributions-account {
+  width: 200px;
+  max-width: 100%;
+}
+
+.contributions-card {
+  padding: var(--space-4);
+}
+
+.contributions-scroll {
+  overflow-x: auto;
+  padding-bottom: var(--space-2);
+}
+
+.contributions-chart {
+  display: block;
+  width: 100%;
+  min-width: 640px;
+  /* A month label in the last column may run past the viewBox. */
+  overflow: visible;
+}
+
+.contributions-axis {
+  fill: var(--muted);
+  font-size: 9px;
+}
+
+.contributions-cell,
+.contributions-legend__cell {
+  --level-color: var(--bg-muted);
+  fill: var(--level-color);
+  background: var(--level-color);
+}
+
+.contributions-page [data-level="1"] { --level-color: color-mix(in srgb, var(--ok) 30%, var(--bg-muted)); }
+.contributions-page [data-level="2"] { --level-color: color-mix(in srgb, var(--ok) 55%, var(--bg-muted)); }
+.contributions-page [data-level="3"] { --level-color: color-mix(in srgb, var(--ok) 80%, var(--bg-muted)); }
+.contributions-page [data-level="4"] { --level-color: var(--ok); }
+
+.contributions-legend {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  margin-top: var(--space-2);
+  color: var(--muted);
+  font-size: var(--control-ui-text-xs);
+}
+
+.contributions-legend__cell {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+.contributions-baseline {
+  stroke: var(--border);
+}
+
+.contributions-week__hit {
+  fill: transparent;
+}
+
+.contributions-week:hover .contributions-week__hit {
+  fill: var(--bg-muted);
+}
+
+.contributions-bar {
+  fill: var(--ok);
+}
+
+.contributions-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-5);
+  align-items: start;
+}
+
+.contributions-charts {
+  display: grid;
+  gap: var(--space-5);
+  min-width: 0;
+  transition: opacity 0.15s;
+}
+
+.contributions-charts[aria-busy="true"] {
+  opacity: 0.55;
+}
+
+/* GitHub's year list: a column beside the charts, a scrolling row when narrow. */
+.contributions-years {
+  position: sticky;
+  top: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 120px;
+}
+
+.contributions-years__item {
+  padding: var(--space-2) var(--space-4);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: var(--text-base);
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.contributions-years__item:hover {
+  background: var(--bg-muted);
+  color: var(--text-strong);
+}
+
+.contributions-years__item--active,
+.contributions-years__item--active:hover {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+@media (max-width: 900px) {
+  .contributions-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .contributions-years {
+    position: static;
+    grid-row: 1;
+    flex-direction: row;
+    overflow-x: auto;
+  }
+}

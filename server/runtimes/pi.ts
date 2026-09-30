@@ -1139,6 +1139,11 @@ export class PiSession implements RuntimeSession {
     await this.#refreshUsage();
   }
 
+  async reload(): Promise<void> {
+    if (!this.#inspector) throw new Error("Reload requires HUI's PI SDK backend.");
+    await this.#inspector.reload();
+  }
+
   async continueRun(): Promise<void> {
     if (!this.#inspector) throw new Error("Prompt-free continuation requires HUI's PI SDK backend.");
     if (this.#streaming) throw new Error("That session is already running.");
