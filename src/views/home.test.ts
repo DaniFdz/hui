@@ -416,3 +416,10 @@ test("session rename mirrors the Control UI single title field without a group e
   assert.match(source, /onRename: \(title: string\) => void;/);
   assert.match(app, /renameSession\(targetId, \{ title \}\)/);
 });
+
+test("composer notices render above the progress card and queue, which underlap their next sibling", () => {
+  const source = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
+  const order = ["${renderRunError(", "agent-chat__interrupted-recovery\" role", "${renderTaskProgress(", "${renderQueue(", "<form class=\"agent-chat__input"]
+    .map((marker) => source.indexOf(marker));
+  assert.ok(order.every((index, i) => index > 0 && (i === 0 || index > order[i - 1]!)), String(order));
+});
