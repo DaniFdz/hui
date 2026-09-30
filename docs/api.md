@@ -1918,13 +1918,18 @@ local calendar weeks. With it, they cover Dec 31 of the previous year through
 Jan 1 of the next (or today), so every browser time zone sees the whole local
 year. `createdAt` is `gh api user`'s `created_at` (omitted when that call
 fails); the page lists years back to the oldest one. `commits` are author dates from `search/commits` (`author:<login>
-author-date:<from>..<to>`, default branches only); `pullRequests` are creation
-times from `search/issues` (`author:<login> is:pr created:<from>..<to>`), sorted
-by that date so later pages continue page one. The first call per range prints
-`total_count` and page one; up to 100 results need
-no more calls, more than 1000 (GitHub's search cap) halve the range, otherwise
-`-f page=2 --paginate` reads the rest. A search call refused by GitHub's rate
-limit (30 searches a minute per account) waits 61 s and is retried once. The
+author-date:<from>..<to>`, default branches only), sorted by that date so later
+pages continue page one. The first call per range prints `total_count` and page
+one; up to 100 results need no more calls, more than 1000 (GitHub's search cap)
+halve the range, otherwise `-f page=N` calls read the remaining pages in
+parallel. `pullRequests` are creation times from one `gh api graphql` request
+per account holding an aliased `search(type: ISSUE, first: 100)` (`author:<login>
+is:pr created:<from>..<to>`) per 93-day range; a range past 100 continues by
+cursor. GraphQL search does not count against REST's search limit but cannot search
+commits, so commits stay on REST. A commit search
+refused by GitHub's rate limit (30 searches a minute per account) waits until
+the reset `gh api rate_limit` reports; the burst ("secondary") limit, or a
+failed `rate_limit` call, waits 61 s (also the cap). It is retried once. The
 contribution calendar API is not used:
 it returns nothing for Enterprise Managed Users. The active account runs `gh`
 unchanged; every other account runs with `GH_TOKEN` from `gh auth token --user

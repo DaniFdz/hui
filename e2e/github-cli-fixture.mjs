@@ -9,8 +9,9 @@
  *   deny     — created by the test to reject a pending login
  *   accounts — optional logins, one per line, the first active (overrides account)
  *   contributions.json — `{ login: { commits: [iso], pullRequests: [iso], createdAt? } | "error" }`
- *                  served by `api -X GET search/commits|search/issues` (logged to search-log)
- *                  and `api user`; `rate-limit-once` fails the next search with a rate limit
+ *                  served by `api -X GET search/commits`, `api graphql` pull request
+ *                  searches (both logged to search-log) and `api user`;
+ *                  `rate-limit-once` fails the next commit search with a rate limit
  * HUI_FAKE_GH_CODE overrides the printed one-time code; HUI_FAKE_GH_PROTOCOL
  * is the configured git protocol. Each login writes its arguments to login-args. */
 import { appendFileSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -48,9 +49,26 @@ if (args[0] === "--version") {
   const login = process.env.GH_TOKEN?.replace(/^fake-token-/u, "") ?? accounts()[0];
   const data = existsSync(file("contributions.json")) ? JSON.parse(readFileSync(file("contributions.json"), "utf8")) : {};
   process.stdout.write(`${data[login]?.createdAt ?? "2020-06-01T00:00:00Z"}\n`);
+} else if (args[0] === "api" && args[1] === "graphql") {
+  // HUI's aliased pull request searches; the cursor is the next result's index.
+  const query = args[args.indexOf("-f") + 1].slice("query=".length);
+  const data = existsSync(file("contributions.json")) ? JSON.parse(readFileSync(file("contributions.json"), "utf8")) : {};
+  const result = {};
+  for (const [, alias, after, login, from, to] of query.matchAll(/(\w+): search\(type: ISSUE, first: 100(?:, after: "(\d+)")?, query: "author:(\S+) is:pr created:(\S+)\.\.(\S+)"\)/gu)) {
+    if (typeof data[login] === "string") {
+      process.stderr.write(`gh: ${data[login]}\n`);
+      process.exit(1);
+    }
+    const start = Number(after ?? 0);
+    const dates = (data[login]?.pullRequests ?? []).filter((date) => date.slice(0, 10) >= from && date.slice(0, 10) <= to);
+    appendFileSync(file("search-log"), `graphql ${login} ${from}..${to} page=${start / 100 + 1} token=${process.env.GH_TOKEN ?? ""}\n`);
+    const nodes = dates.slice(start, start + 100).map((createdAt) => ({ createdAt }));
+    result[alias] = { issueCount: dates.length, pageInfo: { hasNextPage: start + 100 < dates.length, endCursor: String(start + 100) }, nodes };
+  }
+  process.stdout.write(`${JSON.stringify(result)}\n`);
 } else if (args[0] === "api" && args[3]?.startsWith("search/")) {
   // `gh api --jq` output for HUI's contribution searches: the first call prints
-  // total_count and page one; `-f page=2 --paginate` prints the rest up to 1000.
+  // total_count and page one; `-f page=N` prints page N (up to result 1000).
   const field = (name) => args.find((arg, index) => args[index - 1] === "-f" && arg.startsWith(`${name}=`))?.slice(name.length + 1);
   const query = field("q") ?? "";
   const login = /author:(\S+)/u.exec(query)?.[1] ?? "";
@@ -67,9 +85,10 @@ if (args[0] === "--version") {
   }
   const all = data[login]?.[args[3] === "search/commits" ? "commits" : "pullRequests"] ?? [];
   const dates = all.filter((date) => date.slice(0, 10) >= from && date.slice(0, 10) <= to);
-  const page = field("page") === "2";
-  appendFileSync(file("search-log"), `${args[3]} ${login} ${from}..${to} page=${page ? 2 : 1} token=${process.env.GH_TOKEN ?? ""}\n`);
-  const shown = page ? dates.slice(100, 1000) : [String(dates.length), ...dates.slice(0, 100)];
+  const page = Number(field("page") ?? 1);
+  appendFileSync(file("search-log"), `${args[3]} ${login} ${from}..${to} page=${page} token=${process.env.GH_TOKEN ?? ""}\n`);
+  const items = dates.slice(0, 1000).slice((page - 1) * 100, page * 100);
+  const shown = page > 1 ? items : [String(dates.length), ...items];
   process.stdout.write(shown.map((line) => `${line}\n`).join(""));
 } else if (args[0] === "api") {
   // Canned REST payloads for chat embed and PR badge previews; unknown paths are 404.

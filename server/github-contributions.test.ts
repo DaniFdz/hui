@@ -19,7 +19,8 @@ test("reads every gh account with its own login and fits searches under GitHub's
   const work = { commits: dates(1200), pullRequests: dates(150) };
   await writeFile(join(dir, "contributions.json"), JSON.stringify({
     work,
-    personal: { commits: dates(5), pullRequests: [], createdAt: "2019-03-04T05:06:07Z" },
+    // 120 pull requests on one day need a second GraphQL page for that quarter.
+    personal: { commits: dates(5), pullRequests: Array.from({ length: 120 }, (_, index) => new Date(NOW - index * 60_000).toISOString()), createdAt: "2019-03-04T05:06:07Z" },
   }));
   const reader = new GitHubContributionsReader(FIXTURE, { ...process.env, HUI_FAKE_GH_DIR: dir }, { now: () => NOW });
 
@@ -29,14 +30,19 @@ test("reads every gh account with its own login and fits searches under GitHub's
   assert.deepEqual(workResult?.commits.toSorted(), work.commits.toSorted());
   assert.deepEqual(workResult?.pullRequests.toSorted(), work.pullRequests.toSorted());
   assert.equal(personal?.commits.length, 5);
+  assert.equal(personal?.pullRequests.length, 120);
   assert.equal(personal?.createdAt, "2019-03-04T05:06:07Z");
 
   const log = (await readFile(join(dir, "search-log"), "utf8")).trim().split("\n");
   // The active account uses gh's own login; others get only their own token.
   assert.ok(log.filter((line) => line.includes(" work ")).every((line) => line.endsWith("token=")));
   assert.ok(log.filter((line) => line.includes(" personal ")).every((line) => line.endsWith("token=fake-token-personal")));
-  assert.ok(log.some((line) => line.startsWith("search/issues work 2025-09-24..2026-09-30 page=2 ")), "150 pull requests read page two");
+  const firstPages = (kind: string, login: string) => log.filter((line) => line.startsWith(`${kind} ${login} `) && line.includes(" page=1 "));
   assert.ok(log.some((line) => line.startsWith("search/commits work 2025-09-24..2026-03-28 ")), "1200 commits split the window");
+  assert.ok(log.some((line) => line.startsWith("search/commits work 2025-09-24..2026-03-28 page=6 ")), "each ~600-commit half reads pages two to six");
+  // 372 days in 93-day ranges, all in one GraphQL request.
+  assert.equal(firstPages("graphql", "work").length, 4, "one pull request search per quarter");
+  assert.ok(log.some((line) => line.startsWith("graphql personal 2026-06-30..2026-09-30 page=2 ")), "a quarter past 100 pull requests reads its next page");
 
   await reader.read();
   assert.equal((await readFile(join(dir, "search-log"), "utf8")).trim().split("\n").length, log.length, "cached");
@@ -47,8 +53,10 @@ test("reads every gh account with its own login and fits searches under GitHub's
   await reader.read(2025);
   await reader.read(2026);
   const years = await readFile(join(dir, "search-log"), "utf8");
-  assert.match(years, /^search\/issues personal 2024-12-31\.\.2026-01-01 /mu);
-  assert.match(years, /^search\/issues personal 2025-12-31\.\.2026-09-30 /mu);
+  assert.match(years, /^graphql personal 2024-12-31\.\.2025-04-02 /mu);
+  assert.match(years, /^graphql personal 2025-10-06\.\.2026-01-01 /mu);
+  assert.match(years, /^graphql personal 2025-12-31\.\.2026-04-02 /mu);
+  assert.match(years, /^graphql personal 2026-07-05\.\.2026-09-30 /mu);
 
   await assert.rejects(new GitHubContributionsReader(join(dir, "no-such-gh")).read(), { message: GITHUB_CLI_REQUIRED });
 });

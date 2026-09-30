@@ -3,7 +3,9 @@
  *
  * GitHub's contribution calendar API returns nothing for Enterprise Managed
  * Users, so this reads GitHub search instead: commits the account authored
- * (search indexes default branches) and pull requests it opened. The active
+ * (search indexes default branches) through REST search, and pull requests it
+ * opened through one GraphQL request whose aliased quarterly searches skip REST's
+ * 30-a-minute search limit. The active
  * account runs `gh` as-is. Another account's token comes from
  * `gh auth token --user` and goes only into that `gh` child's `GH_TOKEN`; it is
  * never logged, cached or sent to the browser. Results live in gateway memory.
@@ -22,21 +24,30 @@ export const FIRST_YEAR = 2008;
 const SEARCH_CAP = 1000;
 const PAGE_SIZE = 100;
 const CACHE_MS = 15 * 60_000;
-/** Search allows 30 requests a minute per account; a heavy year needs ~15. */
+/** REST search allows 30 requests a minute per account; a heavy year of commits needs ~13. */
 const RATE_LIMIT_WAIT_MS = 61_000;
 
-const SEARCHES = {
-  // `range` is both the date qualifier and the sort, so later pages continue page one.
-  commits: { path: "search/commits", qualifier: "", range: "author-date", date: ".commit.author.date" },
-  pullRequests: { path: "search/issues", qualifier: " is:pr", range: "created", date: ".created_at" },
-} as const;
+/** Pull request searches per quarter: GitHub runs one request's searches in
+ * turn (~0.5 s each), and a quarter fits one page below 100 pull requests. */
+const CHUNK_DAYS = 93;
 
-type Kind = keyof typeof SEARCHES;
 type Run = (args: string[], env?: Record<string, string>) => Promise<string>;
 
 const day = (ms: number) => new Date(ms).toISOString().slice(0, 10);
 const addDays = (value: string, days: number) => day(Date.parse(value) + days * DAY_MS);
 const lines = (text: string) => text.split("\n").map((line) => line.trim()).filter(Boolean);
+
+/** `from..to` cut into consecutive ranges of at most `CHUNK_DAYS` days. */
+function chunks(from: string, to: string): [string, string][] {
+  const ranges: [string, string][] = [];
+  for (let start = from; start <= to; start = addDays(start, CHUNK_DAYS)) {
+    const end = addDays(start, CHUNK_DAYS - 1);
+    ranges.push([start, end < to ? end : to]);
+  }
+  return ranges;
+}
+
+type PullRequestPage = { issueCount: number; pageInfo: { hasNextPage: boolean; endCursor: string | null }; nodes: { createdAt?: string }[] };
 
 /** The latest year any browser may be in: local time runs up to UTC+14. */
 export const latestYear = (now = Date.now()) => new Date(now + 14 * 3_600_000).getUTCFullYear();
@@ -98,8 +109,8 @@ export class GitHubContributionsReader {
       const [createdAt, commits, pullRequests] = await Promise.all([
         // Only the year list needs it; its failure must not discard the activity.
         this.#run(["api", "user", "--jq", ".created_at"], env).then((output) => output.trim() || undefined, () => undefined),
-        this.#search("commits", login, from, to, env),
-        this.#search("pullRequests", login, from, to, env),
+        this.#commits(login, from, to, env),
+        this.#pullRequests(login, from, to, env),
       ]);
       return { login, createdAt, commits, pullRequests };
     } catch (error) {
@@ -107,33 +118,61 @@ export class GitHubContributionsReader {
     }
   }
 
-  /** Dates of every match in `from..to`, halving ranges that exceed the search cap. */
-  async #search(kind: Kind, login: string, from: string, to: string, env?: Record<string, string>): Promise<string[]> {
-    const search = SEARCHES[kind];
+  /** Pull request creation times: one GraphQL request with a search per quarter
+   * (GraphQL also caps a page at 100), then any quarter past 100 by cursor. */
+  async #pullRequests(login: string, from: string, to: string, env?: Record<string, string>): Promise<string[]> {
+    const search = ([start, end]: [string, string], after?: string) =>
+      `search(type: ISSUE, first: ${PAGE_SIZE}${after ? `, after: ${JSON.stringify(after)}` : ""}, query: "author:${login} is:pr created:${start}..${end}") `
+      + "{ issueCount pageInfo { hasNextPage endCursor } nodes { ... on PullRequest { createdAt } } }";
+    const query = async (parts: string[]) => Object.values(JSON.parse(await this.#run(["api", "graphql", "-f", `query={ ${parts.join(" ")} }`, "--jq", ".data"], env)) as Record<string, PullRequestPage>);
+    const ranges = chunks(from, to);
+    const pages = await query(ranges.map((range, index) => `m${index}: ${search(range)}`));
+    const dates = pages.flatMap((page) => page.nodes.map((node) => node.createdAt ?? ""));
+    // ponytail: sequential pages for a quarter past 100 pull requests; batch them if that gets slow.
+    for (const [index, first] of pages.entries()) {
+      for (let page = first; page.pageInfo.hasNextPage && page.pageInfo.endCursor;) {
+        [page] = await query([`m: ${search(ranges[index]!, page.pageInfo.endCursor)}`]) as [PullRequestPage];
+        dates.push(...page.nodes.map((node) => node.createdAt ?? ""));
+      }
+    }
+    return dates.filter(Boolean);
+  }
+
+  /** Commit author dates in `from..to`, halving ranges that exceed the search cap. */
+  async #commits(login: string, from: string, to: string, env?: Record<string, string>): Promise<string[]> {
+    // `author-date` is both the qualifier and the sort, so later pages continue page one.
     const args = (jq: string, ...extra: string[]) => [
-      "api", "-X", "GET", search.path,
-      "-f", `q=author:${login}${search.qualifier} ${search.range}:${from}..${to}`,
-      "-f", `sort=${search.range}`, "-f", `per_page=${PAGE_SIZE}`, ...extra, "--jq", jq,
+      "api", "-X", "GET", "search/commits",
+      "-f", `q=author:${login} author-date:${from}..${to}`,
+      "-f", "sort=author-date", "-f", `per_page=${PAGE_SIZE}`, ...extra, "--jq", jq,
     ];
-    const [total = "0", ...dates] = lines(await this.#searchCall(args(`.total_count, (.items[] | ${search.date})`), env));
+    const date = ".commit.author.date";
+    const [total = "0", ...dates] = lines(await this.#searchCall(args(`.total_count, (.items[] | ${date})`), env));
     const count = Number(total);
     // ponytail: one day past the cap keeps its first 1000; split by hour if that ever matters.
     if (count > SEARCH_CAP && from < to) {
       const middle = addDays(from, Math.floor((Date.parse(to) - Date.parse(from)) / DAY_MS / 2));
-      const halves = await Promise.all([this.#search(kind, login, from, middle, env), this.#search(kind, login, addDays(middle, 1), to, env)]);
+      const halves = await Promise.all([this.#commits(login, from, middle, env), this.#commits(login, addDays(middle, 1), to, env)]);
       return halves.flat();
     }
-    if (count <= PAGE_SIZE) return dates;
-    return [...dates, ...lines(await this.#searchCall(args(`.items[] | ${search.date}`, "-f", "page=2", "--paginate"), env))];
+    // Later pages in parallel, not one after another with `--paginate`.
+    const pages = Array.from({ length: Math.ceil(Math.min(count, SEARCH_CAP) / PAGE_SIZE) - 1 }, (_, index) =>
+      this.#searchCall(args(`.items[] | ${date}`, "-f", `page=${index + 2}`), env).then(lines));
+    return [...dates, ...(await Promise.all(pages)).flat()];
   }
 
-  /** A search call that waits out GitHub's per-minute search limit once. */
+  /** A search call that waits out GitHub's search limit once: until the reset
+   * `rate_limit` reports (a call that costs no quota), else a minute. */
   async #searchCall(args: string[], env?: Record<string, string>): Promise<string> {
     try {
       return await this.#run(args, env);
     } catch (error) {
-      if (!/rate limit/iu.test(error instanceof Error ? error.message : "")) throw error;
-      await new Promise((resolve) => setTimeout(resolve, this.#rateLimitWaitMs));
+      const message = error instanceof Error ? error.message : "";
+      if (!/rate limit/iu.test(message)) throw error;
+      // The burst ("secondary") limit has no reset time to ask for.
+      const reset = /secondary/iu.test(message) ? 0 : Number(await this.#run(["api", "rate_limit", "--jq", ".resources.search.reset"], env).catch(() => ""));
+      const wait = reset > 0 ? reset * 1000 - this.#now() + 1000 : this.#rateLimitWaitMs;
+      await new Promise((resolve) => setTimeout(resolve, Math.min(Math.max(wait, 0), this.#rateLimitWaitMs)));
       return this.#run(args, env);
     }
   }
