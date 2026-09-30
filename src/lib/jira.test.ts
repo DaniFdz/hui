@@ -51,7 +51,9 @@ test("the session row renders the Jira mark left of the title and keeps the menu
   assert.match(source, /installJiraHovercard\(\)/);
   assert.match(source, /value="jira:create"[\s\S]*?Create Jira work item…/);
   assert.match(source, /value="jira:link"[\s\S]*?Link Jira work item…/);
-  assert.match(source, /linkedJira \? html`[\s\S]*?value="open:jira"[\s\S]*?value="copy:jira"[\s\S]*?` : html`[\s\S]*?value="jira:create"/);
+  assert.match(source, /linkedJira \? nothing : html`[\s\S]*?value="jira:create"/);
+  assert.match(source, /value="copy:id"[\s\S]*?linkedJira \? html`[^`]*value="copy:jira"/);
+  assert.match(source, /value="open:editor"[\s\S]*?linkedJira \? html`[^`]*value="open:jira"/);
 });
 
 test("search results join the known projects, sorted, without losing the selection", async () => {
