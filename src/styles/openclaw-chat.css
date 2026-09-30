@@ -620,7 +620,10 @@ hui-math.markdown-math--inline .markdown-rich-embed__error {
 }
 
 /* Suggested task card (OpenClaw task-suggestion port). HUI adds a secondary
-   Jira action beside the primary start action instead of a split button. */
+   Jira action beside the primary start action instead of a split button.
+   The tray is 50px wider than OpenClaw's 450px so both split buttons share one
+   row even in a monospace interface font; narrower panes still wrap them. */
+.chat-gutter-stack { width: min(500px, calc(100% - 28px)); }
 .task-suggestion__actions { gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 .task-suggestion__actions .task-suggestion__start { cursor: var(--cursor-action, pointer); }
 .task-suggestion__actions .task-suggestion__start:disabled { cursor: not-allowed; opacity: .6; }
