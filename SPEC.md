@@ -161,6 +161,8 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   connected account by default. Edits are never overwritten by
   the draft. "Link Jira work item…" links an existing item: it lists recently
   viewed work items and searches Jira by key, pasted URL or summary text.
+  Once a session is linked, its sidebar and Kanban menus offer "Open in Jira"
+  and "Copy Jira link" for the latest linked item instead.
   Settings → Integrations → Jira walks the operator through creating an Atlassian
   API token; HUI verifies it and keeps it server-side only.
 - Agents record bugs or problems found along the way with `suggest_task`
