@@ -239,7 +239,7 @@ function renderCleanupConfirm(props: WorktreesPageProps, candidates: readonly Wo
   return html`<div class="settings-group worktree-cleanup" role="region" aria-label="Confirm merged cleanup">
     <div class="worktree-cleanup__copy">
       <strong>Remove ${candidates.length} merged worktree${candidates.length === 1 ? "" : "s"}?</strong>
-      <span class="muted">Frees about ${formatBytes(bytes)}. Only worktrees HUI created with a merged pull request, no session and no local changes; nothing is forced. Their local branches are deleted when the merged head matches. Remove any other worktree from its row.</span>
+      <span class="muted">Frees about ${formatBytes(bytes)}. Only worktrees HUI created with a merged pull request, no running session and no local changes; nothing is forced. Their local branches are deleted when the merged head matches. Remove any other worktree from its row.</span>
       <ul class="worktree-cleanup__list">
         ${candidates.map((row) => html`<li><span class="mono">${row.branch}</span> <span class="muted">${formatBytes(row.bytes)}</span></li>`)}
       </ul>
@@ -307,7 +307,7 @@ export function renderWorktreesPage(props: WorktreesPageProps): TemplateResult {
               </div>
               <div class="settings-section__actions">
                 <button type="button" class="btn btn--sm" ?disabled=${props.loading} @click=${props.onRefresh}>${icons.refresh} Refresh</button>
-                <span class="worktree-tooltip-wrap" data-hui-tooltip=${candidates.length ? "Remove HUI worktrees with a merged PR, no session and no local changes" : "No HUI worktree has a merged PR, no session and no local changes"}>
+                <span class="worktree-tooltip-wrap" data-hui-tooltip=${candidates.length ? "Remove HUI worktrees with a merged PR, no running session and no local changes" : "No HUI worktree has a merged PR, no running session and no local changes"}>
                   <button type="button" class="btn btn--sm" data-worktree-cleanup
                     ?disabled=${candidates.length === 0 || props.removing}
                     @click=${props.onRequestCleanup}>${icons.trash} Clean up merged${candidates.length ? ` (${candidates.length})` : ""}</button>
