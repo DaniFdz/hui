@@ -1014,7 +1014,8 @@ data: {"id":"session-a","status":"idle"}
 
 The stream does not start cold sessions and does not carry transcript content.
 The browser uses it to keep all sidebar rows current while retaining the
-selected session's detailed `/sessions/:id/events` stream. It has the same
+selected session's detailed event stream (a WebSocket, see
+`POST /__hui/sessions/:id/connect`). It has the same
 heartbeat, `x-hui` guard, no-store policy, and reconnect behavior as the
 session-specific stream.
 
@@ -1222,6 +1223,20 @@ The gateway-wide status SSE includes `unread: true|false` when that state change
 and opening or streaming the conversation clears it. This is presentation state,
 not a runtime health status; waiting questions and failures keep their separate
 attention indicators.
+
+### `POST /__hui/sessions/:id/connect`
+
+Responds `{ "url": "/__hui/session-stream?ticket=…" }`: a one-use WebSocket
+capability for the same stream, valid for 15 seconds and bound to this session.
+The browser's session views use it instead of the SSE route above, because
+browsers allow only six HTTP/1.1 connections per origin and a few split panes
+would otherwise stall every other request. Like terminal and browser streams,
+the upgrade also requires a same-origin `Origin` and an allowed `Host`, and it
+is refused with 403 otherwise. Each text message is
+`{ "event": "snapshot" | "transcript" | "event" | "status" | "model" | "thinking_level" | "closed", "data": … }`
+with the SSE payloads above, beginning with the snapshot. After `closed` the
+server closes normally; a session deleted before the upgrade closes with code
+4404. 429 means too many tickets are pending, so retry later.
 
 ### `POST /__hui/sessions/:id/resume`
 
@@ -1454,7 +1469,7 @@ Malformed records are ignored and deleted sessions are removed after registry
 loading.
 
 Each pane renders an independent embedded session application with its own
-detailed SSE, transcript, composer, queue and question state. Visited sessions
+detailed event WebSocket, transcript, composer, queue and question state. Visited sessions
 are cached in three stable slots per pane (unsaved queue edits pin their views
 until committed or cancelled). Only the root owns
 the gateway-wide lifecycle stream. Duplicate-session splits reuse the existing
@@ -1469,8 +1484,8 @@ move handle supports arrow-key movement beside neighboring panes; Escape
 cancels dragging without stopping an agent turn. Interactive header controls
 do not initiate pane drags. Self-drops and foreign/stale pane drags are ignored.
 All pane contents stay mounted in stable DOM hosts, even when moving between
-columns: session caches, scroll, unsaved editors, SSE and terminal WebSockets
-are retained. Only view geometry and browser-local layout/focus change.
+columns: session caches, scroll, unsaved editors, session and terminal
+WebSockets are retained. Only view geometry and browser-local layout/focus change.
 
 Pointer/focus events select a pane. Close removes
 only the view; the previous row, previous column or first survivor takes focus.
