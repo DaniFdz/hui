@@ -83,7 +83,8 @@ function nextId(ids: string[], prefix: string): string {
 }
 
 export function splitSessionPane(layout: SessionLayout, paneId: string, sessionId: string, direction: SplitDirection): SessionLayout {
-  const source = locateSessionPane(layout, paneId);
+  // A hidden tab splits beside its spot (e.g. a terminal requested before a tab switch).
+  const source = locateTab(layout, paneId);
   if (!source) return layout;
   const next = copyLayout(layout);
   const pane: SessionPane = { id: nextId(sessionPanes(layout).map(({ id }) => id), "p"), sessionId };
@@ -164,23 +165,22 @@ export function addSessionTab(layout: SessionLayout, paneId: string, sessionId: 
  * the target's spot. Only the moved pane travels: other tabs stay put. */
 export function moveSessionPane(layout: SessionLayout, sourceId: string, targetId: string, zone: DropZone): SessionLayout {
   const source = locateTab(layout, sourceId);
-  let target = locateTab(layout, targetId);
+  const target = locateTab(layout, targetId);
   if (!source || !target) return layout;
   const pane = source.tabs[source.index]!;
   const sameSpot = source.columnIndex === target.columnIndex && source.paneIndex === target.paneIndex;
   if (zone.kind !== "edge") {
     if (sameSpot) return layout;
     const next = zone.kind === "tab" ? closeSessionPane(layout, sourceId) : copyLayout(layout);
-    target = locateTab(next, targetId)!;
-    const place = (at: NonNullable<typeof target>, replacement: SessionPane | undefined, visible: string) => {
+    const place = (at: typeof source, replacement: SessionPane | undefined, visible: string) => {
       const tabs = replacement ? at.tabs.map((tab, i) => i === at.index ? replacement : tab) : [...at.tabs, pane];
       next.columns[at.columnIndex]!.panes[at.paneIndex] = spotShowing(tabs, visible);
     };
-    if (zone.kind === "tab") place(target, undefined, sourceId);
+    if (zone.kind === "tab") place(locateTab(next, targetId)!, undefined, sourceId);
     else {
       const other = target.tabs[target.index]!;
       place(target, pane, sourceId);
-      place(locateTab(layout, sourceId)!, other, source.spot.id === sourceId ? other.id : source.spot.id);
+      place(source, other, source.spot.id === sourceId ? other.id : source.spot.id);
     }
     next.activePaneId = sourceId;
     return next;

@@ -207,24 +207,29 @@ export class SessionMultiplexer extends HuiElement {
 
   override updated() {
     if (!this.focusTab) return;
-    this.querySelector<HTMLElement>(`[data-tab-pane="${CSS.escape(this.focusTab)}"]`)?.focus();
+    this.querySelector<HTMLElement>(`[data-tab-pane="${CSS.escape(this.focusTab)}"] [role="tab"]`)?.focus();
     this.focusTab = "";
   }
 
   private renderTabs(tabs: SessionPane[], shownId: string) {
-    const activate = (id: string, focus = false) => { if (focus) this.focusTab = id; this.onFocusPane(id); };
+    const activate = (id: string, focus = false) => {
+      // Showing another tab moves the tab row to that tab's cell; refocus it there.
+      if (focus && id !== shownId) this.focusTab = id;
+      this.onFocusPane(id);
+    };
     return html`<div class="hui-pane-tabs" role="tablist" aria-label="Panel tabs">${tabs.map((tab, index) => {
       const label = this.paneLabel(tab);
-      return html`<div class="hui-pane-tab ${tab.id === shownId ? "hui-pane-tab--active" : ""}" role="tab" draggable="true"
-        data-tab-pane=${tab.id} aria-selected=${String(tab.id === shownId)} tabindex=${tab.id === shownId ? "0" : "-1"} title=${label}
-        @click=${() => activate(tab.id)}
-        @keydown=${(event: KeyboardEvent) => {
-          const next = event.key === "ArrowLeft" ? tabs[index - 1] : event.key === "ArrowRight" ? tabs[index + 1] : event.key === "Enter" || event.key === " " ? tab : undefined;
-          if (!next || event.target !== event.currentTarget) return;
-          event.preventDefault();
-          activate(next.id, true);
-        }}
-      >${tab.terminalId ? icons.squareTerminal : tab.browser ? icons.globe : icons.messageSquare}<span class="hui-pane-tab__label">${label}</span>
+      const shown = tab.id === shownId;
+      return html`<div class="hui-pane-tab ${shown ? "hui-pane-tab--active" : ""}" role="presentation" draggable="true" data-tab-pane=${tab.id} title=${label}>
+        <div class="hui-pane-tab__select" role="tab" aria-selected=${String(shown)} tabindex=${shown ? "0" : "-1"}
+          @click=${() => activate(tab.id)}
+          @keydown=${(event: KeyboardEvent) => {
+            const next = event.key === "ArrowLeft" ? tabs[index - 1] : event.key === "ArrowRight" ? tabs[index + 1] : event.key === "Enter" || event.key === " " ? tab : undefined;
+            if (!next) return;
+            event.preventDefault();
+            activate(next.id, true);
+          }}
+        >${tab.terminalId ? icons.squareTerminal : tab.browser ? icons.globe : icons.messageSquare}<span class="hui-pane-tab__label">${label}</span></div>
         <button type="button" class="hui-pane-tab__close" aria-label=${`Close ${label}`} title="Close tab"
           @click=${(event: Event) => { event.stopPropagation(); this.onClosePane(tab.id); }}>${icons.close}</button>
       </div>`;
