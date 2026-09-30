@@ -337,6 +337,17 @@ test("SDK honors HUI skill disable controls without changing PI files", { timeou
   for (const skill of skills) assert.equal(await readFile(skill.path, "utf8"), skill.body);
 });
 
+test("SDK reload picks up skills added after the session started", { timeout: 30_000 }, async (t) => {
+  const f = await fixture(t);
+  const session = await f.start({ noSession: true });
+  assert(!(await session.listCommands()).some((command) => command.name === "skill:late-fixture"));
+  await mkdir(join(f.agentDir, "skills", "late-fixture"), { recursive: true });
+  await writeFile(join(f.agentDir, "skills", "late-fixture", "SKILL.md"), "---\nname: late-fixture\ndescription: Added later\n---\nBody.\n");
+  await session.reload!();
+  assert((await session.listCommands()).some((command) => command.name === "skill:late-fixture"));
+  assert.match((await session.inspect!()).prompt, /late-fixture/u);
+});
+
 test("SDK excludes disabled packages and direct extensions before their code loads", { timeout: 30_000 }, async (t) => {
   const f = await fixture(t);
   const pluginDir = join(f.agentDir, "fixture-plugin");

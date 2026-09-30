@@ -373,6 +373,17 @@ const server = createServer(async (request, response) => {
     return finish(response);
   }
   if (source.includes("Generate a concise session title (3-6 words, max 60 characters)")) {
+    // E2E_HOLD_NAMING waits for POST /control/release-replay, so a check can
+    // see a plain session open under its provisional title before this answer.
+    if (source.includes("E2E_HOLD_NAMING")) {
+      const released = await new Promise((resolve) => {
+        const release = () => { replayWaiters.delete(release); resolve(true); };
+        replayWaiters.add(release);
+        response.once("close", () => { replayWaiters.delete(release); resolve(false); });
+        signalReplayReady();
+      });
+      if (!released) return;
+    }
     text(response, "Improve session naming");
     return finish(response);
   }

@@ -803,7 +803,7 @@ runtime returns an empty list, not a fabricated terminal-command catalog.
 Discovery does not add support for arbitrary TUI-only custom extension widgets;
 extension interaction remains limited to the supported PI RPC UI requests.
 HUI merges its own session commands into the browser menu separately; `/clear`
-therefore remains available even though PI omits terminal built-ins from
+and `/reload` therefore remain available even though PI omits terminal built-ins from
 `get_commands`.
 
 As with `/models`, a registered cold session starts its runtime and returns `409`
@@ -834,8 +834,13 @@ append a synthetic user turn after the authoritative transcript refresh.
 List everything in the registry, grouped.
 
 ```json
-{ "groups": [ { "label": "my-sessions", "sessions": [ /* SessionView[] */ ] } ] }
+{ "revision": 12, "groups": [ { "label": "my-sessions", "sessions": [ /* SessionView[] */ ] } ] }
 ```
+
+The gateway keeps this list in memory and shares it with every connected
+screen; `revision` increases whenever it changes. The group mutation routes
+return the same shape. `GET /__hui/sessions/events` pushes the same list as
+changes, so clients discard any full list older than the revision they hold.
 
 Groups follow the registry's catalog order, which the user controls, with
 `ungrouped` last. New groups are appended; renames keep their position. Within each group pinned sessions come first, then
@@ -926,11 +931,16 @@ another runtime fail closed when opened. PI's session file is learned during
 boot and stored in the record.
 
 When `title` is absent and `initialPrompt` is present, HUI asks the configured
-utility model for a concise three- to six-word name in the prompt's language before registration, kept to at most
+utility model for a concise three- to six-word name in the prompt's language, kept to at most
 60 characters. The stored name remains descriptive; the sidebar owns visual overflow. The utility call uses an
 in-memory session, no tools, no workspace instructions and thinking off. Failure
 falls back to the first prompt line within the same character limit,
-so naming never prevents session creation.
+so naming never prevents session creation. A session without `worktree` does
+not wait for the model: it is registered and returned under that first-line
+title, and the generated name replaces it once the model answers (20-second
+limit), announced as a `status` frame carrying `title` on
+`GET /__hui/sessions/events`. A rename or delete in the meantime wins. A
+worktree session is named before Git starts, because its branch depends on it.
 
 When `worktree` is true and `branchName` is absent, HUI also names the branch
 itself. With an `initialPrompt`, the same utility call (or a branch-only call
@@ -1011,6 +1021,27 @@ event: status
 data: {"id":"session-a","status":"idle"}
 ```
 
+A `status` frame may also carry `title` when the gateway renamed the session
+itself, such as a new session's generated name.
+
+It also carries the shared session list. After the status snapshot, the
+first `sessions` frame is the complete list; later frames carry only what
+changed. `groups` (order, membership and group defaults as ordered `ids`) is
+present only when it changed, and `upserts` holds each session whose view
+changed. While any client listens, the gateway recomputes the list every
+second.
+
+```text
+event: sessions
+data: {"revision":12,"groups":[{"label":"my-sessions","ids":["session-a"]}],"upserts":[/* SessionView[] */]}
+
+event: sessions
+data: {"revision":13,"upserts":[/* SessionView[] */]}
+```
+
+Revisions are seeded from the gateway's clock, so they keep rising across
+gateway restarts and a client ignores any list older than the one it holds.
+
 The stream does not start cold sessions and does not carry transcript content.
 The browser uses it to keep all sidebar rows current while retaining the
 selected session's detailed event stream (a WebSocket, see
@@ -1054,9 +1085,9 @@ interactive input. Receiving `extension_ui_request` is treated as acceptance so
 the HTTP request does not race the human; the original delayed RPC response is
 then the settle edge that refreshes history and unlocks the composer.
 
-`/clear` is reserved by HUI and is never accepted through the prompt or queue
-routes, including malformed variants with arguments. The browser calls the
-dedicated route below instead.
+`/clear` and `/reload` are reserved by HUI and are never accepted through the
+prompt or queue routes, including malformed variants with arguments. The browser
+calls the dedicated routes below instead.
 
 At most eight attachments are accepted. Each decoded item is limited to 12 MB
 and the decoded total to 16 MB. Base64 must be canonical; image MIME types are
@@ -1087,6 +1118,16 @@ preferences remain attached to that row. PI's previous JSONL is left untouched,
 and `/clear` itself is not added to either transcript. A registry persistence
 failure is explicit because the live runtime has already moved to the fresh
 session and a later reopen may otherwise resume the previous pointer.
+
+### `POST /__hui/sessions/:id/reload`
+
+Accepts an empty JSON body and returns `{ "ok": true }`. Busy rules match
+`/clear` (`409` otherwise). PI's RPC mode has no reload command, so the SDK
+worker calls PI's `AgentSession.reload()`, the same call as the terminal
+`/reload`: settings, extensions, skills, prompt templates and context files are
+re-read in place. The PI session, transcript, model and thinking level are
+unchanged. The CLI fallback backend returns `400`. The browser discards its
+cached command catalog so newly added skills and commands appear.
 
 ### `POST /__hui/sessions/:id/steer`
 

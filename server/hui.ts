@@ -49,7 +49,7 @@ import { readPiConfig, invalidateModelCatalog } from "./pi-config.ts";
 import { PiResourceNotFoundError, readPiResourceDocument } from "./pi-resource-reader.ts";
 import { readToolsCatalog } from "./tools.ts";
 import { updates, UpdateConflict } from "./updates.ts";
-import { parseClearCommand, parseUpdateCommand } from "../src/lib/slash-commands.ts";
+import { parseClearCommand, parseReloadCommand, parseUpdateCommand } from "../src/lib/slash-commands.ts";
 import {
   PiMutationBusyError,
   PiMutationCommandError,
@@ -131,6 +131,7 @@ import { backlogItemPrompt, type BacklogItem, type BacklogView } from "../shared
 import { TASK_SUGGESTION_START_MODES, taskSuggestionJiraDescription, taskSuggestionPrompt, type TaskSuggestionStartMode } from "../shared/task-suggestions.ts";
 import { terminals, TerminalError } from "./terminals.ts";
 import { attachSessionTransport, sessionStreamTicket } from "./session-transport.ts";
+import { createSessionListHub } from "./session-list.ts";
 import { attachTerminalTransport, terminalTicket } from "./terminal-transport.ts";
 import {
   createSessionGroup,
@@ -186,7 +187,7 @@ const SESSION_GROUP_MAX = 200;
 const SESSION_GROUP_ORDER_MAX = 1_000;
 /** Session actions and live catalogs, all addressed by HUI's own session id. */
 const SESSION_ACTION =
-  /^\/__hui\/sessions\/([^/]+)\/(open|prompt|continue|resume|steer|follow-up|btw|queue|events|connect|models|commands|tools|model|thinking|question|abort|clear|checkpoints|rewind)$/;
+  /^\/__hui\/sessions\/([^/]+)\/(open|prompt|continue|resume|steer|follow-up|btw|queue|events|connect|models|commands|tools|model|thinking|question|abort|clear|reload|checkpoints|rewind)$/;
 /** The session itself, for changing it rather than acting on it. */
 const SESSION_ONE = /^\/__hui\/sessions\/([^/]+)$/;
 const GITHUB_ROUTE = `${PREFIX}github`;
@@ -1064,6 +1065,8 @@ async function listSessionViews(): Promise<{ label: string; sessions: SessionVie
   return views;
 }
 
+const sessionList = createSessionListHub(listSessionViews);
+
 function automationErrorStatus(error: unknown): 400 | 404 | 409 | 500 {
   if (error instanceof AutomationNotFoundError) return 404;
   if (error instanceof AutomationConflictError) return 409;
@@ -1196,8 +1199,13 @@ export async function createSession(
   onWorktreeProgress?: (progress: WorktreeProgress) => void,
   /** Server-decided fields, never taken from a browser body: an operator
    * stage placement (a started backlog item). `onPending` receives the
-   * provisional record once the body is valid, again once it is named. */
-  seed: { stage?: SessionStage; onPending?: (record: SessionRecord) => void } = {},
+   * provisional record once the body is valid, again once it is named.
+   * `nameSession` replaces the utility-model call in tests. */
+  seed: {
+    stage?: SessionStage;
+    onPending?: (record: SessionRecord) => void;
+    nameSession?: typeof generateSessionNames;
+  } = {},
 ): Promise<SessionRecord> {
   if (typeof body["cwd"] !== "string") throw new Error("Working directory must be text.");
   let cwd = resolveWorkingDirectory(body["cwd"]);
@@ -1278,9 +1286,16 @@ export async function createSession(
   // Without an operator branch name, a new worktree gets a short generated
   // one, asked for in the same utility call that names the session.
   if (initialPrompt && requestedWorktree && !branchName) onWorktreeProgress?.({ phase: "naming" });
-  seed.onPending?.(recordNamed(title ?? (initialPrompt ? fallbackTitle(initialPrompt) : basename(cwd))));
-  const names = initialPrompt
-    ? await generateSessionNames({
+  const provisionalTitle = title ?? (initialPrompt ? fallbackTitle(initialPrompt) : basename(cwd));
+  seed.onPending?.(recordNamed(provisionalTitle));
+  const nameSession = seed.nameSession ?? generateSessionNames;
+  // A worktree needs its branch name before Git starts, and its request has
+  // already returned. A plain session is registered under the provisional
+  // title at once and renamed when the utility model answers, so the request
+  // never waits on a model call.
+  const namesLater = Boolean(initialPrompt && !title && !requestedWorktree);
+  const names = initialPrompt && !namesLater
+    ? await nameSession({
         cwd,
         prompt: initialPrompt,
         settings,
@@ -1288,7 +1303,7 @@ export async function createSession(
         branch: requestedWorktree && !branchName,
       })
     : undefined;
-  const effectiveTitle = title ?? names?.title ?? basename(cwd);
+  const effectiveTitle = title ?? names?.title ?? provisionalTitle;
   if (names) seed.onPending?.(recordNamed(effectiveTitle));
   const effectiveBranchName = branchName
     ?? names?.branchName
@@ -1322,13 +1337,54 @@ export async function createSession(
   }
   sessions.accept(record.id);
   sessions.ensure(record);
+  if (namesLater && initialPrompt) {
+    void renameWithGeneratedTitle(record, () => nameSession({ cwd, prompt: initialPrompt, settings }), registryUpdater);
+  }
   return record;
+}
+
+/**
+ * Replaces a session's provisional title with the utility model's name. An
+ * operator rename or a delete in the meantime wins: only a record still
+ * carrying the provisional title changes. Open browsers learn the new title
+ * from the session status stream.
+ */
+export async function renameWithGeneratedTitle(
+  record: SessionRecord,
+  generate: () => Promise<{ title: string }>,
+  registryUpdater: typeof updateRegistry = updateRegistry,
+  publish: (update: PendingStatusUpdate) => void = publishPendingStatus,
+  status: (id: string) => SessionStatus = (id) => liveSessions.status(id),
+): Promise<SessionRecord | undefined> {
+  try {
+    const { title } = await generate();
+    if (!title || title === record.title) return undefined;
+    let renamed: SessionRecord | undefined;
+    await registryUpdater((records) => records.map((current) => {
+      if (current.id !== record.id || current.title !== record.title) return current;
+      renamed = { ...current, title };
+      return renamed;
+    }));
+    if (renamed) publish({ id: record.id, status: status(record.id), title });
+    return renamed;
+  } catch (error) {
+    recordDiagnosticEvent({
+      area: "session",
+      level: "warning",
+      action: "session_title_failed",
+      sessionId: record.id,
+      summary: error instanceof Error ? error.message : "Could not store the generated session title.",
+    });
+    return undefined;
+  }
 }
 
 /** Worktree sessions whose checkout is still being created, shown in the
  * sidebar before their record exists. Memory only: a restart forgets them. */
 type PendingSession = { record: SessionRecord; creating?: WorktreeProgress; error?: string; prompt: string };
-type PendingStatusUpdate = Pick<SessionStatusUpdate, "id" | "status"> & Pick<SessionView, "creating" | "creationError">;
+type PendingStatusUpdate = Pick<SessionStatusUpdate, "id" | "status">
+  & Pick<SessionView, "creating" | "creationError">
+  & { title?: string };
 const pendingSessions = new Map<string, PendingSession>();
 const pendingStatusSubscribers = new Set<(update: PendingStatusUpdate) => void>();
 
@@ -1818,6 +1874,7 @@ export function streamSession(
 export function streamSessionStatuses(
   response: ServerResponse,
   sessions: Pick<typeof liveSessions, "watchStatuses"> = liveSessions,
+  list: Pick<typeof sessionList, "subscribe"> = sessionList,
 ): void {
   response.writeHead(200, {
     "content-type": "text/event-stream; charset=utf-8",
@@ -1831,6 +1888,7 @@ export function streamSessionStatuses(
   const watched = sessions.watchStatuses(write);
   pendingStatusSubscribers.add(write);
   writeEvent(response, "snapshot", { statuses: [...watched.statuses, ...[...pendingSessions.values()].map(pendingStatus)] });
+  const unlist = list.subscribe((update) => writeEvent(response, "sessions", update));
 
   const heartbeat = setInterval(() => {
     if (!response.writableEnded) response.write(": heartbeat\n\n");
@@ -1841,6 +1899,7 @@ export function streamSessionStatuses(
     clearInterval(heartbeat);
     watched.unsubscribe();
     pendingStatusSubscribers.delete(write);
+    unlist();
   });
 }
 
@@ -2597,7 +2656,7 @@ async function handleRequest(
     try {
       const body = (await readBody(request)) as Record<string, unknown>;
       await createSessionGroup(sessionGroupName(body));
-      sendJson(response, 200, { groups: await listSessionViews() });
+      sendJson(response, 200, await sessionList.refresh());
     } catch (error) {
       sendJson(response, sessionMutationErrorStatus(error), {
         error: error instanceof Error ? error.message : "Could not create that group.",
@@ -2610,7 +2669,7 @@ async function handleRequest(
     try {
       const body = (await readBody(request)) as Record<string, unknown>;
       await reorderSessionGroups(sessionGroupOrder(body));
-      sendJson(response, 200, { groups: await listSessionViews() });
+      sendJson(response, 200, await sessionList.refresh());
     } catch (error) {
       sendJson(response, sessionMutationErrorStatus(error), {
         error: error instanceof Error ? error.message : "Could not reorder the groups.",
@@ -2631,7 +2690,7 @@ async function handleRequest(
           await sessionGroupPatch((await readBody(request)) as Record<string, unknown>),
         );
       }
-      sendJson(response, 200, { groups: await listSessionViews() });
+      sendJson(response, 200, await sessionList.refresh());
     } catch (error) {
       sendJson(response, sessionMutationErrorStatus(error), {
         error: error instanceof Error ? error.message : "Could not update that group.",
@@ -2642,7 +2701,7 @@ async function handleRequest(
 
   if (path === SESSIONS_ROUTE) {
     if (request.method === "GET") {
-      sendJson(response, 200, { groups: await listSessionViews() });
+      sendJson(response, 200, await sessionList.refresh());
       return;
     }
     if (request.method === "POST") {
@@ -2931,6 +2990,10 @@ async function handleRequest(
         sendJson(response, 400, { error: "/clear is a HUI command. Use the clear endpoint, not the model prompt or queue." });
         return;
       }
+      if (parseReloadCommand(text)) {
+        sendJson(response, 400, { error: "/reload is a HUI command. Use the reload endpoint, not the model prompt or queue." });
+        return;
+      }
       let prepared: PreparedAttachments | undefined;
       try {
         prepared = await readAttachments(id, body["attachments"]);
@@ -2983,6 +3046,21 @@ async function handleRequest(
       } catch (error) {
         sendJson(response, error instanceof SessionBusyError ? 409 : error instanceof SessionRegistryError ? 500 : 400, {
           error: error instanceof Error ? error.message : "Could not clear that session.",
+        });
+      }
+      return;
+    }
+    if (action[2] === "reload" && request.method === "POST") {
+      try {
+        if (!liveSessions.ensure(record)) {
+          sendJson(response, 404, { error: `unknown session: ${id}` });
+          return;
+        }
+        await liveSessions.reload(id);
+        sendJson(response, 200, { ok: true });
+      } catch (error) {
+        sendJson(response, error instanceof SessionBusyError ? 409 : 400, {
+          error: error instanceof Error ? error.message : "Could not reload that session.",
         });
       }
       return;

@@ -43,10 +43,12 @@ test("abort, rewind and prompt-free continuation use acknowledged SDK worker req
   await inspector.abort();
   await inspector.rewind("entry-1", true);
   await inspector.continueRun();
+  await inspector.reload();
 
   assert.deepEqual(requests.map(({ type, entryId, excludeUserMessage }) => ({ type, entryId, excludeUserMessage })), [
     { type: "abort", entryId: undefined, excludeUserMessage: undefined },
     { type: "rewind", entryId: "entry-1", excludeUserMessage: true },
     { type: "continue", entryId: undefined, excludeUserMessage: undefined },
+    { type: "reload", entryId: undefined, excludeUserMessage: undefined },
   ]);
 });

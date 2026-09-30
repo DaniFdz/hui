@@ -106,6 +106,13 @@ async function main() {
         process.send?.({ version: 1, id: message["id"], type: "ok" });
         return;
       }
+      if (message["type"] === "reload") {
+        // PI's RPC mode has no /reload; this is the SDK call the TUI makes.
+        if (session.isStreaming || session.isCompacting) throw new Error("Wait for the current run to finish before reloading.");
+        await session.reload();
+        process.send?.({ version: 1, id: message["id"], type: "ok" });
+        return;
+      }
       if (message["type"] === "rewind") {
         if (session.isStreaming) throw new Error("Wait for the current run to finish before rewinding.");
         const entryId = message["entryId"];

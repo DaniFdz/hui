@@ -10,8 +10,10 @@ import type { TaskSuggestion } from "../../shared/task-suggestions.ts";
 import { CLIENT_HEADERS, fetchJson } from "./settings-store.ts";
 import { trackedFetch } from "./ui-errors.ts";
 import type { SessionStage, SessionStageOrigin } from "../../shared/session-stages.ts";
+import type { SessionListUpdate } from "../../shared/session-list.ts";
 
 const SESSIONS_URL = "/__hui/sessions";
+const CREATE_SESSION_TIMEOUT_MS = 120_000;
 /** Mirrors the server's close code for a session that no longer exists. */
 const SESSION_STREAM_GONE = 4404;
 const SESSION_STATUSES_URL = `${SESSIONS_URL}/events`;
@@ -23,6 +25,8 @@ export type SessionStatusUpdate = {
   unread?: boolean;
   creating?: WorktreeProgress;
   creationError?: string;
+  /** Present when the gateway renamed the session, e.g. its generated title. */
+  title?: string;
 };
 
 export type WorktreeProgress = {
@@ -303,24 +307,31 @@ export function statusCounts(groups: readonly SessionGroup[]): {
   return { running, starting, total };
 }
 
-export async function loadSessions(): Promise<SessionGroup[]> {
-  return (await fetchJson<{ groups?: SessionGroup[] }>(SESSIONS_URL)).groups ?? [];
+/** `revision` orders this full list against the status stream's changes. */
+export type SessionList = { revision: number; groups: SessionGroup[] };
+
+function sessionList(body: Partial<SessionList>): SessionList {
+  return { revision: body.revision ?? 0, groups: body.groups ?? [] };
 }
 
-export async function createSessionGroup(name: string): Promise<SessionGroup[]> {
-  const body = await fetchJson<{ groups?: SessionGroup[] }>("/__hui/session-groups", {
+export async function loadSessions(): Promise<SessionList> {
+  return sessionList(await fetchJson<Partial<SessionList>>(SESSIONS_URL));
+}
+
+export async function createSessionGroup(name: string): Promise<SessionList> {
+  const body = await fetchJson<Partial<SessionList>>("/__hui/session-groups", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ name }),
   });
-  return body.groups ?? [];
+  return sessionList(body);
 }
 
 export async function updateSessionGroup(
   name: string,
   patch: { name?: string; cwd?: string; workspaceMode?: "branch" | "worktree" | ""; baseRef?: string },
-): Promise<SessionGroup[]> {
-  const body = await fetchJson<{ groups?: SessionGroup[] }>(
+): Promise<SessionList> {
+  const body = await fetchJson<Partial<SessionList>>(
     `/__hui/session-groups/${encodeURIComponent(name)}`,
     {
       method: "PATCH",
@@ -328,25 +339,25 @@ export async function updateSessionGroup(
       body: JSON.stringify(patch),
     },
   );
-  return body.groups ?? [];
+  return sessionList(body);
 }
 
-export async function deleteSessionGroup(name: string): Promise<SessionGroup[]> {
-  const body = await fetchJson<{ groups?: SessionGroup[] }>(
+export async function deleteSessionGroup(name: string): Promise<SessionList> {
+  const body = await fetchJson<Partial<SessionList>>(
     `/__hui/session-groups/${encodeURIComponent(name)}`,
     { method: "DELETE" },
   );
-  return body.groups ?? [];
+  return sessionList(body);
 }
 
 /** Persists the complete custom-group order; the server rejects stale lists. */
-export async function reorderSessionGroups(order: readonly string[]): Promise<SessionGroup[]> {
-  const body = await fetchJson<{ groups?: SessionGroup[] }>("/__hui/session-groups", {
+export async function reorderSessionGroups(order: readonly string[]): Promise<SessionList> {
+  const body = await fetchJson<Partial<SessionList>>("/__hui/session-groups", {
     method: "PUT",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ order }),
   });
-  return body.groups ?? [];
+  return sessionList(body);
 }
 
 /** Registers a session and starts its runtime. A worktree session returns at
@@ -368,6 +379,9 @@ export async function createSession(input: {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(input),
+    // Registration is quick, but a Current checkout switch runs Git first;
+    // the 5-second default would abandon a request the gateway still finishes.
+    signal: AbortSignal.timeout(CREATE_SESSION_TIMEOUT_MS),
   });
   if (!body.session) {
     throw new Error("The session started but could not be read back.");
@@ -461,6 +475,14 @@ export async function askSideQuestion(id: string, question: string): Promise<Sid
 
 export async function continueSession(id: string): Promise<void> {
   await fetchJson<{ ok?: boolean }>(`${SESSIONS_URL}/${encodeURIComponent(id)}/continue`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: "{}",
+  });
+}
+
+export async function reloadSession(id: string): Promise<void> {
+  await fetchJson<{ ok?: boolean }>(`${SESSIONS_URL}/${encodeURIComponent(id)}/reload`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: "{}",
@@ -635,8 +657,11 @@ type StreamOutcome =
   | { kind: "dropped" };
 
 export type SessionStatusesHandlers = {
+  /** First frame of every (re)connect. */
   onSnapshot: (statuses: readonly SessionStatusUpdate[]) => void;
   onStatus: (update: SessionStatusUpdate) => void;
+  /** The gateway's shared session list: full on connect, then only changes. */
+  onSessions?: (update: SessionListUpdate<SessionView>) => void;
 };
 
 /** Keeps one lightweight stream open for lifecycle updates from every live
@@ -776,6 +801,8 @@ async function connectOnce(
   });
 }
 
+export const STATUS_STREAM_STALL_MS = 40_000;
+
 async function connectStatusesOnce(
   handlers: SessionStatusesHandlers,
   signal: AbortSignal,
@@ -802,8 +829,13 @@ async function connectStatusesOnce(
   const decoder = new TextDecoder();
   let buffer = "";
   let live = false;
+  // A phone changing networks can leave the socket open but silent; the gateway
+  // heartbeats every 15 s, so a longer silence means reconnect and resync.
+  let stall: ReturnType<typeof setTimeout> | undefined;
   try {
     for (;;) {
+      clearTimeout(stall);
+      stall = setTimeout(() => void reader.cancel(), STATUS_STREAM_STALL_MS);
       const { done, value } = await reader.read();
       if (done) break;
       if (!live) {
@@ -822,11 +854,15 @@ async function connectStatusesOnce(
           );
         } else if (frame.name === "status") {
           handlers.onStatus(frame.payload as SessionStatusUpdate);
+        } else if (frame.name === "sessions") {
+          handlers.onSessions?.(frame.payload as SessionListUpdate<SessionView>);
         }
       }
     }
   } catch {
     return { kind: "dropped" };
+  } finally {
+    clearTimeout(stall);
   }
   return { kind: "dropped" };
 }
