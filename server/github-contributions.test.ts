@@ -15,23 +15,21 @@ const dates = (count: number) => Array.from({ length: count }, (_, index) => new
 test("reads every gh account with its own login and fits searches under GitHub's 1000-result cap", async () => {
   const dir = await mkdtemp(join(tmpdir(), "hui-gh-contributions-"));
   await chmod(FIXTURE, 0o755);
-  await writeFile(join(dir, "accounts"), "work\npersonal\nbroken\n");
+  await writeFile(join(dir, "accounts"), "work\npersonal\n");
   const work = { commits: dates(1200), pullRequests: dates(150) };
   await writeFile(join(dir, "contributions.json"), JSON.stringify({
     work,
     personal: { commits: dates(5), pullRequests: [], createdAt: "2019-03-04T05:06:07Z" },
-    broken: "HTTP 403: API rate limit exceeded",
   }));
-  const reader = new GitHubContributionsReader(FIXTURE, { ...process.env, HUI_FAKE_GH_DIR: dir }, () => NOW);
+  const reader = new GitHubContributionsReader(FIXTURE, { ...process.env, HUI_FAKE_GH_DIR: dir }, { now: () => NOW });
 
   const result = await reader.read();
-  assert.deepEqual(result.accounts.map((account) => account.login), ["work", "personal", "broken"]);
-  const [workResult, personal, broken] = result.accounts;
+  assert.deepEqual(result.accounts.map((account) => account.login), ["work", "personal"]);
+  const [workResult, personal] = result.accounts;
   assert.deepEqual(workResult?.commits.toSorted(), work.commits.toSorted());
   assert.deepEqual(workResult?.pullRequests.toSorted(), work.pullRequests.toSorted());
   assert.equal(personal?.commits.length, 5);
   assert.equal(personal?.createdAt, "2019-03-04T05:06:07Z");
-  assert.deepEqual(broken, { login: "broken", commits: [], pullRequests: [], error: "gh: HTTP 403: API rate limit exceeded" });
 
   const log = (await readFile(join(dir, "search-log"), "utf8")).trim().split("\n");
   // The active account uses gh's own login; others get only their own token.
@@ -55,11 +53,20 @@ test("reads every gh account with its own login and fits searches under GitHub's
   await assert.rejects(new GitHubContributionsReader(join(dir, "no-such-gh")).read(), { message: GITHUB_CLI_REQUIRED });
 });
 
-test("an empty sign-in is not cached, so a new gh login shows up at once", async () => {
+test("waits out a search rate limit, isolates a failing account and caches neither failures nor empty sign-ins", async () => {
   const dir = await mkdtemp(join(tmpdir(), "hui-gh-contributions-"));
   await chmod(FIXTURE, 0o755);
-  const reader = new GitHubContributionsReader(FIXTURE, { ...process.env, HUI_FAKE_GH_DIR: dir }, () => NOW);
+  const reader = new GitHubContributionsReader(FIXTURE, { ...process.env, HUI_FAKE_GH_DIR: dir }, { now: () => NOW, rateLimitWaitMs: 0 });
   assert.deepEqual((await reader.read()).accounts, []);
-  await writeFile(join(dir, "account"), "octocat\n");
-  assert.deepEqual((await reader.read()).accounts.map((account) => account.login), ["octocat"]);
+
+  await writeFile(join(dir, "accounts"), "octocat\nbroken\n");
+  await writeFile(join(dir, "contributions.json"), JSON.stringify({ octocat: { commits: dates(3), pullRequests: [] }, broken: "HTTP 401: Bad credentials" }));
+  await writeFile(join(dir, "rate-limit-once"), "");
+  const [octocat, broken] = (await reader.read()).accounts;
+  assert.equal(octocat?.error, undefined, "retried after the rate limit");
+  assert.equal(octocat?.commits.length, 3);
+  assert.deepEqual(broken, { login: "broken", commits: [], pullRequests: [], error: "gh: HTTP 401: Bad credentials" });
+
+  await writeFile(join(dir, "contributions.json"), JSON.stringify({ octocat: { commits: [], pullRequests: [] }, broken: { commits: dates(2), pullRequests: [] } }));
+  assert.equal((await reader.read()).accounts[1]?.commits.length, 2, "a failed account is read again");
 });

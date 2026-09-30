@@ -177,9 +177,11 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   Data comes from GitHub search, not the contribution calendar API,
   which is empty for Enterprise Managed Users. Accounts other than the active
   one are read with their own `gh` token, used only on the gateway. Results are
-  cached for 15 minutes; *Refresh* reads again. An account that fails shows its
-  error above the charts while the others still render; with no account, the
-  page links to Settings → Integrations.
+  cached for 15 minutes; *Refresh* reads again. Reaching GitHub's search rate
+  limit waits about a minute instead of failing. An account that fails shows
+  its error above the charts while the others still render, and a year that
+  fails to load leaves the previous one selected; with no account, the page
+  links to Settings → Integrations.
 - Chat messages unfurl GitHub repositories, pull requests and issues (URLs or
   `owner/repo#N`) as cards after the message, at most three per message like
   Slack: PRs show state, title, description snippet, author and diff stats;

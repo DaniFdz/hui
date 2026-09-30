@@ -113,7 +113,7 @@ import { sessionTreeIds } from "../src/lib/session-tree.ts";
 import { SubagentService } from "./subagents.ts";
 import { presentMediaForSession, servePresentedMedia } from "./presented-media.ts";
 import { GitHubCli, GitHubCliError } from "./github.ts";
-import { FIRST_YEAR as GITHUB_FIRST_YEAR, GitHubContributionsReader } from "./github-contributions.ts";
+import { FIRST_YEAR as GITHUB_FIRST_YEAR, GitHubContributionsReader, latestYear } from "./github-contributions.ts";
 import { GitHubPreviews, ghApi, previewPullRequestFetcher } from "./github-previews.ts";
 import { MAX_GITHUB_EMBEDS, parseGitHubUrl } from "../shared/github-links.ts";
 import { TaskSuggestionInputError, TaskSuggestionNotFoundError, TaskSuggestionStore } from "./task-suggestions.ts";
@@ -2389,8 +2389,8 @@ async function handleRequest(
     }
     const params = new URL(request.url ?? "/", "http://localhost").searchParams;
     const year = params.has("year") ? Number(params.get("year")) : undefined;
-    if (year !== undefined && !(Number.isInteger(year) && year >= GITHUB_FIRST_YEAR && year <= new Date().getUTCFullYear())) {
-      sendJson(response, 400, { error: `year must be ${GITHUB_FIRST_YEAR}-${new Date().getUTCFullYear()}.` });
+    if (year !== undefined && !(Number.isInteger(year) && year >= GITHUB_FIRST_YEAR && year <= latestYear())) {
+      sendJson(response, 400, { error: `year must be ${GITHUB_FIRST_YEAR}-${latestYear()}.` });
       return;
     }
     try {

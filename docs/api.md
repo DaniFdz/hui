@@ -1864,7 +1864,7 @@ requests of every account `gh auth status` lists for github.com.
 
 | Route | Behaviour |
 | --- | --- |
-| `GET /__hui/github/contributions[?year=YYYY][&refresh=1]` | `GitHubContributions`; 400 for a year outside 2008–the current UTC year; 502 with `gh`'s message when the account list cannot be read (for example "GitHub CLI (gh) is required") |
+| `GET /__hui/github/contributions[?year=YYYY][&refresh=1]` | `GitHubContributions`; 400 for a year outside 2008 to the current year at UTC+14 (the latest any browser can be in); 502 with `gh`'s message when the account list cannot be read (for example "GitHub CLI (gh) is required") |
 
 ```ts
 type GitHubContributions = {
@@ -1875,21 +1875,23 @@ type GitHubContributions = {
 Without `year`, searches cover the 372 UTC days ending today, enough for 53
 local calendar weeks. With it, they cover Dec 31 of the previous year through
 Jan 1 of the next (or today), so every browser time zone sees the whole local
-year. `createdAt` is `gh api user`'s `created_at`; the page lists years back to
-the oldest one. `commits` are author dates from `search/commits` (`author:<login>
+year. `createdAt` is `gh api user`'s `created_at` (omitted when that call
+fails); the page lists years back to the oldest one. `commits` are author dates from `search/commits` (`author:<login>
 author-date:<from>..<to>`, default branches only); `pullRequests` are creation
 times from `search/issues` (`author:<login> is:pr created:<from>..<to>`), sorted
 by that date so later pages continue page one. The first call per range prints
 `total_count` and page one; up to 100 results need
 no more calls, more than 1000 (GitHub's search cap) halve the range, otherwise
-`-f page=2 --paginate` reads the rest. The contribution calendar API is not used:
+`-f page=2 --paginate` reads the rest. A search call refused by GitHub's rate
+limit (30 searches a minute per account) waits 61 s and is retried once. The
+contribution calendar API is not used:
 it returns nothing for Enterprise Managed Users. The active account runs `gh`
 unchanged; every other account runs with `GH_TOKEN` from `gh auth token --user
 <login>`, set only in that child's environment and never logged, cached or
 returned. One account's failure becomes its `error` with empty lists. Results
 are cached in gateway memory per range for 15 minutes and shared by concurrent requests;
-`refresh=1` bypasses the cache, and failures or an empty account list are not
-cached. The browser buckets timestamps into local days and Sunday-first weeks.
+`refresh=1` bypasses the cache, and a result with a failed account or no
+account is not cached. The browser buckets timestamps into local days and Sunday-first weeks.
 
 ### GitHub link previews
 

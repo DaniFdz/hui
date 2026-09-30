@@ -111,7 +111,10 @@ export class HuiContributionsPage extends LitElement {
       if (!data.accounts.some((account) => account.login === this.#account)) this.#account = ALL;
       this.#scrollToLatest = true;
     } catch (error) {
-      if (request === this.#request) this.#error = error instanceof Error ? error.message : "GitHub activity could not be loaded.";
+      if (request !== this.#request) return;
+      this.#error = error instanceof Error ? error.message : "GitHub activity could not be loaded.";
+      // The year list must keep matching the charts still on screen.
+      if (this.#shown) this.#year = this.#shown.year;
     } finally {
       if (request === this.#request) { this.#loading = false; this.requestUpdate(); }
     }

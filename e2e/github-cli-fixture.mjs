@@ -10,7 +10,7 @@
  *   accounts — optional logins, one per line, the first active (overrides account)
  *   contributions.json — `{ login: { commits: [iso], pullRequests: [iso], createdAt? } | "error" }`
  *                  served by `api -X GET search/commits|search/issues` (logged to search-log)
- *                  and `api user`
+ *                  and `api user`; `rate-limit-once` fails the next search with a rate limit
  * HUI_FAKE_GH_CODE overrides the printed one-time code; HUI_FAKE_GH_PROTOCOL
  * is the configured git protocol. Each login writes its arguments to login-args. */
 import { appendFileSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -58,6 +58,11 @@ if (args[0] === "--version") {
   const data = existsSync(file("contributions.json")) ? JSON.parse(readFileSync(file("contributions.json"), "utf8")) : {};
   if (typeof data[login] === "string") {
     process.stderr.write(`gh: ${data[login]}\n`);
+    process.exit(1);
+  }
+  if (existsSync(file("rate-limit-once"))) {
+    rmSync(file("rate-limit-once"));
+    process.stderr.write("gh: HTTP 403: API rate limit exceeded for user ID 1.\n");
     process.exit(1);
   }
   const all = data[login]?.[args[3] === "search/commits" ? "commits" : "pullRequests"] ?? [];

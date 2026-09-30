@@ -22,6 +22,8 @@ export const FIRST_YEAR = 2008;
 const SEARCH_CAP = 1000;
 const PAGE_SIZE = 100;
 const CACHE_MS = 15 * 60_000;
+/** Search allows 30 requests a minute per account; a heavy year needs ~15. */
+const RATE_LIMIT_WAIT_MS = 61_000;
 
 const SEARCHES = {
   // `range` is both the date qualifier and the sort, so later pages continue page one.
@@ -35,6 +37,9 @@ type Run = (args: string[], env?: Record<string, string>) => Promise<string>;
 const day = (ms: number) => new Date(ms).toISOString().slice(0, 10);
 const addDays = (value: string, days: number) => day(Date.parse(value) + days * DAY_MS);
 const lines = (text: string) => text.split("\n").map((line) => line.trim()).filter(Boolean);
+
+/** The latest year any browser may be in: local time runs up to UTC+14. */
+export const latestYear = (now = Date.now()) => new Date(now + 14 * 3_600_000).getUTCFullYear();
 
 /** `gh auth status --json hosts` → the github.com logins, active first. */
 function parseAccounts(stdout: string): { login: string; active: boolean }[] {
@@ -50,10 +55,12 @@ function parseAccounts(stdout: string): { login: string; active: boolean }[] {
 export class GitHubContributionsReader {
   readonly #run: Run;
   readonly #now: () => number;
+  readonly #rateLimitWaitMs: number;
   readonly #cache = new Map<number | undefined, { at: number; value: Promise<GitHubContributions> }>();
 
-  constructor(command = "gh", env: NodeJS.ProcessEnv = process.env, now: () => number = Date.now) {
-    this.#now = now;
+  constructor(command = "gh", env: NodeJS.ProcessEnv = process.env, options: { now?: () => number; rateLimitWaitMs?: number } = {}) {
+    this.#now = options.now ?? Date.now;
+    this.#rateLimitWaitMs = options.rateLimitWaitMs ?? RATE_LIMIT_WAIT_MS;
     this.#run = (args, extra) => new Promise((resolve, reject) => {
       execFile(command, args, { env: { ...env, ...GH_ENV, ...extra }, timeout: 90_000, maxBuffer: 4 * 1024 * 1024, encoding: "utf8" }, (error, stdout, stderr) => {
         if (error) reject(new Error(spawnFailure(Object.assign(error, { stderr }))));
@@ -63,8 +70,8 @@ export class GitHubContributionsReader {
   }
 
   /** `year` omitted: the last year. Each range is cached for 15 minutes and
-   * concurrent readers share one fetch. Failures and "no account" are not
-   * kept, so a fresh `gh` sign-in shows up at once. */
+   * concurrent readers share one fetch. Results with a failed account, or with
+   * no account, are not kept, so a retry or a fresh `gh` sign-in shows at once. */
   read(year?: number, refresh = false): Promise<GitHubContributions> {
     const now = this.#now();
     const cached = this.#cache.get(year);
@@ -72,7 +79,7 @@ export class GitHubContributionsReader {
     const entry = { at: now, value: this.#load(now, year) };
     this.#cache.set(year, entry);
     const forget = () => { if (this.#cache.get(year) === entry) this.#cache.delete(year); };
-    entry.value.then((value) => { if (value.accounts.length === 0) forget(); }, forget);
+    entry.value.then((value) => { if (value.accounts.length === 0 || value.accounts.some((account) => account.error)) forget(); }, forget);
     return entry.value;
   }
 
@@ -89,7 +96,8 @@ export class GitHubContributionsReader {
     try {
       const env = active ? undefined : { GH_TOKEN: (await this.#run(["auth", "token", "--hostname", GITHUB_HOST, "--user", login])).trim() };
       const [createdAt, commits, pullRequests] = await Promise.all([
-        this.#run(["api", "user", "--jq", ".created_at"], env).then((output) => output.trim()),
+        // Only the year list needs it; its failure must not discard the activity.
+        this.#run(["api", "user", "--jq", ".created_at"], env).then((output) => output.trim() || undefined, () => undefined),
         this.#search("commits", login, from, to, env),
         this.#search("pullRequests", login, from, to, env),
       ]);
@@ -107,14 +115,26 @@ export class GitHubContributionsReader {
       "-f", `q=author:${login}${search.qualifier} ${search.range}:${from}..${to}`,
       "-f", `sort=${search.range}`, "-f", `per_page=${PAGE_SIZE}`, ...extra, "--jq", jq,
     ];
-    const [total = "0", ...dates] = lines(await this.#run(args(`.total_count, (.items[] | ${search.date})`), env));
+    const [total = "0", ...dates] = lines(await this.#searchCall(args(`.total_count, (.items[] | ${search.date})`), env));
     const count = Number(total);
+    // ponytail: one day past the cap keeps its first 1000; split by hour if that ever matters.
     if (count > SEARCH_CAP && from < to) {
       const middle = addDays(from, Math.floor((Date.parse(to) - Date.parse(from)) / DAY_MS / 2));
       const halves = await Promise.all([this.#search(kind, login, from, middle, env), this.#search(kind, login, addDays(middle, 1), to, env)]);
       return halves.flat();
     }
     if (count <= PAGE_SIZE) return dates;
-    return [...dates, ...lines(await this.#run(args(`.items[] | ${search.date}`, "-f", "page=2", "--paginate"), env))];
+    return [...dates, ...lines(await this.#searchCall(args(`.items[] | ${search.date}`, "-f", "page=2", "--paginate"), env))];
+  }
+
+  /** A search call that waits out GitHub's per-minute search limit once. */
+  async #searchCall(args: string[], env?: Record<string, string>): Promise<string> {
+    try {
+      return await this.#run(args, env);
+    } catch (error) {
+      if (!/rate limit/iu.test(error instanceof Error ? error.message : "")) throw error;
+      await new Promise((resolve) => setTimeout(resolve, this.#rateLimitWaitMs));
+      return this.#run(args, env);
+    }
   }
 }
