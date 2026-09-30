@@ -160,13 +160,12 @@ async function repositoryFor(workspace: string, run: CommandRunner): Promise<str
   }
 }
 
-function associatedSessions(path: string, sessions: readonly SessionRecord[]): string[] {
+type SessionDirectory = { id: string; cwd: string };
+
+function associatedSessions(path: string, sessions: readonly SessionDirectory[]): string[] {
   return sessions
-    .filter((session) => {
-      const cwd = resolve(session.cwd);
-      return isWithin(path, cwd) || isWithin(cwd, path);
-    })
-    .map((session) => session.id);
+    .filter(({ cwd }) => isWithin(path, cwd) || isWithin(cwd, path))
+    .map(({ id }) => id);
 }
 
 export async function inspectWorkspaces(
@@ -175,10 +174,15 @@ export async function inspectWorkspaces(
   home = homedir(),
 ): Promise<WorkspaceInspection> {
   const diagnostics: string[] = [];
-  const canonical = (
-    await Promise.all([...new Set(sessions.map((session) => session.cwd))].map(canonicalDirectory))
-  ).filter((path): path is string => path !== undefined);
-  const workspaces = [...new Set(canonical)].toSorted();
+  const cwds = [...new Set(sessions.map((session) => session.cwd))];
+  const canonicalByCwd = new Map(await Promise.all(cwds.map(async (cwd) => [cwd, await canonicalDirectory(cwd)] as const)));
+  const workspaces = [...new Set(canonicalByCwd.values())].filter((path): path is string => path !== undefined).toSorted();
+  // Git reports worktree paths resolved, so compare session cwds resolved too:
+  // a session's cwd may go through a symlink (macOS /var or /tmp, a linked home).
+  const sessionDirectories: SessionDirectory[] = sessions.map((session) => ({
+    id: session.id,
+    cwd: canonicalByCwd.get(session.cwd) ?? resolve(session.cwd),
+  }));
   const configuredOpenClawRoot = resolve(home, ".openclaw");
   const openClawRoot = (await canonicalDirectory(configuredOpenClawRoot)) ?? configuredOpenClawRoot;
   const memory: MemorySource[] = [];
@@ -205,7 +209,7 @@ export async function inspectWorkspaces(
           ...record,
           repository,
           path: canonicalPath,
-          sessionIds: associatedSessions(canonicalPath, sessions),
+          sessionIds: associatedSessions(canonicalPath, sessionDirectories),
         });
       }
     } catch (error) {

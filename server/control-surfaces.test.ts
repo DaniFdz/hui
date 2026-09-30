@@ -68,6 +68,23 @@ test("inspects only registered workspaces and rejects escaping memory symlinks",
   assert.equal(calls.some((args) => args.includes("worktree")), true);
 });
 
+test("associates a session whose cwd goes through a symlink", async () => {
+  const root = await mkdtemp(join(tmpdir(), "hui-linked-workspace-"));
+  const workspace = join(root, "workspace");
+  const linked = join(root, "linked");
+  await mkdir(workspace);
+  await symlink(workspace, linked);
+  const result = await inspectWorkspaces(
+    [session("one", linked)],
+    async (_file, args) =>
+      args.includes("rev-parse")
+        ? { stdout: `${workspace}\n`, stderr: "" }
+        : { stdout: `worktree ${workspace}\nHEAD abcdef\nbranch refs/heads/main\n`, stderr: "" },
+    root,
+  );
+  assert.deepEqual(result.worktrees[0]?.sessionIds, ["one"]);
+});
+
 test("never inventories OpenClaw-owned memory", async () => {
   const root = await mkdtemp(join(tmpdir(), "hui-openclaw-memory-"));
   const workspace = join(root, ".openclaw", "workspace");
