@@ -131,6 +131,7 @@ import { backlogItemPrompt, type BacklogItem, type BacklogView } from "../shared
 import { TASK_SUGGESTION_START_MODES, taskSuggestionJiraDescription, taskSuggestionPrompt, type TaskSuggestionStartMode } from "../shared/task-suggestions.ts";
 import { terminals, TerminalError } from "./terminals.ts";
 import { attachSessionTransport, sessionStreamTicket } from "./session-transport.ts";
+import { createSessionListHub } from "./session-list.ts";
 import { attachTerminalTransport, terminalTicket } from "./terminal-transport.ts";
 import {
   createSessionGroup,
@@ -1064,6 +1065,8 @@ async function listSessionViews(): Promise<{ label: string; sessions: SessionVie
   return views;
 }
 
+const sessionList = createSessionListHub(listSessionViews);
+
 function automationErrorStatus(error: unknown): 400 | 404 | 409 | 500 {
   if (error instanceof AutomationNotFoundError) return 404;
   if (error instanceof AutomationConflictError) return 409;
@@ -1871,6 +1874,7 @@ export function streamSession(
 export function streamSessionStatuses(
   response: ServerResponse,
   sessions: Pick<typeof liveSessions, "watchStatuses"> = liveSessions,
+  list: Pick<typeof sessionList, "subscribe"> = sessionList,
 ): void {
   response.writeHead(200, {
     "content-type": "text/event-stream; charset=utf-8",
@@ -1884,6 +1888,7 @@ export function streamSessionStatuses(
   const watched = sessions.watchStatuses(write);
   pendingStatusSubscribers.add(write);
   writeEvent(response, "snapshot", { statuses: [...watched.statuses, ...[...pendingSessions.values()].map(pendingStatus)] });
+  const unlist = list.subscribe((update) => writeEvent(response, "sessions", update));
 
   const heartbeat = setInterval(() => {
     if (!response.writableEnded) response.write(": heartbeat\n\n");
@@ -1894,6 +1899,7 @@ export function streamSessionStatuses(
     clearInterval(heartbeat);
     watched.unsubscribe();
     pendingStatusSubscribers.delete(write);
+    unlist();
   });
 }
 
@@ -2650,7 +2656,7 @@ async function handleRequest(
     try {
       const body = (await readBody(request)) as Record<string, unknown>;
       await createSessionGroup(sessionGroupName(body));
-      sendJson(response, 200, { groups: await listSessionViews() });
+      sendJson(response, 200, await sessionList.refresh());
     } catch (error) {
       sendJson(response, sessionMutationErrorStatus(error), {
         error: error instanceof Error ? error.message : "Could not create that group.",
@@ -2663,7 +2669,7 @@ async function handleRequest(
     try {
       const body = (await readBody(request)) as Record<string, unknown>;
       await reorderSessionGroups(sessionGroupOrder(body));
-      sendJson(response, 200, { groups: await listSessionViews() });
+      sendJson(response, 200, await sessionList.refresh());
     } catch (error) {
       sendJson(response, sessionMutationErrorStatus(error), {
         error: error instanceof Error ? error.message : "Could not reorder the groups.",
@@ -2684,7 +2690,7 @@ async function handleRequest(
           await sessionGroupPatch((await readBody(request)) as Record<string, unknown>),
         );
       }
-      sendJson(response, 200, { groups: await listSessionViews() });
+      sendJson(response, 200, await sessionList.refresh());
     } catch (error) {
       sendJson(response, sessionMutationErrorStatus(error), {
         error: error instanceof Error ? error.message : "Could not update that group.",
@@ -2695,7 +2701,7 @@ async function handleRequest(
 
   if (path === SESSIONS_ROUTE) {
     if (request.method === "GET") {
-      sendJson(response, 200, { groups: await listSessionViews() });
+      sendJson(response, 200, await sessionList.refresh());
       return;
     }
     if (request.method === "POST") {

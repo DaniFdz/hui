@@ -2,6 +2,7 @@ import { renderPicker } from "./views/settings-picker.ts";
 import { groupCheckoutDefaults } from "./lib/group-session-defaults.ts";
 import { renderDirectoryPicker } from "./views/directory-picker.ts";
 import { sessionTreeIds } from "./lib/session-tree.ts";
+import { applySessionListUpdate, type SessionListUpdate } from "../shared/session-list.ts";
 import { html, type PropertyValues } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { HuiElement } from "./lit/hui-element.ts";
@@ -446,6 +447,8 @@ export class HuiApp extends HuiElement {
   @property({ attribute: false }) paneCreationError: string | undefined;
   /** The failed launch's prompt, returned to New Session when this pane deletes it. */
   @property({ attribute: false }) paneUnsentPrompt: string | undefined;
+  /** The shell's session list; panes never fetch their own copy. */
+  @property({ attribute: false }) paneGroups: readonly SessionGroup[] | undefined;
   @property(paneCallback) onPaneUpdate: ((text: string, attachments: readonly Attachment[]) => boolean) | undefined;
   /** Embedded panes own the composer but not the sidebar; report draft
    * presence so the shell can project the pencil onto the session row. */
@@ -462,6 +465,8 @@ export class HuiApp extends HuiElement {
   private statusStreamStop: (() => void) | undefined;
   private sessionStatuses = new Map<string, SessionStatus>();
   private hasSessionStatusSnapshot = false;
+  /** Revision of the gateway session list in `groups`; older lists lose. */
+  private sessionListRevision = 0;
   /** Session whose model list has already been requested for this selection. */
   private modelsRequestedFor = "";
   /** Direct session route waiting for the registry to finish loading. */
@@ -558,6 +563,7 @@ export class HuiApp extends HuiElement {
       this.statusStreamStop ??= subscribeSessionStatuses({
         onSnapshot: this.applySessionStatusSnapshot,
         onStatus: this.applySessionStatusUpdate,
+        onSessions: this.applySessionListChange,
       });
       this.updateMonitor = watchUpdateAvailability({
         check: checkUpdateInBackground,
@@ -605,7 +611,6 @@ export class HuiApp extends HuiElement {
   }
 
   private sessionProgressPoll?: number;
-  private sessionProgressPending = false;
   private gatewayHealthPending = false;
 
   private async refreshGatewayHealth() {
@@ -648,15 +653,11 @@ export class HuiApp extends HuiElement {
       if (!this.embeddedPane && !document.hidden && this.settingsOpen && this.settingsPage === "connection") {
         void this.refreshGatewayHealth();
       }
-      if (!this.embeddedPane && !document.hidden && !this.sessionsLoading && !this.sessionProgressPending) {
-        this.sessionProgressPending = true;
-        void this.refreshSessions(true).finally(() => { this.sessionProgressPending = false; });
-      }
     }, 3000);
     this.switchComposerDraft(NEW_SESSION_DRAFT_KEY);
     this.refreshDraftIndicators();
-    void this.refreshSessions();
     if (!this.embeddedPane) {
+      void this.refreshSessions();
       this.loadLaunchPreferences();
       void loadThemePreviews().then((previews) => {
         this.previews = previews;
@@ -665,6 +666,8 @@ export class HuiApp extends HuiElement {
   }
 
   private applySessionStatusSnapshot = (updates: readonly SessionStatusUpdate[]) => {
+    // Each connection restarts the list's revisions with a full list next.
+    this.sessionListRevision = 0;
     this.sessionStatuses = new Map(updates.map(({ id, status }) => [id, status]));
     const unread = new Map(updates.flatMap((update) =>
       update.unread === undefined ? [] : [[update.id, update.unread] as const]));
@@ -710,38 +713,15 @@ export class HuiApp extends HuiElement {
   };
 
   private async refreshSessions(background = false) {
+    if (this.embeddedPane) {
+      this.onPaneRegistryChange?.();
+      return;
+    }
     if (!background) this.sessionsLoading = true;
     try {
-      const loaded = await loadSessions();
-      const selected = this.embeddedPane && this.selected && this.isSessionPresented(this.selected.id)
-        ? this.selected
-        : undefined;
-      const current = this.hasSessionStatusSnapshot
-        ? mergeSessionStatuses(loaded, this.sessionStatuses)
-        : loaded;
-      // The registry request can race a newer SSE snapshot. Keep the selected
-      // session's live status instead of letting a slower list response make
-      // an idle session appear to still be running in the sidebar.
-      this.groups = selected
-        ? current.map((group) => ({
-            ...group,
-            sessions: group.sessions.map((session) => session.id === selected.id
-              ? { ...session, status: selected.status }
-              : session),
-          }))
-        : current;
-      if (!this.embeddedPane && this.sessionLayout) {
-        const ids = new Set(this.groups.flatMap((group) => group.sessions.map(({ id }) => id)));
-        for (const pane of sessionPanes(this.sessionLayout)) {
-          if (!ids.has(pane.sessionId)) this.sessionLayout = closeSessionPane(this.sessionLayout, pane.id);
-        }
-        const active = activeSessionPane(this.sessionLayout);
-        if (!ids.has(active.sessionId)) {
-          this.sessionLayout = undefined;
-          this.persistSessionLayout();
-          if (this.view === "home" && this.selected) this.navigate({ kind: "home" }, true);
-        } else if (this.view === "home" && this.selected && !this.settingsOpen) this.commitSessionLayout(this.sessionLayout);
-      }
+      const { revision, groups } = await loadSessions();
+      // The status stream may have delivered newer changes while this loaded.
+      this.receiveSessionList(revision, this.hasSessionStatusSnapshot ? mergeSessionStatuses(groups, this.sessionStatuses) : groups);
       this.sessionsError = "";
     } catch (error) {
       const message = error instanceof Error ? error.message : "Could not read sessions.";
@@ -758,6 +738,32 @@ export class HuiApp extends HuiElement {
     }
   }
 
+  private applySessionListChange = (update: SessionListUpdate<SessionView>) => {
+    if (update.revision <= this.sessionListRevision) return;
+    this.receiveSessionList(update.revision, applySessionListUpdate(this.groups, update));
+    this.sessionsLoading = false;
+    this.sessionsError = "";
+    this.openPendingSession();
+  };
+
+  /** Full lists and stream changes both land here, in revision order. */
+  private receiveSessionList(revision: number, groups: readonly SessionGroup[]) {
+    if (revision < this.sessionListRevision) return;
+    this.sessionListRevision = revision;
+    this.groups = groups;
+    if (!this.sessionLayout) return;
+    const ids = new Set(groups.flatMap((group) => group.sessions.map(({ id }) => id)));
+    for (const pane of sessionPanes(this.sessionLayout)) {
+      if (!ids.has(pane.sessionId)) this.sessionLayout = closeSessionPane(this.sessionLayout, pane.id);
+    }
+    const active = activeSessionPane(this.sessionLayout);
+    if (!ids.has(active.sessionId)) {
+      this.sessionLayout = undefined;
+      this.persistSessionLayout();
+      if (this.view === "home" && this.selected) this.navigate({ kind: "home" }, true);
+    } else if (this.view === "home" && this.selected && !this.settingsOpen) this.commitSessionLayout(this.sessionLayout);
+  }
+
   override willUpdate(changed: PropertyValues) {
     // Subagent trees follow the selection: moving elsewhere folds the old tree.
     if (changed.has("selected") && (changed.get("selected") as SessionView | undefined)?.id !== this.selected?.id) {
@@ -769,6 +775,19 @@ export class HuiApp extends HuiElement {
     // The shell's registry is the source of a title the gateway set later.
     if (changed.has("paneTitle") && this.paneTitle && this.selected?.id === this.paneSessionId && this.selected.title !== this.paneTitle) {
       this.selected = { ...this.selected, title: this.paneTitle };
+    }
+    if (this.embeddedPane && changed.has("paneGroups") && this.paneGroups) {
+      // The shell's list can trail this pane's own detailed stream; keep the
+      // presented session's live status rather than regressing it.
+      const selected = this.selected && this.isSessionPresented(this.selected.id) ? this.selected : undefined;
+      this.groups = selected
+        ? this.paneGroups.map((group) => ({
+            ...group,
+            sessions: group.sessions.map((session) => session.id === selected.id ? { ...session, status: selected.status } : session),
+          }))
+        : this.paneGroups;
+      this.sessionsLoading = false;
+      this.openPendingSession();
     }
     if (changed.has("queueEditingId") && this.embeddedPane) {
       this.dispatchEvent(new CustomEvent("hui-queue-edit-retention", { bubbles: true }));
@@ -1533,8 +1552,8 @@ export class HuiApp extends HuiElement {
     this.sessionMoveNotice = `Moving ${sessionGroupLabel(group)}…`;
     this.sessionMoveFailed = false;
     void reorderSessionGroups(next)
-      .then((groups) => {
-        this.groups = groups;
+      .then(({ revision, groups }) => {
+        this.receiveSessionList(revision, groups);
         this.sessionMoveNotice = `Moved ${sessionGroupLabel(group)}.`;
       })
       .catch((error: unknown) => {
@@ -3679,8 +3698,8 @@ export class HuiApp extends HuiElement {
               baseRef: this.groupCheckout?.available ? this.groupDefaultRef : "" })
           : deleteSessionGroup(state.group.label);
     void operation
-      .then((groups) => {
-        this.groups = groups;
+      .then(({ revision, groups }) => {
+        this.receiveSessionList(revision, groups);
         if (state.action === "new") {
           // A successful creation must be visible even when filters hid every row.
           this.search = "";
@@ -4048,6 +4067,7 @@ export class HuiApp extends HuiElement {
       .paneTitle=${this.listedSession(pane.sessionId)?.title}
       .paneCreationError=${this.listedSession(pane.sessionId)?.creationError}
       .paneUnsentPrompt=${this.listedSession(pane.sessionId)?.initialPrompt}
+      .paneGroups=${this.sessionsLoading ? undefined : this.groups}
       .onPaneUpdate=${(text: string, attachments: readonly Attachment[]) => this.handleUpdateCommand(text, attachments)}
       .onPaneDraftChange=${(sessionId: string, hasDraft: boolean) => this.markSessionDraft(sessionId, hasDraft)}
     ></hui-app>`;
