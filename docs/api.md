@@ -803,7 +803,7 @@ runtime returns an empty list, not a fabricated terminal-command catalog.
 Discovery does not add support for arbitrary TUI-only custom extension widgets;
 extension interaction remains limited to the supported PI RPC UI requests.
 HUI merges its own session commands into the browser menu separately; `/clear`
-therefore remains available even though PI omits terminal built-ins from
+and `/reload` therefore remain available even though PI omits terminal built-ins from
 `get_commands`.
 
 As with `/models`, a registered cold session starts its runtime and returns `409`
@@ -1054,9 +1054,9 @@ interactive input. Receiving `extension_ui_request` is treated as acceptance so
 the HTTP request does not race the human; the original delayed RPC response is
 then the settle edge that refreshes history and unlocks the composer.
 
-`/clear` is reserved by HUI and is never accepted through the prompt or queue
-routes, including malformed variants with arguments. The browser calls the
-dedicated route below instead.
+`/clear` and `/reload` are reserved by HUI and are never accepted through the
+prompt or queue routes, including malformed variants with arguments. The browser
+calls the dedicated routes below instead.
 
 At most eight attachments are accepted. Each decoded item is limited to 12 MB
 and the decoded total to 16 MB. Base64 must be canonical; image MIME types are
@@ -1087,6 +1087,16 @@ preferences remain attached to that row. PI's previous JSONL is left untouched,
 and `/clear` itself is not added to either transcript. A registry persistence
 failure is explicit because the live runtime has already moved to the fresh
 session and a later reopen may otherwise resume the previous pointer.
+
+### `POST /__hui/sessions/:id/reload`
+
+Accepts an empty JSON body and returns `{ "ok": true }`. Busy rules match
+`/clear` (`409` otherwise). PI's RPC mode has no reload command, so the SDK
+worker calls PI's `AgentSession.reload()`, the same call as the terminal
+`/reload`: settings, extensions, skills, prompt templates and context files are
+re-read in place. The PI session, transcript, model and thinking level are
+unchanged. The CLI fallback backend returns `400`. The browser discards its
+cached command catalog so newly added skills and commands appear.
 
 ### `POST /__hui/sessions/:id/steer`
 

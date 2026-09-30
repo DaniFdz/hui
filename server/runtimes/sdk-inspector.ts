@@ -14,11 +14,13 @@ function validInspection(value: unknown): value is RuntimeInspection {
     && Buffer.byteLength(JSON.stringify(data)) <= 2_010_000;
 }
 
+type Request = "abort" | "rewind" | "continue" | "reload";
+
 /** Every request has a deadline and is released on process exit/disposal. */
 export class SdkInspector {
   #child: ChildProcess;
   #next = 0;
-  #pending = new Map<string, { type: "inspect" | "abort" | "rewind" | "continue"; resolve(value: unknown): void; reject(error: Error): void }>();
+  #pending = new Map<string, { type: "inspect" | Request; resolve(value: unknown): void; reject(error: Error): void }>();
   #closed = false;
 
   constructor(child: ChildProcess, onFatal: (message: string) => void) {
@@ -64,7 +66,12 @@ export class SdkInspector {
     return this.#request("continue", {}, timeoutMs);
   }
 
-  #request(type: "abort" | "rewind" | "continue", data: Record<string, unknown>, timeoutMs: number): Promise<void> {
+  /** Extensions may do real work on session_start, so allow more than a ping. */
+  reload(timeoutMs = 60_000): Promise<void> {
+    return this.#request("reload", {}, timeoutMs);
+  }
+
+  #request(type: Request, data: Record<string, unknown>, timeoutMs: number): Promise<void> {
     if (this.#closed || !this.#child.connected) return Promise.reject(new Error("SDK worker is unavailable."));
     const id = `${type}-${++this.#next}`;
     return new Promise((resolve, reject) => {

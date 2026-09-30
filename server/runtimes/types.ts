@@ -189,6 +189,8 @@ export type RuntimeSession = {
   /** Replace the runtime conversation with a fresh one while keeping HUI's
    * session metadata and leaving the previous runtime transcript untouched. */
   clear?(): Promise<void>;
+  /** Re-read extensions, skills, prompts and context files in place. */
+  reload?(): Promise<void>;
   /** Append-only session-tree checkpoints which can become the active leaf. */
   checkpoints?(): Promise<readonly RuntimeCheckpoint[]>;
   /** Move the active leaf without deleting the branch being left. */
