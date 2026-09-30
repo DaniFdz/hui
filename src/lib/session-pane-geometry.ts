@@ -36,7 +36,10 @@ export function sessionPaneGeometry(layout: SessionLayout, width: number, height
     let top = 0;
     for (const [paneIndex, pane] of column.panes.entries()) {
       const paneHeight = heights[paneIndex]!;
-      panes.set(pane.id, { left, top, width: columnWidth, height: paneHeight });
+      const rect = { left, top, width: columnWidth, height: paneHeight };
+      panes.set(pane.id, rect);
+      // Hidden tabs keep their spot's rectangle so they stay laid out, ready to show.
+      for (const tab of pane.tabs ?? []) panes.set(tab.id, rect);
       top += paneHeight;
       if (paneIndex < column.panes.length - 1) {
         dividers.push({ id: `${column.id}:${paneIndex}`, columnId: column.id, index: paneIndex,

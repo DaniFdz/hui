@@ -90,6 +90,20 @@ hui-session-multiplexer {
 .hui-pane-move-handle svg { width: 16px; height: 16px; }
 .hui-pane-dragging { opacity: 0.6; }
 .hui-pane-drop-host { display: contents; }
+/* Hidden tabs stay laid out (scroll, terminal size) but are neither seen nor hit. */
+.chat-split-view__cell--tab-hidden { visibility: hidden; pointer-events: none; }
+.hui-pane-tabs { display: flex; flex: 0 0 auto; gap: 2px; padding: 4px 8px 0; overflow-x: auto; scrollbar-width: none; border-bottom: 1px solid var(--border); background: var(--bg); }
+.hui-pane-tab { display: flex; flex: 0 1 auto; align-items: center; gap: 6px; min-width: 72px; max-width: 220px; height: 30px; margin-bottom: -1px; padding: 0 4px 0 10px; border: 1px solid transparent; border-bottom: 0; border-radius: var(--radius-sm) var(--radius-sm) 0 0; color: var(--muted); font-size: 12px; cursor: pointer; user-select: none; }
+.hui-pane-tab:hover { color: var(--text); background: color-mix(in srgb, var(--text) 5%, transparent); }
+.hui-pane-tab--active { color: var(--text); background: var(--panel); border-color: var(--border); }
+.hui-pane-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.hui-pane-tab svg { flex: none; width: 14px; height: 14px; }
+.hui-pane-tab__label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hui-pane-tab__close { display: inline-flex; flex: none; padding: 3px; border: 0; border-radius: 4px; background: none; color: inherit; cursor: pointer; opacity: 0.55; }
+.hui-pane-tab__close:hover { opacity: 1; background: color-mix(in srgb, var(--text) 10%, transparent); }
+.hui-pane-tab__close svg { width: 12px; height: 12px; }
+.app-shell:not(.shell--mobile-nav).shell--nav-collapsed .chat-split-view__cell--origin .hui-pane-tabs,
+.app-shell:not(.shell--mobile-nav)[data-nav-collapsed="true"] .chat-split-view__cell--origin .hui-pane-tabs { padding-left: var(--shell-chrome-safe-area-left); }
 .hui-pane-announcement { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .chat-pane-cache__pane { display: flex; min-width: 0; min-height: 0; overflow: hidden; }
 .hui-session-pane-app { display: block; width: 100%; height: 100%; min-width: 0; min-height: 0; border: 0; background: var(--bg); outline: 0; }

@@ -182,7 +182,7 @@ import { renderPiResourceReader, type PiResourceReaderState } from "./views/pi-r
 import { isObservabilitySurface, renderObservabilitySurface } from "./views/observability.ts";
 import { isOwnedSurface, renderOwnedSurface } from "./views/hui-owned-surfaces.ts";
 import { HUI_PAGES, type HuiPage } from "./lib/pages.ts";
-import { activeSessionPane, browserPaneFor, closeSessionPane, focusSessionPane, isChatPane, moveSessionPane, parseSessionLayout, replacePaneSession, replacePaneTerminal, resizeSessionLayout, SESSION_LAYOUT_KEY, sessionPanes, singleSessionLayout, splitBrowserPane, splitSessionPane, splitTerminalPane, type DropZone, type SessionLayout, type SessionPane, type SplitDirection } from "./lib/session-multiplexer.ts";
+import { activeSessionPane, addSessionTab, browserPaneFor, closeSessionPane, focusSessionPane, isChatPane, moveSessionPane, parseSessionLayout, replacePaneSession, replacePaneTerminal, resizeSessionLayout, SESSION_LAYOUT_KEY, sessionPanes, visibleSessionPanes, singleSessionLayout, splitBrowserPane, splitSessionPane, splitTerminalPane, type DropZone, type SessionLayout, type SessionPane, type SplitDirection } from "./lib/session-multiplexer.ts";
 import { createTerminal, listTerminals } from "./lib/terminals-store.ts";
 import "./components/terminal-pane.ts";
 import "./components/browser-pane.ts";
@@ -891,7 +891,7 @@ export class HuiApp extends HuiElement {
     if (this.embeddedPane) return this.paneVisible && this.paneSessionId === id;
     if (this.view === "home" && !this.settingsOpen && this.sessionLayout) {
       const narrow = this.renderRoot.querySelector<SessionMultiplexer>("hui-session-multiplexer")?.narrow;
-      return sessionPanes(this.sessionLayout).some((pane) => isChatPane(pane) && pane.sessionId === id && (!narrow || pane.id === this.sessionLayout?.activePaneId));
+      return visibleSessionPanes(this.sessionLayout).some((pane) => isChatPane(pane) && pane.sessionId === id && (!narrow || pane.id === this.sessionLayout?.activePaneId));
     }
     const target = resolveNavigation(window.location.pathname).target;
     return target.kind === "session" && target.id === id;
@@ -1646,7 +1646,8 @@ export class HuiApp extends HuiElement {
     this.draggingSessionId = "";
     this.commitSessionLayout(zone.kind === "center"
       ? replacePaneSession(focusSessionPane(this.sessionLayout, paneId), paneId, id)
-      : splitSessionPane(this.sessionLayout, paneId, id, zone.edge));
+      : zone.kind === "tab" ? addSessionTab(this.sessionLayout, paneId, id)
+        : splitSessionPane(this.sessionLayout, paneId, id, zone.edge));
   };
 
   private movePane = (sourceId: string, targetId: string, zone: DropZone) => {
@@ -4024,6 +4025,11 @@ export class HuiApp extends HuiElement {
       .onPaneDraftChange=${(sessionId: string, hasDraft: boolean) => this.markSessionDraft(sessionId, hasDraft)}
     ></hui-app>`;
 
+  private paneLabel = (pane: SessionPane) => {
+    const title = this.listedSession(pane.sessionId)?.title ?? "Session";
+    return pane.terminalId ? `Terminal · ${title}` : pane.browser ? `Browser · ${title}` : title;
+  };
+
   private listedSession(id: string): SessionView | undefined {
     return this.groups.flatMap((group) => group.sessions).find((session) => session.id === id);
   }
@@ -4043,6 +4049,8 @@ export class HuiApp extends HuiElement {
       .onFocusPane=${this.focusSessionPane}
       .onDropSession=${this.dropSession}
       .onMovePane=${this.movePane}
+      .onClosePane=${this.closePane}
+      .paneLabel=${this.paneLabel}
       .onResize=${(columnId: string | undefined, index: number, ratio: number) => {
         if (this.sessionLayout) this.sessionLayout = resizeSessionLayout(this.sessionLayout, columnId, index, ratio);
       }}

@@ -4,7 +4,8 @@ import { repeat } from "lit/directives/repeat.js";
 import { HuiElement } from "../lit/hui-element.ts";
 import { SessionViewCache } from "../lib/session-view-cache.ts";
 import { HUI_PANE_DRAG_TYPE, HUI_SESSION_DRAG_TYPE, readSessionDragId } from "../lib/session-pane-layout.ts";
-import { SESSION_SPLIT_MEDIA, sessionDropRect, sessionDropZone, sessionPanes, sessionPaneMoveTarget, type DropZone, type PaneRect, type SessionLayout, type SessionPane, type SplitDirection } from "../lib/session-multiplexer.ts";
+import { SESSION_SPLIT_MEDIA, sessionDropRect, sessionDropZone, sessionPanes, sessionPaneMoveTarget, spotTabs, visibleSessionPanes, type DropZone, type PaneRect, type SessionLayout, type SessionPane, type SplitDirection } from "../lib/session-multiplexer.ts";
+import { icons } from "../lib/icons.ts";
 import { sessionPaneGeometry } from "../lib/session-pane-geometry.ts";
 import "./resizable-divider.ts";
 
@@ -23,6 +24,8 @@ export class SessionMultiplexer extends HuiElement {
   @property({ attribute: false }) onMovePane!: (sourceId: string, targetId: string, zone: DropZone) => void;
   @property({ attribute: false }) onResize!: (columnId: string | undefined, index: number, ratio: number) => void;
   @property({ attribute: false }) onResizeEnd!: () => void;
+  @property({ attribute: false }) onClosePane!: (id: string) => void;
+  @property({ attribute: false }) paneLabel!: (pane: SessionPane) => string;
   @property() draggingSessionId = "";
   @property({ attribute: false }) sessionIds: ReadonlySet<string> | undefined;
   @state() narrow = false;
@@ -30,6 +33,8 @@ export class SessionMultiplexer extends HuiElement {
   @state() private viewportHeight = 0;
   @state() private announcement = "";
   private draggingPaneId = "";
+  /** A tab activated from the keyboard moves to another cell; refocus it there. */
+  private focusTab = "";
   private dragFromControl = false;
   private resizeObserver: ResizeObserver | undefined;
   private resizeFrame: number | undefined;
@@ -111,7 +116,8 @@ export class SessionMultiplexer extends HuiElement {
 
   private dragStart = (event: DragEvent) => {
     const target = event.target instanceof Element ? event.target : undefined;
-    const header = target?.closest(".chat-pane__header");
+    const tab = target?.closest<HTMLElement>("[data-tab-pane]");
+    const header = tab ?? target?.closest(".chat-pane__header");
     if (!header) return;
     const cell = header.closest<HTMLElement>("[data-session-pane]");
     const control = event.composedPath().find((node) => node instanceof Element && node.matches("button,a,input,textarea,select,wa-dropdown,[contenteditable=true]"));
@@ -120,10 +126,10 @@ export class SessionMultiplexer extends HuiElement {
       event.preventDefault();
       return;
     }
-    this.draggingPaneId = cell.dataset.sessionPane!;
+    this.draggingPaneId = tab?.dataset.tabPane ?? cell.dataset.sessionPane!;
     event.dataTransfer.effectAllowed = "move";
     event.dataTransfer.setData(HUI_PANE_DRAG_TYPE, this.draggingPaneId);
-    cell.classList.add("hui-pane-dragging");
+    (tab ?? cell).classList.add("hui-pane-dragging");
     event.stopPropagation();
   };
 
@@ -147,10 +153,18 @@ export class SessionMultiplexer extends HuiElement {
     const cell = (event.target as Element | null)?.closest<HTMLElement>("[data-session-pane]");
     const container = this.querySelector(".chat-split-view__drop-container");
     if (!cell || !container || !this.contains(cell)) return;
-    if (moving && cell.dataset.sessionPane === this.draggingPaneId) return;
     const bounds = cell.getBoundingClientRect();
-    const zone = sessionDropZone(bounds, event.clientX, event.clientY);
-    const rect = sessionDropRect(bounds, zone);
+    // The tab row, or the header when there is none, adds the dragged view as a tab.
+    const strip = (cell.querySelector(".hui-pane-tabs") ?? cell.querySelector(".chat-pane-cache__pane--visible .chat-pane__header"))?.getBoundingClientRect();
+    const zone: DropZone = strip && event.clientY <= strip.bottom ? { kind: "tab" } : sessionDropZone(bounds, event.clientX, event.clientY);
+    if (moving) {
+      const spot = visibleSessionPanes(this.layout).find(({ id }) => id === cell.dataset.sessionPane);
+      const tabs = spot ? spotTabs(spot) : [];
+      // In its own spot a view can only be split out, and only if other tabs stay.
+      if (tabs.some(({ id }) => id === this.draggingPaneId) && (zone.kind !== "edge" || tabs.length < 2)) return;
+    }
+    // DOMRect sizes are prototype getters, so copy them rather than spreading.
+    const rect = zone.kind === "tab" ? { left: strip!.left, top: strip!.top, width: strip!.width, height: strip!.height } : sessionDropRect(bounds, zone);
     const origin = container.getBoundingClientRect();
     return { paneId: cell.dataset.sessionPane!, zone, moving, rect: { ...rect, left: rect.left - origin.left, top: rect.top - origin.top } };
   }
@@ -169,7 +183,7 @@ export class SessionMultiplexer extends HuiElement {
   private showDrop(preview: DropPreview | undefined) {
     const host = this.querySelector<HTMLElement>(".hui-pane-drop-host");
     if (host) render(preview ? html`<div class="chat-split-view__drop-indicator ${preview.zone.kind === "center" ? "chat-split-view__drop-indicator--center" : ""}" style=${rectStyle(preview.rect)}>
-      <span class="chat-split-view__drop-indicator-label">${preview.moving ? preview.zone.kind === "center" ? "Swap panels" : "Move panel" : preview.zone.kind === "center" ? "Open here" : "Split"}</span>
+      <span class="chat-split-view__drop-indicator-label">${preview.zone.kind === "tab" ? "Add as tab" : preview.moving ? preview.zone.kind === "center" ? "Swap panels" : "Move panel" : preview.zone.kind === "center" ? "Open here" : "Split"}</span>
     </div>` : nothing, host);
   }
 
@@ -187,9 +201,35 @@ export class SessionMultiplexer extends HuiElement {
     event.stopPropagation();
     if (preview.moving && source === event.dataTransfer?.getData(HUI_PANE_DRAG_TYPE)) {
       this.onMovePane(source, preview.paneId, preview.zone);
-      this.announcement = preview.zone.kind === "center" ? "Panels swapped." : `Panel moved ${preview.zone.edge}.`;
+      this.announcement = preview.zone.kind === "center" ? "Panels swapped." : preview.zone.kind === "tab" ? "Panel added as a tab." : `Panel moved ${preview.zone.edge}.`;
     } else if (!preview.moving && id) this.onDropSession(id, preview.paneId, preview.zone);
   };
+
+  override updated() {
+    if (!this.focusTab) return;
+    this.querySelector<HTMLElement>(`[data-tab-pane="${CSS.escape(this.focusTab)}"]`)?.focus();
+    this.focusTab = "";
+  }
+
+  private renderTabs(tabs: SessionPane[], shownId: string) {
+    const activate = (id: string, focus = false) => { if (focus) this.focusTab = id; this.onFocusPane(id); };
+    return html`<div class="hui-pane-tabs" role="tablist" aria-label="Panel tabs">${tabs.map((tab, index) => {
+      const label = this.paneLabel(tab);
+      return html`<div class="hui-pane-tab ${tab.id === shownId ? "hui-pane-tab--active" : ""}" role="tab" draggable="true"
+        data-tab-pane=${tab.id} aria-selected=${String(tab.id === shownId)} tabindex=${tab.id === shownId ? "0" : "-1"} title=${label}
+        @click=${() => activate(tab.id)}
+        @keydown=${(event: KeyboardEvent) => {
+          const next = event.key === "ArrowLeft" ? tabs[index - 1] : event.key === "ArrowRight" ? tabs[index + 1] : event.key === "Enter" || event.key === " " ? tab : undefined;
+          if (!next || event.target !== event.currentTarget) return;
+          event.preventDefault();
+          activate(next.id, true);
+        }}
+      >${tab.terminalId ? icons.squareTerminal : tab.browser ? icons.globe : icons.messageSquare}<span class="hui-pane-tab__label">${label}</span>
+        <button type="button" class="hui-pane-tab__close" aria-label=${`Close ${label}`} title="Close tab"
+          @click=${(event: Event) => { event.stopPropagation(); this.onClosePane(tab.id); }}>${icons.close}</button>
+      </div>`;
+    })}</div>`;
+  }
 
   override render() {
     if (!this.layout) return nothing;
@@ -212,20 +252,22 @@ export class SessionMultiplexer extends HuiElement {
     // DOM order never follows layout order: even Lit's keyed reparenting would
     // disconnect custom elements and tear down their streams/terminal canvases.
     const stablePanes = [...panes].sort((a, b) => Number(a.id.slice(1)) - Number(b.id.slice(1)));
+    const spots = new Map(visibleSessionPanes(layout).map((spot) => [spot.id, spot]));
     return html`<div class="chat-split-view__drop-container">
       <div class="chat-split-view hui-pane-viewport ${this.narrow ? "chat-split-view--narrow" : ""}"
         role="region" aria-label="Session workspace" @scroll=${this.clearDrop}>
         <div class="hui-pane-canvas" style=${`width:${canvas.width}px;height:${canvas.height}px`}>
           ${repeat(stablePanes, (pane) => pane.id, (pane) => {
             const active = pane.id === layout.activePaneId;
-            const visible = !this.narrow || active;
+            const spot = spots.get(pane.id);
+            const visible = this.narrow ? active : Boolean(spot);
             const rect = this.narrow ? { left: 0, top: 0, ...canvas } : geometry.panes.get(pane.id)!;
             return html`<div
-              class="chat-split-view__cell ${split && active ? "chat-split-view__cell--active" : ""} ${!visible ? "chat-split-view__cell--narrow-hidden" : ""} ${rect.left === 0 && rect.top === 0 ? "chat-split-view__cell--origin" : ""}"
+              class="chat-split-view__cell ${split && active ? "chat-split-view__cell--active" : ""} ${!visible ? this.narrow ? "chat-split-view__cell--narrow-hidden" : "chat-split-view__cell--tab-hidden" : ""} ${rect.left === 0 && rect.top === 0 ? "chat-split-view__cell--origin" : ""}"
               data-session-pane=${pane.id} aria-current=${split && active ? "true" : nothing}
               style=${rectStyle(rect)}
               @pointerdown=${() => this.onFocusPane(pane.id)} @focusin=${() => this.onFocusPane(pane.id)}
-            ><div class="chat-pane-cache">
+            >${!this.narrow && spot?.tabs ? this.renderTabs(spotTabs(spot), pane.id) : nothing}<div class="chat-pane-cache">
               ${pane.terminalId || pane.browser ? html`<div class="chat-pane-cache__pane chat-pane-cache__pane--visible" ?inert=${!visible} aria-hidden=${String(!visible)}>${this.renderPane(pane, { active, visible, narrow: this.narrow, split })}</div>` : repeat(slots.get(pane.id) ?? [], (id) => id, (id) => {
                 const current = id === pane.sessionId;
                 return html`<div class="chat-pane-cache__pane ${current ? "chat-pane-cache__pane--visible" : ""} ${current && active ? "chat-pane-cache__pane--active" : ""}"
