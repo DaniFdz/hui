@@ -113,6 +113,7 @@ import { sessionTreeIds } from "../src/lib/session-tree.ts";
 import { SubagentService } from "./subagents.ts";
 import { presentMediaForSession, servePresentedMedia } from "./presented-media.ts";
 import { GitHubCli, GitHubCliError } from "./github.ts";
+import { FIRST_YEAR as GITHUB_FIRST_YEAR, GitHubContributionsReader, latestYear } from "./github-contributions.ts";
 import { GitHubPreviews, ghApi, previewPullRequestFetcher } from "./github-previews.ts";
 import { MAX_GITHUB_EMBEDS, parseGitHubUrl } from "../shared/github-links.ts";
 import { TaskSuggestionInputError, TaskSuggestionNotFoundError, TaskSuggestionStore } from "./task-suggestions.ts";
@@ -191,6 +192,7 @@ const SESSION_ONE = /^\/__hui\/sessions\/([^/]+)$/;
 const GITHUB_ROUTE = `${PREFIX}github`;
 const GITHUB_LOGIN_ROUTE = `${GITHUB_ROUTE}/login`;
 const GITHUB_PREVIEWS_ROUTE = `${GITHUB_ROUTE}/previews`;
+const GITHUB_CONTRIBUTIONS_ROUTE = `${GITHUB_ROUTE}/contributions`;
 const JIRA_ROUTE = `${PREFIX}jira`;
 const JIRA_PROJECTS_ROUTE = `${JIRA_ROUTE}/projects`;
 /** Create (POST) or draft (POST …/draft) a Jira work item for one session. */
@@ -831,6 +833,7 @@ export function sessionMutationErrorStatus(error: unknown): 400 | 500 {
 const GH_COMMAND = process.env["HUI_GITHUB_CLI"] || "gh";
 const githubCli = new GitHubCli({ command: GH_COMMAND });
 const githubPreviews = new GitHubPreviews(ghApi(GH_COMMAND));
+const githubContributions = new GitHubContributionsReader(GH_COMMAND);
 const pullRequestStatuses = new PullRequestStatuses(previewPullRequestFetcher(githubPreviews));
 
 const worktreeService = new WorktreeService({
@@ -2376,6 +2379,25 @@ async function handleRequest(
       return;
     }
     sendJson(response, 200, { previews: await Promise.all(urls.map((url) => githubPreviews.lookup(url))) });
+    return;
+  }
+
+  if (path === GITHUB_CONTRIBUTIONS_ROUTE) {
+    if (request.method !== "GET") {
+      sendJson(response, 405, { error: "method not allowed" });
+      return;
+    }
+    const params = new URL(request.url ?? "/", "http://localhost").searchParams;
+    const year = params.has("year") ? Number(params.get("year")) : undefined;
+    if (year !== undefined && !(Number.isInteger(year) && year >= GITHUB_FIRST_YEAR && year <= latestYear())) {
+      sendJson(response, 400, { error: `year must be ${GITHUB_FIRST_YEAR}-${latestYear()}.` });
+      return;
+    }
+    try {
+      sendJson(response, 200, await githubContributions.read(year, params.get("refresh") === "1"));
+    } catch (error) {
+      sendJson(response, 502, { error: error instanceof Error ? error.message : "GitHub activity could not be read." });
+    }
     return;
   }
 

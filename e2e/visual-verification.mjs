@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url";
 const repo = dirname(dirname(fileURLToPath(import.meta.url)));
 const help = `HUI visual verification (run from the checkout being reviewed)
 
-  node e2e/visual-verification.mjs launch --branch <expected-branch> [--quota-fixture | --jira-fixture]
+  node e2e/visual-verification.mjs launch --branch <expected-branch> [--quota-fixture | --jira-fixture | --github-fixture]
   node e2e/visual-verification.mjs doctor --receipt <absolute-receipt.json>
   node e2e/visual-verification.mjs cleanup --receipt <absolute-receipt.json>
 
@@ -303,6 +303,31 @@ export async function launch(expectedBranch) {
         session("e2e-jira-docs", "Docs cleanup"),
       ] }));
     }
+    if (process.argv.includes("--github-fixture")) {
+      // Fake gh (e2e/github-cli-fixture.mjs) signed in to two synthetic accounts
+      // with deterministic commits and pull requests since they were created.
+      const gh = join(dir, "gh");
+      await mkdir(gh, { recursive: true });
+      await writeFile(join(gh, "account"), "hui-e2e\n");
+      await writeFile(join(gh, "accounts"), "hui-e2e\nhui-e2e-personal\n");
+      let seed = 42;
+      const random = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
+      const activity = (createdAt, weekday, weekend, prRate) => {
+        const commits = [], pullRequests = [];
+        for (let day = 0; day < (Date.now() - Date.parse(createdAt)) / 86_400_000; day++) {
+          const date = new Date(Date.now() - day * 86_400_000);
+          const busy = date.getDay() % 6 === 0 ? weekend : weekday;
+          for (let count = Math.floor(random() * random() * busy); count > 0; count--) commits.push(new Date(date.valueOf() - random() * 36_000_000).toISOString());
+          if (random() < prRate * (busy === weekday ? 1 : 0.2)) pullRequests.push(date.toISOString());
+        }
+        return { createdAt, commits, pullRequests };
+      };
+      await writeFile(join(gh, "contributions.json"), JSON.stringify({
+        "hui-e2e": activity("2022-03-14T09:00:00Z", 14, 1, 0.55),
+        "hui-e2e-personal": activity("2019-08-02T18:00:00Z", 2, 9, 0.15),
+      }));
+      Object.assign(serverEnv, { HUI_GITHUB_CLI: join(repo, "e2e", "github-cli-fixture.mjs"), HUI_FAKE_GH_DIR: gh });
+    }
     const server = start("visual-verification-server.mjs", {
       ...serverEnv,
       HUI_VERIFICATION_IDENTITY: JSON.stringify({ runId: receipt.runId, runnerPid: process.pid, checkout }),
@@ -332,7 +357,7 @@ export async function launch(expectedBranch) {
 async function main() {
   const [command, ...args] = process.argv.slice(2);
   if (!command || command === "--help" || args.includes("--help")) return process.stdout.write(help);
-  if (command === "launch" && ["--quota-fixture", "--jira-fixture"].includes(args.at(-1))) args.pop();
+  if (command === "launch" && ["--quota-fixture", "--jira-fixture", "--github-fixture"].includes(args.at(-1))) args.pop();
   const option = command === "launch" ? "--branch" : "--receipt";
   if (!["launch", "doctor", "cleanup"].includes(command) || args.length !== 2 || args[0] !== option) throw new Error("Invalid arguments. Run with --help.");
   if (command === "launch") return launch(args[1]);

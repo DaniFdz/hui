@@ -22,7 +22,7 @@ const DEVICE_CODE_TTL_MS = 15 * 60_000;
 const START_TIMEOUT_MS = 20_000;
 const OUTPUT_LIMIT = 16 * 1024;
 const MESSAGE_LIMIT = 300;
-const GH_ENV = { GH_PROMPT_DISABLED: "1", GH_NO_UPDATE_NOTIFIER: "1", GH_SPINNER_DISABLED: "1", NO_COLOR: "1" };
+export const GH_ENV = { GH_PROMPT_DISABLED: "1", GH_NO_UPDATE_NOTIFIER: "1", GH_SPINNER_DISABLED: "1", NO_COLOR: "1" };
 const AUTH_REJECTED = /\b401\b|bad credentials|token (?:is )?(?:invalid|expired|revoked)|(?<!proxy )authentication (?:failed|required)/iu;
 const ENV_TOKEN_SOURCES = new Set(["GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN"]);
 
@@ -253,7 +253,7 @@ export class GitHubCli {
   }
 }
 
-function spawnFailure(error: unknown): string {
+export function spawnFailure(error: unknown): string {
   const code = (error as NodeJS.ErrnoException | undefined)?.code;
   if (code === "ENOENT") return GITHUB_CLI_REQUIRED;
   if (code === "EACCES") return "The gh executable on the gateway's PATH is not executable.";

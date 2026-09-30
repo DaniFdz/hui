@@ -2,6 +2,7 @@
 // HUI retains ownership of routing, session state and every callback below.
 import { html, nothing, type TemplateResult } from "lit";
 import { icons } from "../lib/icons.ts";
+import { icons as openclawIcons } from "../components/openclaw/icons.ts";
 import { sessionMenuShortcuts } from "../lib/session-menu-shortcuts.ts";
 import { labelDropdown, closeDropdownOnEscape } from "../lib/web-awesome.ts";
 import { renderHoverMarquee } from "../lib/hover-marquee.ts";
@@ -44,6 +45,7 @@ if (typeof document !== "undefined") {
 /** Sidebar destinations. Sessions are opened from the list below and New
  * Session from the header, so there is no separate Home entry. */
 export const PRIMARY_NAV = [
+  { id: "contributions", label: "Contributions", icon: openclawIcons.gitPullRequest },
   { id: "cron", label: "Automations", icon: icons.calendarClock },
   { id: "plugins", label: "Plugins", icon: icons.plug },
   { id: "skills", label: "Skills", icon: icons.book },
