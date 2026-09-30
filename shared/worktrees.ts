@@ -69,10 +69,10 @@ export type WorktreeRemovalResult = {
   error?: string;
 };
 
-/** Worktrees the "Clean up merged" action may remove. Linked sessions are
- * fine unless running (a `running` risk); their transcripts are kept. */
+/** Worktrees the "Clean up merged" action may remove. Every linked session
+ * must be archived; deleted ones are no longer linked. */
 export function isMergedCleanupCandidate(row: WorktreeRow): boolean {
-  return row.managed && row.merged && row.dirty === false && row.risks.length === 0;
+  return row.managed && row.merged && row.sessions.every((session) => session.archived) && row.dirty === false && row.risks.length === 0;
 }
 
 /** A risk the user acknowledged covers the risk the server now sees. */
