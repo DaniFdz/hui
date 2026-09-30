@@ -312,12 +312,8 @@ export function renderSessionsPage(props: SessionsPageProps): TemplateResult {
   const heaviest = measured.toSorted((a, b) => (b.runtime?.memoryBytes ?? 0) - (a.runtime?.memoryBytes ?? 0))[0];
   return html`
     <section class="settings-workspace hui-workspace-page sessions-workspace">
-      <header class="content-header content-header--settings content-header--page hub-page-header sessions-hub-header">
-        <div class="hub-page-header__title">
-          <div class="page-title">Sessions</div>
-          <div class="page-subtitle">Active sessions and defaults.</div>
-        </div>
-        <div class="hub-page-header__actions"></div>
+      <header class="content-header content-header--settings content-header--page">
+        <div><div class="page-title">Sessions</div><div class="page-subtitle">Active sessions and defaults.</div></div>
       </header>
       <div class="settings-workspace__body">
         <div class="settings-page settings-page--wide sessions-page">
