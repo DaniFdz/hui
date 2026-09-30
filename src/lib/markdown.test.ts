@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { markdownToHtml } from "./markdown.ts";
+import { createMarkdownCache, markdownToHtml } from "./markdown.ts";
 
 test("renders the Markdown used by agent replies", () => {
   const html = markdownToHtml("# Heading\n\n**bold** and `code`\n\n- one\n- two");
@@ -230,4 +230,26 @@ test("embeds isolated Slack conversation links without resolving private content
     "[Open the channel](https://acme.slack.com/archives/C01234567)",
     "http://acme.slack.com/archives/C01234567",
   ]) assert.doesNotMatch(markdownToHtml(source), /<hui-slack-link/u);
+});
+
+test("parses each distinct Markdown source once so re-renders stay cheap", () => {
+  const parsed: string[] = [];
+  const render = createMarkdownCache((source) => {
+    parsed.push(source);
+    return `<p>${source}</p>`;
+  });
+
+  // A transcript re-renders in full on every keystroke and streamed token.
+  for (const source of ["first", "second", "first", "second", "first"]) {
+    assert.equal(render(source), `<p>${source}</p>`);
+  }
+  assert.deepEqual(parsed, ["first", "second"]);
+});
+
+test("the Markdown cache stays bounded and still renders evicted sources", () => {
+  const render = createMarkdownCache((source) => `<p>${source}</p>`);
+  for (let index = 0; index <= 2_000; index += 1) assert.equal(render(`value ${index}`), `<p>value ${index}</p>`);
+  // The oldest entries were dropped, and re-rendering one is still correct.
+  assert.equal(render("value 0"), "<p>value 0</p>");
+  assert.equal(render("value 2000"), "<p>value 2000</p>");
 });
