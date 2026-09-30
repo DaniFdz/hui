@@ -91,8 +91,9 @@ details in the owning directory guide.
 
 ## Installation and release workflow
 
-- User installation and developer onboarding live in `README.md`; the fuller
-  contribution loop and release checklist live in `CONTRIBUTING.md`.
+- User installation and developer onboarding live in `README.md`, with longer
+  user reference in `docs/guide.md`; the fuller contribution loop and release
+  checklist live in `CONTRIBUTING.md`.
 - The repository is private and HUI is distributed as a `.tgz`, not through the
   public npm registry. A new machine can clone `main`, run `npm ci` and `npm pack`,
   or download a checksum-paired archive from a GitHub Release once one exists.

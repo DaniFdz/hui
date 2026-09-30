@@ -1,0 +1,38 @@
+<!doctype html>
+<!--
+  README banner source. Regenerate both PNGs from the repository root:
+    chrome="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+    for mode in light dark; do
+      "$chrome" --headless --hide-scrollbars --force-device-scale-factor=2 --window-size=1280,360 \
+        --virtual-time-budget=3000 $([ $mode = dark ] && echo --force-dark-mode) \
+        --screenshot="docs/assets/hui-banner-$mode.png" "file://$PWD/docs/assets/banner.html"
+    done
+-->
+<meta charset="utf-8">
+<style>
+  @font-face { font-family: Geist; font-weight: 100 900; src: url("../../public/fonts/geist-latin.woff2") format("woff2"); }
+  :root { --bg: #faf9f7; --ink: #151b21; --muted: #5b6770; --accent: #7c3aed; --glow: rgb(167 139 250 / .38); --dot: rgb(21 27 33 / .07); }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #0e1015; --ink: #f4f1ff; --muted: #9fb0bd; --accent: #b197fc; --glow: rgb(139 92 246 / .42); --dot: rgb(255 255 255 / .06); }
+  }
+  html, body { margin: 0; width: 1280px; height: 360px; overflow: hidden; }
+  body {
+    display: flex; align-items: center; gap: 72px; padding-left: 150px; box-sizing: border-box;
+    font-family: Geist, system-ui, sans-serif; color: var(--ink);
+    background:
+      radial-gradient(circle at 280px 180px, var(--glow), transparent 260px),
+      radial-gradient(var(--dot) 1.2px, transparent 1.6px) 0 0 / 24px 24px,
+      var(--bg);
+  }
+  img { width: 250px; height: 250px; filter: drop-shadow(0 18px 30px rgb(76 29 149 / .35)); }
+  h1 { margin: 0; font-size: 156px; font-weight: 800; letter-spacing: -.045em; line-height: .9; }
+  p { margin: 0; }
+  .tagline { margin: 22px 0 16px; color: var(--accent); font-size: 25px; font-weight: 700; letter-spacing: .24em; }
+  .subtitle { color: var(--muted); font-size: 27px; font-weight: 450; letter-spacing: -.01em; }
+</style>
+<img src="../../public/pi-logo-3d.png" alt="">
+<main>
+  <h1>HUI</h1>
+  <p class="tagline">HARNESS UI</p>
+  <p class="subtitle">A local, browser-first workspace for your coding agents.</p>
+</main>
