@@ -212,6 +212,13 @@ function readCollapsed(): Set<string> {
   }
 }
 
+/** Pane callbacks are behavior, not render data: only their presence changes
+ * the output. The split parent recreates equivalent closures on every render;
+ * comparing identity re-rendered every pane's whole transcript on each unrelated
+ * update or resize step. Lit still stores the newest value, but a rendered
+ * button may keep an older one: capture only the pane/session id and the parent. */
+const paneCallback = { attribute: false, hasChanged: (value: unknown, old: unknown) => !value !== !old };
+
 @customElement("hui-app")
 export class HuiApp extends HuiElement {
   @state() private view: NavId = "home";
@@ -422,25 +429,25 @@ export class HuiApp extends HuiElement {
   @property({ type: Boolean }) paneVisible = true;
   @property({ type: Boolean }) paneNarrow = false;
   @property({ type: Boolean }) paneMobileNav = false;
-  @property({ attribute: false }) onPaneClose: (() => void) | undefined;
-  @property({ attribute: false }) onPaneSplit: ((direction: SplitDirection) => void) | undefined;
-  @property({ attribute: false }) onPaneTerminal: (() => Promise<void>) | undefined;
+  @property(paneCallback) onPaneClose: (() => void) | undefined;
+  @property(paneCallback) onPaneSplit: ((direction: SplitDirection) => void) | undefined;
+  @property(paneCallback) onPaneTerminal: (() => Promise<void>) | undefined;
   /** Opens this session's browser panel: the larger live view beside the chat. */
-  @property({ attribute: false }) onPaneBrowser: (() => void) | undefined;
+  @property(paneCallback) onPaneBrowser: (() => void) | undefined;
   @state() private terminalOpening = false;
   @state() private terminalError = "";
-  @property({ attribute: false }) onPaneNavigate: ((id: string) => void) | undefined;
-  @property({ attribute: false }) onPaneRegistryChange: (() => void) | undefined;
+  @property(paneCallback) onPaneNavigate: ((id: string) => void) | undefined;
+  @property(paneCallback) onPaneRegistryChange: (() => void) | undefined;
   /** Worktree progress while the gateway still creates this pane's session;
    * the pane opens it once this clears. */
   @property({ attribute: false }) paneCreating: WorktreeProgress | undefined;
   @property({ attribute: false }) paneCreationError: string | undefined;
   /** The failed launch's prompt, returned to New Session when this pane deletes it. */
   @property({ attribute: false }) paneUnsentPrompt: string | undefined;
-  @property({ attribute: false }) onPaneUpdate: ((text: string, attachments: readonly Attachment[]) => boolean) | undefined;
+  @property(paneCallback) onPaneUpdate: ((text: string, attachments: readonly Attachment[]) => boolean) | undefined;
   /** Embedded panes own the composer but not the sidebar; report draft
    * presence so the shell can project the pencil onto the session row. */
-  @property({ attribute: false }) onPaneDraftChange: ((sessionId: string, hasDraft: boolean) => void) | undefined;
+  @property(paneCallback) onPaneDraftChange: ((sessionId: string, hasDraft: boolean) => void) | undefined;
   private mobileNavMedia: MediaQueryList | undefined;
   private composerTextarea: HTMLTextAreaElement | null = null;
   private readonly onMobileNavChange = (event: MediaQueryListEvent) => {
