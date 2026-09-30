@@ -85,7 +85,7 @@ export type KanbanPageProps = {
 };
 
 export type BacklogCardAction = "jira:create" | "jira:link" | "open:jira" | "copy" | "remove";
-export type SessionCardAction = "jira:create" | "jira:link" | "open:jira";
+export type SessionCardAction = "jira:create" | "jira:link" | "open:jira" | "copy:jira";
 
 const STAGE_DRAG_TYPE = "application/x-hui-kanban-session";
 const BACKLOG_DRAG_TYPE = "application/x-hui-kanban-backlog";
@@ -160,7 +160,7 @@ function sessionMenu(session: SessionView, props: KanbanPageProps) {
       @wa-select=${(event: CustomEvent<{ item: { value: string } }>) => {
         const value = event.detail.item.value;
         if (value.startsWith("group:")) props.onMove(session, { group: value.slice(6) });
-        else if (value === "jira:create" || value === "jira:link" || value === "open:jira") queueMicrotask(() => props.onSessionAction(session, value));
+        else if (value === "jira:create" || value === "jira:link" || value === "open:jira" || value === "copy:jira") queueMicrotask(() => props.onSessionAction(session, value));
         else props.onMove(session, { stage: value === "auto" ? null : value as SessionStage });
       }}>
       <button slot="trigger" type="button" class="kanban-card__stage-trigger" ?disabled=${props.movePendingId === session.id}
@@ -180,9 +180,11 @@ function sessionMenu(session: SessionView, props: KanbanPageProps) {
       <div class="sidebar-session-sort-menu__label">Move to group</div>
       ${groupItems(currentGroup, props)}
       ${separator}
-      <wa-dropdown-item class="session-menu__item" value="jira:create">${jiraMenuIcon}<span class="session-menu__text">Create Jira work item…</span></wa-dropdown-item>
-      <wa-dropdown-item class="session-menu__item" value="jira:link">${jiraMenuIcon}<span class="session-menu__text">Link Jira work item…</span></wa-dropdown-item>
-      ${linked ? html`<wa-dropdown-item class="session-menu__item" value="open:jira">${jiraMenuIcon}<span class="session-menu__text">Open in Jira · ${linked.key}</span></wa-dropdown-item>` : nothing}
+      ${linked ? html`
+        <wa-dropdown-item class="session-menu__item" value="open:jira">${jiraMenuIcon}<span class="session-menu__text">Open in Jira · ${linked.key}</span></wa-dropdown-item>
+        <wa-dropdown-item class="session-menu__item" value="copy:jira"><span slot="icon" class="session-menu__icon" aria-hidden="true">${icons.copy}</span><span class="session-menu__text">Copy Jira link</span></wa-dropdown-item>` : html`
+        <wa-dropdown-item class="session-menu__item" value="jira:create">${jiraMenuIcon}<span class="session-menu__text">Create Jira work item…</span></wa-dropdown-item>
+        <wa-dropdown-item class="session-menu__item" value="jira:link">${jiraMenuIcon}<span class="session-menu__text">Link Jira work item…</span></wa-dropdown-item>`}
     </wa-dropdown>`;
 }
 
