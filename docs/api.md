@@ -834,8 +834,13 @@ append a synthetic user turn after the authoritative transcript refresh.
 List everything in the registry, grouped.
 
 ```json
-{ "groups": [ { "label": "my-sessions", "sessions": [ /* SessionView[] */ ] } ] }
+{ "revision": 12, "groups": [ { "label": "my-sessions", "sessions": [ /* SessionView[] */ ] } ] }
 ```
+
+The gateway keeps this list in memory and shares it with every connected
+screen; `revision` increases whenever it changes. The group mutation routes
+return the same shape. `GET /__hui/sessions/events` pushes the same list as
+changes, so clients discard any full list older than the revision they hold.
 
 Groups follow the registry's catalog order, which the user controls, with
 `ungrouped` last. New groups are appended; renames keep their position. Within each group pinned sessions come first, then
@@ -1018,6 +1023,24 @@ data: {"id":"session-a","status":"idle"}
 
 A `status` frame may also carry `title` when the gateway renamed the session
 itself, such as a new session's generated name.
+
+It also carries the shared session list. After the status snapshot, the
+first `sessions` frame is the complete list; later frames carry only what
+changed. `groups` (order, membership and group defaults as ordered `ids`) is
+present only when it changed, and `upserts` holds each session whose view
+changed. While any client listens, the gateway recomputes the list every
+second.
+
+```text
+event: sessions
+data: {"revision":12,"groups":[{"label":"my-sessions","ids":["session-a"]}],"upserts":[/* SessionView[] */]}
+
+event: sessions
+data: {"revision":13,"upserts":[/* SessionView[] */]}
+```
+
+Revisions are seeded from the gateway's clock, so they keep rising across
+gateway restarts and a client ignores any list older than the one it holds.
 
 The stream does not start cold sessions and does not carry transcript content.
 The browser uses it to keep all sidebar rows current while retaining the

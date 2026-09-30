@@ -145,6 +145,7 @@ test("the gateway status stream multiplexes tagged session lifecycle updates", (
   const response = new FakeResponse();
   let subscriber: ((update: SessionStatusUpdate) => void) | undefined;
   let unsubscribed = false;
+  let unlisted = false;
 
   streamSessionStatuses(response as unknown as ServerResponse, {
     watchStatuses: (listener) => {
@@ -156,6 +157,11 @@ test("the gateway status stream multiplexes tagged session lifecycle updates", (
         ],
         unsubscribe: () => { unsubscribed = true; },
       };
+    },
+  }, {
+    subscribe: (listener) => {
+      listener({ revision: 1, groups: [{ label: "work", ids: [] }], upserts: [] });
+      return () => { unlisted = true; };
     },
   });
 
@@ -171,7 +177,9 @@ test("the gateway status stream multiplexes tagged session lifecycle updates", (
     response.chunks.join(""),
     /event: status\ndata: \{"id":"session-a","status":"idle"\}\n\n/,
   );
+  assert.match(response.chunks.join(""), /event: sessions\ndata: \{"revision":1,"groups":\[\{"label":"work","ids":\[\]\}\],"upserts":\[\]\}\n\n/);
   assert.equal(unsubscribed, true);
+  assert.equal(unlisted, true);
 });
 
 test("new sessions reject unsupported tools instead of silently running PI", async () => {

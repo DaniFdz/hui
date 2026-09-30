@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { mock, test } from "node:test";
 
 import {
   reconnectDelay,
+  STATUS_STREAM_STALL_MS,
   subscribeSessionStatuses,
   transcriptAsMarkdown,
   type RuntimeEvent,
@@ -50,6 +51,9 @@ test("the browser demultiplexes lifecycle snapshot and status frames", async () 
     "event: status",
     'data: {"id":"a","status":"idle"}',
     "",
+    "event: sessions",
+    'data: {"revision":2,"upserts":[]}',
+    "",
     "",
   ].join("\n");
   const fetcher = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -62,13 +66,15 @@ test("the browser demultiplexes lifecycle snapshot and status frames", async () 
   }) as typeof fetch;
   const snapshots: Array<readonly SessionStatusUpdate[]> = [];
   const updates: SessionStatusUpdate[] = [];
+  const lists: unknown[] = [];
   let finish!: () => void;
   const received = new Promise<void>((resolve) => { finish = resolve; });
 
   const stop = subscribeSessionStatuses({
     onSnapshot: (statuses) => snapshots.push(statuses),
-    onStatus: (update) => {
-      updates.push(update);
+    onStatus: (update) => updates.push(update),
+    onSessions: (list) => {
+      lists.push(list);
       finish();
     },
   }, fetcher);
@@ -77,4 +83,32 @@ test("the browser demultiplexes lifecycle snapshot and status frames", async () 
 
   assert.deepEqual(snapshots, [[{ id: "a", status: "running" }]]);
   assert.deepEqual(updates, [{ id: "a", status: "idle" }]);
+  assert.deepEqual(lists, [{ revision: 2, upserts: [] }]);
+});
+
+test("a status stream that goes silent reconnects to resync", async (t) => {
+  mock.timers.enable({ apis: ["setTimeout"] });
+  t.after(() => mock.timers.reset());
+  let connections = 0;
+  const fetcher = (async () => {
+    connections += 1;
+    return new Response(new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('event: snapshot\ndata: {"statuses":[]}\n\n'));
+      },
+    }), { status: 200, headers: { "content-type": "text/event-stream" } });
+  }) as typeof fetch;
+  const stop = subscribeSessionStatuses({ onSnapshot: () => {}, onStatus: () => {} }, fetcher);
+  t.after(stop);
+  const settle = async () => { for (let i = 0; i < 10; i += 1) await new Promise(setImmediate); };
+
+  await settle();
+  mock.timers.tick(STATUS_STREAM_STALL_MS - 1);
+  await settle();
+  assert.equal(connections, 1);
+  mock.timers.tick(1);
+  await settle();
+  mock.timers.tick(reconnectDelay(1, () => 1));
+  await settle();
+  assert.equal(connections, 2);
 });
