@@ -443,7 +443,6 @@ export class HuiApp extends HuiElement {
   /** Worktree progress while the gateway still creates this pane's session;
    * the pane opens it once this clears. */
   @property({ attribute: false }) paneCreating: WorktreeProgress | undefined;
-  @property({ attribute: false }) paneTitle: string | undefined;
   @property({ attribute: false }) paneCreationError: string | undefined;
   /** The failed launch's prompt, returned to New Session when this pane deletes it. */
   @property({ attribute: false }) paneUnsentPrompt: string | undefined;
@@ -773,10 +772,6 @@ export class HuiApp extends HuiElement {
     if (changed.has("paneCreating") && !this.paneCreating && changed.get("paneCreating") && this.selected?.id === this.paneSessionId) {
       void this.openSelected(this.selected.id);
     }
-    // The shell's registry is the source of a title the gateway set later.
-    if (changed.has("paneTitle") && this.paneTitle && this.selected?.id === this.paneSessionId && this.selected.title !== this.paneTitle) {
-      this.selected = { ...this.selected, title: this.paneTitle };
-    }
     if (this.embeddedPane && changed.has("paneGroups") && this.paneGroups) {
       // The shell's list can trail this pane's own detailed stream; keep the
       // presented session's live status rather than regressing it.
@@ -787,7 +782,7 @@ export class HuiApp extends HuiElement {
             sessions: group.sessions.map((session) => session.id === selected.id ? { ...session, status: selected.status } : session),
           }))
         : this.paneGroups;
-      // Renames and other registry edits made on another screen reach the header.
+      // Renames (by another screen or the gateway's generated name) reach the header.
       const listed = selected && this.listedSession(selected.id);
       if (listed) this.selected = { ...selected, ...listed, status: selected.status, interrupted: selected.interrupted };
       this.sessionsLoading = false;
@@ -4068,7 +4063,6 @@ export class HuiApp extends HuiElement {
       .onPaneNavigate=${(id: string) => this.changePaneSession(pane.id, id)}
       .onPaneRegistryChange=${() => this.refreshSessions(true).then(() => this.updateComplete).then(() => {})}
       .paneCreating=${this.listedSession(pane.sessionId)?.creating}
-      .paneTitle=${this.listedSession(pane.sessionId)?.title}
       .paneCreationError=${this.listedSession(pane.sessionId)?.creationError}
       .paneUnsentPrompt=${this.listedSession(pane.sessionId)?.initialPrompt}
       .paneGroups=${this.sessionListRevision ? this.groups : undefined}
