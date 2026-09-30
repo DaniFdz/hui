@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile, mkdir } from "node:fs/promises";
+import { mkdtemp, readFile, rm, symlink, writeFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, it } from "node:test";
@@ -253,6 +253,16 @@ describe("SessionChangesService.inspect", () => {
     assert.equal(changes.files[0]!.path, "zz-own.txt", "session files survive the cap");
     assert.equal(changes.files.some((file) => file.path === "b.txt"), false, "committed files are dropped first");
     assert.deepEqual(defaultShipSelection(changes), ["zz-own.txt"]);
+  });
+
+  it("recognizes the session's files through a symlinked path", async () => {
+    const linked = join(root, "linked-repo");
+    await symlink(repo, linked);
+    await writeFile(join(repo, "own.txt"), "mine\n");
+    await writeFile(join(repo, "other.txt"), "theirs\n");
+    const changes = await new SessionChangesService({ run: fakeGh().run }).inspect(linked, new Set([join(linked, "own.txt")]));
+    assert.ok(changes.available);
+    assert.deepEqual(changes.files.map((file) => [file.path, file.session]), [["own.txt", true], ["other.txt", false]]);
   });
 
   it("is not ready on a clean default branch and keeps a stable signature", async () => {

@@ -343,9 +343,12 @@ export class SessionChangesService {
     const stats = parseNumstat(numstat.stdout);
     const statuses = parseNameStatus(nameStatus.stdout);
     const own = new Set<string>();
-    const realCwd = directory;
     for (const path of sessionPaths) {
-      const relativePath = relative(root, resolve(realCwd, path));
+      // The worktree root Git reports is resolved; a session's paths may go through
+      // a symlink (macOS /var or /tmp, a linked home), so resolve them too.
+      const resolved = resolve(directory, path);
+      const canonical = await realpath(resolved).catch(() => resolved);
+      const relativePath = relative(root, canonical);
       if (relativePath && relativePath !== ".." && !relativePath.startsWith(`..${sep}`) && !isAbsolute(relativePath)) own.add(relativePath.split(sep).join("/"));
     }
 
