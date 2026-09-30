@@ -7,9 +7,13 @@
  *   account  — the signed-in login (absent: signed out)
  *   approve  — created by the test to approve a pending login
  *   deny     — created by the test to reject a pending login
+ *   accounts — optional logins, one per line, the first active (overrides account)
+ *   contributions.json — `{ login: { commits: [iso], pullRequests: [iso], createdAt? } | "error" }`
+ *                  served by `api -X GET search/commits|search/issues` (logged to search-log)
+ *                  and `api user`
  * HUI_FAKE_GH_CODE overrides the printed one-time code; HUI_FAKE_GH_PROTOCOL
  * is the configured git protocol. Each login writes its arguments to login-args. */
-import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 const dir = process.env.HUI_FAKE_GH_DIR;
@@ -19,15 +23,49 @@ if (!dir) {
 }
 const file = (name) => join(dir, name);
 const args = process.argv.slice(2);
+const accounts = () => {
+  if (existsSync(file("accounts"))) return readFileSync(file("accounts"), "utf8").split("\n").map((line) => line.trim()).filter(Boolean);
+  return existsSync(file("account")) ? [readFileSync(file("account"), "utf8").trim()].filter(Boolean) : [];
+};
 
 if (args[0] === "--version") {
   process.stdout.write("gh version 9.9.9 (fixture)\nhttps://github.com/cli/cli/releases/tag/v9.9.9\n");
 } else if (args[0] === "auth" && args[1] === "status") {
-  const login = existsSync(file("account")) ? readFileSync(file("account"), "utf8").trim() : "";
-  const hosts = login
-    ? { "github.com": [{ state: "success", active: true, host: "github.com", login, tokenSource: "keyring", scopes: "gist, read:org, repo", gitProtocol: "https" }] }
+  const logins = accounts();
+  const hosts = logins.length
+    ? { "github.com": logins.map((login, index) => ({ state: "success", active: index === 0, host: "github.com", login, tokenSource: "keyring", scopes: "gist, read:org, repo", gitProtocol: "https" })) }
     : {};
   process.stdout.write(`${JSON.stringify({ hosts })}\n`);
+} else if (args[0] === "auth" && args[1] === "token") {
+  const login = args[args.indexOf("--user") + 1];
+  if (!accounts().includes(login)) {
+    process.stderr.write(`no oauth token found for github.com account ${login}\n`);
+    process.exit(1);
+  }
+  process.stdout.write(`fake-token-${login}\n`);
+} else if (args[0] === "api" && args[1] === "user") {
+  // `gh api user --jq .created_at` for the account whose token the call carries.
+  const login = process.env.GH_TOKEN?.replace(/^fake-token-/u, "") ?? accounts()[0];
+  const data = existsSync(file("contributions.json")) ? JSON.parse(readFileSync(file("contributions.json"), "utf8")) : {};
+  process.stdout.write(`${data[login]?.createdAt ?? "2020-06-01T00:00:00Z"}\n`);
+} else if (args[0] === "api" && args[3]?.startsWith("search/")) {
+  // `gh api --jq` output for HUI's contribution searches: the first call prints
+  // total_count and page one; `-f page=2 --paginate` prints the rest up to 1000.
+  const field = (name) => args.find((arg, index) => args[index - 1] === "-f" && arg.startsWith(`${name}=`))?.slice(name.length + 1);
+  const query = field("q") ?? "";
+  const login = /author:(\S+)/u.exec(query)?.[1] ?? "";
+  const [from, to] = (/:(\d{4}-\d\d-\d\d)\.\.(\d{4}-\d\d-\d\d)/u.exec(query) ?? []).slice(1);
+  const data = existsSync(file("contributions.json")) ? JSON.parse(readFileSync(file("contributions.json"), "utf8")) : {};
+  if (typeof data[login] === "string") {
+    process.stderr.write(`gh: ${data[login]}\n`);
+    process.exit(1);
+  }
+  const all = data[login]?.[args[3] === "search/commits" ? "commits" : "pullRequests"] ?? [];
+  const dates = all.filter((date) => date.slice(0, 10) >= from && date.slice(0, 10) <= to);
+  const page = field("page") === "2";
+  appendFileSync(file("search-log"), `${args[3]} ${login} ${from}..${to} page=${page ? 2 : 1} token=${process.env.GH_TOKEN ?? ""}\n`);
+  const shown = page ? dates.slice(100, 1000) : [String(dates.length), ...dates.slice(0, 100)];
+  process.stdout.write(shown.map((line) => `${line}\n`).join(""));
 } else if (args[0] === "api") {
   // Canned REST payloads for chat embed and PR badge previews; unknown paths are 404.
   const login = existsSync(file("account")) ? readFileSync(file("account"), "utf8").trim() : "";

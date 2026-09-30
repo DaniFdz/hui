@@ -35,3 +35,19 @@ export type GitHubConnection = {
 
 export const GITHUB_CLI_URL = "https://cli.github.com";
 export const GITHUB_CLI_REQUIRED = "GitHub CLI (gh) is required. Install it on the machine that runs HUI and make sure `gh` is on the gateway's PATH.";
+
+/** One `gh` account's GitHub activity over the requested year, as ISO timestamps. */
+export type GitHubContributionAccount = {
+  login: string;
+  /** When the GitHub account was created; the page offers its years. */
+  createdAt?: string;
+  /** Author dates of the commits GitHub search indexes (default branches). */
+  commits: string[];
+  /** Creation times of the pull requests the account opened. */
+  pullRequests: string[];
+  /** Why this account's activity could not be read; its lists are then empty. */
+  error?: string;
+};
+
+/** One year of every github.com account `gh` is signed in to. */
+export type GitHubContributions = { accounts: GitHubContributionAccount[] };

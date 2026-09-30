@@ -154,6 +154,7 @@ import { downloadDiagnostics, loadObservability, type ObservabilitySnapshot } fr
 import { renderHome, renderNewSession, type HomeProps } from "./views/home.ts";
 import { DEFAULT_SESSIONS_PAGE_FILTERS, renderSessionsPage, type SessionsPageFilters, type SessionsPageState } from "./views/sessions.ts";
 import type { WorktreeFilter } from "./views/worktrees.ts";
+import "./views/contributions.ts";
 import { loadWorktrees, removeWorktrees, type WorktreeInventory, type WorktreeRemovalResult, type WorktreeRisk } from "./lib/worktrees.ts";
 import { renderPanelSelector } from "./views/panel-selector.ts";
 import { renderAutomationSurface } from "./views/automation.ts";
@@ -4316,6 +4317,8 @@ export class HuiApp extends HuiElement {
                       onNew: () => this.openPageById("new-session"),
                       onRefresh: () => void this.refreshSessions(),
                     })
+                  : this.activePage.id === "contributions"
+                    ? html`<hui-contributions-page .onOpenSettings=${() => this.navigate({ kind: "settings", page: "integrations" })}></hui-contributions-page>`
                   : isPiSurface(this.activePage)
                     ? renderPiSurface({
                         page: this.activePage,
