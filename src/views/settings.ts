@@ -939,6 +939,14 @@ function renderSessionsSettingsPage(props: SettingsProps) {
       ${renderRow("Running now", "Live status is process state and is never persisted.", html`<strong>${running}</strong>`)}
     `)}
     ${renderSection("Runtimes", "The runtime is fixed when a session is registered.", html`${[...runtimes.entries()].map(([runtime, count]) => renderRow(runtime === "pi" ? "PI" : runtime, "Registered sessions using this adapter.", html`<span class="settings-row__value">${count}</span>`))}${runtimes.size ? nothing : renderRow("No sessions", "Create a session from Home to register a runtime.", html`<span class="settings-row__muted">—</span>`)}`)}
+    ${renderSection("Retention", "Deleting HUI metadata never deletes PI conversation files.", html`
+      ${renderRow("Transcript authority", "History is resumed directly from the runtime-owned session file.", html`<span class="settings-row__value">PI</span>`)}
+      ${renderRow("Remove from HUI", "Stops tracking the row and runtime without deleting the transcript.", html`<span class="settings-row__value">Metadata only</span>`)}
+    `)}`;
+}
+
+function renderWorktreesSettingsPage(props: SettingsProps) {
+  return html`${renderWorktreesPage(props.worktrees)}
     ${renderSection("Git worktrees", "New Session can create an isolated checkout from the selected repository.", html`
       ${renderRow("Default branch prefix", "Saved for future worktree branches; a trailing slash is added automatically.", html`
         <form class="row" @submit=${(event: SubmitEvent) => {
@@ -952,10 +960,6 @@ function renderSessionsSettingsPage(props: SettingsProps) {
           <button type="submit" class="btn">Save</button>
         </form>
       `)}
-    `)}
-    ${renderSection("Retention", "Deleting HUI metadata never deletes PI conversation files.", html`
-      ${renderRow("Transcript authority", "History is resumed directly from the runtime-owned session file.", html`<span class="settings-row__value">PI</span>`)}
-      ${renderRow("Remove from HUI", "Stops tracking the row and runtime without deleting the transcript.", html`<span class="settings-row__value">Metadata only</span>`)}
     `)}`;
 }
 
@@ -1131,7 +1135,7 @@ export function renderSettingsPage(props: SettingsProps) {
                               : props.page === "security"
                                 ? renderSecurityPage(props)
                               : props.page === "worktrees"
-                                ? renderWorktreesPage(props.worktrees)
+                                ? renderWorktreesSettingsPage(props)
                           : renderPendingSettingsPage(props.page)}
         </div>
       </div>
