@@ -123,17 +123,22 @@ export class GitHubContributionsReader {
       const halves = await Promise.all([this.#search(kind, login, from, middle, env), this.#search(kind, login, addDays(middle, 1), to, env)]);
       return halves.flat();
     }
-    if (count <= PAGE_SIZE) return dates;
-    return [...dates, ...lines(await this.#searchCall(args(`.items[] | ${search.date}`, "-f", "page=2", "--paginate"), env))];
+    // Later pages in parallel: sequential `--paginate` made a heavy year take ~10 s.
+    const pages = Array.from({ length: Math.ceil(Math.min(count, SEARCH_CAP) / PAGE_SIZE) - 1 }, (_, index) =>
+      this.#searchCall(args(`.items[] | ${search.date}`, "-f", `page=${index + 2}`), env).then(lines));
+    return [...dates, ...(await Promise.all(pages)).flat()];
   }
 
-  /** A search call that waits out GitHub's per-minute search limit once. */
+  /** A search call that waits out GitHub's per-minute search limit once: until
+   * the reset `rate_limit` reports (a call that costs no quota), else a minute. */
   async #searchCall(args: string[], env?: Record<string, string>): Promise<string> {
     try {
       return await this.#run(args, env);
     } catch (error) {
       if (!/rate limit/iu.test(error instanceof Error ? error.message : "")) throw error;
-      await new Promise((resolve) => setTimeout(resolve, this.#rateLimitWaitMs));
+      const reset = Number(await this.#run(["api", "rate_limit", "--jq", ".resources.search.reset"], env).catch(() => ""));
+      const wait = reset > 0 ? reset * 1000 - this.#now() + 1000 : this.#rateLimitWaitMs;
+      await new Promise((resolve) => setTimeout(resolve, Math.min(Math.max(wait, 0), this.#rateLimitWaitMs)));
       return this.#run(args, env);
     }
   }

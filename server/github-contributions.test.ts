@@ -37,6 +37,7 @@ test("reads every gh account with its own login and fits searches under GitHub's
   assert.ok(log.filter((line) => line.includes(" personal ")).every((line) => line.endsWith("token=fake-token-personal")));
   assert.ok(log.some((line) => line.startsWith("search/issues work 2025-09-24..2026-09-30 page=2 ")), "150 pull requests read page two");
   assert.ok(log.some((line) => line.startsWith("search/commits work 2025-09-24..2026-03-28 ")), "1200 commits split the window");
+  assert.ok(log.some((line) => line.startsWith("search/commits work 2025-09-24..2026-03-28 page=6 ")), "each ~600-commit half reads pages two to six");
 
   await reader.read();
   assert.equal((await readFile(join(dir, "search-log"), "utf8")).trim().split("\n").length, log.length, "cached");

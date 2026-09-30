@@ -167,10 +167,12 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
 - Contributions (first sidebar destination) charts the GitHub activity of every
   account signed in to `gh` on the HUI machine: a GitHub-style calendar (a
   square per local day, month and Mon/Wed/Fri labels, Less→More legend, hover
-  for the day's count) and a bar per week. One *Commits* / *Pull requests*
+  for the day's count) and a bar per week (hover for the week's count). One *Commits* / *Pull requests*
   switch (default commits) drives both charts: commits authored on default
   branches, as GitHub search indexes them, or pull requests opened. An *Account*
-  picker narrows both to one login (default *All accounts*). GitHub's year list
+  picker narrows both to one login (default *All accounts*). The browser
+  remembers both choices; a remembered login that is no longer signed in shows
+  *All accounts* until it returns. GitHub's year list
   beside the charts (a scrolling row on narrow screens) picks *Last 12 months*
   (default) or a calendar year, from this year back to the oldest account's
   creation; the current year leaves its future days blank.

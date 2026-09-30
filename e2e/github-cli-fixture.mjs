@@ -50,7 +50,7 @@ if (args[0] === "--version") {
   process.stdout.write(`${data[login]?.createdAt ?? "2020-06-01T00:00:00Z"}\n`);
 } else if (args[0] === "api" && args[3]?.startsWith("search/")) {
   // `gh api --jq` output for HUI's contribution searches: the first call prints
-  // total_count and page one; `-f page=2 --paginate` prints the rest up to 1000.
+  // total_count and page one; `-f page=N` prints page N (up to result 1000).
   const field = (name) => args.find((arg, index) => args[index - 1] === "-f" && arg.startsWith(`${name}=`))?.slice(name.length + 1);
   const query = field("q") ?? "";
   const login = /author:(\S+)/u.exec(query)?.[1] ?? "";
@@ -67,9 +67,10 @@ if (args[0] === "--version") {
   }
   const all = data[login]?.[args[3] === "search/commits" ? "commits" : "pullRequests"] ?? [];
   const dates = all.filter((date) => date.slice(0, 10) >= from && date.slice(0, 10) <= to);
-  const page = field("page") === "2";
-  appendFileSync(file("search-log"), `${args[3]} ${login} ${from}..${to} page=${page ? 2 : 1} token=${process.env.GH_TOKEN ?? ""}\n`);
-  const shown = page ? dates.slice(100, 1000) : [String(dates.length), ...dates.slice(0, 100)];
+  const page = Number(field("page") ?? 1);
+  appendFileSync(file("search-log"), `${args[3]} ${login} ${from}..${to} page=${page} token=${process.env.GH_TOKEN ?? ""}\n`);
+  const items = dates.slice(0, 1000).slice((page - 1) * 100, page * 100);
+  const shown = page > 1 ? items : [String(dates.length), ...items];
   process.stdout.write(shown.map((line) => `${line}\n`).join(""));
 } else if (args[0] === "api") {
   // Canned REST payloads for chat embed and PR badge previews; unknown paths are 404.

@@ -1882,8 +1882,10 @@ times from `search/issues` (`author:<login> is:pr created:<from>..<to>`), sorted
 by that date so later pages continue page one. The first call per range prints
 `total_count` and page one; up to 100 results need
 no more calls, more than 1000 (GitHub's search cap) halve the range, otherwise
-`-f page=2 --paginate` reads the rest. A search call refused by GitHub's rate
-limit (30 searches a minute per account) waits 61 s and is retried once. The
+`-f page=N` calls read the remaining pages in parallel. A search call refused by
+GitHub's rate limit (30 searches a minute per account) waits until the reset
+`gh api rate_limit` reports (at most 61 s, which is also the wait when that call
+fails) and is retried once. The
 contribution calendar API is not used:
 it returns nothing for Enterprise Managed Users. The active account runs `gh`
 unchanged; every other account runs with `GH_TOKEN` from `gh auth token --user

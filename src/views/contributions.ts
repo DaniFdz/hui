@@ -23,6 +23,16 @@ const LEFT = 30;
 const TOP = 16;
 const BAR_HEIGHT = 96;
 const METRICS: readonly [ContributionMetric, string][] = [["commits", "Commits"], ["pullRequests", "Pull requests"]];
+const PREFERENCES_KEY = "hui.contributions";
+
+function readPreferences(): { metric: ContributionMetric; account: string } {
+  try {
+    const saved = JSON.parse(localStorage.getItem(PREFERENCES_KEY) ?? "null") as { metric?: unknown; account?: unknown } | null;
+    return { metric: saved?.metric === "pullRequests" ? "pullRequests" : "commits", account: typeof saved?.account === "string" ? saved.account : ALL };
+  } catch {
+    return { metric: "commits", account: ALL };
+  }
+}
 
 const longDate = (date: Date) => date.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric", year: "numeric" });
 const shortDate = (date: Date) => date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
@@ -43,7 +53,7 @@ function renderCalendar(weeks: readonly ContributionWeek[], metric: Contribution
         ${monthLabels(weeks, 10)}
         ${(["Mon", "Wed", "Fri"] as const).map((text, index) => svg`<text class="contributions-axis" x="0" y=${TOP + (2 * index + 1) * STEP + CELL - 1}>${text}</text>`)}
         ${weeks.map((week, column) => week.days.filter((day) => day.date <= today).map((day) => svg`<rect class="contributions-cell" data-level=${level(day.count)}
-            x=${LEFT + column * STEP} y=${TOP + day.date.getDay() * STEP} width=${CELL} height=${CELL} rx="2"><title>${metricLabel(metric, day.count)} on ${longDate(day.date)}</title></rect>`))}
+            x=${LEFT + column * STEP} y=${TOP + day.date.getDay() * STEP} width=${CELL} height=${CELL} rx="2" data-tip=${`${metricLabel(metric, day.count)} on ${longDate(day.date)}`}></rect>`))}
       </svg>
     </div>
     <div class="contributions-legend" aria-hidden="true">Less ${[0, 1, 2, 3, 4].map((value) => html`<span class="contributions-legend__cell" data-level=${value}></span>`)} More</div>`;
@@ -62,7 +72,7 @@ function renderWeekly(weeks: readonly ContributionWeek[], metric: ContributionMe
         if (start > today) return nothing;
         const height = (week.total / max) * (BAR_HEIGHT - 4);
         // The full-height hit area keeps short and empty weeks hoverable.
-        return svg`<g class="contributions-week"><title>${metricLabel(metric, week.total)} · week of ${shortDate(start)}</title>
+        return svg`<g class="contributions-week" data-tip=${`${metricLabel(metric, week.total)} · week of ${shortDate(start)}`}>
           <rect class="contributions-week__hit" x=${LEFT + column * STEP - 1} y="0" width=${STEP} height=${BAR_HEIGHT}></rect>
           <rect class="contributions-bar" x=${LEFT + column * STEP} y=${BAR_HEIGHT - height} width=${CELL} height=${height} rx="2"></rect></g>`;
       })}
@@ -80,12 +90,20 @@ export class HuiContributionsPage extends LitElement {
   #shown?: { year?: number; data: GitHubContributions };
   #loading = false;
   #error = "";
-  #account = ALL;
-  #metric: ContributionMetric = "commits";
+  /** Saved in localStorage; an account no longer signed in shows all without forgetting it. */
+  #account: string;
+  #metric: ContributionMetric;
+  /** The hovered day or week, positioned inside its chart card. */
+  #tip?: { card: string; text: string; x: number; y: number; end: boolean };
   /** Selected calendar year; undefined is the last year. */
   #year?: number;
   #request = 0;
   #scrollToLatest = false;
+
+  constructor() {
+    super();
+    ({ metric: this.#metric, account: this.#account } = readPreferences());
+  }
 
   override createRenderRoot() { return this; }
   override connectedCallback() { super.connectedCallback(); void this.#load(); }
@@ -108,7 +126,6 @@ export class HuiContributionsPage extends LitElement {
       const data = await loadGitHubContributions(year, refresh);
       if (request !== this.#request) return;
       this.#shown = { year, data };
-      if (!data.accounts.some((account) => account.login === this.#account)) this.#account = ALL;
       this.#scrollToLatest = true;
     } catch (error) {
       if (request !== this.#request) return;
@@ -126,8 +143,39 @@ export class HuiContributionsPage extends LitElement {
     void this.#load();
   }
 
+  #selectedAccount() {
+    return this.#shown?.data.accounts.some((account) => account.login === this.#account) ? this.#account : ALL;
+  }
+
   #accounts() {
-    return (this.#shown?.data.accounts ?? []).filter((account) => this.#account === ALL || account.login === this.#account);
+    const selected = this.#selectedAccount();
+    return (this.#shown?.data.accounts ?? []).filter((account) => selected === ALL || account.login === selected);
+  }
+
+  #savePreferences(change: { metric?: ContributionMetric; account?: string }) {
+    this.#metric = change.metric ?? this.#metric;
+    this.#account = change.account ?? this.#account;
+    try { localStorage.setItem(PREFERENCES_KEY, JSON.stringify({ metric: this.#metric, account: this.#account })); } catch { /* Keep the in-memory choice. */ }
+    this.requestUpdate();
+  }
+
+  #hover(event: PointerEvent) {
+    const card = event.currentTarget as HTMLElement;
+    const target = (event.target as Element).closest("[data-tip]");
+    const text = target?.getAttribute("data-tip");
+    if (!target || !text) { this.#leave(); return; }
+    const box = card.getBoundingClientRect();
+    const rect = target.getBoundingClientRect();
+    const x = rect.left + rect.width / 2 - box.left;
+    // Past the middle the tip grows leftwards so it never leaves the card.
+    this.#tip = { card: card.dataset.card ?? "", text, x, y: rect.top - box.top, end: x > box.width / 2 };
+    this.requestUpdate();
+  }
+
+  #leave() {
+    if (!this.#tip) return;
+    this.#tip = undefined;
+    this.requestUpdate();
   }
 
   #section(title: string, description: string, chart: unknown) {
@@ -138,7 +186,12 @@ export class HuiContributionsPage extends LitElement {
           <p class="settings-section__desc">${description}</p>
         </div>
       </div>
-      <div class="settings-group contributions-card">${chart}</div>
+      <div class="settings-group contributions-card" data-card=${title} @pointerover=${(event: PointerEvent) => this.#hover(event)} @pointerleave=${() => this.#leave()}>
+        ${chart}
+        ${this.#tip?.card === title
+          ? html`<div class="contributions-tip ${this.#tip.end ? "contributions-tip--end" : ""}" role="tooltip" style="left:${this.#tip.x}px;top:${this.#tip.y}px">${this.#tip.text}</div>`
+          : nothing}
+      </div>
     </section>`;
   }
 
@@ -201,14 +254,14 @@ export class HuiContributionsPage extends LitElement {
         <div class="page-header-actions">
           <div class="settings-segmented" role="group" aria-label="Count">
             ${METRICS.map(([metric, text]) => html`<button type="button" class="settings-segmented__btn ${this.#metric === metric ? "settings-segmented__btn--active" : ""}"
-              aria-pressed=${String(this.#metric === metric)} @click=${() => { this.#metric = metric; this.requestUpdate(); }}>${text}</button>`)}
+              aria-pressed=${String(this.#metric === metric)} @click=${() => this.#savePreferences({ metric })}>${text}</button>`)}
           </div>
           <div class="contributions-account">${renderPicker({
             label: "Account",
-            value: this.#account,
+            value: this.#selectedAccount(),
             options: [{ value: ALL, label: "All accounts" }, ...accounts.map((account) => ({ value: account.login, label: account.login }))],
             disabled: accounts.length === 0,
-            onChange: (value) => { this.#account = value; this.requestUpdate(); },
+            onChange: (account) => this.#savePreferences({ account }),
           })}</div>
           <button class="btn" type="button" ?disabled=${this.#loading} @click=${() => void this.#load(true)}>${icons.refresh}<span>${this.#loading && this.#shown ? "Loading…" : "Refresh"}</span></button>
         </div>
