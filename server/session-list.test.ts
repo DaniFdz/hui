@@ -19,9 +19,11 @@ test("screens share one list: a full list on join, then only what changed", asyn
   next = list(["work", a, { ...b, title: "B2" }]);
   await hub.refresh();
   await hub.refresh(); // Unchanged: nothing is sent.
-  assert.deepEqual(phone.map(({ revision, groups, upserts }) => ({ revision, groups: Boolean(groups), ids: upserts.map(({ id }) => id) })), [
-    { revision: 1, groups: true, ids: ["a", "b"] },
-    { revision: 2, groups: false, ids: ["b"] },
+  const first = phone[0]?.revision ?? 0;
+  assert.ok(first > Date.now() - 60_000, "revisions keep rising across gateway restarts");
+  assert.deepEqual(phone.map(({ revision, groups, upserts }) => ({ revision: revision - first, groups: Boolean(groups), ids: upserts.map(({ id }) => id) })), [
+    { revision: 0, groups: true, ids: ["a", "b"] },
+    { revision: 1, groups: false, ids: ["b"] },
   ]);
 
   // A late joiner gets the current list immediately, not a replay.
@@ -34,8 +36,8 @@ test("screens share one list: a full list on join, then only what changed", asyn
     const applied = updates.reduce<SessionListGroup<Session>[]>((groups, update) => applySessionListUpdate(groups, update), []);
     assert.deepEqual(applied, latest.groups);
   }
-  assert.equal(mac[0]?.revision, 2);
-  assert.equal(latest.revision, 3);
+  assert.equal(mac[0]?.revision, first + 1);
+  assert.equal(latest.revision, first + 2);
   stopPhone();
   stopMac();
 });

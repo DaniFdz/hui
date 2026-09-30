@@ -6,7 +6,9 @@ type Groups<S> = SessionListGroup<S>[];
  * listens it is recomputed on an interval and only changes are broadcast.
  * ponytail: timer-driven; hook registry/runtime events if 1 s lag matters. */
 export function createSessionListHub<S extends { id: string }>(load: () => Promise<Groups<S>>, intervalMs = 1_000) {
-  let current = { revision: 0, groups: [] as Groups<S> };
+  // Clock-seeded so revisions keep rising across gateway restarts.
+  let current = { revision: Date.now(), groups: [] as Groups<S> };
+  let loaded = false;
   const listeners = new Set<(update: SessionListUpdate<S>) => void>();
   let queue: Promise<unknown> = Promise.resolve();
   let timer: ReturnType<typeof setInterval> | undefined;
@@ -17,9 +19,10 @@ export function createSessionListHub<S extends { id: string }>(load: () => Promi
     const run = queue.then(async () => {
       const next = await load();
       const update = diffSessionList(current.groups, next);
-      if (update) {
+      if (update || !loaded) {
+        loaded = true;
         current = { revision: current.revision + 1, groups: next };
-        for (const listener of listeners) listener({ ...update, revision: current.revision });
+        if (update) for (const listener of listeners) listener({ ...update, revision: current.revision });
       }
       return current;
     });
@@ -38,7 +41,7 @@ export function createSessionListHub<S extends { id: string }>(load: () => Promi
     refresh,
     subscribe(listener: (update: SessionListUpdate<S>) => void): () => void {
       listeners.add(listener);
-      if (current.revision) listener({
+      if (loaded) listener({
         revision: current.revision,
         groups: sessionListLayout(current.groups),
         upserts: current.groups.flatMap((group) => group.sessions),

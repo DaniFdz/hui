@@ -439,7 +439,7 @@ export class HuiApp extends HuiElement {
   @state() private terminalOpening = false;
   @state() private terminalError = "";
   @property(paneCallback) onPaneNavigate: ((id: string) => void) | undefined;
-  @property(paneCallback) onPaneRegistryChange: (() => void) | undefined;
+  @property(paneCallback) onPaneRegistryChange: (() => Promise<void>) | undefined;
   /** Worktree progress while the gateway still creates this pane's session;
    * the pane opens it once this clears. */
   @property({ attribute: false }) paneCreating: WorktreeProgress | undefined;
@@ -666,8 +666,6 @@ export class HuiApp extends HuiElement {
   }
 
   private applySessionStatusSnapshot = (updates: readonly SessionStatusUpdate[]) => {
-    // Each connection restarts the list's revisions with a full list next.
-    this.sessionListRevision = 0;
     this.sessionStatuses = new Map(updates.map(({ id, status }) => [id, status]));
     const unread = new Map(updates.flatMap((update) =>
       update.unread === undefined ? [] : [[update.id, update.unread] as const]));
@@ -714,7 +712,9 @@ export class HuiApp extends HuiElement {
 
   private async refreshSessions(background = false) {
     if (this.embeddedPane) {
-      this.onPaneRegistryChange?.();
+      // The shell owns the list; resolve once its refresh has reached this pane.
+      await this.onPaneRegistryChange?.();
+      await this.updateComplete;
       return;
     }
     if (!background) this.sessionsLoading = true;
@@ -740,7 +740,8 @@ export class HuiApp extends HuiElement {
 
   private applySessionListChange = (update: SessionListUpdate<SessionView>) => {
     if (update.revision <= this.sessionListRevision) return;
-    this.receiveSessionList(update.revision, applySessionListUpdate(this.groups, update));
+    // Status events can overtake a list built a moment earlier.
+    this.receiveSessionList(update.revision, mergeSessionStatuses(applySessionListUpdate(this.groups, update), this.sessionStatuses));
     this.sessionsLoading = false;
     this.sessionsError = "";
     this.openPendingSession();
@@ -897,7 +898,7 @@ export class HuiApp extends HuiElement {
   private navigate(target: NavigationTarget, replace = false) {
     if (this.embeddedPane) {
       if (target.kind === "session") this.onPaneNavigate?.(target.id);
-      else if (target.kind === "home") this.onPaneRegistryChange?.();
+      else if (target.kind === "home") void this.onPaneRegistryChange?.();
       return;
     }
     if (target.kind === "session") {
@@ -1262,7 +1263,7 @@ export class HuiApp extends HuiElement {
       this.taskSuggestionIndex = clampSuggestionIndex(this.taskSuggestionIndex, this.taskSuggestions.length);
       this.note = detail.warning ?? `Created Jira work item ${detail.key}.`;
       this.noteFailed = Boolean(detail.warning);
-      this.onPaneRegistryChange?.();
+      void this.onPaneRegistryChange?.();
     }
     this.sessionMoveNotice = detail.warning ?? `Created Jira work item ${detail.key}.`;
     this.sessionMoveFailed = Boolean(detail.warning);
@@ -2743,7 +2744,7 @@ export class HuiApp extends HuiElement {
         this.taskSuggestions = this.taskSuggestions.filter(({ id }) => id !== suggestion.id);
         this.taskSuggestionIndex = clampSuggestionIndex(this.taskSuggestionIndex, this.taskSuggestions.length);
         await this.refreshSessions(true);
-        this.onPaneRegistryChange?.();
+        void this.onPaneRegistryChange?.();
         // "This session" stays put; the transcript shows the new turn.
         if (session.id !== source.id) this.selectSession(session);
       })
@@ -2893,7 +2894,7 @@ export class HuiApp extends HuiElement {
           return;
         }
         this.selected = renamed;
-        this.onPaneRegistryChange?.();
+        void this.onPaneRegistryChange?.();
         return this.refreshSessions();
       })
       .catch((error: unknown) => {
@@ -4065,12 +4066,12 @@ export class HuiApp extends HuiElement {
       .onPaneTerminal=${() => this.openTerminalPane(pane)}
       .onPaneBrowser=${() => this.openBrowserPane(pane)}
       .onPaneNavigate=${(id: string) => this.changePaneSession(pane.id, id)}
-      .onPaneRegistryChange=${() => void this.refreshSessions()}
+      .onPaneRegistryChange=${() => this.refreshSessions(true).then(() => this.updateComplete).then(() => {})}
       .paneCreating=${this.listedSession(pane.sessionId)?.creating}
       .paneTitle=${this.listedSession(pane.sessionId)?.title}
       .paneCreationError=${this.listedSession(pane.sessionId)?.creationError}
       .paneUnsentPrompt=${this.listedSession(pane.sessionId)?.initialPrompt}
-      .paneGroups=${this.sessionsLoading ? undefined : this.groups}
+      .paneGroups=${this.sessionListRevision ? this.groups : undefined}
       .onPaneUpdate=${(text: string, attachments: readonly Attachment[]) => this.handleUpdateCommand(text, attachments)}
       .onPaneDraftChange=${(sessionId: string, hasDraft: boolean) => this.markSessionDraft(sessionId, hasDraft)}
     ></hui-app>`;

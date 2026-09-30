@@ -801,6 +801,8 @@ async function connectOnce(
   });
 }
 
+export const STATUS_STREAM_STALL_MS = 40_000;
+
 async function connectStatusesOnce(
   handlers: SessionStatusesHandlers,
   signal: AbortSignal,
@@ -827,8 +829,13 @@ async function connectStatusesOnce(
   const decoder = new TextDecoder();
   let buffer = "";
   let live = false;
+  // A phone changing networks can leave the socket open but silent; the gateway
+  // heartbeats every 15 s, so a longer silence means reconnect and resync.
+  let stall: ReturnType<typeof setTimeout> | undefined;
   try {
     for (;;) {
+      clearTimeout(stall);
+      stall = setTimeout(() => void reader.cancel(), STATUS_STREAM_STALL_MS);
       const { done, value } = await reader.read();
       if (done) break;
       if (!live) {
@@ -854,6 +861,8 @@ async function connectStatusesOnce(
     }
   } catch {
     return { kind: "dropped" };
+  } finally {
+    clearTimeout(stall);
   }
   return { kind: "dropped" };
 }
