@@ -2,13 +2,31 @@ import assert from "node:assert/strict";
 import { mock, test } from "node:test";
 
 import {
+  listedSessionGroups,
   reconnectDelay,
   STATUS_STREAM_STALL_MS,
   subscribeSessionStatuses,
   transcriptAsMarkdown,
   type RuntimeEvent,
+  type SessionGroup,
   type SessionStatusUpdate,
+  type SessionView,
 } from "./sessions-store.ts";
+
+test("session lists leave out temporary pull-request reviews", () => {
+  const view = (id: string, temporary = false): SessionView => ({
+    id, title: id, group: "", cwd: "/tmp", tool: "pi", status: "idle", createdAt: "", updatedAt: "",
+    ...(temporary ? { temporary: { kind: "pr-review" as const, pullRequestUrl: "https://github.com/acme/web/pull/3" } } : {}),
+  });
+  const groups: SessionGroup[] = [
+    { label: "Work", sessions: [view("a"), view("review-a", true)] },
+    { label: "Empty", sessions: [] },
+    { label: "ungrouped", sessions: [view("review-b", true)] },
+  ];
+  assert.deepEqual(listedSessionGroups(groups).map((group) => [group.label, group.sessions.map(({ id }) => id)]), [["Work", ["a"]], ["Empty", []]]);
+  const plain = [{ label: "ungrouped", sessions: [view("b")] }];
+  assert.equal(listedSessionGroups(plain), plain, "no temporary sessions: the same list");
+});
 
 test("the browser runtime contract includes settled", () => {
   const event: RuntimeEvent = { type: "settled" };

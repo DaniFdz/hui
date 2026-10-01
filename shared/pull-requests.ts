@@ -70,6 +70,26 @@ export type MyPullRequest = {
   /** Created tab: a session directory is a checkout of the repository, so a
    * session can be started on the head branch. */
   localCheckout?: boolean;
+  /** Review requested tab: the temporary risk-review session, when one exists. */
+  assessment?: PullRequestAssessment;
+};
+
+export type PullRequestRisk = "low" | "medium" | "high";
+
+/** Arguments of the latest valid `report_pr_risk` call. */
+export type PullRequestRiskVerdict = {
+  risk: PullRequestRisk;
+  summary: string;
+  reasons: string[];
+  focusAreas?: { path: string; note: string }[];
+};
+
+/** `assessing` while the temporary session runs; `no_verdict` once it settled
+ * without calling `report_pr_risk`. */
+export type PullRequestAssessment = {
+  sessionId: string;
+  state: "assessing" | "verdict" | "no_verdict";
+  verdict?: PullRequestRiskVerdict;
 };
 
 /** `POST /__hui/pull-requests/review-comments` result. */

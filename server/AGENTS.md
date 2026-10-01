@@ -13,6 +13,8 @@ reads, long-lived session lifecycle, and runtime adapters.
   generic types in `runtimes/types.ts`.
 - PI files and transcripts are externally owned: read them through explicit adapters
   and never rename, rewrite, or delete them. HUI writes only HUI-owned state.
+  The one exception is a temporary pull-request risk review's own transcript,
+  deleted with it (`SPEC.md` → Pull Requests).
 - Validate all browser input at the server boundary. Preserve the `x-hui` local-
   client guard, request size limits, path constraints, and bounded external fetches.
 - Runtime exits and malformed protocol messages must become explicit session/error

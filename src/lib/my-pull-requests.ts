@@ -20,3 +20,23 @@ export function sendReviewComments(url: string, sessionId?: string): Promise<Rev
     signal: AbortSignal.timeout(15 * 60_000),
   });
 }
+
+/** Starts the temporary risk-review session; resolves once its first prompt was accepted. */
+export function assessPullRequest(url: string): Promise<{ sessionId: string }> {
+  return fetchJson<{ sessionId: string }>("/__hui/pull-requests/assess", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ url }),
+    signal: AbortSignal.timeout(15 * 60_000),
+  });
+}
+
+/** Approve (runs `gh pr review --approve`), dismiss or keep a risk review; resolves with the refreshed page. */
+export function settlePullRequestReview(action: "approve" | "dismiss" | "keep", url: string): Promise<MyPullRequests> {
+  return fetchJson<MyPullRequests>(`/__hui/pull-requests/${action}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ url }),
+    signal: AbortSignal.timeout(60_000),
+  });
+}

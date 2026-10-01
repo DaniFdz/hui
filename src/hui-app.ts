@@ -27,6 +27,7 @@ import {
   mutateQueuedMessage,
   loadSessions,
   openSession,
+  listedSessionGroups,
   renameSession,
   resumeSession,
   rewindSession,
@@ -158,7 +159,7 @@ import { DEFAULT_SESSIONS_PAGE_FILTERS, renderSessionsPage, type SessionsPageFil
 import type { WorktreeFilter } from "./views/worktrees.ts";
 import "./views/contributions.ts";
 import { renderPullRequestsPage, type PullRequestsTab } from "./views/pull-requests.ts";
-import { loadMyPullRequests, refreshMyPullRequests, sendReviewComments, type MyPullRequest, type MyPullRequests } from "./lib/my-pull-requests.ts";
+import { assessPullRequest, loadMyPullRequests, refreshMyPullRequests, sendReviewComments, settlePullRequestReview, type MyPullRequest, type MyPullRequests } from "./lib/my-pull-requests.ts";
 import { loadWorktrees, removeWorktrees, type WorktreeInventory, type WorktreeRemovalResult, type WorktreeRisk } from "./lib/worktrees.ts";
 import { renderPanelSelector } from "./views/panel-selector.ts";
 import { renderAutomationSurface } from "./views/automation.ts";
@@ -247,6 +248,8 @@ export class HuiApp extends HuiElement {
   @state() private pullRequestTargets: Readonly<Record<string, string>> = {};
   @state() private pullRequestSending = "";
   @state() private pullRequestNotice: { tone: "ok" | "danger"; text: string } | undefined;
+  @state() private pullRequestReviewing = "";
+  @state() private pullRequestApproveConfirm = "";
   private pullRequestsPoll?: number;
   @state() private groups: readonly SessionGroup[] = [];
   @state() private sessionsLoading = true;
@@ -846,6 +849,11 @@ export class HuiApp extends HuiElement {
       ensureModal(worktreeDialog);
       worktreeDialog.querySelector<HTMLButtonElement>(".worktree-remove-cancel")?.focus();
     }
+    const approveDialog = this.renderRoot.querySelector?.(".pull-request-approve-dialog");
+    if (approveDialog instanceof HTMLDialogElement && this.pullRequestApproveConfirm && !approveDialog.open) {
+      ensureModal(approveDialog);
+      approveDialog.querySelector<HTMLButtonElement>(".pull-request-approve-cancel")?.focus();
+    }
     const backlogRemoveDialog = this.renderRoot.querySelector?.(".backlog-remove-dialog");
     if (backlogRemoveDialog instanceof HTMLDialogElement && this.backlogRemove) ensureModal(backlogRemoveDialog);
     const deleteDialog = this.renderRoot.querySelector?.(".delete-session-dialog");
@@ -1083,7 +1091,7 @@ export class HuiApp extends HuiElement {
       query: this.commandPaletteQuery,
       activeIndex: this.commandPaletteActiveIndex,
       pages: HUI_PAGES,
-      groups: this.groups,
+      groups: listedSessionGroups(this.groups),
       onQuery: (query) => {
         this.commandPaletteQuery = query;
         this.commandPaletteActiveIndex = 0;
@@ -3575,8 +3583,10 @@ export class HuiApp extends HuiElement {
       .catch((error: unknown) => { this.pullRequestsError = error instanceof Error ? error.message : "Could not read pull requests."; })
       .finally(() => {
         this.pullRequestsLoading = false;
-        if (this.myPullRequests?.pending && this.view === "surface" && this.activePage?.id === "pull-requests") {
-          this.pullRequestsPoll = window.setTimeout(() => this.loadPullRequests(), 1500);
+        // Also while a risk review runs, so its verdict card appears when it reports.
+        const assessing = this.myPullRequests?.reviewRequested.some((pr) => pr.assessment?.state === "assessing");
+        if ((this.myPullRequests?.pending || assessing) && this.view === "surface" && this.activePage?.id === "pull-requests") {
+          this.pullRequestsPoll = window.setTimeout(() => this.loadPullRequests(), assessing ? 2000 : 1500);
         }
       });
   };
@@ -3606,6 +3616,46 @@ export class HuiApp extends HuiElement {
         this.pullRequestSending = "";
         this.loadPullRequests();
       });
+  };
+
+  /** Starts a temporary risk-review session for a Review requested pull request. */
+  private assessPullRequest = (pr: MyPullRequest) => {
+    if (this.pullRequestReviewing) return;
+    this.pullRequestReviewing = pr.url;
+    this.pullRequestNotice = undefined;
+    void assessPullRequest(pr.url)
+      .then(() => this.refreshSessions(true))
+      .catch((error: unknown) => {
+        this.pullRequestNotice = { tone: "danger", text: `Could not assess ${pr.repository}#${pr.number}: ${error instanceof Error ? error.message : "unknown error"}` };
+      })
+      .finally(() => {
+        this.pullRequestReviewing = "";
+        this.loadPullRequests();
+      });
+  };
+
+  /** Approve (only from the confirmation dialog), dismiss or keep a risk review. */
+  private settlePullRequestReview = (action: "approve" | "dismiss" | "keep", pr: MyPullRequest) => {
+    if (this.pullRequestReviewing) return;
+    this.pullRequestReviewing = pr.url;
+    this.pullRequestNotice = undefined;
+    const reference = `${pr.repository}#${pr.number}`;
+    void settlePullRequestReview(action, pr.url)
+      .then((data) => {
+        this.myPullRequests = data;
+        this.pullRequestApproveConfirm = "";
+        this.pullRequestNotice = { tone: "ok", text: action === "approve"
+          ? `Approved ${reference} on GitHub and deleted its risk review.`
+          : action === "dismiss" ? `Dismissed the risk review of ${reference}.` : `Kept the risk review of ${reference} as a normal session.` };
+        void this.refreshSessions(true);
+      })
+      .catch((error: unknown) => {
+        this.pullRequestApproveConfirm = "";
+        const verb = action === "approve" ? "approve" : action === "dismiss" ? "dismiss the risk review of" : "keep the risk review of";
+        this.pullRequestNotice = { tone: "danger", text: `Could not ${verb} ${reference}: ${error instanceof Error ? error.message : "unknown error"}` };
+        this.loadPullRequests();
+      })
+      .finally(() => { this.pullRequestReviewing = ""; });
   };
 
   private removeWorktreePaths = (paths: readonly string[], mode: "single" | "merged", acknowledged: readonly WorktreeRisk[] = []) => {
@@ -4036,7 +4086,7 @@ export class HuiApp extends HuiElement {
       automationPending: this.automationPending,
       automationFormError: this.automationFormError,
       automationActionError: this.automationActionError,
-      sessions: this.groups.flatMap((group) => group.sessions),
+      sessions: listedSessionGroups(this.groups).flatMap((group) => group.sessions),
       onRetryAutomation: this.loadAutomationData,
       onCreateAutomationTask: this.createAutomationTask,
       automationEditingId: this.automationEditingId,
@@ -4258,7 +4308,7 @@ export class HuiApp extends HuiElement {
       selectedSessionId: this.selected?.id ?? "",
       splitSessionId: "",
       openSessionIds: new Set(this.sessionLayout && sessionPanes(this.sessionLayout).length > 1 ? sessionPanes(this.sessionLayout).map(({ sessionId }) => sessionId) : []),
-      groups: this.groups,
+      groups: listedSessionGroups(this.groups),
       draftSessionIds: this.draftSessionIds,
       collapsed: this.collapsed,
       loading: this.sessionsLoading,
@@ -4364,7 +4414,7 @@ export class HuiApp extends HuiElement {
           ? this.renderSessionMultiplex()
           : this.view === "kanban"
             ? renderKanbanPage({
-                groups: this.groups,
+                groups: listedSessionGroups(this.groups),
                 loading: this.sessionsLoading,
                 error: this.sessionsError,
                 query: this.kanbanQuery,
@@ -4399,7 +4449,7 @@ export class HuiApp extends HuiElement {
                   ? renderAutomationSurface(this.automationProps(), this.activePage.id === "cron" ? "Automations" : "Tasks")
                 : this.activePage.id === "sessions"
                   ? renderSessionsPage({
-                      groups: this.groups,
+                      groups: listedSessionGroups(this.groups),
                       loading: this.sessionsLoading,
                       error: this.sessionsError,
                       query: this.search,
@@ -4433,6 +4483,14 @@ export class HuiApp extends HuiElement {
                         ...(this.pullRequestNotice ? { sendNotice: this.pullRequestNotice } : {}),
                         onTarget: (url, id) => { this.pullRequestTargets = { ...this.pullRequestTargets, [url]: id }; },
                         onSendComments: this.sendPullRequestComments,
+                        reviewing: this.pullRequestReviewing,
+                        approveConfirm: this.pullRequestApproveConfirm,
+                        onAssess: this.assessPullRequest,
+                        onAskApprove: (pr) => { this.pullRequestApproveConfirm = pr.url; },
+                        onCancelApprove: () => { if (!this.pullRequestReviewing) this.pullRequestApproveConfirm = ""; },
+                        onApprove: (pr) => this.settlePullRequestReview("approve", pr),
+                        onDismiss: (pr) => this.settlePullRequestReview("dismiss", pr),
+                        onKeep: (pr) => this.settlePullRequestReview("keep", pr),
                       })
                   : isPiSurface(this.activePage)
                     ? renderPiSurface({

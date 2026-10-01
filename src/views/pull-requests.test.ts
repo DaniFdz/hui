@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import type { MyPullRequest } from "../../shared/pull-requests.ts";
-import { matchingPullRequests, reviewCommentsAction } from "./pull-requests.ts";
+import { approveConfirmation, matchingPullRequests, reviewCommentsAction } from "./pull-requests.ts";
 
 function pr(number: number, patch: Partial<MyPullRequest> = {}): MyPullRequest {
   return {
@@ -31,4 +31,12 @@ test("the review-comments action targets the picked session, else starts one whe
   assert.deepEqual(reviewCommentsAction(pr(1, { newComments: 3, localCheckout: true }), undefined), { kind: "start", count: 3 });
   assert.match(reviewCommentsAction(pr(1, { newComments: 3, localCheckout: false }), undefined).disabled ?? "", /No local checkout of acme\/web/);
   assert.match(reviewCommentsAction(pr(1, { newComments: 0, localCheckout: true }), undefined).disabled ?? "", /No open review comments/);
+});
+
+test("the approval dialog names the pull request and the verdict it rests on", () => {
+  const verdict = { risk: "high" as const, summary: "Rewrites auth.", reasons: [] };
+  const copy = approveConfirmation(pr(3, { title: "Token refresh", assessment: { sessionId: "s", state: "verdict", verdict } }));
+  assert.equal(copy.title, "Approve acme/web#3?");
+  assert.match(copy.detail, /“Token refresh”/u);
+  assert.match(copy.detail, /rated it high risk: Rewrites auth\./u);
 });

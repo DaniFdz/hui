@@ -204,6 +204,32 @@ const server = createServer(async (request, response) => {
     return finish(response);
   }
 
+  // A pull-request risk review (Pull Requests → Assess risk). report_pr_risk is
+  // registered only in those temporary sessions; `acme/legacy` settles without it.
+  if (source.includes("Finish by calling report_pr_risk") && !latestToolResult) {
+    if (!(Array.isArray(body.tools) ? body.tools : []).some((tool) => tool?.name === "report_pr_risk")) {
+      text(response, "The report_pr_risk tool is not available in this session.");
+      return finish(response);
+    }
+    // `acme/api` thinks for a few seconds, so the row's Assessing… state is observable.
+    if (source.includes("acme/api")) await new Promise((resolve) => setTimeout(resolve, 6_000));
+    if (source.includes("acme/legacy")) {
+      text(response, "I read the pull request but could not reach a verdict.");
+      return finish(response);
+    }
+    toolUse(response, "tool-e2e-pr-risk", "report_pr_risk", {
+      risk: "medium",
+      summary: "Changes the session token refresh path; small diff, but it touches authentication and has no new tests.",
+      reasons: ["Rewrites refreshToken() error handling", "No test covers the expired-token branch", "CI is green"],
+      focusAreas: [{ path: "src/auth/refresh.ts", note: "retry loop on 401" }, { path: "src/auth/session.ts", note: "token cache invalidation" }],
+    });
+    return finish(response, "tool_use");
+  }
+  if (latestToolResult?.id === "tool-e2e-pr-risk") {
+    text(response, "Reported a medium risk verdict for the operator.");
+    return finish(response);
+  }
+
   if (source.includes("E2E_CODE_PARITY")) {
     text(response, `\`\`\`unknown\n${Array.from({ length: 10 }, (_, index) => `line ${index + 1}: ${"fixture ".repeat(24)}`).join("\n")}\n\`\`\``);
     return finish(response);

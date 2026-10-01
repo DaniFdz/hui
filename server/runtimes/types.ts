@@ -143,6 +143,8 @@ export type StartOptions = {
   /** HUI registry id. PI extensions use it to address their private, local
    * coordination bridge without exposing session state to the browser. */
   huiSessionId?: string;
+  /** A temporary pull-request risk review: registers `report_pr_risk`. */
+  prReview?: boolean;
 };
 
 export type RuntimeSession = {

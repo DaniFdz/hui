@@ -71,11 +71,17 @@ export type SessionRecord = {
   /** Per lower-case PR URL, the time of the newest review comment included in
    * the last send to this session (Pull Requests page). Server-only. */
   pullRequestComments?: { url: string; sentAt: string }[];
+  /** A temporary pull-request risk review (Pull Requests page). Hidden from
+   * every session list; approving or dismissing deletes the row, its PI
+   * transcript and `scratchDir`, the directory HUI created for it. */
+  temporary?: TemporarySession;
   createdAt: string;
   updatedAt: string;
   /** Where the record came from, so an import can be reported honestly. */
   source?: "hui";
 };
+
+export type TemporarySession = { kind: "pr-review"; pullRequestUrl: string; scratchDir?: string };
 
 export type SubagentStatus =
   | "starting"
@@ -166,6 +172,14 @@ function toSubagent(raw: unknown): SubagentRecord | undefined {
   };
 }
 
+function toTemporary(raw: unknown): TemporarySession | undefined {
+  if (!isRecord(raw) || raw["kind"] !== "pr-review") return undefined;
+  const pullRequestUrl = str(raw["pullRequestUrl"]);
+  if (!/^https:\/\/github\.com\/[^/\s]+\/[^/\s]+\/pull\/\d+$/u.test(pullRequestUrl)) return undefined;
+  const scratchDir = str(raw["scratchDir"]);
+  return { kind: "pr-review", pullRequestUrl, ...(scratchDir.startsWith("/") ? { scratchDir } : {}) };
+}
+
 /** Every field is checked, because the file is hand-editable and predates any
  * schema we might add. */
 function toRecord(raw: unknown): SessionRecord | undefined {
@@ -213,6 +227,7 @@ function toRecord(raw: unknown): SessionRecord | undefined {
       return /^https:\/\/github\.com\/[^/\sA-Z]+\/[^/\sA-Z]+\/pull\/\d+$/u.test(url) && Number.isFinite(Date.parse(sentAt)) ? [{ url, sentAt }] : [];
     }).slice(-50)
     : [];
+  const temporary = toTemporary(raw["temporary"]);
   return {
     id,
     title: str(raw["title"]).trim() || id,
@@ -235,6 +250,7 @@ function toRecord(raw: unknown): SessionRecord | undefined {
     ...(stage ? { stage, stageSource: stageSource ?? "agent" } : {}),
     ...(stagePullRequests.length ? { stagePullRequests } : {}),
     ...(pullRequestComments.length ? { pullRequestComments } : {}),
+    ...(temporary ? { temporary } : {}),
     createdAt: str(raw["createdAt"]),
     updatedAt: str(raw["updatedAt"]),
     ...(source === "hui" ? { source } : {}),

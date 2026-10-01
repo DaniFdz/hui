@@ -506,6 +506,12 @@ type MyPullRequest = {
   sessions: { id: string; title: string; archived: boolean; newComments?: number }[];
   newComments?: number;   // Created only: open review comments by others, nothing sent yet
   localCheckout?: boolean; // Created only: a session directory is a checkout of the repository
+  assessment?: PullRequestAssessment; // Review requested only: its temporary risk review
+};
+type PullRequestAssessment = {
+  sessionId: string;
+  state: "assessing" | "verdict" | "no_verdict"; // no_verdict: settled without report_pr_risk
+  verdict?: { risk: "low" | "medium" | "high"; summary: string; reasons: string[]; focusAreas?: { path: string; note: string }[] };
 };
 ```
 
@@ -561,6 +567,31 @@ type ReviewCommentsResult = { sessionId: string; sent: number; omitted: number; 
 5. Only after the delivery is accepted, `sentAt` = the newest included comment's
    time is stored for the session. A failed delivery persists nothing and returns
    its error (500); GitHub failures are 502.
+
+### Pull request risk review
+
+Four routes act on a Review requested pull request. Each takes `{ url }`
+(≤ 4 KiB); `url` must be a canonical github.com pull request URL (400) in the
+current (cached) Review requested list (404). Temporary sessions are excluded
+from `sessions` on both lists and appear only as `assessment`.
+
+| Route | Behavior |
+| --- | --- |
+| `POST /__hui/pull-requests/assess` | Starts one temporary session per pull request (409 while one exists) and returns `{ sessionId }` once its first prompt was accepted. `cwd` is a session directory that is a checkout of the repository, else a new `~/.config/hui/pr-reviews/<uuid>/`. No model is passed (PI's default; the utility model is not used). The prompt asks for a read-only review with `gh pr view/diff/checks <n> -R owner/repo` ending in `report_pr_risk`. If the runtime cannot start or refuses the prompt, the row, transcript and scratch directory are deleted and the error returned (500) |
+| `POST /__hui/pull-requests/approve` | Requires the pull request's temporary session (404). Runs exactly `gh pr review <n> -R owner/repo --approve`; on failure returns `gh`'s error (502) and keeps the session. On success deletes the temporary session (below), forces a list refetch and returns `MyPullRequests`. The page calls it only from the confirmation dialog |
+| `POST /__hui/pull-requests/dismiss` | Deletes the temporary session and returns `MyPullRequests`; nothing is sent to GitHub |
+| `POST /__hui/pull-requests/keep` | Clears `temporary` so it becomes a normal session; deletes nothing; returns `MyPullRequests` |
+
+Deleting a temporary session stops its runtime, removes the registry row (the
+`DELETE /sessions/:id` path) and then deletes only paths its record names: its
+`piSessionFile` (an absolute `.jsonl`) and `temporary.scratchDir` when it is a
+direct child of `~/.config/hui/pr-reviews/`. Gateway start does this for
+temporary sessions created more than 24 hours ago. `assessment.state` is
+`verdict` when the live transcript holds a successful, valid `report_pr_risk`
+call (the latest wins), `assessing` while the session is starting, running or
+waiting, else `no_verdict`. `SessionView.temporary` (`{ kind, pullRequestUrl }`)
+marks such sessions in `GET /sessions` and the pushed `sessions` frames of
+`GET /sessions/events`; the browser leaves them out of every session list.
 
 ### `GET /__hui/git-checkout?cwd=<directory>`
 
@@ -737,6 +768,7 @@ Only a changed stage writes; polling an unchanged board stays read-only.
 | `parentId`, `subagent` | HUI | Optional additive lineage/task state for `sessions_spawn`; PI still owns the child transcript |
 | `stage`, `stageSource`, `stagePullRequests` | HUI | Optional Kanban stage and who placed it (`operator`, `agent`, `pullRequest`); absent means Investigation. A session started from a backlog item is created with an operator placement in the target column. See [Session stages](#session-stages). `stagePullRequests` is server-only and never returned in views. |
 | `pullRequestComments` | HUI | Optional `{ url, sentAt }[]` (lower-case pull request URL, ISO time of the newest review comment included in the last accepted send; at most 50, malformed entries dropped on read). Server-only, never returned in views; removed with the session. See [review comments](#post-__huipull-requestsreview-comments). |
+| `temporary` | HUI | Optional `{ kind: "pr-review", pullRequestUrl, scratchDir? }` for a pull-request [risk review](#pull-request-risk-review); `scratchDir` is set only when HUI created the directory. Approve, Dismiss and 24-hour gateway-start cleanup delete the row, its `piSessionFile` transcript and `scratchDir` (the one case HUI deletes a PI transcript); Keep clears the field. `SessionView.temporary` omits `scratchDir`. Malformed values are dropped on read |
 | `piSessionFile` | PI identity, HUI pointer | Learned from `get_state`, then stored by HUI for `--session` resume |
 | messages and tool results | PI | PI's JSONL only; never copied into `sessions.json` |
 | `status` | HUI process | Derived live state; never persisted |
@@ -756,10 +788,11 @@ session-tool contract (see also [Suggested tasks](#suggested-tasks)):
 | Tool | Contract |
 |---|---|
 | `sessions_spawn` | Persist and start one isolated child session; accepts task, optional label/model/thinking and a bounded run timeout; a model missing from the caller's available models is rejected before any child is created, naming close matches (an unavailable or empty catalog does not block); returns immediately with task and child session ids |
-| `sessions_list` | Return metadata for at most 100 sessions in the caller's parent/child tree |
+| `sessions_list` | Return metadata for at most 100 sessions in the caller's parent/child tree; temporary pull-request reviews are left out |
 | `sessions_history` | Return at most 100 recent structured entries from a visible session; tool entries are opt-in and the UTF-8 serialized result is capped at 80 KiB. A single entry larger than the cap becomes an explicit omission error entry |
 | `sessions_send` | Prompt or queue a message to a visible session; `timeoutSeconds: 0` is fire-and-forget, otherwise waits up to 120 seconds for the correlated reply |
 | `subagents` | List visible spawned tasks, steer a running child, or cancel an active child |
+| `report_pr_risk` `{ risk: "low" \| "medium" \| "high", summary ≤600, reasons ≤10 × ≤300, focusAreas? ≤10 × { path ≤500, note ≤300 } }` | Registered only in temporary `pr-review` sessions. Validates its arguments (invalid calls fail), returns immediately and changes nothing; the latest valid call is the verdict on the Pull Requests row, projected from the live transcript. See [risk review](#pull-request-risk-review) |
 | `set_stage` `{ stage }` | Set the caller's own Kanban stage: `investigation`, `implementation`, `testing` or `done` (Backlog holds backlog items, never conversations, and is rejected). Refused (reported, not thrown) while an operator placement stands. See [Session stages](#session-stages) |
 
 The tools do not use `/__hui/` browser routes. Each PI child inherits an

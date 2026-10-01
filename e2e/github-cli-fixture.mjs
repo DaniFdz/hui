@@ -3,7 +3,8 @@
  * `--version`, `auth status --hostname github.com --json hosts` and
  * `auth login --web`, `config get git_protocol`, a few canned `api` reads and
  * `pr list` (pull-requests.json) and `api graphql` searches and review-comment lookups
- * for the Pull Requests page (search-*.json).
+ * for the Pull Requests page (search-*.json), and `pr review … --approve`
+ * (pr-review-args; review-fail holds an error to fail with).
  * State lives in HUI_FAKE_GH_DIR:
  *   account  — the signed-in login (absent: signed out)
  *   approve  — created by the test to approve a pending login
@@ -137,6 +138,19 @@ if (args[0] === "--version") {
   const head = args.includes("--head") ? args[args.indexOf("--head") + 1] : undefined;
   const all = existsSync(file("pull-requests.json")) ? JSON.parse(readFileSync(file("pull-requests.json"), "utf8")) : [];
   process.stdout.write(`${JSON.stringify(all.filter((entry) => !head || !entry.headRefName || entry.headRefName === head))}\n`);
+} else if (args[0] === "pr" && args[1] === "review") {
+  // Records the exact arguments. On success the pull request leaves the
+  // Review requested search, as it does on GitHub once reviewed.
+  writeFileSync(file("pr-review-args"), JSON.stringify(args));
+  if (existsSync(file("review-fail"))) {
+    process.stderr.write(readFileSync(file("review-fail"), "utf8"));
+    process.exit(1);
+  }
+  const repo = args[args.indexOf("-R") + 1];
+  const url = `https://github.com/${repo}/pull/${args[2]}`;
+  const name = file("search-review-requested.json");
+  if (existsSync(name)) writeFileSync(name, JSON.stringify(JSON.parse(readFileSync(name, "utf8")).filter((node) => node.url !== url)));
+  process.stderr.write(`✓ Approved pull request ${repo}#${args[2]}\n`);
 } else if (args[0] === "config" && args[1] === "get" && args[2] === "git_protocol") {
   process.stdout.write(`${process.env.HUI_FAKE_GH_PROTOCOL || "https"}\n`);
 } else if (args[0] === "auth" && args[1] === "login") {

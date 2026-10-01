@@ -12,6 +12,7 @@ import {
   type MyPullRequestSession,
   type PullRequestChecks,
   type PullRequestReviewDecision,
+  type PullRequestRisk,
 } from "../../shared/pull-requests.ts";
 import { pullRequestStateIcon } from "../components/pull-request-hovercard.ts";
 import { icons } from "../lib/icons.ts";
@@ -44,7 +45,32 @@ export type PullRequestsPageProps = {
   onTarget: (url: string, sessionId: string) => void;
   /** `sessionId` absent: start a session on the head branch. */
   onSendComments: (pr: MyPullRequest, sessionId?: string) => void;
+  /** URL whose risk-review action (assess, approve, dismiss, keep) is running. */
+  reviewing: string;
+  /** URL whose approval waits in the confirmation dialog. */
+  approveConfirm: string;
+  onAssess: (pr: MyPullRequest) => void;
+  onAskApprove: (pr: MyPullRequest) => void;
+  onCancelApprove: () => void;
+  onApprove: (pr: MyPullRequest) => void;
+  onDismiss: (pr: MyPullRequest) => void;
+  onKeep: (pr: MyPullRequest) => void;
 };
+
+const RISKS: Record<PullRequestRisk, { label: string; tone: string }> = {
+  low: { label: "Low risk", tone: "ok" },
+  medium: { label: "Medium risk", tone: "warn" },
+  high: { label: "High risk", tone: "danger" },
+};
+
+/** What the approval dialog says: the pull request and the verdict it rests on. */
+export function approveConfirmation(pr: MyPullRequest): { title: string; detail: string } {
+  const verdict = pr.assessment?.verdict;
+  return {
+    title: `Approve ${pullRequestReference(pr)}?`,
+    detail: `${pr.title ? `“${pr.title}”. ` : ""}${verdict ? `The risk review rated it ${RISKS[verdict.risk].label.toLocaleLowerCase()}: ${verdict.summary}` : "There is no risk verdict."} This submits an approving review on GitHub as your account.`,
+  };
+}
 
 export type ReviewCommentsAction = {
   kind: "send" | "start";
@@ -155,8 +181,95 @@ function renderCommentsAction(props: PullRequestsPageProps, pr: MyPullRequest) {
   </span>`;
 }
 
+function openSessionLink(props: PullRequestsPageProps, id: string) {
+  return html`<a class="pull-request-open-session" href=${navigationPath({ kind: "session", id })} @click=${(event: MouseEvent) => {
+    if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    props.onOpenSession(id);
+  }}>Open session</a>`;
+}
+
+function renderAssessAction(props: PullRequestsPageProps, pr: MyPullRequest) {
+  const assessment = pr.assessment;
+  const busy = props.reviewing === pr.url;
+  if (!assessment) {
+    return html`<span class="worktree-actions pull-request-actions">
+      <span class="worktree-tooltip-wrap" data-hui-tooltip=${`Start a temporary read-only session that reviews ${pullRequestReference(pr)} and reports a risk verdict`}>
+        <button type="button" class="btn btn--sm" data-assess-risk ?disabled=${Boolean(props.reviewing)} @click=${() => props.onAssess(pr)}>${busy ? "Starting…" : "Assess risk"}</button>
+      </span>
+    </span>`;
+  }
+  if (assessment.state === "assessing") {
+    return html`<span class="worktree-actions pull-request-actions">
+      <span class="pull-request-assessing" role="status">${status("Assessing…", "warn")}</span>${openSessionLink(props, assessment.sessionId)}
+    </span>`;
+  }
+  const verdict = assessment.verdict;
+  return html`<span class="worktree-actions pull-request-actions">${verdict ? status(RISKS[verdict.risk].label, RISKS[verdict.risk].tone) : status("No verdict", "muted")}</span>`;
+}
+
+/** The verdict card (or "No verdict") under a Review requested row. */
+function renderVerdictRow(props: PullRequestsPageProps, pr: MyPullRequest, columns: number) {
+  const assessment = pr.assessment;
+  if (!assessment || assessment.state === "assessing") return nothing;
+  const verdict = assessment.verdict;
+  const disabled = Boolean(props.reviewing);
+  const busy = props.reviewing === pr.url;
+  return html`<tr class="pull-request-verdict-row" data-pull-request-verdict=${pr.url}>
+    <td colspan=${columns}>
+      <div class="pull-request-verdict" data-risk=${verdict?.risk ?? "none"} aria-label=${`Risk review of ${pullRequestReference(pr)}`}>
+        ${verdict ? html`
+          <div class="pull-request-verdict__head">${status(RISKS[verdict.risk].label, RISKS[verdict.risk].tone)}<p class="pull-request-verdict__summary">${verdict.summary}</p></div>
+          ${verdict.reasons.length ? html`<ul class="pull-request-verdict__reasons">${verdict.reasons.map((reason) => html`<li>${reason}</li>`)}</ul>` : nothing}
+          ${verdict.focusAreas?.length ? html`<div class="pull-request-verdict__focus"><span class="muted">Look closely at</span>
+            <ul>${verdict.focusAreas.map((area) => html`<li><bdi class="mono">${area.path}</bdi> — ${area.note}</li>`)}</ul></div>` : nothing}
+        ` : html`<p class="pull-request-verdict__summary">No verdict. The review session finished without reporting a risk verdict.</p>`}
+        <div class="pull-request-verdict__actions">
+          ${verdict ? html`<button type="button" class="btn btn--sm primary" data-approve ?disabled=${disabled} @click=${() => props.onAskApprove(pr)}>Approve</button>` : nothing}
+          <span class="worktree-tooltip-wrap" data-hui-tooltip="Delete the temporary session and its transcript">
+            <button type="button" class="btn btn--sm" data-dismiss ?disabled=${disabled} @click=${() => props.onDismiss(pr)}>Dismiss</button>
+          </span>
+          <span class="worktree-tooltip-wrap" data-hui-tooltip="Keep the review as a normal session">
+            <button type="button" class="btn btn--sm" data-keep ?disabled=${disabled} @click=${() => props.onKeep(pr)}>Keep</button>
+          </span>
+          ${openSessionLink(props, assessment.sessionId)}
+          ${busy ? html`<span class="muted" role="status">Working…</span>` : nothing}
+        </div>
+      </div>
+    </td>
+  </tr>`;
+}
+
+/** Names the pull request and its verdict; the only way to approve. */
+export function renderApproveDialog(props: PullRequestsPageProps): TemplateResult | typeof nothing {
+  const pr = props.data?.reviewRequested.find((item) => item.url === props.approveConfirm);
+  if (!pr) return nothing;
+  const copy = approveConfirmation(pr);
+  const approving = props.reviewing === pr.url;
+  return html`<dialog class="hui-modal-dialog pull-request-approve-dialog" aria-labelledby="pull-request-approve-title"
+    @cancel=${(event: Event) => { event.preventDefault(); props.onCancelApprove(); }}
+    @keydown=${(event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        props.onCancelApprove();
+      }
+    }}>
+    <div class="exec-approval-card">
+      <div class="exec-approval-header"><div>
+        <div class="exec-approval-title" id="pull-request-approve-title">${copy.title}</div>
+        <div class="exec-approval-sub">${copy.detail}</div>
+      </div></div>
+      <div class="exec-approval-actions">
+        <button type="button" class="btn primary" ?disabled=${approving} @click=${() => props.onApprove(pr)}>${approving ? "Approving…" : "Approve on GitHub"}</button>
+        <button type="button" class="btn pull-request-approve-cancel" ?disabled=${approving} @click=${props.onCancelApprove}>Cancel</button>
+      </div>
+    </div>
+  </dialog>`;
+}
+
 function body(props: PullRequestsPageProps, rows: readonly MyPullRequest[]): TemplateResult {
-  const columns = props.tab === "created" ? 5 : 4;
+  const columns = 5;
   if (props.loading && !props.data) return emptyRow("Loading pull requests…", "Asking GitHub for your open pull requests.", "status", columns);
   if (props.error && !props.data) return emptyRow(props.error, "The pull requests could not be loaded.", "alert", columns);
   const signedOut = props.data?.error ? SIGNED_OUT[props.data.error] : undefined;
@@ -198,8 +311,9 @@ function body(props: PullRequestsPageProps, rows: readonly MyPullRequest[]): Tem
       </td>
       <td class="worktree-sessions-col">${renderSessions(props, pr)}</td>
       <td title=${pr.updatedAt}>${formatUpdated(pr.updatedAt)}</td>
-      ${props.tab === "created" ? html`<td class="pull-request-actions-col">${renderCommentsAction(props, pr)}</td>` : nothing}
+      <td class="pull-request-actions-col">${props.tab === "created" ? renderCommentsAction(props, pr) : renderAssessAction(props, pr)}</td>
     </tr>
+    ${props.tab === "reviewRequested" ? renderVerdictRow(props, pr, columns) : nothing}
   `)}`;
 }
 
@@ -279,7 +393,7 @@ export function renderPullRequestsPage(props: PullRequestsPageProps): TemplateRe
                       <th class="pull-request-status-col">Status</th>
                       <th class="worktree-sessions-col">Sessions</th>
                       <th>Updated</th>
-                      ${props.tab === "created" ? html`<th class="pull-request-actions-col"><span class="sr-only">Actions</span></th>` : nothing}
+                      <th class="pull-request-actions-col"><span class="sr-only">Actions</span></th>
                     </tr>
                   </thead>
                   <tbody>${body(props, rows)}</tbody>
@@ -289,6 +403,7 @@ export function renderPullRequestsPage(props: PullRequestsPageProps): TemplateRe
           </section>
         </div>
       </div>
+      ${renderApproveDialog(props)}
     </section>
   `;
 }

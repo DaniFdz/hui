@@ -878,7 +878,7 @@ The lists are cached in gateway memory for 60 s and revalidated in the
 background, so only the first load waits for GitHub; nothing is persisted. A
 missing `gh` or signed-out account shows a page-level state linking to Settings
 → Integrations; other failures keep the last lists and say when they were
-fetched. Risk review is not part of this page yet.
+fetched.
 
 **Review comments.** On **Created by me** rows, new review comments are
 unresolved, non-outdated review threads whose latest comment is by someone other
@@ -902,6 +902,34 @@ existing worktree on that branch, or in a new HUI worktree on a local
 head branch tracking a freshly fetched `origin/<headRefName>`, then delivers the
 comments there. With no known checkout the button is disabled and its tooltip
 says why.
+
+**Risk review.** On **Review requested** rows, **Assess risk** starts a
+temporary PI session on the operator's default model (never the utility model)
+in a known checkout of the repository, read for context and never switched to
+the pull request branch, or else in a new scratch directory
+`~/.config/hui/pr-reviews/<uuid>/`. Its first prompt asks for a
+read-only review with `gh pr view`, `gh pr diff` and `gh pr checks` (each with
+`-R owner/repo`) plus repository reading, forbids modifying files, pushing,
+commenting, reviewing and approving, and asks it to finish by calling
+`report_pr_risk`. That tool exists only in these sessions; the latest valid
+call is the verdict, projected from the live transcript (memory only). One
+assessment runs per pull request. Temporary sessions never appear in the
+sidebar, Sessions page, Kanban, command palette, automation targets or the
+agent coordination tools' `sessions_list`; *Open session* on the row opens one.
+
+The row reads **Assessing…** with *Open session* while the session runs, then
+shows a verdict card below the row: the risk pill (low, medium, high), summary,
+reasons and focus areas, with **Approve**, **Dismiss**, **Keep** and *Open
+session*. A session that settles without a verdict shows "No verdict" with
+**Dismiss**, **Keep** and *Open session*. **Approve** opens a confirmation
+dialog naming the pull request and the verdict; only its confirm button runs
+`gh pr review <n> -R owner/repo --approve`. Nothing approves automatically. On
+success the lists refresh; on failure `gh`'s error is shown and the review is
+kept. Approve (success) and **Dismiss** stop the runtime and delete the
+temporary session: its registry row, its PI transcript and the scratch
+directory HUI created for it, only the paths its record names.
+**Keep** turns it into a normal session. Gateway start deletes temporary
+sessions older than 24 hours the same way.
 
 ## Git workspace sessions
 

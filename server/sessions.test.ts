@@ -113,6 +113,21 @@ test("review-comment send times round-trip and malformed entries are dropped on 
   assert.equal((await readRegistry())[0]?.pullRequestComments, undefined);
 });
 
+test("temporary pull-request reviews round-trip; malformed markers are dropped", async () => {
+  const temporary = { kind: "pr-review", pullRequestUrl: "https://github.com/acme/web/pull/3", scratchDir: "/tmp/hui/pr-reviews/x" } as const;
+  await writeRegistry([
+    record("review", { temporary }),
+    record("relative", { temporary: { ...temporary, scratchDir: "pr-reviews/x" } }),
+    record("other-kind", { temporary: { ...temporary, kind: "scratch" } as never }),
+    record("bad-url", { temporary: { ...temporary, pullRequestUrl: "https://example.com/acme/web/pull/3" } }),
+  ]);
+  const stored = new Map((await readRegistry()).map((item) => [item.id, item.temporary]));
+  assert.deepEqual(stored.get("review"), temporary);
+  assert.deepEqual(stored.get("relative"), { kind: "pr-review", pullRequestUrl: temporary.pullRequestUrl });
+  assert.equal(stored.get("other-kind"), undefined);
+  assert.equal(stored.get("bad-url"), undefined);
+});
+
 test("version one registries migrate their session groups without losing rows", async () => {
   const registryFile = join(configHome, "hui", "sessions.json");
   await writeFile(registryFile, JSON.stringify({
