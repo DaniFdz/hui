@@ -225,6 +225,14 @@ const workerRoutes = createWorkerRoutes({
   sessions: liveSessions,
   deleteSession: (id) => deleteSession(id),
 });
+// Sessions a lost connection interrupted reattach once their worker is back.
+workers.onConnected((workerId) => {
+  void readRegistry().then((records) => {
+    for (const record of records) {
+      if (record.worker === workerId && liveSessions.isLive(record.id) && liveSessions.status(record.id) === "error") liveSessions.ensure(record);
+    }
+  }).catch(() => undefined);
+});
 workers.onBots((workerId, bots) => {
   void workerRoutes.onBots(workerId, bots).catch((error: unknown) => recordDiagnosticEvent({
     area: "session", level: "warning", action: "bot_sessions_failed",

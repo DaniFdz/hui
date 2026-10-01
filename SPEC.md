@@ -904,9 +904,10 @@ cannot be removed.
 - **A durable host.** One per-user host daemon owns the PI SDK workers on the
   remote; the gateway reaches it through the command's stdio. Losing the
   connection (laptop asleep, gateway restart, network drop) leaves remote
-  sessions running. Reopening reattaches to the live process, replays its
-  pending questions and shows its transcript; a run that finished meanwhile is
-  not "recovered". Detached idle workers stop after ten minutes, an idle host
+  sessions running. HUI notices a silent connection within 45 s, reconnects by
+  itself and reopens the sessions the loss interrupted; reopening reattaches to
+  the live process, replays its pending questions and shows its transcript. A
+  run that finished meanwhile is not "recovered". Detached idle workers stop after ten minutes, an idle host
   after thirty, unless it owns bots. A newer gateway replaces an idle older
   host; a busy one keeps serving its sessions.
 - **Your PI setup, mirrored.** Before a session starts (at most every 30 s)

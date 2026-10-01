@@ -795,7 +795,9 @@ export class HuiApp extends HuiElement {
         : this.paneGroups;
       // Renames (by another screen or the gateway's generated name) reach the header.
       const listed = selected && this.listedSession(selected.id);
-      if (listed) this.selected = { ...selected, ...listed, status: selected.status, interrupted: selected.interrupted };
+      // The stream clears an interruption when a run starts; the gateway clears
+      // it when a reattached remote run turns out to have finished.
+      if (listed) this.selected = { ...selected, ...listed, status: selected.status, interrupted: selected.interrupted && listed.interrupted };
       this.sessionsLoading = false;
       this.openPendingSession();
     }

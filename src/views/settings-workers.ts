@@ -16,7 +16,9 @@ function lastRun(bot: WorkerBot): string {
   const run = bot.runs[0];
   if (!run) return "Not run yet";
   const when = new Date(run.finishedAt ?? run.startedAt).toLocaleString();
-  return `${run.status === "running" ? "Running since" : run.status[0]!.toUpperCase() + run.status.slice(1)} ${when}${run.error ? ` · ${run.error}` : run.summary ? ` · ${run.summary.slice(0, 140)}` : ""}`;
+  // A one-line preview of the answer, without its Markdown punctuation.
+  const summary = run.summary?.replace(/[`#*_>|]+|-{3,}/gu, " ").replace(/\s+/gu, " ").trim().slice(0, 140);
+  return `${run.status === "running" ? "Running since" : run.status[0]!.toUpperCase() + run.status.slice(1)} ${when}${run.error ? ` · ${run.error}` : summary ? ` · ${summary}` : ""}`;
 }
 
 /** Settings → Workers: machines HUI runs PI on, and the bots they host. */

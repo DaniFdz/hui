@@ -40,7 +40,7 @@ const MAX_WORKERS = 32;
 const SYNC_BATCH_BYTES = 8 * 1024 * 1024;
 /** A session start re-checks the mirror at most this often. */
 const SYNC_INTERVAL_MS = 30_000;
-const RECONNECT_MS = [30_000, 60_000, 300_000];
+const RECONNECT_MS = [5_000, 30_000, 60_000, 300_000];
 
 export type WorkerConfig = {
   id: string;
@@ -137,6 +137,8 @@ class WorkerConnection {
   #syncedAt = 0;
   #syncing: Promise<SyncState> | undefined;
   bots: WorkerBot[] | undefined;
+  /** Sessions were attached when the connection was lost. */
+  lostSessions = false;
 
   constructor(worker: WorkerConfig, onPhase: (phase: string) => void, onBots: (bots: WorkerBot[]) => void) {
     this.worker = worker;
@@ -232,6 +234,7 @@ class WorkerConnection {
         peer.close(`${command[0]} exited${signal ? ` after ${signal}` : ` with code ${code}`}`);
       });
       peer.onClose((reason) => {
+        this.lostSessions = this.#channels.size > 0;
         for (const channel of this.#channels.values()) channel.lost(`Lost the connection to ${this.worker.name} (${reason.replace(/\.$/u, "")}).`);
         this.#channels.clear();
         transport.kill();
@@ -426,6 +429,13 @@ export class WorkerService {
   }
 
   #botListeners = new Set<(workerId: string, bots: WorkerBot[]) => void>();
+  #connectedListeners = new Set<(workerId: string) => void>();
+
+  /** Every successful connection, including automatic reconnects. */
+  onConnected(listener: (workerId: string) => void): () => void {
+    this.#connectedListeners.add(listener);
+    return () => this.#connectedListeners.delete(listener);
+  }
 
   /** The host reported its bots (on connect and after every change). */
   onBots(listener: (workerId: string, bots: WorkerBot[]) => void): () => void {
@@ -548,10 +558,12 @@ export class WorkerService {
         this.#connections.delete(id);
         this.#status.set(id, { state: "error", error: reason });
         this.#changed();
-        this.#scheduleReconnect(id);
+        // Interrupted sessions come back on their own once the remote is reachable.
+        this.#scheduleReconnect(id, 0, connection.lostSessions);
       });
       void this.#setKeepConnected(id, Boolean(connection.bots?.length));
       this.#changed();
+      for (const listener of this.#connectedListeners) listener(id);
       return connection;
     })().finally(() => this.#connecting.delete(id));
     this.#connecting.set(id, attempt);
@@ -559,13 +571,13 @@ export class WorkerService {
   }
 
   /** Workers with bots stay connected so their runs can use credentials. */
-  #scheduleReconnect(id: string, attempt = 0): void {
+  #scheduleReconnect(id: string, attempt = 0, force = false): void {
     if (this.#stopped || this.#reconnect.has(id)) return;
     void this.#read().then((workers) => {
-      if (this.#stopped || this.#reconnect.has(id) || !workers.find((item) => item.id === id)?.keepConnected) return;
+      if (this.#stopped || this.#reconnect.has(id) || !(force || workers.find((item) => item.id === id)?.keepConnected)) return;
       const timer = setTimeout(() => {
         this.#reconnect.delete(id);
-        this.connect(id).catch(() => this.#scheduleReconnect(id, attempt + 1));
+        this.connect(id).catch(() => this.#scheduleReconnect(id, attempt + 1, force));
       }, RECONNECT_MS[Math.min(attempt, RECONNECT_MS.length - 1)]);
       timer.unref();
       this.#reconnect.set(id, { timer, attempt });

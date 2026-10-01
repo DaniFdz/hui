@@ -837,9 +837,11 @@ session record names the worker; nothing on the remote is deleted.
 ### `POST /__hui/workers/:id/connect|sync|disconnect`
 
 `connect` and `sync` respond 202 and continue in the gateway (a first connect
-may install Node and HUI); follow `GET /__hui/workers`. Workers with bots are
-reconnected at gateway start and after a lost connection (30 s, 1 min, then
-every 5 min), so bot runs can use the gateway's credentials.
+may install Node and HUI); follow `GET /__hui/workers`. Both sides ping every
+15 s and drop a connection that stays silent for 45 s. A worker whose lost
+connection had sessions attached, and any worker with bots (also at gateway
+start), reconnects after 5 s, 30 s, 1 min, then every 5 min; sessions the loss
+interrupted are then reopened and reattach to their still-running processes.
 
 ### Bots: `POST /__hui/workers/:id/bots` · `PATCH|DELETE …/bots/:key` · `POST …/bots/:key/run`
 
