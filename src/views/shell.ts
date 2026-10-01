@@ -46,6 +46,7 @@ if (typeof document !== "undefined") {
  * Session from the header, so there is no separate Home entry. */
 export const PRIMARY_NAV = [
   { id: "contributions", label: "Contributions", icon: openclawIcons.gitPullRequest },
+  { id: "pull-requests", label: "Pull Requests", icon: pullRequestStateIcon("open") },
   { id: "cron", label: "Automations", icon: icons.calendarClock },
   { id: "plugins", label: "Plugins", icon: icons.plug },
   { id: "skills", label: "Skills", icon: icons.book },

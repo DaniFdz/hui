@@ -46,9 +46,15 @@ export function classifyGhFailure(error: unknown): GitHubPreviewError {
 }
 
 export function ghApi(command = "gh", env: NodeJS.ProcessEnv = process.env): GitHubApi {
+  const run = ghJson(command, env);
+  return (path) => run(["api", path]);
+}
+
+/** Runs `gh <args>` and resolves with its parsed JSON output; rejects with a classified reason. */
+export function ghJson(command = "gh", env: NodeJS.ProcessEnv = process.env): (args: readonly string[]) => Promise<unknown> {
   const childEnv = { ...env, ...GH_ENV };
-  return (path) => new Promise((resolve, reject) => {
-    execFile(command, ["api", path], { env: childEnv, timeout: 15_000, maxBuffer: 2 * 1024 * 1024, encoding: "utf8" }, (error, stdout, stderr) => {
+  return (args) => new Promise((resolve, reject) => {
+    execFile(command, [...args], { env: childEnv, timeout: 15_000, maxBuffer: 2 * 1024 * 1024, encoding: "utf8" }, (error, stdout, stderr) => {
       if (error) {
         // The callback form does not attach stderr to the error; classify with both.
         reject(new GitHubApiError(classifyGhFailure({ code: error.code, stderr })));

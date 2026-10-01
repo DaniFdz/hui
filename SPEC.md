@@ -14,7 +14,7 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
 |---|---|
 | `sidebar-agent-card` — identity card at the top | removed; HUI has no agent identity selector |
 | `sidebar-brand` — brand line with actions | new session then session search on the left; collapse on the right |
-| `sidebar-nav` — page destinations | Contributions, Automations, Plugins, Skills, then Settings; no Home entry. Other retained pages stay reachable by URL and the command palette; dropped OpenClaw routes are absent |
+| `sidebar-nav` — page destinations | Contributions, Pull Requests, Automations, Plugins, Skills, then Settings; no Home entry. Other retained pages stay reachable by URL and the command palette; dropped OpenClaw routes are absent |
 | `sidebar-online` / session sections — collapsible groups of rows | groups, flattened, with session rows |
 | `sidebar-footer-bar` — identity + connection state | removed; Settings is the last sidebar destination |
 | main region — header, body, composer | session header, transcript, composer |
@@ -855,6 +855,30 @@ no longer linked). The list is re-read each time the page opens. The local branc
 pull request's head is exactly the branch's current commit; otherwise it is
 kept. Removals are serialized and each path is re-validated against a fresh
 inventory.
+
+## Pull Requests
+
+The Pull Requests page (`/pull-requests`, after Contributions in the sidebar) lists
+the open and draft github.com pull requests of the Settings → Integrations →
+GitHub account in two tabs: **Created by me** (`author:@me`) and **Review
+requested** (`review-requested:@me`), at most 50 each. It uses the Worktrees table
+layout: title linking to GitHub with `owner/repo#n` and the head branch, an
+Open/Draft pill, the CI rollup of the head commit and the review decision, linked
+sessions and the last update. A search field filters by repository, number,
+title and branch; **Refresh** forces a refetch.
+
+A session is linked when its loaded transcript created the pull request (the
+same detection as the session PR badges) or when its directory, resolved
+through symlinks, is a checkout on the pull request's head branch with a
+github.com remote for the base or head repository. Linked sessions are ordered
+newest first with archived ones last; a click opens the session. No match reads
+"No session".
+
+The lists are cached in gateway memory for 60 s and revalidated in the
+background, so only the first load waits for GitHub; nothing is persisted. A
+missing `gh` or signed-out account shows a page-level state linking to Settings
+→ Integrations; other failures keep the last lists and say when they were
+fetched. Review-comment delivery and risk review are not part of this page yet.
 
 ## Git workspace sessions
 

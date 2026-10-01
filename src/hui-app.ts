@@ -157,6 +157,8 @@ import { renderHome, renderNewSession, type HomeProps } from "./views/home.ts";
 import { DEFAULT_SESSIONS_PAGE_FILTERS, renderSessionsPage, type SessionsPageFilters, type SessionsPageState } from "./views/sessions.ts";
 import type { WorktreeFilter } from "./views/worktrees.ts";
 import "./views/contributions.ts";
+import { renderPullRequestsPage, type PullRequestsTab } from "./views/pull-requests.ts";
+import { loadMyPullRequests, refreshMyPullRequests, type MyPullRequests } from "./lib/my-pull-requests.ts";
 import { loadWorktrees, removeWorktrees, type WorktreeInventory, type WorktreeRemovalResult, type WorktreeRisk } from "./lib/worktrees.ts";
 import { renderPanelSelector } from "./views/panel-selector.ts";
 import { renderAutomationSurface } from "./views/automation.ts";
@@ -237,6 +239,12 @@ export class HuiApp extends HuiElement {
   @state() private worktreesRemoving = false;
   @state() private worktreeResults: readonly WorktreeRemovalResult[] = [];
   private worktreePoll?: number;
+  @state() private myPullRequests: MyPullRequests | undefined;
+  @state() private pullRequestsLoading = false;
+  @state() private pullRequestsError = "";
+  @state() private pullRequestsQuery = "";
+  @state() private pullRequestsTab: PullRequestsTab = "created";
+  private pullRequestsPoll?: number;
   @state() private groups: readonly SessionGroup[] = [];
   @state() private sessionsLoading = true;
   @state() private sessionsError = "";
@@ -584,6 +592,7 @@ export class HuiApp extends HuiElement {
     super.disconnectedCallback();
     window.clearInterval(this.sessionProgressPoll);
     window.clearTimeout(this.worktreePoll);
+    window.clearTimeout(this.pullRequestsPoll);
     this.mobileNavMedia?.removeEventListener("change", this.onMobileNavChange);
     this.mobileNavMedia = undefined;
     if (this.composerTextarea) disconnectTextareaOverflowObserver(this.composerTextarea);
@@ -971,6 +980,7 @@ export class HuiApp extends HuiElement {
       this.activePage = target.page;
       this.view = "surface";
       if (isPiSurface(target.page)) this.loadControlSurfaceData();
+      if (target.page.id === "pull-requests") this.loadPullRequests();
       if (isObservabilitySurface(target.page) || isOwnedSurface(target.page)) this.loadOperationalData();
       if (target.page.id === "cron" || target.page.id === "tasks") {
         this.loadAutomationData();
@@ -3547,6 +3557,24 @@ export class HuiApp extends HuiElement {
       });
   };
 
+  /** Polls while the gateway revalidates in the background, like the worktree inventory. */
+  private loadPullRequests = (refresh = false) => {
+    window.clearTimeout(this.pullRequestsPoll);
+    this.pullRequestsPoll = undefined;
+    if (this.pullRequestsLoading) return;
+    this.pullRequestsLoading = true;
+    this.pullRequestsError = "";
+    void (refresh ? refreshMyPullRequests() : loadMyPullRequests())
+      .then((data) => { this.myPullRequests = data; })
+      .catch((error: unknown) => { this.pullRequestsError = error instanceof Error ? error.message : "Could not read pull requests."; })
+      .finally(() => {
+        this.pullRequestsLoading = false;
+        if (this.myPullRequests?.pending && this.view === "surface" && this.activePage?.id === "pull-requests") {
+          this.pullRequestsPoll = window.setTimeout(() => this.loadPullRequests(), 1500);
+        }
+      });
+  };
+
   private removeWorktreePaths = (paths: readonly string[], mode: "single" | "merged", acknowledged: readonly WorktreeRisk[] = []) => {
     if (this.worktreesRemoving || paths.length === 0) return;
     this.worktreesRemoving = true;
@@ -4355,6 +4383,19 @@ export class HuiApp extends HuiElement {
                     })
                   : this.activePage.id === "contributions"
                     ? html`<hui-contributions-page .onOpenSettings=${() => this.navigate({ kind: "settings", page: "integrations" })}></hui-contributions-page>`
+                  : this.activePage.id === "pull-requests"
+                    ? renderPullRequestsPage({
+                        data: this.myPullRequests,
+                        loading: this.pullRequestsLoading,
+                        error: this.pullRequestsError,
+                        query: this.pullRequestsQuery,
+                        tab: this.pullRequestsTab,
+                        onQuery: (value) => { this.pullRequestsQuery = value; },
+                        onTab: (tab) => { this.pullRequestsTab = tab; },
+                        onRefresh: () => this.loadPullRequests(true),
+                        onOpenSession: (id) => this.navigate({ kind: "session", id }),
+                        onOpenSettings: () => this.openSurfaceSettings("integrations"),
+                      })
                   : isPiSurface(this.activePage)
                     ? renderPiSurface({
                         page: this.activePage,

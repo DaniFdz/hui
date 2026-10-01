@@ -23,7 +23,7 @@ import { fileURLToPath } from "node:url";
 
 import type { Connect, Plugin } from "vite";
 import { progressCardFromTranscript, type ProgressCard } from "../shared/progress-card.ts";
-import type { SessionPullRequest } from "../shared/pull-requests.ts";
+import type { MyPullRequests, SessionPullRequest } from "../shared/pull-requests.ts";
 import {
   effectiveSessionStage,
   isSessionStage,
@@ -57,7 +57,7 @@ import {
   PiMutationService,
 } from "./pi-mutations.ts";
 import { readGatewayHealth, readWorkspaceInspection } from "./control-surfaces.ts";
-import { WorktreeService } from "./worktree-inventory.ts";
+import { runCommand, WorktreeService } from "./worktree-inventory.ts";
 import type { WorktreeRisk } from "../shared/worktrees.ts";
 import {
   liveSessions,
@@ -114,7 +114,8 @@ import { SubagentService } from "./subagents.ts";
 import { presentMediaForSession, servePresentedMedia } from "./presented-media.ts";
 import { GitHubCli, GitHubCliError } from "./github.ts";
 import { FIRST_YEAR as GITHUB_FIRST_YEAR, GitHubContributionsReader, latestYear } from "./github-contributions.ts";
-import { GitHubPreviews, ghApi, previewPullRequestFetcher } from "./github-previews.ts";
+import { GitHubPreviews, ghApi, ghJson, previewPullRequestFetcher } from "./github-previews.ts";
+import { correlateSessions, fetchMyPullRequests, MyPullRequestsCache, readCheckouts, type PullRequestSnapshot } from "./my-pull-requests.ts";
 import { MAX_GITHUB_EMBEDS, parseGitHubUrl } from "../shared/github-links.ts";
 import { TaskSuggestionInputError, TaskSuggestionNotFoundError, TaskSuggestionStore } from "./task-suggestions.ts";
 import {
@@ -194,6 +195,8 @@ const GITHUB_ROUTE = `${PREFIX}github`;
 const GITHUB_LOGIN_ROUTE = `${GITHUB_ROUTE}/login`;
 const GITHUB_PREVIEWS_ROUTE = `${GITHUB_ROUTE}/previews`;
 const GITHUB_CONTRIBUTIONS_ROUTE = `${GITHUB_ROUTE}/contributions`;
+const PULL_REQUESTS_ROUTE = `${PREFIX}pull-requests`;
+const PULL_REQUESTS_REFRESH_ROUTE = `${PULL_REQUESTS_ROUTE}/refresh`;
 const JIRA_ROUTE = `${PREFIX}jira`;
 const JIRA_PROJECTS_ROUTE = `${JIRA_ROUTE}/projects`;
 /** Create (POST) or draft (POST …/draft) a Jira work item for one session. */
@@ -836,6 +839,23 @@ const githubCli = new GitHubCli({ command: GH_COMMAND });
 const githubPreviews = new GitHubPreviews(ghApi(GH_COMMAND));
 const githubContributions = new GitHubContributionsReader(GH_COMMAND);
 const pullRequestStatuses = new PullRequestStatuses(previewPullRequestFetcher(githubPreviews));
+const myPullRequests = new MyPullRequestsCache(() => fetchMyPullRequests(ghJson(GH_COMMAND)));
+
+/** The Pull Requests page: cached GitHub lists with sessions linked per request. */
+async function pullRequestsPage(snapshot: PullRequestSnapshot): Promise<MyPullRequests> {
+  const records = await readRegistry();
+  const sessions = records.map((record) => ({
+    id: record.id,
+    title: record.title,
+    archived: Boolean(record.archived),
+    cwd: record.cwd,
+    updatedAt: record.updatedAt,
+    createdPullRequests: pullRequestsFromTranscript(liveSessions.transcript(record.id)).map((ref) => ref.url),
+  }));
+  const checkouts = await readCheckouts(sessions.map((session) => session.cwd), runCommand);
+  const link = (list: PullRequestSnapshot["created"]) => list.map((pr) => ({ ...pr, sessions: correlateSessions(pr, sessions, checkouts) }));
+  return { ...snapshot, created: link(snapshot.created), reviewRequested: link(snapshot.reviewRequested) };
+}
 
 const worktreeService = new WorktreeService({
   isRunning: (id) => liveSessions.hasRuntime(id),
@@ -2424,6 +2444,16 @@ async function handleRequest(
       return;
     }
     sendJson(response, 200, await githubCli.connection());
+    return;
+  }
+
+  if (path === PULL_REQUESTS_ROUTE || path === PULL_REQUESTS_REFRESH_ROUTE) {
+    const refresh = path === PULL_REQUESTS_REFRESH_ROUTE;
+    if (request.method !== (refresh ? "POST" : "GET")) {
+      sendJson(response, 405, { error: "method not allowed" });
+      return;
+    }
+    sendJson(response, 200, await pullRequestsPage(refresh ? await myPullRequests.refresh() : await myPullRequests.view()));
     return;
   }
 

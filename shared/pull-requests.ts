@@ -33,3 +33,43 @@ export function pullRequestAccessibleLabel(pullRequest: SessionPullRequest): str
   const title = pullRequest.title ? `: ${pullRequest.title}` : "";
   return `Pull request ${pullRequestReference(pullRequest)}, ${pullRequestStateLabel(pullRequest.state).toLocaleLowerCase()}${title}`;
 }
+
+/** Rollup of the head commit's checks (`statusCheckRollup.state`, lower-cased). */
+export type PullRequestChecks = "success" | "failure" | "error" | "pending" | "expected";
+export type PullRequestReviewDecision = "approved" | "changes_requested" | "review_required";
+
+/** An HUI session linked to one of the operator's pull requests. */
+export type MyPullRequestSession = { id: string; title: string; archived: boolean };
+
+/** An open or draft pull request authored by, or awaiting review from, the
+ * `gh` account (Pull Requests page). */
+export type MyPullRequest = {
+  repository: string;
+  number: number;
+  url: string;
+  title: string;
+  state: "open" | "draft";
+  headRefName: string;
+  /** `owner/repo` of the head branch; differs from `repository` for forks. */
+  headRepository?: string;
+  baseRefName: string;
+  author?: string;
+  updatedAt: string;
+  reviewDecision?: PullRequestReviewDecision;
+  checks?: PullRequestChecks;
+  /** Created-by and head-branch matches; newest first, archived last. */
+  sessions: MyPullRequestSession[];
+};
+
+export type MyPullRequestsError = "signed_out" | "cli_missing" | "unavailable";
+
+export type MyPullRequests = {
+  created: MyPullRequest[];
+  reviewRequested: MyPullRequest[];
+  /** ISO time of the last successful fetch; absent until one succeeded. */
+  fetchedAt?: string;
+  /** A background refetch is running. */
+  pending: boolean;
+  /** Why the last fetch failed; the lists are the last confirmed data. */
+  error?: MyPullRequestsError;
+};

@@ -484,6 +484,45 @@ a merged pull request's head equals the branch's commit. Returns
 `{ results: [{ path, removed, branchDeleted, error? }], inventory }`; refused
 items are reported per path with HTTP 200. Malformed bodies return 400.
 
+### `GET /__hui/pull-requests`
+
+Returns `MyPullRequests` (`shared/pull-requests.ts`) for the Pull Requests page:
+
+```ts
+type MyPullRequests = {
+  created: MyPullRequest[];          // is:pr is:open author:@me archived:false
+  reviewRequested: MyPullRequest[];  // is:pr is:open review-requested:@me archived:false
+  fetchedAt?: string;                // ISO time of the last successful fetch
+  pending: boolean;                  // a background refetch is running
+  error?: "signed_out" | "cli_missing" | "unavailable"; // last fetch failed; lists are the last confirmed ones
+};
+type MyPullRequest = {
+  repository: string; number: number; url: string; title: string;
+  state: "open" | "draft";
+  headRefName: string; headRepository?: string; baseRefName: string;
+  author?: string; updatedAt: string;
+  reviewDecision?: "approved" | "changes_requested" | "review_required";
+  checks?: "success" | "failure" | "error" | "pending" | "expected"; // statusCheckRollup of the last commit
+  sessions: { id: string; title: string; archived: boolean }[];
+};
+```
+
+Each list is one `gh api graphql` `search(type: ISSUE, first: 50)` call with the
+gateway's GitHub CLI login; `gh` output never reaches the browser. The lists are
+cached in gateway memory stale-while-revalidate with a 60 s lifetime (failures
+too): only the first request after gateway start waits for GitHub, later ones
+return the cache and start a background refetch when it is stale. Nothing is
+persisted. `sessions` is computed per request from the registry: sessions whose
+loaded transcript created the pull request, plus sessions whose `cwd` (resolved
+through symlinks) is on `headRefName` in a checkout with a github.com remote for
+`repository` or `headRepository` (`git symbolic-ref` and `git remote -v`, read-only).
+Newest `updatedAt` first, archived last.
+
+### `POST /__hui/pull-requests/refresh`
+
+Same response after a forced fetch; a fetch already running is awaited instead
+of starting another. No body.
+
 ### `GET /__hui/git-checkout?cwd=<directory>`
 
 Returns the read-only Git context for New Session's checkout picker: whether the
