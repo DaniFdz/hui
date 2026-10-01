@@ -48,10 +48,12 @@ const time = (value: unknown) => {
 };
 const after = (createdAt: string, sentAt?: string) => !sentAt || Date.parse(createdAt) > Date.parse(sentAt);
 
-/** Candidate comments of one `PullRequest` node for the operator `me`, oldest first. */
-export function parseReviewComments(pullRequest: unknown, me: string): ReviewComment[] {
+/** Candidate comments of one `PullRequest` node, oldest first; comments by
+ * any of the operator's logins `me` never count. */
+export function parseReviewComments(pullRequest: unknown, me: string | readonly string[]): ReviewComment[] {
   const data = record(pullRequest);
-  const mine = (author: string) => author.toLowerCase() === me.toLowerCase();
+  const own = new Set((typeof me === "string" ? [me] : me).map((login) => login.toLowerCase()));
+  const mine = (author: string) => own.has(author.toLowerCase());
   const found: ReviewComment[] = [];
   for (const thread of nodes(data["reviewThreads"])) {
     if (thread["isResolved"] === true || thread["isOutdated"] === true) continue;
@@ -123,17 +125,18 @@ export function reviewCommentsMessage(pr: PullRequestRef, comments: readonly Rev
   return { text: `${header}${body.trimEnd()}\n${omitted ? note(omitted) : ""}`, included: sorted.slice(0, count), omitted };
 }
 
-/** Refetches one pull request's comments with the gateway's `gh` login. */
+/** Refetches one pull request's comments; `own` are the operator's other logins. */
 export async function fetchReviewComments(
   gh: (args: readonly string[]) => Promise<unknown>,
   pr: { repository: string; number: number },
+  own: readonly string[] = [],
 ): Promise<ReviewComment[]> {
   const [owner, name] = pr.repository.split("/");
   const raw = await gh(["api", "graphql", "-f", `query=${PULL_REQUEST_QUERY}`, "-f", `owner=${owner}`, "-f", `name=${name}`, "-F", `number=${pr.number}`]);
   const pullRequest = record(record(record(raw)["data"])["repository"])["pullRequest"];
   const me = login(record(pullRequest)["author"]);
   if (!me) throw new GitHubApiError("unavailable");
-  return parseReviewComments(pullRequest, me);
+  return parseReviewComments(pullRequest, [me, ...own]);
 }
 
 export class NoNewCommentsError extends Error {

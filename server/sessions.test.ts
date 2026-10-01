@@ -114,16 +114,21 @@ test("review-comment send times round-trip and malformed entries are dropped on 
 });
 
 test("temporary pull-request reviews round-trip; malformed markers are dropped", async () => {
-  const temporary = { kind: "pr-review", pullRequestUrl: "https://github.com/acme/web/pull/3", scratchDir: "/tmp/hui/pr-reviews/x" } as const;
+  const temporary = {
+    kind: "pr-review", pullRequestUrl: "https://github.com/acme/web/pull/3", scratchDir: "/tmp/hui/pr-reviews/x",
+    account: "work-account", headRefOid: "0123456789abcdef0123456789abcdef01234567",
+  } as const;
   await writeRegistry([
     record("review", { temporary }),
+    record("bad-facts", { temporary: { ...temporary, account: "not a login", headRefOid: "main; rm -rf" } }),
     record("relative", { temporary: { ...temporary, scratchDir: "pr-reviews/x" } }),
     record("other-kind", { temporary: { ...temporary, kind: "scratch" } as never }),
     record("bad-url", { temporary: { ...temporary, pullRequestUrl: "https://example.com/acme/web/pull/3" } }),
   ]);
   const stored = new Map((await readRegistry()).map((item) => [item.id, item.temporary]));
   assert.deepEqual(stored.get("review"), temporary);
-  assert.deepEqual(stored.get("relative"), { kind: "pr-review", pullRequestUrl: temporary.pullRequestUrl });
+  assert.deepEqual(stored.get("relative"), { kind: "pr-review", pullRequestUrl: temporary.pullRequestUrl, account: temporary.account, headRefOid: temporary.headRefOid });
+  assert.deepEqual(stored.get("bad-facts"), { kind: "pr-review", pullRequestUrl: temporary.pullRequestUrl, scratchDir: temporary.scratchDir });
   assert.equal(stored.get("other-kind"), undefined);
   assert.equal(stored.get("bad-url"), undefined);
 });

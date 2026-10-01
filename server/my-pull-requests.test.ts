@@ -7,14 +7,16 @@ import test from "node:test";
 import { GitHubApiError } from "./github-previews.ts";
 import {
   correlateSessions,
-  CREATED_SEARCH,
+  createdSearch,
+  effectiveAccounts,
   fetchMyPullRequests,
+  mergeAccountRows,
   MyPullRequestsCache,
   parseGitHubRemotes,
   parsePullRequestSearch,
   readCheckouts,
   repositoryCheckouts,
-  REVIEW_REQUESTED_SEARCH,
+  reviewRequestedSearch,
   type Checkout,
   type CorrelationSession,
   type FoundPullRequest,
@@ -54,44 +56,74 @@ test("parses search nodes and drops malformed ones", () => {
     {
       repository: "acme/web", number: 1, url: "https://github.com/acme/web/pull/1", title: "PR 1", state: "open",
       headRefName: "feat/1", headRepository: "fork/web", baseRefName: "main", author: "octo",
-      updatedAt: "2026-09-30T10:00:00Z", reviewDecision: "review_required", checks: "failure",
+      updatedAt: "2026-09-30T10:00:00Z", reviewDecision: "review_required", checks: "failure", accounts: [],
     },
     {
       repository: "acme/web", number: 2, url: "https://github.com/acme/web/pull/2", title: "PR 2", state: "draft",
-      headRefName: "feat/2", baseRefName: "main", updatedAt: "2026-09-30T10:00:00Z",
+      headRefName: "feat/2", baseRefName: "main", updatedAt: "2026-09-30T10:00:00Z", accounts: [],
     },
   ]);
   assert.throws(() => parsePullRequestSearch({ errors: [{ message: "bad" }] }), GitHubApiError);
 });
 
-test("fetches both searches with one graphql call each", async () => {
+test("searches are direct requests and authorship of one named account", () => {
+  assert.equal(reviewRequestedSearch("work-account"), "is:pr is:open archived:false user-review-requested:work-account");
+  assert.equal(createdSearch("personal-account"), "is:pr is:open archived:false author:personal-account");
+});
+
+test("the selected accounts that are still signed in, else the active one", () => {
+  const signedIn = ["work-account", "personal-account"];
+  assert.deepEqual(effectiveAccounts([], signedIn), ["work-account"]);
+  assert.deepEqual(effectiveAccounts(["personal-account", "work-account"], signedIn), ["personal-account", "work-account"]);
+  assert.deepEqual(effectiveAccounts(["gone", "PERSONAL-ACCOUNT"], signedIn), ["PERSONAL-ACCOUNT"]);
+  assert.deepEqual(effectiveAccounts(["gone"], signedIn), ["work-account"]);
+  assert.deepEqual(effectiveAccounts(["personal-account"], []), []);
+});
+
+test("rows found by several accounts are merged by URL and remember each account", () => {
+  const [one, two] = parsePullRequestSearch(search(node(1), node(2)));
+  const [twoAgain, three] = parsePullRequestSearch(search(node(2, { url: "https://github.com/ACME/web/pull/2", title: "stale copy" }), node(3)));
+  const merged = mergeAccountRows([{ login: "a", rows: [one!, two!] }, { login: "b", rows: [twoAgain!, three!] }, { login: "a", rows: [one!] }]);
+  assert.deepEqual(merged.map((row) => [row.number, row.accounts]), [[1, ["a"]], [2, ["a", "b"]], [3, ["b"]]]);
+  assert.equal(merged[1]?.title, "PR 2", "the first account's copy wins");
+  assert.deepEqual(two!.accounts, [], "inputs are not mutated");
+});
+
+test("fetches both searches per account, one graphql call each, each as that account", async () => {
   const calls: string[] = [];
-  const lists = await fetchMyPullRequests(async (args) => {
+  const lists = await fetchMyPullRequests(["me", "alt"], async (login) => async (args) => {
     assert.deepEqual(args.slice(0, 3), ["api", "graphql", "-f"]);
     const q = args.at(-1)!.replace(/^q=/u, "");
-    calls.push(q);
-    return search(node(q === CREATED_SEARCH ? 1 : 2));
-  });
-  assert.deepEqual(calls.toSorted(), [CREATED_SEARCH, REVIEW_REQUESTED_SEARCH].toSorted());
-  assert.deepEqual([lists.created[0]?.number, lists.reviewRequested[0]?.number], [1, 2]);
+    calls.push(`${login}: ${q}`);
+    const number = { [createdSearch("me")]: 1, [reviewRequestedSearch("me")]: 2, [createdSearch("alt")]: 3, [reviewRequestedSearch("alt")]: 2 }[q];
+    return search(node(number ?? 99));
+  }, ["me", "alt", "unused"]);
+  assert.deepEqual(calls.toSorted(), [
+    `alt: ${createdSearch("alt")}`, `alt: ${reviewRequestedSearch("alt")}`, `me: ${createdSearch("me")}`, `me: ${reviewRequestedSearch("me")}`,
+  ]);
+  assert.deepEqual(lists.created.map((row) => [row.number, row.accounts]), [[1, ["me"]], [3, ["alt"]]]);
+  assert.deepEqual(lists.reviewRequested.map((row) => [row.number, row.accounts]), [[2, ["me", "alt"]]]);
+  assert.deepEqual([lists.accounts, lists.selectedAccounts], [["me", "alt", "unused"], ["me", "alt"]]);
+  await assert.rejects(fetchMyPullRequests([], async () => async () => search()), GitHubApiError, "no account is signed in");
 });
 
 test("the created search carries review comments by others; the review-requested one does not ask for them", async () => {
   const queries = new Map<string, string>();
-  const lists = await fetchMyPullRequests(async (args) => {
+  const lists = await fetchMyPullRequests(["octo", "octo-work"], async () => async (args) => {
     const q = args.at(-1)!.replace(/^q=/u, "");
     queries.set(q, args[3]!);
-    return search(node(1, q === CREATED_SEARCH ? {
+    return search(node(1, q === createdSearch("octo") ? {
       reviewThreads: { nodes: [{ isResolved: false, isOutdated: false, path: "a.ts", line: 3, comments: { nodes: [
         { author: { login: "octo" }, body: "own", createdAt: "2026-09-30T08:00:00Z", url: "u1" },
+        { author: { login: "octo-work" }, body: "own, other account", createdAt: "2026-09-30T08:30:00Z", url: "u1b" },
         { author: { login: "lana" }, body: "Rename this", createdAt: "2026-09-30T09:00:00Z", url: "u2" },
       ] } }] },
-      reviews: { nodes: [] },
+      reviews: { nodes: [{ author: { login: "octo-work" }, body: "self review", state: "COMMENTED", submittedAt: "2026-09-30T09:30:00Z", url: "r1" }] },
     } : {}));
   });
-  assert.match(queries.get(CREATED_SEARCH)!, /reviewThreads/);
-  assert.doesNotMatch(queries.get(REVIEW_REQUESTED_SEARCH)!, /reviewThreads/);
-  assert.deepEqual(lists.created[0]?.reviewComments, [{ author: "lana", body: "Rename this", createdAt: "2026-09-30T09:00:00Z", url: "u2", path: "a.ts", line: 3 }]);
+  assert.match(queries.get(createdSearch("octo"))!, /reviewThreads/);
+  assert.doesNotMatch(queries.get(reviewRequestedSearch("octo"))!, /reviewThreads/);
+  assert.deepEqual(lists.created[0]?.reviewComments, [{ author: "lana", body: "Rename this", createdAt: "2026-09-30T09:00:00Z", url: "u2", path: "a.ts", line: 3 }], "no selected account's comments count");
   assert.equal(lists.reviewRequested[0]?.reviewComments, undefined);
 });
 
@@ -170,7 +202,7 @@ test("serves cached lists while revalidating and keeps them on failure", async (
   let fail = false;
   let release!: () => void;
   let gate: Promise<void> | undefined;
-  const lists = (n: number): PullRequestLists => ({ created: parsePullRequestSearch(search(node(n))), reviewRequested: [] });
+  const lists = (n: number): PullRequestLists => ({ created: parsePullRequestSearch(search(node(n))), reviewRequested: [], accounts: ["me"], selectedAccounts: ["me"] });
   const cache = new MyPullRequestsCache(async () => {
     calls += 1;
     if (gate) await gate;
@@ -212,7 +244,7 @@ test("serves cached lists while revalidating and keeps them on failure", async (
 
 test("a first-load failure is reported with empty lists", async () => {
   const cache = new MyPullRequestsCache(async () => { throw new GitHubApiError("cli_missing"); });
-  assert.deepEqual(await cache.view(), { created: [], reviewRequested: [], pending: false, error: "cli_missing" });
+  assert.deepEqual(await cache.view(), { created: [], reviewRequested: [], accounts: [], selectedAccounts: [], pending: false, error: "cli_missing" });
   const other = new MyPullRequestsCache(async () => { throw new GitHubApiError("not_found"); });
   assert.equal((await other.view()).error, "unavailable");
 });

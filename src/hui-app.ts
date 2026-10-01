@@ -250,6 +250,7 @@ export class HuiApp extends HuiElement {
   @state() private pullRequestNotice: { tone: "ok" | "danger"; text: string } | undefined;
   @state() private pullRequestReviewing = "";
   @state() private pullRequestApproveConfirm = "";
+  @state() private pullRequestDrawer = "";
   private pullRequestsPoll?: number;
   @state() private groups: readonly SessionGroup[] = [];
   @state() private sessionsLoading = true;
@@ -848,6 +849,11 @@ export class HuiApp extends HuiElement {
     if (worktreeDialog instanceof HTMLDialogElement && this.worktreeConfirm && this.worktreeConfirm !== "merged" && !worktreeDialog.open) {
       ensureModal(worktreeDialog);
       worktreeDialog.querySelector<HTMLButtonElement>(".worktree-remove-cancel")?.focus();
+    }
+    const drawer = this.renderRoot.querySelector?.(".pull-request-drawer");
+    if (drawer instanceof HTMLDialogElement && this.pullRequestDrawer && !drawer.open) {
+      ensureModal(drawer);
+      drawer.querySelector<HTMLButtonElement>(".pull-request-drawer__close")?.focus();
     }
     const approveDialog = this.renderRoot.querySelector?.(".pull-request-approve-dialog");
     if (approveDialog instanceof HTMLDialogElement && this.pullRequestApproveConfirm && !approveDialog.open) {
@@ -3644,6 +3650,7 @@ export class HuiApp extends HuiElement {
       .then((data) => {
         this.myPullRequests = data;
         this.pullRequestApproveConfirm = "";
+        this.pullRequestDrawer = "";
         this.pullRequestNotice = { tone: "ok", text: action === "approve"
           ? `Approved ${reference} on GitHub and deleted its risk review.`
           : action === "dismiss" ? `Dismissed the risk review of ${reference}.` : `Kept the risk review of ${reference} as a normal session.` };
@@ -3656,6 +3663,18 @@ export class HuiApp extends HuiElement {
         this.loadPullRequests();
       })
       .finally(() => { this.pullRequestReviewing = ""; });
+  };
+
+  /** Closes the risk-review drawer and returns focus to the pill that opened it. */
+  private closePullRequestDrawer = () => {
+    const url = this.pullRequestDrawer;
+    this.pullRequestDrawer = "";
+    void this.updateComplete.then(() => this.renderRoot.querySelector<HTMLElement>(`[data-risk-pill="${CSS.escape(url)}"]`)?.focus());
+  };
+
+  /** Saves the Pull Requests accounts, then lists them. */
+  private savePullRequestAccounts = (accounts: string[]) => {
+    void this.save({ pullRequestAccounts: accounts }).then(() => this.loadPullRequests(true));
   };
 
   private removeWorktreePaths = (paths: readonly string[], mode: "single" | "merged", acknowledged: readonly WorktreeRisk[] = []) => {
@@ -4491,6 +4510,16 @@ export class HuiApp extends HuiElement {
                         onApprove: (pr) => this.settlePullRequestReview("approve", pr),
                         onDismiss: (pr) => this.settlePullRequestReview("dismiss", pr),
                         onKeep: (pr) => this.settlePullRequestReview("keep", pr),
+                        drawer: this.pullRequestDrawer,
+                        onOpenDrawer: (pr) => { this.pullRequestNotice = undefined; this.pullRequestDrawer = pr.url; },
+                        onCloseDrawer: this.closePullRequestDrawer,
+                        autoApprove: this.settings.pullRequestAutoApproveLowRisk,
+                        onAutoApprove: (enabled) => void this.save({ pullRequestAutoApproveLowRisk: enabled }),
+                        selectedAccounts: (() => {
+                          const saved = this.settings.pullRequestAccounts.filter((login) => this.myPullRequests?.accounts.includes(login));
+                          return saved.length ? saved : this.myPullRequests?.selectedAccounts ?? [];
+                        })(),
+                        onAccounts: this.savePullRequestAccounts,
                       })
                   : isPiSurface(this.activePage)
                     ? renderPiSurface({

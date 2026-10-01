@@ -217,6 +217,15 @@ const server = createServer(async (request, response) => {
       text(response, "I read the pull request but could not reach a verdict.");
       return finish(response);
     }
+    // `acme/docs` is a documentation-only change the fixture rates low risk.
+    if (source.includes("acme/docs")) {
+      toolUse(response, "tool-e2e-pr-risk", "report_pr_risk", {
+        risk: "low",
+        summary: "Documentation-only change: fixes two typos in the README; no code, configuration or CI is touched.",
+        reasons: ["Only README.md changes", "CI is green"],
+      });
+      return finish(response, "tool_use");
+    }
     toolUse(response, "tool-e2e-pr-risk", "report_pr_risk", {
       risk: "medium",
       summary: "Changes the session token refresh path; small diff, but it touches authentication and has no new tests.",
@@ -226,7 +235,7 @@ const server = createServer(async (request, response) => {
     return finish(response, "tool_use");
   }
   if (latestToolResult?.id === "tool-e2e-pr-risk") {
-    text(response, "Reported a medium risk verdict for the operator.");
+    text(response, "Reported the risk verdict for the operator.");
     return finish(response);
   }
 

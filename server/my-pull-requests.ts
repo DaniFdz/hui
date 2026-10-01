@@ -1,8 +1,10 @@
 /**
  * The operator's open pull requests for the Pull Requests page.
  *
- * Two `gh api graphql` searches with the Settings → Integrations → GitHub login:
- * pull requests the account authored and those awaiting its review. The lists
+ * Two `gh api graphql` searches per selected github.com account (Pull Requests →
+ * Accounts; default `gh`'s active one), each run with that account's token:
+ * pull requests it authored and those that request its review directly (team
+ * requests do not count). Rows found by several accounts are merged. The lists
  * are cached in gateway memory stale-while-revalidate (nothing is persisted), so
  * only the very first load waits on the network; a failure keeps the last
  * confirmed lists and reports a coarse reason. Sessions are linked per request
@@ -27,12 +29,22 @@ export type FoundPullRequest = Omit<MyPullRequest, "sessions" | "newComments" | 
   /** Created tab: review comments that can be sent (server-only, never returned). */
   reviewComments?: ReviewComment[];
 };
-export type PullRequestLists = { created: FoundPullRequest[]; reviewRequested: FoundPullRequest[] };
-export type PullRequestSnapshot = Omit<MyPullRequests, "created" | "reviewRequested"> & PullRequestLists;
+export type PullRequestLists = {
+  created: FoundPullRequest[];
+  reviewRequested: FoundPullRequest[];
+  /** Signed-in github.com accounts, the active one first. */
+  accounts: string[];
+  /** The accounts that were searched, in selection order. */
+  selectedAccounts: string[];
+};
+export type PullRequestSnapshot = Omit<MyPullRequests, "created" | "reviewRequested" | "accounts" | "selectedAccounts" | "autoApproved"> & PullRequestLists;
 
 const SEARCH_LIMIT = 50;
-export const CREATED_SEARCH = "is:pr is:open author:@me archived:false";
-export const REVIEW_REQUESTED_SEARCH = "is:pr is:open review-requested:@me archived:false";
+/** Pull requests `login` authored. */
+export const createdSearch = (login: string) => `is:pr is:open archived:false author:${login}`;
+/** Pull requests that request `login`'s review directly; `review-requested:`
+ * would also match every team the account belongs to. */
+export const reviewRequestedSearch = (login: string) => `is:pr is:open archived:false user-review-requested:${login}`;
 /** The Created search also selects the review comments needed for the new-comment count. */
 export const searchQuery = (comments: boolean) => `query($q: String!) {
   search(query: $q, type: ISSUE, first: ${SEARCH_LIMIT}) {
@@ -54,8 +66,9 @@ const DECISIONS = new Set<PullRequestReviewDecision>(["approved", "changes_reque
 const record = (value: unknown): Record<string, unknown> => value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 const str = (value: unknown, limit = 300) => typeof value === "string" ? value.trim().slice(0, limit) : "";
 
-/** Parses one `search` response; nodes that are not well-formed pull requests are dropped. */
-export function parsePullRequestSearch(raw: unknown): FoundPullRequest[] {
+/** Parses one `search` response; nodes that are not well-formed pull requests
+ * are dropped. `own` are the operator's logins, whose comments never count. */
+export function parsePullRequestSearch(raw: unknown, own: readonly string[] = []): FoundPullRequest[] {
   const nodes = record(record(record(raw)["data"])["search"])["nodes"];
   if (!Array.isArray(nodes)) throw new GitHubApiError("unavailable");
   return nodes.slice(0, SEARCH_LIMIT).flatMap((node): FoundPullRequest[] => {
@@ -68,8 +81,8 @@ export function parsePullRequestSearch(raw: unknown): FoundPullRequest[] {
     const commits = record(data["commits"])["nodes"];
     const rollup = Array.isArray(commits) ? record(record(record(commits.at(-1))["commit"])["statusCheckRollup"])["state"] : undefined;
     const checks = str(rollup, 40).toLowerCase() as PullRequestChecks;
-    // Created by the operator, so the author is the account whose own comments do not count.
-    const reviewComments = "reviewThreads" in data || "reviews" in data ? parseReviewComments(data, author) : undefined;
+    // Created by the operator: the author and every selected account are "me".
+    const reviewComments = "reviewThreads" in data || "reviews" in data ? parseReviewComments(data, [author, ...own].filter(Boolean)) : undefined;
     return [{
       ...ref,
       title: str(data["title"]),
@@ -81,16 +94,51 @@ export function parsePullRequestSearch(raw: unknown): FoundPullRequest[] {
       updatedAt: str(data["updatedAt"], 40),
       ...(DECISIONS.has(decision) ? { reviewDecision: decision } : {}),
       ...(CHECKS.has(checks) ? { checks } : {}),
+      accounts: [],
       ...(reviewComments ? { reviewComments } : {}),
     }];
   });
 }
 
-/** Both lists, one `gh api graphql` call each. */
-export async function fetchMyPullRequests(gh: (args: readonly string[]) => Promise<unknown>): Promise<PullRequestLists> {
-  const search = async (q: string) => parsePullRequestSearch(await gh(["api", "graphql", "-f", `query=${searchQuery(q === CREATED_SEARCH)}`, "-f", `q=${q}`]));
-  const [created, reviewRequested] = await Promise.all([search(CREATED_SEARCH), search(REVIEW_REQUESTED_SEARCH)]);
-  return { created, reviewRequested };
+/** The accounts to search: the selected ones still signed in, in selection
+ * order; otherwise `gh`'s active account (the first signed-in one). */
+export function effectiveAccounts(selected: readonly string[], signedIn: readonly string[]): string[] {
+  const chosen = selected.filter((login) => signedIn.some((account) => account.toLowerCase() === login.toLowerCase()));
+  return chosen.length ? chosen : signedIn.slice(0, 1);
+}
+
+/** One row per URL, in first-found order; each row lists every account that found it. */
+export function mergeAccountRows(perAccount: readonly { login: string; rows: readonly FoundPullRequest[] }[]): FoundPullRequest[] {
+  const merged = new Map<string, FoundPullRequest>();
+  for (const { login, rows } of perAccount) {
+    for (const row of rows) {
+      const key = row.url.toLowerCase();
+      const found = merged.get(key);
+      if (!found) merged.set(key, { ...row, accounts: [login] });
+      else if (!found.accounts.includes(login)) found.accounts.push(login);
+    }
+  }
+  return [...merged.values()];
+}
+
+type Gh = (args: readonly string[]) => Promise<unknown>;
+
+/** Both lists for every account, one `gh api graphql` call each, each run
+ * with `gh(login)`: `gh` as that account. */
+export async function fetchMyPullRequests(accounts: readonly string[], gh: (login: string) => Promise<Gh>, signedIn: readonly string[] = accounts): Promise<PullRequestLists> {
+  if (!accounts.length) throw new GitHubApiError("signed_out");
+  const perAccount = await Promise.all(accounts.map(async (login) => {
+    const run = await gh(login);
+    const search = async (q: string, comments: boolean) => parsePullRequestSearch(await run(["api", "graphql", "-f", `query=${searchQuery(comments)}`, "-f", `q=${q}`]), accounts);
+    const [created, reviewRequested] = await Promise.all([search(createdSearch(login), true), search(reviewRequestedSearch(login), false)]);
+    return { login, created, reviewRequested };
+  }));
+  return {
+    created: mergeAccountRows(perAccount.map(({ login, created }) => ({ login, rows: created }))),
+    reviewRequested: mergeAccountRows(perAccount.map(({ login, reviewRequested }) => ({ login, rows: reviewRequested }))),
+    accounts: [...signedIn],
+    selectedAccounts: [...accounts],
+  };
 }
 
 /** `owner/repo` of every github.com remote in `git remote -v` output. */
@@ -191,7 +239,7 @@ export class MyPullRequestsCache {
   readonly #fetch: () => Promise<PullRequestLists>;
   readonly #now: () => number;
   readonly #ttl: number;
-  #lists: PullRequestLists = { created: [], reviewRequested: [] };
+  #lists: PullRequestLists = { created: [], reviewRequested: [], accounts: [], selectedAccounts: [] };
   #fetchedAt?: string;
   #error?: MyPullRequestsError;
   #freshUntil = 0;

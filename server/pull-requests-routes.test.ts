@@ -55,7 +55,7 @@ test("lists and refreshes the operator's pull requests with linked sessions", { 
 
   const signedOut = await route("/__hui/pull-requests");
   assert.equal(signedOut.status, 200);
-  assert.deepEqual(signedOut.body, { created: [], reviewRequested: [], pending: false, error: "signed_out" });
+  assert.deepEqual(signedOut.body, { created: [], reviewRequested: [], accounts: [], selectedAccounts: [], autoApproved: [], pending: false, error: "signed_out" });
 
   await writeFile(join(gh, "account"), "me\n");
   const refreshed = await route("/__hui/pull-requests/refresh", "POST");
@@ -65,6 +65,19 @@ test("lists and refreshes the operator's pull requests with linked sessions", { 
   const linked = (list: MyPullRequests["created"]) => list.map((pr) => [pr.number, pr.sessions.map((session) => session.id)]);
   assert.deepEqual(linked(refreshed.body.created), [[1, ["on-branch"]], [2, []]]);
   assert.deepEqual(linked(refreshed.body.reviewRequested), [[3, ["on-branch"]]]);
+
+  assert.deepEqual([refreshed.body.accounts, refreshed.body.selectedAccounts], [["me"], ["me"]], "default: the active account");
+
+  // Two selected accounts: each searched with its own token, rows merged by URL.
+  await writeFile(join(gh, "accounts"), "me\nalt\n");
+  await writeFile(join(gh, "search-review-requested-alt.json"), JSON.stringify([node(3, "feat/x"), node(4, "feat/z")]));
+  await writeFile(join(gh, "search-created-alt.json"), JSON.stringify([{ ...node(5, "feat/w"), author: { login: "alt" } }]));
+  await writeFile(join(dir, "hui/settings.json"), JSON.stringify({ pullRequestAccounts: ["alt", "me", "not-signed-in"] }));
+  const both = await route("/__hui/pull-requests/refresh", "POST");
+  assert.equal(both.body.error, undefined);
+  assert.deepEqual([both.body.accounts, both.body.selectedAccounts], [["me", "alt"], ["alt", "me"]]);
+  assert.deepEqual(both.body.reviewRequested.map((pr) => [pr.number, pr.accounts]), [[3, ["alt", "me"]], [4, ["alt"]]]);
+  assert.deepEqual(both.body.created.map((pr) => [pr.number, pr.accounts]), [[5, ["alt"]], [1, ["me"]], [2, ["me"]]]);
 
   assert.equal((await route("/__hui/pull-requests/refresh")).status, 405);
   assert.equal((await route("/__hui/pull-requests", "POST")).status, 405);

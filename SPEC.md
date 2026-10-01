@@ -859,9 +859,17 @@ inventory.
 ## Pull Requests
 
 The Pull Requests page (`/pull-requests`, after Contributions in the sidebar) lists
-the open and draft github.com pull requests of the Settings → Integrations →
-GitHub account in two tabs: **Created by me** (`author:@me`) and **Review
-requested** (`review-requested:@me`), at most 50 each. It uses the Worktrees table
+the open and draft github.com pull requests of the selected GitHub accounts in
+two tabs: **Created by me** (`author:<login>`) and **Review requested**
+(`user-review-requested:<login>`: direct requests only, not requests to a team
+the account belongs to), at most 50 per account and list. The header's
+**Accounts** control lists the github.com accounts signed in to `gh` and saves
+the checked ones (`pullRequestAccounts` in `settings.json`); none saved means
+`gh`'s active account, and at least one stays checked. Each account's searches
+run with its own token (`gh auth token --user`, passed only as `GH_TOKEN`). Rows
+found by several accounts appear once; with more than one account selected,
+each row names its accounts. Everything that means "the operator" means any
+selected account. It uses the Worktrees table
 layout: title linking to GitHub with `owner/repo#n` and the head branch, an
 Open/Draft pill, the CI rollup of the head commit and the review decision, linked
 sessions and the last update. A search field filters by repository, number,
@@ -882,7 +890,7 @@ fetched.
 
 **Review comments.** On **Created by me** rows, new review comments are
 unresolved, non-outdated review threads whose latest comment is by someone other
-than the operator (the pull request's author), plus `COMMENTED` and
+than the operator (the pull request's author or any selected account), plus `COMMENTED` and
 `CHANGES_REQUESTED` reviews with a body by someone else, created after the last
 send to the target session. The target is the first linked session; a picker
 chooses another when several are linked. **Review comments (N)** is enabled when
@@ -917,15 +925,31 @@ assessment runs per pull request. Temporary sessions never appear in the
 sidebar, Sessions page, Kanban, command palette, automation targets or the
 agent coordination tools' `sessions_list`; *Open session* on the row opens one.
 
-The row reads **Assessing…** with *Open session* while the session runs, then
-shows a verdict card below the row: the risk pill (low, medium, high), summary,
-reasons and focus areas, with **Approve**, **Dismiss**, **Keep** and *Open
-session*. A session that settles without a verdict shows "No verdict" with
-**Dismiss**, **Keep** and *Open session*. **Approve** opens a confirmation
-dialog naming the pull request and the verdict; only its confirm button runs
-`gh pr review <n> -R owner/repo --approve`. Nothing approves automatically. On
-success the lists refresh; on failure `gh`'s error is shown and the review is
-kept. Approve (success) and **Dismiss** stop the runtime and delete the
+The row's actions cell then shows only a compact pill: **Assessing…**, **Low /
+Medium / High risk** or **No verdict**. Clicking it opens a right-side drawer
+(full width on phones) with the pull request reference and linked title, the
+risk, summary, reasons and focus areas and **Approve**, **Dismiss**, **Keep**
+and *Open session* (no verdict: *Open session*, **Keep**, **Dismiss**; while
+assessing: *Open session*). Escape or the close button closes it and returns
+focus to the pill. **Approve** opens a confirmation dialog naming the pull
+request and the verdict; only its confirm button approves. Assessing records
+the pull request's head commit and the account the review was requested of
+(the first selected one asked directly). An approval runs as that account and
+first reads the pull request again: it must be open, still request that
+account directly and have the same head commit, else nothing is approved and
+the page says why ("PR changed since it was assessed — assess again." for a new
+head). Then it runs `gh pr review <n> -R owner/repo --approve`. On success the
+lists refresh; on failure the error is shown and the review is kept.
+
+**Auto-approve low risk** (a switch on the Review requested tab,
+`pullRequestAutoApproveLowRisk`, off by default) applies only to pull requests
+the operator assessed: when a review settles with a low verdict and the switch
+is on at that moment, the gateway runs the same checks and approval as that
+account and cleans up the temporary session like a manual approve. A failed
+check leaves the verdict for manual action with the reason in the drawer.
+Medium, high and no verdict are never auto-approved, and nothing is assessed
+automatically. The tab lists this gateway run's auto-approvals (reference,
+title, account, time; memory only). Approve (success) and **Dismiss** stop the runtime and delete the
 temporary session: its registry row, its PI transcript and the scratch
 directory HUI created for it, only the paths its record names.
 **Keep** turns it into a normal session. Gateway start deletes temporary

@@ -378,6 +378,9 @@ and `PUT /__hui/settings` include `disabledSkills`, a normalized array of
 `{ "name", "path" }` identities, and `disabledPlugins`, containing opaque
 `{ "id", "name", "kind" }` package/extension identities. Disabling keeps PI's
 files and configuration untouched and applies when a HUI PI runtime next starts.
+The same routes carry the Pull Requests page's `pullRequestAccounts` (distinct
+github.com logins in selection order, at most 10; empty means `gh`'s active
+account) and `pullRequestAutoApproveLowRisk` (boolean, default `false`).
 The SDK worker filters packages and direct extensions from a process-local
 settings view before PI discovers resources, so their executable code and
 bundled skills/prompts never load. Individual disabled skills are removed before
@@ -490,11 +493,14 @@ Returns `MyPullRequests` (`shared/pull-requests.ts`) for the Pull Requests page:
 
 ```ts
 type MyPullRequests = {
-  created: MyPullRequest[];          // is:pr is:open author:@me archived:false
-  reviewRequested: MyPullRequest[];  // is:pr is:open review-requested:@me archived:false
+  created: MyPullRequest[];          // per account: is:pr is:open archived:false author:<login>
+  reviewRequested: MyPullRequest[];  // per account: is:pr is:open archived:false user-review-requested:<login>
   fetchedAt?: string;                // ISO time of the last successful fetch
   pending: boolean;                  // a background refetch is running
   error?: "signed_out" | "cli_missing" | "unavailable"; // last fetch failed; lists are the last confirmed ones
+  accounts: string[];                // signed-in github.com logins of gh, the active one first
+  selectedAccounts: string[];        // the logins searched, in selection order
+  autoApproved: { repository: string; number: number; url: string; title: string; account: string; approvedAt: string }[]; // this gateway run, newest first
 };
 type MyPullRequest = {
   repository: string; number: number; url: string; title: string;
@@ -503,6 +509,7 @@ type MyPullRequest = {
   author?: string; updatedAt: string;
   reviewDecision?: "approved" | "changes_requested" | "review_required";
   checks?: "success" | "failure" | "error" | "pending" | "expected"; // statusCheckRollup of the last commit
+  accounts: string[];     // selected accounts that found it (Created: the author; Review requested: asked directly)
   sessions: { id: string; title: string; archived: boolean; newComments?: number }[];
   newComments?: number;   // Created only: open review comments by others, nothing sent yet
   localCheckout?: boolean; // Created only: a session directory is a checkout of the repository
@@ -512,11 +519,22 @@ type PullRequestAssessment = {
   sessionId: string;
   state: "assessing" | "verdict" | "no_verdict"; // no_verdict: settled without report_pr_risk
   verdict?: { risk: "low" | "medium" | "high"; summary: string; reasons: string[]; focusAreas?: { path: string; note: string }[] };
+  autoApproveBlocked?: string; // why a low verdict was not auto-approved
 };
 ```
 
-Each list is one `gh api graphql` `search(type: ISSUE, first: 50)` call with the
-gateway's GitHub CLI login; `gh` output never reaches the browser. The lists are
+The accounts are `settings.json` → `pullRequestAccounts` filtered to the
+github.com logins `gh auth status --hostname github.com --json hosts` reports as
+signed in (state `success`), in selection order; when none remains, `gh`'s
+active account. Per account, each list is one `gh api graphql`
+`search(type: ISSUE, first: 50)` call run with that account's token: the
+gateway reads it with `gh auth token --hostname github.com --user <login>` and
+passes it only as the child's `GH_TOKEN` (never in arguments, logs or
+responses). `user-review-requested:` matches direct requests only, not team
+requests. Rows are merged by URL in first-found order; `accounts` lists every
+selected account that found the row. `gh` output never reaches the browser.
+Settings are read at each fetch, so after changing the accounts the page calls
+`POST …/refresh`. The lists are
 cached in gateway memory stale-while-revalidate with a 60 s lifetime (failures
 too): only the first request after gateway start waits for GitHub, later ones
 return the cache and start a background refetch when it is stale. Nothing is
@@ -534,9 +552,9 @@ of starting another. No body.
 The Created search also selects `reviewThreads(last: 50)` with `comments(last: 20)`
 and `reviews(last: 50, states: [COMMENTED, CHANGES_REQUESTED])`; comment bodies
 stay in gateway memory and never reach the browser. A candidate comment is one
-by someone other than the pull request's author in an unresolved, non-outdated
-thread whose latest comment is by someone else, or a review with a non-empty
-body by someone else. `newComments` on a session counts candidates created
+by someone other than the operator (the pull request's author or any selected
+account) in an unresolved, non-outdated thread whose latest comment is by
+someone else, or a review with a non-empty body by someone else. `newComments` on a session counts candidates created
 after that session's `pullRequestComments[].sentAt` for the URL.
 
 ### `POST /__hui/pull-requests/review-comments`
@@ -553,7 +571,7 @@ type ReviewCommentsResult = { sessionId: string; sent: number; omitted: number; 
    in the current (cached) Created list, else 400 or 404. An unknown
    `sessionId` is 404.
 2. The pull request's threads and reviews are read again (`gh api graphql`,
-   `repository.pullRequest`); comments newer than the session's last send are
+   `repository.pullRequest`, as the row's first account); comments newer than the session's last send are
    selected. None is 409.
 3. Without `sessionId`, a session (`createSession`, the `POST /sessions` path) is
    started in a session directory that is a checkout of the repository, preferring
@@ -577,8 +595,8 @@ from `sessions` on both lists and appear only as `assessment`.
 
 | Route | Behavior |
 | --- | --- |
-| `POST /__hui/pull-requests/assess` | Starts one temporary session per pull request (409 while one exists) and returns `{ sessionId }` once its first prompt was accepted. `cwd` is a session directory that is a checkout of the repository, else a new `~/.config/hui/pr-reviews/<uuid>/`. No model is passed (PI's default; the utility model is not used). The prompt asks for a read-only review with `gh pr view/diff/checks <n> -R owner/repo` ending in `report_pr_risk`. If the runtime cannot start or refuses the prompt, the row, transcript and scratch directory are deleted and the error returned (500) |
-| `POST /__hui/pull-requests/approve` | Requires the pull request's temporary session (404). Runs exactly `gh pr review <n> -R owner/repo --approve`; on failure returns `gh`'s error (502) and keeps the session. On success deletes the temporary session (below), forces a list refetch and returns `MyPullRequests`. The page calls it only from the confirmation dialog |
+| `POST /__hui/pull-requests/assess` | Starts one temporary session per pull request (409 while one exists) and returns `{ sessionId }` once its first prompt was accepted. First reads `gh pr view <n> -R owner/repo --json state,headRefOid,reviewRequests` as the row's first account and records that `account` and the `headRefOid` in `temporary`. `cwd` is a session directory that is a checkout of the repository, else a new `~/.config/hui/pr-reviews/<uuid>/`. No model is passed (PI's default; the utility model is not used). The prompt asks for a read-only review with `gh pr view/diff/checks <n> -R owner/repo` ending in `report_pr_risk`. If the runtime cannot start or refuses the prompt, the row, transcript and scratch directory are deleted and the error returned (500) |
+| `POST /__hui/pull-requests/approve` | Requires the pull request's temporary session (404). As `temporary.account` (`GH_TOKEN`), re-reads `gh pr view … --json state,headRefOid,reviewRequests`; unless the pull request is open, still lists that login among its direct review requests and has the recorded `headRefOid`, returns 409 (for a moved head: "PR changed since it was assessed — assess again.") without reviewing. Then runs exactly `gh pr review <n> -R owner/repo --approve` as that account; on failure returns `gh`'s error (502) and keeps the session. On success deletes the temporary session (below), forces a list refetch and returns `MyPullRequests`. The page calls it only from the confirmation dialog |
 | `POST /__hui/pull-requests/dismiss` | Deletes the temporary session and returns `MyPullRequests`; nothing is sent to GitHub |
 | `POST /__hui/pull-requests/keep` | Clears `temporary` so it becomes a normal session; deletes nothing; returns `MyPullRequests` |
 
@@ -592,6 +610,16 @@ call (the latest wins), `assessing` while the session is starting, running or
 waiting, else `no_verdict`. `SessionView.temporary` (`{ kind, pullRequestUrl }`)
 marks such sessions in `GET /sessions` and the pushed `sessions` frames of
 `GET /sessions/events`; the browser leaves them out of every session list.
+
+**Auto-approve.** When a temporary session turns idle with a verdict, the
+gateway considers it once. Only when the verdict is `low` and `settings.json`
+→ `pullRequestAutoApproveLowRisk` is `true` (read at that moment) does it run
+the approve route's checks and `gh pr review --approve` as `temporary.account`,
+then delete the temporary session like a manual approve, record an
+`autoApproved` entry (memory only, at most 50) and refetch the lists. A failed
+check or approval approves nothing and leaves the verdict with
+`assessment.autoApproveBlocked`. Medium, high and missing verdicts are never
+auto-approved, and nothing is assessed automatically.
 
 ### `GET /__hui/git-checkout?cwd=<directory>`
 
@@ -768,7 +796,7 @@ Only a changed stage writes; polling an unchanged board stays read-only.
 | `parentId`, `subagent` | HUI | Optional additive lineage/task state for `sessions_spawn`; PI still owns the child transcript |
 | `stage`, `stageSource`, `stagePullRequests` | HUI | Optional Kanban stage and who placed it (`operator`, `agent`, `pullRequest`); absent means Investigation. A session started from a backlog item is created with an operator placement in the target column. See [Session stages](#session-stages). `stagePullRequests` is server-only and never returned in views. |
 | `pullRequestComments` | HUI | Optional `{ url, sentAt }[]` (lower-case pull request URL, ISO time of the newest review comment included in the last accepted send; at most 50, malformed entries dropped on read). Server-only, never returned in views; removed with the session. See [review comments](#post-__huipull-requestsreview-comments). |
-| `temporary` | HUI | Optional `{ kind: "pr-review", pullRequestUrl, scratchDir? }` for a pull-request [risk review](#pull-request-risk-review); `scratchDir` is set only when HUI created the directory. Approve, Dismiss and 24-hour gateway-start cleanup delete the row, its `piSessionFile` transcript and `scratchDir` (the one case HUI deletes a PI transcript); Keep clears the field. `SessionView.temporary` omits `scratchDir`. Malformed values are dropped on read |
+| `temporary` | HUI | Optional `{ kind: "pr-review", pullRequestUrl, scratchDir?, account?, headRefOid? }` for a pull-request [risk review](#pull-request-risk-review); `scratchDir` is set only when HUI created the directory; `account` (the GitHub login asked for the review) and `headRefOid` (the head commit when it started) gate approvals. Approve, Dismiss and 24-hour gateway-start cleanup delete the row, its `piSessionFile` transcript and `scratchDir` (the one case HUI deletes a PI transcript); Keep clears the field. `SessionView.temporary` omits `scratchDir`, `account` and `headRefOid`. Malformed values are dropped on read |
 | `piSessionFile` | PI identity, HUI pointer | Learned from `get_state`, then stored by HUI for `--session` resume |
 | messages and tool results | PI | PI's JSONL only; never copied into `sessions.json` |
 | `status` | HUI process | Derived live state; never persisted |

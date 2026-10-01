@@ -34,6 +34,11 @@ export function pullRequestAccessibleLabel(pullRequest: SessionPullRequest): str
   return `Pull request ${pullRequestReference(pullRequest)}, ${pullRequestStateLabel(pullRequest.state).toLocaleLowerCase()}${title}`;
 }
 
+/** A github.com login; enterprise-managed accounts carry an `_suffix`. */
+export function isGitHubLogin(value: string): boolean {
+  return /^[A-Za-z0-9](?:[A-Za-z0-9_-]{0,38})$/u.test(value);
+}
+
 /** Rollup of the head commit's checks (`statusCheckRollup.state`, lower-cased). */
 export type PullRequestChecks = "success" | "failure" | "error" | "pending" | "expected";
 export type PullRequestReviewDecision = "approved" | "changes_requested" | "review_required";
@@ -63,6 +68,9 @@ export type MyPullRequest = {
   updatedAt: string;
   reviewDecision?: PullRequestReviewDecision;
   checks?: PullRequestChecks;
+  /** The selected accounts that found it (Created: the author; Review
+   * requested: the accounts asked directly), in selection order. */
+  accounts: string[];
   /** Created-by and head-branch matches; newest first, archived last. */
   sessions: MyPullRequestSession[];
   /** Created tab: every open review comment by someone else (nothing sent yet). */
@@ -90,6 +98,18 @@ export type PullRequestAssessment = {
   sessionId: string;
   state: "assessing" | "verdict" | "no_verdict";
   verdict?: PullRequestRiskVerdict;
+  /** Why a low-risk verdict was not auto-approved (a precondition failed). */
+  autoApproveBlocked?: string;
+};
+
+/** A pull request the gateway approved for a low-risk verdict (this gateway run only). */
+export type AutoApprovedPullRequest = {
+  repository: string;
+  number: number;
+  url: string;
+  title: string;
+  account: string;
+  approvedAt: string;
 };
 
 /** `POST /__hui/pull-requests/review-comments` result. */
@@ -113,4 +133,10 @@ export type MyPullRequests = {
   pending: boolean;
   /** Why the last fetch failed; the lists are the last confirmed data. */
   error?: MyPullRequestsError;
+  /** Signed-in github.com accounts of `gh`, the active one first. */
+  accounts: string[];
+  /** The accounts listed, in selection order (default: the active one). */
+  selectedAccounts: string[];
+  /** Auto-approvals since the gateway started, newest first. */
+  autoApproved: AutoApprovedPullRequest[];
 };

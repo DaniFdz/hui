@@ -20,6 +20,7 @@ test("risk reviews: assess, approve with the exact gh argv, dismiss, keep and st
   await mkdir(join(reviews, "unrelated"), { recursive: true });
   await writeFile(join(transcripts, "unrelated.jsonl"), "{}\n");
   const now = new Date().toISOString();
+  const head = (number: number) => String(number).padStart(40, "0");
   /** A temporary review with a transcript and a scratch directory on disk. */
   const review = async (id: string, number: number, createdAt = now) => {
     const scratchDir = join(reviews, id);
@@ -29,7 +30,7 @@ test("risk reviews: assess, approve with the exact gh argv, dismiss, keep and st
     return {
       id, title: `Risk review ${number}`, group: "", cwd: scratchDir, tool: "pi", createdAt, updatedAt: createdAt,
       piSessionFile: join(transcripts, `${id}.jsonl`),
-      temporary: { kind: "pr-review", pullRequestUrl: `https://github.com/acme/web/pull/${number}`, scratchDir },
+      temporary: { kind: "pr-review", pullRequestUrl: `https://github.com/acme/web/pull/${number}`, scratchDir, account: "me", headRefOid: head(number) },
     };
   };
   const sessions = [
@@ -86,6 +87,7 @@ test("risk reviews: assess, approve with the exact gh argv, dismiss, keep and st
   const byNumber = new Map(page.reviewRequested.map((pr) => [pr.number, pr]));
   assert.deepEqual(byNumber.get(3)?.assessment, { sessionId: "review-3", state: "no_verdict" }, "settled without report_pr_risk");
   assert.equal(byNumber.get(6)?.assessment, undefined);
+  assert.deepEqual([page.accounts, page.selectedAccounts, byNumber.get(6)?.accounts, page.autoApproved], [["me"], ["me"], ["me"], []]);
   assert.ok(page.reviewRequested.every((pr) => pr.sessions.every((session) => !session.id.startsWith("review-"))), "temporary reviews are not linked sessions");
 
   assert.equal((await post("approve", undefined, "GET")).status, 405);
@@ -99,6 +101,14 @@ test("risk reviews: assess, approve with the exact gh argv, dismiss, keep and st
   assert.equal((await registry()).some((item) => item.temporary && JSON.stringify(item.temporary).includes("/pull/6")), false, "a failed start leaves no row");
   assert.deepEqual((await readdir(reviews)).toSorted(), ["review-3", "review-4", "review-5", "unrelated"], "nor a scratch directory");
 
+  // The head moved since the assessment: refused before gh pr review runs.
+  await writeFile(join(gh, "search-review-requested.json"), JSON.stringify([3, 4, 5, 6].map((number) => ({ ...node(number), ...(number === 3 ? { headRefOid: "f".repeat(40) } : {}) }))));
+  const moved = await post("approve", { url: url(3) });
+  assert.equal(moved.status, 409);
+  assert.equal(moved.body.error, "PR changed since it was assessed — assess again.");
+  assert.equal(existsSync(join(gh, "pr-review-args")), false);
+  await writeFile(join(gh, "search-review-requested.json"), JSON.stringify([3, 4, 5, 6].map(node)));
+
   await writeFile(join(gh, "review-fail"), "GraphQL: Can not approve your own pull request (addPullRequestReview)\n");
   const refused = await post("approve", { url: url(3) });
   assert.equal(refused.status, 502);
@@ -110,6 +120,7 @@ test("risk reviews: assess, approve with the exact gh argv, dismiss, keep and st
   const approved = await post("approve", { url: url(3) });
   assert.equal(approved.status, 200);
   assert.deepEqual(JSON.parse(await readFile(join(gh, "pr-review-args"), "utf8")), ["pr", "review", "3", "-R", "acme/web", "--approve"]);
+  assert.equal(await readFile(join(gh, "pr-review-token"), "utf8"), "fake-token-me", "as the account the review was requested of");
   assert.equal(approved.body.reviewRequested.some((pr) => pr.number === 3), false, "the row refreshes");
   assert.equal((await registry()).some((item) => item.id === "review-3"), false);
   assert.equal(existsSync(join(reviews, "review-3")), false);

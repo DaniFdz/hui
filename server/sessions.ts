@@ -11,6 +11,7 @@ import { randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
 
 import { CONFIG_DIR } from "./paths.ts";
+import { isGitHubLogin } from "../shared/pull-requests.ts";
 import { isSessionStage, isSessionStageSource, type SessionStage, type SessionStageSource } from "../shared/session-stages.ts";
 
 const REGISTRY_FILE = join(CONFIG_DIR, "sessions.json");
@@ -81,7 +82,16 @@ export type SessionRecord = {
   source?: "hui";
 };
 
-export type TemporarySession = { kind: "pr-review"; pullRequestUrl: string; scratchDir?: string };
+export type TemporarySession = {
+  kind: "pr-review";
+  pullRequestUrl: string;
+  scratchDir?: string;
+  /** The GitHub login the review was requested of; approvals run as it. */
+  account?: string;
+  /** The pull request's head commit when the review started; an approval
+   * requires it to be unchanged. */
+  headRefOid?: string;
+};
 
 export type SubagentStatus =
   | "starting"
@@ -177,7 +187,15 @@ function toTemporary(raw: unknown): TemporarySession | undefined {
   const pullRequestUrl = str(raw["pullRequestUrl"]);
   if (!/^https:\/\/github\.com\/[^/\s]+\/[^/\s]+\/pull\/\d+$/u.test(pullRequestUrl)) return undefined;
   const scratchDir = str(raw["scratchDir"]);
-  return { kind: "pr-review", pullRequestUrl, ...(scratchDir.startsWith("/") ? { scratchDir } : {}) };
+  const account = str(raw["account"]);
+  const headRefOid = str(raw["headRefOid"]);
+  return {
+    kind: "pr-review",
+    pullRequestUrl,
+    ...(scratchDir.startsWith("/") ? { scratchDir } : {}),
+    ...(isGitHubLogin(account) ? { account } : {}),
+    ...(/^[0-9a-f]{7,64}$/iu.test(headRefOid) ? { headRefOid } : {}),
+  };
 }
 
 /** Every field is checked, because the file is hand-editable and predates any

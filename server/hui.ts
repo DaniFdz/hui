@@ -23,7 +23,7 @@ import { fileURLToPath } from "node:url";
 
 import type { Connect, Plugin } from "vite";
 import { progressCardFromTranscript, type ProgressCard } from "../shared/progress-card.ts";
-import type { MyPullRequests, ReviewCommentsResult, SessionPullRequest } from "../shared/pull-requests.ts";
+import type { AutoApprovedPullRequest, MyPullRequests, ReviewCommentsResult, SessionPullRequest } from "../shared/pull-requests.ts";
 import {
   effectiveSessionStage,
   isSessionStage,
@@ -37,7 +37,10 @@ import { PullRequestStatuses, pullRequestsFromTranscript, pullRequestUrls } from
 
 
 import { CONFIG_DIR, ATTACHMENTS_DIR, AUTOMATION_FILE, BROWSER_PROFILE_DIR, PR_REVIEWS_DIR, USER_THEME_DIR } from "./paths.ts";
-import { approveArgs, assessmentPrompt, GhCommandError, pullRequestAssessment, removeTemporaryFiles, runGh, staleTemporarySessions, temporaryReview } from "./pull-request-reviews.ts";
+import {
+  accountEnv, ApprovalBlockedError, approveAssessed, assessmentPrompt, autoApproveLowRisk, GhCommandError, headArgs, parsePullRequestHead,
+  pullRequestAssessment, removeTemporaryFiles, riskVerdictFromTranscript, runGh, staleTemporarySessions, temporaryReview, type AccountGh,
+} from "./pull-request-reviews.ts";
 import { BrowserToolError, ManagedBrowser } from "./browser/manager.ts";
 import { MacPower } from "./power.ts";
 import { attachBrowserTransport, browserViewTicket } from "./browser-transport.ts";
@@ -113,10 +116,10 @@ import {
 import { sessionTreeIds } from "../src/lib/session-tree.ts";
 import { SubagentService } from "./subagents.ts";
 import { presentMediaForSession, servePresentedMedia } from "./presented-media.ts";
-import { GitHubCli, GitHubCliError } from "./github.ts";
+import { GitHubCli, GitHubCliError, signedInAccounts } from "./github.ts";
 import { FIRST_YEAR as GITHUB_FIRST_YEAR, GitHubContributionsReader, latestYear } from "./github-contributions.ts";
-import { GitHubApiError, GitHubPreviews, ghApi, ghJson, previewPullRequestFetcher } from "./github-previews.ts";
-import { correlateSessions, fetchMyPullRequests, MyPullRequestsCache, readCheckouts, repositoryCheckouts, type PullRequestSnapshot } from "./my-pull-requests.ts";
+import { classifyGhFailure, GitHubApiError, GitHubPreviews, ghApi, ghJson, previewPullRequestFetcher } from "./github-previews.ts";
+import { correlateSessions, effectiveAccounts, fetchMyPullRequests, MyPullRequestsCache, readCheckouts, repositoryCheckouts, type PullRequestSnapshot } from "./my-pull-requests.ts";
 import { fetchReviewComments, newReviewComments, NoNewCommentsError, recordCommentsSent, sendReviewComments, sentAtFor } from "./pull-request-comments.ts";
 import { MAX_GITHUB_EMBEDS, parseGitHubUrl } from "../shared/github-links.ts";
 import { TaskSuggestionInputError, TaskSuggestionNotFoundError, TaskSuggestionStore } from "./task-suggestions.ts";
@@ -845,7 +848,23 @@ const githubCli = new GitHubCli({ command: GH_COMMAND });
 const githubPreviews = new GitHubPreviews(ghApi(GH_COMMAND));
 const githubContributions = new GitHubContributionsReader(GH_COMMAND);
 const pullRequestStatuses = new PullRequestStatuses(previewPullRequestFetcher(githubPreviews));
-const myPullRequests = new MyPullRequestsCache(() => fetchMyPullRequests(ghJson(GH_COMMAND)));
+/** `gh` as one signed-in account; its token stays in the child's environment. */
+async function accountGh(login: string): Promise<AccountGh> {
+  const env = await accountEnv(GH_COMMAND, login);
+  return { json: ghJson(GH_COMMAND, env), run: (args) => runGh(GH_COMMAND, args, env) };
+}
+/** Pull Requests → Accounts (default: gh's active account), read at every fetch. */
+const myPullRequests = new MyPullRequestsCache(async () => {
+  const signedIn = await signedInAccounts(GH_COMMAND).catch((error: unknown) => { throw new GitHubApiError(classifyGhFailure(error)); });
+  const accounts = effectiveAccounts((await readSettings()).pullRequestAccounts, signedIn);
+  return fetchMyPullRequests(accounts, async (login) => (await accountGh(login)).json, signedIn);
+});
+/** Low-risk auto-approvals of this gateway run, newest first (memory only). */
+const autoApproved: AutoApprovedPullRequest[] = [];
+/** Temporary reviews whose verdict was already considered for auto-approval. */
+const autoApproveChecked = new Set<string>();
+/** Why a low-risk verdict was not auto-approved, per temporary session. */
+const autoApproveBlocked = new Map<string, string>();
 
 /** The Pull Requests page: cached GitHub lists with sessions linked per request.
  * Created rows also count review comments newer than each session's last send. */
@@ -875,9 +894,11 @@ async function pullRequestsPage(snapshot: PullRequestSnapshot): Promise<MyPullRe
   });
   const assessed = (pr: MyPullRequests["reviewRequested"][number]) => {
     const review = temporaryReview(all, pr.url);
-    return review ? { ...pr, assessment: pullRequestAssessment(review, liveSessions.status(review.id), liveSessions.transcript(review.id)) } : pr;
+    if (!review) return pr;
+    const blocked = autoApproveBlocked.get(review.id);
+    return { ...pr, assessment: { ...pullRequestAssessment(review, liveSessions.status(review.id), liveSessions.transcript(review.id)), ...(blocked ? { autoApproveBlocked: blocked } : {}) } };
   };
-  return { ...snapshot, created: link(snapshot.created), reviewRequested: link(snapshot.reviewRequested).map(assessed) };
+  return { ...snapshot, created: link(snapshot.created), reviewRequested: link(snapshot.reviewRequested).map(assessed), autoApproved: [...autoApproved] };
 }
 
 class PullRequestInputError extends Error {
@@ -907,13 +928,14 @@ async function sendPullRequestReviewComments(body: Record<string, unknown>): Pro
   if (!ref || ref.url !== url) throw new PullRequestInputError("A github.com pull request URL is required.");
   if (body["sessionId"] !== undefined && typeof body["sessionId"] !== "string") throw new PullRequestInputError("Session id must be text.");
   const sessionId = typeof body["sessionId"] === "string" ? body["sessionId"].trim() : "";
-  const pr = (await myPullRequests.view()).created.find((item) => item.url.toLowerCase() === url.toLowerCase());
+  const snapshot = await myPullRequests.view();
+  const pr = snapshot.created.find((item) => item.url.toLowerCase() === url.toLowerCase());
   if (!pr) throw new SessionNotFoundError("That is not one of your open pull requests.");
   const records = await readRegistry();
   let target = sessionId ? records.find((record) => record.id === sessionId) : undefined;
   if (sessionId && !target) throw new SessionNotFoundError(`unknown session: ${sessionId}`);
   // Never act on the cached list: the threads are read again for this send.
-  const comments = await fetchReviewComments(ghJson(GH_COMMAND), pr);
+  const comments = await fetchReviewComments(pr.accounts[0] ? (await accountGh(pr.accounts[0])).json : ghJson(GH_COMMAND), pr, snapshot.selectedAccounts);
   const sentAt = target ? sentAtFor(target, pr.url) : undefined;
   if (!newReviewComments(comments, sentAt).length) throw new NoNewCommentsError("No new review comments to send.");
   if (!target) {
@@ -963,8 +985,58 @@ async function discardTemporarySession(id: string): Promise<void> {
   const record = (await readRegistry()).find((item) => item.id === id);
   if (!record?.temporary) return;
   await deleteSession(id);
+  autoApproveBlocked.delete(id);
   await removeTemporaryFiles(record, PR_REVIEWS_DIR);
 }
+
+/** The account a Review requested row approves as: the first selected account asked directly. */
+function reviewAccount(pr: { accounts: readonly string[] }): string {
+  const account = pr.accounts[0];
+  if (!account) throw new SessionNotFoundError("That pull request does not await your review.");
+  return account;
+}
+
+/** Once a temporary review settles with a verdict: approve it when it is low
+ * risk and the operator enabled auto-approval (read now), and the pull request
+ * is still open, still requests the account and has the assessed head. */
+async function considerAutoApproval(id: string): Promise<void> {
+  if (autoApproveChecked.has(id)) return;
+  autoApproveChecked.add(id);
+  const review = (await readRegistry()).find((record) => record.id === id);
+  const temporary = review?.temporary;
+  if (!temporary) return;
+  const verdict = riskVerdictFromTranscript(liveSessions.transcript(id));
+  // Settled without a verdict (yet): a later turn may still report one.
+  if (!verdict) { autoApproveChecked.delete(id); return; }
+  const ref = pullRequestUrls(temporary.pullRequestUrl)[0];
+  if (!ref) return;
+  const enabled = (await readSettings()).pullRequestAutoApproveLowRisk;
+  const account = temporary.account;
+  const outcome = await autoApproveLowRisk(verdict, enabled, async () => {
+    if (!account) throw new ApprovalBlockedError("The risk review did not record the account it was requested of; assess again.");
+    await approveAssessed(ref, temporary, account, await accountGh(account));
+  });
+  if (outcome.approved) {
+    const title = (await myPullRequests.view()).reviewRequested.find((item) => item.url.toLowerCase() === ref.url.toLowerCase())?.title ?? "";
+    autoApproved.unshift({ repository: ref.repository, number: ref.number, url: ref.url, title, account: account!, approvedAt: new Date().toISOString() });
+    autoApproved.splice(50);
+    recordDiagnosticEvent({ area: "session", level: "info", action: "pull_request_auto_approved", summary: `Auto-approved ${ref.repository}#${ref.number} (low risk) as ${account}`, sessionId: id });
+    await discardTemporarySession(id);
+    void myPullRequests.refresh();
+  } else if (outcome.reason) {
+    autoApproveBlocked.set(id, outcome.reason);
+  }
+}
+
+function watchAutoApprovals(): () => void {
+  return liveSessions.watchStatuses((update) => {
+    if (update.status !== "idle") return;
+    void considerAutoApproval(update.id).catch((error: unknown) => {
+      autoApproveBlocked.set(update.id, `Not auto-approved: ${error instanceof Error ? error.message : "the check failed."}`);
+    });
+  }).unsubscribe;
+}
+let stopAutoApprovals: (() => void) | undefined;
 
 const assessing = new Set<string>();
 
@@ -978,13 +1050,17 @@ async function assessPullRequest(body: Record<string, unknown>): Promise<{ sessi
   let record: SessionRecord | undefined;
   let scratchDir: string | undefined;
   try {
+    // The head commit and the account it was requested of: an approval later
+    // requires both to still hold.
+    const account = reviewAccount(pr);
+    const { headRefOid } = parsePullRequestHead(await (await accountGh(account)).json(headArgs(pr)));
     const checkouts = await readCheckouts(records.filter((item) => !item.temporary).map((item) => item.cwd), runCommand);
     const known = repositoryCheckouts(pr, checkouts)[0]?.cwd;
     if (!known) {
       scratchDir = join(PR_REVIEWS_DIR, randomUUID());
       await mkdir(scratchDir, { recursive: true });
     }
-    const temporary: TemporarySession = { kind: "pr-review", pullRequestUrl: pr.url, ...(scratchDir ? { scratchDir } : {}) };
+    const temporary: TemporarySession = { kind: "pr-review", pullRequestUrl: pr.url, ...(scratchDir ? { scratchDir } : {}), account, headRefOid };
     record = await createSession(
       { cwd: known ?? scratchDir, title: `Risk review: ${pr.repository}#${pr.number}`, tool: "pi" },
       liveSessions, updateRegistry, undefined, { temporary },
@@ -1009,8 +1085,11 @@ async function settlePullRequestReview(action: "approve" | "dismiss" | "keep", b
   if (action === "keep") {
     await updateRegistry((current) => current.map((item) => item.id === review.id ? { ...item, temporary: undefined } : item));
   } else {
-    // A failed approval keeps the temporary session and returns gh's error.
-    if (action === "approve") await runGh(GH_COMMAND, approveArgs(pr));
+    // A failed or refused approval keeps the temporary session and returns the reason.
+    if (action === "approve") {
+      const account = review.temporary?.account ?? reviewAccount(pr);
+      await approveAssessed(pr, review.temporary ?? {}, account, await accountGh(account));
+    }
     await discardTemporarySession(review.id);
   }
   return pullRequestsPage(action === "approve" ? await myPullRequests.refresh() : await myPullRequests.view());
@@ -1019,7 +1098,7 @@ async function settlePullRequestReview(action: "approve" | "dismiss" | "keep", b
 function reviewCommentsErrorStatus(error: unknown): number {
   if (error instanceof PullRequestInputError) return 400;
   if (error instanceof SessionNotFoundError) return 404;
-  if (error instanceof NoNewCommentsError || error instanceof WorktreeInputError || error instanceof SessionBusyError || error instanceof AssessmentConflictError) return 409;
+  if (error instanceof NoNewCommentsError || error instanceof WorktreeInputError || error instanceof SessionBusyError || error instanceof AssessmentConflictError || error instanceof ApprovalBlockedError) return 409;
   if (error instanceof GitHubApiError || error instanceof GhCommandError) return 502;
   return 500;
 }
@@ -3542,6 +3621,7 @@ export async function startBackend(): Promise<void> {
   await automation.start();
   initializeSubagents();
   await discardStaleTemporarySessions();
+  stopAutoApprovals ??= watchAutoApprovals();
   recoverInterruptedSessions(await readRegistry());
 }
 
@@ -3569,6 +3649,8 @@ export function recoverInterruptedSessions(
 }
 
 export function stopBackend(): void {
+  stopAutoApprovals?.();
+  stopAutoApprovals = undefined;
   macPower?.dispose();
   managedBrowser.dispose();
   terminals.dispose();

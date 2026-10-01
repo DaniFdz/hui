@@ -151,3 +151,16 @@ test("normalizes a safe worktree branch prefix", () => {
     assert.equal(normalizeBranchPrefix(prefix), "feature/");
   }
 });
+
+test("pull request accounts are distinct GitHub logins; auto-approve is opt-in", () => {
+  assert.deepEqual(DEFAULT_SETTINGS.pullRequestAccounts, []);
+  assert.equal(DEFAULT_SETTINGS.pullRequestAutoApproveLowRisk, false);
+  const settings = normalizeSettings({
+    pullRequestAccounts: [" personal-account ", "work-account", "PERSONAL-ACCOUNT", "bad login", "-dash", 7, "x".repeat(40)],
+    pullRequestAutoApproveLowRisk: true,
+  });
+  assert.deepEqual(settings.pullRequestAccounts, ["personal-account", "work-account"]);
+  assert.equal(settings.pullRequestAutoApproveLowRisk, true);
+  assert.deepEqual(normalizeSettings({ pullRequestAccounts: "personal-account", pullRequestAutoApproveLowRisk: "yes" }).pullRequestAccounts, []);
+  assert.equal(normalizeSettings({ pullRequestAutoApproveLowRisk: "yes" }).pullRequestAutoApproveLowRisk, false);
+});

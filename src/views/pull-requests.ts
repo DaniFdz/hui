@@ -18,6 +18,7 @@ import { pullRequestStateIcon } from "../components/pull-request-hovercard.ts";
 import { icons } from "../lib/icons.ts";
 import { navigationPath } from "../lib/navigation.ts";
 import { formatUpdated } from "./sessions.ts";
+import { renderSettingsToggle } from "./settings-toggle.ts";
 
 if (typeof document !== "undefined") {
   await import("../styles/openclaw-workspaces.css");
@@ -49,6 +50,17 @@ export type PullRequestsPageProps = {
   reviewing: string;
   /** URL whose approval waits in the confirmation dialog. */
   approveConfirm: string;
+  /** URL whose risk review is open in the side drawer. */
+  drawer: string;
+  onOpenDrawer: (pr: MyPullRequest) => void;
+  onCloseDrawer: () => void;
+  /** Settings → `pullRequestAutoApproveLowRisk`. */
+  autoApprove: boolean;
+  onAutoApprove: (enabled: boolean) => void;
+  /** Checked accounts: the saved selection, else the accounts last listed. */
+  selectedAccounts: readonly string[];
+  /** Saves the selected accounts (Settings → `pullRequestAccounts`). */
+  onAccounts: (accounts: string[]) => void;
   onAssess: (pr: MyPullRequest) => void;
   onAskApprove: (pr: MyPullRequest) => void;
   onCancelApprove: () => void;
@@ -92,6 +104,21 @@ export function reviewCommentsAction(pr: MyPullRequest, picked: string | undefin
     ? `No local checkout of ${pr.repository} is known. Start a session in a checkout of it first.`
     : count ? undefined : "No open review comments by others.";
   return { kind: "start", count, ...(disabled ? { disabled } : {}) };
+}
+
+/** The compact state the Review requested actions cell shows. */
+export function riskPill(pr: MyPullRequest): { label: string; tone: string } | undefined {
+  const assessment = pr.assessment;
+  if (!assessment) return undefined;
+  if (assessment.state === "assessing") return { label: "Assessing…", tone: "warn" };
+  return assessment.verdict ? RISKS[assessment.verdict.risk] : { label: "No verdict", tone: "muted" };
+}
+
+/** The account list after toggling `login`, in signed-in order. The last
+ * selected account cannot be cleared (none would mean the active one anyway). */
+export function toggledAccounts(accounts: readonly string[], selected: readonly string[], login: string, checked: boolean): string[] {
+  const next = accounts.filter((account) => account === login ? checked : selected.includes(account));
+  return next.length ? next : [...selected];
 }
 
 /** Free-text filter over repository, number, title and branch. */
@@ -199,45 +226,99 @@ function renderAssessAction(props: PullRequestsPageProps, pr: MyPullRequest) {
       </span>
     </span>`;
   }
-  if (assessment.state === "assessing") {
-    return html`<span class="worktree-actions pull-request-actions">
-      <span class="pull-request-assessing" role="status">${status("Assessing…", "warn")}</span>${openSessionLink(props, assessment.sessionId)}
-    </span>`;
-  }
-  const verdict = assessment.verdict;
-  return html`<span class="worktree-actions pull-request-actions">${verdict ? status(RISKS[verdict.risk].label, RISKS[verdict.risk].tone) : status("No verdict", "muted")}</span>`;
+  const pill = riskPill(pr)!;
+  return html`<span class="worktree-actions pull-request-actions">
+    <button type="button" class="btn btn--sm pull-request-risk-pill" data-risk-pill=${pr.url} aria-haspopup="dialog"
+      aria-label=${`${pill.label}: open the risk review of ${pullRequestReference(pr)}`}
+      @click=${() => props.onOpenDrawer(pr)}>${status(pill.label, pill.tone)}</button>
+  </span>`;
 }
 
-/** The verdict card (or "No verdict") under a Review requested row. */
-function renderVerdictRow(props: PullRequestsPageProps, pr: MyPullRequest, columns: number) {
-  const assessment = pr.assessment;
-  if (!assessment || assessment.state === "assessing") return nothing;
+/** The risk review of one Review requested pull request, in a right-side
+ * drawer (a native modal dialog: Escape closes it, focus stays inside). */
+export function renderVerdictDrawer(props: PullRequestsPageProps): TemplateResult | typeof nothing {
+  const pr = props.data?.reviewRequested.find((item) => item.url === props.drawer);
+  const assessment = pr?.assessment;
+  if (!pr || !assessment) return nothing;
   const verdict = assessment.verdict;
+  const pill = riskPill(pr)!;
   const disabled = Boolean(props.reviewing);
   const busy = props.reviewing === pr.url;
-  return html`<tr class="pull-request-verdict-row" data-pull-request-verdict=${pr.url}>
-    <td colspan=${columns}>
-      <div class="pull-request-verdict" data-risk=${verdict?.risk ?? "none"} aria-label=${`Risk review of ${pullRequestReference(pr)}`}>
-        ${verdict ? html`
-          <div class="pull-request-verdict__head">${status(RISKS[verdict.risk].label, RISKS[verdict.risk].tone)}<p class="pull-request-verdict__summary">${verdict.summary}</p></div>
-          ${verdict.reasons.length ? html`<ul class="pull-request-verdict__reasons">${verdict.reasons.map((reason) => html`<li>${reason}</li>`)}</ul>` : nothing}
-          ${verdict.focusAreas?.length ? html`<div class="pull-request-verdict__focus"><span class="muted">Look closely at</span>
-            <ul>${verdict.focusAreas.map((area) => html`<li><bdi class="mono">${area.path}</bdi> — ${area.note}</li>`)}</ul></div>` : nothing}
-        ` : html`<p class="pull-request-verdict__summary">No verdict. The review session finished without reporting a risk verdict.</p>`}
-        <div class="pull-request-verdict__actions">
-          ${verdict ? html`<button type="button" class="btn btn--sm primary" data-approve ?disabled=${disabled} @click=${() => props.onAskApprove(pr)}>Approve</button>` : nothing}
-          <span class="worktree-tooltip-wrap" data-hui-tooltip="Delete the temporary session and its transcript">
-            <button type="button" class="btn btn--sm" data-dismiss ?disabled=${disabled} @click=${() => props.onDismiss(pr)}>Dismiss</button>
-          </span>
-          <span class="worktree-tooltip-wrap" data-hui-tooltip="Keep the review as a normal session">
-            <button type="button" class="btn btn--sm" data-keep ?disabled=${disabled} @click=${() => props.onKeep(pr)}>Keep</button>
-          </span>
-          ${openSessionLink(props, assessment.sessionId)}
-          ${busy ? html`<span class="muted" role="status">Working…</span>` : nothing}
-        </div>
+  return html`<dialog class="pull-request-drawer" data-risk=${verdict?.risk ?? "none"} aria-labelledby="pull-request-drawer-title"
+    @cancel=${(event: Event) => { event.preventDefault(); props.onCloseDrawer(); }}
+    @keydown=${(event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      props.onCloseDrawer();
+    }}>
+    <header class="pull-request-drawer__header">
+      <div class="pull-request-drawer__heading">
+        <span class="muted mono">${pullRequestReference(pr)}</span>
+        <a class="pull-request-drawer__title" id="pull-request-drawer-title" href=${pr.url} target="_blank" rel="noopener noreferrer">${pr.title || pullRequestReference(pr)}</a>
       </div>
-    </td>
-  </tr>`;
+      <button type="button" class="btn btn--icon pull-request-drawer__close" aria-label="Close the risk review" @click=${props.onCloseDrawer}>${icons.close}</button>
+    </header>
+    <div class="pull-request-drawer__body">
+      ${status(pill.label, pill.tone)}
+      ${assessment.state === "assessing"
+        ? html`<p class="pull-request-verdict__summary">The temporary review session is reading the pull request. Its verdict appears here when it reports.</p>`
+        : verdict ? html`
+          <p class="pull-request-verdict__summary">${verdict.summary}</p>
+          ${verdict.reasons.length ? html`<section><h3 class="pull-request-drawer__label">Reasons</h3><ul class="pull-request-verdict__reasons">${verdict.reasons.map((reason) => html`<li>${reason}</li>`)}</ul></section>` : nothing}
+          ${verdict.focusAreas?.length ? html`<section><h3 class="pull-request-drawer__label">Look closely at</h3>
+            <ul class="pull-request-verdict__focus">${verdict.focusAreas.map((area) => html`<li><bdi class="mono">${area.path}</bdi> — ${area.note}</li>`)}</ul></section>` : nothing}
+        ` : html`<p class="pull-request-verdict__summary">No verdict. The review session finished without reporting a risk verdict.</p>`}
+      ${assessment.autoApproveBlocked ? html`<div class="callout warning" role="status">${assessment.autoApproveBlocked}</div>` : nothing}
+    </div>
+    <footer class="pull-request-drawer__actions">
+      ${verdict ? html`<button type="button" class="btn btn--sm primary" data-approve ?disabled=${disabled} @click=${() => props.onAskApprove(pr)}>Approve</button>` : nothing}
+      ${assessment.state === "assessing" ? nothing : html`
+        <span class="worktree-tooltip-wrap" data-hui-tooltip="Delete the temporary session and its transcript">
+          <button type="button" class="btn btn--sm" data-dismiss ?disabled=${disabled} @click=${() => props.onDismiss(pr)}>Dismiss</button>
+        </span>
+        <span class="worktree-tooltip-wrap" data-hui-tooltip="Keep the review as a normal session">
+          <button type="button" class="btn btn--sm" data-keep ?disabled=${disabled} @click=${() => props.onKeep(pr)}>Keep</button>
+        </span>`}
+      ${openSessionLink(props, assessment.sessionId)}
+      ${busy ? html`<span class="muted" role="status">Working…</span>` : nothing}
+    </footer>
+    ${props.sendNotice ? html`<div class="callout ${props.sendNotice.tone === "ok" ? "success" : "danger"}" role=${props.sendNotice.tone === "ok" ? "status" : "alert"}>${props.sendNotice.text}</div>` : nothing}
+  </dialog>`;
+}
+
+function renderAccounts(props: PullRequestsPageProps) {
+  const accounts = props.data?.accounts ?? [];
+  const selected = props.selectedAccounts;
+  if (!accounts.length) return nothing;
+  return html`<fieldset class="pull-request-accounts">
+    <legend>Accounts</legend>
+    ${accounts.map((login) => {
+      const checked = selected.includes(login);
+      return html`<label class="pull-request-accounts__option">
+        <input type="checkbox" .checked=${checked} ?disabled=${props.loading || (checked && selected.length === 1)}
+          @change=${(event: Event) => props.onAccounts(toggledAccounts(accounts, selected, login, (event.target as HTMLInputElement).checked))} />
+        <span class="mono">${login}</span>
+      </label>`;
+    })}
+  </fieldset>`;
+}
+
+function renderAutoApprove(props: PullRequestsPageProps) {
+  const approved = props.data?.autoApproved ?? [];
+  return html`<div class="pull-request-auto-approve">
+    <div class="settings-row settings-row--toggle">
+      <span class="settings-row__text"><span class="settings-row__title">Auto-approve low risk</span>
+        <span class="settings-row__desc">Only applies to pull requests you assessed; never to medium, high or no verdict.</span></span>
+      <span class="settings-row__control">${renderSettingsToggle("Auto-approve low risk", props.autoApprove, props.onAutoApprove)}</span>
+    </div>
+    ${approved.length ? html`<div class="pull-request-auto-approved" role="status" aria-label="Auto-approved">
+      <span class="pull-request-drawer__label">Auto-approved</span>
+      <ul>${approved.map((item) => html`<li><a href=${item.url} target="_blank" rel="noopener noreferrer" class="mono">${pullRequestReference(item)}</a>
+        ${item.title ? html`<span>${item.title}</span>` : nothing}
+        <span class="muted">as ${item.account} · <span title=${item.approvedAt}>${formatUpdated(item.approvedAt)}</span></span></li>`)}</ul>
+    </div>` : nothing}
+  </div>`;
 }
 
 /** Names the pull request and its verdict; the only way to approve. */
@@ -299,6 +380,8 @@ function body(props: PullRequestsPageProps, rows: readonly MyPullRequest[]): Tem
             <span class="muted session-key-display-name">
               <span class="mono">${pullRequestReference(pr)}</span> · <bdi class="mono">${pr.headRefName}</bdi>${pr.author && props.tab === "reviewRequested" ? ` · ${pr.author}` : ""}
             </span>
+            ${(props.data?.selectedAccounts.length ?? 0) > 1 ? html`<span class="muted pull-request-row-accounts">${props.tab === "reviewRequested" ? "Requested of" : "As"}
+              ${pr.accounts.map((login, index) => html`${index ? ", " : ""}<bdi class="mono" data-account=${login}>${login}</bdi>`)}</span>` : nothing}
           </span>
         </div>
       </td>
@@ -313,7 +396,6 @@ function body(props: PullRequestsPageProps, rows: readonly MyPullRequest[]): Tem
       <td title=${pr.updatedAt}>${formatUpdated(pr.updatedAt)}</td>
       <td class="pull-request-actions-col">${props.tab === "created" ? renderCommentsAction(props, pr) : renderAssessAction(props, pr)}</td>
     </tr>
-    ${props.tab === "reviewRequested" ? renderVerdictRow(props, pr, columns) : nothing}
   `)}`;
 }
 
@@ -356,7 +438,7 @@ export function renderPullRequestsPage(props: PullRequestsPageProps): TemplateRe
             `)}
           </div>
         </div>
-        <div class="hub-page-header__actions"></div>
+        <div class="hub-page-header__actions">${renderAccounts(props)}</div>
       </header>
       <div class="settings-workspace__body" id="pull-requests-panel">
         <div class="settings-page settings-page--wide sessions-page">
@@ -377,6 +459,7 @@ export function renderPullRequestsPage(props: PullRequestsPageProps): TemplateRe
               </div>
             </div>
             ${notice(props)}
+            ${props.tab === "reviewRequested" ? renderAutoApprove(props) : nothing}
             <div class="settings-group">
               <div class="sessions-toolbar sessions-filter-bar" aria-label="Pull request filters">
                 <label class="data-table-search sessions-toolbar__search">
@@ -403,6 +486,7 @@ export function renderPullRequestsPage(props: PullRequestsPageProps): TemplateRe
           </section>
         </div>
       </div>
+      ${renderVerdictDrawer(props)}
       ${renderApproveDialog(props)}
     </section>
   `;
