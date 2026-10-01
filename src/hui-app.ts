@@ -717,8 +717,18 @@ export class HuiApp extends HuiElement {
         : session),
     }));
     if (created) void this.refreshSessions(true);
-    if (!this.embeddedPane && this.selected?.id === id) this.selected = { ...this.selected, status, ...(title ? { title } : {}) };
+    if (!this.embeddedPane && this.selected?.id === id) {
+      this.reopenIfRestarted(id, status);
+      this.selected = { ...this.selected, status, ...(title ? { title } : {}) };
+    }
   };
+
+  /** The gateway restarted a runtime whose stream had ended: a remote session
+   * reattached after a lost connection, or a retry from another screen. */
+  private reopenIfRestarted(id: string, status: SessionStatus) {
+    if (this.selected?.id !== id || this.opening || this.connection !== "stopped") return;
+    if (this.selected.status === "error" && status !== "error") void this.openSelected(id);
+  }
 
   private async refreshSessions(background = false) {
     if (this.embeddedPane) {
@@ -798,6 +808,8 @@ export class HuiApp extends HuiElement {
       // The stream clears an interruption when a run starts; the gateway clears
       // it when a reattached remote run turns out to have finished.
       if (listed) this.selected = { ...selected, ...listed, status: selected.status, interrupted: selected.interrupted && listed.interrupted };
+      const shellStatus = selected && this.paneGroups.flatMap((group) => group.sessions).find((session) => session.id === selected.id)?.status;
+      if (selected && shellStatus) this.reopenIfRestarted(selected.id, shellStatus);
       this.sessionsLoading = false;
       this.openPendingSession();
     }
