@@ -27,8 +27,13 @@ export type SessionRecord = {
   cwd: string;
   /** Which runtime adapter drives it. HUI creates only `pi` sessions. */
   tool: string;
-  /** pi's own session file, when there is one to resume. */
+  /** pi's own session file, when there is one to resume. On a remote worker
+   * both this and `cwd` are paths on that machine. */
   piSessionFile?: string;
+  /** Remote worker (workers.json id) that runs the session; absent: local. */
+  worker?: string;
+  /** The session is a bot owned by that worker's host. */
+  bot?: boolean;
   /** `provider/id` the session started on. Persisted so resuming keeps the
    * model the user chose instead of falling back to pi's default. */
   model?: string;
@@ -175,6 +180,7 @@ function toRecord(raw: unknown): SessionRecord | undefined {
     return undefined;
   }
   const piSessionFile = str(raw["piSessionFile"]).trim();
+  const worker = str(raw["worker"]).trim();
   const model = str(raw["model"]).trim();
   const thinking = str(raw["thinking"]).trim();
   const runStartedAt = str(raw["runStartedAt"]).trim();
@@ -209,6 +215,8 @@ function toRecord(raw: unknown): SessionRecord | undefined {
     cwd,
     tool: str(raw["tool"]).trim() || "pi",
     ...(piSessionFile ? { piSessionFile } : {}),
+    ...(worker ? { worker } : {}),
+    ...(worker && raw["bot"] === true ? { bot: true } : {}),
     ...(model ? { model } : {}),
     ...(thinking ? { thinking } : {}),
     ...(runStartedAt ? { runStartedAt } : {}),

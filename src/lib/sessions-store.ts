@@ -58,6 +58,10 @@ export type SessionView = {
   cwd: string;
   /** `cwd` with home shortened to `~/`; absent from older gateways. */
   displayCwd?: string;
+  /** Remote worker the session runs on; `cwd` is a path there. */
+  worker?: { id: string; name: string };
+  /** A bot hosted by that worker. */
+  bot?: true;
   tool: string;
   status: SessionStatus;
   /** Git worktree progress while the gateway still creates this session. */
@@ -374,6 +378,8 @@ export async function createSession(input: {
   worktree?: boolean;
   branchName?: string;
   baseRef?: string;
+  /** Remote worker id; absent runs on the gateway machine. */
+  worker?: string;
 }): Promise<SessionView> {
   const body = await fetchJson<{ session?: SessionView }>(SESSIONS_URL, {
     method: "POST",

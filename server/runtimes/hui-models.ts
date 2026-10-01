@@ -7,7 +7,8 @@ import { credentialStore, type CredentialStore, ProviderAccounts } from "../prov
 import { accountRouting } from "./provider-account-routing.ts";
 import { CONFIG_DIR } from "../paths.ts";
 
-export const PROVIDERS_DIR = join(CONFIG_DIR, "providers");
+/** A remote worker points its PI processes at the mirrored HUI providers. */
+export const PROVIDERS_DIR = process.env["HUI_PROVIDERS_DIR"] || join(CONFIG_DIR, "providers");
 export type ProviderSelections = Record<string, { models: string[] }>;
 export async function readProviderSelections(dir = PROVIDERS_DIR): Promise<ProviderSelections> {
   let raw: unknown;
@@ -38,13 +39,13 @@ export function createHuiModelRuntime(dir = PROVIDERS_DIR) {
  * overrides, potentially routing HUI credentials to the wrong endpoint. */
 export async function createSessionModelRuntime(agentDir: string, dir = PROVIDERS_DIR) {
   const selections = await readProviderSelections(dir);
-  const pi = await ModelRuntime.create({ authPath: join(agentDir, "auth.json"), modelsPath: join(agentDir, "models.json") });
+  const pi = await ModelRuntime.create({ credentials: credentialStore(join(agentDir, "auth.json")), modelsPath: join(agentDir, "models.json") });
   if (!Object.keys(selections).length) return pi;
   const managed = await createHuiModelRuntime(dir);
   const accounts = new ProviderAccounts(dir);
   const routing = await accountRouting(accounts);
   const huiStore = routing.credentials;
-  const piStore = await credentialStore(join(agentDir, "auth.json"));
+  const piStore = credentialStore(join(agentDir, "auth.json"));
   const store = (id: string) => Object.hasOwn(selections, id) ? huiStore : piStore;
   const credentials: CredentialStore = {
     read: (id, options) => store(id).read(id, options),

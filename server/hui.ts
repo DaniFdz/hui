@@ -18,10 +18,13 @@
 import { mkdir, readFile, readdir, stat, unlink, writeFile } from "node:fs/promises";
 import type { ServerResponse } from "node:http";
 import { randomUUID } from "node:crypto";
+import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import type { Connect, Plugin } from "vite";
+import { workers, WorkerInputError } from "./workers.ts";
+import { createWorkerRoutes, WORKERS_ROUTE } from "./worker-routes.ts";
 import { progressCardFromTranscript, type ProgressCard } from "../shared/progress-card.ts";
 import type { SessionPullRequest } from "../shared/pull-requests.ts";
 import {
@@ -215,6 +218,19 @@ const PRESENTED_MEDIA_ROUTE = /^\/__hui\/media\/([0-9a-f-]+)\/([^/]+)$/u;
 /** How long an event stream may sit idle before a comment proves it is alive. */
 const HEARTBEAT_MS = 15_000;
 const piMutations = new PiMutationService();
+const workerRoutes = createWorkerRoutes({
+  service: workers,
+  readRegistry,
+  updateRegistry,
+  sessions: liveSessions,
+  deleteSession: (id) => deleteSession(id),
+});
+workers.onBots((workerId, bots) => {
+  void workerRoutes.onBots(workerId, bots).catch((error: unknown) => recordDiagnosticEvent({
+    area: "session", level: "warning", action: "bot_sessions_failed",
+    summary: error instanceof Error ? error.message : "Could not list a worker's bots.",
+  }));
+});
 const subagents = new SubagentService(liveSessions);
 const taskSuggestions = new TaskSuggestionStore({ onChange: (id) => liveSessions.notifySnapshot(id) });
 /** One managed browser per gateway; its settings are re-read on every call. */
@@ -703,6 +719,10 @@ type SessionView = {
   cwd: string;
   /** `cwd` with the home directory shortened to `~/`, for display only. */
   displayCwd: string;
+  /** Remote worker the session runs on; absent for this machine. */
+  worker?: { id: string; name: string };
+  /** A bot hosted by that worker. */
+  bot?: true;
   tool: string;
   status: SessionStatus;
   /** Git worktree progress while the session's checkout is still created. */
@@ -948,7 +968,9 @@ function toView(
     title: record.title,
     group: record.group,
     cwd: record.cwd,
-    displayCwd: record.cwd ? displayPath(record.cwd) : "",
+    displayCwd: record.worker ? `${workers.nameOf(record.worker) ?? "Remote"}:${record.cwd}` : record.cwd ? displayPath(record.cwd) : "",
+    ...(record.worker ? { worker: { id: record.worker, name: workers.nameOf(record.worker) ?? "Remote worker" } } : {}),
+    ...(record.bot ? { bot: true as const } : {}),
     tool: record.tool,
     status,
     ...(runtime ? { runtime } : {}),
@@ -1208,15 +1230,29 @@ export async function createSession(
   } = {},
 ): Promise<SessionRecord> {
   if (typeof body["cwd"] !== "string") throw new Error("Working directory must be text.");
-  let cwd = resolveWorkingDirectory(body["cwd"]);
-  let info;
-  try {
-    info = await stat(cwd);
-  } catch {
-    throw new Error(`No such directory: ${cwd}`);
+  if (body["worker"] !== undefined && (typeof body["worker"] !== "string" || !body["worker"].trim())) {
+    throw new Error("Worker must be a worker id.");
   }
-  if (!info.isDirectory()) {
-    throw new Error(`Not a directory: ${cwd}`);
+  const worker = typeof body["worker"] === "string" ? body["worker"].trim() : undefined;
+  let cwd: string;
+  if (worker) {
+    // The remote checks the directory when the session starts, so creating
+    // one never waits on a first connection or installation.
+    await workers.get(worker);
+    cwd = body["cwd"].trim();
+    if (!cwd.startsWith("/") && cwd !== "~" && !cwd.startsWith("~/")) throw new Error("A remote directory must be absolute or start with ~/.");
+    if (body["worktree"] === true || body["baseRef"] !== undefined) throw new Error("Worktrees and branch checkouts are not available on remote workers yet.");
+  } else {
+    cwd = resolveWorkingDirectory(body["cwd"]);
+    let info;
+    try {
+      info = await stat(cwd);
+    } catch {
+      throw new Error(`No such directory: ${cwd}`);
+    }
+    if (!info.isDirectory()) {
+      throw new Error(`Not a directory: ${cwd}`);
+    }
   }
 
   const title = sessionText(body, "title", SESSION_TITLE_MAX, {
@@ -1275,6 +1311,7 @@ export async function createSession(
     title: named,
     group,
     cwd,
+    ...(worker ? { worker } : {}),
     tool: runtimeTool,
     ...(model ? { model } : {}),
     ...(thinking ? { thinking } : {}),
@@ -1294,9 +1331,11 @@ export async function createSession(
   // title at once and renamed when the utility model answers, so the request
   // never waits on a model call.
   const namesLater = Boolean(initialPrompt && !title && !requestedWorktree);
+  // Utility calls are tool-free and run on this machine.
+  const namingCwd = worker ? homedir() : cwd;
   const names = initialPrompt && !namesLater
     ? await nameSession({
-        cwd,
+        cwd: namingCwd,
         prompt: initialPrompt,
         settings,
         ...(title ? { title } : {}),
@@ -1338,7 +1377,7 @@ export async function createSession(
   sessions.accept(record.id);
   sessions.ensure(record);
   if (namesLater && initialPrompt) {
-    void renameWithGeneratedTitle(record, () => nameSession({ cwd, prompt: initialPrompt, settings }), registryUpdater);
+    void renameWithGeneratedTitle(record, () => nameSession({ cwd: namingCwd, prompt: initialPrompt, settings }), registryUpdater);
   }
   return record;
 }
@@ -2189,6 +2228,13 @@ async function handleRequest(
     return;
   }
 
+  if (path === WORKERS_ROUTE || path.startsWith(`${WORKERS_ROUTE}/`)) {
+    const result = await workerRoutes.handle(request.method ?? "GET", path, () => readBody(request));
+    if (result) sendJson(response, result.status, result.body);
+    else sendJson(response, 404, { error: "not found" });
+    return;
+  }
+
   if (path === `${PREFIX}providers` || path.startsWith(`${PREFIX}providers/`)) {
     try {
       const parts = path.slice(`${PREFIX}providers`.length).split("/").filter(Boolean);
@@ -2915,9 +2961,11 @@ async function handleRequest(
       // Block stale opens first, but keep the runtime and streams alive until
       // registry removal commits. A storage failure rolls the tombstone back.
       try {
+        const record = (await readRegistry()).find((item) => item.id === id);
+        if (record) await workerRoutes.beforeSessionDelete(record);
         await deleteSession(id);
       } catch (error) {
-        sendJson(response, error instanceof SessionNotFoundError ? 404 : 500, {
+        sendJson(response, error instanceof SessionNotFoundError ? 404 : error instanceof WorkerInputError ? 409 : 500, {
           error: error instanceof Error ? error.message : "Could not remove that session.",
         });
         return;
@@ -3305,6 +3353,8 @@ export async function startBackend(): Promise<void> {
   void macPower?.start((await readSettings()).power.keepAwake);
   await automation.start();
   initializeSubagents();
+  await workers.list().catch(() => undefined);
+  void workers.connectKept();
   recoverInterruptedSessions(await readRegistry());
 }
 
@@ -3329,6 +3379,9 @@ export function stopBackend(): void {
   automation.dispose();
   subagents.dispose();
   stopAgentToolBridge();
+  // Closed first: remote sessions then keep running on their hosts instead of
+  // receiving a kill from the disposal below.
+  workers.disconnectAll();
   liveSessions.disposeAll();
 }
 

@@ -140,6 +140,11 @@ const server = createServer(async (request, response) => {
     return json(response, 404, { error: "not found" });
   }
 
+  // Opt-in credential check, e.g. to prove a remote worker got the key.
+  const requiredKey = process.env.HUI_E2E_PROVIDER_KEY;
+  if (requiredKey && request.headers["x-api-key"] !== requiredKey) {
+    return json(response, 401, { type: "error", error: { type: "authentication_error", message: "fixture provider: wrong API key" } });
+  }
   const chunks = [];
   for await (const chunk of request) chunks.push(chunk);
   const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));

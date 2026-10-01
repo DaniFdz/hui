@@ -11,6 +11,9 @@ import { RuntimeTimings, sanitizeMetrics } from "./transcript-metrics.ts";
  */
 import { resolveCommandReference } from "../../src/lib/command-references.ts";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import { workers } from "../workers.ts";
 import { fileURLToPath } from "node:url";
 import { enabledBundledSkillPaths, isBundledSkillPreference } from "../bundled-skills.ts";
 import { resolvePiAgentDir } from "../pi-paths.ts";
@@ -660,8 +663,18 @@ export class PiSession implements RuntimeSession {
     return this.#child.pid;
   }
 
-  constructor(child: ChildProcessWithoutNullStreams, agentDir?: string, disabledSkillNames: readonly string[] = [], sdk = false) {
+  /** Attached to a remote run that kept going without this gateway. */
+  readonly resumed: boolean;
+  #stageAttachments: ((attachments: readonly PromptAttachment[]) => Promise<readonly PromptAttachment[]>) | undefined;
+
+  constructor(child: ChildProcessWithoutNullStreams, agentDir?: string, disabledSkillNames: readonly string[] = [], sdk = false, remote?: {
+    resumed: boolean;
+    /** Copies file attachments to where the remote agent can read them. */
+    stageAttachments(attachments: readonly PromptAttachment[]): Promise<readonly PromptAttachment[]>;
+  }) {
     this.#child = child;
+    this.resumed = remote?.resumed ?? false;
+    this.#stageAttachments = remote?.stageAttachments;
     this.#agentDir = agentDir;
     this.#disabledSkillCommands = new Set(disabledSkillNames.map((name) => `skill:${name}`));
     if (sdk) {
@@ -958,6 +971,7 @@ export class PiSession implements RuntimeSession {
 
   async prompt(text: string, attachments: readonly PromptAttachment[] = []): Promise<void> {
     text = await this.#resolveReference(text);
+    if (this.#stageAttachments) attachments = await this.#stageAttachments(attachments);
     this.#streaming = true;
     const payload = this.#promptPayload(text, attachments);
     const response = await this.#send(
@@ -996,6 +1010,7 @@ export class PiSession implements RuntimeSession {
 
   async steer(text: string, attachments: readonly PromptAttachment[] = []): Promise<void> {
     text = await this.#resolveReference(text, true);
+    if (this.#stageAttachments) attachments = await this.#stageAttachments(attachments);
     const response = await this.#send(
       { type: "steer", ...this.#promptPayload(text, attachments) },
       PROMPT_TIMEOUT_MS,
@@ -1005,6 +1020,7 @@ export class PiSession implements RuntimeSession {
 
   async followUp(text: string, attachments: readonly PromptAttachment[] = []): Promise<void> {
     text = await this.#resolveReference(text, true);
+    if (this.#stageAttachments) attachments = await this.#stageAttachments(attachments);
     const response = await this.#send(
       { type: "follow_up", ...this.#promptPayload(text, attachments) },
       PROMPT_TIMEOUT_MS,
@@ -1222,7 +1238,10 @@ async function startPi(options: {
   backend?: "sdk" | "cli";
   /** Isolated test/probe configuration; otherwise use the configured PI path. */
   agentDir?: string;
+  /** Remote worker id; absent runs PI on this machine. */
+  worker?: string;
 }): Promise<PiSession> {
+  if (options.worker) return startRemotePi({ ...options, worker: options.worker });
   const args = ["--mode", "rpc"];
   const huiSettings = options.safeProbe ? undefined : await readHuiSettings();
   const browserTool = !options.safeProbe && huiSettings?.browser.enabled !== false;
@@ -1293,6 +1312,38 @@ async function startPi(options: {
   } catch (error) {
     const output = session.recentOutput(error instanceof Error ? error.message : undefined);
     session.dispose();
+    throw output && error instanceof Error ? new RuntimeOutputError(error.message, output, { cause: error }) : error;
+  }
+  return session;
+}
+
+/** The same PI SDK worker on a remote host, reached through its connection. */
+async function startRemotePi(options: Parameters<typeof startPi>[0] & { worker: string }): Promise<PiSession> {
+  if ((options.backend ?? piBackend()) !== "sdk") throw new Error("Remote workers run the PI SDK backend only.");
+  const disabledSkills = (await readHuiSettings()).disabledSkills.filter((entry) => !isBundledSkillPreference(entry));
+  const child = await workers.open(options.worker, options.huiSessionId ?? randomUUID(), {
+    cwd: options.cwd,
+    ...(options.sessionFile ? { sessionFile: options.sessionFile } : {}),
+    ...(options.model ? { model: options.model } : {}),
+    ...(options.thinking ? { thinking: options.thinking } : {}),
+  });
+  const worker = options.worker;
+  const session = new PiSession(child.asChild(), options.agentDir ?? resolvePiAgentDir(), disabledSkills.map((skill) => skill.name), true, {
+    resumed: child.reused,
+    stageAttachments: async (attachments) => Promise.all(attachments.map(async (item) => item.kind === "file"
+      ? { ...item, path: await workers.putFile(worker, item.name, await readFile(item.path)) }
+      : item)),
+  });
+  try {
+    await session.bootstrap();
+    await session.inspect?.();
+    if (options.title && !child.reused) await session.setName(options.title).catch(() => {});
+  } catch (error) {
+    const output = session.recentOutput(error instanceof Error ? error.message : undefined);
+    // Only a process this call started is stopped; a reattached one may be
+    // mid-run and is left to its host.
+    if (child.reused) child.detach();
+    else session.dispose();
     throw output && error instanceof Error ? new RuntimeOutputError(error.message, output, { cause: error }) : error;
   }
   return session;

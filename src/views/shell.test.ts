@@ -94,13 +94,14 @@ test("the primary sidebar lists work destinations and ends with Settings", () =>
   assert.match(nav, /sidebar-nav__settings[\s\S]*props\.onOpenSettings\(\)[\s\S]*>Settings<\/span>\s*<\/a>\s*$/u);
 });
 
-test("settings navigation contains only the thirteen accepted regions", () => {
+test("settings navigation contains only the fourteen accepted regions", () => {
   assert.deepEqual(
     SETTINGS_PAGES.map((page) => page.id),
     [
       "appearance",
       "connection",
       "integrations",
+      "workers",
       "models",
       "plugins",
       "skills",

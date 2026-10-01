@@ -168,6 +168,7 @@ import type { BacklogStartTarget } from "./components/backlog-start-dialog.ts";
 import { addSuggestionToBacklog, backlogItemMarkdown, loadBacklog, removeBacklogItem, setBacklogItemGroup, type BacklogItem, type BacklogJiraState } from "./lib/backlog.ts";
 import { loadJiraConnection } from "./lib/jira.ts";
 import type { AutomationProps } from "./views/settings-automation.ts";
+import { loadWorkers, type WorkerView } from "./lib/workers.ts";
 import { hasOpenWebAwesomePopup } from "./lib/web-awesome.ts";
 import { APP_SHELL_DRAWER_MEDIA, closeDrawerOnEscape, renderMain, renderSidebar, type GroupDropTarget, type GroupMenuAction, type NavId, type SessionCopyAction, type SessionOpenAction } from "./views/shell.ts";
 import { writeClipboardText } from "./lib/clipboard.ts";
@@ -327,6 +328,9 @@ export class HuiApp extends HuiElement {
   private groupCheckoutRequest = 0;
   private groupCheckoutDirectory = "";
   @state() private launchDefaults: { group: string; cwd: string; workspaceMode?: "branch" | "worktree"; baseRef?: string } | undefined;
+  @state() private launchWorkers: readonly WorkerView[] = [];
+  /** Sticky across launches: the worker new sessions run on, if any. */
+  @state() private launchWorker: string | undefined;
   @state() private launchModel = "";
   @state() private launchThinking = "";
   @state() private directorySuggestions: readonly string[] = [];
@@ -545,6 +549,10 @@ export class HuiApp extends HuiElement {
     void this.persistComposerDraft();
   };
 
+  private onOpenSessionRequest = (event: CustomEvent<{ id?: unknown }>) => {
+    if (typeof event.detail?.id === "string") this.navigate({ kind: "session", id: event.detail.id });
+  };
+
   override connectedCallback() {
     super.connectedCallback();
     if (this.embeddedPane) {
@@ -556,6 +564,8 @@ export class HuiApp extends HuiElement {
       this.mobileNavMedia.addEventListener("change", this.onMobileNavChange);
       window.addEventListener("popstate", this.onPopState);
       document.addEventListener("keydown", this.onGlobalKeyDown);
+      // Settings → Workers opens a bot's conversation.
+      this.addEventListener("hui-open-session", this.onOpenSessionRequest as EventListener);
     }
     window.addEventListener("pagehide", this.onPageHide);
     if (!this.embeddedPane) {
@@ -591,6 +601,7 @@ export class HuiApp extends HuiElement {
     window.removeEventListener("popstate", this.onPopState);
     window.removeEventListener("pagehide", this.onPageHide);
     document.removeEventListener("keydown", this.onGlobalKeyDown);
+    this.removeEventListener("hui-open-session", this.onOpenSessionRequest as EventListener);
     document.removeEventListener("visibilitychange", this.onUpdateVisibility);
     window.removeEventListener("online", this.onUpdateVisibility);
     window.removeEventListener("offline", this.onUpdateVisibility);
@@ -966,6 +977,10 @@ export class HuiApp extends HuiElement {
         this.switchComposerDraft(NEW_SESSION_DRAFT_KEY);
         this.loadLaunchPreferences();
         this.requestGitCheckout(this.launchDefaults?.cwd ?? "~/");
+        void loadWorkers().then((list) => {
+          this.launchWorkers = list;
+          if (this.launchWorker && !list.some((worker) => worker.id === this.launchWorker)) this.launchWorker = undefined;
+        }).catch(() => undefined);
       }
       this.pendingSessionId = "";
       this.activePage = target.page;
@@ -2950,7 +2965,7 @@ export class HuiApp extends HuiElement {
     if (id && !this.opening) void this.openSelected(id);
   };
 
-  private launch = (input: { cwd: string; title?: string; group?: string; prompt?: string; commandDraft?: string; model?: string; thinking?: string; worktree?: boolean; branchName?: string; baseRef?: string }) => {
+  private launch = (input: { cwd: string; title?: string; group?: string; prompt?: string; commandDraft?: string; model?: string; thinking?: string; worktree?: boolean; branchName?: string; baseRef?: string; worker?: string }) => {
     if (input.prompt && this.handleUpdateCommand(input.prompt)) return;
     if (this.launching) return;
     this.launching = true;
@@ -3946,8 +3961,12 @@ export class HuiApp extends HuiElement {
       launchThinking: this.launchThinking || "medium",
       onSelectLaunchModel: (provider, modelId) => { this.launchModel = `${provider}/${modelId}`; },
       onSelectLaunchThinking: (level) => { this.launchThinking = level; },
-      directorySuggestions: this.directorySuggestions,
-      onDirectoryInput: this.requestDirectorySuggestions,
+      launchWorkers: this.launchWorkers,
+      ...(this.launchWorker ? { launchWorker: this.launchWorker } : {}),
+      onSelectLaunchWorker: (id) => { this.launchWorker = id; },
+      // Suggestions and Git inspection read this machine's disk.
+      directorySuggestions: this.launchWorker ? [] : this.directorySuggestions,
+      onDirectoryInput: this.launchWorker ? () => undefined : this.requestDirectorySuggestions,
       branchPrefix: this.settings.branchPrefix,
       gitCheckout: this.gitCheckout,
       gitCheckoutLoading: this.gitCheckoutLoading,

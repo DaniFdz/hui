@@ -29,6 +29,12 @@ export function registerAgentToolHandler(next: AgentToolHandler): void {
   handler = next;
 }
 
+/** For callers already authenticated another way (a remote worker host). */
+export function invokeAgentTool(invocation: AgentToolInvocation): Promise<unknown> {
+  if (!handler) return Promise.reject(new Error("Agent tools are not ready."));
+  return handler(invocation);
+}
+
 function sessionForToken(value: string | undefined): string | undefined {
   if (!value) return undefined;
   const received = Buffer.from(value);

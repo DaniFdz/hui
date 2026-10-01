@@ -10,7 +10,14 @@ const storage = await import(new URL("./core/auth-storage.js", import.meta.resol
   AuthStorage: { create(path: string): CredentialStore };
   FileAuthStorageBackend: new(path: string) => LockBackend;
 };
-export const credentialStore = (path: string) => storage.AuthStorage.create(path);
+export const fileCredentialStore = (path: string): CredentialStore => storage.AuthStorage.create(path);
+let storeFor: (path: string) => CredentialStore = fileCredentialStore;
+/** Every credential file HUI or PI reads goes through here, so a remote worker
+ * can serve them from its gateway instead of the remote disk. */
+export const credentialStore = (path: string): CredentialStore => storeFor(path);
+export function setCredentialStoreFactory(factory: (path: string) => CredentialStore): void {
+  storeFor = factory;
+}
 export function validAccountId(id: unknown): id is string {
   return typeof id === "string" && (id === "default" || /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(id));
 }

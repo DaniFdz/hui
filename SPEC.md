@@ -884,6 +884,64 @@ If Git fails, the session stays listed in an error state showing Git's error;
 deleting it returns its prompt to New Session. A gateway restart forgets an
 unfinished session.
 
+## Remote workers
+
+A session can run on another machine. A **worker** is a name and a connect
+command: any argv prefix that opens a stdio pipe to a POSIX shell there, such as
+`ssh devbox`, `docker exec -i box` or `kubectl exec -i pod --`. HUI never asks
+for passwords or keys; the command must work non-interactively. Settings →
+Workers adds, connects, re-syncs, disconnects and removes workers and shows
+the remote host, sync summary and errors. A worker that sessions still use
+cannot be removed.
+
+- **Setup through the command only.** Each step runs `<command> sh -s` with a
+  script on stdin. HUI looks for Node.js 22.18+ with npm on the remote and,
+  if missing, downloads the gateway's own Node version from nodejs.org (curl or
+  wget required). It then uploads its own worker code (the same HUI version)
+  and installs the PI SDK with `npm install`, at the versions HUI's lockfile
+  pins. Everything lives under `~/.local/share/hui-worker` (or
+  `$XDG_DATA_HOME/hui-worker`); the remote user's own files are not touched.
+- **A durable host.** One per-user host daemon owns the PI SDK workers on the
+  remote; the gateway reaches it through the command's stdio. Losing the
+  connection (laptop asleep, gateway restart, network drop) leaves remote
+  sessions running. Reopening reattaches to the live process, replays its
+  pending questions and shows its transcript; a run that finished meanwhile is
+  not "recovered". Detached idle workers stop after ten minutes, an idle host
+  after thirty, unless it owns bots. A newer gateway replaces an idle older
+  host; a busy one keeps serving its sessions.
+- **Your PI setup, mirrored.** Before a session starts (at most every 30 s)
+  HUI mirrors the user's PI settings, models, context files (`AGENTS.md`,
+  `SYSTEM.md`, …), extensions, skills, prompts, `~/.agents/skills`, every local
+  path named in PI settings, HUI provider selections and the worker's extra
+  paths. Local paths in settings become absolute mirror paths. `npm:` and
+  `git:` packages, and the dependencies of mirrored local packages, are
+  installed on the remote. HUI's skill and plugin choices apply as locally.
+  Credentials, transcripts, `node_modules`, `.git` and files over 8 MB are not
+  mirrored; files HUI mirrored earlier and no longer sends are removed.
+- **Credentials stay on the gateway.** Remote PI asks the connected gateway for
+  each credential; an OAuth refresh runs on the remote while the gateway holds
+  its own credential lock, and the rotated token is written only there. With no
+  gateway connected, remote PI uses the remote's own PI login. Provider keys
+  that models.json resolves from environment variables or commands resolve on
+  the remote.
+- **Sessions.** New Session's **Run on** picker lists workers. A remote
+  directory must be absolute or start with `~/` and is checked when the session
+  starts; creating one never waits on a connection. The header shows the worker.
+  Subagents of a remote session run on the same worker. HUI agent tools work
+  through the gateway; presented media is copied back from the remote.
+  Not yet available remotely: terminals, the managed browser, New worktree and
+  branch checkouts, and multi-account quota rotation (the default account is
+  used). Usage totals skip remote transcripts.
+- **Bots.** A bot is a named agent that lives on a worker: standing
+  instructions (added to its system prompt), a check-in prompt, an optional
+  schedule (interval, cron or once) and a timeout. The host runs it, so it keeps
+  working while HUI is closed, using the remote's own login when no gateway is
+  connected. Each bot is a session in the **Bots** group: open it to talk to it;
+  a run started while HUI is connected shows as running there. Settings →
+  Workers lists bots with their last run and offers Run now, Edit and Delete.
+  Deleting a bot (or its session) requires the worker to be reachable, so a
+  schedule never keeps running unseen.
+
 ## Decisions
 
 ### HUI owns an isolated PI SDK backend, not a PI fork

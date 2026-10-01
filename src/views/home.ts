@@ -226,7 +226,7 @@ export type HomeProps = {
   onDismissNote: () => void;
   /** A muted line about the event stream: reconnecting, or why it stopped. */
   connectionNote: string;
-  onLaunch: (input: { cwd: string; title?: string; group?: string; prompt?: string; commandDraft?: string; model?: string; thinking?: string; worktree?: boolean; branchName?: string; baseRef?: string }) => void;
+  onLaunch: (input: { cwd: string; title?: string; group?: string; prompt?: string; commandDraft?: string; model?: string; thinking?: string; worktree?: boolean; branchName?: string; baseRef?: string; worker?: string }) => void;
   onSelectSession: (session: SessionView) => void;
   /** Pane identity keeps controls unique when the same session is split twice. */
   controlScope?: string;
@@ -288,6 +288,11 @@ export type HomeProps = {
   onConfirmDelete: () => void;
   onRetry: () => void;
   launchDefaults?: { group: string; cwd: string };
+  /** Remote workers a new session can run on; none hides the picker. */
+  launchWorkers?: readonly { id: string; name: string; state: string }[];
+  /** Selected worker id; absent runs the session on this machine. */
+  launchWorker?: string;
+  onSelectLaunchWorker?: (id: string | undefined) => void;
   launchModels: readonly RuntimeModel[];
   launchModel: RuntimeModel | undefined;
   launchThinking: string;
@@ -374,7 +379,7 @@ function onSubmit(props: HomeProps) {
       ...(value("group") ? { group: value("group") } : {}),
       ...(props.launchModel ? { model: modelValue(props.launchModel) } : {}),
       ...(props.launchThinking ? { thinking: props.launchThinking } : {}),
-      ...(props.workspaceWorktree ? {
+      ...(props.launchWorker ? { worker: props.launchWorker } : props.workspaceWorktree ? {
         worktree: true,
         ...(props.workspaceBranch ? { branchName: props.workspaceBranch } : {}),
         ...(props.workspaceBaseRef ? { baseRef: props.workspaceBaseRef } : {}),
@@ -383,6 +388,29 @@ function onSubmit(props: HomeProps) {
       } : {}),
     });
   };
+}
+
+/** Where the session runs: this machine or a remote worker. */
+function renderWorkerPicker(props: HomeProps) {
+  const workers = props.launchWorkers ?? [];
+  const selected = workers.find((worker) => worker.id === props.launchWorker);
+  const local = html`<span class="new-session-page__target-icon">${icons.terminal}</span>`;
+  if (!workers.length) return html`<span class="new-session-page__trigger new-session-page__runtime">${local}Local</span>`;
+  const choose = (event: Event, id: string | undefined) => {
+    (event.currentTarget as HTMLElement).closest("details")?.removeAttribute("open");
+    props.onSelectLaunchWorker?.(id);
+  };
+  return html`<details class="new-session-page__group-picker new-session-page__worker-picker" @keydown=${closeComposerPicker}>
+    <summary class="new-session-page__trigger new-session-page__runtime" aria-label="Choose where the session runs">
+      <span class="new-session-page__target-icon">${selected ? icons.globe : icons.terminal}</span><span data-launch-worker>${selected?.name ?? "Local"}</span>
+      <span class="new-session-page__trigger-chevron" aria-hidden="true">${chevronDownIcon}</span>
+    </summary>
+    <div class="new-session-page__group-menu" role="menu" aria-label="Run on">
+      <button type="button" role="menuitemradio" aria-checked=${String(!selected)} @click=${(event: Event) => choose(event, undefined)}>Local</button>
+      ${workers.map((worker) => html`<button type="button" role="menuitemradio" aria-checked=${String(worker.id === selected?.id)}
+        @click=${(event: Event) => choose(event, worker.id)}>${worker.name}${worker.state === "connected" ? "" : html` <span class="settings-row__muted">· ${worker.state === "error" ? "offline" : worker.state}</span>`}</button>`)}
+    </div>
+  </details>`;
 }
 
 function renderCheckoutPicker(props: HomeProps) {
@@ -554,7 +582,7 @@ function renderLaunchForm(props: HomeProps) {
       </div>
       <form class="launch new-session-page__draft" aria-describedby=${props.note ? "launch-feedback" : nothing} @submit=${onSubmit(props)}>
         <div class="new-session-page__triggers">
-          <span class="new-session-page__trigger new-session-page__runtime"><span class="new-session-page__target-icon">${icons.terminal}</span>Local</span>
+          ${renderWorkerPicker(props)}
           ${renderDirectoryPicker({ id: "launch-cwd", label: "Project directory", value: props.launchDefaults?.cwd ?? "~/", suggestions: props.directorySuggestions, onInput: props.onDirectoryInput, inputClass: "new-session-page__trigger", required: true })}
           <details class="new-session-page__group-picker" @keydown=${closeComposerPicker}>
             <summary class="new-session-page__trigger" aria-label="Choose session group">
@@ -580,7 +608,7 @@ function renderLaunchForm(props: HomeProps) {
             </div>
           </details>
           <input id="launch-group" name="group" type="hidden" .value=${initialGroup} />
-          ${renderCheckoutPicker(props)}
+          ${props.launchWorker ? nothing : renderCheckoutPicker(props)}
         </div>
         <div class="agent-chat__composer-shell new-session-page__composer">
           <div class="agent-chat__input agent-chat__input--mobile-toolbar" @click=${focusComposerFromSurface}>
@@ -1989,7 +2017,7 @@ function renderHeader(props: HomeProps, session: SessionView) {
           <span class="session-row__dot" data-status=${session.status} aria-hidden="true"></span>
           <h2 class="transcript__title chat-pane__session-title" title=${session.title}>${session.title}</h2>
           <span class="transcript__meta" title=${session.cwd}>
-            ${session.parentId ? "Subagent" : session.tool} · ${sessionGroupLabel(session.group)} · ${STATUS_TEXT[session.status]}
+            ${session.parentId ? "Subagent" : session.bot ? "Bot" : session.tool}${session.worker ? ` on ${session.worker.name}` : ""} · ${sessionGroupLabel(session.group)} · ${STATUS_TEXT[session.status]}
           </span>
         </div>`}
         ${session.parentId ? html`<button
