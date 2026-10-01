@@ -158,7 +158,7 @@ import { DEFAULT_SESSIONS_PAGE_FILTERS, renderSessionsPage, type SessionsPageFil
 import type { WorktreeFilter } from "./views/worktrees.ts";
 import "./views/contributions.ts";
 import { renderPullRequestsPage, type PullRequestsTab } from "./views/pull-requests.ts";
-import { loadMyPullRequests, refreshMyPullRequests, type MyPullRequests } from "./lib/my-pull-requests.ts";
+import { loadMyPullRequests, refreshMyPullRequests, sendReviewComments, type MyPullRequest, type MyPullRequests } from "./lib/my-pull-requests.ts";
 import { loadWorktrees, removeWorktrees, type WorktreeInventory, type WorktreeRemovalResult, type WorktreeRisk } from "./lib/worktrees.ts";
 import { renderPanelSelector } from "./views/panel-selector.ts";
 import { renderAutomationSurface } from "./views/automation.ts";
@@ -244,6 +244,9 @@ export class HuiApp extends HuiElement {
   @state() private pullRequestsError = "";
   @state() private pullRequestsQuery = "";
   @state() private pullRequestsTab: PullRequestsTab = "created";
+  @state() private pullRequestTargets: Readonly<Record<string, string>> = {};
+  @state() private pullRequestSending = "";
+  @state() private pullRequestNotice: { tone: "ok" | "danger"; text: string } | undefined;
   private pullRequestsPoll?: number;
   @state() private groups: readonly SessionGroup[] = [];
   @state() private sessionsLoading = true;
@@ -980,7 +983,10 @@ export class HuiApp extends HuiElement {
       this.activePage = target.page;
       this.view = "surface";
       if (isPiSurface(target.page)) this.loadControlSurfaceData();
-      if (target.page.id === "pull-requests") this.loadPullRequests();
+      if (target.page.id === "pull-requests") {
+        this.pullRequestNotice = undefined;
+        this.loadPullRequests();
+      }
       if (isObservabilitySurface(target.page) || isOwnedSurface(target.page)) this.loadOperationalData();
       if (target.page.id === "cron" || target.page.id === "tasks") {
         this.loadAutomationData();
@@ -3575,6 +3581,33 @@ export class HuiApp extends HuiElement {
       });
   };
 
+  /** Sends a Created pull request's new review comments to a session, or starts
+   * one on its head branch; the list is reloaded so the counts reflect the send. */
+  private sendPullRequestComments = (pr: MyPullRequest, sessionId?: string) => {
+    if (this.pullRequestSending) return;
+    this.pullRequestSending = pr.url;
+    this.pullRequestNotice = undefined;
+    const reference = `${pr.repository}#${pr.number}`;
+    void sendReviewComments(pr.url, sessionId)
+      .then((result) => {
+        const count = `${result.sent} review ${result.sent === 1 ? "comment" : "comments"} on ${reference}`;
+        const omitted = result.omitted ? ` ${result.omitted} newer did not fit and stay new.` : "";
+        const title = pr.sessions.find((session) => session.id === result.sessionId)?.title;
+        const text = !sessionId
+          ? `Started a session on ${pr.headRefName} with ${count}.`
+          : `${result.delivery === "queued" ? "Queued" : "Sent"} ${count} ${result.delivery === "queued" ? "for" : "to"} ${title ?? "the session"}${result.delivery === "queued" ? "; it runs after the current turn" : ""}.`;
+        this.pullRequestNotice = { tone: "ok", text: `${text}${omitted}` };
+        if (!sessionId) void this.refreshSessions(true);
+      })
+      .catch((error: unknown) => {
+        this.pullRequestNotice = { tone: "danger", text: `Could not send the review comments on ${reference}: ${error instanceof Error ? error.message : "unknown error"}` };
+      })
+      .finally(() => {
+        this.pullRequestSending = "";
+        this.loadPullRequests();
+      });
+  };
+
   private removeWorktreePaths = (paths: readonly string[], mode: "single" | "merged", acknowledged: readonly WorktreeRisk[] = []) => {
     if (this.worktreesRemoving || paths.length === 0) return;
     this.worktreesRemoving = true;
@@ -4391,10 +4424,15 @@ export class HuiApp extends HuiElement {
                         query: this.pullRequestsQuery,
                         tab: this.pullRequestsTab,
                         onQuery: (value) => { this.pullRequestsQuery = value; },
-                        onTab: (tab) => { this.pullRequestsTab = tab; },
+                        onTab: (tab) => { this.pullRequestsTab = tab; this.pullRequestNotice = undefined; },
                         onRefresh: () => this.loadPullRequests(true),
                         onOpenSession: (id) => this.navigate({ kind: "session", id }),
                         onOpenSettings: () => this.openSurfaceSettings("integrations"),
+                        targets: this.pullRequestTargets,
+                        sending: this.pullRequestSending,
+                        ...(this.pullRequestNotice ? { sendNotice: this.pullRequestNotice } : {}),
+                        onTarget: (url, id) => { this.pullRequestTargets = { ...this.pullRequestTargets, [url]: id }; },
+                        onSendComments: this.sendPullRequestComments,
                       })
                   : isPiSurface(this.activePage)
                     ? renderPiSurface({

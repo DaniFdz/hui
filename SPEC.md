@@ -878,7 +878,30 @@ The lists are cached in gateway memory for 60 s and revalidated in the
 background, so only the first load waits for GitHub; nothing is persisted. A
 missing `gh` or signed-out account shows a page-level state linking to Settings
 → Integrations; other failures keep the last lists and say when they were
-fetched. Review-comment delivery and risk review are not part of this page yet.
+fetched. Risk review is not part of this page yet.
+
+**Review comments.** On **Created by me** rows, new review comments are
+unresolved, non-outdated review threads whose latest comment is by someone other
+than the operator (the pull request's author), plus `COMMENTED` and
+`CHANGES_REQUESTED` reviews with a body by someone else, created after the last
+send to the target session. The target is the first linked session; a picker
+chooses another when several are linked. **Review comments (N)** is enabled when
+N > 0. It reads the threads from GitHub again, builds one message of at most
+20 KB (oldest first, with author, `path:line`, body and thread URL, the newest
+dropped with a note when they do not fit) asking the session to address each
+comment, reply on or resolve each thread per the repository's rules, push and
+report what changed, and delivers it like a composer message: a prompt when
+the session is idle, a queued follow-up while it runs. Only an accepted delivery
+records the time of the newest included comment on the session; a failed one
+records nothing and shows the error.
+
+Without a linked session the button reads **Start session with comments**: it
+starts a session in a known checkout of the repository (a session directory
+with a github.com remote for it) that is already on the head branch, in an
+existing worktree on that branch, or in a new HUI worktree on a local
+head branch tracking a freshly fetched `origin/<headRefName>`, then delivers the
+comments there. With no known checkout the button is disabled and its tooltip
+says why.
 
 ## Git workspace sessions
 

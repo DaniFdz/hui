@@ -19,17 +19,22 @@ import type {
   PullRequestReviewDecision,
 } from "../shared/pull-requests.ts";
 import { GitHubApiError } from "./github-previews.ts";
+import { parseReviewComments, REVIEW_COMMENTS_FIELDS, type ReviewComment } from "./pull-request-comments.ts";
 import { pullRequestUrls } from "./pull-requests.ts";
 import type { CommandRunner } from "./worktree-inventory.ts";
 
-export type FoundPullRequest = Omit<MyPullRequest, "sessions">;
+export type FoundPullRequest = Omit<MyPullRequest, "sessions" | "newComments" | "localCheckout"> & {
+  /** Created tab: review comments that can be sent (server-only, never returned). */
+  reviewComments?: ReviewComment[];
+};
 export type PullRequestLists = { created: FoundPullRequest[]; reviewRequested: FoundPullRequest[] };
 export type PullRequestSnapshot = Omit<MyPullRequests, "created" | "reviewRequested"> & PullRequestLists;
 
 const SEARCH_LIMIT = 50;
 export const CREATED_SEARCH = "is:pr is:open author:@me archived:false";
 export const REVIEW_REQUESTED_SEARCH = "is:pr is:open review-requested:@me archived:false";
-export const SEARCH_QUERY = `query($q: String!) {
+/** The Created search also selects the review comments needed for the new-comment count. */
+export const searchQuery = (comments: boolean) => `query($q: String!) {
   search(query: $q, type: ISSUE, first: ${SEARCH_LIMIT}) {
     nodes {
       ... on PullRequest {
@@ -37,7 +42,7 @@ export const SEARCH_QUERY = `query($q: String!) {
         repository { nameWithOwner }
         headRepository { nameWithOwner }
         author { login }
-        commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }
+        commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }${comments ? REVIEW_COMMENTS_FIELDS : ""}
       }
     }
   }
@@ -63,6 +68,8 @@ export function parsePullRequestSearch(raw: unknown): FoundPullRequest[] {
     const commits = record(data["commits"])["nodes"];
     const rollup = Array.isArray(commits) ? record(record(record(commits.at(-1))["commit"])["statusCheckRollup"])["state"] : undefined;
     const checks = str(rollup, 40).toLowerCase() as PullRequestChecks;
+    // Created by the operator, so the author is the account whose own comments do not count.
+    const reviewComments = "reviewThreads" in data || "reviews" in data ? parseReviewComments(data, author) : undefined;
     return [{
       ...ref,
       title: str(data["title"]),
@@ -74,13 +81,14 @@ export function parsePullRequestSearch(raw: unknown): FoundPullRequest[] {
       updatedAt: str(data["updatedAt"], 40),
       ...(DECISIONS.has(decision) ? { reviewDecision: decision } : {}),
       ...(CHECKS.has(checks) ? { checks } : {}),
+      ...(reviewComments ? { reviewComments } : {}),
     }];
   });
 }
 
 /** Both lists, one `gh api graphql` call each. */
 export async function fetchMyPullRequests(gh: (args: readonly string[]) => Promise<unknown>): Promise<PullRequestLists> {
-  const search = async (q: string) => parsePullRequestSearch(await gh(["api", "graphql", "-f", `query=${SEARCH_QUERY}`, "-f", `q=${q}`]));
+  const search = async (q: string) => parsePullRequestSearch(await gh(["api", "graphql", "-f", `query=${searchQuery(q === CREATED_SEARCH)}`, "-f", `q=${q}`]));
   const [created, reviewRequested] = await Promise.all([search(CREATED_SEARCH), search(REVIEW_REQUESTED_SEARCH)]);
   return { created, reviewRequested };
 }
@@ -137,22 +145,38 @@ export type CorrelationSession = MyPullRequestSession & {
 
 /** Sessions that created the pull request or sit on its head branch in a
  * checkout of its repository. Newest first; archived sessions last. */
+type PullRequestPlace = Pick<FoundPullRequest, "repository" | "headRepository" | "headRefName">;
+
+function ofRepository(pr: PullRequestPlace, checkout: Checkout | undefined): checkout is Checkout {
+  const repositories = new Set([pr.repository, pr.headRepository].filter(Boolean).map((name) => name!.toLowerCase()));
+  return Boolean(checkout?.repositories.some((name) => repositories.has(name.toLowerCase())));
+}
+
+const onHeadBranch = (pr: PullRequestPlace, checkout: Checkout) => Boolean(pr.headRefName) && checkout.branch === pr.headRefName;
+
 export function correlateSessions(
-  pr: Pick<FoundPullRequest, "url" | "repository" | "headRepository" | "headRefName">,
+  pr: PullRequestPlace & Pick<FoundPullRequest, "url">,
   sessions: readonly CorrelationSession[],
   checkouts: ReadonlyMap<string, Checkout>,
 ): MyPullRequestSession[] {
   const url = pr.url.toLowerCase();
-  const repositories = new Set([pr.repository, pr.headRepository].filter(Boolean).map((name) => name!.toLowerCase()));
   return sessions
     .filter((session) => {
       if (session.createdPullRequests.some((created) => created.toLowerCase() === url)) return true;
       const checkout = checkouts.get(session.cwd);
-      return Boolean(checkout && pr.headRefName && checkout.branch === pr.headRefName
-        && checkout.repositories.some((name) => repositories.has(name.toLowerCase())));
+      return ofRepository(pr, checkout) && onHeadBranch(pr, checkout);
     })
     .toSorted((a, b) => Number(a.archived) - Number(b.archived) || b.updatedAt.localeCompare(a.updatedAt))
     .map(({ id, title, archived }) => ({ id, title, archived }));
+}
+
+/** Session directories that are checkouts of the pull request's repository,
+ * those already on its head branch first. */
+export function repositoryCheckouts(pr: PullRequestPlace, checkouts: ReadonlyMap<string, Checkout>): { cwd: string; onHeadBranch: boolean }[] {
+  return [...checkouts]
+    .filter(([, checkout]) => ofRepository(pr, checkout))
+    .map(([cwd, checkout]) => ({ cwd, onHeadBranch: onHeadBranch(pr, checkout) }))
+    .toSorted((a, b) => Number(b.onHeadBranch) - Number(a.onHeadBranch));
 }
 
 export type MyPullRequestsOptions = { now?: () => number; ttlMs?: number };

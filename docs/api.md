@@ -503,7 +503,9 @@ type MyPullRequest = {
   author?: string; updatedAt: string;
   reviewDecision?: "approved" | "changes_requested" | "review_required";
   checks?: "success" | "failure" | "error" | "pending" | "expected"; // statusCheckRollup of the last commit
-  sessions: { id: string; title: string; archived: boolean }[];
+  sessions: { id: string; title: string; archived: boolean; newComments?: number }[];
+  newComments?: number;   // Created only: open review comments by others, nothing sent yet
+  localCheckout?: boolean; // Created only: a session directory is a checkout of the repository
 };
 ```
 
@@ -522,6 +524,43 @@ Newest `updatedAt` first, archived last.
 
 Same response after a forced fetch; a fetch already running is awaited instead
 of starting another. No body.
+
+The Created search also selects `reviewThreads(last: 50)` with `comments(last: 20)`
+and `reviews(last: 50, states: [COMMENTED, CHANGES_REQUESTED])`; comment bodies
+stay in gateway memory and never reach the browser. A candidate comment is one
+by someone other than the pull request's author in an unresolved, non-outdated
+thread whose latest comment is by someone else, or a review with a non-empty
+body by someone else. `newComments` on a session counts candidates created
+after that session's `pullRequestComments[].sentAt` for the URL.
+
+### `POST /__hui/pull-requests/review-comments`
+
+Body `{ url: string; sessionId?: string }` (≤ 4 KiB). Sends a Created pull
+request's new review comments to a session and returns
+`ReviewCommentsResult`:
+
+```ts
+type ReviewCommentsResult = { sessionId: string; sent: number; omitted: number; delivery: "prompt" | "queued" };
+```
+
+1. `url` must be a canonical `https://github.com/<owner>/<repo>/pull/<n>` and be
+   in the current (cached) Created list, else 400 or 404. An unknown
+   `sessionId` is 404.
+2. The pull request's threads and reviews are read again (`gh api graphql`,
+   `repository.pullRequest`); comments newer than the session's last send are
+   selected. None is 409.
+3. Without `sessionId`, a session (`createSession`, the `POST /sessions` path) is
+   started in a session directory that is a checkout of the repository, preferring
+   one already on `headRefName`; otherwise a worktree already on that branch is
+   reused, or `origin/<headRefName>` is fetched and a new worktree is added under
+   `~/.config/hui/worktrees/` on a local `headRefName` tracking it. No
+   known checkout is 409.
+4. One message of at most 20 KB, oldest comment first, is delivered like a
+   composer message: `prompt` when idle, `queued` as a follow-up while the session
+   runs. Comments that do not fit are counted in `omitted` and stay new.
+5. Only after the delivery is accepted, `sentAt` = the newest included comment's
+   time is stored for the session. A failed delivery persists nothing and returns
+   its error (500); GitHub failures are 502.
 
 ### `GET /__hui/git-checkout?cwd=<directory>`
 
@@ -697,6 +736,7 @@ Only a changed stage writes; polling an unchanged board stays read-only.
 | `model`, `thinking` | HUI | Session preference passed back to the runtime on reopen |
 | `parentId`, `subagent` | HUI | Optional additive lineage/task state for `sessions_spawn`; PI still owns the child transcript |
 | `stage`, `stageSource`, `stagePullRequests` | HUI | Optional Kanban stage and who placed it (`operator`, `agent`, `pullRequest`); absent means Investigation. A session started from a backlog item is created with an operator placement in the target column. See [Session stages](#session-stages). `stagePullRequests` is server-only and never returned in views. |
+| `pullRequestComments` | HUI | Optional `{ url, sentAt }[]` (lower-case pull request URL, ISO time of the newest review comment included in the last accepted send; at most 50, malformed entries dropped on read). Server-only, never returned in views; removed with the session. See [review comments](#post-__huipull-requestsreview-comments). |
 | `piSessionFile` | PI identity, HUI pointer | Learned from `get_state`, then stored by HUI for `--session` resume |
 | messages and tool results | PI | PI's JSONL only; never copied into `sessions.json` |
 | `status` | HUI process | Derived live state; never persisted |

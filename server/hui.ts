@@ -23,7 +23,7 @@ import { fileURLToPath } from "node:url";
 
 import type { Connect, Plugin } from "vite";
 import { progressCardFromTranscript, type ProgressCard } from "../shared/progress-card.ts";
-import type { MyPullRequests, SessionPullRequest } from "../shared/pull-requests.ts";
+import type { MyPullRequests, ReviewCommentsResult, SessionPullRequest } from "../shared/pull-requests.ts";
 import {
   effectiveSessionStage,
   isSessionStage,
@@ -33,7 +33,7 @@ import {
   type SessionStage,
   type SessionStageOrigin,
 } from "../shared/session-stages.ts";
-import { PullRequestStatuses, pullRequestsFromTranscript } from "./pull-requests.ts";
+import { PullRequestStatuses, pullRequestsFromTranscript, pullRequestUrls } from "./pull-requests.ts";
 
 
 import { CONFIG_DIR, ATTACHMENTS_DIR, AUTOMATION_FILE, BROWSER_PROFILE_DIR, USER_THEME_DIR } from "./paths.ts";
@@ -79,7 +79,7 @@ import { completeLocalPaths, completeWorkingDirectories, displayPath, resolveWor
 import { diagnosticPath, mirrorDiagnosticLogs, readObservability, recordDiagnosticEvent } from "./observability.ts";
 import { parseUiErrorBatch, UI_ERROR_BODY_LIMIT, uiErrorLog } from "./ui-errors.ts";
 import { runtimeMemoryByPid } from "./runtime-resources.ts";
-import { checkoutSessionRef, createSessionWorktree, inspectGitCheckout, type WorktreeProgress } from "./worktrees.ts";
+import { branchWorktree, checkoutSessionRef, createSessionWorktree, inspectGitCheckout, WorktreeInputError, type WorktreeProgress } from "./worktrees.ts";
 import { fallbackBranchName } from "../shared/branch-names.ts";
 import { answerSideQuestion, fallbackTitle, generateSessionNames, suggestWorktreeName } from "./model-routing.ts";
 import { sessionDigest } from "./session-digest.ts";
@@ -114,8 +114,9 @@ import { SubagentService } from "./subagents.ts";
 import { presentMediaForSession, servePresentedMedia } from "./presented-media.ts";
 import { GitHubCli, GitHubCliError } from "./github.ts";
 import { FIRST_YEAR as GITHUB_FIRST_YEAR, GitHubContributionsReader, latestYear } from "./github-contributions.ts";
-import { GitHubPreviews, ghApi, ghJson, previewPullRequestFetcher } from "./github-previews.ts";
-import { correlateSessions, fetchMyPullRequests, MyPullRequestsCache, readCheckouts, type PullRequestSnapshot } from "./my-pull-requests.ts";
+import { GitHubApiError, GitHubPreviews, ghApi, ghJson, previewPullRequestFetcher } from "./github-previews.ts";
+import { correlateSessions, fetchMyPullRequests, MyPullRequestsCache, readCheckouts, repositoryCheckouts, type PullRequestSnapshot } from "./my-pull-requests.ts";
+import { fetchReviewComments, newReviewComments, NoNewCommentsError, recordCommentsSent, sendReviewComments, sentAtFor } from "./pull-request-comments.ts";
 import { MAX_GITHUB_EMBEDS, parseGitHubUrl } from "../shared/github-links.ts";
 import { TaskSuggestionInputError, TaskSuggestionNotFoundError, TaskSuggestionStore } from "./task-suggestions.ts";
 import {
@@ -197,6 +198,7 @@ const GITHUB_PREVIEWS_ROUTE = `${GITHUB_ROUTE}/previews`;
 const GITHUB_CONTRIBUTIONS_ROUTE = `${GITHUB_ROUTE}/contributions`;
 const PULL_REQUESTS_ROUTE = `${PREFIX}pull-requests`;
 const PULL_REQUESTS_REFRESH_ROUTE = `${PULL_REQUESTS_ROUTE}/refresh`;
+const PULL_REQUESTS_REVIEW_COMMENTS_ROUTE = `${PULL_REQUESTS_ROUTE}/review-comments`;
 const JIRA_ROUTE = `${PREFIX}jira`;
 const JIRA_PROJECTS_ROUTE = `${JIRA_ROUTE}/projects`;
 /** Create (POST) or draft (POST …/draft) a Jira work item for one session. */
@@ -841,9 +843,11 @@ const githubContributions = new GitHubContributionsReader(GH_COMMAND);
 const pullRequestStatuses = new PullRequestStatuses(previewPullRequestFetcher(githubPreviews));
 const myPullRequests = new MyPullRequestsCache(() => fetchMyPullRequests(ghJson(GH_COMMAND)));
 
-/** The Pull Requests page: cached GitHub lists with sessions linked per request. */
+/** The Pull Requests page: cached GitHub lists with sessions linked per request.
+ * Created rows also count review comments newer than each session's last send. */
 async function pullRequestsPage(snapshot: PullRequestSnapshot): Promise<MyPullRequests> {
   const records = await readRegistry();
+  const byId = new Map(records.map((record) => [record.id, record]));
   const sessions = records.map((record) => ({
     id: record.id,
     title: record.title,
@@ -853,8 +857,88 @@ async function pullRequestsPage(snapshot: PullRequestSnapshot): Promise<MyPullRe
     createdPullRequests: pullRequestsFromTranscript(liveSessions.transcript(record.id)).map((ref) => ref.url),
   }));
   const checkouts = await readCheckouts(sessions.map((session) => session.cwd), runCommand);
-  const link = (list: PullRequestSnapshot["created"]) => list.map((pr) => ({ ...pr, sessions: correlateSessions(pr, sessions, checkouts) }));
+  const link = (list: PullRequestSnapshot["created"]) => list.map(({ reviewComments, ...pr }) => {
+    const linked = correlateSessions(pr, sessions, checkouts);
+    if (!reviewComments) return { ...pr, sessions: linked };
+    return {
+      ...pr,
+      sessions: linked.map((session) => ({ ...session, newComments: newReviewComments(reviewComments, sentAtFor(byId.get(session.id) ?? {}, pr.url)).length })),
+      newComments: reviewComments.length,
+      localCheckout: repositoryCheckouts(pr, checkouts).length > 0,
+    };
+  });
   return { ...snapshot, created: link(snapshot.created), reviewRequested: link(snapshot.reviewRequested) };
+}
+
+class PullRequestInputError extends Error {
+  override name = "PullRequestInputError";
+}
+
+/** Prompts an idle session or queues a follow-up for a busy one. */
+async function deliverToSession(record: SessionRecord, text: string): Promise<"prompt" | "queued"> {
+  if (!liveSessions.ensure(record)) throw new SessionNotFoundError(`unknown session: ${record.id}`);
+  if (liveSessions.status(record.id) === "starting") await waitForSessionReady(record.id, 10 * 60_000);
+  try {
+    await liveSessions.prompt(record.id, text);
+    return "prompt";
+  } catch (error) {
+    if (!(error instanceof SessionBusyError)) throw error;
+    await liveSessions.followUp(record.id, text);
+    return "queued";
+  }
+}
+
+/** `POST …/pull-requests/review-comments`: sends a Created pull request's new
+ * review comments to `sessionId`, or, without one, to a new session on its
+ * head branch in a known checkout of the repository. */
+async function sendPullRequestReviewComments(body: Record<string, unknown>): Promise<ReviewCommentsResult> {
+  const url = typeof body["url"] === "string" ? body["url"].trim() : "";
+  const ref = pullRequestUrls(url)[0];
+  if (!ref || ref.url !== url) throw new PullRequestInputError("A github.com pull request URL is required.");
+  if (body["sessionId"] !== undefined && typeof body["sessionId"] !== "string") throw new PullRequestInputError("Session id must be text.");
+  const sessionId = typeof body["sessionId"] === "string" ? body["sessionId"].trim() : "";
+  const pr = (await myPullRequests.view()).created.find((item) => item.url.toLowerCase() === url.toLowerCase());
+  if (!pr) throw new SessionNotFoundError("That is not one of your open pull requests.");
+  const records = await readRegistry();
+  let target = sessionId ? records.find((record) => record.id === sessionId) : undefined;
+  if (sessionId && !target) throw new SessionNotFoundError(`unknown session: ${sessionId}`);
+  // Never act on the cached list: the threads are read again for this send.
+  const comments = await fetchReviewComments(ghJson(GH_COMMAND), pr);
+  const sentAt = target ? sentAtFor(target, pr.url) : undefined;
+  if (!newReviewComments(comments, sentAt).length) throw new NoNewCommentsError("No new review comments to send.");
+  if (!target) {
+    const checkouts = await readCheckouts(records.map((record) => record.cwd), runCommand);
+    const known = repositoryCheckouts(pr, checkouts)[0];
+    if (!known) throw new WorktreeInputError(`No local checkout of ${pr.repository} is known. Start a session in one first.`);
+    const workspace = known.onHeadBranch ? { cwd: known.cwd } : await branchWorktree({ sourceDirectory: known.cwd, branch: pr.headRefName });
+    try {
+      target = await createSession({ cwd: workspace.cwd, title: `Review comments: ${pr.title || `${pr.repository}#${pr.number}`}`.slice(0, SESSION_TITLE_MAX), tool: "pi" });
+    } catch (error) {
+      await workspace.rollback?.().catch(() => undefined);
+      throw error;
+    }
+  }
+  const record = target;
+  const result = await sendReviewComments({
+    pr,
+    ...(sentAt ? { sentAt } : {}),
+    fetch: async () => comments,
+    deliver: (text) => deliverToSession(record, text),
+    persist: async (sent) => {
+      await updateRegistry((current) => current.map((item) => item.id === record.id
+        ? { ...item, pullRequestComments: recordCommentsSent(item, pr.url, sent) }
+        : item));
+    },
+  });
+  return { sessionId: record.id, ...result };
+}
+
+function reviewCommentsErrorStatus(error: unknown): number {
+  if (error instanceof PullRequestInputError) return 400;
+  if (error instanceof SessionNotFoundError) return 404;
+  if (error instanceof NoNewCommentsError || error instanceof WorktreeInputError || error instanceof SessionBusyError) return 409;
+  if (error instanceof GitHubApiError) return 502;
+  return 500;
 }
 
 const worktreeService = new WorktreeService({
@@ -2454,6 +2538,23 @@ async function handleRequest(
       return;
     }
     sendJson(response, 200, await pullRequestsPage(refresh ? await myPullRequests.refresh() : await myPullRequests.view()));
+    return;
+  }
+
+  if (path === PULL_REQUESTS_REVIEW_COMMENTS_ROUTE) {
+    if (request.method !== "POST") {
+      sendJson(response, 405, { error: "method not allowed" });
+      return;
+    }
+    try {
+      const body = await readBody(request, 4_096).catch(() => { throw new PullRequestInputError("Invalid request body."); });
+      if (!body || typeof body !== "object" || Array.isArray(body)) throw new PullRequestInputError("A JSON object is required.");
+      sendJson(response, 200, await sendPullRequestReviewComments(body as Record<string, unknown>));
+    } catch (error) {
+      const status = reviewCommentsErrorStatus(error);
+      const message = error instanceof GitHubApiError ? `GitHub could not be read (${error.reason}).` : error instanceof Error ? error.message : "Could not send the review comments.";
+      sendJson(response, status, { error: message });
+    }
     return;
   }
 

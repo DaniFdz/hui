@@ -1,10 +1,11 @@
 import { createHash } from "node:crypto";
 import { mkdir, realpath, stat } from "node:fs/promises";
-import { basename, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { spawn } from "node:child_process";
 
 import { WORKTREES_DIR } from "./paths.ts";
 import { worktreeSlug } from "../shared/branch-names.ts";
+import { parseWorktreeList } from "./worktree-inventory.ts";
 
 export { worktreeSlug };
 
@@ -197,6 +198,53 @@ export async function checkoutSessionRef(
   if (checkedOut.code !== 0) throw gitFailure("Could not change Git checkout", checkedOut);
 }
 
+/** HUI's per-repository directory name under the worktrees root. */
+const repositoryKey = (repoRoot: string) => `${basename(repoRoot)}-${createHash("sha256").update(repoRoot).digest("hex").slice(0, 12)}`;
+
+/** A checkout of an existing pull request branch: a worktree (or the main
+ * checkout) already on `branch` is reused; otherwise `origin/<branch>` is
+ * fetched and a new worktree is added on a local `branch` tracking it. Only a
+ * new worktree has a `rollback`, which also deletes a branch it created. */
+export async function branchWorktree(options: {
+  sourceDirectory: string;
+  branch: string;
+  root?: string;
+  git?: GitRunner;
+}): Promise<{ cwd: string; rollback?: () => Promise<void> }> {
+  const git = options.git ?? runGit;
+  const { branch } = options;
+  const topLevel = await git(await realpath(options.sourceDirectory), ["rev-parse", "--show-toplevel"]);
+  if (topLevel.code !== 0) throw new WorktreeInputError("A pull request checkout requires a Git repository.");
+  const repoRoot = await realpath(topLevel.stdout.trim());
+  const valid = await git(repoRoot, ["check-ref-format", "--branch", branch]);
+  if (valid.code !== 0) throw new WorktreeInputError(`Not a valid Git branch: ${branch}`);
+  const listed = await git(repoRoot, ["worktree", "list", "--porcelain", "-z"]);
+  if (listed.code !== 0) throw gitFailure("Could not list Git worktrees", listed);
+  const existing = parseWorktreeList(listed.stdout).find((worktree) => worktree.branch === branch && !worktree.prunable && !worktree.bare);
+  if (existing && await exists(existing.path)) return { cwd: existing.path };
+
+  const fetched = await git(repoRoot, ["fetch", "--quiet", "origin", "--", `+refs/heads/${branch}:refs/remotes/origin/${branch}`]);
+  if (fetched.code !== 0) throw gitFailure(`Could not fetch origin/${branch}`, fetched);
+  const local = await git(repoRoot, ["show-ref", "--quiet", "--verify", `refs/heads/${branch}`]);
+  if (local.code !== 0 && local.code !== 1) throw gitFailure("Could not inspect Git branches", local);
+  const path = join(options.root ?? WORKTREES_DIR, repositoryKey(repoRoot), branch.replaceAll("/", "--"));
+  if (await exists(path)) throw new WorktreeInputError(`A directory already exists at ${path}.`);
+  await mkdir(dirname(path), { recursive: true });
+  const createdBranch = local.code === 1;
+  const added = await git(repoRoot, createdBranch
+    ? ["worktree", "add", "--track", "-b", branch, "--", path, `origin/${branch}`]
+    : ["worktree", "add", "--", path, branch]);
+  if (added.code !== 0) throw gitFailure("Could not create Git workspace", added);
+  return {
+    cwd: path,
+    rollback: async () => {
+      const removed = await git(repoRoot, ["worktree", "remove", "--force", "--", path]);
+      const deleted = createdBranch ? await git(repoRoot, ["branch", "-D", "--", branch]) : removed;
+      if (removed.code !== 0 || deleted.code !== 0) throw gitFailure("Could not roll back Git workspace", removed.code !== 0 ? removed : deleted);
+    },
+  };
+}
+
 /** Creates an isolated checkout from the selected directory and base ref.
  * The caller owns rollback until its session registry write commits. */
 export async function createSessionWorktree(options: {
@@ -222,8 +270,7 @@ export async function createSessionWorktree(options: {
   const base = await git(sourceDirectory, ["rev-parse", "--verify", "--end-of-options", `${baseRef}^{commit}`]);
   if (base.code !== 0) throw new WorktreeInputError(`Git could not resolve the base branch or commit: ${baseRef}`);
 
-  const repositoryKey = `${basename(repoRoot)}-${createHash("sha256").update(repoRoot).digest("hex").slice(0, 12)}`;
-  const worktreesRoot = join(options.root ?? WORKTREES_DIR, repositoryKey);
+  const worktreesRoot = join(options.root ?? WORKTREES_DIR, repositoryKey(repoRoot));
   await mkdir(worktreesRoot, { recursive: true });
   const baseSlug = worktreeSlug(options.branchName ?? options.title);
 

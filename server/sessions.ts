@@ -68,6 +68,9 @@ export type SessionRecord = {
   /** Lower-case PR URLs already known at the last explicit placement; they no
    * longer advance the stage. Server-only, never returned in views. */
   stagePullRequests?: string[];
+  /** Per lower-case PR URL, the time of the newest review comment included in
+   * the last send to this session (Pull Requests page). Server-only. */
+  pullRequestComments?: { url: string; sentAt: string }[];
   createdAt: string;
   updatedAt: string;
   /** Where the record came from, so an import can be reported honestly. */
@@ -202,6 +205,14 @@ function toRecord(raw: unknown): SessionRecord | undefined {
   const stagePullRequests = Array.isArray(raw["stagePullRequests"])
     ? raw["stagePullRequests"].filter((url): url is string => typeof url === "string" && /^https:\/\/github\.com\/[^/\s]+\/[^/\s]+\/pull\/\d+$/u.test(url)).slice(-20)
     : [];
+  const pullRequestComments = Array.isArray(raw["pullRequestComments"])
+    ? raw["pullRequestComments"].flatMap((item) => {
+      if (!isRecord(item)) return [];
+      const url = str(item["url"]);
+      const sentAt = str(item["sentAt"]);
+      return /^https:\/\/github\.com\/[^/\sA-Z]+\/[^/\sA-Z]+\/pull\/\d+$/u.test(url) && Number.isFinite(Date.parse(sentAt)) ? [{ url, sentAt }] : [];
+    }).slice(-50)
+    : [];
   return {
     id,
     title: str(raw["title"]).trim() || id,
@@ -223,6 +234,7 @@ function toRecord(raw: unknown): SessionRecord | undefined {
     ...(jiraIssues.length ? { jiraIssues } : {}),
     ...(stage ? { stage, stageSource: stageSource ?? "agent" } : {}),
     ...(stagePullRequests.length ? { stagePullRequests } : {}),
+    ...(pullRequestComments.length ? { pullRequestComments } : {}),
     createdAt: str(raw["createdAt"]),
     updatedAt: str(raw["updatedAt"]),
     ...(source === "hui" ? { source } : {}),

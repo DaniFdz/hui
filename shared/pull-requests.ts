@@ -39,7 +39,13 @@ export type PullRequestChecks = "success" | "failure" | "error" | "pending" | "e
 export type PullRequestReviewDecision = "approved" | "changes_requested" | "review_required";
 
 /** An HUI session linked to one of the operator's pull requests. */
-export type MyPullRequestSession = { id: string; title: string; archived: boolean };
+export type MyPullRequestSession = {
+  id: string;
+  title: string;
+  archived: boolean;
+  /** Created tab: review comments newer than the last send to this session. */
+  newComments?: number;
+};
 
 /** An open or draft pull request authored by, or awaiting review from, the
  * `gh` account (Pull Requests page). */
@@ -59,6 +65,21 @@ export type MyPullRequest = {
   checks?: PullRequestChecks;
   /** Created-by and head-branch matches; newest first, archived last. */
   sessions: MyPullRequestSession[];
+  /** Created tab: every open review comment by someone else (nothing sent yet). */
+  newComments?: number;
+  /** Created tab: a session directory is a checkout of the repository, so a
+   * session can be started on the head branch. */
+  localCheckout?: boolean;
+};
+
+/** `POST /__hui/pull-requests/review-comments` result. */
+export type ReviewCommentsResult = {
+  sessionId: string;
+  /** Comments included in the message; `omitted` newer ones did not fit. */
+  sent: number;
+  omitted: number;
+  /** `queued` when the session was busy and the message waits as a follow-up. */
+  delivery: "prompt" | "queued";
 };
 
 export type MyPullRequestsError = "signed_out" | "cli_missing" | "unavailable";

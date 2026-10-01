@@ -2,8 +2,8 @@
 /* Fake GitHub CLI for tests and Browser E2E. Implements only what HUI calls:
  * `--version`, `auth status --hostname github.com --json hosts` and
  * `auth login --web`, `config get git_protocol`, a few canned `api` reads and
- * `pr list` (pull-requests.json) and `api graphql` searches for the Pull Requests
- * page (search-*.json).
+ * `pr list` (pull-requests.json) and `api graphql` searches and review-comment lookups
+ * for the Pull Requests page (search-*.json).
  * State lives in HUI_FAKE_GH_DIR:
  *   account  — the signed-in login (absent: signed out)
  *   approve  — created by the test to approve a pending login
@@ -50,12 +50,20 @@ if (args[0] === "--version") {
   const login = process.env.GH_TOKEN?.replace(/^fake-token-/u, "") ?? accounts()[0];
   const data = existsSync(file("contributions.json")) ? JSON.parse(readFileSync(file("contributions.json"), "utf8")) : {};
   process.stdout.write(`${data[login]?.createdAt ?? "2020-06-01T00:00:00Z"}\n`);
-} else if (args[0] === "api" && args[1] === "graphql" && args.some((arg) => arg.startsWith("q="))) {
+} else if (args[0] === "api" && args[1] === "graphql" && args.some((arg) => /^(?:q|number)=/u.test(arg))) {
   // Pull Requests page searches: search-created.json / search-review-requested.json
-  // hold the `nodes` of each search (absent: none).
+  // hold the `nodes` of each search (absent: none). A single pull request
+  // (review comments) is looked up by number among the created nodes.
   if (!accounts().length) {
     process.stderr.write("To get started with GitHub CLI, please run:  gh auth login\n");
     process.exit(4);
+  }
+  const number = args.find((arg) => arg.startsWith("number="));
+  if (number) {
+    const nodes = existsSync(file("search-created.json")) ? JSON.parse(readFileSync(file("search-created.json"), "utf8")) : [];
+    const pullRequest = nodes.find((node) => `number=${node.number}` === number) ?? null;
+    process.stdout.write(`${JSON.stringify({ data: { repository: { pullRequest } } })}\n`);
+    process.exit(0);
   }
   const q = args.find((arg) => arg.startsWith("q=")) ?? "";
   const name = q.includes("author:@me") ? "search-created.json" : "search-review-requested.json";

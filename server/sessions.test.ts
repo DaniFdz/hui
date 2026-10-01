@@ -97,6 +97,22 @@ test("a subagent record round-trips lineage and lifecycle without a registry mig
   assert.equal(child?.subagent?.summary, "All clear");
 });
 
+test("review-comment send times round-trip and malformed entries are dropped on read", async () => {
+  const registryFile = join(configHome, "hui", "sessions.json");
+  await writeFile(registryFile, JSON.stringify({ version: 2, groups: [], sessions: [record("sent", {
+    pullRequestComments: [
+      { url: "https://github.com/acme/web/pull/1", sentAt: "2026-09-30T10:00:00Z" },
+      { url: "https://github.com/Acme/web/pull/2", sentAt: "2026-09-30T10:00:00Z" },
+      { url: "https://github.com/acme/web/pull/3", sentAt: "yesterday" },
+      "https://github.com/acme/web/pull/4",
+    ] as never,
+  })] }), "utf8");
+  const [sent] = await readRegistry();
+  assert.deepEqual(sent?.pullRequestComments, [{ url: "https://github.com/acme/web/pull/1", sentAt: "2026-09-30T10:00:00Z" }]);
+  await writeRegistry([record("none")]);
+  assert.equal((await readRegistry())[0]?.pullRequestComments, undefined);
+});
+
 test("version one registries migrate their session groups without losing rows", async () => {
   const registryFile = join(configHome, "hui", "sessions.json");
   await writeFile(registryFile, JSON.stringify({

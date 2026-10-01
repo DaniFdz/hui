@@ -13,6 +13,7 @@ import {
   parseGitHubRemotes,
   parsePullRequestSearch,
   readCheckouts,
+  repositoryCheckouts,
   REVIEW_REQUESTED_SEARCH,
   type Checkout,
   type CorrelationSession,
@@ -75,6 +76,25 @@ test("fetches both searches with one graphql call each", async () => {
   assert.deepEqual([lists.created[0]?.number, lists.reviewRequested[0]?.number], [1, 2]);
 });
 
+test("the created search carries review comments by others; the review-requested one does not ask for them", async () => {
+  const queries = new Map<string, string>();
+  const lists = await fetchMyPullRequests(async (args) => {
+    const q = args.at(-1)!.replace(/^q=/u, "");
+    queries.set(q, args[3]!);
+    return search(node(1, q === CREATED_SEARCH ? {
+      reviewThreads: { nodes: [{ isResolved: false, isOutdated: false, path: "a.ts", line: 3, comments: { nodes: [
+        { author: { login: "octo" }, body: "own", createdAt: "2026-09-30T08:00:00Z", url: "u1" },
+        { author: { login: "lana" }, body: "Rename this", createdAt: "2026-09-30T09:00:00Z", url: "u2" },
+      ] } }] },
+      reviews: { nodes: [] },
+    } : {}));
+  });
+  assert.match(queries.get(CREATED_SEARCH)!, /reviewThreads/);
+  assert.doesNotMatch(queries.get(REVIEW_REQUESTED_SEARCH)!, /reviewThreads/);
+  assert.deepEqual(lists.created[0]?.reviewComments, [{ author: "lana", body: "Rename this", createdAt: "2026-09-30T09:00:00Z", url: "u2", path: "a.ts", line: 3 }]);
+  assert.equal(lists.reviewRequested[0]?.reviewComments, undefined);
+});
+
 test("parses github.com remotes in https, scp and ssh forms", () => {
   assert.deepEqual(parseGitHubRemotes([
     "origin\tgit@github.com:acme/web.git (fetch)",
@@ -113,6 +133,16 @@ test("links creators and head-branch checkouts, newest first and archived last",
   assert.deepEqual(correlateSessions(pr, sessions, checkouts).map((s) => s.id), ["branch", "creator", "old", "archived"]);
   assert.deepEqual(correlateSessions({ ...pr, repository: "up/web", headRepository: "acme/web" }, [session("branch")], checkouts).map((s) => s.id), ["branch"]);
   assert.deepEqual(correlateSessions({ ...pr, headRefName: "" }, [session("branch")], new Map([["/w/branch", { branch: "", repositories: ["acme/web"] }]])), []);
+});
+
+test("known checkouts of a pull request's repository put the head branch first", () => {
+  const checkouts = new Map<string, Checkout>([
+    ["/w/main", { branch: "main", repositories: ["acme/web"] }],
+    ["/w/api", { branch: "feat/x", repositories: ["acme/api"] }],
+    ["/w/head", { branch: "feat/x", repositories: ["Acme/Web"] }],
+  ]);
+  assert.deepEqual(repositoryCheckouts(pr, checkouts), [{ cwd: "/w/head", onHeadBranch: true }, { cwd: "/w/main", onHeadBranch: false }]);
+  assert.deepEqual(repositoryCheckouts({ ...pr, repository: "acme/none", headRepository: undefined }, checkouts), []);
 });
 
 test("reads checkouts through symlinked directories", async () => {

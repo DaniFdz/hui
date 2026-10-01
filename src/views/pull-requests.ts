@@ -9,6 +9,7 @@ import {
   pullRequestReference,
   type MyPullRequest,
   type MyPullRequests,
+  type MyPullRequestSession,
   type PullRequestChecks,
   type PullRequestReviewDecision,
 } from "../../shared/pull-requests.ts";
@@ -34,7 +35,38 @@ export type PullRequestsPageProps = {
   onRefresh: () => void;
   onOpenSession: (id: string) => void;
   onOpenSettings: () => void;
+  /** Picked target session per pull request URL (default: the first linked one). */
+  targets: Readonly<Record<string, string>>;
+  /** URL whose review comments are being sent. */
+  sending: string;
+  /** Outcome of the last send. */
+  sendNotice?: { tone: "ok" | "danger"; text: string };
+  onTarget: (url: string, sessionId: string) => void;
+  /** `sessionId` absent: start a session on the head branch. */
+  onSendComments: (pr: MyPullRequest, sessionId?: string) => void;
 };
+
+export type ReviewCommentsAction = {
+  kind: "send" | "start";
+  target?: MyPullRequestSession;
+  count: number;
+  /** Why the button is disabled. */
+  disabled?: string;
+};
+
+/** What the Created row's review-comments button does for the picked session. */
+export function reviewCommentsAction(pr: MyPullRequest, picked: string | undefined): ReviewCommentsAction {
+  const target = pr.sessions.find((session) => session.id === picked) ?? pr.sessions[0];
+  if (target) {
+    const count = target.newComments ?? 0;
+    return { kind: "send", target, count, ...(count ? {} : { disabled: `No new review comments since the last send to ${target.title}.` }) };
+  }
+  const count = pr.newComments ?? 0;
+  const disabled = !pr.localCheckout
+    ? `No local checkout of ${pr.repository} is known. Start a session in a checkout of it first.`
+    : count ? undefined : "No open review comments by others.";
+  return { kind: "start", count, ...(disabled ? { disabled } : {}) };
+}
 
 /** Free-text filter over repository, number, title and branch. */
 export function matchingPullRequests(rows: readonly MyPullRequest[], query: string): MyPullRequest[] {
@@ -77,9 +109,9 @@ function settingsLink(props: PullRequestsPageProps, label: string) {
   }}>${label}</a>`;
 }
 
-function emptyRow(message: string, description: TemplateResult | string, kind: "status" | "alert") {
+function emptyRow(message: string, description: TemplateResult | string, kind: "status" | "alert", columns = 4) {
   return html`<tr>
-    <td colspan="4" class="data-table-empty-cell">
+    <td colspan=${columns} class="data-table-empty-cell">
       <div class="data-table-empty-state" role=${kind}>
         <div class="data-table-empty-state__message">${pullRequestStateIcon("open")}<span>${message}</span></div>
         <p>${description}</p>
@@ -102,21 +134,44 @@ function renderSessions(props: PullRequestsPageProps, pr: MyPullRequest) {
   >${session.title}${session.archived ? html` <span class="session-label-chip">Archived</span>` : nothing}</a>`)}</span>`;
 }
 
+function renderCommentsAction(props: PullRequestsPageProps, pr: MyPullRequest) {
+  const action = reviewCommentsAction(pr, props.targets[pr.url]);
+  const sending = props.sending === pr.url;
+  const tooltip = action.disabled ?? (action.kind === "send"
+    ? `Send ${action.count} new review ${action.count === 1 ? "comment" : "comments"} to ${action.target!.title}`
+    : `Start a session on ${pr.headRefName} with ${action.count} review ${action.count === 1 ? "comment" : "comments"}`);
+  const label = sending ? "Sending…" : action.kind === "send" ? `Review comments (${action.count})` : "Start session with comments";
+  return html`<span class="worktree-actions pull-request-actions">
+    ${pr.sessions.length > 1 ? html`<select class="pull-request-target" aria-label=${`Session for review comments on ${pullRequestReference(pr)}`}
+      .value=${action.target?.id ?? ""} ?disabled=${Boolean(props.sending)}
+      @change=${(event: Event) => props.onTarget(pr.url, (event.target as HTMLSelectElement).value)}>
+      ${pr.sessions.map((session) => html`<option value=${session.id} ?selected=${session.id === action.target?.id}>${session.title}${session.archived ? " (archived)" : ""}</option>`)}
+    </select>` : nothing}
+    <span class="worktree-tooltip-wrap" data-hui-tooltip=${tooltip}>
+      <button type="button" class="btn btn--sm" data-review-comments=${action.kind}
+        ?disabled=${Boolean(action.disabled) || Boolean(props.sending)}
+        @click=${() => props.onSendComments(pr, action.target?.id)}>${label}</button>
+    </span>
+  </span>`;
+}
+
 function body(props: PullRequestsPageProps, rows: readonly MyPullRequest[]): TemplateResult {
-  if (props.loading && !props.data) return emptyRow("Loading pull requests…", "Asking GitHub for your open pull requests.", "status");
-  if (props.error && !props.data) return emptyRow(props.error, "The pull requests could not be loaded.", "alert");
+  const columns = props.tab === "created" ? 5 : 4;
+  if (props.loading && !props.data) return emptyRow("Loading pull requests…", "Asking GitHub for your open pull requests.", "status", columns);
+  if (props.error && !props.data) return emptyRow(props.error, "The pull requests could not be loaded.", "alert", columns);
   const signedOut = props.data?.error ? SIGNED_OUT[props.data.error] : undefined;
   if (signedOut && rows.length === 0) {
-    return emptyRow(signedOut, html`${settingsLink(props, "Connect GitHub in Settings → Integrations")} to list your pull requests.`, "alert");
+    return emptyRow(signedOut, html`${settingsLink(props, "Connect GitHub in Settings → Integrations")} to list your pull requests.`, "alert", columns);
   }
   const matching = matchingPullRequests(rows, props.query);
   if (matching.length === 0) {
     return props.query.trim()
-      ? emptyRow("No matching pull requests", "Try another repository, number, title or branch.", "status")
+      ? emptyRow("No matching pull requests", "Try another repository, number, title or branch.", "status", columns)
       : emptyRow(
         props.tab === "created" ? "No open pull requests" : "No reviews requested",
         html`Nothing is open for this GitHub account. Check the account in ${settingsLink(props, "Settings → Integrations")}.`,
         "status",
+        columns,
       );
   }
   return html`${matching.map((pr) => html`
@@ -143,12 +198,20 @@ function body(props: PullRequestsPageProps, rows: readonly MyPullRequest[]): Tem
       </td>
       <td class="worktree-sessions-col">${renderSessions(props, pr)}</td>
       <td title=${pr.updatedAt}>${formatUpdated(pr.updatedAt)}</td>
+      ${props.tab === "created" ? html`<td class="pull-request-actions-col">${renderCommentsAction(props, pr)}</td>` : nothing}
     </tr>
   `)}`;
 }
 
 function notice(props: PullRequestsPageProps) {
   const data = props.data;
+  const sent = props.sendNotice
+    ? html`<div class="callout ${props.sendNotice.tone === "ok" ? "success" : "danger"}" role=${props.sendNotice.tone === "ok" ? "status" : "alert"}>${props.sendNotice.text}</div>`
+    : nothing;
+  return html`${sent}${loadNotice(props, data)}`;
+}
+
+function loadNotice(props: PullRequestsPageProps, data: MyPullRequests | undefined) {
   if (props.error && data) return html`<div class="callout warning" role="alert">${props.error}</div>`;
   if (!data?.error) return nothing;
   const updated = data.fetchedAt ? ` Showing the list from ${formatUpdated(data.fetchedAt)}.` : "";
@@ -216,6 +279,7 @@ export function renderPullRequestsPage(props: PullRequestsPageProps): TemplateRe
                       <th class="pull-request-status-col">Status</th>
                       <th class="worktree-sessions-col">Sessions</th>
                       <th>Updated</th>
+                      ${props.tab === "created" ? html`<th class="pull-request-actions-col"><span class="sr-only">Actions</span></th>` : nothing}
                     </tr>
                   </thead>
                   <tbody>${body(props, rows)}</tbody>
