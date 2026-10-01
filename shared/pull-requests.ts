@@ -50,6 +50,16 @@ export type MyPullRequestSession = {
   archived: boolean;
   /** Created tab: review comments newer than the last send to this session. */
   newComments?: number;
+  /** Created tab: Fix CI was sent to this session for the current head commit. */
+  ciFixSent?: boolean;
+};
+
+/** A failing check of a pull request's head commit: a check run
+ * (`conclusion`) or a commit status (`state`), lower-cased. */
+export type PullRequestFailingCheck = {
+  name: string;
+  state: string;
+  url?: string;
 };
 
 /** An open or draft pull request authored by, or awaiting review from, the
@@ -68,6 +78,10 @@ export type MyPullRequest = {
   updatedAt: string;
   reviewDecision?: PullRequestReviewDecision;
   checks?: PullRequestChecks;
+  /** The head commit. */
+  headRefOid?: string;
+  /** Created tab: failing checks of the head commit (at most 30). */
+  failingChecks?: PullRequestFailingCheck[];
   /** The selected accounts that found it (Created: the author; Review
    * requested: the accounts asked directly), in selection order. */
   accounts: string[];
@@ -119,6 +133,15 @@ export type ReviewCommentsResult = {
   sent: number;
   omitted: number;
   /** `queued` when the session was busy and the message waits as a follow-up. */
+  delivery: "prompt" | "queued";
+};
+
+/** `POST /__hui/pull-requests/fix-ci` result. */
+export type FixCiResult = {
+  sessionId: string;
+  /** Failing checks listed in the message; `omitted` ones did not fit. */
+  checks: number;
+  omitted: number;
   delivery: "prompt" | "queued";
 };
 

@@ -509,8 +509,10 @@ type MyPullRequest = {
   author?: string; updatedAt: string;
   reviewDecision?: "approved" | "changes_requested" | "review_required";
   checks?: "success" | "failure" | "error" | "pending" | "expected"; // statusCheckRollup of the last commit
+  headRefOid?: string;    // the head commit
+  failingChecks?: { name: string; state: string; url?: string }[]; // Created only: failing checks of the head commit, ≤ 30
   accounts: string[];     // selected accounts that found it (Created: the author; Review requested: asked directly)
-  sessions: { id: string; title: string; archived: boolean; newComments?: number }[];
+  sessions: { id: string; title: string; archived: boolean; newComments?: number; ciFixSent?: boolean }[]; // ciFixSent: Fix CI sent to it for headRefOid
   newComments?: number;   // Created only: open review comments by others, nothing sent yet
   localCheckout?: boolean; // Created only: a known local checkout (below) of the repository exists
   assessment?: PullRequestAssessment; // Review requested only: its temporary risk review
@@ -572,6 +574,13 @@ account) in an unresolved, non-outdated thread whose latest comment is by
 someone else, or a review with a non-empty body by someone else. `newComments` on a session counts candidates created
 after that session's `pullRequestComments[].sentAt` for the URL.
 
+Both searches select `headRefOid`; the Created search also selects the last
+commit's `statusCheckRollup.contexts(first: 100)` (`CheckRun { name conclusion
+detailsUrl }`, `StatusContext { context state targetUrl }`). `failingChecks` keeps
+at most 30, in GitHub's order: check runs whose conclusion is `FAILURE`,
+`TIMED_OUT`, `CANCELLED`, `STARTUP_FAILURE` or `ACTION_REQUIRED`, and statuses in
+`FAILURE` or `ERROR` (lower-cased; only `https:` links are kept).
+
 ### `POST /__hui/pull-requests/review-comments`
 
 Body `{ url: string; sessionId?: string }` (≤ 4 KiB). Sends a Created pull
@@ -600,6 +609,33 @@ type ReviewCommentsResult = { sessionId: string; sent: number; omitted: number; 
 5. Only after the delivery is accepted, `sentAt` = the newest included comment's
    time is stored for the session. A failed delivery persists nothing and returns
    its error (500); GitHub failures are 502.
+
+### `POST /__hui/pull-requests/fix-ci`
+
+Body `{ url: string; sessionId?: string }` (≤ 4 KiB). Sends a Created pull
+request's failing checks to a session and returns `FixCiResult`:
+
+```ts
+type FixCiResult = { sessionId: string; checks: number; omitted: number; delivery: "prompt" | "queued" };
+```
+
+1. Validation is the same as for review comments: canonical URL (400) in the
+   current Created list (404), known non-temporary `sessionId` (404).
+2. The head commit, head branch and checks are read again (`gh api graphql`,
+   `repository.pullRequest`, as the row's first account). No failing check and a
+   rollup that is neither `FAILURE` nor `ERROR` is 409; nothing is sent.
+3. Without `sessionId`, a session is started on the head branch exactly as for
+   review comments (409 without a known checkout).
+4. One message of at most 20 KB lists each failing check with its state and link,
+   the head commit and branch, and asks the session to investigate (`gh pr checks
+   <n> -R owner/repo`, `gh run view <run-id> --log-failed`), fix the failures the
+   pull request caused, re-run likely flakes, push and report per the repository's
+   rules. Checks that do not fit are counted in `omitted`. Delivered as `prompt`
+   or `queued` like review comments.
+5. Nothing is persisted. After an accepted delivery the gateway keeps, in memory,
+   the head commit sent per pull request URL and session; the session's
+   `ciFixSent` is `true` while the listed `headRefOid` equals it. A failed
+   delivery records nothing and returns its error (500); GitHub failures are 502.
 
 ### Pull request risk review
 

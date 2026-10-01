@@ -21,6 +21,7 @@ import type {
   PullRequestReviewDecision,
 } from "../shared/pull-requests.ts";
 import { GitHubApiError } from "./github-previews.ts";
+import { CHECK_CONTEXTS_FIELDS, parseFailingChecks } from "./pull-request-ci.ts";
 import { parseReviewComments, REVIEW_COMMENTS_FIELDS, type ReviewComment } from "./pull-request-comments.ts";
 import { pullRequestUrls } from "./pull-requests.ts";
 import type { CommandRunner } from "./worktree-inventory.ts";
@@ -45,16 +46,17 @@ export const createdSearch = (login: string) => `is:pr is:open archived:false au
 /** Pull requests that request `login`'s review directly; `review-requested:`
  * would also match every team the account belongs to. */
 export const reviewRequestedSearch = (login: string) => `is:pr is:open archived:false user-review-requested:${login}`;
-/** The Created search also selects the review comments needed for the new-comment count. */
-export const searchQuery = (comments: boolean) => `query($q: String!) {
+/** The Created search also selects the review comments needed for the
+ * new-comment count and the head commit's checks for Fix CI. */
+export const searchQuery = (created: boolean) => `query($q: String!) {
   search(query: $q, type: ISSUE, first: ${SEARCH_LIMIT}) {
     nodes {
       ... on PullRequest {
-        number url title isDraft updatedAt headRefName baseRefName reviewDecision
+        number url title isDraft updatedAt headRefName headRefOid baseRefName reviewDecision
         repository { nameWithOwner }
         headRepository { nameWithOwner }
         author { login }
-        commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }${comments ? REVIEW_COMMENTS_FIELDS : ""}
+        commits(last: 1) { nodes { commit { statusCheckRollup { state ${created ? CHECK_CONTEXTS_FIELDS : ""} } } } }${created ? REVIEW_COMMENTS_FIELDS : ""}
       }
     }
   }
@@ -79,8 +81,10 @@ export function parsePullRequestSearch(raw: unknown, own: readonly string[] = []
     const author = str(record(data["author"])["login"], 60);
     const decision = str(data["reviewDecision"], 40).toLowerCase() as PullRequestReviewDecision;
     const commits = record(data["commits"])["nodes"];
-    const rollup = Array.isArray(commits) ? record(record(record(commits.at(-1))["commit"])["statusCheckRollup"])["state"] : undefined;
-    const checks = str(rollup, 40).toLowerCase() as PullRequestChecks;
+    const rollup = Array.isArray(commits) ? record(record(record(commits.at(-1))["commit"])["statusCheckRollup"]) : {};
+    const checks = str(rollup["state"], 40).toLowerCase() as PullRequestChecks;
+    const failingChecks = parseFailingChecks(rollup);
+    const headRefOid = str(data["headRefOid"], 64);
     // Created by the operator: the author and every selected account are "me".
     const reviewComments = "reviewThreads" in data || "reviews" in data ? parseReviewComments(data, [author, ...own].filter(Boolean)) : undefined;
     return [{
@@ -94,6 +98,8 @@ export function parsePullRequestSearch(raw: unknown, own: readonly string[] = []
       updatedAt: str(data["updatedAt"], 40),
       ...(DECISIONS.has(decision) ? { reviewDecision: decision } : {}),
       ...(CHECKS.has(checks) ? { checks } : {}),
+      ...(headRefOid ? { headRefOid } : {}),
+      ...(failingChecks.length ? { failingChecks } : {}),
       accounts: [],
       ...(reviewComments ? { reviewComments } : {}),
     }];

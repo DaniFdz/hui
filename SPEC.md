@@ -867,13 +867,30 @@ the account belongs to), at most 50 per account and list. The header's
 the checked ones (`pullRequestAccounts` in `settings.json`); none saved means
 `gh`'s active account, and at least one stays checked. Each account's searches
 run with its own token (`gh auth token --user`, passed only as `GH_TOKEN`). Rows
-found by several accounts appear once; with more than one account selected,
-each row names its accounts. Everything that means "the operator" means any
-selected account. It uses the Worktrees table
-layout: title linking to GitHub with `owner/repo#n` and the head branch, an
-Open/Draft pill, the CI rollup of the head commit and the review decision, linked
-sessions and the last update. A search field filters by repository, number,
-title and branch; **Refresh** forces a refetch.
+found by several accounts appear once; with more than one account selected, a
+row that the first selected account did not find carries a small badge naming
+its accounts. Everything that means "the operator" means any selected account.
+It uses the Worktrees table layout with compact, two-line rows: the title
+linking to GitHub on one line (ellipsized, full title on hover), then
+`owner/repo#n · branch`; an Open/Draft pill, the CI rollup of the head commit
+and the review decision on one line; linked sessions; the last update; and the
+row's actions. The pull request column takes the free width. The actions cell
+shows only actions usable now (never a disabled button) and stays empty when
+there is none. A search field filters by repository, number, title and branch;
+rows are ordered by last update, newest first; **Refresh** forces a refetch.
+
+**Created by me** also has two chip rows above the table. Triage chips (one at a
+time, **All** by default, each with its count) put every row in exactly one
+bucket: **Drafts** (every draft); **Needs you** (failed or errored checks,
+changes requested, or review comments no linked session has received yet);
+**Ready to merge** (approved, checks passing or none, nothing unsent);
+**Waiting on review** (everything else, including approved pull requests whose
+checks still run). Repository chips (several at a time, **All repos** clears)
+list each repository in the list with its count, most first, by short name
+unless two owners share it; beyond eight, the rest are in a **+N more** menu.
+Triage, repositories and search combine; triage counts reflect the repository
+selection and search. The repository selection is a browser preference
+(`localStorage`); a saved repository that is no longer listed is ignored.
 
 A session is linked when its loaded transcript created the pull request (the
 same detection as the session PR badges) or when its directory, resolved
@@ -893,7 +910,7 @@ unresolved, non-outdated review threads whose latest comment is by someone other
 than the operator (the pull request's author or any selected account), plus `COMMENTED` and
 `CHANGES_REQUESTED` reviews with a body by someone else, created after the last
 send to the target session. The target is the first linked session; a picker
-chooses another when several are linked. **Review comments (N)** is enabled when
+chooses another when several are linked. **Review comments (N)** appears when
 N > 0. It reads the threads from GitHub again, builds one message of at most
 20 KB (oldest first, with author, `path:line`, body and thread URL, the newest
 dropped with a note when they do not fit) asking the session to address each
@@ -907,7 +924,8 @@ Without a linked session the button reads **Start session with comments**: it
 starts a session in a known checkout of the repository that is already on the
 head branch (a checkout or any of its worktrees), or else in a new HUI
 worktree on a local head branch tracking a freshly fetched
-`origin/<headRefName>`, then delivers the comments there.
+`origin/<headRefName>`, then delivers the comments there. Without a known
+checkout the button is not shown.
 
 A known checkout is a Git directory with a github.com remote for the base or
 head repository (`https://github.com/…`, `git@github.com:…`, `ssh://git@github.com/…`
@@ -924,6 +942,20 @@ checkouts decide whether a row can start a session, which directory it starts
 in and where a risk review reads; only registered sessions are ever linked to a
 row. Owners are never guessed: a clone of `acme/web` does not count for
 `other/web`.
+
+**Fix CI.** A Created row whose checks failed or errored shows **Fix CI** for the
+same target as the review comments (with no linked session, it starts one on
+the head branch the same way, when a known checkout exists). It reads the pull
+request's head commit and checks from GitHub again (never the cached list); if
+none fails any more, nothing is sent. Otherwise one message of at most 20 KB
+lists each failing check (check runs by conclusion, commit statuses by state, at
+most 30) with its link, the head commit and branch, and asks the session to
+investigate the failures (for example with `gh pr checks` and
+`gh run view --log-failed`), fix those the pull request caused, re-run likely
+flakes, push and report, per the repository's rules. It is delivered like the
+review comments. Nothing is persisted: the gateway remembers in memory the head
+commit it last sent per pull request and session, and the button reads
+**Fix CI (sent)** until the head changes or the gateway restarts.
 
 **Risk review.** On **Review requested** rows, **Assess risk** starts a
 temporary PI session on the operator's default model (never the utility model)

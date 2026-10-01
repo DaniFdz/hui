@@ -1,7 +1,27 @@
-import type { MyPullRequests, ReviewCommentsResult } from "../../shared/pull-requests.ts";
+import type { FixCiResult, MyPullRequests, ReviewCommentsResult } from "../../shared/pull-requests.ts";
 import { fetchJson } from "./settings-store.ts";
 
-export type { MyPullRequest, MyPullRequests, ReviewCommentsResult } from "../../shared/pull-requests.ts";
+export type { FixCiResult, MyPullRequest, MyPullRequests, ReviewCommentsResult } from "../../shared/pull-requests.ts";
+
+/** Created tab → selected repository chips: a browser reading preference, like the Kanban View menu. */
+export const PULL_REQUEST_REPOS_KEY = "hui.pull-request-repositories";
+
+export function normalizePullRequestRepos(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.filter((item): item is string => typeof item === "string" && /^[^/\s]+\/[^/\s]+$/u.test(item)))].slice(0, 200);
+}
+
+export function readPullRequestRepos(): string[] {
+  try {
+    return normalizePullRequestRepos(JSON.parse(localStorage.getItem(PULL_REQUEST_REPOS_KEY) ?? "null"));
+  } catch {
+    return [];
+  }
+}
+
+export function writePullRequestRepos(repos: readonly string[]) {
+  try { localStorage.setItem(PULL_REQUEST_REPOS_KEY, JSON.stringify(repos)); } catch { /* Keep the in-memory choice if storage is unavailable. */ }
+}
 
 export function loadMyPullRequests(): Promise<MyPullRequests> {
   return fetchJson<MyPullRequests>("/__hui/pull-requests", { signal: AbortSignal.timeout(60_000) });
@@ -38,5 +58,15 @@ export function settlePullRequestReview(action: "approve" | "dismiss" | "keep", 
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ url }),
     signal: AbortSignal.timeout(60_000),
+  });
+}
+
+/** Sends the failing checks, read again from GitHub, to a session; without `sessionId` starts one on the head branch. */
+export function fixPullRequestCi(url: string, sessionId?: string): Promise<FixCiResult> {
+  return fetchJson<FixCiResult>("/__hui/pull-requests/fix-ci", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ url, ...(sessionId ? { sessionId } : {}) }),
+    signal: AbortSignal.timeout(15 * 60_000),
   });
 }

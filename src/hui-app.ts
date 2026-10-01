@@ -158,8 +158,8 @@ import { renderHome, renderNewSession, type HomeProps } from "./views/home.ts";
 import { DEFAULT_SESSIONS_PAGE_FILTERS, renderSessionsPage, type SessionsPageFilters, type SessionsPageState } from "./views/sessions.ts";
 import type { WorktreeFilter } from "./views/worktrees.ts";
 import "./views/contributions.ts";
-import { renderPullRequestsPage, type PullRequestsTab } from "./views/pull-requests.ts";
-import { assessPullRequest, loadMyPullRequests, refreshMyPullRequests, sendReviewComments, settlePullRequestReview, type MyPullRequest, type MyPullRequests } from "./lib/my-pull-requests.ts";
+import { renderPullRequestsPage, type PullRequestsTab, type TriageFilter } from "./views/pull-requests.ts";
+import { assessPullRequest, fixPullRequestCi, readPullRequestRepos, writePullRequestRepos, loadMyPullRequests, refreshMyPullRequests, sendReviewComments, settlePullRequestReview, type MyPullRequest, type MyPullRequests } from "./lib/my-pull-requests.ts";
 import { loadWorktrees, removeWorktrees, type WorktreeInventory, type WorktreeRemovalResult, type WorktreeRisk } from "./lib/worktrees.ts";
 import { renderPanelSelector } from "./views/panel-selector.ts";
 import { renderAutomationSurface } from "./views/automation.ts";
@@ -247,6 +247,9 @@ export class HuiApp extends HuiElement {
   @state() private pullRequestsTab: PullRequestsTab = "created";
   @state() private pullRequestTargets: Readonly<Record<string, string>> = {};
   @state() private pullRequestSending = "";
+  @state() private pullRequestFixing = "";
+  @state() private pullRequestTriage: TriageFilter = "all";
+  @state() private pullRequestRepos: readonly string[] = readPullRequestRepos();
   @state() private pullRequestNotice: { tone: "ok" | "danger"; text: string } | undefined;
   @state() private pullRequestReviewing = "";
   @state() private pullRequestApproveConfirm = "";
@@ -3600,7 +3603,7 @@ export class HuiApp extends HuiElement {
   /** Sends a Created pull request's new review comments to a session, or starts
    * one on its head branch; the list is reloaded so the counts reflect the send. */
   private sendPullRequestComments = (pr: MyPullRequest, sessionId?: string) => {
-    if (this.pullRequestSending) return;
+    if (this.pullRequestSending || this.pullRequestFixing) return;
     this.pullRequestSending = pr.url;
     this.pullRequestNotice = undefined;
     const reference = `${pr.repository}#${pr.number}`;
@@ -3620,6 +3623,32 @@ export class HuiApp extends HuiElement {
       })
       .finally(() => {
         this.pullRequestSending = "";
+        this.loadPullRequests();
+      });
+  };
+
+  /** Sends a Created pull request's failing checks to a session, or starts one on its head branch. */
+  private fixPullRequestCi = (pr: MyPullRequest, sessionId?: string) => {
+    if (this.pullRequestSending || this.pullRequestFixing) return;
+    this.pullRequestFixing = pr.url;
+    this.pullRequestNotice = undefined;
+    const reference = `${pr.repository}#${pr.number}`;
+    void fixPullRequestCi(pr.url, sessionId)
+      .then((result) => {
+        const checks = result.checks ? `${result.checks} failing ${result.checks === 1 ? "check" : "checks"} on ${reference}` : `the failing checks on ${reference}`;
+        const omitted = result.omitted ? ` ${result.omitted} more did not fit.` : "";
+        const title = pr.sessions.find((session) => session.id === result.sessionId)?.title;
+        const text = !sessionId
+          ? `Started a session on ${pr.headRefName} to fix ${checks}.`
+          : `${result.delivery === "queued" ? "Queued" : "Sent"} ${checks} ${result.delivery === "queued" ? "for" : "to"} ${title ?? "the session"}${result.delivery === "queued" ? "; it runs after the current turn" : ""}.`;
+        this.pullRequestNotice = { tone: "ok", text: `${text}${omitted}` };
+        if (!sessionId) void this.refreshSessions(true);
+      })
+      .catch((error: unknown) => {
+        this.pullRequestNotice = { tone: "danger", text: `Could not send the failing checks of ${reference}: ${error instanceof Error ? error.message : "unknown error"}` };
+      })
+      .finally(() => {
+        this.pullRequestFixing = "";
         this.loadPullRequests();
       });
   };
@@ -4502,6 +4531,12 @@ export class HuiApp extends HuiElement {
                         ...(this.pullRequestNotice ? { sendNotice: this.pullRequestNotice } : {}),
                         onTarget: (url, id) => { this.pullRequestTargets = { ...this.pullRequestTargets, [url]: id }; },
                         onSendComments: this.sendPullRequestComments,
+                        fixing: this.pullRequestFixing,
+                        onFixCi: this.fixPullRequestCi,
+                        triage: this.pullRequestTriage,
+                        onTriage: (triage) => { this.pullRequestTriage = triage; },
+                        repos: this.pullRequestRepos,
+                        onRepos: (repos) => { this.pullRequestRepos = repos; writePullRequestRepos(repos); },
                         reviewing: this.pullRequestReviewing,
                         approveConfirm: this.pullRequestApproveConfirm,
                         onAssess: this.assessPullRequest,

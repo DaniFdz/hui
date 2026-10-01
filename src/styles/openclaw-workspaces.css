@@ -653,7 +653,71 @@
 @media (max-width: 640px) {
   .pull-request-drawer { width: 100vw; border-left: 0; }
 }
-.pull-requests-table .pull-request-row-accounts { display: block; font-size: var(--control-ui-text-sm); white-space: normal; overflow-wrap: anywhere; }
+/* Compact rows: the pull request column takes the free width; title and
+   reference each stay on one line and ellipsize (full text in the tooltip). */
+.pull-requests-table .data-table-key-col { width: 100%; min-width: 240px; max-width: 0; }
+.pull-requests-table .session-key-cell { max-width: none; }
+.pull-requests-table .pull-request-key { gap: 2px; }
+.pull-requests-table .pull-request-title,
+.pull-requests-table .pull-request-meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pull-requests-table .pull-request-title { color: var(--text-strong); font-weight: 600; }
+.pull-requests-table .pull-request-meta { font-size: var(--control-ui-text-sm); }
+.pull-requests-table .pull-request-account { margin-right: 6px; vertical-align: 1px; }
+.pull-requests-table .pull-request-status-col .worktree-prs { flex-wrap: nowrap; white-space: nowrap; }
+/* The free width goes to the title, so the sessions column needs its own. */
+.pull-requests-table .worktree-sessions-col { width: 180px; }
+.pull-requests-table .worktree-sessions { max-width: 180px; }
+.pull-requests-table .pull-request-updated-col { white-space: nowrap; }
+/* Several actions stack instead of widening the column for every row. */
+.pull-requests-table tbody tr.session-data-row > td.pull-request-actions-col { white-space: normal; }
+.pull-requests-table .pull-request-actions { flex-wrap: wrap; gap: 4px 8px; }
+@media (max-width: 640px) {
+  .pull-requests-table .data-table-key-col { min-width: 220px; }
+}
+/* Created tab: triage (one) and repository (several) chips. */
+.pull-request-filters { display: grid; gap: 8px; margin: 0 0 10px; }
+.pull-request-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.pull-request-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: var(--control-ui-text-sm);
+  white-space: nowrap;
+  cursor: pointer;
+  list-style: none;
+}
+.pull-request-chip::-webkit-details-marker { display: none; }
+.pull-request-chip:hover { background: var(--bg-hover); color: var(--text); }
+.pull-request-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.pull-request-chip[aria-pressed="true"] { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--text-strong); }
+.pull-request-chip__count { color: var(--muted); font-variant-numeric: tabular-nums; }
+.pull-request-chip-more { position: relative; }
+.pull-request-chip-more__menu {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 4px);
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  min-width: 180px;
+  max-height: 320px;
+  padding: 6px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated, var(--bg));
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+.pull-request-chip-more__menu .pull-request-chip { justify-content: space-between; }
 .pull-request-accounts { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin: 0; padding: 0; border: 0; font-size: var(--control-ui-text-sm); }
 .pull-request-accounts legend { float: left; margin-right: 4px; padding: 0; color: var(--muted); }
 .pull-request-accounts__option { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }

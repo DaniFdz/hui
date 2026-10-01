@@ -46,6 +46,16 @@ export type PullRequestsPageProps = {
   onTarget: (url: string, sessionId: string) => void;
   /** `sessionId` absent: start a session on the head branch. */
   onSendComments: (pr: MyPullRequest, sessionId?: string) => void;
+  /** URL whose failing checks are being sent (Fix CI). */
+  fixing: string;
+  /** `sessionId` absent: start a session on the head branch. */
+  onFixCi: (pr: MyPullRequest, sessionId?: string) => void;
+  /** Created tab: the triage chip (not persisted). */
+  triage: TriageFilter;
+  onTriage: (triage: TriageFilter) => void;
+  /** Created tab: selected repository chips (persisted in the browser; unknown ones are ignored). */
+  repos: readonly string[];
+  onRepos: (repos: string[]) => void;
   /** URL whose risk-review action (assess, approve, dismiss, keep) is running. */
   reviewing: string;
   /** URL whose approval waits in the confirmation dialog. */
@@ -84,26 +94,94 @@ export function approveConfirmation(pr: MyPullRequest): { title: string; detail:
   };
 }
 
-export type ReviewCommentsAction = {
-  kind: "send" | "start";
-  target?: MyPullRequestSession;
-  count: number;
-  /** Why the button is disabled. */
-  disabled?: string;
+export type CreatedAction = {
+  kind: "comments" | "start" | "fixCi";
+  label: string;
+  tooltip: string;
 };
 
-/** What the Created row's review-comments button does for the picked session. */
-export function reviewCommentsAction(pr: MyPullRequest, picked: string | undefined): ReviewCommentsAction {
+const plural = (count: number, one: string, many = `${one}s`) => `${count} ${count === 1 ? one : many}`;
+const checksFailed = (pr: MyPullRequest) => pr.checks === "failure" || pr.checks === "error";
+
+/** The Created row's usable actions for the picked session (default: the
+ * first linked one), or, without a linked session, those that start one in a
+ * known checkout. Unusable actions are left out rather than disabled. */
+export function createdActions(pr: MyPullRequest, picked: string | undefined): { target?: MyPullRequestSession; actions: CreatedAction[] } {
   const target = pr.sessions.find((session) => session.id === picked) ?? pr.sessions[0];
-  if (target) {
-    const count = target.newComments ?? 0;
-    return { kind: "send", target, count, ...(count ? {} : { disabled: `No new review comments since the last send to ${target.title}.` }) };
+  const actions: CreatedAction[] = [];
+  const comments = target ? target.newComments ?? 0 : pr.newComments ?? 0;
+  if (comments && target) {
+    actions.push({ kind: "comments", label: `Review comments (${comments})`, tooltip: `Send ${plural(comments, "new review comment")} to ${target.title}` });
+  } else if (comments && pr.localCheckout) {
+    actions.push({ kind: "start", label: "Start session with comments", tooltip: `Start a session on ${pr.headRefName} with ${plural(comments, "review comment")}` });
   }
-  const count = pr.newComments ?? 0;
-  const disabled = !pr.localCheckout
-    ? `No local checkout of ${pr.repository} is known. Start a session in a checkout of it first.`
-    : count ? undefined : "No open review comments by others.";
-  return { kind: "start", count, ...(disabled ? { disabled } : {}) };
+  if (checksFailed(pr) && (target || pr.localCheckout)) {
+    const failing = pr.failingChecks?.length ? plural(pr.failingChecks.length, "failing check") : "the failing checks";
+    actions.push({
+      kind: "fixCi",
+      label: target?.ciFixSent ? "Fix CI (sent)" : "Fix CI",
+      tooltip: target
+        ? `${target.ciFixSent ? "Already sent for this head commit. Send again: " : "Send "}${failing} to ${target.title}`
+        : `Start a session on ${pr.headRefName} to fix ${failing}`,
+    });
+  }
+  return { ...(target ? { target } : {}), actions };
+}
+
+export type TriageBucket = "needsYou" | "waiting" | "ready" | "drafts";
+export type TriageFilter = TriageBucket | "all";
+
+export const TRIAGE: readonly { bucket: TriageFilter; label: string }[] = [
+  { bucket: "all", label: "All" },
+  { bucket: "needsYou", label: "Needs you" },
+  { bucket: "waiting", label: "Waiting on review" },
+  { bucket: "ready", label: "Ready to merge" },
+  { bucket: "drafts", label: "Drafts" },
+];
+
+/** Review comments no linked session has received yet (without a session: all of them). */
+function unsentComments(pr: MyPullRequest): number {
+  return pr.sessions.length ? Math.min(...pr.sessions.map((session) => session.newComments ?? 0)) : pr.newComments ?? 0;
+}
+
+/** Exactly one bucket per Created row: drafts are only Drafts; failed checks,
+ * requested changes or unsent comments need you; approved with passing (or
+ * no) checks is ready; everything else waits (on review or on running checks). */
+export function triageBucket(pr: MyPullRequest): TriageBucket {
+  if (pr.state === "draft") return "drafts";
+  if (checksFailed(pr) || pr.reviewDecision === "changes_requested" || unsentComments(pr) > 0) return "needsYou";
+  if (pr.reviewDecision === "approved" && (!pr.checks || pr.checks === "success")) return "ready";
+  return "waiting";
+}
+
+export type RepositoryChip = { repository: string; label: string; count: number };
+
+/** One chip per repository in `rows`, most pull requests first, then by name;
+ * the short name unless another owner has a repository of that name. */
+export function repositoryChips(rows: readonly MyPullRequest[]): RepositoryChip[] {
+  const counts = new Map<string, number>();
+  for (const pr of rows) counts.set(pr.repository, (counts.get(pr.repository) ?? 0) + 1);
+  const short = (repository: string) => repository.slice(repository.indexOf("/") + 1);
+  const names = new Map<string, number>();
+  for (const repository of counts.keys()) names.set(short(repository).toLowerCase(), (names.get(short(repository).toLowerCase()) ?? 0) + 1);
+  return [...counts]
+    .map(([repository, count]) => ({ repository, count, label: names.get(short(repository).toLowerCase())! > 1 ? repository : short(repository) }))
+    .toSorted((a, b) => b.count - a.count || a.repository.localeCompare(b.repository));
+}
+
+/** Created rows for the chips and the search box, newest update first. Selected
+ * repositories no longer in the list are ignored; none left means all. */
+export function filteredCreated(rows: readonly MyPullRequest[], filter: { triage: TriageFilter; repos: readonly string[]; query: string }): {
+  rows: MyPullRequest[]; counts: Record<TriageFilter, number>; repos: string[];
+} {
+  const present = new Set(rows.map((pr) => pr.repository));
+  const repos = filter.repos.filter((repository) => present.has(repository));
+  const scoped = matchingPullRequests(rows, filter.query)
+    .filter((pr) => !repos.length || repos.includes(pr.repository))
+    .toSorted((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  const counts: Record<TriageFilter, number> = { all: scoped.length, needsYou: 0, waiting: 0, ready: 0, drafts: 0 };
+  for (const pr of scoped) counts[triageBucket(pr)] += 1;
+  return { rows: filter.triage === "all" ? scoped : scoped.filter((pr) => triageBucket(pr) === filter.triage), counts, repos };
 }
 
 /** The compact state the Review requested actions cell shows. */
@@ -187,24 +265,22 @@ function renderSessions(props: PullRequestsPageProps, pr: MyPullRequest) {
   >${session.title}${session.archived ? html` <span class="session-label-chip">Archived</span>` : nothing}</a>`)}</span>`;
 }
 
-function renderCommentsAction(props: PullRequestsPageProps, pr: MyPullRequest) {
-  const action = reviewCommentsAction(pr, props.targets[pr.url]);
-  const sending = props.sending === pr.url;
-  const tooltip = action.disabled ?? (action.kind === "send"
-    ? `Send ${action.count} new review ${action.count === 1 ? "comment" : "comments"} to ${action.target!.title}`
-    : `Start a session on ${pr.headRefName} with ${action.count} review ${action.count === 1 ? "comment" : "comments"}`);
-  const label = sending ? "Sending…" : action.kind === "send" ? `Review comments (${action.count})` : "Start session with comments";
+function renderCreatedActions(props: PullRequestsPageProps, pr: MyPullRequest) {
+  const { target, actions } = createdActions(pr, props.targets[pr.url]);
+  if (!actions.length) return nothing;
+  const busy = Boolean(props.sending || props.fixing);
+  const labels: Record<CreatedAction["kind"], string> = { comments: "Sending…", start: "Starting…", fixCi: "Sending…" };
+  const running = (action: CreatedAction) => action.kind === "fixCi" ? props.fixing === pr.url : props.sending === pr.url;
   return html`<span class="worktree-actions pull-request-actions">
-    ${pr.sessions.length > 1 ? html`<select class="pull-request-target" aria-label=${`Session for review comments on ${pullRequestReference(pr)}`}
-      .value=${action.target?.id ?? ""} ?disabled=${Boolean(props.sending)}
+    ${pr.sessions.length > 1 ? html`<select class="pull-request-target" aria-label=${`Session for ${pullRequestReference(pr)}`}
+      .value=${target?.id ?? ""} ?disabled=${busy}
       @change=${(event: Event) => props.onTarget(pr.url, (event.target as HTMLSelectElement).value)}>
-      ${pr.sessions.map((session) => html`<option value=${session.id} ?selected=${session.id === action.target?.id}>${session.title}${session.archived ? " (archived)" : ""}</option>`)}
+      ${pr.sessions.map((session) => html`<option value=${session.id} ?selected=${session.id === target?.id}>${session.title}${session.archived ? " (archived)" : ""}</option>`)}
     </select>` : nothing}
-    <span class="worktree-tooltip-wrap" data-hui-tooltip=${tooltip}>
-      <button type="button" class="btn btn--sm" data-review-comments=${action.kind}
-        ?disabled=${Boolean(action.disabled) || Boolean(props.sending)}
-        @click=${() => props.onSendComments(pr, action.target?.id)}>${label}</button>
-    </span>
+    ${actions.map((action) => html`<span class="worktree-tooltip-wrap" data-hui-tooltip=${action.tooltip}>
+      <button type="button" class="btn btn--sm" data-created-action=${action.kind} ?disabled=${busy}
+        @click=${() => action.kind === "fixCi" ? props.onFixCi(pr, target?.id) : props.onSendComments(pr, target?.id)}>${running(action) ? labels[action.kind] : action.label}</button>
+    </span>`)}
   </span>`;
 }
 
@@ -349,6 +425,58 @@ export function renderApproveDialog(props: PullRequestsPageProps): TemplateResul
   </dialog>`;
 }
 
+/** The row's accounts, only when several are selected and the first one did not find it. */
+function accountBadge(props: PullRequestsPageProps, pr: MyPullRequest) {
+  const selected = props.data?.selectedAccounts ?? [];
+  if (selected.length < 2 || pr.accounts.includes(selected[0]!)) return nothing;
+  return html`<span class="session-label-chip pull-request-account" data-hui-tooltip=${`${props.tab === "reviewRequested" ? "Requested of" : "Authored as"} ${pr.accounts.join(", ")}`}>${pr.accounts.map((login, index) => html`${index ? ", " : ""}<bdi data-account=${login}>${login}</bdi>`)}</span>`;
+}
+
+const VISIBLE_REPOSITORY_CHIPS = 8;
+
+/** The "+N more" menu closes on Escape (focus back on its toggle) and when focus leaves it. */
+function closeMenuOnEscape(event: KeyboardEvent) {
+  const menu = event.currentTarget as HTMLDetailsElement;
+  if (event.key !== "Escape" || !menu.open) return;
+  event.preventDefault();
+  event.stopPropagation();
+  menu.open = false;
+  menu.querySelector("summary")?.focus();
+}
+
+function closeMenuOnFocusOut(event: FocusEvent) {
+  const menu = event.currentTarget as HTMLDetailsElement;
+  if (!menu.contains(event.relatedTarget as Node | null)) menu.open = false;
+}
+
+function chip(label: string, count: number, pressed: boolean, onClick: () => void, attributes: { triage?: string; repository?: string } = {}) {
+  return html`<button type="button" class="pull-request-chip" aria-pressed=${String(pressed)} data-triage-chip=${attributes.triage ?? nothing}
+    data-repository-chip=${attributes.repository ?? nothing} @click=${onClick}>${label} <span class="pull-request-chip__count">${count}</span></button>`;
+}
+
+/** Created tab: triage (single choice) and repository (several) chips over the search box. */
+function renderCreatedFilters(props: PullRequestsPageProps, rows: readonly MyPullRequest[]) {
+  const { counts, repos } = filteredCreated(rows, props);
+  const chips = repositoryChips(rows);
+  const toggle = (repository: string) => props.onRepos(repos.includes(repository) ? repos.filter((item) => item !== repository) : [...repos, repository]);
+  const repoChip = (item: RepositoryChip) => chip(item.label, item.count, repos.includes(item.repository), () => toggle(item.repository), { repository: item.repository });
+  const hidden = chips.slice(VISIBLE_REPOSITORY_CHIPS);
+  const hiddenSelected = hidden.filter((item) => repos.includes(item.repository)).length;
+  return html`<div class="pull-request-filters">
+    <div class="pull-request-chips" role="group" aria-label="Triage">
+      ${TRIAGE.map(({ bucket, label }) => chip(label, counts[bucket], props.triage === bucket, () => props.onTriage(bucket), { triage: bucket }))}
+    </div>
+    ${chips.length > 1 ? html`<div class="pull-request-chips" role="group" aria-label="Repositories">
+      ${chip("All repos", rows.length, repos.length === 0, () => props.onRepos([]), { repository: "" })}
+      ${chips.slice(0, VISIBLE_REPOSITORY_CHIPS).map(repoChip)}
+      ${hidden.length ? html`<details class="pull-request-chip-more" @keydown=${closeMenuOnEscape} @focusout=${closeMenuOnFocusOut}>
+        <summary class="pull-request-chip">+${hidden.length} more${hiddenSelected ? ` (${hiddenSelected} selected)` : ""}</summary>
+        <div class="pull-request-chip-more__menu" role="group" aria-label="More repositories">${hidden.map(repoChip)}</div>
+      </details>` : nothing}
+    </div>` : nothing}
+  </div>`;
+}
+
 function body(props: PullRequestsPageProps, rows: readonly MyPullRequest[]): TemplateResult {
   const columns = 5;
   if (props.loading && !props.data) return emptyRow("Loading pull requests…", "Asking GitHub for your open pull requests.", "status", columns);
@@ -357,10 +485,13 @@ function body(props: PullRequestsPageProps, rows: readonly MyPullRequest[]): Tem
   if (signedOut && rows.length === 0) {
     return emptyRow(signedOut, html`${settingsLink(props, "Connect GitHub in Settings → Integrations")} to list your pull requests.`, "alert", columns);
   }
-  const matching = matchingPullRequests(rows, props.query);
+  const matching = props.tab === "created"
+    ? filteredCreated(rows, props).rows
+    : matchingPullRequests(rows, props.query).toSorted((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   if (matching.length === 0) {
-    return props.query.trim()
-      ? emptyRow("No matching pull requests", "Try another repository, number, title or branch.", "status", columns)
+    const filtered = props.tab === "created" && (props.triage !== "all" || filteredCreated(rows, props).repos.length > 0);
+    return props.query.trim() || filtered
+      ? emptyRow("No matching pull requests", filtered ? "Try another filter, repository, number, title or branch." : "Try another repository, number, title or branch.", "status", columns)
       : emptyRow(
         props.tab === "created" ? "No open pull requests" : "No reviews requested",
         html`Nothing is open for this GitHub account. Check the account in ${settingsLink(props, "Settings → Integrations")}.`,
@@ -369,19 +500,15 @@ function body(props: PullRequestsPageProps, rows: readonly MyPullRequest[]): Tem
       );
   }
   return html`${matching.map((pr) => html`
-    <tr class="session-data-row pull-request-row" data-pull-request=${pr.url}>
+    <tr class="session-data-row pull-request-row" data-pull-request=${pr.url} data-triage=${props.tab === "created" ? triageBucket(pr) : nothing}>
       <td class="data-table-key-col">
         <div class="session-key-cell">
           <span class="session-avatar session-avatar--direct" aria-hidden="true">${pullRequestStateIcon(pr.state)}</span>
-          <span class="session-key-cell__text">
-            <span class="session-key-cell__primary">
-              <a class="worktree-branch pull-request-title" href=${pr.url} target="_blank" rel="noopener noreferrer">${pr.title || pullRequestReference(pr)}</a>
+          <span class="session-key-cell__text pull-request-key">
+            <a class="pull-request-title" href=${pr.url} target="_blank" rel="noopener noreferrer" title=${pr.title || pullRequestReference(pr)}>${pr.title || pullRequestReference(pr)}</a>
+            <span class="muted pull-request-meta" title=${`${pullRequestReference(pr)} · ${pr.headRefName}`}>
+              ${accountBadge(props, pr)}<span class="mono">${pullRequestReference(pr)}</span> · <bdi class="mono">${pr.headRefName}</bdi>${pr.author && props.tab === "reviewRequested" ? ` · ${pr.author}` : ""}
             </span>
-            <span class="muted session-key-display-name">
-              <span class="mono">${pullRequestReference(pr)}</span> · <bdi class="mono">${pr.headRefName}</bdi>${pr.author && props.tab === "reviewRequested" ? ` · ${pr.author}` : ""}
-            </span>
-            ${(props.data?.selectedAccounts.length ?? 0) > 1 ? html`<span class="muted pull-request-row-accounts">${props.tab === "reviewRequested" ? "Requested of" : "As"}
-              ${pr.accounts.map((login, index) => html`${index ? ", " : ""}<bdi class="mono" data-account=${login}>${login}</bdi>`)}</span>` : nothing}
           </span>
         </div>
       </td>
@@ -393,8 +520,8 @@ function body(props: PullRequestsPageProps, rows: readonly MyPullRequest[]): Tem
         </span>
       </td>
       <td class="worktree-sessions-col">${renderSessions(props, pr)}</td>
-      <td title=${pr.updatedAt}>${formatUpdated(pr.updatedAt)}</td>
-      <td class="pull-request-actions-col">${props.tab === "created" ? renderCommentsAction(props, pr) : renderAssessAction(props, pr)}</td>
+      <td class="pull-request-updated-col" title=${pr.updatedAt}>${formatUpdated(pr.updatedAt)}</td>
+      <td class="pull-request-actions-col">${props.tab === "created" ? renderCreatedActions(props, pr) : renderAssessAction(props, pr)}</td>
     </tr>
   `)}`;
 }
@@ -468,6 +595,7 @@ export function renderPullRequestsPage(props: PullRequestsPageProps): TemplateRe
                     .value=${props.query} @input=${(event: Event) => props.onQuery((event.target as HTMLInputElement).value)} />
                 </label>
               </div>
+              ${props.tab === "created" && created.length ? renderCreatedFilters(props, created) : nothing}
               <div class="data-table-container">
                 <table class="data-table sessions-table worktrees-table pull-requests-table">
                   <thead>
@@ -475,7 +603,7 @@ export function renderPullRequestsPage(props: PullRequestsPageProps): TemplateRe
                       <th class="data-table-key-col">Pull request</th>
                       <th class="pull-request-status-col">Status</th>
                       <th class="worktree-sessions-col">Sessions</th>
-                      <th>Updated</th>
+                      <th class="pull-request-updated-col">Updated</th>
                       <th class="pull-request-actions-col"><span class="sr-only">Actions</span></th>
                     </tr>
                   </thead>

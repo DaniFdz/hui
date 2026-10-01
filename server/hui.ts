@@ -23,7 +23,7 @@ import { fileURLToPath } from "node:url";
 
 import type { Connect, Plugin } from "vite";
 import { progressCardFromTranscript, type ProgressCard } from "../shared/progress-card.ts";
-import type { AutoApprovedPullRequest, MyPullRequests, ReviewCommentsResult, SessionPullRequest } from "../shared/pull-requests.ts";
+import type { AutoApprovedPullRequest, FixCiResult, MyPullRequests, ReviewCommentsResult, SessionPullRequest } from "../shared/pull-requests.ts";
 import {
   effectiveSessionStage,
   isSessionStage,
@@ -121,6 +121,7 @@ import { FIRST_YEAR as GITHUB_FIRST_YEAR, GitHubContributionsReader, latestYear 
 import { classifyGhFailure, GitHubApiError, GitHubPreviews, ghApi, ghJson, previewPullRequestFetcher } from "./github-previews.ts";
 import { correlateSessions, effectiveAccounts, fetchMyPullRequests, MyPullRequestsCache, readCheckouts, repositoryCheckouts, type Checkout, type PullRequestSnapshot } from "./my-pull-requests.ts";
 import { CheckoutDiscovery, discoverCheckouts } from "./checkout-discovery.ts";
+import { assertFailing, fetchPullRequestCi, fixCiMessage, NoFailingChecksError } from "./pull-request-ci.ts";
 import { fetchReviewComments, newReviewComments, NoNewCommentsError, recordCommentsSent, sendReviewComments, sentAtFor } from "./pull-request-comments.ts";
 import { MAX_GITHUB_EMBEDS, parseGitHubUrl } from "../shared/github-links.ts";
 import { TaskSuggestionInputError, TaskSuggestionNotFoundError, TaskSuggestionStore } from "./task-suggestions.ts";
@@ -205,6 +206,7 @@ const GITHUB_CONTRIBUTIONS_ROUTE = `${GITHUB_ROUTE}/contributions`;
 const PULL_REQUESTS_ROUTE = `${PREFIX}pull-requests`;
 const PULL_REQUESTS_REFRESH_ROUTE = `${PULL_REQUESTS_ROUTE}/refresh`;
 const PULL_REQUESTS_REVIEW_COMMENTS_ROUTE = `${PULL_REQUESTS_ROUTE}/review-comments`;
+const PULL_REQUESTS_FIX_CI_ROUTE = `${PULL_REQUESTS_ROUTE}/fix-ci`;
 /** Risk review of a Review requested pull request: assess, approve, dismiss, keep. */
 const PULL_REQUEST_REVIEW_ROUTE = /^\/__hui\/pull-requests\/(assess|approve|dismiss|keep)$/u;
 const JIRA_ROUTE = `${PREFIX}jira`;
@@ -900,7 +902,11 @@ async function pullRequestsPage(snapshot: PullRequestSnapshot): Promise<MyPullRe
     if (!reviewComments) return { ...pr, sessions: linked };
     return {
       ...pr,
-      sessions: linked.map((session) => ({ ...session, newComments: newReviewComments(reviewComments, sentAtFor(byId.get(session.id) ?? {}, pr.url)).length })),
+      sessions: linked.map((session) => ({
+        ...session,
+        newComments: newReviewComments(reviewComments, sentAtFor(byId.get(session.id) ?? {}, pr.url)).length,
+        ...(pr.headRefOid && ciFixesSent.get(ciFixKey(pr.url, session.id)) === pr.headRefOid ? { ciFixSent: true } : {}),
+      })),
       newComments: reviewComments.length,
       localCheckout: repositoryCheckouts(pr, known).length > 0,
     };
@@ -950,7 +956,8 @@ async function startPullRequestSession(pr: Pick<PullRequestSnapshot["created"][n
 /** `POST …/pull-requests/review-comments`: sends a Created pull request's new
  * review comments to `sessionId`, or, without one, to a new session on its
  * head branch in a known checkout of the repository. */
-async function sendPullRequestReviewComments(body: Record<string, unknown>): Promise<ReviewCommentsResult> {
+/** A Created pull request named by `{ url, sessionId? }` and the named session, validated. */
+async function createdPullRequest(body: Record<string, unknown>) {
   const url = typeof body["url"] === "string" ? body["url"].trim() : "";
   const ref = pullRequestUrls(url)[0];
   if (!ref || ref.url !== url) throw new PullRequestInputError("A github.com pull request URL is required.");
@@ -960,10 +967,18 @@ async function sendPullRequestReviewComments(body: Record<string, unknown>): Pro
   const pr = snapshot.created.find((item) => item.url.toLowerCase() === url.toLowerCase());
   if (!pr) throw new SessionNotFoundError("That is not one of your open pull requests.");
   const records = await readRegistry();
-  let target = sessionId ? records.find((record) => record.id === sessionId) : undefined;
+  const target = sessionId ? records.find((record) => record.id === sessionId && !record.temporary) : undefined;
   if (sessionId && !target) throw new SessionNotFoundError(`unknown session: ${sessionId}`);
+  // Created rows: `gh` as the author among the selected accounts.
+  const gh = pr.accounts[0] ? (await accountGh(pr.accounts[0])).json : ghJson(GH_COMMAND);
+  return { pr, snapshot, records, target, gh };
+}
+
+async function sendPullRequestReviewComments(body: Record<string, unknown>): Promise<ReviewCommentsResult> {
+  const { pr, snapshot, records, target: named, gh } = await createdPullRequest(body);
+  let target = named;
   // Never act on the cached list: the threads are read again for this send.
-  const comments = await fetchReviewComments(pr.accounts[0] ? (await accountGh(pr.accounts[0])).json : ghJson(GH_COMMAND), pr, snapshot.selectedAccounts);
+  const comments = await fetchReviewComments(gh, pr, snapshot.selectedAccounts);
   const sentAt = target ? sentAtFor(target, pr.url) : undefined;
   if (!newReviewComments(comments, sentAt).length) throw new NoNewCommentsError("No new review comments to send.");
   target ??= await startPullRequestSession(pr, records, `Review comments: ${pr.title || `${pr.repository}#${pr.number}`}`);
@@ -980,6 +995,23 @@ async function sendPullRequestReviewComments(body: Record<string, unknown>): Pro
     },
   });
   return { sessionId: record.id, ...result };
+}
+
+/** Head commit Fix CI was last sent for, per pull request URL and session (memory only). */
+const ciFixesSent = new Map<string, string>();
+const ciFixKey = (url: string, sessionId: string) => `${url.toLowerCase()} ${sessionId}`;
+
+/** `POST …/pull-requests/fix-ci`: sends a Created pull request's failing
+ * checks, read again from GitHub, to `sessionId` or a new session on its head branch. */
+async function sendPullRequestFixCi(body: Record<string, unknown>): Promise<FixCiResult> {
+  const { pr, records, target, gh } = await createdPullRequest(body);
+  const ci = await fetchPullRequestCi(gh, pr);
+  assertFailing(ci);
+  const record = target ?? await startPullRequestSession({ ...pr, headRefName: ci.headRefName || pr.headRefName }, records, `Fix CI: ${pr.title || `${pr.repository}#${pr.number}`}`);
+  const message = fixCiMessage(pr, ci);
+  const delivery = await deliverToSession(record, message.text);
+  ciFixesSent.set(ciFixKey(pr.url, record.id), ci.headRefOid);
+  return { sessionId: record.id, checks: message.included, omitted: message.omitted, delivery };
 }
 
 /** A Review requested pull request named by a mutating route's `{ url }`. */
@@ -1114,7 +1146,7 @@ async function settlePullRequestReview(action: "approve" | "dismiss" | "keep", b
 function reviewCommentsErrorStatus(error: unknown): number {
   if (error instanceof PullRequestInputError) return 400;
   if (error instanceof SessionNotFoundError) return 404;
-  if (error instanceof NoNewCommentsError || error instanceof WorktreeInputError || error instanceof SessionBusyError || error instanceof AssessmentConflictError || error instanceof ApprovalBlockedError) return 409;
+  if (error instanceof NoNewCommentsError || error instanceof NoFailingChecksError || error instanceof WorktreeInputError || error instanceof SessionBusyError || error instanceof AssessmentConflictError || error instanceof ApprovalBlockedError) return 409;
   if (error instanceof GitHubApiError || error instanceof GhCommandError) return 502;
   return 500;
 }
@@ -2741,18 +2773,20 @@ async function handleRequest(
     return;
   }
 
-  if (path === PULL_REQUESTS_REVIEW_COMMENTS_ROUTE) {
+  if (path === PULL_REQUESTS_REVIEW_COMMENTS_ROUTE || path === PULL_REQUESTS_FIX_CI_ROUTE) {
     if (request.method !== "POST") {
       sendJson(response, 405, { error: "method not allowed" });
       return;
     }
+    const fixCi = path === PULL_REQUESTS_FIX_CI_ROUTE;
     try {
       const body = await readBody(request, 4_096).catch(() => { throw new PullRequestInputError("Invalid request body."); });
       if (!body || typeof body !== "object" || Array.isArray(body)) throw new PullRequestInputError("A JSON object is required.");
-      sendJson(response, 200, await sendPullRequestReviewComments(body as Record<string, unknown>));
+      const input = body as Record<string, unknown>;
+      sendJson(response, 200, fixCi ? await sendPullRequestFixCi(input) : await sendPullRequestReviewComments(input));
     } catch (error) {
       const status = reviewCommentsErrorStatus(error);
-      const message = error instanceof GitHubApiError ? `GitHub could not be read (${error.reason}).` : error instanceof Error ? error.message : "Could not send the review comments.";
+      const message = error instanceof GitHubApiError ? `GitHub could not be read (${error.reason}).` : error instanceof Error ? error.message : fixCi ? "Could not send the failing checks." : "Could not send the review comments.";
       sendJson(response, status, { error: message });
     }
     return;
