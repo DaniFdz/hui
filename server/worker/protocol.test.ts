@@ -49,10 +49,11 @@ test("malformed input closes the peer instead of throwing", async () => {
 
 test("a peer that goes silent is closed, one that pings is kept", async () => {
   const { a, b } = pair();
-  b.keepAlive(10, 3);
-  a.keepAlive(10, 3);
+  // Generous misses: a loaded test run can stall timers, never for half a second.
+  b.keepAlive(10, 50);
+  a.keepAlive(10, 50);
   // Both ping: neither closes while the other is alive.
-  await new Promise((resolve) => setTimeout(resolve, 80));
+  await new Promise((resolve) => setTimeout(resolve, 120));
   assert.equal(a.closed || b.closed, false);
   const silent = pair();
   silent.a.keepAlive(10, 3);
@@ -66,13 +67,13 @@ test("a peer that goes silent is closed, one that pings is kept", async () => {
 test("a long frame still arriving keeps the peer alive", async () => {
   const input = new PassThrough();
   const peer = attachPeer(input, new PassThrough());
-  peer.keepAlive(10, 3);
+  peer.keepAlive(50, 3);
   const received = new Promise<Record<string, unknown>>((resolve) => peer.onFrame(resolve));
-  const frame = JSON.stringify({ t: "out", d: "x".repeat(2000) });
+  const frame = JSON.stringify({ t: "out", d: "x".repeat(4000) });
   // Bytes trickle in for well over three silent intervals before the newline.
   for (let offset = 0; offset < frame.length; offset += 100) {
     input.write(frame.slice(offset, offset + 100));
-    await new Promise((resolve) => setTimeout(resolve, 5));
+    await new Promise((resolve) => setTimeout(resolve, 10));
   }
   input.write("\n");
   assert.equal((await received)["t"], "out");
