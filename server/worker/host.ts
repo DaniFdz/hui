@@ -12,7 +12,7 @@
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { createServer, type Server, type Socket } from "node:net";
-import { chmod, mkdir, readFile, realpath, stat, unlink, writeFile } from "node:fs/promises";
+import { chmod, lstat, mkdir, readdir, readFile, realpath, rm, stat, unlink, writeFile } from "node:fs/promises";
 import { hostname } from "node:os";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -26,6 +26,11 @@ import type { WorkerPaths } from "./paths.ts";
 
 /** Detached, idle workers are stopped after this; their transcript stays on disk. */
 const DETACHED_IDLE_MS = 10 * 60_000;
+/** A detached worker waiting on a question keeps it this long for someone to answer. */
+const DETACHED_QUESTION_MS = 24 * 60 * 60_000;
+const ATTACHMENT_RETENTION_MS = 7 * 24 * 60 * 60_000;
+/** Control events are small; larger PI lines are history payloads, relayed unparsed. */
+const MAX_PARSED_LINE = 1024 * 1024;
 /** A host with nothing to do exits after this, unless it owns bots. */
 const HOST_IDLE_MS = 30 * 60_000;
 const MAX_FILE_BYTES = 100 * 1024 * 1024;
@@ -67,6 +72,10 @@ type Proc = {
   in: LineSplitter;
   lastActive: number;
   exited: boolean;
+  killing?: boolean;
+  /** Resolves once the process has exited. */
+  gone: Promise<void>;
+  markGone: () => void;
   /** Host-originated RPC (bot runs) awaiting their response line. */
   rpc: Map<string, (response: Record<string, unknown>) => void>;
   idle: Set<() => void>;
@@ -102,6 +111,8 @@ export class WorkerHost {
   #procs = new Map<string, Proc>();
   #peers = new Set<Peer>();
   #steps = new Map<string, Step>();
+  /** Spawns in progress, so concurrent opens and bot runs share one process. */
+  #starting = new Map<string, Promise<Proc>>();
   #stepResults = new Map<string, (message: Record<string, unknown>) => void>();
   #nextStep = 0;
   #server: Server | undefined;
@@ -134,7 +145,7 @@ export class WorkerHost {
     const socketDir = dirname(this.paths.socket);
     if (socketDir !== this.paths.stateDir) {
       await mkdir(socketDir, { recursive: true, mode: 0o700 });
-      const info = await stat(socketDir);
+      const info = await lstat(socketDir);
       // A shared /tmp directory must be ours alone.
       if (info.uid !== process.getuid?.() || (info.mode & 0o077) !== 0) throw new Error(`Refusing to use ${socketDir}: it is not private to this user.`);
     }
@@ -145,6 +156,7 @@ export class WorkerHost {
       return peer.request("bridge", { key: callerSessionId, action, params }, 170_000);
     });
     await this.#bots.load();
+    await this.#pruneAttachments();
     this.#server = createServer((socket) => this.#accept(socket));
     await new Promise<void>((resolveListen, reject) => {
       this.#server!.once("error", reject);
@@ -174,6 +186,7 @@ export class WorkerHost {
 
   #accept(socket: Socket): void {
     const peer = attachPeer(socket, socket);
+    peer.keepAlive();
     this.#peers.add(peer);
     this.#touch();
     peer.onClose(() => {
@@ -192,6 +205,14 @@ export class WorkerHost {
       return result;
     }));
     peer.handle("credential-step", (params) => this.#credentialStep(params));
+    peer.handle("forget", (params) => {
+      // A deleted HUI session: stop its process even if no gateway is attached.
+      for (const key of Array.isArray(params["keys"]) ? params["keys"] : []) {
+        const proc = typeof key === "string" ? this.#procs.get(key) : undefined;
+        if (proc && !proc.exited) { proc.killing = true; proc.child.kill(); }
+      }
+      return { ok: true };
+    });
     peer.handle("bots-list", () => this.#bots.list());
     peer.handle("bots-save", (params) => this.#bots.save(params["bot"]));
     peer.handle("bots-delete", (params) => this.#bots.remove(String(params["key"] ?? "")));
@@ -221,7 +242,8 @@ export class WorkerHost {
     } else if (frame.t === "detach") {
       proc.attached = undefined;
     } else if (frame.t === "kill") {
-      proc.attached = undefined;
+      // The attachment stays until the exit is reported back.
+      proc.killing = true;
       proc.child.kill();
     }
   }
@@ -235,22 +257,10 @@ export class WorkerHost {
     const key = typeof params["key"] === "string" ? params["key"] : "";
     const ch = params["ch"];
     if (!/^[A-Za-z0-9_-]{1,80}$/u.test(key) || typeof ch !== "number" || !isRecord(params["launch"])) throw new Error("Invalid remote session request.");
-    let proc = this.#procs.get(key);
-    const reused = Boolean(proc && !proc.exited);
-    if (proc && !proc.exited) {
-      // A second gateway (or a reconnect) takes over; the old view ends.
-      if (proc.attached && proc.attached.peer !== peer) proc.attached.peer.send({ t: "exit", ch: proc.attached.ch, message: "This session was opened from another HUI." });
-    } else {
-      proc = await this.#spawn(key, this.#bots.launchFor(key, params["launch"] as RemoteLaunch));
-      if (this.#bots.has(key)) {
-        const spawned = proc;
-        // A bot's first conversation may start from a gateway; later scheduled
-        // runs must continue that transcript rather than fork a new one.
-        void this.#rpc(spawned, { type: "get_state" }).then((state) => {
-          const file = isRecord(state["data"]) ? state["data"]["sessionFile"] : undefined;
-          if (typeof file === "string") return this.#bots.rememberSessionFile(key, file);
-        }).catch(() => undefined);
-      }
+    const { proc, reused } = await this.#procFor(key, () => this.#bots.launchFor(key, params["launch"] as RemoteLaunch));
+    // A second gateway (or a reconnect) takes over; the old view ends.
+    if (proc.attached && (proc.attached.peer !== peer || proc.attached.ch !== ch)) {
+      proc.attached.peer.send({ t: "exit", ch: proc.attached.ch, message: "This session was opened from another HUI." });
     }
     proc.attached = { peer, ch };
     this.#touch(proc);
@@ -258,6 +268,27 @@ export class WorkerHost {
     const pending = [...proc.questions.values()];
     if (pending.length) setImmediate(() => peer.send({ t: "out", ch, d: pending.map((line) => `${line}\n`).join("") }));
     return { pid: proc.child.pid, reused };
+  }
+
+  /** The live process for a key, or a new one; a dying one is waited out. */
+  async #procFor(key: string, launch: () => RemoteLaunch): Promise<{ proc: Proc; reused: boolean }> {
+    const starting = this.#starting.get(key);
+    if (starting) return { proc: await starting, reused: true };
+    const current = this.#procs.get(key);
+    if (current && !current.exited && !current.killing) return { proc: current, reused: true };
+    if (current) await current.gone;
+    const spawn = this.#spawn(key, launch()).finally(() => this.#starting.delete(key));
+    this.#starting.set(key, spawn);
+    const proc = await spawn;
+    if (this.#bots.has(key)) {
+      // A bot's first conversation may start from a gateway; later scheduled
+      // runs must continue that transcript rather than fork a new one.
+      void this.#rpc(proc, { type: "get_state" }).then((state) => {
+        const file = isRecord(state["data"]) ? state["data"]["sessionFile"] : undefined;
+        if (typeof file === "string") return this.#bots.rememberSessionFile(key, file);
+      }).catch(() => undefined);
+    }
+    return { proc, reused: false };
   }
 
   async #spawn(key: string, launch: RemoteLaunch): Promise<Proc> {
@@ -280,9 +311,11 @@ export class WorkerHost {
         HUI_PI_WORKER_LAUNCH: JSON.stringify({ ...rest, cwd, agentDir: this.paths.agentDir }),
       },
     });
+    let markGone = () => undefined as void;
+    const gone = new Promise<void>((resolveGone) => { markGone = resolveGone; });
     const proc: Proc = {
-      key, child, streaming: false, questions: new Map(), out: new LineSplitter(), in: new LineSplitter(),
-      lastActive: Date.now(), exited: false, rpc: new Map(), idle: new Set(), stderr: "",
+      key, child, streaming: false, questions: new Map(), out: new LineSplitter(Infinity), in: new LineSplitter(Infinity),
+      lastActive: Date.now(), exited: false, gone, markGone, rpc: new Map(), idle: new Set(), stderr: "",
     };
     this.#procs.set(key, proc);
     child.stdout!.setEncoding("utf8");
@@ -304,7 +337,9 @@ export class WorkerHost {
     const forward: string[] = [];
     for (const line of proc.out.push(chunk)) {
       let event: Record<string, unknown> | undefined;
-      try { event = JSON.parse(line) as Record<string, unknown>; } catch { /* forwarded as-is */ }
+      if (line.length <= MAX_PARSED_LINE) {
+        try { event = JSON.parse(line) as Record<string, unknown>; } catch { /* forwarded as-is */ }
+      }
       if (event?.["type"] === "response" && typeof event["id"] === "string" && proc.rpc.has(event["id"])) {
         proc.rpc.get(event["id"])!(event);
         proc.rpc.delete(event["id"]);
@@ -328,6 +363,7 @@ export class WorkerHost {
     if (proc.exited) return;
     proc.exited = true;
     proc.streaming = false;
+    proc.markGone();
     for (const listener of proc.idle) listener();
     proc.idle.clear();
     for (const resolveRpc of proc.rpc.values()) resolveRpc({ success: false, error: message ?? "pi exited" });
@@ -396,6 +432,15 @@ export class WorkerHost {
     });
   }
 
+  async #pruneAttachments(): Promise<void> {
+    const cutoff = Date.now() - ATTACHMENT_RETENTION_MS;
+    for (const entry of await readdir(this.paths.attachmentsDir).catch(() => [] as string[])) {
+      const dir = join(this.paths.attachmentsDir, entry);
+      const info = await stat(dir).catch(() => undefined);
+      if (info && info.mtimeMs < cutoff) await rm(dir, { recursive: true, force: true });
+    }
+  }
+
   /** Uploaded prompt attachments, under a random directory like the gateway's. */
   async #putFile(params: Record<string, unknown>): Promise<{ path: string }> {
     const name = typeof params["name"] === "string" ? params["name"] : "";
@@ -421,9 +466,9 @@ export class WorkerHost {
 
   /** One scheduled bot turn: start (or reuse) its worker, prompt, wait to settle. */
   async #runBot(bot: BotRecord, launch: RemoteLaunch, signal: AbortSignal): Promise<{ sessionFile?: string; summary?: string }> {
-    let proc = this.#procs.get(bot.key);
-    if (proc && !proc.exited && (proc.streaming || proc.questions.size)) throw new Error("The bot is busy.");
-    if (!proc || proc.exited) proc = await this.#spawn(bot.key, launch);
+    const existing = this.#procs.get(bot.key);
+    if (existing && !existing.exited && (existing.streaming || existing.questions.size)) throw new Error("The bot is busy.");
+    const { proc } = await this.#procFor(bot.key, () => launch);
     const target = proc;
     const rpc = (command: Record<string, unknown>) => this.#rpc(target, command);
     const settled = new Promise<void>((done) => target.idle.add(done));
@@ -439,12 +484,9 @@ export class WorkerHost {
     if (target.exited) throw new Error(target.stderr.trim().split("\n").at(-1) || "The bot's PI worker exited.");
     const state = await rpc({ type: "get_state" }).catch(() => ({} as Record<string, unknown>));
     const data = isRecord(state["data"]) ? state["data"] : {};
-    const messages = await rpc({ type: "get_messages" }).catch(() => ({} as Record<string, unknown>));
-    const list = isRecord(messages["data"]) && Array.isArray(messages["data"]["messages"]) ? messages["data"]["messages"] : [];
-    const last = [...list].reverse().find((message) => isRecord(message) && message["role"] === "assistant") as Record<string, unknown> | undefined;
-    const summary = Array.isArray(last?.["content"])
-      ? (last["content"] as unknown[]).filter((part): part is { type: string; text: string } => isRecord(part) && part["type"] === "text" && typeof part["text"] === "string").map((part) => part.text).join("").slice(0, 500)
-      : undefined;
+    const last = await rpc({ type: "get_last_assistant_text" }).catch(() => ({} as Record<string, unknown>));
+    const text = isRecord(last["data"]) && typeof last["data"]["text"] === "string" ? last["data"]["text"] : "";
+    const summary = text.slice(0, 500);
     // Nobody is watching: free the process, the transcript is on disk.
     if (!target.attached) target.child.kill();
     return { ...(typeof data["sessionFile"] === "string" ? { sessionFile: data["sessionFile"] } : {}), ...(summary ? { summary } : {}) };
@@ -468,7 +510,8 @@ export class WorkerHost {
   #sweep(): void {
     const now = Date.now();
     for (const proc of this.#procs.values()) {
-      if (!proc.attached && !proc.streaming && !proc.questions.size && !proc.rpc.size && now - proc.lastActive > DETACHED_IDLE_MS) proc.child.kill();
+      if (proc.attached || proc.streaming || proc.rpc.size) continue;
+      if (now - proc.lastActive > (proc.questions.size ? DETACHED_QUESTION_MS : DETACHED_IDLE_MS)) proc.child.kill();
     }
     if (!this.#procs.size && !this.#peers.size && !this.#bots.active() && now - this.#lastActivity > HOST_IDLE_MS) {
       void this.close().finally(() => process.exit(0));

@@ -476,6 +476,30 @@ test("a gateway restart automatically continues the journaled request", async ()
   assert.equal((await readRegistry()).find((session) => session.id === "interrupted")?.runRecoveryAttempts, 1);
 });
 
+test("a run that kept going on a remote worker while the gateway was away is not recovered", async () => {
+  const started: FakeSession[] = [];
+  const manager = new LiveSessions({
+    id: "pi",
+    start: async () => {
+      // Reattached to the remote process, which finished the run meanwhile.
+      const session = Object.assign(new FakeSession(), { resumed: true });
+      started.push(session);
+      return session;
+    },
+  });
+  manager.ensure({ ...recordFor("remote-finished"), runStartedAt: "2026-09-24T12:00:00.000Z", runPrompt: "long remote task" });
+  await waitForBoot(manager, "remote-finished");
+  await new Promise<void>((resolve) => {
+    const inspect = async () => {
+      if (!(await readRegistry()).find((session) => session.id === "remote-finished")?.runStartedAt) resolve();
+      else setImmediate(() => void inspect());
+    };
+    void inspect();
+  });
+  assert.deepEqual(started[0]?.prompts, [], "nothing is re-sent to a run that already finished");
+  assert.equal((await readRegistry()).find((session) => session.id === "remote-finished")?.runPrompt, undefined);
+});
+
 test("manual continuation remains available after automatic recovery is exhausted", async () => {
   const started: FakeSession[] = [];
   const manager = new LiveSessions(factory(started));

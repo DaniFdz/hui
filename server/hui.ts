@@ -247,7 +247,7 @@ registerAgentToolHandler(async (invocation) => {
   if (invocation.action === "suggest_task" || invocation.action === "dismiss_task") {
     const caller = (await readRegistry()).find(({ id }) => id === invocation.callerSessionId);
     if (!caller) throw new TaskSuggestionInputError("Conversation no longer exists.");
-    return taskSuggestions.tool(caller.id, invocation.action, invocation.params, caller.cwd);
+    return taskSuggestions.tool(caller.id, invocation.action, invocation.params, caller.cwd, caller.worker);
   }
   if (invocation.action === "set_stage") {
     return setAgentStage(invocation.callerSessionId, invocation.params);
@@ -1575,6 +1575,7 @@ async function startTaskSuggestion(
       title: suggestion.title.slice(0, SESSION_TITLE_MAX),
       group: source.group,
       tool: "pi",
+      ...(suggestion.worker ? { worker: suggestion.worker } : {}),
       ...(mode === "worktree" ? { worktree: true } : {}),
     });
     await waitForSessionReady(record.id);
@@ -1722,6 +1723,7 @@ export async function deleteSession(
   registryUpdater: typeof updateRegistry = updateRegistry,
 ): Promise<void> {
   const tokens = new Map<string, DeleteToken>([[id, sessions.tombstone(id)]]);
+  const remote: SessionRecord[] = [];
   try {
     await registryUpdater((records) => {
       if (!records.some((record) => record.id === id)) {
@@ -1731,6 +1733,7 @@ export async function deleteSession(
       for (const descendant of tree) {
         if (!tokens.has(descendant)) tokens.set(descendant, sessions.tombstone(descendant));
       }
+      remote.push(...records.filter((record) => tree.has(record.id) && record.worker));
       return records.filter((record) => !tree.has(record.id));
     });
   } catch (error) {
@@ -1739,6 +1742,10 @@ export async function deleteSession(
   }
   subagents.forgetSessions(new Set(tokens.keys()));
   taskSuggestions.forget(tokens.keys());
+  // A remote process this gateway is not attached to would otherwise linger.
+  for (const worker of new Set(remote.map((record) => record.worker!))) {
+    void workers.forget(worker, remote.filter((record) => record.worker === worker).map((record) => record.id)).catch(() => undefined);
+  }
   for (const [sessionId, token] of tokens) {
     sessions.finishDelete(sessionId, token);
     terminals.closeOwner(sessionId);
@@ -2006,6 +2013,7 @@ async function handleRequest(
       const id = terminalRoute[2];
       const session = (await readRegistry()).find((record) => record.id === owner);
       if (!session) throw new TerminalError("Conversation not found.", 404);
+      if (session.worker) throw new TerminalError("Terminals are not available for sessions on a remote worker yet.", 409);
       if (request.method === "GET") {
         if (terminalRoute[3]) throw new TerminalError("Method not allowed.", 405);
         sendJson(response, 200, id ? terminals.read(owner, id) : { terminals: terminals.list(owner) });
@@ -2656,7 +2664,8 @@ async function handleRequest(
           project,
           parents,
           title: suggestion?.title ?? record.title,
-          cwd: record.cwd,
+          // Utility calls run on this machine, even for remote sessions.
+          cwd: record.worker ? homedir() : record.cwd,
           context: suggestion ? taskSuggestionJiraDescription(suggestion) : digest?.text ?? "",
           ...(digest?.goal ? { goal: digest.goal } : {}),
           model: (await readSettings()).models.utility,
@@ -3119,7 +3128,7 @@ async function handleRequest(
         const question = typeof body["question"] === "string" ? body["question"].trim() : "";
         if (!question) throw new Error("A side question is required.");
         const result = await answerSideQuestion({
-          cwd: record.cwd,
+          cwd: record.worker ? homedir() : record.cwd,
           question,
           transcript: liveSessions.transcript(id),
           settings: await readSettings(),

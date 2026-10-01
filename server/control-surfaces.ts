@@ -174,6 +174,8 @@ export async function inspectWorkspaces(
   home = homedir(),
 ): Promise<WorkspaceInspection> {
   const diagnostics: string[] = [];
+  // Remote sessions' directories are on another machine.
+  sessions = sessions.filter((session) => !session.worker);
   const cwds = [...new Set(sessions.map((session) => session.cwd))];
   const canonicalByCwd = new Map(await Promise.all(cwds.map(async (cwd) => [cwd, await canonicalDirectory(cwd)] as const)));
   const workspaces = [...new Set(canonicalByCwd.values())].filter((path): path is string => path !== undefined).toSorted();

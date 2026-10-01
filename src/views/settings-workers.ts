@@ -122,7 +122,8 @@ export class HuiWorkersSettings extends LitElement {
         <div class="settings-row__text">
           <span class="settings-row__title">${worker.name}
             <span class="settings-status ${status.kind ? `settings-status--${status.kind}` : ""}" data-worker-state=${worker.state}><span class="settings-status__dot" aria-hidden="true"></span>${status.label}</span></span>
-          <span class="settings-row__desc"><code>${worker.command}</code>${worker.host ? html` · ${worker.host.hostname} · ${worker.host.platform}/${worker.host.arch} · Node ${worker.host.node}` : nothing}</span>
+          <span class="settings-row__desc"><code>${worker.command}</code></span>
+          ${worker.host ? html`<span class="settings-row__desc" data-worker-host>${worker.host.hostname} · ${worker.host.platform}/${worker.host.arch} · Node ${worker.host.node} · home ${worker.host.home}</span>` : nothing}
         </div>
         <div class="settings-row__control jira-settings__actions">
           ${worker.state === "connected"

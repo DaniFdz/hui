@@ -31,6 +31,15 @@ function text(value: unknown, label: string, max: number, required = true): stri
   return trimmed;
 }
 
+/** The shape a gateway relies on before it writes a bot into its registry,
+ * also applied to the host's own file, which may be hand-edited. */
+export function isBotShape(value: unknown): value is BotRecord {
+  return isRecord(value) && typeof value["key"] === "string" && /^[A-Za-z0-9_-]{1,80}$/u.test(value["key"])
+    && typeof value["name"] === "string" && value["name"].trim().length > 0 && value["name"].length <= 80
+    && typeof value["cwd"] === "string" && value["cwd"].trim().length > 0 && value["cwd"].length <= 4096
+    && typeof value["prompt"] === "string" && typeof value["enabled"] === "boolean" && Array.isArray(value["runs"]);
+}
+
 /** Validates a bot as received from a gateway; host-owned fields are kept. */
 export function normalizeBot(value: unknown, existing?: BotRecord, now = Date.now()): BotRecord {
   if (!isRecord(value)) throw new Error("A bot is required.");
@@ -86,12 +95,12 @@ export class BotScheduler {
     try {
       const raw = JSON.parse(await readFile(this.#file, "utf8")) as { bots?: unknown[] };
       for (const bot of raw.bots ?? []) {
-        if (isRecord(bot) && typeof bot["key"] === "string") {
+        if (isBotShape(bot)) {
           // A run that was in flight when the host died did not finish.
-          const runs = Array.isArray(bot["runs"]) ? (bot["runs"] as BotRun[]).map((run) => run.status === "running"
+          const runs = bot.runs.map((run) => run.status === "running"
             ? { ...run, status: "failed" as const, error: "The worker host stopped during this run.", finishedAt: run.finishedAt ?? new Date().toISOString() }
-            : run) : [];
-          this.#bots.set(bot["key"], { ...(bot as unknown as BotRecord), runs });
+            : run);
+          this.#bots.set(bot.key, { ...bot, runs });
         }
       }
     } catch (error) {
@@ -204,7 +213,7 @@ export class BotScheduler {
       if (this.#active.has(bot.key)) this.#record(bot.key, { id: randomUUID(), source: "scheduled", status: "skipped", startedAt: new Date(now).toISOString(), finishedAt: new Date(now).toISOString(), error: "The previous run was still going." });
       else void this.#execute(advanced, "scheduled", randomUUID());
     }
-    void this.#persist();
+    this.#persistQuietly();
     this.#schedule();
   }
 
@@ -232,7 +241,7 @@ export class BotScheduler {
     } finally {
       clearTimeout(timer);
       this.#active.delete(bot.key);
-      void this.#persist();
+      this.#persistQuietly();
     }
   }
 
@@ -246,8 +255,14 @@ export class BotScheduler {
 
   /** Writes are serialized; the last one always reflects the latest state. */
   #persist(): Promise<void> {
-    this.#writes = this.#writes.then(() => writeAtomic(this.#file, `${JSON.stringify({ version: 1, bots: this.list() }, null, 2)}\n`, 0o600));
+    // A failed write must not poison every later one.
+    this.#writes = this.#writes.catch(() => undefined).then(() => writeAtomic(this.#file, `${JSON.stringify({ version: 1, bots: this.list() }, null, 2)}\n`, 0o600));
     this.#onChange(this.list());
     return this.#writes;
+  }
+
+  /** For callers that cannot report a failed write anywhere but the log. */
+  #persistQuietly(): void {
+    this.#persist().catch((error: unknown) => console.error(`Could not save bots: ${error instanceof Error ? error.message : String(error)}`));
   }
 }

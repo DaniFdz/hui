@@ -93,7 +93,8 @@ export function createWorkerRoutes(deps: Deps) {
         const botKey = randomUUID();
         const bot = await service.saveBot(id, botKey, input);
         try {
-          await deps.updateRegistry((records) => [...records, botRecord(id, bot)]);
+          // The host's bot list may have announced (and registered) it already.
+          await deps.updateRegistry((records) => records.some((record) => record.id === botKey) ? records : [...records, botRecord(id, bot)]);
         } catch (error) {
           await service.deleteBot(id, botKey).catch(() => undefined);
           throw error;

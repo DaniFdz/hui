@@ -8,8 +8,9 @@
 import type { Readable, Writable } from "node:stream";
 
 export const PROTOCOL_VERSION = 1;
-/** A frame larger than this is a protocol error, not something to buffer. */
-export const MAX_FRAME_BYTES = 32 * 1024 * 1024;
+/** A frame larger than this is a protocol error, not something to buffer.
+ * Large enough for a 100 MB file in base64 or a long, image-heavy history. */
+export const MAX_FRAME_BYTES = 256 * 1024 * 1024;
 
 export type Frame = { t: string } & Record<string, unknown>;
 type RequestHandler = (params: Record<string, unknown>) => Promise<unknown> | unknown;
@@ -25,6 +26,11 @@ export class ProtocolError extends Error {
 /** Splits a UTF-8 stream on `\n` only; U+2028/U+2029 are legal inside JSON. */
 export class LineSplitter {
   #buffer = "";
+  #max: number;
+
+  constructor(max = MAX_FRAME_BYTES) {
+    this.#max = max;
+  }
 
   push(chunk: string): string[] {
     this.#buffer += chunk;
@@ -34,7 +40,7 @@ export class LineSplitter {
       this.#buffer = this.#buffer.slice(index + 1);
       if (line.trim()) lines.push(line);
     }
-    if (this.#buffer.length > MAX_FRAME_BYTES) throw new ProtocolError("Remote worker frame exceeds the size limit.");
+    if (this.#buffer.length > this.#max) throw new ProtocolError("Remote worker frame exceeds the size limit.");
     return lines;
   }
 }
@@ -57,6 +63,7 @@ export class Peer {
   #listeners = new Set<(frame: Frame) => void>();
   #closeListeners = new Set<(reason: string) => void>();
   #closed: string | undefined;
+  #seen = Date.now();
 
   constructor(write: (line: string) => void) {
     this.#write = write;
@@ -100,6 +107,8 @@ export class Peer {
   }
 
   receive(frame: Frame): void {
+    this.#seen = Date.now();
+    if (frame.t === "ping") return;
     if (frame.t === "res") {
       const pending = typeof frame["id"] === "string" ? this.#pending.get(frame["id"]) : undefined;
       if (!pending) return;
@@ -127,6 +136,17 @@ export class Peer {
     } catch (error) {
       this.send({ t: "res", id, ok: false, error: error instanceof Error ? error.message : String(error) });
     }
+  }
+
+  /** Both sides ping; a peer silent for `misses` intervals (a sleeping
+   * laptop, a dead network path) is closed instead of trusted. */
+  keepAlive(intervalMs = 15_000, misses = 3): void {
+    const timer = setInterval(() => {
+      if (Date.now() - this.#seen > intervalMs * misses) this.close("The other side stopped answering.");
+      else this.send({ t: "ping" });
+    }, intervalMs);
+    timer.unref();
+    this.onClose(() => clearInterval(timer));
   }
 
   close(reason: string): void {

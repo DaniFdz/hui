@@ -22,6 +22,7 @@ import { credentialStore, ProviderAccounts, type CredentialStore } from "./provi
 import { PROVIDERS_DIR, readProviderSelections } from "./runtimes/hui-models.ts";
 import { attachPeer, isRecord, PROTOCOL_VERSION, type Frame, type Peer } from "./worker/protocol.ts";
 import { BROKERED_PROVIDER_FILE } from "./worker/credentials.ts";
+import { isBotShape } from "./worker/bots.ts";
 import { writeAtomic, type SyncResult } from "./worker/sync-apply.ts";
 import { enabledBundledSkillPaths, isBundledSkillPreference } from "./bundled-skills.ts";
 import { readHuiSettings } from "./hui-settings.ts";
@@ -106,6 +107,11 @@ function gatewayStore(name: unknown): CredentialStore {
 
 type SyncState = NonNullable<WorkerView["sync"]> & { pluginIds: Map<string, string> };
 
+/** Bots end up as registry records; a malformed one must never get there. */
+function validBots(value: unknown): WorkerBot[] {
+  return Array.isArray(value) ? value.filter(isBotShape) : [];
+}
+
 /** HUI's skill and plugin choices, applied to remote sessions as to local ones. */
 async function sessionSettings() {
   const settings = await readHuiSettings();
@@ -167,26 +173,31 @@ class WorkerConnection {
     }
     this.#onPhase("Starting the worker host");
     await this.#connect(node);
+    // The host may ask for credentials as soon as it sees this connection.
+    this.#peer.handle("credential", (params) => this.#credential(params));
+    this.#peer.handle("bridge", (params) => this.#bridge(params));
+    this.#peer.onFrame((frame) => this.#frame(frame));
+    this.#peer.keepAlive();
     const hello = await this.#peer.request<HostInfo>("hello");
     if (hello.release !== this.release.id || hello.version !== PROTOCOL_VERSION) {
       // An older host is replaced once it is idle; a busy one keeps serving
       // its sessions if it still speaks this protocol.
       const { stopping } = await this.#peer.request<{ stopping: boolean }>("shutdown");
-      if (stopping && allowUpgrade) {
+      if (stopping) {
         await new Promise<void>((resolve) => this.#peer.onClose(() => resolve()));
         this.#transport.kill();
-        return this.open(false);
+        if (allowUpgrade) return this.open(false);
+        throw new BootstrapError("The remote worker host restarted twice in a row; try connecting again.");
       }
       if (hello.version !== PROTOCOL_VERSION) throw new BootstrapError("The remote is running an incompatible HUI worker that is still busy. Try again when its sessions finish.");
     }
     this.host = hello;
-    this.#peer.handle("credential", (params) => this.#credential(params));
-    this.#peer.handle("bridge", (params) => this.#bridge(params));
-    this.#peer.onFrame((frame) => this.#frame(frame));
-    this.bots = await this.#peer.request<WorkerBot[]>("bots-list");
+    this.bots = validBots(await this.#peer.request<unknown>("bots-list"));
     this.#onBots(this.bots);
     this.#onPhase("Syncing your PI configuration");
-    await this.syncNow();
+    // A failed sync is reported, not fatal: sessions already running there
+    // must stay reachable.
+    await this.syncNow().catch(() => undefined);
   }
 
   #connect(node: string): Promise<void> {
@@ -245,7 +256,14 @@ class WorkerConnection {
   }
 
   syncNow(): Promise<SyncState> {
-    this.#syncing ??= this.#runSync().finally(() => { this.#syncing = undefined; });
+    this.#syncing ??= this.#runSync().catch((error: unknown) => {
+      // Kept visible in Settings; the next session start tries again.
+      this.#sync = {
+        ...(this.#sync ?? { files: 0, uploaded: 0, deleted: 0, installed: [], skipped: [], pluginIds: new Map() }),
+        at: new Date().toISOString(), errors: [`Sync failed: ${error instanceof Error ? error.message : String(error)}`],
+      };
+      throw error;
+    }).finally(() => { this.#syncing = undefined; });
     return this.#syncing;
   }
 
@@ -327,8 +345,8 @@ class WorkerConnection {
   }
 
   #frame(frame: Frame): void {
-    if (frame.t === "bots" && Array.isArray(frame["bots"])) {
-      this.bots = frame["bots"] as WorkerBot[];
+    if (frame.t === "bots") {
+      this.bots = validBots(frame["bots"]);
       this.#onBots(this.bots);
       return;
     }
@@ -342,12 +360,15 @@ class WorkerConnection {
     switch (params["op"]) {
       case "read": return (await store.read(providerId)) ?? null;
       case "list": return store.list();
-      case "delete": await store.delete(providerId); return null;
       case "modify": {
         // PI's refresh callback runs remotely while this side holds the lock.
+        // A remote may refresh what exists; it cannot log in or swap kinds.
         const result = await store.modify(providerId, async (current) => {
-          const step = await this.#peer.request<{ next?: unknown }>("credential-step", { step: params["step"], current: current ?? null }, 90_000);
-          return step.next as typeof current;
+          if (!current) throw new Error("Sign in on the HUI machine first; a remote worker cannot add credentials.");
+          const step = await this.#peer.request<{ next?: unknown }>("credential-step", { step: params["step"], current }, 90_000);
+          const next = step.next as typeof current | undefined;
+          if (next !== undefined && (!isRecord(next) || next["type"] !== current.type)) throw new Error("A remote worker may only refresh an existing credential.");
+          return next;
         });
         return result ?? null;
       }
@@ -359,9 +380,8 @@ class WorkerConnection {
     const key = typeof params["key"] === "string" ? params["key"] : "";
     const action = typeof params["action"] === "string" ? params["action"] : "";
     const toolParams = isRecord(params["params"]) ? params["params"] : {};
-    if (!key || !action || !(await readRegistry()).some((record) => record.id === key && record.worker === this.worker.id)) {
-      throw new Error("That conversation does not run on this worker.");
-    }
+    const caller = (await readRegistry()).find((record) => record.id === key && record.worker === this.worker.id);
+    if (!action || !caller) throw new Error("That conversation does not run on this worker.");
     if (action === "terminal" || action === "browser") throw new Error(`The ${action} tool is not available to sessions on a remote worker yet.`);
     if (action !== "present_media") return invokeAgentTool({ callerSessionId: key, action, params: toolParams });
     // Media lives on the remote: copy it here, then present it as usual.
@@ -370,7 +390,7 @@ class WorkerConnection {
     try {
       const local: string[] = [];
       for (const [index, path] of paths.entries()) {
-        const file = await this.#peer.request<{ path: string; data: string }>("get-file", { path, cwd: toolParams["cwd"], maxBytes: 100 * 1024 * 1024 }, 300_000);
+        const file = await this.#peer.request<{ path: string; data: string }>("get-file", { path, cwd: caller.cwd }, 300_000);
         const target = join(dir, String(index), basename(file.path));
         await mkdir(join(dir, String(index)));
         await writeFile(target, Buffer.from(file.data, "base64"));
@@ -390,6 +410,8 @@ export class WorkerService {
   #reconnect = new Map<string, { timer: NodeJS.Timeout; attempt: number }>();
   #listeners = new Set<() => void>();
   #stopped = false;
+  /** Bumped by disconnect, so a connect still in progress is discarded. */
+  #generation = new Map<string, number>();
   #names = new Map<string, string>();
 
   async #read(): Promise<WorkerConfig[]> {
@@ -493,6 +515,7 @@ export class WorkerService {
     if (current && !current.closed) return Promise.resolve(current);
     const pending = this.#connecting.get(id);
     if (pending) return pending;
+    const generation = this.#generation.get(id) ?? 0;
     const attempt = (async () => {
       const worker = await this.get(id);
       this.#status.set(id, { state: "connecting", phase: "Connecting" });
@@ -512,6 +535,10 @@ export class WorkerService {
         this.#status.set(id, { state: "error", error: `${error instanceof Error ? error.message : String(error)}${output}`.slice(0, 2000) });
         this.#changed();
         throw error;
+      }
+      if ((this.#generation.get(id) ?? 0) !== generation) {
+        connection.close();
+        throw new Error(`${worker.name} was disconnected while connecting.`);
       }
       this.#connections.set(id, connection);
       this.#status.set(id, { state: "connected" });
@@ -553,6 +580,7 @@ export class WorkerService {
   }
 
   disconnect(id: string): void {
+    this.#generation.set(id, (this.#generation.get(id) ?? 0) + 1);
     const timer = this.#reconnect.get(id);
     if (timer) clearTimeout(timer.timer);
     this.#reconnect.delete(id);
@@ -578,8 +606,15 @@ export class WorkerService {
   /** Starts (or reattaches to) a PI worker for one HUI session. */
   async open(id: string, key: string, options: { cwd: string; sessionFile?: string; model?: string; thinking?: string }): Promise<RemoteChild> {
     const connection = await this.connect(id);
-    await connection.ensureSynced();
+    // Reported in Settings; never a reason to refuse a running session.
+    await connection.ensureSynced().catch(() => undefined);
     return connection.openChannel(key, options);
+  }
+
+  /** Deleted sessions: stop their remote processes, attached or not. */
+  async forget(id: string, keys: readonly string[]): Promise<void> {
+    const connection = this.#connections.get(id);
+    if (connection && !connection.closed && keys.length) await connection.request("forget", { keys: [...keys] });
   }
 
   async putFile(id: string, name: string, data: Buffer): Promise<string> {

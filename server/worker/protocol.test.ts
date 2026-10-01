@@ -46,3 +46,19 @@ test("malformed input closes the peer instead of throwing", async () => {
   input.write("not json\n");
   assert.match(await closed, /malformed/u);
 });
+
+test("a peer that goes silent is closed, one that pings is kept", async () => {
+  const { a, b } = pair();
+  b.keepAlive(10, 3);
+  a.keepAlive(10, 3);
+  // Both ping: neither closes while the other is alive.
+  await new Promise((resolve) => setTimeout(resolve, 80));
+  assert.equal(a.closed || b.closed, false);
+  const silent = pair();
+  silent.a.keepAlive(10, 3);
+  // `b` never pings, like a laptop that went to sleep. The heartbeat timer is
+  // unref'd, so hold the event loop open while waiting for it.
+  const hold = setTimeout(() => undefined, 5_000);
+  assert.match(await new Promise<string>((resolve) => silent.a.onClose(resolve)), /stopped answering/u);
+  clearTimeout(hold);
+});

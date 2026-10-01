@@ -192,6 +192,35 @@ test("a run keeps going without the gateway and is reattached, not recovered", a
   }
 });
 
+test("closing a session stops its remote process, so reopening starts a fresh one", async () => {
+  const first = await piRuntime.start({ cwd: project, worker: workerId, huiSessionId: "remote-close" });
+  first.dispose();
+  const second = await piRuntime.start({ cwd: project, worker: workerId, huiSessionId: "remote-close", sessionFile: first.sessionFile! });
+  try {
+    assert.equal(second.resumed, false);
+    const done = settled(second);
+    await second.prompt("still answering after a reopen");
+    await done;
+    assert.equal(second.transcript().at(-1)?.kind === "message" && (second.transcript().at(-1) as { text: string }).text, "Fixture response.");
+  } finally {
+    second.dispose();
+  }
+});
+
+test("deleting a session stops its remote process even when no gateway is attached", async () => {
+  const first = await piRuntime.start({ cwd: project, worker: workerId, huiSessionId: "remote-forget" });
+  workers.disconnectAll();
+  first.dispose();
+  await workers.connect(workerId);
+  await workers.forget(workerId, ["remote-forget"]);
+  const second = await piRuntime.start({ cwd: project, worker: workerId, huiSessionId: "remote-forget" });
+  try {
+    assert.equal(second.resumed, false);
+  } finally {
+    second.dispose();
+  }
+});
+
 test("a question asked while no gateway is attached is shown again on reattach", async () => {
   const first = await piRuntime.start({ cwd: project, worker: workerId, huiSessionId: "remote-question" });
   const asked = new Promise<string>((resolve) => first.subscribe((event) => { if (event.type === "question") resolve(event.question.id); }));

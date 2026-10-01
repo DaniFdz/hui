@@ -50,7 +50,10 @@ export class RemoteChild extends EventEmitter {
 
   /** The connection went away; the remote process may well still be running. */
   lost(reason: string): void {
-    if (!this.#ended) this.emit("error", new Error(reason));
+    if (this.#ended) return;
+    // Before PiSession attaches there is no listener, and an unhandled
+    // "error" would throw out of the connection's close handler.
+    if (this.listenerCount("error")) this.emit("error", new Error(reason));
     this.#end(null, null);
   }
 
