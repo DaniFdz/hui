@@ -175,11 +175,6 @@ class WorkerConnection {
     }
     this.#onPhase("Starting the worker host");
     await this.#connect(node);
-    // The host may ask for credentials as soon as it sees this connection.
-    this.#peer.handle("credential", (params) => this.#credential(params));
-    this.#peer.handle("bridge", (params) => this.#bridge(params));
-    this.#peer.onFrame((frame) => this.#frame(frame));
-    this.#peer.keepAlive();
     const hello = await this.#peer.request<HostInfo>("hello");
     if (hello.release !== this.release.id || hello.version !== PROTOCOL_VERSION) {
       // An older host is replaced once it is idle; a busy one keeps serving
@@ -228,6 +223,11 @@ class WorkerConnection {
         return true;
       });
       this.#peer = peer;
+      // The host may ask for credentials in the very chunk that says ready.
+      peer.handle("credential", (params) => this.#credential(params));
+      peer.handle("bridge", (params) => this.#bridge(params));
+      peer.onFrame((frame) => this.#frame(frame));
+      peer.keepAlive();
       transport.on("error", (error) => fail(`Could not run ${command[0]}: ${error.message}`));
       transport.on("exit", (code, signal) => {
         fail(`${command[0]} exited with code ${code} before the worker host started.`);
@@ -415,6 +415,8 @@ export class WorkerService {
   #stopped = false;
   /** Bumped by disconnect, so a connect still in progress is discarded. */
   #generation = new Map<string, number>();
+  /** Last reconnect attempt per worker, so quick failures keep backing off. */
+  #attempts = new Map<string, number>();
   #names = new Map<string, string>();
 
   async #read(): Promise<WorkerConfig[]> {
@@ -546,10 +548,11 @@ export class WorkerService {
         this.#changed();
         throw error;
       }
-      if ((this.#generation.get(id) ?? 0) !== generation) {
+      if ((this.#generation.get(id) ?? 0) !== generation || connection.closed) {
         connection.close();
         throw new Error(`${worker.name} was disconnected while connecting.`);
       }
+      const openedAt = Date.now();
       this.#connections.set(id, connection);
       this.#status.set(id, { state: "connected" });
       this.#reconnect.delete(id);
@@ -558,8 +561,10 @@ export class WorkerService {
         this.#connections.delete(id);
         this.#status.set(id, { state: "error", error: reason });
         this.#changed();
-        // Interrupted sessions come back on their own once the remote is reachable.
-        this.#scheduleReconnect(id, 0, connection.lostSessions);
+        // Interrupted sessions come back on their own once the remote is
+        // reachable; a connection that dies right away keeps backing off.
+        const attempt = Date.now() - openedAt < 60_000 ? (this.#attempts.get(id) ?? 0) + 1 : 0;
+        this.#scheduleReconnect(id, attempt, connection.lostSessions);
       });
       void this.#setKeepConnected(id, Boolean(connection.bots?.length));
       this.#changed();
@@ -573,11 +578,18 @@ export class WorkerService {
   /** Workers with bots stay connected so their runs can use credentials. */
   #scheduleReconnect(id: string, attempt = 0, force = false): void {
     if (this.#stopped || this.#reconnect.has(id)) return;
+    // A disconnect or removal in the meantime cancels the retries.
+    const generation = this.#generation.get(id) ?? 0;
+    const current = () => !this.#stopped && (this.#generation.get(id) ?? 0) === generation;
+    this.#attempts.set(id, attempt);
     void this.#read().then((workers) => {
-      if (this.#stopped || this.#reconnect.has(id) || !(force || workers.find((item) => item.id === id)?.keepConnected)) return;
+      if (!current() || this.#reconnect.has(id) || !(force || workers.find((item) => item.id === id)?.keepConnected)) return;
       const timer = setTimeout(() => {
         this.#reconnect.delete(id);
-        this.connect(id).catch(() => this.#scheduleReconnect(id, attempt + 1, force));
+        if (!current()) return;
+        this.connect(id).catch((error: unknown) => {
+          if (!(error instanceof WorkerNotFoundError) && current()) this.#scheduleReconnect(id, attempt + 1, force);
+        });
       }, RECONNECT_MS[Math.min(attempt, RECONNECT_MS.length - 1)]);
       timer.unref();
       this.#reconnect.set(id, { timer, attempt });

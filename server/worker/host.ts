@@ -118,6 +118,7 @@ export class WorkerHost {
   #server: Server | undefined;
   #timer: NodeJS.Timeout | undefined;
   #lastActivity = Date.now();
+  #pruned = 0;
   #bots: BotScheduler;
 
   constructor(paths: WorkerPaths) {
@@ -172,7 +173,7 @@ export class WorkerHost {
   async close(): Promise<void> {
     clearInterval(this.#timer);
     this.#bots.stop();
-    for (const proc of this.#procs.values()) proc.child.kill();
+    for (const proc of this.#procs.values()) this.#stop(proc);
     for (const peer of this.#peers) peer.close("Remote worker host stopped.");
     stopAgentToolBridge();
     await new Promise<void>((done) => this.#server ? this.#server.close(() => done()) : done());
@@ -210,7 +211,7 @@ export class WorkerHost {
       // A deleted HUI session: stop its process even if no gateway is attached.
       for (const key of Array.isArray(params["keys"]) ? params["keys"] : []) {
         const proc = typeof key === "string" ? this.#procs.get(key) : undefined;
-        if (proc && !proc.exited) { proc.killing = true; proc.child.kill(); }
+        if (proc) this.#stop(proc);
       }
       return { ok: true };
     });
@@ -244,8 +245,7 @@ export class WorkerHost {
       proc.attached = undefined;
     } else if (frame.t === "kill") {
       // The attachment stays until the exit is reported back.
-      proc.killing = true;
-      proc.child.kill();
+      this.#stop(proc);
     }
   }
 
@@ -259,6 +259,8 @@ export class WorkerHost {
     const ch = params["ch"];
     if (!/^[A-Za-z0-9_-]{1,80}$/u.test(key) || typeof ch !== "number" || !isRecord(params["launch"])) throw new Error("Invalid remote session request.");
     const { proc, reused } = await this.#procFor(key, () => this.#bots.launchFor(key, params["launch"] as RemoteLaunch));
+    // The gateway may have gone while the process started; leave it detached.
+    if (peer.closed) throw new Error("The gateway disconnected.");
     // A second gateway (or a reconnect) takes over; the old view ends.
     if (proc.attached && (proc.attached.peer !== peer || proc.attached.ch !== ch)) {
       proc.attached.peer.send({ t: "exit", ch: proc.attached.ch, message: "This session was opened from another HUI." });
@@ -277,7 +279,8 @@ export class WorkerHost {
     if (starting) return { proc: await starting, reused: true };
     const current = this.#procs.get(key);
     if (current && !current.exited && !current.killing) return { proc: current, reused: true };
-    if (current) await current.gone;
+    // Re-check after the wait: another caller may have started one meanwhile.
+    if (current) { await current.gone; return this.#procFor(key, launch); }
     const spawn = this.#spawn(key, launch()).finally(() => this.#starting.delete(key));
     this.#starting.set(key, spawn);
     const proc = await spawn;
@@ -357,7 +360,9 @@ export class WorkerHost {
       }
       forward.push(line);
     }
-    if (forward.length && proc.attached) proc.attached.peer.send({ t: "out", ch: proc.attached.ch, d: `${forward.join("\n")}\n` });
+    if (forward.length && proc.attached && !proc.attached.peer.send({ t: "out", ch: proc.attached.ch, d: `${forward.join("\n")}\n` })) {
+      proc.attached.peer.send({ t: "err", ch: proc.attached.ch, d: "HUI dropped PI output too large to relay.\n" });
+    }
   }
 
   #exited(proc: Proc, code: number | null, signal: NodeJS.Signals | null, message?: string): void {
@@ -434,6 +439,7 @@ export class WorkerHost {
   }
 
   async #pruneAttachments(): Promise<void> {
+    this.#pruned = Date.now();
     const cutoff = Date.now() - ATTACHMENT_RETENTION_MS;
     for (const entry of await readdir(this.paths.attachmentsDir).catch(() => [] as string[])) {
       const dir = join(this.paths.attachmentsDir, entry);
@@ -489,8 +495,17 @@ export class WorkerHost {
     const text = isRecord(last["data"]) && typeof last["data"]["text"] === "string" ? last["data"]["text"] : "";
     const summary = text.slice(0, 500);
     // Nobody is watching: free the process, the transcript is on disk.
-    if (!target.attached) target.child.kill();
+    if (!target.attached) this.#stop(target);
     return { ...(typeof data["sessionFile"] === "string" ? { sessionFile: data["sessionFile"] } : {}), ...(summary ? { summary } : {}) };
+  }
+
+  /** Every stop goes through here, so an open waits for the exit instead of
+   * attaching to a dying process; a worker ignoring SIGTERM is killed. */
+  #stop(proc: Proc): void {
+    if (proc.exited) return;
+    proc.killing = true;
+    proc.child.kill();
+    setTimeout(() => { if (!proc.exited) proc.child.kill("SIGKILL"); }, 5_000).unref();
   }
 
   /** Host-originated PI RPC; its response is consumed here, never forwarded. */
@@ -512,8 +527,9 @@ export class WorkerHost {
     const now = Date.now();
     for (const proc of this.#procs.values()) {
       if (proc.attached || proc.streaming || proc.rpc.size) continue;
-      if (now - proc.lastActive > (proc.questions.size ? DETACHED_QUESTION_MS : DETACHED_IDLE_MS)) proc.child.kill();
+      if (now - proc.lastActive > (proc.questions.size ? DETACHED_QUESTION_MS : DETACHED_IDLE_MS)) this.#stop(proc);
     }
+    if (now - this.#pruned > 24 * 60 * 60_000) void this.#pruneAttachments();
     if (!this.#procs.size && !this.#peers.size && !this.#bots.active() && now - this.#lastActivity > HOST_IDLE_MS) {
       void this.close().finally(() => process.exit(0));
     }

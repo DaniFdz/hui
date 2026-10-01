@@ -1712,6 +1712,8 @@ export async function startBacklogItem(itemId: string, body: Record<string, unkn
 async function saveSuggestionToBacklog(sessionId: string, suggestionId: string) {
   const suggestion = taskSuggestions.claim(sessionId, suggestionId);
   try {
+    // Backlog items start on this machine; a remote directory means nothing here.
+    if (suggestion.worker) throw new TaskSuggestionInputError("Suggestions from a remote worker can't go to the backlog yet. Start it in a new session instead.");
     const task = await backlogStore.addTask({ title: suggestion.title, problem: suggestion.problem, fix: suggestion.fix, cwd: suggestion.cwd, group: "" });
     taskSuggestions.remove(sessionId, suggestionId);
     return task;

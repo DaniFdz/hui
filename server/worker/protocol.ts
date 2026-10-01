@@ -23,9 +23,11 @@ export class ProtocolError extends Error {
   override name = "ProtocolError";
 }
 
-/** Splits a UTF-8 stream on `\n` only; U+2028/U+2029 are legal inside JSON. */
+/** Splits a UTF-8 stream on `\n` only; U+2028/U+2029 are legal inside JSON.
+ * Only each new chunk is searched, so a very long line stays linear. */
 export class LineSplitter {
-  #buffer = "";
+  #parts: string[] = [];
+  #size = 0;
   #max: number;
 
   constructor(max = MAX_FRAME_BYTES) {
@@ -33,14 +35,21 @@ export class LineSplitter {
   }
 
   push(chunk: string): string[] {
-    this.#buffer += chunk;
     const lines: string[] = [];
-    for (let index = this.#buffer.indexOf("\n"); index !== -1; index = this.#buffer.indexOf("\n")) {
-      const line = this.#buffer.slice(0, index).replace(/\r$/u, "");
-      this.#buffer = this.#buffer.slice(index + 1);
+    let start = 0;
+    for (let index = chunk.indexOf("\n"); index !== -1; index = chunk.indexOf("\n", start)) {
+      this.#parts.push(chunk.slice(start, index));
+      const line = this.#parts.join("").replace(/\r$/u, "");
+      this.#parts = [];
+      this.#size = 0;
       if (line.trim()) lines.push(line);
+      start = index + 1;
     }
-    if (this.#buffer.length > this.#max) throw new ProtocolError("Remote worker frame exceeds the size limit.");
+    if (start < chunk.length) {
+      this.#parts.push(chunk.slice(start));
+      this.#size += chunk.length - start;
+    }
+    if (this.#size > this.#max) throw new ProtocolError("Remote worker frame exceeds the size limit.");
     return lines;
   }
 }
@@ -73,9 +82,18 @@ export class Peer {
     return this.#closed !== undefined;
   }
 
-  send(frame: Frame): void {
-    if (this.#closed) return;
-    this.#write(`${JSON.stringify(frame)}\n`);
+  /** False when closed or when the frame cannot be serialized (too large). */
+  send(frame: Frame): boolean {
+    if (this.#closed) return false;
+    let line: string;
+    try { line = `${JSON.stringify(frame)}\n`; } catch { return false; }
+    this.#write(line);
+    return true;
+  }
+
+  /** Bytes are arriving: a long frame in transit is not silence. */
+  touch(): void {
+    this.#seen = Date.now();
   }
 
   request<T = unknown>(op: string, params: Record<string, unknown> = {}, timeoutMs = 30_000): Promise<T> {
@@ -88,7 +106,11 @@ export class Peer {
       }, timeoutMs);
       timer.unref?.();
       this.#pending.set(id, { resolve: resolve as (value: unknown) => void, reject, timer });
-      this.send({ t: "req", id, op, p: params });
+      if (!this.send({ t: "req", id, op, p: params })) {
+        clearTimeout(timer);
+        this.#pending.delete(id);
+        reject(new Error(this.#closed ?? `The ${op} request is too large to send.`));
+      }
     });
   }
 
@@ -132,7 +154,7 @@ export class Peer {
     try {
       if (!handler) throw new Error(`Unsupported remote worker request: ${String(frame["op"])}`);
       const params = isRecord(frame["p"]) ? frame["p"] : {};
-      this.send({ t: "res", id, ok: true, result: await handler(params) });
+      if (!this.send({ t: "res", id, ok: true, result: await handler(params) })) throw new Error("The reply is too large to send.");
     } catch (error) {
       this.send({ t: "res", id, ok: false, error: error instanceof Error ? error.message : String(error) });
     }
@@ -168,6 +190,7 @@ export function attachPeer(input: Readable, output: Writable, onLine?: (line: st
   const splitter = new LineSplitter();
   input.setEncoding("utf8");
   input.on("data", (chunk: string) => {
+    peer.touch();
     try {
       for (const line of splitter.push(chunk)) {
         if (onLine?.(line)) continue;

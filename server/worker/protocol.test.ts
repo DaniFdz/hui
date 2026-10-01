@@ -62,3 +62,19 @@ test("a peer that goes silent is closed, one that pings is kept", async () => {
   assert.match(await new Promise<string>((resolve) => silent.a.onClose(resolve)), /stopped answering/u);
   clearTimeout(hold);
 });
+
+test("a long frame still arriving keeps the peer alive", async () => {
+  const input = new PassThrough();
+  const peer = attachPeer(input, new PassThrough());
+  peer.keepAlive(10, 3);
+  const received = new Promise<Record<string, unknown>>((resolve) => peer.onFrame(resolve));
+  const frame = JSON.stringify({ t: "out", d: "x".repeat(2000) });
+  // Bytes trickle in for well over three silent intervals before the newline.
+  for (let offset = 0; offset < frame.length; offset += 100) {
+    input.write(frame.slice(offset, offset + 100));
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  input.write("\n");
+  assert.equal((await received)["t"], "out");
+  assert.equal(peer.closed, false);
+});

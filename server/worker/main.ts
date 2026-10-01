@@ -7,7 +7,7 @@
  *                  daemon and its sessions keep running.
  *   main daemon    the long-lived host itself (see host.ts).
  */
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { mkdirSync, openSync, readFileSync, renameSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { unlink } from "node:fs/promises";
 import { connect, type Socket } from "node:net";
@@ -23,8 +23,15 @@ const PID_FILE = join(paths.stateDir, "host.pid");
  * host uses the operator's forwarded SSH agent (`ssh -A`) while connected. */
 const AGENT_LINK = join(dirname(paths.socket), "agent.sock");
 
-function alive(pid: number): boolean {
-  try { process.kill(pid, 0); return true; } catch (error) { return (error as NodeJS.ErrnoException).code === "EPERM"; }
+/** A live host, not a recycled pid (a restarted container or VM). */
+function hostRunning(pid: number): boolean {
+  try { process.kill(pid, 0); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "EPERM") return false; }
+  let command: string | undefined;
+  try { command = readFileSync(`/proc/${pid}/cmdline`, "utf8").replaceAll("\0", " "); } catch {
+    const ps = spawnSync("ps", ["-o", "command=", "-p", String(pid)], { encoding: "utf8" });
+    if (ps.status === 0) command = ps.stdout;
+  }
+  return command === undefined || /worker\/main\.[jt]s daemon/u.test(command);
 }
 
 /** One host per data directory. */
@@ -38,7 +45,7 @@ function lock(): boolean {
       if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
       const pid = Number(readFileSync(PID_FILE, "utf8"));
       // ponytail: two hosts starting against one stale lock can both win; needs flock-style locking if that ever matters.
-      if (pid && alive(pid)) return false;
+      if (pid && hostRunning(pid)) return false;
       rmSync(PID_FILE, { force: true });
     }
   }

@@ -117,6 +117,10 @@ before(async () => {
   }
   await symlink(join(repo, "node_modules"), join(dir, "node_modules"));
   await writeFile(join(dir, ".ready"), "");
+  // A lock left by a host that died, whose pid now belongs to an unrelated
+  // live process (as after a container restart), must not block a new host.
+  await mkdir(join(remoteHome, ".local", "share", "hui-worker", "state"), { recursive: true });
+  await writeFile(join(remoteHome, ".local", "share", "hui-worker", "state", "host.pid"), String(process.pid));
 
   const command = ["env", "-u", "PI_CODING_AGENT_DIR", "-u", "XDG_CONFIG_HOME", "-u", "PI_OFFLINE", `HOME=${remoteHome}`, "SHELL=/bin/sh", `HUI_TEST_BASE_URL=${baseUrl}`, `HUI_TEST_ACCESS=${KEY}`];
   workerId = (await workers.create({ name: "test remote", command: command.map((word) => `'${word}'`).join(" ") })).id;

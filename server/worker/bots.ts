@@ -37,7 +37,10 @@ export function isBotShape(value: unknown): value is BotRecord {
   return isRecord(value) && typeof value["key"] === "string" && /^[A-Za-z0-9_-]{1,80}$/u.test(value["key"])
     && typeof value["name"] === "string" && value["name"].trim().length > 0 && value["name"].length <= 80
     && typeof value["cwd"] === "string" && value["cwd"].trim().length > 0 && value["cwd"].length <= 4096
-    && typeof value["prompt"] === "string" && typeof value["enabled"] === "boolean" && Array.isArray(value["runs"]);
+    && typeof value["prompt"] === "string" && typeof value["enabled"] === "boolean"
+    && (value["model"] === undefined || typeof value["model"] === "string")
+    && (value["thinking"] === undefined || typeof value["thinking"] === "string")
+    && Array.isArray(value["runs"]) && value["runs"].every((run) => isRecord(run) && typeof run["id"] === "string" && typeof run["status"] === "string" && typeof run["startedAt"] === "string");
 }
 
 /** Validates a bot as received from a gateway; host-owned fields are kept. */
