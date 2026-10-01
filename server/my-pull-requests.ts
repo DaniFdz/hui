@@ -141,12 +141,14 @@ export async function fetchMyPullRequests(accounts: readonly string[], gh: (logi
   };
 }
 
-/** `owner/repo` of every github.com remote in `git remote -v` output. */
+/** `owner/repo` of every github.com remote in `git remote -v` output. SSH
+ * remotes may use a host alias ending in `.github.com` (`git@work.github.com:…`,
+ * mapped to github.com in `~/.ssh/config`). */
 export function parseGitHubRemotes(stdout: string): string[] {
   const found = new Set<string>();
   for (const line of stdout.split("\n")) {
     const url = line.split(/\s+/u)[1] ?? "";
-    const match = /^(?:https:\/\/(?:[^@/]+@)?github\.com\/|(?:ssh:\/\/)?git@github\.com[:/])([A-Za-z0-9-]+\/[A-Za-z0-9._-]+?)(?:\.git)?\/?$/u.exec(url);
+    const match = /^(?:https:\/\/(?:[^@/]+@)?github\.com\/|(?:ssh:\/\/)?git@(?:[A-Za-z0-9-]+\.)*github\.com[:/])([A-Za-z0-9-]+\/[A-Za-z0-9._-]+?)(?:\.git)?\/?$/u.exec(url);
     if (match) found.add(match[1]!);
   }
   return [...found];

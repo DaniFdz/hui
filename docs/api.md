@@ -512,7 +512,7 @@ type MyPullRequest = {
   accounts: string[];     // selected accounts that found it (Created: the author; Review requested: asked directly)
   sessions: { id: string; title: string; archived: boolean; newComments?: number }[];
   newComments?: number;   // Created only: open review comments by others, nothing sent yet
-  localCheckout?: boolean; // Created only: a session directory is a checkout of the repository
+  localCheckout?: boolean; // Created only: a known local checkout (below) of the repository exists
   assessment?: PullRequestAssessment; // Review requested only: its temporary risk review
 };
 type PullRequestAssessment = {
@@ -544,6 +544,21 @@ through symlinks) is on `headRefName` in a checkout with a github.com remote for
 `repository` or `headRepository` (`git symbolic-ref` and `git remote -v`, read-only).
 Newest `updatedAt` first, archived last.
 
+Known local checkouts (`localCheckout`, the directory a started session or a
+risk review uses) are the session directories' checkouts plus those discovered
+near them: roots are every registered, non-temporary session `cwd`, its
+`git rev-parse --show-toplevel` and that top level's parent (a `cwd` outside Git
+is itself the root); each root's immediate child directories holding `.git`
+(no dot-directories, no `node_modules`) are repositories, at most 200, resolved
+through symlinks. Each repository's `git remote -v` and
+`git worktree list --porcelain -z` give its github.com repositories and every
+worktree with its branch. A github.com remote is `https://github.com/owner/repo`,
+`git@<host>:owner/repo` or `ssh://git@<host>/owner/repo` (optional `.git`) where
+`<host>` is `github.com` or ends in `.github.com` (SSH host aliases). Discovery
+runs in the background with a 60 s lifetime (restarted when the session
+directories change); only the first request waits for it. Discovered checkouts
+never link a session; owners are matched exactly.
+
 ### `POST /__hui/pull-requests/refresh`
 
 Same response after a forced fetch; a fetch already running is awaited instead
@@ -574,8 +589,8 @@ type ReviewCommentsResult = { sessionId: string; sent: number; omitted: number; 
    `repository.pullRequest`, as the row's first account); comments newer than the session's last send are
    selected. None is 409.
 3. Without `sessionId`, a session (`createSession`, the `POST /sessions` path) is
-   started in a session directory that is a checkout of the repository, preferring
-   one already on `headRefName`; otherwise a worktree already on that branch is
+   started in a known local checkout of the repository, preferring a checkout or
+   worktree already on `headRefName`; otherwise a worktree already on that branch is
    reused, or `origin/<headRefName>` is fetched and a new worktree is added under
    `~/.config/hui/worktrees/` on a local `headRefName` tracking it. No
    known checkout is 409.
@@ -595,7 +610,7 @@ from `sessions` on both lists and appear only as `assessment`.
 
 | Route | Behavior |
 | --- | --- |
-| `POST /__hui/pull-requests/assess` | Starts one temporary session per pull request (409 while one exists) and returns `{ sessionId }` once its first prompt was accepted. First reads `gh pr view <n> -R owner/repo --json state,headRefOid,reviewRequests` as the row's first account and records that `account` and the `headRefOid` in `temporary`. `cwd` is a session directory that is a checkout of the repository, else a new `~/.config/hui/pr-reviews/<uuid>/`. No model is passed (PI's default; the utility model is not used). The prompt asks for a read-only review with `gh pr view/diff/checks <n> -R owner/repo` ending in `report_pr_risk`. If the runtime cannot start or refuses the prompt, the row, transcript and scratch directory are deleted and the error returned (500) |
+| `POST /__hui/pull-requests/assess` | Starts one temporary session per pull request (409 while one exists) and returns `{ sessionId }` once its first prompt was accepted. First reads `gh pr view <n> -R owner/repo --json state,headRefOid,reviewRequests` as the row's first account and records that `account` and the `headRefOid` in `temporary`. `cwd` is a known local checkout of the repository, else a new `~/.config/hui/pr-reviews/<uuid>/`. No model is passed (PI's default; the utility model is not used). The prompt asks for a read-only review with `gh pr view/diff/checks <n> -R owner/repo` ending in `report_pr_risk`. If the runtime cannot start or refuses the prompt, the row, transcript and scratch directory are deleted and the error returned (500) |
 | `POST /__hui/pull-requests/approve` | Requires the pull request's temporary session (404). As `temporary.account` (`GH_TOKEN`), re-reads `gh pr view … --json state,headRefOid,reviewRequests`; unless the pull request is open, still lists that login among its direct review requests and has the recorded `headRefOid`, returns 409 (for a moved head: "PR changed since it was assessed — assess again.") without reviewing. Then runs exactly `gh pr review <n> -R owner/repo --approve` as that account; on failure returns `gh`'s error (502) and keeps the session. On success deletes the temporary session (below), forces a list refetch and returns `MyPullRequests`. The page calls it only from the confirmation dialog |
 | `POST /__hui/pull-requests/dismiss` | Deletes the temporary session and returns `MyPullRequests`; nothing is sent to GitHub |
 | `POST /__hui/pull-requests/keep` | Clears `temporary` so it becomes a normal session; deletes nothing; returns `MyPullRequests` |

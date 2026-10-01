@@ -137,6 +137,17 @@ test("parses github.com remotes in https, scp and ssh forms", () => {
   ].join("\n")), ["acme/web", "me/web", "acme/docs.site"]);
 });
 
+test("parses github.com SSH host aliases", () => {
+  assert.deepEqual(parseGitHubRemotes([
+    "origin\tgit@work.github.com:acme/billing.git (fetch)",
+    "alias\tgit@work.github.com:acme/inventory (fetch)",
+    "ssh\tssh://git@work.github.com/acme/api.git (fetch)",
+    "https\thttps://work.github.com/acme/nope.git (fetch)",
+    "lookalike\tgit@github.com.evil.io:acme/nope.git (fetch)",
+    "suffix\tgit@notgithub.com:acme/nope.git (fetch)",
+  ].join("\n")), ["acme/billing", "acme/inventory", "acme/api"]);
+});
+
 const pr: Pick<FoundPullRequest, "url" | "repository" | "headRepository" | "headRefName"> = {
   url: "https://github.com/acme/web/pull/7", repository: "acme/web", headRefName: "feat/x",
 };

@@ -18,6 +18,9 @@ test("review comments are validated, counted per session and persisted only on d
   await mkdir(gh);
   execFileSync("git", ["init", "-q", "-b", "feat/x", repo]);
   execFileSync("git", ["-C", repo, "remote", "add", "origin", "https://github.com/acme/web.git"]);
+  // A clone no session uses, next to one that does, behind an SSH host alias.
+  execFileSync("git", ["init", "-q", "-b", "main", join(dir, "billing")]);
+  execFileSync("git", ["-C", join(dir, "billing"), "remote", "add", "origin", "git@work.github.com:acme/billing.git"]);
   const now = "2026-09-30T00:00:00.000Z";
   const session = (id: string, patch = {}) => ({ id, title: id, group: "", cwd: repo, tool: "pi", createdAt: now, updatedAt: now, ...patch });
   const sessions = [
@@ -34,7 +37,7 @@ test("review comments are validated, counted per session and persisted only on d
     reviews: { nodes: [] },
     ...patch,
   });
-  await writeFile(join(gh, "search-created.json"), JSON.stringify([node(1, "acme/web"), node(2, "acme/api")]));
+  await writeFile(join(gh, "search-created.json"), JSON.stringify([node(1, "acme/web"), node(2, "acme/api"), node(3, "acme/billing")]));
   await writeFile(join(gh, "account"), "me\n");
 
   process.env["XDG_CONFIG_HOME"] = dir;
@@ -64,11 +67,12 @@ test("review comments are validated, counted per session and persisted only on d
   };
 
   const page = await (await fetch(`${origin}/__hui/pull-requests`, { headers: { "x-hui": "1" } })).json() as MyPullRequests;
-  const [web, api] = page.created;
+  const [web, api, ddGo] = page.created;
   assert.equal(web?.newComments, 2);
   assert.equal(web?.localCheckout, true);
   assert.deepEqual(web?.sessions.map((item) => [item.id, item.newComments]).toSorted(), [["fresh", 2], ["sent", 1]]);
   assert.equal(api?.localCheckout, false);
+  assert.equal(ddGo?.localCheckout, true, "a sibling clone of a session directory is discovered");
   assert.equal(JSON.stringify(page).includes("reviewComments"), false, "comment bodies stay on the server");
 
   assert.equal((await send(undefined, "GET")).status, 405);

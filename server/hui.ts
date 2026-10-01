@@ -119,7 +119,8 @@ import { presentMediaForSession, servePresentedMedia } from "./presented-media.t
 import { GitHubCli, GitHubCliError, signedInAccounts } from "./github.ts";
 import { FIRST_YEAR as GITHUB_FIRST_YEAR, GitHubContributionsReader, latestYear } from "./github-contributions.ts";
 import { classifyGhFailure, GitHubApiError, GitHubPreviews, ghApi, ghJson, previewPullRequestFetcher } from "./github-previews.ts";
-import { correlateSessions, effectiveAccounts, fetchMyPullRequests, MyPullRequestsCache, readCheckouts, repositoryCheckouts, type PullRequestSnapshot } from "./my-pull-requests.ts";
+import { correlateSessions, effectiveAccounts, fetchMyPullRequests, MyPullRequestsCache, readCheckouts, repositoryCheckouts, type Checkout, type PullRequestSnapshot } from "./my-pull-requests.ts";
+import { CheckoutDiscovery, discoverCheckouts } from "./checkout-discovery.ts";
 import { fetchReviewComments, newReviewComments, NoNewCommentsError, recordCommentsSent, sendReviewComments, sentAtFor } from "./pull-request-comments.ts";
 import { MAX_GITHUB_EMBEDS, parseGitHubUrl } from "../shared/github-links.ts";
 import { TaskSuggestionInputError, TaskSuggestionNotFoundError, TaskSuggestionStore } from "./task-suggestions.ts";
@@ -859,6 +860,17 @@ const myPullRequests = new MyPullRequestsCache(async () => {
   const accounts = effectiveAccounts((await readSettings()).pullRequestAccounts, signedIn);
   return fetchMyPullRequests(accounts, async (login) => (await accountGh(login)).json, signedIn);
 });
+/** Clones and worktrees near the session directories (memory only, refreshed in the background). */
+const checkoutDiscovery = new CheckoutDiscovery((cwds) => discoverCheckouts(cwds, runCommand));
+
+/** Local checkouts a pull request session can start in: the session
+ * directories' own (`own`, when already read) and those discovered near them. */
+async function knownCheckouts(records: readonly SessionRecord[], own?: ReadonlyMap<string, Checkout>): Promise<Map<string, Checkout>> {
+  const cwds = records.filter((record) => !record.temporary).map((record) => record.cwd);
+  const [sessionCheckouts, discovered] = await Promise.all([own ?? readCheckouts(cwds, runCommand), checkoutDiscovery.view(cwds)]);
+  return new Map([...sessionCheckouts, ...[...discovered].filter(([path]) => !sessionCheckouts.has(path))]);
+}
+
 /** Low-risk auto-approvals of this gateway run, newest first (memory only). */
 const autoApproved: AutoApprovedPullRequest[] = [];
 /** Temporary reviews whose verdict was already considered for auto-approval. */
@@ -882,6 +894,7 @@ async function pullRequestsPage(snapshot: PullRequestSnapshot): Promise<MyPullRe
     createdPullRequests: pullRequestsFromTranscript(liveSessions.transcript(record.id)).map((ref) => ref.url),
   }));
   const checkouts = await readCheckouts(sessions.map((session) => session.cwd), runCommand);
+  const known = await knownCheckouts(records, checkouts);
   const link = (list: PullRequestSnapshot["created"]) => list.map(({ reviewComments, ...pr }) => {
     const linked = correlateSessions(pr, sessions, checkouts);
     if (!reviewComments) return { ...pr, sessions: linked };
@@ -889,7 +902,7 @@ async function pullRequestsPage(snapshot: PullRequestSnapshot): Promise<MyPullRe
       ...pr,
       sessions: linked.map((session) => ({ ...session, newComments: newReviewComments(reviewComments, sentAtFor(byId.get(session.id) ?? {}, pr.url)).length })),
       newComments: reviewComments.length,
-      localCheckout: repositoryCheckouts(pr, checkouts).length > 0,
+      localCheckout: repositoryCheckouts(pr, known).length > 0,
     };
   });
   const assessed = (pr: MyPullRequests["reviewRequested"][number]) => {
@@ -919,6 +932,21 @@ async function deliverToSession(record: SessionRecord, text: string): Promise<"p
   }
 }
 
+/** A new session on a Created pull request's head branch in a known local
+ * checkout: a checkout or worktree already on it, otherwise a new worktree at
+ * `origin/<head>` (rolled back if the session cannot be created). */
+async function startPullRequestSession(pr: Pick<PullRequestSnapshot["created"][number], "repository" | "headRepository" | "headRefName">, records: readonly SessionRecord[], title: string): Promise<SessionRecord> {
+  const known = repositoryCheckouts(pr, await knownCheckouts(records))[0];
+  if (!known) throw new WorktreeInputError(`No local checkout of ${pr.repository} is known. Clone it next to a session's directory or start a session in one first.`);
+  const workspace = known.onHeadBranch ? { cwd: known.cwd } : await branchWorktree({ sourceDirectory: known.cwd, branch: pr.headRefName });
+  try {
+    return await createSession({ cwd: workspace.cwd, title: title.slice(0, SESSION_TITLE_MAX), tool: "pi" });
+  } catch (error) {
+    await workspace.rollback?.().catch(() => undefined);
+    throw error;
+  }
+}
+
 /** `POST …/pull-requests/review-comments`: sends a Created pull request's new
  * review comments to `sessionId`, or, without one, to a new session on its
  * head branch in a known checkout of the repository. */
@@ -938,18 +966,7 @@ async function sendPullRequestReviewComments(body: Record<string, unknown>): Pro
   const comments = await fetchReviewComments(pr.accounts[0] ? (await accountGh(pr.accounts[0])).json : ghJson(GH_COMMAND), pr, snapshot.selectedAccounts);
   const sentAt = target ? sentAtFor(target, pr.url) : undefined;
   if (!newReviewComments(comments, sentAt).length) throw new NoNewCommentsError("No new review comments to send.");
-  if (!target) {
-    const checkouts = await readCheckouts(records.map((record) => record.cwd), runCommand);
-    const known = repositoryCheckouts(pr, checkouts)[0];
-    if (!known) throw new WorktreeInputError(`No local checkout of ${pr.repository} is known. Start a session in one first.`);
-    const workspace = known.onHeadBranch ? { cwd: known.cwd } : await branchWorktree({ sourceDirectory: known.cwd, branch: pr.headRefName });
-    try {
-      target = await createSession({ cwd: workspace.cwd, title: `Review comments: ${pr.title || `${pr.repository}#${pr.number}`}`.slice(0, SESSION_TITLE_MAX), tool: "pi" });
-    } catch (error) {
-      await workspace.rollback?.().catch(() => undefined);
-      throw error;
-    }
-  }
+  target ??= await startPullRequestSession(pr, records, `Review comments: ${pr.title || `${pr.repository}#${pr.number}`}`);
   const record = target;
   const result = await sendReviewComments({
     pr,
@@ -1054,8 +1071,7 @@ async function assessPullRequest(body: Record<string, unknown>): Promise<{ sessi
     // requires both to still hold.
     const account = reviewAccount(pr);
     const { headRefOid } = parsePullRequestHead(await (await accountGh(account)).json(headArgs(pr)));
-    const checkouts = await readCheckouts(records.filter((item) => !item.temporary).map((item) => item.cwd), runCommand);
-    const known = repositoryCheckouts(pr, checkouts)[0]?.cwd;
+    const known = repositoryCheckouts(pr, await knownCheckouts(records))[0]?.cwd;
     if (!known) {
       scratchDir = join(PR_REVIEWS_DIR, randomUUID());
       await mkdir(scratchDir, { recursive: true });

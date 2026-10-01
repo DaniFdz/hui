@@ -904,12 +904,26 @@ records the time of the newest included comment on the session; a failed one
 records nothing and shows the error.
 
 Without a linked session the button reads **Start session with comments**: it
-starts a session in a known checkout of the repository (a session directory
-with a github.com remote for it) that is already on the head branch, in an
-existing worktree on that branch, or in a new HUI worktree on a local
-head branch tracking a freshly fetched `origin/<headRefName>`, then delivers the
-comments there. With no known checkout the button is disabled and its tooltip
-says why.
+starts a session in a known checkout of the repository that is already on the
+head branch (a checkout or any of its worktrees), or else in a new HUI
+worktree on a local head branch tracking a freshly fetched
+`origin/<headRefName>`, then delivers the comments there.
+
+A known checkout is a Git directory with a github.com remote for the base or
+head repository (`https://github.com/…`, `git@github.com:…`, `ssh://git@github.com/…`
+or an SSH host alias ending in `.github.com`, such as `git@work.github.com:owner/repo`).
+Besides the session directories themselves, the gateway discovers them without
+configuration: the roots are every registered, non-temporary session
+directory, its Git top level and that top level's parent; each root's immediate
+child directories holding `.git` (except dot-directories and `node_modules`)
+are repositories, and each repository's `git worktree list` adds its worktrees
+with their branches. Paths are resolved through symlinks, at most 200
+repositories are read, and the result is kept in gateway memory for 60 s and
+rediscovered in the background (only the first page load waits). Discovered
+checkouts decide whether a row can start a session, which directory it starts
+in and where a risk review reads; only registered sessions are ever linked to a
+row. Owners are never guessed: a clone of `acme/web` does not count for
+`other/web`.
 
 **Risk review.** On **Review requested** rows, **Assess risk** starts a
 temporary PI session on the operator's default model (never the utility model)
