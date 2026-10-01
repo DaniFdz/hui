@@ -173,7 +173,11 @@ export class WorkerHost {
   async close(): Promise<void> {
     clearInterval(this.#timer);
     this.#bots.stop();
-    for (const proc of this.#procs.values()) this.#stop(proc);
+    const stopping = [...this.#procs.values()];
+    for (const proc of stopping) this.#stop(proc);
+    // Do not exit and orphan a worker that ignores SIGTERM.
+    await Promise.race([Promise.all(stopping.map((proc) => proc.gone)), new Promise((done) => setTimeout(done, 5_000))]);
+    for (const proc of stopping) if (!proc.exited) proc.child.kill("SIGKILL");
     for (const peer of this.#peers) peer.close("Remote worker host stopped.");
     stopAgentToolBridge();
     await new Promise<void>((done) => this.#server ? this.#server.close(() => done()) : done());

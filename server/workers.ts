@@ -217,6 +217,7 @@ class WorkerConnection {
         if (ready) return false;
         if (line === JSON.stringify({ t: "ready" })) {
           ready = true;
+          peer.keepAlive();
           clearTimeout(timer);
           resolve();
         }
@@ -227,7 +228,6 @@ class WorkerConnection {
       peer.handle("credential", (params) => this.#credential(params));
       peer.handle("bridge", (params) => this.#bridge(params));
       peer.onFrame((frame) => this.#frame(frame));
-      peer.keepAlive();
       transport.on("error", (error) => fail(`Could not run ${command[0]}: ${error.message}`));
       transport.on("exit", (code, signal) => {
         fail(`${command[0]} exited with code ${code} before the worker host started.`);
@@ -541,6 +541,7 @@ export class WorkerService {
       });
       try {
         await connection.open();
+        if (connection.closed) throw new BootstrapError("The connection closed while connecting.");
       } catch (error) {
         connection.close();
         const output = error instanceof BootstrapError && error.output.trim() ? ` ${error.output.trim().split("\n").slice(-3).join(" ")}` : "";
@@ -548,7 +549,7 @@ export class WorkerService {
         this.#changed();
         throw error;
       }
-      if ((this.#generation.get(id) ?? 0) !== generation || connection.closed) {
+      if ((this.#generation.get(id) ?? 0) !== generation) {
         connection.close();
         throw new Error(`${worker.name} was disconnected while connecting.`);
       }

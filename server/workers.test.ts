@@ -158,6 +158,20 @@ test("a remote session runs with gateway credentials and mirrored resources, lea
   }
 });
 
+test("reloading a remote session picks up resources just changed on the gateway", async () => {
+  const session = await piRuntime.start({ cwd: project, worker: workerId, huiSessionId: "remote-reload" });
+  try {
+    assert.doesNotMatch((await session.inspect!()).prompt, /fresh-skill/u);
+    await mkdir(join(agentDir, "skills", "fresh-skill"), { recursive: true });
+    await writeFile(join(agentDir, "skills", "fresh-skill", "SKILL.md"), "---\nname: fresh-skill\ndescription: Written after the session started.\n---\nBody\n");
+    await session.reload!();
+    assert.match((await session.inspect!()).prompt, /fresh-skill/u);
+  } finally {
+    session.dispose();
+    await rm(join(agentDir, "skills", "fresh-skill"), { recursive: true, force: true });
+  }
+});
+
 test("an OAuth refresh runs on the remote while the gateway holds the lock, and is stored only on the gateway", async () => {
   const session = await piRuntime.start({ cwd: project, worker: workerId, huiSessionId: "remote-oauth", model: "fx-oauth/fixture" });
   try {

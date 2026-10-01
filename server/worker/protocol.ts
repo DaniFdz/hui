@@ -87,6 +87,8 @@ export class Peer {
     if (this.#closed) return false;
     let line: string;
     try { line = `${JSON.stringify(frame)}\n`; } catch { return false; }
+    // The other side would reject it and drop the whole connection.
+    if (line.length > MAX_FRAME_BYTES) return false;
     this.#write(line);
     return true;
   }

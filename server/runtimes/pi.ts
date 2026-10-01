@@ -666,15 +666,18 @@ export class PiSession implements RuntimeSession {
   /** Attached to a remote run that kept going without this gateway. */
   readonly resumed: boolean;
   #stageAttachments: ((attachments: readonly PromptAttachment[]) => Promise<readonly PromptAttachment[]>) | undefined;
+  #beforeReload: (() => Promise<void>) | undefined;
 
   constructor(child: ChildProcessWithoutNullStreams, agentDir?: string, disabledSkillNames: readonly string[] = [], sdk = false, remote?: {
     resumed: boolean;
     /** Copies file attachments to where the remote agent can read them. */
     stageAttachments(attachments: readonly PromptAttachment[]): Promise<readonly PromptAttachment[]>;
+    beforeReload(): Promise<void>;
   }) {
     this.#child = child;
     this.resumed = remote?.resumed ?? false;
     this.#stageAttachments = remote?.stageAttachments;
+    this.#beforeReload = remote?.beforeReload;
     this.#agentDir = agentDir;
     this.#disabledSkillCommands = new Set(disabledSkillNames.map((name) => `skill:${name}`));
     if (sdk) {
@@ -1157,6 +1160,8 @@ export class PiSession implements RuntimeSession {
 
   async reload(): Promise<void> {
     if (!this.#inspector) throw new Error("Reload requires HUI's PI SDK backend.");
+    // A remote session re-reads the mirror, so refresh it from this machine first.
+    await this.#beforeReload?.();
     await this.#inspector.reload();
   }
 
@@ -1333,6 +1338,7 @@ async function startRemotePi(options: Parameters<typeof startPi>[0] & { worker: 
     stageAttachments: async (attachments) => Promise.all(attachments.map(async (item) => item.kind === "file"
       ? { ...item, path: await workers.putFile(worker, item.name, await readFile(item.path)) }
       : item)),
+    beforeReload: () => workers.sync(worker).then(() => undefined),
   });
   try {
     await session.bootstrap();

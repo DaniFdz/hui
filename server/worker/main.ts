@@ -45,7 +45,8 @@ function lock(): boolean {
       if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
       const pid = Number(readFileSync(PID_FILE, "utf8"));
       // ponytail: two hosts starting against one stale lock can both win; needs flock-style locking if that ever matters.
-      if (pid && hostRunning(pid)) return false;
+      // In a restarted container this very process may have the old pid.
+      if (pid && pid !== process.pid && hostRunning(pid)) return false;
       rmSync(PID_FILE, { force: true });
     }
   }
