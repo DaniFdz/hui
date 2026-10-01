@@ -426,6 +426,9 @@ export class HuiApp extends HuiElement {
   @state() private sessionLayout: SessionLayout | undefined;
   @property({ type: Boolean, attribute: "embedded-pane" }) embeddedPane = false;
   @property({ attribute: "pane-session-id" }) paneSessionId = "";
+  /** The shell's registry entry, so a pane opens without waiting for (or
+   * depending on) its own registry request, which can time out or be stale. */
+  @property({ attribute: false }) paneSession?: SessionView;
   @property() paneId = "";
   @property({ type: Boolean }) paneActive = true;
   @property({ type: Boolean }) paneVisible = true;
@@ -1005,7 +1008,8 @@ export class HuiApp extends HuiElement {
     if (!id) {
       return;
     }
-    const session = this.groups.flatMap((group) => group.sessions).find((item) => item.id === id);
+    const session = this.groups.flatMap((group) => group.sessions).find((item) => item.id === id)
+      ?? (this.paneSession?.id === id ? this.paneSession : undefined);
     if (session) {
       this.pendingSessionId = "";
       this.activateSession(session);
@@ -4051,6 +4055,7 @@ export class HuiApp extends HuiElement {
       class="chat-split-view__pane hui-session-pane-app"
       embedded-pane
       pane-session-id=${pane.sessionId}
+      .paneSession=${this.groups.flatMap((group) => group.sessions).find(({ id }) => id === pane.sessionId)}
       .paneId=${pane.id}
       .paneActive=${state.active}
       .paneVisible=${state.visible}
