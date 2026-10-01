@@ -6,6 +6,8 @@
  * marker the launcher resolves, because resolving it means running `tailscale`.
  */
 
+import { readFile } from "node:fs/promises";
+
 /** What `--host` asked for, before `tailnet` is resolved to a real address. */
 export type HostArgument = { host: string };
 
@@ -99,4 +101,29 @@ export function allowedHostsFromEnv(env: NodeJS.ProcessEnv = process.env): strin
     .split(",")
     .map((entry) => hostName(entry, "HUI_GATEWAY_ALLOWED_HOSTS"))
     .filter(Boolean);
+}
+
+/**
+ * Extra `Host` names from `allowHosts` in the gateway's `config.json`, read on
+ * every start so updates, reboots and desktop launches all keep them.
+ * `"tailnet"` is this machine's Tailscale DNS name, resolved by `tailnet()`;
+ * when Tailscale is down that entry is skipped so the gateway still starts. A
+ * missing file grants nothing; a malformed one throws for the same reason as
+ * `hostName`.
+ */
+export async function allowedHostsFromConfig(file: string, tailnet: () => Promise<string | undefined>): Promise<string[]> {
+  let raw: string;
+  try { raw = await readFile(file, "utf8"); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return []; throw error; }
+  const source = `${file} allowHosts`;
+  let entries: unknown;
+  try { entries = (JSON.parse(raw) as { allowHosts?: unknown } | null)?.allowHosts ?? []; }
+  catch { throw new Error(`${file} is not valid JSON.`); }
+  if (!Array.isArray(entries) || !entries.every((entry) => typeof entry === "string")) throw new Error(`${source} must be a list of host names.`);
+  const names: string[] = [];
+  for (const entry of entries) {
+    const name = entry.trim().toLowerCase() === "tailnet" ? await tailnet() : entry;
+    if (name) names.push(hostName(name, source));
+  }
+  return names.filter(Boolean);
 }

@@ -25,7 +25,7 @@ safe route fallbacks (single-segment page routes such as `/skills` or `/kanban`,
 plus `/sessions/…` and `/settings/…` deep links) and realpath containment; it never serves source files or
 escaping symlinks. Requests must use an allowed Host (loopback, the selected IP,
 its explicitly resolved Tailscale DNS name, or a name granted with `--allow-host`
-or `HUI_GATEWAY_ALLOWED_HOSTS`). A proxy that connects over loopback but answers
+or `HUI_GATEWAY_ALLOWED_HOSTS`, or listed in `allowHosts` of `gateway/config.json`). A proxy that connects over loopback but answers
 on a name of its own, such as `tailscale serve`, is the case that needs one;
 unusable entries are refused rather than silently ignored. The default production
 port is

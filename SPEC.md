@@ -318,7 +318,10 @@ startup/restart defaults (also inherited by the desktop shell); explicit CLI fla
 win. Invalid environment defaults are rejected before stopping a gateway.
 `--allow-host <name>`, repeatable, and `HUI_GATEWAY_ALLOWED_HOSTS` list the extra
 host names accepted in the `Host` header, which is what a reverse proxy fronting
-the loopback gateway needs. Both are persisted with the binding. Without
+the loopback gateway needs. Both are persisted with the binding while a gateway
+is restarted or updated. `allowHosts` in `gateway/config.json` is read on every
+start, with `"tailnet"` resolved to the Tailscale DNS name; a malformed file
+refuses startup. Without
 configured defaults, restart retains the previous binding. A specific IP or Tailscale binding is explicit;
 wildcard exposure is refused. The UI still has Full Access and no login.
 
