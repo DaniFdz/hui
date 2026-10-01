@@ -909,7 +909,7 @@ cannot be removed.
   the live process, replays its pending questions and shows its transcript. A
   run that finished meanwhile is not "recovered". Detached idle workers stop after ten minutes, an idle host
   after thirty, unless it owns bots. A newer gateway replaces an idle older
-  host; a busy one keeps serving its sessions.
+  host; one that is busy, or that another HUI is connected to, keeps serving.
 - **Your PI setup, mirrored.** Before a session starts (at most every 30 s)
   HUI mirrors the user's PI settings, models, context files (`AGENTS.md`,
   `SYSTEM.md`, …), extensions, skills, prompts, `~/.agents/skills`, every local

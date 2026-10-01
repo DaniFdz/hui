@@ -179,9 +179,10 @@ export class WorkerHost {
     await unlink(this.paths.socket).catch(() => undefined);
   }
 
-  /** Busy work blocks an upgrade; an idle host may be replaced. */
+  /** Busy work, or another gateway still connected (which would just replace
+   * it back), blocks an upgrade; an idle host may be replaced. */
   busy(): boolean {
-    return this.#bots.running() || [...this.#procs.values()].some((proc) => proc.streaming || proc.questions.size > 0);
+    return this.#peers.size > 1 || this.#bots.running() || [...this.#procs.values()].some((proc) => proc.streaming || proc.questions.size > 0);
   }
 
   #accept(socket: Socket): void {

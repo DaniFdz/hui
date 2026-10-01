@@ -809,7 +809,7 @@ noise and ignored. From then on both sides exchange `\n`-delimited JSON frames:
 `{t:"req",id,op,p}` / `{t:"res",id,ok,result|error}` requests in either
 direction, plus per-session frames `in`, `out`, `err`, `ipc`, `exit`, `kill`,
 `detach` keyed by a channel number, and a `bots` push. Gateway requests:
-`hello`, `shutdown` (only when idle), `open {ch,key,launch}` (spawn or reattach
+`hello`, `shutdown` (only when idle and no other gateway is connected), `open {ch,key,launch}` (spawn or reattach
 the PI SDK worker for one HUI session id; `reused` tells which), `stat`,
 `put-file`, `get-file`, `sync-plan`/`sync-put`/`sync-commit` and
 `bots-list`/`bots-save`/`bots-delete`/`bots-run`. Host requests: `credential`
