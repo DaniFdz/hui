@@ -149,16 +149,20 @@ still need on-device verification**; see [desktop proof](../e2e/desktop-package.
 [Security and data](../README.md#security-and-data) covers binding the gateway
 to a tailnet address. Reaching the loopback gateway through a reverse proxy instead (for example
 `tailscale serve`) keeps the gateway on loopback and names the proxy's own host,
-which the gateway refuses until it is listed. The name is remembered with the
-binding:
+which the gateway refuses until it is listed. To keep the name across updates,
+reboots and desktop launches, list it in `~/.config/hui/gateway/config.json`
+(or `$XDG_CONFIG_HOME/hui/gateway/config.json`), which the gateway reads on
+every start:
 
-```sh
-hui gateway restart --allow-host laptop.example.ts.net
+```json
+{ "allowHosts": ["tailnet", "proxy.example.ts.net"] }
 ```
 
-Repeat `--allow-host` for more names, or set the comma-separated
-`HUI_GATEWAY_ALLOWED_HOSTS` when the gateway is started by something you do not
-edit.
+`"tailnet"` is this machine's Tailscale DNS name, looked up on each start and
+skipped while Tailscale is down. A malformed file stops the gateway from
+starting. For a one-off grant, `hui gateway restart --allow-host
+laptop.example.ts.net` (repeatable) or the comma-separated
+`HUI_GATEWAY_ALLOWED_HOSTS` last only until the gateway fully stops.
 
 ## Model providers
 
