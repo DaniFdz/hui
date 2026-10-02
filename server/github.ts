@@ -225,7 +225,8 @@ export class GitHubCli {
     const connection = await this.connection();
     if (connection.status !== "connected") return false;
     try {
-      await this.#run(["repo", "star", "DaniFdz/hui", "--owner"], 30_000);
+      // gh has no "star" subcommand; use the API directly
+      await this.#run(["api", "-X", "PUT", "user/starred/DaniFdz/hui"], 30_000);
       return true;
     } catch {
       return false;
