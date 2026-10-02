@@ -56,21 +56,22 @@ export class TaskSuggestionStore {
     return found;
   }
 
-  /** Validates agent input. `defaultCwd` is the calling session's directory. */
-  async suggest(sessionId: string, params: Record<string, unknown>, defaultCwd: string): Promise<TaskSuggestion> {
+  /** Validates agent input. `defaultCwd` is the calling session's directory;
+   * on a remote `worker` it is a path there, checked when a session starts. */
+  async suggest(sessionId: string, params: Record<string, unknown>, defaultCwd: string, worker?: string): Promise<TaskSuggestion> {
     const title = field(params, "title", TASK_SUGGESTION_LIMITS.title);
     const problem = field(params, "problem", TASK_SUGGESTION_LIMITS.problem);
     const fix = field(params, "fix", TASK_SUGGESTION_LIMITS.fix, true);
     const requestedCwd = field(params, "cwd", TASK_SUGGESTION_LIMITS.cwd, true);
     if (requestedCwd && !isAbsolute(requestedCwd)) throw new TaskSuggestionInputError("cwd must be an absolute path.");
     const cwd = normalize(requestedCwd || defaultCwd);
-    const info = await stat(cwd).catch(() => undefined);
-    if (!info?.isDirectory()) throw new TaskSuggestionInputError(`cwd is not a directory: ${cwd}`);
+    const info = worker ? undefined : await stat(cwd).catch(() => undefined);
+    if (!worker && !info?.isDirectory()) throw new TaskSuggestionInputError(`cwd is not a directory: ${cwd}`);
     const current = this.#bySession.get(sessionId) ?? [];
     if (current.length >= TASK_SUGGESTION_LIMITS.perSession) {
       throw new TaskSuggestionInputError(`This session already has ${TASK_SUGGESTION_LIMITS.perSession} pending suggestions. Dismiss stale ones first.`);
     }
-    const suggestion: TaskSuggestion = { id: this.#uuid(), title, problem, fix, cwd, createdAt: this.#now().toISOString() };
+    const suggestion: TaskSuggestion = { id: this.#uuid(), title, problem, fix, cwd, ...(worker ? { worker } : {}), createdAt: this.#now().toISOString() };
     this.#bySession.set(sessionId, [suggestion, ...current]);
     this.#onChange(sessionId);
     return suggestion;
@@ -111,9 +112,9 @@ export class TaskSuggestionStore {
   }
 
   /** The bridge-facing tool contract: `suggest_task` and `dismiss_task`. */
-  async tool(sessionId: string, action: string, params: Record<string, unknown>, defaultCwd: string): Promise<unknown> {
+  async tool(sessionId: string, action: string, params: Record<string, unknown>, defaultCwd: string, worker?: string): Promise<unknown> {
     if (action === "suggest_task") {
-      const suggestion = await this.suggest(sessionId, params, defaultCwd);
+      const suggestion = await this.suggest(sessionId, params, defaultCwd, worker);
       return { taskId: suggestion.id, title: suggestion.title, cwd: suggestion.cwd, status: "pending" };
     }
     if (action === "dismiss_task") {

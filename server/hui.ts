@@ -18,10 +18,13 @@
 import { mkdir, readFile, readdir, stat, unlink, writeFile } from "node:fs/promises";
 import type { ServerResponse } from "node:http";
 import { randomUUID } from "node:crypto";
+import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import type { Connect, Plugin } from "vite";
+import { workers, WorkerInputError } from "./workers.ts";
+import { createWorkerRoutes, WORKERS_ROUTE } from "./worker-routes.ts";
 import { progressCardFromTranscript, type ProgressCard } from "../shared/progress-card.ts";
 import type { SessionPullRequest } from "../shared/pull-requests.ts";
 import {
@@ -215,6 +218,27 @@ const PRESENTED_MEDIA_ROUTE = /^\/__hui\/media\/([0-9a-f-]+)\/([^/]+)$/u;
 /** How long an event stream may sit idle before a comment proves it is alive. */
 const HEARTBEAT_MS = 15_000;
 const piMutations = new PiMutationService();
+const workerRoutes = createWorkerRoutes({
+  service: workers,
+  readRegistry,
+  updateRegistry,
+  sessions: liveSessions,
+  deleteSession: (id) => deleteSession(id),
+});
+// Sessions a lost connection interrupted reattach once their worker is back.
+workers.onConnected((workerId) => {
+  void readRegistry().then((records) => {
+    for (const record of records) {
+      if (record.worker === workerId && liveSessions.isLive(record.id) && liveSessions.status(record.id) === "error") liveSessions.ensure(record);
+    }
+  }).catch(() => undefined);
+});
+workers.onBots((workerId, bots) => {
+  void workerRoutes.onBots(workerId, bots).catch((error: unknown) => recordDiagnosticEvent({
+    area: "session", level: "warning", action: "bot_sessions_failed",
+    summary: error instanceof Error ? error.message : "Could not list a worker's bots.",
+  }));
+});
 const subagents = new SubagentService(liveSessions);
 const taskSuggestions = new TaskSuggestionStore({ onChange: (id) => liveSessions.notifySnapshot(id) });
 /** One managed browser per gateway; its settings are re-read on every call. */
@@ -231,7 +255,7 @@ registerAgentToolHandler(async (invocation) => {
   if (invocation.action === "suggest_task" || invocation.action === "dismiss_task") {
     const caller = (await readRegistry()).find(({ id }) => id === invocation.callerSessionId);
     if (!caller) throw new TaskSuggestionInputError("Conversation no longer exists.");
-    return taskSuggestions.tool(caller.id, invocation.action, invocation.params, caller.cwd);
+    return taskSuggestions.tool(caller.id, invocation.action, invocation.params, caller.cwd, caller.worker);
   }
   if (invocation.action === "set_stage") {
     return setAgentStage(invocation.callerSessionId, invocation.params);
@@ -703,6 +727,10 @@ type SessionView = {
   cwd: string;
   /** `cwd` with the home directory shortened to `~/`, for display only. */
   displayCwd: string;
+  /** Remote worker the session runs on; absent for this machine. */
+  worker?: { id: string; name: string };
+  /** A bot hosted by that worker. */
+  bot?: true;
   tool: string;
   status: SessionStatus;
   /** Git worktree progress while the session's checkout is still created. */
@@ -948,7 +976,9 @@ function toView(
     title: record.title,
     group: record.group,
     cwd: record.cwd,
-    displayCwd: record.cwd ? displayPath(record.cwd) : "",
+    displayCwd: record.worker ? `${workers.nameOf(record.worker) ?? "Remote"}:${record.cwd}` : record.cwd ? displayPath(record.cwd) : "",
+    ...(record.worker ? { worker: { id: record.worker, name: workers.nameOf(record.worker) ?? "Remote worker" } } : {}),
+    ...(record.bot ? { bot: true as const } : {}),
     tool: record.tool,
     status,
     ...(runtime ? { runtime } : {}),
@@ -1208,15 +1238,29 @@ export async function createSession(
   } = {},
 ): Promise<SessionRecord> {
   if (typeof body["cwd"] !== "string") throw new Error("Working directory must be text.");
-  let cwd = resolveWorkingDirectory(body["cwd"]);
-  let info;
-  try {
-    info = await stat(cwd);
-  } catch {
-    throw new Error(`No such directory: ${cwd}`);
+  if (body["worker"] !== undefined && (typeof body["worker"] !== "string" || !body["worker"].trim())) {
+    throw new Error("Worker must be a worker id.");
   }
-  if (!info.isDirectory()) {
-    throw new Error(`Not a directory: ${cwd}`);
+  const worker = typeof body["worker"] === "string" ? body["worker"].trim() : undefined;
+  let cwd: string;
+  if (worker) {
+    // The remote checks the directory when the session starts, so creating
+    // one never waits on a first connection or installation.
+    await workers.get(worker);
+    cwd = body["cwd"].trim();
+    if (!cwd.startsWith("/") && cwd !== "~" && !cwd.startsWith("~/")) throw new Error("A remote directory must be absolute or start with ~/.");
+    if (body["worktree"] === true || body["baseRef"] !== undefined) throw new Error("Worktrees and branch checkouts are not available on remote workers yet.");
+  } else {
+    cwd = resolveWorkingDirectory(body["cwd"]);
+    let info;
+    try {
+      info = await stat(cwd);
+    } catch {
+      throw new Error(`No such directory: ${cwd}`);
+    }
+    if (!info.isDirectory()) {
+      throw new Error(`Not a directory: ${cwd}`);
+    }
   }
 
   const title = sessionText(body, "title", SESSION_TITLE_MAX, {
@@ -1275,6 +1319,7 @@ export async function createSession(
     title: named,
     group,
     cwd,
+    ...(worker ? { worker } : {}),
     tool: runtimeTool,
     ...(model ? { model } : {}),
     ...(thinking ? { thinking } : {}),
@@ -1294,9 +1339,11 @@ export async function createSession(
   // title at once and renamed when the utility model answers, so the request
   // never waits on a model call.
   const namesLater = Boolean(initialPrompt && !title && !requestedWorktree);
+  // Utility calls are tool-free and run on this machine.
+  const namingCwd = worker ? homedir() : cwd;
   const names = initialPrompt && !namesLater
     ? await nameSession({
-        cwd,
+        cwd: namingCwd,
         prompt: initialPrompt,
         settings,
         ...(title ? { title } : {}),
@@ -1338,7 +1385,7 @@ export async function createSession(
   sessions.accept(record.id);
   sessions.ensure(record);
   if (namesLater && initialPrompt) {
-    void renameWithGeneratedTitle(record, () => nameSession({ cwd, prompt: initialPrompt, settings }), registryUpdater);
+    void renameWithGeneratedTitle(record, () => nameSession({ cwd: namingCwd, prompt: initialPrompt, settings }), registryUpdater);
   }
   return record;
 }
@@ -1536,6 +1583,7 @@ async function startTaskSuggestion(
       title: suggestion.title.slice(0, SESSION_TITLE_MAX),
       group: source.group,
       tool: "pi",
+      ...(suggestion.worker ? { worker: suggestion.worker } : {}),
       ...(mode === "worktree" ? { worktree: true } : {}),
     });
     await waitForSessionReady(record.id);
@@ -1664,6 +1712,8 @@ export async function startBacklogItem(itemId: string, body: Record<string, unkn
 async function saveSuggestionToBacklog(sessionId: string, suggestionId: string) {
   const suggestion = taskSuggestions.claim(sessionId, suggestionId);
   try {
+    // Backlog items start on this machine; a remote directory means nothing here.
+    if (suggestion.worker) throw new TaskSuggestionInputError("Suggestions from a remote worker can't go to the backlog yet. Start it in a new session instead.");
     const task = await backlogStore.addTask({ title: suggestion.title, problem: suggestion.problem, fix: suggestion.fix, cwd: suggestion.cwd, group: "" });
     taskSuggestions.remove(sessionId, suggestionId);
     return task;
@@ -1683,6 +1733,7 @@ export async function deleteSession(
   registryUpdater: typeof updateRegistry = updateRegistry,
 ): Promise<void> {
   const tokens = new Map<string, DeleteToken>([[id, sessions.tombstone(id)]]);
+  const remote: SessionRecord[] = [];
   try {
     await registryUpdater((records) => {
       if (!records.some((record) => record.id === id)) {
@@ -1692,6 +1743,7 @@ export async function deleteSession(
       for (const descendant of tree) {
         if (!tokens.has(descendant)) tokens.set(descendant, sessions.tombstone(descendant));
       }
+      remote.push(...records.filter((record) => tree.has(record.id) && record.worker));
       return records.filter((record) => !tree.has(record.id));
     });
   } catch (error) {
@@ -1700,6 +1752,10 @@ export async function deleteSession(
   }
   subagents.forgetSessions(new Set(tokens.keys()));
   taskSuggestions.forget(tokens.keys());
+  // A remote process this gateway is not attached to would otherwise linger.
+  for (const worker of new Set(remote.map((record) => record.worker!))) {
+    void workers.forget(worker, remote.filter((record) => record.worker === worker).map((record) => record.id)).catch(() => undefined);
+  }
   for (const [sessionId, token] of tokens) {
     sessions.finishDelete(sessionId, token);
     terminals.closeOwner(sessionId);
@@ -1967,6 +2023,7 @@ async function handleRequest(
       const id = terminalRoute[2];
       const session = (await readRegistry()).find((record) => record.id === owner);
       if (!session) throw new TerminalError("Conversation not found.", 404);
+      if (session.worker) throw new TerminalError("Terminals are not available for sessions on a remote worker yet.", 409);
       if (request.method === "GET") {
         if (terminalRoute[3]) throw new TerminalError("Method not allowed.", 405);
         sendJson(response, 200, id ? terminals.read(owner, id) : { terminals: terminals.list(owner) });
@@ -2186,6 +2243,13 @@ async function handleRequest(
         error: error instanceof Error ? error.message : "Could not read the resource.",
       });
     }
+    return;
+  }
+
+  if (path === WORKERS_ROUTE || path.startsWith(`${WORKERS_ROUTE}/`)) {
+    const result = await workerRoutes.handle(request.method ?? "GET", path, () => readBody(request));
+    if (result) sendJson(response, result.status, result.body);
+    else sendJson(response, 404, { error: "not found" });
     return;
   }
 
@@ -2610,7 +2674,8 @@ async function handleRequest(
           project,
           parents,
           title: suggestion?.title ?? record.title,
-          cwd: record.cwd,
+          // Utility calls run on this machine, even for remote sessions.
+          cwd: record.worker ? homedir() : record.cwd,
           context: suggestion ? taskSuggestionJiraDescription(suggestion) : digest?.text ?? "",
           ...(digest?.goal ? { goal: digest.goal } : {}),
           model: (await readSettings()).models.utility,
@@ -2915,9 +2980,11 @@ async function handleRequest(
       // Block stale opens first, but keep the runtime and streams alive until
       // registry removal commits. A storage failure rolls the tombstone back.
       try {
+        const record = (await readRegistry()).find((item) => item.id === id);
+        if (record) await workerRoutes.beforeSessionDelete(record);
         await deleteSession(id);
       } catch (error) {
-        sendJson(response, error instanceof SessionNotFoundError ? 404 : 500, {
+        sendJson(response, error instanceof SessionNotFoundError ? 404 : error instanceof WorkerInputError ? 409 : 500, {
           error: error instanceof Error ? error.message : "Could not remove that session.",
         });
         return;
@@ -3071,7 +3138,7 @@ async function handleRequest(
         const question = typeof body["question"] === "string" ? body["question"].trim() : "";
         if (!question) throw new Error("A side question is required.");
         const result = await answerSideQuestion({
-          cwd: record.cwd,
+          cwd: record.worker ? homedir() : record.cwd,
           question,
           transcript: liveSessions.transcript(id),
           settings: await readSettings(),
@@ -3305,6 +3372,8 @@ export async function startBackend(): Promise<void> {
   void macPower?.start((await readSettings()).power.keepAwake);
   await automation.start();
   initializeSubagents();
+  await workers.list().catch(() => undefined);
+  void workers.connectKept();
   recoverInterruptedSessions(await readRegistry());
   // Auto-star the HUI repo when GitHub is connected.
   void githubCli.starHuiRepo().catch(() => {}); // best-effort, non-blocking
@@ -3331,6 +3400,9 @@ export function stopBackend(): void {
   automation.dispose();
   subagents.dispose();
   stopAgentToolBridge();
+  // Closed first: remote sessions then keep running on their hosts instead of
+  // receiving a kill from the disposal below.
+  workers.disconnectAll();
   liveSessions.disposeAll();
 }
 

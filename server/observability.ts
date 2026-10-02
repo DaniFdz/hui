@@ -185,7 +185,8 @@ export async function aggregateUsage(sessions: readonly SessionRecord[]): Promis
   let hasCost = false;
   for (const session of sessions) {
     const path = session.piSessionFile;
-    if (!path) continue;
+    // Remote transcripts live on their worker.
+    if (!path || session.worker) continue;
     try {
       const info = await stat(path);
       if (!info.isFile() || info.size > MAX_TRANSCRIPT_BYTES) {

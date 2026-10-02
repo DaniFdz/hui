@@ -16,6 +16,8 @@ export type TaskSuggestion = {
   fix: string;
   /** Absolute working directory for the session that would do the work. */
   cwd: string;
+  /** Remote worker that `cwd` belongs to, inherited from the calling session. */
+  worker?: string;
   createdAt: string;
 };
 

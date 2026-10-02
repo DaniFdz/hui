@@ -994,6 +994,7 @@ export class LiveSessions {
         ...(live.record.title ? { title: live.record.title } : {}),
         ...(live.record.model ? { model: live.record.model } : {}),
         ...(live.record.thinking ? { thinking: live.record.thinking } : {}),
+        ...(live.record.worker ? { worker: live.record.worker } : {}),
         huiSessionId: live.record.id,
       });
       // Deletion or gateway shutdown can happen while a runtime takes several
@@ -1039,7 +1040,10 @@ export class LiveSessions {
       this.#setStatus(live, readyStatus, false);
       recordDiagnosticEvent({ area: "runtime", level: "info", action: "ready", summary: `${live.record.tool} runtime ready`, sessionId: live.record.id });
       if (live.record.runStartedAt && readyStatus === "idle") {
-        await this.#recoverInterrupted(live);
+        // A remote run that kept going while the gateway was away has simply
+        // finished; only a run whose process died needs recovering.
+        if (runtime.resumed) this.#clearRunMarker(live);
+        else await this.#recoverInterrupted(live);
       }
       // A resumed session only has its history after boot, so the transcript is
       // sent now rather than left empty at connect.

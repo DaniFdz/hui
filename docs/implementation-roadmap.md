@@ -696,3 +696,27 @@ Verified desktop/mobile behavior and checks are recorded in
 - The existing installed-package lifecycle suite includes the desktop assets
   in release/update fixtures. Browser proof and native-platform limitations:
   [desktop package proof](../e2e/desktop-package.browser.md).
+
+### HUI-17 — Remote workers and bots
+
+**Status:** implemented; real-provider proof on a long-lived remote pending.
+
+- A worker is a name plus a connect command (`ssh`, `docker exec -i`,
+  `kubectl exec -i`, …). HUI installs Node if needed, its own worker release
+  and the PI SDK, starts a durable per-user host and mirrors the user's PI
+  resources; credentials stay on the gateway and are brokered per request.
+- New Session runs on a worker; subagents follow their parent. Sessions keep
+  running while the gateway is away, reattach with their pending questions,
+  and reconnect by themselves after a dropped connection.
+- Bots are host-owned scheduled agents with instructions, a check-in prompt and
+  a session in the **Bots** group; they run while HUI is closed.
+- Proof: `server/workers.test.ts` (real host, SDK worker and deterministic
+  provider behind a separate home: brokered API key and OAuth refresh, no
+  secret on the remote, reattach, question replay, close/delete, offline bot
+  run), plus manual runs against an Ubuntu 24.04 arm64 container over
+  `docker exec -i` and over SSH: Node download, release install, package
+  dependency install, durable runs across a killed transport, host upgrade, and
+  the Settings → Workers, Run on, bot and reattach journeys in the browser.
+- Not yet remote: terminals, the managed browser, worktrees/branch checkout,
+  multi-account quota rotation and usage totals.
+

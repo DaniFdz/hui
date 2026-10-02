@@ -143,6 +143,8 @@ export type StartOptions = {
   /** HUI registry id. PI extensions use it to address their private, local
    * coordination bridge without exposing session state to the browser. */
   huiSessionId?: string;
+  /** Remote worker that hosts the session; absent means this machine. */
+  worker?: string;
 };
 
 export type RuntimeSession = {
@@ -197,6 +199,9 @@ export type RuntimeSession = {
   rewind?(entryId: string, options?: RuntimeRewindOptions): Promise<void>;
   /** Resume the model from the current non-assistant tail without a user prompt. */
   continueRun?(): Promise<void>;
+  /** Attached to a run that kept going while no gateway was watching (a
+   * remote worker); an `idle` boot then means it finished, not that it died. */
+  readonly resumed?: boolean;
   /** Fires when the tool's process ends on its own, so a gateway can mark the
    * session failed rather than wait on a session that is already gone. */
   onExit?(listener: () => void): () => void;

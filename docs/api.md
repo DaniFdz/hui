@@ -789,6 +789,71 @@ the route additionally requires the exact stored display name and sends
 byte range (`206`/`416`) for native video/audio seek. Recognized media is inline;
 unknown formats use `application/octet-stream` and attachment disposition.
 
+## Remote workers
+
+Workers are stored in `~/.config/hui/workers.json` (`{ version: 1, workers: [{ id,
+name, command: string[], extraPaths: string[], keepConnected?, createdAt,
+updatedAt }] }`). A session record's optional `worker` names the worker it runs
+on; `piSessionFile` and `cwd` are then remote paths. Records may carry
+`bot: true` for sessions owned by a worker's bot. `SessionView` adds
+`worker: { id, name }`, `bot: true` and a `displayCwd` of `name:path`.
+
+### Transport and protocol
+
+Every remote step runs `<command> sh -s` with a script on stdin: a probe, an
+optional Node install, an optional release install (gzip+base64 JSON bundle of
+the gateway's own worker code, then `npm install --omit=dev`), and finally
+`exec node <release>/…/worker/main(.ts|.js) connect`. The bridge prints
+`{"t":"ready"}` once it reaches the host's Unix socket; earlier output is shell
+noise and ignored. From then on both sides exchange `\n`-delimited JSON frames:
+`{t:"req",id,op,p}` / `{t:"res",id,ok,result|error}` requests in either
+direction, plus per-session frames `in`, `out`, `err`, `ipc`, `exit`, `kill`,
+`detach` keyed by a channel number, and a `bots` push. Gateway requests:
+`hello`, `shutdown` (only when idle and no other gateway is connected), `open {ch,key,launch}` (spawn or reattach
+the PI SDK worker for one HUI session id; `reused` tells which), `stat`,
+`put-file`, `get-file`, `sync-plan`/`sync-put`/`sync-commit` and
+`bots-list`/`bots-save`/`bots-delete`/`bots-run`. Host requests: `credential`
+(`read`, `list`, `delete`, `modify` against the gateway store `pi` or
+`hui:<providers-relative path>`), the nested `credential-step` that runs an
+OAuth refresh callback on the remote while the gateway holds its lock, and
+`bridge` (a HUI agent tool call; the gateway refuses callers whose session is
+not on that worker, and refuses `terminal` and `browser`).
+
+### `GET /__hui/workers`
+
+`{ "workers": WorkerView[] }`: `{ id, name, command, extraPaths, state:
+"disconnected" | "connecting" | "connected" | "error", phase?, error?, host?: {
+hostname, platform, arch, node, home, release }, sync?: { at, files, uploaded,
+deleted, installed, skipped, errors }, bots?: WorkerBot[] }`. Connection state
+is gateway memory; only a connected worker reports bots.
+
+### `POST /__hui/workers` · `PATCH|DELETE /__hui/workers/:id`
+
+Body `{ name, command, extraPaths? }`; `command` is parsed like a shell would
+split plain words and quotes, without expansion. `POST` responds 201 `{ worker
+}`. A new command applies to the next connection. `DELETE` returns 409 while any
+session record names the worker; nothing on the remote is deleted.
+
+### `POST /__hui/workers/:id/connect|sync|disconnect`
+
+`connect` and `sync` respond 202 and continue in the gateway (a first connect
+may install Node and HUI); follow `GET /__hui/workers`. Both sides ping every
+15 s and drop a connection that stays silent for 45 s. A worker whose lost
+connection had sessions attached, and any worker with bots (also at gateway
+start), reconnects after 5 s, 30 s, 1 min, then every 5 min; sessions the loss
+interrupted are then reopened and reattach to their still-running processes.
+
+### Bots: `POST /__hui/workers/:id/bots` · `PATCH|DELETE …/bots/:key` · `POST …/bots/:key/run`
+
+Body `{ name, cwd, instructions?, prompt, schedule?: AutomationSchedule | null,
+enabled?, model?, thinking?, timeoutSeconds? }` (30 s to one day, default 30
+min). The host stores bots in its own state directory and runs them itself; the
+key is also the id of the HUI session record (`group: "Bots"`, `bot: true`)
+created with it. Responses: 201 `{ bot }`, 200 `{ bot }`, 200 `{ ok }`, 202 `{
+runId }`. All require the worker to be reachable (502 otherwise).
+`DELETE /__hui/sessions/:id` of a bot's session deletes the bot first and
+returns 409 if the worker cannot be reached.
+
 ## Routes
 
 ### `GET /__hui/sessions/:id/commands`
@@ -922,7 +987,10 @@ Registers a new session **and starts it**. Body:
 { "cwd": "/abs/path", "title": "optional", "initialPrompt": "optional", "group": "optional", "tool": "pi", "model": "openai/gpt-5.6", "thinking": "high", "worktree": true, "baseRef": "main", "branchName": "my-feature" }
 ```
 
-`cwd` must be an existing absolute directory. When supplied, `title` is trimmed
+`cwd` must be an existing absolute directory. With `"worker": "<worker id>"`
+the session runs on that remote worker instead: `cwd` is a remote path that
+must be absolute or start with `~/`, it is checked when the runtime starts
+(not during this request), and `worktree`/`baseRef` are rejected. When supplied, `title` is trimmed
 and must be 1–200 characters; `group` is trimmed and may be empty but cannot
 exceed 200 characters. Responds `{ "session": SessionView }`.
 The id is HUI's own UUID. `tool` may be omitted or `pi`; other values are

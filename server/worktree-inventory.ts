@@ -420,6 +420,8 @@ export class WorktreeService {
     const candidates = new Set<string>();
     const sessionPaths: { session: WorktreeSessionRef; cwd: string }[] = [];
     for (const session of sessions) {
+      // Remote sessions' directories are on another machine.
+      if (session.worker) continue;
       const cwd = await canonical(session.cwd);
       if (!cwd) continue;
       candidates.add(cwd);

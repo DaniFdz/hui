@@ -277,6 +277,8 @@ export class SubagentService {
         group: caller.group,
         ...(caller.archived ? { archived: true } : {}),
         cwd: caller.cwd,
+        // A remote session's children run on the same worker.
+        ...(caller.worker ? { worker: caller.worker } : {}),
         tool: caller.tool,
         model: model ?? caller.model,
         thinking: thinking ?? caller.thinking,
