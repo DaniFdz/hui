@@ -85,8 +85,8 @@ export type WatcherServiceOptions = {
   pollMs?: number;
   /** How long a gone process may still be settling before it reads dead. */
   settleMs?: number;
-  /** Test seam: run one detached command and return its process-group PID. */
-  launch?: (script: string, cwd: string, logPath: string) => number;
+  /** Test seam: run one detached script and return its process-group PID. */
+  launch?: (scriptPath: string, cwd: string, logPath: string) => number;
   /** Test seam: signal a watcher's process group, tolerating a dead one. */
   signalGroup?: (pid: number, signal: NodeJS.Signals) => void;
   /** Test seam: is the recorded PID still the process that started then?
@@ -162,16 +162,17 @@ async function ownsProcess(pid: number, startedAtMs: number): Promise<boolean | 
   return Math.abs(age - (Date.now() - startedAtMs) / 1_000) <= OWN_TOLERANCE_SECONDS;
 }
 
-function launchDetached(script: string, cwd: string, logPath: string): number {
+function launchDetached(scriptPath: string, cwd: string, logPath: string): number {
   // The child's stdio points at the log too, so a shell-level error that never
-  // reaches the script's own redirection still lands there.
+  // reaches the script's own redirection still lands there. The script is a
+  // HUI-owned file; its path never carries the command text.
   let log: number | undefined;
   try {
     log = openSync(logPath, "a", 0o600);
   } catch {
     log = undefined;
   }
-  const child: ChildProcess = spawn("/bin/sh", ["-c", script], {
+  const child: ChildProcess = spawn("/bin/sh", [scriptPath], {
     detached: true,
     stdio: ["ignore", log ?? "ignore", log ?? "ignore"],
     ...(cwd ? { cwd } : {}),
@@ -241,7 +242,7 @@ export class WatcherService {
   readonly #uuid: () => string;
   readonly #pollMs: number;
   readonly #settleMs: number;
-  readonly #launch: (script: string, cwd: string, logPath: string) => number;
+  readonly #launch: (scriptPath: string, cwd: string, logPath: string) => number;
   readonly #signalGroup: (pid: number, signal: NodeJS.Signals) => void;
   readonly #ownsProcess: (pid: number, startedAtMs: number) => Promise<boolean | undefined>;
   #records = new Map<string, WatcherRecord>();
@@ -265,7 +266,7 @@ export class WatcherService {
     this.#uuid = options.uuid ?? randomUUID;
     this.#pollMs = options.pollMs ?? DEFAULT_POLL_MS;
     this.#settleMs = options.settleMs ?? DEFAULT_SETTLE_MS;
-    this.#launch = options.launch ?? ((script, cwd, logPath) => launchDetached(script, cwd, logPath));
+    this.#launch = options.launch ?? ((scriptPath, cwd, logPath) => launchDetached(scriptPath, cwd, logPath));
     this.#signalGroup = options.signalGroup ?? signalGroup;
     this.#ownsProcess = options.ownsProcess ?? ownsProcess;
   }
@@ -338,10 +339,10 @@ export class WatcherService {
         pid: 0,
         startedAt: new Date(this.#now()).toISOString(),
       };
-      // The command may print secrets; create its log private before the shell
-      // appends to it.
+      // The command may print secrets; the log and the script stay private.
       await writeFile(record.logPath, "", { flag: "a", mode: 0o600 });
-      record.pid = this.#launch(watcherScript(command, record.logPath, this.#exitPath(id)), record.cwd, record.logPath);
+      await this.#writeScript(record);
+      record.pid = this.#launch(this.#scriptPath(id), record.cwd, record.logPath);
       // The view lands before the record so a poll cannot observe a record with
       // no view and report a spurious state change.
       this.#views.set(id, await this.#refresh(record));
@@ -390,7 +391,8 @@ export class WatcherService {
       }
       await rm(this.#exitPath(id), { force: true });
       delete record.stoppedAt;
-      record.pid = this.#launch(watcherScript(record.command, record.logPath, this.#exitPath(id)), record.cwd, record.logPath);
+      await this.#writeScript(record);
+      record.pid = this.#launch(this.#scriptPath(id), record.cwd, record.logPath);
       record.startedAt = new Date(this.#now()).toISOString();
       this.#views.set(id, await this.#refresh(record));
       await this.#write();
@@ -412,6 +414,7 @@ export class WatcherService {
       this.#versions.delete(id);
       await Promise.all([
         rm(this.#exitPath(record.id), { force: true }),
+        rm(this.#scriptPath(record.id), { force: true }),
         rm(record.logPath, { force: true }),
       ]);
       await this.#write();
@@ -448,6 +451,7 @@ export class WatcherService {
         this.#versions.delete(record.id);
         await Promise.all([
           rm(this.#exitPath(record.id), { force: true }),
+          rm(this.#scriptPath(record.id), { force: true }),
           rm(record.logPath, { force: true }),
         ]);
       });
@@ -575,6 +579,16 @@ export class WatcherService {
 
   #exitPath(id: string): string {
     return join(this.#logDir, `${id}.exit`);
+  }
+
+  #scriptPath(id: string): string {
+    return join(this.#logDir, `${id}.sh`);
+  }
+
+  /** The command lives in a private HUI-owned script file; the child's command
+   * line is just the shell and that path. */
+  async #writeScript(record: WatcherRecord): Promise<void> {
+    await writeFile(this.#scriptPath(record.id), `${watcherScript(record.command, record.logPath, this.#exitPath(record.id))}\n`, { mode: 0o700 });
   }
 
   #require(sessionId: string, id: string): WatcherRecord {

@@ -67,6 +67,7 @@ test("start records a running watcher, lists newest first and notifies", async (
   assert.match(first.logPath, /w-1\.log$/u);
   assert.ok(first.pid && first.pid > 1);
   assert.equal((await stat(first.logPath)).mode & 0o777, 0o600);
+  assert.equal((await stat(first.logPath.replace(/\.log$/u, ".sh"))).mode & 0o777, 0o700);
 
   const second = await service.start("alpha", { purpose: "Second", command: "sleep 30" });
   assert.equal(second.state, "running");
