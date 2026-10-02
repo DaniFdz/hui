@@ -16,7 +16,7 @@ test("global tools expose real HUI definitions without loading configured packag
   }));
   const before = await readdir(dir);
   const result = await readToolsCatalog(dir);
-  assert.equal(result.tools.length, 20);
+  assert.equal(result.tools.length, 21);
   assert.equal(result.tools.find((tool) => tool.name === "browser")?.source, "HUI");
   assert.deepEqual(result.tools.filter((tool) => tool.source === "HUI").map((tool) => tool.name), huiToolDefinitions().map((tool) => tool.name));
   assert.deepEqual(result.sources, ["danger.mjs", "nonexistent-test-package", "example.org/repo"]);
@@ -31,6 +31,6 @@ test("missing and malformed settings keep the shipped catalog usable with explic
   assert.deepEqual((await readToolsCatalog(dir)).diagnostics, []);
   await writeFile(join(dir, "settings.json"), "not json");
   const result = await readToolsCatalog(dir);
-  assert.equal(result.tools.length, 20);
+  assert.equal(result.tools.length, 21);
   assert.equal(result.diagnostics.length, 1);
 });

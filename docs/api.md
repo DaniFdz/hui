@@ -1722,6 +1722,41 @@ dialog prefills summary from `title` and description from `## Problem` plus,
 when known, `## Proposed fix` (the local `cwd` is not sent), and the
 utility model only proposes a parent.
 
+### Background watchers
+
+A regular PI session can start a long-running watch with the HUI `watcher`
+tool: HUI runs the command detached in its own process group, appends its
+output to a HUI-owned log and has the wrapper record the exit status beside it.
+The watcher outlives the turn and the gateway; deleting its conversation stops
+and forgets it.
+
+| Tool | Contract |
+|---|---|
+| `watcher { action: "start", purpose ≤200, command ≤4000, target? ≤500, outcome? ≤200 }` | Records the watcher against the calling session and starts it in the session's working directory. `target` must be an http(s) URL when present. Returns the `Watcher` view. At most 10 watchers per conversation |
+| `watcher { action: "list" }` | `{ watchers: Watcher[] }` of the calling session, newest first |
+| `watcher { action: "stop", id }` | Signals the watcher's process group (`SIGTERM`, `SIGKILL` after 2s), records `stopped` and returns the view. A settled watcher is returned unchanged |
+| `watcher { action: "restart", id }` | Runs the recorded command again after clearing the exit record; refused while the watcher is running |
+| `watcher { action: "log", id, lines? }` | `{ id, lines, truncated }`: at most `lines` (default 100, max 400) from the end of the log, reading at most 256 KiB |
+
+Operator routes (all require `x-hui`, scoped to the owning session; unknown
+session or watcher → 404, a running watcher for `restart` or `DELETE` → 409):
+
+| Route | Result |
+| --- | --- |
+| `POST /__hui/sessions/:id/watchers/:watcherId/stop` | Stops the watcher, returns `{ watchers }` |
+| `POST /__hui/sessions/:id/watchers/:watcherId/restart` | Restarts a settled watcher, returns `{ watchers }` |
+| `GET /__hui/sessions/:id/watchers/:watcherId/log?lines=` | Returns the bounded log tail |
+| `DELETE /__hui/sessions/:id/watchers/:watcherId` | Removes a settled watcher, its log and its exit record; returns `{ watchers }` |
+
+The session snapshot/SSE `snapshot` event carries an optional `watchers: Watcher[]`
+(omitted when empty). The view is `{ id, purpose, target, outcome, command,
+logPath, state, pid, exitCode?, startedAt, endedAt?, lastLine }`; `state` is
+`running`, `done`, `failed`, `stopped` or `dead`. The registry is
+`~/.config/hui/watchers.json`; logs and exit records live under
+`~/.config/hui/watchers/`. State is derived on read and on the gateway's poll,
+which re-emits the session snapshot when a watcher's state or latest log line
+changes.
+
 ### Kanban backlog
 
 The Kanban Backlog column lists backlog items, not sessions:

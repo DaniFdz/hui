@@ -174,6 +174,7 @@ import { writeClipboardText } from "./lib/clipboard.ts";
 import { renderSettingsPage, type SettingsPage } from "./views/settings.ts";
 import type { JiraCreatedDetail } from "./components/jira-create-dialog.ts";
 import { clampSuggestionIndex, dismissTaskSuggestion, parseTaskSuggestions, startTaskSuggestion, taskSuggestionPrompt, type TaskSuggestion, type TaskSuggestionStartMode } from "./lib/task-suggestions.ts";
+import { dismissWatcher as dismissWatcherRequest, parseWatchers, readWatcherLog, restartWatcher as restartWatcherRequest, stopWatcher as stopWatcherRequest, type Watcher } from "./lib/watchers.ts";
 import {
   isCommandPaletteShortcut,
   renderCommandPalette,
@@ -288,6 +289,11 @@ export class HuiApp extends HuiElement {
   @state() private taskSuggestionIndex = 0;
   @state() private taskSuggestionPendingId = "";
   @state() private jiraCreateSuggestion: TaskSuggestion | undefined;
+  /** HUI-run background watchers for the open session, from its snapshot. */
+  @state() private watchers: readonly Watcher[] = [];
+  @state() private watcherPendingId = "";
+  /** The watcher log the operator opened; one at a time. */
+  @state() private watcherLog: { id: string; lines: readonly string[]; truncated: boolean; loading: boolean } | null = null;
   @state() private opening = false;
   @state() private streaming = false;
   /** `sessionId\0errorKey` of run errors the operator dismissed this page load. */
@@ -1736,6 +1742,9 @@ export class HuiApp extends HuiElement {
     this.subagents = [];
     this.taskSuggestions = [];
     this.taskSuggestionIndex = 0;
+    this.watchers = [];
+    this.watcherPendingId = "";
+    this.watcherLog = null;
     this.note = "";
     this.noteFailed = false;
     this.connectionNote = "";
@@ -1844,6 +1853,8 @@ export class HuiApp extends HuiElement {
     const previousFirst = this.taskSuggestions[0]?.id;
     this.taskSuggestions = parseTaskSuggestions(snapshot.suggestions);
     if (this.taskSuggestions.length) this.ensureJiraConnectionKnown();
+    this.watchers = parseWatchers(snapshot.watchers);
+    if (this.watcherLog && !this.watchers.some(({ id }) => id === this.watcherLog!.id)) this.watcherLog = null;
     // A newly flagged follow-up is shown first; otherwise keep the operator's place.
     this.taskSuggestionIndex = this.taskSuggestions[0]?.id !== previousFirst
       ? 0
@@ -2771,6 +2782,57 @@ export class HuiApp extends HuiElement {
       .finally(() => { this.taskSuggestionPendingId = ""; });
   };
 
+  /** One watcher mutation at a time; the card disables its buttons while a
+   * request is in flight, and a response for another session is dropped. */
+  private watcherAction = (watcher: Watcher, request: (sessionId: string, watcherId: string) => Promise<Watcher[]>, failure: string) => {
+    const session = this.selected;
+    if (!session || this.watcherPendingId) return;
+    this.watcherPendingId = watcher.id;
+    void request(session.id, watcher.id)
+      .then((watchers) => {
+        if (this.selected?.id !== session.id) return;
+        this.watchers = watchers;
+        if (this.watcherLog && !watchers.some(({ id }) => id === this.watcherLog!.id)) this.watcherLog = null;
+      })
+      .catch((error: unknown) => {
+        this.note = error instanceof Error ? error.message : failure;
+        this.noteFailed = true;
+      })
+      .finally(() => { this.watcherPendingId = ""; });
+  };
+
+  private stopWatcher = (watcher: Watcher) => {
+    this.watcherAction(watcher, stopWatcherRequest, "Could not stop that watcher.");
+  };
+
+  private restartWatcher = (watcher: Watcher) => {
+    this.watcherAction(watcher, restartWatcherRequest, "Could not restart that watcher.");
+  };
+
+  private dismissWatcher = (watcher: Watcher) => {
+    this.watcherAction(watcher, dismissWatcherRequest, "Could not dismiss that watcher.");
+  };
+
+  private viewWatcherLog = (watcher: Watcher) => {
+    const session = this.selected;
+    if (!session) return;
+    const previous = this.watcherLog?.id === watcher.id ? this.watcherLog : undefined;
+    this.watcherLog = { id: watcher.id, lines: previous?.lines ?? [], truncated: previous?.truncated ?? false, loading: true };
+    void readWatcherLog(session.id, watcher.id)
+      .then((log) => {
+        if (this.selected?.id !== session.id || this.watcherLog?.id !== watcher.id) return;
+        this.watcherLog = { id: log.id, lines: log.lines, truncated: log.truncated, loading: false };
+      })
+      .catch((error: unknown) => {
+        if (this.watcherLog?.id !== watcher.id) return;
+        this.watcherLog = null;
+        this.note = error instanceof Error ? error.message : "Could not read that watcher log.";
+        this.noteFailed = true;
+      });
+  };
+
+  private hideWatcherLog = () => { this.watcherLog = null; };
+
   private fileSuggestionInJira = (suggestion: TaskSuggestion) => {
     const session = this.selected;
     if (!session) return;
@@ -3061,6 +3123,9 @@ export class HuiApp extends HuiElement {
     this.subagents = [];
     this.taskSuggestions = [];
     this.taskSuggestionIndex = 0;
+    this.watchers = [];
+    this.watcherPendingId = "";
+    this.watcherLog = null;
     if (this.subagentExpiryTimer !== undefined) window.clearTimeout(this.subagentExpiryTimer);
     this.subagentExpiryTimer = undefined;
     this.opening = empty.opening;
@@ -3857,6 +3922,16 @@ export class HuiApp extends HuiElement {
         onCopy: (suggestion) => { void this.copyTranscript(taskSuggestionPrompt(suggestion), `suggestion:${suggestion.id}`); },
         onDismiss: this.dismissSuggestion,
       },
+      watchers: this.watchers.length ? {
+        watchers: this.watchers,
+        pendingId: this.watcherPendingId,
+        log: this.watcherLog,
+        onStop: this.stopWatcher,
+        onRestart: this.restartWatcher,
+        onDismiss: this.dismissWatcher,
+        onViewLog: this.viewWatcherLog,
+        onHideLog: this.hideWatcherLog,
+      } : undefined,
       onDraftChange: this.updateDraft,
       commandMenu: {
         open: this.slashQuery !== null && !this.sending && !this.opening && !this.launching && (!this.selected || this.connection === "live"),

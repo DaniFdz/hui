@@ -663,6 +663,18 @@ held awake. Proof: `server/power.test.ts` (real watcher script against fake
 macOS commands), `server/power-routes.test.ts`, `src/lib/settings.test.ts`,
 `src/views/settings-gateway.test.ts` and `e2e/power-settings.browser.md`.
 
+### HUI-17 — Background watchers
+
+Done 2026-10-02. Sessions run long waits (a pull request approval before
+`/merge`, a CI run, a deploy) through the HUI `watcher` tool instead of
+detached `nohup` scripts. HUI starts the command detached in its own process
+group, keeps one log and exit record per watcher, derives
+running/done/failed/stopped/dead from the process identity (a reused PID after
+a reboot reads dead), and shows a live card in the owning conversation with
+stop, restart, log and dismiss controls. The registry survives gateway
+restarts. Proof: `server/watchers.test.ts`, `server/watcher-routes.test.ts`,
+`src/views/chat/watcher-card.test.ts` and `e2e/watchers.browser.md`.
+
 ## Recommended implementation order
 
 `HUI-01 → HUI-02 → HUI-03 → HUI-04 → HUI-05 → HUI-06`, then run HUI-07,
