@@ -707,7 +707,10 @@ wa-dropdown.session-menu.task-suggestion__start-menu { --menu-item-height: 26px;
   letter-spacing: .04em; text-transform: uppercase;
 }
 .watcher__dot { width: 7px; height: 7px; border-radius: 999px; background: var(--muted); }
-.watcher--running .watcher__dot, .watcher--done .watcher__dot { background: var(--ok); }
+.watcher--running .watcher__dot { background: var(--ok); animation: watcher-dot-pulse 2.4s ease-in-out infinite; }
+.watcher--done .watcher__dot { background: var(--ok); }
+@keyframes watcher-dot-pulse { 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .watcher--running .watcher__dot { animation: none; } }
 .watcher--failed .watcher__dot { background: var(--danger); }
 .watcher--dead .watcher__dot { background: var(--warn); }
 .watcher__state { color: var(--muted); font-size: 11.5px; font-weight: 650; white-space: nowrap; }
@@ -745,7 +748,6 @@ wa-dropdown.session-menu.task-suggestion__start-menu { --menu-item-height: 26px;
 }
 .watcher__action:hover:not(:disabled) { background: color-mix(in srgb, var(--text) 7%, transparent); }
 .watcher__action:disabled { cursor: not-allowed; opacity: .6; }
-.watcher__action--dismiss { color: var(--muted); }
 .watcher__log { display: grid; gap: 6px; }
 .watcher__log-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--muted); font-size: 11.5px; }
 .watcher__log-actions { display: inline-flex; gap: 6px; }
