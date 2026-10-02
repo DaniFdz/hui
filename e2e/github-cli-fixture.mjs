@@ -1,8 +1,11 @@
 #!/usr/bin/env node
 /* Fake GitHub CLI for tests and Browser E2E. Implements only what HUI calls:
- * `--version`, `auth status --hostname github.com --json hosts` and
- * `auth login --web`, `config get git_protocol`, a few canned `api` reads and
- * `pr list` (pull-requests.json).
+ * `--version`, `auth status --hostname github.com --json hosts`, `auth token --user` and
+ * `auth login --web`, `config get git_protocol`, a few canned `api` reads,
+ * `pr list` (pull-requests.json), `api graphql` searches and review-comment lookups
+ * for the Pull Requests page (search-*.json), `pr view --json state,headRefOid,reviewRequests`
+ * and `pr review … --approve` (pr-review-args and pr-review-token, the GH_TOKEN it
+ * ran with; review-fail holds an error to fail with).
  * State lives in HUI_FAKE_GH_DIR:
  *   account  — the signed-in login (absent: signed out)
  *   approve  — created by the test to approve a pending login
@@ -12,9 +15,12 @@
  *                  served by `api -X GET search/commits`, `api graphql` pull request
  *                  searches (both logged to search-log) and `api user`;
  *                  `rate-limit-once` fails the next commit search with a rate limit
+ * Each account's token is `fake-token-<login>`; a GH_TOKEN selects that account.
+ * Pull Requests searches read search-<created|review-requested>-<login>.json, and
+ * for the active account also search-<created|review-requested>.json.
  * HUI_FAKE_GH_CODE overrides the printed one-time code; HUI_FAKE_GH_PROTOCOL
  * is the configured git protocol. Each login writes its arguments to login-args. */
-import { appendFileSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 const dir = process.env.HUI_FAKE_GH_DIR;
@@ -28,6 +34,22 @@ const accounts = () => {
   if (existsSync(file("accounts"))) return readFileSync(file("accounts"), "utf8").split("\n").map((line) => line.trim()).filter(Boolean);
   return existsSync(file("account")) ? [readFileSync(file("account"), "utf8").trim()].filter(Boolean) : [];
 };
+const active = accounts()[0] ?? "";
+/** The account a command runs as: GH_TOKEN's, else the active one. */
+function actor() {
+  const token = process.env.GH_TOKEN;
+  if (!token) return active;
+  const login = accounts().find((name) => token === `fake-token-${name}`);
+  if (!login) {
+    process.stderr.write("HTTP 401: Bad credentials (https://api.github.com/graphql)\n");
+    process.exit(4);
+  }
+  return login;
+}
+/** One account's search nodes; the unsuffixed file belongs to the active account. */
+const searchFile = (kind, login) => existsSync(file(`search-${kind}-${login}.json`)) ? `search-${kind}-${login}.json` : login === active ? `search-${kind}.json` : undefined;
+const nodesOf = (name) => name && existsSync(file(name)) ? JSON.parse(readFileSync(file(name), "utf8")) : [];
+const searchFiles = () => readdirSync(dir).filter((name) => /^search-.*\.json$/u.test(name));
 
 if (args[0] === "--version") {
   process.stdout.write("gh version 9.9.9 (fixture)\nhttps://github.com/cli/cli/releases/tag/v9.9.9\n");
@@ -38,9 +60,9 @@ if (args[0] === "--version") {
     : {};
   process.stdout.write(`${JSON.stringify({ hosts })}\n`);
 } else if (args[0] === "auth" && args[1] === "token") {
-  const login = args[args.indexOf("--user") + 1];
-  if (!accounts().includes(login)) {
-    process.stderr.write(`no oauth token found for github.com account ${login}\n`);
+  const login = args.includes("--user") ? args[args.indexOf("--user") + 1] : active;
+  if (!login || !accounts().includes(login)) {
+    process.stderr.write(`no oauth token found for github.com account ${login ?? ""}\n`);
     process.exit(1);
   }
   process.stdout.write(`fake-token-${login}\n`);
@@ -49,6 +71,30 @@ if (args[0] === "--version") {
   const login = process.env.GH_TOKEN?.replace(/^fake-token-/u, "") ?? accounts()[0];
   const data = existsSync(file("contributions.json")) ? JSON.parse(readFileSync(file("contributions.json"), "utf8")) : {};
   process.stdout.write(`${data[login]?.createdAt ?? "2020-06-01T00:00:00Z"}\n`);
+} else if (args[0] === "api" && args[1] === "graphql" && args.some((arg) => /^(?:q|number)=/u.test(arg))) {
+  // Pull Requests page searches hold the `nodes` of each search (absent: none).
+  // A single pull request (review comments) is looked up by number among the created nodes.
+  if (!active) {
+    process.stderr.write("To get started with GitHub CLI, please run:  gh auth login\n");
+    process.exit(4);
+  }
+  const me = actor();
+  const number = args.find((arg) => arg.startsWith("number="));
+  if (number) {
+    const nodes = searchFiles().filter((name) => name.startsWith("search-created")).flatMap(nodesOf);
+    const pullRequest = nodes.find((node) => `number=${node.number}` === number) ?? null;
+    process.stdout.write(`${JSON.stringify({ data: { repository: { pullRequest } } })}\n`);
+    process.exit(0);
+  }
+  const q = args.find((arg) => arg.startsWith("q=")) ?? "";
+  const match = /\b(author|user-review-requested):(\S+)/u.exec(q);
+  const kind = match?.[1] === "author" ? "created" : "review-requested";
+  const login = match?.[2] === "@me" ? me : match?.[2];
+  if (login !== me) {
+    process.stderr.write(`fixture: searched for ${login} as ${me}\n`);
+    process.exit(1);
+  }
+  process.stdout.write(`${JSON.stringify({ data: { search: { nodes: nodesOf(searchFile(kind, login)) } } })}\n`);
 } else if (args[0] === "api" && args[1] === "graphql") {
   // HUI's aliased pull request searches; the cursor is the next result's index.
   const query = args[args.indexOf("-f") + 1].slice("query=".length);
@@ -117,6 +163,33 @@ if (args[0] === "--version") {
   const head = args.includes("--head") ? args[args.indexOf("--head") + 1] : undefined;
   const all = existsSync(file("pull-requests.json")) ? JSON.parse(readFileSync(file("pull-requests.json"), "utf8")) : [];
   process.stdout.write(`${JSON.stringify(all.filter((entry) => !head || !entry.headRefName || entry.headRefName === head))}\n`);
+} else if (args[0] === "pr" && args[1] === "view") {
+  // The head check before an approval: state, head commit and the accounts
+  // directly requested (those whose Review requested search holds it).
+  const me = actor();
+  const url = `https://github.com/${args[args.indexOf("-R") + 1]}/pull/${args[2]}`;
+  const node = searchFiles().flatMap(nodesOf).find((entry) => entry.url === url);
+  if (!node || !me) {
+    process.stderr.write(`GraphQL: Could not resolve to a PullRequest with the number of ${args[2]}. (repository.pullRequest)\n`);
+    process.exit(1);
+  }
+  const reviewRequests = accounts().filter((login) => nodesOf(searchFile("review-requested", login)).some((entry) => entry.url === url)).map((login) => ({ __typename: "User", login }));
+  process.stdout.write(`${JSON.stringify({ state: node.state ?? "OPEN", headRefOid: node.headRefOid ?? String(node.number).padStart(40, "0"), reviewRequests })}\n`);
+} else if (args[0] === "pr" && args[1] === "review") {
+  // Records the exact arguments and token. On success the pull request leaves
+  // the reviewing account's Review requested search, as it does on GitHub.
+  writeFileSync(file("pr-review-args"), JSON.stringify(args));
+  writeFileSync(file("pr-review-token"), process.env.GH_TOKEN ?? "");
+  const me = actor();
+  if (existsSync(file("review-fail"))) {
+    process.stderr.write(readFileSync(file("review-fail"), "utf8"));
+    process.exit(1);
+  }
+  const repo = args[args.indexOf("-R") + 1];
+  const url = `https://github.com/${repo}/pull/${args[2]}`;
+  const name = searchFile("review-requested", me);
+  if (name) writeFileSync(file(name), JSON.stringify(nodesOf(name).filter((node) => node.url !== url)));
+  process.stderr.write(`✓ Approved pull request ${repo}#${args[2]}\n`);
 } else if (args[0] === "config" && args[1] === "get" && args[2] === "git_protocol") {
   process.stdout.write(`${process.env.HUI_FAKE_GH_PROTOCOL || "https"}\n`);
 } else if (args[0] === "auth" && args[1] === "login") {

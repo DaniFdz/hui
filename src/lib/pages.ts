@@ -24,6 +24,7 @@ const PAGE_ROWS = [
   ["plugin", "Plugin", "Extensions", "One plugin's details, permissions and actions."],
   ["plugins", "Plugins", "Extensions", "Installed plugins, lifecycle and discovery."],
   ["profile", "Profile", "Identity", "User profile and presentation preferences."],
+  ["pull-requests", "Pull Requests", "Development", "Your open GitHub pull requests and their sessions."],
   ["sessions", "Sessions", "Sessions", "Session registry, search, groups and lifecycle."],
   ["skill-workshop", "Skill Workshop", "Extensions", "Create, review and publish skills."],
   ["skills", "Skills", "Extensions", "Installed skills, descriptions and discovery roots."],

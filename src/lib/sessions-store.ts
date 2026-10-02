@@ -100,6 +100,8 @@ export type SessionView = {
    * means Investigation. */
   stage?: SessionStage;
   stageOrigin?: SessionStageOrigin;
+  /** A temporary pull-request risk review, shown only on the Pull Requests page. */
+  temporary?: { kind: "pr-review"; pullRequestUrl: string };
   createdAt: string;
   updatedAt: string;
 };
@@ -135,6 +137,16 @@ export type SessionGroup = {
   baseRef?: string;
   sessions: SessionView[];
 };
+
+/** Groups without temporary pull-request reviews: the sidebar, Sessions page,
+ * Kanban, command palette and automation targets never list them. */
+export function listedSessionGroups(groups: readonly SessionGroup[]): SessionGroup[] {
+  if (!groups.some((group) => group.sessions.some((session) => session.temporary))) return groups as SessionGroup[];
+  // Temporary reviews are ungrouped; an ungrouped section they alone filled goes too.
+  return groups
+    .map((group) => ({ ...group, sessions: group.sessions.filter((session) => !session.temporary) }))
+    .filter((group, index) => group.sessions.length || group.label !== "ungrouped" || !groups[index]!.sessions.length);
+}
 
 /** Labels are presentation, not registry identifiers. Preserve stored spelling. */
 export function sessionGroupLabel(label: string): string {

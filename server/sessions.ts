@@ -11,6 +11,7 @@ import { randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
 
 import { CONFIG_DIR } from "./paths.ts";
+import { isGitHubLogin } from "../shared/pull-requests.ts";
 import { isSessionStage, isSessionStageSource, type SessionStage, type SessionStageSource } from "../shared/session-stages.ts";
 
 const REGISTRY_FILE = join(CONFIG_DIR, "sessions.json");
@@ -68,10 +69,28 @@ export type SessionRecord = {
   /** Lower-case PR URLs already known at the last explicit placement; they no
    * longer advance the stage. Server-only, never returned in views. */
   stagePullRequests?: string[];
+  /** Per lower-case PR URL, the time of the newest review comment included in
+   * the last send to this session (Pull Requests page). Server-only. */
+  pullRequestComments?: { url: string; sentAt: string }[];
+  /** A temporary pull-request risk review (Pull Requests page). Hidden from
+   * every session list; approving or dismissing deletes the row, its PI
+   * transcript and `scratchDir`, the directory HUI created for it. */
+  temporary?: TemporarySession;
   createdAt: string;
   updatedAt: string;
   /** Where the record came from, so an import can be reported honestly. */
   source?: "hui";
+};
+
+export type TemporarySession = {
+  kind: "pr-review";
+  pullRequestUrl: string;
+  scratchDir?: string;
+  /** The GitHub login the review was requested of; approvals run as it. */
+  account?: string;
+  /** The pull request's head commit when the review started; an approval
+   * requires it to be unchanged. */
+  headRefOid?: string;
 };
 
 export type SubagentStatus =
@@ -163,6 +182,22 @@ function toSubagent(raw: unknown): SubagentRecord | undefined {
   };
 }
 
+function toTemporary(raw: unknown): TemporarySession | undefined {
+  if (!isRecord(raw) || raw["kind"] !== "pr-review") return undefined;
+  const pullRequestUrl = str(raw["pullRequestUrl"]);
+  if (!/^https:\/\/github\.com\/[^/\s]+\/[^/\s]+\/pull\/\d+$/u.test(pullRequestUrl)) return undefined;
+  const scratchDir = str(raw["scratchDir"]);
+  const account = str(raw["account"]);
+  const headRefOid = str(raw["headRefOid"]);
+  return {
+    kind: "pr-review",
+    pullRequestUrl,
+    ...(scratchDir.startsWith("/") ? { scratchDir } : {}),
+    ...(isGitHubLogin(account) ? { account } : {}),
+    ...(/^[0-9a-f]{7,64}$/iu.test(headRefOid) ? { headRefOid } : {}),
+  };
+}
+
 /** Every field is checked, because the file is hand-editable and predates any
  * schema we might add. */
 function toRecord(raw: unknown): SessionRecord | undefined {
@@ -202,6 +237,15 @@ function toRecord(raw: unknown): SessionRecord | undefined {
   const stagePullRequests = Array.isArray(raw["stagePullRequests"])
     ? raw["stagePullRequests"].filter((url): url is string => typeof url === "string" && /^https:\/\/github\.com\/[^/\s]+\/[^/\s]+\/pull\/\d+$/u.test(url)).slice(-20)
     : [];
+  const pullRequestComments = Array.isArray(raw["pullRequestComments"])
+    ? raw["pullRequestComments"].flatMap((item) => {
+      if (!isRecord(item)) return [];
+      const url = str(item["url"]);
+      const sentAt = str(item["sentAt"]);
+      return /^https:\/\/github\.com\/[^/\sA-Z]+\/[^/\sA-Z]+\/pull\/\d+$/u.test(url) && Number.isFinite(Date.parse(sentAt)) ? [{ url, sentAt }] : [];
+    }).slice(-50)
+    : [];
+  const temporary = toTemporary(raw["temporary"]);
   return {
     id,
     title: str(raw["title"]).trim() || id,
@@ -223,6 +267,8 @@ function toRecord(raw: unknown): SessionRecord | undefined {
     ...(jiraIssues.length ? { jiraIssues } : {}),
     ...(stage ? { stage, stageSource: stageSource ?? "agent" } : {}),
     ...(stagePullRequests.length ? { stagePullRequests } : {}),
+    ...(pullRequestComments.length ? { pullRequestComments } : {}),
+    ...(temporary ? { temporary } : {}),
     createdAt: str(raw["createdAt"]),
     updatedAt: str(raw["updatedAt"]),
     ...(source === "hui" ? { source } : {}),

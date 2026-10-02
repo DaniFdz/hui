@@ -14,7 +14,7 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
 |---|---|
 | `sidebar-agent-card` — identity card at the top | removed; HUI has no agent identity selector |
 | `sidebar-brand` — brand line with actions | new session then session search on the left; collapse on the right |
-| `sidebar-nav` — page destinations | Contributions, Automations, Plugins, Skills, then Settings; no Home entry. Other retained pages stay reachable by URL and the command palette; dropped OpenClaw routes are absent |
+| `sidebar-nav` — page destinations | Contributions, Pull Requests, Automations, Plugins, Skills, then Settings; no Home entry. Other retained pages stay reachable by URL and the command palette; dropped OpenClaw routes are absent |
 | `sidebar-online` / session sections — collapsible groups of rows | groups, flattened, with session rows |
 | `sidebar-footer-bar` — identity + connection state | removed; Settings is the last sidebar destination |
 | main region — header, body, composer | session header, transcript, composer |
@@ -858,6 +858,151 @@ no longer linked). The list is re-read each time the page opens. The local branc
 pull request's head is exactly the branch's current commit; otherwise it is
 kept. Removals are serialized and each path is re-validated against a fresh
 inventory.
+
+## Pull Requests
+
+The Pull Requests page (`/pull-requests`, after Contributions in the sidebar) lists
+the open and draft github.com pull requests of the selected GitHub accounts in
+two tabs: **Created by me** (`author:<login>`) and **Review requested**
+(`user-review-requested:<login>`: direct requests only, not requests to a team
+the account belongs to), at most 50 per account and list. The header's
+**Accounts** control lists the github.com accounts signed in to `gh` and saves
+the checked ones (`pullRequestAccounts` in `settings.json`); none saved means
+`gh`'s active account, and at least one stays checked. Each account's searches
+run with its own token (`gh auth token --user`, passed only as `GH_TOKEN`). Rows
+found by several accounts appear once; with more than one account selected, a
+row that the first selected account did not find carries a small badge naming
+its accounts. Everything that means "the operator" means any selected account.
+It uses the Worktrees table layout with compact, two-line rows: the title
+linking to GitHub on one line (ellipsized, full title on hover), then
+`owner/repo#n · branch`; an Open/Draft pill, the CI rollup of the head commit
+and the review decision on one line; linked sessions; the last update; and the
+row's actions. The pull request column takes the free width. The actions cell
+shows only actions usable now (never a disabled button) and stays empty when
+there is none. A search field filters by repository, number, title and branch;
+rows are ordered by last update, newest first; **Refresh** forces a refetch.
+
+**Created by me** also has two chip rows above the table. Triage chips (one at a
+time, **All** by default, each with its count) put every row in exactly one
+bucket: **Drafts** (every draft); **Needs you** (failed or errored checks,
+changes requested, or review comments no linked session has received yet);
+**Ready to merge** (approved, checks passing or none, nothing unsent);
+**Waiting on review** (everything else, including approved pull requests whose
+checks still run). Repository chips (several at a time, **All repos** clears)
+list each repository in the list with its count, most first, by short name
+unless two owners share it; beyond eight, the rest are in a **+N more** menu.
+Triage, repositories and search combine; triage counts reflect the repository
+selection and search. The repository selection is a browser preference
+(`localStorage`); a saved repository that is no longer listed is ignored.
+
+A session is linked when its loaded transcript created the pull request (the
+same detection as the session PR badges) or when its directory, resolved
+through symlinks, is a checkout on the pull request's head branch with a
+github.com remote for the base or head repository. Linked sessions are ordered
+newest first with archived ones last; a click opens the session. No match reads
+"No session".
+
+The lists are cached in gateway memory for 60 s and revalidated in the
+background, so only the first load waits for GitHub; nothing is persisted. A
+missing `gh` or signed-out account shows a page-level state linking to Settings
+→ Integrations; other failures keep the last lists and say when they were
+fetched.
+
+**Review comments.** On **Created by me** rows, new review comments are
+unresolved, non-outdated review threads whose latest comment is by someone other
+than the operator (the pull request's author or any selected account), plus `COMMENTED` and
+`CHANGES_REQUESTED` reviews with a body by someone else, created after the last
+send to the target session. The target is the first linked session; a picker
+chooses another when several are linked. **Review comments (N)** appears when
+N > 0. It reads the threads from GitHub again, builds one message of at most
+20 KB (oldest first, with author, `path:line`, body and thread URL, the newest
+dropped with a note when they do not fit) asking the session to address each
+comment, reply on or resolve each thread per the repository's rules, push and
+report what changed, and delivers it like a composer message: a prompt when
+the session is idle, a queued follow-up while it runs. Only an accepted delivery
+records the time of the newest included comment on the session; a failed one
+records nothing and shows the error.
+
+Without a linked session the button reads **Start session with comments**: it
+starts a session in a known checkout of the repository that is already on the
+head branch (a checkout or any of its worktrees), or else in a new HUI
+worktree on a local head branch tracking a freshly fetched
+`origin/<headRefName>`, then delivers the comments there. Without a known
+checkout the button is not shown.
+
+A known checkout is a Git directory with a github.com remote for the base or
+head repository (`https://github.com/…`, `git@github.com:…`, `ssh://git@github.com/…`
+or an SSH host alias ending in `.github.com`, such as `git@work.github.com:owner/repo`).
+Besides the session directories themselves, the gateway discovers them without
+configuration: the roots are every registered, non-temporary session
+directory, its Git top level and that top level's parent; each root's immediate
+child directories holding `.git` (except dot-directories and `node_modules`)
+are repositories, and each repository's `git worktree list` adds its worktrees
+with their branches. Paths are resolved through symlinks, at most 200
+repositories are read, and the result is kept in gateway memory for 60 s and
+rediscovered in the background (only the first page load waits). Discovered
+checkouts decide whether a row can start a session, which directory it starts
+in and where a risk review reads; only registered sessions are ever linked to a
+row. Owners are never guessed: a clone of `acme/web` does not count for
+`other/web`.
+
+**Fix CI.** A Created row whose checks failed or errored shows **Fix CI** for the
+same target as the review comments (with no linked session, it starts one on
+the head branch the same way, when a known checkout exists). It reads the pull
+request's head commit and checks from GitHub again (never the cached list); if
+none fails any more, nothing is sent. Otherwise one message of at most 20 KB
+lists each failing check (check runs by conclusion, commit statuses by state, at
+most 30) with its link, the head commit and branch, and asks the session to
+investigate the failures (for example with `gh pr checks` and
+`gh run view --log-failed`), fix those the pull request caused, re-run likely
+flakes, push and report, per the repository's rules. It is delivered like the
+review comments. Nothing is persisted: the gateway remembers in memory the head
+commit it last sent per pull request and session, and the button reads
+**Fix CI (sent)** until the head changes or the gateway restarts.
+
+**Risk review.** On **Review requested** rows, **Assess risk** starts a
+temporary PI session on the operator's default model (never the utility model)
+in a known checkout of the repository, read for context and never switched to
+the pull request branch, or else in a new scratch directory
+`~/.config/hui/pr-reviews/<uuid>/`. Its first prompt asks for a
+read-only review with `gh pr view`, `gh pr diff` and `gh pr checks` (each with
+`-R owner/repo`) plus repository reading, forbids modifying files, pushing,
+commenting, reviewing and approving, and asks it to finish by calling
+`report_pr_risk`. That tool exists only in these sessions; the latest valid
+call is the verdict, projected from the live transcript (memory only). One
+assessment runs per pull request. Temporary sessions never appear in the
+sidebar, Sessions page, Kanban, command palette, automation targets or the
+agent coordination tools' `sessions_list`; *Open session* on the row opens one.
+
+The row's actions cell then shows only a compact pill: **Assessing…**, **Low /
+Medium / High risk** or **No verdict**. Clicking it opens a right-side drawer
+(full width on phones) with the pull request reference and linked title, the
+risk, summary, reasons and focus areas and **Approve**, **Dismiss**, **Keep**
+and *Open session* (no verdict: *Open session*, **Keep**, **Dismiss**; while
+assessing: *Open session*). Escape or the close button closes it and returns
+focus to the pill. **Approve** opens a confirmation dialog naming the pull
+request and the verdict; only its confirm button approves. Assessing records
+the pull request's head commit and the account the review was requested of
+(the first selected one asked directly). An approval runs as that account and
+first reads the pull request again: it must be open, still request that
+account directly and have the same head commit, else nothing is approved and
+the page says why ("PR changed since it was assessed — assess again." for a new
+head). Then it runs `gh pr review <n> -R owner/repo --approve`. On success the
+lists refresh; on failure the error is shown and the review is kept.
+
+**Auto-approve low risk** (a switch on the Review requested tab,
+`pullRequestAutoApproveLowRisk`, off by default) applies only to pull requests
+the operator assessed: when a review settles with a low verdict and the switch
+is on at that moment, the gateway runs the same checks and approval as that
+account and cleans up the temporary session like a manual approve. A failed
+check leaves the verdict for manual action with the reason in the drawer.
+Medium, high and no verdict are never auto-approved, and nothing is assessed
+automatically. The tab lists this gateway run's auto-approvals (reference,
+title, account, time; memory only). Approve (success) and **Dismiss** stop the runtime and delete the
+temporary session: its registry row, its PI transcript and the scratch
+directory HUI created for it, only the paths its record names.
+**Keep** turns it into a normal session. Gateway start deletes temporary
+sessions older than 24 hours the same way.
 
 ## Git workspace sessions
 

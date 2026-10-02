@@ -334,6 +334,14 @@ for (const scenario of ["accepted", "accepted while waiting", "rejected", "unsup
   });
 }
 
+test("sessions_list leaves out temporary pull-request reviews", async () => {
+  const review = record("review", { temporary: { kind: "pr-review", pullRequestUrl: "https://github.com/acme/web/pull/3" } });
+  const child = record("review-child", { parentId: review.id });
+  const state = harness([review, child]);
+  const listed = await state.service.handle(child.id, "sessions_list", {}) as { sessions: Array<{ sessionKey: string }> };
+  assert.deepEqual(listed.sessions.map((session) => session.sessionKey), [child.id]);
+});
+
 test("session tools are bounded to one tree and can read and message a child", async () => {
   const parent = record("parent", { title: "Parent" });
   const state = harness([parent, record("outside")]);

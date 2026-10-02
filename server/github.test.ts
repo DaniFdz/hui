@@ -10,6 +10,7 @@ import {
   GitHubCli,
   GitHubCliError,
   loginFailureMessage,
+  parseAuthAccounts,
   parseAuthStatus,
   parseDeviceCode,
   parseGhVersion,
@@ -134,4 +135,14 @@ test("refuses to log in over an environment token", async () => {
   await writeFile(gh, "#!/bin/sh\nif [ \"$1\" = --version ]; then echo 'gh version 1.0.0'; exit 0; fi\necho '{\"hosts\":{\"github.com\":[{\"state\":\"success\",\"active\":true,\"host\":\"github.com\",\"login\":\"bot\",\"tokenSource\":\"GH_TOKEN\"}]}}'\n");
   await chmod(gh, 0o755);
   await assert.rejects(new GitHubCli({ command: gh }).startLogin(), /GH_TOKEN environment variable/u);
+});
+
+test("lists every signed-in github.com account, the active one first", () => {
+  assert.deepEqual(parseAuthAccounts(JSON.stringify({ hosts: { "github.com": [
+    { state: "success", active: false, host: "github.com", login: "personal-account" },
+    { state: "success", active: true, host: "github.com", login: "work-account" },
+    { state: "error", active: false, host: "github.com", login: "expired" },
+  ], "ghe.example.com": [{ state: "success", active: true, login: "enterprise" }] } })), ["work-account", "personal-account"]);
+  assert.deepEqual(parseAuthAccounts("not json"), []);
+  assert.deepEqual(parseAuthAccounts('{"hosts":{}}'), []);
 });

@@ -97,6 +97,42 @@ test("a subagent record round-trips lineage and lifecycle without a registry mig
   assert.equal(child?.subagent?.summary, "All clear");
 });
 
+test("review-comment send times round-trip and malformed entries are dropped on read", async () => {
+  const registryFile = join(configHome, "hui", "sessions.json");
+  await writeFile(registryFile, JSON.stringify({ version: 2, groups: [], sessions: [record("sent", {
+    pullRequestComments: [
+      { url: "https://github.com/acme/web/pull/1", sentAt: "2026-09-30T10:00:00Z" },
+      { url: "https://github.com/Acme/web/pull/2", sentAt: "2026-09-30T10:00:00Z" },
+      { url: "https://github.com/acme/web/pull/3", sentAt: "yesterday" },
+      "https://github.com/acme/web/pull/4",
+    ] as never,
+  })] }), "utf8");
+  const [sent] = await readRegistry();
+  assert.deepEqual(sent?.pullRequestComments, [{ url: "https://github.com/acme/web/pull/1", sentAt: "2026-09-30T10:00:00Z" }]);
+  await writeRegistry([record("none")]);
+  assert.equal((await readRegistry())[0]?.pullRequestComments, undefined);
+});
+
+test("temporary pull-request reviews round-trip; malformed markers are dropped", async () => {
+  const temporary = {
+    kind: "pr-review", pullRequestUrl: "https://github.com/acme/web/pull/3", scratchDir: "/tmp/hui/pr-reviews/x",
+    account: "work-account", headRefOid: "0123456789abcdef0123456789abcdef01234567",
+  } as const;
+  await writeRegistry([
+    record("review", { temporary }),
+    record("bad-facts", { temporary: { ...temporary, account: "not a login", headRefOid: "main; rm -rf" } }),
+    record("relative", { temporary: { ...temporary, scratchDir: "pr-reviews/x" } }),
+    record("other-kind", { temporary: { ...temporary, kind: "scratch" } as never }),
+    record("bad-url", { temporary: { ...temporary, pullRequestUrl: "https://example.com/acme/web/pull/3" } }),
+  ]);
+  const stored = new Map((await readRegistry()).map((item) => [item.id, item.temporary]));
+  assert.deepEqual(stored.get("review"), temporary);
+  assert.deepEqual(stored.get("relative"), { kind: "pr-review", pullRequestUrl: temporary.pullRequestUrl, account: temporary.account, headRefOid: temporary.headRefOid });
+  assert.deepEqual(stored.get("bad-facts"), { kind: "pr-review", pullRequestUrl: temporary.pullRequestUrl, scratchDir: temporary.scratchDir });
+  assert.equal(stored.get("other-kind"), undefined);
+  assert.equal(stored.get("bad-url"), undefined);
+});
+
 test("version one registries migrate their session groups without losing rows", async () => {
   const registryFile = join(configHome, "hui", "sessions.json");
   await writeFile(registryFile, JSON.stringify({

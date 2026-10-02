@@ -184,7 +184,8 @@ test("automation mutations always adopt a server snapshot", () => {
 
   assert.match(app, /if \(snapshot\) this\.automation = snapshot;\s*\n\s*else this\.loadAutomationData\(\);/);
   assert.match(app, /onRetryAutomation: this\.loadAutomationData/);
-  assert.match(app, /sessions: this\.groups\.flatMap\(\(group\) => group\.sessions\)/);
+  // Temporary pull-request reviews are never automation targets.
+  assert.match(app, /sessions: listedSessionGroups\(this\.groups\)\.flatMap\(\(group\) => group\.sessions\)/);
 });
 
 test("a refused task action is reported next to the list, not inside the create form", () => {

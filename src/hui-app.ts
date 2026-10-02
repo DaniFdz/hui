@@ -27,6 +27,7 @@ import {
   mutateQueuedMessage,
   loadSessions,
   openSession,
+  listedSessionGroups,
   renameSession,
   resumeSession,
   rewindSession,
@@ -157,6 +158,8 @@ import { renderHome, renderNewSession, type HomeProps } from "./views/home.ts";
 import { DEFAULT_SESSIONS_PAGE_FILTERS, renderSessionsPage, type SessionsPageFilters, type SessionsPageState } from "./views/sessions.ts";
 import type { WorktreeFilter } from "./views/worktrees.ts";
 import "./views/contributions.ts";
+import { renderPullRequestsPage, type PullRequestsTab, type TriageFilter } from "./views/pull-requests.ts";
+import { assessPullRequest, fixPullRequestCi, readPullRequestRepos, writePullRequestRepos, loadMyPullRequests, refreshMyPullRequests, sendReviewComments, settlePullRequestReview, type MyPullRequest, type MyPullRequests } from "./lib/my-pull-requests.ts";
 import { loadWorktrees, removeWorktrees, type WorktreeInventory, type WorktreeRemovalResult, type WorktreeRisk } from "./lib/worktrees.ts";
 import { renderPanelSelector } from "./views/panel-selector.ts";
 import { renderAutomationSurface } from "./views/automation.ts";
@@ -237,6 +240,21 @@ export class HuiApp extends HuiElement {
   @state() private worktreesRemoving = false;
   @state() private worktreeResults: readonly WorktreeRemovalResult[] = [];
   private worktreePoll?: number;
+  @state() private myPullRequests: MyPullRequests | undefined;
+  @state() private pullRequestsLoading = false;
+  @state() private pullRequestsError = "";
+  @state() private pullRequestsQuery = "";
+  @state() private pullRequestsTab: PullRequestsTab = "created";
+  @state() private pullRequestTargets: Readonly<Record<string, string>> = {};
+  @state() private pullRequestSending = "";
+  @state() private pullRequestFixing = "";
+  @state() private pullRequestTriage: TriageFilter = "all";
+  @state() private pullRequestRepos: readonly string[] = readPullRequestRepos();
+  @state() private pullRequestNotice: { tone: "ok" | "danger"; text: string } | undefined;
+  @state() private pullRequestReviewing = "";
+  @state() private pullRequestApproveConfirm = "";
+  @state() private pullRequestDrawer = "";
+  private pullRequestsPoll?: number;
   @state() private groups: readonly SessionGroup[] = [];
   @state() private sessionsLoading = true;
   @state() private sessionsError = "";
@@ -587,6 +605,7 @@ export class HuiApp extends HuiElement {
     super.disconnectedCallback();
     window.clearInterval(this.sessionProgressPoll);
     window.clearTimeout(this.worktreePoll);
+    window.clearTimeout(this.pullRequestsPoll);
     this.mobileNavMedia?.removeEventListener("change", this.onMobileNavChange);
     this.mobileNavMedia = undefined;
     if (this.composerTextarea) disconnectTextareaOverflowObserver(this.composerTextarea);
@@ -837,6 +856,16 @@ export class HuiApp extends HuiElement {
       ensureModal(worktreeDialog);
       worktreeDialog.querySelector<HTMLButtonElement>(".worktree-remove-cancel")?.focus();
     }
+    const drawer = this.renderRoot.querySelector?.(".pull-request-drawer");
+    if (drawer instanceof HTMLDialogElement && this.pullRequestDrawer && !drawer.open) {
+      ensureModal(drawer);
+      drawer.querySelector<HTMLButtonElement>(".pull-request-drawer__close")?.focus();
+    }
+    const approveDialog = this.renderRoot.querySelector?.(".pull-request-approve-dialog");
+    if (approveDialog instanceof HTMLDialogElement && this.pullRequestApproveConfirm && !approveDialog.open) {
+      ensureModal(approveDialog);
+      approveDialog.querySelector<HTMLButtonElement>(".pull-request-approve-cancel")?.focus();
+    }
     const backlogRemoveDialog = this.renderRoot.querySelector?.(".backlog-remove-dialog");
     if (backlogRemoveDialog instanceof HTMLDialogElement && this.backlogRemove) ensureModal(backlogRemoveDialog);
     const deleteDialog = this.renderRoot.querySelector?.(".delete-session-dialog");
@@ -974,6 +1003,10 @@ export class HuiApp extends HuiElement {
       this.activePage = target.page;
       this.view = "surface";
       if (isPiSurface(target.page)) this.loadControlSurfaceData();
+      if (target.page.id === "pull-requests") {
+        this.pullRequestNotice = undefined;
+        this.loadPullRequests();
+      }
       if (isObservabilitySurface(target.page) || isOwnedSurface(target.page)) this.loadOperationalData();
       if (target.page.id === "cron" || target.page.id === "tasks") {
         this.loadAutomationData();
@@ -1071,7 +1104,7 @@ export class HuiApp extends HuiElement {
       query: this.commandPaletteQuery,
       activeIndex: this.commandPaletteActiveIndex,
       pages: HUI_PAGES,
-      groups: this.groups,
+      groups: listedSessionGroups(this.groups),
       onQuery: (query) => {
         this.commandPaletteQuery = query;
         this.commandPaletteActiveIndex = 0;
@@ -3551,6 +3584,132 @@ export class HuiApp extends HuiElement {
       });
   };
 
+  /** Polls while the gateway revalidates in the background, like the worktree inventory. */
+  private loadPullRequests = (refresh = false) => {
+    window.clearTimeout(this.pullRequestsPoll);
+    this.pullRequestsPoll = undefined;
+    if (this.pullRequestsLoading) return;
+    this.pullRequestsLoading = true;
+    this.pullRequestsError = "";
+    void (refresh ? refreshMyPullRequests() : loadMyPullRequests())
+      .then((data) => { this.myPullRequests = data; })
+      .catch((error: unknown) => { this.pullRequestsError = error instanceof Error ? error.message : "Could not read pull requests."; })
+      .finally(() => {
+        this.pullRequestsLoading = false;
+        // Also while a risk review runs, so its verdict card appears when it reports.
+        const assessing = this.myPullRequests?.reviewRequested.some((pr) => pr.assessment?.state === "assessing");
+        if ((this.myPullRequests?.pending || assessing) && this.view === "surface" && this.activePage?.id === "pull-requests") {
+          this.pullRequestsPoll = window.setTimeout(() => this.loadPullRequests(), assessing ? 2000 : 1500);
+        }
+      });
+  };
+
+  /** Sends a Created pull request's new review comments to a session, or starts
+   * one on its head branch; the list is reloaded so the counts reflect the send. */
+  private sendPullRequestComments = (pr: MyPullRequest, sessionId?: string) => {
+    if (this.pullRequestSending || this.pullRequestFixing) return;
+    this.pullRequestSending = pr.url;
+    this.pullRequestNotice = undefined;
+    const reference = `${pr.repository}#${pr.number}`;
+    void sendReviewComments(pr.url, sessionId)
+      .then((result) => {
+        const count = `${result.sent} review ${result.sent === 1 ? "comment" : "comments"} on ${reference}`;
+        const omitted = result.omitted ? ` ${result.omitted} newer did not fit and stay new.` : "";
+        const title = pr.sessions.find((session) => session.id === result.sessionId)?.title;
+        const text = !sessionId
+          ? `Started a session on ${pr.headRefName} with ${count}.`
+          : `${result.delivery === "queued" ? "Queued" : "Sent"} ${count} ${result.delivery === "queued" ? "for" : "to"} ${title ?? "the session"}${result.delivery === "queued" ? "; it runs after the current turn" : ""}.`;
+        this.pullRequestNotice = { tone: "ok", text: `${text}${omitted}` };
+        if (!sessionId) void this.refreshSessions(true);
+      })
+      .catch((error: unknown) => {
+        this.pullRequestNotice = { tone: "danger", text: `Could not send the review comments on ${reference}: ${error instanceof Error ? error.message : "unknown error"}` };
+      })
+      .finally(() => {
+        this.pullRequestSending = "";
+        this.loadPullRequests();
+      });
+  };
+
+  /** Sends a Created pull request's failing checks to a session, or starts one on its head branch. */
+  private fixPullRequestCi = (pr: MyPullRequest, sessionId?: string) => {
+    if (this.pullRequestSending || this.pullRequestFixing) return;
+    this.pullRequestFixing = pr.url;
+    this.pullRequestNotice = undefined;
+    const reference = `${pr.repository}#${pr.number}`;
+    void fixPullRequestCi(pr.url, sessionId)
+      .then((result) => {
+        const checks = result.checks ? `${result.checks} failing ${result.checks === 1 ? "check" : "checks"} on ${reference}` : `the failing checks on ${reference}`;
+        const omitted = result.omitted ? ` ${result.omitted} more did not fit.` : "";
+        const title = pr.sessions.find((session) => session.id === result.sessionId)?.title;
+        const text = !sessionId
+          ? `Started a session on ${pr.headRefName} to fix ${checks}.`
+          : `${result.delivery === "queued" ? "Queued" : "Sent"} ${checks} ${result.delivery === "queued" ? "for" : "to"} ${title ?? "the session"}${result.delivery === "queued" ? "; it runs after the current turn" : ""}.`;
+        this.pullRequestNotice = { tone: "ok", text: `${text}${omitted}` };
+        if (!sessionId) void this.refreshSessions(true);
+      })
+      .catch((error: unknown) => {
+        this.pullRequestNotice = { tone: "danger", text: `Could not send the failing checks of ${reference}: ${error instanceof Error ? error.message : "unknown error"}` };
+      })
+      .finally(() => {
+        this.pullRequestFixing = "";
+        this.loadPullRequests();
+      });
+  };
+
+  /** Starts a temporary risk-review session for a Review requested pull request. */
+  private assessPullRequest = (pr: MyPullRequest) => {
+    if (this.pullRequestReviewing) return;
+    this.pullRequestReviewing = pr.url;
+    this.pullRequestNotice = undefined;
+    void assessPullRequest(pr.url)
+      .then(() => this.refreshSessions(true))
+      .catch((error: unknown) => {
+        this.pullRequestNotice = { tone: "danger", text: `Could not assess ${pr.repository}#${pr.number}: ${error instanceof Error ? error.message : "unknown error"}` };
+      })
+      .finally(() => {
+        this.pullRequestReviewing = "";
+        this.loadPullRequests();
+      });
+  };
+
+  /** Approve (only from the confirmation dialog), dismiss or keep a risk review. */
+  private settlePullRequestReview = (action: "approve" | "dismiss" | "keep", pr: MyPullRequest) => {
+    if (this.pullRequestReviewing) return;
+    this.pullRequestReviewing = pr.url;
+    this.pullRequestNotice = undefined;
+    const reference = `${pr.repository}#${pr.number}`;
+    void settlePullRequestReview(action, pr.url)
+      .then((data) => {
+        this.myPullRequests = data;
+        this.pullRequestApproveConfirm = "";
+        this.pullRequestDrawer = "";
+        this.pullRequestNotice = { tone: "ok", text: action === "approve"
+          ? `Approved ${reference} on GitHub and deleted its risk review.`
+          : action === "dismiss" ? `Dismissed the risk review of ${reference}.` : `Kept the risk review of ${reference} as a normal session.` };
+        void this.refreshSessions(true);
+      })
+      .catch((error: unknown) => {
+        this.pullRequestApproveConfirm = "";
+        const verb = action === "approve" ? "approve" : action === "dismiss" ? "dismiss the risk review of" : "keep the risk review of";
+        this.pullRequestNotice = { tone: "danger", text: `Could not ${verb} ${reference}: ${error instanceof Error ? error.message : "unknown error"}` };
+        this.loadPullRequests();
+      })
+      .finally(() => { this.pullRequestReviewing = ""; });
+  };
+
+  /** Closes the risk-review drawer and returns focus to the pill that opened it. */
+  private closePullRequestDrawer = () => {
+    const url = this.pullRequestDrawer;
+    this.pullRequestDrawer = "";
+    void this.updateComplete.then(() => this.renderRoot.querySelector<HTMLElement>(`[data-risk-pill="${CSS.escape(url)}"]`)?.focus());
+  };
+
+  /** Saves the Pull Requests accounts, then lists them. */
+  private savePullRequestAccounts = (accounts: string[]) => {
+    void this.save({ pullRequestAccounts: accounts }).then(() => this.loadPullRequests(true));
+  };
+
   private removeWorktreePaths = (paths: readonly string[], mode: "single" | "merged", acknowledged: readonly WorktreeRisk[] = []) => {
     if (this.worktreesRemoving || paths.length === 0) return;
     this.worktreesRemoving = true;
@@ -3979,7 +4138,7 @@ export class HuiApp extends HuiElement {
       automationPending: this.automationPending,
       automationFormError: this.automationFormError,
       automationActionError: this.automationActionError,
-      sessions: this.groups.flatMap((group) => group.sessions),
+      sessions: listedSessionGroups(this.groups).flatMap((group) => group.sessions),
       onRetryAutomation: this.loadAutomationData,
       onCreateAutomationTask: this.createAutomationTask,
       automationEditingId: this.automationEditingId,
@@ -4202,7 +4361,7 @@ export class HuiApp extends HuiElement {
       selectedSessionId: this.selected?.id ?? "",
       splitSessionId: "",
       openSessionIds: new Set(this.sessionLayout && sessionPanes(this.sessionLayout).length > 1 ? sessionPanes(this.sessionLayout).map(({ sessionId }) => sessionId) : []),
-      groups: this.groups,
+      groups: listedSessionGroups(this.groups),
       draftSessionIds: this.draftSessionIds,
       collapsed: this.collapsed,
       loading: this.sessionsLoading,
@@ -4308,7 +4467,7 @@ export class HuiApp extends HuiElement {
           ? this.renderSessionMultiplex()
           : this.view === "kanban"
             ? renderKanbanPage({
-                groups: this.groups,
+                groups: listedSessionGroups(this.groups),
                 loading: this.sessionsLoading,
                 error: this.sessionsError,
                 query: this.kanbanQuery,
@@ -4343,7 +4502,7 @@ export class HuiApp extends HuiElement {
                   ? renderAutomationSurface(this.automationProps(), this.activePage.id === "cron" ? "Automations" : "Tasks")
                 : this.activePage.id === "sessions"
                   ? renderSessionsPage({
-                      groups: this.groups,
+                      groups: listedSessionGroups(this.groups),
                       loading: this.sessionsLoading,
                       error: this.sessionsError,
                       query: this.search,
@@ -4360,6 +4519,48 @@ export class HuiApp extends HuiElement {
                     })
                   : this.activePage.id === "contributions"
                     ? html`<hui-contributions-page .onOpenSettings=${() => this.navigate({ kind: "settings", page: "integrations" })}></hui-contributions-page>`
+                  : this.activePage.id === "pull-requests"
+                    ? renderPullRequestsPage({
+                        data: this.myPullRequests,
+                        loading: this.pullRequestsLoading,
+                        error: this.pullRequestsError,
+                        query: this.pullRequestsQuery,
+                        tab: this.pullRequestsTab,
+                        onQuery: (value) => { this.pullRequestsQuery = value; },
+                        onTab: (tab) => { this.pullRequestsTab = tab; this.pullRequestNotice = undefined; },
+                        onRefresh: () => this.loadPullRequests(true),
+                        onOpenSession: (id) => this.navigate({ kind: "session", id }),
+                        onOpenSettings: () => this.openSurfaceSettings("integrations"),
+                        targets: this.pullRequestTargets,
+                        sending: this.pullRequestSending,
+                        ...(this.pullRequestNotice ? { sendNotice: this.pullRequestNotice } : {}),
+                        onTarget: (url, id) => { this.pullRequestTargets = { ...this.pullRequestTargets, [url]: id }; },
+                        onSendComments: this.sendPullRequestComments,
+                        fixing: this.pullRequestFixing,
+                        onFixCi: this.fixPullRequestCi,
+                        triage: this.pullRequestTriage,
+                        onTriage: (triage) => { this.pullRequestTriage = triage; },
+                        repos: this.pullRequestRepos,
+                        onRepos: (repos) => { this.pullRequestRepos = repos; writePullRequestRepos(repos); },
+                        reviewing: this.pullRequestReviewing,
+                        approveConfirm: this.pullRequestApproveConfirm,
+                        onAssess: this.assessPullRequest,
+                        onAskApprove: (pr) => { this.pullRequestApproveConfirm = pr.url; },
+                        onCancelApprove: () => { if (!this.pullRequestReviewing) this.pullRequestApproveConfirm = ""; },
+                        onApprove: (pr) => this.settlePullRequestReview("approve", pr),
+                        onDismiss: (pr) => this.settlePullRequestReview("dismiss", pr),
+                        onKeep: (pr) => this.settlePullRequestReview("keep", pr),
+                        drawer: this.pullRequestDrawer,
+                        onOpenDrawer: (pr) => { this.pullRequestNotice = undefined; this.pullRequestDrawer = pr.url; },
+                        onCloseDrawer: this.closePullRequestDrawer,
+                        autoApprove: this.settings.pullRequestAutoApproveLowRisk,
+                        onAutoApprove: (enabled) => void this.save({ pullRequestAutoApproveLowRisk: enabled }),
+                        selectedAccounts: (() => {
+                          const saved = this.settings.pullRequestAccounts.filter((login) => this.myPullRequests?.accounts.includes(login));
+                          return saved.length ? saved : this.myPullRequests?.selectedAccounts ?? [];
+                        })(),
+                        onAccounts: this.savePullRequestAccounts,
+                      })
                   : isPiSurface(this.activePage)
                     ? renderPiSurface({
                         page: this.activePage,

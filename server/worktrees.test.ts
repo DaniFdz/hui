@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, realpath, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
 import {
+  branchWorktree,
   checkoutSessionRef,
   createSessionWorktree,
   inspectGitCheckout,
@@ -204,4 +205,31 @@ test("refuses workspace creation outside a Git repository", async () => {
     () => createSessionWorktree({ sourceDirectory: directory, title: "Task", branchPrefix: "feature/", root: join(directory, "worktrees") }),
     /requires a Git repository/,
   );
+});
+
+test("a pull request branch reuses its worktree or is checked out from origin tracking it", async () => {
+  const origin = await repository();
+  assert.equal((await runGit(origin, ["checkout", "-q", "-b", "feat/pr"])).code, 0);
+  await writeFile(join(origin, "pr.txt"), "pr\n", "utf8");
+  assert.equal((await runGit(origin, ["add", "."])).code, 0);
+  assert.equal((await runGit(origin, ["commit", "-qm", "pr"])).code, 0);
+  assert.equal((await runGit(origin, ["checkout", "-q", "main"])).code, 0);
+  const parent = await mkdtemp(join(tmpdir(), "hui-branch-worktree-"));
+  const clone = join(parent, "clone");
+  assert.equal((await runGit(parent, ["clone", "-q", origin, clone])).code, 0);
+  const root = join(parent, "worktrees");
+
+  const created = await branchWorktree({ sourceDirectory: join(clone, "packages", "app"), branch: "feat/pr", root });
+  assert.ok(created.rollback, "a new worktree can be rolled back");
+  assert.equal((await runGit(created.cwd, ["symbolic-ref", "--short", "HEAD"])).stdout.trim(), "feat/pr");
+  assert.equal((await runGit(created.cwd, ["rev-parse", "--abbrev-ref", "@{upstream}"])).stdout.trim(), "origin/feat/pr");
+  await stat(join(created.cwd, "pr.txt"));
+
+  const reused = await branchWorktree({ sourceDirectory: clone, branch: "feat/pr", root });
+  assert.equal(reused.rollback, undefined, "an existing worktree is reused, never removed");
+  assert.equal(await realpath(reused.cwd), await realpath(created.cwd));
+
+  await created.rollback!();
+  assert.notEqual((await runGit(clone, ["show-ref", "--verify", "refs/heads/feat/pr"])).code, 0, "rollback deletes the branch it created");
+  await assert.rejects(branchWorktree({ sourceDirectory: clone, branch: "feat/missing", root }), /origin\/feat\/missing|feat\/missing/);
 });

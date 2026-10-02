@@ -81,6 +81,30 @@ export function parseAuthStatus(stdout: string): Pick<GitHubConnection, "status"
   return { status: "invalid", account, message: reason || "The saved GitHub token is no longer valid. Sign in again." };
 }
 
+/** Every github.com login `gh auth status --json hosts` reports as signed in,
+ * the active account first (Pull Requests → Accounts). */
+export function parseAuthAccounts(stdout: string): string[] {
+  let parsed: unknown;
+  try { parsed = JSON.parse(stdout); } catch { return []; }
+  const hosts = parsed && typeof parsed === "object" ? (parsed as { hosts?: unknown }).hosts : undefined;
+  const entries = hosts && typeof hosts === "object" ? (hosts as Record<string, unknown>)[GITHUB_HOST] : undefined;
+  if (!Array.isArray(entries)) return [];
+  const records = entries.filter((entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === "object" && entry["state"] === "success" && typeof entry["login"] === "string");
+  const logins = records.toSorted((a, b) => Number(b["active"] === true) - Number(a["active"] === true)).map((entry) => (entry["login"] as string).trim()).filter(Boolean);
+  return [...new Set(logins)];
+}
+
+/** Signed-in github.com logins of `gh` (active first). gh may exit non-zero
+ * when one account's token is bad, so the JSON it printed is still read. */
+export function signedInAccounts(command = "gh", env: NodeJS.ProcessEnv = process.env): Promise<string[]> {
+  return new Promise((resolve, reject) => {
+    execFile(command, ["auth", "status", "--hostname", GITHUB_HOST, "--json", "hosts"], { env: { ...env, ...GH_ENV }, timeout: 15_000, maxBuffer: 256 * 1024, encoding: "utf8" }, (error, stdout) => {
+      if ((error as NodeJS.ErrnoException | null)?.code === "ENOENT") reject(error);
+      else resolve(parseAuthAccounts(stdout));
+    });
+  });
+}
+
 /** The last meaningful line of `gh` output, never the device code or its prompt lines.
  * Errors may quote `https://github.com/login/device/code`, so URLs alone do not disqualify a line. */
 export function loginFailureMessage(output: string, code: number | null): string {

@@ -1212,6 +1212,8 @@ async function startPi(options: {
   model?: string;
   thinking?: string;
   huiSessionId?: string;
+  /** Temporary pull-request risk review: adds `report_pr_risk`. */
+  prReview?: boolean;
   /** Catalog/health probes must not create a transcript owned by PI. */
   noSession?: boolean;
   /** Read-only probes must not load extension code or workspace instructions. */
@@ -1230,6 +1232,7 @@ async function startPi(options: {
     args.push("--extension", fileURLToPath(new URL("./progress-card-extension.mjs", import.meta.url)));
     args.push("--extension", fileURLToPath(new URL("./agent-tools-extension.mjs", import.meta.url)));
     if (browserTool) args.push("--extension", fileURLToPath(new URL("./browser-tool-extension.mjs", import.meta.url)));
+    if (options.prReview) args.push("--extension", fileURLToPath(new URL("./pr-risk-extension.mjs", import.meta.url)));
     args.push("--extension", fileURLToPath(new URL("./skill-policy-extension.mjs", import.meta.url)));
   }
   if (options.noSession) {

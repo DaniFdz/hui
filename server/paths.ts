@@ -28,3 +28,7 @@ export const BROWSER_PROFILE_DIR = join(CONFIG_DIR, "browser", "profile");
 
 /** HUI owns scheduled task definitions and their bounded run history. */
 export const AUTOMATION_FILE = join(CONFIG_DIR, "automation.json");
+
+/** Scratch directories for temporary pull-request risk reviews without a local
+ * checkout. Each is deleted with its review session. */
+export const PR_REVIEWS_DIR = join(CONFIG_DIR, "pr-reviews");

@@ -995,6 +995,7 @@ export class LiveSessions {
         ...(live.record.model ? { model: live.record.model } : {}),
         ...(live.record.thinking ? { thinking: live.record.thinking } : {}),
         huiSessionId: live.record.id,
+        ...(live.record.temporary?.kind === "pr-review" ? { prReview: true } : {}),
       });
       // Deletion or gateway shutdown can happen while a runtime takes several
       // seconds to boot. Never attach or persist a process nobody owns.

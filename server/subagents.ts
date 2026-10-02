@@ -577,7 +577,9 @@ export class SubagentService {
   async #list(callerId: string, params: Record<string, unknown>) {
     const limit = integer(params, "limit", 50, 1, 100);
     const records = await this.registryReader();
+    // Temporary pull-request reviews stay off every session list.
     const visible = visibleTree(records, callerId)
+      .filter((record) => !record.temporary)
       .toSorted((a, b) => b.updatedAt.localeCompare(a.updatedAt))
       .slice(0, limit);
     return {

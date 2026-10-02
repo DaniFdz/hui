@@ -27,6 +27,8 @@ type Launch = {
   bundledSkillPaths?: string[];
   /** Settings → Tools → Browser; absent means the default (on). */
   browserTool?: boolean;
+  /** Temporary pull-request risk review: registers `report_pr_risk`. */
+  prReview?: boolean;
 };
 
 // Extensions sometimes log during initialization, before runRpcMode redirects
@@ -77,7 +79,7 @@ async function main() {
     const result = await createAgentSessionFromServices({
       services, sessionManager: target.sessionManager, sessionStartEvent: target.sessionStartEvent,
       ...(model ? { model } : {}), ...(thinking ? { thinkingLevel: thinking } : {}),
-      customTools: launch.safeProbe ? [] : huiToolDefinitions({ browser: launch.browserTool !== false }),
+      customTools: launch.safeProbe ? [] : huiToolDefinitions({ browser: launch.browserTool !== false, prReview: launch.prReview === true }),
     });
     result.session.subscribe((event) => {
       if (event.type === "turn_start" || event.type === "turn_end") turnPrompts.set(result.session, result.session.systemPrompt);

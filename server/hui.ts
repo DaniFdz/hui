@@ -15,7 +15,7 @@
  * A theme file carries both modes, so there is no pairing to describe and no
  * manifest to keep in step.
  */
-import { mkdir, readFile, readdir, stat, unlink, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rm, stat, unlink, writeFile } from "node:fs/promises";
 import type { ServerResponse } from "node:http";
 import { randomUUID } from "node:crypto";
 import { basename, join } from "node:path";
@@ -23,7 +23,7 @@ import { fileURLToPath } from "node:url";
 
 import type { Connect, Plugin } from "vite";
 import { progressCardFromTranscript, type ProgressCard } from "../shared/progress-card.ts";
-import type { SessionPullRequest } from "../shared/pull-requests.ts";
+import type { AutoApprovedPullRequest, FixCiResult, MyPullRequests, ReviewCommentsResult, SessionPullRequest } from "../shared/pull-requests.ts";
 import {
   effectiveSessionStage,
   isSessionStage,
@@ -33,10 +33,14 @@ import {
   type SessionStage,
   type SessionStageOrigin,
 } from "../shared/session-stages.ts";
-import { PullRequestStatuses, pullRequestsFromTranscript } from "./pull-requests.ts";
+import { PullRequestStatuses, pullRequestsFromTranscript, pullRequestUrls } from "./pull-requests.ts";
 
 
-import { CONFIG_DIR, ATTACHMENTS_DIR, AUTOMATION_FILE, BROWSER_PROFILE_DIR, USER_THEME_DIR } from "./paths.ts";
+import { CONFIG_DIR, ATTACHMENTS_DIR, AUTOMATION_FILE, BROWSER_PROFILE_DIR, PR_REVIEWS_DIR, USER_THEME_DIR } from "./paths.ts";
+import {
+  accountEnv, ApprovalBlockedError, approveAssessed, assessmentPrompt, autoApproveLowRisk, GhCommandError, headArgs, parsePullRequestHead,
+  pullRequestAssessment, removeTemporaryFiles, riskVerdictFromTranscript, runGh, staleTemporarySessions, temporaryReview, type AccountGh,
+} from "./pull-request-reviews.ts";
 import { BrowserToolError, ManagedBrowser } from "./browser/manager.ts";
 import { MacPower } from "./power.ts";
 import { attachBrowserTransport, browserViewTicket } from "./browser-transport.ts";
@@ -57,7 +61,7 @@ import {
   PiMutationService,
 } from "./pi-mutations.ts";
 import { readGatewayHealth, readWorkspaceInspection } from "./control-surfaces.ts";
-import { WorktreeService } from "./worktree-inventory.ts";
+import { runCommand, WorktreeService } from "./worktree-inventory.ts";
 import type { WorktreeRisk } from "../shared/worktrees.ts";
 import {
   liveSessions,
@@ -79,7 +83,7 @@ import { completeLocalPaths, completeWorkingDirectories, displayPath, resolveWor
 import { diagnosticPath, mirrorDiagnosticLogs, readObservability, recordDiagnosticEvent } from "./observability.ts";
 import { parseUiErrorBatch, UI_ERROR_BODY_LIMIT, uiErrorLog } from "./ui-errors.ts";
 import { runtimeMemoryByPid } from "./runtime-resources.ts";
-import { checkoutSessionRef, createSessionWorktree, inspectGitCheckout, type WorktreeProgress } from "./worktrees.ts";
+import { branchWorktree, checkoutSessionRef, createSessionWorktree, inspectGitCheckout, WorktreeInputError, type WorktreeProgress } from "./worktrees.ts";
 import { fallbackBranchName } from "../shared/branch-names.ts";
 import { answerSideQuestion, fallbackTitle, generateSessionNames, suggestWorktreeName } from "./model-routing.ts";
 import { sessionDigest } from "./session-digest.ts";
@@ -112,9 +116,13 @@ import {
 import { sessionTreeIds } from "../src/lib/session-tree.ts";
 import { SubagentService } from "./subagents.ts";
 import { presentMediaForSession, servePresentedMedia } from "./presented-media.ts";
-import { GitHubCli, GitHubCliError } from "./github.ts";
+import { GitHubCli, GitHubCliError, signedInAccounts } from "./github.ts";
 import { FIRST_YEAR as GITHUB_FIRST_YEAR, GitHubContributionsReader, latestYear } from "./github-contributions.ts";
-import { GitHubPreviews, ghApi, previewPullRequestFetcher } from "./github-previews.ts";
+import { classifyGhFailure, GitHubApiError, GitHubPreviews, ghApi, ghJson, previewPullRequestFetcher } from "./github-previews.ts";
+import { correlateSessions, effectiveAccounts, fetchMyPullRequests, MyPullRequestsCache, readCheckouts, repositoryCheckouts, type Checkout, type PullRequestSnapshot } from "./my-pull-requests.ts";
+import { CheckoutDiscovery, discoverCheckouts } from "./checkout-discovery.ts";
+import { assertFailing, fetchPullRequestCi, fixCiMessage, NoFailingChecksError } from "./pull-request-ci.ts";
+import { fetchReviewComments, newReviewComments, NoNewCommentsError, recordCommentsSent, sendReviewComments, sentAtFor } from "./pull-request-comments.ts";
 import { MAX_GITHUB_EMBEDS, parseGitHubUrl } from "../shared/github-links.ts";
 import { TaskSuggestionInputError, TaskSuggestionNotFoundError, TaskSuggestionStore } from "./task-suggestions.ts";
 import {
@@ -145,6 +153,7 @@ import {
   updateSessionGroup,
   upsert,
   type SessionRecord,
+  type TemporarySession,
 } from "./sessions.ts";
 
 const PREFIX = "/__hui/";
@@ -194,6 +203,12 @@ const GITHUB_ROUTE = `${PREFIX}github`;
 const GITHUB_LOGIN_ROUTE = `${GITHUB_ROUTE}/login`;
 const GITHUB_PREVIEWS_ROUTE = `${GITHUB_ROUTE}/previews`;
 const GITHUB_CONTRIBUTIONS_ROUTE = `${GITHUB_ROUTE}/contributions`;
+const PULL_REQUESTS_ROUTE = `${PREFIX}pull-requests`;
+const PULL_REQUESTS_REFRESH_ROUTE = `${PULL_REQUESTS_ROUTE}/refresh`;
+const PULL_REQUESTS_REVIEW_COMMENTS_ROUTE = `${PULL_REQUESTS_ROUTE}/review-comments`;
+const PULL_REQUESTS_FIX_CI_ROUTE = `${PULL_REQUESTS_ROUTE}/fix-ci`;
+/** Risk review of a Review requested pull request: assess, approve, dismiss, keep. */
+const PULL_REQUEST_REVIEW_ROUTE = /^\/__hui\/pull-requests\/(assess|approve|dismiss|keep)$/u;
 const JIRA_ROUTE = `${PREFIX}jira`;
 const JIRA_PROJECTS_ROUTE = `${JIRA_ROUTE}/projects`;
 /** Create (POST) or draft (POST …/draft) a Jira work item for one session. */
@@ -836,6 +851,305 @@ const githubCli = new GitHubCli({ command: GH_COMMAND });
 const githubPreviews = new GitHubPreviews(ghApi(GH_COMMAND));
 const githubContributions = new GitHubContributionsReader(GH_COMMAND);
 const pullRequestStatuses = new PullRequestStatuses(previewPullRequestFetcher(githubPreviews));
+/** `gh` as one signed-in account; its token stays in the child's environment. */
+async function accountGh(login: string): Promise<AccountGh> {
+  const env = await accountEnv(GH_COMMAND, login);
+  return { json: ghJson(GH_COMMAND, env), run: (args) => runGh(GH_COMMAND, args, env) };
+}
+/** Pull Requests → Accounts (default: gh's active account), read at every fetch. */
+const myPullRequests = new MyPullRequestsCache(async () => {
+  const signedIn = await signedInAccounts(GH_COMMAND).catch((error: unknown) => { throw new GitHubApiError(classifyGhFailure(error)); });
+  const accounts = effectiveAccounts((await readSettings()).pullRequestAccounts, signedIn);
+  return fetchMyPullRequests(accounts, async (login) => (await accountGh(login)).json, signedIn);
+});
+/** Clones and worktrees near the session directories (memory only, refreshed in the background). */
+const checkoutDiscovery = new CheckoutDiscovery((cwds) => discoverCheckouts(cwds, runCommand));
+
+/** Local checkouts a pull request session can start in: the session
+ * directories' own (`own`, when already read) and those discovered near them. */
+async function knownCheckouts(records: readonly SessionRecord[], own?: ReadonlyMap<string, Checkout>): Promise<Map<string, Checkout>> {
+  const cwds = records.filter((record) => !record.temporary).map((record) => record.cwd);
+  const [sessionCheckouts, discovered] = await Promise.all([own ?? readCheckouts(cwds, runCommand), checkoutDiscovery.view(cwds)]);
+  return new Map([...sessionCheckouts, ...[...discovered].filter(([path]) => !sessionCheckouts.has(path))]);
+}
+
+/** Low-risk auto-approvals of this gateway run, newest first (memory only). */
+const autoApproved: AutoApprovedPullRequest[] = [];
+/** Temporary reviews whose verdict was already considered for auto-approval. */
+const autoApproveChecked = new Set<string>();
+/** Why a low-risk verdict was not auto-approved, per temporary session. */
+const autoApproveBlocked = new Map<string, string>();
+
+/** The Pull Requests page: cached GitHub lists with sessions linked per request.
+ * Created rows also count review comments newer than each session's last send. */
+async function pullRequestsPage(snapshot: PullRequestSnapshot): Promise<MyPullRequests> {
+  const all = await readRegistry();
+  // Temporary risk reviews appear only as a Review requested row's assessment.
+  const records = all.filter((record) => !record.temporary);
+  const byId = new Map(records.map((record) => [record.id, record]));
+  const sessions = records.map((record) => ({
+    id: record.id,
+    title: record.title,
+    archived: Boolean(record.archived),
+    cwd: record.cwd,
+    updatedAt: record.updatedAt,
+    createdPullRequests: pullRequestsFromTranscript(liveSessions.transcript(record.id)).map((ref) => ref.url),
+  }));
+  const checkouts = await readCheckouts(sessions.map((session) => session.cwd), runCommand);
+  const known = await knownCheckouts(records, checkouts);
+  const link = (list: PullRequestSnapshot["created"]) => list.map(({ reviewComments, ...pr }) => {
+    const linked = correlateSessions(pr, sessions, checkouts);
+    if (!reviewComments) return { ...pr, sessions: linked };
+    return {
+      ...pr,
+      sessions: linked.map((session) => ({
+        ...session,
+        newComments: newReviewComments(reviewComments, sentAtFor(byId.get(session.id) ?? {}, pr.url)).length,
+        ...(pr.headRefOid && ciFixesSent.get(ciFixKey(pr.url, session.id)) === pr.headRefOid ? { ciFixSent: true } : {}),
+      })),
+      newComments: reviewComments.length,
+      localCheckout: repositoryCheckouts(pr, known).length > 0,
+    };
+  });
+  const assessed = (pr: MyPullRequests["reviewRequested"][number]) => {
+    const review = temporaryReview(all, pr.url);
+    if (!review) return pr;
+    const blocked = autoApproveBlocked.get(review.id);
+    return { ...pr, assessment: { ...pullRequestAssessment(review, liveSessions.status(review.id), liveSessions.transcript(review.id)), ...(blocked ? { autoApproveBlocked: blocked } : {}) } };
+  };
+  return { ...snapshot, created: link(snapshot.created), reviewRequested: link(snapshot.reviewRequested).map(assessed), autoApproved: [...autoApproved] };
+}
+
+class PullRequestInputError extends Error {
+  override name = "PullRequestInputError";
+}
+
+/** Prompts an idle session or queues a follow-up for a busy one. */
+async function deliverToSession(record: SessionRecord, text: string): Promise<"prompt" | "queued"> {
+  if (!liveSessions.ensure(record)) throw new SessionNotFoundError(`unknown session: ${record.id}`);
+  if (liveSessions.status(record.id) === "starting") await waitForSessionReady(record.id, 10 * 60_000);
+  try {
+    await liveSessions.prompt(record.id, text);
+    return "prompt";
+  } catch (error) {
+    if (!(error instanceof SessionBusyError)) throw error;
+    await liveSessions.followUp(record.id, text);
+    return "queued";
+  }
+}
+
+/** A new session on a Created pull request's head branch in a known local
+ * checkout: a checkout or worktree already on it, otherwise a new worktree at
+ * `origin/<head>` (rolled back if the session cannot be created). */
+async function startPullRequestSession(pr: Pick<PullRequestSnapshot["created"][number], "repository" | "headRepository" | "headRefName">, records: readonly SessionRecord[], title: string): Promise<SessionRecord> {
+  const known = repositoryCheckouts(pr, await knownCheckouts(records))[0];
+  if (!known) throw new WorktreeInputError(`No local checkout of ${pr.repository} is known. Clone it next to a session's directory or start a session in one first.`);
+  const workspace = known.onHeadBranch ? { cwd: known.cwd } : await branchWorktree({ sourceDirectory: known.cwd, branch: pr.headRefName });
+  try {
+    return await createSession({ cwd: workspace.cwd, title: title.slice(0, SESSION_TITLE_MAX), tool: "pi" });
+  } catch (error) {
+    await workspace.rollback?.().catch(() => undefined);
+    throw error;
+  }
+}
+
+/** `POST …/pull-requests/review-comments`: sends a Created pull request's new
+ * review comments to `sessionId`, or, without one, to a new session on its
+ * head branch in a known checkout of the repository. */
+/** A Created pull request named by `{ url, sessionId? }` and the named session, validated. */
+async function createdPullRequest(body: Record<string, unknown>) {
+  const url = typeof body["url"] === "string" ? body["url"].trim() : "";
+  const ref = pullRequestUrls(url)[0];
+  if (!ref || ref.url !== url) throw new PullRequestInputError("A github.com pull request URL is required.");
+  if (body["sessionId"] !== undefined && typeof body["sessionId"] !== "string") throw new PullRequestInputError("Session id must be text.");
+  const sessionId = typeof body["sessionId"] === "string" ? body["sessionId"].trim() : "";
+  const snapshot = await myPullRequests.view();
+  const pr = snapshot.created.find((item) => item.url.toLowerCase() === url.toLowerCase());
+  if (!pr) throw new SessionNotFoundError("That is not one of your open pull requests.");
+  const records = await readRegistry();
+  const target = sessionId ? records.find((record) => record.id === sessionId && !record.temporary) : undefined;
+  if (sessionId && !target) throw new SessionNotFoundError(`unknown session: ${sessionId}`);
+  // Created rows: `gh` as the author among the selected accounts.
+  const gh = pr.accounts[0] ? (await accountGh(pr.accounts[0])).json : ghJson(GH_COMMAND);
+  return { pr, snapshot, records, target, gh };
+}
+
+async function sendPullRequestReviewComments(body: Record<string, unknown>): Promise<ReviewCommentsResult> {
+  const { pr, snapshot, records, target: named, gh } = await createdPullRequest(body);
+  let target = named;
+  // Never act on the cached list: the threads are read again for this send.
+  const comments = await fetchReviewComments(gh, pr, snapshot.selectedAccounts);
+  const sentAt = target ? sentAtFor(target, pr.url) : undefined;
+  if (!newReviewComments(comments, sentAt).length) throw new NoNewCommentsError("No new review comments to send.");
+  target ??= await startPullRequestSession(pr, records, `Review comments: ${pr.title || `${pr.repository}#${pr.number}`}`);
+  const record = target;
+  const result = await sendReviewComments({
+    pr,
+    ...(sentAt ? { sentAt } : {}),
+    fetch: async () => comments,
+    deliver: (text) => deliverToSession(record, text),
+    persist: async (sent) => {
+      await updateRegistry((current) => current.map((item) => item.id === record.id
+        ? { ...item, pullRequestComments: recordCommentsSent(item, pr.url, sent) }
+        : item));
+    },
+  });
+  return { sessionId: record.id, ...result };
+}
+
+/** Head commit Fix CI was last sent for, per pull request URL and session (memory only). */
+const ciFixesSent = new Map<string, string>();
+const ciFixKey = (url: string, sessionId: string) => `${url.toLowerCase()} ${sessionId}`;
+
+/** `POST …/pull-requests/fix-ci`: sends a Created pull request's failing
+ * checks, read again from GitHub, to `sessionId` or a new session on its head branch. */
+async function sendPullRequestFixCi(body: Record<string, unknown>): Promise<FixCiResult> {
+  const { pr, records, target, gh } = await createdPullRequest(body);
+  const ci = await fetchPullRequestCi(gh, pr);
+  assertFailing(ci);
+  const record = target ?? await startPullRequestSession({ ...pr, headRefName: ci.headRefName || pr.headRefName }, records, `Fix CI: ${pr.title || `${pr.repository}#${pr.number}`}`);
+  const message = fixCiMessage(pr, ci);
+  const delivery = await deliverToSession(record, message.text);
+  ciFixesSent.set(ciFixKey(pr.url, record.id), ci.headRefOid);
+  return { sessionId: record.id, checks: message.included, omitted: message.omitted, delivery };
+}
+
+/** A Review requested pull request named by a mutating route's `{ url }`. */
+async function reviewRequestedPullRequest(body: Record<string, unknown>) {
+  const url = typeof body["url"] === "string" ? body["url"].trim() : "";
+  const ref = pullRequestUrls(url)[0];
+  if (!ref || ref.url !== url) throw new PullRequestInputError("A github.com pull request URL is required.");
+  const pr = (await myPullRequests.view()).reviewRequested.find((item) => item.url.toLowerCase() === url.toLowerCase());
+  if (!pr) throw new SessionNotFoundError("That pull request does not await your review.");
+  return pr;
+}
+
+class AssessmentConflictError extends Error {
+  override name = "AssessmentConflictError";
+}
+
+/** Stops a temporary review and deletes its registry row, its PI transcript and
+ * the scratch directory HUI created: only paths its record names. */
+async function discardTemporarySession(id: string): Promise<void> {
+  const record = (await readRegistry()).find((item) => item.id === id);
+  if (!record?.temporary) return;
+  await deleteSession(id);
+  autoApproveBlocked.delete(id);
+  await removeTemporaryFiles(record, PR_REVIEWS_DIR);
+}
+
+/** The account a Review requested row approves as: the first selected account asked directly. */
+function reviewAccount(pr: { accounts: readonly string[] }): string {
+  const account = pr.accounts[0];
+  if (!account) throw new SessionNotFoundError("That pull request does not await your review.");
+  return account;
+}
+
+/** Once a temporary review settles with a verdict: approve it when it is low
+ * risk and the operator enabled auto-approval (read now), and the pull request
+ * is still open, still requests the account and has the assessed head. */
+async function considerAutoApproval(id: string): Promise<void> {
+  if (autoApproveChecked.has(id)) return;
+  autoApproveChecked.add(id);
+  const review = (await readRegistry()).find((record) => record.id === id);
+  const temporary = review?.temporary;
+  if (!temporary) return;
+  const verdict = riskVerdictFromTranscript(liveSessions.transcript(id));
+  // Settled without a verdict (yet): a later turn may still report one.
+  if (!verdict) { autoApproveChecked.delete(id); return; }
+  const ref = pullRequestUrls(temporary.pullRequestUrl)[0];
+  if (!ref) return;
+  const enabled = (await readSettings()).pullRequestAutoApproveLowRisk;
+  const account = temporary.account;
+  const outcome = await autoApproveLowRisk(verdict, enabled, async () => {
+    if (!account) throw new ApprovalBlockedError("The risk review did not record the account it was requested of; assess again.");
+    await approveAssessed(ref, temporary, account, await accountGh(account));
+  });
+  if (outcome.approved) {
+    const title = (await myPullRequests.view()).reviewRequested.find((item) => item.url.toLowerCase() === ref.url.toLowerCase())?.title ?? "";
+    autoApproved.unshift({ repository: ref.repository, number: ref.number, url: ref.url, title, account: account!, approvedAt: new Date().toISOString() });
+    autoApproved.splice(50);
+    recordDiagnosticEvent({ area: "session", level: "info", action: "pull_request_auto_approved", summary: `Auto-approved ${ref.repository}#${ref.number} (low risk) as ${account}`, sessionId: id });
+    await discardTemporarySession(id);
+    void myPullRequests.refresh();
+  } else if (outcome.reason) {
+    autoApproveBlocked.set(id, outcome.reason);
+  }
+}
+
+function watchAutoApprovals(): () => void {
+  return liveSessions.watchStatuses((update) => {
+    if (update.status !== "idle") return;
+    void considerAutoApproval(update.id).catch((error: unknown) => {
+      autoApproveBlocked.set(update.id, `Not auto-approved: ${error instanceof Error ? error.message : "the check failed."}`);
+    });
+  }).unsubscribe;
+}
+let stopAutoApprovals: (() => void) | undefined;
+
+const assessing = new Set<string>();
+
+/** `POST …/pull-requests/assess`: one temporary read-only review per pull request. */
+async function assessPullRequest(body: Record<string, unknown>): Promise<{ sessionId: string }> {
+  const pr = await reviewRequestedPullRequest(body);
+  const key = pr.url.toLowerCase();
+  const records = await readRegistry();
+  if (assessing.has(key) || temporaryReview(records, pr.url)) throw new AssessmentConflictError("This pull request is already being assessed.");
+  assessing.add(key);
+  let record: SessionRecord | undefined;
+  let scratchDir: string | undefined;
+  try {
+    // The head commit and the account it was requested of: an approval later
+    // requires both to still hold.
+    const account = reviewAccount(pr);
+    const { headRefOid } = parsePullRequestHead(await (await accountGh(account)).json(headArgs(pr)));
+    const known = repositoryCheckouts(pr, await knownCheckouts(records))[0]?.cwd;
+    if (!known) {
+      scratchDir = join(PR_REVIEWS_DIR, randomUUID());
+      await mkdir(scratchDir, { recursive: true });
+    }
+    const temporary: TemporarySession = { kind: "pr-review", pullRequestUrl: pr.url, ...(scratchDir ? { scratchDir } : {}), account, headRefOid };
+    record = await createSession(
+      { cwd: known ?? scratchDir, title: `Risk review: ${pr.repository}#${pr.number}`, tool: "pi" },
+      liveSessions, updateRegistry, undefined, { temporary },
+    );
+    await deliverToSession(record, assessmentPrompt(pr, known ? "checkout" : "scratch"));
+    return { sessionId: record.id };
+  } catch (error) {
+    // Nothing half-started stays behind: the row, its transcript and scratch directory go.
+    if (record) await discardTemporarySession(record.id).catch(() => undefined);
+    else if (scratchDir) await rm(scratchDir, { recursive: true, force: true }).catch(() => undefined);
+    throw error;
+  } finally {
+    assessing.delete(key);
+  }
+}
+
+/** Approve (explicit click only), dismiss or keep the pull request's temporary review. */
+async function settlePullRequestReview(action: "approve" | "dismiss" | "keep", body: Record<string, unknown>): Promise<MyPullRequests> {
+  const pr = await reviewRequestedPullRequest(body);
+  const review = temporaryReview(await readRegistry(), pr.url);
+  if (!review) throw new SessionNotFoundError("That pull request has no risk review.");
+  if (action === "keep") {
+    await updateRegistry((current) => current.map((item) => item.id === review.id ? { ...item, temporary: undefined } : item));
+  } else {
+    // A failed or refused approval keeps the temporary session and returns the reason.
+    if (action === "approve") {
+      const account = review.temporary?.account ?? reviewAccount(pr);
+      await approveAssessed(pr, review.temporary ?? {}, account, await accountGh(account));
+    }
+    await discardTemporarySession(review.id);
+  }
+  return pullRequestsPage(action === "approve" ? await myPullRequests.refresh() : await myPullRequests.view());
+}
+
+function reviewCommentsErrorStatus(error: unknown): number {
+  if (error instanceof PullRequestInputError) return 400;
+  if (error instanceof SessionNotFoundError) return 404;
+  if (error instanceof NoNewCommentsError || error instanceof NoFailingChecksError || error instanceof WorktreeInputError || error instanceof SessionBusyError || error instanceof AssessmentConflictError || error instanceof ApprovalBlockedError) return 409;
+  if (error instanceof GitHubApiError || error instanceof GhCommandError) return 502;
+  return 500;
+}
 
 const worktreeService = new WorktreeService({
   isRunning: (id) => liveSessions.hasRuntime(id),
@@ -963,6 +1277,7 @@ function toView(
     ...(record.icon ? { icon: record.icon } : {}),
     ...(record.parentId ? { parentId: record.parentId } : {}),
     ...(record.subagent ? { subagent: record.subagent } : {}),
+    ...(record.temporary ? { temporary: { kind: record.temporary.kind, pullRequestUrl: record.temporary.pullRequestUrl } } : {}),
     ...effectiveSessionStage(record, pullRequests),
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
@@ -1203,6 +1518,7 @@ export async function createSession(
    * `nameSession` replaces the utility-model call in tests. */
   seed: {
     stage?: SessionStage;
+    temporary?: TemporarySession;
     onPending?: (record: SessionRecord) => void;
     nameSession?: typeof generateSessionNames;
   } = {},
@@ -1279,6 +1595,7 @@ export async function createSession(
     ...(model ? { model } : {}),
     ...(thinking ? { thinking } : {}),
     ...(seed.stage ? { stage: seed.stage, stageSource: "operator" as const } : {}),
+    ...(seed.temporary ? { temporary: seed.temporary } : {}),
     createdAt: now,
     updatedAt: now,
     source: "hui",
@@ -2427,6 +2744,54 @@ async function handleRequest(
     return;
   }
 
+  if (path === PULL_REQUESTS_ROUTE || path === PULL_REQUESTS_REFRESH_ROUTE) {
+    const refresh = path === PULL_REQUESTS_REFRESH_ROUTE;
+    if (request.method !== (refresh ? "POST" : "GET")) {
+      sendJson(response, 405, { error: "method not allowed" });
+      return;
+    }
+    sendJson(response, 200, await pullRequestsPage(refresh ? await myPullRequests.refresh() : await myPullRequests.view()));
+    return;
+  }
+
+  const reviewRoute = path.match(PULL_REQUEST_REVIEW_ROUTE);
+  if (reviewRoute) {
+    if (request.method !== "POST") {
+      sendJson(response, 405, { error: "method not allowed" });
+      return;
+    }
+    const action = reviewRoute[1] as "assess" | "approve" | "dismiss" | "keep";
+    try {
+      const body = await readBody(request, 4_096).catch(() => { throw new PullRequestInputError("Invalid request body."); });
+      if (!body || typeof body !== "object" || Array.isArray(body)) throw new PullRequestInputError("A JSON object is required.");
+      const input = body as Record<string, unknown>;
+      sendJson(response, 200, action === "assess" ? await assessPullRequest(input) : await settlePullRequestReview(action, input));
+    } catch (error) {
+      const message = error instanceof GitHubApiError ? `GitHub could not be read (${error.reason}).` : error instanceof Error ? error.message : "The risk review failed.";
+      sendJson(response, reviewCommentsErrorStatus(error), { error: message });
+    }
+    return;
+  }
+
+  if (path === PULL_REQUESTS_REVIEW_COMMENTS_ROUTE || path === PULL_REQUESTS_FIX_CI_ROUTE) {
+    if (request.method !== "POST") {
+      sendJson(response, 405, { error: "method not allowed" });
+      return;
+    }
+    const fixCi = path === PULL_REQUESTS_FIX_CI_ROUTE;
+    try {
+      const body = await readBody(request, 4_096).catch(() => { throw new PullRequestInputError("Invalid request body."); });
+      if (!body || typeof body !== "object" || Array.isArray(body)) throw new PullRequestInputError("A JSON object is required.");
+      const input = body as Record<string, unknown>;
+      sendJson(response, 200, fixCi ? await sendPullRequestFixCi(input) : await sendPullRequestReviewComments(input));
+    } catch (error) {
+      const status = reviewCommentsErrorStatus(error);
+      const message = error instanceof GitHubApiError ? `GitHub could not be read (${error.reason}).` : error instanceof Error ? error.message : fixCi ? "Could not send the failing checks." : "Could not send the review comments.";
+      sendJson(response, status, { error: message });
+    }
+    return;
+  }
+
   if (path === GITHUB_PREVIEWS_ROUTE) {
     if (request.method !== "GET") {
       sendJson(response, 405, { error: "method not allowed" });
@@ -3305,9 +3670,21 @@ export async function startBackend(): Promise<void> {
   void macPower?.start((await readSettings()).power.keepAwake);
   await automation.start();
   initializeSubagents();
+  await discardStaleTemporarySessions();
+  stopAutoApprovals ??= watchAutoApprovals();
   recoverInterruptedSessions(await readRegistry());
   // Auto-star the HUI repo when GitHub is connected.
   void githubCli.starHuiRepo().catch(() => {}); // best-effort, non-blocking
+}
+
+/** Temporary risk reviews older than a day are deleted like a dismissal. */
+async function discardStaleTemporarySessions(): Promise<void> {
+  const stale = staleTemporarySessions(await readRegistry().catch(() => []), Date.now());
+  for (const record of stale) {
+    await discardTemporarySession(record.id).catch((error: unknown) => {
+      recordDiagnosticEvent({ area: "session", level: "warning", action: "temporary_session_cleanup_failed", summary: error instanceof Error ? error.message : "Could not delete a temporary session.", sessionId: record.id });
+    });
+  }
 }
 
 /** Startup recovery is eager: interrupted work resumes even when no browser
@@ -3324,6 +3701,8 @@ export function recoverInterruptedSessions(
 }
 
 export function stopBackend(): void {
+  stopAutoApprovals?.();
+  stopAutoApprovals = undefined;
   macPower?.dispose();
   managedBrowser.dispose();
   terminals.dispose();

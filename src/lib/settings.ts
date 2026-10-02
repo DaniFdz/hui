@@ -1,6 +1,7 @@
 import { normalizeAppearance, DEFAULT_APPEARANCE, type Appearance } from "./appearance.ts";
 import { DEFAULT_TERMINAL_FONT, normalizeTerminalFont } from "./terminal-font.ts";
 import { normalizeThemeMode, type ThemeMode } from "./theme.ts";
+import { isGitHubLogin } from "../../shared/pull-requests.ts";
 
 /** The whole of what the app remembers. Written to `~/.config/hui/settings.json`
  * as flat, hand-editable JSON, and normalised on the way in and out so a stale
@@ -45,6 +46,11 @@ export type Settings = {
   /** PI packages/extensions excluded before HUI's SDK worker discovers resources. */
   disabledPlugins: readonly { id: string; name: string; kind: "package" | "extension" }[];
   labs: { denseObservability: boolean; detailedDebug: boolean };
+  /** Pull Requests page: github.com accounts (logged in to `gh`) whose pull
+   * requests are listed, in selection order. Empty means `gh`'s active account. */
+  pullRequestAccounts: readonly string[];
+  /** Approve a pull request the operator assessed when its risk review reports low risk. */
+  pullRequestAutoApproveLowRisk: boolean;
 };
 
 export type BrowserSettings = {
@@ -82,6 +88,8 @@ export const DEFAULT_SETTINGS: Settings = {
   disabledSkills: [],
   disabledPlugins: [],
   labs: { denseObservability: false, detailedDebug: false },
+  pullRequestAccounts: [],
+  pullRequestAutoApproveLowRisk: false,
 };
 
 export function normalizeSettings(raw: unknown): Settings {
@@ -107,7 +115,16 @@ export function normalizeSettings(raw: unknown): Settings {
     disabledSkills: normalizeDisabledSkills(source["disabledSkills"]),
     disabledPlugins: normalizeDisabledPlugins(source["disabledPlugins"]),
     labs: normalizeLabs(source["labs"]),
+    pullRequestAccounts: normalizePullRequestAccounts(source["pullRequestAccounts"]),
+    pullRequestAutoApproveLowRisk: source["pullRequestAutoApproveLowRisk"] === true,
   };
+}
+
+/** Distinct GitHub logins, in the order given; anything else is dropped. */
+function normalizePullRequestAccounts(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const logins = value.filter((login): login is string => typeof login === "string").map((login) => login.trim()).filter(isGitHubLogin);
+  return logins.filter((login, index) => logins.findIndex((other) => other.toLowerCase() === login.toLowerCase()) === index).slice(0, 10);
 }
 
 /** Both switches are opt-out: only an explicit false changes the default. The
