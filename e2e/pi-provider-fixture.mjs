@@ -423,6 +423,25 @@ const server = createServer(async (request, response) => {
     event(response, { type: "content_block_stop", index: 0 });
     return finish(response, "tool_use");
   }
+  if (latestToolResult?.id?.startsWith("tool-e2e-watcher-")) {
+    text(response, "Watchers are running; HUI shows them in this conversation.");
+    return finish(response);
+  }
+  if (source.includes("E2E_WATCHER")) {
+    toolUse(response, "tool-e2e-watcher-quick", "watcher", {
+      action: "start",
+      purpose: "Post /merge when approved",
+      target: "https://github.com/ddoghq/web-ui/pull/21532",
+      outcome: "post /merge",
+      command: "printf 'posted /merge\\n'",
+    }, 0);
+    toolUse(response, "tool-e2e-watcher-long", "watcher", {
+      action: "start",
+      purpose: "Wait for #21532 review signals",
+      command: "printf 'watching #21532\\n'; sleep 600",
+    }, 1);
+    return finish(response, "tool_use");
+  }
   if (source.includes("E2E_SUGGEST_TASK")) {
     toolUse(response, "tool-e2e-suggest-a", "suggest_task", {
       title: "Replace native terminal switcher select with HUI picker",

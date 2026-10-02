@@ -14,6 +14,7 @@ import { CONTINUE_PROMPT } from "../src/lib/subagent-completion.ts";
 import { interruptedRunPrompt } from "./interrupted-run.ts";
 import type { SessionRecord } from "./sessions.ts";
 import type { TaskSuggestion } from "../shared/task-suggestions.ts";
+import type { Watcher } from "../shared/watchers.ts";
 import { SessionRegistryError, updateRegistry } from "./sessions.ts";
 import { piRuntime } from "./runtimes/pi.ts";
 import type {
@@ -77,6 +78,8 @@ export type SessionSnapshot = {
   subagents: readonly SubagentTaskView[];
   /** Pending `suggest_task` cards; omitted when there are none. */
   suggestions?: readonly TaskSuggestion[];
+  /** HUI-run background watchers for this conversation; omitted when none. */
+  watchers?: readonly Watcher[];
 };
 
 /** Everything a browser watching one session can receive: pi's events, and the
@@ -201,6 +204,7 @@ export class LiveSessions {
   #readSettings: () => Promise<Settings>;
   #subagentSnapshot: (parentId: string) => readonly SubagentTaskView[] = () => [];
   #suggestionSnapshot: (sessionId: string) => readonly TaskSuggestion[] = () => [];
+  #watcherSnapshot: (sessionId: string) => readonly Watcher[] = () => [];
   #aborted: (sessionId: string) => void = () => {};
 
   /** Injectable so the state machine can be exercised without waiting to boot a
@@ -291,6 +295,10 @@ export class LiveSessions {
     this.#suggestionSnapshot = provider;
   }
 
+  setWatcherProvider(provider: (sessionId: string) => readonly Watcher[]): void {
+    this.#watcherSnapshot = provider;
+  }
+
   /** Every stop (the Stop button, rewind, automations, subagents) passes here. */
   setAbortListener(listener: (sessionId: string) => void): void {
     this.#aborted = listener;
@@ -362,6 +370,7 @@ export class LiveSessions {
         questions: [],
         subagents: [...this.#subagentSnapshot(id)],
         ...this.#suggestionField(id),
+        ...this.#watcherField(id),
       };
     }
     const model = live.runtime?.currentModel?.();
@@ -376,12 +385,18 @@ export class LiveSessions {
       questions: [...live.questions.values()],
       subagents: [...this.#subagentSnapshot(id)],
       ...this.#suggestionField(id),
+      ...this.#watcherField(id),
     };
   }
 
   #suggestionField(id: string): { suggestions?: readonly TaskSuggestion[] } {
     const suggestions = this.#suggestionSnapshot(id);
     return suggestions.length ? { suggestions: [...suggestions] } : {};
+  }
+
+  #watcherField(id: string): { watchers?: readonly Watcher[] } {
+    const watchers = this.#watcherSnapshot(id);
+    return watchers.length ? { watchers: [...watchers] } : {};
   }
 
   /** Installs the listener and captures its first paint in one synchronous

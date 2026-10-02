@@ -36,7 +36,7 @@ import {
 import { PullRequestStatuses, pullRequestsFromTranscript } from "./pull-requests.ts";
 
 
-import { CONFIG_DIR, ATTACHMENTS_DIR, AUTOMATION_FILE, BROWSER_PROFILE_DIR, USER_THEME_DIR } from "./paths.ts";
+import { CONFIG_DIR, ATTACHMENTS_DIR, AUTOMATION_FILE, BROWSER_PROFILE_DIR, USER_THEME_DIR, WATCHERS_FILE, WATCHER_LOG_DIR } from "./paths.ts";
 import { BrowserToolError, ManagedBrowser } from "./browser/manager.ts";
 import { MacPower } from "./power.ts";
 import { attachBrowserTransport, browserViewTicket } from "./browser-transport.ts";
@@ -117,6 +117,7 @@ import { FIRST_YEAR as GITHUB_FIRST_YEAR, GitHubContributionsReader, latestYear 
 import { GitHubPreviews, ghApi, previewPullRequestFetcher } from "./github-previews.ts";
 import { MAX_GITHUB_EMBEDS, parseGitHubUrl } from "../shared/github-links.ts";
 import { TaskSuggestionInputError, TaskSuggestionNotFoundError, TaskSuggestionStore } from "./task-suggestions.ts";
+import { WatcherConflictError, WatcherInputError, WatcherNotFoundError, WatcherService } from "./watchers.ts";
 import {
   BacklogInputError,
   BacklogJiraFeed,
@@ -129,6 +130,7 @@ import {
 } from "./backlog.ts";
 import { backlogItemPrompt, type BacklogItem, type BacklogView } from "../shared/backlog.ts";
 import { TASK_SUGGESTION_START_MODES, taskSuggestionJiraDescription, taskSuggestionPrompt, type TaskSuggestionStartMode } from "../shared/task-suggestions.ts";
+import { WATCHER_LIMITS } from "../shared/watchers.ts";
 import { terminals, TerminalError } from "./terminals.ts";
 import { attachSessionTransport, sessionStreamTicket } from "./session-transport.ts";
 import { createSessionListHub } from "./session-list.ts";
@@ -202,6 +204,10 @@ const JIRA_ISSUES_ROUTE = `${JIRA_ROUTE}/issues`;
 /** Dismiss (DELETE), start (POST …/start) or save to the backlog (POST
  * …/backlog) one pending `suggest_task` card. */
 const SESSION_SUGGESTION = /^\/__hui\/sessions\/([^/]+)\/suggestions\/([^/]+?)(?:\/(start|backlog))?$/;
+/** A conversation's background watchers: stop (POST …/stop), restart
+ * (POST …/restart), read a bounded log tail (GET …/log) or dismiss one that
+ * is not running (DELETE). */
+const SESSION_WATCHER = /^\/__hui\/sessions\/([^/]+)\/watchers\/([^/]+?)(?:\/(stop|restart|log))?$/;
 const BACKLOG_ROUTE = `${PREFIX}backlog`;
 /** One backlog item: PATCH group, DELETE (local), POST …/start, POST
  * …/branch-name (suggested worktree name), and for local tasks POST …/jira
@@ -217,6 +223,11 @@ const HEARTBEAT_MS = 15_000;
 const piMutations = new PiMutationService();
 const subagents = new SubagentService(liveSessions);
 const taskSuggestions = new TaskSuggestionStore({ onChange: (id) => liveSessions.notifySnapshot(id) });
+const watchers = new WatcherService({
+  file: WATCHERS_FILE,
+  logDir: WATCHER_LOG_DIR,
+  onChange: (id) => liveSessions.notifySnapshot(id),
+});
 /** One managed browser per gateway; its settings are re-read on every call. */
 const managedBrowser = new ManagedBrowser({
   profileDir: BROWSER_PROFILE_DIR,
@@ -225,6 +236,7 @@ const managedBrowser = new ManagedBrowser({
 /** macOS sleep prevention lives and dies with this gateway process. */
 const macPower = process.platform === "darwin" ? new MacPower() : undefined;
 liveSessions.setTaskSuggestionProvider((id) => taskSuggestions.list(id));
+liveSessions.setWatcherProvider((id) => watchers.list(id));
 // A stopped turn must not leave its pages running in the headless browser.
 liveSessions.setAbortListener((id) => managedBrowser.closeOwner(id));
 registerAgentToolHandler(async (invocation) => {
@@ -235,6 +247,11 @@ registerAgentToolHandler(async (invocation) => {
   }
   if (invocation.action === "set_stage") {
     return setAgentStage(invocation.callerSessionId, invocation.params);
+  }
+  if (invocation.action === "watcher") {
+    const caller = (await readRegistry()).find(({ id }) => id === invocation.callerSessionId);
+    if (!caller) throw new WatcherInputError("Conversation no longer exists.");
+    return watchers.tool(caller.id, invocation.params, caller.cwd);
   }
   if (invocation.action === "terminal") {
     if (!(await readRegistry()).some(({ id }) => id === invocation.callerSessionId)) throw new TerminalError("Conversation no longer exists.", 404);
@@ -259,6 +276,22 @@ function initializeSubagents(): void {
       summary: error instanceof Error ? error.message : "Could not recover subagent state.",
     });
   });
+}
+
+/** A corrupt watcher registry must not stop the gateway, and a watcher whose
+ * conversation no longer exists is stopped and forgotten once. */
+function initializeWatchers(): void {
+  void watchers
+    .initialize()
+    .then(async () => watchers.prune(new Set((await readRegistry()).map((record) => record.id))))
+    .catch((error: unknown) => {
+      recordDiagnosticEvent({
+        area: "session",
+        level: "error",
+        action: "watcher_recovery_failed",
+        summary: error instanceof Error ? error.message : "Could not recover watchers.",
+      });
+    });
 }
 
 /** Refuse cross-origin callers. A page on any site can reach localhost, but it
@@ -1705,6 +1738,17 @@ export async function deleteSession(
     terminals.closeOwner(sessionId);
     managedBrowser.closeOwner(sessionId);
   }
+  // Watcher cleanup must not fail a deletion that already committed.
+  try {
+    await watchers.forget(tokens.keys());
+  } catch (error) {
+    recordDiagnosticEvent({
+      area: "session",
+      level: "error",
+      action: "watcher_forget_failed",
+      summary: error instanceof Error ? error.message : "Could not remove deleted conversations' watchers.",
+    });
+  }
 }
 
 export async function updateSession(
@@ -2896,6 +2940,44 @@ async function handleRequest(
     return;
   }
 
+  const watcherRoute = path.match(SESSION_WATCHER);
+  if (watcherRoute) {
+    const verb = watcherRoute[3] ?? "";
+    const method = verb === "log" ? "GET" : verb === "stop" || verb === "restart" ? "POST" : "DELETE";
+    if (request.method !== method) {
+      sendJson(response, 405, { error: "method not allowed" });
+      return;
+    }
+    const id = decodeURIComponent(watcherRoute[1] ?? "");
+    const watcherId = decodeURIComponent(watcherRoute[2] ?? "");
+    if (!(await readRegistry()).some((session) => session.id === id)) {
+      sendJson(response, 404, { error: `unknown session: ${id}` });
+      return;
+    }
+    try {
+      if (verb === "log") {
+        const requested = new URL(request.url ?? "/", "http://localhost").searchParams.get("lines");
+        const lines = requested === null ? 100 : Number(requested);
+        if (!Number.isInteger(lines) || lines < 1 || lines > WATCHER_LIMITS.logLines) {
+          sendJson(response, 400, { error: `lines must be between 1 and ${WATCHER_LIMITS.logLines}` });
+          return;
+        }
+        sendJson(response, 200, await watchers.log(id, watcherId, lines));
+        return;
+      }
+      if (verb === "stop") await watchers.stop(id, watcherId);
+      else if (verb === "restart") await watchers.restart(id, watcherId);
+      else await watchers.remove(id, watcherId);
+      sendJson(response, 200, { watchers: watchers.list(id) });
+    } catch (error) {
+      const status = error instanceof WatcherNotFoundError ? 404 : error instanceof WatcherConflictError ? 409 : 400;
+      sendJson(response, status, {
+        error: error instanceof Error ? error.message : "The watcher request failed.",
+      });
+    }
+    return;
+  }
+
   const one = path.match(SESSION_ONE);
   if (one && (request.method === "PATCH" || request.method === "DELETE")) {
     const id = decodeURIComponent(one[1] ?? "");
@@ -3304,6 +3386,7 @@ export async function startBackend(): Promise<void> {
   await ensureConfigDir();
   void macPower?.start((await readSettings()).power.keepAwake);
   await automation.start();
+  initializeWatchers();
   initializeSubagents();
   recoverInterruptedSessions(await readRegistry());
   // Auto-star the HUI repo when GitHub is connected.
@@ -3330,6 +3413,7 @@ export function stopBackend(): void {
   githubCli.dispose();
   automation.dispose();
   subagents.dispose();
+  watchers.dispose();
   stopAgentToolBridge();
   liveSessions.disposeAll();
 }
