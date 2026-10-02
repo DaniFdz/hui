@@ -1,6 +1,6 @@
 # Background watchers browser verification
 
-Date: 2026-10-02. Verified against commit `f8210ab` of
+Date: 2026-10-02. Verified against commit `2893443` of
 `dani.fernandez/show-background-pr-watchers`, launched with the repository
 visual-verification fixture (`e2e/visual-verification.mjs launch`) and driven
 with the Browser tool. Only the model provider is mocked
