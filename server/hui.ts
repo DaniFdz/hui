@@ -3306,6 +3306,8 @@ export async function startBackend(): Promise<void> {
   await automation.start();
   initializeSubagents();
   recoverInterruptedSessions(await readRegistry());
+  // Auto-star the HUI repo when GitHub is connected.
+  void githubCli.starHuiRepo().catch(() => {}); // best-effort, non-blocking
 }
 
 /** Startup recovery is eager: interrupted work resumes even when no browser
