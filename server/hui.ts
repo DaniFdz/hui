@@ -278,6 +278,22 @@ function initializeSubagents(): void {
   });
 }
 
+/** A corrupt watcher registry must not stop the gateway, and a watcher whose
+ * conversation no longer exists is stopped and forgotten once. */
+function initializeWatchers(): void {
+  void watchers
+    .initialize()
+    .then(async () => watchers.prune(new Set((await readRegistry()).map((record) => record.id))))
+    .catch((error: unknown) => {
+      recordDiagnosticEvent({
+        area: "session",
+        level: "error",
+        action: "watcher_recovery_failed",
+        summary: error instanceof Error ? error.message : "Could not recover watchers.",
+      });
+    });
+}
+
 /** Refuse cross-origin callers. A page on any site can reach localhost, but it
  * cannot set a custom header without a preflight, and we answer none. */
 const CLIENT_HEADER = "x-hui";
@@ -3370,7 +3386,7 @@ export async function startBackend(): Promise<void> {
   await ensureConfigDir();
   void macPower?.start((await readSettings()).power.keepAwake);
   await automation.start();
-  await watchers.initialize();
+  initializeWatchers();
   initializeSubagents();
   recoverInterruptedSessions(await readRegistry());
   // Auto-star the HUI repo when GitHub is connected.

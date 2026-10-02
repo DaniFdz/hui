@@ -757,11 +757,12 @@ derived from reality, never guessed: `running` only while the recorded PID is
 still the process HUI started (a reboot that reuses the PID reads dead), `done`
 or `failed` from the recorded exit status, `stopped` after an operator stop, and
 `dead` when the process is gone with no exit record. The card offers *View log*
-(and *Refresh*) for a bounded tail, *Stop* while running, and *Restart*,
-*Dismiss* and the command and log path once the watcher is settled. The
-registry lives in `~/.config/hui/watchers.json` with one log per watcher under
-`~/.config/hui/watchers/`; deleting a conversation stops and forgets its
-watchers.
+(and *Refresh*) for a bounded tail, *Stop* while running, *Restart* and
+*Dismiss* once the watcher is settled, and a disclosure with the command and
+log path. The command runs with the session's own local access; HUI does not
+sandbox it. The registry lives in `~/.config/hui/watchers.json` with one log
+per watcher under `~/.config/hui/watchers/`; deleting a conversation stops and
+forgets its watchers.
 
 The gateway re-reads the registry on start, so a watcher that survived a
 restart reappears with its state, and one killed by a reboot is shown dead

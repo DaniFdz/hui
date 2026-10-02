@@ -5,6 +5,7 @@ import { once } from "node:events";
 import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { setTimeout as delay } from "node:timers/promises";
 
 test("the watcher tool starts HUI-run processes and the guarded routes control them", async (t) => {
   const dir = await mkdtemp(join(tmpdir(), "hui-watcher-routes-"));
@@ -53,7 +54,7 @@ test("the watcher tool starts HUI-run processes and the guarded routes control t
     purpose: "Wait for #21532 approval",
     target: "https://github.com/ddoghq/web-ui/pull/21532",
     outcome: "post /merge",
-    command: "printf 'posted /merge\\n'",
+    command: "printf 'posted /merge\\n'; sleep 30",
   });
   assert.equal(started.status, 200);
   const id = started.body.result?.["id"] as string;
@@ -76,7 +77,7 @@ test("the watcher tool starts HUI-run processes and the guarded routes control t
   assert.deepEqual(await log.json(), { id, lines: ["posted /merge"], truncated: false });
   assert.equal((await route(`${base}/log?lines=0`)).status, 400);
 
-  const running = await tool("start", { purpose: "Hold the door", command: "sleep 300" });
+  const running = await tool("start", { purpose: "Hold the door", command: "sleep 30" });
   const runningId = running.body.result?.["id"] as string;
   const stopped = await route(`/__hui/sessions/alpha/watchers/${runningId}/stop`, "POST");
   assert.equal(stopped.status, 200);
@@ -101,4 +102,27 @@ test("the watcher tool starts HUI-run processes and the guarded routes control t
   assert.equal((await route(base, "DELETE")).status, 404);
   const listed = await tool("list", {});
   assert.equal((listed.body.result as { watchers: unknown[] }).watchers.length, 1);
+
+  // Deleting a conversation stops and forgets its watchers.
+  const betaEnv = await agentToolEnvironment("beta");
+  const betaStart = await fetch(`${betaEnv["HUI_AGENT_BRIDGE_URL"]}/invoke`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${betaEnv["HUI_AGENT_BRIDGE_TOKEN"]}`, "content-type": "application/json" },
+    body: JSON.stringify({ callerSessionId: "beta", action: "watcher", params: { action: "start", purpose: "Deleted with its conversation", command: "sleep 30" } }),
+  });
+  const betaWatcher = (await betaStart.json() as { result: { id: string; pid: number } }).result;
+  const deleted = await fetch(`${origin}/__hui/sessions/beta`, { method: "DELETE", headers: { "x-hui": "1" } });
+  assert.equal(deleted.status, 200);
+  for (let attempt = 0; attempt < 40 && processGroupAlive(betaWatcher.pid); attempt += 1) await delay(50);
+  assert.equal(processGroupAlive(betaWatcher.pid), false);
+  assert.equal((await route(`/__hui/sessions/beta/watchers/${betaWatcher.id}/log`)).status, 404);
 });
+
+function processGroupAlive(pid: number): boolean {
+  try {
+    process.kill(-pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}

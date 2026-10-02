@@ -34,11 +34,13 @@ export function watcherTargetLabel(target: string): string {
 }
 
 function renderWatcher(props: WatcherCardProps, watcher: Watcher) {
-  const busy = props.pendingId === watcher.id;
+  // One request at a time: every card's actions wait for it, so a silently
+  // dropped click is impossible.
+  const busy = Boolean(props.pendingId);
   const running = watcher.state === "running";
   const logOpen = props.log?.id === watcher.id;
   const state = watcherStateLabel(watcher);
-  return html`<article class="watcher watcher--${watcher.state}" data-watcher-id=${watcher.id} aria-busy=${String(busy)}>
+  return html`<article class="watcher watcher--${watcher.state}" data-watcher-id=${watcher.id} aria-busy=${String(props.pendingId === watcher.id)}>
     <div class="watcher__header">
       <span class="watcher__eyebrow"><span class="watcher__dot" aria-hidden="true"></span>Background watcher</span>
       <span class="watcher__state">${state}</span>

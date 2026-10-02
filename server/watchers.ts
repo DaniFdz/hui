@@ -2,13 +2,15 @@
  *
  * A watcher is a detached shell command that waits for an external condition
  * (pull request approval, a CI run, a deploy) and acts when it becomes true.
- * HUI starts it in its own process group, appends its output to a log and has
- * the wrapper write the exit status beside the log, so the watcher outlives
- * the gateway while HUI can still report running, done, failed, stopped or
- * dead. State is derived on every refresh: a recorded PID only counts as
- * running when it is the same process HUI started (a reboot reuses PIDs). */
+ * HUI starts it in its own process group, in the conversation's directory,
+ * appends its output to a log and has the wrapper write the exit status beside
+ * the log, so the watcher outlives the gateway while HUI can still report
+ * running, done, failed, stopped or dead. State is derived on every refresh: a
+ * recorded PID only counts as running when it is the same process HUI started
+ * (a reboot reuses PIDs). */
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { closeSync, openSync } from "node:fs";
 import { mkdir, open, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -84,11 +86,12 @@ export type WatcherServiceOptions = {
   /** How long a gone process may still be settling before it reads dead. */
   settleMs?: number;
   /** Test seam: run one detached command and return its process-group PID. */
-  launch?: (script: string, cwd: string) => number;
+  launch?: (script: string, cwd: string, logPath: string) => number;
   /** Test seam: signal a watcher's process group, tolerating a dead one. */
   signalGroup?: (pid: number, signal: NodeJS.Signals) => void;
-  /** Test seam: is the recorded PID still the process that started then? */
-  ownsProcess?: (pid: number, startedAtMs: number) => Promise<boolean>;
+  /** Test seam: is the recorded PID still the process that started then?
+   * `undefined` means the check could not answer. */
+  ownsProcess?: (pid: number, startedAtMs: number) => Promise<boolean | undefined>;
 };
 
 const quote = (value: string) => `'${value.replaceAll("'", `'\\''`)}'`;
@@ -115,6 +118,10 @@ function signalGroup(pid: number, signal: NodeJS.Signals): void {
   } catch {
     // Already gone, or not ours to signal: nothing to escalate.
   }
+}
+
+function signalGroupAlive(pid: number): boolean {
+  return signalAlive(-pid);
 }
 
 async function readTail(path: string, maxBytes: number): Promise<{ text: string; truncated: boolean }> {
@@ -148,21 +155,30 @@ async function processAgeSeconds(pid: number): Promise<number | undefined> {
   }
 }
 
-async function ownsProcess(pid: number, startedAtMs: number): Promise<boolean> {
+async function ownsProcess(pid: number, startedAtMs: number): Promise<boolean | undefined> {
   if (!signalAlive(pid)) return false;
   const age = await processAgeSeconds(pid);
-  if (age === undefined) return false;
+  if (age === undefined) return undefined;
   return Math.abs(age - (Date.now() - startedAtMs) / 1_000) <= OWN_TOLERANCE_SECONDS;
 }
 
-function launchDetached(script: string, cwd: string): number {
+function launchDetached(script: string, cwd: string, logPath: string): number {
+  // The child's stdio points at the log too, so a shell-level error that never
+  // reaches the script's own redirection still lands there.
+  let log: number | undefined;
+  try {
+    log = openSync(logPath, "a", 0o600);
+  } catch {
+    log = undefined;
+  }
   const child: ChildProcess = spawn("/bin/sh", ["-c", script], {
     detached: true,
-    stdio: "ignore",
+    stdio: ["ignore", log ?? "ignore", log ?? "ignore"],
     ...(cwd ? { cwd } : {}),
     // The gateway's own agent-tool credentials must not reach watcher commands.
     env: Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith("HUI_AGENT_"))),
   });
+  if (log !== undefined) closeSync(log);
   // A missing shell would otherwise emit an unhandled error event.
   child.on("error", () => undefined);
   const pid = child.pid;
@@ -225,11 +241,17 @@ export class WatcherService {
   readonly #uuid: () => string;
   readonly #pollMs: number;
   readonly #settleMs: number;
-  readonly #launch: (script: string, cwd: string) => number;
+  readonly #launch: (script: string, cwd: string, logPath: string) => number;
   readonly #signalGroup: (pid: number, signal: NodeJS.Signals) => void;
-  readonly #ownsProcess: (pid: number, startedAtMs: number) => Promise<boolean>;
+  readonly #ownsProcess: (pid: number, startedAtMs: number) => Promise<boolean | undefined>;
   #records = new Map<string, WatcherRecord>();
   #views = new Map<string, Watcher>();
+  /** One mutation chain per watcher, so a card and an agent cannot stop,
+   * restart or dismiss the same watcher twice. */
+  #locks = new Map<string, Promise<unknown>>();
+  /** Bumped by every mutation; a poll whose generation changed meanwhile
+   * discards its stale view instead of overwriting the mutation's. */
+  #versions = new Map<string, number>();
   #mutation = Promise.resolve();
   #timer: ReturnType<typeof setInterval> | undefined;
   #polling = false;
@@ -243,19 +265,21 @@ export class WatcherService {
     this.#uuid = options.uuid ?? randomUUID;
     this.#pollMs = options.pollMs ?? DEFAULT_POLL_MS;
     this.#settleMs = options.settleMs ?? DEFAULT_SETTLE_MS;
-    this.#launch = options.launch ?? ((script, cwd) => launchDetached(script, cwd));
+    this.#launch = options.launch ?? ((script, cwd, logPath) => launchDetached(script, cwd, logPath));
     this.#signalGroup = options.signalGroup ?? signalGroup;
     this.#ownsProcess = options.ownsProcess ?? ownsProcess;
   }
 
-  /** Loads the registry, reconciles it with reality and starts polling. */
+  /** Loads the registry, reconciles it with reality and starts polling. A
+   * failed read keeps the service unstarted so a later attempt can retry. */
   async initialize(): Promise<void> {
     if (this.#started) return;
-    this.#started = true;
-    for (const record of await this.#read()) {
+    const records = await this.#read();
+    for (const record of records) {
       this.#records.set(record.id, record);
       this.#views.set(record.id, await this.#refresh(record));
     }
+    this.#started = true;
     this.#timer = setInterval(() => void this.#poll(), this.#pollMs);
     this.#timer.unref?.();
   }
@@ -285,100 +309,114 @@ export class WatcherService {
   }
 
   async start(sessionId: string, params: Record<string, unknown>, cwd = process.cwd()): Promise<Watcher> {
-    const purpose = text(params["purpose"], "purpose", WATCHER_LIMITS.purpose);
-    const command = text(params["command"], "command", WATCHER_LIMITS.command);
-    const target = text(params["target"], "target", WATCHER_LIMITS.target, true);
-    const outcome = text(params["outcome"], "outcome", WATCHER_LIMITS.outcome, true);
-    if (target && !/^https?:\/\/\S+$/u.test(target)) {
-      throw new WatcherInputError("target must be an http(s) URL.");
-    }
-    const directory = await stat(cwd).catch(() => undefined);
-    if (!directory?.isDirectory()) throw new WatcherInputError(`The conversation's directory is unavailable: ${cwd}`);
-    if (this.list(sessionId).length >= WATCHER_LIMITS.perSession) {
-      throw new WatcherInputError(`This conversation already has ${WATCHER_LIMITS.perSession} watchers. Dismiss finished ones first.`);
-    }
-    const id = this.#uuid();
-    await mkdir(this.#logDir, { recursive: true });
-    const record: WatcherRecord = {
-      id,
-      sessionId,
-      cwd,
-      purpose,
-      target,
-      outcome,
-      command,
-      logPath: join(this.#logDir, `${id}.log`),
-      pid: 0,
-      startedAt: new Date(this.#now()).toISOString(),
-    };
-    // The command may print secrets; create its log private before the shell
-    // appends to it.
-    await writeFile(record.logPath, "", { flag: "a", mode: 0o600 });
-    record.pid = this.#launch(watcherScript(command, record.logPath, this.#exitPath(id)), record.cwd);
-    // The view lands before the record so a poll cannot observe a record with
-    // no view and report a spurious state change.
-    this.#views.set(id, await this.#refresh(record));
-    this.#records.set(id, record);
-    try {
-      await this.#write();
-    } catch (error) {
-      // An unpersisted watcher would become invisible after a restart.
-      this.#records.delete(id);
-      this.#views.delete(id);
-      this.#signalGroup(record.pid, "SIGKILL");
-      throw error;
-    }
-    this.#onChange(sessionId);
-    return this.#view(id);
+    // One start at a time per conversation, so two calls cannot both pass the
+    // per-conversation cap.
+    return this.#lock(`session:${sessionId}`, async () => {
+      const purpose = text(params["purpose"], "purpose", WATCHER_LIMITS.purpose);
+      const command = text(params["command"], "command", WATCHER_LIMITS.command);
+      const target = text(params["target"], "target", WATCHER_LIMITS.target, true);
+      const outcome = text(params["outcome"], "outcome", WATCHER_LIMITS.outcome, true);
+      if (target && !/^https?:\/\/\S+$/u.test(target)) {
+        throw new WatcherInputError("target must be an http(s) URL.");
+      }
+      const directory = await stat(cwd).catch(() => undefined);
+      if (!directory?.isDirectory()) throw new WatcherInputError(`The conversation's directory is unavailable: ${cwd}`);
+      if (this.list(sessionId).length >= WATCHER_LIMITS.perSession) {
+        throw new WatcherInputError(`This conversation already has ${WATCHER_LIMITS.perSession} watchers. Dismiss finished ones first.`);
+      }
+      const id = this.#uuid();
+      await mkdir(this.#logDir, { recursive: true });
+      const record: WatcherRecord = {
+        id,
+        sessionId,
+        cwd,
+        purpose,
+        target,
+        outcome,
+        command,
+        logPath: join(this.#logDir, `${id}.log`),
+        pid: 0,
+        startedAt: new Date(this.#now()).toISOString(),
+      };
+      // The command may print secrets; create its log private before the shell
+      // appends to it.
+      await writeFile(record.logPath, "", { flag: "a", mode: 0o600 });
+      record.pid = this.#launch(watcherScript(command, record.logPath, this.#exitPath(id)), record.cwd, record.logPath);
+      // The view lands before the record so a poll cannot observe a record with
+      // no view and report a spurious state change.
+      this.#views.set(id, await this.#refresh(record));
+      this.#records.set(id, record);
+      this.#bump(id);
+      try {
+        await this.#write();
+      } catch (error) {
+        // An unpersisted watcher would become invisible after a restart.
+        this.#records.delete(id);
+        this.#views.delete(id);
+        this.#signalGroup(record.pid, "SIGKILL");
+        throw error;
+      }
+      this.#onChange(sessionId);
+      return this.#view(id);
+    });
   }
 
   async stop(sessionId: string, id: string): Promise<Watcher> {
-    const record = this.#require(sessionId, id);
-    if (this.#view(id).state !== "running") return this.#view(id);
-    const startedAtMs = Date.parse(record.startedAt);
-    if (await this.#ownsProcess(record.pid, startedAtMs)) {
-      this.#signalGroup(record.pid, "SIGTERM");
-      const deadline = this.#now() + STOP_GRACE_MS;
-      while (this.#now() < deadline && await this.#ownsProcess(record.pid, startedAtMs)) {
-        await delay(STOP_POLL_MS);
-      }
-      if (await this.#ownsProcess(record.pid, startedAtMs)) this.#signalGroup(record.pid, "SIGKILL");
-    }
-    record.stoppedAt = new Date(this.#now()).toISOString();
-    this.#views.set(id, await this.#refresh(record));
-    await this.#write();
-    this.#onChange(sessionId);
-    return this.#view(id);
+    return this.#lock(id, async () => {
+      const record = this.#require(sessionId, id);
+      this.#bump(id);
+      const current = await this.#refresh(record);
+      this.#views.set(id, current);
+      if (current.state !== "running") return current;
+      await this.#terminate(record);
+      // A stop that raced the command's own exit keeps that outcome.
+      if (!await this.#readExit(id)) record.stoppedAt = new Date(this.#now()).toISOString();
+      const view = await this.#refresh(record);
+      this.#views.set(id, view);
+      await this.#write();
+      this.#onChange(sessionId);
+      return view;
+    });
   }
 
   async restart(sessionId: string, id: string): Promise<Watcher> {
-    const record = this.#require(sessionId, id);
-    if (this.#view(id).state === "running") {
-      throw new WatcherConflictError("Stop the watcher before restarting it.");
-    }
-    await rm(this.#exitPath(id), { force: true });
-    delete record.stoppedAt;
-    record.pid = this.#launch(watcherScript(record.command, record.logPath, this.#exitPath(id)), record.cwd);
-    record.startedAt = new Date(this.#now()).toISOString();
-    this.#views.set(id, await this.#refresh(record));
-    await this.#write();
-    this.#onChange(sessionId);
-    return this.#view(id);
+    return this.#lock(id, async () => {
+      const record = this.#require(sessionId, id);
+      this.#bump(id);
+      const current = await this.#refresh(record);
+      this.#views.set(id, current);
+      if (current.state === "running") {
+        throw new WatcherConflictError("Stop the watcher before restarting it.");
+      }
+      await rm(this.#exitPath(id), { force: true });
+      delete record.stoppedAt;
+      record.pid = this.#launch(watcherScript(record.command, record.logPath, this.#exitPath(id)), record.cwd, record.logPath);
+      record.startedAt = new Date(this.#now()).toISOString();
+      this.#views.set(id, await this.#refresh(record));
+      await this.#write();
+      this.#onChange(sessionId);
+      return this.#view(id);
+    });
   }
 
   async remove(sessionId: string, id: string): Promise<void> {
-    const record = this.#require(sessionId, id);
-    if (this.#view(id).state === "running") {
-      throw new WatcherConflictError("Stop the watcher before dismissing it.");
-    }
-    this.#records.delete(id);
-    this.#views.delete(id);
-    await Promise.all([
-      rm(this.#exitPath(record.id), { force: true }),
-      rm(record.logPath, { force: true }),
-    ]);
-    await this.#write();
-    this.#onChange(sessionId);
+    return this.#lock(id, async () => {
+      const record = this.#require(sessionId, id);
+      this.#bump(id);
+      const current = await this.#refresh(record);
+      if (current.state === "running") {
+        throw new WatcherConflictError("Stop the watcher before dismissing it.");
+      }
+      this.#records.delete(id);
+      this.#views.delete(id);
+      this.#versions.delete(id);
+      await Promise.all([
+        rm(this.#exitPath(record.id), { force: true }),
+        rm(record.logPath, { force: true }),
+      ]);
+      await this.#write();
+      this.#onChange(sessionId);
+    });
   }
 
   async log(sessionId: string, id: string, lines = 100): Promise<{ id: string; lines: string[]; truncated: boolean }> {
@@ -398,23 +436,33 @@ export class WatcherService {
   /** Deleted conversations take their watchers with them. */
   async forget(sessionIds: Iterable<string>): Promise<void> {
     const gone = new Set(sessionIds);
-    const removed: WatcherRecord[] = [];
-    for (const record of this.#records.values()) {
-      if (!gone.has(record.sessionId)) continue;
-      const view = this.#view(record.id);
-      if (view.state === "running" && await this.#ownsProcess(record.pid, Date.parse(record.startedAt))) {
-        this.#signalGroup(record.pid, "SIGTERM");
-      }
-      removed.push(record);
-      this.#records.delete(record.id);
-      this.#views.delete(record.id);
+    const records = [...this.#records.values()].filter((record) => gone.has(record.sessionId));
+    if (!records.length) return;
+    for (const record of records) {
+      await this.#lock(record.id, async () => {
+        this.#bump(record.id);
+        const current = await this.#refresh(record);
+        if (current.state === "running") await this.#terminate(record);
+        this.#records.delete(record.id);
+        this.#views.delete(record.id);
+        this.#versions.delete(record.id);
+        await Promise.all([
+          rm(this.#exitPath(record.id), { force: true }),
+          rm(record.logPath, { force: true }),
+        ]);
+      });
     }
-    if (!removed.length) return;
-    await Promise.all(removed.flatMap((record) => [
-      rm(this.#exitPath(record.id), { force: true }),
-      rm(record.logPath, { force: true }),
-    ]));
     await this.#write();
+  }
+
+  /** Watchers whose conversation is gone (a crash between delete and cleanup)
+   * are stopped and forgotten at gateway start. */
+  async prune(knownSessionIds: ReadonlySet<string>): Promise<void> {
+    const gone = new Set<string>();
+    for (const record of this.#records.values()) {
+      if (!knownSessionIds.has(record.sessionId)) gone.add(record.sessionId);
+    }
+    await this.forget(gone);
   }
 
   /** Stops polling; running watchers keep running. */
@@ -424,14 +472,29 @@ export class WatcherService {
     this.#started = false;
   }
 
+  #lock<T>(key: string, run: () => Promise<T>): Promise<T> {
+    const previous = this.#locks.get(key) ?? Promise.resolve();
+    const operation = previous.then(run, run);
+    this.#locks.set(key, operation.then(() => undefined, () => undefined));
+    return operation;
+  }
+
+  #bump(id: string): void {
+    this.#versions.set(id, (this.#versions.get(id) ?? 0) + 1);
+  }
+
   async #poll(): Promise<void> {
     if (this.#polling) return;
     this.#polling = true;
     try {
       const changed = new Set<string>();
-      for (const record of this.#records.values()) {
+      for (const record of [...this.#records.values()]) {
+        const version = this.#versions.get(record.id) ?? 0;
         const before = this.#views.get(record.id);
         const view = await this.#refresh(record);
+        // A mutation that started while this refresh ran owns the newer view,
+        // and a removed record must not be resurrected.
+        if (this.#records.get(record.id) !== record || (this.#versions.get(record.id) ?? 0) !== version) continue;
         this.#views.set(record.id, view);
         // The card shows the latest line too, so new output is a change.
         if (view.state !== before?.state || view.lastLine !== before?.lastLine) changed.add(record.sessionId);
@@ -440,6 +503,16 @@ export class WatcherService {
     } finally {
       this.#polling = false;
     }
+  }
+
+  /** SIGTERM the whole process group, then SIGKILL it if anything survives. */
+  async #terminate(record: WatcherRecord): Promise<void> {
+    // Never signal a PID that is not the process HUI started.
+    if (await this.#ownsProcess(record.pid, Date.parse(record.startedAt)) === false) return;
+    this.#signalGroup(record.pid, "SIGTERM");
+    const deadline = this.#now() + STOP_GRACE_MS;
+    while (this.#now() < deadline && signalGroupAlive(record.pid)) await delay(STOP_POLL_MS);
+    if (signalGroupAlive(record.pid)) this.#signalGroup(record.pid, "SIGKILL");
   }
 
   async #refresh(record: WatcherRecord): Promise<Watcher> {
@@ -453,12 +526,14 @@ export class WatcherService {
     } else if (exit) {
       state = exit.code === 0 ? "done" : "failed";
       endedAt = exit.at;
-    } else if (await this.#ownsProcess(record.pid, Date.parse(record.startedAt))) {
-      state = "running";
     } else {
+      const owns = await this.#ownsProcess(record.pid, Date.parse(record.startedAt));
       // The wrapper writes the exit record just after the command; a process
       // that is already gone this soon may not have written it yet.
-      state = this.#now() - Date.parse(record.startedAt) < this.#settleMs ? "running" : "dead";
+      const settling = this.#now() - Date.parse(record.startedAt) < this.#settleMs;
+      // An unanswered ownership check keeps the previous claim rather than
+      // reporting a live watcher dead.
+      state = owns === false && !settling ? "dead" : "running";
     }
     return {
       id: record.id,
@@ -561,7 +636,7 @@ export class WatcherService {
       try {
         await mkdir(dirname(this.#file), { recursive: true });
         const temporary = `${this.#file}.${process.pid}-${randomUUID().slice(0, 8)}.tmp`;
-        await writeFile(temporary, `${JSON.stringify(file, null, 2)}\n`, "utf8");
+        await writeFile(temporary, `${JSON.stringify(file, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
         await rename(temporary, this.#file);
       } catch (error) {
         throw new WatcherStoreError("HUI's watcher registry could not be written.", { cause: error });

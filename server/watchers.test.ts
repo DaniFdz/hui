@@ -25,6 +25,15 @@ async function waitFor(check: () => boolean, timeoutMs = 8_000): Promise<void> {
   assert.fail("condition was not reached before the timeout");
 }
 
+function processGroupAlive(pid: number): boolean {
+  try {
+    process.kill(-pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function fixture(t: { after: (fn: () => Promise<void> | void) => void }, options: Partial<WatcherServiceOptions> = {}) {
   const dir = await mkdtemp(join(tmpdir(), "hui-watchers-"));
   const changes: string[] = [];
@@ -109,16 +118,25 @@ test("a recorded PID that is not the started process is dead, not running", asyn
   assert.equal(watcherStateLabel(watcher), "Dead · no exit recorded");
 });
 
-test("stop kills the process group and reports stopped", async (t) => {
+test("stop kills the whole process group and reports stopped", async (t) => {
   const { service } = await fixture(t);
-  const watcher = await service.start("alpha", { purpose: "Long wait", command: "sleep 300" });
+  const watcher = await service.start("alpha", { purpose: "Long wait", command: "sleep 30" });
   const pid = watcher.pid!;
   const stopped = await service.stop("alpha", watcher.id);
   assert.equal(stopped.state, "stopped");
   assert.ok(stopped.endedAt);
-  assert.throws(() => process.kill(pid, 0));
+  await waitFor(() => !processGroupAlive(pid));
   // Stopping an already settled watcher changes nothing.
   assert.equal((await service.stop("alpha", watcher.id)).state, "stopped");
+});
+
+test("a watcher that ignores SIGTERM is killed with SIGKILL", async (t) => {
+  const { service } = await fixture(t);
+  const watcher = await service.start("alpha", { purpose: "Stubborn", command: "trap '' TERM; while true; do sleep 1; done" });
+  const pid = watcher.pid!;
+  const stopped = await service.stop("alpha", watcher.id);
+  assert.equal(stopped.state, "stopped");
+  await waitFor(() => !processGroupAlive(pid));
 });
 
 test("restart respawns a settled watcher and is refused while running", async (t) => {
@@ -131,7 +149,7 @@ test("restart respawns a settled watcher and is refused while running", async (t
   await waitFor(() => service.list("alpha")[0]?.state === "done");
   assert.equal(service.list("alpha")[0]?.lastLine, "first");
 
-  const running = await service.start("alpha", { purpose: "Busy", command: "sleep 300" });
+  const running = await service.start("alpha", { purpose: "Busy", command: "sleep 30" });
   await assert.rejects(service.restart("alpha", running.id), WatcherConflictError);
   await service.stop("alpha", running.id);
 });
@@ -145,7 +163,7 @@ test("remove deletes a settled watcher and its files, but never a running one", 
   assert.deepEqual(service.list("alpha"), []);
   await assert.rejects(readFile(watcher.logPath, "utf8"), /ENOENT/u);
 
-  const running = await service.start("alpha", { purpose: "Still running", command: "sleep 300" });
+  const running = await service.start("alpha", { purpose: "Still running", command: "sleep 30" });
   await assert.rejects(service.remove("alpha", running.id), WatcherConflictError);
   await service.stop("alpha", running.id);
 });
@@ -244,13 +262,63 @@ test("log returns a bounded tail and forget takes a deleted conversation's watch
   assert.equal(log.truncated, true);
   assert.equal(service.list("alpha")[0]?.lastLine, "300");
 
-  const runner = await service.start("alpha", { purpose: "Forgotten", command: "sleep 300" });
+  const runner = await service.start("alpha", { purpose: "Forgotten", command: "sleep 30" });
   const pid = runner.pid!;
   await service.forget(["alpha"]);
   assert.deepEqual(service.list("alpha"), []);
-  assert.throws(() => process.kill(pid, 0));
+  await waitFor(() => !processGroupAlive(pid));
   const stored = JSON.parse(await readFile(join(watcher.logPath, "..", "..", "watchers.json"), "utf8")) as { watchers: unknown[] };
   assert.deepEqual(stored.watchers, []);
+});
+
+test("a corrupt registry fails initialize without starting, and a retry recovers", async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "hui-watchers-corrupt-"));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const file = join(dir, "watchers.json");
+  await writeFile(file, "not json");
+  const service = new WatcherService({ file, logDir: join(dir, "logs"), ownsProcess: async () => false, signalGroup: () => {} });
+  t.after(() => service.dispose());
+  await assert.rejects(service.initialize(), WatcherStoreError);
+  await writeFile(file, JSON.stringify({ version: 1, watchers: [] }));
+  await service.initialize();
+  assert.deepEqual(service.list("alpha"), []);
+});
+
+test("concurrent restarts launch one process and the second is refused", async (t) => {
+  const { service } = await fixture(t);
+  const watcher = await service.start("alpha", { purpose: "Contended", command: "sleep 30" });
+  await service.stop("alpha", watcher.id);
+  const results = await Promise.allSettled([
+    service.restart("alpha", watcher.id),
+    service.restart("alpha", watcher.id),
+  ]);
+  assert.equal(results.filter((result) => result.status === "fulfilled").length, 1);
+  const rejected = results.find((result) => result.status === "rejected") as PromiseRejectedResult;
+  assert.ok(rejected.reason instanceof WatcherConflictError);
+  await service.stop("alpha", watcher.id);
+});
+
+test("concurrent starts cannot exceed the per-conversation cap", async (t) => {
+  const { service } = await fixture(t, { launch: () => 424_242, ownsProcess: async () => false, signalGroup: () => {}, settleMs: 0 });
+  for (let index = 0; index < 9; index += 1) await service.start("alpha", { purpose: `Existing ${index}`, command: "sleep 1" });
+  const results = await Promise.allSettled([
+    service.start("alpha", { purpose: "Tenth", command: "sleep 1" }),
+    service.start("alpha", { purpose: "Eleventh", command: "sleep 1" }),
+  ]);
+  assert.equal(results.filter((result) => result.status === "fulfilled").length, 1);
+  assert.equal(service.list("alpha").length, 10);
+});
+
+test("prune stops and forgets watchers whose conversation is gone", async (t) => {
+  const { service } = await fixture(t);
+  const kept = await service.start("alpha", { purpose: "Kept", command: "sleep 30" });
+  const orphan = await service.start("beta", { purpose: "Orphan", command: "sleep 30" });
+  const orphanPid = orphan.pid!;
+  await service.prune(new Set(["alpha"]));
+  assert.deepEqual(service.list("beta"), []);
+  assert.deepEqual(service.list("alpha").map(({ id }) => id), [kept.id]);
+  await waitFor(() => !processGroupAlive(orphanPid));
+  await service.stop("alpha", kept.id);
 });
 
 test("watcherScript quotes paths and records the command's status", () => {
