@@ -13,7 +13,9 @@ import {
   type AgentEvent, type AgentState, type CompactionResult, type Conversation, type ConversationId, type Cursor,
   type EntryId, type EntryRecord, type Harness, type TaskId,
 } from "@earendil-works/pi-durable";
-import { calculateContextTokens, estimateTokens, SettingsManager } from "@earendil-works/pi-coding-agent";
+// The estimators Durable's own compaction uses, so the meter matches its thresholds.
+import { calculateContextTokens, estimateMessageTokens } from "@earendil-works/pi-ai/utils/estimate";
+import { SettingsManager } from "@earendil-works/pi-coding-agent";
 import { resolveCommandReference } from "../../src/lib/command-references.ts";
 import type { RuntimeInspection } from "../../src/lib/tools-types.ts";
 import { durableContext as context, durableHost, type DurableHost } from "./durable-host.ts";
@@ -268,7 +270,7 @@ export class DurableSession implements RuntimeSession {
         if (!inContext(message)) continue;
         const usage = message.role === "assistant" ? message.usage : undefined;
         if (usage && (!head || entry.id > head.id) && calculateContextTokens(usage) > 0) return tokens + calculateContextTokens(usage);
-        tokens += estimateTokens(message);
+        tokens += estimateMessageTokens(message);
       }
     }
     return tokens;

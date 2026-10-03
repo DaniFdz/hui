@@ -17,7 +17,10 @@ const configDir = await mkdtemp(join(tmpdir(), "hui-durable-config-"));
 process.env["XDG_CONFIG_HOME"] = configDir;
 after(() => rm(configDir, { recursive: true, force: true }));
 const { DurableHost, durableContext } = await import("./durable-host.ts");
-const { estimateTokens } = await import("@earendil-works/pi-coding-agent");
+// The estimate Durable's compaction thresholds use; the package root does not export it.
+const { estimateContext } = await import(new URL("./harness/compaction.js", import.meta.resolve("@earendil-works/pi-durable")).href) as {
+  estimateContext(view: unknown, extra: readonly unknown[]): number;
+};
 const { durableConversationId, durableReference, startDurable } = await import("./durable.ts");
 type DurableHost = import("./durable-host.ts").DurableHost;
 
@@ -324,10 +327,13 @@ test("the context meter is Durable's own estimate, system prompt included", { ti
   await session.prompt("E2E_ERROR after the summary");
   await settled;
   const conversation = await (await host.open()).conversation(durableConversationId(session.sessionFile)!, durableContext);
-  const view = await conversation!.context(durableContext);
+  let view = await conversation!.context(durableContext);
   assert(view.messages.some((message) => message.role === "system"), "Durable re-baselined its system prompt");
-  const expected = view.messages.reduce((total, message) => total + estimateTokens(message), 0);
-  assert.equal(session.currentUsage()?.contextTokens, expected);
+  assert.equal(session.currentUsage()?.contextTokens, estimateContext(view, []), "unmeasured: estimates of the whole context");
+  // An answered request after the summary measures the context; what follows it is estimated.
+  await turns(session, ["AFTER_ERROR answered"]);
+  view = await conversation!.context(durableContext);
+  assert.equal(session.currentUsage()?.contextTokens, estimateContext(view, []), "measured by the newest answer");
 });
 
 test("a requested compaction with nothing old enough to summarize says so", { timeout: 45_000 }, async (t) => {
