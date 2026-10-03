@@ -155,12 +155,15 @@ export type TranscriptEntry = { metrics?: TranscriptMetrics } & (
   | {
       kind: "message";
       id?: string;
+      /** PI session entry the message came from; the rewind target. */
+      entryId?: string;
       role: "user" | "assistant";
       text: string;
       attachments?: readonly (string | TranscriptAttachment)[];
       pending?: boolean;
       failed?: boolean;
     }
+  | { kind: "compaction"; id?: string; summary: string; tokensBefore: number }
   | { kind: "thinking"; id?: string; text: string }
   | {
       kind: "tool";
@@ -191,16 +194,6 @@ export type RuntimeUsage = {
   costUsd: number | null;
 };
 
-export type RuntimeCheckpoint = {
-  key: string;
-  id: string;
-  kind: "user" | "assistant" | "thinking" | "tool" | "toolResult" | "summary";
-  label: string;
-  detail: string;
-  timestamp?: string;
-  current: boolean;
-};
-
 /**
  * An attachment held in the browser before sending. `dataBase64` is the raw
  * payload; the server decides what to do with it per kind.
@@ -225,6 +218,8 @@ export type RuntimeEvent =
   | { type: "thinking_level"; level: string }
   | { type: "turn_start" }
   | { type: "turn_end" }
+  | { type: "compaction_start"; reason: RuntimeCompaction["reason"] }
+  | { type: "compaction_end"; reason: RuntimeCompaction["reason"]; outcome: "done" | "failed" | "cancelled"; willRetry: boolean; message?: string }
   | { type: "settled"; historyRefreshed?: boolean }
   | { type: "error"; message: string };
 
@@ -234,7 +229,8 @@ export type RuntimeEvent =
  * additions that keep their place in the conversation.
  */
 export type TranscriptItem = { metrics?: TranscriptMetrics } & (
-  | { kind: "message"; id: string; role: "user" | "assistant"; text: string; attachments?: readonly (string | TranscriptAttachment)[]; pending?: boolean; failed?: boolean }
+  | { kind: "message"; id: string; entryId?: string; role: "user" | "assistant"; text: string; attachments?: readonly (string | TranscriptAttachment)[]; pending?: boolean; failed?: boolean }
+  | { kind: "compaction"; id: string; summary: string; tokensBefore: number }
   | { kind: "thinking"; id: string; text: string }
   | { kind: "tool"; id: string; name: string; args?: unknown; output?: string; details?: unknown; failed?: boolean; status?: "running" | "succeeded" | "failed" }
   | { kind: "error"; id: string; text: string });
@@ -270,7 +266,12 @@ export type SessionSnapshot = {
   suggestions?: TaskSuggestion[];
   /** HUI-run background watchers; absent when there are none. */
   watchers?: Watcher[];
+  /** A running compaction, or one that ended without a summary. */
+  compaction?: RuntimeCompaction;
 };
+
+/** Mirrors the server's RuntimeCompaction. */
+export type RuntimeCompaction = { status: "running" | "failed" | "cancelled"; reason: "manual" | "threshold" | "overflow"; message?: string };
 
 export function toTranscriptItems(entries: readonly TranscriptEntry[]): TranscriptItem[] {
   return entries.map((entry, index) => ({ ...entry, id: entry.id ?? `history-${index}` })) as TranscriptItem[];
@@ -283,6 +284,7 @@ export function transcriptAsMarkdown(items: readonly TranscriptItem[]): string {
     if (item.kind === "message") return `## ${item.role === "user" ? "User" : "Assistant"}\n\n${item.text}`;
     if (item.kind === "thinking") return `### Thinking\n\n${item.text}`;
     if (item.kind === "error") return `### Error\n\n${item.text}`;
+    if (item.kind === "compaction") return `### Context compacted\n\n${item.summary}`;
     const details = item.output || (item.args === undefined ? "" : JSON.stringify(item.args, null, 2));
     return `### Tool: ${item.name}${details ? `\n\n\`\`\`\n${details}\n\`\`\`` : ""}`;
   }).join("\n\n").trim();
@@ -492,6 +494,15 @@ export async function reloadSession(id: string): Promise<void> {
   });
 }
 
+/** Starts PI's summary of older context; compaction events report the outcome. */
+export async function compactSession(id: string, instructions?: string): Promise<void> {
+  await fetchJson<{ ok?: boolean }>(`${SESSIONS_URL}/${encodeURIComponent(id)}/compact`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(instructions ? { instructions } : {}),
+  });
+}
+
 export async function clearSession(id: string): Promise<SessionSnapshot> {
   const body = await fetchJson<{ snapshot?: SessionSnapshot }>(
     `${SESSIONS_URL}/${encodeURIComponent(id)}/clear`,
@@ -600,18 +611,14 @@ export async function abortSession(id: string): Promise<void> {
   });
 }
 
-export async function loadSessionCheckpoints(id: string): Promise<RuntimeCheckpoint[]> {
-  const body = await fetchJson<{ checkpoints?: RuntimeCheckpoint[] }>(
-    `${SESSIONS_URL}/${encodeURIComponent(id)}/checkpoints`,
-  );
-  return body.checkpoints ?? [];
-}
+/** A PI entry id, or a user message not yet shown with one, counted from the end. */
+export type RewindTarget = string | { userFromEnd: number };
 
-export async function rewindSession(id: string, entryId: string, excludeUserMessage = false): Promise<void> {
+export async function rewindSession(id: string, target: RewindTarget, excludeUserMessage = false): Promise<void> {
   await fetchJson<{ ok?: boolean }>(`${SESSIONS_URL}/${encodeURIComponent(id)}/rewind`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ entryId, excludeUserMessage }),
+    body: JSON.stringify({ ...(typeof target === "string" ? { entryId: target } : target), excludeUserMessage }),
   });
 }
 

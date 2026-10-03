@@ -39,7 +39,7 @@ browser ──HTTP + fetch/SSE──> HUI gateway ──JSONL stdin/stdout──
    waits for `get_state`, records `sessionId`/`sessionFile`, and then announces
    `idle`. PI normally needs several seconds, so `starting` is a real state.
 3. Opening a cold session starts PI with `--session <file>`, then calls
-   `get_messages` to rebuild the transcript. A gateway restart loses processes,
+   `get_entries` to rebuild the transcript from the active branch. A gateway restart loses processes,
    not conversations; the next open resumes the PI file.
 4. Prompts go through the HUI HTTP API. PI events are normalized by the runtime
    adapter and streamed to the browser over authenticated fetch-based SSE.

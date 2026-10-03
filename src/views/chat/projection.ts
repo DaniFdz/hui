@@ -2,11 +2,14 @@ import type { TranscriptItem } from "../../lib/sessions-store.ts";
 import { parseSubagentCompletionEvent, type SubagentCompletionItem } from "../../lib/subagent-completion.ts";
 
 export type ChatMessage = Extract<TranscriptItem, { kind: "message" }>;
-export type ChatActivity = Exclude<TranscriptItem, { kind: "message" }> | ChatMessage;
+export type ChatCompaction = Extract<TranscriptItem, { kind: "compaction" }>;
+export type ChatActivity = Exclude<TranscriptItem, { kind: "message" | "compaction" }> | ChatMessage;
 
 export type ChatProjectionRow =
   | { kind: "messages"; id: string; role: ChatMessage["role"]; messages: readonly ChatMessage[] }
   | { kind: "activity"; id: string; items: readonly ChatActivity[] }
+  /** Where PI summarized the history above; it stays visible and rewindable. */
+  | { kind: "compaction"; id: string; item: ChatCompaction }
   /** A HUI-injected subagent completion: a system event, never a user turn. */
   | { kind: "subagentEvent"; id: string; items: readonly SubagentCompletionItem[] };
 
@@ -23,7 +26,7 @@ export function projectChatTranscript(
   liveLastTurn = false,
 ): ChatProjectionRow[] {
   const rows: ChatProjectionRow[] = [];
-  let assistantTurn: TranscriptItem[] = [];
+  let assistantTurn: ChatActivity[] = [];
 
   const pushActivity = (items: readonly ChatActivity[]) => {
     let ordinary: ChatActivity[] = [];
@@ -91,6 +94,11 @@ export function projectChatTranscript(
       } else {
         rows.push({ kind: "messages", id: item.id, role: "user", messages: [item] });
       }
+      continue;
+    }
+    if (item.kind === "compaction") {
+      flushCompletedAssistantTurn();
+      rows.push({ kind: "compaction", id: item.id, item });
       continue;
     }
     assistantTurn.push(item);

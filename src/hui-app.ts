@@ -23,13 +23,14 @@ import {
   loadGitCheckout,
   loadModels,
   loadCommands,
-  loadSessionCheckpoints,
   mutateQueuedMessage,
   loadSessions,
   openSession,
   renameSession,
   resumeSession,
   rewindSession,
+  type RewindTarget,
+  compactSession,
   sendPrompt,
   setSessionThinking,
   steerSession,
@@ -43,6 +44,7 @@ import {
   type RuntimeModel,
   type RuntimeCommand,
   type RuntimeUsage,
+  type RuntimeCompaction,
   type RuntimeQuestion,
   type PromptMode,
   type QueueSnapshot,
@@ -57,10 +59,9 @@ import {
   type GitCheckoutInfo,
   type WorktreeProgress,
 } from "./lib/sessions-store.ts";
-import { checkpointForTarget, type RewindTarget } from "./lib/rewind.ts";
 import { readAttachment, validateAttachmentTotal } from "./lib/attachments.ts";
 import { resolveLaunchModel } from "./lib/model-selection.ts";
-import { completeCommandReference, composerCommands, filterSlashCommands, parseClearCommand, parseReloadCommand, parseUpdateCommand, slashCommandQuery, type ComposerCommand } from "./lib/slash-commands.ts";
+import { completeCommandReference, composerCommands, filterSlashCommands, parseClearCommand, parseCompactCommand, parseReloadCommand, parseUpdateCommand, slashCommandQuery, type ComposerCommand } from "./lib/slash-commands.ts";
 import { checkUpdate, checkUpdateInBackground, installUpdate, loadUpdate } from "./lib/update-store.ts";
 import { availableUpdate, watchUpdateAvailability } from "./lib/update-notice.ts";
 import type { UpdateSnapshot } from "./lib/update-types.ts";
@@ -411,6 +412,7 @@ export class HuiApp extends HuiElement {
   private updatePollDeadline = 0;
   @state() private currentModel: RuntimeModel | undefined;
   @state() private usage: RuntimeUsage | undefined;
+  @state() private compaction: RuntimeCompaction | undefined;
   @state() private workspaceBranch = "";
   @state() private workspaceWorktree = false;
   @state() private workspaceBaseRef = "";
@@ -1751,6 +1753,7 @@ export class HuiApp extends HuiElement {
     this.models = [];
     this.currentModel = undefined;
     this.usage = undefined;
+    this.compaction = undefined;
     this.modelsRequestedFor = "";
     this.resetCommands();
     // Nothing to open until the gateway has created the worktree session.
@@ -1873,6 +1876,7 @@ export class HuiApp extends HuiElement {
     }
     if (snapshot.model) this.currentModel = snapshot.model;
     this.usage = snapshot.usage;
+    this.compaction = snapshot.compaction;
     if (snapshot.thinking) this.thinking = snapshot.thinking;
     this.setStatus(snapshot.status);
   }
@@ -1925,6 +1929,15 @@ export class HuiApp extends HuiElement {
         break;
       case "turn_start":
         this.streaming = streamingAfterEvent(this.streaming, event.type);
+        if (this.compaction?.status !== "running") this.compaction = undefined;
+        break;
+      case "compaction_start":
+        this.compaction = { status: "running", reason: event.reason };
+        break;
+      case "compaction_end":
+        // A written summary arrives with the refreshed history as a marker.
+        this.compaction = event.outcome === "done" ? undefined
+          : { status: event.outcome, reason: event.reason, ...(event.message ? { message: event.message } : {}) };
         break;
       case "turn_end":
         // pi emits turn_end before agent_end. The following status frame is
@@ -2427,21 +2440,23 @@ export class HuiApp extends HuiElement {
           this.note = "Reloaded extensions, skills, prompts and context files.";
         });
       void run.catch(async (error: unknown) => {
-        const stillSelected = isSelectedSession(session.id, this.selected?.id);
-        const stored = stillSelected
-          ? { text: this.draft, attachments: this.attachments }
-          : await readComposerDraft(sessionDraftKey(session.id));
-        const restored = mergeComposerDraft(stored, { text, attachments });
-        await this.persistComposerDraft(sessionDraftKey(session.id), restored.text, restored.attachments);
-        if (!stillSelected) return;
-        this.composerDraftEdit += 1;
-        this.draft = restored.text;
-        this.attachments = restored.attachments;
-        this.note = error instanceof Error ? error.message : `Could not ${command} that session.`;
-        this.noteFailed = true;
+        if (await this.restoreSentDraft(session.id, text, attachments)) {
+          this.note = error instanceof Error ? error.message : `Could not ${command} that session.`;
+          this.noteFailed = true;
+        }
       }).finally(() => {
         if (isSelectedSession(session.id, this.selected?.id)) this.sending = false;
       });
+      return;
+    }
+    const compact = parseCompactCommand(trimmed);
+    if (compact) {
+      if (attachments.length || mode !== "prompt") {
+        this.note = attachments.length ? "Use /compact without attachments." : "Finish or stop active work before compacting the session.";
+        this.noteFailed = true;
+        return;
+      }
+      this.compactNow(compact.instructions, text);
       return;
     }
     const sideQuestion = /^\/(?:btw|side)(?:\s+([\s\S]+))?$/iu.exec(trimmed)?.[1]?.trim();
@@ -2624,17 +2639,58 @@ export class HuiApp extends HuiElement {
       });
   };
 
+  /** `typed` is the `/compact` draft, cleared now and given back if HUI refuses. */
+  private compactNow(instructions?: string, typed?: string) {
+    const session = this.selected;
+    if (!session || this.sending) return;
+    if (this.streaming || session.status !== "idle") {
+      this.note = "Finish or stop active work before compacting the session.";
+      this.noteFailed = true;
+      return;
+    }
+    this.note = "";
+    this.noteFailed = false;
+    this.sending = true;
+    if (typed !== undefined) {
+      this.composerDraftEdit += 1;
+      this.draft = "";
+      void this.persistComposerDraft(sessionDraftKey(session.id), "", []);
+    }
+    // Progress and the outcome arrive as compaction events.
+    void compactSession(session.id, instructions).catch(async (error: unknown) => {
+      if (typed !== undefined ? await this.restoreSentDraft(session.id, typed, []) : isSelectedSession(session.id, this.selected?.id)) {
+        this.note = error instanceof Error ? error.message : "Could not compact that session.";
+        this.noteFailed = true;
+      }
+    }).finally(() => {
+      if (isSelectedSession(session.id, this.selected?.id)) this.sending = false;
+    });
+  }
+
+  /** Puts a refused command back into the composer, merged with anything typed
+   * since. True while that session is still selected. */
+  private async restoreSentDraft(sessionId: string, text: string, attachments: readonly Attachment[]): Promise<boolean> {
+    const stillSelected = isSelectedSession(sessionId, this.selected?.id);
+    const stored = stillSelected
+      ? { text: this.draft, attachments: this.attachments }
+      : await readComposerDraft(sessionDraftKey(sessionId));
+    const restored = mergeComposerDraft(stored, { text, attachments });
+    await this.persistComposerDraft(sessionDraftKey(sessionId), restored.text, restored.attachments);
+    if (!stillSelected) return false;
+    this.composerDraftEdit += 1;
+    this.draft = restored.text;
+    this.attachments = restored.attachments;
+    return true;
+  }
+
   private rewindToMessage = (target: RewindTarget, text: string) => {
     const session = this.selected;
     if (!session || this.opening || this.rewindPending) return;
     this.rewindPending = true;
     this.note = "";
     this.noteFailed = false;
-    void loadSessionCheckpoints(session.id)
-      .then(async (checkpoints) => {
-        const entryId = checkpointForTarget(checkpoints, target)?.id;
-        if (!entryId) throw new Error("That message is no longer available in PI's active branch.");
-        await rewindSession(session.id, entryId, true);
+    void rewindSession(session.id, target, true)
+      .then(async () => {
         if (!isSelectedSession(session.id, this.selected?.id)) return;
         this.composerDraftEdit += 1;
         this.draft = text;
@@ -3153,6 +3209,7 @@ export class HuiApp extends HuiElement {
     this.models = empty.models;
     this.currentModel = empty.currentModel;
     this.usage = empty.usage;
+    this.compaction = undefined;
     this.sending = false;
     this.stopping = false;
     this.continuing = false;
@@ -3896,6 +3953,7 @@ export class HuiApp extends HuiElement {
       models: this.models,
       currentModel: this.currentModel,
       usage: this.usage,
+      compaction: this.compaction,
       attachments: this.attachments,
       launching: this.launching,
       note: this.note,
@@ -4015,6 +4073,7 @@ export class HuiApp extends HuiElement {
       onAbort: this.abort,
       onContinue: this.continueRun,
       onRewind: this.rewindToMessage,
+      onCompact: () => this.compactNow(),
       onAddAttachments: this.addAttachments,
       onRemoveAttachment: this.removeAttachment,
       onCopy: this.copyTranscript,

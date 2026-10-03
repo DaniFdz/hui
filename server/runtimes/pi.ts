@@ -23,16 +23,17 @@ import { RuntimeOutputError } from "./types.ts";
 import type { RuntimeInspection } from "../../src/lib/tools-types.ts";
 
 import type {
+  CompactionReason,
   TranscriptAttachment,
   AgentRuntime,
   PromptAttachment,
   RuntimeEvent,
   RuntimeCommand,
-  RuntimeCheckpoint,
   RuntimeModel,
   RuntimeQuestion,
   RuntimeQuestionResponse,
   RuntimeQueue,
+  RuntimeRewindTarget,
   RuntimeSession,
   RuntimeUsage,
   TranscriptEntry,
@@ -42,8 +43,10 @@ import { readHuiSettings } from "../hui-settings.ts";
 
 const START_TIMEOUT_MS = 30_000;
 const PROMPT_TIMEOUT_MS = 10_000;
+/** PI answers `compact` only once the summary is written. */
+const COMPACT_TIMEOUT_MS = 30 * 60_000;
 
-type RpcResponse = { success?: boolean; error?: string; data?: unknown; waitingForQuestion?: boolean };
+type RpcResponse = { success?: boolean; error?: string; data?: unknown; acceptedEarly?: boolean };
 type PendingRpc = {
   commandType: string;
   resolve: (response: RpcResponse) => void;
@@ -74,7 +77,9 @@ function latestRunUsage(messages: readonly unknown[]): Pick<RuntimeUsage, "input
     const message = messages[index];
     if (!isRecord(message)) continue;
     if (message["role"] === "user") break;
-    if (message["role"] !== "assistant" || !isRecord(message["usage"])) continue;
+    // PI attributes nested tool and model calls (ctx.executeTool, classifiers)
+    // to the calling tool's result, and counts it in its own session totals.
+    if ((message["role"] !== "assistant" && message["role"] !== "toolResult") || !isRecord(message["usage"])) continue;
     const usage = message["usage"];
     inputTokens += finiteNumber(usage["input"] ?? usage["inputTokens"]);
     outputTokens += finiteNumber(usage["output"] ?? usage["outputTokens"]);
@@ -290,6 +295,10 @@ export function transcriptFrom(messages: readonly unknown[], timings = new Runti
     if (!isRecord(raw)) continue;
     const message = raw as PiMessage & { errorMessage?: unknown; stopReason?: unknown };
     const role = message.role;
+    if (role === "compaction") {
+      entries.push({ kind: "compaction", summary: typeof raw["summary"] === "string" ? raw["summary"] : "", tokensBefore: finiteNumber(raw["tokensBefore"]) });
+      continue;
+    }
     if (role === "toolResult") {
       const id = typeof raw["toolCallId"] === "string" ? raw["toolCallId"] : "";
       const name = typeof raw["toolName"] === "string" ? raw["toolName"] : "tool";
@@ -352,6 +361,7 @@ export function transcriptFrom(messages: readonly unknown[], timings = new Runti
     });
     const metricsPart = normalizedParts.findLast(part => (part.type === "text" && part.text) || (part.type === "thinking" && part.thinking))
       ?? normalizedParts.findLast(part => part.type === "toolCall");
+    const entryId = typeof raw["entryId"] === "string" ? { entryId: raw["entryId"] } : {};
     let firstMessagePart = true;
     for (const part of normalizedParts) {
       if (part.type === "text" && typeof part.text === "string" && part.text) {
@@ -359,6 +369,7 @@ export function transcriptFrom(messages: readonly unknown[], timings = new Runti
           kind: "message",
           role,
           text: part.text,
+          ...entryId,
           ...(part === metricsPart && Object.keys(metrics).length ? { metrics } : {}),
           ...(firstMessagePart && attachments.length ? { attachments } : {}),
         });
@@ -383,7 +394,7 @@ export function transcriptFrom(messages: readonly unknown[], timings = new Runti
       }
     }
     if (firstMessagePart && attachments.length) {
-      entries.push({ kind: "message", role, text: "", attachments });
+      entries.push({ kind: "message", role, text: "", ...entryId, attachments });
     }
     const failed = message.stopReason === "error";
     const error =
@@ -395,66 +406,43 @@ export function transcriptFrom(messages: readonly unknown[], timings = new Runti
   return entries;
 }
 
-function checkpointText(value: unknown): string {
-  if (typeof value !== "string") return "";
-  return value.replace(/\s+/gu, " ").trim().slice(0, 180);
-}
-
-/** PI's append-only entry tree is the authority for rewind points. Thinking and
- * tool calls live inside one assistant entry, so those rows intentionally point
- * at its parent: selecting them means re-running from immediately before that
- * assistant step instead of pretending PI can branch inside a content block. */
-export function checkpointsFrom(raw: unknown): RuntimeCheckpoint[] {
+/** Root-to-leaf entries of PI's active branch, from a `get_entries` response. */
+function activePath(raw: unknown): Record<string, unknown>[] {
   if (!isRecord(raw) || !Array.isArray(raw["entries"])) return [];
-  const entries = raw["entries"].filter(isRecord);
-  const byId = new Map(entries.flatMap((entry) =>
+  const byId = new Map(raw["entries"].filter(isRecord).flatMap((entry) =>
     typeof entry["id"] === "string" ? [[entry["id"], entry] as const] : [],
   ));
-  const active = new Set<string>();
+  const path: Record<string, unknown>[] = [];
+  const seen = new Set<string>();
   let cursor = typeof raw["leafId"] === "string" ? raw["leafId"] : undefined;
-  while (cursor && !active.has(cursor)) {
-    active.add(cursor);
-    const parent = byId.get(cursor)?.["parentId"];
-    cursor = typeof parent === "string" ? parent : undefined;
+  while (cursor && !seen.has(cursor) && byId.has(cursor)) {
+    seen.add(cursor);
+    const entry = byId.get(cursor)!;
+    path.push(entry);
+    cursor = typeof entry["parentId"] === "string" ? entry["parentId"] : undefined;
   }
-  const result: RuntimeCheckpoint[] = [];
-  for (const entry of entries) {
-    const id = typeof entry["id"] === "string" ? entry["id"] : "";
-    const timestamp = typeof entry["timestamp"] === "string" ? entry["timestamp"] : undefined;
-    if (!id || entry["type"] !== "message" || !isRecord(entry["message"])) continue;
-    const message = entry["message"];
-    const role = message["role"];
-    const parts = typeof message["content"] === "string"
-      ? [{ type: "text", text: message["content"] }]
-      : Array.isArray(message["content"]) ? message["content"].filter(isRecord) : [];
-    if (role === "user") {
-      const detail = checkpointText(parts.find((part) => part["type"] === "text")?.["text"]);
-      result.push({ key: `${id}:user`, id, kind: "user", label: "User message", detail: detail || "Attached input", ...(timestamp ? { timestamp } : {}), current: active.has(id) });
-      continue;
+  return path.reverse();
+}
+
+/** HUI shows the whole active branch, not PI's model context, so compaction
+ * never hides history: each compaction stays in place as a marker, and every
+ * message keeps its entry id for rewind. Attempts PI hid before retrying stay
+ * hidden, as they are in the context.
+ * ponytail: context edits that replace content show the original; none of PI's
+ * own edits do that, add the replacement when an extension needs it. */
+export function branchHistory(raw: unknown): unknown[] {
+  const path = activePath(raw);
+  // As in PI's projection, the latest edit of an entry wins.
+  const edits = new Map(path.flatMap((entry) =>
+    entry["type"] === "context_edit" ? [[entry["targetId"], entry["replacement"]] as const] : []));
+  return path.flatMap((entry): unknown[] => {
+    if (entry["type"] === "compaction") {
+      return [{ role: "compaction", summary: entry["summary"], tokensBefore: entry["tokensBefore"] }];
     }
-    if (role === "toolResult") {
-      const name = typeof message["toolName"] === "string" ? message["toolName"] : "tool";
-      const detail = checkpointText(parts.find((part) => part["type"] === "text")?.["text"]);
-      result.push({ key: `${id}:result`, id, kind: "toolResult", label: `After ${name}`, detail: detail || "Tool completed", ...(timestamp ? { timestamp } : {}), current: active.has(id) });
-      continue;
-    }
-    if (role !== "assistant") continue;
-    const parentId = typeof entry["parentId"] === "string" ? entry["parentId"] : "";
-    if (!parentId) continue;
-    for (const [partIndex, part] of parts.entries()) {
-      if (part["type"] === "thinking") {
-        result.push({ key: `${id}:thinking:${partIndex}`, id: parentId, kind: "thinking", label: "Before reasoning", detail: checkpointText(part["thinking"]) || "Reasoning step", ...(timestamp ? { timestamp } : {}), current: active.has(id) });
-      } else if (part["type"] === "toolCall") {
-        const name = typeof part["name"] === "string" ? part["name"] : "tool";
-        result.push({ key: `${id}:tool:${partIndex}`, id: parentId, kind: "tool", label: `Before ${name}`, detail: checkpointText(printable(part["arguments"])) || "Tool call", ...(timestamp ? { timestamp } : {}), current: active.has(id) });
-      }
-    }
-    const text = checkpointText(parts.find((part) => part["type"] === "text")?.["text"]);
-    if (text) {
-      result.push({ key: `${id}:assistant`, id, kind: "assistant", label: "Assistant response", detail: text, ...(timestamp ? { timestamp } : {}), current: active.has(id) });
-    }
-  }
-  return result;
+    return entry["type"] === "message" && isRecord(entry["message"]) && edits.get(entry["id"]) !== null
+      ? [{ ...entry["message"], entryId: entry["id"] }]
+      : [];
+  });
 }
 
 function runtimeQuestion(raw: Record<string, unknown>): RuntimeQuestion | undefined {
@@ -503,9 +491,31 @@ function runtimeQuestion(raw: Record<string, unknown>): RuntimeQuestion | undefi
   }
 }
 
+const compactionReason = (value: unknown): CompactionReason | undefined =>
+  value === "manual" || value === "threshold" || value === "overflow" ? value : undefined;
+
 /** Maps one pi event onto the runtime contract. Undefined means "ignore". */
 export function toRuntimeEvent(raw: Record<string, unknown>): RuntimeEvent | undefined {
   switch (raw["type"]) {
+    case "compaction_start": {
+      const reason = compactionReason(raw["reason"]);
+      return reason ? { type: "compaction_start", reason } : undefined;
+    }
+    case "compaction_end": {
+      const reason = compactionReason(raw["reason"]);
+      if (!reason) return undefined;
+      // PI prefixes its own heading; HUI's divider already says it failed.
+      const message = typeof raw["errorMessage"] === "string"
+        ? raw["errorMessage"].replace(/^(?:Auto-compaction|Compaction|Context overflow recovery) failed: /u, "")
+        : "";
+      return {
+        type: "compaction_end",
+        reason,
+        outcome: raw["result"] ? "done" : raw["aborted"] === true ? "cancelled" : "failed",
+        willRetry: raw["willRetry"] === true,
+        ...(message ? { message } : {}),
+      };
+    }
     case "turn_start":
       return { type: "turn_start" };
     case "turn_end":
@@ -638,6 +648,11 @@ export class PiSession implements RuntimeSession {
   #nextId = 1;
   #buffer = "";
   #messages: unknown[] = [];
+  /** Between PI's agent_start and agent_end; unlike #streaming it is not held
+   * until HUI's settle refresh finishes. */
+  #agentRunning = false;
+  #settleAgain = false;
+  #compactionStarts = 0;
   #timings = new RuntimeTimings();
   #streaming = false;
   #exited = false;
@@ -774,6 +789,8 @@ export class PiSession implements RuntimeSession {
     if (raw["type"] === "agent_start" || raw["type"] === "turn_start") {
       this.#streaming = true;
     }
+    if (raw["type"] === "agent_start") this.#agentRunning = true;
+    else if (raw["type"] === "agent_end") this.#agentRunning = false;
 
     this.#timings.observe(raw);
     const event = toRuntimeEvent(raw);
@@ -784,6 +801,21 @@ export class PiSession implements RuntimeSession {
       void this.#settle();
       return;
     }
+    if (event.type === "compaction_start") {
+      this.#compactionStarts += 1;
+      // PI compacts before a prompt it already accepted when the context is full.
+      this.#acceptPromptEarly();
+    }
+    if (event.type === "compaction_end" && !this.#agentRunning && !this.#promptInFlight()) {
+      // PI compacts after its agent_end too, and for /compact outside any run.
+      // Stay busy until the refreshed history holds the summary; then usage
+      // drops and HUI may send what it held. On willRetry PI resumes the
+      // overflowed turn, whose agent_end settles.
+      this.#streaming = true;
+      this.#emit(event);
+      if (!event.willRetry) void this.#settle();
+      return;
+    }
     if (event.type === "queue_update") this.#queue = event.queue;
     if (event.type === "question") {
       this.#questions.set(event.question.id, event.question);
@@ -792,7 +824,7 @@ export class PiSession implements RuntimeSession {
       // accepted the command. Release HUI's HTTP request now and let the
       // extension response finish independently; otherwise the browser's
       // ordinary request timeout races the human answering the dialog.
-      this.#acceptPromptWaitingOnQuestion();
+      this.#acceptPromptEarly();
     }
     this.#emit(event);
   }
@@ -812,28 +844,44 @@ export class PiSession implements RuntimeSession {
     if (!response.data["isStreaming"]) await this.#settle();
   }
 
+  /** A prompt RPC PI has not answered yet; its run or response settles. */
+  #promptInFlight(): boolean {
+    return this.#interactivePrompts.size > 0 || [...this.#pending.values()].some((pending) => pending.commandType === "prompt");
+  }
+
   #settle(): Promise<void> {
-    if (this.#settling) return this.#settling;
+    // A later request may need history written after this refresh began:
+    // refresh again inside the same settle, which still reports only once.
+    if (this.#settling) { this.#settleAgain = true; return this.#settling; }
     const settling = (async () => {
       let historyRefreshed = true;
       try {
-        await this.#refreshMessages();
-        await this.#refreshUsage();
-      } catch (error) {
-        historyRefreshed = false;
-        this.#emit({
-          type: "error",
-          message: error instanceof Error ? error.message : "PI history refresh failed.",
-        });
+        do {
+          this.#settleAgain = false;
+          historyRefreshed = true;
+          try {
+            await this.#refreshMessages();
+            await this.#refreshUsage();
+          } catch (error) {
+            historyRefreshed = false;
+            this.#emit({
+              type: "error",
+              message: error instanceof Error ? error.message : "PI history refresh failed.",
+            });
+          }
+        } while (this.#settleAgain);
+      } finally {
+        // Synchronously after the last check: any later request starts a new settle.
+        this.#settling = undefined;
       }
+      // PI started another run meanwhile (one it continues after a compaction,
+      // or a prompt it compacted before); that run's agent_end settles.
+      if (this.#agentRunning) return;
       this.#streaming = false;
       this.#questions.clear();
       this.#emit({ type: "settled", historyRefreshed });
     })();
     this.#settling = settling;
-    void settling.finally(() => {
-      if (this.#settling === settling) this.#settling = undefined;
-    });
     return settling;
   }
 
@@ -872,23 +920,27 @@ export class PiSession implements RuntimeSession {
     });
   }
 
-  #acceptPromptWaitingOnQuestion(): void {
+  /** PI accepted the prompt but answers it only after an extension question is
+   * answered or a compaction before it finishes. Release HUI's request now; the
+   * eventual response is the settle edge. */
+  #acceptPromptEarly(): void {
     for (const [id, pending] of this.#pending) {
       if (pending.commandType !== "prompt") continue;
       this.#pending.delete(id);
       this.#interactivePrompts.add(id);
-      pending.resolve({ success: true, waitingForQuestion: true });
+      pending.resolve({ success: true, acceptedEarly: true });
       return;
     }
   }
 
   async #refreshMessages(): Promise<void> {
-    const messages = await this.#send({ type: "get_messages" }, START_TIMEOUT_MS);
-    if (!messages.success) throw new Error(messages.error ?? "PI history refresh failed.");
-    const history = (messages.data as Record<string, unknown> | undefined)?.["messages"];
-    if (Array.isArray(history)) {
-      this.#messages = history as unknown[];
-    }
+    // ponytail: reads every entry of every branch on each refresh (58 MB, ~0.2 s
+    // for the largest real session); switch to `get_entries {since}` with a
+    // full read after a leaf jump if that becomes a bottleneck.
+    const response = await this.#send({ type: "get_entries" }, START_TIMEOUT_MS);
+    if (!response.success) throw new Error(response.error ?? "PI history refresh failed.");
+    if (!isRecord(response.data) || !Array.isArray(response.data["entries"])) throw new Error("PI returned malformed history.");
+    this.#messages = branchHistory(response.data);
   }
 
 
@@ -968,7 +1020,7 @@ export class PiSession implements RuntimeSession {
       this.#streaming = false;
       throw new Error(response.error ?? "pi refused the prompt");
     }
-    if (text.startsWith("/") && !response.waitingForQuestion) {
+    if (text.startsWith("/") && !response.acceptedEarly) {
       await this.#settleCommandIfIdle();
     }
   }
@@ -1109,11 +1161,24 @@ export class PiSession implements RuntimeSession {
     });
   }
 
+  /** PI reports a compaction it starts through its events, failures included;
+   * only a refusal before it started (an unavailable runtime) has to be reported. */
+  async compact(instructions?: string): Promise<void> {
+    const starts = this.#compactionStarts;
+    void this.#send({ type: "compact", ...(instructions ? { customInstructions: instructions } : {}) }, COMPACT_TIMEOUT_MS)
+      .then((response) => {
+        if (response.success || this.#compactionStarts !== starts) return;
+        this.#emit({ type: "compaction_end", reason: "manual", outcome: "failed", willRetry: false, message: response.error ?? "PI could not compact." });
+      });
+  }
+
   async abort(): Promise<void> {
     const response = await this.#send({ type: "abort" }, PROMPT_TIMEOUT_MS);
     if (!response.success) {
       throw new Error(response.error ?? "pi refused to stop");
     }
+    // PI answers abort only once idle, whether or not an agent_end reached us.
+    this.#agentRunning = false;
     // Prompt-free continuation starts through the SDK side channel. Asking the
     // worker directly as well keeps its AgentSession authoritative even when
     // the RPC abort acknowledgement races ahead of SDK settlement.
@@ -1125,16 +1190,10 @@ export class PiSession implements RuntimeSession {
     }
   }
 
-  async checkpoints(): Promise<readonly RuntimeCheckpoint[]> {
-    const response = await this.#send({ type: "get_entries" }, START_TIMEOUT_MS);
-    if (!response.success) throw new Error(response.error ?? "PI could not read its session tree.");
-    return checkpointsFrom(response.data);
-  }
-
-  async rewind(entryId: string, options?: { excludeUserMessage?: boolean }): Promise<void> {
+  async rewind(target: RuntimeRewindTarget, options?: { excludeUserMessage?: boolean }): Promise<void> {
     if (!this.#inspector) throw new Error("Rewind requires HUI's PI SDK backend.");
     if (this.#streaming) throw new Error("Wait for the current run to finish before rewinding.");
-    await this.#inspector.rewind(entryId, options?.excludeUserMessage);
+    await this.#inspector.rewind(target, options?.excludeUserMessage);
     await this.#refreshMessages();
     await this.#refreshUsage();
   }

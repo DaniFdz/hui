@@ -1,5 +1,6 @@
 import type { ChildProcess } from "node:child_process";
 import type { RuntimeInspection } from "../../src/lib/tools-types.ts";
+import type { RuntimeRewindTarget } from "./types.ts";
 
 function validInspection(value: unknown): value is RuntimeInspection {
   if (!value || typeof value !== "object") return false;
@@ -54,8 +55,8 @@ export class SdkInspector {
     });
   }
 
-  rewind(entryId: string, excludeUserMessage = false, timeoutMs = 5_000): Promise<void> {
-    return this.#request("rewind", { entryId, excludeUserMessage }, timeoutMs);
+  rewind(target: RuntimeRewindTarget, excludeUserMessage = false, timeoutMs = 5_000): Promise<void> {
+    return this.#request("rewind", { ...(typeof target === "string" ? { entryId: target } : target), excludeUserMessage }, timeoutMs);
   }
 
   abort(timeoutMs = 5_000): Promise<void> {

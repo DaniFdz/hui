@@ -60,13 +60,13 @@ test("session history actions expose direct editable rewind and prompt-free cont
   assert.doesNotMatch(source, /aria-label="Rewind session"/u);
   assert.match(source, /class="chat-group-rewind" aria-label=\$\{props\.rewindPending \? "Rewinding…" : "Rewind to here"\}/u);
   assert.match(source, /renderActionTooltip\(rewindTooltipId, props\.rewindPending \? "Rewinding…" : "Rewind"/u);
-  assert.match(source, /props\.onRewind\(\{ kind: "user", occurrence: rewindOccurrence \}, last\?\.text \?\? ""\)/u);
+  assert.match(source, /props\.onRewind\(rewindTo, last\?\.text \?\? ""\)/u);
   assert.doesNotMatch(source, /row\.role === "user" && !props\.streaming/u);
   assert.match(source, /aria-label="Continue without a prompt"/u);
   assert.doesNotMatch(source, /rewind-session-dialog|Rewind here|Rewind point/u);
-  assert.match(app, /loadSessionCheckpoints\(session\.id\)/u);
+  assert.doesNotMatch(app, /loadSessionCheckpoints/u);
   assert.doesNotMatch(app, /!session \|\| this\.streaming \|\| this\.opening \|\| this\.rewindPending/u);
-  assert.match(app, /rewindSession\(session\.id, entryId, true\)/u);
+  assert.match(app, /rewindSession\(session\.id, target, true\)/u);
   assert.match(app, /this\.draft = text/u);
   assert.match(app, /this\.composerTextarea\?\.focus\(\)/u);
   assert.match(app, /resumeSession\(session\.id\)/u);
@@ -287,7 +287,8 @@ test("the composer exposes PI context usage beside the model", () => {
   const source = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
   const styles = readStyles("../styles/openclaw-chat.css");
 
-  assert.match(source, /renderContextPicker\(props\.usage\)/);
+  assert.match(source, /renderContextPicker\(props\.usage, props\.streaming \? undefined : props\.onCompact\)/);
+  assert.match(source, />Compact now<\/button>/);
   assert.match(source, /Context window/);
   assert.match(source, /Latest run tokens/);
   assert.match(styles, /\.context-ring__dial/);

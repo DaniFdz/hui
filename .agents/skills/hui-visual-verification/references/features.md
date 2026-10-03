@@ -7,6 +7,7 @@ labels from Browser snapshots; older journey notes record historical observation
 | Change | Journey / fixture | Required observable result |
 | --- | --- | --- |
 | Basic SDK/chat/tool rendering | `e2e/sdk-backend.browser.md`; default launcher + `E2E_RICH` | Real read tool, response, second prompt accepted, persisted session after reload |
+| Compaction / rewind | `e2e/compaction-rewind.browser.md`; default launcher + `/fixture-compact`, `/compact`, `E2E_SLOW_COMPACT` | Earlier turns stay visible with the divider; rewind inside the kept window keeps the summary, behind it sends the original turns; live divider, queued input sent after, failure and Stop-cancel dividers |
 | Composer / streaming / queue | `e2e/chat-composer.browser.md`, `e2e/steer-enqueue-fix.browser.md` | Usable composer during held turn; queued vs steer delivery; no false editors |
 | Sidebar / groups | `e2e/session-groups.browser.md`, `e2e/sidebar-toolbar.browser.md` | Group/filter/sort changes visible and durable after reload; group Git defaults persist and drive Branch/Worktree launches |
 | Generated session titles | `e2e/session-title-generation.browser.md`; default launcher + deterministic utility model | Empty name generates a descriptive 3–6 word title in the first message's language; full title survives desktop/mobile layout |

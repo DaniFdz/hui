@@ -78,6 +78,10 @@ export function normalizeTranscript(
       });
       return;
     }
+    if (entry.kind === "compaction" && typeof entry.summary === "string") {
+      result.push({ kind: "compaction", id, summary: entry.summary, tokensBefore: typeof entry.tokensBefore === "number" ? entry.tokensBefore : 0 });
+      return;
+    }
     if (entry.kind === "error" && (typeof entry.text === "string" || typeof entry.message === "string")) {
       result.push({ kind: "error", id, text: (entry.text ?? entry.message) as string });
       return;
@@ -88,6 +92,7 @@ export function normalizeTranscript(
         kind: "message",
         ...metadata,
         id,
+        ...(typeof entry.entryId === "string" ? { entryId: entry.entryId } : {}),
         role,
         text: typeof entry.text === "string" ? entry.text : "",
         ...(Array.isArray(entry.attachments) ? { attachments: entry.attachments as (string | TranscriptAttachment)[] } : {}),

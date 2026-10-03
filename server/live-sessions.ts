@@ -22,12 +22,13 @@ import type {
   PromptAttachment,
   RuntimeEvent,
   RuntimeCommand,
-  RuntimeCheckpoint,
   RuntimeModel,
   QueuedMessage,
   RuntimeQuestion,
   RuntimeQuestionResponse,
+  RuntimeCompaction,
   RuntimeQueue,
+  RuntimeRewindTarget,
   RuntimeSession,
   RuntimeUsage,
   TranscriptEntry,
@@ -80,6 +81,8 @@ export type SessionSnapshot = {
   suggestions?: readonly TaskSuggestion[];
   /** HUI-run background watchers for this conversation; omitted when none. */
   watchers?: readonly Watcher[];
+  /** A running compaction, or one that ended without a summary; kept until the next turn. */
+  compaction?: RuntimeCompaction;
 };
 
 /** Everything a browser watching one session can receive: pi's events, and the
@@ -147,6 +150,7 @@ type Live = {
    * OpenClaw-style edit, remove, and reorder operations truthful. */
   followUps: Array<QueuedMessage & { attachments?: readonly PromptAttachment[] }>;
   questions: Map<string, RuntimeQuestion>;
+  compaction?: RuntimeCompaction;
   lastPrompt?: { text: string; attachments?: readonly PromptAttachment[] };
   turnProducedOutput: boolean;
   fallbackAttempted: boolean;
@@ -348,7 +352,7 @@ export class LiveSessions {
     if (live.questions.size > 0) {
       return "waiting";
     }
-    return live.promptPending || live.runtime?.isStreaming ? "running" : "idle";
+    return live.promptPending || live.runtime?.isStreaming || live.compaction?.status === "running" ? "running" : "idle";
   }
 
   transcript(id: string): TranscriptEntry[] {
@@ -386,6 +390,7 @@ export class LiveSessions {
       subagents: [...this.#subagentSnapshot(id)],
       ...this.#suggestionField(id),
       ...this.#watcherField(id),
+      ...(live.compaction ? { compaction: live.compaction } : {}),
     };
   }
 
@@ -475,6 +480,7 @@ export class LiveSessions {
     if (!live?.runtime) {
       throw new SessionBusyError("That session is still starting.");
     }
+    if (this.#holdWhileCompacting(live)) return this.followUp(id, text, attachments);
     if (live.promptPending || live.runtime.isStreaming) {
       throw new SessionBusyError("That session is already working on a prompt.");
     }
@@ -666,6 +672,7 @@ export class LiveSessions {
       await live.runtime.clear();
       runtimeCleared = true;
       live.transcript = [...live.runtime.transcript()];
+      live.compaction = undefined;
       live.queue = live.runtime.pendingQueue?.() ?? { steering: [], followUp: [] };
       live.followUps = [];
       live.questions = new Map((live.runtime.pendingQuestions?.() ?? []).map((question) => [question.id, question]));
@@ -714,13 +721,7 @@ export class LiveSessions {
     }
   }
 
-  async checkpoints(id: string): Promise<readonly RuntimeCheckpoint[]> {
-    const live = this.#ready(id);
-    if (!live.runtime?.checkpoints) throw new Error(`${live.record.tool} cannot rewind in this build.`);
-    return live.runtime.checkpoints();
-  }
-
-  async rewind(id: string, entryId: string, options?: { excludeUserMessage?: boolean }): Promise<void> {
+  async rewind(id: string, target: RuntimeRewindTarget, options?: { excludeUserMessage?: boolean }): Promise<void> {
     const live = this.#ready(id);
     if (this.#reported(live) === "running") {
       await this.abort(id);
@@ -734,8 +735,9 @@ export class LiveSessions {
     live.promptPending = true;
     this.#setStatus(live, "running");
     try {
-      await live.runtime.rewind(entryId, options);
+      await live.runtime.rewind(target, options);
       live.transcript = [...live.runtime.transcript()];
+      live.compaction = undefined;
       live.lastPrompt = undefined;
       live.turnProducedOutput = false;
       live.fallbackAttempted = false;
@@ -774,6 +776,7 @@ export class LiveSessions {
 
   async steer(id: string, text: string, attachments?: readonly PromptAttachment[]): Promise<void> {
     const live = this.#ready(id);
+    if (this.#holdWhileCompacting(live)) return this.followUp(id, text, attachments);
     if (!live.runtime?.steer) throw new Error(`${live.record.tool} cannot steer in this build.`);
     await live.runtime.steer(text, attachments);
   }
@@ -788,6 +791,25 @@ export class LiveSessions {
     });
     this.#broadcastQueue(live);
     if (this.#reported(live) === "idle") void this.#drainFollowUp(live);
+  }
+
+  /** PI refuses a prompt while it compacts outside a run, and a steer would wait
+   * in its queue until some later prompt. Hold either in HUI's follow-up queue,
+   * which drains once the compaction ends. Inside a run PI delivers steers. */
+  #holdWhileCompacting(live: Live): boolean {
+    return live.compaction?.status === "running" && !live.runtime?.isStreaming;
+  }
+
+  async compact(id: string, instructions?: string): Promise<void> {
+    const live = this.#ready(id);
+    if (this.#reported(live) !== "idle" || live.followUps.length || live.questions.size) {
+      throw new SessionBusyError("Finish or stop active work before compacting the session.");
+    }
+    if (!live.runtime?.compact) throw new Error(`${live.record.tool} cannot compact sessions in this build.`);
+    // Claimed until PI's own compaction events take over, so nothing lands first.
+    live.compaction = { status: "running", reason: "manual" };
+    this.#setStatus(live, "running");
+    await live.runtime.compact(instructions);
   }
 
   editFollowUp(id: string, itemId: string, text: string): void {
@@ -930,7 +952,8 @@ export class LiveSessions {
   release(id: string): void {
     const live = this.#live.get(id);
     if (!live) return;
-    if (live.readers > 0) {
+    // Not mid-way through a compaction PI runs after the turn a caller waited for.
+    if (live.readers > 0 || live.compaction?.status === "running") {
       live.releaseWhenUnread = true;
       return;
     }
@@ -1092,9 +1115,19 @@ export class LiveSessions {
     if (live.closed || live.runtime !== runtime) {
       return;
     }
-    if (event.type === "turn_start") {
+    if (event.type === "compaction_start") {
+      live.compaction = { status: "running", reason: event.reason };
+      this.#setStatus(live, this.#reported(live));
+    } else if (event.type === "compaction_end") {
+      recordDiagnosticEvent({ area: "session", level: event.outcome === "failed" ? "warning" : "info", action: "compaction_end", summary: `Compaction ${event.outcome} (${event.reason})`, ...(event.message ? { detail: event.message } : {}), sessionId: live.record.id });
+      live.compaction = event.outcome === "done" ? undefined : { status: event.outcome, reason: event.reason, ...(event.message ? { message: event.message } : {}) };
+      this.#setStatus(live, this.#reported(live));
+      // A compaction PI refused before starting ends without a settle.
+      if (this.#reported(live) === "idle") void this.#drainFollowUp(live).then(() => this.#closeIfReleased(live));
+    } else if (event.type === "turn_start") {
       recordDiagnosticEvent({ area: "session", level: "info", action: "turn_start", summary: "Agent turn started", sessionId: live.record.id });
       live.turnStarted = true;
+      if (live.compaction?.status !== "running") live.compaction = undefined;
       if (live.record.runRecoveryAttempts !== undefined) {
         void this.#save(live, { runRecoveryAttempts: undefined }).catch(() => {});
       }
@@ -1209,18 +1242,22 @@ export class LiveSessions {
     if (!retried) {
       if (live.readers === 0) this.#setUnread(live, true);
       await this.#drainFollowUp(live);
-      if (
-        live.releaseWhenUnread && live.readers === 0 && live.followUps.length === 0 &&
-        this.#reported(live) === "idle" && this.#live.get(live.record.id) === live
-      ) {
-        this.close(live.record.id);
-      }
+      this.#closeIfReleased(live);
+    }
+  }
+
+  #closeIfReleased(live: Live): void {
+    if (
+      live.releaseWhenUnread && live.readers === 0 && live.followUps.length === 0 &&
+      this.#reported(live) === "idle" && this.#live.get(live.record.id) === live
+    ) {
+      this.close(live.record.id);
     }
   }
 
   async #retryWithFallback(live: Live, runtime: RuntimeSession): Promise<boolean> {
     if (
-      live.closed || live.runtime !== runtime || live.fallbackAttempted ||
+      live.closed || live.runtime !== runtime || live.fallbackAttempted || live.compaction?.status === "running" ||
       live.turnProducedOutput || !live.lastPrompt || runtime.isStreaming ||
       live.transcript.at(-1)?.kind !== "error" || !runtime.setModel
     ) return false;
@@ -1273,6 +1310,7 @@ export class LiveSessions {
     live.unsubscribeExit = undefined;
     live.runtime = undefined;
     live.promptPending = false;
+    live.compaction = undefined;
     recordDiagnosticEvent({ area: "runtime", level: "error", action: "exit", summary: "Runtime process exited", sessionId: live.record.id });
     this.#setStatus(live, "error");
     this.#broadcast(live, { kind: "closed" });

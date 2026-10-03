@@ -120,7 +120,7 @@ action.
 The browser never connects to PI. The long-lived HUI gateway owns one isolated
 PI SDK worker per active HUI session and speaks PI's newline-delimited RPC JSON
 over that child's stdin/stdout. A cold open starts PI with the stored
-`piSessionFile`, calls `get_state` and `get_messages`, and then streams normalized
+`piSessionFile`, calls `get_state` and `get_entries`, and then streams normalized
 events to the browser through this HTTP API. Gateway restarts discard child
 processes but not PI conversation files; the next open resumes them.
 
@@ -130,7 +130,7 @@ working directory, transcript and model travel in the private
 tools start: endpoint security agents can SIGKILL a script launch whose working
 directory plus one argument reaches `MAXPATHLEN` (1024 bytes).
 
-The worker pins `@earendil-works/pi-coding-agent@0.87.1` and uses its public
+The worker pins `@earendil-works/pi-coding-agent@1.0.1` and uses its public
 `runRpcMode`. `HUI_PI_BACKEND=cli` opts into the previous adapter;
 `HUI_PI_CLI` optionally pins its executable (otherwise HUI runs the bundled SDK
 CLI with Node, without relying on a global `pi` or npm's PATH). PI package
@@ -563,7 +563,8 @@ type SubagentTaskView = SubagentRecord & {
 type TranscriptAttachment = { name: string; kind: "image" | "file"; mimeType?: string; url?: string };
 
 type TranscriptEntry =
-  | { kind: "message"; role: "user" | "assistant"; text: string; attachments?: readonly TranscriptAttachment[] }
+  | { kind: "message"; role: "user" | "assistant"; text: string; entryId?: string; attachments?: readonly TranscriptAttachment[] }
+  | { kind: "compaction"; summary: string; tokensBefore: number }
   | { kind: "thinking"; text: string }
   | { kind: "tool"; id: string; name: string; args?: unknown; output?: string; failed?: boolean }
   | { kind: "error"; message: string };
@@ -588,7 +589,11 @@ type SessionSnapshot = {
   queue: RuntimeQueue;
   questions: readonly RuntimeQuestion[];
   subagents: readonly SubagentTaskView[];
+  // A running compaction, or one that ended without writing a summary.
+  compaction?: { status: "running" | "failed" | "cancelled"; reason: CompactionReason; message?: string };
 };
+
+type CompactionReason = "manual" | "threshold" | "overflow";
 
 // Same shape as server/runtimes/types.ts RuntimeEvent.
 type RuntimeEvent =
@@ -602,6 +607,8 @@ type RuntimeEvent =
   | { type: "notice"; message: string; level: "info" | "warning" | "error" }
   | { type: "turn_start" }
   | { type: "turn_end" }
+  | { type: "compaction_start"; reason: CompactionReason }
+  | { type: "compaction_end"; reason: CompactionReason; outcome: "done" | "failed" | "cancelled"; willRetry: boolean; message?: string }
   | { type: "settled"; historyRefreshed?: boolean }
   | { type: "error"; message: string };
 ```
@@ -617,10 +624,28 @@ JSON fallback.
 
 `turn_end` is informational. PI can emit it while the agent loop is still
 working. Only PI's `agent_end` (normalized to `settled`) makes the session
-accept another prompt. The adapter first refreshes `get_messages` so the durable
+accept another prompt. The adapter first refreshes `get_entries` so the durable
 PI transcript normally replaces the live projection. If that refresh fails, it
 emits an error followed by `settled` with `historyRefreshed: false`; the gateway
 keeps the completed live projection rather than replacing it with stale history.
+
+PI compacts at its threshold after a run's `agent_end`, before a prompt when
+the context is already full, and inside a run before the next model call; it
+also compacts around an overflow it recovers from, and for `/compact`.
+`compaction_start` makes the session `running` with `snapshot.compaction.status:
+"running"`, so the browser shows a live divider instead of its working
+indicator. A prompt PI compacts before is accepted at `compaction_start` (PI
+answers its RPC only after the summary) and settles with its run. Prompts and
+steers sent while PI compacts outside a run join HUI's follow-up queue, because
+PI refuses prompts then; inside a run PI delivers steers itself.
+`compaction_end` reports the outcome with PI's message (its own "… failed:"
+heading removed). A compaction that ends with no run active, no prompt pending
+and no PI retry keeps the session busy until it settles again: the history then
+holds the `compaction` entry, usage is refreshed and the queue drains. A settle
+whose refresh finishes after PI started another run leaves the session to that
+run. A failed or cancelled compaction stays in `snapshot.compaction` until the
+next turn, rewind or clear. Abort cancels a running compaction, and a released
+subagent stays open until PI's compaction after its turn ends.
 
 ## Session stages
 
@@ -1119,6 +1144,16 @@ and `/clear` itself is not added to either transcript. A registry persistence
 failure is explicit because the live runtime has already moved to the fresh
 session and a later reopen may otherwise resume the previous pointer.
 
+### `POST /__hui/sessions/:id/compact`
+
+Body: `{ "instructions"?: string }` (at most 2,000 characters), the browser's
+`/compact [focus]` and the context meter's **Compact now**. Marks the session
+compacting, starts PI's `compact` RPC with the focus as its custom instructions
+and returns `{ "ok": true }` without waiting for the summary; compaction events
+report progress and the outcome, including PI's "Nothing to compact" and
+"Already compacted". Busy rules match `/clear` (`409` otherwise); an unknown
+session returns `404`. The prompt route refuses `/compact` like `/clear`.
+
 ### `POST /__hui/sessions/:id/reload`
 
 Accepts an empty JSON body and returns `{ "ok": true }`. Busy rules match
@@ -1238,7 +1273,10 @@ tool cards and text deltas. A reconnecting stream receives that projection in
 its snapshot. At `settled`, PI's refreshed transcript normally replaces the
 projection as the authoritative durable history and a final snapshot is emitted.
 That snapshot also carries PI's `get_session_stats` context usage plus the
-input, output and reported cost summed from the latest run. Missing context or
+input, output and reported cost summed from the latest run's assistant messages
+and tool results (PI attributes nested tool and model calls to the calling tool's
+result). Prompt-cache refreshes are PI `usage` entries outside the conversation;
+they count toward the observability totals, not this per-run figure. Missing context or
 cost remains `null`/absent rather than being estimated by HUI.
 `historyRefreshed` is omitted/true on that path. When PI cannot refresh history,
 the adapter emits `settled` with `historyRefreshed: false`; HUI still returns to
@@ -1310,32 +1348,42 @@ prevents the UI from continuing to display the durable-but-no-longer-live model.
 Stops the turn in flight without deleting or closing the session. Responds
 `{ "ok": true }`; starting sessions return 409.
 
-### `GET /__hui/sessions/:id/checkpoints`
-
-Returns `{ "checkpoints": RuntimeCheckpoint[] }` from PI's append-only session
-entries, including the active and abandoned branches. Every item has a stable
-presentation `key`, the PI `id` that can become the active leaf, `kind`, `label`,
-bounded `detail`, optional `timestamp`, and `current` to identify entries on the
-active branch. Thinking and tool-call blocks do not have independent PI entry
-ids, so their checkpoint intentionally targets the persisted parent immediately
-before that assistant block.
-
 ### `POST /__hui/sessions/:id/rewind`
 
 Body: `{ "entryId": "...", "excludeUserMessage": true }`. Moves PI's active
 leaf to that existing entry, refreshes HUI's authoritative transcript and emits
 a snapshot. When `excludeUserMessage` is true and the entry is a user message,
 PI stops before it so the browser can restore the selected text to the composer
-for editing. The abandoned branch remains in PI's append-only tree. An active
-run is stopped before the branch changes; queued or waiting sessions return 409,
-and an unknown entry returns 400.
+for editing. The browser sends the `entryId` of the transcript message itself.
+A user message shown without one (the running prompt, or one delivered during
+the run) is sent as `{ "userFromEnd": n }` instead: after the run is stopped,
+the PI worker counts n user messages back from the end of PI's own active
+branch, where PI persisted that prompt when it accepted it. A prompt PI refused
+offers no rewind. The abandoned branch remains in PI's
+append-only tree. An active run is stopped
+before the branch changes; queued or waiting sessions return 409, and an
+unknown entry, or a rewind while PI is still compacting, returns 400.
+
+A compaction only applies while its entry is on the active branch. Rewinding
+behind it to a point inside the window PI kept verbatim appends the same
+summary again, since it covers only entries that still precede the new leaf;
+no new summary is generated. Rewinding to a summarized message drops the
+summary, so the model sees the original messages, and PI compacts again only
+if they exceed its threshold.
 
 ### `POST /__hui/sessions/:id/continue`
 
 Continues from the active leaf with PI's native prompt-free continuation
 primitive and returns `{ "ok": true }` once the run has entered. No synthetic
-user message is appended. It accepts a user/tool-result tail, or removes an
-aborted/error assistant tail before continuing. When the tail is a normally
+user message is appended. The tail is the last message of the model context,
+not the raw leaf, so the context edits PI appends while retrying, the model or
+thinking changes it records on reopen and a compaction after the failure do not
+block it. PI's system messages (persisted prompt and tool loadout changes) stay
+in the context but do not count as the tail. An aborted/error assistant tail is
+hidden with a context edit, as PI hides an attempt it retries, so entries after
+it (such as that compaction) stay on the branch. Any other non-assistant tail
+continues, including a compaction summary that is the whole context after a
+rewind. When the tail is a normally
 completed assistant response, HUI instead sends one explicit continuation
 prompt ("Continue from where you left off…") as a normal user turn. Running, queued or waiting sessions return 409.
 
@@ -2055,7 +2103,15 @@ Transcript entries may carry optional `metrics`: `timestamp`, `completedAt`
 `cacheReadTokens`, `cacheWriteTokens`, and `costUsd`. Only finite nonnegative
 values are exposed. Zero is a reported value, not missing data.
 
-PI message timestamps and usage come from `get_messages`; usage is assigned
+The transcript is PI's whole active branch, root to leaf, not the model
+context. A PI compaction therefore hides nothing: its `compaction` entry sits
+where PI appended it, after the messages it summarized and the ones it kept
+verbatim, with PI's summary and pre-compaction token estimate. Failed attempts
+PI hid with a context edit before retrying stay hidden, as in the context.
+Messages persisted by PI carry their session `entryId`; live, not yet
+persisted messages have none.
+
+PI message timestamps and usage come from `get_entries`; usage is assigned
 once to the last text/reasoning block (or last tool call when no text exists) of that model message, never allocated
 across individual content fragments. Timings are observed between paired PI
 `message_start`/`message_end` or `tool_execution_start`/`tool_execution_end`
