@@ -45,6 +45,27 @@ type SnapshotEvent = Extract<AgentEvent, { type: "snapshot" }>;
 /** One stored entry, and the messages the transcript shows for it. */
 type Row = { readonly entry: EntryRecord; readonly shown: readonly unknown[] };
 type CompactionOutcome = { outcome: "done" | "failed" | "cancelled"; message?: string };
+type CompactionStart = Extract<RuntimeEvent, { type: "compaction_start" }>;
+/** One running compaction, of the kind Durable gave it (`createCompaction`). */
+type Compaction = { readonly reason: CompactionReason; readonly blocking: boolean; readonly background: boolean };
+
+/**
+ * Durable's kinds of compaction: one a generation owns is `blocking`, and its run waits for the summary; a manual one
+ * runs beside the conversation, and Stop cancels it; a threshold one Durable starts by itself runs in the background
+ * and survives Stop. Only a blocking one holds anything, and only its own run: Durable admits input throughout.
+ */
+function compactionOf(status: { reason: CompactionReason; blocking: boolean }): Compaction {
+  return { reason: status.reason, blocking: status.blocking, background: !status.blocking && status.reason !== "manual" };
+}
+
+function startOf(compaction: Compaction): CompactionStart {
+  return {
+    type: "compaction_start",
+    reason: compaction.reason,
+    ...(compaction.blocking ? {} : { blocking: false as const }),
+    ...(compaction.background ? { background: true as const } : {}),
+  };
+}
 
 /** A Durable resume reference as HUI's registry stores it. */
 export function durableReference(id: ConversationId): string {
@@ -142,8 +163,16 @@ export class DurableSession implements RuntimeSession {
   #shown: unknown[] | undefined;
   #contextSize: number | undefined;
   /** Durable compactions running now, by task. */
-  #compactions = new Map<TaskId, { reason: CompactionReason; blocking: boolean }>();
-  #quietWaiters = new Set<() => void>();
+  #compactions = new Map<TaskId, Compaction>();
+  /** Manual compactions `compact()` started that the stream has not listed yet. */
+  #requested = new Set<TaskId>();
+  /** The start last reported, until the next end: an unchanged leading compaction is not reported twice. */
+  #lastStart: CompactionStart | undefined;
+  /** Compactions whose ends are not reported: a reset made them stale (Durable drops their summaries), or their
+   * receipt already reported them. */
+  #superseded = new Set<TaskId>();
+  /** Callers waiting for this view to see work end, each with the state it waits for. */
+  #waiters = new Set<{ done: () => boolean; resolve: () => void }>();
   #timings = new RuntimeTimings();
   #agent: AgentState = {};
   #queue: RuntimeQueue = { steering: [], followUp: [] };
@@ -170,7 +199,11 @@ export class DurableSession implements RuntimeSession {
     this.#ids.clear();
     this.#readThrough = undefined;
     this.#changed();
-    this.#compactions = new Map(stream.snapshot.compactions.map((status) => [status.taskId, { reason: status.reason, blocking: status.blocking }]));
+    // A fresh view: at startup, or of the conversation a rewind forked. Earlier tasks belong to another conversation.
+    this.#requested.clear();
+    this.#superseded.clear();
+    this.#lastStart = undefined;
+    this.#compactions = new Map(stream.snapshot.compactions.map((status) => [status.taskId, compactionOf(status)]));
     this.#syncSnapshot(stream.snapshot);
     await this.#read();
     await this.#refreshQueue();
@@ -356,8 +389,10 @@ export class DurableSession implements RuntimeSession {
         if (event.kind !== COMPACTION_TASK) this.#emit({ type: "notice", level: "error", message: event.message });
         return;
       case "compaction_start":
-        this.#compactions.set(event.taskId, { reason: event.reason, blocking: event.blocking });
-        this.#emit({ type: "compaction_start", reason: event.reason });
+        this.#requested.delete(event.taskId);
+        if (this.#superseded.has(event.taskId) || this.#compactions.has(event.taskId)) return;
+        this.#compactions.set(event.taskId, compactionOf(event));
+        this.#announce();
         return;
       case "compaction_end":
         await this.#compactionEnded(event.taskId, event.reason);
@@ -384,18 +419,50 @@ export class DurableSession implements RuntimeSession {
     this.#notifyQuiet();
   }
 
+  /** Reports a compaction's outcome. Durable places a summary at once on an idle conversation, otherwise at the next
+   * boundary of the run, which settles with it; the history is read first, so it holds a summary placed at once. */
   async #compactionEnded(taskId: TaskId, reason: CompactionReason): Promise<void> {
     const blocking = this.#compactions.get(taskId)?.blocking === true;
-    // Inside a run the compaction settles with it. Outside one (a manual compaction, or background work that
-    // outlived its run) the session stays busy until the refreshed history holds the summary, as PI's does.
-    // Claimed before the compaction leaves the list, so a waiting Stop never sees a gap.
-    const outside = !this.#streaming;
-    if (outside) this.#streaming = true;
     this.#compactions.delete(taskId);
+    this.#requested.delete(taskId);
+    if (this.#superseded.delete(taskId)) return;
+    await this.#reportEnd(taskId, reason, blocking);
+  }
+
+  async #reportEnd(taskId: TaskId, reason: CompactionReason, blocking: boolean): Promise<void> {
     const result = await this.#compactionOutcome(taskId, reason);
-    this.#emit({ type: "compaction_end", reason, ...result, willRetry: blocking && result.outcome === "done" });
-    if (outside) await this.#settle();
-    else this.#notifyQuiet();
+    if (result.outcome === "done") await this.#read().catch(() => {});
+    this.#ended({ type: "compaction_end", reason, ...result, willRetry: blocking && result.outcome === "done" });
+    this.#notifyQuiet();
+  }
+
+  /** Reports the compaction the session shows, unless it is the one reported last: `compact()` reports a manual one
+   * before Durable lists it, and a blocking one outranks it. */
+  #announce(): void {
+    const leading = this.#leading();
+    if (!leading) return;
+    const start = startOf(leading);
+    const last = this.#lastStart;
+    if (last && last.reason === start.reason && last.blocking === start.blocking && last.background === start.background) return;
+    this.#lastStart = start;
+    this.#emit(start);
+  }
+
+  /** Reports an end, then whichever compaction still runs: a blocking one may start while a background one works. */
+  #ended(event: Extract<RuntimeEvent, { type: "compaction_end" }>): void {
+    this.#lastStart = undefined;
+    this.#emit(event);
+    this.#announce();
+  }
+
+  /** The compaction the session shows while several run: one its run waits for, then a manual one, then background. */
+  #leading(): Compaction | undefined {
+    const rank = (compaction: Compaction) => compaction.blocking ? 2 : compaction.background ? 0 : 1;
+    let shown: Compaction | undefined;
+    for (const compaction of this.#compactions.values()) {
+      if (!shown || rank(compaction) > rank(shown)) shown = compaction;
+    }
+    return shown;
   }
 
   /** The compaction task's receipt: a summary, nothing old enough to summarize, a cancel or a failure. */
@@ -423,30 +490,40 @@ export class DurableSession implements RuntimeSession {
     const running = this.#streaming;
     this.#syncSnapshot(snapshot);
     const live = new Set<TaskId>(snapshot.compactions.map((status) => status.taskId));
+    let started = false;
     for (const status of snapshot.compactions) {
-      if (this.#compactions.has(status.taskId)) continue;
-      this.#compactions.set(status.taskId, { reason: status.reason, blocking: status.blocking });
-      this.#emit({ type: "compaction_start", reason: status.reason });
+      this.#requested.delete(status.taskId);
+      if (this.#compactions.has(status.taskId) || this.#superseded.has(status.taskId)) continue;
+      this.#compactions.set(status.taskId, compactionOf(status));
+      started = true;
     }
+    if (started) this.#announce();
     for (const [taskId, { reason }] of [...this.#compactions]) {
       if (!live.has(taskId)) await this.#compactionEnded(taskId, reason);
+    }
+    for (const taskId of [...this.#superseded]) {
+      if (!live.has(taskId)) this.#superseded.delete(taskId);
     }
     if (running && !this.#streaming) await this.#settle();
     else await this.#read().catch(() => {});
   }
 
-  #notifyQuiet(): void {
-    if (this.#streaming || this.#compactions.size) return;
-    for (const resolve of [...this.#quietWaiters]) resolve();
+  /** A run, or a compaction of Durable's ordinary scope (blocking or manual, which Stop cancels), is live in this view. */
+  #busy(): boolean {
+    return this.#streaming || [...this.#compactions.values()].some((compaction) => !compaction.background);
   }
 
-  /** Resolves once no run or compaction is running in this view, or after `QUIET_TIMEOUT_MS`. */
-  #quiet(): Promise<void> {
-    if (!this.#streaming && !this.#compactions.size) return Promise.resolve();
+  #notifyQuiet(): void {
+    for (const waiter of [...this.#waiters]) if (waiter.done()) waiter.resolve();
+  }
+
+  /** Resolves once `done` holds in this view, or after `QUIET_TIMEOUT_MS`. */
+  #until(done: () => boolean): Promise<void> {
+    if (done()) return Promise.resolve();
     return new Promise((resolve) => {
-      const done = () => { clearTimeout(timer); this.#quietWaiters.delete(done); resolve(); };
-      const timer = setTimeout(done, QUIET_TIMEOUT_MS);
-      this.#quietWaiters.add(done);
+      const waiter = { done, resolve: () => { clearTimeout(timer); this.#waiters.delete(waiter); resolve(); } };
+      const timer = setTimeout(waiter.resolve, QUIET_TIMEOUT_MS);
+      this.#waiters.add(waiter);
     });
   }
 
@@ -483,20 +560,36 @@ export class DurableSession implements RuntimeSession {
     await this.#submit(text, attachments, "followUp");
   }
 
-  /** Starts Durable's compaction task; its start and outcome arrive as compaction events. */
+  /** Starts a manual compaction, which Durable runs beside the conversation: input is admitted meanwhile and the
+   * summary is placed at the next boundary. Its start is reported before Durable lists it, so the gateway never holds
+   * a prompt for it; the outcome arrives as `compaction_end`. */
   async compact(instructions?: string): Promise<void> {
+    this.#lastStart = { type: "compaction_start", reason: "manual", blocking: false };
+    this.#emit(this.#lastStart);
+    let taskId: TaskId<CompactionResult>;
     try {
-      await this.#conversation.compact(instructions?.trim() || undefined, context);
+      taskId = await this.#conversation.compact(instructions?.trim() || undefined, context);
     } catch (error) {
-      this.#emit({ type: "compaction_end", reason: "manual", outcome: "failed", willRetry: false, message: error instanceof Error ? error.message : "Durable could not start the compaction." });
+      this.#ended({ type: "compaction_end", reason: "manual", outcome: "failed", willRetry: false, message: error instanceof Error ? error.message : "Durable could not start the compaction." });
+      return;
     }
+    const id = taskId as unknown as TaskId;
+    if (!this.#compactions.has(id)) this.#requested.add(id);
+    // The stream normally lists it and reports its end. If the stream fell behind and a snapshot replaced the commits
+    // that did, the receipt reports the end instead; its listing and end are then ignored if they still arrive.
+    void this.#harness.waitForTask(taskId, context).then(async () => {
+      if (!this.#requested.delete(id)) return;
+      this.#superseded.add(id);
+      await this.#reportEnd(id, "manual", false);
+    }, () => undefined);
   }
 
   subscribe(listener: (event: RuntimeEvent) => void): () => void {
     this.#listeners.add(listener);
     // A compaction already running (one Durable resumed after a restart, or started before this view attached) is
-    // reported to each new subscriber, so the session shows it busy.
-    for (const { reason } of this.#compactions.values()) listener({ type: "compaction_start", reason });
+    // reported to each new subscriber, so the session shows it.
+    const shown = this.#leading();
+    if (shown) listener(startOf(shown));
     return () => { this.#listeners.delete(listener); };
   }
 
@@ -562,18 +655,33 @@ export class DurableSession implements RuntimeSession {
     return { steering: [...this.#queue.steering], followUp: [...this.#queue.followUp] };
   }
 
-  /** Stops the run and every running compaction, background ones included (a conversation abort leaves those
-   * running), and resolves once this view has seen them end: HUI treats a resolved Stop as idle. */
+  /** Durable's Stop (`Conversation.abort`): withdraws queued input and cancels the run and every compaction of its
+   * ordinary scope, blocking and manual ones; background compactions keep running. Resolves once this view has seen
+   * that work end: HUI treats a resolved Stop as idle. */
   async abort(): Promise<void> {
-    await Promise.all([...this.#compactions.keys()].map((taskId) => this.#harness.abortTask(taskId, context).catch(() => undefined)));
     await this.#conversation.abort(context);
-    await this.#quiet();
+    await this.#until(() => !this.#busy());
   }
 
-  /** A fresh context; the earlier entries stay in the store. */
+  /** Cancels the manual compactions running beside the conversation, and only them (Durable's `abortTask`), and
+   * resolves once this view has seen them end. Background ones are Durable's own and keep running. */
+  async cancelCompaction(): Promise<void> {
+    // Including one `compact()` started that the stream has not listed yet.
+    const manual = [...this.#compactions].flatMap(([taskId, compaction]) => compaction.blocking || compaction.background ? [] : [taskId]);
+    const tasks = [...new Set([...manual, ...this.#requested])];
+    // A task that finished meanwhile is already terminal; its end is reported as usual.
+    await Promise.all(tasks.map((taskId) => this.#harness.abortTask(taskId, context).catch(() => undefined)));
+    await this.#until(() => tasks.every((taskId) => !this.#compactions.has(taskId) && !this.#requested.has(taskId)));
+  }
+
+  /** A fresh context; the earlier entries stay in the store. A compaction running beside the conversation carries on,
+   * but the reset makes its summary stale and Durable drops it, so its end is not reported. */
   async clear(): Promise<void> {
-    if (this.#streaming || this.#compactions.size) throw new Error("Wait for the current run to finish before clearing the session.");
+    if (this.#streaming) throw new Error("Wait for the current run to finish before clearing the session.");
     await this.#conversation.reset(undefined, context);
+    for (const taskId of this.#compactions.keys()) this.#superseded.add(taskId);
+    this.#compactions.clear();
+    this.#lastStart = undefined;
     await this.#read();
   }
 
@@ -583,10 +691,11 @@ export class DurableSession implements RuntimeSession {
   }
 
   /** Durable history is append-only, so a rewind forks the conversation at that point and continues in the fork; the
-   * abandoned branch stays stored. A fork before a compaction's marker leaves its summary out, so the model sees the
-   * original turns again; inside the summary's kept window the summary stays. */
+   * abandoned branch stays stored. The fork holds the history up to that point and nothing placed after it, a later
+   * summary included, so the model reads the original turns again and Durable compacts the fork when it needs to. A
+   * compaction still running beside the conversation finishes on the abandoned branch. */
   async rewind(target: RuntimeRewindTarget, options?: RuntimeRewindOptions): Promise<void> {
-    if (this.#streaming || this.#compactions.size) throw new Error("Wait for the current run to finish before rewinding.");
+    if (this.#streaming) throw new Error("Wait for the current run to finish before rewinding.");
     await this.#read();
     const visible = this.#history.slice(this.#resetIndex());
     const row = typeof target === "string"
@@ -597,14 +706,6 @@ export class DurableSession implements RuntimeSession {
     const index = this.#history.indexOf(row);
     const isUser = role(row.shown[0]) === "user";
     const at = options?.excludeUserMessage === true && isUser ? this.#history[index - 1]?.entry.id : row.entry.id;
-    // As PI's worker does (`keepCompaction`): a summary covers only the entries before its kept window. When they all
-    // still lead to the fork point, the fork keeps that summary instead of the model rereading what it summarized.
-    const leaf = at === undefined ? -1 : this.#history.findIndex((candidate) => candidate.entry.id === at);
-    const kept = leaf < 0 ? undefined : this.#history.slice(leaf + 1).findLast(({ entry }) => {
-      if (!CompactionEntry.is(entry) || entry.head === undefined) return false;
-      const first = this.#history.findIndex((candidate) => candidate.entry.id === entry.head);
-      return first >= 0 && leaf >= first - 1;
-    })?.entry;
     const next = at
       ? await this.#conversation.fork(at, { ownership: { kind: "ownerless" } }, context)
       : await this.#harness.createConversation({ ownership: { kind: "ownerless" }, agent: {
@@ -612,11 +713,6 @@ export class DurableSession implements RuntimeSession {
           ...(this.#agent.thinkingLevel ? { thinkingLevel: this.#agent.thinkingLevel } : {}),
           cwd: this.#cwd,
         } }, context);
-    if (kept) {
-      await next.submit({ type: "write", entry: {
-        kind: kept.kind, head: kept.head!, ...(kept.model ? { model: kept.model } : {}), ...(kept.data !== undefined ? { data: kept.data } : {}),
-      } }, context);
-    }
     await this.#stop?.();
     this.#host.bindCallerLike(this.#conversation.id, next.id);
     this.#conversation = next;
@@ -655,7 +751,7 @@ export class DurableSession implements RuntimeSession {
     if (this.#disposed) return;
     this.#disposed = true;
     this.#listeners.clear();
-    for (const resolve of [...this.#quietWaiters]) resolve();
+    for (const waiter of [...this.#waiters]) waiter.resolve();
     void this.#stop?.().catch(() => {});
   }
 }

@@ -52,9 +52,11 @@ Turns that mention `E2E_SLOW_COMPACT` make the provider hold PI's summary until
 
 ## Durable sessions
 
-Verified on 2026-10-03 with Pi Durable 1.0.1, the default launcher and the same
+Verified on 2026-10-04 with Pi Durable 1.0.1, the default launcher and the same
 provider. The fixture model's 200k window keeps Durable's background compaction
-from starting by itself, so only `/compact` and **Compact now** compact.
+from starting by itself, so only `/compact` and **Compact now** compact. Durable
+sessions keep Durable's semantics: a manual compaction runs beside the
+conversation, which stays idle.
 
 1. Start a session with `COMPACT_ONE first turn`, then send `COMPACT_TWO second
    turn` and a ~2,000-character `COMPACT_THREE kept kept …`. The header reads
@@ -65,27 +67,27 @@ from starting by itself, so only `/compact` and **Compact now** compact.
    `Additional focus: keep the API decisions` and only `COMPACT_ONE` and
    `COMPACT_TWO`: Durable kept `COMPACT_THREE` verbatim. N is Durable's own
    estimate; the fixture reports two tokens per request.
-3. Rewind on `COMPACT_THREE`: its text returns to the composer and
-   `COMPACT_ONE`, `COMPACT_TWO` and the divider stay. `AFTER_KEPT`'s request
-   holds the summary and the new prompt only.
-4. Rewind on `COMPACT_TWO`: the divider disappears. `AFTER_CUT`'s request holds
-   `COMPACT_ONE` and no summary.
-5. In a new session send `E2E_SLOW_COMPACT first turn`, a long turn, then
-   `/compact keep the API decisions`: the live **Compacting context…** divider,
-   Running and Stop. `TYPED_DURING_COMPACTION` joins the queue as a follow-up;
-   after `POST <providerUrl>/control/release-replay` the marker appears and the
-   queued message is sent and answered.
-6. **Compact now** summarizes again: Durable rewrote its system prompt entry
-   after the summary, and that entry alone exceeds `keepRecentTokens: 400`.
-   Pressed again right away it shows **Compaction failed** with "Nothing to
-   compact (session too small)".
+3. Rewind on `COMPACT_THREE`: its text returns to the composer, `COMPACT_ONE`
+   and `COMPACT_TWO` stay, and the divider is gone, because a Durable fork holds
+   the history up to that point and not the summary placed after it.
+   `AFTER_FORK`'s request holds `COMPACT_ONE`, `COMPACT_TWO` and no summary.
+4. In a new session send `E2E_SLOW_COMPACT first turn`, a long turn, then
+   `/compact keep the API decisions`: the live **Compacting context…** divider
+   with **Cancel compaction**. The header stays `Idle`, the composer reads
+   "Send a message…", there is no Stop, and **Compact now** is disabled.
+5. Send `SENT_WHILE_COMPACTING`: it is answered at once, and its request holds
+   the whole history and no summary. The live divider stays below the new turn.
+6. `POST <providerUrl>/control/release-replay`: **Context compacted** follows
+   the turn answered meanwhile.
 7. Send `E2E_SLOW_COMPACT again` and a long turn, then a bare `/compact` (send
-   it with the button; Enter completes the command menu) and press Stop while
-   it is held: **Compaction cancelled**, no marker.
+   it with the button; Enter completes the command menu) and press **Cancel
+   compaction** while it is held: **Compaction cancelled**, no marker.
 
 ## Limits
 
 Automatic threshold and overflow compaction are covered by
 `server/runtimes/pi-sdk.test.ts` rather than this journey: the fixture model
 reports tiny token counts, and lowering PI's reserve would compact every
-launcher session.
+launcher session. Durable's background compaction (idle session, survives Stop
+and Cancel, dropped by `/clear`) and Stop cancelling a manual compaction are
+covered by `server/runtimes/durable.test.ts`.

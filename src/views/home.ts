@@ -27,6 +27,7 @@ import { attachmentPreview } from "../lib/attachments.ts";
 import { renderAttachmentFileIcon, resolveAttachmentFileIcon } from "../lib/attachment-file-icon.ts";
 import { isSubagentActive, subagentElapsed, subagentVisualState } from "../lib/subagent-activity.ts";
 import { composerEnterMode } from "../lib/composer-state.ts";
+import { compactionBlocks } from "../lib/session-ui-state.ts";
 import { adjustTextareaHeight as syncComposerTextarea } from "../lib/composer-textarea.ts";
 import { icons } from "../lib/icons.ts";
 import type { SplitDirection } from "../lib/session-multiplexer.ts";
@@ -281,6 +282,8 @@ export type HomeProps = {
   onRewind: (target: RewindTarget, text: string) => void;
   /** Same as sending `/compact`. */
   onCompact: () => void;
+  /** Cancels a manual compaction running beside the conversation (Durable's). */
+  onCancelCompaction: () => void;
   onAddAttachments: (files: readonly File[]) => void;
   onRemoveAttachment: (index: number) => void;
   onCopy: (text: string, id: string) => Promise<boolean>;
@@ -1069,24 +1072,30 @@ function renderTranscriptBody(props: HomeProps, rows: readonly ChatProjectionRow
   if (props.transcript.length === 0) {
     return html`<div class="agent-chat__empty"><strong>Start a conversation</strong><span>Send a message below.</span></div>`;
   }
-  return html`${renderTranscriptRows(props, rows)}${renderLiveCompaction(props.compaction)}${renderWorkingIndicator(props)}`;
+  return html`${renderTranscriptRows(props, rows)}${renderLiveCompaction(props.compaction, props.onCancelCompaction)}${renderWorkingIndicator(props)}`;
 }
 
 /** The same divider while PI summarizes, or why it wrote no summary. The
  * finished marker comes from PI's history once it is written. */
-function renderLiveCompaction(compaction: RuntimeCompaction | undefined) {
+function renderLiveCompaction(compaction: RuntimeCompaction | undefined, onCancel: () => void) {
   if (!compaction) return nothing;
   const running = compaction.status === "running";
   const label = running ? (compaction.reason === "overflow" ? "Context is full · compacting…" : "Compacting context…")
     : compaction.status === "cancelled" ? "Compaction cancelled" : "Compaction failed";
+  // Stop cancels a compaction that blocks the session. A manual one that runs
+  // beside the conversation leaves it idle, so it gets its own action.
+  const cancellable = running && compaction.blocking === false && !compaction.background;
   return html`<div class="chat-notice chat-compaction ${running ? "chat-compaction--active" : ""}" role="status" aria-live="polite">
     ${compactionRule(label, { glyph: running })}
     ${compaction.message ? html`<div class="chat-divider__details"><span class="chat-divider__description">${compaction.message}</span></div>` : nothing}
+    ${cancellable ? html`<div class="chat-divider__details"><span class="chat-divider__description">
+      <button type="button" class="chat-divider__action" @click=${onCancel}>Cancel compaction</button>
+    </span></div>` : nothing}
   </div>`;
 }
 
 function renderWorkingIndicator(props: HomeProps) {
-  if (!props.streaming || props.question || props.compaction?.status === "running") return nothing;
+  if (!props.streaming || props.question || compactionBlocks(props.compaction)) return nothing;
   return html`<div class="chat-group assistant chat-group--working" aria-live="polite">
     <div class="chat-group-messages">
       <div class="chat-working-indicator" role="status">
@@ -1441,7 +1450,7 @@ function renderComposer(props: HomeProps) {
           </div>
           <div class="agent-chat__composer-trail">
             <div class="agent-chat__composer-controls">
-          ${renderContextPicker(props.usage, props.streaming ? undefined : props.onCompact)}
+          ${renderContextPicker(props.usage, props.streaming || props.compaction?.status === "running" ? undefined : props.onCompact)}
           <div class="chat-controls__session chat-controls__model chat-controls__model-settings">${renderModelPicker({
             models: props.models,
             current: props.currentModel,
@@ -1845,7 +1854,7 @@ function renderQueue(props: HomeProps) {
               }
             }}></textarea>` : html`<div class="chat-queue__copy"><span class="chat-queue__text" title=${row.text}>${row.text}</span><span class="chat-queue__badge">${row.label}</span></div>`}
           <span class="chat-queue__actions">
-            ${row.editable && props.streaming && props.compaction?.status !== "running" && !editing ? html`<button class="chat-queue__action chat-queue__steer" type="button" aria-label="Steer queued message" @click=${() => props.onQueueSteer(row.id)}>${icons.arrowUp}<span>Steer</span></button>` : nothing}
+            ${row.editable && props.streaming && !compactionBlocks(props.compaction) && !editing ? html`<button class="chat-queue__action chat-queue__steer" type="button" aria-label="Steer queued message" @click=${() => props.onQueueSteer(row.id)}>${icons.arrowUp}<span>Steer</span></button>` : nothing}
             ${editing ? html`<button class="chat-queue__edit-submit" type="button" aria-label="Save queued message" @click=${props.onQueueEditSubmit}>${icons.check}</button><button class="chat-queue__edit-cancel" type="button" aria-label="Cancel edit" @click=${props.onQueueEditCancel}>${icons.close}</button>` : nothing}
             ${row.editable && !editing ? html`<button class="chat-queue__remove" type="button" aria-label="Remove queued message" @click=${() => props.onQueueRemove(row.id)}>${icons.trash}</button><button class="chat-queue__more" type="button" aria-label="Edit queued message" @click=${() => props.onQueueEdit(row.id)}>${icons.moreHorizontal}</button>` : nothing}
           </span>

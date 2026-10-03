@@ -146,20 +146,39 @@ summary is a `compaction` entry where Durable placed it, its wrapper removed.
 newest answered request after the latest summary or reset, plus estimates of
 what follows it.
 
-Compaction is Durable's own. `/compact [focus]` and **Compact now** start its
-compaction task (`Conversation.compact`). The harness also compacts by itself
-with PI's `compaction` settings: in the background from 32,768 tokens (Durable's
+Compaction is Durable's own, with Durable's semantics where they differ from
+PI's. `/compact [focus]` and **Compact now** start its compaction task
+(`Conversation.compact`). The harness also compacts by itself with PI's
+`compaction` settings: in the background from 32,768 tokens (Durable's
 `backgroundTokens`) below `contextWindow - reserveTokens`, blocking above that
 threshold, and after a context overflow, always keeping `keepRecentTokens`
-verbatim. Each one reports `compaction_start` and a `compaction_end` built from
-the task's receipt: `done`, `cancelled`, or `failed` with Durable's reason. A
-requested compaction with nothing old enough to summarize reports PI's
-"Nothing to compact (session too small)". One that ends outside a run keeps the
-session busy until the refreshed history holds its summary, as on PI. Stop
-cancels every running compaction, background ones included, and resolves once
-Durable reports them ended. A compaction already running when a session opens
-(Durable resumes it after a restart) is reported to each new subscriber, so the
-session opens busy.
+verbatim.
+
+- Only a blocking compaction (the threshold one above the line, or an overflow
+  one) holds anything: its own run waits for the summary, and input meanwhile
+  joins Durable's inbox as in any run.
+- A manual or background compaction runs beside the conversation
+  (`compaction_start` with `blocking: false`), and the session stays `idle`
+  apart from its runs. Input is never held: a prompt starts a run at once, and
+  a steer sent with no run to steer starts one as a prompt. Durable places the
+  summary at once when the conversation is idle, otherwise at the run's next
+  boundary.
+- A manual one is cancelled alone with `DELETE /__hui/sessions/:id/compact`
+  (Durable's `abortTask`), the divider's **Cancel compaction**. Stop during a
+  run cancels it too, as `Conversation.abort()` cancels the conversation's
+  ordinary scope, and resolves once Durable reports that work ended. A
+  background one (`background: true`) is Durable's own and survives both.
+- One compaction runs at a time: `/compact` returns 409 while one runs.
+- Each reports a `compaction_end` built from the task's receipt: `done`,
+  `cancelled`, or `failed` with Durable's reason. A requested compaction with
+  nothing old enough to summarize reports PI's "Nothing to compact (session too
+  small)". A summary placed while no turn is in flight shows at that end,
+  without a settle; otherwise the turn's settle shows it.
+- A rewind or `/clear` may run while a background compaction works. A reset
+  makes its summary stale, so Durable drops it and HUI reports nothing for it;
+  after a fork it finishes on the abandoned branch.
+- A compaction already running when a session opens (Durable resumes it after a
+  restart) is reported to each new subscriber.
 
 ## PI process binding
 
@@ -635,8 +654,12 @@ type SessionSnapshot = {
   queue: RuntimeQueue;
   questions: readonly RuntimeQuestion[];
   subagents: readonly SubagentTaskView[];
-  // A running compaction, or one that ended without writing a summary.
-  compaction?: { status: "running" | "failed" | "cancelled"; reason: CompactionReason; message?: string };
+  // A running compaction, or one that ended without writing a summary. Without
+  // flags it blocks (PI): the session is busy and Stop cancels it.
+  // `blocking: false`: the runtime runs it beside the conversation (Durable),
+  // the session stays idle and input is never held; `background: true`: the
+  // runtime's own, which nothing in HUI cancels.
+  compaction?: { status: "running" | "failed" | "cancelled"; reason: CompactionReason; message?: string; blocking?: false; background?: true };
 };
 
 type CompactionReason = "manual" | "threshold" | "overflow";
@@ -653,7 +676,7 @@ type RuntimeEvent =
   | { type: "notice"; message: string; level: "info" | "warning" | "error" }
   | { type: "turn_start" }
   | { type: "turn_end" }
-  | { type: "compaction_start"; reason: CompactionReason }
+  | { type: "compaction_start"; reason: CompactionReason; blocking?: false; background?: true }
   | { type: "compaction_end"; reason: CompactionReason; outcome: "done" | "failed" | "cancelled"; willRetry: boolean; message?: string }
   | { type: "settled"; historyRefreshed?: boolean }
   | { type: "error"; message: string };
@@ -691,8 +714,11 @@ holds the `compaction` entry, usage is refreshed and the queue drains. A settle
 whose refresh finishes after PI started another run leaves the session to that
 run. A failed or cancelled compaction stays in `snapshot.compaction` until the
 next turn, rewind or clear. Abort cancels a running compaction, and a released
-subagent stays open until PI's compaction after its turn ends. Durable sessions
-keep this contract with Durable's compaction; see
+subagent stays open until PI's compaction after its turn ends. A compaction the
+runtime runs beside the conversation (`blocking: false`) leaves the session
+idle, holds no input, keeps the working indicator of a run beside it, keeps
+nothing open and refreshes the history itself when it ends.
+Durable sessions follow Durable's compaction semantics; see
 [Durable runtime binding](#durable-runtime-binding).
 
 ## Session stages
@@ -1200,8 +1226,18 @@ compacting, starts the runtime's compaction with the focus as its instructions
 (PI's `compact` RPC, or Durable's compaction task) and returns `{ "ok": true }`
 without waiting for the summary; compaction events report progress and the
 outcome, including PI's "Nothing to compact" and "Already compacted" (Durable
-reports the first). Busy rules match `/clear` (`409` otherwise); an unknown
-session returns `404`. The prompt route refuses `/compact` like `/clear`.
+reports the first). Busy rules match `/clear` (`409` otherwise), and it also
+returns `409` while a compaction runs; an unknown session returns `404`. The
+prompt route refuses `/compact` like `/clear`.
+
+### `DELETE /__hui/sessions/:id/compact`
+
+Cancels a manual compaction the runtime runs beside the conversation
+(`snapshot.compaction` running with `blocking: false` and no `background`):
+Durable aborts that task alone and `compaction_end` reports `cancelled`.
+Returns `{ "ok": true }` once the end is reported, `409` when there is no
+such compaction (Stop cancels one that blocks the session) and `404` for an
+unknown session.
 
 ### `POST /__hui/sessions/:id/reload`
 
@@ -1418,9 +1454,10 @@ behind it to a point inside the window PI kept verbatim appends the same
 summary again, since it covers only entries that still precede the new leaf;
 no new summary is generated. Rewinding to a summarized message drops the
 summary, so the model sees the original messages, and PI compacts again only
-if they exceed its threshold. A Durable rewind forks the conversation instead:
-when the fork point is inside a later summary's kept window, the fork gets the
-same summary written into it; rewinding to a summarized message leaves it out.
+if they exceed its threshold. A Durable rewind forks the conversation instead,
+and the fork holds the history up to the fork point only: a summary placed
+after it is left out wherever that point is, so the model reads the original
+turns again and Durable compacts the fork when it reaches its thresholds.
 
 ### `POST /__hui/sessions/:id/continue`
 

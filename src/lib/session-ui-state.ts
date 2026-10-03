@@ -1,5 +1,6 @@
 import type {
   Attachment,
+  RuntimeCompaction,
   RuntimeModel,
   RuntimeUsage,
   SessionConnection,
@@ -77,6 +78,13 @@ export function streamingAfterEvent(
   event: "turn_start" | "turn_end" | "settled",
 ): boolean {
   return event === "turn_start" ? true : streaming;
+}
+
+/** A running compaction the session's run waits for (PI's, or Durable's
+ * blocking one); its divider stands in for the working indicator. One the
+ * runtime runs beside the conversation leaves the run working. */
+export function compactionBlocks(compaction: RuntimeCompaction | undefined): boolean {
+  return compaction?.status === "running" && compaction.blocking !== false;
 }
 
 /** The runtime status frame is authoritative for composer availability. */

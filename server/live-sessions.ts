@@ -353,7 +353,7 @@ export class LiveSessions {
     if (live.questions.size > 0) {
       return "waiting";
     }
-    return live.promptPending || live.runtime?.isStreaming || live.compaction?.status === "running" ? "running" : "idle";
+    return live.promptPending || live.runtime?.isStreaming || this.#compactionBlocks(live) ? "running" : "idle";
   }
 
   transcript(id: string): TranscriptEntry[] {
@@ -782,6 +782,14 @@ export class LiveSessions {
   async steer(id: string, text: string, attachments?: readonly PromptAttachment[]): Promise<void> {
     const live = this.#ready(id);
     if (this.#holdWhileCompacting(live)) return this.followUp(id, text, attachments);
+    // A runtime that compacts beside the conversation (Durable) takes input
+    // meanwhile. With no run to steer, the message starts one, through the
+    // prompt path so it is recorded and shown like any prompt.
+    if (this.#compactingAlongside(live) && !live.promptPending && !live.runtime?.isStreaming) {
+      await this.prompt(id, text, attachments);
+      this.#broadcast(live, { kind: "snapshot", snapshot: this.snapshot(id) });
+      return;
+    }
     if (!live.runtime?.steer) throw new Error(`${live.record.tool} cannot steer in this build.`);
     await live.runtime.steer(text, attachments);
   }
@@ -800,9 +808,27 @@ export class LiveSessions {
 
   /** PI refuses a prompt while it compacts outside a run, and a steer would wait
    * in its queue until some later prompt. Hold either in HUI's follow-up queue,
-   * which drains once the compaction ends. Inside a run PI delivers steers. */
+   * which drains once the compaction ends. Inside a run PI delivers steers. A
+   * compaction the runtime runs beside the conversation holds nothing. */
   #holdWhileCompacting(live: Live): boolean {
-    return live.compaction?.status === "running" && !live.runtime?.isStreaming;
+    return this.#compactionBlocks(live) && !live.runtime?.isStreaming;
+  }
+
+  #compacting(live: Live): boolean {
+    return live.compaction?.status === "running";
+  }
+
+  /** A running compaction that blocks the session (PI's, or Durable's blocking
+   * one inside its run): the session is busy and Stop cancels it. */
+  #compactionBlocks(live: Live): boolean {
+    return live.compaction?.status === "running" && live.compaction.blocking !== false;
+  }
+
+  /** A compaction the runtime runs beside the conversation (Durable's manual and
+   * background ones): the session stays idle, input is admitted and a run
+   * carries on meanwhile. */
+  #compactingAlongside(live: Live): boolean {
+    return live.compaction?.status === "running" && live.compaction.blocking === false;
   }
 
   async compact(id: string, instructions?: string): Promise<void> {
@@ -810,11 +836,27 @@ export class LiveSessions {
     if (this.#reported(live) !== "idle" || live.followUps.length || live.questions.size) {
       throw new SessionBusyError("Finish or stop active work before compacting the session.");
     }
+    if (this.#compacting(live)) throw new SessionBusyError("A compaction is already running.");
     if (!live.runtime?.compact) throw new Error(`${live.record.tool} cannot compact sessions in this build.`);
-    // Claimed until PI's own compaction events take over, so nothing lands first.
-    live.compaction = { status: "running", reason: "manual" };
-    this.#setStatus(live, "running");
-    await live.runtime.compact(instructions);
+    // A runtime that compacts beside the conversation (Durable) reports its
+    // start while it is called. PI's events arrive later: claim the session
+    // until they take over, so nothing lands first.
+    const started = live.runtime.compact(instructions);
+    if (!this.#compacting(live)) live.compaction = { status: "running", reason: "manual" };
+    this.#setStatus(live, this.#reported(live));
+    await started;
+  }
+
+  /** Cancels a manual compaction the runtime runs beside the conversation. One
+   * that blocks the session is cancelled by Stop; a background one is the
+   * runtime's own and keeps running. */
+  async cancelCompaction(id: string): Promise<void> {
+    const live = this.#ready(id);
+    if (!this.#compactingAlongside(live) || live.compaction?.background) {
+      throw new SessionBusyError("There is no compaction to cancel here.");
+    }
+    if (!live.runtime?.cancelCompaction) throw new Error(`${live.record.tool} cannot cancel a compaction in this build.`);
+    await live.runtime.cancelCompaction();
   }
 
   editFollowUp(id: string, itemId: string, text: string): void {
@@ -958,7 +1000,8 @@ export class LiveSessions {
     const live = this.#live.get(id);
     if (!live) return;
     // Not mid-way through a compaction PI runs after the turn a caller waited for.
-    if (live.readers > 0 || live.compaction?.status === "running") {
+    // One the runtime runs beside the conversation (Durable's) outlives this view.
+    if (live.readers > 0 || this.#compactionBlocks(live)) {
       live.releaseWhenUnread = true;
       return;
     }
@@ -1074,7 +1117,7 @@ export class LiveSessions {
       // A runtime can report a compaction it resumed after a restart while subscribing.
       const readyStatus = live.questions.size > 0
         ? "waiting"
-        : runtime.isStreaming || live.compaction?.status === "running"
+        : runtime.isStreaming || this.#compactionBlocks(live)
           ? "running"
           : "idle";
       live.bootDurationMs = Math.max(0, Date.now() - live.bootStartedAt);
@@ -1124,13 +1167,26 @@ export class LiveSessions {
     if (live.closed || live.runtime !== runtime) {
       return;
     }
+    let refreshed = false;
     if (event.type === "compaction_start") {
-      live.compaction = { status: "running", reason: event.reason };
+      live.compaction = {
+        status: "running",
+        reason: event.reason,
+        ...(event.blocking === false ? { blocking: false as const } : {}),
+        ...(event.background ? { background: true as const } : {}),
+      };
       this.#setStatus(live, this.#reported(live));
     } else if (event.type === "compaction_end") {
+      const alongside = this.#compactingAlongside(live);
       recordDiagnosticEvent({ area: "session", level: event.outcome === "failed" ? "warning" : "info", action: "compaction_end", summary: `Compaction ${event.outcome} (${event.reason})`, ...(event.message ? { detail: event.message } : {}), sessionId: live.record.id });
       live.compaction = event.outcome === "done" ? undefined : { status: event.outcome, reason: event.reason, ...(event.message ? { message: event.message } : {}) };
       this.#setStatus(live, this.#reported(live));
+      // One that ran beside the conversation (Durable's) ends without a settle:
+      // with no turn in flight, show its summary now; a turn's settle does otherwise.
+      if (alongside && !live.promptPending && !runtime.isStreaming && !live.turnStarted) {
+        live.transcript = [...runtime.transcript()];
+        refreshed = true;
+      }
       // A compaction PI refused before starting ends without a settle.
       if (this.#reported(live) === "idle") void this.#drainFollowUp(live).then(() => this.#closeIfReleased(live));
     } else if (event.type === "turn_start") {
@@ -1241,7 +1297,7 @@ export class LiveSessions {
           ? { type: "error", message: event.message }
           : event,
     });
-    if (event.type === "settled") {
+    if (event.type === "settled" || refreshed) {
       this.#broadcast(live, { kind: "snapshot", snapshot: this.snapshot(live.record.id) });
     }
   }
@@ -1266,7 +1322,7 @@ export class LiveSessions {
 
   async #retryWithFallback(live: Live, runtime: RuntimeSession): Promise<boolean> {
     if (
-      live.closed || live.runtime !== runtime || live.fallbackAttempted || live.compaction?.status === "running" ||
+      live.closed || live.runtime !== runtime || live.fallbackAttempted || this.#compactionBlocks(live) ||
       live.turnProducedOutput || !live.lastPrompt || runtime.isStreaming ||
       live.transcript.at(-1)?.kind !== "error" || !runtime.setModel
     ) return false;

@@ -226,12 +226,16 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   recoverable from PI's tree. The transcript is the whole active branch (PI's,
   or a Durable conversation's history since its latest `/clear`): a
   compaction appears as a divider with its expandable summary and never hides
-  earlier messages, and rewinding inside the window the summary kept verbatim
-  keeps that summary on the new branch instead of compacting again. While the
-  session compacts, the divider shows it live in place of the working
-  indicator, messages sent wait in the queue until it ends, Stop cancels it,
-  and a failure or cancellation stays visible with its reason until the next
-  turn. `/compact [focus]` and the
+  earlier messages. On PI, rewinding inside the window the summary kept
+  verbatim keeps that summary on the new branch instead of compacting again,
+  and while it compacts the divider shows it live in place of the working
+  indicator, messages sent wait in the queue until it ends, and Stop cancels
+  it. A Durable session keeps Durable's semantics: its manual and background
+  compactions run beside the conversation, which stays idle, so messages are
+  sent at once and a run carries on below the live divider; a manual one has
+  its own Cancel on that divider, and a fork holds only the history up to its
+  point. A failure or cancellation stays visible with its reason until the
+  next turn. `/compact [focus]` and the
   context meter's Compact now start one. Continue invokes PI's native
   prompt-free continuation primitive; only when the branch already ends with a
   completed assistant response does HUI send an explicit continuation prompt.
@@ -962,11 +966,16 @@ sessions. A rewind forks the conversation, so the abandoned branch stays
 stored. Prompt-free Continue is not available on Durable; an aborted run
 continues from a new prompt.
 
-Compaction is Durable's too. `/compact`, **Compact now** and the harness's own
-compactions (background ahead of the threshold, blocking at it, and after an
-overflow) run Durable's compaction task with PI's `compaction` settings. The
-transcript keeps the whole history with each summary in place, and a rewind
-inside a summary's kept window keeps it, as on PI.
+Compaction is Durable's too, with Durable's semantics where they differ from
+PI's. `/compact`, **Compact now** and the harness's own compactions (background
+ahead of the threshold, blocking at it, and after an overflow) run Durable's
+compaction task with PI's `compaction` settings. Only a blocking compaction
+holds its run; manual and background ones run beside the conversation, so input
+is never held, the session stays idle and the summary lands at the next
+boundary. A manual one can be cancelled alone, and Stop during a run cancels it
+as `Conversation.abort()` does; a background one keeps running. A rewind forks
+the history as it was, without a summary placed later. The transcript keeps the
+whole history with each summary in place.
 
 `HUI_SESSION_RUNTIME=pi` starts new sessions on the PI SDK worker instead.
 Existing sessions keep the runtime they were created with; HUI never migrates,

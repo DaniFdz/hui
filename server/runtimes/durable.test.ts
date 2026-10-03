@@ -136,15 +136,28 @@ async function lastTurnRequest(log: string): Promise<string> {
 const KEPT_WINDOW = { contextWindow: 200_000, settings: { compaction: { keepRecentTokens: 40 } } };
 const LONG_TURN = `COMPACT_THREE ${"kept ".repeat(400)}`;
 
-/** Runs a manual compaction to its settle and returns what it reported. */
+/** Runs a manual compaction to its end and returns what it reported. */
 async function compacted(session: DurableSession, instructions?: string): Promise<RuntimeEvent[]> {
   const events: RuntimeEvent[] = [];
   const unsubscribe = session.subscribe((event) => { if (event.type.startsWith("compaction") || event.type === "settled") events.push(event); });
-  const settled = nextEvent(session, (event) => event.type === "settled");
+  const ended = nextEvent(session, (event) => event.type === "compaction_end");
   await session.compact(instructions);
-  await settled;
+  await ended;
   unsubscribe();
   return events;
+}
+
+/** Two turns that leave Durable a background compaction whose summary the provider holds. */
+async function heldBackgroundCompaction(t: TestContext) {
+  // A 32k window puts Durable's background threshold (32,768 below `contextWindow - reserveTokens`) under zero.
+  const f = await fixture(t, { contextWindow: 32_000, settings: { compaction: { keepRecentTokens: 40 } } });
+  const host = f.host();
+  const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-background" }, host);
+  const events: RuntimeEvent[] = [];
+  session.subscribe((event) => { if (event.type.startsWith("compaction")) events.push(event); });
+  await turns(session, ["E2E_SLOW_COMPACT first turn", `AUTO_TWO ${"kept ".repeat(400)}`]);
+  assert.equal((await f.control("/control/wait-replay-ready")).status, 200, "the background summary request is held");
+  return { f, host, session, events };
 }
 
 test("resume references round-trip Durable's integer conversation IDs only", () => {
@@ -290,7 +303,8 @@ test("Durable compaction keeps the whole history and marks where it summarized",
 
   const events = await compacted(session, "keep the API decisions");
   assert.deepEqual(events.map((event) => event.type === "compaction_end" ? `end:${event.reason}:${event.outcome}`
-    : event.type === "compaction_start" ? `start:${event.reason}` : event.type), ["start:manual", "end:manual:done", "settled"]);
+    : event.type === "compaction_start" ? `start:${event.reason}` : event.type), ["start:manual", "end:manual:done"], "no settle: nothing ran");
+  assert.deepEqual(events[0], { type: "compaction_start", reason: "manual", blocking: false }, "Durable runs it beside the conversation");
   const after = session.transcript();
   const withoutMetrics = (entries: TranscriptEntry[]) => entries.map(({ metrics: _metrics, ...entry }) => entry);
   assert.deepEqual(withoutMetrics(after.slice(0, before.length)), withoutMetrics(before), "no earlier message disappears");
@@ -347,7 +361,34 @@ test("a requested compaction with nothing old enough to summarize says so", { ti
   assert.equal(session.transcript().some((entry) => entry.kind === "compaction"), false);
 });
 
-test("Stop cancels a running compaction and returns once it ended; a new view sees it running", { timeout: 45_000 }, async (t) => {
+test("a prompt sent while Durable compacts runs at once, and the summary lands where Durable places it", { timeout: 60_000 }, async (t) => {
+  const f = await fixture(t, KEPT_WINDOW);
+  const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-compact-prompt" }, f.host());
+  await turns(session, ["E2E_SLOW_COMPACT first turn", LONG_TURN]);
+  const ended = nextEvent(session, (event) => event.type === "compaction_end");
+  await session.compact();
+  assert.equal((await f.control("/control/wait-replay-ready")).status, 200, "the summary request is held");
+
+  await turns(session, ["WHILE_COMPACTING sent meanwhile"]);
+  let context = await lastTurnRequest(f.log);
+  assert.match(context, /WHILE_COMPACTING/u, "answered while the summary is still held");
+  assert.match(context, /E2E_SLOW_COMPACT first turn/u, "from the whole history: there is no summary yet");
+  assert.doesNotMatch(context, /FIXTURE_SUMMARY/u);
+
+  await f.control("/control/release-replay", "POST");
+  const end = await ended;
+  assert(end.type === "compaction_end" && end.outcome === "done", JSON.stringify(end));
+  assert.deepEqual(outline(session.transcript()), [
+    "user:E2E_SLOW_COMPACT", "assistant", "user:COMPACT_THREE", "assistant", "user:WHILE_COMPACTING", "assistant", "compaction",
+  ], "placed after the turn answered meanwhile");
+  await turns(session, ["AFTER_SUMMARY"]);
+  context = await lastTurnRequest(f.log);
+  assert.match(context, /FIXTURE_SUMMARY/u);
+  assert.match(context, /WHILE_COMPACTING/u, "the turn after the cut stays verbatim");
+  assert.doesNotMatch(context, /E2E_SLOW_COMPACT first turn/u, "the summarized turn leaves the model context");
+});
+
+test("Stop cancels a manual compaction, as Durable's own abort does; a new view sees it running", { timeout: 45_000 }, async (t) => {
   const f = await fixture(t, KEPT_WINDOW);
   const host = f.host();
   const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-cancel" }, host);
@@ -360,7 +401,7 @@ test("Stop cancels a running compaction and returns once it ended; a new view se
   const second = await startDurable({ cwd: f.cwd, sessionFile: session.sessionFile }, host);
   const replayed: RuntimeEvent[] = [];
   second.subscribe((event) => replayed.push(event));
-  assert.deepEqual(replayed, [{ type: "compaction_start", reason: "manual" }]);
+  assert.deepEqual(replayed, [{ type: "compaction_start", reason: "manual", blocking: false }]);
   second.dispose();
 
   await session.abort();
@@ -370,31 +411,95 @@ test("Stop cancels a running compaction and returns once it ended; a new view se
   assert.equal(session.transcript().some((entry) => entry.kind === "compaction"), false, "no summary is written");
 });
 
-test("rewinding inside a summary's kept window keeps it; behind it the model rereads the turns", { timeout: 60_000 }, async (t) => {
+test("cancelling a manual compaction stops only it, and the session carries on", { timeout: 45_000 }, async (t) => {
+  const f = await fixture(t, KEPT_WINDOW);
+  const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-cancel-alone" }, f.host());
+  await turns(session, ["E2E_SLOW_COMPACT first turn", LONG_TURN]);
+  const ended = nextEvent(session, (event) => event.type === "compaction_end");
+  await session.compact();
+  assert.equal((await f.control("/control/wait-replay-ready")).status, 200, "the summary request is held");
+  await session.cancelCompaction();
+  const end = await ended;
+  assert(end.type === "compaction_end" && end.outcome === "cancelled", JSON.stringify(end));
+  await turns(session, ["AFTER_CANCEL"]);
+  assert.deepEqual(outline(session.transcript()).slice(-2), ["user:AFTER_CANCEL", "assistant"]);
+  assert.equal(session.transcript().some((entry) => entry.kind === "compaction"), false, "no summary is written");
+});
+
+test("cancelling right after starting reaches a compaction the stream has not listed yet", { timeout: 45_000 }, async (t) => {
+  const f = await fixture(t, KEPT_WINDOW);
+  const host = f.host();
+  const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-cancel-early" }, host);
+  await turns(session, ["E2E_SLOW_COMPACT first turn", LONG_TURN]);
+  const events: RuntimeEvent[] = [];
+  session.subscribe((event) => { if (event.type.startsWith("compaction")) events.push(event); });
+  await session.compact();
+  await session.cancelCompaction();
+  const ends = events.filter((event) => event.type === "compaction_end");
+  assert.deepEqual(ends.map((event) => event.type === "compaction_end" && event.outcome), ["cancelled"], "one end, reported before Cancel returns");
+  assert.equal(events.at(-1)?.type, "compaction_end", "nothing reports it running afterwards");
+
+  const second = await startDurable({ cwd: f.cwd, sessionFile: session.sessionFile }, host);
+  const replayed: RuntimeEvent[] = [];
+  second.subscribe((event) => replayed.push(event));
+  assert.deepEqual(replayed, [], "Durable lists no compaction");
+  second.dispose();
+  await turns(session, ["AFTER_EARLY_CANCEL"]);
+  assert.equal(session.transcript().some((entry) => entry.kind === "compaction"), false);
+  assert.equal(events.filter((event) => event.type === "compaction_end").length, 1, "its listing and end are not reported again");
+});
+
+test("a background compaction leaves the session idle and survives Stop", { timeout: 60_000 }, async (t) => {
+  const { f, session, events } = await heldBackgroundCompaction(t);
+  assert.deepEqual(events, [{ type: "compaction_start", reason: "threshold", blocking: false, background: true }]);
+  assert.equal(session.isStreaming, false, "the run ended; Durable compacts beside the idle conversation");
+
+  await session.abort();
+  await session.cancelCompaction();
+  assert.equal(events.some((event) => event.type === "compaction_end"), false, "Stop and Cancel leave background work running");
+
+  const ended = nextEvent(session, (event) => event.type === "compaction_end");
+  await f.control("/control/release-replay", "POST");
+  const end = await ended;
+  assert(end.type === "compaction_end" && end.outcome === "done", JSON.stringify(end));
+  assert.equal(session.transcript().at(-1)?.kind, "compaction", "the history holds the summary when its end is reported");
+});
+
+test("clearing during a background compaction drops its summary, as Durable makes it stale", { timeout: 60_000 }, async (t) => {
+  const { f, host, session, events } = await heldBackgroundCompaction(t);
+  await session.clear();
+  assert.deepEqual(session.transcript(), []);
+  // A second view still sees Durable's compaction run, and reports when it ends.
+  const second = await startDurable({ cwd: f.cwd, sessionFile: session.sessionFile }, host);
+  const secondEnded = nextEvent(second, (event) => event.type === "compaction_end");
+  await f.control("/control/release-replay", "POST");
+  await secondEnded;
+  second.dispose();
+  assert.deepEqual(events.filter((event) => event.type === "compaction_end"), [], "the stale compaction's end is not reported");
+  await turns(session, ["AFTER_CLEAR"]);
+  assert.deepEqual(outline(session.transcript()), ["user:AFTER_CLEAR", "assistant"]);
+  assert.doesNotMatch(await lastTurnRequest(f.log), /FIXTURE_SUMMARY|E2E_SLOW_COMPACT/u);
+});
+
+test("a rewind forks Durable's history as it was, without a summary placed later", { timeout: 60_000 }, async (t) => {
   const f = await fixture(t, KEPT_WINDOW);
   const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-rewind-compaction" }, f.host());
   await turns(session, ["COMPACT_ONE first turn", "COMPACT_TWO second turn", LONG_TURN]);
   await compacted(session);
 
-  // The kept window starts at COMPACT_THREE: stopping before it still follows everything the summary covers.
+  // Even inside the summary's kept window, the fork holds only the history up to it, so the model rereads the
+  // original turns; Durable compacts the fork again when it needs to.
   await session.rewind(userEntryId(session, "COMPACT_THREE"), { excludeUserMessage: true });
-  assert.deepEqual(outline(session.transcript()), ["user:COMPACT_ONE", "assistant", "user:COMPACT_TWO", "assistant", "compaction"]);
-  await turns(session, ["AFTER_KEPT"]);
-  let context = await lastTurnRequest(f.log);
-  assert.match(context, /FIXTURE_SUMMARY/u);
-  assert.doesNotMatch(context, /COMPACT_ONE|COMPACT_TWO|COMPACT_THREE/u, "only the summary and the new prompt");
-
-  // COMPACT_TWO was summarized: the fork leaves the summary out and the model rereads the original turn.
-  await session.rewind(userEntryId(session, "COMPACT_TWO"), { excludeUserMessage: true });
-  assert.deepEqual(outline(session.transcript()), ["user:COMPACT_ONE", "assistant"]);
-  await turns(session, ["AFTER_CUT"]);
-  context = await lastTurnRequest(f.log);
+  assert.deepEqual(outline(session.transcript()), ["user:COMPACT_ONE", "assistant", "user:COMPACT_TWO", "assistant"]);
+  await turns(session, ["AFTER_FORK"]);
+  const context = await lastTurnRequest(f.log);
   assert.match(context, /COMPACT_ONE/u);
-  assert.doesNotMatch(context, /FIXTURE_SUMMARY/u);
+  assert.match(context, /COMPACT_TWO/u);
+  assert.doesNotMatch(context, /FIXTURE_SUMMARY|COMPACT_THREE/u);
 
   // A prompt the browser shows without an entry ID is counted from the end.
   await session.rewind({ userFromEnd: 0 }, { excludeUserMessage: true });
-  assert.deepEqual(outline(session.transcript()), ["user:COMPACT_ONE", "assistant"]);
+  assert.deepEqual(outline(session.transcript()), ["user:COMPACT_ONE", "assistant", "user:COMPACT_TWO", "assistant"]);
 });
 
 test("Durable compacts by itself ahead of the threshold, in the background", { timeout: 60_000 }, async (t) => {
@@ -402,10 +507,10 @@ test("Durable compacts by itself ahead of the threshold, in the background", { t
   const f = await fixture(t, { contextWindow: 32_000, settings: { compaction: { keepRecentTokens: 40 } } });
   const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-auto" }, f.host());
   const starts: string[] = [];
-  session.subscribe((event) => { if (event.type === "compaction_start") starts.push(event.reason); });
+  session.subscribe((event) => { if (event.type === "compaction_start") starts.push(`${event.reason}:${event.background ? "background" : "foreground"}`); });
   await turns(session, ["AUTO_ONE first turn", `AUTO_TWO ${"kept ".repeat(400)}`]);
   const entries = await transcriptWhere(session, (items) => items.some((entry) => entry.kind === "compaction") && !session.isStreaming);
-  assert.deepEqual([...new Set(starts)], ["threshold"]);
+  assert.deepEqual([...new Set(starts)], ["threshold:background"]);
   assert.deepEqual(outline(entries).filter((item) => item.startsWith("user:")), ["user:AUTO_ONE", "user:AUTO_TWO"], "history stays whole");
 });
 

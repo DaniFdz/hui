@@ -3162,6 +3162,21 @@ async function handleRequest(
       }
       return;
     }
+    if (action[2] === "compact" && request.method === "DELETE") {
+      try {
+        if (!liveSessions.ensure(record)) {
+          sendJson(response, 404, { error: `unknown session: ${id}` });
+          return;
+        }
+        await liveSessions.cancelCompaction(id);
+        sendJson(response, 200, { ok: true });
+      } catch (error) {
+        sendJson(response, error instanceof SessionBusyError ? 409 : 400, {
+          error: error instanceof Error ? error.message : "Could not cancel that compaction.",
+        });
+      }
+      return;
+    }
     if (action[2] === "reload" && request.method === "POST") {
       try {
         if (!liveSessions.ensure(record)) {

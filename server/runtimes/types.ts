@@ -63,8 +63,20 @@ export type RuntimeQuestionResponse = { value: string } | { confirmed: boolean }
 export type CompactionReason = "manual" | "threshold" | "overflow";
 
 /** A compaction shown outside the transcript: one in progress, or one that
- * ended without writing a summary (a written one is a `compaction` entry). */
-export type RuntimeCompaction = { status: "running" | "failed" | "cancelled"; reason: CompactionReason; message?: string };
+ * ended without writing a summary (a written one is a `compaction` entry).
+ * Without flags it is PI's: the session is busy, input waits for it and Stop
+ * cancels it. `blocking: false` marks one the runtime runs beside the
+ * conversation, as Durable runs a manual or background compaction: the session
+ * stays idle, input is never held and a run carries on meanwhile; a manual one
+ * can be cancelled on its own. `background: true` marks the runtime's own,
+ * which nothing in HUI cancels. */
+export type RuntimeCompaction = {
+  status: "running" | "failed" | "cancelled";
+  reason: CompactionReason;
+  message?: string;
+  blocking?: false;
+  background?: true;
+};
 
 /** Everything the browser needs to draw a turn, normalised across tools. */
 export type RuntimeEvent =
@@ -78,7 +90,8 @@ export type RuntimeEvent =
   | { type: "notice"; message: string; level: "info" | "warning" | "error" }
   | { type: "turn_start" }
   | { type: "turn_end" }
-  | { type: "compaction_start"; reason: CompactionReason }
+  /** `blocking` and `background` as in `RuntimeCompaction`; absent, it blocks and is not background. */
+  | { type: "compaction_start"; reason: CompactionReason; blocking?: false; background?: true }
   /** `willRetry`: PI resumes the overflowed turn itself after a summary. */
   | { type: "compaction_end"; reason: CompactionReason; outcome: "done" | "failed" | "cancelled"; willRetry: boolean; message?: string }
   /** The agent stopped entirely. Distinct from `turn_end`: a turn can end while
@@ -199,6 +212,9 @@ export type RuntimeSession = {
   reload?(): Promise<void>;
   /** Start a summary of older context; compaction events report progress and outcome. */
   compact?(instructions?: string): Promise<void>;
+  /** Cancel a manual compaction run beside the conversation (`blocking: false`),
+   * resolving once its end is reported. Stop cancels one that blocks. */
+  cancelCompaction?(): Promise<void>;
   /** Move the active leaf without deleting the branch being left. */
   rewind?(target: RuntimeRewindTarget, options?: RuntimeRewindOptions): Promise<void>;
   /** Resume the model from the current non-assistant tail without a user prompt. */
