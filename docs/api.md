@@ -115,6 +115,28 @@ prompt, steer and follow-up routes reject it (including invalid arguments)
 rather than sending it to PI. `/update --check` never presents an install
 action.
 
+## Durable runtime binding
+
+The browser never connects to the harness either. New sessions use the
+`durable` runtime: one Pi Durable harness inside the gateway, over the SQLite
+store `~/.config/hui/durable/harness.sqlite` (`HUI_DURABLE_DIR` overrides the
+directory). A lock file refuses a second gateway on the same store; Durable has
+no cross-process locking of its own. Each HUI session is one Durable
+conversation and stores `durable:<conversationId>` in `piSessionFile`.
+
+Opening the store resumes every unfinished run. A gateway restart therefore
+does not interrupt Durable work: the run continues, an interrupted tool call is
+reported to the model as interrupted (never rerun), and HUI's recovery prompt is
+not used (`RuntimeSession.resumesInterruptedRuns`). Prompts, steering and
+follow-ups are Durable inbox submissions; `/compact [instructions]` starts a
+manual compaction. Rewind forks the conversation at the chosen point and stores
+the fork's reference; the earlier conversation is kept. `/skill:name` and
+prompt templates expand as in PI. HUI tools run in the gateway process and reach
+the agent-tool handler directly with the conversation's bound HUI session,
+falling back to the registry after a restart. Usage totals read Durable's
+per-conversation spend. `HUI_SESSION_RUNTIME=pi` creates new sessions on the
+PI worker described below.
+
 ## PI process binding
 
 The browser never connects to PI. The long-lived HUI gateway owns one isolated
@@ -683,7 +705,7 @@ Only a changed stage writes; polling an unchanged board stays read-only.
 | `model`, `thinking` | HUI | Session preference passed back to the runtime on reopen |
 | `parentId`, `subagent` | HUI | Optional additive lineage/task state for `sessions_spawn`; PI still owns the child transcript |
 | `stage`, `stageSource`, `stagePullRequests` | HUI | Optional Kanban stage and who placed it (`operator`, `agent`, `pullRequest`); absent means Investigation. A session started from a backlog item is created with an operator placement in the target column. See [Session stages](#session-stages). `stagePullRequests` is server-only and never returned in views. |
-| `piSessionFile` | PI identity, HUI pointer | Learned from `get_state`, then stored by HUI for `--session` resume |
+| `piSessionFile` | Runtime identity, HUI pointer | PI: learned from `get_state`, then stored by HUI for `--session` resume. Durable: `durable:<conversationId>`, replaced by a rewind's fork |
 | messages and tool results | PI | PI's JSONL only; never copied into `sessions.json` |
 | `status` | HUI process | Derived live state; never persisted |
 | `~/.config/hui/backlog.json` | HUI | Kanban backlog, separate from `sessions.json`: `{ version: 1, tasks: BacklogLocalTask[], jira: { [KEY]: { group } } }`. A task is `{ id, title, problem, fix, cwd?, group, createdAt, jira?: { key, url } }`. Per Jira key only non-default HUI metadata (its group) is stored, never Jira facts. Serialized mutations, atomic rename; a file with a newer `version` or invalid JSON is refused and never overwritten. See [Kanban backlog](#kanban-backlog). |

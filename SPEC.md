@@ -937,9 +937,38 @@ unfinished session.
 
 ## Decisions
 
+### New sessions run on Pi Durable
+
+New sessions use the `durable` runtime (`@earendil-works/pi-durable` 1.0.1).
+One harness per gateway owns their conversations, runs, inbox and crash
+recovery in a single SQLite store, `~/.config/hui/durable/harness.sqlite`
+(`HUI_DURABLE_DIR` overrides it), locked to one gateway at a time. Every
+step is checkpointed: after a gateway crash or restart the harness resumes the
+interrupted run by itself. A cut-off model request is sent again; an
+interrupted tool call is reported to the model as interrupted rather than
+rerun, because no HUI or coding tool is marked replay-safe. HUI therefore never
+sends its recovery prompt to a Durable session.
+
+PI still owns configuration: the harness reads PI's `settings.json`,
+`models.json`, credentials, skills, `AGENTS.md`/`SYSTEM.md`/`APPEND_SYSTEM`
+and prompt templates through PI's SDK, and builds the system prompt with PI's
+own section builder plus HUI's sections, as the SDK worker does. Durable runs
+only HUI-owned code: its read/write/edit/bash tools and HUI's tools, which call
+the gateway's agent-tool handler in process as the conversation's bound HUI
+session. Third-party PI extensions and packages do not load in Durable
+sessions. A rewind forks the conversation, so the abandoned branch stays
+stored. Prompt-free Continue is not available on Durable; an aborted run
+continues from a new prompt.
+
+`HUI_SESSION_RUNTIME=pi` starts new sessions on the PI SDK worker instead.
+Existing sessions keep the runtime they were created with; HUI never migrates,
+copies or deletes PI transcripts.
+
 ### HUI owns an isolated PI SDK backend, not a PI fork
 
-Each active session runs a Node child with the pinned
+Sessions on the `pi` runtime (all sessions created before Durable, and new
+ones under `HUI_SESSION_RUNTIME=pi`) keep this design. Each active one runs a
+Node child with the pinned
 `@earendil-works/pi-coding-agent` SDK (1.0.1). HUI owns the versioned default
 prompt, HUI tool definitions and runtime inspection; PI still owns its agent
 loop, configuration, credentials, resources and JSONL transcript writer. The

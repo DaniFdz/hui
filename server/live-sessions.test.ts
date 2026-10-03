@@ -482,6 +482,36 @@ test("a gateway restart automatically continues the journaled request", async ()
   assert.equal((await readRegistry()).find((session) => session.id === "interrupted")?.runRecoveryAttempts, 1);
 });
 
+test("a runtime that resumes its own runs is never replayed after a restart", async () => {
+  const started: FakeSession[] = [];
+  const manager = new LiveSessions({
+    id: "durable",
+    start: async () => {
+      const session = Object.assign(new FakeSession(), { resumesInterruptedRuns: true });
+      started.push(session);
+      return session;
+    },
+  });
+  manager.ensure({
+    ...recordFor("self-resuming"),
+    tool: "durable",
+    runStartedAt: "2026-09-24T12:00:00.000Z",
+    runPrompt: "the original task",
+  });
+  await waitForBoot(manager, "self-resuming");
+  await new Promise<void>((resolve) => {
+    const inspect = async () => {
+      if (!(await readRegistry()).find((session) => session.id === "self-resuming")?.runStartedAt) resolve();
+      else setImmediate(() => void inspect());
+    };
+    void inspect();
+  });
+  assert.deepEqual(started[0]?.prompts, [], "no recovery prompt is sent");
+  const record = (await readRegistry()).find((session) => session.id === "self-resuming");
+  assert.equal(record?.runPrompt, undefined);
+  assert.equal(record?.runRecoveryAttempts, undefined);
+});
+
 test("manual continuation remains available after automatic recovery is exhausted", async () => {
   const started: FakeSession[] = [];
   const manager = new LiveSessions(factory(started));

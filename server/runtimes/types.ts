@@ -8,8 +8,9 @@ import type { TranscriptMetrics } from "./transcript-metrics.ts";
  * contract is deliberately tiny — start or resume a session, send a prompt, and
  * stream what comes back.
  *
- * pi is the only adapter today. Another harness can slot in beside it without
- * any of the UI changing.
+ * Two adapters exist: `durable` (Pi Durable, the default for new sessions)
+ * and `pi` (PI's SDK worker, kept for existing sessions and as a fallback).
+ * Another harness can slot in beside them without any of the UI changing.
  */
 
 export type RuntimeQueue = {
@@ -158,6 +159,9 @@ export type RuntimeSession = {
   /** Where the conversation is stored, once the tool has decided. */
   readonly sessionFile: string | undefined;
   readonly isStreaming: boolean;
+  /** The runtime itself continues runs interrupted by a gateway restart, so
+   * HUI must never replay them with a recovery prompt. */
+  readonly resumesInterruptedRuns?: boolean;
   prompt(text: string, attachments?: readonly PromptAttachment[]): Promise<void>;
   /** Queue an instruction before the next model call while the agent is busy. */
   steer?(text: string, attachments?: readonly PromptAttachment[]): Promise<void>;

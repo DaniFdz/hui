@@ -17,6 +17,7 @@ import type { TaskSuggestion } from "../shared/task-suggestions.ts";
 import type { Watcher } from "../shared/watchers.ts";
 import { SessionRegistryError, updateRegistry } from "./sessions.ts";
 import { piRuntime } from "./runtimes/pi.ts";
+import { durableRuntime } from "./runtimes/durable.ts";
 import type {
   AgentRuntime,
   PromptAttachment,
@@ -214,7 +215,7 @@ export class LiveSessions {
   /** Injectable so the state machine can be exercised without waiting to boot a
    * real tool. A single runtime stands in for one tool, an array for several. */
   constructor(
-    runtimes: AgentRuntime | AgentRuntime[] = piRuntime,
+    runtimes: AgentRuntime | AgentRuntime[] = [piRuntime, durableRuntime],
     registryUpdater: typeof updateRegistry = updateRegistry,
     settingsReader: () => Promise<Settings> = readHuiSettings,
   ) {
@@ -736,6 +737,10 @@ export class LiveSessions {
     this.#setStatus(live, "running");
     try {
       await live.runtime.rewind(target, options);
+      // Durable rewinds continue in a fork, which has its own resume reference.
+      if (live.runtime.sessionFile && live.runtime.sessionFile !== live.record.piSessionFile) {
+        await this.#save(live, { piSessionFile: live.runtime.sessionFile });
+      }
       live.transcript = [...live.runtime.transcript()];
       live.compaction = undefined;
       live.lastPrompt = undefined;
@@ -1077,7 +1082,10 @@ export class LiveSessions {
       this.#setStatus(live, readyStatus, false);
       recordDiagnosticEvent({ area: "runtime", level: "info", action: "ready", summary: `${live.record.tool} runtime ready`, sessionId: live.record.id });
       if (live.record.runStartedAt && readyStatus === "idle") {
-        await this.#recoverInterrupted(live);
+        // A runtime that resumes its own runs has already finished this one or
+        // recorded its interruption; replaying it would repeat the request.
+        if (runtime.resumesInterruptedRuns) this.#clearRunMarker(live);
+        else await this.#recoverInterrupted(live);
       }
       // A resumed session only has its history after boot, so the transcript is
       // sent now rather than left empty at connect.

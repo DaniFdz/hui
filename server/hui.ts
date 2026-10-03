@@ -77,6 +77,7 @@ import {
 import type { AutomationTask } from "../src/lib/automation-types.ts";
 import { completeLocalPaths, completeWorkingDirectories, displayPath, resolveWorkingDirectory } from "./working-directories.ts";
 import { diagnosticPath, mirrorDiagnosticLogs, readObservability, recordDiagnosticEvent } from "./observability.ts";
+import { durableHost } from "./runtimes/durable-host.ts";
 import { parseUiErrorBatch, UI_ERROR_BODY_LIMIT, uiErrorLog } from "./ui-errors.ts";
 import { runtimeMemoryByPid } from "./runtime-resources.ts";
 import { checkoutSessionRef, createSessionWorktree, inspectGitCheckout, type WorktreeProgress } from "./worktrees.ts";
@@ -182,7 +183,12 @@ const AUTOMATION_RUN_CANCEL = /^\/__hui\/automation\/runs\/([^/]+)\/cancel$/;
 const SESSIONS_ROUTE = `${PREFIX}sessions`;
 const SESSION_STATUSES_ROUTE = `${SESSIONS_ROUTE}/events`;
 const SESSION_GROUPS_ROUTE = `${PREFIX}session-groups`;
-const NEW_SESSION_TOOLS = new Set(["pi"]);
+const NEW_SESSION_TOOLS = new Set(["durable", "pi"]);
+/** New sessions run on Pi Durable; `HUI_SESSION_RUNTIME=pi` keeps PI's SDK
+ * worker as an explicit fallback. Existing sessions keep the runtime they have. */
+export function defaultSessionTool(): string {
+  return process.env["HUI_SESSION_RUNTIME"] === "pi" ? "pi" : "durable";
+}
 const NEW_SESSION_THINKING_LEVELS = new Set(["off", "minimal", "low", "medium", "high", "xhigh"]);
 const SESSION_TITLE_MAX = 200;
 const SESSION_GROUP_MAX = 200;
@@ -1277,8 +1283,8 @@ export async function createSession(
   if (branchName && !requestedWorktree) {
     throw new Error("A branch name requires Create workspace.");
   }
-  // Which runtime drives it. PI is the only adapter; an explicit other name is
-  // rejected rather than silently started as PI.
+  // Which runtime drives it. An unknown name is rejected rather than silently
+  // started on the default runtime.
   const tool = typeof body["tool"] === "string" ? body["tool"].trim() : "";
   if (tool && !NEW_SESSION_TOOLS.has(tool)) {
     throw new Error(`Unsupported session tool: ${tool}`);
@@ -1299,7 +1305,7 @@ export async function createSession(
   if (thinking && !NEW_SESSION_THINKING_LEVELS.has(thinking)) {
     throw new Error(`Unsupported thinking level: ${thinking}`);
   }
-  const runtimeTool = tool || "pi";
+  const runtimeTool = tool || defaultSessionTool();
   const settings = await readSettings();
   const id = randomUUID();
   const now = new Date().toISOString();
@@ -1568,7 +1574,7 @@ async function startTaskSuggestion(
       cwd: suggestion.cwd,
       title: suggestion.title.slice(0, SESSION_TITLE_MAX),
       group: source.group,
-      tool: "pi",
+      tool: defaultSessionTool(),
       ...(mode === "worktree" ? { worktree: true } : {}),
     });
     await waitForSessionReady(record.id);
@@ -1669,7 +1675,7 @@ export async function startBacklogItem(itemId: string, body: Record<string, unkn
       cwd: body["cwd"],
       title: item.title.slice(0, SESSION_TITLE_MAX),
       group: body["group"],
-      tool: "pi",
+      tool: defaultSessionTool(),
       ...(body["worktree"] !== undefined ? { worktree: body["worktree"] } : {}),
       ...(body["branchName"] ? { branchName: body["branchName"] } : {}),
       ...(body["baseRef"] ? { baseRef: body["baseRef"] } : {}),
@@ -3404,6 +3410,13 @@ export async function startBackend(): Promise<void> {
   await automation.start();
   initializeWatchers();
   initializeSubagents();
+  // Opening the Durable store resumes its interrupted runs, including those of
+  // sessions no browser has reopened yet. Another gateway owning it is reported.
+  void durableHost().open().catch((error: unknown) => recordDiagnosticEvent({
+    area: "runtime", level: "warning", action: "durable_open_failed",
+    summary: "The Durable session store did not open",
+    detail: error instanceof Error ? error.message : String(error),
+  }));
   recoverInterruptedSessions(await readRegistry());
   // Auto-star the HUI repo when GitHub is connected.
   void githubCli.starHuiRepo().catch(() => {}); // best-effort, non-blocking
@@ -3432,6 +3445,8 @@ export function stopBackend(): void {
   watchers.dispose();
   stopAgentToolBridge();
   liveSessions.disposeAll();
+  // Closing records no outcome: running Durable work resumes on the next start.
+  void durableHost().close();
 }
 
 /** Upgrade handlers for browser panes and session views; the gateway and Vite
