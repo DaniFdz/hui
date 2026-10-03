@@ -892,7 +892,7 @@ unfinished session.
 ### HUI owns an isolated PI SDK backend, not a PI fork
 
 Each active session runs a Node child with the pinned
-`@earendil-works/pi-coding-agent` SDK (0.87.1). HUI owns the versioned default
+`@earendil-works/pi-coding-agent` SDK (1.0.1). HUI owns the versioned default
 prompt, HUI tool definitions and runtime inspection; PI still owns its agent
 loop, configuration, credentials, resources and JSONL transcript writer. The
 gateway does not embed the agent loop or execute third-party extensions.
