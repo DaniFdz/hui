@@ -690,8 +690,11 @@ wa-dropdown.session-menu.task-suggestion__start-menu { --menu-item-height: 26px;
    its details inline. The log box is bottom-anchored (column-reverse) so the
    newest output is what shows first. */
 .chat-watcher > summary .chat-subagents__time { white-space: nowrap; }
+/* Grid items default to their min-content width; the no-wrap log path must
+   not widen the row past the conversation. */
+.chat-watcher { min-width: 0; }
 .hui-subagent-status--dead { color: var(--warn); }
-.chat-watcher__details { display: grid; gap: 6px; margin: 2px 8px 8px 32px; color: var(--muted); font-size: 12px; }
+.chat-watcher__details { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; margin: 2px 8px 8px 32px; color: var(--muted); font-size: 12px; }
 .chat-watcher__meta { display: flex; flex-wrap: wrap; gap: 2px 10px; }
 .chat-watcher__meta a { color: var(--accent); }
 .chat-watcher__note { margin: 0; }
