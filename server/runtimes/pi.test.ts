@@ -303,15 +303,17 @@ test("session usage combines PI context stats with the latest run only", () => {
       { role: "user", content: "latest" },
       { role: "assistant", usage: { input: 10_000, output: 2_000, cost: { total: 0.03 } } },
       { role: "toolResult", content: [] },
+      { role: "toolResult", content: [], usage: { input: 600, output: 100, cost: { total: 0.01 } } },
+      { role: "system", content: "", sections: { tools: "changed" } },
       { role: "assistant", usage: { input: 3_400, output: 1_200, cost: { total: 0.02 } } },
     ],
   ), {
     contextTokens: 166_300,
     contextWindow: 258_400,
     percent: 64.36,
-    inputTokens: 13_400,
-    outputTokens: 3_200,
-    costUsd: 0.05,
+    inputTokens: 14_000,
+    outputTokens: 3_300,
+    costUsd: 0.06,
   });
 });
 

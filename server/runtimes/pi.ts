@@ -74,7 +74,9 @@ function latestRunUsage(messages: readonly unknown[]): Pick<RuntimeUsage, "input
     const message = messages[index];
     if (!isRecord(message)) continue;
     if (message["role"] === "user") break;
-    if (message["role"] !== "assistant" || !isRecord(message["usage"])) continue;
+    // PI attributes nested tool and model calls (ctx.executeTool, classifiers)
+    // to the calling tool's result, and counts it in its own session totals.
+    if ((message["role"] !== "assistant" && message["role"] !== "toolResult") || !isRecord(message["usage"])) continue;
     const usage = message["usage"];
     inputTokens += finiteNumber(usage["input"] ?? usage["inputTokens"]);
     outputTokens += finiteNumber(usage["output"] ?? usage["outputTokens"]);

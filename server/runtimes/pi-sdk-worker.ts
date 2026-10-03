@@ -149,7 +149,14 @@ async function main() {
           session.refreshContext();
           leaf = session.sessionManager.getLeafEntry();
         }
-        if (!(leaf?.type === "message" && (leaf.message.role === "user" || leaf.message.role === "toolResult"))) {
+        // PI persists prompt and tool loadout changes as system entries just
+        // before the request that used them. They are not a turn: continue from
+        // the conversation message they follow, keeping them in the context.
+        let turn = leaf;
+        while (turn?.type === "message" && turn.message.role === "system" && turn.parentId) {
+          turn = session.sessionManager.getEntry(turn.parentId);
+        }
+        if (!(turn?.type === "message" && (turn.message.role === "user" || turn.message.role === "toolResult"))) {
           throw new Error("Rewind to a user message or completed tool result before continuing.");
         }
         // Agent.continue() is the SDK's prompt-free continuation primitive. The
