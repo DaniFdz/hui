@@ -7,6 +7,7 @@ import type { ProgressCard } from "./progress-card.ts";
 import type { SessionPullRequest } from "../../shared/pull-requests.ts";
 import type { SessionJiraIssue } from "../../shared/jira.ts";
 import type { TaskSuggestion } from "../../shared/task-suggestions.ts";
+import type { Watcher } from "../../shared/watchers.ts";
 import { CLIENT_HEADERS, fetchJson } from "./settings-store.ts";
 import { trackedFetch } from "./ui-errors.ts";
 import type { SessionStage, SessionStageOrigin } from "../../shared/session-stages.ts";
@@ -263,6 +264,8 @@ export type SessionSnapshot = {
   subagents: SubagentTaskView[];
   /** Pending `suggest_task` cards; absent when there are none. */
   suggestions?: TaskSuggestion[];
+  /** HUI-run background watchers; absent when there are none. */
+  watchers?: Watcher[];
   /** A running compaction, or one that ended without a summary. */
   compaction?: RuntimeCompaction;
 };

@@ -46,6 +46,7 @@ import { positionRail } from "./chat/position-rail.ts";
 import { readToolPresentation, renderReadToolCard } from "./chat/read-tool-card.ts";
 import { commandToolPresentation, renderCommandToolCard } from "./chat/command-tool-card.ts";
 import { renderTaskSuggestionCard, type TaskSuggestionCardProps } from "./chat/task-suggestion-card.ts";
+import { renderWatcherActivity, type WatcherActivityProps } from "./chat/watcher-activity.ts";
 import { browserToolSummary } from "../lib/browser-tool-display.ts";
 import { toggleNavigationDrawer } from "./shell.ts";
 import { slashCommandQuery } from "../lib/slash-commands.ts";
@@ -248,6 +249,8 @@ export type HomeProps = {
   onSelectSubagent: (sessionId: string) => void;
   /** Pending `suggest_task` cards for the open session. */
   taskSuggestions?: TaskSuggestionCardProps;
+  /** HUI-run background watchers for the open session. */
+  watchers?: WatcherActivityProps;
   onDraftChange: (draft: string) => void;
   commandMenu: SlashMenuProps;
   onCommandQuery: (query: string | null) => void;
@@ -2104,7 +2107,7 @@ function renderTranscript(props: HomeProps, session: SessionView) {
                     @scroll=${(event: Event) => props.onTranscriptScroll(event.currentTarget as HTMLElement)}
                     @click=${(event: Event) => { void copyCodeBlock(event, props); }}>
                     ${positionRail({ sessionId: session.id, markers: props.opening || session.status === "starting" ? [] : conversationMarkers(rows), onNavigate: props.onTranscriptNavigate })}
-                    <div class="chat-thread-inner" ${markdownBlocks()}>${renderTranscriptBody(props, rows)}${renderSubagentActivity(props)}</div>
+                    <div class="chat-thread-inner" ${markdownBlocks()}>${renderTranscriptBody(props, rows)}${renderSubagentActivity(props)}${props.watchers ? renderWatcherActivity(props.watchers) : nothing}</div>
                   </div>
                 </div>
                 <div class="chat-scroll-to-bottom-wrap"><button type="button" class="chat-scroll-to-bottom" data-visible=${String(props.showScrollToBottom)} ?inert=${!props.showScrollToBottom} aria-hidden=${String(!props.showScrollToBottom)} @click=${props.onScrollToBottom} aria-label="Scroll to latest">${icons.arrowDown}</button></div>

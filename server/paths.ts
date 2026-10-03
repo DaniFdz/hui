@@ -28,3 +28,8 @@ export const BROWSER_PROFILE_DIR = join(CONFIG_DIR, "browser", "profile");
 
 /** HUI owns scheduled task definitions and their bounded run history. */
 export const AUTOMATION_FILE = join(CONFIG_DIR, "automation.json");
+
+/** HUI-owned background watchers: one registry, and one log and exit record
+ * per watcher under the watchers directory. */
+export const WATCHERS_FILE = join(CONFIG_DIR, "watchers.json");
+export const WATCHER_LOG_DIR = join(CONFIG_DIR, "watchers");
