@@ -16,13 +16,14 @@ import type { RuntimeEvent, TranscriptEntry } from "./types.ts";
 const configDir = await mkdtemp(join(tmpdir(), "hui-durable-config-"));
 process.env["XDG_CONFIG_HOME"] = configDir;
 after(() => rm(configDir, { recursive: true, force: true }));
-const { DurableHost } = await import("./durable-host.ts");
+const { DurableHost, durableContext } = await import("./durable-host.ts");
+const { estimateTokens } = await import("@earendil-works/pi-coding-agent");
 const { durableConversationId, durableReference, startDurable } = await import("./durable.ts");
 type DurableHost = import("./durable-host.ts").DurableHost;
 
 const settings = normalizeSettings(undefined);
 
-async function fixture(t: TestContext, options: { contextWindow?: number; compaction?: Record<string, number> } = {}) {
+async function fixture(t: TestContext, options: { contextWindow?: number; settings?: Record<string, unknown> } = {}) {
   const dir = await mkdtemp(join(tmpdir(), "hui-durable-test-"));
   const agentDir = join(dir, "agent");
   const cwd = join(dir, "workspace");
@@ -53,7 +54,7 @@ async function fixture(t: TestContext, options: { contextWindow?: number; compac
   } } }));
   await writeFile(join(agentDir, "settings.json"), JSON.stringify({
     defaultProvider: "hui-e2e", defaultModel: "fixture", defaultThinkingLevel: "high",
-    ...(options.compaction ? { compaction: options.compaction } : {}),
+    ...options.settings,
   }));
   const invocations: AgentToolInvocation[] = [];
   const host = (options: { invokeTool?: (invocation: AgentToolInvocation) => Promise<unknown> } = {}) => {
@@ -129,7 +130,7 @@ async function lastTurnRequest(log: string): Promise<string> {
 }
 
 /** Short turns have something to summarize; the window is large enough that Durable never compacts by itself. */
-const KEPT_WINDOW = { contextWindow: 200_000, compaction: { keepRecentTokens: 40 } };
+const KEPT_WINDOW = { contextWindow: 200_000, settings: { compaction: { keepRecentTokens: 40 } } };
 const LONG_TURN = `COMPACT_THREE ${"kept ".repeat(400)}`;
 
 /** Runs a manual compaction to its settle and returns what it reported. */
@@ -311,6 +312,24 @@ test("Durable compaction keeps the whole history and marks where it summarized",
   assert.doesNotMatch(context, /COMPACT_ONE|COMPACT_TWO/u, "summarized turns leave the model context");
 });
 
+test("the context meter is Durable's own estimate, system prompt included", { timeout: 60_000 }, async (t) => {
+  // A failed answer is no measurement, so right after it Durable estimates the whole context: the summary, the kept
+  // turn, the system baseline it rewrote after the summary and the new prompt.
+  const f = await fixture(t, { ...KEPT_WINDOW, settings: { ...KEPT_WINDOW.settings, retry: { enabled: false } } });
+  const host = f.host();
+  const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-meter" }, host);
+  await turns(session, ["COMPACT_ONE first turn", "COMPACT_TWO second turn", LONG_TURN]);
+  await compacted(session);
+  const settled = nextEvent(session, (event) => event.type === "settled");
+  await session.prompt("E2E_ERROR after the summary");
+  await settled;
+  const conversation = await (await host.open()).conversation(durableConversationId(session.sessionFile)!, durableContext);
+  const view = await conversation!.context(durableContext);
+  assert(view.messages.some((message) => message.role === "system"), "Durable re-baselined its system prompt");
+  const expected = view.messages.reduce((total, message) => total + estimateTokens(message), 0);
+  assert.equal(session.currentUsage()?.contextTokens, expected);
+});
+
 test("a requested compaction with nothing old enough to summarize says so", { timeout: 45_000 }, async (t) => {
   const f = await fixture(t);
   const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-small" }, f.host());
@@ -374,7 +393,7 @@ test("rewinding inside a summary's kept window keeps it; behind it the model rer
 
 test("Durable compacts by itself ahead of the threshold, in the background", { timeout: 60_000 }, async (t) => {
   // A 32k window puts Durable's background threshold (32,768 below `contextWindow - reserveTokens`) under zero.
-  const f = await fixture(t, { contextWindow: 32_000, compaction: { keepRecentTokens: 40 } });
+  const f = await fixture(t, { contextWindow: 32_000, settings: { compaction: { keepRecentTokens: 40 } } });
   const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-auto" }, f.host());
   const starts: string[] = [];
   session.subscribe((event) => { if (event.type === "compaction_start") starts.push(event.reason); });

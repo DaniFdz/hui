@@ -2700,7 +2700,7 @@ export class HuiApp extends HuiElement {
         if (!isSelectedSession(session.id, this.selected?.id)) return;
         this.composerTextarea?.focus();
         this.composerTextarea?.setSelectionRange(text.length, text.length);
-        this.note = "Message restored to the composer. The previous branch remains in PI's session tree.";
+        this.note = "Message restored to the composer. The previous branch is kept.";
         this.noteFailed = false;
       })
       .catch((error: unknown) => {

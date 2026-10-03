@@ -243,20 +243,26 @@ export class DurableSession implements RuntimeSession {
   /**
    * Durable's own size estimate (its `estimateContext`) of the context ending before history row `end`: the usage of
    * the newest request answered after the head marker, plus estimates of every message after it; without one,
-   * estimates of the whole context. The head marker is the newest compaction or reset; its context starts at the
-   * entry it heads.
+   * estimates of the whole context, system prompt entries included. The head marker is the newest compaction or
+   * reset; its context starts at the entry it heads, and later entries' context edits omit or replace earlier ones
+   * (Durable re-baselines its system entries that way).
    */
   #contextTokens(end: number): number {
     let head: EntryRecord | undefined;
     for (let index = end - 1; index >= 0 && !head; index--) {
       if (this.#history[index]!.entry.head !== undefined) head = this.#history[index]!.entry;
     }
+    const edits = new Map<EntryId, readonly Message[]>();
     let tokens = 0;
     for (let index = end - 1; index >= 0; index--) {
       const entry = this.#history[index]!.entry;
       if (head?.head !== undefined && entry.id < head.head) break;
-      if ((entry !== head && entry.head !== undefined) || SystemEntry.is(entry)) continue;
-      const messages = entry.model ?? [];
+      if (entry !== head && entry.head !== undefined) continue;
+      // Walking back, the first edit seen for an entry is its latest one.
+      for (const edit of entry.edits ?? []) {
+        if (!edits.has(edit.target)) edits.set(edit.target, edit.action === "replace" ? edit.messages : []);
+      }
+      const messages = edits.get(entry.id) ?? entry.model ?? [];
       for (let position = messages.length - 1; position >= 0; position--) {
         const message = messages[position]!;
         if (!inContext(message)) continue;
