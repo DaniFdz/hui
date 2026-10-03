@@ -72,9 +72,15 @@ test("the watcher tool starts HUI-run processes and the guarded routes control t
   assert.equal((await route(`/__hui/sessions/beta/watchers/${id}/log`)).status, 404);
   assert.equal((await route(`/__hui/sessions/beta/watchers/${id}/stop`, "POST")).status, 404);
 
-  const log = await route(`${base}/log?lines=10`);
-  assert.equal(log.status, 200);
-  assert.deepEqual(await log.json(), { id, lines: ["posted /merge"], truncated: false });
+  // The detached shell writes its first line asynchronously; wait for it.
+  let logBody: { id: string; lines: string[]; truncated: boolean } | undefined;
+  for (let attempt = 0; attempt < 100 && !logBody?.lines.length; attempt += 1) {
+    if (attempt) await delay(50);
+    const log = await route(`${base}/log?lines=10`);
+    assert.equal(log.status, 200);
+    logBody = await log.json() as typeof logBody;
+  }
+  assert.deepEqual(logBody, { id, lines: ["posted /merge"], truncated: false });
   assert.equal((await route(`${base}/log?lines=0`)).status, 400);
 
   const running = await tool("start", { purpose: "Hold the door", command: "sleep 30" });
