@@ -58,6 +58,13 @@ export type RuntimeQuestion =
 
 export type RuntimeQuestionResponse = { value: string } | { confirmed: boolean };
 
+/** Why PI compacted: `/compact`, its context threshold, or a context overflow it recovers from. */
+export type CompactionReason = "manual" | "threshold" | "overflow";
+
+/** A compaction shown outside the transcript: one in progress, or one that
+ * ended without writing a summary (a written one is a `compaction` entry). */
+export type RuntimeCompaction = { status: "running" | "failed" | "cancelled"; reason: CompactionReason; message?: string };
+
 /** Everything the browser needs to draw a turn, normalised across tools. */
 export type RuntimeEvent =
   | { type: "text"; delta: string }
@@ -70,6 +77,9 @@ export type RuntimeEvent =
   | { type: "notice"; message: string; level: "info" | "warning" | "error" }
   | { type: "turn_start" }
   | { type: "turn_end" }
+  | { type: "compaction_start"; reason: CompactionReason }
+  /** `willRetry`: PI resumes the overflowed turn itself after a summary. */
+  | { type: "compaction_end"; reason: CompactionReason; outcome: "done" | "failed" | "cancelled"; willRetry: boolean; message?: string }
   /** The agent stopped entirely. Distinct from `turn_end`: a turn can end while
    * the agent is still working, and the prompt guard follows this one. */
   | { type: "settled"; historyRefreshed?: boolean }
@@ -105,17 +115,9 @@ export type RuntimeUsage = {
   costUsd: number | null;
 };
 
-export type RuntimeCheckpoint = {
-  /** Stable presentation key; multiple visible blocks may rewind to one entry. */
-  key: string;
-  /** Stable PI session-entry id used as the new active leaf. */
-  id: string;
-  kind: "user" | "assistant" | "thinking" | "tool" | "toolResult" | "summary";
-  label: string;
-  detail: string;
-  timestamp?: string;
-  current: boolean;
-};
+/** A PI entry id, or a user message the browser shows without one yet (the
+ * running prompt or one delivered mid-run), counted from the end of the branch. */
+export type RuntimeRewindTarget = string | { userFromEnd: number };
 
 export type RuntimeRewindOptions = {
   /** Stop before a selected user entry so its text can be edited and resent. */
@@ -191,10 +193,10 @@ export type RuntimeSession = {
   clear?(): Promise<void>;
   /** Re-read extensions, skills, prompts and context files in place. */
   reload?(): Promise<void>;
-  /** Append-only session-tree checkpoints which can become the active leaf. */
-  checkpoints?(): Promise<readonly RuntimeCheckpoint[]>;
+  /** Start a summary of older context; compaction events report progress and outcome. */
+  compact?(instructions?: string): Promise<void>;
   /** Move the active leaf without deleting the branch being left. */
-  rewind?(entryId: string, options?: RuntimeRewindOptions): Promise<void>;
+  rewind?(target: RuntimeRewindTarget, options?: RuntimeRewindOptions): Promise<void>;
   /** Resume the model from the current non-assistant tail without a user prompt. */
   continueRun?(): Promise<void>;
   /** Fires when the tool's process ends on its own, so a gateway can mark the
@@ -224,9 +226,13 @@ export type TranscriptEntry = { metrics?: TranscriptMetrics } & (
       kind: "message";
       role: "user" | "assistant";
       text: string;
+      /** PI session entry the message came from; the rewind target. */
+      entryId?: string;
       /** Files or images the user attached to that turn. */
       attachments?: readonly TranscriptAttachment[];
     }
+  /** Where PI summarized everything before its kept window. */
+  | { kind: "compaction"; summary: string; tokensBefore: number }
   | { kind: "thinking"; text: string }
   | {
       kind: "tool";

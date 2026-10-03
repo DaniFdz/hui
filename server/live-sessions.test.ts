@@ -9,11 +9,11 @@ import type {
   PromptAttachment,
   RuntimeEvent,
   RuntimeCommand,
-  RuntimeCheckpoint,
   RuntimeModel,
   RuntimeQuestion,
   RuntimeQuestionResponse,
   RuntimeQueue,
+  RuntimeRewindTarget,
   RuntimeSession,
   StartOptions,
   TranscriptEntry,
@@ -50,8 +50,7 @@ class FakeSession implements RuntimeSession {
   questions: RuntimeQuestion[] = [];
   history: TranscriptEntry[] = [{ kind: "message", role: "user", text: "hello" }];
   disposed = false;
-  rewindPoints: RuntimeCheckpoint[] = [{ key: "user-1:user", id: "user-1", kind: "user", label: "User message", detail: "hello", current: true }];
-  rewoundTo: Array<{ entryId: string; excludeUserMessage?: boolean }> = [];
+  rewoundTo: Array<{ target: RuntimeRewindTarget; excludeUserMessage?: boolean }> = [];
   continuations = 0;
   clears = 0;
   clearGate: Promise<void> | undefined;
@@ -67,6 +66,12 @@ class FakeSession implements RuntimeSession {
     return this.#streaming;
   }
 
+  /** PiSession stays busy from a compaction's end until its own settle. */
+  compactionEnded(event: Extract<RuntimeEvent, { type: "compaction_end" }>): void {
+    this.#streaming = true;
+    this.emit(event);
+  }
+
   async prompt(text: string, attachments?: readonly PromptAttachment[]): Promise<void> {
     this.prompts.push(text);
     this.attachments.push(attachments);
@@ -75,6 +80,11 @@ class FakeSession implements RuntimeSession {
 
   async steer(text: string): Promise<void> {
     this.steered.push(text);
+  }
+
+  compactions: (string | undefined)[] = [];
+  async compact(instructions?: string): Promise<void> {
+    this.compactions.push(instructions);
   }
 
   async followUp(text: string): Promise<void> {
@@ -141,13 +151,9 @@ class FakeSession implements RuntimeSession {
     this.questions = [];
   }
 
-  async checkpoints(): Promise<readonly RuntimeCheckpoint[]> {
-    return this.rewindPoints;
-  }
-
-  async rewind(entryId: string, options?: { excludeUserMessage?: boolean }): Promise<void> {
-    this.rewoundTo.push({ entryId, excludeUserMessage: options?.excludeUserMessage });
-    this.history = [{ kind: "message", role: "user", text: `rewound:${entryId}` }];
+  async rewind(target: RuntimeRewindTarget, options?: { excludeUserMessage?: boolean }): Promise<void> {
+    this.rewoundTo.push({ target, excludeUserMessage: options?.excludeUserMessage });
+    this.history = [{ kind: "message", role: "user", text: `rewound:${JSON.stringify(target)}` }];
   }
 
   async continueRun(): Promise<void> {
@@ -1252,11 +1258,10 @@ test("rewind refreshes the authoritative transcript and broadcasts a snapshot", 
   await waitForBoot(manager, record.id);
   manager.subscribe(record.id, (message) => seen.push(message));
 
-  assert.deepEqual(await manager.checkpoints(record.id), started[0]?.rewindPoints);
   await manager.rewind(record.id, "user-1", { excludeUserMessage: true });
 
-  assert.deepEqual(started[0]?.rewoundTo, [{ entryId: "user-1", excludeUserMessage: true }]);
-  assert.deepEqual(manager.transcript(record.id), [{ kind: "message", role: "user", text: "rewound:user-1" }]);
+  assert.deepEqual(started[0]?.rewoundTo, [{ target: "user-1", excludeUserMessage: true }]);
+  assert.deepEqual(manager.transcript(record.id), [{ kind: "message", role: "user", text: 'rewound:"user-1"' }]);
   const snapshot = seen.findLast((message) => message.kind === "snapshot");
   assert.equal(snapshot?.kind, "snapshot");
   if (snapshot?.kind === "snapshot") assert.deepEqual(snapshot.snapshot.transcript, manager.transcript(record.id));
@@ -1273,8 +1278,110 @@ test("rewind aborts active work before changing the session tree", async () => {
   await manager.rewind(record.id, "user-1", { excludeUserMessage: true });
 
   assert.equal(started[0]?.aborts, 1);
-  assert.deepEqual(started[0]?.rewoundTo, [{ entryId: "user-1", excludeUserMessage: true }]);
+  assert.deepEqual(started[0]?.rewoundTo, [{ target: "user-1", excludeUserMessage: true }]);
   assert.equal(manager.status(record.id), "idle");
+});
+
+test("rewind of a prompt shown without an entry id stops the run, then lets PI count from the end", async () => {
+  const started: FakeSession[] = [];
+  const manager = new LiveSessions(factory(started));
+  const record = recordFor("running-tail-rewind");
+  manager.ensure(record);
+  await waitForBoot(manager, record.id);
+  await manager.prompt(record.id, "long job");
+
+  await manager.rewind(record.id, { userFromEnd: 0 }, { excludeUserMessage: true });
+
+  assert.equal(started[0]?.aborts, 1);
+  assert.deepEqual(started[0]?.rewoundTo, [{ target: { userFromEnd: 0 }, excludeUserMessage: true }]);
+});
+
+test("a compaction keeps the session busy, holds what the user sends and delivers it afterwards", async () => {
+  const started: FakeSession[] = [];
+  const manager = new LiveSessions(factory(started));
+  const record = recordFor("compacting");
+  manager.ensure(record);
+  await waitForBoot(manager, record.id);
+  const session = started[0]!;
+
+  // PI compacts after its agent_end, when the run has already settled.
+  session.emit({ type: "compaction_start", reason: "threshold" });
+  assert.equal(manager.status(record.id), "running");
+  assert.deepEqual(manager.snapshot(record.id).compaction, { status: "running", reason: "threshold" });
+  await manager.steer(record.id, "typed while compacting");
+  await manager.prompt(record.id, "sent by an automation");
+  assert.deepEqual(session.steered, []);
+  assert.deepEqual(session.prompts, []);
+  assert.deepEqual(manager.snapshot(record.id).queue.items?.map((item) => item.text), ["typed while compacting", "sent by an automation"]);
+  await assert.rejects(() => manager.compact(record.id), SessionBusyError);
+
+  const delivered = new Promise<string>((resolve) => {
+    const prompt = session.prompt.bind(session);
+    session.prompt = async (text, attachments) => { await prompt(text, attachments); resolve(text); };
+  });
+  session.compactionEnded({ type: "compaction_end", reason: "threshold", outcome: "done", willRetry: false });
+  assert.deepEqual(session.prompts, [], "nothing is sent before the refreshed history settles");
+  session.emit({ type: "settled" });
+  assert.equal(await delivered, "typed while compacting");
+  assert.equal(manager.snapshot(record.id).compaction, undefined);
+  assert.deepEqual(manager.snapshot(record.id).queue.items?.map((item) => item.text), ["sent by an automation"]);
+});
+
+test("a failed compaction stays visible until the next turn and never triggers a model fallback", async () => {
+  const started: FakeSession[] = [];
+  const manager = new LiveSessions(factory(started));
+  const record = recordFor("compaction-failed");
+  manager.ensure(record);
+  await waitForBoot(manager, record.id);
+  const session = started[0]!;
+
+  await manager.compact(record.id, "keep the API decisions");
+  assert.deepEqual(session.compactions, ["keep the API decisions"]);
+  session.emit({ type: "compaction_start", reason: "manual" });
+  session.compactionEnded({ type: "compaction_end", reason: "manual", outcome: "failed", willRetry: false, message: "Nothing to compact (session too small)" });
+  session.emit({ type: "settled" });
+  assert.equal(manager.status(record.id), "idle");
+  assert.deepEqual(manager.snapshot(record.id).compaction, { status: "failed", reason: "manual", message: "Nothing to compact (session too small)" });
+
+  session.emit({ type: "turn_start" });
+  assert.equal(manager.snapshot(record.id).compaction, undefined);
+});
+
+test("a /compact PI refuses before starting releases the session and sends what was held", async () => {
+  const started: FakeSession[] = [];
+  const manager = new LiveSessions(factory(started));
+  const record = recordFor("compaction-refused");
+  manager.ensure(record);
+  await waitForBoot(manager, record.id);
+  const session = started[0]!;
+
+  await manager.compact(record.id);
+  assert.equal(manager.status(record.id), "running");
+  await manager.steer(record.id, "held behind the compaction");
+  const delivered = new Promise<string>((resolve) => {
+    const prompt = session.prompt.bind(session);
+    session.prompt = async (text, attachments) => { await prompt(text, attachments); resolve(text); };
+  });
+  // No compaction_start and no settle: PI answered the RPC with an error.
+  session.emit({ type: "compaction_end", reason: "manual", outcome: "failed", willRetry: false, message: "pi is not running" });
+  assert.equal(await delivered, "held behind the compaction");
+  assert.deepEqual(manager.snapshot(record.id).compaction, { status: "failed", reason: "manual", message: "pi is not running" });
+});
+
+test("a session released while compacting closes once the compaction ends, even one PI refused", async () => {
+  const started: FakeSession[] = [];
+  const manager = new LiveSessions(factory(started));
+  const record = recordFor("released-compaction");
+  manager.ensure(record);
+  await waitForBoot(manager, record.id);
+  await manager.compact(record.id);
+  manager.release(record.id);
+  assert.equal(started[0]?.disposed, false, "the compaction keeps it open");
+  const session = started[0]!;
+  const disposed = new Promise<void>((resolve) => { session.dispose = () => { session.disposed = true; resolve(); }; });
+  session.emit({ type: "compaction_end", reason: "manual", outcome: "failed", willRetry: false, message: "pi is not running" });
+  await disposed;
+  assert.equal(manager.isLive(record.id), false);
 });
 
 test("prompt-free continuation enters running state and rewind stops it", async () => {
@@ -1290,7 +1397,7 @@ test("prompt-free continuation enters running state and rewind stops it", async 
   await assert.rejects(() => manager.continueRun(record.id), SessionBusyError);
   await manager.rewind(record.id, "user-1");
   assert.equal(started[0]?.aborts, 1);
-  assert.deepEqual(started[0]?.rewoundTo, [{ entryId: "user-1", excludeUserMessage: undefined }]);
+  assert.deepEqual(started[0]?.rewoundTo, [{ target: "user-1", excludeUserMessage: undefined }]);
 });
 
 test("attachments reach the runtime alongside the prompt", async () => {
@@ -1516,7 +1623,7 @@ test("Stop on a waiting question leaves an idle session, not a stale question", 
   assert.equal(manager.status("stopped-card"), "idle");
   assert.deepEqual(manager.snapshot("stopped-card").questions, []);
   await manager.rewind("stopped-card", "user-1");
-  assert.equal(started[0]!.rewoundTo.at(-1)?.entryId, "user-1");
+  assert.equal(started[0]!.rewoundTo.at(-1)?.target, "user-1");
 });
 
 test("HUI-owned follow-ups can be edited, reordered, removed and steered before delivery", async () => {

@@ -17,6 +17,11 @@ test("surfaces a settled run that ended in an error", () => {
   });
 });
 
+test("a compaction PI ran after the failure does not hide it", () => {
+  const compaction: TranscriptItem = { kind: "compaction", id: "c", summary: "## Goal", tokensBefore: 1 };
+  assert.equal(latestRunError([user, tool, failure, compaction], false)?.detail, failure.text);
+});
+
 test("hides the notice while streaming or once the turn continued", () => {
   assert.equal(latestRunError([user, tool, failure], true), undefined);
   assert.equal(latestRunError([user, failure, { kind: "message", id: "u2", role: "user", text: "Continue" }], false), undefined);

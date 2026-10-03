@@ -11,7 +11,7 @@ test("groups assistant context into one disclosure and leaves only the final ans
     { kind: "tool", id: "t", name: "read", status: "succeeded", output: "ok" },
     { kind: "message", id: "a", role: "assistant", text: "done" },
   ]);
-  assert.deepEqual(rows.map((row) => [row.kind, row.kind === "messages" ? row.role : row.items.length]), [
+  assert.deepEqual(rows.map((row) => [row.kind, row.kind === "messages" ? row.role : "items" in row ? row.items.length : 0]), [
     ["messages", "user"],
     ["activity", 3],
     ["messages", "assistant"],
@@ -19,6 +19,17 @@ test("groups assistant context into one disclosure and leaves only the final ans
   assert.equal(rows[0]?.kind === "messages" && rows[0].messages.length, 2);
   assert.equal(rows[1]?.kind === "activity" && rows[1].items[0]?.kind, "message");
   assert.equal(rows[2]?.kind === "messages" && rows[2].messages[0]?.text, "done");
+});
+
+test("a compaction marker stays its own row between completed turns", () => {
+  const rows = projectChatTranscript([
+    { kind: "message", id: "u1", role: "user", text: "one" },
+    { kind: "tool", id: "t", name: "read", status: "succeeded", output: "ok" },
+    { kind: "message", id: "a1", role: "assistant", text: "done" },
+    { kind: "compaction", id: "c", summary: "## Goal", tokensBefore: 120_000 },
+    { kind: "message", id: "u2", role: "user", text: "two" },
+  ]);
+  assert.deepEqual(rows.map((row) => `${row.kind}:${row.id}`), ["messages:u1", "activity:t", "messages:a1", "compaction:c", "messages:u2"]);
 });
 
 test("interleaves live assistant updates with collapsed tool batches", () => {
@@ -31,7 +42,7 @@ test("interleaves live assistant updates with collapsed tool batches", () => {
     { kind: "thinking", id: "r", text: "verify the fix" },
     { kind: "tool", id: "t3", name: "bash", status: "running" },
   ], true);
-  assert.deepEqual(rows.map((row) => row.kind === "messages" ? `${row.role}:${row.messages[0]?.text}` : `activity:${row.items.length}`), [
+  assert.deepEqual(rows.map((row) => row.kind === "messages" ? `${row.role}:${row.messages[0]?.text}` : "items" in row ? `activity:${row.items.length}` : row.kind), [
     "user:check", "assistant:Checking.", "activity:2", "assistant:I found the cause.", "activity:2",
   ]);
 });

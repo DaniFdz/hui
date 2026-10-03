@@ -223,7 +223,14 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   entry tree, moves the active leaf to the point before the selected user
   message, removes that message from the active transcript and restores its
   full text to the focused composer for editing. The abandoned branch remains
-  recoverable from PI's tree. Continue invokes PI's native
+  recoverable from PI's tree. The transcript is PI's whole active branch: a
+  compaction appears as a divider with its expandable summary and never hides
+  earlier messages, and rewinding inside the window PI kept verbatim keeps that
+  summary on the new branch instead of compacting again. While PI compacts, the
+  divider shows it live in place of the working indicator, messages sent wait in
+  the queue until it ends, Stop cancels it, and a failure or cancellation stays
+  visible with PI's reason until the next turn. `/compact [focus]` and the
+  context meter's Compact now start one. Continue invokes PI's native
   prompt-free continuation primitive; only when the branch already ends with a
   completed assistant response does HUI send an explicit continuation prompt.
   Reply and fork remain absent rather than simulated.
