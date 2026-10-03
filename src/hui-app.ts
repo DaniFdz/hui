@@ -875,7 +875,8 @@ export class HuiApp extends HuiElement {
         if (input instanceof HTMLInputElement) input.focus();
       }
     }
-    if (changed.has("transcript") && this.autoFollow) this.scrollToBottom();
+    // The live compaction divider sits below the transcript rows, so its changes follow too.
+    if ((changed.has("transcript") || changed.has("compaction")) && this.autoFollow) this.scrollToBottom();
     if (!this.renamingFor) {
       return;
     }
