@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { completeCommandReference, completeSlashCommand, composerCommands, filterSlashCommands, parseClearCommand, parseReloadCommand, parseUpdateCommand, slashCommandQuery } from "./slash-commands.ts";
+import { completeCommandReference, completeSlashCommand, composerCommands, filterSlashCommands, parseClearCommand, parseReloadCommand, parseUpdateCommand, slashCommandQuery, parseCompactCommand } from "./slash-commands.ts";
 import type { RuntimeCommand } from "./sessions-store.ts";
 
 test("slash suggestions are limited to the leading token and current caret", () => {
@@ -20,7 +20,7 @@ test("HUI commands add btw and side without duplicating runtime names", () => {
     { name: "clear", description: "runtime copy", source: "extension" },
     { name: "review", description: "Review", source: "skill" },
   ], true);
-  assert.deepEqual(commands.map((command) => command.name), ["update", "clear", "reload", "btw", "side", "review"]);
+  assert.deepEqual(commands.map((command) => command.name), ["update", "clear", "reload", "compact", "btw", "side", "review"]);
 });
 
 test("search accepts skill names without their prefix and matches descriptions and sources", () => {
@@ -83,4 +83,11 @@ test("dollar search does not offer HUI operations", () => {
   assert.deepEqual(filterSlashCommands(commands, "$" ).map((command) => command.name), ["skill:review"]);
   const update = commands.find((command) => command.source === "hui" && command.name === "update")!;
   assert.deepEqual(completeCommandReference("/up", update, commands), { text: "/update ", caret: 8 });
+});
+
+test("/compact takes optional focus text and leaves other commands alone", () => {
+  assert.deepEqual(parseCompactCommand("/compact"), {});
+  assert.deepEqual(parseCompactCommand("  /compact   keep the API decisions\n and errors "), { instructions: "keep the API decisions\n and errors" });
+  assert.equal(parseCompactCommand("/compacted"), undefined);
+  assert.equal(parseCompactCommand("please /compact"), undefined);
 });

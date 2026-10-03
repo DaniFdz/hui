@@ -207,6 +207,7 @@ export async function launch(expectedBranch) {
   await writeFile(join(agentDir, "skills", "sdk-fixture", "SKILL.md"), "---\nname: sdk-fixture\ndescription: SDK browser skill enablement fixture.\n---\nUse only for fixture skill checks.\n");
   await copyFile(join(repo, "e2e/question-extension.ts"), join(agentDir, "extensions/question.ts"));
   await copyFile(join(repo, "e2e/slash-commands-extension.ts"), join(agentDir, "extensions/commands.ts"));
+  await copyFile(join(repo, "e2e/compaction-extension.ts"), join(agentDir, "extensions/compaction.ts"));
   const receiptPath = join(dir, "receipt.json");
   const receipt = { version: 1, state: "starting", runId: randomUUID(), token: randomUUID(), runnerPid: process.pid, checkout, workspace, artifacts, receipt: receiptPath, startedAt: new Date().toISOString() };
   const save = async () => {
@@ -279,7 +280,8 @@ export async function launch(expectedBranch) {
       baseUrl: receipt.providerUrl, api: "anthropic-messages", apiKey: "e2e-not-a-secret",
       models: [{ id: "fixture", name: "HUI SDK Fixture", reasoning: true, input: ["text", "image"], contextWindow: 32000, maxTokens: 4096, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } }],
     } } }));
-    await writeFile(join(agentDir, "settings.json"), JSON.stringify({ defaultProvider: "hui-e2e", defaultModel: "fixture", defaultThinkingLevel: "high" }));
+    // A small kept window lets /fixture-compact summarize a few short turns.
+    await writeFile(join(agentDir, "settings.json"), JSON.stringify({ defaultProvider: "hui-e2e", defaultModel: "fixture", defaultThinkingLevel: "high", compaction: { keepRecentTokens: 400 } }));
     const serverEnv = {};
     if (process.argv.includes("--jira-fixture")) {
       // Local Jira Cloud subset (e2e/jira-fixture.mjs), connected with its

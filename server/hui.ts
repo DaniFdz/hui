@@ -49,7 +49,7 @@ import { readPiConfig, invalidateModelCatalog } from "./pi-config.ts";
 import { PiResourceNotFoundError, readPiResourceDocument } from "./pi-resource-reader.ts";
 import { readToolsCatalog } from "./tools.ts";
 import { updates, UpdateConflict } from "./updates.ts";
-import { parseClearCommand, parseReloadCommand, parseUpdateCommand } from "../src/lib/slash-commands.ts";
+import { parseClearCommand, parseCompactCommand, parseReloadCommand, parseUpdateCommand } from "../src/lib/slash-commands.ts";
 import {
   PiMutationBusyError,
   PiMutationCommandError,
@@ -187,7 +187,7 @@ const SESSION_GROUP_MAX = 200;
 const SESSION_GROUP_ORDER_MAX = 1_000;
 /** Session actions and live catalogs, all addressed by HUI's own session id. */
 const SESSION_ACTION =
-  /^\/__hui\/sessions\/([^/]+)\/(open|prompt|continue|resume|steer|follow-up|btw|queue|events|connect|models|commands|tools|model|thinking|question|abort|clear|reload|checkpoints|rewind)$/;
+  /^\/__hui\/sessions\/([^/]+)\/(open|prompt|continue|resume|steer|follow-up|btw|queue|events|connect|models|commands|tools|model|thinking|question|abort|clear|reload|compact|rewind)$/;
 /** The session itself, for changing it rather than acting on it. */
 const SESSION_ONE = /^\/__hui\/sessions\/([^/]+)$/;
 const GITHUB_ROUTE = `${PREFIX}github`;
@@ -2994,6 +2994,10 @@ async function handleRequest(
         sendJson(response, 400, { error: "/reload is a HUI command. Use the reload endpoint, not the model prompt or queue." });
         return;
       }
+      if (parseCompactCommand(text)) {
+        sendJson(response, 400, { error: "/compact is a HUI command. Use the compact endpoint, not the model prompt or queue." });
+        return;
+      }
       let prepared: PreparedAttachments | undefined;
       try {
         prepared = await readAttachments(id, body["attachments"]);
@@ -3046,6 +3050,26 @@ async function handleRequest(
       } catch (error) {
         sendJson(response, error instanceof SessionBusyError ? 409 : error instanceof SessionRegistryError ? 500 : 400, {
           error: error instanceof Error ? error.message : "Could not clear that session.",
+        });
+      }
+      return;
+    }
+    if (action[2] === "compact" && request.method === "POST") {
+      try {
+        if (!liveSessions.ensure(record)) {
+          sendJson(response, 404, { error: `unknown session: ${id}` });
+          return;
+        }
+        const body = (await readBody(request)) as Record<string, unknown> | null;
+        const raw = body?.["instructions"];
+        if (raw !== undefined && typeof raw !== "string") throw new Error("Compaction focus must be text.");
+        const instructions = raw?.trim();
+        if (instructions && instructions.length > 2_000) throw new Error("Keep the compaction focus under 2,000 characters.");
+        await liveSessions.compact(id, instructions || undefined);
+        sendJson(response, 200, { ok: true });
+      } catch (error) {
+        sendJson(response, error instanceof SessionBusyError ? 409 : 400, {
+          error: error instanceof Error ? error.message : "Could not compact that session.",
         });
       }
       return;
@@ -3168,23 +3192,15 @@ async function handleRequest(
       }
       return;
     }
-    if (action[2] === "checkpoints" && request.method === "GET") {
-      try {
-        sendJson(response, 200, { checkpoints: await liveSessions.checkpoints(id) });
-      } catch (error) {
-        sendJson(response, error instanceof SessionBusyError ? 409 : 400, {
-          error: error instanceof Error ? error.message : "PI could not read the session tree.",
-        });
-      }
-      return;
-    }
     if (action[2] === "rewind" && request.method === "POST") {
       try {
         const body = (await readBody(request)) as Record<string, unknown>;
         const entryId = typeof body["entryId"] === "string" ? body["entryId"].trim() : "";
+        const userFromEnd = body["userFromEnd"];
         const excludeUserMessage = body["excludeUserMessage"] === true;
-        if (!entryId) throw new Error("A rewind point is required.");
-        await liveSessions.rewind(id, entryId, { excludeUserMessage });
+        const target = entryId || (Number.isSafeInteger(userFromEnd) && (userFromEnd as number) >= 0 ? { userFromEnd: userFromEnd as number } : undefined);
+        if (!target) throw new Error("A rewind point is required.");
+        await liveSessions.rewind(id, target, { excludeUserMessage });
         sendJson(response, 200, { ok: true });
       } catch (error) {
         sendJson(response, error instanceof SessionBusyError ? 409 : 400, {

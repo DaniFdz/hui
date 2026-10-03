@@ -6,6 +6,7 @@ export const HUI_COMMANDS: readonly ComposerCommand[] = [{ name: "update", descr
 export const HUI_SESSION_COMMANDS: readonly ComposerCommand[] = [
   { name: "clear", description: "Clear this session's context and start a fresh PI transcript", source: "hui" },
   { name: "reload", description: "Reload extensions, skills, prompts and context files for this session", source: "hui" },
+  { name: "compact", description: "Summarize older context to free space; add text to say what to keep", source: "hui" },
   { name: "btw", description: "Ask a quick side question without changing session context", source: "hui" },
   { name: "side", description: "Alias for /btw", source: "hui" },
 ];
@@ -32,6 +33,13 @@ function parseBareCommand<Name extends string>(text: string, name: Name): Name |
 }
 export const parseClearCommand = (text: string) => parseBareCommand(text, "clear");
 export const parseReloadCommand = (text: string) => parseBareCommand(text, "reload");
+/** `/compact` with optional focus text for PI's summary; undefined when not a compact. */
+export function parseCompactCommand(text: string): { instructions?: string } | undefined {
+  const match = /^\/compact(?:\s+([\s\S]*))?$/u.exec(text.trim());
+  if (!match) return undefined;
+  const instructions = match[1]?.trim();
+  return instructions ? { instructions } : {};
+}
 
 /** Discover leading commands; nested paths and prose use other completion modes. */
 export function slashCommandQuery(text: string, caret: number, selectionEnd = caret): string | null {

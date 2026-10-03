@@ -8,7 +8,7 @@ import { PassThrough } from "node:stream";
 import { test } from "node:test";
 
 import type { RuntimeEvent } from "./types.ts";
-import { checkpointsFrom, imageFromMessages, PiSession, runtimeCommands, runtimeUsage, toRuntimeEvent, transcriptFrom } from "./pi.ts";
+import { branchHistory, imageFromMessages, PiSession, runtimeCommands, runtimeUsage, toRuntimeEvent, transcriptFrom } from "./pi.ts";
 
 type FakeChild = EventEmitter & {
   stdin: PassThrough;
@@ -45,6 +45,14 @@ function childWith(handle: (command: Record<string, unknown>, child: FakeChild) 
   return child;
 }
 
+/** A `get_entries` reply holding one linear branch of `messages`, ids e0, e1, … */
+function branch(messages: readonly unknown[]): { entries: unknown[]; leafId: string | null } {
+  return {
+    entries: messages.map((message, index) => ({ type: "message", id: `e${index}`, parentId: index ? `e${index - 1}` : null, message })),
+    leafId: messages.length ? `e${messages.length - 1}` : null,
+  };
+}
+
 function respond(child: FakeChild, command: Record<string, unknown>, data?: unknown): void {
   child.stdout.write(`${JSON.stringify({
     type: "response",
@@ -65,37 +73,28 @@ function nextEvent(session: PiSession, type: RuntimeEvent["type"]): Promise<Runt
   });
 }
 
-test("PI session entries expose active and abandoned rewind points down to reasoning and tools", () => {
-  const checkpoints = checkpointsFrom({
-    leafId: "assistant-active",
+test("the shown history is the whole active branch with compactions in place and retried attempts hidden", () => {
+  const message = (id: string, parentId: string | null, role: string, text: string) =>
+    ({ type: "message", id, parentId, message: { role, content: [{ type: "text", text }] } });
+  const history = branchHistory({
+    leafId: "a3",
     entries: [
-      { type: "message", id: "user-1", parentId: null, timestamp: "2026-09-24T10:00:00Z", message: { role: "user", content: [{ type: "text", text: "Inspect the build" }] } },
-      { type: "message", id: "assistant-old", parentId: "user-1", message: { role: "assistant", content: [
-        { type: "thinking", thinking: "Abandoned reasoning" },
-        { type: "toolCall", name: "bash", arguments: { command: "false" } },
-        { type: "text", text: "Old branch" },
-      ] } },
-      { type: "message", id: "assistant-active", parentId: "user-1", message: { role: "assistant", content: [
-        { type: "thinking", thinking: "I should inspect the failing test first." },
-        { type: "toolCall", name: "read", arguments: { path: "server/hui.ts" } },
-        { type: "text", text: "The route is missing." },
-      ] } },
-      { type: "message", id: "tool-abandoned", parentId: "assistant-old", message: { role: "toolResult", toolName: "read", content: [{ type: "text", text: "abandoned output" }] } },
+      message("u1", "missing-parent", "user", "first"),
+      message("a1", "u1", "assistant", "summarized answer"),
+      message("abandoned", "a1", "user", "abandoned branch"),
+      message("u2", "a1", "user", "kept"),
+      message("retried", "u2", "assistant", "failed attempt"),
+      { type: "context_edit", id: "hide", parentId: "retried", targetId: "retried", replacement: null },
+      { type: "compaction", id: "c", parentId: "hide", summary: "## Goal", tokensBefore: 120_000, firstKeptEntryId: "u2" },
+      message("a2", "c", "assistant", "edited later"),
+      { type: "context_edit", id: "hide-a2", parentId: "a2", targetId: "a2", replacement: null },
+      { type: "context_edit", id: "restore-a2", parentId: "hide-a2", targetId: "a2", replacement: { content: "restored" } },
+      message("a3", "restore-a2", "assistant", "after compaction"),
     ],
   });
-
-  assert.deepEqual(checkpoints.map(({ key, id, kind, current }) => ({ key, id, kind, current })), [
-    { key: "user-1:user", id: "user-1", kind: "user", current: true },
-    { key: "assistant-old:thinking:0", id: "user-1", kind: "thinking", current: false },
-    { key: "assistant-old:tool:1", id: "user-1", kind: "tool", current: false },
-    { key: "assistant-old:assistant", id: "assistant-old", kind: "assistant", current: false },
-    { key: "assistant-active:thinking:0", id: "user-1", kind: "thinking", current: true },
-    { key: "assistant-active:tool:1", id: "user-1", kind: "tool", current: true },
-    { key: "assistant-active:assistant", id: "assistant-active", kind: "assistant", current: true },
-    { key: "tool-abandoned:result", id: "tool-abandoned", kind: "toolResult", current: false },
+  assert.deepEqual(transcriptFrom(history).map((entry) => entry.kind === "message" ? `${entry.entryId}:${entry.text}` : entry.kind), [
+    "u1:first", "a1:summarized answer", "u2:kept", "compaction", "a2:edited later", "a3:after compaction",
   ]);
-  assert.equal(checkpoints[5]?.label, "Before read");
-  assert.match(checkpoints[5]?.detail ?? "", /server\/hui\.ts/u);
 });
 
 test("PI catalogs apply models.json to RPC results and preserve namespaced switch IDs", async (t) => {
@@ -169,8 +168,8 @@ test("PI clear opens a fresh native session and refreshes its identity and trans
         thinkingLevel: "high",
         model: { provider: "openai", id: "gpt", name: "GPT" },
       });
-    } else if (command["type"] === "get_messages") {
-      respond(active, command, { messages: [] });
+    } else if (command["type"] === "get_entries") {
+      respond(active, command, branch([]));
     }
   });
   const session = new PiSession(child as unknown as ChildProcessWithoutNullStreams);
@@ -178,7 +177,7 @@ test("PI clear opens a fresh native session and refreshes its identity and trans
 
   await session.clear();
 
-  assert.deepEqual(commands, ["new_session", "get_state", "get_messages"]);
+  assert.deepEqual(commands, ["new_session", "get_state", "get_entries"]);
   assert.equal(session.sessionId, "pi-fresh");
   assert.equal(session.sessionFile, "/tmp/pi-fresh.jsonl");
   assert.deepEqual(session.transcript(), []);
@@ -269,7 +268,7 @@ test("a command with no agent turn settles and unlocks the next prompt", async (
   const child = childWith((command, active) => {
     respond(active, command, command["type"] === "get_state"
       ? { isStreaming: false }
-      : command["type"] === "get_messages" ? { messages: [] } : undefined);
+      : command["type"] === "get_entries" ? branch([]) : undefined);
   });
   const session = new PiSession(child as unknown as ChildProcessWithoutNullStreams);
   t.after(() => session.dispose());
@@ -421,14 +420,103 @@ test("image-only history retains attachment markers", () => {
   ]);
 });
 
+test("PI compaction events map to a start and one outcome, keeping PI's reason and message", () => {
+  assert.deepEqual(toRuntimeEvent({ type: "compaction_start", reason: "threshold" }), { type: "compaction_start", reason: "threshold" });
+  assert.deepEqual(toRuntimeEvent({ type: "compaction_end", reason: "overflow", result: { summary: "## Goal" }, aborted: false, willRetry: true }),
+    { type: "compaction_end", reason: "overflow", outcome: "done", willRetry: true });
+  assert.deepEqual(toRuntimeEvent({ type: "compaction_end", reason: "manual", aborted: false, willRetry: false, errorMessage: "Compaction failed: Nothing to compact (session too small)" }),
+    { type: "compaction_end", reason: "manual", outcome: "failed", willRetry: false, message: "Nothing to compact (session too small)" });
+  assert.deepEqual(toRuntimeEvent({ type: "compaction_end", reason: "threshold", aborted: true, willRetry: false }),
+    { type: "compaction_end", reason: "threshold", outcome: "cancelled", willRetry: false });
+  assert.equal(toRuntimeEvent({ type: "compaction_start", reason: "unknown" }), undefined);
+});
+
+test("a compaction that ends with no run active refreshes history and settles; one inside a run does not", async () => {
+  const commands: string[] = [];
+  const child = childWith((command, active) => {
+    commands.push(String(command["type"]));
+    respond(active, command, command["type"] === "get_entries" ? branch([{ role: "user", content: "hello" }]) : undefined);
+  });
+  const session = new PiSession(child as unknown as ChildProcessWithoutNullStreams);
+  const seen: RuntimeEvent["type"][] = [];
+  session.subscribe((event) => seen.push(event.type));
+
+  child.stdout.write(`${JSON.stringify({ type: "agent_start" })}\n`);
+  child.stdout.write(`${JSON.stringify({ type: "compaction_start", reason: "threshold" })}\n`);
+  child.stdout.write(`${JSON.stringify({ type: "compaction_end", reason: "threshold", result: {}, aborted: false, willRetry: false })}\n`);
+  let settled = nextEvent(session, "settled");
+  child.stdout.write(`${JSON.stringify({ type: "agent_end" })}\n`);
+  await settled;
+  assert.deepEqual(seen, ["compaction_start", "compaction_end", "settled"]);
+
+  settled = nextEvent(session, "settled");
+  child.stdout.write(`${JSON.stringify({ type: "compaction_start", reason: "manual" })}\n`);
+  child.stdout.write(`${JSON.stringify({ type: "compaction_end", reason: "manual", result: {}, aborted: false, willRetry: false })}\n`);
+  await settled;
+  assert.deepEqual(seen.slice(3), ["compaction_start", "compaction_end", "settled"]);
+  assert.equal(commands.filter((type) => type === "get_entries").length, 2);
+  assert.equal(session.isStreaming, false);
+  session.dispose();
+});
+
+test("a compaction PI runs before a pending prompt accepts the prompt and settles only after its run", async () => {
+  let promptCommand: Record<string, unknown> | undefined;
+  const child = childWith((command, active) => {
+    if (command["type"] === "prompt") promptCommand = command;
+    else respond(active, command, command["type"] === "get_entries" ? branch([]) : command["type"] === "get_state" ? { isStreaming: true } : undefined);
+  });
+  const session = new PiSession(child as unknown as ChildProcessWithoutNullStreams);
+  const seen: RuntimeEvent["type"][] = [];
+  session.subscribe((event) => seen.push(event.type));
+
+  const prompt = session.prompt("hello");
+  await Promise.resolve();
+  child.stdout.write(`${JSON.stringify({ type: "compaction_start", reason: "threshold" })}\n`);
+  await prompt; // released at once instead of waiting out the summary
+  child.stdout.write(`${JSON.stringify({ type: "compaction_end", reason: "threshold", result: {}, aborted: false, willRetry: false })}\n`);
+  respond(child, promptCommand!);
+  child.stdout.write(`${JSON.stringify({ type: "agent_start" })}\n`);
+  const settled = nextEvent(session, "settled");
+  child.stdout.write(`${JSON.stringify({ type: "agent_end" })}\n`);
+  await settled;
+  assert.deepEqual(seen, ["compaction_start", "compaction_end", "settled"]);
+  session.dispose();
+});
+
+test("a settle requested while one is refreshing refreshes again and still reports once", async () => {
+  let refreshes = 0;
+  let answerFirst!: () => void;
+  let firstRefreshSent!: () => void;
+  const firstRefresh = new Promise<void>((resolve) => (firstRefreshSent = resolve));
+  const child = childWith((command, active) => {
+    if (command["type"] !== "get_entries") return respond(active, command);
+    refreshes += 1;
+    const answer = () => respond(active, command, branch([{ role: "user", content: `refresh ${refreshes}` }]));
+    if (refreshes > 1) return answer();
+    answerFirst = answer;
+    firstRefreshSent();
+  });
+  const session = new PiSession(child as unknown as ChildProcessWithoutNullStreams);
+  child.stdout.write(`${JSON.stringify({ type: "agent_start" })}\n`);
+  child.stdout.write(`${JSON.stringify({ type: "agent_end" })}\n`);
+  await firstRefresh;
+  // PI's failed overflow recovery ends a compaction it never started, right after agent_end.
+  // Written before the refresh answer below, so PI's stream order delivers it first.
+  child.stdout.write(`${JSON.stringify({ type: "compaction_end", reason: "overflow", aborted: false, willRetry: false, errorMessage: "Context overflow recovery failed after one compact-and-retry attempt." })}\n`);
+  const settled = nextEvent(session, "settled");
+  answerFirst();
+  await settled;
+  assert.equal(refreshes, 2);
+  assert.deepEqual(session.transcript(), [{ kind: "message", role: "user", text: "refresh 2", entryId: "e0" }]);
+  session.dispose();
+});
+
 test("settled is emitted only after refreshed history is installed", async () => {
   let releaseHistory!: () => void;
   const historyMayReturn = new Promise<void>((resolve) => (releaseHistory = resolve));
   const child = childWith((command, active) => {
-    if (command["type"] === "get_messages") {
-      void historyMayReturn.then(() => respond(active, command, {
-        messages: [{ role: "assistant", content: [{ type: "text", text: "finished" }] }],
-      }));
+    if (command["type"] === "get_entries") {
+      void historyMayReturn.then(() => respond(active, command, branch([{ role: "assistant", content: [{ type: "text", text: "finished" }] }])));
     }
   });
   const session = new PiSession(child as unknown as ChildProcessWithoutNullStreams);
@@ -441,14 +529,14 @@ test("settled is emitted only after refreshed history is installed", async () =>
   await settled;
   assert.equal(session.isStreaming, false);
   assert.deepEqual(session.transcript(), [
-    { kind: "message", role: "assistant", text: "finished" },
+    { kind: "message", role: "assistant", text: "finished", entryId: "e0" },
   ]);
   session.dispose();
 });
 
 test("a failed history refresh emits an error and settles without claiming fresh history", async () => {
   const child = childWith((command, active) => {
-    if (command["type"] !== "get_messages") return;
+    if (command["type"] !== "get_entries") return;
     active.stdout.write(`${JSON.stringify({
       type: "response",
       id: command["id"],
@@ -480,16 +568,14 @@ test("bootstrap retains model, thinking and durable history", async () => {
       sessionId: "pi-1", sessionFile: "/tmp/session.jsonl", isStreaming: false,
       thinkingLevel: "high", model: { provider: "openai", id: "gpt", name: "GPT" },
     });
-    else if (command["type"] === "get_messages") {
-      respond(active, command, { messages: [{ role: "user", content: "hello" }] });
-    }
+    else if (command["type"] === "get_entries") respond(active, command, branch([{ role: "user", content: "hello" }]));
   });
   const session = new PiSession(child as unknown as ChildProcessWithoutNullStreams);
   await session.bootstrap();
   assert.equal(session.sessionId, "pi-1");
   assert.equal(session.currentThinking(), "high");
   assert.equal(session.currentModel()?.id, "gpt");
-  assert.deepEqual(session.transcript(), [{ kind: "message", role: "user", text: "hello" }]);
+  assert.deepEqual(session.transcript(), [{ kind: "message", role: "user", text: "hello", entryId: "e0" }]);
   session.dispose();
 });
 
@@ -534,11 +620,11 @@ test("settled transcript restores image and file names without exposing transpor
     if (command["type"] === "prompt") {
       persistedUserMessage = String(command["message"]);
       respond(active, command);
-    } else if (command["type"] === "get_messages") {
-      respond(active, command, { messages: [{ role: "user", content: [
+    } else if (command["type"] === "get_entries") {
+      respond(active, command, branch([{ role: "user", content: [
         { type: "text", text: persistedUserMessage },
         { type: "image", data: "AAAA", mimeType: "image/png" },
-      ] }] });
+      ] }]));
     }
   });
   const session = new PiSession(child as unknown as ChildProcessWithoutNullStreams);
@@ -555,6 +641,7 @@ test("settled transcript restores image and file names without exposing transpor
     kind: "message",
     role: "user",
     text: "inspect these",
+    entryId: "e0",
     attachments: [{ name: "screen.png", kind: "image", mimeType: "image/png", source: { message: 0, image: 0 } }, { name: "report.txt", kind: "file" }],
   }]);
   assert.deepEqual(session.attachmentImage(0, 0), { mimeType: "image/png", data: Buffer.from("AAAA", "base64") });
@@ -602,8 +689,8 @@ test("an extension question acknowledges its prompt before the human answers", a
       })}\n`);
     } else if (command["type"] === "extension_ui_response" && promptCommand) {
       respond(active, promptCommand);
-    } else if (command["type"] === "get_messages") {
-      respond(active, command, { messages: [] });
+    } else if (command["type"] === "get_entries") {
+      respond(active, command, branch([]));
     } else if (command["type"] === "get_state") {
       respond(active, command, { isStreaming: false });
     }
@@ -693,7 +780,7 @@ test("dollar references reach PI's exact invocation and extension actions settle
     respond(active, command, command["type"] === "get_commands"
       ? { commands: [{ name: "check-status", source: "extension" }, { name: "skill:review", source: "skill" }] }
       : command["type"] === "get_state" ? { isStreaming: false }
-      : command["type"] === "get_messages" ? { messages: [] } : undefined);
+      : command["type"] === "get_entries" ? branch([]) : undefined);
   });
   const session = new PiSession(child as unknown as ChildProcessWithoutNullStreams);
   t.after(() => session.dispose());

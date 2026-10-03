@@ -100,6 +100,23 @@ const toolResultFrom = (message) => {
   return { id: block.tool_use_id, result };
 };
 
+/** True once POST /control/release-replay frees the response, false if the
+ * client disconnected first (an abort). */
+const heldUntilRelease = (response) => new Promise((resolve) => {
+  const release = () => {
+    replayWaiters.delete(release);
+    response.off("close", disconnected);
+    resolve(true);
+  };
+  const disconnected = () => {
+    replayWaiters.delete(release);
+    resolve(false);
+  };
+  replayWaiters.add(release);
+  response.once("close", disconnected);
+  signalReplayReady();
+});
+
 const server = createServer(async (request, response) => {
   const url = new URL(request.url ?? "/", `http://127.0.0.1:${port}`);
   if (request.method === "GET" && url.pathname === "/health") return json(response, 200, { ok: true });
@@ -467,26 +484,20 @@ const server = createServer(async (request, response) => {
   if (source.includes("E2E_REPLAY")) {
     event(response, { type: "content_block_start", index: 0, content_block: { type: "text", text: "", citations: null } });
     event(response, { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "Replay prefix — " } });
-    const released = await new Promise((resolve) => {
-      const release = () => {
-        replayWaiters.delete(release);
-        response.off("close", disconnected);
-        resolve(true);
-      };
-      const disconnected = () => {
-        replayWaiters.delete(release);
-        resolve(false);
-      };
-      replayWaiters.add(release);
-      response.once("close", disconnected);
-      signalReplayReady();
-    });
-    if (!released) return;
+    if (!(await heldUntilRelease(response))) return;
     event(response, { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "replay suffix" } });
     event(response, { type: "content_block_stop", index: 0 });
     return finish(response);
   }
 
+  // PI's compaction summarizer; a distinct reply shows where the summary lands.
+  // E2E_SLOW_COMPACT in the conversation holds it until POST
+  // /control/release-replay, so a check can watch, queue into or cancel it.
+  if (flattenedText(body.system).includes("context summarization assistant")) {
+    if (source.includes("E2E_SLOW_COMPACT") && !(await heldUntilRelease(response))) return;
+    text(response, "FIXTURE_SUMMARY");
+    return finish(response);
+  }
   // Attachment requests reach this branch. The request log is the proof that
   // PI, not merely HUI's HTTP boundary, received the image/file-expanded input.
   text(response, source.includes("image") ? "Attachment received by PI." : "Fixture response.");
