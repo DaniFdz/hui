@@ -1,4 +1,4 @@
-export const PI_SDK_VERSION = "0.87.1";
+export const PI_SDK_VERSION = "1.0.1";
 
 /** An explicit fallback, never an automatic retry after a partially run turn. */
 export function piBackend(): "sdk" | "cli" {

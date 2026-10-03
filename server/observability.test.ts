@@ -13,13 +13,16 @@ test("usage aggregates numeric PI metadata without returning transcript content"
   await writeFile(file, [
     JSON.stringify({ type: "message", message: { model: "provider/model", content: "private prompt", usage: { input: 10, output: 5, cacheRead: 2, cost: 0.01 } } }),
     JSON.stringify({ type: "message", message: { model: "provider/model", content: "secret=never", usage: { inputTokens: 3, outputTokens: 7 } } }),
+    // PI records prompt-cache refreshes as usage entries outside the conversation.
+    JSON.stringify({ type: "usage", kind: "cache_warm", provider: "provider", model: "provider/model", usage: { input: 0, output: 0, cacheRead: 50, cost: { total: 0.02 } } }),
   ].join("\n"));
   const session = { id: "one", piSessionFile: file } as SessionRecord;
   const usage = await aggregateUsage([session]);
-  assert.equal(usage.totalTokens, 27);
+  assert.equal(usage.totalTokens, 77);
   assert.equal(usage.inputTokens, 13);
-  assert.equal(usage.costUsd, 0.01);
-  assert.deepEqual(usage.models, [{ model: "provider/model", tokens: 27 }]);
+  assert.equal(usage.cacheReadTokens, 52);
+  assert.equal(usage.costUsd, 0.03);
+  assert.deepEqual(usage.models, [{ model: "provider/model", tokens: 77 }]);
   assert.doesNotMatch(JSON.stringify(usage), /private prompt|secret=never/u);
 });
 

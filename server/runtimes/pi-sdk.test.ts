@@ -154,6 +154,47 @@ test("SDK rewinds the append-only PI tree and continues without a synthetic user
   assert.deepEqual(session.transcript(), []);
 });
 
+test("SDK continues an aborted reply that followed a persisted prompt or tool change", { timeout: 45_000 }, async (t) => {
+  // PI persists prompt and tool loadout changes as system entries in front of
+  // the request that used them, so an aborted reply can follow toolResult → system.
+  const f = await fixture(t);
+  const first = await f.start();
+  let settled = nextEvent(first, (event) => event.type === "settled");
+  await first.prompt("Create the transcript"); await settled;
+  const sessionFile = first.sessionFile;
+  assert(sessionFile);
+  first.dispose();
+  const persisted = (await readFile(sessionFile, "utf8")).trim().split("\n").map((line) => JSON.parse(line) as { id: string; type: string; message?: { role?: string } });
+  assert(persisted.some((entry) => entry.type === "message" && entry.message?.role === "system"), "PI records the initial loadout as a system entry");
+  let parentId = persisted.at(-1)!.id;
+  const append = (id: string, message: Record<string, unknown>) => {
+    const entry = { type: "message", id, parentId, timestamp: new Date().toISOString(), message: { ...message, timestamp: Date.now() } };
+    parentId = id;
+    return JSON.stringify(entry);
+  };
+  const usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
+  const reply = { api: "anthropic-messages", provider: "hui-e2e", model: "fixture", usage };
+  const lines = [
+    append("c0a1b2c3", { role: "user", content: [{ type: "text", text: "Read the fixture" }] }),
+    append("c0a1b2c4", { role: "assistant", content: [{ type: "toolCall", id: "tool-continue-read", name: "read", arguments: { path: "fixture.txt" } }], ...reply, stopReason: "toolUse" }),
+    append("c0a1b2c5", { role: "toolResult", toolCallId: "tool-continue-read", toolName: "read", content: [{ type: "text", text: "SDK fixture content\n" }], isError: false }),
+    append("c0a1b2c6", { role: "system", content: "", sections: { continue_marker: "CONTINUE_SECTION_FIXTURE" } }),
+    append("c0a1b2c7", { role: "assistant", content: [], ...reply, stopReason: "aborted", errorMessage: "Request was aborted" }),
+  ];
+  await writeFile(sessionFile, `${(await readFile(sessionFile, "utf8")).trimEnd()}\n${lines.join("\n")}\n`);
+
+  const resumed = await f.start({ sessionFile });
+  const before = (await readFile(f.log, "utf8")).trim().split("\n").length;
+  settled = nextEvent(resumed, (event) => event.type === "settled");
+  await resumed.continueRun!();
+  await settled;
+  assert(resumed.transcript().some((entry) => entry.kind === "message" && entry.role === "assistant" && entry.text.includes("Tool complete")), JSON.stringify(resumed.transcript()));
+  const requests = (await readFile(f.log, "utf8")).trim().split("\n").slice(before).map((line) => JSON.parse(line));
+  assert.equal(requests.length, 1, "continuing sends exactly one request and no synthetic user prompt");
+  assert(JSON.stringify(requests[0]).includes("CONTINUE_SECTION_FIXTURE"), "the persisted loadout change still applies to the continued request");
+  assert(!JSON.stringify(requests[0]).includes("Request was aborted"));
+});
+
 test("SDK inspects late tools, overrides and load failures; SYSTEM and APPEND compose; questions use RPC", { timeout: 45_000 }, async (t) => {
   const f = await fixture(t);
   await mkdir(join(f.agentDir, "extensions"));

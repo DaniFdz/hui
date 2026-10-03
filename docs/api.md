@@ -130,7 +130,7 @@ working directory, transcript and model travel in the private
 tools start: endpoint security agents can SIGKILL a script launch whose working
 directory plus one argument reaches `MAXPATHLEN` (1024 bytes).
 
-The worker pins `@earendil-works/pi-coding-agent@0.87.1` and uses its public
+The worker pins `@earendil-works/pi-coding-agent@1.0.1` and uses its public
 `runRpcMode`. `HUI_PI_BACKEND=cli` opts into the previous adapter;
 `HUI_PI_CLI` optionally pins its executable (otherwise HUI runs the bundled SDK
 CLI with Node, without relying on a global `pi` or npm's PATH). PI package
@@ -1238,7 +1238,10 @@ tool cards and text deltas. A reconnecting stream receives that projection in
 its snapshot. At `settled`, PI's refreshed transcript normally replaces the
 projection as the authoritative durable history and a final snapshot is emitted.
 That snapshot also carries PI's `get_session_stats` context usage plus the
-input, output and reported cost summed from the latest run. Missing context or
+input, output and reported cost summed from the latest run's assistant messages
+and tool results (PI attributes nested tool and model calls to the calling tool's
+result). Prompt-cache refreshes are PI `usage` entries outside the conversation;
+they count toward the observability totals, not this per-run figure. Missing context or
 cost remains `null`/absent rather than being estimated by HUI.
 `historyRefreshed` is omitted/true on that path. When PI cannot refresh history,
 the adapter emits `settled` with `historyRefreshed: false`; HUI still returns to
@@ -1335,7 +1338,9 @@ and an unknown entry returns 400.
 Continues from the active leaf with PI's native prompt-free continuation
 primitive and returns `{ "ok": true }` once the run has entered. No synthetic
 user message is appended. It accepts a user/tool-result tail, or removes an
-aborted/error assistant tail before continuing. When the tail is a normally
+aborted/error assistant tail before continuing. PI's system entries (persisted
+prompt and tool loadout changes) after that message are kept in the context and
+do not count as the tail. When the tail is a normally
 completed assistant response, HUI instead sends one explicit continuation
 prompt ("Continue from where you left off…") as a normal user turn. Running, queued or waiting sessions return 409.
 
