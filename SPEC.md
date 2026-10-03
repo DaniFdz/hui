@@ -753,7 +753,8 @@ gateway stops; at most ten watchers live per conversation.
 The owning conversation lists its watchers at the end of the transcript in the
 same compact rows as background agents: a status icon (the agents' orbit while
 running), the purpose, the latest non-empty log line and a one-word state with
-its time. Several watchers collapse into one summary line (*N watchers · M running ·
+its time (phones keep only the purpose and state until a row is opened).
+Several watchers collapse into one summary line (*N watchers · M running ·
 purpose*); nothing floats over the conversation. State is derived
 from reality, never guessed: `running` only while the recorded PID is still the
 process HUI started (a reboot that reuses the PID reads dead), `done` or

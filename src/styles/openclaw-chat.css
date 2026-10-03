@@ -706,4 +706,9 @@ wa-dropdown.session-menu.task-suggestion__start-menu { --menu-item-height: 26px;
 .chat-watcher__log:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .chat-watcher__log pre { margin: 0; font: inherit; white-space: pre-wrap; overflow-wrap: anywhere; }
 .chat-watcher__actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px; }
-.chat-watcher__path { flex: 1 1 12rem; min-width: 0; overflow: hidden; font: 11px var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
+.chat-watcher__path { flex: 1 1 0; min-width: 0; overflow: hidden; font: 11px var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
+/* Phones: a closed row is purpose and state; output shows once it is opened. */
+@media (max-width: 640px) {
+  .chat-watcher > summary { grid-template-columns: 16px minmax(0, 1fr) auto; }
+  .chat-watcher > summary .chat-subagents__snippet { display: none; }
+}
