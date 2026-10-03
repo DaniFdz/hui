@@ -241,6 +241,16 @@ test("model and thinking changes persist on the conversation", { timeout: 30_000
   assert.equal(reopened.currentThinking(), "medium");
 });
 
+test("opening the store leaves the gateway's global fetch untouched", { timeout: 30_000 }, async (t) => {
+  // The harness shares the gateway process; GitHub, Jira and update checks
+  // must keep the fetch they had (tests and fixtures also override it).
+  const f = await fixture(t);
+  const before = globalThis.fetch;
+  const session = await startDurable({ cwd: f.cwd }, f.host());
+  assert.equal(globalThis.fetch, before);
+  session.dispose();
+});
+
 test("one store has one owner", { timeout: 30_000 }, async (t) => {
   const f = await fixture(t);
   await f.host().open();

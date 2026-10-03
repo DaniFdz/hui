@@ -29,15 +29,10 @@ import { invokeAgentTool } from "../agent-tools-bridge.ts";
 /** Durable APIs take a cancellation context; HUI's own calls are not scoped. */
 export const durableContext = BACKGROUND_CONTEXT;
 
-const internal = async <T>(path: string): Promise<T> =>
-  await import(new URL(path, import.meta.resolve("@earendil-works/pi-coding-agent")).href) as T;
-
-/** PI's provider HTTP setup. Without its longer idle timeout, long reasoning
- * streams can be cut off by fetch's default body timeout. */
-async function configureProviderHttp(settings: SettingsManager): Promise<void> {
-  const http = await internal<{ configureHttpDispatcher(timeoutMs?: number): void }>("./core/http-dispatcher.js");
-  http.configureHttpDispatcher(settings.getHttpIdleTimeoutMs());
-}
+// PI's `configureHttpDispatcher` is deliberately not installed: it replaces
+// `globalThis.fetch` for the whole process, and the harness shares the gateway
+// with every other HUI subsystem. Provider requests use Node's fetch, whose
+// 5-minute body timeout matches PI's default HTTP idle timeout.
 
 /** Harness policy read at every use, so PI settings edits apply to the next turn. */
 function harnessSettings(settings: SettingsManager): HarnessSettings {
@@ -180,7 +175,6 @@ export class DurableHost {
     this.#release = acquireStoreLock(join(this.dir, "harness.lock"));
     try {
       const settings = SettingsManager.create(this.agentDir, this.agentDir);
-      await configureProviderHttp(settings);
       this.#models.target = await createSessionModelRuntime(this.agentDir);
       const registry = createRegistry();
       registry.install(CodingTools);
