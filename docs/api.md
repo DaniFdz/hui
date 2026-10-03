@@ -128,14 +128,38 @@ Opening the store resumes every unfinished run. A gateway restart therefore
 does not interrupt Durable work: the run continues, an interrupted tool call is
 reported to the model as interrupted (never rerun), and HUI's recovery prompt is
 not used (`RuntimeSession.resumesInterruptedRuns`). Prompts, steering and
-follow-ups are Durable inbox submissions; `/compact [instructions]` starts a
-manual compaction. Rewind forks the conversation at the chosen point and stores
-the fork's reference; the earlier conversation is kept. `/skill:name` and
+follow-ups are Durable inbox submissions. Rewind forks the conversation at the
+chosen point and stores the fork's reference; the earlier conversation is kept. `/skill:name` and
 prompt templates expand as in PI. HUI tools run in the gateway process and reach
 the agent-tool handler directly with the conversation's bound HUI session,
 falling back to the registry after a restart. Usage totals read Durable's
 per-conversation spend. `HUI_SESSION_RUNTIME=pi` creates new sessions on the
 PI worker described below.
+
+The transcript is the conversation's whole fork-aware history since its latest
+reset (`/clear`), so compaction never hides a message. It is read from the
+store in pages that yield to the event loop: all of it when the session opens,
+then only entries past the newest one read, after each run and compaction. Each
+message carries its Durable entry ID (`entryId`, the rewind target), and each
+summary is a `compaction` entry where Durable placed it, its wrapper removed.
+`tokensBefore` and the context meter use Durable's own context estimate: the
+newest answered request after the latest summary or reset, plus estimates of
+what follows it.
+
+Compaction is Durable's own. `/compact [focus]` and **Compact now** start its
+compaction task (`Conversation.compact`). The harness also compacts by itself
+with PI's `compaction` settings: in the background from 32,768 tokens (Durable's
+`backgroundTokens`) below `contextWindow - reserveTokens`, blocking above that
+threshold, and after a context overflow, always keeping `keepRecentTokens`
+verbatim. Each one reports `compaction_start` and a `compaction_end` built from
+the task's receipt: `done`, `cancelled`, or `failed` with Durable's reason. A
+requested compaction with nothing old enough to summarize reports PI's
+"Nothing to compact (session too small)". One that ends outside a run keeps the
+session busy until the refreshed history holds its summary, as on PI. Stop
+cancels every running compaction, background ones included, and resolves once
+Durable reports them ended. A compaction already running when a session opens
+(Durable resumes it after a restart) is reported to each new subscriber, so the
+session opens busy.
 
 ## PI process binding
 
@@ -651,7 +675,7 @@ PI transcript normally replaces the live projection. If that refresh fails, it
 emits an error followed by `settled` with `historyRefreshed: false`; the gateway
 keeps the completed live projection rather than replacing it with stale history.
 
-PI compacts at its threshold after a run's `agent_end`, before a prompt when
+On the PI worker, PI compacts at its threshold after a run's `agent_end`, before a prompt when
 the context is already full, and inside a run before the next model call; it
 also compacts around an overflow it recovers from, and for `/compact`.
 `compaction_start` makes the session `running` with `snapshot.compaction.status:
@@ -667,7 +691,9 @@ holds the `compaction` entry, usage is refreshed and the queue drains. A settle
 whose refresh finishes after PI started another run leaves the session to that
 run. A failed or cancelled compaction stays in `snapshot.compaction` until the
 next turn, rewind or clear. Abort cancels a running compaction, and a released
-subagent stays open until PI's compaction after its turn ends.
+subagent stays open until PI's compaction after its turn ends. Durable sessions
+keep this contract with Durable's compaction; see
+[Durable runtime binding](#durable-runtime-binding).
 
 ## Session stages
 
@@ -1170,10 +1196,11 @@ session and a later reopen may otherwise resume the previous pointer.
 
 Body: `{ "instructions"?: string }` (at most 2,000 characters), the browser's
 `/compact [focus]` and the context meter's **Compact now**. Marks the session
-compacting, starts PI's `compact` RPC with the focus as its custom instructions
-and returns `{ "ok": true }` without waiting for the summary; compaction events
-report progress and the outcome, including PI's "Nothing to compact" and
-"Already compacted". Busy rules match `/clear` (`409` otherwise); an unknown
+compacting, starts the runtime's compaction with the focus as its instructions
+(PI's `compact` RPC, or Durable's compaction task) and returns `{ "ok": true }`
+without waiting for the summary; compaction events report progress and the
+outcome, including PI's "Nothing to compact" and "Already compacted" (Durable
+reports the first). Busy rules match `/clear` (`409` otherwise); an unknown
 session returns `404`. The prompt route refuses `/compact` like `/clear`.
 
 ### `POST /__hui/sessions/:id/reload`
@@ -1391,7 +1418,9 @@ behind it to a point inside the window PI kept verbatim appends the same
 summary again, since it covers only entries that still precede the new leaf;
 no new summary is generated. Rewinding to a summarized message drops the
 summary, so the model sees the original messages, and PI compacts again only
-if they exceed its threshold.
+if they exceed its threshold. A Durable rewind forks the conversation instead:
+when the fork point is inside a later summary's kept window, the fork gets the
+same summary written into it; rewinding to a summarized message leaves it out.
 
 ### `POST /__hui/sessions/:id/continue`
 

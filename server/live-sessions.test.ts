@@ -1326,6 +1326,41 @@ test("rewind of a prompt shown without an entry id stops the run, then lets PI c
   assert.deepEqual(started[0]?.rewoundTo, [{ target: { userFromEnd: 0 }, excludeUserMessage: true }]);
 });
 
+test("a compaction the runtime reports while subscribing keeps a booting session busy", async () => {
+  const started: FakeSession[] = [];
+  const manager = new LiveSessions({
+    id: "durable",
+    start: async () => {
+      // Durable resumes a compaction after a restart and reports it to each new subscriber.
+      const session = new FakeSession();
+      const subscribe = session.subscribe.bind(session);
+      session.subscribe = (listener) => {
+        const unsubscribe = subscribe(listener);
+        listener({ type: "compaction_start", reason: "manual" });
+        return unsubscribe;
+      };
+      started.push(session);
+      return session;
+    },
+  });
+  const updates: import("./live-sessions.ts").SessionStatusUpdate[] = [];
+  manager.watchStatuses((update) => updates.push(update));
+  const record = { ...recordFor("resumed-compaction"), tool: "durable" };
+  manager.ensure(record);
+  await new Promise<void>((resolve) => {
+    const booted = () => manager.runtimeTelemetry().get(record.id)?.bootDurationMs !== undefined;
+    if (booted()) return resolve();
+    const unsubscribe = manager.subscribe(record.id, () => { if (booted()) { unsubscribe(); resolve(); } });
+  });
+  assert.equal(manager.status(record.id), "running");
+  assert.equal(updates.filter((update) => update.id === record.id).at(-1)?.status, "running", "the session list is told it is busy");
+  assert.deepEqual(manager.snapshot(record.id).compaction, { status: "running", reason: "manual" });
+  started[0]!.compactionEnded({ type: "compaction_end", reason: "manual", outcome: "done", willRetry: false });
+  started[0]!.emit({ type: "settled" });
+  await waitForStatus(manager, record.id, "idle");
+  assert.equal(manager.snapshot(record.id).compaction, undefined);
+});
+
 test("a compaction keeps the session busy, holds what the user sends and delivers it afterwards", async () => {
   const started: FakeSession[] = [];
   const manager = new LiveSessions(factory(started));

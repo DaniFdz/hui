@@ -9,25 +9,40 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { clampThinkingLevel, type Message, type ModelThinkingLevel } from "@earendil-works/pi-ai";
 import {
-  InboxDoc, watchEvents,
-  type AgentEvent, type AgentState, type Conversation, type ConversationId, type EntryRecord, type Harness,
+  CompactionEntry, InboxDoc, ResetEntry, SystemEntry, watchEvents,
+  type AgentEvent, type AgentState, type CompactionResult, type Conversation, type ConversationId, type Cursor,
+  type EntryId, type EntryRecord, type Harness, type TaskId,
 } from "@earendil-works/pi-durable";
-import { SettingsManager } from "@earendil-works/pi-coding-agent";
+import { calculateContextTokens, estimateTokens, SettingsManager } from "@earendil-works/pi-coding-agent";
 import { resolveCommandReference } from "../../src/lib/command-references.ts";
 import type { RuntimeInspection } from "../../src/lib/tools-types.ts";
 import { durableContext as context, durableHost, type DurableHost } from "./durable-host.ts";
 import { filterConfiguredModels } from "./pi-models.ts";
 import {
-  checkpointsFrom, imageFromMessages, latestRunUsage, promptPayload, restoreAttachmentNames, toolOutput, transcriptFrom,
+  imageFromMessages, latestRunUsage, promptPayload, restoreAttachmentNames, toolOutput, transcriptFrom,
 } from "./pi.ts";
 import { RuntimeTimings } from "./transcript-metrics.ts";
 import type {
-  AgentRuntime, PromptAttachment, RuntimeCheckpoint, RuntimeCommand, RuntimeEvent, RuntimeModel, RuntimeQueue,
-  RuntimeRewindOptions, RuntimeSession, RuntimeUsage, StartOptions, TranscriptEntry,
+  AgentRuntime, CompactionReason, PromptAttachment, RuntimeCommand, RuntimeEvent, RuntimeModel, RuntimeQueue,
+  RuntimeRewindOptions, RuntimeRewindTarget, RuntimeSession, RuntimeUsage, StartOptions, TranscriptEntry,
 } from "./types.ts";
 
 export const DURABLE_VERSION = "1.0.1";
 const REFERENCE_PREFIX = "durable:";
+/** Entries per store read; a read yields to the event loop between pages. */
+const HISTORY_PAGE = 200;
+/** How Durable wraps a summary for the model (`harness/compaction.js`). */
+const SUMMARY_PREFIX = "The conversation history before this point was compacted into the following summary:\n\n<summary>\n";
+const SUMMARY_SUFFIX = "\n</summary>";
+/** The kind of Durable's compaction task, as `task_failed` reports it. */
+const COMPACTION_TASK = "pi.compaction";
+/** Longest a Stop waits for Durable to report that its run and compactions ended. */
+const QUIET_TIMEOUT_MS = 30_000;
+
+type SnapshotEvent = Extract<AgentEvent, { type: "snapshot" }>;
+/** One stored entry, and the messages the transcript shows for it. */
+type Row = { readonly entry: EntryRecord; readonly shown: readonly unknown[] };
+type CompactionOutcome = { outcome: "done" | "failed" | "cancelled"; message?: string };
 
 /** A Durable resume reference as HUI's registry stores it. */
 export function durableReference(id: ConversationId): string {
@@ -73,6 +88,22 @@ function textOf(message: Message | undefined): string {
     : "";
 }
 
+/** A compaction entry's summary, without the wrapper the model reads it in. */
+function compactionSummary(entry: EntryRecord): string {
+  const text = textOf(entry.model?.[0]);
+  return text.startsWith(SUMMARY_PREFIX) && text.endsWith(SUMMARY_SUFFIX)
+    ? text.slice(SUMMARY_PREFIX.length, text.length - SUMMARY_SUFFIX.length)
+    : text;
+}
+
+/** Durable leaves aborted and failed answers out of the model context; the transcript still shows them. */
+function inContext(message: Message): boolean {
+  const stopReason = (message as { stopReason?: string }).stopReason;
+  return message.role !== "assistant" || (stopReason !== "aborted" && stopReason !== "error");
+}
+
+const role = (message: unknown): unknown => (message as { role?: unknown } | null)?.role;
+
 /** PI's default thinking level for a new conversation without an explicit one. */
 function defaultThinking(host: DurableHost, cwd: string): string | undefined {
   return SettingsManager.create(cwd, host.agentDir).getDefaultThinkingLevel();
@@ -100,8 +131,17 @@ export class DurableSession implements RuntimeSession {
   #conversation: Conversation;
   #listeners = new Set<(event: RuntimeEvent) => void>();
   #stop: (() => Promise<void>) | undefined;
-  #messages: Message[] = [];
-  #entries: EntryRecord[] = [];
+  /** Fork-aware history, oldest first: what store reads returned, plus entries streamed since. */
+  #history: Row[] = [];
+  #ids = new Set<EntryId>();
+  /** Newest entry a store read returned; the next read starts after it. */
+  #readThrough: EntryId | undefined;
+  /** What the transcript shows and the context size, rebuilt when the history changes. */
+  #shown: unknown[] | undefined;
+  #contextSize: number | undefined;
+  /** Durable compactions running now, by task. */
+  #compactions = new Map<TaskId, { reason: CompactionReason; blocking: boolean }>();
+  #quietWaiters = new Set<() => void>();
   #timings = new RuntimeTimings();
   #agent: AgentState = {};
   #queue: RuntimeQueue = { steering: [], followUp: [] };
@@ -121,13 +161,16 @@ export class DurableSession implements RuntimeSession {
   get sessionFile(): string { return durableReference(this.#conversation.id); }
   get isStreaming(): boolean { return this.#streaming; }
 
-  /** Attach to the conversation's committed view, then follow every commit. */
+  /** Attach to the conversation's committed state, read its history, then follow every commit. */
   async attach(): Promise<void> {
     const stream = await watchEvents(this.#harness, this.#conversation.id, context);
-    this.#agent = stream.snapshot.agent;
-    this.#streaming = stream.snapshot.run !== undefined;
-    for (const slot of stream.snapshot.tools) this.#toolOutput.set(slot.callId, slot.output ?? "");
-    await this.#refresh();
+    this.#history = [];
+    this.#ids.clear();
+    this.#readThrough = undefined;
+    this.#changed();
+    this.#compactions = new Map(stream.snapshot.compactions.map((status) => [status.taskId, { reason: status.reason, blocking: status.blocking }]));
+    this.#syncSnapshot(stream.snapshot);
+    await this.#read();
     await this.#refreshQueue();
     stream.start(async (events) => {
       for (const event of events) await this.#onEvent(event);
@@ -139,12 +182,90 @@ export class DurableSession implements RuntimeSession {
     for (const listener of this.#listeners) listener(event);
   }
 
-  async #refresh(): Promise<void> {
-    const view = await this.#conversation.context(context);
-    this.#entries = [...view.entries];
-    // Every visible message, including aborted and failed answers; the model
-    // context itself excludes those, but the transcript must still show them.
-    this.#messages = view.entries.flatMap((entry) => entry.model ? [...entry.model] : []);
+  #syncSnapshot(snapshot: SnapshotEvent): void {
+    this.#agent = snapshot.agent;
+    this.#streaming = snapshot.run !== undefined;
+    for (const slot of snapshot.tools) this.#toolOutput.set(slot.callId, slot.output ?? "");
+  }
+
+  /** The history the store holds past `#readThrough` (all of it the first time), read newest first in pages that
+   * yield between them, so even a long history never holds the gateway's event loop for long. */
+  async #read(): Promise<void> {
+    const after = this.#readThrough;
+    const fresh: EntryRecord[] = [];
+    let cursor: Cursor | undefined;
+    do {
+      const page = await this.#conversation.entries(after === undefined ? {} : { minEntryId: after }, HISTORY_PAGE, cursor, context);
+      fresh.push(...page.items);
+      cursor = page.next;
+      if (cursor) await new Promise<void>((resolve) => setImmediate(resolve));
+    } while (cursor);
+    for (const entry of fresh.reverse()) {
+      if (after !== undefined && entry.id <= after) continue;
+      this.#add(entry);
+      if (this.#readThrough === undefined || entry.id > this.#readThrough) this.#readThrough = entry.id;
+    }
+  }
+
+  /** Adds one entry where its ID places it; streamed entries and later reads overlap. */
+  #add(entry: EntryRecord): void {
+    if (this.#ids.has(entry.id)) return;
+    this.#ids.add(entry.id);
+    let index = this.#history.length;
+    while (index > 0 && this.#history[index - 1]!.entry.id > entry.id) index--;
+    const shown = SystemEntry.is(entry) ? []
+      : CompactionEntry.is(entry) ? [{ role: "compaction", summary: compactionSummary(entry), tokensBefore: this.#contextTokens(index) }]
+      : (entry.model ?? []).map((message) => ({ ...message, entryId: String(entry.id) }));
+    this.#history.splice(index, 0, { entry, shown });
+    this.#changed();
+  }
+
+  #changed(): void {
+    this.#shown = undefined;
+    this.#contextSize = undefined;
+  }
+
+  /** Where the history since the latest reset (`/clear`) starts. */
+  #resetIndex(): number {
+    for (let index = this.#history.length - 1; index >= 0; index--) {
+      if (ResetEntry.is(this.#history[index]!.entry)) return index;
+    }
+    return 0;
+  }
+
+  /** The transcript's messages: the history since the latest reset, each message with its entry ID, and every
+   * compaction as a marker where Durable placed its summary. Compaction never hides history; a reset does. */
+  #visible(): unknown[] {
+    this.#shown ??= this.#history.slice(this.#resetIndex()).flatMap((row) => row.shown);
+    return this.#shown;
+  }
+
+  /**
+   * Durable's own size estimate (its `estimateContext`) of the context ending before history row `end`: the usage of
+   * the newest request answered after the head marker, plus estimates of every message after it; without one,
+   * estimates of the whole context. The head marker is the newest compaction or reset; its context starts at the
+   * entry it heads.
+   */
+  #contextTokens(end: number): number {
+    let head: EntryRecord | undefined;
+    for (let index = end - 1; index >= 0 && !head; index--) {
+      if (this.#history[index]!.entry.head !== undefined) head = this.#history[index]!.entry;
+    }
+    let tokens = 0;
+    for (let index = end - 1; index >= 0; index--) {
+      const entry = this.#history[index]!.entry;
+      if (head?.head !== undefined && entry.id < head.head) break;
+      if ((entry !== head && entry.head !== undefined) || SystemEntry.is(entry)) continue;
+      const messages = entry.model ?? [];
+      for (let position = messages.length - 1; position >= 0; position--) {
+        const message = messages[position]!;
+        if (!inContext(message)) continue;
+        const usage = message.role === "assistant" ? message.usage : undefined;
+        if (usage && (!head || entry.id > head.id) && calculateContextTokens(usage) > 0) return tokens + calculateContextTokens(usage);
+        tokens += estimateTokens(message);
+      }
+    }
+    return tokens;
   }
 
   async #refreshQueue(): Promise<void> {
@@ -164,6 +285,10 @@ export class DurableSession implements RuntimeSession {
   async #onEvent(event: AgentEvent): Promise<void> {
     if (this.#disposed) return;
     switch (event.type) {
+      case "snapshot":
+        // The stream fell more than 100 commits behind and restarted from a snapshot.
+        await this.#resync(event);
+        return;
       case "run_start":
         this.#streaming = true;
         return;
@@ -178,8 +303,8 @@ export class DurableSession implements RuntimeSession {
         }
         return;
       case "message_end":
-        this.#entries.push(event.entry);
-        if (event.entry.model) this.#messages.push(...event.entry.model);
+      case "entry_appended":
+        this.#add(event.entry);
         return;
       case "tool_execution_start":
         this.#toolOutput.set(event.toolCallId, "");
@@ -197,6 +322,7 @@ export class DurableSession implements RuntimeSession {
         return;
       }
       case "tool_execution_end": {
+        if (event.entry) this.#add(event.entry);
         const result = event.entry?.model?.[0] as (Message & { isError?: boolean; details?: unknown }) | undefined;
         this.#toolOutput.delete(event.toolCallId);
         this.#emit({
@@ -218,22 +344,102 @@ export class DurableSession implements RuntimeSession {
         this.#emit({ type: "notice", level: "warning", message: `Retrying after a provider error (attempt ${event.attempt}): ${event.errorMessage}` });
         return;
       case "task_failed":
-        this.#emit({ type: "notice", level: "error", message: event.message });
+        // A failed compaction's divider shows its reason instead.
+        if (event.kind !== COMPACTION_TASK) this.#emit({ type: "notice", level: "error", message: event.message });
         return;
       case "compaction_start":
-        this.#emit({ type: "notice", level: "info", message: "Compacting older context…" });
+        this.#compactions.set(event.taskId, { reason: event.reason, blocking: event.blocking });
+        this.#emit({ type: "compaction_start", reason: event.reason });
         return;
       case "compaction_end":
-        await this.#refresh();
+        await this.#compactionEnded(event.taskId, event.reason);
         return;
       case "run_end":
-        await this.#refresh();
-        this.#streaming = false;
-        this.#emit({ type: "settled", historyRefreshed: true });
+        await this.#settle();
         return;
       default:
         return;
     }
+  }
+
+  /** After a run, or a compaction outside one: read what the store committed, then report the settle. */
+  async #settle(): Promise<void> {
+    let historyRefreshed = true;
+    try {
+      await this.#read();
+    } catch (error) {
+      historyRefreshed = false;
+      this.#emit({ type: "error", message: error instanceof Error ? error.message : "Durable history refresh failed." });
+    }
+    this.#streaming = false;
+    this.#emit({ type: "settled", historyRefreshed });
+    this.#notifyQuiet();
+  }
+
+  async #compactionEnded(taskId: TaskId, reason: CompactionReason): Promise<void> {
+    const blocking = this.#compactions.get(taskId)?.blocking === true;
+    // Inside a run the compaction settles with it. Outside one (a manual compaction, or background work that
+    // outlived its run) the session stays busy until the refreshed history holds the summary, as PI's does.
+    // Claimed before the compaction leaves the list, so a waiting Stop never sees a gap.
+    const outside = !this.#streaming;
+    if (outside) this.#streaming = true;
+    this.#compactions.delete(taskId);
+    const result = await this.#compactionOutcome(taskId, reason);
+    this.#emit({ type: "compaction_end", reason, ...result, willRetry: blocking && result.outcome === "done" });
+    if (outside) await this.#settle();
+    else this.#notifyQuiet();
+  }
+
+  /** The compaction task's receipt: a summary, nothing old enough to summarize, a cancel or a failure. */
+  async #compactionOutcome(taskId: TaskId, reason: CompactionReason): Promise<CompactionOutcome> {
+    let outcome;
+    try {
+      outcome = (await this.#harness.waitForTask(taskId as unknown as TaskId<CompactionResult>, context)).state.outcome;
+    } catch (error) {
+      return { outcome: "failed", message: error instanceof Error ? error.message : "Durable lost track of this compaction." };
+    }
+    if (outcome.status === "completed") {
+      if (outcome.result?.entryId !== undefined || outcome.result?.submissionId !== undefined) return { outcome: "done" };
+      // Durable found nothing old enough to summarize; only a requested compaction reports that, in PI's words.
+      return reason === "manual" ? { outcome: "failed", message: "Nothing to compact (session too small)" } : { outcome: "done" };
+    }
+    if (outcome.status === "aborted") return { outcome: "cancelled" };
+    if (outcome.status === "failed") return { outcome: "failed", message: outcome.error.message };
+    const detail = (outcome as { reason?: unknown }).reason;
+    return { outcome: "failed", message: typeof detail === "string" && detail ? detail : "Durable could not finish the compaction." };
+  }
+
+  /** A fresh snapshot after the stream fell behind: adopt it, report the compactions that started or ended in the
+   * gap, and read the history it skipped. */
+  async #resync(snapshot: SnapshotEvent): Promise<void> {
+    const running = this.#streaming;
+    this.#syncSnapshot(snapshot);
+    const live = new Set<TaskId>(snapshot.compactions.map((status) => status.taskId));
+    for (const status of snapshot.compactions) {
+      if (this.#compactions.has(status.taskId)) continue;
+      this.#compactions.set(status.taskId, { reason: status.reason, blocking: status.blocking });
+      this.#emit({ type: "compaction_start", reason: status.reason });
+    }
+    for (const [taskId, { reason }] of [...this.#compactions]) {
+      if (!live.has(taskId)) await this.#compactionEnded(taskId, reason);
+    }
+    if (running && !this.#streaming) await this.#settle();
+    else await this.#read().catch(() => {});
+  }
+
+  #notifyQuiet(): void {
+    if (this.#streaming || this.#compactions.size) return;
+    for (const resolve of [...this.#quietWaiters]) resolve();
+  }
+
+  /** Resolves once no run or compaction is running in this view, or after `QUIET_TIMEOUT_MS`. */
+  #quiet(): Promise<void> {
+    if (!this.#streaming && !this.#compactions.size) return Promise.resolve();
+    return new Promise((resolve) => {
+      const done = () => { clearTimeout(timer); this.#quietWaiters.delete(done); resolve(); };
+      const timer = setTimeout(done, QUIET_TIMEOUT_MS);
+      this.#quietWaiters.add(done);
+    });
   }
 
   async #expand(text: string): Promise<string> {
@@ -252,11 +458,6 @@ export class DurableSession implements RuntimeSession {
   }
 
   async prompt(text: string, attachments: readonly PromptAttachment[] = []): Promise<void> {
-    const compact = /^\/compact(?:\s+([\s\S]*))?$/u.exec(text.trim());
-    if (compact) {
-      await this.#conversation.compact(compact[1]?.trim() || undefined, context);
-      return;
-    }
     this.#streaming = true;
     try {
       await this.#submit(text, attachments, "reject");
@@ -274,8 +475,20 @@ export class DurableSession implements RuntimeSession {
     await this.#submit(text, attachments, "followUp");
   }
 
+  /** Starts Durable's compaction task; its start and outcome arrive as compaction events. */
+  async compact(instructions?: string): Promise<void> {
+    try {
+      await this.#conversation.compact(instructions?.trim() || undefined, context);
+    } catch (error) {
+      this.#emit({ type: "compaction_end", reason: "manual", outcome: "failed", willRetry: false, message: error instanceof Error ? error.message : "Durable could not start the compaction." });
+    }
+  }
+
   subscribe(listener: (event: RuntimeEvent) => void): () => void {
     this.#listeners.add(listener);
+    // A compaction already running (one Durable resumed after a restart, or started before this view attached) is
+    // reported to each new subscriber, so the session shows it busy.
+    for (const { reason } of this.#compactions.values()) listener({ type: "compaction_start", reason });
     return () => { this.#listeners.delete(listener); };
   }
 
@@ -290,20 +503,16 @@ export class DurableSession implements RuntimeSession {
     };
   }
 
-  /** Context use as of the latest answered request, plus the latest run's spend. */
+  /** Context use as Durable measures it against its compaction thresholds, plus the latest run's spend. */
   currentUsage(): RuntimeUsage | undefined {
     const window = this.currentModel()?.contextWindow;
     if (!window) return undefined;
-    const last = this.#messages.findLast((message) => message.role === "assistant"
-      && (message as { stopReason?: string }).stopReason !== "aborted"
-      && (message as { stopReason?: string }).stopReason !== "error") as { usage?: { input?: number; output?: number; cacheRead?: number; cacheWrite?: number } } | undefined;
-    const usage = last?.usage;
-    const tokens = usage ? (usage.input ?? 0) + (usage.output ?? 0) + (usage.cacheRead ?? 0) + (usage.cacheWrite ?? 0) : null;
+    const tokens = this.#history.length ? this.#contextSize ??= this.#contextTokens(this.#history.length) : null;
     return {
       contextTokens: tokens,
       contextWindow: window,
       percent: tokens === null ? null : Math.min(100, (tokens / window) * 100),
-      ...latestRunUsage(this.#messages),
+      ...latestRunUsage(this.#visible()),
     };
   }
 
@@ -345,15 +554,19 @@ export class DurableSession implements RuntimeSession {
     return { steering: [...this.#queue.steering], followUp: [...this.#queue.followUp] };
   }
 
+  /** Stops the run and every running compaction, background ones included (a conversation abort leaves those
+   * running), and resolves once this view has seen them end: HUI treats a resolved Stop as idle. */
   async abort(): Promise<void> {
+    await Promise.all([...this.#compactions.keys()].map((taskId) => this.#harness.abortTask(taskId, context).catch(() => undefined)));
     await this.#conversation.abort(context);
+    await this.#quiet();
   }
 
   /** A fresh context; the earlier entries stay in the store. */
   async clear(): Promise<void> {
-    if (this.#streaming) throw new Error("Wait for the current run to finish before clearing the session.");
+    if (this.#streaming || this.#compactions.size) throw new Error("Wait for the current run to finish before clearing the session.");
     await this.#conversation.reset(undefined, context);
-    await this.#refresh();
+    await this.#read();
   }
 
   async reload(): Promise<void> {
@@ -361,30 +574,29 @@ export class DurableSession implements RuntimeSession {
     await this.#host.prompt.loader(this.#cwd);
   }
 
-  /** Rewind points in PI's shape: each visible entry, linked to the one before. */
-  async checkpoints(): Promise<readonly RuntimeCheckpoint[]> {
-    await this.#refresh();
-    const entries = this.#entries.filter((entry) => entry.model?.length);
-    return checkpointsFrom({
-      leafId: entries.length ? String(entries.at(-1)!.id) : undefined,
-      entries: entries.flatMap((entry, index) => entry.model!.map((message) => ({
-        type: "message", id: String(entry.id), parentId: index > 0 ? String(entries[index - 1]!.id) : null,
-        timestamp: new Date((message as { timestamp?: number }).timestamp ?? Date.now()).toISOString(),
-        message,
-      }))),
-    });
-  }
-
-  /** Durable history is append-only, so a rewind forks the conversation at
-   * that point and continues in the fork; the abandoned branch is kept. */
-  async rewind(entryId: string, options?: RuntimeRewindOptions): Promise<void> {
-    if (this.#streaming) throw new Error("Wait for the current run to finish before rewinding.");
-    await this.#refresh();
-    const entries = this.#entries.filter((entry) => entry.model?.length);
-    const index = entries.findIndex((entry) => String(entry.id) === entryId);
-    if (index === -1) throw new Error("That rewind point is no longer available.");
-    const isUser = entries[index]!.model![0]?.role === "user";
-    const at = options?.excludeUserMessage === true && isUser ? entries[index - 1]?.id : entries[index]!.id;
+  /** Durable history is append-only, so a rewind forks the conversation at that point and continues in the fork; the
+   * abandoned branch stays stored. A fork before a compaction's marker leaves its summary out, so the model sees the
+   * original turns again; inside the summary's kept window the summary stays. */
+  async rewind(target: RuntimeRewindTarget, options?: RuntimeRewindOptions): Promise<void> {
+    if (this.#streaming || this.#compactions.size) throw new Error("Wait for the current run to finish before rewinding.");
+    await this.#read();
+    const visible = this.#history.slice(this.#resetIndex());
+    const row = typeof target === "string"
+      ? visible.find((candidate) => String(candidate.entry.id) === target && !CompactionEntry.is(candidate.entry) && candidate.shown.length > 0)
+      // Counted as the browser and PI's worker count: user messages since the latest reset, from the end.
+      : visible.filter((candidate) => candidate.shown.some((message) => role(message) === "user")).at(-1 - target.userFromEnd);
+    if (!row) throw new Error("That rewind point is no longer available.");
+    const index = this.#history.indexOf(row);
+    const isUser = role(row.shown[0]) === "user";
+    const at = options?.excludeUserMessage === true && isUser ? this.#history[index - 1]?.entry.id : row.entry.id;
+    // As PI's worker does (`keepCompaction`): a summary covers only the entries before its kept window. When they all
+    // still lead to the fork point, the fork keeps that summary instead of the model rereading what it summarized.
+    const leaf = at === undefined ? -1 : this.#history.findIndex((candidate) => candidate.entry.id === at);
+    const kept = leaf < 0 ? undefined : this.#history.slice(leaf + 1).findLast(({ entry }) => {
+      if (!CompactionEntry.is(entry) || entry.head === undefined) return false;
+      const first = this.#history.findIndex((candidate) => candidate.entry.id === entry.head);
+      return first >= 0 && leaf >= first - 1;
+    })?.entry;
     const next = at
       ? await this.#conversation.fork(at, { ownership: { kind: "ownerless" } }, context)
       : await this.#harness.createConversation({ ownership: { kind: "ownerless" }, agent: {
@@ -392,6 +604,11 @@ export class DurableSession implements RuntimeSession {
           ...(this.#agent.thinkingLevel ? { thinkingLevel: this.#agent.thinkingLevel } : {}),
           cwd: this.#cwd,
         } }, context);
+    if (kept) {
+      await next.submit({ type: "write", entry: {
+        kind: kept.kind, head: kept.head!, ...(kept.model ? { model: kept.model } : {}), ...(kept.data !== undefined ? { data: kept.data } : {}),
+      } }, context);
+    }
     await this.#stop?.();
     this.#host.bindCallerLike(this.#conversation.id, next.id);
     this.#conversation = next;
@@ -400,11 +617,11 @@ export class DurableSession implements RuntimeSession {
   }
 
   attachmentImage(message: number, image: number): { mimeType: string; data: Buffer } | undefined {
-    return imageFromMessages(this.#messages, message, image);
+    return imageFromMessages(this.#visible(), message, image);
   }
 
   transcript(): TranscriptEntry[] {
-    return transcriptFrom(this.#messages, this.#timings);
+    return transcriptFrom(this.#visible(), this.#timings);
   }
 
   async inspect(): Promise<RuntimeInspection> {
@@ -430,6 +647,7 @@ export class DurableSession implements RuntimeSession {
     if (this.#disposed) return;
     this.#disposed = true;
     this.#listeners.clear();
+    for (const resolve of [...this.#quietWaiters]) resolve();
     void this.#stop?.().catch(() => {});
   }
 }

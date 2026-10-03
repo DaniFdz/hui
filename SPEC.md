@@ -223,13 +223,15 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   entry tree, moves the active leaf to the point before the selected user
   message, removes that message from the active transcript and restores its
   full text to the focused composer for editing. The abandoned branch remains
-  recoverable from PI's tree. The transcript is PI's whole active branch: a
+  recoverable from PI's tree. The transcript is the whole active branch (PI's,
+  or a Durable conversation's history since its latest `/clear`): a
   compaction appears as a divider with its expandable summary and never hides
-  earlier messages, and rewinding inside the window PI kept verbatim keeps that
-  summary on the new branch instead of compacting again. While PI compacts, the
-  divider shows it live in place of the working indicator, messages sent wait in
-  the queue until it ends, Stop cancels it, and a failure or cancellation stays
-  visible with PI's reason until the next turn. `/compact [focus]` and the
+  earlier messages, and rewinding inside the window the summary kept verbatim
+  keeps that summary on the new branch instead of compacting again. While the
+  session compacts, the divider shows it live in place of the working
+  indicator, messages sent wait in the queue until it ends, Stop cancels it,
+  and a failure or cancellation stays visible with its reason until the next
+  turn. `/compact [focus]` and the
   context meter's Compact now start one. Continue invokes PI's native
   prompt-free continuation primitive; only when the branch already ends with a
   completed assistant response does HUI send an explicit continuation prompt.
@@ -959,6 +961,12 @@ session. Third-party PI extensions and packages do not load in Durable
 sessions. A rewind forks the conversation, so the abandoned branch stays
 stored. Prompt-free Continue is not available on Durable; an aborted run
 continues from a new prompt.
+
+Compaction is Durable's too. `/compact`, **Compact now** and the harness's own
+compactions (background ahead of the threshold, blocking at it, and after an
+overflow) run Durable's compaction task with PI's `compaction` settings. The
+transcript keeps the whole history with each summary in place, and a rewind
+inside a summary's kept window keeps it, as on PI.
 
 `HUI_SESSION_RUNTIME=pi` starts new sessions on the PI SDK worker instead.
 Existing sessions keep the runtime they were created with; HUI never migrates,

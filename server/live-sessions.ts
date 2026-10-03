@@ -1071,9 +1071,10 @@ export class LiveSessions {
       ) {
         return;
       }
+      // A runtime can report a compaction it resumed after a restart while subscribing.
       const readyStatus = live.questions.size > 0
         ? "waiting"
-        : runtime.isStreaming
+        : runtime.isStreaming || live.compaction?.status === "running"
           ? "running"
           : "idle";
       live.bootDurationMs = Math.max(0, Date.now() - live.bootStartedAt);
