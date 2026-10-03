@@ -37,6 +37,8 @@
   },
   "dependencies": {
     "@awesome.me/webawesome": "3.14.0",
+    "@earendil-works/chord": "1.0.1",
+    "@earendil-works/pi-ai": "1.0.1",
     "@earendil-works/pi-coding-agent": "1.0.1",
     "@earendil-works/pi-durable": "1.0.1",
     "@lydell/node-pty": "1.2.0-beta.15",
