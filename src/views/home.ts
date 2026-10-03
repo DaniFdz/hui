@@ -45,7 +45,7 @@ import { positionRail } from "./chat/position-rail.ts";
 import { readToolPresentation, renderReadToolCard } from "./chat/read-tool-card.ts";
 import { commandToolPresentation, renderCommandToolCard } from "./chat/command-tool-card.ts";
 import { renderTaskSuggestionCard, type TaskSuggestionCardProps } from "./chat/task-suggestion-card.ts";
-import { renderWatcherCard, type WatcherCardProps } from "./chat/watcher-card.ts";
+import { renderWatcherActivity, type WatcherActivityProps } from "./chat/watcher-activity.ts";
 import { browserToolSummary } from "../lib/browser-tool-display.ts";
 import { toggleNavigationDrawer } from "./shell.ts";
 import { slashCommandQuery } from "../lib/slash-commands.ts";
@@ -247,7 +247,7 @@ export type HomeProps = {
   /** Pending `suggest_task` cards for the open session. */
   taskSuggestions?: TaskSuggestionCardProps;
   /** HUI-run background watchers for the open session. */
-  watchers?: WatcherCardProps;
+  watchers?: WatcherActivityProps;
   onDraftChange: (draft: string) => void;
   commandMenu: SlashMenuProps;
   onCommandQuery: (query: string | null) => void;
@@ -2059,17 +2059,12 @@ function renderTranscript(props: HomeProps, session: SessionView) {
                   ? html`<div class="chat-error" role="alert"><div class="chat-error__content">The runtime could not start.</div><button type="button" class="btn btn--sm retry-session" @click=${props.onRetry}>Retry session</button></div>`
                   : nothing}
                 <div class="chat-main__conversation">
-                  ${props.watchers?.watchers.length || props.taskSuggestions?.suggestions.length
-                    ? html`<div class="chat-gutter-stack">
-                        ${props.watchers?.watchers.length ? renderWatcherCard(props.watchers) : nothing}
-                        ${props.taskSuggestions?.suggestions.length ? renderTaskSuggestionCard(props.taskSuggestions) : nothing}
-                      </div>`
-                    : nothing}
+                  ${props.taskSuggestions?.suggestions.length ? html`<div class="chat-gutter-stack">${renderTaskSuggestionCard(props.taskSuggestions)}</div>` : nothing}
                   <div class="chat-thread chat-thread--direct" role="log" aria-live="off" aria-relevant="additions" tabindex="0"
                     @scroll=${(event: Event) => props.onTranscriptScroll(event.currentTarget as HTMLElement)}
                     @click=${(event: Event) => { void copyCodeBlock(event, props); }}>
                     ${positionRail({ sessionId: session.id, markers: props.opening || session.status === "starting" ? [] : conversationMarkers(rows), onNavigate: props.onTranscriptNavigate })}
-                    <div class="chat-thread-inner" ${markdownBlocks()}>${renderTranscriptBody(props, rows)}${renderSubagentActivity(props)}</div>
+                    <div class="chat-thread-inner" ${markdownBlocks()}>${renderTranscriptBody(props, rows)}${renderSubagentActivity(props)}${props.watchers ? renderWatcherActivity(props.watchers) : nothing}</div>
                   </div>
                 </div>
                 <div class="chat-scroll-to-bottom-wrap"><button type="button" class="chat-scroll-to-bottom" data-visible=${String(props.showScrollToBottom)} ?inert=${!props.showScrollToBottom} aria-hidden=${String(!props.showScrollToBottom)} @click=${props.onScrollToBottom} aria-label="Scroll to latest">${icons.arrowDown}</button></div>

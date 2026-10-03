@@ -1,7 +1,7 @@
 import { parseWatchers, type Watcher } from "../../shared/watchers.ts";
 import { fetchJson } from "./settings-store.ts";
 
-export { parseWatchers, watcherStateLabel, type Watcher, type WatcherState } from "../../shared/watchers.ts";
+export { parseWatchers, watcherStateLabel, watcherStateNote, type Watcher, type WatcherState } from "../../shared/watchers.ts";
 
 export type WatcherLog = {
   id: string;

@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { setTimeout as delay } from "node:timers/promises";
 
-import { parseWatchers, watcherStateLabel } from "../shared/watchers.ts";
+import { parseWatchers, watcherStateLabel, watcherStateNote } from "../shared/watchers.ts";
 import {
   WatcherConflictError,
   WatcherInputError,
@@ -99,7 +99,8 @@ test("a finished command reports done or failed with its exit code and output", 
   const failed = service.list("alpha")[0]!;
   assert.equal(failed.exitCode, 3);
   assert.equal(failed.lastLine, "boom");
-  assert.equal(watcherStateLabel(failed), "Failed (exit 3)");
+  assert.equal(watcherStateLabel(failed), "Failed");
+  assert.equal(watcherStateNote(failed), "Exited with status 3.");
 
   const log = await service.log("alpha", done.id, 10);
   assert.deepEqual(log.lines, ["hello watcher"]);
@@ -116,7 +117,8 @@ test("a recorded PID that is not the started process is dead, not running", asyn
   const watcher = await service.start("alpha", { purpose: "Reboot victim", command: "sleep 30" });
   assert.equal(watcher.state, "dead");
   assert.equal(watcher.pid, 424_242);
-  assert.equal(watcherStateLabel(watcher), "Dead · no exit recorded");
+  assert.equal(watcherStateLabel(watcher), "Dead");
+  assert.match(watcherStateNote(watcher), /recorded no exit status/u);
 });
 
 test("stop kills the whole process group and reports stopped", async (t) => {

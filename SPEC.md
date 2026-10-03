@@ -738,8 +738,8 @@ dialog states that subagents, including nested ones, are included.
 Some work is a wait, not a task: a pull request needs approval before `/merge`,
 a CI run must go green, a deploy must finish. HUI gives sessions a `watcher`
 tool that runs those waits as HUI-owned background processes instead of
-invisible `nohup` scripts, and shows each one as a card in the conversation
-that started it.
+invisible `nohup` scripts, and lists them in the conversation that started
+them.
 
 `watcher` has five actions: `start`, `list`, `stop`, `restart` and `log`.
 `start` records the watcher against the calling session — a one-line purpose,
@@ -750,19 +750,22 @@ the command's output to a HUI-owned log and has the wrapper write the exit
 status beside it, so the watcher keeps running after the turn and after the
 gateway stops; at most ten watchers live per conversation.
 
-The owning conversation shows a *Background watcher* card in the transcript's
-top-right gutter, above any suggested-task tray: purpose, target link, outcome,
-start time and the latest non-empty log line, with a state chip. State is
-derived from reality, never guessed: `running` only while the recorded PID is
-still the process HUI started (a reboot that reuses the PID reads dead), `done`
-or `failed` from the recorded exit status, `stopped` after an operator stop, and
-`dead` when the process is gone with no exit record. The card offers *View log*
-(and *Refresh*) for a bounded tail, *Stop* while running, *Restart* and
-*Dismiss* once the watcher is settled, and a disclosure with the command and
-log path. The command runs with the session's own local access; HUI does not
-sandbox it. The registry lives in `~/.config/hui/watchers.json` with one log
-per watcher under `~/.config/hui/watchers/`; deleting a conversation stops and
-forgets its watchers.
+The owning conversation lists its watchers at the end of the transcript in the
+same compact rows as background agents: a status icon (the agents' orbit while
+running), the purpose, the latest non-empty log line and a one-word state with
+its time. Several watchers collapse into one summary line (*N watchers · M running ·
+purpose*); nothing floats over the conversation. State is derived
+from reality, never guessed: `running` only while the recorded PID is still the
+process HUI started (a reboot that reuses the PID reads dead), `done` or
+`failed` from the recorded exit status, `stopped` after an operator stop, and
+`dead` when the process is gone with no exit record. Opening a row shows the
+target link, the outcome, start and end times, why a watcher failed or died, a
+bottom-anchored log tail that follows new output, the PID and log path, and
+*Stop* while running or *Restart* and *Dismiss* once settled. The command runs
+with the session's own local access; HUI does not sandbox it. The registry
+lives in `~/.config/hui/watchers.json` with one log per watcher under
+`~/.config/hui/watchers/`; deleting a conversation stops and forgets its
+watchers.
 
 The gateway re-reads the registry on start, so a watcher that survived a
 restart reappears with its state, and one killed by a reboot is shown dead

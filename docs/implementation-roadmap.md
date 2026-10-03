@@ -670,10 +670,11 @@ Done 2026-10-02. Sessions run long waits (a pull request approval before
 detached `nohup` scripts. HUI starts the command detached in its own process
 group, keeps one log and exit record per watcher, derives
 running/done/failed/stopped/dead from the process identity (a reused PID after
-a reboot reads dead), and shows a live card in the owning conversation with
-stop, restart, log and dismiss controls. The registry survives gateway
+a reboot reads dead), and lists them in the owning conversation as compact
+background-activity rows that open into details, a log tail and stop, restart
+and dismiss controls. The registry survives gateway
 restarts. Proof: `server/watchers.test.ts`, `server/watcher-routes.test.ts`,
-`src/views/chat/watcher-card.test.ts` and `e2e/watchers.browser.md`.
+`src/views/chat/watcher-activity.test.ts` and `e2e/watchers.browser.md`.
 
 ## Recommended implementation order
 

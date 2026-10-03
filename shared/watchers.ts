@@ -76,13 +76,22 @@ export function parseWatchers(value: unknown): Watcher[] {
   });
 }
 
-/** Human wording for the state chip, including why a watcher is dead. */
-export function watcherStateLabel(watcher: Pick<Watcher, "state" | "exitCode">): string {
-  switch (watcher.state) {
-    case "running": return "Running";
-    case "done": return "Done";
-    case "failed": return watcher.exitCode === undefined ? "Failed" : `Failed (exit ${watcher.exitCode})`;
-    case "stopped": return "Stopped";
-    case "dead": return "Dead · no exit recorded";
-  }
+const STATE_LABELS: Record<WatcherState, string> = {
+  running: "Running",
+  done: "Done",
+  failed: "Failed",
+  stopped: "Stopped",
+  dead: "Dead",
+};
+
+/** One word for the compact row. */
+export function watcherStateLabel(watcher: Pick<Watcher, "state">): string {
+  return STATE_LABELS[watcher.state];
+}
+
+/** Why a watcher failed or died, for its opened row; "" otherwise. */
+export function watcherStateNote(watcher: Pick<Watcher, "state" | "exitCode">): string {
+  if (watcher.state === "failed" && watcher.exitCode !== undefined) return `Exited with status ${watcher.exitCode}.`;
+  if (watcher.state === "dead") return "The process is gone and recorded no exit status, for example after a restart.";
+  return "";
 }

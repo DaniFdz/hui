@@ -1854,7 +1854,12 @@ export class HuiApp extends HuiElement {
     this.taskSuggestions = parseTaskSuggestions(snapshot.suggestions);
     if (this.taskSuggestions.length) this.ensureJiraConnectionKnown();
     this.watchers = parseWatchers(snapshot.watchers);
-    if (this.watcherLog && !this.watchers.some(({ id }) => id === this.watcherLog!.id)) this.watcherLog = null;
+    const logged = this.watchers.find(({ id }) => id === this.watcherLog?.id);
+    if (this.watcherLog && !logged) this.watcherLog = null;
+    // An opened row follows new output without a refresh button.
+    else if (logged && !this.watcherLog?.loading && logged.lastLine !== (this.watcherLog?.lines.findLast((line) => line.trim()) ?? "").trim()) {
+      this.viewWatcherLog(logged);
+    }
     // A newly flagged follow-up is shown first; otherwise keep the operator's place.
     this.taskSuggestionIndex = this.taskSuggestions[0]?.id !== previousFirst
       ? 0
@@ -2831,7 +2836,19 @@ export class HuiApp extends HuiElement {
       });
   };
 
-  private hideWatcherLog = () => { this.watcherLog = null; };
+  /** Opening a watcher's row fetches its log tail; closing it drops the tail. */
+  private toggleWatcher = (watcher: Watcher, open: boolean) => {
+    this.setActivityExpanded(`watcher:${watcher.id}`, open);
+    if (open) this.viewWatcherLog(watcher);
+    else if (this.watcherLog?.id === watcher.id) this.watcherLog = null;
+  };
+
+  private setActivityExpanded = (id: string, expanded: boolean) => {
+    const next = new Set(this.expandedActivityIds);
+    if (expanded) next.add(id);
+    else next.delete(id);
+    this.expandedActivityIds = next;
+  };
 
   private fileSuggestionInJira = (suggestion: TaskSuggestion) => {
     const session = this.selected;
@@ -3926,11 +3943,12 @@ export class HuiApp extends HuiElement {
         watchers: this.watchers,
         pendingId: this.watcherPendingId,
         log: this.watcherLog,
+        expanded: this.expandedActivityIds,
+        onGroupToggle: (open) => this.setActivityExpanded("watchers", open),
+        onToggle: this.toggleWatcher,
         onStop: this.stopWatcher,
         onRestart: this.restartWatcher,
         onDismiss: this.dismissWatcher,
-        onViewLog: this.viewWatcherLog,
-        onHideLog: this.hideWatcherLog,
       } : undefined,
       onDraftChange: this.updateDraft,
       commandMenu: {
@@ -4000,12 +4018,7 @@ export class HuiApp extends HuiElement {
       onAddAttachments: this.addAttachments,
       onRemoveAttachment: this.removeAttachment,
       onCopy: this.copyTranscript,
-      onActivityExpanded: (id, expanded) => {
-        const next = new Set(this.expandedActivityIds);
-        if (expanded) next.add(id);
-        else next.delete(id);
-        this.expandedActivityIds = next;
-      },
+      onActivityExpanded: this.setActivityExpanded,
       onAnswerQuestion: this.answerQuestion,
       onTranscriptScroll: this.transcriptScrolled,
       onTranscriptNavigate: this.navigateTranscript,
