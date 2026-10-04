@@ -316,6 +316,15 @@ test("returning to the still-selected session restores its composer draft key", 
   );
 });
 
+test("the app refuses the launch draft key to panes at both composer boundaries", () => {
+  // firstUpdated used to hand a pane the launch key milliseconds after its own
+  // navigation set `session:<id>`, and persisting the launch key let a pane
+  // clobber, or an unmounting pane clear, the shell's unsent text.
+  const app = readFileSync(new URL("../hui-app.ts", import.meta.url), "utf8");
+  const refusals = app.match(/if \(!mayUseComposerDraftKey\(this\.embeddedPane, key\)\) return;/g) ?? [];
+  assert.equal(refusals.length, 2, "switchComposerDraft and persistComposerDraft must both refuse the launch key");
+});
+
 test("active search reveals matches without changing the collapsed preference", () => {
   const collapsed = new Set(["Frontend"]);
   assert.equal(isSessionGroupCollapsed(collapsed, "Frontend", ""), true);

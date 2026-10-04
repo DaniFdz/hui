@@ -84,6 +84,7 @@ import {
 import {
   deleteComposerDraft,
   listComposerDraftSessionIds,
+  mayUseComposerDraftKey,
   mergeComposerDraft,
   NEW_SESSION_DRAFT_KEY,
   readComposerDraft,
@@ -2016,6 +2017,7 @@ export class HuiApp extends HuiElement {
     text = this.draft,
     attachments: readonly Attachment[] = this.attachments,
   ) {
+    if (!mayUseComposerDraftKey(this.embeddedPane, key)) return;
     const sessionId = sessionIdFromDraftKey(key);
     if (sessionId) {
       const hasDraft = Boolean(text || attachments.length);
@@ -2041,6 +2043,7 @@ export class HuiApp extends HuiElement {
   }
 
   private switchComposerDraft(key: string) {
+    if (!mayUseComposerDraftKey(this.embeddedPane, key)) return;
     if (key === this.composerDraftKey && this.composerDraftHydrated) return;
     if (key !== this.composerDraftKey) void this.persistComposerDraft();
     this.composerDraftKey = key;

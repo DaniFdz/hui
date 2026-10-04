@@ -18,6 +18,13 @@ export function sessionDraftKey(sessionId: string): string {
   return `session:${sessionId}`;
 }
 
+/** Only the app that renders the launch form may read or write the launch
+ * draft; a chat pane owns the `session:<id>` keys alone. A pane switching or
+ * unmounting with the launch key would otherwise clobber the shell's text. */
+export function mayUseComposerDraftKey(embeddedPane: boolean, key: string): boolean {
+  return !embeddedPane || key !== NEW_SESSION_DRAFT_KEY;
+}
+
 export function sessionIdFromDraftKey(key: string): string | undefined {
   return key.startsWith("session:") && key.length > "session:".length
     ? key.slice("session:".length)
