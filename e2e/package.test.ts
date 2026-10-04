@@ -46,7 +46,7 @@ test("installed package lifecycle, real SDK resume, verified update and rollback
   });
   const [ready] = await Promise.race([once(provider.stdout, "data"), once(provider, "exit").then(() => { throw new Error(`Provider failed to start: ${providerError}`); })]);
   const providerUrl = String(ready).match(/http:\/\/127\.0\.0\.1:\d+/u)?.[0]; assert(providerUrl);
-  const models = JSON.stringify({ providers: { "hui-e2e": { baseUrl: providerUrl, api: "anthropic-messages", apiKey: "e2e-not-a-secret",
+  const models = JSON.stringify({ providers: { "hui-e2e": { baseUrl: providerUrl, api: "anthropic-messages", headers: { "x-client-session-id": "${PI_CLIENT_SESSION_ID}" }, apiKey: "e2e-not-a-secret",
     models: [{ id: "fixture", name: "Package fixture", reasoning: true, input: ["text"], contextWindow: 32000, maxTokens: 4096, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } }] } } });
   // Exercise the composed provider registry from the installed archive while
   // all inference remains on the local PI fixture. An empty HUI selection

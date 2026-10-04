@@ -280,7 +280,7 @@ export async function launch(expectedBranch) {
     // `contextWindow - reserveTokens`; a 32k window put that under zero, and with the small kept window
     // below every launcher session on Durable would compact by itself after a few turns.
     await writeFile(join(agentDir, "models.json"), JSON.stringify({ providers: { "hui-e2e": {
-      baseUrl: receipt.providerUrl, api: "anthropic-messages", apiKey: "e2e-not-a-secret",
+      baseUrl: receipt.providerUrl, api: "anthropic-messages", headers: { "x-client-session-id": "${PI_CLIENT_SESSION_ID}" }, apiKey: "e2e-not-a-secret",
       models: [{ id: "fixture", name: "HUI SDK Fixture", reasoning: true, input: ["text", "image"], contextWindow: 200000, maxTokens: 4096, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } }],
     } } }));
     // A small kept window lets /compact and /fixture-compact summarize a few short turns.
