@@ -283,11 +283,18 @@ test("the launch directory picker uses the themed combobox instead of a native d
   assert.match(styles, /\.new-session-page__directory-menu/);
 });
 
+test("the thread follows the live compaction divider like new transcript rows", () => {
+  const app = readFileSync(new URL("../hui-app.ts", import.meta.url), "utf8");
+
+  assert.match(app, /if \(\(changed\.has\("transcript"\) \|\| changed\.has\("compaction"\)\) && this\.autoFollow\) this\.scrollToBottom\(\);/);
+});
+
 test("the composer exposes PI context usage beside the model", () => {
   const source = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
   const styles = readStyles("../styles/openclaw-chat.css");
 
-  assert.match(source, /renderContextPicker\(props\.usage, props\.streaming \? undefined : props\.onCompact\)/);
+  // Compact now waits while the session runs or a compaction already works.
+  assert.match(source, /renderContextPicker\(props\.usage, props\.streaming \|\| props\.compaction\?\.status === "running" \? undefined : props\.onCompact\)/);
   assert.match(source, />Compact now<\/button>/);
   assert.match(source, /Context window/);
   assert.match(source, /Latest run tokens/);

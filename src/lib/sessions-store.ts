@@ -218,7 +218,7 @@ export type RuntimeEvent =
   | { type: "thinking_level"; level: string }
   | { type: "turn_start" }
   | { type: "turn_end" }
-  | { type: "compaction_start"; reason: RuntimeCompaction["reason"] }
+  | { type: "compaction_start"; reason: RuntimeCompaction["reason"]; blocking?: false; background?: true }
   | { type: "compaction_end"; reason: RuntimeCompaction["reason"]; outcome: "done" | "failed" | "cancelled"; willRetry: boolean; message?: string }
   | { type: "settled"; historyRefreshed?: boolean }
   | { type: "error"; message: string };
@@ -271,7 +271,16 @@ export type SessionSnapshot = {
 };
 
 /** Mirrors the server's RuntimeCompaction. */
-export type RuntimeCompaction = { status: "running" | "failed" | "cancelled"; reason: "manual" | "threshold" | "overflow"; message?: string };
+/** `blocking: false`: the runtime compacts beside the conversation (Durable), so
+ * a run carries on and its working indicator stays. `background: true`: the
+ * session is idle meanwhile. Without flags the compaction blocks (PI). */
+export type RuntimeCompaction = {
+  status: "running" | "failed" | "cancelled";
+  reason: "manual" | "threshold" | "overflow";
+  message?: string;
+  blocking?: false;
+  background?: true;
+};
 
 export function toTranscriptItems(entries: readonly TranscriptEntry[]): TranscriptItem[] {
   return entries.map((entry, index) => ({ ...entry, id: entry.id ?? `history-${index}` })) as TranscriptItem[];
@@ -494,13 +503,18 @@ export async function reloadSession(id: string): Promise<void> {
   });
 }
 
-/** Starts PI's summary of older context; compaction events report the outcome. */
+/** Starts the runtime's summary of older context; compaction events report the outcome. */
 export async function compactSession(id: string, instructions?: string): Promise<void> {
   await fetchJson<{ ok?: boolean }>(`${SESSIONS_URL}/${encodeURIComponent(id)}/compact`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(instructions ? { instructions } : {}),
   });
+}
+
+/** Cancels a manual compaction the runtime runs beside the conversation; its end arrives as an event. */
+export async function cancelCompaction(id: string): Promise<void> {
+  await fetchJson<{ ok?: boolean }>(`${SESSIONS_URL}/${encodeURIComponent(id)}/compact`, { method: "DELETE" });
 }
 
 export async function clearSession(id: string): Promise<SessionSnapshot> {

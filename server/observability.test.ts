@@ -26,6 +26,27 @@ test("usage aggregates numeric PI metadata without returning transcript content"
   assert.doesNotMatch(JSON.stringify(usage), /private prompt|secret=never/u);
 });
 
+test("usage totals read Durable spend per conversation and model, not a transcript file", async () => {
+  const sessions = [
+    { id: "durable", piSessionFile: "durable:7" },
+    { id: "closed", piSessionFile: "durable:8" },
+  ] as SessionRecord[];
+  const asked: number[] = [];
+  const usage = await aggregateUsage(sessions, async (conversationId) => {
+    asked.push(conversationId);
+    return conversationId === 7 ? { models: {
+      "anthropic/claude-opus-5-5": { input: 100, output: 20, cacheRead: 300, cacheWrite: 0, totalTokens: 420, cost: { total: 0.25 } },
+      "hui-e2e/fixture": { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, totalTokens: 2, cost: { total: 0 } },
+    } } : undefined;
+  });
+  assert.deepEqual(asked, [7, 8]);
+  assert.equal(usage.totalTokens, 422);
+  assert.equal(usage.cacheReadTokens, 300);
+  assert.equal(usage.costUsd, 0.25);
+  assert.deepEqual(usage.models, [{ model: "anthropic/claude-opus-5-5", tokens: 420 }, { model: "hui-e2e/fixture", tokens: 2 }]);
+  assert.deepEqual(usage.unavailable, ["closed: Durable store unavailable"]);
+});
+
 test("diagnostic events redact credential-shaped values and stay bounded to metadata", async () => {
   recordDiagnosticEvent({ area: "runtime", level: "error", action: "failure", summary: "token=abcdef0123456789 password: hunter2" });
   const snapshot = await readObservability([]);

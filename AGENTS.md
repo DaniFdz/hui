@@ -19,9 +19,12 @@ details in the owning directory guide.
 - HUI is a Lit browser application (`src/`) backed by a standalone Node gateway
   (`server/`); Vite is for development and web builds. `cli/` owns installed
   gateway lifecycle and release selection. PI owns agent configuration, skills,
-  models, and transcript files;
-  HUI owns presentation, its session registry, default prompt and HUI tools.
-  PI's SDK runs in an isolated worker; retain the explicit CLI fallback.
+  context files, models and credentials. New sessions run on Pi Durable: one
+  harness in the gateway owns their conversations, runs, queues and crash
+  recovery in HUI's store (`server/runtimes/durable*.ts`). HUI owns
+  presentation, its session registry, default prompt and HUI tools. Existing
+  sessions keep running on PI's SDK worker, which owns their JSONL transcripts;
+  retain that worker and its explicit CLI fallback.
 - Keep the browser free of filesystem and child-process access. All PI and local
   state access crosses typed `/__hui/` routes owned by `server/`.
 - Runtime integrations implement the generic contract in `server/runtimes/`.

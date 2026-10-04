@@ -67,7 +67,7 @@ function finiteNumber(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : 0;
 }
 
-function latestRunUsage(messages: readonly unknown[]): Pick<RuntimeUsage, "inputTokens" | "outputTokens" | "costUsd"> {
+export function latestRunUsage(messages: readonly unknown[]): Pick<RuntimeUsage, "inputTokens" | "outputTokens" | "costUsd"> {
   let inputTokens = 0;
   let outputTokens = 0;
   let costUsd = 0;
@@ -186,7 +186,7 @@ function printable(value: unknown): string | undefined {
 /** PI wraps tool output in `{ content: [{ type: "text", text: ... }] }`.
  * Prefer the human-readable content and only fall back to JSON for custom
  * result shapes. */
-function toolOutput(value: unknown): string | undefined {
+export function toolOutput(value: unknown): string | undefined {
   const content = Array.isArray(value)
     ? value
     : isRecord(value) && Array.isArray(value["content"])
@@ -244,7 +244,7 @@ function decodeAttachmentManifest(encoded: string): DurableAttachment[] | undefi
   }
 }
 
-function restoreAttachmentNames(text: string, imageCount?: number): {
+export function restoreAttachmentNames(text: string, imageCount?: number): {
   text: string;
   attachments?: DurableAttachment[];
 } {
@@ -272,6 +272,30 @@ function restoreAttachmentNames(text: string, imageCount?: number): {
 }
 
 /** Decode one image part of a PI history message; image MIME types only. */
+/** One prompt as the runtime receives it: text, attachment paths and the
+ * durable attachment manifest, with images as native content blocks. */
+export function promptPayload(text: string, attachments: readonly PromptAttachment[]): {
+  message: string;
+  images?: readonly { type: "image"; data: string; mimeType: string }[];
+} {
+  const images = attachments.flatMap((item) =>
+    item.kind === "image"
+      ? [{ type: "image" as const, data: item.dataBase64, mimeType: item.mimeType }]
+      : [],
+  );
+  // A file is handed over as an absolute path, so the agent opens it with its
+  // own `read` tool. Inlining the bytes would bypass the tool it already knows
+  // how to use, and would not work for anything binary.
+  const files = attachments.filter((item) => item.kind === "file");
+  const blocks = [
+    text,
+    ...(files.length ? [files.map((file) => `@${file.path}`).join("\n")] : []),
+    ...(attachments.length ? [attachmentManifest(attachments)] : []),
+  ];
+  const message = blocks.filter((block) => block !== "").join("\n\n");
+  return { message, ...(images.length ? { images } : {}) };
+}
+
 export function imageFromMessages(
   messages: readonly unknown[],
   message: number,
@@ -975,26 +999,8 @@ export class PiSession implements RuntimeSession {
     if (!response.success) throw new Error(response.error ?? "PI could not name the session.");
   }
 
-  #promptPayload(text: string, attachments: readonly PromptAttachment[]): {
-    message: string;
-    images?: readonly { type: "image"; data: string; mimeType: string }[];
-  } {
-    const images = attachments.flatMap((item) =>
-      item.kind === "image"
-        ? [{ type: "image" as const, data: item.dataBase64, mimeType: item.mimeType }]
-        : [],
-    );
-    // A file is handed over as an absolute path, so pi opens it with its own
-    // `read` tool. Inlining the bytes would bypass the tool the agent already
-    // knows how to use, and would not work for anything binary.
-    const files = attachments.filter((item) => item.kind === "file");
-    const blocks = [
-      text,
-      ...(files.length ? [files.map((file) => `@${file.path}`).join("\n")] : []),
-      ...(attachments.length ? [attachmentManifest(attachments)] : []),
-    ];
-    const message = blocks.filter((block) => block !== "").join("\n\n");
-    return { message, ...(images.length ? { images } : {}) };
+  #promptPayload(text: string, attachments: readonly PromptAttachment[]) {
+    return promptPayload(text, attachments);
   }
 
   async #resolveReference(text: string, queued = false): Promise<string> {

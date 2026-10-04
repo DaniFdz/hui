@@ -175,7 +175,15 @@ function modelOf(value: unknown): string | undefined {
   return typeof model === "string" && model.trim() ? model.trim().slice(0, 160) : undefined;
 }
 
-export async function aggregateUsage(sessions: readonly SessionRecord[]): Promise<UsageTotals> {
+type DurableUsage = (conversationId: number) => Promise<{ models?: Record<string, Record<string, unknown>> } | undefined>;
+
+/** Loaded on use: the Durable host itself reports through this module. */
+const gatewayDurableUsage: DurableUsage = async (conversationId) => {
+  const { durableHost } = await import("./runtimes/durable-host.ts");
+  return durableHost().conversationUsage(conversationId as never);
+};
+
+export async function aggregateUsage(sessions: readonly SessionRecord[], durableUsage: DurableUsage = gatewayDurableUsage): Promise<UsageTotals> {
   const totals: UsageTotals = {
     sessions: sessions.length, filesRead: 0, records: 0, inputTokens: 0, outputTokens: 0,
     cacheReadTokens: 0, cacheWriteTokens: 0, totalTokens: 0, costUsd: null, models: [], unavailable: [],
@@ -186,6 +194,35 @@ export async function aggregateUsage(sessions: readonly SessionRecord[]): Promis
   for (const session of sessions) {
     const path = session.piSessionFile;
     if (!path) continue;
+    const durable = /^durable:(\d+)$/u.exec(path);
+    if (durable) {
+      // Durable keeps spend per conversation and model, including prompt-cache
+      // refreshes and nested tool calls, outside the transcript.
+      const usage = await durableUsage(Number(durable[1])).catch(() => undefined);
+      if (!usage) {
+        totals.unavailable = [...totals.unavailable, `${session.id}: Durable store unavailable`];
+        continue;
+      }
+      totals.filesRead += 1;
+      for (const [model, entry] of Object.entries(usage.models ?? {})) {
+        totals.records += 1;
+        const input = numberAt(entry, "input");
+        const output = numberAt(entry, "output");
+        const cacheRead = numberAt(entry, "cacheRead");
+        const cacheWrite = numberAt(entry, "cacheWrite");
+        const total = numberAt(entry, "totalTokens") || input + output + cacheRead + cacheWrite;
+        totals.inputTokens += input;
+        totals.outputTokens += output;
+        totals.cacheReadTokens += cacheRead;
+        totals.cacheWriteTokens += cacheWrite;
+        totals.totalTokens += total;
+        const rawCost = entry["cost"];
+        const cost = typeof rawCost === "object" && rawCost !== null ? numberAt(rawCost, "total") : 0;
+        if (cost > 0) { knownCost += cost; hasCost = true; }
+        if (total > 0) models.set(model, (models.get(model) ?? 0) + total);
+      }
+      continue;
+    }
     try {
       const info = await stat(path);
       if (!info.isFile() || info.size > MAX_TRANSCRIPT_BYTES) {

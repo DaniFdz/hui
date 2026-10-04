@@ -276,13 +276,18 @@ export async function launch(expectedBranch) {
       provider.stdout.on("data", onData);
       return () => provider.stdout.off("data", onData);
     });
+    // A real model's window. Durable compacts in the background from 32,768 tokens below
+    // `contextWindow - reserveTokens`; a 32k window put that under zero, and with the small kept window
+    // below every launcher session on Durable would compact by itself after a few turns.
     await writeFile(join(agentDir, "models.json"), JSON.stringify({ providers: { "hui-e2e": {
       baseUrl: receipt.providerUrl, api: "anthropic-messages", apiKey: "e2e-not-a-secret",
-      models: [{ id: "fixture", name: "HUI SDK Fixture", reasoning: true, input: ["text", "image"], contextWindow: 32000, maxTokens: 4096, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } }],
+      models: [{ id: "fixture", name: "HUI SDK Fixture", reasoning: true, input: ["text", "image"], contextWindow: 200000, maxTokens: 4096, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } }],
     } } }));
-    // A small kept window lets /fixture-compact summarize a few short turns.
+    // A small kept window lets /compact and /fixture-compact summarize a few short turns.
     await writeFile(join(agentDir, "settings.json"), JSON.stringify({ defaultProvider: "hui-e2e", defaultModel: "fixture", defaultThinkingLevel: "high", compaction: { keepRecentTokens: 400 } }));
     const serverEnv = {};
+    // New sessions run on Durable; journeys that need PI's worker (its extensions, /fixture-compact) opt in.
+    if (process.argv.includes("--pi-sessions")) serverEnv.HUI_SESSION_RUNTIME = "pi";
     if (process.argv.includes("--jira-fixture")) {
       // Local Jira Cloud subset (e2e/jira-fixture.mjs), connected with its
       // public test credentials; the fixture model is also the utility model.

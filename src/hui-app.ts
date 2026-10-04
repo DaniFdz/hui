@@ -30,6 +30,7 @@ import {
   resumeSession,
   rewindSession,
   type RewindTarget,
+  cancelCompaction,
   compactSession,
   sendPrompt,
   setSessionThinking,
@@ -874,7 +875,8 @@ export class HuiApp extends HuiElement {
         if (input instanceof HTMLInputElement) input.focus();
       }
     }
-    if (changed.has("transcript") && this.autoFollow) this.scrollToBottom();
+    // The live compaction divider sits below the transcript rows, so its changes follow too.
+    if ((changed.has("transcript") || changed.has("compaction")) && this.autoFollow) this.scrollToBottom();
     if (!this.renamingFor) {
       return;
     }
@@ -1932,7 +1934,12 @@ export class HuiApp extends HuiElement {
         if (this.compaction?.status !== "running") this.compaction = undefined;
         break;
       case "compaction_start":
-        this.compaction = { status: "running", reason: event.reason };
+        this.compaction = {
+          status: "running",
+          reason: event.reason,
+          ...(event.blocking === false ? { blocking: false as const } : {}),
+          ...(event.background ? { background: true as const } : {}),
+        };
         break;
       case "compaction_end":
         // A written summary arrives with the refreshed history as a marker.
@@ -2639,12 +2646,28 @@ export class HuiApp extends HuiElement {
       });
   };
 
+  /** The outcome arrives as `compaction_end`: the divider then reads cancelled. */
+  private cancelCompactionNow() {
+    const session = this.selected;
+    if (!session) return;
+    void cancelCompaction(session.id).catch((error: unknown) => {
+      if (!isSelectedSession(session.id, this.selected?.id)) return;
+      this.note = error instanceof Error ? error.message : "Could not cancel that compaction.";
+      this.noteFailed = true;
+    });
+  }
+
   /** `typed` is the `/compact` draft, cleared now and given back if HUI refuses. */
   private compactNow(instructions?: string, typed?: string) {
     const session = this.selected;
     if (!session || this.sending) return;
     if (this.streaming || session.status !== "idle") {
       this.note = "Finish or stop active work before compacting the session.";
+      this.noteFailed = true;
+      return;
+    }
+    if (this.compaction?.status === "running") {
+      this.note = "A compaction is already running.";
       this.noteFailed = true;
       return;
     }
@@ -2700,7 +2723,7 @@ export class HuiApp extends HuiElement {
         if (!isSelectedSession(session.id, this.selected?.id)) return;
         this.composerTextarea?.focus();
         this.composerTextarea?.setSelectionRange(text.length, text.length);
-        this.note = "Message restored to the composer. The previous branch remains in PI's session tree.";
+        this.note = "Message restored to the composer. The previous branch is kept.";
         this.noteFailed = false;
       })
       .catch((error: unknown) => {
@@ -4074,6 +4097,7 @@ export class HuiApp extends HuiElement {
       onContinue: this.continueRun,
       onRewind: this.rewindToMessage,
       onCompact: () => this.compactNow(),
+      onCancelCompaction: () => this.cancelCompactionNow(),
       onAddAttachments: this.addAttachments,
       onRemoveAttachment: this.removeAttachment,
       onCopy: this.copyTranscript,

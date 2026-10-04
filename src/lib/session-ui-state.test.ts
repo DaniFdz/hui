@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+  compactionBlocks,
   emptySessionPresentation,
   isSelectedSession,
   isCurrentSessionRequest,
@@ -107,4 +108,12 @@ test("clearing a session removes transcript, errors, models, and attachments", (
   assert.notEqual(state.transcript, emptySessionPresentation().transcript);
   assert.notEqual(state.models, emptySessionPresentation().models);
   assert.notEqual(state.attachments, emptySessionPresentation().attachments);
+});
+
+test("only a compaction its run waits for replaces the working indicator", () => {
+  assert.equal(compactionBlocks({ status: "running", reason: "threshold" }), true, "PI's compaction blocks");
+  assert.equal(compactionBlocks({ status: "running", reason: "manual", blocking: false }), false, "Durable compacts beside the run");
+  assert.equal(compactionBlocks({ status: "running", reason: "threshold", blocking: false, background: true }), false);
+  assert.equal(compactionBlocks({ status: "failed", reason: "manual", message: "Nothing to compact" }), false);
+  assert.equal(compactionBlocks(undefined), false);
 });
