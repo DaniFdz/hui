@@ -397,24 +397,27 @@ export class WorkerHost {
     const readKey = `read\0${store}\0${providerId ?? ""}`;
     const cacheKey = op === "list" ? `list\0${store}` : readKey;
     const peer = this.#gateway();
-    if (!peer) {
-      const cached = op === "read" || op === "list" ? this.#credentials.get(cacheKey) : undefined;
-      if (cached && cached.until > Date.now()) return cached.value;
-      if (cached) this.#credentials.delete(cacheKey);
-      throw new OfflineError("HUI is not connected.");
+    if (peer) {
+      const step = modify ? `s${++this.#nextStep}` : undefined;
+      if (step) this.#modifiers.set(step, modify!);
+      try {
+        const result = await peer.request("credential", { op, store, ...(providerId ? { providerId } : {}), ...(step ? { step } : {}) }, 120_000);
+        if (op === "read" || op === "modify") {
+          if (result) this.#credentials.set(readKey, { value: result, until: expiry(result) });
+          else this.#credentials.delete(readKey);
+        } else if (op === "list") this.#credentials.set(cacheKey, { value: result, until: Infinity });
+        return result;
+      } catch (error) {
+        // A gateway that left mid-request is treated as already gone.
+        if (!peer.closed) throw error;
+      } finally {
+        if (step) this.#modifiers.delete(step);
+      }
     }
-    const step = modify ? `s${++this.#nextStep}` : undefined;
-    if (step) this.#modifiers.set(step, modify!);
-    try {
-      const result = await peer.request("credential", { op, store, ...(providerId ? { providerId } : {}), ...(step ? { step } : {}) }, 120_000);
-      if (op === "read" || op === "modify") {
-        if (result) this.#credentials.set(readKey, { value: result, until: expiry(result) });
-        else this.#credentials.delete(readKey);
-      } else if (op === "list") this.#credentials.set(cacheKey, { value: result, until: Infinity });
-      return result;
-    } finally {
-      if (step) this.#modifiers.delete(step);
-    }
+    const cached = op === "read" || op === "list" ? this.#credentials.get(cacheKey) : undefined;
+    if (cached && cached.until > Date.now()) return cached.value;
+    if (cached) this.#credentials.delete(cacheKey);
+    throw new OfflineError("HUI is not connected.");
   }
 
   async #pruneAttachments(): Promise<void> {

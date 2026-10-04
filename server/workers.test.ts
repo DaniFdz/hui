@@ -30,6 +30,10 @@ const { workers } = await import("./workers.ts");
 const { remoteRuntime } = await import("./runtimes/remote.ts");
 const piRuntime = remoteRuntime("pi");
 const { workerRelease } = await import("./worker/release.ts");
+const { registerAgentToolHandler } = await import("./agent-tools-bridge.ts");
+const { readRegistry, writeRegistry } = await import("./sessions.ts");
+const durable = remoteRuntime("durable");
+const control = (path: string, init?: RequestInit) => fetch(`${baseUrl.replace(/\/v1$/u, "")}/control/${path}`, init);
 type Session = Awaited<ReturnType<typeof piRuntime.start>>;
 
 let provider: ChildProcess;
@@ -357,7 +361,139 @@ test("a Durable session on the worker honors HUI's settings and providers, whose
     }
   } finally {
     session.dispose();
-    await rm(hui, { recursive: true, force: true });
+    await rm(join(hui, "settings.json"), { force: true });
+    await rm(join(hui, "providers"), { recursive: true, force: true });
     await workers.sync(workerId);
+  }
+});
+
+/** The gateway's registry row a worker session's HUI tool calls are checked against. */
+async function registerRemote(id: string): Promise<void> {
+  await writeRegistry([...(await readRegistry()).filter((record) => record.id !== id), { id, title: id, group: "", cwd: project, tool: "durable", worker: workerId, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }]);
+}
+
+const lastAnswer = (session: Session) => {
+  const last = session.transcript().filter((entry) => entry.kind === "message").at(-1);
+  return last?.kind === "message" && last.role === "assistant" ? last.text : undefined;
+};
+
+/** A reattached view once its run has settled on the worker. */
+async function reattach(key: string, sessionFile: string, until: (session: Session) => boolean, label: string): Promise<Session> {
+  const session = await durable.start({ cwd: project, worker: workerId, huiSessionId: key, sessionFile });
+  try {
+    await waitFor(() => !session.isStreaming && until(session) || undefined, label);
+  } catch (error) {
+    session.dispose();
+    throw new Error(`${(error as Error).message} ${JSON.stringify(session.transcript())}`);
+  }
+  return session;
+}
+
+test("a Durable session on the worker calls HUI tools on the gateway as itself, and stops on abort", async () => {
+  const key = "remote-durable-tools";
+  await registerRemote(key);
+  const calls: string[] = [];
+  registerAgentToolHandler(async ({ callerSessionId, action }) => { calls.push(`${callerSessionId}:${action}`); return { ok: true }; });
+  const session = await durable.start({ cwd: project, worker: workerId, huiSessionId: key });
+  try {
+    const done = settled(session);
+    await session.prompt("E2E_SUGGEST_TASK please");
+    await done;
+    assert.deepEqual(calls, [`${key}:suggest_task`, `${key}:suggest_task`]);
+    assert.equal(lastAnswer(session), "I flagged two follow-ups as suggestion cards instead of doing them now.");
+
+    const requests = async () => (await readFile(join(root, "provider.jsonl"), "utf8")).split("\n").filter((line) => line.includes("E2E_ABORT now")).length;
+    const before = await requests();
+    await session.prompt("E2E_ABORT now");
+    await waitFor(async () => await requests() > before || undefined, "the provider to stream the answer");
+    await session.abort!();
+    await waitFor(() => !session.isStreaming || undefined, "the run to stop");
+    assert.ok(session.transcript().some((entry) => entry.kind === "message" && entry.text === "E2E_ABORT now"));
+  } finally {
+    session.dispose();
+  }
+});
+
+test("losing the gateway during a HUI tool call fails that call, and the run settles on the worker", async () => {
+  const key = "remote-durable-lost-tool";
+  await registerRemote(key);
+  let entered!: () => void;
+  const inTool = new Promise<void>((resolve) => { entered = resolve; });
+  // The gateway never answers: only the lost connection can end the call.
+  registerAgentToolHandler(() => { entered(); return new Promise(() => undefined); });
+  const first = await durable.start({ cwd: project, worker: workerId, huiSessionId: key });
+  await first.prompt("E2E_SUGGEST_TASK please");
+  await inTool;
+  workers.disconnectAll();
+  first.dispose();
+  registerAgentToolHandler(async () => ({ ok: true }));
+  const second = await reattach(key, first.sessionFile!, (session) => lastAnswer(session) !== undefined, "the run to settle");
+  try {
+    const tools = second.transcript().filter((entry) => entry.kind === "tool");
+    assert.equal(tools.length, 2);
+    for (const tool of tools) assert.ok(tool.kind === "tool" && tool.failed, JSON.stringify(tool));
+    assert.equal(lastAnswer(second), "I flagged two follow-ups as suggestion cards instead of doing them now.");
+  } finally {
+    second.dispose();
+  }
+});
+
+test("a follow-up queued before the gateway leaves runs on the worker with the credentials it brokered", async () => {
+  const key = "remote-durable-follow-up";
+  const first = await durable.start({ cwd: project, worker: workerId, huiSessionId: key });
+  await first.prompt("E2E_REPLAY please");
+  await control("wait-replay-ready");
+  await first.followUp!("queued while away");
+  workers.disconnectAll();
+  first.dispose();
+  // The remote has no PI login of its own: only the cached gateway key can answer.
+  assert.ok(!existsSync(join(remoteHome, ".pi", "agent", "auth.json")));
+  await control("release-replay", { method: "POST" });
+  const second = await reattach(key, first.sessionFile!, (session) => session.transcript().some((entry) => entry.kind === "message" && entry.text === "queued while away") && lastAnswer(session) === "Fixture response.", "the follow-up to run");
+  try {
+    assert.deepEqual(second.transcript().filter((entry) => entry.kind === "message").map((entry) => entry.kind === "message" && entry.text),
+      ["E2E_REPLAY please", "Replay prefix — replay suffix", "queued while away", "Fixture response."]);
+    for (const file of await remoteFiles()) assert.ok(!(await readFile(file, "utf8")).includes(KEY), `${file} holds the provider key`);
+  } finally {
+    second.dispose();
+  }
+});
+
+test("a host restarted mid-run resumes Durable work, whose HUI tool calls still reach the gateway as their session", async () => {
+  const key = "remote-durable-restart";
+  await registerRemote(key);
+  const calls: string[] = [];
+  registerAgentToolHandler(async ({ callerSessionId, action }) => { calls.push(`${callerSessionId}:${action}`); return { ok: true }; });
+  // The restarted host resumes before any gateway connects: the remote's own login answers.
+  await mkdir(join(remoteHome, ".pi", "agent"), { recursive: true });
+  await writeFile(join(remoteHome, ".pi", "agent", "auth.json"), JSON.stringify({ fx: { type: "api_key", key: KEY } }));
+  try {
+    const first = await durable.start({ cwd: project, worker: workerId, huiSessionId: key });
+    await first.prompt("E2E_REPLAY please");
+    await control("wait-replay-ready");
+    await first.followUp!("E2E_SUGGEST_TASK after the restart");
+    const pidFile = join(remoteHome, ".local", "share", "hui-worker", "state", "host.pid");
+    const pid = Number(await readFile(pidFile, "utf8"));
+    const lost = new Promise<void>((resolve) => first.onExit!(resolve));
+    process.kill(pid, "SIGKILL");
+    await lost;
+    first.dispose();
+    workers.disconnectAll();
+    // Connecting starts a new host, which resumes the interrupted run on its own.
+    await workers.connect(workerId);
+    assert.notEqual(Number(await readFile(pidFile, "utf8")), pid);
+    await control("wait-replay-ready");
+    await control("release-replay", { method: "POST" });
+    await waitFor(() => calls.length === 2 || undefined, "the resumed run's HUI tool calls");
+    assert.deepEqual(calls, [`${key}:suggest_task`, `${key}:suggest_task`]);
+    const second = await reattach(key, first.sessionFile!, (session) => lastAnswer(session) === "I flagged two follow-ups as suggestion cards instead of doing them now.", "the resumed run to finish");
+    try {
+      const texts = second.transcript().filter((entry) => entry.kind === "message").map((entry) => entry.kind === "message" && entry.text);
+      assert.ok(texts.includes("Replay prefix — replay suffix") && texts.includes("E2E_SUGGEST_TASK after the restart"), JSON.stringify(texts));
+    } finally {
+      second.dispose();
+    }
+  } finally {
+    await rm(join(remoteHome, ".pi"), { recursive: true, force: true });
   }
 });
