@@ -134,6 +134,8 @@ export class WorkerHost {
   /** Durable conversation → HUI session, kept across host restarts. */
   #callers = new Map<string, string>();
   #callersFile: string;
+  /** Host state writes, one at a time so an older one never lands last. */
+  #writes: Promise<void> = Promise.resolve();
   #credentials = new Map<string, Cached>();
   #modifiers = new Map<string, (current: unknown) => Promise<unknown>>();
   #nextStep = 0;
@@ -316,27 +318,27 @@ export class WorkerHost {
       ...(typeof launch["thinking"] === "string" ? { thinking: launch["thinking"] } : {}),
       ...(typeof launch["title"] === "string" ? { title: launch["title"] } : {}),
     };
-    let runtime: RuntimeSession;
-    if (tool === "durable") {
-      runtime = await startDurable(options, this.#durable);
+    const runtime: RuntimeSession = tool === "durable" ? await startDurable(options, this.#durable) : await piRuntime.start({
+      ...options,
+      ...(Array.isArray(launch["appendSystemPrompt"]) ? { appendSystemPrompt: strings(launch["appendSystemPrompt"]) } : {}),
+      hostLaunch: {
+        disabledSkills: launch.disabledSkills ?? [],
+        bundledSkillPaths: strings(launch["bundledSkillPaths"]),
+        disabledPluginIds: strings(launch["disabledPluginIds"]),
+        // The managed browser runs on the gateway machine.
+        browserTool: false,
+        fallbackAuth: join(this.paths.fallbackAgentDir, "auth.json"),
+      },
+    });
+    try {
       const conversation = durableConversationId(runtime.sessionFile);
       if (conversation !== undefined && this.#callers.get(String(conversation)) !== key) {
         this.#callers.set(String(conversation), key);
-        await writeAtomic(this.#callersFile, `${JSON.stringify(Object.fromEntries(this.#callers))}\n`, 0o600);
+        await this.#write(this.#callersFile, () => JSON.stringify(Object.fromEntries(this.#callers)));
       }
-    } else {
-      runtime = await piRuntime.start({
-        ...options,
-        ...(Array.isArray(launch["appendSystemPrompt"]) ? { appendSystemPrompt: strings(launch["appendSystemPrompt"]) } : {}),
-        hostLaunch: {
-          disabledSkills: launch.disabledSkills ?? [],
-          bundledSkillPaths: strings(launch["bundledSkillPaths"]),
-          disabledPluginIds: strings(launch["disabledPluginIds"]),
-          // The managed browser runs on the gateway machine.
-          browserTool: false,
-          fallbackAuth: join(this.paths.fallbackAgentDir, "auth.json"),
-        },
-      });
+    } catch (error) {
+      runtime.dispose();
+      throw error;
     }
     const hosted: Hosted = { key, tool, runtime, lastActive: Date.now(), stop: () => undefined, seq: 0 };
     const unsubscribe = runtime.subscribe((event) => {
@@ -353,6 +355,14 @@ export class WorkerHost {
     this.#sessions.set(key, hosted);
     if (this.#bots.has(key) && runtime.sessionFile) await this.#bots.rememberSessionFile(key, runtime.sessionFile);
     return hosted;
+  }
+
+  /** Writes a host state file atomically, after any write already queued, with
+   * the data current when its turn comes. */
+  #write(file: string, data: () => string): Promise<void> {
+    const write = this.#writes.catch(() => undefined).then(() => writeAtomic(file, `${data()}\n`, 0o600));
+    this.#writes = write;
+    return write;
   }
 
   #state(hosted: Hosted): RemoteState {
@@ -455,6 +465,10 @@ export class WorkerHost {
           if (result) this.#credentials.set(readKey, { value: result, until: expiry(result) });
           else this.#credentials.delete(readKey);
         } else if (op === "list") this.#credentials.set(cacheKey, { value: result, until: Infinity });
+        else if (op === "delete") {
+          this.#credentials.delete(readKey);
+          this.#credentials.delete(`list\0${store}`);
+        }
         return result;
       } catch (error) {
         // A gateway that left mid-request is treated as already gone.
