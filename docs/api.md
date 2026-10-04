@@ -447,6 +447,9 @@ All HUI-launched PI processes, including extension-free utility and installer
 workers, receive `PI_CLIENT_SESSION_ID` for provider header interpolation. An
 explicit nonblank environment value is preserved; otherwise each process gets
 a fresh UUID without changing the gateway environment or creating a transcript.
+Durable sessions run inside the gateway, so each of their model requests gets it
+from the request instead: the gateway's explicit value, otherwise a fresh UUID
+per HUI session for each gateway run.
 
 Resource enablement is HUI-owned rather than a PI mutation. `GET /__hui/settings`
 and `PUT /__hui/settings` include `disabledSkills`, a normalized array of
