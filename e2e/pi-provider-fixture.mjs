@@ -160,7 +160,10 @@ const server = createServer(async (request, response) => {
   const chunks = [];
   for await (const chunk of request) chunks.push(chunk);
   const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
-  await appendFile(logFile, `${JSON.stringify(body)}\n`, "utf8");
+  // A fixture provider whose x-client-session-id header interpolates `${PI_CLIENT_SESSION_ID}`
+  // logs the identity HUI resolved for the request.
+  const clientSessionId = request.headers["x-client-session-id"];
+  await appendFile(logFile, `${JSON.stringify(clientSessionId === undefined ? body : { ...body, clientSessionId })}\n`, "utf8");
   const source = flattenedText(body.messages?.at(-1));
   const latestToolResult = toolResultFrom(body.messages?.at(-1));
   if (source.includes("E2E_ERROR")) return json(response, 500, { type: "error", error: { type: "api_error", message: "fixture provider error" } });

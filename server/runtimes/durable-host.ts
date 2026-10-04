@@ -7,12 +7,13 @@
  * through PI's SDK, exactly as the PI worker does. The store has one owner at a
  * time, so a lock file refuses a second gateway instead of sharing the database.
  */
+import { randomUUID } from "node:crypto";
 import { closeSync, openSync, readFileSync, unlinkSync, writeSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { Models } from "@earendil-works/pi-ai";
-import { createRegistry, Harness, UsageDoc, type ConversationId, type EnvTarget, type Extension, type HarnessSettings, type ToolRegistration } from "@earendil-works/pi-durable";
+import { CompactionTask, createRegistry, defineExtension, GenerationTask, Harness, hook, UsageDoc, type ConversationId, type EnvTarget, type Extension, type HarnessSettings, type HookApi, type ToolRegistration } from "@earendil-works/pi-durable";
 import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import { CodingTools } from "@earendil-works/pi-durable/tools";
@@ -82,18 +83,38 @@ function acquireStoreLock(path: string): () => void {
   throw new Error("The Durable session store could not be locked.");
 }
 
+/** HUI's provider identity (docs/api.md): a PI provider header may interpolate
+ * `${PI_CLIENT_SESSION_ID}`. A PI worker has it in its environment; Durable
+ * requests run in the gateway, so each carries its own in the request `env`. */
+const CLIENT_SESSION_ENV = "PI_CLIENT_SESSION_ID";
+/** pi-ai model calls whose third argument is the request options. */
+const REQUEST_CALLS = new Set<PropertyKey>(["stream", "streamSimple", "complete", "completeSimple", "streamDeferred", "fetchDeferred", "cancelDeferred"]);
+type RequestOptions = { readonly signal?: AbortSignal; readonly env?: Readonly<Record<string, string>> } | undefined;
+
 /** Model reads go to the runtime current at each use, so provider changes
- * made in Settings reach running conversations at their next request. */
+ * made in Settings reach running conversations at their next request. Every
+ * request also resolves provider configuration with `requestEnv`'s values. */
 class CurrentModels {
   target: Models | undefined;
-  readonly view = new Proxy({} as Models, {
-    get: (_unused, key) => {
-      const target = this.target;
-      if (!target) throw new Error("Durable models are not loaded yet.");
-      const value: unknown = Reflect.get(target, key, target);
-      return typeof value === "function" ? (value as (...args: unknown[]) => unknown).bind(target) : value;
-    },
-  });
+  readonly view: Models;
+
+  constructor(requestEnv: (options: RequestOptions) => Record<string, string>) {
+    this.view = new Proxy({} as Models, {
+      get: (_unused, key) => {
+        const target = this.target;
+        if (!target) throw new Error("Durable models are not loaded yet.");
+        const value: unknown = Reflect.get(target, key, target);
+        if (typeof value !== "function") return value;
+        const call = value as (...args: unknown[]) => unknown;
+        if (!REQUEST_CALLS.has(key)) return call.bind(target);
+        return (...args: unknown[]) => {
+          const options = args[2] as RequestOptions;
+          args[2] = { ...options, env: { ...requestEnv(options), ...options?.env } };
+          return call.apply(target, args);
+        };
+      },
+    });
+  }
 }
 
 export type DurableHostOptions = {
@@ -125,7 +146,21 @@ export class DurableHost {
   #invokeTool: DurableToolInvoker;
   #lookupCaller: (conversationId: ConversationId) => Promise<string | undefined>;
   #tools: Extension;
-  #models = new CurrentModels();
+  #models = new CurrentModels((options) => this.#requestEnv(options));
+  /** Each attributed request's identity, by its task invocation's abort signal. */
+  #requestIdentities = new WeakMap<AbortSignal, string>();
+  /** One identity per HUI session for this gateway run, as one PI worker each would have. */
+  #clientSessions = new Map<string, string>();
+  /** For a request no hook attributed, such as a summary resumed after a restart. */
+  #unattributedClientSession = randomUUID();
+  /** Attributes generation and compaction requests to their conversation's HUI session. */
+  #identity = defineExtension({
+    name: "hui-request-identity",
+    hooks: [
+      hook(GenerationTask, { beforeRequest: (_request, api) => this.#attribute(api) }),
+      hook(CompactionTask, { beforeCompact: (_compaction, api) => this.#attribute(api) }),
+    ],
+  });
   #envs = new Map<string, NodeExecutionEnv>();
   /** Durable conversation → HUI session, the only caller identity HUI tools accept. */
   #callers = new Map<ConversationId, string>();
@@ -184,6 +219,7 @@ export class DurableHost {
       registry.install(CodingTools);
       registry.install(this.#tools);
       registry.install(this.prompt.extension);
+      registry.install(this.#identity);
       const harness = await Harness.open(await openNodeSqliteStorage(join(this.dir, "harness.sqlite")), {
         models: this.#models.view,
         registry,
@@ -216,6 +252,36 @@ export class DurableHost {
       this.#envs.set(directory, env);
     }
     return env;
+  }
+
+  /** A hook's task runtime is also where its request takes `signal`, so the
+   * signal names the HUI session in `#requestEnv`. Durable task phases share one
+   * runtime per invocation: a summary request follows its `beforeCompact`. */
+  async #attribute(api: HookApi): Promise<undefined> {
+    const signal = (api as HookApi & { readonly signal?: AbortSignal }).signal;
+    if (!signal) return undefined;
+    const conversationId = api.conversationId;
+    const caller = this.#callers.get(conversationId) ?? await this.#lookupCaller(conversationId).catch(() => undefined);
+    if (caller) this.#callers.set(conversationId, caller);
+    this.#requestIdentities.set(signal, this.#clientSession(caller ?? `conversation:${conversationId}`));
+    return undefined;
+  }
+
+  #clientSession(key: string): string {
+    let id = this.#clientSessions.get(key);
+    if (!id) {
+      id = randomUUID();
+      this.#clientSessions.set(key, id);
+    }
+    return id;
+  }
+
+  /** A nonblank gateway value is kept, as for PI workers; otherwise the
+   * request's HUI session identity. The gateway environment never changes. */
+  #requestEnv(options: RequestOptions): Record<string, string> {
+    if (process.env[CLIENT_SESSION_ENV]?.trim()) return {};
+    const attributed = options?.signal ? this.#requestIdentities.get(options.signal) : undefined;
+    return { [CLIENT_SESSION_ENV]: attributed ?? this.#unattributedClientSession };
   }
 
   /** Re-read HUI and PI provider configuration for the next model request. */

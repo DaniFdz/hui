@@ -958,7 +958,9 @@ sends its recovery prompt to a Durable session.
 PI still owns configuration: the harness reads PI's `settings.json`,
 `models.json`, credentials, skills, `AGENTS.md`/`SYSTEM.md`/`APPEND_SYSTEM`
 and prompt templates through PI's SDK, and builds the system prompt with PI's
-own section builder plus HUI's sections, as the SDK worker does. Durable runs
+own section builder plus HUI's sections, as the SDK worker does. A provider
+header that interpolates `PI_CLIENT_SESSION_ID` gets a value per HUI session,
+as a PI worker gets one in its environment. Durable runs
 only HUI-owned code: its read/write/edit/bash tools and HUI's tools, which call
 the gateway's agent-tool handler in process as the conversation's bound HUI
 session. Third-party PI extensions and packages do not load in Durable
