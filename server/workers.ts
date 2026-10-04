@@ -107,16 +107,21 @@ function gatewayStore(name: unknown): CredentialStore {
   throw new Error("Unknown credential store.");
 }
 
+/** A state snapshot or transcript from the host, stamped with its sequence;
+ * `transcriptPaged` stands in for a transcript too large to send along. */
+export type RemoteSnapshot = { state?: RemoteState; seq?: number; transcript?: TranscriptEntry[]; transcriptPaged?: boolean };
+
 /** What a remote session's proxy hears from its connection. */
 export type RemoteSessionSink = {
-  receive(frame: { state?: RemoteState; transcript?: TranscriptEntry[]; event?: import("./runtimes/types.ts").RuntimeEvent }): void;
+  receive(frame: RemoteSnapshot & { event?: import("./runtimes/types.ts").RuntimeEvent }): void;
   lost(): void;
 };
 
 export type RemoteSessionLink = {
-  state: RemoteState;
-  transcript: TranscriptEntry[];
+  started: RemoteSnapshot & { state: RemoteState; seq: number };
   call(method: string, args: unknown[]): Promise<unknown>;
+  /** The whole transcript, read in pages. */
+  transcript(): Promise<{ transcript: TranscriptEntry[]; seq: number }>;
   dispose(): void;
 };
 
@@ -381,10 +386,18 @@ class WorkerConnection {
     const release = () => { if (this.#sessions.get(key) === sink) this.#sessions.delete(key); };
     try {
       // Starting a runtime can include installing PI packages on first use.
-      const started = await this.#peer.request<{ state: RemoteState; transcript: TranscriptEntry[] }>("session.start", { key, tool, launch }, 300_000);
+      const started = await this.#peer.request<RemoteSessionLink["started"]>("session.start", { key, tool, launch }, 300_000);
       return {
-        ...started,
+        started,
         call: (method, args) => this.#peer.request("session.call", { key, method, args }, CALL_TIMEOUT_MS),
+        transcript: async () => {
+          const transcript: TranscriptEntry[] = [];
+          for (;;) {
+            const page = await this.#peer.request<{ entries: TranscriptEntry[]; total: number; seq: number }>("session.transcript", { key, offset: transcript.length }, CALL_TIMEOUT_MS);
+            transcript.push(...page.entries);
+            if (transcript.length >= page.total || !page.entries.length) return { transcript, seq: page.seq };
+          }
+        },
         dispose: () => {
           release();
           if (!this.closed) void this.#peer.request("session.dispose", { key }).catch(() => undefined);

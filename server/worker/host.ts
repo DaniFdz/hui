@@ -39,6 +39,9 @@ const ATTACHMENT_RETENTION_MS = 7 * 24 * 60 * 60_000;
 /** A host with nothing to do exits after this, unless it owns bots. */
 const HOST_IDLE_MS = 30 * 60_000;
 const MAX_FILE_BYTES = 100 * 1024 * 1024;
+/** A transcript larger than this is fetched in pages instead of riding along
+ * with a frame, which could exceed the frame limit or hold up other sessions. */
+const TRANSCRIPT_PAGE_BYTES = 8 * 1024 * 1024;
 
 export type HostInfo = {
   version: number;
@@ -71,8 +74,9 @@ const TRANSCRIPT_CALLS = new Set(["clear", "rewind", "reload", "abort", "continu
 /** Events after which the gateway re-reads the whole transcript. */
 const TRANSCRIPT_EVENTS = new Set(["settled", "compaction_end"]);
 
-/** Everything a gateway reads synchronously from a runtime, sent with every
- * event and reply so its copy is never behind the event it is handling. */
+/** Everything a gateway reads synchronously from a runtime, sent with each
+ * reply and with every event that changed it, so its copy is never behind the
+ * event it is handling. */
 export type RemoteState = {
   sessionId: string;
   sessionFile?: string;
@@ -96,6 +100,13 @@ type Hosted = {
   peer?: Peer;
   lastActive: number;
   stop: () => void;
+  /** Stamps every state and transcript sent, so the gateway can drop a reply
+   * that arrives after newer events. */
+  seq: number;
+  /** The last state sent to `peer`; an event that leaves it alone carries none. */
+  sent?: string;
+  /** The transcript being fetched in pages, with the sequence it was taken at. */
+  paging?: { seq: number; entries: TranscriptEntry[] };
 };
 
 /** Cached gateway credential answers; memory only, dropped at expiry. */
@@ -225,6 +236,7 @@ export class WorkerHost {
     peer.handle("hello", () => this.info());
     peer.handle("session.start", (params) => this.#start(peer, params));
     peer.handle("session.call", (params) => this.#call(params));
+    peer.handle("session.transcript", (params) => this.#transcriptPage(params));
     peer.handle("session.dispose", (params) => {
       const hosted = this.#sessions.get(String(params["key"] ?? ""));
       if (hosted && hosted.peer === peer) this.#stop(hosted);
@@ -265,7 +277,7 @@ export class WorkerHost {
   }
 
   /** Starts or reattaches the runtime for one HUI session. */
-  async #start(peer: Peer, params: Record<string, unknown>): Promise<{ reused: boolean; state: RemoteState; transcript: TranscriptEntry[] }> {
+  async #start(peer: Peer, params: Record<string, unknown>): Promise<Record<string, unknown>> {
     const key = typeof params["key"] === "string" ? params["key"] : "";
     const tool = params["tool"];
     if (!/^[A-Za-z0-9_-]{1,80}$/u.test(key) || (tool !== "pi" && tool !== "durable") || !isRecord(params["launch"])) throw new Error("Invalid remote session request.");
@@ -276,7 +288,7 @@ export class WorkerHost {
     if (hosted.peer && hosted.peer !== peer) hosted.peer.send({ t: "session.exit", key, message: "This session was opened from another HUI." });
     hosted.peer = peer;
     this.#touch(hosted);
-    return { reused, state: this.#state(hosted), transcript: hosted.runtime.transcript() };
+    return { reused, ...this.#snapshot(hosted, true), ...this.#transcript(hosted) };
   }
 
   async #hostedFor(key: string, tool: string, launch: () => RemoteLaunch): Promise<{ hosted: Hosted; reused: boolean }> {
@@ -326,13 +338,12 @@ export class WorkerHost {
         },
       });
     }
-    const hosted: Hosted = { key, tool, runtime, lastActive: Date.now(), stop: () => undefined };
+    const hosted: Hosted = { key, tool, runtime, lastActive: Date.now(), stop: () => undefined, seq: 0 };
     const unsubscribe = runtime.subscribe((event) => {
       this.#touch(hosted);
-      hosted.peer?.send({
-        t: "session.event", key, event, state: this.#state(hosted),
-        ...(TRANSCRIPT_EVENTS.has(event.type) ? { transcript: runtime.transcript() } : {}),
-      });
+      if (!hosted.peer) return;
+      const transcript = TRANSCRIPT_EVENTS.has(event.type);
+      hosted.peer.send({ t: "session.event", key, event, ...this.#snapshot(hosted, transcript), ...(transcript ? this.#transcript(hosted) : {}) });
     });
     const unsubscribeExit = runtime.onExit?.(() => {
       hosted.peer?.send({ t: "session.exit", key, message: "The session's runtime stopped on the remote." });
@@ -363,7 +374,42 @@ export class WorkerHost {
     };
   }
 
-  async #call(params: Record<string, unknown>): Promise<{ result?: unknown; state: RemoteState; transcript?: TranscriptEntry[] }> {
+  /** The state stamped with the next sequence; nothing when `force` is unset
+   * and it has not changed since it was last sent. */
+  #snapshot(hosted: Hosted, force: boolean): { state: RemoteState; seq: number } | Record<string, never> {
+    const state = this.#state(hosted);
+    const json = JSON.stringify(state);
+    if (!force && json === hosted.sent) return {};
+    hosted.sent = json;
+    return { state, seq: ++hosted.seq };
+  }
+
+  /** Sent with a stamped snapshot; a large one is fetched in pages instead. */
+  #transcript(hosted: Hosted): { transcript: TranscriptEntry[] } | { transcriptPaged: true } {
+    const transcript = hosted.runtime.transcript();
+    return JSON.stringify(transcript).length <= TRANSCRIPT_PAGE_BYTES ? { transcript } : { transcriptPaged: true };
+  }
+
+  /** One page of the transcript; offset 0 takes a fresh snapshot to page through. */
+  #transcriptPage(params: Record<string, unknown>): { entries: TranscriptEntry[]; total: number; seq: number } {
+    const hosted = this.#sessions.get(String(params["key"] ?? ""));
+    if (!hosted) throw new Error("That session is not running on this worker.");
+    const offset = typeof params["offset"] === "number" ? params["offset"] : 0;
+    if (offset === 0) hosted.paging = { seq: ++hosted.seq, entries: hosted.runtime.transcript() };
+    if (!hosted.paging) throw new Error("Read the transcript from its start.");
+    const entries: TranscriptEntry[] = [];
+    let size = 0;
+    for (const entry of hosted.paging.entries.slice(offset)) {
+      size += JSON.stringify(entry).length;
+      if (entries.length && size > TRANSCRIPT_PAGE_BYTES) break;
+      entries.push(entry);
+    }
+    const page = { entries, total: hosted.paging.entries.length, seq: hosted.paging.seq };
+    if (offset + entries.length >= page.total) hosted.paging = undefined;
+    return page;
+  }
+
+  async #call(params: Record<string, unknown>): Promise<Record<string, unknown>> {
     const hosted = this.#sessions.get(String(params["key"] ?? ""));
     const method = String(params["method"] ?? "");
     if (!hosted) throw new Error("That session is not running on this worker.");
@@ -374,8 +420,8 @@ export class WorkerHost {
     let result = await (fn as (...values: unknown[]) => unknown).apply(hosted.runtime, args);
     if (method === "attachmentImage" && isRecord(result) && Buffer.isBuffer(result["data"])) result = { mimeType: result["mimeType"], data: result["data"].toString("base64") };
     return {
-      ...(result === undefined ? {} : { result }), state: this.#state(hosted),
-      ...(TRANSCRIPT_CALLS.has(method) ? { transcript: hosted.runtime.transcript() } : {}),
+      ...(result === undefined ? {} : { result }), ...this.#snapshot(hosted, true),
+      ...(TRANSCRIPT_CALLS.has(method) ? this.#transcript(hosted) : {}),
     };
   }
 

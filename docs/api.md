@@ -924,16 +924,23 @@ Gateway requests: `hello` (the host's protocol version and release; a
 mismatch replaces an idle host), `shutdown` (only when idle and no other
 gateway is connected; running Durable work does not count, it resumes in the
 new host), `session.start {key,tool,launch}` (start or reattach the `durable`
-or `pi` runtime for one HUI session id; replies `{reused,state,transcript}`),
+or `pi` runtime for one HUI session id; replies `{reused,state,seq,transcript}`),
 `session.call {key,method,args}` (one optional `RuntimeSession` method; replies
-`{result?,state,transcript?}`), `session.dispose {key}`, `forget {keys}`,
+`{result?,state,seq,transcript?}`), `session.transcript {key,offset}` (one
+page of at most 8 MB, `{entries,total,seq}`; offset 0 takes a fresh snapshot),
+`session.dispose {key}`, `forget {keys}`,
 `put-file`, `get-file`, `sync-plan`/`sync-put`/`sync-commit` and
 `bots-list`/`bots-save`/`bots-delete`/`bots-run`. `state` is the runtime's
 synchronous view (`sessionId`, `sessionFile`, `isStreaming`,
 `resumesInterruptedRuns`, `model`, `usage`, `thinking`, `queue`, `questions`
-and the optional `methods` it offers); every `session.event {key,event,state}`
-carries it, plus the whole `transcript` after `settled` and `compaction_end`
-and after `clear`, `rewind`, `reload`, `abort` and `continueRun` calls. A
+and the optional `methods` it offers). Every reply carries it, and so does
+each `session.event {key,event,state?,seq?}` that changed it, plus the whole
+`transcript` after `settled` and `compaction_end` and after `clear`, `rewind`,
+`reload`, `abort` and `continueRun` calls. `seq` grows with every state or
+transcript sent for a session; the gateway applies neither when it already
+holds a newer one, since a reply resumes after the events that followed it on
+the stream. A transcript over 8 MB is replaced by `transcriptPaged: true` and
+read with `session.transcript` before the frame is handled. A
 record with `worker` uses this remote adapter and its `tool` names the runtime
 the host runs; a Durable `durable:N` names a conversation in that worker's own
 store. Host requests: `credential`

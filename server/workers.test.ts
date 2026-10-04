@@ -215,6 +215,22 @@ test("a run keeps going without the gateway and is reattached, not recovered", a
   }
 });
 
+test("a transcript too large to ride along with an event is read in pages", async () => {
+  const session = await piRuntime.start({ cwd: project, worker: workerId, huiSessionId: "remote-large" });
+  try {
+    // Larger than one transcript page, so `settled` cannot carry it.
+    const large = `large ${"x".repeat(9 * 1024 * 1024)}`;
+    const done = settled(session);
+    await session.prompt(large);
+    await done;
+    const texts = session.transcript().filter((entry) => entry.kind === "message").map((entry) => entry.kind === "message" ? entry.text : "");
+    assert.deepEqual(texts.map((text) => text.length), [large.length, "Fixture response.".length]);
+    assert.equal(texts[1], "Fixture response.");
+  } finally {
+    session.dispose();
+  }
+});
+
 test("closing a session stops its remote process, so reopening starts a fresh one", async () => {
   const first = await piRuntime.start({ cwd: project, worker: workerId, huiSessionId: "remote-close" });
   first.dispose();
