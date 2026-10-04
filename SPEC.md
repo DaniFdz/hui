@@ -968,17 +968,49 @@ rerun, because no HUI or coding tool is marked replay-safe. HUI therefore never
 sends its recovery prompt to a Durable session.
 
 PI still owns configuration: the harness reads PI's `settings.json`,
-`models.json`, credentials, skills, `AGENTS.md`/`SYSTEM.md`/`APPEND_SYSTEM`
-and prompt templates through PI's SDK, and builds the system prompt with PI's
-own section builder plus HUI's sections, as the SDK worker does. A provider
-header that interpolates `PI_CLIENT_SESSION_ID` gets a value per HUI session,
-as a PI worker gets one in its environment. Durable runs
-only HUI-owned code: its read/write/edit/bash tools and HUI's tools, which call
-the gateway's agent-tool handler in process as the conversation's bound HUI
-session. Third-party PI extensions and packages do not load in Durable
-sessions. A rewind forks the conversation, so the abandoned branch stays
+`models.json`, credentials, skills, extensions, `AGENTS.md`/`SYSTEM.md`/
+`APPEND_SYSTEM` and prompt templates through PI's SDK, and builds the system
+prompt with PI's own section builder plus HUI's sections, as the SDK worker
+does. A provider header that interpolates `PI_CLIENT_SESSION_ID` gets a value
+per HUI session, as a PI worker gets one in its environment. Durable's own
+tools are its read/write/edit/bash tools and HUI's tools, which call the
+gateway's agent-tool handler in process as the conversation's bound HUI
+session. A rewind forks the conversation, so the abandoned branch stays
 stored. Prompt-free Continue is not available on Durable; an aborted run
 continues from a new prompt.
+
+Each Durable session also loads the PI extensions its PI worker would: the
+packages and extensions PI settings name and the `extensions/` directories,
+with HUI's plugin choices applied. Every session gets instances of its own,
+started once its history is read and shut down when it closes; `/reload` loads
+them again and `/clear` starts new ones. They run in the gateway process through
+PI's own extension runner, bound to the conversation:
+
+- Their tools are offered beside Durable's. One named like a coding tool
+  replaces it; HUI's tools win over theirs. Inspection names the extension
+  behind each tool and lists load errors.
+- Their commands appear in the `/` menu and run in the gateway. A command that
+  starts no run settles the session when it ends.
+- Their handlers see the session's lifecycle, its prompts (`input`, and
+  `before_agent_start`, whose messages go to the model as hidden context and
+  whose system prompt applies to that run), the model context before each
+  request, provider requests and responses, tool calls (which they may block or
+  rewrite) and results, and compactions (which they may decline or summarize).
+  A run is over once its `agent_end` and `agent_settled` handlers ran.
+- Their dialogs are HUI questions and their notifications HUI notices.
+  Terminal-only UI (status lines, widgets, custom components, shortcuts) is
+  ignored.
+- What they store with `appendEntry` and the messages they send are Durable
+  entries, so their state survives a restart.
+- Not available in Durable sessions: registering providers or models,
+  replacing or branching the session from a command, turn-boundary entries and
+  continuation, replacing a finished message, extra resource paths and nested
+  tool calls.
+- After a gateway restart, interrupted runs resume once their sessions have
+  loaded their extensions again, or after 30 seconds.
+
+An extension that blocks the event loop holds up every session; PI's worker
+isolates each session's extensions in a process of its own.
 
 Compaction is Durable's too, with Durable's semantics where they differ from
 PI's. `/compact`, **Compact now** and the harness's own compactions (background
@@ -1028,8 +1060,9 @@ keep this design. Each active one runs a
 Node child with the pinned
 `@earendil-works/pi-coding-agent` SDK (1.0.1). HUI owns the versioned default
 prompt, HUI tool definitions and runtime inspection; PI still owns its agent
-loop, configuration, credentials, resources and JSONL transcript writer. The
-gateway does not embed the agent loop or execute third-party extensions.
+loop, configuration, credentials, resources and JSONL transcript writer. For
+these sessions the gateway neither embeds the agent loop nor runs their
+extensions; Durable sessions run theirs in the gateway (above).
 
 The worker reuses PI's `runRpcMode` for streaming, queues and extension questions.
 HUI's client uses strict newline framing, plus a versioned Node IPC channel for
