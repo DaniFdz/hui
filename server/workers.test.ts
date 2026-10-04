@@ -1,7 +1,7 @@
 /**
  * Remote workers end to end on one machine: the "remote" is a separate home
  * directory reached through `env … sh -s`, so nothing is shared with the
- * gateway except what the protocol carries. The host, the PI SDK worker and a
+ * gateway except what the protocol carries. The host, its runtimes and a
  * deterministic Anthropic-compatible provider all run for real.
  */
 import assert from "node:assert/strict";
@@ -27,7 +27,8 @@ process.env["XDG_CONFIG_HOME"] = join(root, "gateway", "config");
 process.env["PI_OFFLINE"] = "1";
 
 const { workers } = await import("./workers.ts");
-const { piRuntime } = await import("./runtimes/pi.ts");
+const { remoteRuntime } = await import("./runtimes/remote.ts");
+const piRuntime = remoteRuntime("pi");
 const { workerRelease } = await import("./worker/release.ts");
 type Session = Awaited<ReturnType<typeof piRuntime.start>>;
 

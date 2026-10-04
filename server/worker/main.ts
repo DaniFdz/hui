@@ -13,7 +13,6 @@ import { unlink } from "node:fs/promises";
 import { connect, type Socket } from "node:net";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { loginEnvironment, WorkerHost } from "./host.ts";
 import { workerPaths } from "./paths.ts";
 
 const paths = workerPaths();
@@ -102,6 +101,25 @@ async function runConnect(): Promise<void> {
   process.stdin.on("end", () => socket.end());
 }
 
+/** The login shell's environment, so tools see the PATH the user sees over an
+ * interactive SSH login rather than the minimal one of a non-login command. */
+function loginEnvironment(base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  const shell = base["SHELL"] || "/bin/sh";
+  const result = spawnSync(shell, ["-lc", "env -0"], { env: base, timeout: 10_000, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+  const env: NodeJS.ProcessEnv = { ...base };
+  if (result.status === 0 && result.stdout) {
+    for (const entry of result.stdout.split("\0")) {
+      const index = entry.indexOf("=");
+      if (index > 0) env[entry.slice(0, index)] = entry.slice(index + 1);
+    }
+  }
+  // PI installs packages with npm; the Node HUI runs on (possibly the one it
+  // installed) must be found first.
+  const bin = dirname(process.execPath);
+  if (!(env["PATH"] ?? "").split(":").includes(bin)) env["PATH"] = `${bin}:${env["PATH"] ?? "/usr/bin:/bin"}`;
+  return env;
+}
+
 async function runDaemon(): Promise<void> {
   mkdirSync(paths.stateDir, { recursive: true, mode: 0o700 });
   if (!lock()) return;
@@ -111,6 +129,12 @@ async function runDaemon(): Promise<void> {
   const env = loginEnvironment();
   // A profile that starts its own agent wins over the forwarded one.
   Object.assign(process.env, env, { SSH_AUTH_SOCK: env["SSH_AUTH_SOCK"] ?? AGENT_LINK });
+  // HUI's own configuration on this machine is the mirror of the gateway's;
+  // set before the host's modules read it at import.
+  process.env["HUI_CONFIG_DIR"] = join(paths.mirrorDir, "hui");
+  process.env["HUI_DURABLE_DIR"] = join(paths.stateDir, "durable");
+  process.env["PI_CODING_AGENT_DIR"] = paths.agentDir;
+  const { WorkerHost } = await import("./host.ts");
   const host = new WorkerHost(paths);
   // Holding the lock, any socket left behind is stale.
   await unlink(paths.socket).catch(() => undefined);

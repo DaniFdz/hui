@@ -1349,8 +1349,8 @@ export async function createSession(
   if (thinking && !NEW_SESSION_THINKING_LEVELS.has(thinking)) {
     throw new Error(`Unsupported thinking level: ${thinking}`);
   }
-  // Durable runs in the gateway, so a worker session runs PI on the worker.
-  const runtimeTool = worker ? "pi" : tool || defaultSessionTool();
+  // A worker runs the same runtime a local session would.
+  const runtimeTool = tool || defaultSessionTool();
   const settings = await readSettings();
   const id = randomUUID();
   const now = new Date().toISOString();
@@ -2043,7 +2043,7 @@ async function handleRequest(
       sendJson(response, 404, { error: `unknown session: ${id}` });
       return;
     }
-    const image = liveSessions.attachmentImage(id, Number(attachmentRoute[2]), Number(attachmentRoute[3]));
+    const image = await liveSessions.attachmentImage(id, Number(attachmentRoute[2]), Number(attachmentRoute[3]));
     if (!image) {
       sendJson(response, 404, { error: "attachment not found" });
       return;

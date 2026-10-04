@@ -226,7 +226,7 @@ export type RuntimeSession = {
   onExit?(listener: () => void): () => void;
   /** Bytes of an image attached to a history message, located by the
    * `source` of a transcript attachment. */
-  attachmentImage?(message: number, image: number): { mimeType: string; data: Buffer } | undefined;
+  attachmentImage?(message: number, image: number): Promise<{ mimeType: string; data: Buffer } | undefined>;
   /** Messages already in the conversation, for a first paint. */
   transcript(): TranscriptEntry[];
   dispose(): void;

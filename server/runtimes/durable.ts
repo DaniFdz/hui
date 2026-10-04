@@ -720,7 +720,7 @@ export class DurableSession implements RuntimeSession {
     await this.attach();
   }
 
-  attachmentImage(message: number, image: number): { mimeType: string; data: Buffer } | undefined {
+  async attachmentImage(message: number, image: number): Promise<{ mimeType: string; data: Buffer } | undefined> {
     return imageFromMessages(this.#visible(), message, image);
   }
 

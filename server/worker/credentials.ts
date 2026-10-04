@@ -1,17 +1,30 @@
 /**
- * Credential stores for a PI worker running on a remote host. Reads and
- * writes go to the connected gateway over the worker's IPC channel; an OAuth
- * refresh runs here while the gateway holds its own file lock, so a rotated
- * token is written exactly once, on the gateway. Without a gateway the
- * remote's own PI login is used.
+ * Credential stores for runtimes on a remote worker host. Reads and writes go
+ * to the connected gateway: in the host process through its gateway
+ * connection (`setCredentialTransport`), in a PI worker it spawned over the
+ * IPC channel the host relays (`relayCredentials`). An OAuth refresh runs on
+ * the remote while the gateway holds its own file lock, so a rotated token is
+ * written exactly once, on the gateway. Without a gateway the remote's own PI
+ * login is used.
  */
+import type { ChildProcess } from "node:child_process";
 import { join, relative } from "node:path";
 import { fileCredentialStore, setCredentialStoreFactory, type CredentialStore } from "../provider-accounts.ts";
 
 type Credential = Awaited<ReturnType<CredentialStore["read"]>>;
 type Modifier = (current: Credential) => Promise<Credential>;
 
-class OfflineError extends Error {}
+export class OfflineError extends Error {}
+
+/** Carries one credential operation to a gateway; rejects with OfflineError without one. */
+export type CredentialTransport = (op: string, store: string, providerId: string | undefined, modify?: Modifier) => Promise<unknown>;
+
+let transport: CredentialTransport | undefined;
+
+/** In the host process: send credential operations over its gateway connection. */
+export function setCredentialTransport(value: CredentialTransport | undefined): void {
+  transport = value;
+}
 
 const pending = new Map<string, { resolve(value: unknown): void; reject(error: Error): void }>();
 const modifiers = new Map<string, Modifier>();
@@ -46,6 +59,7 @@ function listen(): void {
 }
 
 function call(op: string, store: string, providerId?: string, modify?: Modifier): Promise<unknown> {
+  if (transport) return transport(op, store, providerId, modify);
   listen();
   if (!process.send) return Promise.reject(new OfflineError("No worker host."));
   const id = `c${++next}`;
@@ -71,6 +85,38 @@ export function brokeredStore(store: string, fallback: () => CredentialStore): C
     delete: (providerId, options) => attempt(async () => { await call("delete", store, providerId); }, (s) => s.delete(providerId, options)),
     modify: (providerId, fn, options) => attempt(() => call("modify", store, providerId, fn) as Promise<Credential>, (s) => s.modify(providerId, fn, options)),
   };
+}
+
+/** Serves a spawned PI worker's credential requests through this process's transport. */
+export function relayCredentials(child: ChildProcess): void {
+  const steps = new Map<string, (message: Record<string, unknown>) => void>();
+  let next = 0;
+  child.on("message", (raw: unknown) => {
+    if (!raw || typeof raw !== "object") return;
+    const message = raw as Record<string, unknown>;
+    if (message["type"] === "credential-step-result" && typeof message["step"] === "string") {
+      steps.get(message["step"])?.(message);
+      return;
+    }
+    if (message["type"] !== "credential" || typeof message["id"] === "undefined") return;
+    const id = message["id"];
+    const reply = (body: Record<string, unknown>) => { if (child.connected) child.send({ version: 1, type: "credential-result", id, ...body }); };
+    // The worker runs PI's refresh callback; this side only carries it.
+    const modify: Modifier = (current) => new Promise((resolve, reject) => {
+      const step = `s${++next}`;
+      steps.set(step, (result) => {
+        steps.delete(step);
+        if (result["ok"] === true) resolve(result["next"] as Credential);
+        else reject(new Error(typeof result["error"] === "string" ? result["error"] : "Credential update failed."));
+      });
+      child.send({ version: 1, type: "credential-step", id, step, current });
+    });
+    const op = String(message["op"]);
+    call(op, String(message["store"]), typeof message["providerId"] === "string" ? message["providerId"] : undefined, op === "modify" ? modify : undefined).then(
+      (result) => reply({ ok: true, result }),
+      (error: unknown) => reply(error instanceof OfflineError ? { ok: false, offline: true } : { ok: false, error: error instanceof Error ? error.message : String(error) }),
+    );
+  });
 }
 
 /** HUI provider credential files a gateway serves, relative to its providers dir. */

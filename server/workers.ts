@@ -1,11 +1,12 @@
 /**
- * Remote workers: other machines this gateway runs PI on.
+ * Remote workers: other machines this gateway runs sessions on.
  *
  * A worker is a name and a connect command — any argv prefix that yields a
  * stdio pipe to a POSIX shell there (`ssh devbox`, `docker exec -i box`,
  * `kubectl exec -i pod --`). Through it HUI installs its own worker release,
  * starts the durable host (worker/host.ts), mirrors the user's PI resources and
- * then multiplexes every remote session over that one connection. The gateway
+ * then multiplexes every remote session over that one connection; the host
+ * runs the session's own runtime adapter and `runtimes/remote.ts` drives it. The gateway
  * answers the host's credential and agent tool requests; nothing secret is
  * written on the remote.
  *
@@ -29,8 +30,8 @@ import { readHuiSettings } from "./hui-settings.ts";
 import { BootstrapError, connectScript, markers, nodeInstallScript, probeScript, releaseInstallScript, runScript } from "./worker/bootstrap.ts";
 import { remoteReleasePath, workerRelease, type WorkerRelease } from "./worker/release.ts";
 import { buildSyncPlan, mirrorPath } from "./worker/sync.ts";
-import { RemoteChild } from "./worker/remote-child.ts";
-import type { HostInfo, RemoteLaunch } from "./worker/host.ts";
+import type { HostInfo, RemoteLaunch, RemoteState } from "./worker/host.ts";
+import type { TranscriptEntry } from "./runtimes/types.ts";
 import { formatCommand, parseCommand, type BotInput, type WorkerBot, type WorkerInput, type WorkerView } from "../shared/workers.ts";
 import { invokeAgentTool } from "./agent-tools-bridge.ts";
 import { readRegistry } from "./sessions.ts";
@@ -105,6 +106,22 @@ function gatewayStore(name: unknown): CredentialStore {
   throw new Error("Unknown credential store.");
 }
 
+/** What a remote session's proxy hears from its connection. */
+export type RemoteSessionSink = {
+  receive(frame: { state?: RemoteState; transcript?: TranscriptEntry[]; event?: import("./runtimes/types.ts").RuntimeEvent }): void;
+  lost(): void;
+};
+
+export type RemoteSessionLink = {
+  state: RemoteState;
+  transcript: TranscriptEntry[];
+  call(method: string, args: unknown[]): Promise<unknown>;
+  dispose(): void;
+};
+
+/** Long enough for a prompt that waits behind a busy runtime. */
+const CALL_TIMEOUT_MS = 10 * 60_000;
+
 type SyncState = NonNullable<WorkerView["sync"]> & { pluginIds: Map<string, string> };
 
 /** Bots end up as registry records; a malformed one must never get there. */
@@ -129,8 +146,7 @@ class WorkerConnection {
   #peer!: Peer;
   #transport!: ChildProcessWithoutNullStreams;
   #stderr = "";
-  #channels = new Map<number, RemoteChild>();
-  #next = 0;
+  #sessions = new Map<string, RemoteSessionSink>();
   #onPhase: (phase: string) => void;
   #onBots: (bots: WorkerBot[]) => void;
   #sync: SyncState | undefined;
@@ -234,9 +250,13 @@ class WorkerConnection {
         peer.close(`${command[0]} exited${signal ? ` after ${signal}` : ` with code ${code}`}`);
       });
       peer.onClose((reason) => {
-        this.lostSessions = this.#channels.size > 0;
-        for (const channel of this.#channels.values()) channel.lost(`Lost the connection to ${this.worker.name} (${reason.replace(/\.$/u, "")}).`);
-        this.#channels.clear();
+        this.lostSessions = this.#sessions.size > 0;
+        const sinks = [...this.#sessions.values()];
+        this.#sessions.clear();
+        for (const sink of sinks) {
+          sink.receive({ event: { type: "error", message: `Lost the connection to ${this.worker.name} (${reason.replace(/\.$/u, "")}).` } });
+          sink.lost();
+        }
         transport.kill();
       });
       transport.stdin.write(connectScript(this.release, node));
@@ -325,24 +345,32 @@ class WorkerConnection {
     };
   }
 
-  async openChannel(key: string, options: { cwd: string; sessionFile?: string; model?: string; thinking?: string }): Promise<RemoteChild> {
-    const ch = ++this.#next;
+  async startSession(key: string, tool: string, options: { cwd: string; sessionFile?: string; model?: string; thinking?: string; title?: string }, sink: RemoteSessionSink): Promise<RemoteSessionLink> {
     const launch: RemoteLaunch = {
       ...await this.#launchDefaults(this.#sync?.pluginIds ?? new Map()), cwd: options.cwd,
       ...(options.sessionFile ? { sessionFile: options.sessionFile } : {}),
       ...(options.model ? { model: options.model } : {}),
       ...(options.thinking ? { thinking: options.thinking } : {}),
+      ...(options.title ? { title: options.title } : {}),
     };
-    // Registered before the request: output can arrive in the same chunk as
+    // Registered before the request: events can arrive in the same chunk as
     // the reply, before the awaiting code below resumes.
-    const child = new RemoteChild(this.#peer, ch, () => this.#channels.delete(ch));
-    this.#channels.set(ch, child);
+    this.#sessions.get(key)?.lost();
+    this.#sessions.set(key, sink);
+    const release = () => { if (this.#sessions.get(key) === sink) this.#sessions.delete(key); };
     try {
-      const opened = await this.#peer.request<{ reused: boolean }>("open", { ch, key, launch }, 60_000);
-      child.reused = opened.reused;
-      return child;
+      // Starting a runtime can include installing PI packages on first use.
+      const started = await this.#peer.request<{ state: RemoteState; transcript: TranscriptEntry[] }>("session.start", { key, tool, launch }, 300_000);
+      return {
+        ...started,
+        call: (method, args) => this.#peer.request("session.call", { key, method, args }, CALL_TIMEOUT_MS),
+        dispose: () => {
+          release();
+          if (!this.closed) void this.#peer.request("session.dispose", { key }).catch(() => undefined);
+        },
+      };
     } catch (error) {
-      this.#channels.delete(ch);
+      release();
       throw error;
     }
   }
@@ -353,8 +381,14 @@ class WorkerConnection {
       this.#onBots(this.bots);
       return;
     }
-    const channel = typeof frame["ch"] === "number" ? this.#channels.get(frame["ch"]) : undefined;
-    channel?.receive(frame);
+    const sink = typeof frame["key"] === "string" ? this.#sessions.get(frame["key"]) : undefined;
+    if (!sink) return;
+    if (frame.t === "session.event") sink.receive(frame as Parameters<RemoteSessionSink["receive"]>[0]);
+    else if (frame.t === "session.exit") {
+      this.#sessions.delete(frame["key"] as string);
+      if (typeof frame["message"] === "string") sink.receive({ event: { type: "error", message: frame["message"] } });
+      sink.lost();
+    }
   }
 
   async #credential(params: Record<string, unknown>): Promise<unknown> {
@@ -629,12 +663,12 @@ export class WorkerService {
     return this.#view(connection.worker);
   }
 
-  /** Starts (or reattaches to) a PI worker for one HUI session. */
-  async open(id: string, key: string, options: { cwd: string; sessionFile?: string; model?: string; thinking?: string }): Promise<RemoteChild> {
+  /** Starts (or reattaches to) one HUI session's runtime on the worker. */
+  async startSession(id: string, key: string, tool: string, options: { cwd: string; sessionFile?: string; model?: string; thinking?: string; title?: string }, sink: RemoteSessionSink): Promise<RemoteSessionLink> {
     const connection = await this.connect(id);
     // Reported in Settings; never a reason to refuse a running session.
     await connection.ensureSynced().catch(() => undefined);
-    return connection.openChannel(key, options);
+    return connection.startSession(key, tool, options, sink);
   }
 
   /** Deleted sessions: stop their remote processes, attached or not. */

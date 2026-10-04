@@ -10,6 +10,7 @@
  * a reload) reuses the one already running. A runtime that dies marks its
  * session `error` and ends its streams; it never takes the server down.
  */
+import { remoteRuntime } from "./runtimes/remote.ts";
 import { CONTINUE_PROMPT } from "../src/lib/subagent-completion.ts";
 import { interruptedRunPrompt } from "./interrupted-run.ts";
 import type { SessionRecord } from "./sessions.ts";
@@ -251,7 +252,8 @@ export class LiveSessions {
   #runtimeFor(record: SessionRecord): AgentRuntime {
     const runtime = this.#runtimes.get(record.tool);
     if (runtime) {
-      return runtime;
+      // The worker's host runs this same adapter; the gateway only proxies it.
+      return record.worker ? remoteRuntime(record.tool) : runtime;
     }
     throw new Error(`Unsupported session tool: ${record.tool}`);
   }
@@ -383,7 +385,7 @@ export class LiveSessions {
   }
 
   /** Image bytes for a transcript attachment, from the runtime's history. */
-  attachmentImage(id: string, message: number, image: number): { mimeType: string; data: Buffer } | undefined {
+  async attachmentImage(id: string, message: number, image: number): Promise<{ mimeType: string; data: Buffer } | undefined> {
     return this.#live.get(id)?.runtime?.attachmentImage?.(message, image);
   }
 
@@ -821,6 +823,14 @@ export class LiveSessions {
 
   async followUp(id: string, text: string, attachments?: readonly PromptAttachment[]): Promise<void> {
     const live = this.#ready(id);
+    // HUI's queue drains only while this gateway runs; a worker keeps going
+    // without it, so a busy remote session queues in its runtime instead.
+    if (live.record.worker && live.runtime?.followUp && this.#reported(live) !== "idle") {
+      await live.runtime.followUp(text, attachments);
+      live.queue = live.runtime.pendingQueue?.() ?? live.queue;
+      this.#broadcastQueue(live);
+      return;
+    }
     live.followUps.push({
       id: crypto.randomUUID(),
       text,
