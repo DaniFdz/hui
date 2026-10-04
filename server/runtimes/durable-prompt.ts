@@ -6,10 +6,11 @@
  * extensions; a session's PI extensions (`durable-extensions.ts`) add their
  * tools' snippets and may change the prompt of a run, as in PI.
  */
-import { DefaultResourceLoader, SettingsManager, type BuildSystemPromptOptions } from "@earendil-works/pi-coding-agent";
+import { DefaultResourceLoader, type BuildSystemPromptOptions } from "@earendil-works/pi-coding-agent";
 import { defineExtension, section, type ConversationId, type PromptInput } from "@earendil-works/pi-durable";
 import type { Settings } from "../../src/lib/settings.ts";
 import { enabledBundledSkillPaths, isBundledSkillPreference } from "../bundled-skills.ts";
+import { createPolicySettingsManager } from "./resource-policy.ts";
 import { HUI_DEFAULT_PROMPT } from "./hui-prompt.ts";
 import { HUI_PRESENTATION_PROMPT } from "./hui-presentation.ts";
 import { huiToolDefinitions } from "./hui-tools.ts";
@@ -91,12 +92,14 @@ export class DurablePrompt {
   }
 
   async #load(cwd: string): Promise<DefaultResourceLoader> {
-    const disabled = (await this.#readSettings()).disabledSkills;
+    const settings = await this.#readSettings();
+    const disabled = settings.disabledSkills;
     // Bundled opt-out controls only the fallback; other skills are filtered by path.
     const disabledPaths = new Set(disabled.filter((entry) => !isBundledSkillPreference(entry)).map((entry) => entry.path));
     const loader = new DefaultResourceLoader({
       cwd, agentDir: this.#agentDir,
-      settingsManager: SettingsManager.create(cwd, this.#agentDir),
+      // A disabled package contributes no skills or prompts either, as for the PI worker.
+      settingsManager: createPolicySettingsManager({ cwd, agentDir: this.#agentDir, disabledIds: new Set(settings.disabledPlugins.map((plugin) => plugin.id)) }),
       additionalSkillPaths: enabledBundledSkillPaths(disabled),
       noExtensions: true, noThemes: true,
       systemPromptOverride: (base) => base ?? HUI_DEFAULT_PROMPT,

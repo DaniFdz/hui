@@ -794,20 +794,77 @@ test("input handlers rewrite prompts, and a reload starts fresh extension instan
   assert.notEqual(second!["loaded"], first!["loaded"], "a reload loads the extension again");
 });
 
-test("disabled plugins stay unloaded, and a broken extension is reported while the session works", { timeout: 45_000 }, async (t) => {
+test("a disabled package loads neither its extension nor its skills, and a broken extension is reported while the session works", { timeout: 45_000 }, async (t) => {
   const f = await extensionFixture(t, { extensions: { "broken.js": "export default function () { throw new Error('fixture load failure'); }\n" } });
-  const configured = join(f.eventsDir, "configured.js");
+  // A local PI package with an extension and a skill, listed in PI settings.
+  const pkg = join(f.eventsDir, "fixture-package");
+  await mkdir(join(pkg, "skills", "fixture-skill"), { recursive: true });
+  await writeFile(join(pkg, "package.json"), JSON.stringify({ name: "fixture-package", pi: { extensions: ["./index.js"], skills: ["./skills"] } }));
+  await writeFile(join(pkg, "index.js"), fixtureExtension(f.events));
+  await writeFile(join(pkg, "skills", "fixture-skill", "SKILL.md"), "---\nname: fixture-skill\ndescription: A skill the package ships.\n---\nFixture skill body.\n");
   await rm(join(f.agentDir, "extensions", "fixture.js"));
-  await writeFile(configured, fixtureExtension(f.events));
-  await writeFile(join(f.agentDir, "settings.json"), JSON.stringify({ defaultProvider: "hui-e2e", defaultModel: "fixture", extensions: [configured] }));
+  await writeFile(join(f.agentDir, "settings.json"), JSON.stringify({ defaultProvider: "hui-e2e", defaultModel: "fixture", packages: [pkg] }));
   const { configuredResourceId } = await import("./resource-policy.ts");
-  const disabled = normalizeSettings({ disabledPlugins: [{ id: configuredResourceId("extension", configured), name: "configured.js", kind: "extension" }] });
-  const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-disabled" }, f.host({ huiSettings: disabled }));
+
+  const first = f.host();
+  const enabled = await startDurable({ cwd: f.cwd, huiSessionId: "durable-enabled" }, first);
+  const commands = await enabled.listCommands();
+  assert.ok(commands.some((command) => command.name === "skill:fixture-skill"), "the package's skill loads while it is enabled");
+  assert.ok(commands.some((command) => command.name === "fixture-ask"), "and so does its extension");
+  enabled.dispose();
+  await first.close();
+
+  const disabled = normalizeSettings({ disabledPlugins: [{ id: configuredResourceId("package", pkg), name: "fixture-package", kind: "package" }] });
+  const host = f.host({ huiSettings: disabled });
+  const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-disabled" }, host);
   const inspection = await session.inspect();
-  assert.ok(!inspection.tools.some((tool) => tool.name === "fixture_echo"), "a disabled extension's code never ran");
-  assert.ok(!(await session.listCommands()).some((command) => command.source === "extension"));
+  assert.ok(!inspection.tools.some((tool) => tool.name === "fixture_echo"), "a disabled package's extension never runs");
+  assert.ok(!(await session.listCommands()).some((command) => command.source === "extension" || command.name === "skill:fixture-skill"));
   assert.ok(inspection.diagnostics.some((line) => /broken\.js: .*fixture load failure/u.test(line)), JSON.stringify(inspection.diagnostics));
-  assert.deepEqual(await extensionLog(f.events), []);
+  assert.deepEqual((await logged(f.events, "session_start")).map((entry) => entry["session"]), ["durable-enabled"]);
   await settledAfter(session, "E2E_RICH read the fixture");
   assert.ok(answered("Tool complete")(session.transcript()));
 });
+
+test("interrupted runs resume once their sessions have loaded their PI extensions again", { timeout: 60_000 }, async (t) => {
+  const f = await extensionFixture(t);
+  const hostUrl = new URL("./durable-host.ts", import.meta.url).href;
+  const durableUrl = new URL("./durable.ts", import.meta.url).href;
+  const settingsUrl = new URL("../../src/lib/settings.ts", import.meta.url).href;
+  // A separate gateway owns the store and is SIGKILLed while bash is running.
+  const child = spawn(process.execPath, ["--input-type=module", "-e", `
+    const { DurableHost } = await import(${JSON.stringify(hostUrl)});
+    const { startDurable } = await import(${JSON.stringify(durableUrl)});
+    const { normalizeSettings } = await import(${JSON.stringify(settingsUrl)});
+    const host = new DurableHost({ dir: ${JSON.stringify(f.store)}, agentDir: ${JSON.stringify(f.agentDir)},
+      readSettings: async () => normalizeSettings(undefined), invokeTool: async () => ({}), lookupCaller: async () => undefined });
+    const session = await startDurable({ cwd: ${JSON.stringify(f.cwd)}, huiSessionId: "crash-extensions" }, host);
+    process.stdout.write("REF " + session.sessionFile + "\\n");
+    await session.prompt("E2E_COMMAND_RUNNING hold the command");
+  `], { stdio: ["ignore", "pipe", "pipe"], env: process.env });
+  f.children.push(child);
+  const [line] = await once(child.stdout!, "data");
+  const reference = /REF (durable:\d+)/u.exec(String(line))?.[1];
+  assert(reference, String(line));
+  assert.equal((await f.control("/control/wait-replay-ready")).status, 200, "bash is running the held command");
+  const exited = once(child, "exit");
+  child.kill("SIGKILL");
+  await exited;
+
+  // The next gateway reopens the session before the run goes on, as the gateway does with every session whose
+  // conversation has unfinished work.
+  const host = f.host();
+  let interrupted: readonly unknown[] = [];
+  let reopened!: (session: DurableSession) => void;
+  const reopening = new Promise<DurableSession>((resolve) => { reopened = resolve; });
+  host.beforeResume = async (conversations) => {
+    interrupted = conversations;
+    reopened(await startDurable({ cwd: f.cwd, sessionFile: reference, huiSessionId: "crash-extensions" }, host));
+  };
+  await host.open();
+  await transcriptWhere(await reopening, answered("Tool complete"));
+  assert.deepEqual(interrupted.map(String), [reference.slice("durable:".length)]);
+  const resumed = (await providerRequests(f.log)).at(-1) as ProviderRequest & { tools?: unknown };
+  assert.match(JSON.stringify(resumed.tools), /fixture_echo/u, "the resumed run's next request offers the extension's tool");
+});
+

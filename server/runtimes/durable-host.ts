@@ -31,6 +31,8 @@ import { invokeAgentTool } from "../agent-tools-bridge.ts";
 
 /** Durable APIs take a cancellation context; HUI's own calls are not scoped. */
 export const durableContext = BACKGROUND_CONTEXT;
+/** Longest interrupted runs wait for their sessions to load their PI extensions again before they resume anyway. */
+const RESUME_WAIT_MS = 30_000;
 
 // PI's `configureHttpDispatcher` is deliberately not installed: it replaces
 // `globalThis.fetch` for the whole process, and the harness shares the gateway
@@ -184,6 +186,12 @@ export class DurableHost implements ExtensionHost {
   #harness: Harness | undefined;
   #release: (() => void) | undefined;
   #resume: boolean;
+  /**
+   * Reopens the sessions of the conversations whose work resumes once the store opens. Their runs resume after it
+   * settles (at most `RESUME_WAIT_MS`), so each finds its session's PI extensions installed: a tool call they make
+   * otherwise finds no tool. Absent, they resume at once.
+   */
+  beforeResume: ((conversations: readonly ConversationId[]) => Promise<unknown>) | undefined;
 
   constructor(options: DurableHostOptions) {
     this.dir = options.dir;
@@ -281,16 +289,34 @@ export class DurableHost implements ExtensionHost {
         }),
       }, durableContext);
       this.#harness = harness;
-      // Unfinished generations and tool calls continue now, even before any
-      // browser reopens their session. Without it, nothing is scheduled: the
-      // store is only read and written in commits.
-      if (this.#resume) harness.resume();
+      // Unfinished generations and tool calls continue even before any browser
+      // reopens their session. Without it, nothing is scheduled: the store is
+      // only read and written in commits.
+      if (this.#resume) void this.#resumeWhenReady(harness);
       return harness;
     } catch (error) {
       this.#release?.();
       this.#release = undefined;
       throw error;
     }
+  }
+
+  async #resumeWhenReady(harness: Harness): Promise<void> {
+    try {
+      const reopen = this.beforeResume;
+      const conversations = reopen ? [...new Set((await harness.inspect(durableContext)).tasks.map((task) => task.record.conversationId))] : [];
+      if (reopen && conversations.length) {
+        let timer: NodeJS.Timeout | undefined;
+        await Promise.race([reopen(conversations), new Promise((resolve) => { timer = setTimeout(resolve, RESUME_WAIT_MS); })]).finally(() => clearTimeout(timer));
+      }
+    } catch (error) {
+      recordDiagnosticEvent({
+        area: "runtime", level: "warning", action: "durable_resume_prepare_failed",
+        summary: "Durable resumed interrupted runs before their sessions reopened",
+        detail: error instanceof Error ? error.message : String(error),
+      });
+    }
+    if (this.#harness === harness) harness.resume();
   }
 
   #env({ cwd }: EnvTarget): NodeExecutionEnv {
