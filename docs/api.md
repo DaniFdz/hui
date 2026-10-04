@@ -943,7 +943,10 @@ the stream. A transcript over 8 MB is replaced by `transcriptPaged: true` and
 read with `session.transcript` before the frame is handled. A
 record with `worker` uses this remote adapter and its `tool` names the runtime
 the host runs; a Durable `durable:N` names a conversation in that worker's own
-store. Host requests: `credential`
+store. A PI session's `resumesInterruptedRuns` is false only while its last
+run started and was never seen settling (the host keeps those session ids in
+its state directory's `pi-runs.json`), so HUI recovers exactly the PI runs a
+host or runtime stop cut off. Host requests: `credential`
 (`read`, `list`, `delete`, `modify` against the gateway store `pi` or
 `hui:<providers-relative path>`), the nested `credential-step` that runs an
 OAuth refresh callback on the remote while the gateway holds its lock, and

@@ -142,7 +142,8 @@ after(async () => {
 test("a remote session runs with gateway credentials and mirrored resources, leaving no secret on the remote", async () => {
   const session = await piRuntime.start({ cwd: project, worker: workerId, huiSessionId: "remote-basic" });
   try {
-    assert.equal(session.resumesInterruptedRuns, false);
+    // No run of this session was interrupted on the worker.
+    assert.equal(session.resumesInterruptedRuns, true);
     assert.ok(session.sessionFile?.startsWith(remoteHome), String(session.sessionFile));
     const inspection = await session.inspect!();
     assert.match(inspection.prompt, /gateway-skill/u);
@@ -199,7 +200,7 @@ test("a run keeps going without the gateway and is reattached, not recovered", a
   await first.prompt("E2E_REPLAY please");
   await fetch(`${baseUrl.replace(/\/v1$/u, "")}/control/wait-replay-ready`);
   const sessionFile = first.sessionFile!;
-  workers.disconnectAll();
+  workers.disconnect(workerId);
   // The gateway is gone; the provider finishes the answer on the remote.
   await fetch(`${baseUrl.replace(/\/v1$/u, "")}/control/release-replay`, { method: "POST" });
   await waitFor(async () => (await readFile(sessionFile, "utf8").catch(() => "")).includes("replay suffix") || undefined, "the remote to persist the answer");
@@ -231,12 +232,76 @@ test("a transcript too large to ride along with an event is read in pages", asyn
   }
 });
 
+const piRunsFile = join(remoteHome, ".local", "share", "hui-worker", "state", "pi-runs.json");
+const hostPid = async () => Number(await readFile(join(remoteHome, ".local", "share", "hui-worker", "state", "host.pid"), "utf8"));
+
+/** Kills the host and its PI workers, as a crash or reboot would, and connects a new one. */
+async function restartHost(session: Session): Promise<void> {
+  const pid = await hostPid();
+  const lost = new Promise<void>((resolve) => session.onExit!(resolve));
+  execFileSync("pkill", ["-KILL", "-f", remoteHome]);
+  await lost;
+  session.dispose();
+  await workers.connect(workerId);
+  assert.notEqual(await hostPid(), pid);
+}
+
+test("a PI run that finished while no gateway watched is not recovered by a later, fresh runtime", async () => {
+  const key = "remote-pi-finished";
+  const first = await piRuntime.start({ cwd: project, worker: workerId, huiSessionId: key });
+  await first.prompt("E2E_REPLAY please");
+  await control("wait-replay-ready");
+  workers.disconnect(workerId);
+  first.dispose();
+  await control("release-replay", { method: "POST" });
+  await waitFor(async () => !(await readFile(piRunsFile, "utf8")).includes(key) || undefined, "the host to see the run settle");
+  const second = await piRuntime.start({ cwd: project, worker: workerId, huiSessionId: key, sessionFile: first.sessionFile! });
+  await restartHost(second);
+  const third = await piRuntime.start({ cwd: project, worker: workerId, huiSessionId: key, sessionFile: first.sessionFile! });
+  try {
+    assert.equal(third.resumesInterruptedRuns, true);
+    assert.equal(lastAnswer(third), "Replay prefix — replay suffix");
+  } finally {
+    third.dispose();
+  }
+});
+
+test("a PI run cut off by a host restart is reported for HUI to recover, once", async () => {
+  const key = "remote-pi-interrupted";
+  const first = await piRuntime.start({ cwd: project, worker: workerId, huiSessionId: key });
+  await first.prompt("E2E_REPLAY please");
+  await control("wait-replay-ready");
+  await waitFor(async () => (await readFile(piRunsFile, "utf8").catch(() => "")).includes(key) || undefined, "the host to record the run");
+  await restartHost(first);
+  const second = await piRuntime.start({ cwd: project, worker: workerId, huiSessionId: key, sessionFile: first.sessionFile! });
+  try {
+    assert.equal(second.resumesInterruptedRuns, false);
+    // The recovery run settles, after which nothing is left to recover.
+    const done = settled(second);
+    await second.prompt("continue");
+    await done;
+    assert.equal(lastAnswer(second), "Fixture response.");
+  } finally {
+    second.dispose();
+  }
+  const third = await piRuntime.start({ cwd: project, worker: workerId, huiSessionId: key, sessionFile: first.sessionFile! });
+  try {
+    assert.equal(third.resumesInterruptedRuns, true);
+  } finally {
+    third.dispose();
+  }
+});
+
 test("closing a session stops its remote process, so reopening starts a fresh one", async () => {
   const first = await piRuntime.start({ cwd: project, worker: workerId, huiSessionId: "remote-close" });
+  const asked = new Promise<void>((resolve) => first.subscribe((event) => { if (event.type === "question") resolve(); }));
+  await first.prompt("/hui-e2e-question select");
+  await asked;
   first.dispose();
   const second = await piRuntime.start({ cwd: project, worker: workerId, huiSessionId: "remote-close", sessionFile: first.sessionFile! });
   try {
-    assert.equal(second.resumesInterruptedRuns, false);
+    // The question lived only in the stopped process.
+    assert.deepEqual(second.pendingQuestions!(), []);
     const done = settled(second);
     await second.prompt("still answering after a reopen");
     await done;
@@ -248,13 +313,14 @@ test("closing a session stops its remote process, so reopening starts a fresh on
 
 test("deleting a session stops its remote process even when no gateway is attached", async () => {
   const first = await piRuntime.start({ cwd: project, worker: workerId, huiSessionId: "remote-forget" });
-  workers.disconnectAll();
+  workers.disconnect(workerId);
   first.dispose();
   await workers.connect(workerId);
   await workers.forget(workerId, ["remote-forget"]);
   const second = await piRuntime.start({ cwd: project, worker: workerId, huiSessionId: "remote-forget" });
   try {
-    assert.equal(second.resumesInterruptedRuns, false);
+    // A new process starts a new conversation; the old one would have kept its own.
+    assert.notEqual(second.sessionId, first.sessionId);
   } finally {
     second.dispose();
   }
@@ -265,7 +331,7 @@ test("a question asked while no gateway is attached is shown again on reattach",
   const asked = new Promise<string>((resolve) => first.subscribe((event) => { if (event.type === "question") resolve(event.question.id); }));
   await first.prompt("/hui-e2e-question select");
   const questionId = await asked;
-  workers.disconnectAll();
+  workers.disconnect(workerId);
   first.dispose();
   const second = await piRuntime.start({ cwd: project, worker: workerId, huiSessionId: "remote-question", sessionFile: first.sessionFile! });
   try {
@@ -294,7 +360,7 @@ test("a bot runs on its host, also while no gateway is connected", async () => {
     await mkdir(join(remoteHome, ".pi", "agent"), { recursive: true });
     await writeFile(join(remoteHome, ".pi", "agent", "auth.json"), JSON.stringify({ fx: { type: "api_key", key: KEY } }));
     await workers.saveBot(workerId, "bot-1", { name: "Watcher", cwd: project, instructions: "You are the watcher bot.", prompt: "Check in again.", schedule: { kind: "at", at: new Date(Date.now() + 1500).toISOString() } });
-    workers.disconnectAll();
+    workers.disconnect(workerId);
     await waitFor(async () => {
       const raw = JSON.parse(await readFile(join(remoteHome, ".local", "share", "hui-worker", "state", "bots.json"), "utf8")) as { bots: { runs: { status: string; source: string }[] }[] };
       return raw.bots[0]?.runs.length === 2 && raw.bots[0].runs[0]!.status !== "running" ? raw.bots[0].runs[0] : undefined;
@@ -332,7 +398,7 @@ test("a Durable session runs on the worker, keeps going without the gateway and 
 
   await first.prompt("E2E_REPLAY please");
   await fetch(`${baseUrl.replace(/\/v1$/u, "")}/control/wait-replay-ready`);
-  workers.disconnectAll();
+  workers.disconnect(workerId);
   await fetch(`${baseUrl.replace(/\/v1$/u, "")}/control/release-replay`, { method: "POST" });
   first.dispose();
   const second = await durable.start({ cwd: project, worker: workerId, huiSessionId: "remote-durable-runtime", sessionFile: first.sessionFile! });
@@ -440,7 +506,7 @@ test("losing the gateway during a HUI tool call fails that call, and the run set
   const first = await durable.start({ cwd: project, worker: workerId, huiSessionId: key });
   await first.prompt("E2E_SUGGEST_TASK please");
   await inTool;
-  workers.disconnectAll();
+  workers.disconnect(workerId);
   first.dispose();
   registerAgentToolHandler(async () => ({ ok: true }));
   const second = await reattach(key, first.sessionFile!, (session) => lastAnswer(session) !== undefined, "the run to settle");
@@ -460,7 +526,7 @@ test("a follow-up queued before the gateway leaves runs on the worker with the c
   await first.prompt("E2E_REPLAY please");
   await control("wait-replay-ready");
   await first.followUp!("queued while away");
-  workers.disconnectAll();
+  workers.disconnect(workerId);
   first.dispose();
   // The remote has no PI login of its own: only the cached gateway key can answer.
   assert.ok(!existsSync(join(remoteHome, ".pi", "agent", "auth.json")));
@@ -496,7 +562,7 @@ test("a host restarted mid-run resumes Durable work, whose HUI tool calls still 
     // Its store lock now names a live, unrelated process, as after a container restart.
     await writeFile(join(remoteHome, ".local", "share", "hui-worker", "state", "durable", "harness.lock"), String(process.pid));
     first.dispose();
-    workers.disconnectAll();
+    workers.disconnect(workerId);
     // Connecting starts a new host, which resumes the interrupted run on its own.
     await workers.connect(workerId);
     assert.notEqual(Number(await readFile(pidFile, "utf8")), pid);

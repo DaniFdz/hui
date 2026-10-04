@@ -95,8 +95,9 @@ type Hosted = {
   key: string;
   tool: string;
   runtime: RuntimeSession;
-  /** Started over a running one: its runs were never interrupted. */
-  reused?: boolean;
+  /** A PI runtime started where the last one stopped mid-run: HUI recovers that
+   * run, as it would locally, until this one runs again. */
+  interrupted: boolean;
   peer?: Peer;
   lastActive: number;
   stop: () => void;
@@ -134,6 +135,10 @@ export class WorkerHost {
   /** Durable conversation → HUI session, kept across host restarts. */
   #callers = new Map<string, string>();
   #callersFile: string;
+  /** HUI sessions whose PI run started and has not been seen settling, kept
+   * across host restarts. Any other PI run finished while nobody watched. */
+  #piRuns = new Set<string>();
+  #piRunsFile: string;
   /** Host state writes, one at a time so an older one never lands last. */
   #writes: Promise<void> = Promise.resolve();
   #credentials = new Map<string, Cached>();
@@ -143,6 +148,7 @@ export class WorkerHost {
   constructor(paths: WorkerPaths) {
     this.paths = paths;
     this.#callersFile = join(paths.stateDir, "conversations.json");
+    this.#piRunsFile = join(paths.stateDir, "pi-runs.json");
     this.#bots = new BotScheduler({
       file: join(this.paths.stateDir, "bots.json"),
       launchFile: join(this.paths.stateDir, "launch.json"),
@@ -185,6 +191,10 @@ export class WorkerHost {
     try {
       const saved = JSON.parse(await readFile(this.#callersFile, "utf8")) as unknown;
       if (isRecord(saved)) for (const [id, key] of Object.entries(saved)) if (typeof key === "string") this.#callers.set(id, key);
+    } catch { /* none yet */ }
+    try {
+      const saved = JSON.parse(await readFile(this.#piRunsFile, "utf8")) as unknown;
+      if (Array.isArray(saved)) for (const key of saved) if (typeof key === "string") this.#piRuns.add(key);
     } catch { /* none yet */ }
     // The host lock (main.ts) already makes this the store's only owner; a
     // store lock left by a killed host may name a pid reused since.
@@ -297,10 +307,7 @@ export class WorkerHost {
     const starting = this.#starting.get(key);
     if (starting) return { hosted: await starting, reused: true };
     const current = this.#sessions.get(key);
-    if (current) {
-      current.reused = true;
-      return { hosted: current, reused: true };
-    }
+    if (current) return { hosted: current, reused: true };
     const start = this.#launch(key, tool, launch()).finally(() => this.#starting.delete(key));
     this.#starting.set(key, start);
     return { hosted: await start, reused: false };
@@ -340,9 +347,10 @@ export class WorkerHost {
       runtime.dispose();
       throw error;
     }
-    const hosted: Hosted = { key, tool, runtime, lastActive: Date.now(), stop: () => undefined, seq: 0 };
+    const hosted: Hosted = { key, tool, runtime, lastActive: Date.now(), stop: () => undefined, seq: 0, interrupted: tool === "pi" && this.#piRuns.has(key) };
     const unsubscribe = runtime.subscribe((event) => {
       this.#touch(hosted);
+      this.#trackRun(hosted, event.type === "settled");
       if (!hosted.peer) return;
       const transcript = TRANSCRIPT_EVENTS.has(event.type);
       hosted.peer.send({ t: "session.event", key, event, ...this.#snapshot(hosted, transcript), ...(transcript ? this.#transcript(hosted) : {}) });
@@ -355,6 +363,17 @@ export class WorkerHost {
     this.#sessions.set(key, hosted);
     if (this.#bots.has(key) && runtime.sessionFile) await this.#bots.rememberSessionFile(key, runtime.sessionFile);
     return hosted;
+  }
+
+  /** Records whether a PI run is in progress; Durable keeps its own record. */
+  #trackRun(hosted: Hosted, settled = false): void {
+    if (hosted.tool !== "pi") return;
+    if (hosted.runtime.isStreaming) hosted.interrupted = false;
+    const running = hosted.runtime.isStreaming || (this.#piRuns.has(hosted.key) && !settled);
+    if (running === this.#piRuns.has(hosted.key)) return;
+    if (running) this.#piRuns.add(hosted.key);
+    else this.#piRuns.delete(hosted.key);
+    this.#write(this.#piRunsFile, () => JSON.stringify([...this.#piRuns])).catch((error: unknown) => console.error(`Could not record PI runs: ${error instanceof Error ? error.message : String(error)}`));
   }
 
   /** Writes a host state file atomically, after any write already queued, with
@@ -374,7 +393,7 @@ export class WorkerHost {
       sessionId: runtime.sessionId,
       ...(runtime.sessionFile ? { sessionFile: runtime.sessionFile } : {}),
       isStreaming: runtime.isStreaming,
-      resumesInterruptedRuns: runtime.resumesInterruptedRuns === true || hosted.reused === true,
+      resumesInterruptedRuns: runtime.resumesInterruptedRuns === true || !hosted.interrupted,
       ...(model ? { model } : {}),
       ...(usage ? { usage } : {}),
       ...(thinking ? { thinking } : {}),
@@ -428,6 +447,7 @@ export class WorkerHost {
     this.#touch(hosted);
     const args = Array.isArray(params["args"]) ? params["args"] : [];
     let result = await (fn as (...values: unknown[]) => unknown).apply(hosted.runtime, args);
+    this.#trackRun(hosted);
     if (method === "attachmentImage" && isRecord(result) && Buffer.isBuffer(result["data"])) result = { mimeType: result["mimeType"], data: result["data"].toString("base64") };
     return {
       ...(result === undefined ? {} : { result }), ...this.#snapshot(hosted, true),
