@@ -293,24 +293,22 @@ export class WorkerHost {
     const key = typeof params["key"] === "string" ? params["key"] : "";
     const tool = params["tool"];
     if (!/^[A-Za-z0-9_-]{1,80}$/u.test(key) || (tool !== "pi" && tool !== "durable") || !isRecord(params["launch"])) throw new Error("Invalid remote session request.");
-    const { hosted, reused } = await this.#hostedFor(key, tool, () => this.#bots.launchFor(key, params["launch"] as RemoteLaunch));
+    const hosted = await this.#hostedFor(key, tool, () => this.#bots.launchFor(key, params["launch"] as RemoteLaunch));
     // The gateway may have gone while the runtime started; leave it running.
     if (peer.closed) throw new Error("The gateway disconnected.");
     // A second gateway (or a reconnect) takes over; the old view ends.
     if (hosted.peer && hosted.peer !== peer) hosted.peer.send({ t: "session.exit", key, message: "This session was opened from another HUI." });
     hosted.peer = peer;
     this.#touch(hosted);
-    return { reused, ...this.#snapshot(hosted, true), ...this.#transcript(hosted) };
+    return { ...this.#snapshot(hosted, true), ...this.#transcript(hosted) };
   }
 
-  async #hostedFor(key: string, tool: string, launch: () => RemoteLaunch): Promise<{ hosted: Hosted; reused: boolean }> {
-    const starting = this.#starting.get(key);
-    if (starting) return { hosted: await starting, reused: true };
-    const current = this.#sessions.get(key);
-    if (current) return { hosted: current, reused: true };
+  async #hostedFor(key: string, tool: string, launch: () => RemoteLaunch): Promise<Hosted> {
+    const current = this.#starting.get(key) ?? this.#sessions.get(key);
+    if (current) return current;
     const start = this.#launch(key, tool, launch()).finally(() => this.#starting.delete(key));
     this.#starting.set(key, start);
-    return { hosted: await start, reused: false };
+    return start;
   }
 
   async #launch(key: string, tool: string, launch: RemoteLaunch): Promise<Hosted> {
@@ -542,7 +540,7 @@ export class WorkerHost {
     const existing = this.#sessions.get(bot.key);
     if (existing && (existing.runtime.isStreaming || existing.runtime.pendingQuestions?.().length)) throw new Error("The bot is busy.");
     // Bots stay on PI until Durable takes a bot's standing instructions.
-    const { hosted } = await this.#hostedFor(bot.key, "pi", () => launch);
+    const hosted = await this.#hostedFor(bot.key, "pi", () => launch);
     const runtime = hosted.runtime;
     let failure: string | undefined;
     const settled = new Promise<void>((done) => {

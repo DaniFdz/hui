@@ -924,7 +924,7 @@ Gateway requests: `hello` (the host's protocol version and release; a
 mismatch replaces an idle host), `shutdown` (only when idle and no other
 gateway is connected; running Durable work does not count, it resumes in the
 new host), `session.start {key,tool,launch}` (start or reattach the `durable`
-or `pi` runtime for one HUI session id; replies `{reused,state,seq,transcript}`),
+or `pi` runtime for one HUI session id; replies `{state,seq,transcript}`),
 `session.call {key,method,args}` (one optional `RuntimeSession` method; replies
 `{result?,state,seq,transcript?}`), `session.transcript {key,offset}` (one
 page of at most 8 MB, `{entries,total,seq}`; offset 0 takes a fresh snapshot),
