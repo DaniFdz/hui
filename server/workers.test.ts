@@ -449,6 +449,30 @@ test("a Durable session on the worker honors HUI's settings and providers, whose
   }
 });
 
+test("agent shells on the worker do not inherit the host's HUI and PI directories", async () => {
+  const shellEnv = async (session: Session) => {
+    const done = settled(session);
+    await session.prompt("E2E_PRINT_ENV");
+    await done;
+    const tool = session.transcript().find((entry) => entry.kind === "tool" && entry.name === "bash");
+    assert.ok(tool?.kind === "tool" && tool.output?.includes("env-done"), JSON.stringify(tool));
+    return tool.output!.replace("env-done", "").trim();
+  };
+  const durableSession = await durable.start({ cwd: project, worker: workerId, huiSessionId: "remote-env-durable" });
+  try {
+    assert.equal(await shellEnv(durableSession), "");
+  } finally {
+    durableSession.dispose();
+  }
+  const piSession = await piRuntime.start({ cwd: project, worker: workerId, huiSessionId: "remote-env-pi" });
+  try {
+    // PI and its extensions read their agent directory from it, as in a local PI worker.
+    assert.equal(await shellEnv(piSession), `PI_CODING_AGENT_DIR=${join(remoteHome, ".local", "share", "hui-worker", "mirror", "agent")}`);
+  } finally {
+    piSession.dispose();
+  }
+});
+
 /** The gateway's registry row a worker session's HUI tool calls are checked against. */
 async function registerRemote(id: string): Promise<void> {
   await writeRegistry([...(await readRegistry()).filter((record) => record.id !== id), { id, title: id, group: "", cwd: project, tool: "durable", worker: workerId, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }]);

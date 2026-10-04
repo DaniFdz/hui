@@ -1000,7 +1000,10 @@ leaves worker records unchanged.
   are installed on the remote. A worker session gets what a local one gets:
   skills (HUI's bundled ones included), context files, prompt templates,
   models including HUI-managed providers, HUI tools and HUI's skill and plugin
-  choices; PI extensions load only on the PI runtime, as locally.
+  choices; PI extensions load only on the PI runtime, as locally. Agent
+  shells there do not inherit the host's HUI directories, so a `hui` or `pi`
+  run from one uses the remote user's own; only a PI session's shells see
+  `PI_CODING_AGENT_DIR` (the mirror), as a local PI worker's see PI's.
   Credentials, transcripts, `node_modules`, `.git` and files over 8 MB are not
   mirrored; files HUI mirrored earlier and no longer sends are removed.
 - **Credentials stay on the gateway.** The remote runtimes ask the connected

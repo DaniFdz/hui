@@ -326,7 +326,7 @@ export class WorkerHost {
       ...(typeof launch["title"] === "string" ? { title: launch["title"] } : {}),
     };
     const runtime: RuntimeSession = tool === "durable" ? await startDurable(options, this.#durable) : await piRuntime.start({
-      ...options,
+      ...options, agentDir: this.paths.agentDir,
       ...(Array.isArray(launch["appendSystemPrompt"]) ? { appendSystemPrompt: strings(launch["appendSystemPrompt"]) } : {}),
       hostLaunch: {
         disabledSkills: launch.disabledSkills ?? [],

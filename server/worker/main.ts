@@ -129,12 +129,15 @@ async function runDaemon(): Promise<void> {
   const env = loginEnvironment();
   // A profile that starts its own agent wins over the forwarded one.
   Object.assign(process.env, env, { SSH_AUTH_SOCK: env["SSH_AUTH_SOCK"] ?? AGENT_LINK });
-  // HUI's own configuration on this machine is the mirror of the gateway's;
-  // set before the host's modules read it at import.
+  // HUI's and PI's configuration on this machine is the mirror of the
+  // gateway's, read by the host's modules at import. Agent shells must not
+  // inherit it: a `hui` or `pi` started there would open the mirror and the
+  // host's store. PI workers get their agent directory explicitly.
   process.env["HUI_CONFIG_DIR"] = join(paths.mirrorDir, "hui");
-  process.env["HUI_DURABLE_DIR"] = join(paths.stateDir, "durable");
   process.env["PI_CODING_AGENT_DIR"] = paths.agentDir;
   const { WorkerHost } = await import("./host.ts");
+  delete process.env["HUI_CONFIG_DIR"];
+  delete process.env["PI_CODING_AGENT_DIR"];
   const host = new WorkerHost(paths);
   // Holding the lock, any socket left behind is stale.
   await unlink(paths.socket).catch(() => undefined);
