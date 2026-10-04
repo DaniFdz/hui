@@ -827,9 +827,9 @@ export class LiveSessions {
     // without it, so a follow-up to a run streaming there queues in its
     // runtime and runs even if the gateway leaves. Like steering, it is then
     // shown but no longer editable. Before the run streams (the prompt is
-    // still on its way, a compaction holds the session) it stays in HUI's
-    // editable queue, behind that prompt.
-    if (live.record.worker && live.runtime?.followUp && live.runtime.isStreaming) {
+    // still on its way, a compaction holds the session) or while earlier ones
+    // wait in HUI's editable queue, it waits there too, behind them.
+    if (live.record.worker && live.runtime?.followUp && live.runtime.isStreaming && !live.followUps.length) {
       await live.runtime.followUp(text, attachments);
       live.queue = live.runtime.pendingQueue?.() ?? live.queue;
       this.#broadcastQueue(live);
@@ -1174,6 +1174,9 @@ export class LiveSessions {
       // A resumed session only has its history after boot, so the transcript is
       // sent now rather than left empty at connect.
       this.#broadcast(live, { kind: "snapshot", snapshot: this.snapshot(live.record.id) });
+      // Messages queued here before the runtime was lost (a worker's run that
+      // settled while this gateway was away) run now.
+      void this.#drainFollowUp(live);
     } catch (error) {
       // A runtime may exit while its identity is being persisted and the caller
       // may already have started a replacement. Cleanup from the older boot

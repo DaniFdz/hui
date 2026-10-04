@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { mock, test } from "node:test";
+import { test, type TestContext } from "node:test";
 
 import type {
   AgentRuntime,
@@ -1890,41 +1890,105 @@ test("HUI-owned follow-ups can be edited, reordered, removed and steered before 
   assert.equal(manager.snapshot("editable-queue").queue.items, undefined);
 });
 
-test("a worker session hands follow-ups to its runtime only while a run streams", async (t) => {
+/** A worker connection scripted in memory: a prompt streams on the worker
+ * until `settle`, and `hold` keeps the next prompt on its way there. */
+function scriptedWorker(t: TestContext) {
   const calls: string[] = [];
-  let releasePrompt!: () => void;
-  const prompting = new Promise<void>((resolve) => { releasePrompt = resolve; });
   let streaming = false;
+  let seq = 1;
+  let sink!: Parameters<typeof workers.startSession>[4];
+  let held: Promise<void> | undefined;
   const state = () => ({ sessionId: "remote", isStreaming: streaming, resumesInterruptedRuns: true });
-  t.mock.method(workers, "startSession", async () => ({
-    started: { state: state(), seq: 1, transcript: [], methods: ["followUp"] },
-    call: async (method: string) => {
-      calls.push(method);
-      if (method === "prompt") {
-        await prompting;
-        streaming = true;
-      }
-      return { state: state(), seq: calls.length + 1 };
+  t.mock.method(workers, "startSession", async (...args: Parameters<typeof workers.startSession>) => {
+    sink = args[4];
+    return {
+      started: { state: state(), seq: ++seq, transcript: [], methods: ["followUp"] },
+      call: async (method: string, callArgs: unknown[]) => {
+        calls.push(`${method}:${String(callArgs[0])}`);
+        if (method === "prompt") {
+          await held;
+          streaming = true;
+        }
+        return { state: state(), seq: ++seq };
+      },
+      transcript: async () => [],
+      dispose: () => undefined,
+    };
+  });
+  return {
+    calls,
+    hold(): () => void {
+      let release!: () => void;
+      held = new Promise((resolve) => { release = resolve; });
+      return () => { held = undefined; release(); };
     },
-    transcript: async () => [],
-    dispose: () => undefined,
-  }));
-  const manager = new LiveSessions(factory([]));
-  manager.ensure({ ...recordFor("remote-follow-up"), worker: "w" });
-  await waitForBoot(manager, "remote-follow-up");
+    settle(): void {
+      streaming = false;
+      sink.receive({ event: { type: "settled" }, state: state(), seq: ++seq });
+    },
+    /** The gateway loses the worker, where the run settles meanwhile. */
+    lose(): void {
+      streaming = false;
+      sink.lost();
+    },
+  };
+}
 
-  const prompted = manager.prompt("remote-follow-up", "active turn");
-  // The prompt is still on its way: HUI keeps the follow-up, editable, behind it.
-  await manager.followUp("remote-follow-up", "while sending");
-  assert.deepEqual(manager.snapshot("remote-follow-up").queue.items?.map((item) => item.text), ["while sending"]);
-  releasePrompt();
-  await prompted;
-  assert.deepEqual(calls, ["prompt"]);
+async function until(done: () => boolean, label: string): Promise<void> {
+  for (const deadline = Date.now() + 5_000; !done();) {
+    if (Date.now() > deadline) throw new Error(`Timed out waiting for ${label}.`);
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+}
+
+test("a worker session hands a follow-up to its runtime only while a run streams there and none waits in HUI's queue", async (t) => {
+  const worker = scriptedWorker(t);
+  const id = "remote-follow-up";
+  const manager = new LiveSessions(factory([]));
+  manager.ensure({ ...recordFor(id), worker: "w" });
+  await waitForBoot(manager, id);
   // Running on the worker, it queues there and runs even if the gateway leaves.
-  await manager.followUp("remote-follow-up", "while running");
-  assert.deepEqual(calls, ["prompt", "followUp"]);
+  await manager.prompt(id, "first turn");
+  await manager.followUp(id, "while running");
+  assert.deepEqual(worker.calls, ["prompt:first turn", "followUp:while running"]);
+  worker.settle();
+  await waitForStatus(manager, id, "idle");
+
+  const release = worker.hold();
+  const prompted = manager.prompt(id, "second turn");
+  // The prompt is still on its way: HUI keeps the follow-up, editable, behind it,
+  await manager.followUp(id, "A");
+  release();
+  await prompted;
+  // and keeps one sent once the run streams behind that one.
+  await manager.followUp(id, "B");
+  assert.deepEqual(manager.snapshot(id).queue.items?.map((item) => item.text), ["A", "B"]);
+  worker.settle();
+  await until(() => worker.calls.length === 4, "the first held follow-up");
+  worker.settle();
+  await until(() => worker.calls.length === 5, "the second held follow-up");
+  assert.deepEqual(worker.calls.slice(2), ["prompt:second turn", "prompt:A", "prompt:B"]);
   manager.disposeAll();
-  mock.restoreAll();
+});
+
+test("follow-ups HUI holds for a worker session run once it reattaches to a run that settled meanwhile", async (t) => {
+  const worker = scriptedWorker(t);
+  const id = "remote-reattach-follow-up";
+  const record = { ...recordFor(id), worker: "w" };
+  const manager = new LiveSessions(factory([]));
+  manager.ensure(record);
+  await waitForBoot(manager, id);
+  const release = worker.hold();
+  const prompted = manager.prompt(id, "turn");
+  await manager.followUp(id, "held here");
+  release();
+  await prompted;
+  worker.lose();
+  await waitForStatus(manager, id, "error");
+  manager.ensure(record);
+  await until(() => worker.calls.length === 2, "the held follow-up");
+  assert.deepEqual(worker.calls, ["prompt:turn", "prompt:held here"]);
+  manager.disposeAll();
 });
 
 test("a consumed queued instruction becomes a visible user turn before settlement", async () => {
