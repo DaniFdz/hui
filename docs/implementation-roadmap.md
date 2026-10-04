@@ -716,8 +716,15 @@ Verified desktop/mobile behavior and checks are recorded in
 
 - A worker is a name plus a connect command (`ssh`, `docker exec -i`,
   `kubectl exec -i`, …). HUI installs Node if needed, its own worker release
-  and the PI SDK, starts a durable per-user host and mirrors the user's PI
-  resources; credentials stay on the gateway and are brokered per request.
+  with the PI SDK and Pi Durable (Node 22.19+), starts a durable per-user host
+  and mirrors the user's PI resources and HUI settings; credentials stay on the
+  gateway, are brokered per request and cached only in host memory until they
+  expire.
+- Worker sessions run on the local runtime choice (Durable by default) inside
+  the host, driven through the generic runtime contract; the PI-specific relay
+  is gone. Work continues while the gateway is away and catches up on
+  reconnect; a host restart resumes Durable runs. Bots stay on PI until Durable
+  takes per-conversation instructions.
 - New Session runs on a worker; subagents follow their parent. Sessions keep
   running while the gateway is away, reattach with their pending questions,
   and reconnect by themselves after a dropped connection.
@@ -726,7 +733,10 @@ Verified desktop/mobile behavior and checks are recorded in
 - Proof: `server/workers.test.ts` (real host, SDK worker and deterministic
   provider behind a separate home: brokered API key and OAuth refresh, no
   secret on the remote, reattach, question replay, close/delete, offline bot
-  run), plus manual runs against an Ubuntu 24.04 arm64 container over
+  run; Durable on the worker with HUI settings and providers, HUI tool calls,
+  abort, a gateway lost mid-tool, an offline follow-up and a host restart),
+  `server/worker/release.test.ts` (the release installs every imported
+  package), plus manual runs against an Ubuntu 24.04 arm64 container over
   `docker exec -i` and over SSH: Node download, release install, package
   dependency install, durable runs across a killed transport, host upgrade, and
   the Settings → Workers, Run on, bot and reattach journeys in the browser.

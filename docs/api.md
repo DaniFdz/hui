@@ -919,17 +919,35 @@ the gateway's own worker code, then `npm install --omit=dev`), and finally
 `{"t":"ready"}` once it reaches the host's Unix socket; earlier output is shell
 noise and ignored. From then on both sides exchange `\n`-delimited JSON frames:
 `{t:"req",id,op,p}` / `{t:"res",id,ok,result|error}` requests in either
-direction, plus per-session frames `in`, `out`, `err`, `ipc`, `exit`, `kill`,
-`detach` keyed by a channel number, and a `bots` push. Gateway requests:
-`hello`, `shutdown` (only when idle and no other gateway is connected), `open {ch,key,launch}` (spawn or reattach
-the PI SDK worker for one HUI session id; `reused` tells which), `stat`,
+direction, plus pushed `session.event`, `session.exit` and `bots` frames.
+Gateway requests: `hello` (the host's protocol version and release; a
+mismatch replaces an idle host), `shutdown` (only when idle and no other
+gateway is connected; running Durable work does not count, it resumes in the
+new host), `session.start {key,tool,launch}` (start or reattach the `durable`
+or `pi` runtime for one HUI session id; replies `{reused,state,transcript}`),
+`session.call {key,method,args}` (one optional `RuntimeSession` method; replies
+`{result?,state,transcript?}`), `session.dispose {key}`, `forget {keys}`,
 `put-file`, `get-file`, `sync-plan`/`sync-put`/`sync-commit` and
-`bots-list`/`bots-save`/`bots-delete`/`bots-run`. Host requests: `credential`
+`bots-list`/`bots-save`/`bots-delete`/`bots-run`. `state` is the runtime's
+synchronous view (`sessionId`, `sessionFile`, `isStreaming`,
+`resumesInterruptedRuns`, `model`, `usage`, `thinking`, `queue`, `questions`
+and the optional `methods` it offers); every `session.event {key,event,state}`
+carries it, plus the whole `transcript` after `settled` and `compaction_end`
+and after `clear`, `rewind`, `reload`, `abort` and `continueRun` calls. A
+record with `worker` uses this remote adapter and its `tool` names the runtime
+the host runs; a Durable `durable:N` names a conversation in that worker's own
+store. Host requests: `credential`
 (`read`, `list`, `delete`, `modify` against the gateway store `pi` or
 `hui:<providers-relative path>`), the nested `credential-step` that runs an
 OAuth refresh callback on the remote while the gateway holds its lock, and
 `bridge` (a HUI agent tool call; the gateway refuses callers whose session is
-not on that worker, and refuses `terminal`, `browser` and `watcher`).
+not on that worker, and refuses `terminal`, `browser` and `watcher`). With no
+gateway connected a `bridge` call fails at once, and one in flight fails when
+the connection drops. `read` and `list` answers are cached in host memory
+until the credential's `expires` (API keys: while the host runs) and served
+while no gateway is connected; nothing is written to disk. Without a cached
+answer the remote's own PI login is used. The worker needs Node.js 22.19 or
+newer.
 
 ### `GET /__hui/workers`
 
