@@ -131,6 +131,9 @@ type Live = {
   /** Set before invoking `runtime.prompt`, closing the gap before the runtime
    * reports `agent_start` or flips its own streaming flag. */
   promptPending: boolean;
+  /** Prompts being handed to the runtime. Until it accepts one, the input
+   * exists only in this process, so a gateway stop would lose it. */
+  submissions: number;
   runtime?: RuntimeSession;
   /** Wall-clock lifecycle timing for the current runtime attempt. */
   bootStartedAt: number;
@@ -195,8 +198,26 @@ export class SessionBusyError extends Error {}
 export class LiveSessions {
   /** In-memory check used at the shutdown boundary, without a registry race. */
   get activeWorkCount(): number {
+    return this.#activeWork().length;
+  }
+
+  /** Active sessions a gateway restart does not interrupt: their runtime
+   * continues the run itself when it reopens, and nothing of theirs is held
+   * only in this process (a booting runtime, a prompt being handed over, or
+   * follow-ups not yet given to the runtime). */
+  get resumableWorkCount(): number {
+    return this.#activeWork().filter((live) => live.runtime?.resumesInterruptedRuns === true
+      && live.status !== "starting" && live.submissions === 0 && live.followUps.length === 0).length;
+  }
+
+  /** Active work a gateway stop would lose; ordinary stop and update refuse it. */
+  get blockingWorkCount(): number {
+    return this.activeWorkCount - this.resumableWorkCount;
+  }
+
+  #activeWork(): Live[] {
     return [...this.#live.values()].filter((live) => live.status === "starting"
-      || live.status === "running" || live.status === "waiting" || live.followUps.length > 0).length;
+      || live.status === "running" || live.status === "waiting" || live.followUps.length > 0);
   }
   #live = new Map<string, Live>();
   #statusSubscribers = new Set<StatusSubscriber>();
@@ -266,6 +287,7 @@ export class LiveSessions {
       record,
       status: "starting",
       promptPending: false,
+      submissions: 0,
       bootStartedAt: Date.now(),
       subscribers: new Set(),
       readers: 0,
@@ -494,6 +516,7 @@ export class LiveSessions {
     live.turnProducedOutput = false;
     live.fallbackAttempted = false;
     this.#setStatus(live, "running");
+    live.submissions += 1;
     try {
       // This write is the recovery boundary. If the gateway or machine dies
       // after PI accepts the prompt, the next process can tell this run did not
@@ -516,6 +539,8 @@ export class LiveSessions {
       live.promptPending = false;
       this.#setStatus(live, this.#reported(live));
       throw error;
+    } finally {
+      live.submissions -= 1;
     }
     // A synchronous extension can settle before its prompt acknowledgement.
     // Do not append an invented user turn after PI's authoritative refresh.
@@ -1343,7 +1368,9 @@ export class LiveSessions {
       live.promptPending = true;
       live.turnProducedOutput = false;
       this.#setStatus(live, "running");
-      await runtime.prompt(prompt.text, prompt.attachments);
+      live.submissions += 1;
+      try { await runtime.prompt(prompt.text, prompt.attachments); }
+      finally { live.submissions -= 1; }
       return true;
     } catch (error) {
       live.promptPending = false;

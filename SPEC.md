@@ -341,10 +341,14 @@ wildcard exposure is refused. The UI still has Full Access and no login.
 Lifecycle control uses a separate loopback socket with a random private token,
 instance identity and serialized CLI operations. State/logs live in HUI's
 `gateway/` config subdirectory. A stored PID alone is never enough to authorize
-a signal. Normal stop/restart refuses active turns, questions, queued work or
-in-flight mutations; `--force` explicitly interrupts them. Shutdown waits for
-the owned process to exit before replacement, preserving the one-writer boundary.
-Restart preserves registry/transcript files, not in-flight work.
+a signal. Normal stop/restart refuses work a restart would lose: active turns
+and questions of sessions on PI's SDK worker, booting runtimes, follow-ups HUI
+still holds, open terminals and in-flight mutations; `--force` explicitly
+interrupts them. A Pi Durable run does not block: Durable resumes it when the
+gateway reopens its store, and a tool call the stop cut short reaches the model
+as an interrupted result rather than running twice. Shutdown waits for the
+owned process to exit before replacement, preserving the one-writer boundary.
+Restart preserves registry/transcript files and Durable's in-flight work.
 
 `hui update --from <trusted local.tgz> [--sha256 <digest>]` stages a managed
 release, probes it against disposable HUI/PI state, then selects it atomically

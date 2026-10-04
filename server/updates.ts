@@ -49,7 +49,7 @@ export function createUpdates(installation?: Installation, dependencies: {
       try {
         if (!installation || !check?.canInstall || check.latest?.version !== version) throw new UpdateConflict("Check for an installable release before updating.");
         if ((await readUpdateJob(installation.installationRoot))?.status === "running") throw new UpdateConflict("An update is already running.");
-        if (liveSessions.activeWorkCount) throw new UpdateConflict("Finish active sessions before updating HUI.");
+        if (liveSessions.blockingWorkCount) throw new UpdateConflict("Finish active sessions before updating HUI.");
         const log = await open(LOG_FILE, "a", 0o600);
         const child = spawn(process.execPath, [join(installation.packageRoot, "build/cli/update-worker.js"), JSON.stringify(installation), randomUUID(), version], {
           cwd: installation.packageRoot, detached: true, stdio: ["ignore", log.fd, log.fd, "ipc"],

@@ -5,8 +5,18 @@ import { setTimeout as delay } from "node:timers/promises";
 import type { GatewayOptions } from "../server/gateway.ts";
 import { LOG_FILE, processAlive, readState, removeState, type GatewayState } from "./state.ts";
 
-export type GatewayStatus = { status: "running" | "stopped" | "unresponsive"; pid?: number; version?: string; url?: string; activeSessions?: number; activeTerminals?: number; startedAt?: string };
-type ControlStatus = { instance: string; pid: number; version: string; url: string; activeSessions: number; activeTerminals?: number };
+/** `resumableSessions` counts the active sessions a restart does not interrupt
+ * (Pi Durable runs); the rest of `activeSessions` blocks an ordinary stop. */
+export type GatewayStatus = { status: "running" | "stopped" | "unresponsive"; pid?: number; version?: string; url?: string; activeSessions?: number; resumableSessions?: number; activeTerminals?: number; startedAt?: string };
+type ControlStatus = { instance: string; pid: number; version: string; url: string; activeSessions: number; resumableSessions?: number; activeTerminals?: number };
+
+const count = (value: unknown) => value === undefined || Number.isInteger(value) && (value as number) >= 0;
+
+/** Active sessions an ordinary stop refuses. A gateway that predates
+ * `resumableSessions` has every active session count. */
+export function blockingSessions(status: Pick<GatewayStatus, "activeSessions" | "resumableSessions">): number {
+  return Math.max(0, (status.activeSessions ?? 0) - (status.resumableSessions ?? 0));
+}
 
 export async function controlRequest(state: GatewayState, path: string, method = "GET"): Promise<ControlStatus> {
   const response = await fetch(new URL(path, state.controlUrl), {
@@ -14,7 +24,7 @@ export async function controlRequest(state: GatewayState, path: string, method =
   });
   const body = await response.json() as ControlStatus & { error?: string };
   if (!response.ok) throw new Error(body.error ?? `Gateway control returned HTTP ${response.status}.`);
-  if (body.instance !== state.instance || method === "GET" && (body.pid !== state.pid || body.version !== state.version || !Number.isInteger(body.activeSessions) || body.activeTerminals !== undefined && (!Number.isInteger(body.activeTerminals) || body.activeTerminals < 0))) {
+  if (body.instance !== state.instance || method === "GET" && (body.pid !== state.pid || body.version !== state.version || !Number.isInteger(body.activeSessions) || !count(body.resumableSessions) || (body.resumableSessions ?? 0) > body.activeSessions || !count(body.activeTerminals))) {
     throw new Error("Gateway identity did not match its state file. Nothing was stopped.");
   }
   return body;
@@ -25,7 +35,7 @@ export async function gatewayStatus(): Promise<GatewayStatus> {
   if (!state) return { status: "stopped" };
   try {
     const reply = await controlRequest(state, "status");
-    return { status: "running", pid: state.pid, version: reply.version, url: reply.url, activeSessions: reply.activeSessions, activeTerminals: reply.activeTerminals ?? 0, startedAt: state.startedAt };
+    return { status: "running", pid: state.pid, version: reply.version, url: reply.url, activeSessions: reply.activeSessions, resumableSessions: reply.resumableSessions ?? 0, activeTerminals: reply.activeTerminals ?? 0, startedAt: state.startedAt };
   } catch {
     return { status: processAlive(state.pid) ? "unresponsive" : "stopped", pid: state.pid, version: state.version, url: state.url };
   }

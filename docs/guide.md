@@ -83,8 +83,10 @@ granted proxy names. Wildcard addresses remain unsupported.
 
 Use `systemctl start|stop|restart hui` and `journalctl -u hui` for a module-managed
 gateway, rather than starting a second detached CLI gateway. Systemd stop/restart
-can interrupt active work. The desktop app reuses the service when launched as
-the same user with matching HUI/PI/XDG directories. Custom service-only environment
+skips HUI's active-work check: Pi Durable runs resume afterwards, but sessions
+still on PI's SDK worker, queued follow-ups and terminals are interrupted. The
+desktop app reuses the service when launched as the same user with matching
+HUI/PI/XDG directories. Custom service-only environment
 variables are not automatically added to a graphical login session.
 
 Electron is supplied by the pinned nixpkgs (`electron_44` by default), not npm's

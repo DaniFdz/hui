@@ -126,7 +126,8 @@ require('node:fs').writeFileSync(process.env.HUI_DESKTOP_PROOF, JSON.stringify({
     assert.equal(response.ok, true, `${path}: ${response.status}`);
     return response.json();
   };
-  const waitIdle = async (id: string, label = "session") => {
+  const waitIdle = (id: string, label = "session") => waitStatus(id, "idle", label);
+  const waitStatus = async (id: string, wanted: "idle" | "running", label: string) => {
     try {
       const response = await fetch(new URL(`/__hui/sessions/${id}/events`, status.url), { headers: { "x-hui": "1" }, signal: AbortSignal.timeout(20_000) });
       const reader = response.body!.getReader(); const decoder = new TextDecoder(); let buffer = "";
@@ -137,13 +138,13 @@ require('node:fs').writeFileSync(process.env.HUI_DESKTOP_PROOF, JSON.stringify({
           while (buffer.includes("\n\n")) {
             const end = buffer.indexOf("\n\n"); const frame = buffer.slice(0, end); buffer = buffer.slice(end + 2);
             const data = frame.split("\n").find((line) => line.startsWith("data: "))?.slice(6);
-            if (data && JSON.parse(data).status === "idle") return;
+            if (data && JSON.parse(data).status === wanted) return;
             if (data && JSON.parse(data).status === "error") throw new Error("SDK session boot failed");
           }
         }
       } finally { await reader.cancel(); }
     } catch (error) {
-      throw new Error(`${label} did not reach idle.`, { cause: error });
+      throw new Error(`${label} did not reach ${wanted}.`, { cause: error });
     }
   };
   assert.match(await (await fetch(new URL("/settings/tools", status.url))).text(), /hui-app/u);
@@ -360,4 +361,19 @@ require('node:fs').writeFileSync(process.env.HUI_DESKTOP_PROOF, JSON.stringify({
   const beforeTurn = tools(movedHistory);
   await api(`sessions/${session.id}/prompt`, { text: "E2E_RICH" }); await waitIdle(session.id, "first turn on Durable");
   assert.equal(tools((await api(`sessions/${session.id}/open`, {})).transcript), beforeTurn + 1, "the moved session runs a tool turn on Durable");
+
+  // A Durable run does not block an ordinary restart: Durable resumes it in the
+  // replacement gateway, which asks the provider again and finishes the turn.
+  await api(`sessions/${session.id}/prompt`, { text: "E2E_REPLAY" });
+  await fetch(`${providerUrl}/control/wait-replay-ready`, { signal: AbortSignal.timeout(20_000) });
+  await waitStatus(session.id, "running", "held Durable run");
+  const running = JSON.parse(await command("gateway", "status", "--json"));
+  assert.equal(running.activeSessions, 1); assert.equal(running.resumableSessions, 1);
+  const beforeDurableRestart = status.pid;
+  status = JSON.parse(await command("gateway", "restart", "--json"));
+  assert.notEqual(status.pid, beforeDurableRestart);
+  await fetch(`${providerUrl}/control/wait-replay-ready`, { signal: AbortSignal.timeout(20_000) });
+  await fetch(`${providerUrl}/control/release-replay`, { method: "POST" });
+  await waitIdle(session.id, "resumed Durable run");
+  assert.match(JSON.stringify((await api(`sessions/${session.id}/open`, {})).transcript), /replay suffix/u, "the resumed run finished");
 });

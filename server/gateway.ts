@@ -77,13 +77,15 @@ export async function runGateway(options: GatewayOptions): Promise<{ state: Gate
     if (auth.length !== expected.length || !timingSafeEqual(auth, expected)) { response.writeHead(403).end(); return; }
     response.setHeader("Content-Type", "application/json");
     if (request.method === "GET" && request.url === "/status") {
-      response.end(JSON.stringify({ instance, pid: process.pid, version, activeSessions: liveSessions.activeWorkCount, activeTerminals: terminals.activeCount, url: state.url }));
+      response.end(JSON.stringify({ instance, pid: process.pid, version, activeSessions: liveSessions.activeWorkCount, resumableSessions: liveSessions.resumableWorkCount, activeTerminals: terminals.activeCount, url: state.url }));
     } else if (request.method === "POST" && ["/stop", "/stop?force=1"].includes(request.url ?? "")) {
       if (closing) { response.writeHead(409).end(JSON.stringify({ error: "Gateway is already stopping." })); return; }
       closing = true;
-      if (request.url !== "/stop?force=1" && (liveSessions.activeWorkCount > 0 || terminals.activeCount > 0 || inFlightMutations > 0)) {
+      // Sessions whose runtime resumes its own runs (Pi Durable) continue after
+      // the restart, so only work this process alone holds refuses a stop.
+      if (request.url !== "/stop?force=1" && (liveSessions.blockingWorkCount > 0 || terminals.activeCount > 0 || inFlightMutations > 0)) {
         closing = false;
-        response.writeHead(409).end(JSON.stringify({ error: "The gateway has active sessions, terminals or mutations. Wait, or use --force to interrupt them explicitly." }));
+        response.writeHead(409).end(JSON.stringify({ error: "The gateway has active sessions, terminals or mutations a restart would interrupt. Wait, or use --force to interrupt them explicitly." }));
         return;
       }
       response.once("finish", () => { void stop(); });
