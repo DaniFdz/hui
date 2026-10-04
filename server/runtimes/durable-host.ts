@@ -132,10 +132,11 @@ export type DurableHostOptions = {
 };
 
 /** Registry fallback: the HUI session whose resume reference names this conversation. */
-async function registryCaller(conversationId: ConversationId): Promise<string | undefined> {
+export async function registryCaller(conversationId: ConversationId): Promise<string | undefined> {
   const { readRegistry } = await import("../sessions.ts");
   const reference = `durable:${conversationId}`;
-  return (await readRegistry()).find((record) => record.piSessionFile === reference)?.id;
+  // A worker's `durable:N` names a conversation in that worker's own store.
+  return (await readRegistry()).find((record) => record.piSessionFile === reference && !record.worker)?.id;
 }
 
 export class DurableHost {

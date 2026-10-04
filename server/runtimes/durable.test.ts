@@ -16,7 +16,7 @@ import type { RuntimeEvent, TranscriptEntry } from "./types.ts";
 const configDir = await mkdtemp(join(tmpdir(), "hui-durable-config-"));
 process.env["XDG_CONFIG_HOME"] = configDir;
 after(() => rm(configDir, { recursive: true, force: true }));
-const { DurableHost, durableContext } = await import("./durable-host.ts");
+const { DurableHost, durableContext, registryCaller } = await import("./durable-host.ts");
 // The estimate Durable's compaction thresholds use; the package root does not export it.
 const { estimateContext } = await import(new URL("./harness/compaction.js", import.meta.resolve("@earendil-works/pi-durable")).href) as {
   estimateContext(view: unknown, extra: readonly unknown[]): number;
@@ -644,4 +644,16 @@ test("Durable requests give each HUI session its own PI_CLIENT_SESSION_ID for pr
   process.env["PI_CLIENT_SESSION_ID"] = "operator-id";
   await turns(second, ["IDENTITY_OPERATOR two"]);
   assert.deepEqual([...await identities("IDENTITY_OPERATOR")], ["operator-id"], "an explicit gateway value is kept, as for PI workers");
+});
+
+test("a worker row with the same durable:N never becomes the caller of a gateway conversation", async () => {
+  const { updateRegistry } = await import("../sessions.ts");
+  const base = { cwd: configDir, tool: "durable", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+  await updateRegistry(() => [
+    { ...base, id: "remote-row", piSessionFile: "durable:7", worker: "w1" },
+    { ...base, id: "local-row", piSessionFile: "durable:7" },
+  ] as never);
+  assert.equal(await registryCaller(7 as never), "local-row");
+  await updateRegistry(() => [{ ...base, id: "remote-row", piSessionFile: "durable:7", worker: "w1" }] as never);
+  assert.equal(await registryCaller(7 as never), undefined);
 });

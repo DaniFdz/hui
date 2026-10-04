@@ -295,3 +295,36 @@ test("a bot runs on its host, also while no gateway is connected", async () => {
     await rm(join(remoteHome, ".pi"), { recursive: true, force: true });
   }
 });
+
+test("a Durable session runs on the worker, keeps going without the gateway and catches up on reattach", async () => {
+  const durable = remoteRuntime("durable");
+  const first = await durable.start({ cwd: project, worker: workerId, huiSessionId: "remote-durable-runtime" });
+  assert.equal(first.resumesInterruptedRuns, true);
+  assert.equal(first.processId, undefined);
+  assert.match(first.sessionFile ?? "", /^durable:\d+$/u);
+  const done = settled(first);
+  await first.prompt("hello durable worker");
+  await done;
+  assert.deepEqual(first.transcript().filter((entry) => entry.kind === "message").map((entry) => entry.kind === "message" && entry.text), ["hello durable worker", "Fixture response."]);
+  // The conversation lives in the worker's store, not the gateway's.
+  assert.ok(existsSync(join(remoteHome, ".local", "share", "hui-worker", "state", "durable", "harness.sqlite")));
+  assert.ok(!existsSync(join(root, "gateway", "config", "hui", "durable")));
+
+  await first.prompt("E2E_REPLAY please");
+  await fetch(`${baseUrl.replace(/\/v1$/u, "")}/control/wait-replay-ready`);
+  workers.disconnectAll();
+  await fetch(`${baseUrl.replace(/\/v1$/u, "")}/control/release-replay`, { method: "POST" });
+  first.dispose();
+  const second = await durable.start({ cwd: project, worker: workerId, huiSessionId: "remote-durable-runtime", sessionFile: first.sessionFile! });
+  try {
+    assert.equal(second.sessionFile, first.sessionFile);
+    const answer = await waitFor(async () => {
+      if (second.isStreaming) return undefined;
+      const last = second.transcript().filter((entry) => entry.kind === "message").at(-1);
+      return last?.kind === "message" && last.role === "assistant" && last.text.includes("replay suffix") ? last.text : undefined;
+    }, "the run finished on the worker");
+    assert.equal(answer, "Replay prefix — replay suffix");
+  } finally {
+    second.dispose();
+  }
+});
