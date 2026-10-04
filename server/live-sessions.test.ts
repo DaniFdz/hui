@@ -518,6 +518,42 @@ test("a runtime that resumes its own runs is never replayed after a restart", as
   assert.equal(record?.runRecoveryAttempts, undefined);
 });
 
+test("only work a restart would lose blocks an ordinary gateway stop", async () => {
+  const counts = (manager: InstanceType<typeof LiveSessions>) =>
+    [manager.activeWorkCount, manager.resumableWorkCount, manager.blockingWorkCount];
+  const resuming: FakeSession[] = [];
+  const durable = new LiveSessions({
+    id: "durable",
+    start: async () => {
+      const session = Object.assign(new FakeSession(), { resumesInterruptedRuns: true });
+      resuming.push(session);
+      return session;
+    },
+  });
+  durable.ensure({ ...recordFor("resumable-run"), tool: "durable" });
+  assert.deepEqual(counts(durable), [1, 0, 1], "a booting runtime holds nothing it could resume yet");
+  await waitForBoot(durable, "resumable-run");
+  assert.deepEqual(counts(durable), [0, 0, 0]);
+  const submitted = durable.prompt("resumable-run", "long task");
+  assert.deepEqual(counts(durable), [1, 0, 1], "a prompt the runtime has not accepted yet exists only here");
+  await submitted;
+  resuming[0]?.emit({ type: "turn_start" });
+  assert.equal(durable.status("resumable-run"), "running");
+  assert.deepEqual(counts(durable), [1, 1, 0], "the runtime continues this run after a restart");
+  await durable.followUp("resumable-run", "then summarize");
+  assert.deepEqual(counts(durable), [1, 0, 1], "a follow-up held only in this process blocks");
+  durable.disposeAll();
+
+  const started: FakeSession[] = [];
+  const pi = new LiveSessions(factory(started));
+  pi.ensure(recordFor("interruptible-run"));
+  await waitForBoot(pi, "interruptible-run");
+  await pi.prompt("interruptible-run", "long task");
+  started[0]?.emit({ type: "turn_start" });
+  assert.deepEqual(counts(pi), [1, 0, 1], "a runtime that cannot resume its run blocks");
+  pi.disposeAll();
+});
+
 test("manual continuation remains available after automatic recovery is exhausted", async () => {
   const started: FakeSession[] = [];
   const manager = new LiveSessions(factory(started));
