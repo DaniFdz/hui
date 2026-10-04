@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { test } from "node:test";
+import { mock, test } from "node:test";
 
 import type {
   AgentRuntime,
@@ -29,6 +29,7 @@ const { LiveSessions, SessionBusyError } = await import("./live-sessions.ts");
 const { deleteSession } = await import("./hui.ts");
 const { readRegistry, SessionRegistryError } = await import("./sessions.ts");
 const { readObservability } = await import("./observability.ts");
+const { workers } = await import("./workers.ts");
 type SessionRecord = import("./sessions.ts").SessionRecord;
 type SessionStreamMessage = import("./live-sessions.ts").SessionStreamMessage;
 type SessionSnapshot = import("./live-sessions.ts").SessionSnapshot;
@@ -1887,6 +1888,43 @@ test("HUI-owned follow-ups can be edited, reordered, removed and steered before 
   });
   assert.deepEqual(started[0]?.prompts, ["active turn", "second edited"]);
   assert.equal(manager.snapshot("editable-queue").queue.items, undefined);
+});
+
+test("a worker session hands follow-ups to its runtime only while a run streams", async (t) => {
+  const calls: string[] = [];
+  let releasePrompt!: () => void;
+  const prompting = new Promise<void>((resolve) => { releasePrompt = resolve; });
+  let streaming = false;
+  const state = () => ({ sessionId: "remote", isStreaming: streaming, resumesInterruptedRuns: true, methods: ["followUp"] });
+  t.mock.method(workers, "startSession", async () => ({
+    started: { state: state(), seq: 1, transcript: [] },
+    call: async (method: string) => {
+      calls.push(method);
+      if (method === "prompt") {
+        await prompting;
+        streaming = true;
+      }
+      return { state: state(), seq: calls.length + 1 };
+    },
+    transcript: async () => ({ transcript: [], seq: 1 }),
+    dispose: () => undefined,
+  }));
+  const manager = new LiveSessions(factory([]));
+  manager.ensure({ ...recordFor("remote-follow-up"), worker: "w" });
+  await waitForBoot(manager, "remote-follow-up");
+
+  const prompted = manager.prompt("remote-follow-up", "active turn");
+  // The prompt is still on its way: HUI keeps the follow-up, editable, behind it.
+  await manager.followUp("remote-follow-up", "while sending");
+  assert.deepEqual(manager.snapshot("remote-follow-up").queue.items?.map((item) => item.text), ["while sending"]);
+  releasePrompt();
+  await prompted;
+  assert.deepEqual(calls, ["prompt"]);
+  // Running on the worker, it queues there and runs even if the gateway leaves.
+  await manager.followUp("remote-follow-up", "while running");
+  assert.deepEqual(calls, ["prompt", "followUp"]);
+  manager.disposeAll();
+  mock.restoreAll();
 });
 
 test("a consumed queued instruction becomes a visible user turn before settlement", async () => {

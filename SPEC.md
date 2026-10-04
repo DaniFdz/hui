@@ -980,7 +980,9 @@ leaves worker records unchanged.
   reaches it through the command's stdio and drives each session through the
   same runtime contract as a local one. Losing the connection (laptop asleep,
   gateway restart, network drop) leaves remote sessions running: runs finish,
-  queued follow-ups run, and a Durable run interrupted by a host restart
+  follow-ups sent while a run streams there run (they queue on the worker and
+  are shown read-only, like steering; earlier ones stay in HUI's editable
+  queue), and a Durable run interrupted by a host restart
   resumes when the host starts again. HUI notices a silent connection within
   45 s, reconnects by itself and reopens the sessions the loss interrupted;
   reopening reattaches to the live session, replays its pending questions and

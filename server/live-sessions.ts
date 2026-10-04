@@ -824,8 +824,12 @@ export class LiveSessions {
   async followUp(id: string, text: string, attachments?: readonly PromptAttachment[]): Promise<void> {
     const live = this.#ready(id);
     // HUI's queue drains only while this gateway runs; a worker keeps going
-    // without it, so a busy remote session queues in its runtime instead.
-    if (live.record.worker && live.runtime?.followUp && this.#reported(live) !== "idle") {
+    // without it, so a follow-up to a run streaming there queues in its
+    // runtime and runs even if the gateway leaves. Like steering, it is then
+    // shown but no longer editable. Before the run streams (the prompt is
+    // still on its way, a compaction holds the session) it stays in HUI's
+    // editable queue, behind that prompt.
+    if (live.record.worker && live.runtime?.followUp && live.runtime.isStreaming) {
       await live.runtime.followUp(text, attachments);
       live.queue = live.runtime.pendingQueue?.() ?? live.queue;
       this.#broadcastQueue(live);
