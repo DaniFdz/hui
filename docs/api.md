@@ -72,9 +72,10 @@ routes expose `UpdateSnapshot` from `src/lib/update-types.ts`:
 | `POST /__hui/update/check` | Check latest stable GitHub release; never install or restart |
 | `POST /__hui/update` | Accept only `{ version: "x.y.z" }` matching an installable check; return 202 after detached updater starts |
 
-Malformed input returns 400; absent/stale checks, active sessions, or concurrent
-operations return 409. The browser cannot supply a URL, file path, force flag,
-CLI command or credentials. Development mode and externally managed installs
+Malformed input returns 400; absent/stale checks, active sessions a restart
+would interrupt, or concurrent operations return 409. Pi Durable runs do not
+block an update; they resume on the new gateway. The browser cannot supply a
+URL, file path, force flag, CLI command or credentials. Development mode and externally managed installs
 remain read-only. Missing/inaccessible releases are not reported as current.
 The background route caches both successful and unavailable check results for
 one hour; it skips remote discovery while an updater is starting or running.
@@ -446,6 +447,9 @@ All HUI-launched PI processes, including extension-free utility and installer
 workers, receive `PI_CLIENT_SESSION_ID` for provider header interpolation. An
 explicit nonblank environment value is preserved; otherwise each process gets
 a fresh UUID without changing the gateway environment or creating a transcript.
+Durable sessions run inside the gateway, so each of their model requests gets it
+from the request instead: the gateway's explicit value, otherwise a fresh UUID
+per HUI session for each gateway run.
 
 Resource enablement is HUI-owned rather than a PI mutation. `GET /__hui/settings`
 and `PUT /__hui/settings` include `disabledSkills`, a normalized array of
@@ -1722,7 +1726,9 @@ raw replay is not a durable log or a resize-history-perfect screen snapshot.
 Natural shell exit preserves final output until **End terminal**. Explicit end,
 conversation removal and gateway shutdown release processes and buffers.
 Gateway control/CLI status reports `activeTerminals` separately from
-`activeSessions`; either blocks an ordinary update or stop/restart.
+`activeSessions`, and `resumableSessions`, the active sessions a restart does
+not interrupt (Pi Durable runs). Terminals and the remaining active sessions
+block an ordinary update or stop/restart.
 
 PI's bundled `terminal` tool uses the existing authenticated loopback bridge in
 both SDK and CLI backends. It accepts `action: list|read|input|resize|close`, an

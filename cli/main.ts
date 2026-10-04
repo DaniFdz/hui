@@ -31,7 +31,8 @@ A reverse proxy needs its Host name allowed: --allow-host <name>, repeatable,
 which is remembered with the binding. HUI_GATEWAY_ALLOWED_HOSTS takes a
 comma-separated list instead, for a gateway started by something you do not edit.
 The gateway binds 127.0.0.1:4173 by default. No login is provided; prefer Tailscale.
-Stop/restart refuse active work unless --force explicitly interrupts it.
+Stop/restart refuse work a restart would interrupt unless --force explicitly does so;
+Pi Durable sessions keep running and resume when the gateway is back.
 Updates use GitHub Releases via gh authentication, and never edit a source checkout or PI data.
 Doctor reports state an upgraded HUI needs changed, such as sessions still on PI;
 --fix changes it while the gateway is stopped. It exits 1 while anything remains.

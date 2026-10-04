@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, readFile, realpath, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { promisify } from "node:util";
-import { gatewayStatus, startGateway, stopGateway } from "./gateway.ts";
+import { blockingSessions, gatewayStatus, startGateway, stopGateway } from "./gateway.ts";
 import { atomicJson } from "./state.ts";
 import { assertUpdatable, packageVersion, readPointer, releaseRoot, updateDirectory, type Installation, type ReleasePointer } from "./installation.ts";
 import { downloadRelease, latestRelease, newerVersion } from "./releases.ts";
@@ -35,7 +35,7 @@ export async function probeRelease(candidate: string, fallback: string): Promise
 export async function updateRelease(installation: Installation, options: { from?: string; sha256?: string; rollback?: boolean; expectedVersion?: string }): Promise<{ version: string; sha256?: string; restarted: boolean }> {
   await assertUpdatable(installation.installationRoot);
   const status = await gatewayStatus();
-  if (status.status === "unresponsive" || status.activeSessions || status.activeTerminals) throw new Error("Update requires a stopped or healthy idle gateway. Finish active sessions and terminals first.");
+  if (status.status === "unresponsive" || blockingSessions(status) || status.activeTerminals) throw new Error("Update requires a stopped or healthy idle gateway. Finish active sessions and terminals first.");
   if (!options.from && !options.rollback) {
     const release = await latestRelease();
     if (options.expectedVersion && release.version !== options.expectedVersion) throw new Error("Release changed since checking. Check for updates again before installing.");

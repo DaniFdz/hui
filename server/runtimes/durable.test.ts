@@ -52,7 +52,8 @@ async function fixture(t: TestContext, options: { contextWindow?: number; settin
   const baseUrl = String(ready).match(/http:\/\/127\.0\.0\.1:\d+/u)?.[0];
   assert(baseUrl, String(ready));
   await writeFile(join(agentDir, "models.json"), JSON.stringify({ providers: { "hui-e2e": {
-    baseUrl, api: "anthropic-messages", apiKey: "fixture-key", models: ["fixture", "group/second"].map((id) => ({
+    // Requires the provider identity HUI gives every PI request (docs/api.md).
+    baseUrl, api: "anthropic-messages", headers: { "x-client-session-id": "${PI_CLIENT_SESSION_ID}" }, apiKey: "fixture-key", models: ["fixture", "group/second"].map((id) => ({
       id, name: id, reasoning: true, input: ["text", "image"], contextWindow: options.contextWindow ?? 32000, maxTokens: 4096,
       cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     })),
@@ -610,4 +611,37 @@ test("one store has one owner", { timeout: 30_000 }, async (t) => {
   const f = await fixture(t);
   await f.host().open();
   await assert.rejects(() => f.host().open(), /already open in this process/u);
+});
+
+test("Durable requests give each HUI session its own PI_CLIENT_SESSION_ID for provider headers", async (t) => {
+  const inherited = process.env["PI_CLIENT_SESSION_ID"];
+  delete process.env["PI_CLIENT_SESSION_ID"];
+  t.after(() => {
+    if (inherited === undefined) delete process.env["PI_CLIENT_SESSION_ID"];
+    else process.env["PI_CLIENT_SESSION_ID"] = inherited;
+  });
+  const f = await fixture(t, KEPT_WINDOW);
+  const host = f.host();
+  const first = await startDurable({ cwd: f.cwd, huiSessionId: "identity-first" }, host);
+  const second = await startDurable({ cwd: f.cwd, huiSessionId: "identity-second" }, host);
+  await turns(first, ["IDENTITY_FIRST one", "IDENTITY_FIRST " + "kept ".repeat(400)]);
+  await turns(second, ["IDENTITY_SECOND one"]);
+  const compacted = nextEvent(first, (event) => event.type === "compaction_end");
+  await first.compact();
+  await compacted;
+  // The fixture logs the x-client-session-id header each request resolved.
+  const identities = async (marker: string, summary = false) => new Set((await providerRequests(f.log))
+    .filter((request) => summarizing(request) === summary && JSON.stringify(request.messages).includes(marker))
+    .map((request) => (request as ProviderRequest & { clientSessionId?: string }).clientSessionId));
+  const [firstId, ...otherFirst] = await identities("IDENTITY_FIRST");
+  const [secondId, ...otherSecond] = await identities("IDENTITY_SECOND");
+  assert.deepEqual([otherFirst, otherSecond], [[], []], "one identity per HUI session");
+  assert.match(String(firstId), /^[0-9a-f-]{36}$/u);
+  assert.match(String(secondId), /^[0-9a-f-]{36}$/u);
+  assert.notEqual(firstId, secondId, "independent sessions need independent identities");
+  assert.deepEqual([...await identities("IDENTITY_FIRST", true)], [firstId], "a summary is requested as its session");
+  assert.equal(process.env["PI_CLIENT_SESSION_ID"], undefined, "the gateway environment is unchanged");
+  process.env["PI_CLIENT_SESSION_ID"] = "operator-id";
+  await turns(second, ["IDENTITY_OPERATOR two"]);
+  assert.deepEqual([...await identities("IDENTITY_OPERATOR")], ["operator-id"], "an explicit gateway value is kept, as for PI workers");
 });
