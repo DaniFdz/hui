@@ -34,8 +34,8 @@ const REFERENCE_PREFIX = "durable:";
 /** Entries per store read; a read yields to the event loop between pages. */
 const HISTORY_PAGE = 200;
 /** How Durable wraps a summary for the model (`harness/compaction.js`). */
-const SUMMARY_PREFIX = "The conversation history before this point was compacted into the following summary:\n\n<summary>\n";
-const SUMMARY_SUFFIX = "\n</summary>";
+export const SUMMARY_PREFIX = "The conversation history before this point was compacted into the following summary:\n\n<summary>\n";
+export const SUMMARY_SUFFIX = "\n</summary>";
 /** The kind of Durable's compaction task, as `task_failed` reports it. */
 const COMPACTION_TASK = "pi.compaction";
 /** Longest a Stop waits for Durable to report that its run and compactions ended. */
@@ -97,7 +97,7 @@ function expandSkill(text: string, skills: readonly { name: string; filePath: st
   return args ? `${block}\n\n${args}` : block;
 }
 
-function modelRef(value: string | undefined): { provider: string; modelId: string } | undefined {
+export function modelRef(value: string | undefined): { provider: string; modelId: string } | undefined {
   const separator = value?.indexOf("/") ?? -1;
   return value && separator > 0 ? { provider: value.slice(0, separator), modelId: value.slice(separator + 1) } : undefined;
 }
@@ -128,12 +128,12 @@ function inContext(message: Message): boolean {
 const role = (message: unknown): unknown => (message as { role?: unknown } | null)?.role;
 
 /** PI's default thinking level for a new conversation without an explicit one. */
-function defaultThinking(host: DurableHost, cwd: string): string | undefined {
+export function defaultThinking(host: DurableHost, cwd: string): string | undefined {
   return SettingsManager.create(cwd, host.agentDir).getDefaultThinkingLevel();
 }
 
 /** The model a new conversation starts on: the requested one, PI's default, or the first available. */
-async function initialModel(host: DurableHost, cwd: string, requested: string | undefined) {
+export async function initialModel(host: DurableHost, cwd: string, requested: string | undefined) {
   const explicit = modelRef(requested);
   if (explicit) {
     if (!host.models.getModel(explicit.provider, explicit.modelId)) throw new Error(`Unknown model: ${requested}`);

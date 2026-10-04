@@ -978,13 +978,39 @@ the history as it was, without a summary placed later. The transcript keeps the
 whole history with each summary in place.
 
 `HUI_SESSION_RUNTIME=pi` starts new sessions on the PI SDK worker instead.
-Existing sessions keep the runtime they were created with; HUI never migrates,
-copies or deletes PI transcripts.
+Existing sessions keep the runtime they were created with until
+`hui doctor --fix` moves them (below). HUI never edits or deletes PI
+transcripts.
+
+### `hui doctor` migrates state an upgrade leaves behind
+
+`hui doctor` runs checks that only read and report what an upgraded HUI needs
+changed; `hui doctor --fix` applies their fixes. Fixes run only with the gateway
+stopped, confirmed under the lifecycle lock so none starts meanwhile, and a
+Durable store held by any gateway refuses them. A change that leaves persisted
+state behind ships with a check, so upgrades stay explicit, reviewable and
+repeatable rather than happening silently at gateway start.
+
+The first check moves PI sessions to Pi Durable. The PI file is read as text,
+never through PI's `SessionManager`, which may rewrite it; PI's pure helpers
+upgrade older formats in memory and project each entry as PI sends it. The
+active branch becomes the conversation's history in order: pi-ai messages as
+Durable user, assistant and tool-result entries, PI's own message kinds as the
+user messages PI sends, each compaction as Durable's summary entry headed at
+PI's first kept entry, and each context edit as a Durable edit. The next
+request therefore carries what PI would have sent, under Durable's system
+prompt. The spend HUI totalled for the PI file is written to `pi.usage`. The
+conversation, its spend and a `hui.pi-import` index document are written in one
+commit, then the registry record switches to `durable:<id>`; a rerun reuses the
+copy of an unchanged file. The registry is backed up before its first change.
+Sessions with an interrupted run stay on PI so the gateway can recover them,
+and entries on abandoned branches stay only in the PI file.
 
 ### HUI owns an isolated PI SDK backend, not a PI fork
 
-Sessions on the `pi` runtime (all sessions created before Durable, and new
-ones under `HUI_SESSION_RUNTIME=pi`) keep this design. Each active one runs a
+Sessions on the `pi` runtime (sessions created before Durable that
+`hui doctor --fix` has not moved, and new ones under `HUI_SESSION_RUNTIME=pi`)
+keep this design. Each active one runs a
 Node child with the pinned
 `@earendil-works/pi-coding-agent` SDK (1.0.1). HUI owns the versioned default
 prompt, HUI tool definitions and runtime inspection; PI still owns its agent

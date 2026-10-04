@@ -22,6 +22,8 @@ const { estimateContext } = await import(new URL("./harness/compaction.js", impo
   estimateContext(view: unknown, extra: readonly unknown[]): number;
 };
 const { durableConversationId, durableReference, startDurable } = await import("./durable.ts");
+const { importPiSession } = await import("./pi-import.ts");
+const { aggregateUsage } = await import("../observability.ts");
 type DurableHost = import("./durable-host.ts").DurableHost;
 
 const settings = normalizeSettings(undefined);
@@ -512,6 +514,71 @@ test("Durable compacts by itself ahead of the threshold, in the background", { t
   const entries = await transcriptWhere(session, (items) => items.some((entry) => entry.kind === "compaction") && !session.isStreaming);
   assert.deepEqual([...new Set(starts)], ["threshold:background"]);
   assert.deepEqual(outline(entries).filter((item) => item.startsWith("user:")), ["user:AUTO_ONE", "user:AUTO_TWO"], "history stays whole");
+});
+
+test("a PI session moved to Durable keeps its history and spend, and the model resumes from PI's context", { timeout: 60_000 }, async (t) => {
+  const f = await fixture(t, KEPT_WINDOW);
+  const time = "2026-10-01T10:00:00.000Z";
+  const spent = (input: number) => ({ input, output: 2, cacheRead: 1, cacheWrite: 3, totalTokens: input + 6, cost: { input: 0.2, output: 0.1, cacheRead: 0.05, cacheWrite: 0.05, total: 0.4 } });
+  const text = (value: string) => [{ type: "text", text: value }];
+  const user = (id: string, parentId: string | null, value: string) => ({ type: "message", id, parentId, timestamp: time, message: { role: "user", content: text(value), timestamp: 1 } });
+  const answer = (id: string, parentId: string, content: unknown[], stopReason = "stop") => ({ type: "message", id, parentId, timestamp: time,
+    message: { role: "assistant", content, api: "anthropic-messages", provider: "hui-e2e", model: "fixture", usage: spent(10), stopReason, timestamp: 2 } });
+  // As PI writes a session: a rewind left an abandoned branch, and a summary keeps the long turn verbatim.
+  const content = [
+    { type: "session", version: 3, id: "pi-1", timestamp: time, cwd: f.cwd },
+    user("u1", null, "PI_ONE first turn"), answer("a1", "u1", text("PI answer one")),
+    user("x1", "a1", "PI_ABANDONED branch"), answer("x2", "x1", text("abandoned answer")),
+    user("u2", "a1", "PI_TWO second turn"), answer("a2", "u2", text("PI answer two")),
+    user("u3", "a2", LONG_TURN.replace("COMPACT_THREE", "PI_THREE")), answer("a3", "u3", text("PI answer three")),
+    { type: "compaction", id: "c1", parentId: "a3", timestamp: time, summary: "PI_SUMMARY", firstKeptEntryId: "u3", tokensBefore: 4321, usage: spent(20) },
+    user("u4", "c1", "PI_FOUR after the summary"),
+    answer("a4", "u4", [{ type: "toolCall", id: "call-1", name: "read", arguments: { path: "fixture.txt" } }], "toolUse"),
+    { type: "message", id: "r4", parentId: "a4", timestamp: time, message: { role: "toolResult", toolCallId: "call-1", toolName: "read", content: text("Durable fixture content"), isError: false, timestamp: 3 } },
+    answer("a5", "r4", text("PI answer four")),
+  ].map((line) => JSON.stringify(line)).join("\n") + "\n";
+  const source = join(f.dir, "pi-session.jsonl");
+  await writeFile(source, content);
+  const host = f.host();
+  const session = { id: "moved-session", cwd: f.cwd, source, model: "hui-e2e/fixture", thinking: "high" };
+  const imported = await importPiSession(host, session, content);
+  assert.deepEqual(
+    { reused: imported.reused, messages: imported.messages, summaries: imported.summaries, abandoned: imported.abandoned, model: imported.model },
+    { reused: false, messages: 10, summaries: 1, abandoned: 2, model: "hui-e2e/fixture" },
+  );
+
+  // HUI reports the same spend for the conversation as it did for the PI file.
+  const record = (piSessionFile: string) => ({ id: session.id, title: "Moved", group: "", cwd: f.cwd, tool: "pi", piSessionFile, createdAt: time, updatedAt: time });
+  const before = await aggregateUsage([record(source)]);
+  const after = await aggregateUsage([record(durableReference(imported.conversationId))], (id) => host.conversationUsage(id as never));
+  for (const key of ["inputTokens", "outputTokens", "cacheReadTokens", "cacheWriteTokens", "totalTokens"] as const) assert.equal(after[key], before[key], key);
+  assert(Math.abs((after.costUsd ?? 0) - (before.costUsd ?? 0)) < 1e-9, `cost ${after.costUsd} vs ${before.costUsd}`);
+  const again = await importPiSession(host, session, content);
+  assert.deepEqual([again.reused, again.conversationId], [true, imported.conversationId], "an unchanged file is not copied twice");
+
+  const moved = await startDurable({ cwd: f.cwd, sessionFile: durableReference(imported.conversationId) }, host);
+  assert.deepEqual(outline(moved.transcript()), [
+    "user:PI_ONE", "assistant", "user:PI_TWO", "assistant", "user:PI_THREE", "assistant", "compaction", "user:PI_FOUR", "assistant",
+  ]);
+  assert(moved.transcript().some((entry) => entry.kind === "tool" && entry.name === "read"), "the tool call after the summary");
+  const divider = moved.transcript().find((entry) => entry.kind === "compaction");
+  assert(divider?.kind === "compaction" && divider.summary === "PI_SUMMARY", JSON.stringify(divider));
+  assert.deepEqual([moved.currentModel()?.id, moved.currentThinking()], ["fixture", "high"]);
+
+  await turns(moved, ["AFTER_MOVE next turn"]);
+  const request = await lastTurnRequest(f.log);
+  // Every message PI itself would send next, apart from its summary wrapper, and nothing it summarized or abandoned.
+  const { buildSessionContext, convertToLlm, parseSessionEntries } = await import("@earendil-works/pi-coding-agent");
+  const piContext = buildSessionContext(parseSessionEntries(content).slice(1) as never).messages.filter((message) => message.role !== "compactionSummary");
+  for (const message of convertToLlm(piContext)) {
+    for (const block of Array.isArray(message.content) ? message.content : []) {
+      if (block.type === "text") assert(request.includes(JSON.stringify(block.text).slice(1, -1)), `missing from the request: ${block.text.slice(0, 40)}`);
+    }
+  }
+  assert.match(request, /PI_SUMMARY/u);
+  assert.match(request, /AFTER_MOVE/u);
+  assert.doesNotMatch(request, /PI_ONE|PI_TWO|PI_ABANDONED/u);
+  assert.equal(await readFile(source, "utf8"), content, "the PI file is unchanged");
 });
 
 test("model and thinking changes persist on the conversation", { timeout: 30_000 }, async (t) => {

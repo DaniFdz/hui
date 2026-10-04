@@ -136,6 +136,15 @@ falling back to the registry after a restart. Usage totals read Durable's
 per-conversation spend. `HUI_SESSION_RUNTIME=pi` creates new sessions on the
 PI worker described below.
 
+`hui doctor --fix` moves a PI session into a new conversation
+(`server/runtimes/pi-import.ts`) with the gateway stopped. One commit writes the
+active branch's entries, the spend HUI totalled for the PI file into
+`pi.usage`, and a store-wide `hui.pi-import` document keyed by the HUI session
+with the conversation, source path and file digest, so a rerun reuses the copy.
+PI's `context_edit` entries become `hui.context-edit` entries that carry only
+Durable edits. The registry record then switches to `durable:<conversationId>`;
+the PI file is never changed.
+
 The transcript is the conversation's whole fork-aware history since its latest
 reset (`/clear`), so compaction never hides a message. It is read from the
 store in pages that yield to the event loop: all of it when the session opens,
