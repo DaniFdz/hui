@@ -84,6 +84,7 @@ import {
 import {
   deleteComposerDraft,
   listComposerDraftSessionIds,
+  mayUseComposerDraftKey,
   mergeComposerDraft,
   NEW_SESSION_DRAFT_KEY,
   readComposerDraft,
@@ -307,7 +308,13 @@ export class HuiApp extends HuiElement {
   @state() private continuing = false;
   @state() private rewindPending = false;
   @state() private sideChat: HomeProps["sideChat"];
-  @state() private draft = "";
+  /** The composer's live text, deliberately not reactive: a keystroke only
+   * changes what its own textarea already shows, so typing must not re-render
+   * the transcript behind it. Code-owned changes go through `setDraft`. */
+  private draft = "";
+  /** Bumped by `setDraft` so `updated()` measures a textarea whose value code
+   * replaced, never one the operator is typing into. */
+  @state() private draftRevision = 0;
   @state() private queue: QueueSnapshot = EMPTY_QUEUE;
   @state() private queueEditingId = "";
   @state() private queueEditingText = "";
@@ -830,7 +837,9 @@ export class HuiApp extends HuiElement {
         observeTextareaOverflow(textarea);
         scheduleTextareaHeightAdjustment(textarea);
       }
-    } else if (textarea && changed.has("draft")) {
+    } else if (textarea && changed.has("draftRevision")) {
+      // Typing measures its own textarea in the input handler; only a draft that
+      // code replaced under it needs a measuring pass after the render.
       scheduleTextareaHeightAdjustment(textarea);
     }
     if (this.pendingCommandBrowse && this.selected?.status === "idle" && !this.opening && textarea) {
@@ -1988,7 +1997,7 @@ export class HuiApp extends HuiElement {
       this.flushPendingLaunchPrompt();
     } else if (status === "error" && this.pendingLaunchPrompt) {
       this.composerDraftEdit += 1;
-      this.draft = this.pendingLaunchPrompt;
+      this.setDraft(this.pendingLaunchPrompt);
       this.attachments = this.pendingLaunchAttachments;
       this.pendingLaunchPrompt = "";
       this.pendingLaunchAttachments = [];
@@ -2008,6 +2017,7 @@ export class HuiApp extends HuiElement {
     text = this.draft,
     attachments: readonly Attachment[] = this.attachments,
   ) {
+    if (!mayUseComposerDraftKey(this.embeddedPane, key)) return;
     const sessionId = sessionIdFromDraftKey(key);
     if (sessionId) {
       const hasDraft = Boolean(text || attachments.length);
@@ -2033,24 +2043,43 @@ export class HuiApp extends HuiElement {
   }
 
   private switchComposerDraft(key: string) {
+    if (!mayUseComposerDraftKey(this.embeddedPane, key)) return;
     if (key === this.composerDraftKey && this.composerDraftHydrated) return;
     if (key !== this.composerDraftKey) void this.persistComposerDraft();
     this.composerDraftKey = key;
     this.composerDraftHydrated = true;
     const load = ++this.composerDraftLoad;
     const edit = ++this.composerDraftEdit;
-    this.draft = "";
+    this.setDraft("");
     this.attachments = [];
     void readComposerDraft(key).then((draft) => {
       if (load !== this.composerDraftLoad || edit !== this.composerDraftEdit || key !== this.composerDraftKey) return;
-      this.draft = draft.text;
+      this.setDraft(draft.text);
       this.attachments = draft.attachments;
     });
   }
 
-  private updateDraft = (draft: string) => {
+  /** A keystroke. The textarea already shows this text, so the value itself
+   * needs no update; only what the draft makes the composer show (Send/Stop
+   * instead of nothing to send) does, and that flips at most twice per message. */
+  private typeDraft = (draft: string) => {
+    const hadText = this.draft.trim() !== "";
     this.composerDraftEdit += 1;
     this.draft = draft;
+    if ((draft.trim() !== "") !== hadText) this.requestUpdate();
+    void this.persistComposerDraft();
+  };
+
+  /** A draft HUI set, not one typed into the textarea: it has to reach the
+   * value, the controls derived from it and the textarea's measured height. */
+  private setDraft(draft: string) {
+    this.draft = draft;
+    this.draftRevision += 1;
+  }
+
+  private updateDraft = (draft: string) => {
+    this.composerDraftEdit += 1;
+    this.setDraft(draft);
     void this.persistComposerDraft();
   };
 
@@ -2087,7 +2116,7 @@ export class HuiApp extends HuiElement {
       // must survive the session switch.
       if (sourceOwner.composerDraftKey === sourceDraftKey && sourceOwner.draft === sourceDraft && sourceDraft.trim() === draft) {
         sourceOwner.composerDraftEdit += 1;
-        sourceOwner.draft = "";
+        sourceOwner.setDraft("");
         void sourceOwner.persistComposerDraft(sourceDraftKey, "", []);
       }
       this.resetSessionEphemeral();
@@ -2441,7 +2470,7 @@ export class HuiApp extends HuiElement {
       this.noteLevel = "info";
       this.sending = true;
       this.composerDraftEdit += 1;
-      this.draft = "";
+      this.setDraft("");
       this.attachments = [];
       void this.persistComposerDraft(sessionDraftKey(session.id), "", []);
       const run = command === "clear"
@@ -2490,7 +2519,7 @@ export class HuiApp extends HuiElement {
         return;
       }
       this.composerDraftEdit += 1;
-      this.draft = "";
+      this.setDraft("");
       void this.persistComposerDraft(sessionDraftKey(session.id), "", []);
       this.sideChat = { question: sideQuestion, answer: "", model: "", loading: true, error: "" };
       void askSideQuestion(session.id, sideQuestion).then((result) => {
@@ -2518,7 +2547,7 @@ export class HuiApp extends HuiElement {
     // for the short acknowledgement window, so a rejection can restore this
     // transaction without mixing it with a second draft.
     this.composerDraftEdit += 1;
-    this.draft = "";
+    this.setDraft("");
     this.attachments = [];
     void this.persistComposerDraft(sessionDraftKey(session.id), "", []);
     this.streaming = streamingAfterSubmission(
@@ -2552,7 +2581,7 @@ export class HuiApp extends HuiElement {
         await this.persistComposerDraft(sessionDraftKey(session.id), restored.text, restored.attachments);
         if (!stillSelected) return;
         this.composerDraftEdit += 1;
-        this.draft = restored.text;
+        this.setDraft(restored.text);
         this.attachments = restored.attachments;
         this.streaming = streamingAfterSubmission(
           this.streaming,
@@ -2687,7 +2716,7 @@ export class HuiApp extends HuiElement {
     this.sending = true;
     if (typed !== undefined) {
       this.composerDraftEdit += 1;
-      this.draft = "";
+      this.setDraft("");
       void this.persistComposerDraft(sessionDraftKey(session.id), "", []);
     }
     // Progress and the outcome arrive as compaction events.
@@ -2712,7 +2741,7 @@ export class HuiApp extends HuiElement {
     await this.persistComposerDraft(sessionDraftKey(sessionId), restored.text, restored.attachments);
     if (!stillSelected) return false;
     this.composerDraftEdit += 1;
-    this.draft = restored.text;
+    this.setDraft(restored.text);
     this.attachments = restored.attachments;
     return true;
   }
@@ -2727,7 +2756,7 @@ export class HuiApp extends HuiElement {
       .then(async () => {
         if (!isSelectedSession(session.id, this.selected?.id)) return;
         this.composerDraftEdit += 1;
-        this.draft = text;
+        this.setDraft(text);
         this.attachments = [];
         await this.persistComposerDraft();
         await this.updateComplete;
@@ -3144,7 +3173,7 @@ export class HuiApp extends HuiElement {
         this.composerDraftHydrated = true;
         this.composerDraftLoad += 1;
         this.composerDraftEdit += 1;
-        this.draft = commandDraft ?? "";
+        this.setDraft(commandDraft ?? "");
         this.pendingCommandBrowse = commandDraft !== undefined;
         this.attachments = [];
         if (commandDraft !== undefined) void this.persistComposerDraft();
@@ -3165,12 +3194,12 @@ export class HuiApp extends HuiElement {
           app.flushPendingLaunchPrompt();
         });
         this.composerDraftKey = NEW_SESSION_DRAFT_KEY;
-        this.draft = "";
+        this.setDraft("");
       })
       .catch((error: unknown) => {
         if (this.pendingLaunchPrompt) {
           this.composerDraftEdit += 1;
-          this.draft = this.pendingLaunchPrompt;
+          this.setDraft(this.pendingLaunchPrompt);
           this.pendingLaunchPrompt = "";
           void this.persistComposerDraft();
         }
@@ -4043,6 +4072,7 @@ export class HuiApp extends HuiElement {
         onDismiss: this.dismissWatcher,
       } : undefined,
       onDraftChange: this.updateDraft,
+      onDraftInput: this.typeDraft,
       commandMenu: {
         open: this.slashQuery !== null && !this.sending && !this.opening && !this.launching && (!this.selected || this.connection === "live"),
         commands: filterSlashCommands(this.slashQuery?.startsWith("$") ? this.commands : composerCommands(this.selected ? this.commands : [], !!this.selected), this.slashQuery ?? ""),
