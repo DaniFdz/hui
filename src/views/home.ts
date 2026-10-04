@@ -114,7 +114,7 @@ function hasCoarsePointer(): boolean {
 }
 
 function updateComposerDraft(props: HomeProps, textarea: HTMLTextAreaElement) {
-  props.onDraftChange(textarea.value);
+  props.onDraftInput(textarea.value);
   updateCompletionQueries(props, textarea);
   syncComposerTextarea(textarea);
 }
@@ -253,6 +253,7 @@ export type HomeProps = {
   /** HUI-run background watchers for the open session. */
   watchers?: WatcherActivityProps;
   onDraftChange: (draft: string) => void;
+  onDraftInput: (draft: string) => void;
   commandMenu: SlashMenuProps;
   onCommandQuery: (query: string | null) => void;
   onCommandKeydown: (event: KeyboardEvent) => void;
@@ -797,11 +798,13 @@ function renderMetrics(item: TranscriptItem) {
 }
 
 function replyToMessage(event: Event, props: HomeProps, text: string) {
-  props.onDraftChange(replyDraft(props.draft, text));
   const source = event.currentTarget as HTMLElement;
   const root = source.closest("hui-app") ?? source.getRootNode() as Document | ShadowRoot;
+  // Typing does not re-render, so props.draft can trail the textarea: quote onto
+  // the live value instead of the one this click handler closed over.
+  const editor = root.querySelector<HTMLTextAreaElement>(".agent-chat__input textarea");
+  props.onDraftChange(replyDraft(editor?.value ?? props.draft, text));
   requestAnimationFrame(() => {
-    const editor = root.querySelector<HTMLTextAreaElement>(".agent-chat__input textarea");
     editor?.focus();
     if (editor) editor.setSelectionRange(editor.value.length, editor.value.length);
   });
