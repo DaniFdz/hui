@@ -644,9 +644,9 @@ test("settled transcript restores image and file names without exposing transpor
     entryId: "e0",
     attachments: [{ name: "screen.png", kind: "image", mimeType: "image/png", source: { message: 0, image: 0 } }, { name: "report.txt", kind: "file" }],
   }]);
-  assert.deepEqual(session.attachmentImage(0, 0), { mimeType: "image/png", data: Buffer.from("AAAA", "base64") });
-  assert.equal(session.attachmentImage(0, 1), undefined);
-  assert.equal(session.attachmentImage(5, 0), undefined);
+  assert.deepEqual(await session.attachmentImage(0, 0), { mimeType: "image/png", data: Buffer.from("AAAA", "base64") });
+  assert.equal(await session.attachmentImage(0, 1), undefined);
+  assert.equal(await session.attachmentImage(5, 0), undefined);
   const restored = transcript[0];
   assert.doesNotMatch(restored?.kind === "message" ? restored.text : "", /hui-attachments|uuid-report/);
   session.dispose();
