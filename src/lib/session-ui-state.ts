@@ -24,13 +24,21 @@ export function mergeSessionStatuses(
   }));
 }
 
+/** Severity of the transient chat notification; it picks the toast's icon and live region. */
+export type NoteLevel = "info" | "warning" | "error";
+
+/** Only errors interrupt assistive technology; other notes are polite status. */
+export function noteAnnouncement(level: NoteLevel): "alert" | "status" {
+  return level === "error" ? "alert" : "status";
+}
+
 /** State that belongs to the session currently shown in Home. */
 export type SessionPresentationState = {
   transcript: readonly TranscriptItem[];
   opening: boolean;
   streaming: boolean;
   note: string;
-  noteFailed: boolean;
+  noteLevel: NoteLevel;
   connectionNote: string;
   models: readonly RuntimeModel[];
   currentModel: RuntimeModel | undefined;
@@ -49,7 +57,7 @@ export function emptySessionPresentation(): SessionPresentationState {
     opening: false,
     streaming: false,
     note: "",
-    noteFailed: false,
+    noteLevel: "info",
     connectionNote: "",
     models: [],
     currentModel: undefined,

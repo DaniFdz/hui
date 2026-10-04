@@ -618,6 +618,9 @@ hui-math.markdown-math--inline .markdown-rich-embed__error {
 .chat-operation-toast {
   top: var(--app-toast-shell-top, calc(64px + var(--safe-area-top)));
 }
+/* Upstream toasts tint their icon with --info; a chat note's icon carries its level. */
+.chat-operation-toast[data-level="warning"] .app-toast__icon { color: var(--warn); }
+.chat-operation-toast[data-level="error"] .app-toast__icon { color: var(--danger); }
 
 /* Suggested task card (OpenClaw task-suggestion port). HUI adds a secondary
    Jira action beside the primary start action instead of a split button.

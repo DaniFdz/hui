@@ -8,11 +8,18 @@ import {
   isCurrentSessionRequest,
   mergeSessionStatuses,
   modelRequestMarkerAfterFailure,
+  noteAnnouncement,
   shouldRequestModels,
   shouldFlushLaunchPrompt,
   streamingAfterEvent,
   streamingForStatus,
 } from "./session-ui-state.ts";
+
+test("only error notes are announced as alerts", () => {
+  assert.equal(noteAnnouncement("error"), "alert");
+  assert.equal(noteAnnouncement("warning"), "status");
+  assert.equal(noteAnnouncement("info"), "status");
+});
 
 test("a multiplex snapshot refreshes every session and resets cold rows to idle", () => {
   const groups = [{
@@ -98,7 +105,7 @@ test("clearing a session removes transcript, errors, models, and attachments", (
     opening: false,
     streaming: false,
     note: "",
-    noteFailed: false,
+    noteLevel: "info",
     connectionNote: "",
     models: [],
     currentModel: undefined,
