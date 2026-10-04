@@ -67,6 +67,21 @@ User-visible changes also need a real Browser-tool E2E check. Documentation-only
 changes need at least `git diff --check` and verification that commands and links
 still match the source.
 
+### Doctor checks for breaking changes
+
+`hui doctor` is how an upgrade changes state earlier versions left behind. A
+change that leaves persisted state behind (a format, a location, a runtime
+switch) adds a check in `cli/doctor-<name>.ts` and lists it in `DOCTOR_CHECKS`
+(`cli/doctor.ts`):
+
+- `inspect()` only reads. It reports each affected item as `issue`, which
+  `--fix` changes, or `blocked`, with what the operator must do first.
+- `fix()` changes the `issue` items. It runs only with the gateway stopped,
+  under the lifecycle lock. Keep it idempotent, back up what it rewrites, and
+  never delete user data.
+- Test both against isolated state (`cli/doctor.test.ts`), and extend
+  `e2e/package.test.ts` when the installed CLI should prove it.
+
 ## Visual verification and PR evidence
 
 Follow the repository-owned
@@ -237,6 +252,17 @@ failed workflow in Actions after fixing the cause.
 The manual `vX.Y.Z` tag trigger remains available for explicitly requested recovery
 releases. It requires the tag to match `package.json` and runs the same checks.
 No new token or PAT is needed: publication uses the workflow's `GITHUB_TOKEN`.
+
+### Nightly builds
+
+The Nightly workflow runs on every push to `main`. It runs typecheck, the full
+test suite and the installed-package proof, stamps the package with
+`scripts/nightly-version.mjs` (a prerelease of the next patch, such as
+`0.1.3-nightly.20261004131149.gb0f30d5`) and replaces the rolling `nightly`
+GitHub prerelease with that archive and its checksum. A newer push cancels an
+older run. GitHub never reports a prerelease as the latest release, so stable
+`hui update`, `/update` and the release changelog are unaffected. Installations
+opt in with `hui update --nightly`.
 
 Once the release exists, another machine can download its archive and checksum
 from the public GitHub Release, verify them, and install the archive. Existing

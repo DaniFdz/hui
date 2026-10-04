@@ -14,6 +14,17 @@ function readStyles(path: string): string {
   return source.replace(/@import "([^"]+)";/g, (_, child: string) => readStyles(new URL(child, url).href));
 }
 
+test("chat notifications of every level render as the shell toast, not an inline paragraph", () => {
+  const source = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
+  const note = source.slice(source.indexOf("function renderNote("), source.indexOf("function renderLaunchFeedback("));
+  assert.match(note, /class="app-toast chat-operation-toast" data-level=\$\{props\.noteLevel\} role=\$\{noteAnnouncement\(props\.noteLevel\)\}/);
+  assert.match(note, /aria-label="Dismiss notification" @click=\$\{props\.onDismissNote\}/);
+  assert.doesNotMatch(note, /launch__note/);
+  const styles = readStyles("../styles/openclaw-chat.css");
+  assert.match(styles, /\.chat-operation-toast\[data-level="warning"\] \.app-toast__icon \{ color: var\(--warn\); \}/);
+  assert.match(styles, /\.chat-operation-toast\[data-level="error"\] \.app-toast__icon \{ color: var\(--danger\); \}/);
+});
+
 test("auto-follow and scroll-to-latest target the real reference transcript scroller", () => {
   const source = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
   const app = readFileSync(new URL("../hui-app.ts", import.meta.url), "utf8");
@@ -60,13 +71,13 @@ test("session history actions expose direct editable rewind and prompt-free cont
   assert.doesNotMatch(source, /aria-label="Rewind session"/u);
   assert.match(source, /class="chat-group-rewind" aria-label=\$\{props\.rewindPending \? "Rewinding…" : "Rewind to here"\}/u);
   assert.match(source, /renderActionTooltip\(rewindTooltipId, props\.rewindPending \? "Rewinding…" : "Rewind"/u);
-  assert.match(source, /props\.onRewind\(\{ kind: "user", occurrence: rewindOccurrence \}, last\?\.text \?\? ""\)/u);
+  assert.match(source, /props\.onRewind\(rewindTo, last\?\.text \?\? ""\)/u);
   assert.doesNotMatch(source, /row\.role === "user" && !props\.streaming/u);
   assert.match(source, /aria-label="Continue without a prompt"/u);
   assert.doesNotMatch(source, /rewind-session-dialog|Rewind here|Rewind point/u);
-  assert.match(app, /loadSessionCheckpoints\(session\.id\)/u);
+  assert.doesNotMatch(app, /loadSessionCheckpoints/u);
   assert.doesNotMatch(app, /!session \|\| this\.streaming \|\| this\.opening \|\| this\.rewindPending/u);
-  assert.match(app, /rewindSession\(session\.id, entryId, true\)/u);
+  assert.match(app, /rewindSession\(session\.id, target, true\)/u);
   assert.match(app, /this\.draft = text/u);
   assert.match(app, /this\.composerTextarea\?\.focus\(\)/u);
   assert.match(app, /resumeSession\(session\.id\)/u);
@@ -283,11 +294,19 @@ test("the launch directory picker uses the themed combobox instead of a native d
   assert.match(styles, /\.new-session-page__directory-menu/);
 });
 
+test("the thread follows the live compaction divider like new transcript rows", () => {
+  const app = readFileSync(new URL("../hui-app.ts", import.meta.url), "utf8");
+
+  assert.match(app, /if \(\(changed\.has\("transcript"\) \|\| changed\.has\("compaction"\)\) && this\.autoFollow\) this\.scrollToBottom\(\);/);
+});
+
 test("the composer exposes PI context usage beside the model", () => {
   const source = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
   const styles = readStyles("../styles/openclaw-chat.css");
 
-  assert.match(source, /renderContextPicker\(props\.usage\)/);
+  // Compact now waits while the session runs or a compaction already works.
+  assert.match(source, /renderContextPicker\(props\.usage, props\.streaming \|\| props\.compaction\?\.status === "running" \? undefined : props\.onCompact\)/);
+  assert.match(source, />Compact now<\/button>/);
   assert.match(source, /Context window/);
   assert.match(source, /Latest run tokens/);
   assert.match(styles, /\.context-ring__dial/);

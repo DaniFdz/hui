@@ -39,7 +39,7 @@ browser ──HTTP + fetch/SSE──> HUI gateway ──JSONL stdin/stdout──
    waits for `get_state`, records `sessionId`/`sessionFile`, and then announces
    `idle`. PI normally needs several seconds, so `starting` is a real state.
 3. Opening a cold session starts PI with `--session <file>`, then calls
-   `get_messages` to rebuild the transcript. A gateway restart loses processes,
+   `get_entries` to rebuild the transcript from the active branch. A gateway restart loses processes,
    not conversations; the next open resumes the PI file.
 4. Prompts go through the HUI HTTP API. PI events are normalized by the runtime
    adapter and streamed to the browser over authenticated fetch-based SSE.
@@ -662,6 +662,19 @@ leftover shows as on until turned off. A top notice reminds while the lid is
 held awake. Proof: `server/power.test.ts` (real watcher script against fake
 macOS commands), `server/power-routes.test.ts`, `src/lib/settings.test.ts`,
 `src/views/settings-gateway.test.ts` and `e2e/power-settings.browser.md`.
+
+### HUI-17 — Background watchers
+
+Done 2026-10-02. Sessions run long waits (a pull request approval before
+`/merge`, a CI run, a deploy) through the HUI `watcher` tool instead of
+detached `nohup` scripts. HUI starts the command detached in its own process
+group, keeps one log and exit record per watcher, derives
+running/done/failed/stopped/dead from the process identity (a reused PID after
+a reboot reads dead), and lists them in the owning conversation as compact
+background-activity rows that open into details, a log tail and stop, restart
+and dismiss controls. The registry survives gateway
+restarts. Proof: `server/watchers.test.ts`, `server/watcher-routes.test.ts`,
+`src/views/chat/watcher-activity.test.ts` and `e2e/watchers.browser.md`.
 
 ## Recommended implementation order
 

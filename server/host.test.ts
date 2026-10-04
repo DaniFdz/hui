@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { allowedHostsFromEnv, HostArgumentError, parseHost, tailnetFromStatus, wantsTailnet } from "./host.ts";
+import { mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import { allowedHostsFromConfig, allowedHostsFromEnv, HostArgumentError, parseHost, tailnetFromStatus, wantsTailnet } from "./host.ts";
 
 test("no --host leaves the server on loopback", () => {
   assert.equal(parseHost(["gateway"]), undefined);
@@ -65,4 +69,18 @@ test("an unusable allowed host is refused rather than silently ignored", () => {
   for (const value of ["*", "localhost:4173", "http://laptop", "laptop/", "_hui", "-hui"]) {
     assert.throws(() => allowedHostsFromEnv({ HUI_GATEWAY_ALLOWED_HOSTS: value }), /is not a host name/u, value);
   }
+});
+
+test("config.json grants names on every start, resolving tailnet when Tailscale is up", async () => {
+  const file = join(await mkdtemp(join(tmpdir(), "hui-host-")), "config.json");
+  assert.deepEqual(await allowedHostsFromConfig(file, async () => "x"), []);
+  await writeFile(file, JSON.stringify({ format: 1, allowHosts: ["tailnet", "Proxy.Example.TS.NET."] }));
+  assert.deepEqual(await allowedHostsFromConfig(file, async () => "mac.example.ts.net"), ["mac.example.ts.net", "proxy.example.ts.net"]);
+  assert.deepEqual(await allowedHostsFromConfig(file, async () => undefined), ["proxy.example.ts.net"]);
+  await writeFile(file, JSON.stringify({ allowHosts: ["https://bad"] }));
+  await assert.rejects(allowedHostsFromConfig(file, async () => undefined), /not a host name/);
+  await writeFile(file, JSON.stringify({ allowHosts: "tailnet" }));
+  await assert.rejects(allowedHostsFromConfig(file, async () => undefined), /list of host names/);
+  await writeFile(file, "{");
+  await assert.rejects(allowedHostsFromConfig(file, async () => undefined), /not valid JSON/);
 });

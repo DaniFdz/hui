@@ -1,5 +1,6 @@
 import type {
   Attachment,
+  RuntimeCompaction,
   RuntimeModel,
   RuntimeUsage,
   SessionConnection,
@@ -23,13 +24,33 @@ export function mergeSessionStatuses(
   }));
 }
 
+/** Severity of the transient chat notification; it picks the toast's icon and live region. */
+export type NoteLevel = "info" | "warning" | "error";
+
+/**
+ * A runtime warning narrates recovery inside the run (a provider retry or the
+ * model fallback). Once the run settles or fails, its outcome supersedes that
+ * warning, so the toast closes unless another note has replaced it.
+ */
+export function noteAfterRunOutcome(
+  state: { note: string; noteLevel: NoteLevel },
+  recoveryNotice: string,
+): { note: string; noteLevel: NoteLevel } {
+  return recoveryNotice && state.note === recoveryNotice ? { note: "", noteLevel: "info" } : state;
+}
+
+/** Only errors interrupt assistive technology; other notes are polite status. */
+export function noteAnnouncement(level: NoteLevel): "alert" | "status" {
+  return level === "error" ? "alert" : "status";
+}
+
 /** State that belongs to the session currently shown in Home. */
 export type SessionPresentationState = {
   transcript: readonly TranscriptItem[];
   opening: boolean;
   streaming: boolean;
   note: string;
-  noteFailed: boolean;
+  noteLevel: NoteLevel;
   connectionNote: string;
   models: readonly RuntimeModel[];
   currentModel: RuntimeModel | undefined;
@@ -48,7 +69,7 @@ export function emptySessionPresentation(): SessionPresentationState {
     opening: false,
     streaming: false,
     note: "",
-    noteFailed: false,
+    noteLevel: "info",
     connectionNote: "",
     models: [],
     currentModel: undefined,
@@ -77,6 +98,13 @@ export function streamingAfterEvent(
   event: "turn_start" | "turn_end" | "settled",
 ): boolean {
   return event === "turn_start" ? true : streaming;
+}
+
+/** A running compaction the session's run waits for (PI's, or Durable's
+ * blocking one); its divider stands in for the working indicator. One the
+ * runtime runs beside the conversation leaves the run working. */
+export function compactionBlocks(compaction: RuntimeCompaction | undefined): boolean {
+  return compaction?.status === "running" && compaction.blocking !== false;
 }
 
 /** The runtime status frame is authoritative for composer availability. */

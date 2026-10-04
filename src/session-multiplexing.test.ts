@@ -47,3 +47,10 @@ test("the narrow panel selector uses the shared HUI picker instead of a native s
   assert.doesNotMatch(selector, /<select/);
   assert.doesNotMatch(css, /\.hui-panel-selector select/);
 });
+
+test("embedded panes open from the shell's registry entry instead of waiting on their own fetch", () => {
+  const app = readFileSync(new URL("./hui-app.ts", import.meta.url), "utf8");
+  assert.ok(app.includes(".paneSession=${this.groups.flatMap((group) => group.sessions).find(({ id }) => id === pane.sessionId)}"));
+  const open = app.slice(app.indexOf("private openPendingSession()"), app.indexOf("private selectView ="));
+  assert.ok(open.includes("?? (this.paneSession?.id === id ? this.paneSession : undefined)"));
+});

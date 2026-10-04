@@ -198,4 +198,30 @@ export default function agentToolsExtension(pi) {
       return output(await invoke("subagents", params));
     },
   });
+
+  pi.registerTool({
+    name: "watcher",
+    label: "Background watcher",
+    description: "Start and manage a long-running background watcher that waits for an external condition (a pull request approval, a CI run, a deploy) and then acts. HUI runs it, keeps its output and exit status, and shows it as a card in this conversation where the operator can read, stop or restart it.",
+    promptSnippet: "Run a long-lived watcher that HUI shows in this conversation",
+    promptGuidelines: [
+      "Use watcher instead of a detached nohup loop whenever a condition may take a long time to become true: waiting for a pull request approval, a CI run, a deploy or an external state change. The watcher keeps running after this turn ends and after HUI restarts.",
+      "Record the purpose (what it waits for), the target (the pull request or other URL) and the outcome (what happens when the condition holds), so the operator can see what it is doing without reading the command.",
+      "The command runs with /bin/sh in this conversation's working directory, appends its output to the watcher's own log and records its exit status. It must end on its own; do not start background children of your own inside it.",
+      "Keep one watcher per condition. Stop or dismiss watchers that are no longer needed instead of leaving them running.",
+      "A watcher card reports running, done, failed, stopped or dead (the process was lost, for example after a reboot). Restart a dead watcher instead of starting a duplicate.",
+    ],
+    parameters: Type.Object({
+      action: Type.Union(["start", "list", "stop", "restart", "log"].map((action) => Type.Literal(action))),
+      id: Type.Optional(Type.String({ minLength: 1, maxLength: 100 })),
+      purpose: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
+      target: Type.Optional(Type.String({ maxLength: 500 })),
+      outcome: Type.Optional(Type.String({ maxLength: 200 })),
+      command: Type.Optional(Type.String({ minLength: 1, maxLength: 4_000 })),
+      lines: Type.Optional(Type.Integer({ minimum: 1, maximum: 400 })),
+    }),
+    async execute(_toolCallId, params) {
+      return output(await invoke("watcher", params));
+    },
+  });
 }

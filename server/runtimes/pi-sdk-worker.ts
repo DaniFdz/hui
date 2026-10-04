@@ -8,7 +8,7 @@ import { basename } from "node:path";
 import {
   createAgentSessionFromServices, createAgentSessionRuntime, createAgentSessionServices,
   runRpcMode, SessionManager, SettingsManager,
-  type CreateAgentSessionOptions, type AgentSession,
+  type CreateAgentSessionOptions, type AgentSession, type CompactionEntry, type SessionEntry,
 } from "@earendil-works/pi-coding-agent";
 import { huiToolDefinitions } from "./hui-tools.ts";
 import { lowestThinkingLevel, withUpstreamThinkingMap } from "./thinking-level.ts";
@@ -35,6 +35,24 @@ type Launch = {
 // Extensions sometimes log during initialization, before runRpcMode redirects
 // stdout. Reserve stdout exclusively for the RPC transport from process start.
 globalThis.console = new Console({ stdout: process.stderr, stderr: process.stderr });
+
+/** PI's compaction applies only while its entry is on the active branch, so a
+ * rewind behind it drops the summary even inside the window PI kept verbatim.
+ * The summary covers only entries before that window: when they all still lead
+ * to the new leaf, append it again instead of compacting the same history twice. */
+function keepCompaction(session: AgentSession, before: readonly SessionEntry[]): void {
+  const after = new Set(session.sessionManager.getBranch().map((entry) => entry.id));
+  const index = (id: string | null) => before.findIndex((entry) => entry.id === id);
+  const leaf = index(session.sessionManager.getLeafId());
+  const kept = before.findLast((entry): entry is CompactionEntry => entry.type === "compaction" && !after.has(entry.id)
+    && index(entry.firstKeptEntryId) >= 0 && leaf >= index(entry.firstKeptEntryId) - 1);
+  // ponytail: a summary HUI already re-appended has its firstKeptEntryId off its
+  // own branch and is not re-applied again; the browser only rewinds to a user
+  // message's parent, which never needs that.
+  if (leaf < 0 || !kept) return;
+  session.sessionManager.appendCompaction(kept.summary, kept.firstKeptEntryId, kept.tokensBefore, kept.details, kept.fromHook);
+  session.refreshContext();
+}
 
 async function main() {
   // Passed out of argv (see startPi); tools and extensions must not inherit it.
@@ -127,8 +145,14 @@ async function main() {
         return;
       }
       if (message["type"] === "rewind") {
-        if (session.isStreaming) throw new Error("Wait for the current run to finish before rewinding.");
-        const entryId = message["entryId"];
+        if (session.isStreaming || session.isCompacting) throw new Error("Wait for the current run to finish before rewinding.");
+        const before = session.sessionManager.getBranch();
+        // PI persists a prompt as soon as it accepts it, so the user messages
+        // on its own branch end where the browser's do; HUI never hides them.
+        const fromEnd = message["userFromEnd"];
+        const entryId = typeof fromEnd === "number"
+          ? before.filter((entry) => entry.type === "message" && entry.message.role === "user").at(-1 - fromEnd)?.id
+          : message["entryId"];
         const entry = typeof entryId === "string" ? session.sessionManager.getEntry(entryId) : undefined;
         if (typeof entryId !== "string" || !entry) {
           throw new Error("That rewind point is no longer available.");
@@ -147,23 +171,36 @@ async function main() {
           // its text to the composer for editing, matching OpenClaw rewind.
           await session.navigateTree(entryId);
         }
+        keepCompaction(session, before);
         process.send?.({ version: 1, id: message["id"], type: "ok" });
         return;
       }
       if (message["type"] === "continue") {
-        if (session.isStreaming) throw new Error("That session is already running.");
-        let leaf = session.sessionManager.getLeafEntry();
-        if (leaf?.type === "message" && leaf.message.role === "assistant") {
-          if (leaf.message.stopReason !== "aborted" && leaf.message.stopReason !== "error") {
-            throw new Error("The active branch already ends with a completed assistant response.");
-          }
-          if (!leaf.parentId) throw new Error("There is no earlier context to continue from.");
-          session.sessionManager.branch(leaf.parentId);
-          session.refreshContext();
-          leaf = session.sessionManager.getLeafEntry();
+        if (session.isStreaming || session.isCompacting) throw new Error("That session is already running.");
+        // Judge the context the model would continue from, not the raw leaf: PI
+        // appends context edits (hiding each attempt it retries), model or
+        // thinking changes (on reopen) and compactions after the failed message.
+        // Its system messages (prompt and tool loadout changes persisted in
+        // front of the request that used them) stay in the context but are not a turn.
+        const projection = session.sessionManager.buildSessionProjection();
+        const conversation = projection.messages.filter((item) => item.role !== "system");
+        const last = conversation.at(-1);
+        const failed = last?.role === "assistant" ? last : undefined;
+        if (failed && failed.stopReason !== "aborted" && failed.stopReason !== "error") {
+          throw new Error("The active branch already ends with a completed assistant response.");
         }
-        if (!(leaf?.type === "message" && (leaf.message.role === "user" || leaf.message.role === "toolResult"))) {
+        // Agent.continue() resumes from any other tail: a user message, a tool
+        // result or a compaction summary left by a rewind inside its kept window.
+        const resumeFrom = conversation.at(failed ? -2 : -1);
+        if (!resumeFrom || resumeFrom.role === "assistant") {
           throw new Error("Rewind to a user message or completed tool result before continuing.");
+        }
+        if (failed) {
+          // Hide it as PI hides an attempt it retries. Branching to its parent
+          // would also drop everything PI appended after it, such as a compaction.
+          const entry = projection.entries.findLast((item) => item.messages.includes(failed));
+          if (entry) session.sessionManager.appendContextEdit(entry.sourceEntry.id, null);
+          session.refreshContext();
         }
         // Agent.continue() is the SDK's prompt-free continuation primitive. The
         // AgentSession subscriber still persists and emits its ordinary events;

@@ -14,19 +14,22 @@ import { CONTINUE_PROMPT } from "../src/lib/subagent-completion.ts";
 import { interruptedRunPrompt } from "./interrupted-run.ts";
 import type { SessionRecord } from "./sessions.ts";
 import type { TaskSuggestion } from "../shared/task-suggestions.ts";
+import type { Watcher } from "../shared/watchers.ts";
 import { SessionRegistryError, updateRegistry } from "./sessions.ts";
 import { piRuntime } from "./runtimes/pi.ts";
+import { durableRuntime } from "./runtimes/durable.ts";
 import type {
   AgentRuntime,
   PromptAttachment,
   RuntimeEvent,
   RuntimeCommand,
-  RuntimeCheckpoint,
   RuntimeModel,
   QueuedMessage,
   RuntimeQuestion,
   RuntimeQuestionResponse,
+  RuntimeCompaction,
   RuntimeQueue,
+  RuntimeRewindTarget,
   RuntimeSession,
   RuntimeUsage,
   TranscriptEntry,
@@ -77,6 +80,10 @@ export type SessionSnapshot = {
   subagents: readonly SubagentTaskView[];
   /** Pending `suggest_task` cards; omitted when there are none. */
   suggestions?: readonly TaskSuggestion[];
+  /** HUI-run background watchers for this conversation; omitted when none. */
+  watchers?: readonly Watcher[];
+  /** A running compaction, or one that ended without a summary; kept until the next turn. */
+  compaction?: RuntimeCompaction;
 };
 
 /** Everything a browser watching one session can receive: pi's events, and the
@@ -124,6 +131,9 @@ type Live = {
   /** Set before invoking `runtime.prompt`, closing the gap before the runtime
    * reports `agent_start` or flips its own streaming flag. */
   promptPending: boolean;
+  /** Prompts being handed to the runtime. Until it accepts one, the input
+   * exists only in this process, so a gateway stop would lose it. */
+  submissions: number;
   runtime?: RuntimeSession;
   /** Wall-clock lifecycle timing for the current runtime attempt. */
   bootStartedAt: number;
@@ -144,6 +154,7 @@ type Live = {
    * OpenClaw-style edit, remove, and reorder operations truthful. */
   followUps: Array<QueuedMessage & { attachments?: readonly PromptAttachment[] }>;
   questions: Map<string, RuntimeQuestion>;
+  compaction?: RuntimeCompaction;
   lastPrompt?: { text: string; attachments?: readonly PromptAttachment[] };
   turnProducedOutput: boolean;
   fallbackAttempted: boolean;
@@ -187,8 +198,26 @@ export class SessionBusyError extends Error {}
 export class LiveSessions {
   /** In-memory check used at the shutdown boundary, without a registry race. */
   get activeWorkCount(): number {
+    return this.#activeWork().length;
+  }
+
+  /** Active sessions a gateway restart does not interrupt: their runtime
+   * continues the run itself when it reopens, and nothing of theirs is held
+   * only in this process (a booting runtime, a prompt being handed over, or
+   * follow-ups not yet given to the runtime). */
+  get resumableWorkCount(): number {
+    return this.#activeWork().filter((live) => live.runtime?.resumesInterruptedRuns === true
+      && live.status !== "starting" && live.submissions === 0 && live.followUps.length === 0).length;
+  }
+
+  /** Active work a gateway stop would lose; ordinary stop and update refuse it. */
+  get blockingWorkCount(): number {
+    return this.activeWorkCount - this.resumableWorkCount;
+  }
+
+  #activeWork(): Live[] {
     return [...this.#live.values()].filter((live) => live.status === "starting"
-      || live.status === "running" || live.status === "waiting" || live.followUps.length > 0).length;
+      || live.status === "running" || live.status === "waiting" || live.followUps.length > 0);
   }
   #live = new Map<string, Live>();
   #statusSubscribers = new Set<StatusSubscriber>();
@@ -201,12 +230,13 @@ export class LiveSessions {
   #readSettings: () => Promise<Settings>;
   #subagentSnapshot: (parentId: string) => readonly SubagentTaskView[] = () => [];
   #suggestionSnapshot: (sessionId: string) => readonly TaskSuggestion[] = () => [];
+  #watcherSnapshot: (sessionId: string) => readonly Watcher[] = () => [];
   #aborted: (sessionId: string) => void = () => {};
 
   /** Injectable so the state machine can be exercised without waiting to boot a
    * real tool. A single runtime stands in for one tool, an array for several. */
   constructor(
-    runtimes: AgentRuntime | AgentRuntime[] = piRuntime,
+    runtimes: AgentRuntime | AgentRuntime[] = [piRuntime, durableRuntime],
     registryUpdater: typeof updateRegistry = updateRegistry,
     settingsReader: () => Promise<Settings> = readHuiSettings,
   ) {
@@ -257,6 +287,7 @@ export class LiveSessions {
       record,
       status: "starting",
       promptPending: false,
+      submissions: 0,
       bootStartedAt: Date.now(),
       subscribers: new Set(),
       readers: 0,
@@ -289,6 +320,10 @@ export class LiveSessions {
 
   setTaskSuggestionProvider(provider: (sessionId: string) => readonly TaskSuggestion[]): void {
     this.#suggestionSnapshot = provider;
+  }
+
+  setWatcherProvider(provider: (sessionId: string) => readonly Watcher[]): void {
+    this.#watcherSnapshot = provider;
   }
 
   /** Every stop (the Stop button, rewind, automations, subagents) passes here. */
@@ -340,7 +375,7 @@ export class LiveSessions {
     if (live.questions.size > 0) {
       return "waiting";
     }
-    return live.promptPending || live.runtime?.isStreaming ? "running" : "idle";
+    return live.promptPending || live.runtime?.isStreaming || this.#compactionBlocks(live) ? "running" : "idle";
   }
 
   transcript(id: string): TranscriptEntry[] {
@@ -362,6 +397,7 @@ export class LiveSessions {
         questions: [],
         subagents: [...this.#subagentSnapshot(id)],
         ...this.#suggestionField(id),
+        ...this.#watcherField(id),
       };
     }
     const model = live.runtime?.currentModel?.();
@@ -376,12 +412,19 @@ export class LiveSessions {
       questions: [...live.questions.values()],
       subagents: [...this.#subagentSnapshot(id)],
       ...this.#suggestionField(id),
+      ...this.#watcherField(id),
+      ...(live.compaction ? { compaction: live.compaction } : {}),
     };
   }
 
   #suggestionField(id: string): { suggestions?: readonly TaskSuggestion[] } {
     const suggestions = this.#suggestionSnapshot(id);
     return suggestions.length ? { suggestions: [...suggestions] } : {};
+  }
+
+  #watcherField(id: string): { watchers?: readonly Watcher[] } {
+    const watchers = this.#watcherSnapshot(id);
+    return watchers.length ? { watchers: [...watchers] } : {};
   }
 
   /** Installs the listener and captures its first paint in one synchronous
@@ -460,6 +503,7 @@ export class LiveSessions {
     if (!live?.runtime) {
       throw new SessionBusyError("That session is still starting.");
     }
+    if (this.#holdWhileCompacting(live)) return this.followUp(id, text, attachments);
     if (live.promptPending || live.runtime.isStreaming) {
       throw new SessionBusyError("That session is already working on a prompt.");
     }
@@ -472,6 +516,7 @@ export class LiveSessions {
     live.turnProducedOutput = false;
     live.fallbackAttempted = false;
     this.#setStatus(live, "running");
+    live.submissions += 1;
     try {
       // This write is the recovery boundary. If the gateway or machine dies
       // after PI accepts the prompt, the next process can tell this run did not
@@ -494,6 +539,8 @@ export class LiveSessions {
       live.promptPending = false;
       this.#setStatus(live, this.#reported(live));
       throw error;
+    } finally {
+      live.submissions -= 1;
     }
     // A synchronous extension can settle before its prompt acknowledgement.
     // Do not append an invented user turn after PI's authoritative refresh.
@@ -651,6 +698,7 @@ export class LiveSessions {
       await live.runtime.clear();
       runtimeCleared = true;
       live.transcript = [...live.runtime.transcript()];
+      live.compaction = undefined;
       live.queue = live.runtime.pendingQueue?.() ?? { steering: [], followUp: [] };
       live.followUps = [];
       live.questions = new Map((live.runtime.pendingQuestions?.() ?? []).map((question) => [question.id, question]));
@@ -699,13 +747,7 @@ export class LiveSessions {
     }
   }
 
-  async checkpoints(id: string): Promise<readonly RuntimeCheckpoint[]> {
-    const live = this.#ready(id);
-    if (!live.runtime?.checkpoints) throw new Error(`${live.record.tool} cannot rewind in this build.`);
-    return live.runtime.checkpoints();
-  }
-
-  async rewind(id: string, entryId: string, options?: { excludeUserMessage?: boolean }): Promise<void> {
+  async rewind(id: string, target: RuntimeRewindTarget, options?: { excludeUserMessage?: boolean }): Promise<void> {
     const live = this.#ready(id);
     if (this.#reported(live) === "running") {
       await this.abort(id);
@@ -719,8 +761,13 @@ export class LiveSessions {
     live.promptPending = true;
     this.#setStatus(live, "running");
     try {
-      await live.runtime.rewind(entryId, options);
+      await live.runtime.rewind(target, options);
+      // Durable rewinds continue in a fork, which has its own resume reference.
+      if (live.runtime.sessionFile && live.runtime.sessionFile !== live.record.piSessionFile) {
+        await this.#save(live, { piSessionFile: live.runtime.sessionFile });
+      }
       live.transcript = [...live.runtime.transcript()];
+      live.compaction = undefined;
       live.lastPrompt = undefined;
       live.turnProducedOutput = false;
       live.fallbackAttempted = false;
@@ -759,6 +806,15 @@ export class LiveSessions {
 
   async steer(id: string, text: string, attachments?: readonly PromptAttachment[]): Promise<void> {
     const live = this.#ready(id);
+    if (this.#holdWhileCompacting(live)) return this.followUp(id, text, attachments);
+    // A runtime that compacts beside the conversation (Durable) takes input
+    // meanwhile. With no run to steer, the message starts one, through the
+    // prompt path so it is recorded and shown like any prompt.
+    if (this.#compactingAlongside(live) && !live.promptPending && !live.runtime?.isStreaming) {
+      await this.prompt(id, text, attachments);
+      this.#broadcast(live, { kind: "snapshot", snapshot: this.snapshot(id) });
+      return;
+    }
     if (!live.runtime?.steer) throw new Error(`${live.record.tool} cannot steer in this build.`);
     await live.runtime.steer(text, attachments);
   }
@@ -773,6 +829,59 @@ export class LiveSessions {
     });
     this.#broadcastQueue(live);
     if (this.#reported(live) === "idle") void this.#drainFollowUp(live);
+  }
+
+  /** PI refuses a prompt while it compacts outside a run, and a steer would wait
+   * in its queue until some later prompt. Hold either in HUI's follow-up queue,
+   * which drains once the compaction ends. Inside a run PI delivers steers. A
+   * compaction the runtime runs beside the conversation holds nothing. */
+  #holdWhileCompacting(live: Live): boolean {
+    return this.#compactionBlocks(live) && !live.runtime?.isStreaming;
+  }
+
+  #compacting(live: Live): boolean {
+    return live.compaction?.status === "running";
+  }
+
+  /** A running compaction that blocks the session (PI's, or Durable's blocking
+   * one inside its run): the session is busy and Stop cancels it. */
+  #compactionBlocks(live: Live): boolean {
+    return live.compaction?.status === "running" && live.compaction.blocking !== false;
+  }
+
+  /** A compaction the runtime runs beside the conversation (Durable's manual and
+   * background ones): the session stays idle, input is admitted and a run
+   * carries on meanwhile. */
+  #compactingAlongside(live: Live): boolean {
+    return live.compaction?.status === "running" && live.compaction.blocking === false;
+  }
+
+  async compact(id: string, instructions?: string): Promise<void> {
+    const live = this.#ready(id);
+    if (this.#reported(live) !== "idle" || live.followUps.length || live.questions.size) {
+      throw new SessionBusyError("Finish or stop active work before compacting the session.");
+    }
+    if (this.#compacting(live)) throw new SessionBusyError("A compaction is already running.");
+    if (!live.runtime?.compact) throw new Error(`${live.record.tool} cannot compact sessions in this build.`);
+    // A runtime that compacts beside the conversation (Durable) reports its
+    // start while it is called. PI's events arrive later: claim the session
+    // until they take over, so nothing lands first.
+    const started = live.runtime.compact(instructions);
+    if (!this.#compacting(live)) live.compaction = { status: "running", reason: "manual" };
+    this.#setStatus(live, this.#reported(live));
+    await started;
+  }
+
+  /** Cancels a manual compaction the runtime runs beside the conversation. One
+   * that blocks the session is cancelled by Stop; a background one is the
+   * runtime's own and keeps running. */
+  async cancelCompaction(id: string): Promise<void> {
+    const live = this.#ready(id);
+    if (!this.#compactingAlongside(live) || live.compaction?.background) {
+      throw new SessionBusyError("There is no compaction to cancel here.");
+    }
+    if (!live.runtime?.cancelCompaction) throw new Error(`${live.record.tool} cannot cancel a compaction in this build.`);
+    await live.runtime.cancelCompaction();
   }
 
   editFollowUp(id: string, itemId: string, text: string): void {
@@ -915,7 +1024,9 @@ export class LiveSessions {
   release(id: string): void {
     const live = this.#live.get(id);
     if (!live) return;
-    if (live.readers > 0) {
+    // Not mid-way through a compaction PI runs after the turn a caller waited for.
+    // One the runtime runs beside the conversation (Durable's) outlives this view.
+    if (live.readers > 0 || this.#compactionBlocks(live)) {
       live.releaseWhenUnread = true;
       return;
     }
@@ -1029,9 +1140,10 @@ export class LiveSessions {
       ) {
         return;
       }
+      // A runtime can report a compaction it resumed after a restart while subscribing.
       const readyStatus = live.questions.size > 0
         ? "waiting"
-        : runtime.isStreaming
+        : runtime.isStreaming || this.#compactionBlocks(live)
           ? "running"
           : "idle";
       live.bootDurationMs = Math.max(0, Date.now() - live.bootStartedAt);
@@ -1040,9 +1152,9 @@ export class LiveSessions {
       this.#setStatus(live, readyStatus, false);
       recordDiagnosticEvent({ area: "runtime", level: "info", action: "ready", summary: `${live.record.tool} runtime ready`, sessionId: live.record.id });
       if (live.record.runStartedAt && readyStatus === "idle") {
-        // A remote run that kept going while the gateway was away has simply
-        // finished; only a run whose process died needs recovering.
-        if (runtime.resumed) this.#clearRunMarker(live);
+        // A runtime that resumes its own runs has already finished this one or
+        // recorded its interruption; replaying it would repeat the request.
+        if (runtime.resumesInterruptedRuns) this.#clearRunMarker(live);
         else await this.#recoverInterrupted(live);
       }
       // A resumed session only has its history after boot, so the transcript is
@@ -1081,9 +1193,32 @@ export class LiveSessions {
     if (live.closed || live.runtime !== runtime) {
       return;
     }
-    if (event.type === "turn_start") {
+    let refreshed = false;
+    if (event.type === "compaction_start") {
+      live.compaction = {
+        status: "running",
+        reason: event.reason,
+        ...(event.blocking === false ? { blocking: false as const } : {}),
+        ...(event.background ? { background: true as const } : {}),
+      };
+      this.#setStatus(live, this.#reported(live));
+    } else if (event.type === "compaction_end") {
+      const alongside = this.#compactingAlongside(live);
+      recordDiagnosticEvent({ area: "session", level: event.outcome === "failed" ? "warning" : "info", action: "compaction_end", summary: `Compaction ${event.outcome} (${event.reason})`, ...(event.message ? { detail: event.message } : {}), sessionId: live.record.id });
+      live.compaction = event.outcome === "done" ? undefined : { status: event.outcome, reason: event.reason, ...(event.message ? { message: event.message } : {}) };
+      this.#setStatus(live, this.#reported(live));
+      // One that ran beside the conversation (Durable's) ends without a settle:
+      // with no turn in flight, show its summary now; a turn's settle does otherwise.
+      if (alongside && !live.promptPending && !runtime.isStreaming && !live.turnStarted) {
+        live.transcript = [...runtime.transcript()];
+        refreshed = true;
+      }
+      // A compaction PI refused before starting ends without a settle.
+      if (this.#reported(live) === "idle") void this.#drainFollowUp(live).then(() => this.#closeIfReleased(live));
+    } else if (event.type === "turn_start") {
       recordDiagnosticEvent({ area: "session", level: "info", action: "turn_start", summary: "Agent turn started", sessionId: live.record.id });
       live.turnStarted = true;
+      if (live.compaction?.status !== "running") live.compaction = undefined;
       if (live.record.runRecoveryAttempts !== undefined) {
         void this.#save(live, { runRecoveryAttempts: undefined }).catch(() => {});
       }
@@ -1188,7 +1323,7 @@ export class LiveSessions {
           ? { type: "error", message: event.message }
           : event,
     });
-    if (event.type === "settled") {
+    if (event.type === "settled" || refreshed) {
       this.#broadcast(live, { kind: "snapshot", snapshot: this.snapshot(live.record.id) });
     }
   }
@@ -1198,18 +1333,22 @@ export class LiveSessions {
     if (!retried) {
       if (live.readers === 0) this.#setUnread(live, true);
       await this.#drainFollowUp(live);
-      if (
-        live.releaseWhenUnread && live.readers === 0 && live.followUps.length === 0 &&
-        this.#reported(live) === "idle" && this.#live.get(live.record.id) === live
-      ) {
-        this.close(live.record.id);
-      }
+      this.#closeIfReleased(live);
+    }
+  }
+
+  #closeIfReleased(live: Live): void {
+    if (
+      live.releaseWhenUnread && live.readers === 0 && live.followUps.length === 0 &&
+      this.#reported(live) === "idle" && this.#live.get(live.record.id) === live
+    ) {
+      this.close(live.record.id);
     }
   }
 
   async #retryWithFallback(live: Live, runtime: RuntimeSession): Promise<boolean> {
     if (
-      live.closed || live.runtime !== runtime || live.fallbackAttempted ||
+      live.closed || live.runtime !== runtime || live.fallbackAttempted || this.#compactionBlocks(live) ||
       live.turnProducedOutput || !live.lastPrompt || runtime.isStreaming ||
       live.transcript.at(-1)?.kind !== "error" || !runtime.setModel
     ) return false;
@@ -1230,7 +1369,9 @@ export class LiveSessions {
       live.promptPending = true;
       live.turnProducedOutput = false;
       this.#setStatus(live, "running");
-      await runtime.prompt(prompt.text, prompt.attachments);
+      live.submissions += 1;
+      try { await runtime.prompt(prompt.text, prompt.attachments); }
+      finally { live.submissions -= 1; }
       return true;
     } catch (error) {
       live.promptPending = false;
@@ -1262,6 +1403,7 @@ export class LiveSessions {
     live.unsubscribeExit = undefined;
     live.runtime = undefined;
     live.promptPending = false;
+    live.compaction = undefined;
     recordDiagnosticEvent({ area: "runtime", level: "error", action: "exit", summary: "Runtime process exited", sessionId: live.record.id });
     this.#setStatus(live, "error");
     this.#broadcast(live, { kind: "closed" });

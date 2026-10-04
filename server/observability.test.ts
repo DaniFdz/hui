@@ -13,14 +13,38 @@ test("usage aggregates numeric PI metadata without returning transcript content"
   await writeFile(file, [
     JSON.stringify({ type: "message", message: { model: "provider/model", content: "private prompt", usage: { input: 10, output: 5, cacheRead: 2, cost: 0.01 } } }),
     JSON.stringify({ type: "message", message: { model: "provider/model", content: "secret=never", usage: { inputTokens: 3, outputTokens: 7 } } }),
+    // PI records prompt-cache refreshes as usage entries outside the conversation.
+    JSON.stringify({ type: "usage", kind: "cache_warm", provider: "provider", model: "provider/model", usage: { input: 0, output: 0, cacheRead: 50, cost: { total: 0.02 } } }),
   ].join("\n"));
   const session = { id: "one", piSessionFile: file } as SessionRecord;
   const usage = await aggregateUsage([session]);
-  assert.equal(usage.totalTokens, 27);
+  assert.equal(usage.totalTokens, 77);
   assert.equal(usage.inputTokens, 13);
-  assert.equal(usage.costUsd, 0.01);
-  assert.deepEqual(usage.models, [{ model: "provider/model", tokens: 27 }]);
+  assert.equal(usage.cacheReadTokens, 52);
+  assert.equal(usage.costUsd, 0.03);
+  assert.deepEqual(usage.models, [{ model: "provider/model", tokens: 77 }]);
   assert.doesNotMatch(JSON.stringify(usage), /private prompt|secret=never/u);
+});
+
+test("usage totals read Durable spend per conversation and model, not a transcript file", async () => {
+  const sessions = [
+    { id: "durable", piSessionFile: "durable:7" },
+    { id: "closed", piSessionFile: "durable:8" },
+  ] as SessionRecord[];
+  const asked: number[] = [];
+  const usage = await aggregateUsage(sessions, async (conversationId) => {
+    asked.push(conversationId);
+    return conversationId === 7 ? { models: {
+      "anthropic/claude-opus-5-5": { input: 100, output: 20, cacheRead: 300, cacheWrite: 0, totalTokens: 420, cost: { total: 0.25 } },
+      "hui-e2e/fixture": { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, totalTokens: 2, cost: { total: 0 } },
+    } } : undefined;
+  });
+  assert.deepEqual(asked, [7, 8]);
+  assert.equal(usage.totalTokens, 422);
+  assert.equal(usage.cacheReadTokens, 300);
+  assert.equal(usage.costUsd, 0.25);
+  assert.deepEqual(usage.models, [{ model: "anthropic/claude-opus-5-5", tokens: 420 }, { model: "hui-e2e/fixture", tokens: 2 }]);
+  assert.deepEqual(usage.unavailable, ["closed: Durable store unavailable"]);
 });
 
 test("diagnostic events redact credential-shaped values and stay bounded to metadata", async () => {

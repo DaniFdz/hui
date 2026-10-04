@@ -9,11 +9,11 @@ import type {
   PromptAttachment,
   RuntimeEvent,
   RuntimeCommand,
-  RuntimeCheckpoint,
   RuntimeModel,
   RuntimeQuestion,
   RuntimeQuestionResponse,
   RuntimeQueue,
+  RuntimeRewindTarget,
   RuntimeSession,
   StartOptions,
   TranscriptEntry,
@@ -31,6 +31,7 @@ const { readRegistry, SessionRegistryError } = await import("./sessions.ts");
 const { readObservability } = await import("./observability.ts");
 type SessionRecord = import("./sessions.ts").SessionRecord;
 type SessionStreamMessage = import("./live-sessions.ts").SessionStreamMessage;
+type SessionSnapshot = import("./live-sessions.ts").SessionSnapshot;
 
 /** Stands in for a pi subprocess, so the state machine can be driven event by
  * event instead of waiting five seconds for a real boot. */
@@ -50,8 +51,7 @@ class FakeSession implements RuntimeSession {
   questions: RuntimeQuestion[] = [];
   history: TranscriptEntry[] = [{ kind: "message", role: "user", text: "hello" }];
   disposed = false;
-  rewindPoints: RuntimeCheckpoint[] = [{ key: "user-1:user", id: "user-1", kind: "user", label: "User message", detail: "hello", current: true }];
-  rewoundTo: Array<{ entryId: string; excludeUserMessage?: boolean }> = [];
+  rewoundTo: Array<{ target: RuntimeRewindTarget; excludeUserMessage?: boolean }> = [];
   continuations = 0;
   clears = 0;
   clearGate: Promise<void> | undefined;
@@ -67,6 +67,12 @@ class FakeSession implements RuntimeSession {
     return this.#streaming;
   }
 
+  /** PiSession stays busy from a compaction's end until its own settle. */
+  compactionEnded(event: Extract<RuntimeEvent, { type: "compaction_end" }>): void {
+    this.#streaming = true;
+    this.emit(event);
+  }
+
   async prompt(text: string, attachments?: readonly PromptAttachment[]): Promise<void> {
     this.prompts.push(text);
     this.attachments.push(attachments);
@@ -75,6 +81,16 @@ class FakeSession implements RuntimeSession {
 
   async steer(text: string): Promise<void> {
     this.steered.push(text);
+  }
+
+  compactions: (string | undefined)[] = [];
+  async compact(instructions?: string): Promise<void> {
+    this.compactions.push(instructions);
+  }
+
+  compactionCancels = 0;
+  async cancelCompaction(): Promise<void> {
+    this.compactionCancels += 1;
   }
 
   async followUp(text: string): Promise<void> {
@@ -141,13 +157,9 @@ class FakeSession implements RuntimeSession {
     this.questions = [];
   }
 
-  async checkpoints(): Promise<readonly RuntimeCheckpoint[]> {
-    return this.rewindPoints;
-  }
-
-  async rewind(entryId: string, options?: { excludeUserMessage?: boolean }): Promise<void> {
-    this.rewoundTo.push({ entryId, excludeUserMessage: options?.excludeUserMessage });
-    this.history = [{ kind: "message", role: "user", text: `rewound:${entryId}` }];
+  async rewind(target: RuntimeRewindTarget, options?: { excludeUserMessage?: boolean }): Promise<void> {
+    this.rewoundTo.push({ target, excludeUserMessage: options?.excludeUserMessage });
+    this.history = [{ kind: "message", role: "user", text: `rewound:${JSON.stringify(target)}` }];
   }
 
   async continueRun(): Promise<void> {
@@ -476,28 +488,70 @@ test("a gateway restart automatically continues the journaled request", async ()
   assert.equal((await readRegistry()).find((session) => session.id === "interrupted")?.runRecoveryAttempts, 1);
 });
 
-test("a run that kept going on a remote worker while the gateway was away is not recovered", async () => {
+test("a runtime that resumes its own runs is never replayed after a restart", async () => {
   const started: FakeSession[] = [];
   const manager = new LiveSessions({
-    id: "pi",
+    id: "durable",
     start: async () => {
-      // Reattached to the remote process, which finished the run meanwhile.
-      const session = Object.assign(new FakeSession(), { resumed: true });
+      const session = Object.assign(new FakeSession(), { resumesInterruptedRuns: true });
       started.push(session);
       return session;
     },
   });
-  manager.ensure({ ...recordFor("remote-finished"), runStartedAt: "2026-09-24T12:00:00.000Z", runPrompt: "long remote task" });
-  await waitForBoot(manager, "remote-finished");
+  manager.ensure({
+    ...recordFor("self-resuming"),
+    tool: "durable",
+    runStartedAt: "2026-09-24T12:00:00.000Z",
+    runPrompt: "the original task",
+  });
+  await waitForBoot(manager, "self-resuming");
   await new Promise<void>((resolve) => {
     const inspect = async () => {
-      if (!(await readRegistry()).find((session) => session.id === "remote-finished")?.runStartedAt) resolve();
+      if (!(await readRegistry()).find((session) => session.id === "self-resuming")?.runStartedAt) resolve();
       else setImmediate(() => void inspect());
     };
     void inspect();
   });
-  assert.deepEqual(started[0]?.prompts, [], "nothing is re-sent to a run that already finished");
-  assert.equal((await readRegistry()).find((session) => session.id === "remote-finished")?.runPrompt, undefined);
+  assert.deepEqual(started[0]?.prompts, [], "no recovery prompt is sent");
+  const record = (await readRegistry()).find((session) => session.id === "self-resuming");
+  assert.equal(record?.runPrompt, undefined);
+  assert.equal(record?.runRecoveryAttempts, undefined);
+});
+
+test("only work a restart would lose blocks an ordinary gateway stop", async () => {
+  const counts = (manager: InstanceType<typeof LiveSessions>) =>
+    [manager.activeWorkCount, manager.resumableWorkCount, manager.blockingWorkCount];
+  const resuming: FakeSession[] = [];
+  const durable = new LiveSessions({
+    id: "durable",
+    start: async () => {
+      const session = Object.assign(new FakeSession(), { resumesInterruptedRuns: true });
+      resuming.push(session);
+      return session;
+    },
+  });
+  durable.ensure({ ...recordFor("resumable-run"), tool: "durable" });
+  assert.deepEqual(counts(durable), [1, 0, 1], "a booting runtime holds nothing it could resume yet");
+  await waitForBoot(durable, "resumable-run");
+  assert.deepEqual(counts(durable), [0, 0, 0]);
+  const submitted = durable.prompt("resumable-run", "long task");
+  assert.deepEqual(counts(durable), [1, 0, 1], "a prompt the runtime has not accepted yet exists only here");
+  await submitted;
+  resuming[0]?.emit({ type: "turn_start" });
+  assert.equal(durable.status("resumable-run"), "running");
+  assert.deepEqual(counts(durable), [1, 1, 0], "the runtime continues this run after a restart");
+  await durable.followUp("resumable-run", "then summarize");
+  assert.deepEqual(counts(durable), [1, 0, 1], "a follow-up held only in this process blocks");
+  durable.disposeAll();
+
+  const started: FakeSession[] = [];
+  const pi = new LiveSessions(factory(started));
+  pi.ensure(recordFor("interruptible-run"));
+  await waitForBoot(pi, "interruptible-run");
+  await pi.prompt("interruptible-run", "long task");
+  started[0]?.emit({ type: "turn_start" });
+  assert.deepEqual(counts(pi), [1, 0, 1], "a runtime that cannot resume its run blocks");
+  pi.disposeAll();
 });
 
 test("manual continuation remains available after automatic recovery is exhausted", async () => {
@@ -1276,11 +1330,10 @@ test("rewind refreshes the authoritative transcript and broadcasts a snapshot", 
   await waitForBoot(manager, record.id);
   manager.subscribe(record.id, (message) => seen.push(message));
 
-  assert.deepEqual(await manager.checkpoints(record.id), started[0]?.rewindPoints);
   await manager.rewind(record.id, "user-1", { excludeUserMessage: true });
 
-  assert.deepEqual(started[0]?.rewoundTo, [{ entryId: "user-1", excludeUserMessage: true }]);
-  assert.deepEqual(manager.transcript(record.id), [{ kind: "message", role: "user", text: "rewound:user-1" }]);
+  assert.deepEqual(started[0]?.rewoundTo, [{ target: "user-1", excludeUserMessage: true }]);
+  assert.deepEqual(manager.transcript(record.id), [{ kind: "message", role: "user", text: 'rewound:"user-1"' }]);
   const snapshot = seen.findLast((message) => message.kind === "snapshot");
   assert.equal(snapshot?.kind, "snapshot");
   if (snapshot?.kind === "snapshot") assert.deepEqual(snapshot.snapshot.transcript, manager.transcript(record.id));
@@ -1297,8 +1350,266 @@ test("rewind aborts active work before changing the session tree", async () => {
   await manager.rewind(record.id, "user-1", { excludeUserMessage: true });
 
   assert.equal(started[0]?.aborts, 1);
-  assert.deepEqual(started[0]?.rewoundTo, [{ entryId: "user-1", excludeUserMessage: true }]);
+  assert.deepEqual(started[0]?.rewoundTo, [{ target: "user-1", excludeUserMessage: true }]);
   assert.equal(manager.status(record.id), "idle");
+});
+
+test("rewind of a prompt shown without an entry id stops the run, then lets PI count from the end", async () => {
+  const started: FakeSession[] = [];
+  const manager = new LiveSessions(factory(started));
+  const record = recordFor("running-tail-rewind");
+  manager.ensure(record);
+  await waitForBoot(manager, record.id);
+  await manager.prompt(record.id, "long job");
+
+  await manager.rewind(record.id, { userFromEnd: 0 }, { excludeUserMessage: true });
+
+  assert.equal(started[0]?.aborts, 1);
+  assert.deepEqual(started[0]?.rewoundTo, [{ target: { userFromEnd: 0 }, excludeUserMessage: true }]);
+});
+
+/** A Durable-like runtime that reports `resumed` to each new subscriber, as Durable does for a compaction it resumed
+ * after a restart, and the status updates the session list received until it booted. */
+async function bootWithCompaction(id: string, resumed: Extract<RuntimeEvent, { type: "compaction_start" }>) {
+  const started: FakeSession[] = [];
+  const manager = new LiveSessions({
+    id: "durable",
+    start: async () => {
+      const session = new FakeSession();
+      const subscribe = session.subscribe.bind(session);
+      session.subscribe = (listener) => {
+        const unsubscribe = subscribe(listener);
+        listener(resumed);
+        return unsubscribe;
+      };
+      started.push(session);
+      return session;
+    },
+  });
+  const updates: import("./live-sessions.ts").SessionStatusUpdate[] = [];
+  manager.watchStatuses((update) => updates.push(update));
+  const record = { ...recordFor(id), tool: "durable" };
+  manager.ensure(record);
+  await new Promise<void>((resolve) => {
+    const booted = () => manager.runtimeTelemetry().get(record.id)?.bootDurationMs !== undefined;
+    if (booted()) return resolve();
+    const unsubscribe = manager.subscribe(record.id, () => { if (booted()) { unsubscribe(); resolve(); } });
+  });
+  return { manager, record, session: started[0]!, last: updates.filter((update) => update.id === record.id).at(-1)?.status };
+}
+
+test("a blocking compaction the runtime reports while subscribing keeps a booting session busy", async () => {
+  const { manager, record, session, last } = await bootWithCompaction("resumed-compaction", { type: "compaction_start", reason: "manual" });
+  assert.equal(manager.status(record.id), "running");
+  assert.equal(last, "running", "the session list is told it is busy");
+  assert.deepEqual(manager.snapshot(record.id).compaction, { status: "running", reason: "manual" });
+  session.compactionEnded({ type: "compaction_end", reason: "manual", outcome: "done", willRetry: false });
+  session.emit({ type: "settled" });
+  await waitForStatus(manager, record.id, "idle");
+  assert.equal(manager.snapshot(record.id).compaction, undefined);
+});
+
+test("a compaction the runtime resumed beside the conversation leaves a booting session idle", async () => {
+  for (const resumed of [
+    { type: "compaction_start", reason: "manual", blocking: false },
+    { type: "compaction_start", reason: "threshold", blocking: false, background: true },
+  ] as const) {
+    const { manager, record, last } = await bootWithCompaction(`resumed-${resumed.reason}`, resumed);
+    assert.equal(manager.status(record.id), "idle", resumed.reason);
+    assert.equal(last, "idle");
+    const { type: _type, ...shown } = resumed;
+    assert.deepEqual(manager.snapshot(record.id).compaction, { status: "running", ...shown });
+  }
+});
+
+test("a compaction the runtime runs beside the conversation never holds input", async () => {
+  const started: FakeSession[] = [];
+  const manager = new LiveSessions(factory(started));
+  const record = recordFor("compacting-alongside");
+  manager.ensure(record);
+  await waitForBoot(manager, record.id);
+  const session = started[0]!;
+
+  // Durable's manual compaction runs beside the conversation, which stays idle and admits input.
+  session.emit({ type: "compaction_start", reason: "manual", blocking: false });
+  assert.equal(manager.status(record.id), "idle");
+  assert.deepEqual(manager.snapshot(record.id).compaction, { status: "running", reason: "manual", blocking: false });
+  // A steer with no run to steer starts one, through the prompt path.
+  await manager.steer(record.id, "typed while compacting");
+  assert.deepEqual(session.prompts, ["typed while compacting"]);
+  assert.deepEqual(session.steered, []);
+  assert.deepEqual(manager.snapshot(record.id).queue.items ?? [], [], "nothing waits in HUI's queue");
+  assert(manager.snapshot(record.id).transcript.some((entry) => entry.kind === "message" && entry.role === "user" && entry.text === "typed while compacting"));
+  // Inside that run a steer reaches the runtime as usual.
+  await manager.steer(record.id, "steered in the run");
+  assert.deepEqual(session.steered, ["steered in the run"]);
+});
+
+test("a background compaction leaves the session idle, takes prompts and lets a released session close", async () => {
+  const started: FakeSession[] = [];
+  const manager = new LiveSessions(factory(started));
+  const record = recordFor("compacting-background");
+  manager.ensure(record);
+  await waitForBoot(manager, record.id);
+  const session = started[0]!;
+
+  session.emit({ type: "compaction_start", reason: "threshold", blocking: false, background: true });
+  assert.equal(manager.status(record.id), "idle");
+  assert.deepEqual(manager.snapshot(record.id).compaction, { status: "running", reason: "threshold", blocking: false, background: true });
+  await manager.prompt(record.id, "sent meanwhile");
+  assert.deepEqual(session.prompts, ["sent meanwhile"]);
+  session.emit({ type: "settled" });
+  await waitForStatus(manager, record.id, "idle");
+  // The runtime keeps compacting on its own; this view need not stay open for it.
+  manager.release(record.id);
+  assert.equal(session.disposed, true);
+});
+
+test("only a manual compaction beside the conversation can be cancelled on its own, and only one compacts at a time", async () => {
+  const started: FakeSession[] = [];
+  const manager = new LiveSessions(factory(started));
+  const record = recordFor("cancel-compaction");
+  manager.ensure(record);
+  await waitForBoot(manager, record.id);
+  const session = started[0]!;
+
+  await assert.rejects(() => manager.cancelCompaction(record.id), SessionBusyError, "nothing is compacting");
+  session.emit({ type: "compaction_start", reason: "threshold", blocking: false, background: true });
+  await assert.rejects(() => manager.cancelCompaction(record.id), SessionBusyError, "background work is the runtime's own");
+  await assert.rejects(() => manager.compact(record.id), /already running/u);
+  session.emit({ type: "compaction_start", reason: "manual", blocking: false });
+  await manager.cancelCompaction(record.id);
+  assert.equal(session.compactionCancels, 1);
+  session.emit({ type: "compaction_start", reason: "threshold" });
+  await assert.rejects(() => manager.cancelCompaction(record.id), SessionBusyError, "Stop cancels a blocking one");
+  assert.equal(session.compactionCancels, 1);
+});
+
+test("a runtime that reports its compaction while it starts never shows the session busy", async () => {
+  const started: FakeSession[] = [];
+  const manager = new LiveSessions(factory(started));
+  const record = recordFor("compact-alongside-start");
+  manager.ensure(record);
+  await waitForBoot(manager, record.id);
+  const session = started[0]!;
+  // As Durable's compact() does, before its first await.
+  session.compact = async (instructions) => {
+    session.emit({ type: "compaction_start", reason: "manual", blocking: false });
+    session.compactions.push(instructions);
+  };
+  const statuses: string[] = [];
+  manager.watchStatuses((update) => { if (update.id === record.id) statuses.push(update.status); });
+  await manager.compact(record.id, "keep the API decisions");
+  assert.deepEqual(session.compactions, ["keep the API decisions"]);
+  assert.deepEqual(statuses.filter((status) => status !== "idle"), [], "no running flash for the gateway's claim");
+  assert.deepEqual(manager.snapshot(record.id).compaction, { status: "running", reason: "manual", blocking: false });
+});
+
+test("a compaction that ran beside the conversation shows its summary when it ends, without a settle", async () => {
+  const started: FakeSession[] = [];
+  const manager = new LiveSessions(factory(started));
+  const record = recordFor("compacted-alongside");
+  manager.ensure(record);
+  await waitForBoot(manager, record.id);
+  const session = started[0]!;
+  const snapshots: SessionSnapshot[] = [];
+  manager.subscribe(record.id, (message) => { if (message.kind === "snapshot") snapshots.push(message.snapshot); });
+
+  session.emit({ type: "compaction_start", reason: "manual", blocking: false });
+  session.history = [...session.history, { kind: "compaction", summary: "Summary", tokensBefore: 1200 }];
+  session.emit({ type: "compaction_end", reason: "manual", outcome: "done", willRetry: false });
+  assert.equal(manager.status(record.id), "idle");
+  assert.equal(manager.snapshot(record.id).compaction, undefined);
+  assert.equal(manager.snapshot(record.id).transcript.at(-1)?.kind, "compaction");
+  assert.equal(snapshots.at(-1)?.transcript.at(-1)?.kind, "compaction", "browsers get the refreshed history");
+});
+
+test("a compaction keeps the session busy, holds what the user sends and delivers it afterwards", async () => {
+  const started: FakeSession[] = [];
+  const manager = new LiveSessions(factory(started));
+  const record = recordFor("compacting");
+  manager.ensure(record);
+  await waitForBoot(manager, record.id);
+  const session = started[0]!;
+
+  // PI compacts after its agent_end, when the run has already settled.
+  session.emit({ type: "compaction_start", reason: "threshold" });
+  assert.equal(manager.status(record.id), "running");
+  assert.deepEqual(manager.snapshot(record.id).compaction, { status: "running", reason: "threshold" });
+  await manager.steer(record.id, "typed while compacting");
+  await manager.prompt(record.id, "sent by an automation");
+  assert.deepEqual(session.steered, []);
+  assert.deepEqual(session.prompts, []);
+  assert.deepEqual(manager.snapshot(record.id).queue.items?.map((item) => item.text), ["typed while compacting", "sent by an automation"]);
+  await assert.rejects(() => manager.compact(record.id), SessionBusyError);
+
+  const delivered = new Promise<string>((resolve) => {
+    const prompt = session.prompt.bind(session);
+    session.prompt = async (text, attachments) => { await prompt(text, attachments); resolve(text); };
+  });
+  session.compactionEnded({ type: "compaction_end", reason: "threshold", outcome: "done", willRetry: false });
+  assert.deepEqual(session.prompts, [], "nothing is sent before the refreshed history settles");
+  session.emit({ type: "settled" });
+  assert.equal(await delivered, "typed while compacting");
+  assert.equal(manager.snapshot(record.id).compaction, undefined);
+  assert.deepEqual(manager.snapshot(record.id).queue.items?.map((item) => item.text), ["sent by an automation"]);
+});
+
+test("a failed compaction stays visible until the next turn and never triggers a model fallback", async () => {
+  const started: FakeSession[] = [];
+  const manager = new LiveSessions(factory(started));
+  const record = recordFor("compaction-failed");
+  manager.ensure(record);
+  await waitForBoot(manager, record.id);
+  const session = started[0]!;
+
+  await manager.compact(record.id, "keep the API decisions");
+  assert.deepEqual(session.compactions, ["keep the API decisions"]);
+  session.emit({ type: "compaction_start", reason: "manual" });
+  session.compactionEnded({ type: "compaction_end", reason: "manual", outcome: "failed", willRetry: false, message: "Nothing to compact (session too small)" });
+  session.emit({ type: "settled" });
+  assert.equal(manager.status(record.id), "idle");
+  assert.deepEqual(manager.snapshot(record.id).compaction, { status: "failed", reason: "manual", message: "Nothing to compact (session too small)" });
+
+  session.emit({ type: "turn_start" });
+  assert.equal(manager.snapshot(record.id).compaction, undefined);
+});
+
+test("a /compact PI refuses before starting releases the session and sends what was held", async () => {
+  const started: FakeSession[] = [];
+  const manager = new LiveSessions(factory(started));
+  const record = recordFor("compaction-refused");
+  manager.ensure(record);
+  await waitForBoot(manager, record.id);
+  const session = started[0]!;
+
+  await manager.compact(record.id);
+  assert.equal(manager.status(record.id), "running");
+  await manager.steer(record.id, "held behind the compaction");
+  const delivered = new Promise<string>((resolve) => {
+    const prompt = session.prompt.bind(session);
+    session.prompt = async (text, attachments) => { await prompt(text, attachments); resolve(text); };
+  });
+  // No compaction_start and no settle: PI answered the RPC with an error.
+  session.emit({ type: "compaction_end", reason: "manual", outcome: "failed", willRetry: false, message: "pi is not running" });
+  assert.equal(await delivered, "held behind the compaction");
+  assert.deepEqual(manager.snapshot(record.id).compaction, { status: "failed", reason: "manual", message: "pi is not running" });
+});
+
+test("a session released while compacting closes once the compaction ends, even one PI refused", async () => {
+  const started: FakeSession[] = [];
+  const manager = new LiveSessions(factory(started));
+  const record = recordFor("released-compaction");
+  manager.ensure(record);
+  await waitForBoot(manager, record.id);
+  await manager.compact(record.id);
+  manager.release(record.id);
+  assert.equal(started[0]?.disposed, false, "the compaction keeps it open");
+  const session = started[0]!;
+  const disposed = new Promise<void>((resolve) => { session.dispose = () => { session.disposed = true; resolve(); }; });
+  session.emit({ type: "compaction_end", reason: "manual", outcome: "failed", willRetry: false, message: "pi is not running" });
+  await disposed;
+  assert.equal(manager.isLive(record.id), false);
 });
 
 test("prompt-free continuation enters running state and rewind stops it", async () => {
@@ -1314,7 +1625,7 @@ test("prompt-free continuation enters running state and rewind stops it", async 
   await assert.rejects(() => manager.continueRun(record.id), SessionBusyError);
   await manager.rewind(record.id, "user-1");
   assert.equal(started[0]?.aborts, 1);
-  assert.deepEqual(started[0]?.rewoundTo, [{ entryId: "user-1", excludeUserMessage: undefined }]);
+  assert.deepEqual(started[0]?.rewoundTo, [{ target: "user-1", excludeUserMessage: undefined }]);
 });
 
 test("attachments reach the runtime alongside the prompt", async () => {
@@ -1540,7 +1851,7 @@ test("Stop on a waiting question leaves an idle session, not a stale question", 
   assert.equal(manager.status("stopped-card"), "idle");
   assert.deepEqual(manager.snapshot("stopped-card").questions, []);
   await manager.rewind("stopped-card", "user-1");
-  assert.equal(started[0]!.rewoundTo.at(-1)?.entryId, "user-1");
+  assert.equal(started[0]!.rewoundTo.at(-1)?.target, "user-1");
 });
 
 test("HUI-owned follow-ups can be edited, reordered, removed and steered before delivery", async () => {

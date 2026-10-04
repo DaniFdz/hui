@@ -83,8 +83,10 @@ granted proxy names. Wildcard addresses remain unsupported.
 
 Use `systemctl start|stop|restart hui` and `journalctl -u hui` for a module-managed
 gateway, rather than starting a second detached CLI gateway. Systemd stop/restart
-can interrupt active work. The desktop app reuses the service when launched as
-the same user with matching HUI/PI/XDG directories. Custom service-only environment
+skips HUI's active-work check: Pi Durable runs resume afterwards, but sessions
+still on PI's SDK worker, queued follow-ups and terminals are interrupted. The
+desktop app reuses the service when launched as the same user with matching
+HUI/PI/XDG directories. Custom service-only environment
 variables are not automatically added to a graphical login session.
 
 Electron is supplied by the pinned nixpkgs (`electron_44` by default), not npm's
@@ -149,16 +151,20 @@ still need on-device verification**; see [desktop proof](../e2e/desktop-package.
 [Security and data](../README.md#security-and-data) covers binding the gateway
 to a tailnet address. Reaching the loopback gateway through a reverse proxy instead (for example
 `tailscale serve`) keeps the gateway on loopback and names the proxy's own host,
-which the gateway refuses until it is listed. The name is remembered with the
-binding:
+which the gateway refuses until it is listed. To keep the name across updates,
+reboots and desktop launches, list it in `~/.config/hui/gateway/config.json`
+(or `$XDG_CONFIG_HOME/hui/gateway/config.json`), which the gateway reads on
+every start:
 
-```sh
-hui gateway restart --allow-host laptop.example.ts.net
+```json
+{ "allowHosts": ["tailnet", "proxy.example.ts.net"] }
 ```
 
-Repeat `--allow-host` for more names, or set the comma-separated
-`HUI_GATEWAY_ALLOWED_HOSTS` when the gateway is started by something you do not
-edit.
+`"tailnet"` is this machine's Tailscale DNS name, looked up on each start and
+skipped while Tailscale is down. A malformed file stops the gateway from
+starting. For a one-off grant, `hui gateway restart --allow-host
+laptop.example.ts.net` (repeatable) or the comma-separated
+`HUI_GATEWAY_ALLOWED_HOSTS` last only until the gateway fully stops.
 
 ## Model providers
 
@@ -173,3 +179,43 @@ rows show context and maximum output, while subscription usage reports supported
 provider quota windows and reset times. Unsupported quotas are labeled explicitly.
 Reopen existing sessions after changing connections; new sessions use the updated
 configuration. HUI-managed connections require the default PI SDK backend.
+
+## After an upgrade: `hui doctor`
+
+`hui doctor` reports state that an upgraded HUI needs changed, and
+`hui doctor --fix` changes it. The report only reads, so it is safe while the
+gateway runs. It exits 0 when nothing is left to change and 1 otherwise;
+`--json` prints the same report for scripts.
+
+```sh
+hui doctor
+hui gateway stop   # or stop the systemd unit, and any development gateway
+hui doctor --fix
+hui gateway start
+```
+
+`--fix` refuses while a gateway runs: it reads the gateway's state, and the
+Durable session store stays locked by any gateway that has it open. It holds the
+lifecycle lock, so no gateway starts meanwhile. Run it with the gateway's
+environment (`XDG_CONFIG_HOME`, `HUI_DURABLE_DIR`, `PI_CODING_AGENT_DIR`) so it
+finds the same state.
+
+### PI sessions
+
+New sessions run on Pi Durable. `hui doctor` lists the sessions still on PI's
+SDK worker, and `--fix` moves each one into a new Durable conversation:
+
+- The active branch moves in order: its messages, tool calls and results, each
+  compaction summary in place, and the context PI would send next. The session
+  continues on its model and thinking level, and its spend moves with it, so
+  usage totals do not change.
+- PI's transcript is only read, and stays where it was, unchanged. Entries on
+  abandoned branches, left by a rewind, remain only there.
+- The session registry is copied to `$XDG_CONFIG_HOME/hui/backups/` before its
+  first change. Restoring that copy, with the gateway stopped, puts the sessions
+  back on PI without anything said on Durable since.
+- A session with an interrupted run stays on PI: start the gateway so the run
+  finishes, or stop it, then run `--fix` again. A session whose PI file is
+  missing stays as it is.
+- Running `--fix` again is safe: a session copied before from an unchanged file
+  reuses that copy.

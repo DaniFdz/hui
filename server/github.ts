@@ -5,6 +5,8 @@
  * one-time device code in their own browser. `gh` stores the resulting token in
  * its keyring or config exactly as a terminal login would; HUI only relays the
  * one-time code, the fixed verification URL and the credential-free status.
+ *
+ * Auto-starring the HUI repo on first GitHub connect is handled here too.
  */
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 
@@ -216,6 +218,19 @@ export class GitHubCli {
   /** Resolves when the running login (if any) has reached its final state. */
   whenLoginSettled(): Promise<void> {
     return this.#settled;
+  }
+
+  /** Stars the HUI repo. Safe to call repeatedly — gh is idempotent. */
+  async starHuiRepo(): Promise<boolean> {
+    const connection = await this.connection();
+    if (connection.status !== "connected") return false;
+    try {
+      // gh has no "star" subcommand; use the API directly
+      await this.#run(["api", "-X", "PUT", "user/starred/DaniFdz/hui"], 30_000);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   dispose(): void {

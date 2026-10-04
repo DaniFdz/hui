@@ -1,9 +1,12 @@
+import { execFile } from "node:child_process";
 import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { mkdir } from "node:fs/promises";
+import { promisify } from "node:util";
 import { createServer, type Server } from "node:http";
 import { join } from "node:path";
 import { atomicJson, GATEWAY_DIR, removeState, STATE_FILE, type GatewayState } from "../cli/state.ts";
 import { packageVersion } from "../cli/installation.ts";
+import { allowedHostsFromConfig, tailnetFromStatus } from "./host.ts";
 import { liveSessions } from "./live-sessions.ts";
 import { attachLiveStreams, middleware, startBackend, stopBackend } from "./hui.ts";
 import { serveStatic } from "./static-files.ts";
@@ -27,6 +30,11 @@ function close(server: Server): Promise<void> {
   return new Promise((resolve) => { server.close(() => resolve()); server.closeAllConnections(); });
 }
 
+async function tailnetName(): Promise<string | undefined> {
+  try { return tailnetFromStatus((await promisify(execFile)("tailscale", ["status", "--json"], { timeout: 5_000 })).stdout)?.allowedHosts?.[0]; }
+  catch { return undefined; }
+}
+
 export async function runGateway(options: GatewayOptions): Promise<{ state: GatewayState; closed: Promise<void>; stop(): Promise<void> }> {
   const version = await packageVersion(options.packageRoot);
   configureUpdates({ installationRoot: options.installationRoot ?? options.packageRoot, packageRoot: options.packageRoot });
@@ -37,7 +45,10 @@ export async function runGateway(options: GatewayOptions): Promise<{ state: Gate
   let inFlightMutations = 0;
   let resolveClosed!: () => void;
   const closed = new Promise<void>((resolve) => { resolveClosed = resolve; });
-  const allowed = new Set(["localhost", "127.0.0.1", "[::1]", options.host.toLowerCase(), ...options.allowedHosts.map((host) => host.toLowerCase())]);
+  // Configured names stay out of `state.allowedHosts`, so removing one from the
+  // file takes effect on the next start instead of being carried forward.
+  const configured = await allowedHostsFromConfig(join(GATEWAY_DIR, "config.json"), tailnetName);
+  const allowed = new Set(["localhost", "127.0.0.1", "[::1]", options.host.toLowerCase(), ...[...options.allowedHosts, ...configured].map((host) => host.toLowerCase())]);
   const server = createServer((request, response) => {
     let hostname: string;
     try { hostname = new URL(`http://${request.headers.host}`).hostname.toLowerCase(); }
@@ -66,13 +77,15 @@ export async function runGateway(options: GatewayOptions): Promise<{ state: Gate
     if (auth.length !== expected.length || !timingSafeEqual(auth, expected)) { response.writeHead(403).end(); return; }
     response.setHeader("Content-Type", "application/json");
     if (request.method === "GET" && request.url === "/status") {
-      response.end(JSON.stringify({ instance, pid: process.pid, version, activeSessions: liveSessions.activeWorkCount, activeTerminals: terminals.activeCount, url: state.url }));
+      response.end(JSON.stringify({ instance, pid: process.pid, version, activeSessions: liveSessions.activeWorkCount, resumableSessions: liveSessions.resumableWorkCount, activeTerminals: terminals.activeCount, url: state.url }));
     } else if (request.method === "POST" && ["/stop", "/stop?force=1"].includes(request.url ?? "")) {
       if (closing) { response.writeHead(409).end(JSON.stringify({ error: "Gateway is already stopping." })); return; }
       closing = true;
-      if (request.url !== "/stop?force=1" && (liveSessions.activeWorkCount > 0 || terminals.activeCount > 0 || inFlightMutations > 0)) {
+      // Sessions whose runtime resumes its own runs (Pi Durable) continue after
+      // the restart, so only work this process alone holds refuses a stop.
+      if (request.url !== "/stop?force=1" && (liveSessions.blockingWorkCount > 0 || terminals.activeCount > 0 || inFlightMutations > 0)) {
         closing = false;
-        response.writeHead(409).end(JSON.stringify({ error: "The gateway has active sessions, terminals or mutations. Wait, or use --force to interrupt them explicitly." }));
+        response.writeHead(409).end(JSON.stringify({ error: "The gateway has active sessions, terminals or mutations a restart would interrupt. Wait, or use --force to interrupt them explicitly." }));
         return;
       }
       response.once("finish", () => { void stop(); });

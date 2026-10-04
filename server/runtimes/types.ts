@@ -8,8 +8,9 @@ import type { TranscriptMetrics } from "./transcript-metrics.ts";
  * contract is deliberately tiny — start or resume a session, send a prompt, and
  * stream what comes back.
  *
- * pi is the only adapter today. Another harness can slot in beside it without
- * any of the UI changing.
+ * Two adapters exist: `durable` (Pi Durable, the default for new sessions)
+ * and `pi` (PI's SDK worker, kept for existing sessions and as a fallback).
+ * Another harness can slot in beside them without any of the UI changing.
  */
 
 export type RuntimeQueue = {
@@ -58,6 +59,25 @@ export type RuntimeQuestion =
 
 export type RuntimeQuestionResponse = { value: string } | { confirmed: boolean };
 
+/** Why PI compacted: `/compact`, its context threshold, or a context overflow it recovers from. */
+export type CompactionReason = "manual" | "threshold" | "overflow";
+
+/** A compaction shown outside the transcript: one in progress, or one that
+ * ended without writing a summary (a written one is a `compaction` entry).
+ * Without flags it is PI's: the session is busy, input waits for it and Stop
+ * cancels it. `blocking: false` marks one the runtime runs beside the
+ * conversation, as Durable runs a manual or background compaction: the session
+ * stays idle, input is never held and a run carries on meanwhile; a manual one
+ * can be cancelled on its own. `background: true` marks the runtime's own,
+ * which nothing in HUI cancels. */
+export type RuntimeCompaction = {
+  status: "running" | "failed" | "cancelled";
+  reason: CompactionReason;
+  message?: string;
+  blocking?: false;
+  background?: true;
+};
+
 /** Everything the browser needs to draw a turn, normalised across tools. */
 export type RuntimeEvent =
   | { type: "text"; delta: string }
@@ -70,6 +90,10 @@ export type RuntimeEvent =
   | { type: "notice"; message: string; level: "info" | "warning" | "error" }
   | { type: "turn_start" }
   | { type: "turn_end" }
+  /** `blocking` and `background` as in `RuntimeCompaction`; absent, it blocks and is not background. */
+  | { type: "compaction_start"; reason: CompactionReason; blocking?: false; background?: true }
+  /** `willRetry`: PI resumes the overflowed turn itself after a summary. */
+  | { type: "compaction_end"; reason: CompactionReason; outcome: "done" | "failed" | "cancelled"; willRetry: boolean; message?: string }
   /** The agent stopped entirely. Distinct from `turn_end`: a turn can end while
    * the agent is still working, and the prompt guard follows this one. */
   | { type: "settled"; historyRefreshed?: boolean }
@@ -105,17 +129,9 @@ export type RuntimeUsage = {
   costUsd: number | null;
 };
 
-export type RuntimeCheckpoint = {
-  /** Stable presentation key; multiple visible blocks may rewind to one entry. */
-  key: string;
-  /** Stable PI session-entry id used as the new active leaf. */
-  id: string;
-  kind: "user" | "assistant" | "thinking" | "tool" | "toolResult" | "summary";
-  label: string;
-  detail: string;
-  timestamp?: string;
-  current: boolean;
-};
+/** A PI entry id, or a user message the browser shows without one yet (the
+ * running prompt or one delivered mid-run), counted from the end of the branch. */
+export type RuntimeRewindTarget = string | { userFromEnd: number };
 
 export type RuntimeRewindOptions = {
   /** Stop before a selected user entry so its text can be edited and resent. */
@@ -158,6 +174,9 @@ export type RuntimeSession = {
   /** Where the conversation is stored, once the tool has decided. */
   readonly sessionFile: string | undefined;
   readonly isStreaming: boolean;
+  /** The runtime itself continues runs interrupted by a gateway restart, so
+   * HUI must never replay them with a recovery prompt. */
+  readonly resumesInterruptedRuns?: boolean;
   prompt(text: string, attachments?: readonly PromptAttachment[]): Promise<void>;
   /** Queue an instruction before the next model call while the agent is busy. */
   steer?(text: string, attachments?: readonly PromptAttachment[]): Promise<void>;
@@ -193,15 +212,15 @@ export type RuntimeSession = {
   clear?(): Promise<void>;
   /** Re-read extensions, skills, prompts and context files in place. */
   reload?(): Promise<void>;
-  /** Append-only session-tree checkpoints which can become the active leaf. */
-  checkpoints?(): Promise<readonly RuntimeCheckpoint[]>;
+  /** Start a summary of older context; compaction events report progress and outcome. */
+  compact?(instructions?: string): Promise<void>;
+  /** Cancel a manual compaction run beside the conversation (`blocking: false`),
+   * resolving once its end is reported. Stop cancels one that blocks. */
+  cancelCompaction?(): Promise<void>;
   /** Move the active leaf without deleting the branch being left. */
-  rewind?(entryId: string, options?: RuntimeRewindOptions): Promise<void>;
+  rewind?(target: RuntimeRewindTarget, options?: RuntimeRewindOptions): Promise<void>;
   /** Resume the model from the current non-assistant tail without a user prompt. */
   continueRun?(): Promise<void>;
-  /** Attached to a run that kept going while no gateway was watching (a
-   * remote worker); an `idle` boot then means it finished, not that it died. */
-  readonly resumed?: boolean;
   /** Fires when the tool's process ends on its own, so a gateway can mark the
    * session failed rather than wait on a session that is already gone. */
   onExit?(listener: () => void): () => void;
@@ -229,9 +248,13 @@ export type TranscriptEntry = { metrics?: TranscriptMetrics } & (
       kind: "message";
       role: "user" | "assistant";
       text: string;
+      /** PI session entry the message came from; the rewind target. */
+      entryId?: string;
       /** Files or images the user attached to that turn. */
       attachments?: readonly TranscriptAttachment[];
     }
+  /** Where PI summarized everything before its kept window. */
+  | { kind: "compaction"; summary: string; tokensBefore: number }
   | { kind: "thinking"; text: string }
   | {
       kind: "tool";

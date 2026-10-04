@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url";
 const repo = dirname(dirname(fileURLToPath(import.meta.url)));
 const help = `HUI visual verification (run from the checkout being reviewed)
 
-  node e2e/visual-verification.mjs launch --branch <expected-branch> [--quota-fixture | --jira-fixture | --github-fixture]
+  node e2e/visual-verification.mjs launch --branch <expected-branch> [--pi-sessions] [--quota-fixture | --jira-fixture | --github-fixture]
   node e2e/visual-verification.mjs doctor --receipt <absolute-receipt.json>
   node e2e/visual-verification.mjs cleanup --receipt <absolute-receipt.json>
 
@@ -207,6 +207,7 @@ export async function launch(expectedBranch) {
   await writeFile(join(agentDir, "skills", "sdk-fixture", "SKILL.md"), "---\nname: sdk-fixture\ndescription: SDK browser skill enablement fixture.\n---\nUse only for fixture skill checks.\n");
   await copyFile(join(repo, "e2e/question-extension.ts"), join(agentDir, "extensions/question.ts"));
   await copyFile(join(repo, "e2e/slash-commands-extension.ts"), join(agentDir, "extensions/commands.ts"));
+  await copyFile(join(repo, "e2e/compaction-extension.ts"), join(agentDir, "extensions/compaction.ts"));
   const receiptPath = join(dir, "receipt.json");
   const receipt = { version: 1, state: "starting", runId: randomUUID(), token: randomUUID(), runnerPid: process.pid, checkout, workspace, artifacts, receipt: receiptPath, startedAt: new Date().toISOString() };
   const save = async () => {
@@ -275,12 +276,18 @@ export async function launch(expectedBranch) {
       provider.stdout.on("data", onData);
       return () => provider.stdout.off("data", onData);
     });
+    // A real model's window. Durable compacts in the background from 32,768 tokens below
+    // `contextWindow - reserveTokens`; a 32k window put that under zero, and with the small kept window
+    // below every launcher session on Durable would compact by itself after a few turns.
     await writeFile(join(agentDir, "models.json"), JSON.stringify({ providers: { "hui-e2e": {
-      baseUrl: receipt.providerUrl, api: "anthropic-messages", apiKey: "e2e-not-a-secret",
-      models: [{ id: "fixture", name: "HUI SDK Fixture", reasoning: true, input: ["text", "image"], contextWindow: 32000, maxTokens: 4096, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } }],
+      baseUrl: receipt.providerUrl, api: "anthropic-messages", headers: { "x-client-session-id": "${PI_CLIENT_SESSION_ID}" }, apiKey: "e2e-not-a-secret",
+      models: [{ id: "fixture", name: "HUI SDK Fixture", reasoning: true, input: ["text", "image"], contextWindow: 200000, maxTokens: 4096, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } }],
     } } }));
-    await writeFile(join(agentDir, "settings.json"), JSON.stringify({ defaultProvider: "hui-e2e", defaultModel: "fixture", defaultThinkingLevel: "high" }));
+    // A small kept window lets /compact and /fixture-compact summarize a few short turns.
+    await writeFile(join(agentDir, "settings.json"), JSON.stringify({ defaultProvider: "hui-e2e", defaultModel: "fixture", defaultThinkingLevel: "high", compaction: { keepRecentTokens: 400 } }));
     const serverEnv = {};
+    // New sessions run on Durable; journeys that need PI's worker (its extensions, /fixture-compact) opt in.
+    if (process.argv.includes("--pi-sessions")) serverEnv.HUI_SESSION_RUNTIME = "pi";
     if (process.argv.includes("--jira-fixture")) {
       // Local Jira Cloud subset (e2e/jira-fixture.mjs), connected with its
       // public test credentials; the fixture model is also the utility model.
@@ -357,7 +364,8 @@ export async function launch(expectedBranch) {
 async function main() {
   const [command, ...args] = process.argv.slice(2);
   if (!command || command === "--help" || args.includes("--help")) return process.stdout.write(help);
-  if (command === "launch" && ["--quota-fixture", "--jira-fixture", "--github-fixture"].includes(args.at(-1))) args.pop();
+  // Trailing launch options; `launch` reads them from argv.
+  if (command === "launch") while (["--pi-sessions", "--quota-fixture", "--jira-fixture", "--github-fixture"].includes(args.at(-1))) args.pop();
   const option = command === "launch" ? "--branch" : "--receipt";
   if (!["launch", "doctor", "cleanup"].includes(command) || args.length !== 2 || args[0] !== option) throw new Error("Invalid arguments. Run with --help.");
   if (command === "launch") return launch(args[1]);

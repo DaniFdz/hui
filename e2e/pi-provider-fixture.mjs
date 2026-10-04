@@ -100,6 +100,23 @@ const toolResultFrom = (message) => {
   return { id: block.tool_use_id, result };
 };
 
+/** True once POST /control/release-replay frees the response, false if the
+ * client disconnected first (an abort). */
+const heldUntilRelease = (response) => new Promise((resolve) => {
+  const release = () => {
+    replayWaiters.delete(release);
+    response.off("close", disconnected);
+    resolve(true);
+  };
+  const disconnected = () => {
+    replayWaiters.delete(release);
+    resolve(false);
+  };
+  replayWaiters.add(release);
+  response.once("close", disconnected);
+  signalReplayReady();
+});
+
 const server = createServer(async (request, response) => {
   const url = new URL(request.url ?? "/", `http://127.0.0.1:${port}`);
   if (request.method === "GET" && url.pathname === "/health") return json(response, 200, { ok: true });
@@ -148,7 +165,10 @@ const server = createServer(async (request, response) => {
   const chunks = [];
   for await (const chunk of request) chunks.push(chunk);
   const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
-  await appendFile(logFile, `${JSON.stringify(body)}\n`, "utf8");
+  // A fixture provider whose x-client-session-id header interpolates `${PI_CLIENT_SESSION_ID}`
+  // logs the identity HUI resolved for the request.
+  const clientSessionId = request.headers["x-client-session-id"];
+  await appendFile(logFile, `${JSON.stringify(clientSessionId === undefined ? body : { ...body, clientSessionId })}\n`, "utf8");
   const source = flattenedText(body.messages?.at(-1));
   const latestToolResult = toolResultFrom(body.messages?.at(-1));
   if (source.includes("E2E_ERROR")) return json(response, 500, { type: "error", error: { type: "api_error", message: "fixture provider error" } });
@@ -428,6 +448,25 @@ const server = createServer(async (request, response) => {
     event(response, { type: "content_block_stop", index: 0 });
     return finish(response, "tool_use");
   }
+  if (latestToolResult?.id?.startsWith("tool-e2e-watcher-")) {
+    text(response, "Watchers are running; HUI shows them in this conversation.");
+    return finish(response);
+  }
+  if (source.includes("E2E_WATCHER")) {
+    toolUse(response, "tool-e2e-watcher-quick", "watcher", {
+      action: "start",
+      purpose: "Post /merge when approved",
+      target: "https://github.com/ddoghq/web-ui/pull/21532",
+      outcome: "post /merge",
+      command: "printf 'posted /merge\\n'",
+    }, 0);
+    toolUse(response, "tool-e2e-watcher-long", "watcher", {
+      action: "start",
+      purpose: "Wait for #21532 review signals",
+      command: "printf 'watching #21532\\n'; sleep 600",
+    }, 1);
+    return finish(response, "tool_use");
+  }
   if (source.includes("E2E_SUGGEST_TASK")) {
     toolUse(response, "tool-e2e-suggest-a", "suggest_task", {
       title: "Replace native terminal switcher select with HUI picker",
@@ -472,26 +511,20 @@ const server = createServer(async (request, response) => {
   if (source.includes("E2E_REPLAY")) {
     event(response, { type: "content_block_start", index: 0, content_block: { type: "text", text: "", citations: null } });
     event(response, { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "Replay prefix — " } });
-    const released = await new Promise((resolve) => {
-      const release = () => {
-        replayWaiters.delete(release);
-        response.off("close", disconnected);
-        resolve(true);
-      };
-      const disconnected = () => {
-        replayWaiters.delete(release);
-        resolve(false);
-      };
-      replayWaiters.add(release);
-      response.once("close", disconnected);
-      signalReplayReady();
-    });
-    if (!released) return;
+    if (!(await heldUntilRelease(response))) return;
     event(response, { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "replay suffix" } });
     event(response, { type: "content_block_stop", index: 0 });
     return finish(response);
   }
 
+  // PI's compaction summarizer; a distinct reply shows where the summary lands.
+  // E2E_SLOW_COMPACT in the conversation holds it until POST
+  // /control/release-replay, so a check can watch, queue into or cancel it.
+  if (flattenedText(body.system).includes("context summarization assistant")) {
+    if (source.includes("E2E_SLOW_COMPACT") && !(await heldUntilRelease(response))) return;
+    text(response, "FIXTURE_SUMMARY");
+    return finish(response);
+  }
   // Attachment requests reach this branch. The request log is the proof that
   // PI, not merely HUI's HTTP boundary, received the image/file-expanded input.
   text(response, source.includes("image") ? "Attachment received by PI." : "Fixture response.");

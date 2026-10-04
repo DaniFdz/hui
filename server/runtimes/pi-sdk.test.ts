@@ -2,7 +2,7 @@ import type { TranscriptEntry } from "./types.ts";
 import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
 import { once } from "node:events";
-import { mkdtemp, mkdir, readFile, writeFile, readdir, rm } from "node:fs/promises";
+import { copyFile, mkdtemp, mkdir, readFile, writeFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -77,7 +77,7 @@ test("SDK owns schemas and prompt, executes tools, preserves history, models, th
   const session = await f.start();
   const initial = await session.inspect!();
   assert.deepEqual(initial.tools.map((tool) => tool.name).sort(), shippedTools().map((tool) => tool.name).sort());
-  assert.equal(initial.tools.filter((tool) => tool.active).length, 16);
+  assert.equal(initial.tools.filter((tool) => tool.active).length, 17);
   assert.equal(initial.tools.find((tool) => tool.name === "terminal")?.source, "HUI");
   assert.equal(initial.tools.find((tool) => tool.name === "browser")?.source, "HUI");
   assert.equal(initial.tools.find((tool) => tool.name === "progress_card")?.source, "HUI");
@@ -134,13 +134,10 @@ test("SDK rewinds the append-only PI tree and continues without a synthetic user
   await session.prompt("CONTINUE_FIXTURE");
   await settled;
 
-  const points = await session.checkpoints!();
-  const user = points.find((point) => point.kind === "user" && point.detail === "CONTINUE_FIXTURE");
-  assert(user, JSON.stringify(points));
-  assert(points.some((point) => point.kind === "assistant"));
+  const user = entryId(session, "CONTINUE_FIXTURE");
   await assert.rejects(() => session.continueRun!(), /completed assistant response/u);
 
-  await session.rewind!(user.id);
+  await session.rewind!(user);
   assert.deepEqual(session.transcript().map((entry) => entry.kind === "message" ? `${entry.role}:${entry.text}` : entry.kind), [
     "user:CONTINUE_FIXTURE",
   ]);
@@ -150,8 +147,49 @@ test("SDK rewinds the append-only PI tree and continues without a synthetic user
   await settled;
   assert(session.transcript().some((entry) => entry.kind === "message" && entry.role === "assistant" && entry.text.includes("Fixture response")));
 
-  await session.rewind!(user.id, { excludeUserMessage: true });
+  await session.rewind!(user, { excludeUserMessage: true });
   assert.deepEqual(session.transcript(), []);
+});
+
+test("SDK continues an aborted reply that followed a persisted prompt or tool change", { timeout: 45_000 }, async (t) => {
+  // PI persists prompt and tool loadout changes as system entries in front of
+  // the request that used them, so an aborted reply can follow toolResult → system.
+  const f = await fixture(t);
+  const first = await f.start();
+  let settled = nextEvent(first, (event) => event.type === "settled");
+  await first.prompt("Create the transcript"); await settled;
+  const sessionFile = first.sessionFile;
+  assert(sessionFile);
+  first.dispose();
+  const persisted = (await readFile(sessionFile, "utf8")).trim().split("\n").map((line) => JSON.parse(line) as { id: string; type: string; message?: { role?: string } });
+  assert(persisted.some((entry) => entry.type === "message" && entry.message?.role === "system"), "PI records the initial loadout as a system entry");
+  let parentId = persisted.at(-1)!.id;
+  const append = (id: string, message: Record<string, unknown>) => {
+    const entry = { type: "message", id, parentId, timestamp: new Date().toISOString(), message: { ...message, timestamp: Date.now() } };
+    parentId = id;
+    return JSON.stringify(entry);
+  };
+  const usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
+  const reply = { api: "anthropic-messages", provider: "hui-e2e", model: "fixture", usage };
+  const lines = [
+    append("c0a1b2c3", { role: "user", content: [{ type: "text", text: "Read the fixture" }] }),
+    append("c0a1b2c4", { role: "assistant", content: [{ type: "toolCall", id: "tool-continue-read", name: "read", arguments: { path: "fixture.txt" } }], ...reply, stopReason: "toolUse" }),
+    append("c0a1b2c5", { role: "toolResult", toolCallId: "tool-continue-read", toolName: "read", content: [{ type: "text", text: "SDK fixture content\n" }], isError: false }),
+    append("c0a1b2c6", { role: "system", content: "", sections: { continue_marker: "CONTINUE_SECTION_FIXTURE" } }),
+    append("c0a1b2c7", { role: "assistant", content: [], ...reply, stopReason: "aborted", errorMessage: "Request was aborted" }),
+  ];
+  await writeFile(sessionFile, `${(await readFile(sessionFile, "utf8")).trimEnd()}\n${lines.join("\n")}\n`);
+
+  const resumed = await f.start({ sessionFile });
+  const before = (await readFile(f.log, "utf8")).trim().split("\n").length;
+  settled = nextEvent(resumed, (event) => event.type === "settled");
+  await resumed.continueRun!();
+  await settled;
+  assert(resumed.transcript().some((entry) => entry.kind === "message" && entry.role === "assistant" && entry.text.includes("Tool complete")), JSON.stringify(resumed.transcript()));
+  const requests = (await readFile(f.log, "utf8")).trim().split("\n").slice(before).map((line) => JSON.parse(line));
+  assert.equal(requests.length, 1, "continuing sends exactly one request and no synthetic user prompt");
+  assert(JSON.stringify(requests[0]).includes("CONTINUE_SECTION_FIXTURE"), "the persisted loadout change still applies to the continued request");
+  assert(!JSON.stringify(requests[0]).includes("Request was aborted"));
 });
 
 test("SDK inspects late tools, overrides and load failures; SYSTEM and APPEND compose; questions use RPC", { timeout: 45_000 }, async (t) => {
@@ -405,9 +443,8 @@ test("SDK abort and steer/follow-up settle without losing queue messages", { tim
   let settled = nextEvent(session, (event) => event.type === "settled");
   await session.abort(); await settled;
   assert.equal(session.isStreaming, false);
-  const abortedUser = (await session.checkpoints!()).find((point) => point.kind === "user" && point.detail === "E2E_ABORT");
-  assert(abortedUser);
-  await session.rewind!(abortedUser.id, { excludeUserMessage: true });
+  // The browser shows a prompt sent this run without an entry id; PI counts it from the end.
+  await session.rewind!({ userFromEnd: 0 }, { excludeUserMessage: true });
   assert.deepEqual(session.transcript(), []);
   prefix = nextEvent(session, (event) => event.type === "text" && event.delta.includes("Replay prefix"));
   await session.prompt("E2E_REPLAY"); await prefix;
@@ -441,7 +478,8 @@ test("CLI fallback and SDK can resume each other's PI transcripts", { timeout: 4
   settled = nextEvent(fallback, (event) => event.type === "settled");
   await fallback.prompt("Fallback compatibility turn"); await settled;
   const { metrics, ...last } = fallback.transcript().at(-1)!;
-  assert.deepEqual(last, { kind: "message", role: "assistant", text: "Fixture response." });
+  assert(last.kind === "message" && last.entryId, JSON.stringify(last));
+  assert.deepEqual(last, { kind: "message", role: "assistant", text: "Fixture response.", entryId: last.entryId });
   assert.equal(metrics?.outputTokens, 1);
   assert.equal(metrics?.inputTokens, 1);
   assert.equal(typeof metrics?.completedAt, "number");
@@ -477,4 +515,193 @@ test("SDK compaction persists through resume and a crashing extension only exits
   assert.equal(resumed.running, false);
   const replacement = await f.start({ sessionFile: file });
   assert.equal(replacement.running, true);
+});
+
+const shown = (session: PiSession) => session.transcript().map((entry) =>
+  entry.kind === "message" ? `${entry.role}:${entry.text.slice(0, 13)}` : entry.kind);
+
+function entryId(session: PiSession, text: string): string {
+  const entry = session.transcript().find((item) => item.kind === "message" && item.text.startsWith(text));
+  assert(entry?.kind === "message" && entry.entryId, text);
+  return entry.entryId;
+}
+
+/** The provider request that carried `marker`, as searchable text. */
+async function requestWith(log: string, marker: string): Promise<string> {
+  const request = (await readFile(log, "utf8")).trim().split("\n").findLast((line) => line.includes(marker));
+  assert(request, marker);
+  return request;
+}
+
+test("SDK keeps the whole branch visible across compaction and rewinds to any message by entry id", { timeout: 45_000 }, async (t) => {
+  const f = await fixture(t);
+  await mkdir(join(f.agentDir, "extensions"));
+  await copyFile(new URL("../../e2e/compaction-extension.ts", import.meta.url), join(f.agentDir, "extensions", "compaction.ts"));
+  // The long third turn alone exceeds keepRecentTokens: PI keeps it verbatim and summarizes the first two.
+  await writeFile(join(f.agentDir, "settings.json"), JSON.stringify({ defaultProvider: "hui-e2e", defaultModel: "fixture", compaction: { enabled: true, keepRecentTokens: 400, reserveTokens: 1024 } }));
+  const session = await f.start();
+  for (const message of ["COMPACT_ONE", "COMPACT_TWO", `COMPACT_THREE ${"kept ".repeat(400)}`]) {
+    const settled = nextEvent(session, (event) => event.type === "settled");
+    await session.prompt(message); await settled;
+  }
+  const compacted = nextEvent(session, (event) => event.type === "settled");
+  await session.prompt("/fixture-compact"); await compacted;
+  assert.equal(shown(session).at(-1), "compaction", "the settle after compaction already shows it");
+  const file = session.sessionFile!;
+  session.dispose();
+  // Each rewind below starts from the compacted branch.
+  const copy = join(f.dir, "compacted.jsonl");
+  await copyFile(file, copy);
+
+  const resumed = await f.start({ sessionFile: file });
+  assert.deepEqual(shown(resumed), [
+    "user:COMPACT_ONE", "assistant:Fixture respo", "user:COMPACT_TWO", "assistant:Fixture respo",
+    "user:COMPACT_THREE", "assistant:Fixture respo", "compaction",
+  ]);
+  const marker = resumed.transcript().at(-1);
+  assert(marker?.kind === "compaction" && marker.summary.includes("FIXTURE_SUMMARY") && marker.tokensBefore > 0, JSON.stringify(marker));
+
+  // Behind the cut the summary describes later work, so PI must send the original messages.
+  await resumed.rewind!(entryId(resumed, "COMPACT_TWO"), { excludeUserMessage: true });
+  assert.deepEqual(shown(resumed), ["user:COMPACT_ONE", "assistant:Fixture respo"]);
+  let settled = nextEvent(resumed, (event) => event.type === "settled");
+  await resumed.prompt("AFTER_CUT"); await settled;
+  let request = await requestWith(f.log, "AFTER_CUT");
+  assert.match(request, /COMPACT_ONE/u);
+  assert.doesNotMatch(request, /FIXTURE_SUMMARY/u);
+  resumed.dispose();
+
+  // Inside the kept window the summary still covers everything before the target.
+  const kept = await f.start({ sessionFile: copy });
+  await kept.rewind!(entryId(kept, "COMPACT_THREE"), { excludeUserMessage: true });
+  assert.deepEqual(shown(kept), ["user:COMPACT_ONE", "assistant:Fixture respo", "user:COMPACT_TWO", "assistant:Fixture respo", "compaction"]);
+  // The summary is the whole context now; Continue resumes from it.
+  settled = nextEvent(kept, (event) => event.type === "settled");
+  await kept.continueRun!(); await settled;
+  request = await requestWith(f.log, "FIXTURE_SUMMARY");
+  assert.doesNotMatch(request, /COMPACT_ONE/u);
+  settled = nextEvent(kept, (event) => event.type === "settled");
+  await kept.prompt("AFTER_KEPT"); await settled;
+  request = await requestWith(f.log, "AFTER_KEPT");
+  assert.match(request, /FIXTURE_SUMMARY/u);
+  assert.doesNotMatch(request, /COMPACT_ONE/u);
+});
+
+test("SDK continues past a failure PI retried and then compacted, keeping the summary", { timeout: 45_000 }, async (t) => {
+  const f = await fixture(t);
+  // PI hides each failed attempt behind a context edit before retrying it and
+  // may compact right after the final failure, so neither the leaf nor the
+  // entry before it is the message to continue from.
+  const at = new Date().toISOString();
+  const failed = { role: "assistant", content: [], api: "anthropic-messages", provider: "hui-e2e", model: "fixture", stopReason: "error", errorMessage: "Request timed out.", timestamp: Date.now(),
+    usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } } };
+  const file = join(f.dir, "retried.jsonl");
+  await writeFile(file, [
+    { type: "session", version: 3, id: "retried", timestamp: at, cwd: f.cwd },
+    { type: "message", id: "old", parentId: null, timestamp: at, message: { role: "user", content: [{ type: "text", text: "SUMMARIZED_PROMPT" }], timestamp: Date.now() } },
+    { type: "message", id: "done", parentId: "old", timestamp: at, message: { ...failed, stopReason: "stop", errorMessage: undefined, content: [{ type: "text", text: "Done." }] } },
+    { type: "message", id: "user", parentId: "done", timestamp: at, message: { role: "user", content: [{ type: "text", text: "RETRIED_PROMPT" }], timestamp: Date.now() } },
+    { type: "message", id: "first", parentId: "user", timestamp: at, message: failed },
+    { type: "context_edit", id: "hide-first", parentId: "first", timestamp: at, targetId: "first", replacement: null },
+    { type: "message", id: "final", parentId: "hide-first", timestamp: at, message: failed },
+    { type: "compaction", id: "compacted", parentId: "final", timestamp: at, summary: "SYNTH_SUMMARY", firstKeptEntryId: "user", tokensBefore: 100 },
+  ].map((entry) => JSON.stringify(entry)).join("\n") + "\n");
+  const session = await f.start({ sessionFile: file });
+  assert.deepEqual(shown(session), ["user:SUMMARIZED_PR", "assistant:Done.", "user:RETRIED_PROMP", "error", "compaction"]);
+  const settled = nextEvent(session, (event) => event.type === "settled");
+  await session.continueRun!(); await settled;
+  const request = await requestWith(f.log, "RETRIED_PROMPT");
+  assert.match(request, /SYNTH_SUMMARY/u);
+  assert.doesNotMatch(request, /SUMMARIZED_PROMPT/u);
+  assert.deepEqual(shown(session), ["user:SUMMARIZED_PR", "assistant:Done.", "user:RETRIED_PROMP", "compaction", "assistant:Fixture respo"]);
+});
+
+/** Every compaction event and settle the session emits, in order. */
+function compactionLog(session: PiSession): string[] {
+  const log: string[] = [];
+  session.subscribe((event) => {
+    if (event.type === "compaction_start") log.push(`start:${event.reason}`);
+    else if (event.type === "compaction_end") log.push(`end:${event.reason}:${event.outcome}${event.message ? `:${event.message}` : ""}`);
+    else if (event.type === "settled") log.push("settled");
+  });
+  return log;
+}
+
+test("SDK /compact passes focus text, reports failure and cancellation, and settles after each", { timeout: 45_000 }, async (t) => {
+  const f = await fixture(t);
+  await writeFile(join(f.agentDir, "settings.json"), JSON.stringify({ defaultProvider: "hui-e2e", defaultModel: "fixture", compaction: { enabled: true, keepRecentTokens: 400, reserveTokens: 1024 } }));
+  const session = await f.start({ noSession: true });
+  for (const message of ["COMPACT_ONE", "COMPACT_TWO", `COMPACT_THREE ${"kept ".repeat(400)}`]) {
+    const settled = nextEvent(session, (event) => event.type === "settled");
+    await session.prompt(message); await settled;
+  }
+  const log = compactionLog(session);
+
+  let settled = nextEvent(session, (event) => event.type === "settled");
+  await session.compact!("keep the API decisions"); await settled;
+  assert.deepEqual(log, ["start:manual", "end:manual:done", "settled"]);
+  assert.match(await requestWith(f.log, "context checkpoint summary"), /keep the API decisions/u);
+  assert.equal(session.transcript().at(-1)?.kind, "compaction");
+
+  settled = nextEvent(session, (event) => event.type === "settled");
+  await session.compact!(); await settled;
+  assert.deepEqual(log.slice(3), ["start:manual", "end:manual:failed:Already compacted", "settled"]);
+
+  // A held summary keeps the compaction running until Stop cancels it. The
+  // marker must be summarized, so a long turn follows it into the kept window.
+  for (const message of ["E2E_SLOW_COMPACT", `LONG ${"kept ".repeat(400)}`]) {
+    settled = nextEvent(session, (event) => event.type === "settled");
+    await session.prompt(message); await settled;
+  }
+  const ready = fetch(`${f.baseUrl}/control/wait-replay-ready`);
+  settled = nextEvent(session, (event) => event.type === "settled");
+  await session.compact!();
+  await ready;
+  await session.abort(); await settled;
+  assert.deepEqual(log.slice(8), ["start:manual", "end:manual:cancelled", "settled"]);
+  assert.notEqual(session.transcript().at(-1)?.kind, "compaction");
+});
+
+test("SDK reports PI's automatic compaction after a turn and settles again once it is written", { timeout: 45_000 }, async (t) => {
+  const f = await fixture(t);
+  // Any context exceeds window - reserve, so PI compacts after the first reply.
+  await writeFile(join(f.agentDir, "settings.json"), JSON.stringify({ defaultProvider: "hui-e2e", defaultModel: "fixture", compaction: { enabled: true, keepRecentTokens: 1, reserveTokens: 31_999 } }));
+  const session = await f.start({ noSession: true });
+  const log = compactionLog(session);
+  // The turn's own settle may land after compaction_end; wait for the one with the summary.
+  const compacted = nextEvent(session, (event) => event.type === "settled" && session.transcript().at(-1)?.kind === "compaction");
+  await session.prompt("AUTO_COMPACT_ONE");
+  await compacted;
+  assert.deepEqual(log.filter((item) => item !== "settled"), ["start:threshold", "end:threshold:done"]);
+});
+
+test("SDK accepts a prompt PI compacts before and stays busy until that prompt's reply ends", { timeout: 45_000 }, async (t) => {
+  const f = await fixture(t);
+  await writeFile(join(f.agentDir, "settings.json"), JSON.stringify({ defaultProvider: "hui-e2e", defaultModel: "fixture", compaction: { enabled: true, keepRecentTokens: 1, reserveTokens: 31_999 } }));
+  const session = await f.start({ noSession: true });
+  const log = compactionLog(session);
+  const held = () => fetch(`${f.baseUrl}/control/wait-replay-ready`);
+  const release = () => fetch(`${f.baseUrl}/control/release-replay`, { method: "POST" });
+
+  // PI compacts after this turn; the held summary is cancelled, so the context stays full.
+  let ready = held();
+  let settled = nextEvent(session, (event) => event.type === "settled");
+  await session.prompt("E2E_SLOW_COMPACT one"); await settled; await ready;
+  settled = nextEvent(session, (event) => event.type === "settled");
+  await session.abort(); await settled;
+  assert.deepEqual(log.filter((item) => item !== "settled"), ["start:threshold", "end:threshold:cancelled"]);
+
+  // So PI compacts before the next prompt, answering it only after the summary.
+  ready = held();
+  const prompted = session.prompt("E2E_REPLAY second");
+  await ready;
+  await prompted;
+  const beforeReply = log.length;
+  const replying = nextEvent(session, (event) => event.type === "text" && event.delta.includes("Replay prefix"));
+  await release(); await replying;
+  assert.equal(session.isStreaming, true);
+  assert.deepEqual(log.slice(beforeReply), ["end:threshold:done"]);
+  settled = nextEvent(session, (event) => event.type === "settled");
+  await release(); await settled;
+  assert(JSON.stringify(session.transcript()).includes("replay suffix"));
 });

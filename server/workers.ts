@@ -385,7 +385,8 @@ class WorkerConnection {
     const toolParams = isRecord(params["params"]) ? params["params"] : {};
     const caller = (await readRegistry()).find((record) => record.id === key && record.worker === this.worker.id);
     if (!action || !caller) throw new Error("That conversation does not run on this worker.");
-    if (action === "terminal" || action === "browser") throw new Error(`The ${action} tool is not available to sessions on a remote worker yet.`);
+    // These act on the gateway's machine, not the worker's.
+    if (action === "terminal" || action === "browser" || action === "watcher") throw new Error(`The ${action} tool is not available to sessions on a remote worker yet.`);
     if (action !== "present_media") return invokeAgentTool({ callerSessionId: key, action, params: toolParams });
     // Media lives on the remote: copy it here, then present it as usual.
     const paths = Array.isArray(toolParams["paths"]) ? toolParams["paths"].filter((path): path is string => typeof path === "string").slice(0, 8) : [];

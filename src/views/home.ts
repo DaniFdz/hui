@@ -12,6 +12,8 @@ import type {
   RuntimeQuestion,
   PromptMode,
   QueueSnapshot,
+  RewindTarget,
+  RuntimeCompaction,
   SessionConnection,
   SessionGroup,
   SessionStatus,
@@ -25,6 +27,7 @@ import { attachmentPreview } from "../lib/attachments.ts";
 import { renderAttachmentFileIcon, resolveAttachmentFileIcon } from "../lib/attachment-file-icon.ts";
 import { isSubagentActive, subagentElapsed, subagentVisualState } from "../lib/subagent-activity.ts";
 import { composerEnterMode } from "../lib/composer-state.ts";
+import { compactionBlocks, noteAnnouncement, type NoteLevel } from "../lib/session-ui-state.ts";
 import { adjustTextareaHeight as syncComposerTextarea } from "../lib/composer-textarea.ts";
 import { icons } from "../lib/icons.ts";
 import type { SplitDirection } from "../lib/session-multiplexer.ts";
@@ -34,7 +37,6 @@ import "../components/browser-preview.ts";
 import { handleCodeBlockDisclosure, markdownBlocks } from "../lib/markdown-blocks.ts";
 import { openMessageContextMenu } from "../lib/message-context-menu.ts";
 import { progressCardFromTranscript } from "../lib/progress-card.ts";
-import type { RewindTarget } from "../lib/rewind.ts";
 import { mediaSizeLabel, presentedMediaFromDetails, type PresentedMediaItem } from "../lib/presented-media.ts";
 import type { RunErrorNotice } from "../lib/run-error.ts";
 import { renderProviderBrandIcon } from "../lib/provider-icons.ts";
@@ -45,6 +47,7 @@ import { positionRail } from "./chat/position-rail.ts";
 import { readToolPresentation, renderReadToolCard } from "./chat/read-tool-card.ts";
 import { commandToolPresentation, renderCommandToolCard } from "./chat/command-tool-card.ts";
 import { renderTaskSuggestionCard, type TaskSuggestionCardProps } from "./chat/task-suggestion-card.ts";
+import { renderWatcherActivity, type WatcherActivityProps } from "./chat/watcher-activity.ts";
 import { browserToolSummary } from "../lib/browser-tool-display.ts";
 import { toggleNavigationDrawer } from "./shell.ts";
 import { slashCommandQuery } from "../lib/slash-commands.ts";
@@ -210,11 +213,13 @@ export type HomeProps = {
   /** The model in use, when the tool reports one. */
   currentModel: RuntimeModel | undefined;
   usage: RuntimeUsage | undefined;
+  /** A running compaction, or one that ended without a summary. */
+  compaction: RuntimeCompaction | undefined;
   /** Files picked but not yet sent. */
   attachments: readonly Attachment[];
   launching: boolean;
   note: string;
-  noteFailed: boolean;
+  noteLevel: NoteLevel;
   sideChat?: {
     question: string;
     answer: string;
@@ -245,6 +250,8 @@ export type HomeProps = {
   onSelectSubagent: (sessionId: string) => void;
   /** Pending `suggest_task` cards for the open session. */
   taskSuggestions?: TaskSuggestionCardProps;
+  /** HUI-run background watchers for the open session. */
+  watchers?: WatcherActivityProps;
   onDraftChange: (draft: string) => void;
   commandMenu: SlashMenuProps;
   onCommandQuery: (query: string | null) => void;
@@ -271,7 +278,12 @@ export type HomeProps = {
   onSelectThinking: (level: string) => void;
   onAbort: () => void;
   onContinue: () => void;
+  /** Rewind to before a user message, restoring its text to the composer. */
   onRewind: (target: RewindTarget, text: string) => void;
+  /** Same as sending `/compact`. */
+  onCompact: () => void;
+  /** Cancels a manual compaction running beside the conversation (Durable's). */
+  onCancelCompaction: () => void;
   onAddAttachments: (files: readonly File[]) => void;
   onRemoveAttachment: (index: number) => void;
   onCopy: (text: string, id: string) => Promise<boolean>;
@@ -323,33 +335,31 @@ function sessionControlId(props: HomeProps, suffix: string): string {
   return `${suffix}-${props.controlScope ? `${props.controlScope}-` : ""}${owner}`;
 }
 
+/** Every chat notification, runtime notices included, uses the shell toast in
+ * the trailing top corner. Info toasts carry no icon, as upstream's do. */
 function renderNote(props: HomeProps) {
   if (!props.note) {
     return nothing;
   }
-  if (props.noteFailed) {
-    return html`<div class="app-toast chat-operation-toast" role="alert" aria-atomic="true">
-      <span class="app-toast__icon" aria-hidden="true">${icons.alertTriangle}</span>
-      <span class="app-toast__message">${props.note}</span>
-      <button type="button" class="app-toast__dismiss" aria-label="Dismiss notification" @click=${props.onDismissNote}>${icons.close}</button>
-    </div>`;
-  }
-  return html`<p class="launch__note ${props.noteFailed ? "is-error" : ""}" role=${props.noteFailed ? "alert" : "status"}>
-    ${props.note}
-  </p>`;
+  return html`<div class="app-toast chat-operation-toast" data-level=${props.noteLevel} role=${noteAnnouncement(props.noteLevel)} aria-atomic="true">
+    ${props.noteLevel === "info" ? nothing : html`<span class="app-toast__icon" aria-hidden="true">${icons.alertTriangle}</span>`}
+    <span class="app-toast__message">${props.note}</span>
+    <button type="button" class="app-toast__dismiss" aria-label="Dismiss notification" @click=${props.onDismissNote}>${icons.close}</button>
+  </div>`;
 }
 
 /* ── new session ─────────────────────────────────────────────────────────── */
 
 function renderLaunchFeedback(props: HomeProps) {
   if (!props.note) return nothing;
+  const failed = props.noteLevel === "error";
   return html`
     <div id="launch-feedback"
-      class="callout ${props.noteFailed ? "danger" : ""} new-session-page__alert new-session-page__feedback"
-      role=${props.noteFailed ? "alert" : "status"} aria-atomic="true">
-      ${props.noteFailed ? html`<span class="new-session-page__alert-icon" aria-hidden="true">${icons.alertTriangle}</span>` : nothing}
+      class="callout ${failed ? "danger" : ""} new-session-page__alert new-session-page__feedback"
+      role=${noteAnnouncement(props.noteLevel)} aria-atomic="true">
+      ${failed ? html`<span class="new-session-page__alert-icon" aria-hidden="true">${icons.alertTriangle}</span>` : nothing}
       <div class="callout__content new-session-page__alert-message">
-        ${props.noteFailed ? html`<strong>Could not start session</strong>` : nothing}
+        ${failed ? html`<strong>Could not start session</strong>` : nothing}
         <span class="new-session-page__feedback-detail">${props.note}</span>
       </div>
     </div>
@@ -969,17 +979,37 @@ function renderBrowserPreview(props: HomeProps, preview: { pending: boolean; cur
   ></hui-browser-preview>`;
 }
 
+/** OpenClaw's compaction divider rule: folding lines while PI works, a check once done. */
+function compactionRule(label: string, options: { metric?: string; glyph?: boolean } = {}): TemplateResult {
+  return html`<div class="chat-divider__rule" role="separator" aria-label=${options.metric ? `${label}, ${options.metric}` : label}>
+    <span class="chat-divider__line"></span>
+    <span class="chat-divider__label">
+      ${options.glyph ? html`<span class="chat-compaction__glyph" aria-hidden="true">${Array.from({ length: 5 }, () => html`<span class="chat-compaction__line"></span>`)}${icons.check}</span>` : nothing}
+      <span class="chat-divider__title">${label}</span>
+      ${options.metric ? html`<span class="chat-divider__separator" aria-hidden="true">·</span><span class="chat-divider__metric">${options.metric}</span>` : nothing}
+    </span>
+    <span class="chat-divider__line"></span>
+  </div>`;
+}
+
+/** OpenClaw's completed compaction marker; the summary PI wrote stays readable. */
+function renderCompaction(row: Extract<ChatProjectionRow, { kind: "compaction" }>): TemplateResult {
+  const metric = row.item.tokensBefore ? `from ${compactTokens(row.item.tokensBefore)} tokens` : "";
+  return html`<div class="chat-notice chat-compaction chat-compaction--complete" data-chat-row-key=${row.id}>
+    ${compactionRule("Context compacted", { metric, glyph: true })}
+    ${row.item.summary ? html`<details class="chat-notice__collapse">
+      <summary class="chat-notice__toggle">Show summary</summary>
+      <div class="chat-text chat-notice__body">${renderMarkdown(row.item.summary)}</div>
+    </details>` : nothing}
+  </div>`;
+}
+
 function renderTranscriptRows(props: HomeProps, rows: readonly ChatProjectionRow[]): TemplateResult {
-  let userMessageCount = 0;
   const latestAssistantRowId = rows.findLast((row) => row.kind === "messages" && row.role === "assistant")?.id;
   const browserPreview = props.browserPreview ? browserPreviewRow(rows) : undefined;
   return html`${rows.map((row, rowIndex) => {
-    if (row.kind === "subagentEvent") {
-      // PI stores the event as a user-role entry, so it still counts as a
-      // user checkpoint for rewind occurrence alignment.
-      userMessageCount += 1;
-      return renderSubagentEvent(props, row);
-    }
+    if (row.kind === "subagentEvent") return renderSubagentEvent(props, row);
+    if (row.kind === "compaction") return renderCompaction(row);
     if (row.kind === "activity") {
       const media = presentedMedia(row.items);
       if (media.length) {
@@ -1012,11 +1042,12 @@ function renderTranscriptRows(props: HomeProps, rows: readonly ChatProjectionRow
       </div>`;
     }
     const last = row.messages.at(-1);
-    const rewindOccurrence = row.role === "user"
-      ? userMessageCount + Math.max(0, row.messages.length - 1)
-      : -1;
-    const rewindTooltipId = sessionControlId(props, `rewind-tooltip-${rewindOccurrence}`);
-    if (row.role === "user") userMessageCount += row.messages.length;
+    // History refreshed from PI carries entry ids; a prompt sent this run has
+    // none yet. A prompt PI refused (failed) was never persisted: no rewind.
+    const rewindTo: RewindTarget | undefined = row.role !== "user" || !last || last.failed ? undefined
+      : last.entryId ?? { userFromEnd: new Set(props.transcript.slice(props.transcript.indexOf(last) + 1)
+          .flatMap((item) => item.kind === "message" && item.role === "user" && !item.failed ? [item.entryId ?? item.id] : [])).size };
+    const rewindTooltipId = sessionControlId(props, `rewind-tooltip-${row.id}`);
     return html`<div class="chat-group ${row.role} chat-group--with-footer ${row.id === latestAssistantRowId ? "chat-group--latest-assistant" : ""}" data-chat-row-key=${row.id}>
       <div class="chat-group-messages">${row.messages.map((item) => renderMessage(props, item))}</div>
       ${last?.pending ? nothing : html`<div class="chat-group-footer ${row.role === "user" ? "chat-group-footer--persistent-identity" : ""}">
@@ -1025,9 +1056,9 @@ function renderTranscriptRows(props: HomeProps, rows: readonly ChatProjectionRow
         ${last?.text ? html`<div class="chat-group-footer-actions">${renderActionTooltip(sessionControlId(props, `reply-tooltip-${row.id}`), "Reply", html`
           <button type="button" class="chat-copy-btn" aria-label="Reply to message" aria-describedby=${sessionControlId(props, `reply-tooltip-${row.id}`)} @click=${(event: Event) => replyToMessage(event, props, last.text)}>${icons.messageSquare}</button>
         `)}${renderCopy(props, last.text, `message-${last.id}`, row.role === "assistant" ? "Copy response" : "Copy prompt")}</div>` : nothing}
-        ${row.role === "user" ? html`<div class="chat-group-footer-actions">
+        ${rewindTo ? html`<div class="chat-group-footer-actions">
           ${renderActionTooltip(rewindTooltipId, props.rewindPending ? "Rewinding…" : "Rewind", html`
-            <button type="button" class="chat-group-rewind" aria-label=${props.rewindPending ? "Rewinding…" : "Rewind to here"} aria-describedby=${rewindTooltipId} ?disabled=${props.rewindPending} @click=${() => props.onRewind({ kind: "user", occurrence: rewindOccurrence }, last?.text ?? "")}>${rewindIcon}</button>
+            <button type="button" class="chat-group-rewind" aria-label=${props.rewindPending ? "Rewinding…" : "Rewind to here"} aria-describedby=${rewindTooltipId} ?disabled=${props.rewindPending} @click=${() => props.onRewind(rewindTo, last?.text ?? "")}>${rewindIcon}</button>
           `)}
         </div>` : nothing}
       </div>`}
@@ -1067,11 +1098,30 @@ function renderTranscriptBody(props: HomeProps, rows: readonly ChatProjectionRow
   if (props.transcript.length === 0) {
     return html`<div class="agent-chat__empty"><strong>Start a conversation</strong><span>Send a message below.</span></div>`;
   }
-  return html`${renderTranscriptRows(props, rows)}${renderWorkingIndicator(props)}`;
+  return html`${renderTranscriptRows(props, rows)}${renderLiveCompaction(props.compaction, props.onCancelCompaction)}${renderWorkingIndicator(props)}`;
+}
+
+/** The same divider while PI summarizes, or why it wrote no summary. The
+ * finished marker comes from PI's history once it is written. */
+function renderLiveCompaction(compaction: RuntimeCompaction | undefined, onCancel: () => void) {
+  if (!compaction) return nothing;
+  const running = compaction.status === "running";
+  const label = running ? (compaction.reason === "overflow" ? "Context is full · compacting…" : "Compacting context…")
+    : compaction.status === "cancelled" ? "Compaction cancelled" : "Compaction failed";
+  // Stop cancels a compaction that blocks the session. A manual one that runs
+  // beside the conversation leaves it idle, so it gets its own action.
+  const cancellable = running && compaction.blocking === false && !compaction.background;
+  return html`<div class="chat-notice chat-compaction ${running ? "chat-compaction--active" : ""}" role="status" aria-live="polite">
+    ${compactionRule(label, { glyph: running })}
+    ${compaction.message ? html`<div class="chat-divider__details"><span class="chat-divider__description">${compaction.message}</span></div>` : nothing}
+    ${cancellable ? html`<div class="chat-divider__details"><span class="chat-divider__description">
+      <button type="button" class="chat-divider__action" @click=${onCancel}>Cancel compaction</button>
+    </span></div>` : nothing}
+  </div>`;
 }
 
 function renderWorkingIndicator(props: HomeProps) {
-  if (!props.streaming || props.question) return nothing;
+  if (!props.streaming || props.question || compactionBlocks(props.compaction)) return nothing;
   return html`<div class="chat-group assistant chat-group--working" aria-live="polite">
     <div class="chat-group-messages">
       <div class="chat-working-indicator" role="status">
@@ -1426,7 +1476,7 @@ function renderComposer(props: HomeProps) {
           </div>
           <div class="agent-chat__composer-trail">
             <div class="agent-chat__composer-controls">
-          ${renderContextPicker(props.usage)}
+          ${renderContextPicker(props.usage, props.streaming || props.compaction?.status === "running" ? undefined : props.onCompact)}
           <div class="chat-controls__session chat-controls__model chat-controls__model-settings">${renderModelPicker({
             models: props.models,
             current: props.currentModel,
@@ -1596,7 +1646,8 @@ function compactTokens(value: number): string {
   return `${(value / 1_000_000).toFixed(1)}m`;
 }
 
-function renderContextPicker(usage: RuntimeUsage | undefined) {
+/** `onCompact` is absent while the session is busy. */
+function renderContextPicker(usage: RuntimeUsage | undefined, onCompact?: () => void) {
   const percent = usage?.percent;
   const label = percent === null || percent === undefined
     ? (usage?.contextWindow ? `Context window: ${compactTokens(usage.contextWindow)} · usage unavailable` : "Context usage unavailable")
@@ -1615,6 +1666,8 @@ function renderContextPicker(usage: RuntimeUsage | undefined) {
         ${usage
           ? html`<dl class="context-usage__stats"><div><dt>Input</dt><dd>${compactTokens(usage.inputTokens)}</dd></div><div><dt>Output</dt><dd>${compactTokens(usage.outputTokens)}</dd></div><div><dt>Est. cost</dt><dd>${usage.costUsd === null ? "Unavailable" : `$${usage.costUsd.toFixed(2)}`}</dd></div></dl>`
           : html`<p>The runtime has not reported usage for this session yet.</p>`}
+        <button type="button" class="btn btn--ghost btn--sm context-usage__compact" ?disabled=${!onCompact}
+          @click=${(event: Event) => { (event.currentTarget as HTMLElement).closest("details")?.removeAttribute("open"); onCompact?.(); }}>Compact now</button>
       </section>
   </details></div>`;
 }
@@ -1827,7 +1880,7 @@ function renderQueue(props: HomeProps) {
               }
             }}></textarea>` : html`<div class="chat-queue__copy"><span class="chat-queue__text" title=${row.text}>${row.text}</span><span class="chat-queue__badge">${row.label}</span></div>`}
           <span class="chat-queue__actions">
-            ${row.editable && props.streaming && !editing ? html`<button class="chat-queue__action chat-queue__steer" type="button" aria-label="Steer queued message" @click=${() => props.onQueueSteer(row.id)}>${icons.arrowUp}<span>Steer</span></button>` : nothing}
+            ${row.editable && props.streaming && !compactionBlocks(props.compaction) && !editing ? html`<button class="chat-queue__action chat-queue__steer" type="button" aria-label="Steer queued message" @click=${() => props.onQueueSteer(row.id)}>${icons.arrowUp}<span>Steer</span></button>` : nothing}
             ${editing ? html`<button class="chat-queue__edit-submit" type="button" aria-label="Save queued message" @click=${props.onQueueEditSubmit}>${icons.check}</button><button class="chat-queue__edit-cancel" type="button" aria-label="Cancel edit" @click=${props.onQueueEditCancel}>${icons.close}</button>` : nothing}
             ${row.editable && !editing ? html`<button class="chat-queue__remove" type="button" aria-label="Remove queued message" @click=${() => props.onQueueRemove(row.id)}>${icons.trash}</button><button class="chat-queue__more" type="button" aria-label="Edit queued message" @click=${() => props.onQueueEdit(row.id)}>${icons.moreHorizontal}</button>` : nothing}
           </span>
@@ -2089,7 +2142,7 @@ function renderTranscript(props: HomeProps, session: SessionView) {
                     @scroll=${(event: Event) => props.onTranscriptScroll(event.currentTarget as HTMLElement)}
                     @click=${(event: Event) => { void copyCodeBlock(event, props); }}>
                     ${positionRail({ sessionId: session.id, markers: props.opening || session.status === "starting" ? [] : conversationMarkers(rows), onNavigate: props.onTranscriptNavigate })}
-                    <div class="chat-thread-inner" ${markdownBlocks()}>${renderTranscriptBody(props, rows)}${renderSubagentActivity(props)}</div>
+                    <div class="chat-thread-inner" ${markdownBlocks()}>${renderTranscriptBody(props, rows)}${renderSubagentActivity(props)}${props.watchers ? renderWatcherActivity(props.watchers) : nothing}</div>
                   </div>
                 </div>
                 <div class="chat-scroll-to-bottom-wrap"><button type="button" class="chat-scroll-to-bottom" data-visible=${String(props.showScrollToBottom)} ?inert=${!props.showScrollToBottom} aria-hidden=${String(!props.showScrollToBottom)} @click=${props.onScrollToBottom} aria-label="Scroll to latest">${icons.arrowDown}</button></div>

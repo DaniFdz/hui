@@ -19,9 +19,13 @@ details in the owning directory guide.
 - HUI is a Lit browser application (`src/`) backed by a standalone Node gateway
   (`server/`); Vite is for development and web builds. `cli/` owns installed
   gateway lifecycle and release selection. PI owns agent configuration, skills,
-  models, and transcript files;
-  HUI owns presentation, its session registry, default prompt and HUI tools.
-  PI's SDK runs in an isolated worker; retain the explicit CLI fallback.
+  context files, models and credentials. New sessions run on Pi Durable: one
+  harness in the gateway owns their conversations, runs, queues and crash
+  recovery in HUI's store (`server/runtimes/durable*.ts`). HUI owns
+  presentation, its session registry, default prompt and HUI tools. Sessions
+  created before Durable keep running on PI's SDK worker, which owns their JSONL
+  transcripts, until `hui doctor --fix` moves them; retain that worker and its
+  explicit CLI fallback.
 - Keep the browser free of filesystem and child-process access. All PI and local
   state access crosses typed `/__hui/` routes owned by `server/`.
 - Runtime integrations implement the generic contract in `server/runtimes/`.
@@ -55,6 +59,9 @@ details in the owning directory guide.
 - Keep behavior changes, tests, and contract documentation aligned in one task.
 - Do not add dependencies, alter persisted formats, or delete PI/HUI user data
   without explicit approval. Tests use temporary directories and isolated processes.
+- A change that leaves existing persisted state behind (a format, location or
+  runtime switch) ships with a `hui doctor` check that reports it and fixes it
+  under `--fix`; see CONTRIBUTING.md.
 - Commit every `package.json` dependency change together with the updated
   `package-lock.json`; `npm ci` must succeed on a clean checkout.
 - Before handoff, review the diff, run the narrowest relevant checks plus required
@@ -86,7 +93,9 @@ details in the owning directory guide.
   the thread. If it is declined, unclear or needs discussion, reply in the thread
   so the reviewer sees it and leave it open.
 - Merging an owner-approved version-bump PR authorizes automatic release
-  publication after checks pass. Ordinary PRs do not publish releases.
+  publication after checks pass. Ordinary PRs do not publish releases; every
+  `main` commit that passes the Nightly workflow replaces the rolling
+  `nightly` prerelease, which only `hui update --nightly` installs.
   Create manual recovery tags only when the owner asks.
 
 ## Installation and release workflow

@@ -175,7 +175,31 @@ function modelOf(value: unknown): string | undefined {
   return typeof model === "string" && model.trim() ? model.trim().slice(0, 160) : undefined;
 }
 
-export async function aggregateUsage(sessions: readonly SessionRecord[]): Promise<UsageTotals> {
+/** Token and cost counters of one PI transcript record, as HUI totals them; undefined without a usage object. */
+export function transcriptUsage(record: unknown): { input: number; output: number; cacheRead: number; cacheWrite: number; totalTokens: number; cost: number } | undefined {
+  const usage = usageObject(record);
+  if (!usage) return undefined;
+  const input = numberAt(usage, "input", "inputTokens", "input_tokens");
+  const output = numberAt(usage, "output", "outputTokens", "output_tokens");
+  const cacheRead = numberAt(usage, "cacheRead", "cacheReadTokens", "cache_read_input_tokens");
+  const cacheWrite = numberAt(usage, "cacheWrite", "cacheWriteTokens", "cache_creation_input_tokens");
+  const totalTokens = numberAt(usage, "total", "totalTokens", "total_tokens") || input + output + cacheRead + cacheWrite;
+  const rawCost = usage["cost"];
+  const cost = typeof rawCost === "object" && rawCost !== null
+    ? numberAt(rawCost, "total", "usd", "totalCost")
+    : numberAt(usage, "cost", "totalCost", "costUsd", "cost_usd");
+  return { input, output, cacheRead, cacheWrite, totalTokens, cost };
+}
+
+type DurableUsage = (conversationId: number) => Promise<{ models?: Record<string, Record<string, unknown>> } | undefined>;
+
+/** Loaded on use: the Durable host itself reports through this module. */
+const gatewayDurableUsage: DurableUsage = async (conversationId) => {
+  const { durableHost } = await import("./runtimes/durable-host.ts");
+  return durableHost().conversationUsage(conversationId as never);
+};
+
+export async function aggregateUsage(sessions: readonly SessionRecord[], durableUsage: DurableUsage = gatewayDurableUsage): Promise<UsageTotals> {
   const totals: UsageTotals = {
     sessions: sessions.length, filesRead: 0, records: 0, inputTokens: 0, outputTokens: 0,
     cacheReadTokens: 0, cacheWriteTokens: 0, totalTokens: 0, costUsd: null, models: [], unavailable: [],
@@ -185,8 +209,37 @@ export async function aggregateUsage(sessions: readonly SessionRecord[]): Promis
   let hasCost = false;
   for (const session of sessions) {
     const path = session.piSessionFile;
-    // Remote transcripts live on their worker.
+    // Remote transcripts and stores live on their worker.
     if (!path || session.worker) continue;
+    const durable = /^durable:(\d+)$/u.exec(path);
+    if (durable) {
+      // Durable keeps spend per conversation and model, including prompt-cache
+      // refreshes and nested tool calls, outside the transcript.
+      const usage = await durableUsage(Number(durable[1])).catch(() => undefined);
+      if (!usage) {
+        totals.unavailable = [...totals.unavailable, `${session.id}: Durable store unavailable`];
+        continue;
+      }
+      totals.filesRead += 1;
+      for (const [model, entry] of Object.entries(usage.models ?? {})) {
+        totals.records += 1;
+        const input = numberAt(entry, "input");
+        const output = numberAt(entry, "output");
+        const cacheRead = numberAt(entry, "cacheRead");
+        const cacheWrite = numberAt(entry, "cacheWrite");
+        const total = numberAt(entry, "totalTokens") || input + output + cacheRead + cacheWrite;
+        totals.inputTokens += input;
+        totals.outputTokens += output;
+        totals.cacheReadTokens += cacheRead;
+        totals.cacheWriteTokens += cacheWrite;
+        totals.totalTokens += total;
+        const rawCost = entry["cost"];
+        const cost = typeof rawCost === "object" && rawCost !== null ? numberAt(rawCost, "total") : 0;
+        if (cost > 0) { knownCost += cost; hasCost = true; }
+        if (total > 0) models.set(model, (models.get(model) ?? 0) + total);
+      }
+      continue;
+    }
     try {
       const info = await stat(path);
       if (!info.isFile() || info.size > MAX_TRANSCRIPT_BYTES) {
@@ -200,22 +253,14 @@ export async function aggregateUsage(sessions: readonly SessionRecord[]): Promis
         let record: unknown;
         try { record = JSON.parse(line); } catch { continue; }
         totals.records += 1;
-        const usage = usageObject(record);
+        const usage = transcriptUsage(record);
         if (!usage) continue;
-        const input = numberAt(usage, "input", "inputTokens", "input_tokens");
-        const output = numberAt(usage, "output", "outputTokens", "output_tokens");
-        const cacheRead = numberAt(usage, "cacheRead", "cacheReadTokens", "cache_read_input_tokens");
-        const cacheWrite = numberAt(usage, "cacheWrite", "cacheWriteTokens", "cache_creation_input_tokens");
-        const total = numberAt(usage, "total", "totalTokens", "total_tokens") || input + output + cacheRead + cacheWrite;
+        const { input, output, cacheRead, cacheWrite, totalTokens: total, cost } = usage;
         totals.inputTokens += input;
         totals.outputTokens += output;
         totals.cacheReadTokens += cacheRead;
         totals.cacheWriteTokens += cacheWrite;
         totals.totalTokens += total;
-        const rawCost = usage["cost"];
-        const cost = typeof rawCost === "object" && rawCost !== null
-          ? numberAt(rawCost, "total", "usd", "totalCost")
-          : numberAt(usage, "cost", "totalCost", "costUsd", "cost_usd");
         if (cost > 0) { knownCost += cost; hasCost = true; }
         const model = modelOf(record);
         if (model && total > 0) models.set(model, (models.get(model) ?? 0) + total);

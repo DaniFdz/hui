@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { planRelease } from "../scripts/release.mjs";
+import { NIGHTLY_VERSION, nightlyVersion } from "../scripts/nightly-version.mjs";
 
 function fixture(t) {
   const cwd = mkdtempSync(join(tmpdir(), "hui-release-plan-"));
@@ -124,4 +125,25 @@ test("Actions entrypoint writes outputs, artifact and summary for a version PR",
   const changelog = readFileSync(join(f.cwd, "release-changelog.md"), "utf8");
   assert.match(changelog, /feat: action integration/);
   assert.equal(readFileSync(summaryPath, "utf8"), changelog);
+});
+
+test("a nightly is a prerelease of the next patch, ordered by commit time and naming its commit", () => {
+  const sha = "b0f30d567fb0eb56325ab3c9f028a40a1f78b307";
+  const version = nightlyVersion("0.1.2", "2026-10-04T15:11:49+02:00", sha);
+  assert.equal(version, "0.1.3-nightly.20261004131149.gb0f30d5");
+  assert.match(version, NIGHTLY_VERSION);
+  assert.equal(nightlyVersion("1.9.9", "2026-01-02T03:04:05Z", sha), "1.9.10-nightly.20260102030405.gb0f30d5");
+  for (const [base, date, commit] of [["0.1.2-rc.1", "2026-10-04T13:11:49Z", sha], ["0.1", "2026-10-04T13:11:49Z", sha],
+    ["0.1.2", "not a date", sha], ["0.1.2", "2026-10-04T13:11:49Z", "b0f30d5"]]) {
+    assert.throws(() => nightlyVersion(base, date, commit));
+  }
+});
+
+test("the nightly script stamps the checked-out commit", (t) => {
+  const { cwd, git } = fixture(t);
+  const script = fileURLToPath(new URL("../scripts/nightly-version.mjs", import.meta.url));
+  const printed = execFileSync(process.execPath, [script], { cwd, encoding: "utf8", env: { ...process.env, GITHUB_SHA: "" } }).trim();
+  assert.match(printed, NIGHTLY_VERSION);
+  assert(printed.startsWith("1.0.1-nightly."));
+  assert(printed.endsWith(`.g${git("rev-parse", "--short=7", "HEAD")}`));
 });

@@ -39,7 +39,7 @@ import {
 import { PullRequestStatuses, pullRequestsFromTranscript } from "./pull-requests.ts";
 
 
-import { CONFIG_DIR, ATTACHMENTS_DIR, AUTOMATION_FILE, BROWSER_PROFILE_DIR, USER_THEME_DIR } from "./paths.ts";
+import { CONFIG_DIR, ATTACHMENTS_DIR, AUTOMATION_FILE, BROWSER_PROFILE_DIR, USER_THEME_DIR, WATCHERS_FILE, WATCHER_LOG_DIR } from "./paths.ts";
 import { BrowserToolError, ManagedBrowser } from "./browser/manager.ts";
 import { MacPower } from "./power.ts";
 import { attachBrowserTransport, browserViewTicket } from "./browser-transport.ts";
@@ -52,7 +52,7 @@ import { readPiConfig, invalidateModelCatalog } from "./pi-config.ts";
 import { PiResourceNotFoundError, readPiResourceDocument } from "./pi-resource-reader.ts";
 import { readToolsCatalog } from "./tools.ts";
 import { updates, UpdateConflict } from "./updates.ts";
-import { parseClearCommand, parseReloadCommand, parseUpdateCommand } from "../src/lib/slash-commands.ts";
+import { parseClearCommand, parseCompactCommand, parseReloadCommand, parseUpdateCommand } from "../src/lib/slash-commands.ts";
 import {
   PiMutationBusyError,
   PiMutationCommandError,
@@ -80,6 +80,7 @@ import {
 import type { AutomationTask } from "../src/lib/automation-types.ts";
 import { completeLocalPaths, completeWorkingDirectories, displayPath, resolveWorkingDirectory } from "./working-directories.ts";
 import { diagnosticPath, mirrorDiagnosticLogs, readObservability, recordDiagnosticEvent } from "./observability.ts";
+import { durableHost } from "./runtimes/durable-host.ts";
 import { parseUiErrorBatch, UI_ERROR_BODY_LIMIT, uiErrorLog } from "./ui-errors.ts";
 import { runtimeMemoryByPid } from "./runtime-resources.ts";
 import { checkoutSessionRef, createSessionWorktree, inspectGitCheckout, type WorktreeProgress } from "./worktrees.ts";
@@ -120,6 +121,7 @@ import { FIRST_YEAR as GITHUB_FIRST_YEAR, GitHubContributionsReader, latestYear 
 import { GitHubPreviews, ghApi, previewPullRequestFetcher } from "./github-previews.ts";
 import { MAX_GITHUB_EMBEDS, parseGitHubUrl } from "../shared/github-links.ts";
 import { TaskSuggestionInputError, TaskSuggestionNotFoundError, TaskSuggestionStore } from "./task-suggestions.ts";
+import { WatcherConflictError, WatcherInputError, WatcherNotFoundError, WatcherService } from "./watchers.ts";
 import {
   BacklogInputError,
   BacklogJiraFeed,
@@ -132,6 +134,7 @@ import {
 } from "./backlog.ts";
 import { backlogItemPrompt, type BacklogItem, type BacklogView } from "../shared/backlog.ts";
 import { TASK_SUGGESTION_START_MODES, taskSuggestionJiraDescription, taskSuggestionPrompt, type TaskSuggestionStartMode } from "../shared/task-suggestions.ts";
+import { WATCHER_LIMITS } from "../shared/watchers.ts";
 import { terminals, TerminalError } from "./terminals.ts";
 import { attachSessionTransport, sessionStreamTicket } from "./session-transport.ts";
 import { createSessionListHub } from "./session-list.ts";
@@ -183,14 +186,19 @@ const AUTOMATION_RUN_CANCEL = /^\/__hui\/automation\/runs\/([^/]+)\/cancel$/;
 const SESSIONS_ROUTE = `${PREFIX}sessions`;
 const SESSION_STATUSES_ROUTE = `${SESSIONS_ROUTE}/events`;
 const SESSION_GROUPS_ROUTE = `${PREFIX}session-groups`;
-const NEW_SESSION_TOOLS = new Set(["pi"]);
+const NEW_SESSION_TOOLS = new Set(["durable", "pi"]);
+/** New sessions run on Pi Durable; `HUI_SESSION_RUNTIME=pi` keeps PI's SDK
+ * worker as an explicit fallback. Existing sessions keep the runtime they have. */
+export function defaultSessionTool(): string {
+  return process.env["HUI_SESSION_RUNTIME"] === "pi" ? "pi" : "durable";
+}
 const NEW_SESSION_THINKING_LEVELS = new Set(["off", "minimal", "low", "medium", "high", "xhigh"]);
 const SESSION_TITLE_MAX = 200;
 const SESSION_GROUP_MAX = 200;
 const SESSION_GROUP_ORDER_MAX = 1_000;
 /** Session actions and live catalogs, all addressed by HUI's own session id. */
 const SESSION_ACTION =
-  /^\/__hui\/sessions\/([^/]+)\/(open|prompt|continue|resume|steer|follow-up|btw|queue|events|connect|models|commands|tools|model|thinking|question|abort|clear|reload|checkpoints|rewind)$/;
+  /^\/__hui\/sessions\/([^/]+)\/(open|prompt|continue|resume|steer|follow-up|btw|queue|events|connect|models|commands|tools|model|thinking|question|abort|clear|reload|compact|rewind)$/;
 /** The session itself, for changing it rather than acting on it. */
 const SESSION_ONE = /^\/__hui\/sessions\/([^/]+)$/;
 const GITHUB_ROUTE = `${PREFIX}github`;
@@ -205,6 +213,10 @@ const JIRA_ISSUES_ROUTE = `${JIRA_ROUTE}/issues`;
 /** Dismiss (DELETE), start (POST …/start) or save to the backlog (POST
  * …/backlog) one pending `suggest_task` card. */
 const SESSION_SUGGESTION = /^\/__hui\/sessions\/([^/]+)\/suggestions\/([^/]+?)(?:\/(start|backlog))?$/;
+/** A conversation's background watchers: stop (POST …/stop), restart
+ * (POST …/restart), read a bounded log tail (GET …/log) or dismiss one that
+ * is not running (DELETE). */
+const SESSION_WATCHER = /^\/__hui\/sessions\/([^/]+)\/watchers\/([^/]+?)(?:\/(stop|restart|log))?$/;
 const BACKLOG_ROUTE = `${PREFIX}backlog`;
 /** One backlog item: PATCH group, DELETE (local), POST …/start, POST
  * …/branch-name (suggested worktree name), and for local tasks POST …/jira
@@ -241,6 +253,11 @@ workers.onBots((workerId, bots) => {
 });
 const subagents = new SubagentService(liveSessions);
 const taskSuggestions = new TaskSuggestionStore({ onChange: (id) => liveSessions.notifySnapshot(id) });
+const watchers = new WatcherService({
+  file: WATCHERS_FILE,
+  logDir: WATCHER_LOG_DIR,
+  onChange: (id) => liveSessions.notifySnapshot(id),
+});
 /** One managed browser per gateway; its settings are re-read on every call. */
 const managedBrowser = new ManagedBrowser({
   profileDir: BROWSER_PROFILE_DIR,
@@ -249,6 +266,7 @@ const managedBrowser = new ManagedBrowser({
 /** macOS sleep prevention lives and dies with this gateway process. */
 const macPower = process.platform === "darwin" ? new MacPower() : undefined;
 liveSessions.setTaskSuggestionProvider((id) => taskSuggestions.list(id));
+liveSessions.setWatcherProvider((id) => watchers.list(id));
 // A stopped turn must not leave its pages running in the headless browser.
 liveSessions.setAbortListener((id) => managedBrowser.closeOwner(id));
 registerAgentToolHandler(async (invocation) => {
@@ -259,6 +277,11 @@ registerAgentToolHandler(async (invocation) => {
   }
   if (invocation.action === "set_stage") {
     return setAgentStage(invocation.callerSessionId, invocation.params);
+  }
+  if (invocation.action === "watcher") {
+    const caller = (await readRegistry()).find(({ id }) => id === invocation.callerSessionId);
+    if (!caller) throw new WatcherInputError("Conversation no longer exists.");
+    return watchers.tool(caller.id, invocation.params, caller.cwd);
   }
   if (invocation.action === "terminal") {
     if (!(await readRegistry()).some(({ id }) => id === invocation.callerSessionId)) throw new TerminalError("Conversation no longer exists.", 404);
@@ -283,6 +306,22 @@ function initializeSubagents(): void {
       summary: error instanceof Error ? error.message : "Could not recover subagent state.",
     });
   });
+}
+
+/** A corrupt watcher registry must not stop the gateway, and a watcher whose
+ * conversation no longer exists is stopped and forgotten once. */
+function initializeWatchers(): void {
+  void watchers
+    .initialize()
+    .then(async () => watchers.prune(new Set((await readRegistry()).map((record) => record.id))))
+    .catch((error: unknown) => {
+      recordDiagnosticEvent({
+        area: "session",
+        level: "error",
+        action: "watcher_recovery_failed",
+        summary: error instanceof Error ? error.message : "Could not recover watchers.",
+      });
+    });
 }
 
 /** Refuse cross-origin callers. A page on any site can reach localhost, but it
@@ -1288,8 +1327,8 @@ export async function createSession(
   if (branchName && !requestedWorktree) {
     throw new Error("A branch name requires Create workspace.");
   }
-  // Which runtime drives it. PI is the only adapter; an explicit other name is
-  // rejected rather than silently started as PI.
+  // Which runtime drives it. An unknown name is rejected rather than silently
+  // started on the default runtime.
   const tool = typeof body["tool"] === "string" ? body["tool"].trim() : "";
   if (tool && !NEW_SESSION_TOOLS.has(tool)) {
     throw new Error(`Unsupported session tool: ${tool}`);
@@ -1310,7 +1349,8 @@ export async function createSession(
   if (thinking && !NEW_SESSION_THINKING_LEVELS.has(thinking)) {
     throw new Error(`Unsupported thinking level: ${thinking}`);
   }
-  const runtimeTool = tool || "pi";
+  // Durable runs in the gateway, so a worker session runs PI on the worker.
+  const runtimeTool = worker ? "pi" : tool || defaultSessionTool();
   const settings = await readSettings();
   const id = randomUUID();
   const now = new Date().toISOString();
@@ -1582,7 +1622,7 @@ async function startTaskSuggestion(
       cwd: suggestion.cwd,
       title: suggestion.title.slice(0, SESSION_TITLE_MAX),
       group: source.group,
-      tool: "pi",
+      tool: defaultSessionTool(),
       ...(suggestion.worker ? { worker: suggestion.worker } : {}),
       ...(mode === "worktree" ? { worktree: true } : {}),
     });
@@ -1684,7 +1724,7 @@ export async function startBacklogItem(itemId: string, body: Record<string, unkn
       cwd: body["cwd"],
       title: item.title.slice(0, SESSION_TITLE_MAX),
       group: body["group"],
-      tool: "pi",
+      tool: defaultSessionTool(),
       ...(body["worktree"] !== undefined ? { worktree: body["worktree"] } : {}),
       ...(body["branchName"] ? { branchName: body["branchName"] } : {}),
       ...(body["baseRef"] ? { baseRef: body["baseRef"] } : {}),
@@ -1760,6 +1800,17 @@ export async function deleteSession(
     sessions.finishDelete(sessionId, token);
     terminals.closeOwner(sessionId);
     managedBrowser.closeOwner(sessionId);
+  }
+  // Watcher cleanup must not fail a deletion that already committed.
+  try {
+    await watchers.forget(tokens.keys());
+  } catch (error) {
+    recordDiagnosticEvent({
+      area: "session",
+      level: "error",
+      action: "watcher_forget_failed",
+      summary: error instanceof Error ? error.message : "Could not remove deleted conversations' watchers.",
+    });
   }
 }
 
@@ -2961,6 +3012,44 @@ async function handleRequest(
     return;
   }
 
+  const watcherRoute = path.match(SESSION_WATCHER);
+  if (watcherRoute) {
+    const verb = watcherRoute[3] ?? "";
+    const method = verb === "log" ? "GET" : verb === "stop" || verb === "restart" ? "POST" : "DELETE";
+    if (request.method !== method) {
+      sendJson(response, 405, { error: "method not allowed" });
+      return;
+    }
+    const id = decodeURIComponent(watcherRoute[1] ?? "");
+    const watcherId = decodeURIComponent(watcherRoute[2] ?? "");
+    if (!(await readRegistry()).some((session) => session.id === id)) {
+      sendJson(response, 404, { error: `unknown session: ${id}` });
+      return;
+    }
+    try {
+      if (verb === "log") {
+        const requested = new URL(request.url ?? "/", "http://localhost").searchParams.get("lines");
+        const lines = requested === null ? 100 : Number(requested);
+        if (!Number.isInteger(lines) || lines < 1 || lines > WATCHER_LIMITS.logLines) {
+          sendJson(response, 400, { error: `lines must be between 1 and ${WATCHER_LIMITS.logLines}` });
+          return;
+        }
+        sendJson(response, 200, await watchers.log(id, watcherId, lines));
+        return;
+      }
+      if (verb === "stop") await watchers.stop(id, watcherId);
+      else if (verb === "restart") await watchers.restart(id, watcherId);
+      else await watchers.remove(id, watcherId);
+      sendJson(response, 200, { watchers: watchers.list(id) });
+    } catch (error) {
+      const status = error instanceof WatcherNotFoundError ? 404 : error instanceof WatcherConflictError ? 409 : 400;
+      sendJson(response, status, {
+        error: error instanceof Error ? error.message : "The watcher request failed.",
+      });
+    }
+    return;
+  }
+
   const one = path.match(SESSION_ONE);
   if (one && (request.method === "PATCH" || request.method === "DELETE")) {
     const id = decodeURIComponent(one[1] ?? "");
@@ -3061,6 +3150,10 @@ async function handleRequest(
         sendJson(response, 400, { error: "/reload is a HUI command. Use the reload endpoint, not the model prompt or queue." });
         return;
       }
+      if (parseCompactCommand(text)) {
+        sendJson(response, 400, { error: "/compact is a HUI command. Use the compact endpoint, not the model prompt or queue." });
+        return;
+      }
       let prepared: PreparedAttachments | undefined;
       try {
         prepared = await readAttachments(id, body["attachments"]);
@@ -3113,6 +3206,41 @@ async function handleRequest(
       } catch (error) {
         sendJson(response, error instanceof SessionBusyError ? 409 : error instanceof SessionRegistryError ? 500 : 400, {
           error: error instanceof Error ? error.message : "Could not clear that session.",
+        });
+      }
+      return;
+    }
+    if (action[2] === "compact" && request.method === "POST") {
+      try {
+        if (!liveSessions.ensure(record)) {
+          sendJson(response, 404, { error: `unknown session: ${id}` });
+          return;
+        }
+        const body = (await readBody(request)) as Record<string, unknown> | null;
+        const raw = body?.["instructions"];
+        if (raw !== undefined && typeof raw !== "string") throw new Error("Compaction focus must be text.");
+        const instructions = raw?.trim();
+        if (instructions && instructions.length > 2_000) throw new Error("Keep the compaction focus under 2,000 characters.");
+        await liveSessions.compact(id, instructions || undefined);
+        sendJson(response, 200, { ok: true });
+      } catch (error) {
+        sendJson(response, error instanceof SessionBusyError ? 409 : 400, {
+          error: error instanceof Error ? error.message : "Could not compact that session.",
+        });
+      }
+      return;
+    }
+    if (action[2] === "compact" && request.method === "DELETE") {
+      try {
+        if (!liveSessions.ensure(record)) {
+          sendJson(response, 404, { error: `unknown session: ${id}` });
+          return;
+        }
+        await liveSessions.cancelCompaction(id);
+        sendJson(response, 200, { ok: true });
+      } catch (error) {
+        sendJson(response, error instanceof SessionBusyError ? 409 : 400, {
+          error: error instanceof Error ? error.message : "Could not cancel that compaction.",
         });
       }
       return;
@@ -3235,23 +3363,15 @@ async function handleRequest(
       }
       return;
     }
-    if (action[2] === "checkpoints" && request.method === "GET") {
-      try {
-        sendJson(response, 200, { checkpoints: await liveSessions.checkpoints(id) });
-      } catch (error) {
-        sendJson(response, error instanceof SessionBusyError ? 409 : 400, {
-          error: error instanceof Error ? error.message : "PI could not read the session tree.",
-        });
-      }
-      return;
-    }
     if (action[2] === "rewind" && request.method === "POST") {
       try {
         const body = (await readBody(request)) as Record<string, unknown>;
         const entryId = typeof body["entryId"] === "string" ? body["entryId"].trim() : "";
+        const userFromEnd = body["userFromEnd"];
         const excludeUserMessage = body["excludeUserMessage"] === true;
-        if (!entryId) throw new Error("A rewind point is required.");
-        await liveSessions.rewind(id, entryId, { excludeUserMessage });
+        const target = entryId || (Number.isSafeInteger(userFromEnd) && (userFromEnd as number) >= 0 ? { userFromEnd: userFromEnd as number } : undefined);
+        if (!target) throw new Error("A rewind point is required.");
+        await liveSessions.rewind(id, target, { excludeUserMessage });
         sendJson(response, 200, { ok: true });
       } catch (error) {
         sendJson(response, error instanceof SessionBusyError ? 409 : 400, {
@@ -3371,10 +3491,20 @@ export async function startBackend(): Promise<void> {
   await ensureConfigDir();
   void macPower?.start((await readSettings()).power.keepAwake);
   await automation.start();
+  initializeWatchers();
   initializeSubagents();
   await workers.list().catch(() => undefined);
   void workers.connectKept();
+  // Opening the Durable store resumes its interrupted runs, including those of
+  // sessions no browser has reopened yet. Another gateway owning it is reported.
+  void durableHost().open().catch((error: unknown) => recordDiagnosticEvent({
+    area: "runtime", level: "warning", action: "durable_open_failed",
+    summary: "The Durable session store did not open",
+    detail: error instanceof Error ? error.message : String(error),
+  }));
   recoverInterruptedSessions(await readRegistry());
+  // Auto-star the HUI repo when GitHub is connected.
+  void githubCli.starHuiRepo().catch(() => {}); // best-effort, non-blocking
 }
 
 /** Startup recovery is eager: interrupted work resumes even when no browser
@@ -3397,11 +3527,14 @@ export function stopBackend(): void {
   githubCli.dispose();
   automation.dispose();
   subagents.dispose();
+  watchers.dispose();
   stopAgentToolBridge();
   // Closed first: remote sessions then keep running on their hosts instead of
   // receiving a kill from the disposal below.
   workers.disconnectAll();
   liveSessions.disposeAll();
+  // Closing records no outcome: running Durable work resumes on the next start.
+  void durableHost().close();
 }
 
 /** Upgrade handlers for browser panes and session views; the gateway and Vite

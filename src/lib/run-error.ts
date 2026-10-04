@@ -23,7 +23,8 @@ export function latestRunError(
   streaming: boolean,
 ): RunErrorNotice | undefined {
   if (streaming) return undefined;
-  const last = items.at(-1);
+  // PI may compact right after a failed run; its marker follows the error.
+  const last = items.findLast((item) => item.kind !== "compaction");
   if (last?.kind !== "error") return undefined;
   const detail = last.text.trim();
   if (!detail) return undefined;

@@ -223,7 +223,20 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   entry tree, moves the active leaf to the point before the selected user
   message, removes that message from the active transcript and restores its
   full text to the focused composer for editing. The abandoned branch remains
-  recoverable from PI's tree. Continue invokes PI's native
+  recoverable from PI's tree. The transcript is the whole active branch (PI's,
+  or a Durable conversation's history since its latest `/clear`): a
+  compaction appears as a divider with its expandable summary and never hides
+  earlier messages. On PI, rewinding inside the window the summary kept
+  verbatim keeps that summary on the new branch instead of compacting again,
+  and while it compacts the divider shows it live in place of the working
+  indicator, messages sent wait in the queue until it ends, and Stop cancels
+  it. A Durable session keeps Durable's semantics: its manual and background
+  compactions run beside the conversation, which stays idle, so messages are
+  sent at once and a run carries on below the live divider; a manual one has
+  its own Cancel on that divider, and a fork holds only the history up to its
+  point. A failure or cancellation stays visible with its reason until the
+  next turn. `/compact [focus]` and the
+  context meter's Compact now start one. Continue invokes PI's native
   prompt-free continuation primitive; only when the branch already ends with a
   completed assistant response does HUI send an explicit continuation prompt.
   Reply and fork remain absent rather than simulated.
@@ -318,17 +331,24 @@ startup/restart defaults (also inherited by the desktop shell); explicit CLI fla
 win. Invalid environment defaults are rejected before stopping a gateway.
 `--allow-host <name>`, repeatable, and `HUI_GATEWAY_ALLOWED_HOSTS` list the extra
 host names accepted in the `Host` header, which is what a reverse proxy fronting
-the loopback gateway needs. Both are persisted with the binding. Without
+the loopback gateway needs. Both are persisted with the binding while a gateway
+is restarted or updated. `allowHosts` in `gateway/config.json` is read on every
+start, with `"tailnet"` resolved to the Tailscale DNS name; a malformed file
+refuses startup. Without
 configured defaults, restart retains the previous binding. A specific IP or Tailscale binding is explicit;
 wildcard exposure is refused. The UI still has Full Access and no login.
 
 Lifecycle control uses a separate loopback socket with a random private token,
 instance identity and serialized CLI operations. State/logs live in HUI's
 `gateway/` config subdirectory. A stored PID alone is never enough to authorize
-a signal. Normal stop/restart refuses active turns, questions, queued work or
-in-flight mutations; `--force` explicitly interrupts them. Shutdown waits for
-the owned process to exit before replacement, preserving the one-writer boundary.
-Restart preserves registry/transcript files, not in-flight work.
+a signal. Normal stop/restart refuses work a restart would lose: active turns
+and questions of sessions on PI's SDK worker, booting runtimes, follow-ups HUI
+still holds, open terminals and in-flight mutations; `--force` explicitly
+interrupts them. A Pi Durable run does not block: Durable resumes it when the
+gateway reopens its store, and a tool call the stop cut short reaches the model
+as an interrupted result rather than running twice. Shutdown waits for the
+owned process to exit before replacement, preserving the one-writer boundary.
+Restart preserves registry/transcript files and Durable's in-flight work.
 
 `hui update --from <trusted local.tgz> [--sha256 <digest>]` stages a managed
 release, probes it against disposable HUI/PI state, then selects it atomically
@@ -344,6 +364,14 @@ sidecar, and reuses that transaction. `--check` is read-only. Releases must have
 matching stable tag, package version and checksum; no automatic downgrade occurs.
 Tag-triggered CI validates and publishes the archive and checksum. A missing or
 inaccessible release is reported explicitly, never treated as up-to-date.
+`hui update --nightly [--check]` uses the rolling `nightly` prerelease instead.
+CI runs the full checks on every `main` commit, stamps the package as a
+prerelease of the next patch (`X.Y.Z+1-nightly.<UTC commit time>.g<sha7>`) and
+replaces that prerelease's single archive and checksum. A nightly installs
+whenever it differs from the running build, so asking for it is the explicit
+opt-in to leave stable; a plain `hui update` returns to stable once a stable
+release is newer than the installed nightly. The browser updater stays on the
+stable channel.
 While the app is visible and online, HUI checks for releases on opening and
 hourly. A non-modal banner announces a confirmed newer stable version and opens
 the existing update dialog through **Review update**. Checks never install,
@@ -730,6 +758,47 @@ and terminals only after persistence succeeds, and leaves all PI transcripts and
 worktrees untouched. A failed write rolls back every deletion guard. The delete
 dialog states that subagents, including nested ones, are included.
 
+## Background watchers
+
+Some work is a wait, not a task: a pull request needs approval before `/merge`,
+a CI run must go green, a deploy must finish. HUI gives sessions a `watcher`
+tool that runs those waits as HUI-owned background processes instead of
+invisible `nohup` scripts, and lists them in the conversation that started
+them.
+
+`watcher` has five actions: `start`, `list`, `stop`, `restart` and `log`.
+`start` records the watcher against the calling session — a one-line purpose,
+an optional target URL, an optional outcome (`post /merge`) and the shell
+command — then runs the command detached, in the conversation's working
+directory, in its own process group. HUI appends
+the command's output to a HUI-owned log and has the wrapper write the exit
+status beside it, so the watcher keeps running after the turn and after the
+gateway stops; at most ten watchers live per conversation.
+
+The owning conversation lists its watchers at the end of the transcript in the
+same compact rows as background agents: a status icon (the agents' orbit while
+running), the purpose, the latest non-empty log line and a one-word state with
+its time (phones keep only the purpose and state until a row is opened).
+Several watchers collapse into one summary line (*N watchers · M running ·
+purpose*); nothing floats over the conversation. State is derived
+from reality, never guessed: `running` only while the recorded PID is still the
+process HUI started (a reboot that reuses the PID reads dead), `done` or
+`failed` from the recorded exit status, `stopped` after an operator stop, and
+`dead` when the process is gone with no exit record. Opening a row shows the
+target link, the outcome, start and end times, why a watcher failed or died, a
+bottom-anchored log tail that follows new output, the PID and log path, and
+*Stop* while running or *Restart* and *Dismiss* once settled. The command runs
+with the session's own local access; HUI does not sandbox it. The registry
+lives in `~/.config/hui/watchers.json` with one log per watcher under
+`~/.config/hui/watchers/`; deleting a conversation stops and forgets its
+watchers.
+
+The gateway re-reads the registry on start, so a watcher that survived a
+restart reappears with its state, and one killed by a reboot is shown dead
+instead of silently missing. HUI does not install a launchd agent: a watcher
+runs until its command ends or the machine restarts, and *Restart* brings it
+back afterwards.
+
 ## Kanban
 
 **Kanban** sits directly below Automations in the sidebar (`/kanban`). It has
@@ -892,7 +961,9 @@ command: any argv prefix that opens a stdio pipe to a POSIX shell there, such as
 for passwords or keys; the command must work non-interactively. Settings →
 Workers adds, connects, re-syncs, disconnects and removes workers and shows
 the remote host, sync summary and errors. A worker that sessions still use
-cannot be removed.
+cannot be removed. Worker sessions run on the `pi` runtime there, whatever
+the local default: Pi Durable runs inside the gateway, and `hui doctor` leaves
+their records, whose transcripts are on the worker, unchanged.
 
 - **Setup through the command only.** Each step runs `<command> sh -s` with a
   script on stdin. HUI looks for Node.js 22.18+ with npm on the remote and,
@@ -930,9 +1001,9 @@ cannot be removed.
   starts; creating one never waits on a connection. The header shows the worker.
   Subagents of a remote session run on the same worker. HUI agent tools work
   through the gateway; presented media is copied back from the remote.
-  Not yet available remotely: terminals, the managed browser, New worktree and
-  branch checkouts, and multi-account quota rotation (the default account is
-  used). Usage totals skip remote transcripts.
+  Not yet available remotely: terminals, watchers, the managed browser, New
+  worktree and branch checkouts, and multi-account quota rotation (the default
+  account is used). Usage totals skip remote transcripts.
 - **Bots.** A bot is a named agent that lives on a worker: standing
   instructions (added to its system prompt), a check-in prompt, an optional
   schedule (interval, cron or once) and a timeout. The host runs it, so it keeps
@@ -945,10 +1016,79 @@ cannot be removed.
 
 ## Decisions
 
+### New sessions run on Pi Durable
+
+New sessions use the `durable` runtime (`@earendil-works/pi-durable` 1.0.1).
+One harness per gateway owns their conversations, runs, inbox and crash
+recovery in a single SQLite store, `~/.config/hui/durable/harness.sqlite`
+(`HUI_DURABLE_DIR` overrides it), locked to one gateway at a time. Every
+step is checkpointed: after a gateway crash or restart the harness resumes the
+interrupted run by itself. A cut-off model request is sent again; an
+interrupted tool call is reported to the model as interrupted rather than
+rerun, because no HUI or coding tool is marked replay-safe. HUI therefore never
+sends its recovery prompt to a Durable session.
+
+PI still owns configuration: the harness reads PI's `settings.json`,
+`models.json`, credentials, skills, `AGENTS.md`/`SYSTEM.md`/`APPEND_SYSTEM`
+and prompt templates through PI's SDK, and builds the system prompt with PI's
+own section builder plus HUI's sections, as the SDK worker does. A provider
+header that interpolates `PI_CLIENT_SESSION_ID` gets a value per HUI session,
+as a PI worker gets one in its environment. Durable runs
+only HUI-owned code: its read/write/edit/bash tools and HUI's tools, which call
+the gateway's agent-tool handler in process as the conversation's bound HUI
+session. Third-party PI extensions and packages do not load in Durable
+sessions. A rewind forks the conversation, so the abandoned branch stays
+stored. Prompt-free Continue is not available on Durable; an aborted run
+continues from a new prompt.
+
+Compaction is Durable's too, with Durable's semantics where they differ from
+PI's. `/compact`, **Compact now** and the harness's own compactions (background
+ahead of the threshold, blocking at it, and after an overflow) run Durable's
+compaction task with PI's `compaction` settings. Only a blocking compaction
+holds its run; manual and background ones run beside the conversation, so input
+is never held, the session stays idle and the summary lands at the next
+boundary. A manual one can be cancelled alone, and Stop during a run cancels it
+as `Conversation.abort()` does; a background one keeps running. A rewind forks
+the history as it was, without a summary placed later. The transcript keeps the
+whole history with each summary in place.
+
+`HUI_SESSION_RUNTIME=pi` starts new sessions on the PI SDK worker instead.
+Existing sessions keep the runtime they were created with until
+`hui doctor --fix` moves them (below). HUI never edits or deletes PI
+transcripts.
+
+### `hui doctor` migrates state an upgrade leaves behind
+
+`hui doctor` runs checks that only read and report what an upgraded HUI needs
+changed; `hui doctor --fix` applies their fixes. Fixes run only with the gateway
+stopped, confirmed under the lifecycle lock so none starts meanwhile, and a
+Durable store held by any gateway refuses them. A change that leaves persisted
+state behind ships with a check, so upgrades stay explicit, reviewable and
+repeatable rather than happening silently at gateway start.
+
+The first check moves PI sessions to Pi Durable. The PI file is read as text,
+never through PI's `SessionManager`, which may rewrite it; PI's pure helpers
+upgrade older formats in memory and project each entry as PI sends it. The
+active branch becomes the conversation's history in order: pi-ai messages as
+Durable user, assistant and tool-result entries, PI's own message kinds as the
+user messages PI sends, each compaction as Durable's summary entry headed at
+PI's first kept entry, and each context edit as a Durable edit. The next
+request therefore carries what PI would have sent, under Durable's system
+prompt. The spend HUI totalled for the PI file is written to `pi.usage`. The
+conversation, its spend and a `hui.pi-import` index document are written in one
+commit, then the registry record switches to `durable:<id>`; a rerun reuses the
+copy of an unchanged file. The registry is backed up before its first change.
+Sessions with an interrupted run stay on PI so the gateway can recover them,
+and entries on abandoned branches stay only in the PI file.
+
 ### HUI owns an isolated PI SDK backend, not a PI fork
 
-Each active session runs a Node child with the pinned
-`@earendil-works/pi-coding-agent` SDK (0.87.1). HUI owns the versioned default
+Sessions on the `pi` runtime (sessions created before Durable that
+`hui doctor --fix` has not moved, worker sessions, and new ones under
+`HUI_SESSION_RUNTIME=pi`)
+keep this design. Each active one runs a
+Node child with the pinned
+`@earendil-works/pi-coding-agent` SDK (1.0.1). HUI owns the versioned default
 prompt, HUI tool definitions and runtime inspection; PI still owns its agent
 loop, configuration, credentials, resources and JSONL transcript writer. The
 gateway does not embed the agent loop or execute third-party extensions.

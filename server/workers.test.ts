@@ -137,7 +137,7 @@ after(async () => {
 test("a remote session runs with gateway credentials and mirrored resources, leaving no secret on the remote", async () => {
   const session = await piRuntime.start({ cwd: project, worker: workerId, huiSessionId: "remote-basic" });
   try {
-    assert.equal(session.resumed, false);
+    assert.equal(session.resumesInterruptedRuns, false);
     assert.ok(session.sessionFile?.startsWith(remoteHome), String(session.sessionFile));
     const inspection = await session.inspect!();
     assert.match(inspection.prompt, /gateway-skill/u);
@@ -201,7 +201,7 @@ test("a run keeps going without the gateway and is reattached, not recovered", a
   first.dispose();
   const second = await piRuntime.start({ cwd: project, worker: workerId, huiSessionId: "remote-durable", sessionFile });
   try {
-    assert.equal(second.resumed, true);
+    assert.equal(second.resumesInterruptedRuns, true);
     assert.equal(second.sessionFile, sessionFile);
     const answer = second.transcript().filter((entry) => entry.kind === "message").at(-1);
     assert.equal(answer?.kind === "message" && answer.text, "Replay prefix — replay suffix");
@@ -215,7 +215,7 @@ test("closing a session stops its remote process, so reopening starts a fresh on
   first.dispose();
   const second = await piRuntime.start({ cwd: project, worker: workerId, huiSessionId: "remote-close", sessionFile: first.sessionFile! });
   try {
-    assert.equal(second.resumed, false);
+    assert.equal(second.resumesInterruptedRuns, false);
     const done = settled(second);
     await second.prompt("still answering after a reopen");
     await done;
@@ -233,7 +233,7 @@ test("deleting a session stops its remote process even when no gateway is attach
   await workers.forget(workerId, ["remote-forget"]);
   const second = await piRuntime.start({ cwd: project, worker: workerId, huiSessionId: "remote-forget" });
   try {
-    assert.equal(second.resumed, false);
+    assert.equal(second.resumesInterruptedRuns, false);
   } finally {
     second.dispose();
   }
@@ -248,7 +248,7 @@ test("a question asked while no gateway is attached is shown again on reattach",
   first.dispose();
   const second = await piRuntime.start({ cwd: project, worker: workerId, huiSessionId: "remote-question", sessionFile: first.sessionFile! });
   try {
-    assert.equal(second.resumed, true);
+    assert.equal(second.resumesInterruptedRuns, true);
     const pending = await waitFor(() => second.pendingQuestions!().find((question) => question.id === questionId), "the replayed question");
     assert.equal(pending.title, "HUI E2E choice");
     const answered = new Promise<string>((resolve) => second.subscribe((event) => { if (event.type === "notice") resolve(event.message); }));

@@ -29,10 +29,17 @@ export function registerAgentToolHandler(next: AgentToolHandler): void {
   handler = next;
 }
 
-/** For callers already authenticated another way (a remote worker host). */
-export function invokeAgentTool(invocation: AgentToolInvocation): Promise<unknown> {
-  if (!handler) return Promise.reject(new Error("Agent tools are not ready."));
-  return handler(invocation);
+/** In-process runtimes (Durable) call the same handler without the loopback
+ * transport. The caller identity comes from the runtime's own session binding,
+ * never from tool parameters. */
+export async function invokeAgentTool(invocation: AgentToolInvocation): Promise<unknown> {
+  const callerSessionId = invocation.callerSessionId.trim();
+  const action = invocation.action.trim();
+  if (!callerSessionId || !action || !invocation.params || typeof invocation.params !== "object" || Array.isArray(invocation.params)) {
+    throw new Error("Agent tool request is missing callerSessionId, action, or params.");
+  }
+  if (!handler) throw new Error("Agent tools are not ready.");
+  return handler({ callerSessionId, action, params: invocation.params });
 }
 
 function sessionForToken(value: string | undefined): string | undefined {

@@ -46,7 +46,7 @@ test("installed package lifecycle, real SDK resume, verified update and rollback
   });
   const [ready] = await Promise.race([once(provider.stdout, "data"), once(provider, "exit").then(() => { throw new Error(`Provider failed to start: ${providerError}`); })]);
   const providerUrl = String(ready).match(/http:\/\/127\.0\.0\.1:\d+/u)?.[0]; assert(providerUrl);
-  const models = JSON.stringify({ providers: { "hui-e2e": { baseUrl: providerUrl, api: "anthropic-messages", apiKey: "e2e-not-a-secret",
+  const models = JSON.stringify({ providers: { "hui-e2e": { baseUrl: providerUrl, api: "anthropic-messages", headers: { "x-client-session-id": "${PI_CLIENT_SESSION_ID}" }, apiKey: "e2e-not-a-secret",
     models: [{ id: "fixture", name: "Package fixture", reasoning: true, input: ["text"], contextWindow: 32000, maxTokens: 4096, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } }] } } });
   // Exercise the composed provider registry from the installed archive while
   // all inference remains on the local PI fixture. An empty HUI selection
@@ -126,7 +126,8 @@ require('node:fs').writeFileSync(process.env.HUI_DESKTOP_PROOF, JSON.stringify({
     assert.equal(response.ok, true, `${path}: ${response.status}`);
     return response.json();
   };
-  const waitIdle = async (id: string, label = "session") => {
+  const waitIdle = (id: string, label = "session") => waitStatus(id, "idle", label);
+  const waitStatus = async (id: string, wanted: "idle" | "running", label: string) => {
     try {
       const response = await fetch(new URL(`/__hui/sessions/${id}/events`, status.url), { headers: { "x-hui": "1" }, signal: AbortSignal.timeout(20_000) });
       const reader = response.body!.getReader(); const decoder = new TextDecoder(); let buffer = "";
@@ -137,13 +138,13 @@ require('node:fs').writeFileSync(process.env.HUI_DESKTOP_PROOF, JSON.stringify({
           while (buffer.includes("\n\n")) {
             const end = buffer.indexOf("\n\n"); const frame = buffer.slice(0, end); buffer = buffer.slice(end + 2);
             const data = frame.split("\n").find((line) => line.startsWith("data: "))?.slice(6);
-            if (data && JSON.parse(data).status === "idle") return;
+            if (data && JSON.parse(data).status === wanted) return;
             if (data && JSON.parse(data).status === "error") throw new Error("SDK session boot failed");
           }
         }
       } finally { await reader.cancel(); }
     } catch (error) {
-      throw new Error(`${label} did not reach idle.`, { cause: error });
+      throw new Error(`${label} did not reach ${wanted}.`, { cause: error });
     }
   };
   assert.match(await (await fetch(new URL("/settings/tools", status.url))).text(), /hui-app/u);
@@ -269,6 +270,21 @@ require('node:fs').writeFileSync(process.env.HUI_DESKTOP_PROOF, JSON.stringify({
   assert.equal(JSON.parse(await command("gateway", "status", "--json")).status, "stopped");
   const stoppedRollback = JSON.parse(await command("update", "--rollback"));
   assert.equal(stoppedRollback.version, baseline); assert.equal(stoppedRollback.restarted, false);
+
+  // The nightly channel installs the published main build. The stable channel
+  // is checked independently, and a nightly already installed is not repeated.
+  const nightly = `${nextVersion}-nightly.20261004131149.gb0f30d5`;
+  await releases.set({ channel: "nightly", version: nightly, archive: await candidate(nightly) });
+  assert.equal(JSON.parse(await command("update", "--check", "--json")).status, "unpublished");
+  const nightlyCheck = JSON.parse(await command("update", "--check", "--nightly", "--json"));
+  assert.equal(nightlyCheck.status, "available"); assert.equal(nightlyCheck.latest.version, nightly);
+  const nightlyUpdate = JSON.parse(await command("update", "--nightly", "--json"));
+  assert.equal(nightlyUpdate.version, nightly); assert.equal(nightlyUpdate.restarted, false); assert.match(nightlyUpdate.sha256, /^[a-f0-9]{64}$/u);
+  assert.equal(await command("--version"), nightly);
+  assert.equal(JSON.parse(await command("update", "--check", "--nightly", "--json")).status, "current");
+  assert.deepEqual(JSON.parse(await command("update", "--nightly", "--json")), { version: nightly, restarted: false }, "an installed nightly is not reinstalled");
+  assert.equal(JSON.parse(await command("update", "--rollback")).version, baseline);
+  assert.equal(await command("--version"), baseline);
   assert.match(await command("gateway", "logs"), /Fixture activation failure/u);
 
   // Exercise the real detached browser updater, including a refused busy turn,
@@ -323,4 +339,56 @@ require('node:fs').writeFileSync(process.env.HUI_DESKTOP_PROOF, JSON.stringify({
   await command("update", "--rollback");
   const remoteCli = JSON.parse(await command("update", "--json"));
   assert.equal(remoteCli.version, nextVersion);
+
+  // hui doctor finds the PI session made above and, once the gateway is stopped, moves it to Pi Durable without
+  // touching PI's transcript. The moved session reopens with its history and runs a turn on Durable.
+  const doctor = async (...args: string[]) => {
+    try { return { code: 0, stdout: await command("doctor", ...args), stderr: "" }; }
+    catch (error) {
+      const failed = error as { code?: number; stdout?: string; stderr?: string };
+      return { code: failed.code, stdout: String(failed.stdout ?? "").trim(), stderr: String(failed.stderr ?? "") };
+    }
+  };
+  type Report = { ok: boolean; checks: { id: string; status: string; items: { id: string; status: string }[] }[] };
+  const piCheck = (report: Report) => report.checks.find((check) => check.id === "pi-sessions")!;
+  const piRecord = JSON.parse(await readFile(join(env.XDG_CONFIG_HOME, "hui/sessions.json"), "utf8")).sessions
+    .find((record: { id: string }) => record.id === session.id) as { tool: string; piSessionFile: string };
+  assert.equal(piRecord.tool, "pi");
+  const piTranscript = await readFile(piRecord.piSessionFile, "utf8");
+  const found = await doctor("--json");
+  assert.equal(found.code, 1, "issues found");
+  assert.deepEqual(piCheck(JSON.parse(found.stdout) as Report).items.map((item) => [item.id, item.status]), [[session.id, "issue"]]);
+  const refused = await doctor("--fix");
+  assert.equal(refused.code, 1);
+  assert.match(refused.stderr, /Stop the gateway before hui doctor --fix/u);
+  await command("gateway", "stop");
+  const fixed = await doctor("--fix", "--json");
+  assert.equal(fixed.code, 0, fixed.stdout + fixed.stderr);
+  assert.equal(piCheck(JSON.parse(fixed.stdout) as Report).status, "fixed");
+  assert.equal(await readFile(piRecord.piSessionFile, "utf8"), piTranscript, "PI's transcript is unchanged");
+  assert.equal((await doctor()).code, 0, "nothing left to fix");
+  status = JSON.parse(await command("gateway", "start", "--port", "0", "--json"));
+  await api(`sessions/${session.id}/open`, {}); await waitIdle(session.id, "moved session boot");
+  const movedHistory = (await api(`sessions/${session.id}/open`, {})).transcript as unknown[];
+  assert.match(JSON.stringify(movedHistory), /Installed SDK content/u, "the PI history moved along");
+  assert.equal((await api(`sessions/${session.id}/tools`)).backend, "durable");
+  const tools = (entries: unknown[]) => entries.filter((entry) => (entry as { kind?: string }).kind === "tool").length;
+  const beforeTurn = tools(movedHistory);
+  await api(`sessions/${session.id}/prompt`, { text: "E2E_RICH" }); await waitIdle(session.id, "first turn on Durable");
+  assert.equal(tools((await api(`sessions/${session.id}/open`, {})).transcript), beforeTurn + 1, "the moved session runs a tool turn on Durable");
+
+  // A Durable run does not block an ordinary restart: Durable resumes it in the
+  // replacement gateway, which asks the provider again and finishes the turn.
+  await api(`sessions/${session.id}/prompt`, { text: "E2E_REPLAY" });
+  await fetch(`${providerUrl}/control/wait-replay-ready`, { signal: AbortSignal.timeout(20_000) });
+  await waitStatus(session.id, "running", "held Durable run");
+  const running = JSON.parse(await command("gateway", "status", "--json"));
+  assert.equal(running.activeSessions, 1); assert.equal(running.resumableSessions, 1);
+  const beforeDurableRestart = status.pid;
+  status = JSON.parse(await command("gateway", "restart", "--json"));
+  assert.notEqual(status.pid, beforeDurableRestart);
+  await fetch(`${providerUrl}/control/wait-replay-ready`, { signal: AbortSignal.timeout(20_000) });
+  await fetch(`${providerUrl}/control/release-replay`, { method: "POST" });
+  await waitIdle(session.id, "resumed Durable run");
+  assert.match(JSON.stringify((await api(`sessions/${session.id}/open`, {})).transcript), /replay suffix/u, "the resumed run finished");
 });

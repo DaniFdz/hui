@@ -116,9 +116,14 @@ separate from an installed production gateway.
 ```sh
 hui update --check
 hui update
+hui update --nightly          # the latest validated main commit
 hui update --from /path/to/hui-next.tgz --sha256 <expected-sha256>
 hui update --rollback
 ```
+
+`--nightly` installs the build CI publishes for each `main` commit, from the
+rolling `nightly` prerelease. Run it again to follow `main`; a plain
+`hui update` brings you back to stable once a newer stable release ships.
 
 From the chat, `/update` opens the update flow in a dedicated **HUI update**
 session under **OTHER**. The command stays in the composer and is never sent to
@@ -126,6 +131,10 @@ the model, so a failed update can be inspected and retried. Updates are
 verified before activation, only run against an idle gateway, and keep the
 previous release available for rollback. Nix installations update through Nix
 instead.
+
+After an update, run `hui doctor`. It reports state the new version needs
+changed, such as sessions still on PI's worker, and `hui doctor --fix` changes
+it while the gateway is stopped. See [the guide](docs/guide.md#after-an-upgrade-hui-doctor).
 
 ## How it fits together
 
@@ -158,9 +167,10 @@ gateway instead, see [Remote access](docs/guide.md#remote-access-through-a-rever
 Keep the tailnet ACL tight. The browser's `x-hui` header is anti-CSRF, not an
 authentication mechanism.
 
-HUI stores settings, its session registry and update metadata under
-`$XDG_CONFIG_HOME/hui` and `$XDG_DATA_HOME/hui`. PI continues to own agent
-configuration and conversation transcripts.
+HUI stores settings, its session registry, the Pi Durable session store and
+update metadata under `$XDG_CONFIG_HOME/hui` and `$XDG_DATA_HOME/hui`. PI
+continues to own agent configuration and the transcripts of sessions still on
+its worker.
 
 The agent browser keeps its cookies and logins in
 `$XDG_CONFIG_HOME/hui/browser/profile`, separate from your personal browser
