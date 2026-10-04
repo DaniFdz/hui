@@ -8,11 +8,28 @@ import {
   isCurrentSessionRequest,
   mergeSessionStatuses,
   modelRequestMarkerAfterFailure,
+  noteAfterRunOutcome,
+  noteAnnouncement,
   shouldRequestModels,
   shouldFlushLaunchPrompt,
   streamingAfterEvent,
   streamingForStatus,
 } from "./session-ui-state.ts";
+
+test("a settled or failed run closes its own recovery warning, not a newer note", () => {
+  const retry = "Primary model failed before producing output. Retrying with openai/fallback.";
+  assert.deepEqual(noteAfterRunOutcome({ note: retry, noteLevel: "warning" }, retry), { note: "", noteLevel: "info" });
+  const replaced = { note: "Could not stop that turn.", noteLevel: "error" as const };
+  assert.equal(noteAfterRunOutcome(replaced, retry), replaced);
+  const confirmation = { note: "Session context cleared.", noteLevel: "info" as const };
+  assert.equal(noteAfterRunOutcome(confirmation, ""), confirmation);
+});
+
+test("only error notes are announced as alerts", () => {
+  assert.equal(noteAnnouncement("error"), "alert");
+  assert.equal(noteAnnouncement("warning"), "status");
+  assert.equal(noteAnnouncement("info"), "status");
+});
 
 test("a multiplex snapshot refreshes every session and resets cold rows to idle", () => {
   const groups = [{
@@ -98,7 +115,7 @@ test("clearing a session removes transcript, errors, models, and attachments", (
     opening: false,
     streaming: false,
     note: "",
-    noteFailed: false,
+    noteLevel: "info",
     connectionNote: "",
     models: [],
     currentModel: undefined,

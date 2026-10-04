@@ -14,6 +14,17 @@ function readStyles(path: string): string {
   return source.replace(/@import "([^"]+)";/g, (_, child: string) => readStyles(new URL(child, url).href));
 }
 
+test("chat notifications of every level render as the shell toast, not an inline paragraph", () => {
+  const source = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
+  const note = source.slice(source.indexOf("function renderNote("), source.indexOf("function renderLaunchFeedback("));
+  assert.match(note, /class="app-toast chat-operation-toast" data-level=\$\{props\.noteLevel\} role=\$\{noteAnnouncement\(props\.noteLevel\)\}/);
+  assert.match(note, /aria-label="Dismiss notification" @click=\$\{props\.onDismissNote\}/);
+  assert.doesNotMatch(note, /launch__note/);
+  const styles = readStyles("../styles/openclaw-chat.css");
+  assert.match(styles, /\.chat-operation-toast\[data-level="warning"\] \.app-toast__icon \{ color: var\(--warn\); \}/);
+  assert.match(styles, /\.chat-operation-toast\[data-level="error"\] \.app-toast__icon \{ color: var\(--danger\); \}/);
+});
+
 test("auto-follow and scroll-to-latest target the real reference transcript scroller", () => {
   const source = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
   const app = readFileSync(new URL("../hui-app.ts", import.meta.url), "utf8");

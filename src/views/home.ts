@@ -27,7 +27,7 @@ import { attachmentPreview } from "../lib/attachments.ts";
 import { renderAttachmentFileIcon, resolveAttachmentFileIcon } from "../lib/attachment-file-icon.ts";
 import { isSubagentActive, subagentElapsed, subagentVisualState } from "../lib/subagent-activity.ts";
 import { composerEnterMode } from "../lib/composer-state.ts";
-import { compactionBlocks } from "../lib/session-ui-state.ts";
+import { compactionBlocks, noteAnnouncement, type NoteLevel } from "../lib/session-ui-state.ts";
 import { adjustTextareaHeight as syncComposerTextarea } from "../lib/composer-textarea.ts";
 import { icons } from "../lib/icons.ts";
 import type { SplitDirection } from "../lib/session-multiplexer.ts";
@@ -219,7 +219,7 @@ export type HomeProps = {
   attachments: readonly Attachment[];
   launching: boolean;
   note: string;
-  noteFailed: boolean;
+  noteLevel: NoteLevel;
   sideChat?: {
     question: string;
     answer: string;
@@ -330,33 +330,31 @@ function sessionControlId(props: HomeProps, suffix: string): string {
   return `${suffix}-${props.controlScope ? `${props.controlScope}-` : ""}${owner}`;
 }
 
+/** Every chat notification, runtime notices included, uses the shell toast in
+ * the trailing top corner. Info toasts carry no icon, as upstream's do. */
 function renderNote(props: HomeProps) {
   if (!props.note) {
     return nothing;
   }
-  if (props.noteFailed) {
-    return html`<div class="app-toast chat-operation-toast" role="alert" aria-atomic="true">
-      <span class="app-toast__icon" aria-hidden="true">${icons.alertTriangle}</span>
-      <span class="app-toast__message">${props.note}</span>
-      <button type="button" class="app-toast__dismiss" aria-label="Dismiss notification" @click=${props.onDismissNote}>${icons.close}</button>
-    </div>`;
-  }
-  return html`<p class="launch__note ${props.noteFailed ? "is-error" : ""}" role=${props.noteFailed ? "alert" : "status"}>
-    ${props.note}
-  </p>`;
+  return html`<div class="app-toast chat-operation-toast" data-level=${props.noteLevel} role=${noteAnnouncement(props.noteLevel)} aria-atomic="true">
+    ${props.noteLevel === "info" ? nothing : html`<span class="app-toast__icon" aria-hidden="true">${icons.alertTriangle}</span>`}
+    <span class="app-toast__message">${props.note}</span>
+    <button type="button" class="app-toast__dismiss" aria-label="Dismiss notification" @click=${props.onDismissNote}>${icons.close}</button>
+  </div>`;
 }
 
 /* ── new session ─────────────────────────────────────────────────────────── */
 
 function renderLaunchFeedback(props: HomeProps) {
   if (!props.note) return nothing;
+  const failed = props.noteLevel === "error";
   return html`
     <div id="launch-feedback"
-      class="callout ${props.noteFailed ? "danger" : ""} new-session-page__alert new-session-page__feedback"
-      role=${props.noteFailed ? "alert" : "status"} aria-atomic="true">
-      ${props.noteFailed ? html`<span class="new-session-page__alert-icon" aria-hidden="true">${icons.alertTriangle}</span>` : nothing}
+      class="callout ${failed ? "danger" : ""} new-session-page__alert new-session-page__feedback"
+      role=${noteAnnouncement(props.noteLevel)} aria-atomic="true">
+      ${failed ? html`<span class="new-session-page__alert-icon" aria-hidden="true">${icons.alertTriangle}</span>` : nothing}
       <div class="callout__content new-session-page__alert-message">
-        ${props.noteFailed ? html`<strong>Could not start session</strong>` : nothing}
+        ${failed ? html`<strong>Could not start session</strong>` : nothing}
         <span class="new-session-page__feedback-detail">${props.note}</span>
       </div>
     </div>
