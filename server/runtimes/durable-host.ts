@@ -201,6 +201,14 @@ export class DurableHost {
   get models(): Models { return this.#models.view; }
   get isOpen(): boolean { return this.#harness !== undefined; }
 
+  /** Whether the open store has work to do: queued input or a task that can
+   * run. A background compaction, or a task this build cannot run, is not. */
+  async busy(): Promise<boolean> {
+    if (!this.#harness) return false;
+    const { tasks, submissions } = await this.#harness.inspect(durableContext);
+    return submissions.length > 0 || tasks.some((task) => !task.record.background && task.state.kind !== "blocked");
+  }
+
   /** Opens the store once and resumes every interrupted run in it. */
   open(): Promise<Harness> {
     this.#opening ??= this.#open().catch((error: unknown) => {

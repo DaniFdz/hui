@@ -36,7 +36,7 @@ const DETACHED_IDLE_MS = 10 * 60_000;
 /** A detached worker waiting on a question keeps it this long for someone to answer. */
 const DETACHED_QUESTION_MS = 24 * 60 * 60_000;
 const ATTACHMENT_RETENTION_MS = 7 * 24 * 60 * 60_000;
-/** A host with nothing to do exits after this, unless it owns bots. */
+/** A host with nothing to do exits after this, unless it owns bots or Durable work. */
 const HOST_IDLE_MS = 30 * 60_000;
 const MAX_FILE_BYTES = 100 * 1024 * 1024;
 /** A transcript larger than this is fetched in pages instead of riding along
@@ -589,9 +589,11 @@ export class WorkerHost {
       if (now - hosted.lastActive > (waiting ? DETACHED_QUESTION_MS : DETACHED_IDLE_MS)) this.#stop(hosted);
     }
     if (now - this.#pruned > 24 * 60 * 60_000) void this.#pruneAttachments();
-    // An open Durable store may be running resumed work nobody watches.
-    if (!this.#sessions.size && !this.#peers.size && !this.#bots.active() && !this.#durable.isOpen && now - this.#lastActivity > HOST_IDLE_MS) {
-      void this.close().finally(() => process.exit(0));
-    }
+    if (this.#sessions.size || this.#peers.size || this.#bots.active() || now - this.#lastActivity <= HOST_IDLE_MS) return;
+    // Durable work nobody watches (a resumed run, a queued follow-up) keeps the host up.
+    void this.#durable.busy().then((busy) => {
+      if (busy) this.#touch();
+      else void this.close().finally(() => process.exit(0));
+    }, () => this.#touch());
   }
 }

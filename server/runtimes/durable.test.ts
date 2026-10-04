@@ -249,9 +249,11 @@ test("a gateway killed mid-tool resumes the run without replaying bash", { timeo
 
 test("steering and follow-ups queue in the Durable inbox while a tool runs", { timeout: 45_000 }, async (t) => {
   const f = await fixture(t);
-  const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-queue" }, f.host());
+  const host = f.host();
+  const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-queue" }, host);
   await session.prompt("E2E_COMMAND_RUNNING hold the command");
   assert.equal((await f.control("/control/wait-replay-ready")).status, 200);
+  assert.equal(await host.busy(), true, "a running turn keeps a worker host up");
   const queued = nextEvent(session, (event) => event.type === "queue_update" && event.queue.followUp.length === 1);
   await session.steer("Steer note for the running turn");
   await session.followUp("Follow-up note for later");
@@ -264,6 +266,7 @@ test("steering and follow-ups queue in the Durable inbox while a tool runs", { t
   const users = entries.flatMap((entry) => entry.kind === "message" && entry.role === "user" ? [entry.text] : []);
   assert.deepEqual(users, ["E2E_COMMAND_RUNNING hold the command", "Steer note for the running turn", "Follow-up note for later"]);
   assert.deepEqual(session.pendingQueue(), { steering: [], followUp: [] });
+  assert.equal(await host.busy(), false, "an open store with nothing to run lets a worker host stop");
 });
 
 test("HUI tools reach the gateway handler as the bound session, never a model-chosen one", { timeout: 45_000 }, async (t) => {
@@ -453,9 +456,10 @@ test("cancelling right after starting reaches a compaction the stream has not li
 });
 
 test("a background compaction leaves the session idle and survives Stop", { timeout: 60_000 }, async (t) => {
-  const { f, session, events } = await heldBackgroundCompaction(t);
+  const { f, host, session, events } = await heldBackgroundCompaction(t);
   assert.deepEqual(events, [{ type: "compaction_start", reason: "threshold", blocking: false, background: true }]);
   assert.equal(session.isStreaming, false, "the run ended; Durable compacts beside the idle conversation");
+  assert.equal(await host.busy(), false, "a background compaction resumes later; it does not keep a worker host up");
 
   await session.abort();
   await session.cancelCompaction();

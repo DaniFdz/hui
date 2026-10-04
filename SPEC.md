@@ -988,7 +988,8 @@ leaves worker records unchanged.
   "recovered", even once its idle runtime has stopped or the host restarted;
   a PI run cut off mid-way (the host or its runtime stopped) is continued by
   HUI on the next open, as a local one after a gateway restart. Detached idle workers stop after ten minutes, an idle host
-  after thirty, unless it owns bots. A newer gateway replaces an idle older
+  after thirty, unless it owns bots or Durable work still has to run (an
+  open store alone keeps nothing alive). A newer gateway replaces an idle older
   host; one that is busy, or that another HUI is connected to, keeps serving.
 - **Your PI setup, mirrored.** Before a session starts (at most every 30 s)
   HUI mirrors the user's PI settings, models, context files (`AGENTS.md`,
