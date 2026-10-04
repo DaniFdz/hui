@@ -397,10 +397,15 @@ test("a Durable session runs on the worker, keeps going without the gateway and 
   assert.ok(!existsSync(join(root, "gateway", "config", "hui", "durable")));
 
   await first.prompt("E2E_REPLAY please");
-  await fetch(`${baseUrl.replace(/\/v1$/u, "")}/control/wait-replay-ready`);
+  await control("wait-replay-ready");
   workers.disconnect(workerId);
-  await fetch(`${baseUrl.replace(/\/v1$/u, "")}/control/release-replay`, { method: "POST" });
   first.dispose();
+  // The answer reaches the worker's store before any gateway is back.
+  const store = join(remoteHome, ".local", "share", "hui-worker", "state", "durable", "harness.sqlite");
+  const stored = async () => Buffer.concat(await Promise.all([store, `${store}-wal`].map((file) => readFile(file).catch(() => Buffer.alloc(0))))).includes("replay suffix");
+  assert.equal(await stored(), false);
+  await control("release-replay", { method: "POST" });
+  await waitFor(stored, "the worker to store the answer");
   const second = await durable.start({ cwd: project, worker: workerId, huiSessionId: "remote-durable-runtime", sessionFile: first.sessionFile! });
   try {
     assert.equal(second.sessionFile, first.sessionFile);
