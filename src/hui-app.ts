@@ -100,10 +100,12 @@ import {
   isSelectedSession,
   mergeSessionStatuses,
   modelRequestMarkerAfterFailure,
+  noteAfterRunOutcome,
   shouldRequestModels,
   shouldFlushLaunchPrompt,
   streamingAfterEvent,
   streamingForStatus,
+  type NoteLevel,
 } from "./lib/session-ui-state.ts";
 import { closeModal, ensureModal } from "./lib/modal-dialog.ts";
 import { documentTitle } from "./lib/document-title.ts";
@@ -317,7 +319,9 @@ export class HuiApp extends HuiElement {
   @state() private showScrollToBottom = false;
   @state() private launching = false;
   @state() private note = "";
-  @state() private noteFailed = false;
+  @state() private noteLevel: NoteLevel = "info";
+  /** The runtime warning (provider retry, model fallback) the current run is narrating. */
+  private recoveryNotice = "";
   /** Empty while the stream is live; otherwise a muted line saying why. */
   @state() private connectionNote = "";
   @state() private importNote = "";
@@ -1271,7 +1275,7 @@ export class HuiApp extends HuiElement {
       this.taskSuggestions = this.taskSuggestions.filter(({ id }) => id !== detail.suggestionId);
       this.taskSuggestionIndex = clampSuggestionIndex(this.taskSuggestionIndex, this.taskSuggestions.length);
       this.note = detail.warning ?? `Created Jira work item ${detail.key}.`;
-      this.noteFailed = Boolean(detail.warning);
+      this.noteLevel = detail.warning ? "warning" : "info";
       void this.onPaneRegistryChange?.();
     }
     this.sessionMoveNotice = detail.warning ?? `Created Jira work item ${detail.key}.`;
@@ -1528,11 +1532,11 @@ export class HuiApp extends HuiElement {
           this.taskSuggestionIndex = clampSuggestionIndex(this.taskSuggestionIndex, this.taskSuggestions.length);
         }
         this.note = `Added “${suggestion.title}” to the Kanban backlog.`;
-        this.noteFailed = false;
+        this.noteLevel = "info";
       })
       .catch((error: unknown) => {
         this.note = error instanceof Error ? error.message : "Could not add that suggestion to the backlog.";
-        this.noteFailed = true;
+        this.noteLevel = "error";
       })
       .finally(() => { this.taskSuggestionPendingId = ""; });
   };
@@ -1750,7 +1754,7 @@ export class HuiApp extends HuiElement {
     this.watcherPendingId = "";
     this.watcherLog = null;
     this.note = "";
-    this.noteFailed = false;
+    this.noteLevel = "info";
     this.connectionNote = "";
     this.models = [];
     this.currentModel = undefined;
@@ -1786,7 +1790,7 @@ export class HuiApp extends HuiElement {
     } catch (error) {
       if (isCurrentSessionRequest(id, this.selected?.id, requestToken, this.openRequestToken)) {
         this.note = error instanceof Error ? error.message : "Could not open that session.";
-        this.noteFailed = true;
+        this.noteLevel = "error";
       }
     } finally {
       if (isCurrentSessionRequest(id, this.selected?.id, requestToken, this.openRequestToken)) {
@@ -1917,8 +1921,13 @@ export class HuiApp extends HuiElement {
     }
     if (event.type === "notice") {
       this.note = event.message;
-      this.noteFailed = event.level === "error";
+      this.noteLevel = event.level ?? "info";
+      this.recoveryNotice = this.noteLevel === "warning" ? event.message : "";
       return;
+    }
+    if (event.type === "settled" || event.type === "error") {
+      ({ note: this.note, noteLevel: this.noteLevel } = noteAfterRunOutcome({ note: this.note, noteLevel: this.noteLevel }, this.recoveryNotice));
+      this.recoveryNotice = "";
     }
     switch (event.type) {
       case "text":
@@ -2090,7 +2099,7 @@ export class HuiApp extends HuiElement {
       return true;
     } catch (error) {
       this.note = error instanceof Error ? error.message : "Could not create the HUI update session.";
-      this.noteFailed = true;
+      this.noteLevel = "error";
       return false;
     } finally {
       this.updateSessionCreating = false;
@@ -2102,12 +2111,12 @@ export class HuiApp extends HuiElement {
     if (!command) return false;
     if (command === "invalid" || attachments.length) {
       this.note = "Use /update or /update --check, without attachments. This command is handled by HUI, not the model.";
-      this.noteFailed = true;
+      this.noteLevel = "error";
       return true;
     }
     if (this.embeddedPane && this.onPaneUpdate) return this.onPaneUpdate(text, attachments);
     this.note = "";
-    this.noteFailed = false;
+    this.noteLevel = "info";
     this.slashQuery = null;
     this.updateReturnFocus = this.composerTextarea;
     this.updateReadOnly = command === "check";
@@ -2418,16 +2427,16 @@ export class HuiApp extends HuiElement {
     if (command) {
       if ((clearCommand ?? reloadCommand) === "invalid" || attachments.length) {
         this.note = `Use /${command} without arguments or attachments.`;
-        this.noteFailed = true;
+        this.noteLevel = "error";
         return;
       }
       if (mode !== "prompt" || this.streaming || session.status !== "idle") {
         this.note = `Finish or stop active work before ${command}ing the session.`;
-        this.noteFailed = true;
+        this.noteLevel = "error";
         return;
       }
       this.note = "";
-      this.noteFailed = false;
+      this.noteLevel = "info";
       this.sending = true;
       this.composerDraftEdit += 1;
       this.draft = "";
@@ -2449,7 +2458,7 @@ export class HuiApp extends HuiElement {
       void run.catch(async (error: unknown) => {
         if (await this.restoreSentDraft(session.id, text, attachments)) {
           this.note = error instanceof Error ? error.message : `Could not ${command} that session.`;
-          this.noteFailed = true;
+          this.noteLevel = "error";
         }
       }).finally(() => {
         if (isSelectedSession(session.id, this.selected?.id)) this.sending = false;
@@ -2460,7 +2469,7 @@ export class HuiApp extends HuiElement {
     if (compact) {
       if (attachments.length || mode !== "prompt") {
         this.note = attachments.length ? "Use /compact without attachments." : "Finish or stop active work before compacting the session.";
-        this.noteFailed = true;
+        this.noteLevel = "error";
         return;
       }
       this.compactNow(compact.instructions, text);
@@ -2470,12 +2479,12 @@ export class HuiApp extends HuiElement {
     if (/^\/(?:btw|side)(?:\s|$)/iu.test(trimmed)) {
       if (!sideQuestion) {
         this.note = "Add a question after /btw. Example: /btw which file are we editing?";
-        this.noteFailed = true;
+        this.noteLevel = "error";
         return;
       }
       if (attachments.length) {
         this.note = "/btw does not support attachments in this build.";
-        this.noteFailed = true;
+        this.noteLevel = "error";
         return;
       }
       this.composerDraftEdit += 1;
@@ -2501,7 +2510,7 @@ export class HuiApp extends HuiElement {
     }
     const pendingId = localTranscriptId("user");
     this.note = "";
-    this.noteFailed = false;
+    this.noteLevel = "info";
     this.sending = true;
     // Claim this exact payload before awaiting HTTP. The composer stays locked
     // for the short acknowledgement window, so a rejection can restore this
@@ -2550,7 +2559,7 @@ export class HuiApp extends HuiElement {
           this.selected?.status ?? session.status,
         );
         this.note = error instanceof Error ? error.message : "Could not send that prompt.";
-        this.noteFailed = true;
+        this.noteLevel = "error";
       })
       .finally(() => {
         if (isSelectedSession(session.id, this.selected?.id)) this.sending = false;
@@ -2580,13 +2589,13 @@ export class HuiApp extends HuiElement {
     const session = this.selected;
     if (!session?.interrupted || this.sending || this.opening || this.connection !== "live") return;
     this.note = "";
-    this.noteFailed = false;
+    this.noteLevel = "info";
     this.sending = true;
     void continueSession(session.id)
       .catch((error: unknown) => {
         if (!isSelectedSession(session.id, this.selected?.id)) return;
         this.note = error instanceof Error ? error.message : "Could not continue that run.";
-        this.noteFailed = true;
+        this.noteLevel = "error";
       })
       .finally(() => {
         if (isSelectedSession(session.id, this.selected?.id)) this.sending = false;
@@ -2618,7 +2627,7 @@ export class HuiApp extends HuiElement {
           return;
         }
         this.note = error instanceof Error ? error.message : "Could not read that file.";
-        this.noteFailed = true;
+        this.noteLevel = "error";
       });
   };
 
@@ -2639,7 +2648,7 @@ export class HuiApp extends HuiElement {
       .catch((error: unknown) => {
         if (!isSelectedSession(session.id, this.selected?.id)) return;
         this.note = error instanceof Error ? error.message : "Could not stop that turn.";
-        this.noteFailed = true;
+        this.noteLevel = "error";
       })
       .finally(() => {
         if (isSelectedSession(session.id, this.selected?.id)) this.stopping = false;
@@ -2653,7 +2662,7 @@ export class HuiApp extends HuiElement {
     void cancelCompaction(session.id).catch((error: unknown) => {
       if (!isSelectedSession(session.id, this.selected?.id)) return;
       this.note = error instanceof Error ? error.message : "Could not cancel that compaction.";
-      this.noteFailed = true;
+      this.noteLevel = "error";
     });
   }
 
@@ -2663,16 +2672,16 @@ export class HuiApp extends HuiElement {
     if (!session || this.sending) return;
     if (this.streaming || session.status !== "idle") {
       this.note = "Finish or stop active work before compacting the session.";
-      this.noteFailed = true;
+      this.noteLevel = "error";
       return;
     }
     if (this.compaction?.status === "running") {
       this.note = "A compaction is already running.";
-      this.noteFailed = true;
+      this.noteLevel = "error";
       return;
     }
     this.note = "";
-    this.noteFailed = false;
+    this.noteLevel = "info";
     this.sending = true;
     if (typed !== undefined) {
       this.composerDraftEdit += 1;
@@ -2683,7 +2692,7 @@ export class HuiApp extends HuiElement {
     void compactSession(session.id, instructions).catch(async (error: unknown) => {
       if (typed !== undefined ? await this.restoreSentDraft(session.id, typed, []) : isSelectedSession(session.id, this.selected?.id)) {
         this.note = error instanceof Error ? error.message : "Could not compact that session.";
-        this.noteFailed = true;
+        this.noteLevel = "error";
       }
     }).finally(() => {
       if (isSelectedSession(session.id, this.selected?.id)) this.sending = false;
@@ -2711,7 +2720,7 @@ export class HuiApp extends HuiElement {
     if (!session || this.opening || this.rewindPending) return;
     this.rewindPending = true;
     this.note = "";
-    this.noteFailed = false;
+    this.noteLevel = "info";
     void rewindSession(session.id, target, true)
       .then(async () => {
         if (!isSelectedSession(session.id, this.selected?.id)) return;
@@ -2724,12 +2733,12 @@ export class HuiApp extends HuiElement {
         this.composerTextarea?.focus();
         this.composerTextarea?.setSelectionRange(text.length, text.length);
         this.note = "Message restored to the composer. The previous branch is kept.";
-        this.noteFailed = false;
+        this.noteLevel = "info";
       })
       .catch((error: unknown) => {
         if (!isSelectedSession(session.id, this.selected?.id)) return;
         this.note = error instanceof Error ? error.message : "Could not rewind that message.";
-        this.noteFailed = true;
+        this.noteLevel = "error";
       })
       .finally(() => {
         if (isSelectedSession(session.id, this.selected?.id)) this.rewindPending = false;
@@ -2741,12 +2750,12 @@ export class HuiApp extends HuiElement {
     if (!session || this.streaming || this.opening || this.continuing) return;
     this.continuing = true;
     this.note = "";
-    this.noteFailed = false;
+    this.noteLevel = "info";
     void resumeSession(session.id)
       .catch((error: unknown) => {
         if (!isSelectedSession(session.id, this.selected?.id)) return;
         this.note = error instanceof Error ? error.message : "Could not continue that session.";
-        this.noteFailed = true;
+        this.noteLevel = "error";
       })
       .finally(() => {
         if (isSelectedSession(session.id, this.selected?.id)) this.continuing = false;
@@ -2766,7 +2775,7 @@ export class HuiApp extends HuiElement {
       .catch((error: unknown) => {
         if (!isSelectedSession(session.id, this.selected?.id)) return;
         this.note = error instanceof Error ? error.message : "Could not update the queue.";
-        this.noteFailed = true;
+        this.noteLevel = "error";
       });
   };
 
@@ -2783,7 +2792,7 @@ export class HuiApp extends HuiElement {
         // divergent level. Never overwrite that authoritative SSE state with
         // this request's stale optimistic value.
         this.note = error instanceof Error ? error.message : "Could not switch thinking level.";
-        this.noteFailed = true;
+        this.noteLevel = "error";
       });
   };
 
@@ -2800,7 +2809,7 @@ export class HuiApp extends HuiElement {
         if (!isSelectedSession(session.id, this.selected?.id)) return;
         this.question = question;
         this.note = error instanceof Error ? error.message : "Could not answer pi.";
-        this.noteFailed = true;
+        this.noteLevel = "error";
       });
   };
 
@@ -2844,7 +2853,7 @@ export class HuiApp extends HuiElement {
       })
       .catch((error: unknown) => {
         this.note = error instanceof Error ? error.message : "Could not start that suggestion.";
-        this.noteFailed = true;
+        this.noteLevel = "error";
       })
       .finally(() => { this.taskSuggestionPendingId = ""; });
   };
@@ -2861,7 +2870,7 @@ export class HuiApp extends HuiElement {
       })
       .catch((error: unknown) => {
         this.note = error instanceof Error ? error.message : "Could not dismiss that suggestion.";
-        this.noteFailed = true;
+        this.noteLevel = "error";
       })
       .finally(() => { this.taskSuggestionPendingId = ""; });
   };
@@ -2880,7 +2889,7 @@ export class HuiApp extends HuiElement {
       })
       .catch((error: unknown) => {
         this.note = error instanceof Error ? error.message : failure;
-        this.noteFailed = true;
+        this.noteLevel = "error";
       })
       .finally(() => { this.watcherPendingId = ""; });
   };
@@ -2911,7 +2920,7 @@ export class HuiApp extends HuiElement {
         if (this.watcherLog?.id !== watcher.id) return;
         this.watcherLog = null;
         this.note = error instanceof Error ? error.message : "Could not read that watcher log.";
-        this.noteFailed = true;
+        this.noteLevel = "error";
       });
   };
 
@@ -2947,7 +2956,7 @@ export class HuiApp extends HuiElement {
       return true;
     }).catch(() => {
       this.note = "Could not copy to the clipboard.";
-      this.noteFailed = true;
+      this.noteLevel = "error";
       return false;
     });
   };
@@ -3000,7 +3009,7 @@ export class HuiApp extends HuiElement {
           return;
         }
         this.note = error instanceof Error ? error.message : "Could not switch model.";
-        this.noteFailed = true;
+        this.noteLevel = "error";
       });
   };
 
@@ -3117,7 +3126,7 @@ export class HuiApp extends HuiElement {
     if (this.launching) return;
     this.launching = true;
     this.note = "";
-    this.noteFailed = false;
+    this.noteLevel = "info";
     const { prompt, commandDraft, ...sessionInput } = input;
     this.pendingLaunchPrompt = prompt?.trim() ?? "";
     const launchAttachments = this.attachments;
@@ -3164,7 +3173,7 @@ export class HuiApp extends HuiElement {
           void this.persistComposerDraft();
         }
         this.note = error instanceof Error ? error.message : "Could not start that session.";
-        this.noteFailed = true;
+        this.noteLevel = "error";
       })
       .finally(() => {
         this.launching = false;
@@ -3227,7 +3236,7 @@ export class HuiApp extends HuiElement {
     this.opening = empty.opening;
     this.streaming = empty.streaming;
     this.note = empty.note;
-    this.noteFailed = empty.noteFailed;
+    this.noteLevel = empty.noteLevel;
     this.connectionNote = empty.connectionNote;
     this.models = empty.models;
     this.currentModel = empty.currentModel;
@@ -3262,7 +3271,7 @@ export class HuiApp extends HuiElement {
     this.question = undefined;
     this.questionReturnFocus = undefined;
     this.note = "";
-    this.noteFailed = false;
+    this.noteLevel = "info";
     this.connectionNote = "";
     this.sideChat = undefined;
   }
@@ -3635,7 +3644,7 @@ export class HuiApp extends HuiElement {
       }, 1_500);
     }).catch(() => {
       this.note = "Could not copy the resource to the clipboard.";
-      this.noteFailed = true;
+      this.noteLevel = "error";
     });
   };
 
@@ -3980,8 +3989,8 @@ export class HuiApp extends HuiElement {
       attachments: this.attachments,
       launching: this.launching,
       note: this.note,
-      noteFailed: this.noteFailed,
-      onDismissNote: () => { this.note = ""; this.noteFailed = false; },
+      noteLevel: this.noteLevel,
+      onDismissNote: () => { this.note = ""; this.noteLevel = "info"; },
       connectionNote: this.connectionNote,
       onLaunch: this.launch,
       onSelectSession: this.selectSession,
