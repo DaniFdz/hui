@@ -175,6 +175,22 @@ function modelOf(value: unknown): string | undefined {
   return typeof model === "string" && model.trim() ? model.trim().slice(0, 160) : undefined;
 }
 
+/** Token and cost counters of one PI transcript record, as HUI totals them; undefined without a usage object. */
+export function transcriptUsage(record: unknown): { input: number; output: number; cacheRead: number; cacheWrite: number; totalTokens: number; cost: number } | undefined {
+  const usage = usageObject(record);
+  if (!usage) return undefined;
+  const input = numberAt(usage, "input", "inputTokens", "input_tokens");
+  const output = numberAt(usage, "output", "outputTokens", "output_tokens");
+  const cacheRead = numberAt(usage, "cacheRead", "cacheReadTokens", "cache_read_input_tokens");
+  const cacheWrite = numberAt(usage, "cacheWrite", "cacheWriteTokens", "cache_creation_input_tokens");
+  const totalTokens = numberAt(usage, "total", "totalTokens", "total_tokens") || input + output + cacheRead + cacheWrite;
+  const rawCost = usage["cost"];
+  const cost = typeof rawCost === "object" && rawCost !== null
+    ? numberAt(rawCost, "total", "usd", "totalCost")
+    : numberAt(usage, "cost", "totalCost", "costUsd", "cost_usd");
+  return { input, output, cacheRead, cacheWrite, totalTokens, cost };
+}
+
 type DurableUsage = (conversationId: number) => Promise<{ models?: Record<string, Record<string, unknown>> } | undefined>;
 
 /** Loaded on use: the Durable host itself reports through this module. */
@@ -236,22 +252,14 @@ export async function aggregateUsage(sessions: readonly SessionRecord[], durable
         let record: unknown;
         try { record = JSON.parse(line); } catch { continue; }
         totals.records += 1;
-        const usage = usageObject(record);
+        const usage = transcriptUsage(record);
         if (!usage) continue;
-        const input = numberAt(usage, "input", "inputTokens", "input_tokens");
-        const output = numberAt(usage, "output", "outputTokens", "output_tokens");
-        const cacheRead = numberAt(usage, "cacheRead", "cacheReadTokens", "cache_read_input_tokens");
-        const cacheWrite = numberAt(usage, "cacheWrite", "cacheWriteTokens", "cache_creation_input_tokens");
-        const total = numberAt(usage, "total", "totalTokens", "total_tokens") || input + output + cacheRead + cacheWrite;
+        const { input, output, cacheRead, cacheWrite, totalTokens: total, cost } = usage;
         totals.inputTokens += input;
         totals.outputTokens += output;
         totals.cacheReadTokens += cacheRead;
         totals.cacheWriteTokens += cacheWrite;
         totals.totalTokens += total;
-        const rawCost = usage["cost"];
-        const cost = typeof rawCost === "object" && rawCost !== null
-          ? numberAt(rawCost, "total", "usd", "totalCost")
-          : numberAt(usage, "cost", "totalCost", "costUsd", "cost_usd");
         if (cost > 0) { knownCost += cost; hasCost = true; }
         const model = modelOf(record);
         if (model && total > 0) models.set(model, (models.get(model) ?? 0) + total);

@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url";
 const repo = dirname(dirname(fileURLToPath(import.meta.url)));
 const help = `HUI visual verification (run from the checkout being reviewed)
 
-  node e2e/visual-verification.mjs launch --branch <expected-branch> [--quota-fixture | --jira-fixture | --github-fixture]
+  node e2e/visual-verification.mjs launch --branch <expected-branch> [--pi-sessions] [--quota-fixture | --jira-fixture | --github-fixture]
   node e2e/visual-verification.mjs doctor --receipt <absolute-receipt.json>
   node e2e/visual-verification.mjs cleanup --receipt <absolute-receipt.json>
 
@@ -364,7 +364,8 @@ export async function launch(expectedBranch) {
 async function main() {
   const [command, ...args] = process.argv.slice(2);
   if (!command || command === "--help" || args.includes("--help")) return process.stdout.write(help);
-  if (command === "launch" && ["--quota-fixture", "--jira-fixture", "--github-fixture"].includes(args.at(-1))) args.pop();
+  // Trailing launch options; `launch` reads them from argv.
+  if (command === "launch") while (["--pi-sessions", "--quota-fixture", "--jira-fixture", "--github-fixture"].includes(args.at(-1))) args.pop();
   const option = command === "launch" ? "--branch" : "--receipt";
   if (!["launch", "doctor", "cleanup"].includes(command) || args.length !== 2 || args[0] !== option) throw new Error("Invalid arguments. Run with --help.");
   if (command === "launch") return launch(args[1]);

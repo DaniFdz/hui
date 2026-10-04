@@ -323,4 +323,41 @@ require('node:fs').writeFileSync(process.env.HUI_DESKTOP_PROOF, JSON.stringify({
   await command("update", "--rollback");
   const remoteCli = JSON.parse(await command("update", "--json"));
   assert.equal(remoteCli.version, nextVersion);
+
+  // hui doctor finds the PI session made above and, once the gateway is stopped, moves it to Pi Durable without
+  // touching PI's transcript. The moved session reopens with its history and runs a turn on Durable.
+  const doctor = async (...args: string[]) => {
+    try { return { code: 0, stdout: await command("doctor", ...args), stderr: "" }; }
+    catch (error) {
+      const failed = error as { code?: number; stdout?: string; stderr?: string };
+      return { code: failed.code, stdout: String(failed.stdout ?? "").trim(), stderr: String(failed.stderr ?? "") };
+    }
+  };
+  type Report = { ok: boolean; checks: { id: string; status: string; items: { id: string; status: string }[] }[] };
+  const piCheck = (report: Report) => report.checks.find((check) => check.id === "pi-sessions")!;
+  const piRecord = JSON.parse(await readFile(join(env.XDG_CONFIG_HOME, "hui/sessions.json"), "utf8")).sessions
+    .find((record: { id: string }) => record.id === session.id) as { tool: string; piSessionFile: string };
+  assert.equal(piRecord.tool, "pi");
+  const piTranscript = await readFile(piRecord.piSessionFile, "utf8");
+  const found = await doctor("--json");
+  assert.equal(found.code, 1, "issues found");
+  assert.deepEqual(piCheck(JSON.parse(found.stdout) as Report).items.map((item) => [item.id, item.status]), [[session.id, "issue"]]);
+  const refused = await doctor("--fix");
+  assert.equal(refused.code, 1);
+  assert.match(refused.stderr, /Stop the gateway before hui doctor --fix/u);
+  await command("gateway", "stop");
+  const fixed = await doctor("--fix", "--json");
+  assert.equal(fixed.code, 0, fixed.stdout + fixed.stderr);
+  assert.equal(piCheck(JSON.parse(fixed.stdout) as Report).status, "fixed");
+  assert.equal(await readFile(piRecord.piSessionFile, "utf8"), piTranscript, "PI's transcript is unchanged");
+  assert.equal((await doctor()).code, 0, "nothing left to fix");
+  status = JSON.parse(await command("gateway", "start", "--port", "0", "--json"));
+  await api(`sessions/${session.id}/open`, {}); await waitIdle(session.id, "moved session boot");
+  const movedHistory = (await api(`sessions/${session.id}/open`, {})).transcript as unknown[];
+  assert.match(JSON.stringify(movedHistory), /Installed SDK content/u, "the PI history moved along");
+  assert.equal((await api(`sessions/${session.id}/tools`)).backend, "durable");
+  const tools = (entries: unknown[]) => entries.filter((entry) => (entry as { kind?: string }).kind === "tool").length;
+  const beforeTurn = tools(movedHistory);
+  await api(`sessions/${session.id}/prompt`, { text: "E2E_RICH" }); await waitIdle(session.id, "first turn on Durable");
+  assert.equal(tools((await api(`sessions/${session.id}/open`, {})).transcript), beforeTurn + 1, "the moved session runs a tool turn on Durable");
 });

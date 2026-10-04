@@ -6,7 +6,8 @@
  *
  *   ~/.config/hui/sessions.json
  */
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { constants } from "node:fs";
+import { copyFile, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
 
@@ -324,6 +325,15 @@ async function writeRegistryState(registry: Registry): Promise<void> {
       cause: error,
     });
   }
+}
+
+/** Copies the registry into `backups/` in HUI's directory, named by time, before a migration changes it. */
+export async function backupRegistry(): Promise<string> {
+  const directory = join(CONFIG_DIR, "backups");
+  await mkdir(directory, { recursive: true, mode: 0o700 });
+  const backup = join(directory, `sessions-${new Date().toISOString().replace(/[:.]/gu, "-")}.json`);
+  await copyFile(REGISTRY_FILE, backup, constants.COPYFILE_EXCL);
+  return backup;
 }
 
 export async function writeRegistry(sessions: readonly SessionRecord[]): Promise<void> {

@@ -177,3 +177,43 @@ rows show context and maximum output, while subscription usage reports supported
 provider quota windows and reset times. Unsupported quotas are labeled explicitly.
 Reopen existing sessions after changing connections; new sessions use the updated
 configuration. HUI-managed connections require the default PI SDK backend.
+
+## After an upgrade: `hui doctor`
+
+`hui doctor` reports state that an upgraded HUI needs changed, and
+`hui doctor --fix` changes it. The report only reads, so it is safe while the
+gateway runs. It exits 0 when nothing is left to change and 1 otherwise;
+`--json` prints the same report for scripts.
+
+```sh
+hui doctor
+hui gateway stop   # or stop the systemd unit, and any development gateway
+hui doctor --fix
+hui gateway start
+```
+
+`--fix` refuses while a gateway runs: it reads the gateway's state, and the
+Durable session store stays locked by any gateway that has it open. It holds the
+lifecycle lock, so no gateway starts meanwhile. Run it with the gateway's
+environment (`XDG_CONFIG_HOME`, `HUI_DURABLE_DIR`, `PI_CODING_AGENT_DIR`) so it
+finds the same state.
+
+### PI sessions
+
+New sessions run on Pi Durable. `hui doctor` lists the sessions still on PI's
+SDK worker, and `--fix` moves each one into a new Durable conversation:
+
+- The active branch moves in order: its messages, tool calls and results, each
+  compaction summary in place, and the context PI would send next. The session
+  continues on its model and thinking level, and its spend moves with it, so
+  usage totals do not change.
+- PI's transcript is only read, and stays where it was, unchanged. Entries on
+  abandoned branches, left by a rewind, remain only there.
+- The session registry is copied to `$XDG_CONFIG_HOME/hui/backups/` before its
+  first change. Restoring that copy, with the gateway stopped, puts the sessions
+  back on PI without anything said on Durable since.
+- A session with an interrupted run stays on PI: start the gateway so the run
+  finishes, or stop it, then run `--fix` again. A session whose PI file is
+  missing stays as it is.
+- Running `--fix` again is safe: a session copied before from an unchanged file
+  reuses that copy.

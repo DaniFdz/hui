@@ -23,6 +23,7 @@ export const HELP = `Usage:
   hui update [--check] [--json]
   hui update --from <local.tgz> [--sha256 <digest>]
   hui update --rollback
+  hui doctor [--fix] [--json]
   hui --version
 
 HUI_GATEWAY_HOST and HUI_GATEWAY_PORT configure defaults; CLI flags override them.
@@ -32,6 +33,8 @@ comma-separated list instead, for a gateway started by something you do not edit
 The gateway binds 127.0.0.1:4173 by default. No login is provided; prefer Tailscale.
 Stop/restart refuse active work unless --force explicitly interrupts it.
 Updates use GitHub Releases via gh authentication, and never edit a source checkout or PI data.
+Doctor reports state an upgraded HUI needs changed, such as sessions still on PI;
+--fix changes it while the gateway is stopped. It exits 1 while anything remains.
 Gateway without a subcommand is an alias for foreground run.
 `;
 
@@ -41,7 +44,7 @@ export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {
     force: { type: "boolean" }, host: { type: "string" }, port: { type: "string" }, lines: { type: "string" },
     "allow-host": { type: "string", multiple: true },
     "no-open": { type: "boolean" }, from: { type: "string" }, sha256: { type: "string" }, rollback: { type: "boolean" },
-    check: { type: "boolean" },
+    check: { type: "boolean" }, fix: { type: "boolean" },
   } });
   if (values.help || !args.length) return { command: "help", values };
   if (values.version) return { command: "version", values };
@@ -52,6 +55,7 @@ export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {
     "gateway stop": ["force", "json"], "gateway restart": ["host", "port", "force", "json", "allow-host"],
     "gateway status": ["json"], "gateway logs": ["lines"], ui: ["no-open"], browser: ["no-open"],
     update: ["from", "sha256", "rollback", "check", "json"], desktop: [], "install-app": [],
+    doctor: ["fix", "json"],
   };
   if (!command || !allowed[command] || extra.length || first !== "gateway" && second) throw new Error("Unknown command. Run hui --help.");
   for (const flag of Object.keys(values)) if (!allowed[command]!.includes(flag)) throw new Error(`--${flag} is not valid for ${command}.`);
@@ -94,6 +98,13 @@ export async function main(args: string[], installation: Installation): Promise<
   const requestedBinding = values.host !== undefined ? binding(values.host) : undefined;
   const report = (result: unknown) => console.log(values.json ? JSON.stringify(result) : typeof result === "object" ? JSON.stringify(result, null, 2) : result);
   if (command === "update" && values.check) { report(await checkRelease(installation)); return; }
+  if (command === "doctor") {
+    const { formatDoctorReport, runDoctor } = await import("./doctor.ts");
+    const result = await runDoctor({ fix: values.fix === true });
+    console.log(values.json ? JSON.stringify(result) : formatDoctorReport(result));
+    if (!result.ok) process.exitCode = 1;
+    return;
+  }
   if (command === "gateway status") { const status = await gatewayStatus(); report(status); if (status.status === "unresponsive") process.exitCode = 1; return; }
   if (command === "gateway logs") { process.stdout.write(await gatewayLogs(Number(values.lines ?? 100))); return; }
   if (command === "ui" || command === "browser") {

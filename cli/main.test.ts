@@ -2,6 +2,12 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { binding, parseCli } from "./main.ts";
 
+test("CLI parses doctor with only --fix and --json", () => {
+  assert.equal(parseCli(["doctor"]).command, "doctor");
+  assert.deepEqual({ ...parseCli(["doctor", "--fix", "--json"]).values }, { fix: true, json: true });
+  for (const args of [["doctor", "--force"], ["doctor", "extra"], ["gateway", "status", "--fix"], ["update", "--fix"]]) assert.throws(() => parseCli(args), Error, args.join(" "));
+});
+
 test("CLI parses lifecycle, UI and local update commands without accepting stray flags", () => {
   for (const verb of ["start", "stop", "restart", "status", "logs", "run"]) assert.equal(parseCli(["gateway", verb]).command, `gateway ${verb}`);
   assert.equal(parseCli(["desktop"]).command, "desktop");

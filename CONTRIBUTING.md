@@ -67,6 +67,21 @@ User-visible changes also need a real Browser-tool E2E check. Documentation-only
 changes need at least `git diff --check` and verification that commands and links
 still match the source.
 
+### Doctor checks for breaking changes
+
+`hui doctor` is how an upgrade changes state earlier versions left behind. A
+change that leaves persisted state behind (a format, a location, a runtime
+switch) adds a check in `cli/doctor-<name>.ts` and lists it in `DOCTOR_CHECKS`
+(`cli/doctor.ts`):
+
+- `inspect()` only reads. It reports each affected item as `issue`, which
+  `--fix` changes, or `blocked`, with what the operator must do first.
+- `fix()` changes the `issue` items. It runs only with the gateway stopped,
+  under the lifecycle lock. Keep it idempotent, back up what it rewrites, and
+  never delete user data.
+- Test both against isolated state (`cli/doctor.test.ts`), and extend
+  `e2e/package.test.ts` when the installed CLI should prove it.
+
 ## Visual verification and PR evidence
 
 Follow the repository-owned

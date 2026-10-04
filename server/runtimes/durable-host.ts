@@ -106,6 +106,8 @@ export type DurableHostOptions = {
   invokeTool?: DurableToolInvoker;
   /** HUI session for a conversation nobody has reopened since a restart. */
   lookupCaller?: (conversationId: ConversationId) => Promise<string | undefined>;
+  /** Resume interrupted runs when the store opens (default). `hui doctor` opens it without running any work. */
+  resume?: boolean;
 };
 
 /** Registry fallback: the HUI session whose resume reference names this conversation. */
@@ -130,10 +132,12 @@ export class DurableHost {
   #opening: Promise<Harness> | undefined;
   #harness: Harness | undefined;
   #release: (() => void) | undefined;
+  #resume: boolean;
 
   constructor(options: DurableHostOptions) {
     this.dir = options.dir;
     this.agentDir = options.agentDir;
+    this.#resume = options.resume !== false;
     this.settings = options.readSettings ?? readHuiSettings;
     this.prompt = new DurablePrompt(options.agentDir, this.settings);
     this.#invokeTool = options.invokeTool ?? invokeAgentTool;
@@ -193,8 +197,9 @@ export class DurableHost {
       }, durableContext);
       this.#harness = harness;
       // Unfinished generations and tool calls continue now, even before any
-      // browser reopens their session.
-      harness.resume();
+      // browser reopens their session. Without it, nothing is scheduled: the
+      // store is only read and written in commits.
+      if (this.#resume) harness.resume();
       return harness;
     } catch (error) {
       this.#release?.();
