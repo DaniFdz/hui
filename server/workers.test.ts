@@ -477,6 +477,8 @@ test("a host restarted mid-run resumes Durable work, whose HUI tool calls still 
     const lost = new Promise<void>((resolve) => first.onExit!(resolve));
     process.kill(pid, "SIGKILL");
     await lost;
+    // Its store lock now names a live, unrelated process, as after a container restart.
+    await writeFile(join(remoteHome, ".local", "share", "hui-worker", "state", "durable", "harness.lock"), String(process.pid));
     first.dispose();
     workers.disconnectAll();
     // Connecting starts a new host, which resumes the interrupted run on its own.

@@ -173,6 +173,9 @@ export class WorkerHost {
       const saved = JSON.parse(await readFile(this.#callersFile, "utf8")) as unknown;
       if (isRecord(saved)) for (const [id, key] of Object.entries(saved)) if (typeof key === "string") this.#callers.set(id, key);
     } catch { /* none yet */ }
+    // The host lock (main.ts) already makes this the store's only owner; a
+    // store lock left by a killed host may name a pid reused since.
+    await rm(join(this.#durable.dir, "harness.lock"), { force: true });
     // Durable runs interrupted by a host restart continue now, with nobody watching.
     if (existsSync(join(this.#durable.dir, "harness.sqlite"))) {
       await this.#durable.open().catch((error: unknown) => console.error(`Durable store did not open: ${error instanceof Error ? error.message : String(error)}`));
