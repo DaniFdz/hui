@@ -25,11 +25,12 @@ import { attachPeer, isRecord, PROTOCOL_VERSION, type Frame, type Peer } from ".
 import { BROKERED_PROVIDER_FILE } from "./worker/credentials.ts";
 import { isBotShape } from "./worker/bots.ts";
 import { writeAtomic, type SyncResult } from "./worker/sync-apply.ts";
-import { enabledBundledSkillPaths, isBundledSkillPreference } from "./bundled-skills.ts";
+import { bundledSkills, enabledBundledSkillPaths, isBundledSkillPreference } from "./bundled-skills.ts";
 import { readHuiSettings } from "./hui-settings.ts";
 import { BootstrapError, connectScript, markers, nodeInstallScript, probeScript, releaseInstallScript, runScript } from "./worker/bootstrap.ts";
 import { remoteReleasePath, workerRelease, type WorkerRelease } from "./worker/release.ts";
-import { buildSyncPlan, mirrorPath } from "./worker/sync.ts";
+import { buildSyncPlan, contentFile, mirrorPath } from "./worker/sync.ts";
+import type { Settings } from "../src/lib/settings.ts";
 import type { HostInfo, RemoteLaunch, RemoteState } from "./worker/host.ts";
 import type { TranscriptEntry } from "./runtimes/types.ts";
 import { formatCommand, parseCommand, type BotInput, type WorkerBot, type WorkerInput, type WorkerView } from "../shared/workers.ts";
@@ -299,6 +300,7 @@ class WorkerConnection {
     }
     const agentDir = resolvePiAgentDir();
     const plan = await buildSyncPlan({ agentDir, home: homedir(), remoteMirror: this.host.mirrorDir, extraPaths: this.worker.extraPaths, providerFiles });
+    plan.files.push(contentFile("hui/settings.json", Buffer.from(`${JSON.stringify(await this.#remoteSettings(plan.pluginIds), null, 2)}\n`)));
     const entries = plan.files.map(({ path, hash, mode, size }) => ({ path, hash, mode, size }));
     const { need } = await this.#peer.request<{ need: string[] }>("sync-plan", { entries }, 120_000);
     const wanted = new Set(need);
@@ -330,6 +332,25 @@ class WorkerConnection {
     };
     this.#syncedAt = Date.now();
     return this.#sync;
+  }
+
+  /** HUI's settings as the host reads them: skills and plugins named by their
+   * mirrored paths, and no managed browser, which runs on this machine. */
+  async #remoteSettings(pluginIds: Map<string, string>): Promise<Settings> {
+    const settings = await readHuiSettings();
+    const source = { agentDir: resolvePiAgentDir(), home: homedir() };
+    return {
+      ...settings,
+      browser: { ...settings.browser, enabled: false },
+      disabledSkills: settings.disabledSkills.map((skill) => ({
+        ...skill,
+        // Bundled skills by their stable preference, which any release matches.
+        path: isBundledSkillPreference(skill)
+          ? bundledSkills.find((bundled) => bundled.path === skill.path)?.preferencePath ?? skill.path
+          : `${this.host.mirrorDir}/${mirrorPath(skill.path, source)}`,
+      })),
+      disabledPlugins: settings.disabledPlugins.map((plugin) => ({ ...plugin, id: pluginIds.get(plugin.id) ?? plugin.id })),
+    };
   }
 
   async #launchDefaults(pluginIds: Map<string, string>): Promise<Record<string, unknown>> {

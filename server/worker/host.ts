@@ -20,7 +20,6 @@ import { hostname } from "node:os";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { registerAgentToolHandler, stopAgentToolBridge } from "../agent-tools-bridge.ts";
 import { DurableHost } from "../runtimes/durable-host.ts";
-import type { PromptSettings } from "../runtimes/durable-prompt.ts";
 import { durableConversationId, startDurable } from "../runtimes/durable.ts";
 import { piRuntime } from "../runtimes/pi.ts";
 import type { RuntimeModel, RuntimeQueue, RuntimeQuestion, RuntimeSession, RuntimeUsage, TranscriptEntry } from "../runtimes/types.ts";
@@ -140,7 +139,6 @@ export class WorkerHost {
     this.#durable = new DurableHost({
       dir: join(paths.stateDir, "durable"),
       agentDir: paths.agentDir,
-      readSettings: () => this.#promptSettings(),
       invokeTool: ({ callerSessionId, action, params }) => this.#gatewayTool(callerSessionId, action, params),
       lookupCaller: async (conversationId) => this.#callers.get(String(conversationId)),
     });
@@ -417,12 +415,6 @@ export class WorkerHost {
     } finally {
       if (step) this.#modifiers.delete(step);
     }
-  }
-
-  /** The gateway's skill choices as last synced; the browser is the gateway's. */
-  async #promptSettings(): Promise<PromptSettings> {
-    const launch = this.#bots.launchFor("", { cwd: this.paths.home });
-    return { disabledSkills: launch.disabledSkills ?? [], browser: { enabled: false } } as unknown as PromptSettings;
   }
 
   async #pruneAttachments(): Promise<void> {

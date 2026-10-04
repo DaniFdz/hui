@@ -4,7 +4,8 @@
  *
  * Mirrored: PI's agent files and resource directories, `~/.agents/skills`,
  * every local path named in PI settings (packages, skills, extensions,
- * prompts), HUI's provider selections and the worker's extra paths. Never
+ * prompts), HUI's settings and provider selections and the worker's extra
+ * paths. Never
  * mirrored: credentials (they are brokered), transcripts, installed npm/git
  * packages (the remote installs its own), `node_modules` and `.git`.
  *
@@ -74,6 +75,11 @@ async function fileHash(path: string, info: { mtimeMs: number; size: number }): 
   return hash;
 }
 
+/** A generated file, as opposed to one read from a local path. */
+export function contentFile(path: string, content: Buffer, mode = 0o600): PlannedFile {
+  return { path, content, mode, size: content.byteLength, hash: createHash("sha256").update(content).digest("hex") };
+}
+
 export async function buildSyncPlan(source: SyncSource): Promise<SyncPlan> {
   const files = new Map<string, PlannedFile>();
   const skipped: string[] = [];
@@ -82,9 +88,7 @@ export async function buildSyncPlan(source: SyncSource): Promise<SyncPlan> {
   const roots = new Set<string>();
   let total = 0;
   const remote = (local: string) => `${source.remoteMirror}/${mirrorPath(local, source)}`;
-  const addContent = (path: string, content: Buffer, mode = 0o600) => {
-    files.set(path, { path, content, mode, size: content.byteLength, hash: createHash("sha256").update(content).digest("hex") });
-  };
+  const addContent = (path: string, content: Buffer) => { files.set(path, contentFile(path, content)); };
 
   // Settings: local sources become absolute mirror paths.
   let settings: Record<string, unknown> = {};

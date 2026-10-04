@@ -328,3 +328,36 @@ test("a Durable session runs on the worker, keeps going without the gateway and 
     second.dispose();
   }
 });
+
+test("a Durable session on the worker honors HUI's settings and providers, whose keys stay on the gateway", async () => {
+  const hui = join(root, "gateway", "config", "hui");
+  const managedKey = "gateway-only-openai-key";
+  await mkdir(join(hui, "providers"), { recursive: true });
+  await writeFile(join(hui, "providers", "models.json"), JSON.stringify({ openai: { models: ["gpt-4o"] } }));
+  await writeFile(join(hui, "providers", "auth.json"), JSON.stringify({ openai: { type: "api_key", key: managedKey } }));
+  await writeFile(join(hui, "settings.json"), JSON.stringify({ disabledSkills: [
+    { name: "gateway-skill", path: join(agentDir, "skills", "gateway-skill", "SKILL.md") },
+    { name: "create-verification-skill", path: "hui:skill:create-verification-skill" },
+  ] }));
+  // A directory no earlier session loaded resources for.
+  const cwd = join(remoteHome, "parity");
+  await mkdir(cwd, { recursive: true });
+  await workers.sync(workerId);
+  const session = await remoteRuntime("durable").start({ cwd, worker: workerId, huiSessionId: "remote-durable-parity" });
+  try {
+    const { prompt, tools } = await session.inspect!();
+    assert.doesNotMatch(prompt, /gateway-skill/u);
+    assert.match(prompt, /package-skill/u);
+    assert.doesNotMatch(prompt, /create-verification-skill/u);
+    assert.match(prompt, /git-selective-staging/u);
+    assert.ok(!tools.some((tool) => tool.name === "browser"), "the gateway's browser is not offered remotely");
+    assert.ok((await session.listModels!()).some((model) => model.provider === "openai" && model.id === "gpt-4o"), "the HUI-managed model is available with its brokered key");
+    for (const file of await remoteFiles()) {
+      assert.ok(!(await readFile(file, "utf8")).includes(managedKey), `${file} holds the HUI provider key`);
+    }
+  } finally {
+    session.dispose();
+    await rm(hui, { recursive: true, force: true });
+    await workers.sync(workerId);
+  }
+});
