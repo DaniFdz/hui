@@ -364,6 +364,14 @@ sidecar, and reuses that transaction. `--check` is read-only. Releases must have
 matching stable tag, package version and checksum; no automatic downgrade occurs.
 Tag-triggered CI validates and publishes the archive and checksum. A missing or
 inaccessible release is reported explicitly, never treated as up-to-date.
+`hui update --nightly [--check]` uses the rolling `nightly` prerelease instead.
+CI runs the full checks on every `main` commit, stamps the package as a
+prerelease of the next patch (`X.Y.Z+1-nightly.<UTC commit time>.g<sha7>`) and
+replaces that prerelease's single archive and checksum. A nightly installs
+whenever it differs from the running build, so asking for it is the explicit
+opt-in to leave stable; a plain `hui update` returns to stable once a stable
+release is newer than the installed nightly. The browser updater stays on the
+stable channel.
 While the app is visible and online, HUI checks for releases on opening and
 hourly. A non-modal banner announces a confirmed newer stable version and opens
 the existing update dialog through **Review update**. Checks never install,

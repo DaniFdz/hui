@@ -8,7 +8,7 @@ import { gatewayLogs, gatewayStatus, startGateway, stopGateway } from "./gateway
 import { packageVersion, type Installation } from "./installation.ts";
 import { LOG_FILE, withLifecycleLock } from "./state.ts";
 import { updateRelease } from "./update.ts";
-import { checkRelease } from "./releases.ts";
+import { checkNightly, checkRelease } from "./releases.ts";
 
 export const HELP = `Usage:
   hui gateway start [--host <IP|tailnet>] [--port <number>] [--allow-host <name>] [--json]
@@ -21,6 +21,7 @@ export const HELP = `Usage:
   hui desktop
   hui install-app
   hui update [--check] [--json]
+  hui update --nightly [--check] [--json]
   hui update --from <local.tgz> [--sha256 <digest>]
   hui update --rollback
   hui doctor [--fix] [--json]
@@ -33,7 +34,9 @@ comma-separated list instead, for a gateway started by something you do not edit
 The gateway binds 127.0.0.1:4173 by default. No login is provided; prefer Tailscale.
 Stop/restart refuse work a restart would interrupt unless --force explicitly does so;
 Pi Durable sessions keep running and resume when the gateway is back.
-Updates use GitHub Releases via gh authentication, and never edit a source checkout or PI data.
+Updates use public GitHub Releases, and never edit a source checkout or PI data.
+--nightly installs the build of the latest validated main commit instead of the
+latest stable release; a plain hui update returns to stable once one is newer.
 Doctor reports state an upgraded HUI needs changed, such as sessions still on PI;
 --fix changes it while the gateway is stopped. It exits 1 while anything remains.
 Gateway without a subcommand is an alias for foreground run.
@@ -45,7 +48,7 @@ export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {
     force: { type: "boolean" }, host: { type: "string" }, port: { type: "string" }, lines: { type: "string" },
     "allow-host": { type: "string", multiple: true },
     "no-open": { type: "boolean" }, from: { type: "string" }, sha256: { type: "string" }, rollback: { type: "boolean" },
-    check: { type: "boolean" }, fix: { type: "boolean" },
+    check: { type: "boolean" }, fix: { type: "boolean" }, nightly: { type: "boolean" },
   } });
   if (values.help || !args.length) return { command: "help", values };
   if (values.version) return { command: "version", values };
@@ -55,7 +58,7 @@ export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {
     "gateway start": ["host", "port", "json", "allow-host"], "gateway run": ["host", "port", "allow-host"],
     "gateway stop": ["force", "json"], "gateway restart": ["host", "port", "force", "json", "allow-host"],
     "gateway status": ["json"], "gateway logs": ["lines"], ui: ["no-open"], browser: ["no-open"],
-    update: ["from", "sha256", "rollback", "check", "json"], desktop: [], "install-app": [],
+    update: ["from", "sha256", "rollback", "check", "json", "nightly"], desktop: [], "install-app": [],
     doctor: ["fix", "json"],
   };
   if (!command || !allowed[command] || extra.length || first !== "gateway" && second) throw new Error("Unknown command. Run hui --help.");
@@ -70,6 +73,7 @@ export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {
   if (values.rollback && (values.from || values.sha256) || values.sha256 && !values.from) throw new Error("Use either --from [--sha256] or --rollback.");
   if (values.sha256 && !/^[a-fA-F0-9]{64}$/u.test(values.sha256)) throw new Error("--sha256 must be a 64-character hexadecimal digest.");
   if (values.check && (values.from || values.sha256 || values.rollback)) throw new Error("--check cannot be combined with --from, --sha256 or --rollback.");
+  if (values.nightly && (values.from || values.sha256 || values.rollback)) throw new Error("--nightly cannot be combined with --from, --sha256 or --rollback.");
   return { command, values };
 }
 
@@ -98,7 +102,7 @@ export async function main(args: string[], installation: Installation): Promise<
   const extraAllowedHosts = [...allowedHostsFromEnv(), ...(values["allow-host"] ?? [])];
   const requestedBinding = values.host !== undefined ? binding(values.host) : undefined;
   const report = (result: unknown) => console.log(values.json ? JSON.stringify(result) : typeof result === "object" ? JSON.stringify(result, null, 2) : result);
-  if (command === "update" && values.check) { report(await checkRelease(installation)); return; }
+  if (command === "update" && values.check) { report(await (values.nightly ? checkNightly : checkRelease)(installation)); return; }
   if (command === "doctor") {
     const { formatDoctorReport, runDoctor } = await import("./doctor.ts");
     const result = await runDoctor({ fix: values.fix === true });

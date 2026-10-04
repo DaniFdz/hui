@@ -116,9 +116,14 @@ separate from an installed production gateway.
 ```sh
 hui update --check
 hui update
+hui update --nightly          # the latest validated main commit
 hui update --from /path/to/hui-next.tgz --sha256 <expected-sha256>
 hui update --rollback
 ```
+
+`--nightly` installs the build CI publishes for each `main` commit, from the
+rolling `nightly` prerelease. Run it again to follow `main`; a plain
+`hui update` brings you back to stable once a newer stable release ships.
 
 From the chat, `/update` opens the update flow in a dedicated **HUI update**
 session under **OTHER**. The command stays in the composer and is never sent to

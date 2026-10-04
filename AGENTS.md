@@ -93,7 +93,9 @@ details in the owning directory guide.
   the thread. If it is declined, unclear or needs discussion, reply in the thread
   so the reviewer sees it and leave it open.
 - Merging an owner-approved version-bump PR authorizes automatic release
-  publication after checks pass. Ordinary PRs do not publish releases.
+  publication after checks pass. Ordinary PRs do not publish releases; every
+  `main` commit that passes the Nightly workflow replaces the rolling
+  `nightly` prerelease, which only `hui update --nightly` installs.
   Create manual recovery tags only when the owner asks.
 
 ## Installation and release workflow
