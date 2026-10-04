@@ -2,35 +2,27 @@
  * HUI's system prompt for Durable conversations, built by PI's own section
  * builder from PI's resource loader: SYSTEM.md / HUI's default preamble,
  * APPEND_SYSTEM, AGENTS.md context files, skills and the working directory,
- * plus HUI's presentation and active-tool sections. The loader runs with no
- * extensions; only HUI-owned tools exist in Durable conversations.
+ * plus HUI's presentation and active-tool sections. This loader runs with no
+ * extensions; a session's PI extensions (`durable-extensions.ts`) add their
+ * tools' snippets and may change the prompt of a run, as in PI.
  */
-import { DefaultResourceLoader, SettingsManager, type Skill } from "@earendil-works/pi-coding-agent";
-import { defineExtension, section, type PromptInput } from "@earendil-works/pi-durable";
+import { DefaultResourceLoader, SettingsManager, type BuildSystemPromptOptions } from "@earendil-works/pi-coding-agent";
+import { defineExtension, section, type ConversationId, type PromptInput } from "@earendil-works/pi-durable";
 import type { Settings } from "../../src/lib/settings.ts";
 import { enabledBundledSkillPaths, isBundledSkillPreference } from "../bundled-skills.ts";
 import { HUI_DEFAULT_PROMPT } from "./hui-prompt.ts";
 import { HUI_PRESENTATION_PROMPT } from "./hui-presentation.ts";
 import { huiToolDefinitions } from "./hui-tools.ts";
+import type { Contribution, RunPrompt } from "./durable-extensions.ts";
 
-export type PromptSettings = Pick<Settings, "disabledSkills" | "browser">;
+export type PromptSettings = Pick<Settings, "disabledSkills" | "browser" | "disabledPlugins">;
 
-type SectionInput = {
-  customPrompt?: string;
-  selectedTools: string[];
-  toolSnippets: Record<string, string>;
-  toolGuidelines: Record<string, string[]>;
-  appendSystemPrompt?: string;
-  sections: Record<string, string>;
-  cwd: string;
-  contextFiles: Array<{ path: string; content: string }>;
-  skills: Skill[];
-};
-type Contribution = { readonly snippet: string; readonly guidelines: readonly string[] };
+/** What a conversation's PI extensions add: their tools' snippets, and the prompt `before_agent_start` gave the run. */
+export type PromptExtras = { readonly contributions: Record<string, Contribution>; readonly run?: RunPrompt };
 
 const internal = async <T>(path: string): Promise<T> =>
   await import(new URL(path, import.meta.resolve("@earendil-works/pi-coding-agent")).href) as T;
-const { buildSystemPromptSections } = await internal<{ buildSystemPromptSections(input: SectionInput): Record<string, string> }>("./core/system-prompt.js");
+const { buildSystemPromptSections } = await internal<{ buildSystemPromptSections(input: BuildSystemPromptOptions): Record<string, string> }>("./core/system-prompt.js");
 const PI_TOOL_CONTRIBUTIONS: Record<string, Contribution> = {
   read: (await internal<{ readToolSystemPromptContribution: Contribution }>("./core/tools/read.js")).readToolSystemPromptContribution,
   bash: (await internal<{ bashToolSystemPromptContribution: Contribution }>("./core/tools/bash.js")).bashToolSystemPromptContribution,
@@ -41,11 +33,13 @@ const HUI_TOOL_CONTRIBUTIONS: Record<string, Contribution> = Object.fromEntries(
   tool.name, { snippet: tool.promptSnippet ?? "", guidelines: tool.promptGuidelines ?? [] },
 ]));
 
-/** PI's section order, then HUI's; the builder tags every section but the preamble. */
+/** PI's section order, then HUI's; the builder tags every section but the preamble. Sections an extension adds in
+ * `before_agent_start` follow PI's, already tagged, in `extension_sections`. */
 const SECTION_KEYS = [
-  "preamble", "tools", "rules", "docs", "addendum", "project_context", "skills", "cwd",
+  "preamble", "tools", "rules", "docs", "addendum", "project_context", "skills", "cwd", "extension_sections",
   "hui_presentation", "hui_tools", "hui_tool_guidelines",
 ] as const;
+const KNOWN_SECTIONS = new Set<string>(SECTION_KEYS);
 
 /** Same text as the PI worker's `huiPromptExtension`. */
 export function huiToolSections(selectedTools: readonly string[], contributions: Record<string, Contribution>): Record<string, string> {
@@ -70,6 +64,10 @@ export class DurablePrompt {
   /** Context files and skills load once per directory, like a PI session. */
   #loaders = new Map<string, Promise<DefaultResourceLoader>>();
   #built = new WeakMap<PromptInput, Promise<Record<string, string>>>();
+  /** The prompt of each conversation's latest request, as PI's `ctx.getSystemPrompt()` reports it. */
+  #last = new Map<ConversationId, string>();
+  /** A conversation's extension additions; the Durable host answers for live sessions. */
+  extras: (conversationId: ConversationId) => PromptExtras | undefined = () => undefined;
   readonly extension;
 
   constructor(agentDir: string, readSettings: () => Promise<PromptSettings>) {
@@ -124,18 +122,25 @@ export class DurablePrompt {
   }
 
   /** The prompt a request with these tools would carry, for inspection. */
-  async render(cwd: string, selectedTools: readonly string[]): Promise<string> {
-    const sections = await this.#sectionsFor(cwd, [...selectedTools]);
-    return SECTION_KEYS.flatMap((key) => sections[key] ? [sections[key]] : []).join("\n\n");
+  async render(cwd: string, selectedTools: readonly string[], conversationId?: ConversationId): Promise<string> {
+    return joined(await this.#sectionsFor(cwd, [...selectedTools], conversationId));
   }
 
-  #sections(input: PromptInput): Promise<Record<string, string>> {
-    return this.#sectionsFor(input.env?.cwd ?? input.agent.cwd ?? this.#agentDir, input.agent.tools.map((tool) => tool.name));
+  /** The prompt the conversation's latest request carried; empty before its first. */
+  lastPrompt(conversationId: ConversationId): string {
+    return this.#last.get(conversationId) ?? "";
   }
 
-  async #sectionsFor(cwd: string, selectedTools: string[]): Promise<Record<string, string>> {
+  async #sections(input: PromptInput): Promise<Record<string, string>> {
+    const sections = await this.#sectionsFor(input.env?.cwd ?? input.agent.cwd ?? this.#agentDir, input.agent.tools.map((tool) => tool.name), input.conversationId);
+    this.#last.set(input.conversationId, joined(sections));
+    return sections;
+  }
+
+  /** PI's builder input for a request offering these tools. */
+  async options(cwd: string, selectedTools: readonly string[], extra: Record<string, Contribution> = {}): Promise<BuildSystemPromptOptions> {
     const loader = await this.loader(cwd);
-    const contributions = { ...PI_TOOL_CONTRIBUTIONS, ...HUI_TOOL_CONTRIBUTIONS };
+    const contributions = { ...PI_TOOL_CONTRIBUTIONS, ...extra, ...HUI_TOOL_CONTRIBUTIONS };
     const toolSnippets: Record<string, string> = {};
     const toolGuidelines: Record<string, string[]> = {};
     for (const name of selectedTools) {
@@ -146,14 +151,34 @@ export class DurablePrompt {
     }
     const custom = loader.getSystemPrompt();
     const append = loader.getAppendSystemPrompt().join("\n\n");
-    return buildSystemPromptSections({
+    return {
       ...(custom ? { customPrompt: custom } : {}),
-      selectedTools, toolSnippets, toolGuidelines,
+      selectedTools: [...selectedTools], toolSnippets, toolGuidelines,
       ...(append ? { appendSystemPrompt: append } : {}),
       sections: huiToolSections(selectedTools, contributions),
       cwd,
       contextFiles: loader.getAgentsFiles().agentsFiles,
       skills: loader.getSkills().skills,
-    });
+    };
+  }
+
+  async #sectionsFor(cwd: string, selectedTools: string[], conversationId?: ConversationId): Promise<Record<string, string>> {
+    const extras = conversationId === undefined ? undefined : this.extras(conversationId);
+    const run = extras?.run;
+    // A prompt an extension forced replaces the whole prompt for its run, as in PI.
+    if (run?.forced !== undefined) return { preamble: run.forced };
+    const base = await this.options(cwd, selectedTools, extras?.contributions);
+    const sections = buildSystemPromptSections(run?.options ? {
+      ...run.options,
+      // The run keeps the sections its extensions edited; the tool loadout stays the request's own.
+      selectedTools: base.selectedTools!,
+      toolSnippets: { ...base.toolSnippets, ...run.options.toolSnippets },
+      toolGuidelines: { ...base.toolGuidelines, ...run.options.toolGuidelines },
+      sections: { ...run.options.sections, ...base.sections },
+    } : base);
+    const added = Object.entries(sections).filter(([key]) => !KNOWN_SECTIONS.has(key)).map(([, text]) => text);
+    return added.length ? { ...sections, extension_sections: added.join("\n\n") } : sections;
   }
 }
+
+const joined = (sections: Record<string, string>) => SECTION_KEYS.flatMap((key) => sections[key] ? [sections[key]] : []).join("\n\n");

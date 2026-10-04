@@ -3,9 +3,10 @@
  *
  * Durable owns conversations, runs, queues and crash recovery in a single
  * SQLite store under HUI's configuration directory. PI keeps owning agent
- * configuration, skills, context files, models and credentials; HUI reads them
- * through PI's SDK, exactly as the PI worker does. The store has one owner at a
- * time, so a lock file refuses a second gateway instead of sharing the database.
+ * configuration, skills, context files, extensions, models and credentials; HUI
+ * reads them through PI's SDK, exactly as the PI worker does. The store has one
+ * owner at a time, so a lock file refuses a second gateway instead of sharing
+ * the database.
  */
 import { randomUUID } from "node:crypto";
 import { closeSync, openSync, readFileSync, unlinkSync, writeSync } from "node:fs";
@@ -13,11 +14,11 @@ import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { Models } from "@earendil-works/pi-ai";
-import { CompactionTask, createRegistry, defineExtension, GenerationTask, Harness, hook, UsageDoc, type ConversationId, type EnvTarget, type Extension, type HarnessSettings, type HookApi, type ToolRegistration } from "@earendil-works/pi-durable";
+import { CompactionTask, createRegistry, defineExtension, GenerationTask, Harness, hook, UsageDoc, type Conversation, type ConversationId, type EnvTarget, type Extension, type HarnessSettings, type HookApi, type Registry, type ToolRegistration } from "@earendil-works/pi-durable";
 import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import { CodingTools } from "@earendil-works/pi-durable/tools";
-import { SettingsManager } from "@earendil-works/pi-coding-agent";
+import { SettingsManager, type ModelRuntime, type ResourceLoader } from "@earendil-works/pi-coding-agent";
 import { recordDiagnosticEvent } from "../observability.ts";
 import { CONFIG_DIR } from "../paths.ts";
 import { resolvePiAgentDir } from "../pi-paths.ts";
@@ -25,6 +26,7 @@ import { readHuiSettings } from "../hui-settings.ts";
 import { createSessionModelRuntime } from "./hui-models.ts";
 import { DurablePrompt, type PromptSettings } from "./durable-prompt.ts";
 import { huiDurableTools, type DurableToolInvoker } from "./durable-tools.ts";
+import type { Contribution, DurableExtensions, ExtensionHost } from "./durable-extensions.ts";
 import { invokeAgentTool } from "../agent-tools-bridge.ts";
 
 /** Durable APIs take a cancellation context; HUI's own calls are not scoped. */
@@ -35,9 +37,11 @@ export const durableContext = BACKGROUND_CONTEXT;
 // with every other HUI subsystem. Provider requests use Node's fetch, whose
 // 5-minute body timeout matches PI's default HTTP idle timeout.
 
-/** Harness policy read at every use, so PI settings edits apply to the next turn. */
-function harnessSettings(settings: SettingsManager): HarnessSettings {
+/** Harness policy read at every use, so PI settings edits apply to the next turn. `extensions` is the default
+ * selection: each session's PI extensions are installed beside it and only that session's conversation adds them. */
+function harnessSettings(settings: SettingsManager, extensions: readonly Extension[]): HarnessSettings {
   return {
+    extensions,
     get stream() {
       const provider = settings.getProviderRetrySettings();
       const idle = settings.getHttpIdleTimeoutMs();
@@ -89,16 +93,22 @@ function acquireStoreLock(path: string): () => void {
 const CLIENT_SESSION_ENV = "PI_CLIENT_SESSION_ID";
 /** pi-ai model calls whose third argument is the request options. */
 const REQUEST_CALLS = new Set<PropertyKey>(["stream", "streamSimple", "complete", "completeSimple", "streamDeferred", "fetchDeferred", "cancelDeferred"]);
-type RequestOptions = { readonly signal?: AbortSignal; readonly env?: Readonly<Record<string, string>> } | undefined;
+type ProviderResponse = { status: number; headers: Record<string, string> };
+type RequestCallbacks = {
+  onPayload?: (payload: unknown, model: unknown) => unknown;
+  onResponse?: (response: ProviderResponse, model: unknown) => void | Promise<void>;
+};
+type RequestOptions = ({ readonly signal?: AbortSignal; readonly env?: Readonly<Record<string, string>> } & RequestCallbacks) | undefined;
 
 /** Model reads go to the runtime current at each use, so provider changes
  * made in Settings reach running conversations at their next request. Every
- * request also resolves provider configuration with `requestEnv`'s values. */
+ * request also resolves provider configuration with `requestEnv`'s values and
+ * runs the provider callbacks of its session's PI extensions. */
 class CurrentModels {
   target: Models | undefined;
   readonly view: Models;
 
-  constructor(requestEnv: (options: RequestOptions) => Record<string, string>) {
+  constructor(requestEnv: (options: RequestOptions) => Record<string, string>, callbacks: (options: RequestOptions) => RequestCallbacks) {
     this.view = new Proxy({} as Models, {
       get: (_unused, key) => {
         const target = this.target;
@@ -109,7 +119,8 @@ class CurrentModels {
         if (!REQUEST_CALLS.has(key)) return call.bind(target);
         return (...args: unknown[]) => {
           const options = args[2] as RequestOptions;
-          args[2] = { ...options, env: { ...requestEnv(options), ...options?.env } };
+          // Only Durable's own requests are attributed, and they bring no callbacks of their own.
+          args[2] = { ...callbacks(options), ...options, env: { ...requestEnv(options), ...options?.env } };
           return call.apply(target, args);
         };
       },
@@ -138,7 +149,7 @@ async function registryCaller(conversationId: ConversationId): Promise<string | 
   return (await readRegistry()).find((record) => record.piSessionFile === reference)?.id;
 }
 
-export class DurableHost {
+export class DurableHost implements ExtensionHost {
   readonly dir: string;
   readonly agentDir: string;
   readonly prompt: DurablePrompt;
@@ -146,9 +157,14 @@ export class DurableHost {
   #invokeTool: DurableToolInvoker;
   #lookupCaller: (conversationId: ConversationId) => Promise<string | undefined>;
   #tools: Extension;
-  #models = new CurrentModels((options) => this.#requestEnv(options));
+  #models = new CurrentModels((options) => this.#requestEnv(options), (options) => this.#requestCallbacks(options));
+  #registry: Registry = createRegistry();
+  /** Each live session's PI extensions, by HUI session. */
+  #extensions = new Map<string, DurableExtensions>();
   /** Each attributed request's identity, by its task invocation's abort signal. */
   #requestIdentities = new WeakMap<AbortSignal, string>();
+  /** Each attributed request's HUI session, for its PI extensions' provider callbacks. */
+  #requestSessions = new WeakMap<AbortSignal, string>();
   /** One identity per HUI session for this gateway run, as one PI worker each would have. */
   #clientSessions = new Map<string, string>();
   /** For a request no hook attributed, such as a summary resumed after a restart. */
@@ -175,6 +191,12 @@ export class DurableHost {
     this.#resume = options.resume !== false;
     this.settings = options.readSettings ?? readHuiSettings;
     this.prompt = new DurablePrompt(options.agentDir, this.settings);
+    this.prompt.extras = (conversationId) => {
+      const extensions = this.#extensionsOf(conversationId);
+      if (!extensions) return undefined;
+      const run = extensions.runPrompt();
+      return { contributions: extensions.contributions(), ...(run ? { run } : {}) };
+    };
     this.#invokeTool = options.invokeTool ?? invokeAgentTool;
     this.#lookupCaller = options.lookupCaller ?? registryCaller;
     this.#tools = huiDurableTools({
@@ -198,7 +220,37 @@ export class DurableHost {
   }
 
   get models(): Models { return this.#models.view; }
+  /** PI's model runtime, current at each use, for extensions' `ctx.modelRegistry`. */
+  get modelRuntime(): ModelRuntime { return this.#models.view as unknown as ModelRuntime; }
   get isOpen(): boolean { return this.#harness !== undefined; }
+
+  get codingTools(): readonly ToolRegistration[] { return CodingTools.tools ?? []; }
+  get huiTools(): readonly ToolRegistration[] { return this.#tools.tools ?? []; }
+
+  install(extension: Extension): void { this.#registry.install(extension); }
+  /** Removes `extension` itself; a replacement installed under its name since stays. */
+  uninstall(extension: Extension): void {
+    if (this.#registry.snapshot().extension(extension.name) === extension) this.#registry.uninstall(extension);
+  }
+  resources(cwd: string): Promise<ResourceLoader> { return this.prompt.loader(cwd); }
+  promptOptions(cwd: string, selectedTools: readonly string[], contributions: Record<string, Contribution>) {
+    return this.prompt.options(cwd, selectedTools, contributions);
+  }
+  lastPrompt(conversation: Conversation): string { return this.prompt.lastPrompt(conversation.id); }
+
+  /** Tracks a session's PI extensions while it is live, so its requests reach them. */
+  attachExtensions(huiSessionId: string, extensions: DurableExtensions): void {
+    this.#extensions.set(huiSessionId, extensions);
+  }
+
+  detachExtensions(huiSessionId: string, extensions: DurableExtensions): void {
+    if (this.#extensions.get(huiSessionId) === extensions) this.#extensions.delete(huiSessionId);
+  }
+
+  #extensionsOf(conversationId: ConversationId): DurableExtensions | undefined {
+    const caller = this.#callers.get(conversationId);
+    return caller === undefined ? undefined : this.#extensions.get(caller);
+  }
 
   /** Opens the store once and resumes every interrupted run in it. */
   open(): Promise<Harness> {
@@ -215,15 +267,12 @@ export class DurableHost {
     try {
       const settings = SettingsManager.create(this.agentDir, this.agentDir);
       this.#models.target = await createSessionModelRuntime(this.agentDir);
-      const registry = createRegistry();
-      registry.install(CodingTools);
-      registry.install(this.#tools);
-      registry.install(this.prompt.extension);
-      registry.install(this.#identity);
+      const base = [CodingTools, this.#tools, this.prompt.extension, this.#identity];
+      for (const extension of base) this.#registry.install(extension);
       const harness = await Harness.open(await openNodeSqliteStorage(join(this.dir, "harness.sqlite")), {
         models: this.#models.view,
-        registry,
-        settings: harnessSettings(settings),
+        registry: this.#registry,
+        settings: harnessSettings(settings, base),
         env: (target) => this.#env(target),
         onReport: (error) => recordDiagnosticEvent({
           area: "runtime", level: "warning", action: "durable_report",
@@ -262,9 +311,18 @@ export class DurableHost {
     if (!signal) return undefined;
     const conversationId = api.conversationId;
     const caller = this.#callers.get(conversationId) ?? await this.#lookupCaller(conversationId).catch(() => undefined);
-    if (caller) this.#callers.set(conversationId, caller);
+    if (caller) {
+      this.#callers.set(conversationId, caller);
+      this.#requestSessions.set(signal, caller);
+    }
     this.#requestIdentities.set(signal, this.#clientSession(caller ?? `conversation:${conversationId}`));
     return undefined;
+  }
+
+  /** `before_provider_request` and `after_provider_response` of the request's session. */
+  #requestCallbacks(options: RequestOptions): RequestCallbacks {
+    const caller = options?.signal ? this.#requestSessions.get(options.signal) : undefined;
+    return (caller === undefined ? undefined : this.#extensions.get(caller)?.requestCallbacks()) ?? {};
   }
 
   #clientSession(key: string): string {
