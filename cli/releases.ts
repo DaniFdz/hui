@@ -6,6 +6,9 @@ import { assertUpdatable, packageVersion, type Installation } from "./installati
 import type { ReleaseInfo, UpdateCheck } from "../src/lib/update-types.ts";
 
 export const RELEASE_REPOSITORY = "DaniFdz/hui";
+/** Rolling prerelease the Nightly workflow replaces with each validated main commit. */
+export const NIGHTLY_TAG = "nightly";
+const NIGHTLY_VERSION = /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)-nightly\.[1-9]\d{13}\.g[0-9a-f]{7,40}$/u;
 const repositoryPath = `repos/${RELEASE_REPOSITORY}`;
 const MAX_ARCHIVE = 100 * 1024 * 1024;
 type Asset = { id: number; name: string; size: number };
@@ -70,11 +73,33 @@ export async function githubReadWith(fetchImpl: typeof fetch, path: string, maxB
 
 export const githubRead: GithubRead = (path, maxBytes, binary = false) => githubReadWith(fetch, path, maxBytes, binary);
 
+type RawRelease = { tag_name?: unknown; draft?: unknown; prerelease?: unknown; assets?: unknown } | null;
+
 export function parseRelease(value: unknown): Release {
-  const raw = value as { tag_name?: unknown; draft?: unknown; prerelease?: unknown; assets?: unknown } | null;
+  const raw = value as RawRelease;
   const version = typeof raw?.tag_name === "string" ? /^v((?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*))$/u.exec(raw.tag_name)?.[1] : undefined;
   if (!version || raw?.draft !== false || raw.prerelease !== false || !Array.isArray(raw.assets)) throw new Error("GitHub did not return a stable HUI release.");
-  const assets = raw.assets;
+  const tag = `v${version}`;
+  return releaseAssets(raw.assets as Array<Asset | null>, version, tag);
+}
+
+/** The `nightly` prerelease holds exactly one archive, named after the nightly
+ * version it was stamped with, and its checksum. */
+export function parseNightly(value: unknown): Release {
+  const raw = value as RawRelease;
+  if (raw?.tag_name !== NIGHTLY_TAG || raw.draft !== false || raw.prerelease !== true || !Array.isArray(raw.assets)) {
+    throw new Error("GitHub did not return the HUI nightly prerelease.");
+  }
+  const assets = raw.assets as Array<Asset | null>;
+  const archives = assets.flatMap((entry) => {
+    const version = typeof entry?.name === "string" ? /^hui-(.+)\.tgz$/u.exec(entry.name)?.[1] : undefined;
+    return version && NIGHTLY_VERSION.test(version) ? [version] : [];
+  });
+  if (archives.length !== 1) throw new Error("The nightly prerelease does not hold exactly one nightly archive.");
+  return releaseAssets(assets, archives[0]!, NIGHTLY_TAG);
+}
+
+function releaseAssets(assets: Array<Asset | null>, version: string, tag: string): Release {
   const asset = (name: string, limit: number): Asset => {
     const matches = assets.filter((entry: Asset | null) => entry?.name === name);
     const entry = matches[0] as Asset | undefined;
@@ -83,7 +108,6 @@ export function parseRelease(value: unknown): Release {
     }
     return { id: entry.id, name, size: entry.size };
   };
-  const tag = `v${version}`;
   return { version, tag, url: `https://github.com/${RELEASE_REPOSITORY}/releases/tag/${tag}`,
     archive: asset(`hui-${version}.tgz`, MAX_ARCHIVE), checksum: asset(`hui-${version}.tgz.sha256`, 512) };
 }
@@ -97,6 +121,37 @@ export function newerVersion(latest: string, current: string): boolean {
 
 export async function latestRelease(read: GithubRead = githubRead): Promise<Release> {
   return parseRelease(JSON.parse((await read(`${repositoryPath}/releases/latest`, 1024 * 1024)).toString()));
+}
+
+export async function nightlyRelease(read: GithubRead = githubRead): Promise<Release> {
+  let body: Buffer;
+  try { body = await read(`${repositoryPath}/releases/tags/${NIGHTLY_TAG}`, 1024 * 1024); }
+  catch (error) {
+    // The reader's 404 wording is about stable releases.
+    if ((error as Error).message.startsWith("No stable HUI release")) throw new Error("No HUI nightly is published right now. One is built for each main commit; retry shortly.");
+    throw error;
+  }
+  return parseNightly(JSON.parse(body.toString()));
+}
+
+/** A nightly is offered whenever it differs from the running build: it is an
+ * explicit opt-in to whatever `main` holds, not an ordered upgrade. */
+export async function checkNightly(installation: Installation, read: GithubRead = githubRead): Promise<UpdateCheck> {
+  const currentVersion = await packageVersion(installation.packageRoot);
+  let restriction = "";
+  try { await assertUpdatable(installation.installationRoot); }
+  catch (error) { restriction = (error as Error).message; }
+  try {
+    const release = await nightlyRelease(read);
+    const available = release.version !== currentVersion;
+    return { currentVersion, latest: { version: release.version, tag: release.tag, url: release.url },
+      status: available ? "available" : "current", canInstall: available && !restriction,
+      message: restriction || (available ? "A HUI nightly built from main is ready to install." : "You are running the published HUI nightly.") };
+  } catch (error) {
+    const message = (error as Error).message;
+    return { currentVersion, latest: null, status: message.startsWith("No HUI nightly is published") ? "unpublished" : "unavailable",
+      canInstall: false, message: [restriction, message].filter(Boolean).join(" ") };
+  }
 }
 
 export async function checkRelease(installation: Installation, read: GithubRead = githubRead): Promise<UpdateCheck> {

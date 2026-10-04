@@ -28,7 +28,12 @@ globalThis.fetch = async (input, init) => {
   const name = "hui-" + fixture.version + ".tgz";
   const checksum = (fixture.mode === "corrupt" ? "0".repeat(64) : createHash("sha256").update(archive).digest("hex")) + "  " + name + "\\n";
   const endpoint = url.slice(prefix.length);
-  if (endpoint === "repos/DaniFdz/hui/releases/latest") return Response.json({tag_name:"v" + fixture.version, draft:false, prerelease:false, assets:[{id:1,name,size:archive.length},{id:2,name:name+".sha256",size:Buffer.byteLength(checksum)}]});
+  const assets = [{id:1,name,size:archive.length},{id:2,name:name+".sha256",size:Buffer.byteLength(checksum)}];
+  // A nightly fixture publishes only the rolling prerelease, like a repository
+  // whose stable releases are older than its nightly.
+  const nightly = fixture.channel === "nightly";
+  if (endpoint === "repos/DaniFdz/hui/releases/latest") return nightly ? new Response("missing", { status: 404 }) : Response.json({tag_name:"v" + fixture.version, draft:false, prerelease:false, assets});
+  if (endpoint === "repos/DaniFdz/hui/releases/tags/nightly") return nightly ? Response.json({tag_name:"nightly", draft:false, prerelease:true, assets}) : new Response("missing", { status: 404 });
   if (endpoint === "repos/DaniFdz/hui/releases/assets/1") return new Response(archive);
   if (endpoint === "repos/DaniFdz/hui/releases/assets/2") return new Response(checksum);
   return new Response("unexpected fixture endpoint", { status: 500 });

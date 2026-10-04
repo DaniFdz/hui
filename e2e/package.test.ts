@@ -270,6 +270,21 @@ require('node:fs').writeFileSync(process.env.HUI_DESKTOP_PROOF, JSON.stringify({
   assert.equal(JSON.parse(await command("gateway", "status", "--json")).status, "stopped");
   const stoppedRollback = JSON.parse(await command("update", "--rollback"));
   assert.equal(stoppedRollback.version, baseline); assert.equal(stoppedRollback.restarted, false);
+
+  // The nightly channel installs the published main build. The stable channel
+  // is checked independently, and a nightly already installed is not repeated.
+  const nightly = `${nextVersion}-nightly.20261004131149.gb0f30d5`;
+  await releases.set({ channel: "nightly", version: nightly, archive: await candidate(nightly) });
+  assert.equal(JSON.parse(await command("update", "--check", "--json")).status, "unpublished");
+  const nightlyCheck = JSON.parse(await command("update", "--check", "--nightly", "--json"));
+  assert.equal(nightlyCheck.status, "available"); assert.equal(nightlyCheck.latest.version, nightly);
+  const nightlyUpdate = JSON.parse(await command("update", "--nightly", "--json"));
+  assert.equal(nightlyUpdate.version, nightly); assert.equal(nightlyUpdate.restarted, false); assert.match(nightlyUpdate.sha256, /^[a-f0-9]{64}$/u);
+  assert.equal(await command("--version"), nightly);
+  assert.equal(JSON.parse(await command("update", "--check", "--nightly", "--json")).status, "current");
+  assert.deepEqual(JSON.parse(await command("update", "--nightly", "--json")), { version: nightly, restarted: false }, "an installed nightly is not reinstalled");
+  assert.equal(JSON.parse(await command("update", "--rollback")).version, baseline);
+  assert.equal(await command("--version"), baseline);
   assert.match(await command("gateway", "logs"), /Fixture activation failure/u);
 
   // Exercise the real detached browser updater, including a refused busy turn,

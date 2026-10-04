@@ -1,0 +1,79 @@
+name: Nightly
+# Publishes every validated `main` commit as the rolling `nightly` prerelease,
+# which `hui update --nightly` installs. Stable releases are unaffected: GitHub
+# never reports a prerelease as the latest release.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  # A newer main commit supersedes a nightly still being validated.
+  group: nightly
+  cancel-in-progress: true
+jobs:
+  package:
+    if: github.event.repository.private == false && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+          cache: npm
+      # Match the npm major used to generate the committed lockfile.
+      - run: npm install -g npm@11
+      - run: npm ci --ignore-scripts
+      - run: node --test cli/release-workflow.test.mjs
+      - run: npm run typecheck
+      - run: npm test
+      # The installed-package proof derives its fixture versions from a stable
+      # package.json, so it runs before the nightly version is stamped.
+      - run: npm run test:package
+      - name: Stamp the nightly version
+        id: version
+        run: |
+          version="$(node scripts/nightly-version.mjs)"
+          npm version "$version" --no-git-tag-version --ignore-scripts
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Pack and checksum
+        env:
+          NIGHTLY_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          # prepack rebuilds, so build/release.json carries the nightly version.
+          npm pack
+          sha256sum "hui-$NIGHTLY_VERSION.tgz" > "hui-$NIGHTLY_VERSION.tgz.sha256"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: nightly-package
+          path: |
+            hui-*.tgz
+            hui-*.tgz.sha256
+          if-no-files-found: error
+  publish:
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: nightly-package
+      - name: Replace the nightly prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          NIGHTLY_VERSION: ${{ needs.package.outputs.version }}
+          NIGHTLY_SHA: ${{ github.sha }}
+        run: |
+          # Clients see no nightly for the seconds between delete and create and
+          # report that none is published; they never see a partial one.
+          gh release delete nightly --cleanup-tag --yes 2>/dev/null || true
+          printf 'Built from [%s](https://github.com/%s/commit/%s) on main. Install it with %s; it is not a stable release.\n' \
+            "${NIGHTLY_SHA:0:7}" "$GH_REPO" "$NIGHTLY_SHA" "\`hui update --nightly\`" > notes.md
+          gh release create nightly "hui-$NIGHTLY_VERSION.tgz" "hui-$NIGHTLY_VERSION.tgz.sha256" \
+            --prerelease --latest=false --target "$NIGHTLY_SHA" \
+            --title "Nightly $NIGHTLY_VERSION" --notes-file notes.md

@@ -253,6 +253,17 @@ The manual `vX.Y.Z` tag trigger remains available for explicitly requested recov
 releases. It requires the tag to match `package.json` and runs the same checks.
 No new token or PAT is needed: publication uses the workflow's `GITHUB_TOKEN`.
 
+### Nightly builds
+
+The Nightly workflow runs on every push to `main`. It runs typecheck, the full
+test suite and the installed-package proof, stamps the package with
+`scripts/nightly-version.mjs` (a prerelease of the next patch, such as
+`0.1.3-nightly.20261004131149.gb0f30d5`) and replaces the rolling `nightly`
+GitHub prerelease with that archive and its checksum. A newer push cancels an
+older run. GitHub never reports a prerelease as the latest release, so stable
+`hui update`, `/update` and the release changelog are unaffected. Installations
+opt in with `hui update --nightly`.
+
 Once the release exists, another machine can download its archive and checksum
 from the public GitHub Release, verify them, and install the archive. Existing
 installations can use `hui update --check`, `hui update`, or `/update` in the chat.

@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { checkRelease, downloadRelease, githubReadWith, newerVersion, parseRelease, type GithubRead } from "./releases.ts";
+import { checkNightly, checkRelease, downloadRelease, githubReadWith, newerVersion, nightlyRelease, parseNightly, parseRelease, type GithubRead } from "./releases.ts";
 
 const bytes = Buffer.from("synthetic archive");
 const checksum = Buffer.from(`${createHash("sha256").update(bytes).digest("hex")}  hui-0.2.0.tgz\n`);
@@ -19,6 +19,57 @@ test("only a stable tag with unique bounded archive/checksum asset IDs is instal
     { ...metadata(), assets: [{ id: 1, name: "hui-0.2.0.tgz", size: 101 * 1024 * 1024 }, metadata().assets[1]] }]) {
     assert.throws(() => parseRelease(invalid));
   }
+});
+
+const nightlyVersion = "0.2.1-nightly.20261004131149.gb0f30d5";
+const nightly = () => ({ tag_name: "nightly", draft: false, prerelease: true, assets: [
+  { id: 7, name: `hui-${nightlyVersion}.tgz`, size: bytes.length }, { id: 8, name: `hui-${nightlyVersion}.tgz.sha256`, size: checksum.length }] });
+
+test("the nightly prerelease names its version through its single nightly archive", () => {
+  const release = parseNightly(nightly());
+  assert.equal(release.version, nightlyVersion);
+  assert.equal(release.tag, "nightly");
+  assert.equal(release.url, "https://github.com/DaniFdz/hui/releases/tag/nightly");
+  assert.deepEqual([release.archive.id, release.checksum.id], [7, 8]);
+  const archive = (name: string) => ({ id: 9, name, size: bytes.length });
+  for (const invalid of [null, metadata(), { ...nightly(), prerelease: false }, { ...nightly(), draft: true }, { ...nightly(), tag_name: "v0.2.1" },
+    { ...nightly(), assets: [nightly().assets[0]] },
+    { ...nightly(), assets: [...nightly().assets, archive("hui-0.2.1-nightly.20261005000000.gabcdef0.tgz")] },
+    { ...nightly(), assets: [archive("hui-0.2.1.tgz"), { id: 10, name: "hui-0.2.1.tgz.sha256", size: checksum.length }] },
+    { ...nightly(), assets: [archive("hui-0.2.1-nightly.2026.gb0f30d5.tgz"), { id: 10, name: "hui-0.2.1-nightly.2026.gb0f30d5.tgz.sha256", size: checksum.length }] }]) {
+    assert.throws(() => parseNightly(invalid));
+  }
+});
+
+test("nightly resolution reads the rolling tag and reports a missing nightly as unpublished", async (t) => {
+  const requested: string[] = [];
+  const release = await nightlyRelease(async (path) => { requested.push(path); return Buffer.from(JSON.stringify(nightly())); });
+  assert.equal(release.version, nightlyVersion);
+  assert.deepEqual(requested, ["repos/DaniFdz/hui/releases/tags/nightly"]);
+  await assert.rejects(nightlyRelease(async () => { throw new Error("No stable HUI release is published yet."); }), /No HUI nightly is published/u);
+
+  const root = await mkdtemp(join(tmpdir(), "hui-nightly-check-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const installed = join(root, "node_modules/hui");
+  const install = async (version: string) => {
+    for (const [file, value] of Object.entries({ "package.json": JSON.stringify({ name: "hui", version }), "build/release.json": JSON.stringify({ format: 1, version }),
+      "dist/index.html": "", "build/cli/main.js": "", "build/cli/gateway-run.js": "", "build/server/runtimes/pi-sdk-worker.js": "" })) {
+      const path = join(installed, file);
+      await mkdir(join(path, ".."), { recursive: true }); await writeFile(path, value);
+    }
+  };
+  const read: GithubRead = async () => Buffer.from(JSON.stringify(nightly()));
+  const installation = { installationRoot: installed, packageRoot: installed };
+  // Any different build is offered, even a stable one newer than the nightly.
+  await install("0.3.0");
+  assert.deepEqual([(await checkNightly(installation, read)).status, (await checkNightly(installation, read)).canInstall], ["available", true]);
+  await install(nightlyVersion);
+  const current = await checkNightly(installation, read);
+  assert.equal(current.status, "current"); assert.equal(current.canInstall, false);
+  // On a nightly, the stable channel waits for a stable release past it.
+  assert.equal((await checkRelease(installation, async () => Buffer.from(JSON.stringify(metadata())))).status, "current");
+  const missing = await checkNightly(installation, async () => { throw new Error("No stable HUI release is published yet."); });
+  assert.equal(missing.status, "unpublished"); assert.equal(missing.canInstall, false);
 });
 
 test("version ordering is numeric and never downgrades a newer installation", () => {
