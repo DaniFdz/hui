@@ -2070,7 +2070,7 @@ function renderHeader(props: HomeProps, session: SessionView) {
           <span class="session-row__dot" data-status=${session.status} aria-hidden="true"></span>
           <h2 class="transcript__title chat-pane__session-title" title=${session.title}>${session.title}</h2>
           <span class="transcript__meta" title=${session.cwd}>
-            ${session.parentId ? "Subagent" : session.bot ? "Bot" : session.tool}${session.worker ? ` on ${session.worker.name}` : ""} · ${sessionGroupLabel(session.group)} · ${STATUS_TEXT[session.status]}
+            ${session.parentId ? "Subagent" : session.tool}${session.worker ? ` on ${session.worker.name}` : ""} · ${sessionGroupLabel(session.group)} · ${STATUS_TEXT[session.status]}
           </span>
         </div>`}
         ${session.parentId ? html`<button

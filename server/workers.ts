@@ -23,7 +23,6 @@ import { credentialStore, ProviderAccounts, type CredentialStore } from "./provi
 import { PROVIDERS_DIR, readProviderSelections } from "./runtimes/hui-models.ts";
 import { attachPeer, isRecord, PROTOCOL_VERSION, type Frame, type Peer } from "./worker/protocol.ts";
 import { BROKERED_PROVIDER_FILE } from "./worker/credentials.ts";
-import { isBotShape } from "./worker/bots.ts";
 import { writeAtomic, type SyncResult } from "./worker/sync-apply.ts";
 import { bundledSkills, enabledBundledSkillPaths, isBundledSkillPreference } from "./bundled-skills.ts";
 import { readHuiSettings } from "./hui-settings.ts";
@@ -33,7 +32,7 @@ import { buildSyncPlan, contentFile, mirrorPath } from "./worker/sync.ts";
 import type { Settings } from "../src/lib/settings.ts";
 import type { HostInfo, RemoteLaunch, RemoteState } from "./worker/host.ts";
 import type { RuntimeEvent, TranscriptEntry } from "./runtimes/types.ts";
-import { formatCommand, parseCommand, type BotInput, type WorkerBot, type WorkerInput, type WorkerView } from "../shared/workers.ts";
+import { formatCommand, parseCommand, type WorkerInput, type WorkerView } from "../shared/workers.ts";
 import { invokeAgentTool } from "./agent-tools-bridge.ts";
 import { readRegistry } from "./sessions.ts";
 
@@ -49,8 +48,6 @@ export type WorkerConfig = {
   name: string;
   command: string[];
   extraPaths: string[];
-  /** Kept connected while the gateway runs, so bots can use its credentials. */
-  keepConnected?: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -77,7 +74,7 @@ function normalizeInput(value: unknown, existing?: WorkerConfig): Omit<WorkerCon
     }
     extraPaths = (value["extraPaths"] as string[]).map((path) => path.trim());
   }
-  return { name, command, extraPaths, ...(existing?.keepConnected ? { keepConnected: true } : {}) };
+  return { name, command, extraPaths };
 }
 
 export async function readWorkers(): Promise<WorkerConfig[]> {
@@ -132,11 +129,6 @@ const CALL_TIMEOUT_MS = 10 * 60_000;
 
 type SyncState = NonNullable<WorkerView["sync"]> & { pluginIds: Map<string, string> };
 
-/** Bots end up as registry records; a malformed one must never get there. */
-function validBots(value: unknown): WorkerBot[] {
-  return Array.isArray(value) ? value.filter(isBotShape) : [];
-}
-
 /** HUI's skill and plugin choices, applied to remote sessions as to local ones. */
 async function sessionSettings() {
   const settings = await readHuiSettings();
@@ -156,18 +148,15 @@ class WorkerConnection {
   #stderr = "";
   #sessions = new Map<string, RemoteSessionSink>();
   #onPhase: (phase: string) => void;
-  #onBots: (bots: WorkerBot[]) => void;
   #sync: SyncState | undefined;
   #syncedAt = 0;
   #syncing: Promise<SyncState> | undefined;
-  bots: WorkerBot[] | undefined;
   /** Sessions were attached when the connection was lost. */
   lostSessions = false;
 
-  constructor(worker: WorkerConfig, onPhase: (phase: string) => void, onBots: (bots: WorkerBot[]) => void) {
+  constructor(worker: WorkerConfig, onPhase: (phase: string) => void) {
     this.worker = worker;
     this.#onPhase = onPhase;
-    this.#onBots = onBots;
   }
 
   get closed(): boolean {
@@ -213,8 +202,6 @@ class WorkerConnection {
       if (hello.version !== PROTOCOL_VERSION) throw new BootstrapError("The remote is running an incompatible HUI worker that is still busy. Try again when its sessions finish.");
     }
     this.host = hello;
-    this.bots = validBots(await this.#peer.request<unknown>("bots-list"));
-    this.#onBots(this.bots);
     this.#onPhase("Syncing your PI configuration");
     // A failed sync is reported, not fatal: sessions already running there
     // must stay reachable.
@@ -328,11 +315,7 @@ class WorkerConnection {
       bytes += data.byteLength;
     }
     await flush();
-    const result = await this.#peer.request<SyncResult>("sync-commit", {
-      entries, packageRoots: plan.packageRoots,
-      // What a bot needs to start while no gateway is connected.
-      launch: await this.#launchDefaults(plan.pluginIds),
-    }, 1_800_000);
+    const result = await this.#peer.request<SyncResult>("sync-commit", { entries, packageRoots: plan.packageRoots }, 1_800_000);
     this.#sync = {
       at: new Date().toISOString(), files: result.files, uploaded: wanted.size, deleted: result.deleted,
       installed: result.installed, skipped: plan.skipped, errors: result.errors, pluginIds: plan.pluginIds,
@@ -412,11 +395,6 @@ class WorkerConnection {
   }
 
   #frame(frame: Frame): void {
-    if (frame.t === "bots") {
-      this.bots = validBots(frame["bots"]);
-      this.#onBots(this.bots);
-      return;
-    }
     const sink = typeof frame["key"] === "string" ? this.#sessions.get(frame["key"]) : undefined;
     if (!sink) return;
     if (frame.t === "session.event") sink.receive(frame as Parameters<RemoteSessionSink["receive"]>[0]);
@@ -501,19 +479,12 @@ export class WorkerService {
     return this.#names.get(id);
   }
 
-  #botListeners = new Set<(workerId: string, bots: WorkerBot[]) => void>();
   #connectedListeners = new Set<(workerId: string) => void>();
 
   /** Every successful connection, including automatic reconnects. */
   onConnected(listener: (workerId: string) => void): () => void {
     this.#connectedListeners.add(listener);
     return () => this.#connectedListeners.delete(listener);
-  }
-
-  /** The host reported its bots (on connect and after every change). */
-  onBots(listener: (workerId: string, bots: WorkerBot[]) => void): () => void {
-    this.#botListeners.add(listener);
-    return () => this.#botListeners.delete(listener);
   }
 
   onChange(listener: () => void): () => void {
@@ -549,7 +520,6 @@ export class WorkerService {
         node: connection.host.node, home: connection.host.home, release: connection.host.release,
       } } : {}),
       ...(sync ? { sync: (({ pluginIds: _ids, ...view }) => view)(sync) } : {}),
-      ...(connection?.bots ? { bots: connection.bots } : {}),
     };
   }
 
@@ -584,14 +554,6 @@ export class WorkerService {
     this.#changed();
   }
 
-  async #setKeepConnected(id: string, keep: boolean): Promise<void> {
-    const workers = await this.#read();
-    const worker = workers.find((item) => item.id === id);
-    if (!worker || Boolean(worker.keepConnected) === keep) return;
-    const { keepConnected: _keep, ...rest } = worker;
-    await writeWorkers(workers.map((item) => item.id === id ? { ...rest, ...(keep ? { keepConnected: true } : {}) } : item));
-  }
-
   /** The live connection, opening (and if needed installing) it first. */
   connect(id: string): Promise<WorkerConnection> {
     const current = this.#connections.get(id);
@@ -605,9 +567,6 @@ export class WorkerService {
       this.#changed();
       const connection = new WorkerConnection(worker, (phase) => {
         this.#status.set(id, { state: "connecting", phase });
-        this.#changed();
-      }, (bots) => {
-        for (const listener of this.#botListeners) listener(id, bots);
         this.#changed();
       });
       try {
@@ -636,9 +595,8 @@ export class WorkerService {
         // Interrupted sessions come back on their own once the remote is
         // reachable; a connection that dies right away keeps backing off.
         const attempt = Date.now() - openedAt < 60_000 ? (this.#attempts.get(id) ?? 0) + 1 : 0;
-        this.#scheduleReconnect(id, attempt, connection.lostSessions);
+        if (connection.lostSessions) this.#scheduleReconnect(id, attempt);
       });
-      void this.#setKeepConnected(id, Boolean(connection.bots?.length));
       this.#changed();
       for (const listener of this.#connectedListeners) listener(id);
       return connection;
@@ -647,32 +605,22 @@ export class WorkerService {
     return attempt;
   }
 
-  /** Workers with bots stay connected so their runs can use credentials. */
-  #scheduleReconnect(id: string, attempt = 0, force = false): void {
+  /** Retries a connection whose loss interrupted sessions, backing off. */
+  #scheduleReconnect(id: string, attempt = 0): void {
     if (this.#stopped || this.#reconnect.has(id)) return;
     // A disconnect or removal in the meantime cancels the retries.
     const generation = this.#generation.get(id) ?? 0;
     const current = () => !this.#stopped && (this.#generation.get(id) ?? 0) === generation;
     this.#attempts.set(id, attempt);
-    void this.#read().then((workers) => {
-      if (!current() || this.#reconnect.has(id) || !(force || workers.find((item) => item.id === id)?.keepConnected)) return;
-      const timer = setTimeout(() => {
-        this.#reconnect.delete(id);
-        if (!current()) return;
-        this.connect(id).catch((error: unknown) => {
-          if (!(error instanceof WorkerNotFoundError) && current()) this.#scheduleReconnect(id, attempt + 1, force);
-        });
-      }, RECONNECT_MS[Math.min(attempt, RECONNECT_MS.length - 1)]);
-      timer.unref();
-      this.#reconnect.set(id, { timer, attempt });
-    }).catch(() => undefined);
-  }
-
-  /** Called once at gateway start. */
-  async connectKept(): Promise<void> {
-    for (const worker of await this.#read().catch(() => [] as WorkerConfig[])) {
-      if (worker.keepConnected) this.connect(worker.id).catch(() => this.#scheduleReconnect(worker.id, 1));
-    }
+    const timer = setTimeout(() => {
+      this.#reconnect.delete(id);
+      if (!current()) return;
+      this.connect(id).catch((error: unknown) => {
+        if (!(error instanceof WorkerNotFoundError) && current()) this.#scheduleReconnect(id, attempt + 1);
+      });
+    }, RECONNECT_MS[Math.min(attempt, RECONNECT_MS.length - 1)]);
+    timer.unref();
+    this.#reconnect.set(id, { timer, attempt });
   }
 
   disconnect(id: string): void {
@@ -716,24 +664,6 @@ export class WorkerService {
   async putFile(id: string, name: string, data: Buffer): Promise<string> {
     const connection = await this.connect(id);
     return (await connection.request<{ path: string }>("put-file", { name, data: data.toString("base64") }, 300_000)).path;
-  }
-
-  async saveBot(id: string, key: string, input: BotInput): Promise<WorkerBot> {
-    const connection = await this.connect(id);
-    const bot = await connection.request<WorkerBot>("bots-save", { bot: { ...input, key } });
-    void this.#setKeepConnected(id, true);
-    return bot;
-  }
-
-  async deleteBot(id: string, key: string): Promise<boolean> {
-    const connection = await this.connect(id);
-    const result = await connection.request<{ removed: boolean }>("bots-delete", { key });
-    return result.removed;
-  }
-
-  async runBot(id: string, key: string): Promise<string> {
-    const connection = await this.connect(id);
-    return (await connection.request<{ runId: string }>("bots-run", { key })).runId;
   }
 }
 

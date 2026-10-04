@@ -23,7 +23,7 @@ import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import type { Connect, Plugin } from "vite";
-import { workers, WorkerInputError } from "./workers.ts";
+import { workers } from "./workers.ts";
 import { createWorkerRoutes, WORKERS_ROUTE } from "./worker-routes.ts";
 import { progressCardFromTranscript, type ProgressCard } from "../shared/progress-card.ts";
 import type { SessionPullRequest } from "../shared/pull-requests.ts";
@@ -230,13 +230,7 @@ const PRESENTED_MEDIA_ROUTE = /^\/__hui\/media\/([0-9a-f-]+)\/([^/]+)$/u;
 /** How long an event stream may sit idle before a comment proves it is alive. */
 const HEARTBEAT_MS = 15_000;
 const piMutations = new PiMutationService();
-const workerRoutes = createWorkerRoutes({
-  service: workers,
-  readRegistry,
-  updateRegistry,
-  sessions: liveSessions,
-  deleteSession: (id) => deleteSession(id),
-});
+const workerRoutes = createWorkerRoutes({ service: workers, readRegistry });
 // Sessions a lost connection interrupted reattach once their worker is back.
 workers.onConnected((workerId) => {
   void readRegistry().then((records) => {
@@ -244,12 +238,6 @@ workers.onConnected((workerId) => {
       if (record.worker === workerId && liveSessions.isLive(record.id) && liveSessions.status(record.id) === "error") liveSessions.ensure(record);
     }
   }).catch(() => undefined);
-});
-workers.onBots((workerId, bots) => {
-  void workerRoutes.onBots(workerId, bots).catch((error: unknown) => recordDiagnosticEvent({
-    area: "session", level: "warning", action: "bot_sessions_failed",
-    summary: error instanceof Error ? error.message : "Could not list a worker's bots.",
-  }));
 });
 const subagents = new SubagentService(liveSessions);
 const taskSuggestions = new TaskSuggestionStore({ onChange: (id) => liveSessions.notifySnapshot(id) });
@@ -768,8 +756,6 @@ type SessionView = {
   displayCwd: string;
   /** Remote worker the session runs on; absent for this machine. */
   worker?: { id: string; name: string };
-  /** A bot hosted by that worker. */
-  bot?: true;
   tool: string;
   status: SessionStatus;
   /** Git worktree progress while the session's checkout is still created. */
@@ -1017,7 +1003,6 @@ function toView(
     cwd: record.cwd,
     displayCwd: record.worker ? `${workers.nameOf(record.worker) ?? "Remote"}:${record.cwd}` : record.cwd ? displayPath(record.cwd) : "",
     ...(record.worker ? { worker: { id: record.worker, name: workers.nameOf(record.worker) ?? "Remote worker" } } : {}),
-    ...(record.bot ? { bot: true as const } : {}),
     tool: record.tool,
     status,
     ...(runtime ? { runtime } : {}),
@@ -3069,11 +3054,9 @@ async function handleRequest(
       // Block stale opens first, but keep the runtime and streams alive until
       // registry removal commits. A storage failure rolls the tombstone back.
       try {
-        const record = (await readRegistry()).find((item) => item.id === id);
-        if (record) await workerRoutes.beforeSessionDelete(record);
         await deleteSession(id);
       } catch (error) {
-        sendJson(response, error instanceof SessionNotFoundError ? 404 : error instanceof WorkerInputError ? 409 : 500, {
+        sendJson(response, error instanceof SessionNotFoundError ? 404 : 500, {
           error: error instanceof Error ? error.message : "Could not remove that session.",
         });
         return;
@@ -3494,7 +3477,6 @@ export async function startBackend(): Promise<void> {
   initializeWatchers();
   initializeSubagents();
   await workers.list().catch(() => undefined);
-  void workers.connectKept();
   // Opening the Durable store resumes its interrupted runs, including those of
   // sessions no browser has reopened yet. Another gateway owning it is reported.
   void durableHost().open().catch((error: unknown) => recordDiagnosticEvent({

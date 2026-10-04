@@ -904,11 +904,10 @@ unknown formats use `application/octet-stream` and attachment disposition.
 ## Remote workers
 
 Workers are stored in `~/.config/hui/workers.json` (`{ version: 1, workers: [{ id,
-name, command: string[], extraPaths: string[], keepConnected?, createdAt,
-updatedAt }] }`). A session record's optional `worker` names the worker it runs
-on; `piSessionFile` and `cwd` are then remote paths. Records may carry
-`bot: true` for sessions owned by a worker's bot. `SessionView` adds
-`worker: { id, name }`, `bot: true` and a `displayCwd` of `name:path`.
+name, command: string[], extraPaths: string[], createdAt, updatedAt }] }`). A
+session record's optional `worker` names the worker it runs on; `piSessionFile`
+and `cwd` are then remote paths. `SessionView` adds `worker: { id, name }` and a
+`displayCwd` of `name:path`.
 
 ### Transport and protocol
 
@@ -919,7 +918,7 @@ the gateway's own worker code, then `npm install --omit=dev`), and finally
 `{"t":"ready"}` once it reaches the host's Unix socket; earlier output is shell
 noise and ignored. From then on both sides exchange `\n`-delimited JSON frames:
 `{t:"req",id,op,p}` / `{t:"res",id,ok,result|error}` requests in either
-direction, plus pushed `session.event`, `session.exit` and `bots` frames.
+direction, plus pushed `session.event` and `session.exit` frames.
 Gateway requests: `hello` (the host's protocol version and release; a
 mismatch replaces an idle host), `shutdown` (only when idle and no other
 gateway is connected; running Durable work does not count, it resumes in the
@@ -931,8 +930,7 @@ a `followUp` that arrives once the run has settled starts the next run, as a
 `prompt`), `session.transcript {key,seq,offset}` (one page of at most 8 MB of
 the transcript a frame with that `seq` left behind, `{entries,total}`),
 `session.dispose {key}`, `forget {keys}`,
-`put-file`, `get-file`, `sync-plan`/`sync-put`/`sync-commit` and
-`bots-list`/`bots-save`/`bots-delete`/`bots-run`. `state` is the runtime's
+`put-file`, `get-file` and `sync-plan`/`sync-put`/`sync-commit`. `state` is the runtime's
 synchronous view (`sessionId`, `sessionFile`, `isStreaming`,
 `resumesInterruptedRuns`, `model`, `usage`, `thinking`, `queue` and
 `questions`). Every reply and every `session.event {key,event,state,seq}`
@@ -970,8 +968,7 @@ newer.
 `{ "workers": WorkerView[] }`: `{ id, name, command, extraPaths, state:
 "disconnected" | "connecting" | "connected" | "error", phase?, error?, host?: {
 hostname, platform, arch, node, home, release }, sync?: { at, files, uploaded,
-deleted, installed, skipped, errors }, bots?: WorkerBot[] }`. Connection state
-is gateway memory; only a connected worker reports bots.
+deleted, installed, skipped, errors } }`. Connection state is gateway memory.
 
 ### `POST /__hui/workers` · `PATCH|DELETE /__hui/workers/:id`
 
@@ -985,20 +982,9 @@ session record names the worker; nothing on the remote is deleted.
 `connect` and `sync` respond 202 and continue in the gateway (a first connect
 may install Node and HUI); follow `GET /__hui/workers`. Both sides ping every
 15 s and drop a connection that stays silent for 45 s. A worker whose lost
-connection had sessions attached, and any worker with bots (also at gateway
-start), reconnects after 5 s, 30 s, 1 min, then every 5 min; sessions the loss
-interrupted are then reopened and reattach to their still-running processes.
-
-### Bots: `POST /__hui/workers/:id/bots` · `PATCH|DELETE …/bots/:key` · `POST …/bots/:key/run`
-
-Body `{ name, cwd, instructions?, prompt, schedule?: AutomationSchedule | null,
-enabled?, model?, thinking?, timeoutSeconds? }` (30 s to one day, default 30
-min). The host stores bots in its own state directory and runs them itself; the
-key is also the id of the HUI session record (`group: "Bots"`, `bot: true`)
-created with it. Responses: 201 `{ bot }`, 200 `{ bot }`, 200 `{ ok }`, 202 `{
-runId }`. All require the worker to be reachable (502 otherwise).
-`DELETE /__hui/sessions/:id` of a bot's session deletes the bot first and
-returns 409 if the worker cannot be reached.
+connection had sessions attached reconnects after 5 s, 30 s, 1 min, then every
+5 min; sessions the loss interrupted are then reopened and reattach to their
+still-running processes.
 
 ## Routes
 

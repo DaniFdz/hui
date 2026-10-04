@@ -33,8 +33,6 @@ export type SessionRecord = {
   piSessionFile?: string;
   /** Remote worker (workers.json id) that runs the session; absent: local. */
   worker?: string;
-  /** The session is a bot owned by that worker's host. */
-  bot?: boolean;
   /** `provider/id` the session started on. Persisted so resuming keeps the
    * model the user chose instead of falling back to pi's default. */
   model?: string;
@@ -217,7 +215,6 @@ function toRecord(raw: unknown): SessionRecord | undefined {
     tool: str(raw["tool"]).trim() || "pi",
     ...(piSessionFile ? { piSessionFile } : {}),
     ...(worker ? { worker } : {}),
-    ...(worker && raw["bot"] === true ? { bot: true } : {}),
     ...(model ? { model } : {}),
     ...(thinking ? { thinking } : {}),
     ...(runStartedAt ? { runStartedAt } : {}),

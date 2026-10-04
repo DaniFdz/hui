@@ -991,7 +991,7 @@ leaves worker records unchanged.
   "recovered", even once its idle runtime has stopped or the host restarted;
   a PI run cut off mid-way (the host or its runtime stopped) is continued by
   HUI on the next open, as a local one after a gateway restart. Detached idle workers stop after ten minutes, an idle host
-  after thirty, unless it owns bots or Durable work still has to run (an
+  after thirty, unless Durable work still has to run (an
   open store alone keeps nothing alive). A newer gateway replaces an idle older
   host; one that is busy, or that another HUI is connected to, keeps serving.
 - **Your PI setup, mirrored.** Before a session starts (at most every 30 s)
@@ -1028,16 +1028,6 @@ leaves worker records unchanged.
   Not yet available remotely: terminals, watchers, the managed browser, New
   worktree and branch checkouts, and multi-account quota rotation (the default
   account is used). Usage totals skip remote transcripts.
-- **Bots.** A bot is a named agent that lives on a worker: standing
-  instructions (added to its system prompt; bots therefore run on PI, since
-  Durable conversations have no per-conversation system prompt yet), a check-in prompt, an optional
-  schedule (interval, cron or once) and a timeout. The host runs it, so it keeps
-  working while HUI is closed, using the remote's own login when no gateway is
-  connected. Each bot is a session in the **Bots** group: open it to talk to it;
-  a run started while HUI is connected shows as running there. Settings →
-  Workers lists bots with their last run and offers Run now, Edit and Delete.
-  Deleting a bot (or its session) requires the worker to be reachable, so a
-  schedule never keeps running unseen.
 
 ## Decisions
 

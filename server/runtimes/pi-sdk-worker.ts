@@ -28,8 +28,6 @@ type Launch = {
   bundledSkillPaths?: string[];
   /** Settings → Tools → Browser; absent means the default (on). */
   browserTool?: boolean;
-  /** Extra system prompt sections, e.g. a bot's standing instructions. */
-  appendSystemPrompt?: string[];
 };
 
 // Extensions sometimes log during initialization, before runRpcMode redirects
@@ -87,9 +85,6 @@ async function main() {
         noExtensions: launch.safeProbe, noSkills: launch.safeProbe,
         noContextFiles: launch.safeProbe, noPromptTemplates: launch.safeProbe, noThemes: true,
         systemPromptOverride: (base) => base ?? HUI_DEFAULT_PROMPT,
-        // Added after APPEND_SYSTEM.md, which PI still discovers itself.
-        ...(launch.appendSystemPrompt?.length && !launch.safeProbe
-          ? { appendSystemPromptOverride: (base: string[]) => [...base, ...launch.appendSystemPrompt!] } : {}),
         skillsOverride: (base) => ({ ...base, skills: base.skills.filter((skill) => !disabledSkills.has(skill.filePath)) }),
         extensionFactories: launch.safeProbe ? [] : [huiPromptExtension, skillPolicyExtension],
       },

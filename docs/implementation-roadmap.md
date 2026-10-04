@@ -710,7 +710,7 @@ Verified desktop/mobile behavior and checks are recorded in
   in release/update fixtures. Browser proof and native-platform limitations:
   [desktop package proof](../e2e/desktop-package.browser.md).
 
-### HUI-17 — Remote workers and bots
+### HUI-17 — Remote workers
 
 **Status:** implemented; real-provider proof on a long-lived remote pending.
 
@@ -723,23 +723,19 @@ Verified desktop/mobile behavior and checks are recorded in
 - Worker sessions run on the local runtime choice (Durable by default) inside
   the host, driven through the generic runtime contract; the PI-specific relay
   is gone. Work continues while the gateway is away and catches up on
-  reconnect; a host restart resumes Durable runs. Bots stay on PI until Durable
-  takes per-conversation instructions.
+  reconnect; a host restart resumes Durable runs.
 - New Session runs on a worker; subagents follow their parent. Sessions keep
   running while the gateway is away, reattach with their pending questions,
   and reconnect by themselves after a dropped connection.
-- Bots are host-owned scheduled agents with instructions, a check-in prompt and
-  a session in the **Bots** group; they run while HUI is closed.
 - Proof: `server/workers.test.ts` (real host, SDK worker and deterministic
   provider behind a separate home: brokered API key and OAuth refresh, no
-  secret on the remote, reattach, question replay, close/delete, offline bot
-  run; Durable on the worker with HUI settings and providers, HUI tool calls,
+  secret on the remote, reattach, question replay, close/delete; Durable on the worker with HUI settings and providers, HUI tool calls,
   abort, a gateway lost mid-tool, an offline follow-up and a host restart),
   `server/worker/release.test.ts` (the release installs every imported
   package), plus manual runs against an Ubuntu 24.04 arm64 container over
   `docker exec -i` and over SSH: Node download, release install, package
   dependency install, durable runs across a killed transport, host upgrade, and
-  the Settings → Workers, Run on, bot and reattach journeys in the browser.
+  the Settings → Workers, Run on and reattach journeys in the browser.
 - Not yet remote: terminals, the managed browser, worktrees/branch checkout,
   multi-account quota rotation and usage totals.
 

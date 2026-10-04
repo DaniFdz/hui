@@ -20,7 +20,7 @@ function label(record: SessionRecord): string {
 }
 
 async function candidates(): Promise<Candidate[]> {
-  // A worker's sessions (bots included) run PI there, beside their transcripts.
+  // A worker's sessions run there, beside their transcripts.
   const records = (await readRegistry()).filter((record) => record.tool === "pi" && !record.worker);
   return Promise.all(records.map(async (record): Promise<Candidate> => {
     // A gateway sends an interrupted PI run a recovery prompt at its next start; moving it now would drop that.

@@ -1,6 +1,5 @@
 import { LitElement, html, nothing } from "lit";
-import { createBot, createWorker, deleteBot, loadWorkers, removeWorker, runBot, updateBot, updateWorker, workerAction, type BotInput, type WorkerBot, type WorkerView } from "../lib/workers.ts";
-import { describeSchedule, localTimezone } from "./settings-automation.ts";
+import { createWorker, loadWorkers, removeWorker, updateWorker, workerAction, type WorkerView } from "../lib/workers.ts";
 
 const POLL_FAST_MS = 1_500;
 const POLL_MS = 10_000;
@@ -12,23 +11,13 @@ const STATUS: Record<WorkerView["state"], { kind: string; label: string }> = {
   disconnected: { kind: "", label: "Disconnected" },
 };
 
-function lastRun(bot: WorkerBot): string {
-  const run = bot.runs[0];
-  if (!run) return "Not run yet";
-  const when = new Date(run.finishedAt ?? run.startedAt).toLocaleString();
-  // A one-line preview of the answer, without its Markdown punctuation.
-  const summary = run.summary?.replace(/[`#*_>|]+|-{3,}/gu, " ").replace(/\s+/gu, " ").trim().slice(0, 140);
-  return `${run.status === "running" ? "Running since" : run.status[0]!.toUpperCase() + run.status.slice(1)} ${when}${run.error ? ` · ${run.error}` : summary ? ` · ${summary}` : ""}`;
-}
-
-/** Settings → Workers: machines HUI runs PI on, and the bots they host. */
+/** Settings → Workers: machines HUI runs sessions on. */
 export class HuiWorkersSettings extends LitElement {
   #workers: WorkerView[] = [];
   #loading = true;
   #error = "";
   #notice = "";
   #busy = new Set<string>();
-  #editingBot: { worker: string; bot: WorkerBot } | undefined;
   /** Editing keeps the worker's sessions; only the next connection changes. */
   #editingWorker: WorkerView | undefined;
   #poll?: ReturnType<typeof setTimeout>;
@@ -89,33 +78,6 @@ export class HuiWorkersSettings extends LitElement {
     }, editing ? "Worker saved. Connect again to use the new command." : "Worker added. HUI is setting it up now.");
   }
 
-  #saveBot(event: SubmitEvent) {
-    event.preventDefault();
-    const form = event.currentTarget as HTMLFormElement;
-    const data = new FormData(form);
-    const text = (name: string) => String(data.get(name) ?? "").trim();
-    const minutes = Number(text("everyMinutes"));
-    const cron = text("cron");
-    const input: BotInput = {
-      name: text("name"), cwd: text("cwd"), instructions: text("instructions"), prompt: text("prompt"),
-      schedule: cron ? { kind: "cron", expression: cron, timezone: localTimezone() }
-        : minutes > 0 ? { kind: "every", everyMs: Math.round(minutes * 60_000) } : null,
-      enabled: data.get("enabled") !== null,
-    };
-    const editing = this.#editingBot;
-    const worker = editing?.worker ?? text("worker");
-    void this.#act("bot", async () => {
-      if (editing) await updateBot(worker, editing.bot.key, input);
-      else await createBot(worker, input);
-      this.#editingBot = undefined;
-      form.reset();
-    }, editing ? "Bot updated." : "Bot created. It appears in the sidebar under Bots.");
-  }
-
-  #openSession(id: string) {
-    this.dispatchEvent(new CustomEvent("hui-open-session", { detail: { id }, bubbles: true, composed: true }));
-  }
-
   #renderWorker(worker: WorkerView) {
     const status = STATUS[worker.state];
     const busy = this.#busy.has(worker.id);
@@ -148,48 +110,6 @@ export class HuiWorkersSettings extends LitElement {
     </div>`;
   }
 
-  #renderBots() {
-    const connected = this.#workers.filter((worker) => worker.state === "connected");
-    const bots = this.#workers.flatMap((worker) => (worker.bots ?? []).map((bot) => ({ worker, bot })));
-    const editing = this.#editingBot;
-    const field = (label: string, control: unknown, stacked = false) => html`<label class="settings-row ${stacked ? "settings-row--stacked" : ""}"><span class="settings-row__text"><span class="settings-row__title">${label}</span></span><span class="settings-row__control"><span class="cron-control">${control}</span></span></label>`;
-    return html`<section class="settings-section" data-settings-bots>
-      <div class="settings-section__header"><div class="settings-section__copy">
-        <h2 class="settings-section__heading">Bots</h2>
-        <p class="settings-section__desc">A bot is an agent that lives on a worker: standing instructions, a check-in prompt and an optional schedule. The worker runs it even while HUI is closed; each bot is also a session you can talk to.</p>
-      </div></div>
-      ${bots.length ? html`<div class="settings-group">${bots.map(({ worker, bot }) => html`<div class="settings-row" data-bot=${bot.key}>
-        <div class="settings-row__text">
-          <span class="settings-row__title">${bot.name} <span class="settings-row__muted">on ${worker.name}</span></span>
-          <span class="settings-row__desc">${bot.schedule ? describeSchedule(bot.schedule) : "Runs when you ask"}${bot.enabled ? "" : " · paused"} · ${lastRun(bot)}</span>
-        </div>
-        <div class="settings-row__control jira-settings__actions">
-          <button type="button" class="btn btn--sm" @click=${() => this.#openSession(bot.key)}>Open chat</button>
-          <button type="button" class="btn btn--sm" ?disabled=${this.#busy.has(bot.key) || bot.runs[0]?.status === "running"} @click=${() => void this.#act(bot.key, () => runBot(worker.id, bot.key), `${bot.name} is running.`)}>Run now</button>
-          <button type="button" class="btn btn--sm" @click=${() => { this.#editingBot = { worker: worker.id, bot }; this.requestUpdate(); }}>Edit</button>
-          <button type="button" class="btn btn--sm" ?disabled=${this.#busy.has(bot.key)} @click=${() => {
-            if (confirm(`Delete ${bot.name} and its conversation row? Its transcript stays on ${worker.name}.`)) void this.#act(bot.key, () => deleteBot(worker.id, bot.key));
-          }}>Delete</button>
-        </div>
-      </div>`)}</div>` : nothing}
-      ${connected.length || editing ? html`<form class="settings-group" data-bot-form @submit=${(event: SubmitEvent) => this.#saveBot(event)}>
-        <div class="settings-row"><div class="settings-row__text"><span class="settings-row__title">${editing ? `Edit ${editing.bot.name}` : "New bot"}</span></div></div>
-        ${editing ? nothing : field("Worker", html`<select class="settings-input" name="worker" required>${connected.map((worker) => html`<option value=${worker.id}>${worker.name}</option>`)}</select>`)}
-        ${field("Name", html`<input class="settings-input" name="name" required maxlength="80" placeholder="Release watcher" .value=${editing?.bot.name ?? ""} />`)}
-        ${field("Directory on the worker", html`<input class="settings-input" name="cwd" required spellcheck="false" placeholder="~/src/project" .value=${editing?.bot.cwd ?? ""} />`)}
-        ${field("Instructions", html`<textarea class="settings-input" name="instructions" maxlength="20000" placeholder="Who this bot is and how it works, kept in its system prompt." .value=${editing?.bot.instructions ?? ""}></textarea>`, true)}
-        ${field("Check-in prompt", html`<textarea class="settings-input" name="prompt" required maxlength="20000" placeholder="Check the open pull requests and report anything that needs me." .value=${editing?.bot.prompt ?? ""}></textarea>`, true)}
-        ${field("Check in every (minutes)", html`<input class="settings-input" name="everyMinutes" type="number" min="1" step="1" placeholder="Only when asked" .value=${editing?.bot.schedule?.kind === "every" ? String(Math.round(editing.bot.schedule.everyMs / 60_000)) : ""} />`)}
-        ${field("Or a cron expression", html`<input class="settings-input" name="cron" spellcheck="false" placeholder="0 9 * * 1-5" .value=${editing?.bot.schedule?.kind === "cron" ? editing.bot.schedule.expression : ""} />`)}
-        <label class="settings-row"><span class="settings-row__text"><span class="settings-row__title">Enabled</span></span><span class="settings-row__control"><input type="checkbox" name="enabled" ?checked=${editing ? editing.bot.enabled : true} /></span></label>
-        <div class="automation-actions cron-editor-actions">
-          <button type="submit" class="btn primary" ?disabled=${this.#busy.has("bot")}>${editing ? "Save bot" : "Create bot"}</button>
-          ${editing ? html`<button type="button" class="btn" @click=${() => { this.#editingBot = undefined; this.requestUpdate(); }}>Cancel</button>` : nothing}
-        </div>
-      </form>` : html`<p class="settings-section__desc">Connect a worker to create bots on it.</p>`}
-    </section>`;
-  }
-
   override render() {
     const editing = this.#editingWorker;
     return html`
@@ -214,8 +134,7 @@ export class HuiWorkersSettings extends LitElement {
             ${editing ? html`<button type="button" class="btn" @click=${() => { this.#editingWorker = undefined; this.requestUpdate(); }}>Cancel</button>` : nothing}
           </div>
         </form>
-      </section>
-      ${this.#renderBots()}`;
+      </section>`;
   }
 }
 

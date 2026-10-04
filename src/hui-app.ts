@@ -565,10 +565,6 @@ export class HuiApp extends HuiElement {
     void this.persistComposerDraft();
   };
 
-  private onOpenSessionRequest = (event: CustomEvent<{ id?: unknown }>) => {
-    if (typeof event.detail?.id === "string") this.navigate({ kind: "session", id: event.detail.id });
-  };
-
   override connectedCallback() {
     super.connectedCallback();
     if (this.embeddedPane) {
@@ -580,8 +576,6 @@ export class HuiApp extends HuiElement {
       this.mobileNavMedia.addEventListener("change", this.onMobileNavChange);
       window.addEventListener("popstate", this.onPopState);
       document.addEventListener("keydown", this.onGlobalKeyDown);
-      // Settings → Workers opens a bot's conversation.
-      this.addEventListener("hui-open-session", this.onOpenSessionRequest as EventListener);
     }
     window.addEventListener("pagehide", this.onPageHide);
     if (!this.embeddedPane) {
@@ -617,7 +611,6 @@ export class HuiApp extends HuiElement {
     window.removeEventListener("popstate", this.onPopState);
     window.removeEventListener("pagehide", this.onPageHide);
     document.removeEventListener("keydown", this.onGlobalKeyDown);
-    this.removeEventListener("hui-open-session", this.onOpenSessionRequest as EventListener);
     document.removeEventListener("visibilitychange", this.onUpdateVisibility);
     window.removeEventListener("online", this.onUpdateVisibility);
     window.removeEventListener("offline", this.onUpdateVisibility);

@@ -27,7 +27,6 @@ import { installBrokeredCredentials, OfflineError, setCredentialTransport } from
 import { resolveWorkingDirectory } from "../working-directories.ts";
 import { attachPeer, isRecord, PROTOCOL_VERSION, type Peer } from "./protocol.ts";
 import { PACKAGE_ROOT } from "./release.ts";
-import { BotScheduler, type BotRecord } from "./bots.ts";
 import { applySync, planSync, putSyncFiles, writeAtomic, type SyncCommit } from "./sync-apply.ts";
 import type { WorkerPaths } from "./paths.ts";
 
@@ -36,7 +35,7 @@ const DETACHED_IDLE_MS = 10 * 60_000;
 /** A detached worker waiting on a question keeps it this long for someone to answer. */
 const DETACHED_QUESTION_MS = 24 * 60 * 60_000;
 const ATTACHMENT_RETENTION_MS = 7 * 24 * 60 * 60_000;
-/** A host with nothing to do exits after this, unless it owns bots or Durable work. */
+/** A host with nothing to do exits after this, unless Durable work remains. */
 const HOST_IDLE_MS = 30 * 60_000;
 const MAX_FILE_BYTES = 100 * 1024 * 1024;
 /** A transcript larger than this is fetched in pages instead of riding along
@@ -124,13 +123,12 @@ export class WorkerHost {
   #release = basename(PACKAGE_ROOT);
   #sessions = new Map<string, Hosted>();
   #peers = new Set<Peer>();
-  /** Starts in progress, so concurrent opens and bot runs share one runtime. */
+  /** Starts in progress, so concurrent opens share one runtime. */
   #starting = new Map<string, Promise<Hosted>>();
   #server: Server | undefined;
   #timer: NodeJS.Timeout | undefined;
   #lastActivity = Date.now();
   #pruned = 0;
-  #bots: BotScheduler;
   #durable: DurableHost;
   /** Durable conversation → HUI session, kept across host restarts. */
   #callers = new Map<string, string>();
@@ -149,12 +147,6 @@ export class WorkerHost {
     this.paths = paths;
     this.#callersFile = join(paths.stateDir, "conversations.json");
     this.#piRunsFile = join(paths.stateDir, "pi-runs.json");
-    this.#bots = new BotScheduler({
-      file: join(this.paths.stateDir, "bots.json"),
-      launchFile: join(this.paths.stateDir, "launch.json"),
-      run: (bot, launch, signal) => this.#runBot(bot, launch, signal),
-      onChange: (bots) => { for (const peer of this.#peers) peer.send({ t: "bots", bots }); },
-    });
     this.#durable = new DurableHost({
       dir: join(paths.stateDir, "durable"),
       agentDir: paths.agentDir,
@@ -186,7 +178,6 @@ export class WorkerHost {
     registerAgentToolHandler(({ callerSessionId, action, params }) => this.#gatewayTool(callerSessionId, action, params));
     installBrokeredCredentials({ agentDir: this.paths.agentDir, providersDir: this.paths.providersDir, fallbackAuth: join(this.paths.fallbackAgentDir, "auth.json") });
     setCredentialTransport((op, store, providerId, modify) => this.#credential(op, store, providerId, modify as ((current: unknown) => Promise<unknown>) | undefined));
-    await this.#bots.load();
     await this.#pruneAttachments();
     try {
       const saved = JSON.parse(await readFile(this.#callersFile, "utf8")) as unknown;
@@ -212,12 +203,10 @@ export class WorkerHost {
     await writeFile(join(this.paths.stateDir, "release"), this.#release);
     this.#timer = setInterval(() => this.#sweep(), 30_000);
     this.#timer.unref();
-    this.#bots.start();
   }
 
   async close(): Promise<void> {
     clearInterval(this.#timer);
-    this.#bots.stop();
     for (const hosted of [...this.#sessions.values()]) this.#stop(hosted);
     for (const peer of this.#peers) peer.close("Remote worker host stopped.");
     stopAgentToolBridge();
@@ -228,10 +217,10 @@ export class WorkerHost {
     await unlink(this.paths.socket).catch(() => undefined);
   }
 
-  /** Another gateway still connected, a bot run or a PI run that cannot
-   * resume blocks an upgrade; Durable work resumes in the new host. */
+  /** Another gateway still connected or a PI run that cannot resume blocks
+   * an upgrade; Durable work resumes in the new host. */
   busy(): boolean {
-    return this.#peers.size > 1 || this.#bots.running() || [...this.#sessions.values()].some((hosted) => hosted.tool !== "durable"
+    return this.#peers.size > 1 || [...this.#sessions.values()].some((hosted) => hosted.tool !== "durable"
       && (hosted.runtime.isStreaming || (hosted.runtime.pendingQuestions?.().length ?? 0) > 0));
   }
 
@@ -259,7 +248,6 @@ export class WorkerHost {
     peer.handle("sync-plan", (params) => planSync(this.paths, params["entries"]));
     peer.handle("sync-put", (params) => putSyncFiles(this.paths, params["files"]));
     peer.handle("sync-commit", (params) => applySync(this.paths, params as unknown as SyncCommit).then(async (result) => {
-      if (isRecord(params["launch"])) await this.#bots.setLaunch(params["launch"]);
       if (this.#durable.isOpen) await this.#durable.refreshModels().catch(() => undefined);
       return result;
     }));
@@ -279,10 +267,6 @@ export class WorkerHost {
       if (keys.some((key) => this.#piRuns.delete(key))) this.#savePiRuns().catch(logPiRuns);
       return { ok: true };
     });
-    peer.handle("bots-list", () => this.#bots.list());
-    peer.handle("bots-save", (params) => this.#bots.save(params["bot"]));
-    peer.handle("bots-delete", (params) => this.#bots.remove(String(params["key"] ?? "")));
-    peer.handle("bots-run", (params) => this.#bots.runNow(String(params["key"] ?? "")));
     peer.handle("shutdown", () => {
       if (this.busy()) return { stopping: false };
       setImmediate(() => { void this.close().finally(() => process.exit(0)); });
@@ -295,7 +279,7 @@ export class WorkerHost {
     const key = typeof params["key"] === "string" ? params["key"] : "";
     const tool = params["tool"];
     if (!/^[A-Za-z0-9_-]{1,80}$/u.test(key) || (tool !== "pi" && tool !== "durable") || !isRecord(params["launch"])) throw new Error("Invalid remote session request.");
-    const hosted = await this.#hostedFor(key, tool, () => this.#bots.launchFor(key, params["launch"] as RemoteLaunch));
+    const hosted = await this.#hostedFor(key, tool, params["launch"] as RemoteLaunch);
     // The gateway may have gone while the runtime started; leave it running.
     if (peer.closed) throw new Error("The gateway disconnected.");
     // A second gateway (or a reconnect) takes over; the old view ends.
@@ -307,10 +291,10 @@ export class WorkerHost {
     return { ...this.#snapshot(hosted, true), methods };
   }
 
-  async #hostedFor(key: string, tool: string, launch: () => RemoteLaunch): Promise<Hosted> {
+  async #hostedFor(key: string, tool: string, launch: RemoteLaunch): Promise<Hosted> {
     const current = this.#starting.get(key) ?? this.#sessions.get(key);
     if (current) return current;
-    const start = this.#launch(key, tool, launch()).finally(() => this.#starting.delete(key));
+    const start = this.#launch(key, tool, launch).finally(() => this.#starting.delete(key));
     this.#starting.set(key, start);
     return start;
   }
@@ -329,7 +313,6 @@ export class WorkerHost {
     };
     const runtime: RuntimeSession = tool === "durable" ? await startDurable(options, this.#durable) : await piRuntime.start({
       ...options, agentDir: this.paths.agentDir,
-      ...(Array.isArray(launch["appendSystemPrompt"]) ? { appendSystemPrompt: strings(launch["appendSystemPrompt"]) } : {}),
       hostLaunch: {
         disabledSkills: launch.disabledSkills ?? [],
         bundledSkillPaths: strings(launch["bundledSkillPaths"]),
@@ -357,7 +340,6 @@ export class WorkerHost {
     });
     hosted.stop = () => { unsubscribe(); unsubscribeExit?.(); runtime.dispose(); };
     this.#sessions.set(key, hosted);
-    if (this.#bots.has(key) && runtime.sessionFile) await this.#bots.rememberSessionFile(key, runtime.sessionFile);
     return hosted;
   }
 
@@ -555,39 +537,6 @@ export class WorkerHost {
     return { path, data: (await readFile(path)).toString("base64") };
   }
 
-  /** One scheduled bot turn through the runtime layer: start (or reuse) its
-   * session, prompt, wait for it to settle. */
-  async #runBot(bot: BotRecord, launch: RemoteLaunch, signal: AbortSignal): Promise<{ sessionFile?: string; summary?: string }> {
-    const existing = this.#sessions.get(bot.key);
-    if (existing && (existing.runtime.isStreaming || existing.runtime.pendingQuestions?.().length)) throw new Error("The bot is busy.");
-    // Bots stay on PI until Durable takes a bot's standing instructions.
-    const hosted = await this.#hostedFor(bot.key, "pi", () => launch);
-    const runtime = hosted.runtime;
-    let failure: string | undefined;
-    const settled = new Promise<void>((done) => {
-      const stopExit = runtime.onExit?.(() => { failure ??= "The bot's runtime exited."; stopExit?.(); done(); });
-      const stop = runtime.subscribe((event) => {
-        if (event.type === "error") failure = event.message;
-        if (event.type === "settled" || event.type === "error") { stop(); stopExit?.(); done(); }
-      });
-    });
-    await runtime.prompt(bot.prompt);
-    const onAbort = () => { void runtime.abort?.().catch(() => undefined); };
-    signal.addEventListener("abort", onAbort, { once: true });
-    try {
-      await settled;
-    } finally {
-      signal.removeEventListener("abort", onAbort);
-    }
-    if (failure) throw new Error(failure);
-    const last = runtime.transcript().filter((entry) => entry.kind === "message" && entry.role === "assistant").at(-1);
-    const summary = (last?.kind === "message" ? last.text : "").slice(0, 500);
-    const sessionFile = runtime.sessionFile;
-    // Nobody is watching: free the runtime, the transcript is on disk.
-    if (!hosted.peer) this.#stop(hosted);
-    return { ...(sessionFile ? { sessionFile } : {}), ...(summary ? { summary } : {}) };
-  }
-
   #stop(hosted: Hosted): void {
     if (this.#sessions.get(hosted.key) !== hosted) return;
     this.#sessions.delete(hosted.key);
@@ -618,6 +567,6 @@ export class WorkerHost {
   }
 
   #idle(): boolean {
-    return !this.#sessions.size && !this.#peers.size && !this.#starting.size && !this.#bots.active() && Date.now() - this.#lastActivity > HOST_IDLE_MS;
+    return !this.#sessions.size && !this.#peers.size && !this.#starting.size && Date.now() - this.#lastActivity > HOST_IDLE_MS;
   }
 }

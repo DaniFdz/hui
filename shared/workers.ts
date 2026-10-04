@@ -1,35 +1,6 @@
-/** Browser-facing view of remote workers and the bots they host. */
-import type { AutomationSchedule } from "../src/lib/automation-types.ts";
+/** Browser-facing view of remote workers. */
 
 export type WorkerState = "disconnected" | "connecting" | "connected" | "error";
-
-export type WorkerBotRun = {
-  id: string;
-  source: "scheduled" | "manual";
-  status: "running" | "completed" | "failed" | "skipped";
-  startedAt: string;
-  finishedAt?: string;
-  summary?: string;
-  error?: string;
-};
-
-export type WorkerBot = {
-  /** Also the id of the HUI session the bot talks through. */
-  key: string;
-  name: string;
-  cwd: string;
-  instructions: string;
-  prompt: string;
-  schedule: AutomationSchedule | null;
-  enabled: boolean;
-  model?: string;
-  thinking?: string;
-  timeoutSeconds: number;
-  nextRunAt: string | null;
-  createdAt: string;
-  updatedAt: string;
-  runs: WorkerBotRun[];
-};
 
 export type WorkerView = {
   id: string;
@@ -44,23 +15,9 @@ export type WorkerView = {
   error?: string;
   host?: { hostname: string; platform: string; arch: string; node: string; home: string; release: string };
   sync?: { at: string; files: number; uploaded: number; deleted: number; installed: string[]; skipped: string[]; errors: string[] };
-  /** Last bot list the host reported; absent until it is connected once. */
-  bots?: WorkerBot[];
 };
 
 export type WorkerInput = { name: string; command: string; extraPaths?: string[] };
-
-export type BotInput = {
-  name: string;
-  cwd: string;
-  instructions?: string;
-  prompt: string;
-  schedule?: AutomationSchedule | null;
-  enabled?: boolean;
-  model?: string;
-  thinking?: string;
-  timeoutSeconds?: number;
-};
 
 /** Splits a connect command like a POSIX shell would for plain words and
  * single/double quotes; no expansion or operators. */

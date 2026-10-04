@@ -1304,8 +1304,6 @@ async function startPi(options: {
   /** On a worker host: the gateway's skill and plugin choices, already mapped
    * to this machine, and the remote's own login for when no gateway answers. */
   hostLaunch?: HostLaunch;
-  /** Extra system prompt sections, such as a bot's standing instructions. */
-  appendSystemPrompt?: string[];
 }): Promise<PiSession> {
   const args = ["--mode", "rpc"];
   const hostLaunch = options.hostLaunch;

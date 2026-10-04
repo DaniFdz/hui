@@ -362,42 +362,6 @@ test("a question asked while no gateway is attached is shown again on reattach",
   }
 });
 
-test("a bot runs on its host, also while no gateway is connected", async () => {
-  const reported: { key: string; status?: string; summary?: string }[] = [];
-  const stop = workers.onBots((_id, bots) => { for (const bot of bots) reported.push({ key: bot.key, status: bot.runs[0]?.status, summary: bot.runs[0]?.summary }); });
-  try {
-    const bot = await workers.saveBot(workerId, "bot-1", { name: "Watcher", cwd: project, instructions: "You are the watcher bot.", prompt: "Check in." });
-    assert.equal(bot.nextRunAt, null);
-    await workers.runBot(workerId, "bot-1");
-    await waitFor(() => reported.find((entry) => entry.key === "bot-1" && entry.status === "completed"), "the manual bot run");
-    assert.equal(reported.find((entry) => entry.status === "completed")?.summary, "Fixture response.");
-
-    // Offline, the remote's own PI login is the only credential.
-    await mkdir(join(remoteHome, ".pi", "agent"), { recursive: true });
-    await writeFile(join(remoteHome, ".pi", "agent", "auth.json"), JSON.stringify({ fx: { type: "api_key", key: KEY } }));
-    await workers.saveBot(workerId, "bot-1", { name: "Watcher", cwd: project, instructions: "You are the watcher bot.", prompt: "Check in again.", schedule: { kind: "at", at: new Date(Date.now() + 1500).toISOString() } });
-    workers.disconnect(workerId);
-    await waitFor(async () => {
-      const raw = JSON.parse(await readFile(join(remoteHome, ".local", "share", "hui-worker", "state", "bots.json"), "utf8")) as { bots: { runs: { status: string; source: string }[] }[] };
-      return raw.bots[0]?.runs.length === 2 && raw.bots[0].runs[0]!.status !== "running" ? raw.bots[0].runs[0] : undefined;
-    }, "the scheduled offline run");
-    const connection = await workers.connect(workerId);
-    const [listed] = connection.bots ?? [];
-    assert.equal(listed?.runs[0]?.status, "completed", JSON.stringify(listed?.runs[0]));
-    assert.equal(listed?.runs[0]?.source, "scheduled");
-    // Both runs continued one conversation.
-    const transcript = await readFile((listed as unknown as { sessionFile: string }).sessionFile, "utf8");
-    assert.ok(transcript.includes("Check in.") && transcript.includes("Check in again."));
-    // The instructions reached the model as part of the system prompt.
-    const requests = (await readFile(join(root, "provider.jsonl"), "utf8")).trim().split("\n").map((line) => JSON.parse(line) as { system?: unknown; messages?: unknown });
-    assert.ok(requests.some((body) => JSON.stringify(body.system).includes("You are the watcher bot.") && JSON.stringify(body.messages).includes("Check in again.")));
-    await workers.deleteBot(workerId, "bot-1");
-  } finally {
-    stop();
-    await rm(join(remoteHome, ".pi"), { recursive: true, force: true });
-  }
-});
-
 test("a Durable session runs on the worker, keeps going without the gateway and catches up on reattach", async () => {
   const durable = remoteRuntime("durable");
   const first = await durable.start({ cwd: project, worker: workerId, huiSessionId: "remote-durable-runtime" });

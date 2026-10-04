@@ -61,8 +61,6 @@ export type SessionView = {
   displayCwd?: string;
   /** Remote worker the session runs on; `cwd` is a path there. */
   worker?: { id: string; name: string };
-  /** A bot hosted by that worker. */
-  bot?: true;
   tool: string;
   status: SessionStatus;
   /** Git worktree progress while the gateway still creates this session. */
