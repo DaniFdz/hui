@@ -1,52 +1,60 @@
 /**
  * A session running on a remote worker host, driven through the generic
  * RuntimeSession contract. The host runs the same adapter a local session
- * would (Durable or PI) and sends its state with every reply and with each
- * event that changed it, so the synchronous reads below are never behind the
- * event being handled. Every snapshot carries a sequence: a reply resumes
- * after the events that followed it in the stream, and must not overwrite
- * them with its older state. Losing the connection reads as the runtime
- * exiting; the host keeps the session running and a later start reattaches.
+ * would (Durable or PI) and sends its state with every reply and event, so
+ * the synchronous reads below are never behind the event being handled.
+ * Every snapshot carries a sequence: a reply resumes after the events that
+ * followed it in the stream, and must not overwrite them with its older
+ * state. Losing the connection reads as the runtime exiting; the host keeps
+ * the session running and a later start reattaches.
  */
 import { readFile } from "node:fs/promises";
-import { workers, type RemoteSessionLink, type RemoteSnapshot } from "../workers.ts";
+import { workers, type RemoteSessionLink, type RemoteSessionSink, type RemoteSnapshot } from "../workers.ts";
 import type { RemoteState } from "../worker/host.ts";
 import type { RuntimeInspection } from "../../src/lib/tools-types.ts";
 import type { AgentRuntime, PromptAttachment, RuntimeCommand, RuntimeEvent, RuntimeModel, RuntimeSession, StartOptions, TranscriptEntry } from "./types.ts";
 
 type Frame = RemoteSnapshot & { event?: RuntimeEvent };
 
-class RemoteRuntimeSession implements RuntimeSession {
-  #state: RemoteState;
-  #stateSeq: number;
+class RemoteRuntimeSession implements RuntimeSession, RemoteSessionSink {
+  #state!: RemoteState;
+  #stateSeq = 0;
   #transcript: TranscriptEntry[] = [];
   #transcriptSeq = 0;
-  #link: RemoteSessionLink;
+  #link!: RemoteSessionLink;
   #worker: string;
   #listeners = new Set<(event: RuntimeEvent) => void>();
   /** Events before the first subscriber, such as a question asked at once. */
   #early: RuntimeEvent[] | undefined = [];
-  /** Frames wait here behind a transcript being read in pages, in order. */
+  /** Frames wait here, in order, until the start reply has been taken and
+   * behind a transcript being read in pages. */
   #delivery: Promise<void> | undefined;
-  /** One paged read at a time: each restarts the host's snapshot. */
-  #reading: Promise<unknown> = Promise.resolve();
+  #attached!: () => void;
   #exitListeners = new Set<() => void>();
   #ended = false;
   #lost = false;
 
-  constructor(worker: string, link: RemoteSessionLink, transcript: { transcript: TranscriptEntry[]; seq: number }) {
+  constructor(worker: string) {
     this.#worker = worker;
+    const attached = new Promise<void>((resolve) => { this.#attached = resolve; });
+    this.#delivery = attached;
+    void attached.then(() => { if (this.#delivery === attached) this.#delivery = undefined; });
+  }
+
+  /** Takes the host's start reply, then the frames that arrived around it. */
+  async attach(link: RemoteSessionLink): Promise<void> {
+    const { started } = link;
     this.#link = link;
-    this.#state = link.started.state;
-    this.#stateSeq = link.started.seq;
-    this.#applyTranscript(transcript.transcript, transcript.seq);
-    const state = this.#state;
+    this.#state = started.state;
+    this.#stateSeq = started.seq;
+    this.#applyTranscript(started.transcript ?? await link.transcript(started.seq), started.seq);
     // Only what the remote runtime offers is exposed, so the gateway never
     // shows a control that would fail.
     const self = this as unknown as Record<string, unknown>;
     for (const name of ["steer", "followUp", "abort", "setModel", "setThinking", "respondQuestion", "cancelQuestion", "compact", "cancelCompaction", "rewind", "continueRun", "listModels", "listCommands", "inspect", "attachmentImage", "clear", "reload"]) {
-      if (!state.methods.includes(name)) self[name] = undefined;
+      if (!started.methods.includes(name)) self[name] = undefined;
     }
+    this.#attached();
   }
 
   get processId(): undefined { return undefined; }
@@ -57,15 +65,23 @@ class RemoteRuntimeSession implements RuntimeSession {
 
   /** A frame from the host for this session. */
   receive(frame: Frame): void {
+    void this.#deliver(frame);
+  }
+
+  /** Applies frames in arrival order: one whose transcript is read in pages
+   * holds the rest until it has been read. */
+  #deliver(frame: Frame): Promise<void> {
     if (!this.#delivery && !frame.transcriptPaged) {
       this.#apply(frame);
-      return;
+      return Promise.resolve();
     }
     const delivery: Promise<void> = (this.#delivery ?? Promise.resolve()).then(async () => {
-      this.#apply(frame.transcriptPaged ? { ...frame, ...await this.#readTranscript().catch(() => ({})) } : frame);
+      const transcript = frame.transcriptPaged ? await this.#link.transcript(frame.seq ?? 0).catch((error: unknown) => console.error(error)) : undefined;
+      this.#apply(transcript ? { ...frame, transcript } : frame);
     }).catch((error: unknown) => console.error(error));
     this.#delivery = delivery;
     void delivery.finally(() => { if (this.#delivery === delivery) this.#delivery = undefined; });
+    return delivery;
   }
 
   #apply(frame: Frame): void {
@@ -85,12 +101,6 @@ class RemoteRuntimeSession implements RuntimeSession {
     this.#transcriptSeq = seq;
   }
 
-  #readTranscript(): Promise<{ transcript: TranscriptEntry[]; seq: number }> {
-    const read = this.#reading.catch(() => undefined).then(() => this.#link.transcript());
-    this.#reading = read;
-    return read;
-  }
-
   /** The connection or the remote runtime is gone. */
   lost(): void {
     if (this.#ended) return;
@@ -102,7 +112,7 @@ class RemoteRuntimeSession implements RuntimeSession {
   async #call<T = unknown>(method: string, ...args: unknown[]): Promise<T> {
     if (this.#ended) throw new Error("The remote worker connection is closed.");
     const reply = await this.#link.call(method, args) as Frame & { result?: T };
-    this.#apply(reply.transcriptPaged ? { ...reply, ...await this.#readTranscript() } : reply);
+    await this.#deliver(reply);
     return reply.result as T;
   }
 
@@ -176,20 +186,9 @@ export function remoteRuntime(tool: string): AgentRuntime {
     id: tool,
     async start(options: StartOptions): Promise<RuntimeSession> {
       if (!options.worker) throw new Error("A remote session needs a worker.");
-      const worker = options.worker;
-      let session: RemoteRuntimeSession | undefined;
-      // Frames that arrive with the reply, before the session exists, are replayed.
-      const early: Frame[] = [];
-      let lostEarly = false;
-      const link = await workers.startSession(worker, options.huiSessionId ?? "", tool, options, {
-        receive: (frame) => { if (session) session.receive(frame); else early.push(frame); },
-        lost: () => { if (session) session.lost(); else lostEarly = true; },
-      });
-      const { started } = link;
-      const transcript = started.transcript ? { transcript: started.transcript, seq: started.seq } : await link.transcript();
-      session = new RemoteRuntimeSession(worker, link, transcript);
-      for (const frame of early) session.receive(frame);
-      if (lostEarly) session.lost();
+      // The session hears its connection before the reply arrives.
+      const session = new RemoteRuntimeSession(options.worker);
+      await session.attach(await workers.startSession(options.worker, options.huiSessionId ?? "", tool, options, session));
       return session;
     },
   };

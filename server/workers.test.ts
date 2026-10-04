@@ -270,8 +270,9 @@ test("a PI run cut off by a host restart is reported for HUI to recover, once", 
   const key = "remote-pi-interrupted";
   const first = await piRuntime.start({ cwd: project, worker: workerId, huiSessionId: key });
   await first.prompt("E2E_REPLAY please");
+  // Recorded before the run started, so a crash at any point leaves the record.
+  assert.ok((await readFile(piRunsFile, "utf8")).includes(key));
   await control("wait-replay-ready");
-  await waitFor(async () => (await readFile(piRunsFile, "utf8").catch(() => "")).includes(key) || undefined, "the host to record the run");
   await restartHost(first);
   const second = await piRuntime.start({ cwd: project, worker: workerId, huiSessionId: key, sessionFile: first.sessionFile! });
   try {
@@ -289,6 +290,21 @@ test("a PI run cut off by a host restart is reported for HUI to recover, once", 
     assert.equal(third.resumesInterruptedRuns, true);
   } finally {
     third.dispose();
+  }
+});
+
+test("a follow-up that reaches the worker after its PI run settled starts the next run", async () => {
+  const session = await piRuntime.start({ cwd: project, worker: workerId, huiSessionId: "remote-late-follow-up" });
+  try {
+    const done = settled(session);
+    await session.prompt("first turn");
+    await done;
+    await session.followUp!("arrived after the run");
+    const texts = () => session.transcript().filter((entry) => entry.kind === "message").map((entry) => entry.kind === "message" && entry.text);
+    await waitFor(() => !session.isStreaming && texts().length === 4 || undefined, "the follow-up to run");
+    assert.deepEqual(texts(), ["first turn", "Fixture response.", "arrived after the run", "Fixture response."]);
+  } finally {
+    session.dispose();
   }
 });
 
@@ -567,6 +583,24 @@ test("a follow-up queued before the gateway leaves runs on the worker with the c
     for (const file of await remoteFiles()) assert.ok(!(await readFile(file, "utf8")).includes(KEY), `${file} holds the provider key`);
   } finally {
     second.dispose();
+  }
+});
+
+test("the Durable conversation a rewind moves to answers to the same HUI session after a host restart", async () => {
+  const key = "remote-durable-rewind";
+  const session = await durable.start({ cwd: project, worker: workerId, huiSessionId: key });
+  try {
+    const done = settled(session);
+    await session.prompt("before the rewind");
+    await done;
+    const before = session.sessionFile;
+    await session.rewind!({ userFromEnd: 0 });
+    assert.notEqual(session.sessionFile, before);
+    // What a restarted host reads to know who a resumed run calls tools as.
+    const saved = JSON.parse(await readFile(join(remoteHome, ".local", "share", "hui-worker", "state", "conversations.json"), "utf8")) as Record<string, string>;
+    assert.equal(saved[session.sessionFile!.replace(/^durable:/u, "")], key);
+  } finally {
+    session.dispose();
   }
 });
 

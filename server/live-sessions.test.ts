@@ -1895,9 +1895,9 @@ test("a worker session hands follow-ups to its runtime only while a run streams"
   let releasePrompt!: () => void;
   const prompting = new Promise<void>((resolve) => { releasePrompt = resolve; });
   let streaming = false;
-  const state = () => ({ sessionId: "remote", isStreaming: streaming, resumesInterruptedRuns: true, methods: ["followUp"] });
+  const state = () => ({ sessionId: "remote", isStreaming: streaming, resumesInterruptedRuns: true });
   t.mock.method(workers, "startSession", async () => ({
-    started: { state: state(), seq: 1, transcript: [] },
+    started: { state: state(), seq: 1, transcript: [], methods: ["followUp"] },
     call: async (method: string) => {
       calls.push(method);
       if (method === "prompt") {
@@ -1906,7 +1906,7 @@ test("a worker session hands follow-ups to its runtime only while a run streams"
       }
       return { state: state(), seq: calls.length + 1 };
     },
-    transcript: async () => ({ transcript: [], seq: 1 }),
+    transcript: async () => [],
     dispose: () => undefined,
   }));
   const manager = new LiveSessions(factory([]));

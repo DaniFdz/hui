@@ -19,14 +19,14 @@ type State = Link["started"]["state"];
 
 after(() => rm(root, { recursive: true, force: true }));
 
-const state = (patch: Partial<State> = {}): State => ({ sessionId: "s", isStreaming: false, resumesInterruptedRuns: true, methods: [], ...patch });
+const state = (patch: Partial<State> = {}): State => ({ sessionId: "s", isStreaming: false, resumesInterruptedRuns: true, ...patch });
 
 /** Starts a session over a connection that `script` drives through its sink. */
 async function start(script: (sink: Sink) => Partial<Link> | void = () => undefined) {
   mock.method(workers, "startSession", async (...args: Parameters<typeof workers.startSession>): Promise<Link> => ({
-    started: { state: state(), seq: 1, transcript: [] },
+    started: { state: state(), seq: 1, transcript: [], methods: [] },
     call: async () => ({ state: state(), seq: 1 }),
-    transcript: async () => ({ transcript: [], seq: 1 }),
+    transcript: async () => [],
     dispose: () => undefined,
     ...script(args[4]),
   }));
@@ -64,24 +64,28 @@ test("events and a lost connection before anyone subscribed still reach the sess
   assert.deepEqual(events, ["compaction_start", "question"]);
 });
 
-test("a transcript too large for one frame is read in pages before the event that announced it", async () => {
+test("a transcript too large for one frame is read in pages, as of that frame, before the frames after it", async () => {
   let sink!: Sink;
+  const read: number[] = [];
   const session = await start((given) => {
     sink = given;
     return {
-      transcript: async () => {
-        // A later event waits behind the paged read instead of overtaking it.
-        sink.receive({ event: { type: "notice", message: "after", level: "info" } });
-        return { transcript: [{ kind: "message", id: "m1", role: "assistant", text: "paged" }] as never, seq: 3 };
+      transcript: async (seq) => {
+        read.push(seq);
+        // A later frame waits behind the paged read instead of overtaking it.
+        sink.receive({ event: { type: "notice", message: "after", level: "info" }, state: state({ isStreaming: false }), seq: 3 });
+        return [{ kind: "message", id: "m1", role: "assistant", text: "paged" }] as never;
       },
     };
   });
   const seen: string[] = [];
   const done = new Promise<void>((resolve) => session.subscribe((event) => {
-    seen.push(`${event.type}:${session.transcript().length}`);
+    seen.push(`${event.type}:${session.transcript().length}:${session.isStreaming}`);
     if (event.type === "notice") resolve();
   }));
-  sink.receive({ event: { type: "settled" }, state: state(), seq: 2, transcriptPaged: true });
+  sink.receive({ event: { type: "turn_end" }, state: state({ isStreaming: true }), seq: 2, transcriptPaged: true });
   await done;
-  assert.deepEqual(seen, ["settled:1", "notice:1"]);
+  // Each frame's state applies with its own sequence; the later one wins.
+  assert.deepEqual(seen, ["turn_end:1:true", "notice:1:false"]);
+  assert.deepEqual(read, [2]);
 });

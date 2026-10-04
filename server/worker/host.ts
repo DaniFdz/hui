@@ -69,14 +69,15 @@ export type RemoteLaunch = Record<string, unknown> & {
 /** The runtime methods a gateway may call; anything else is refused. */
 const CALLS = new Set(["prompt", "steer", "followUp", "abort", "setModel", "setThinking", "respondQuestion", "cancelQuestion",
   "clear", "reload", "compact", "cancelCompaction", "rewind", "continueRun", "listModels", "listCommands", "inspect", "attachmentImage"]);
+/** PI calls that start a run, recorded before they reach the runtime. */
+const RUN_CALLS = new Set(["prompt", "continueRun"]);
 /** Calls after which the gateway re-reads the whole transcript. */
 const TRANSCRIPT_CALLS = new Set(["clear", "rewind", "reload", "abort", "continueRun"]);
 /** Events after which the gateway re-reads the whole transcript. */
 const TRANSCRIPT_EVENTS = new Set(["settled", "compaction_end"]);
 
 /** Everything a gateway reads synchronously from a runtime, sent with each
- * reply and with every event that changed it, so its copy is never behind the
- * event it is handling. */
+ * reply and event, so its copy is never behind the event it is handling. */
 export type RemoteState = {
   sessionId: string;
   sessionFile?: string;
@@ -87,8 +88,6 @@ export type RemoteState = {
   thinking?: string;
   queue?: RuntimeQueue;
   questions?: readonly RuntimeQuestion[];
-  /** Optional runtime methods this session offers. */
-  methods: string[];
 };
 
 type Hosted = {
@@ -101,17 +100,18 @@ type Hosted = {
   peer?: Peer;
   lastActive: number;
   stop: () => void;
-  /** Stamps every state and transcript sent, so the gateway can drop a reply
+  /** Stamps every frame and reply sent, so the gateway can drop a reply
    * that arrives after newer events. */
   seq: number;
-  /** The last state sent to `peer`; an event that leaves it alone carries none. */
-  sent?: string;
-  /** The transcript being fetched in pages, with the sequence it was taken at. */
-  paging?: { seq: number; entries: TranscriptEntry[] };
+  /** Transcripts too large for their frame, as they were when it was sent,
+   * by its sequence, until the gateway has read them in pages. */
+  paged: Map<number, TranscriptEntry[]>;
 };
 
 /** Cached gateway credential answers; memory only, dropped at expiry. */
 type Cached = { value: unknown; until: number };
+
+const logPiRuns = (error: unknown) => console.error(`Could not record PI runs: ${error instanceof Error ? error.message : String(error)}`);
 
 function expiry(value: unknown): number {
   const expires = isRecord(value) ? value["expires"] : undefined;
@@ -271,10 +271,12 @@ export class WorkerHost {
     });
     peer.handle("forget", (params) => {
       // A deleted HUI session: stop its runtime even if no gateway is attached.
-      for (const key of Array.isArray(params["keys"]) ? params["keys"] : []) {
-        const hosted = typeof key === "string" ? this.#sessions.get(key) : undefined;
+      const keys = (Array.isArray(params["keys"]) ? params["keys"] : []).filter((key): key is string => typeof key === "string");
+      for (const key of keys) {
+        const hosted = this.#sessions.get(key);
         if (hosted) this.#stop(hosted);
       }
+      if (keys.some((key) => this.#piRuns.delete(key))) this.#savePiRuns().catch(logPiRuns);
       return { ok: true };
     });
     peer.handle("bots-list", () => this.#bots.list());
@@ -299,8 +301,10 @@ export class WorkerHost {
     // A second gateway (or a reconnect) takes over; the old view ends.
     if (hosted.peer && hosted.peer !== peer) hosted.peer.send({ t: "session.exit", key, message: "This session was opened from another HUI." });
     hosted.peer = peer;
+    hosted.paged.clear();
     this.#touch(hosted);
-    return { ...this.#snapshot(hosted, true), ...this.#transcript(hosted) };
+    const methods = [...CALLS].filter((name) => typeof (hosted.runtime as unknown as Record<string, unknown>)[name] === "function");
+    return { ...this.#snapshot(hosted, true), methods };
   }
 
   async #hostedFor(key: string, tool: string, launch: () => RemoteLaunch): Promise<Hosted> {
@@ -336,22 +340,16 @@ export class WorkerHost {
       },
     });
     try {
-      const conversation = durableConversationId(runtime.sessionFile);
-      if (conversation !== undefined && this.#callers.get(String(conversation)) !== key) {
-        this.#callers.set(String(conversation), key);
-        await this.#write(this.#callersFile, () => JSON.stringify(Object.fromEntries(this.#callers)));
-      }
+      await this.#remember(key, runtime.sessionFile);
     } catch (error) {
       runtime.dispose();
       throw error;
     }
-    const hosted: Hosted = { key, tool, runtime, lastActive: Date.now(), stop: () => undefined, seq: 0, interrupted: tool === "pi" && this.#piRuns.has(key) };
+    const hosted: Hosted = { key, tool, runtime, lastActive: Date.now(), stop: () => undefined, seq: 0, paged: new Map(), interrupted: tool === "pi" && this.#piRuns.has(key) };
     const unsubscribe = runtime.subscribe((event) => {
       this.#touch(hosted);
       this.#trackRun(hosted, event.type === "settled");
-      if (!hosted.peer) return;
-      const transcript = TRANSCRIPT_EVENTS.has(event.type);
-      hosted.peer.send({ t: "session.event", key, event, ...this.#snapshot(hosted, transcript), ...(transcript ? this.#transcript(hosted) : {}) });
+      hosted.peer?.send({ t: "session.event", key, event, ...this.#snapshot(hosted, TRANSCRIPT_EVENTS.has(event.type)) });
     });
     const unsubscribeExit = runtime.onExit?.(() => {
       hosted.peer?.send({ t: "session.exit", key, message: "The session's runtime stopped on the remote." });
@@ -363,6 +361,15 @@ export class WorkerHost {
     return hosted;
   }
 
+  /** Durable conversation → HUI session, also after a rewind moved the
+   * session to a new conversation, so resumed runs still call tools as it. */
+  async #remember(key: string, sessionFile: string | undefined): Promise<void> {
+    const conversation = durableConversationId(sessionFile);
+    if (conversation === undefined || this.#callers.get(String(conversation)) === key) return;
+    this.#callers.set(String(conversation), key);
+    await this.#write(this.#callersFile, () => JSON.stringify(Object.fromEntries(this.#callers)));
+  }
+
   /** Records whether a PI run is in progress; Durable keeps its own record. */
   #trackRun(hosted: Hosted, settled = false): void {
     if (hosted.tool !== "pi") return;
@@ -371,7 +378,11 @@ export class WorkerHost {
     if (running === this.#piRuns.has(hosted.key)) return;
     if (running) this.#piRuns.add(hosted.key);
     else this.#piRuns.delete(hosted.key);
-    this.#write(this.#piRunsFile, () => JSON.stringify([...this.#piRuns])).catch((error: unknown) => console.error(`Could not record PI runs: ${error instanceof Error ? error.message : String(error)}`));
+    this.#savePiRuns().catch(logPiRuns);
+  }
+
+  #savePiRuns(): Promise<void> {
+    return this.#write(this.#piRunsFile, () => JSON.stringify([...this.#piRuns]));
   }
 
   /** Writes a host state file atomically, after any write already queued, with
@@ -397,60 +408,70 @@ export class WorkerHost {
       ...(thinking ? { thinking } : {}),
       ...(runtime.pendingQueue ? { queue: runtime.pendingQueue() } : {}),
       ...(runtime.pendingQuestions ? { questions: runtime.pendingQuestions() } : {}),
-      methods: [...CALLS].filter((name) => typeof (runtime as unknown as Record<string, unknown>)[name] === "function"),
     };
   }
 
-  /** The state stamped with the next sequence; nothing when `force` is unset
-   * and it has not changed since it was last sent. */
-  #snapshot(hosted: Hosted, force: boolean): { state: RemoteState; seq: number } | Record<string, never> {
-    const state = this.#state(hosted);
-    const json = JSON.stringify(state);
-    if (!force && json === hosted.sent) return {};
-    hosted.sent = json;
-    return { state, seq: ++hosted.seq };
-  }
-
-  /** Sent with a stamped snapshot; a large one is fetched in pages instead. */
-  #transcript(hosted: Hosted): { transcript: TranscriptEntry[] } | { transcriptPaged: true } {
+  /** The state stamped with the next sequence and, when asked, the transcript
+   * as it is now; one too large for a frame is kept under that sequence for
+   * the gateway to read in pages, so it matches the frame it came with. */
+  #snapshot(hosted: Hosted, withTranscript = false): Record<string, unknown> {
+    const snapshot = { state: this.#state(hosted), seq: ++hosted.seq };
+    if (!withTranscript) return snapshot;
     const transcript = hosted.runtime.transcript();
-    return JSON.stringify(transcript).length <= TRANSCRIPT_PAGE_BYTES ? { transcript } : { transcriptPaged: true };
+    if (JSON.stringify(transcript).length <= TRANSCRIPT_PAGE_BYTES) return { ...snapshot, transcript };
+    hosted.paged.set(snapshot.seq, transcript);
+    return { ...snapshot, transcriptPaged: true };
   }
 
-  /** One page of the transcript; offset 0 takes a fresh snapshot to page through. */
-  #transcriptPage(params: Record<string, unknown>): { entries: TranscriptEntry[]; total: number; seq: number } {
+  /** One page of the transcript kept for the frame with sequence `seq`. */
+  #transcriptPage(params: Record<string, unknown>): { entries: TranscriptEntry[]; total: number } {
     const hosted = this.#sessions.get(String(params["key"] ?? ""));
     if (!hosted) throw new Error("That session is not running on this worker.");
+    const seq = Number(params["seq"]);
+    const transcript = hosted.paged.get(seq);
+    if (!transcript) throw new Error("That transcript is no longer available.");
     const offset = typeof params["offset"] === "number" ? params["offset"] : 0;
-    if (offset === 0) hosted.paging = { seq: ++hosted.seq, entries: hosted.runtime.transcript() };
-    if (!hosted.paging) throw new Error("Read the transcript from its start.");
     const entries: TranscriptEntry[] = [];
     let size = 0;
-    for (const entry of hosted.paging.entries.slice(offset)) {
+    for (const entry of transcript.slice(offset)) {
       size += JSON.stringify(entry).length;
       if (entries.length && size > TRANSCRIPT_PAGE_BYTES) break;
       entries.push(entry);
     }
-    const page = { entries, total: hosted.paging.entries.length, seq: hosted.paging.seq };
-    if (offset + entries.length >= page.total) hosted.paging = undefined;
-    return page;
+    if (offset + entries.length >= transcript.length) hosted.paged.delete(seq);
+    return { entries, total: transcript.length };
   }
 
   async #call(params: Record<string, unknown>): Promise<Record<string, unknown>> {
     const hosted = this.#sessions.get(String(params["key"] ?? ""));
-    const method = String(params["method"] ?? "");
+    const requested = String(params["method"] ?? "");
     if (!hosted) throw new Error("That session is not running on this worker.");
+    if (!CALLS.has(requested)) throw new Error(`The session cannot ${requested}.`);
+    // A follow-up that arrives once the run has settled starts the next one:
+    // PI would hold it for some later prompt.
+    const method = requested === "followUp" && !hosted.runtime.isStreaming ? "prompt" : requested;
     const fn = (hosted.runtime as unknown as Record<string, unknown>)[method];
-    if (!CALLS.has(method) || typeof fn !== "function") throw new Error(`The session cannot ${method}.`);
+    if (typeof fn !== "function") throw new Error(`The session cannot ${requested}.`);
     this.#touch(hosted);
     const args = Array.isArray(params["args"]) ? params["args"] : [];
-    let result = await (fn as (...values: unknown[]) => unknown).apply(hosted.runtime, args);
+    // Recorded before the run starts, so a host that dies during it still
+    // knows the run was cut off.
+    const recorded = hosted.tool === "pi" && RUN_CALLS.has(method) && !this.#piRuns.has(hosted.key);
+    let result: unknown;
+    try {
+      if (recorded) {
+        this.#piRuns.add(hosted.key);
+        await this.#savePiRuns();
+      }
+      result = await (fn as (...values: unknown[]) => unknown).apply(hosted.runtime, args);
+    } catch (error) {
+      if (recorded && !hosted.runtime.isStreaming && this.#piRuns.delete(hosted.key)) this.#savePiRuns().catch(logPiRuns);
+      throw error;
+    }
     this.#trackRun(hosted);
+    await this.#remember(hosted.key, hosted.runtime.sessionFile).catch((error: unknown) => console.error(`Could not record the conversation: ${error instanceof Error ? error.message : String(error)}`));
     if (method === "attachmentImage" && isRecord(result) && Buffer.isBuffer(result["data"])) result = { mimeType: result["mimeType"], data: result["data"].toString("base64") };
-    return {
-      ...(result === undefined ? {} : { result }), ...this.#snapshot(hosted, true),
-      ...(TRANSCRIPT_CALLS.has(method) ? this.#transcript(hosted) : {}),
-    };
+    return { ...(result === undefined ? {} : { result }), ...this.#snapshot(hosted, TRANSCRIPT_CALLS.has(method)) };
   }
 
   /** The gateway preferred for a session: its own, else any connected one. */
@@ -587,11 +608,16 @@ export class WorkerHost {
       if (now - hosted.lastActive > (waiting ? DETACHED_QUESTION_MS : DETACHED_IDLE_MS)) this.#stop(hosted);
     }
     if (now - this.#pruned > 24 * 60 * 60_000) void this.#pruneAttachments();
-    if (this.#sessions.size || this.#peers.size || this.#bots.active() || now - this.#lastActivity <= HOST_IDLE_MS) return;
+    if (!this.#idle()) return;
     // Durable work nobody watches (a resumed run, a queued follow-up) keeps the host up.
     void this.#durable.busy().then((busy) => {
-      if (busy) this.#touch();
+      // A gateway may have connected meanwhile.
+      if (busy || !this.#idle()) this.#touch();
       else void this.close().finally(() => process.exit(0));
     }, () => this.#touch());
+  }
+
+  #idle(): boolean {
+    return !this.#sessions.size && !this.#peers.size && !this.#starting.size && !this.#bots.active() && Date.now() - this.#lastActivity > HOST_IDLE_MS;
   }
 }

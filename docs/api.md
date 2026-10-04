@@ -924,29 +924,35 @@ Gateway requests: `hello` (the host's protocol version and release; a
 mismatch replaces an idle host), `shutdown` (only when idle and no other
 gateway is connected; running Durable work does not count, it resumes in the
 new host), `session.start {key,tool,launch}` (start or reattach the `durable`
-or `pi` runtime for one HUI session id; replies `{state,seq,transcript}`),
-`session.call {key,method,args}` (one optional `RuntimeSession` method; replies
-`{result?,state,seq,transcript?}`), `session.transcript {key,offset}` (one
-page of at most 8 MB, `{entries,total,seq}`; offset 0 takes a fresh snapshot),
+or `pi` runtime for one HUI session id; replies `{state,seq,transcript,methods}`
+with the optional `RuntimeSession` methods it offers), `session.call
+{key,method,args}` (one of those methods; replies `{result?,state,seq,transcript?}`;
+a `followUp` that arrives once the run has settled starts the next run, as a
+`prompt`), `session.transcript {key,seq,offset}` (one page of at most 8 MB of
+the transcript a frame with that `seq` left behind, `{entries,total}`),
 `session.dispose {key}`, `forget {keys}`,
 `put-file`, `get-file`, `sync-plan`/`sync-put`/`sync-commit` and
 `bots-list`/`bots-save`/`bots-delete`/`bots-run`. `state` is the runtime's
 synchronous view (`sessionId`, `sessionFile`, `isStreaming`,
-`resumesInterruptedRuns`, `model`, `usage`, `thinking`, `queue`, `questions`
-and the optional `methods` it offers). Every reply carries it, and so does
-each `session.event {key,event,state?,seq?}` that changed it, plus the whole
-`transcript` after `settled` and `compaction_end` and after `clear`, `rewind`,
-`reload`, `abort` and `continueRun` calls. `seq` grows with every state or
-transcript sent for a session; the gateway applies neither when it already
-holds a newer one, since a reply resumes after the events that followed it on
-the stream. A transcript over 8 MB is replaced by `transcriptPaged: true` and
-read with `session.transcript` before the frame is handled. A
+`resumesInterruptedRuns`, `model`, `usage`, `thinking`, `queue` and
+`questions`). Every reply and every `session.event {key,event,state,seq}`
+carries it, plus the whole `transcript` after `settled` and `compaction_end`
+and after `clear`, `rewind`, `reload`, `abort` and `continueRun` calls. `seq`
+grows with every frame and reply sent for a session; the gateway applies
+neither state nor transcript when it already holds a newer one, since a reply
+resumes after the events that followed it on the stream. A transcript over
+8 MB is replaced by `transcriptPaged: true`; the host keeps it as it was under
+that frame's `seq`, and the gateway reads it with `session.transcript` before
+handling that frame and the ones after it. A
 record with `worker` uses this remote adapter and its `tool` names the runtime
 the host runs; a Durable `durable:N` names a conversation in that worker's own
 store. A PI session's `resumesInterruptedRuns` is false only while its last
-run started and was never seen settling (the host keeps those session ids in
-its state directory's `pi-runs.json`), so HUI recovers exactly the PI runs a
-host or runtime stop cut off. Host requests: `credential`
+run started and was never seen settling (the host records those session ids
+in its state directory's `pi-runs.json` before the run starts, and drops them
+on `forget`), so HUI recovers exactly the PI runs a host or runtime stop cut
+off. The host records which HUI session each Durable conversation belongs to,
+including one a rewind moved it to, in `conversations.json`, so runs a
+restarted host resumes call HUI tools as that session. Host requests: `credential`
 (`read`, `list`, `delete`, `modify` against the gateway store `pi` or
 `hui:<providers-relative path>`), the nested `credential-step` that runs an
 OAuth refresh callback on the remote while the gateway holds its lock, and

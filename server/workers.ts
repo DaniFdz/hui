@@ -32,7 +32,7 @@ import { remoteReleasePath, workerRelease, type WorkerRelease } from "./worker/r
 import { buildSyncPlan, contentFile, mirrorPath } from "./worker/sync.ts";
 import type { Settings } from "../src/lib/settings.ts";
 import type { HostInfo, RemoteLaunch, RemoteState } from "./worker/host.ts";
-import type { TranscriptEntry } from "./runtimes/types.ts";
+import type { RuntimeEvent, TranscriptEntry } from "./runtimes/types.ts";
 import { formatCommand, parseCommand, type BotInput, type WorkerBot, type WorkerInput, type WorkerView } from "../shared/workers.ts";
 import { invokeAgentTool } from "./agent-tools-bridge.ts";
 import { readRegistry } from "./sessions.ts";
@@ -107,21 +107,23 @@ function gatewayStore(name: unknown): CredentialStore {
   throw new Error("Unknown credential store.");
 }
 
-/** A state snapshot or transcript from the host, stamped with its sequence;
- * `transcriptPaged` stands in for a transcript too large to send along. */
+/** A state snapshot and maybe a transcript from the host, stamped with its
+ * sequence; `transcriptPaged` stands in for a transcript too large to send
+ * along. Frames the gateway makes up itself carry no state. */
 export type RemoteSnapshot = { state?: RemoteState; seq?: number; transcript?: TranscriptEntry[]; transcriptPaged?: boolean };
 
 /** What a remote session's proxy hears from its connection. */
 export type RemoteSessionSink = {
-  receive(frame: RemoteSnapshot & { event?: import("./runtimes/types.ts").RuntimeEvent }): void;
+  receive(frame: RemoteSnapshot & { event?: RuntimeEvent }): void;
   lost(): void;
 };
 
 export type RemoteSessionLink = {
-  started: RemoteSnapshot & { state: RemoteState; seq: number };
+  /** With the optional runtime methods the session offers. */
+  started: RemoteSnapshot & { state: RemoteState; seq: number; methods: string[] };
   call(method: string, args: unknown[]): Promise<unknown>;
-  /** The whole transcript, read in pages. */
-  transcript(): Promise<{ transcript: TranscriptEntry[]; seq: number }>;
+  /** The transcript a frame with sequence `seq` left to be read in pages. */
+  transcript(seq: number): Promise<TranscriptEntry[]>;
   dispose(): void;
 };
 
@@ -390,12 +392,12 @@ class WorkerConnection {
       return {
         started,
         call: (method, args) => this.#peer.request("session.call", { key, method, args }, CALL_TIMEOUT_MS),
-        transcript: async () => {
+        transcript: async (seq) => {
           const transcript: TranscriptEntry[] = [];
           for (;;) {
-            const page = await this.#peer.request<{ entries: TranscriptEntry[]; total: number; seq: number }>("session.transcript", { key, offset: transcript.length }, CALL_TIMEOUT_MS);
+            const page = await this.#peer.request<{ entries: TranscriptEntry[]; total: number }>("session.transcript", { key, seq, offset: transcript.length }, CALL_TIMEOUT_MS);
             transcript.push(...page.entries);
-            if (transcript.length >= page.total || !page.entries.length) return { transcript, seq: page.seq };
+            if (transcript.length >= page.total || !page.entries.length) return transcript;
           }
         },
         dispose: () => {
