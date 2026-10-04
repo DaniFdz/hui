@@ -196,7 +196,7 @@ export class HuiWorkersSettings extends LitElement {
       <section class="settings-section" data-settings-workers>
         <div class="settings-section__header"><div class="settings-section__copy">
           <h2 class="settings-section__heading">Remote workers</h2>
-          <p class="settings-section__desc">Run sessions on another machine. A worker is any command that opens a shell there — <code>ssh devbox</code>, <code>docker exec -i box</code>, <code>kubectl exec -i pod --</code>. HUI installs what it needs under <code>~/.local/share/hui-worker</code>, mirrors your PI settings, skills and extensions, and lends credentials only while connected. Sessions keep running there when HUI disconnects.</p>
+          <p class="settings-section__desc">Run sessions on another machine. A worker is any command that opens a shell there — <code>ssh devbox</code>, <code>docker exec -i box</code>, <code>kubectl exec -i pod --</code>. HUI installs what it needs under <code>~/.local/share/hui-worker</code>, mirrors your HUI and PI settings, skills and extensions, and lends credentials without writing them to its disk. Sessions keep running there when HUI disconnects, on credentials kept in memory until they expire.</p>
         </div></div>
         ${this.#error ? html`<p class="jira-settings__error" role="alert">${this.#error}</p>` : nothing}
         ${this.#notice ? html`<p class="jira-settings__notice" role="status">${this.#notice}</p>` : nothing}

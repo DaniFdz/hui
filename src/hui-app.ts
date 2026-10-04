@@ -685,6 +685,8 @@ export class HuiApp extends HuiElement {
     if (!this.embeddedPane) {
       void this.refreshSessions();
       this.loadLaunchPreferences();
+      // The home page shows the launch form too, without a page navigation.
+      this.loadLaunchWorkers();
       void loadThemePreviews().then((previews) => {
         this.previews = previews;
       });
@@ -1008,10 +1010,7 @@ export class HuiApp extends HuiElement {
         this.switchComposerDraft(NEW_SESSION_DRAFT_KEY);
         this.loadLaunchPreferences();
         this.requestGitCheckout(this.launchDefaults?.cwd ?? "~/");
-        void loadWorkers().then((list) => {
-          this.launchWorkers = list;
-          if (this.launchWorker && !list.some((worker) => worker.id === this.launchWorker)) this.launchWorker = undefined;
-        }).catch(() => undefined);
+        this.loadLaunchWorkers();
       }
       this.pendingSessionId = "";
       this.activePage = target.page;
@@ -3558,6 +3557,13 @@ export class HuiApp extends HuiElement {
       );
     }
     if (!this.launchThinking) this.launchThinking = snapshot.model.thinking ?? "medium";
+  }
+
+  private loadLaunchWorkers() {
+    void loadWorkers().then((list) => {
+      this.launchWorkers = list;
+      if (this.launchWorker && !list.some((worker) => worker.id === this.launchWorker)) this.launchWorker = undefined;
+    }).catch(() => undefined);
   }
 
   private loadLaunchPreferences() {
