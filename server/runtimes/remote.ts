@@ -9,9 +9,10 @@
 import { readFile } from "node:fs/promises";
 import { workers, type RemoteSessionLink } from "../workers.ts";
 import type { RemoteState } from "../worker/host.ts";
-import type { AgentRuntime, PromptAttachment, RuntimeEvent, RuntimeSession, StartOptions, TranscriptEntry } from "./types.ts";
+import type { RuntimeInspection } from "../../src/lib/tools-types.ts";
+import type { AgentRuntime, PromptAttachment, RuntimeCommand, RuntimeEvent, RuntimeModel, RuntimeSession, StartOptions, TranscriptEntry } from "./types.ts";
 
-class RemoteRuntimeSession {
+class RemoteRuntimeSession implements RuntimeSession {
   #state: RemoteState;
   #transcript: TranscriptEntry[];
   #link!: RemoteSessionLink;
@@ -82,9 +83,9 @@ class RemoteRuntimeSession {
   currentThinking() { return this.#state.thinking; }
   pendingQueue() { return this.#state.queue ?? { steering: [], followUp: [] }; }
   pendingQuestions() { return this.#state.questions ?? []; }
-  listModels() { return this.#call<NonNullable<RuntimeSession["listModels"]> extends () => Promise<infer T> ? T : never>("listModels"); }
-  listCommands() { return this.#call<NonNullable<RuntimeSession["listCommands"]> extends () => Promise<infer T> ? T : never>("listCommands"); }
-  inspect() { return this.#call<NonNullable<RuntimeSession["inspect"]> extends () => Promise<infer T> ? T : never>("inspect"); }
+  listModels(): Promise<readonly RuntimeModel[]> { return this.#call("listModels"); }
+  listCommands(): Promise<readonly RuntimeCommand[]> { return this.#call("listCommands"); }
+  inspect(): Promise<RuntimeInspection> { return this.#call("inspect"); }
   async setModel(provider: string, id: string): Promise<void> { await this.#call("setModel", provider, id); }
   async setThinking(level: string): Promise<void> { await this.#call("setThinking", level); }
   async respondQuestion(id: string, response: unknown): Promise<void> { await this.#call("respondQuestion", id, response); }
@@ -136,7 +137,7 @@ export function remoteRuntime(tool: string): AgentRuntime {
       session.bind(link);
       for (const frame of early) session.receive(frame);
       if (lostEarly) session.lost();
-      return session as unknown as RuntimeSession;
+      return session;
     },
   };
 }
