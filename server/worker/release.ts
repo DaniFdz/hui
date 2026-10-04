@@ -1,7 +1,8 @@
 /**
  * The worker release a gateway installs on a remote: the same HUI code this
  * gateway runs (source in a checkout, compiled output in a package), plus a
- * package.json limited to the PI SDK so the remote installs only that, at the
+ * package.json limited to the packages the host and its runtimes import (PI's
+ * SDK, Pi Durable and their peers) so the remote installs only those, at the
  * versions pinned by HUI's own lockfile. Its id changes with any file.
  */
 import { createHash } from "node:crypto";
@@ -11,8 +12,9 @@ import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
 
-/** Everything the host and the PI SDK worker import from npm. */
-const WORKER_DEPENDENCIES = ["@earendil-works/pi-coding-agent", "typebox"];
+/** Everything the host, Pi Durable and the PI SDK worker import from npm
+ * (release.test.ts traces the imports). */
+const WORKER_DEPENDENCIES = ["@earendil-works/chord", "@earendil-works/pi-ai", "@earendil-works/pi-coding-agent", "@earendil-works/pi-durable", "typebox"];
 
 export type WorkerRelease = {
   id: string;
