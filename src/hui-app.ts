@@ -100,6 +100,7 @@ import {
   isSelectedSession,
   mergeSessionStatuses,
   modelRequestMarkerAfterFailure,
+  noteAfterRunOutcome,
   shouldRequestModels,
   shouldFlushLaunchPrompt,
   streamingAfterEvent,
@@ -319,6 +320,8 @@ export class HuiApp extends HuiElement {
   @state() private launching = false;
   @state() private note = "";
   @state() private noteLevel: NoteLevel = "info";
+  /** The runtime warning (provider retry, model fallback) the current run is narrating. */
+  private recoveryNotice = "";
   /** Empty while the stream is live; otherwise a muted line saying why. */
   @state() private connectionNote = "";
   @state() private importNote = "";
@@ -1919,7 +1922,12 @@ export class HuiApp extends HuiElement {
     if (event.type === "notice") {
       this.note = event.message;
       this.noteLevel = event.level ?? "info";
+      this.recoveryNotice = this.noteLevel === "warning" ? event.message : "";
       return;
+    }
+    if (event.type === "settled" || event.type === "error") {
+      ({ note: this.note, noteLevel: this.noteLevel } = noteAfterRunOutcome({ note: this.note, noteLevel: this.noteLevel }, this.recoveryNotice));
+      this.recoveryNotice = "";
     }
     switch (event.type) {
       case "text":

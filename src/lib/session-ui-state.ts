@@ -27,6 +27,18 @@ export function mergeSessionStatuses(
 /** Severity of the transient chat notification; it picks the toast's icon and live region. */
 export type NoteLevel = "info" | "warning" | "error";
 
+/**
+ * A runtime warning narrates recovery inside the run (a provider retry or the
+ * model fallback). Once the run settles or fails, its outcome supersedes that
+ * warning, so the toast closes unless another note has replaced it.
+ */
+export function noteAfterRunOutcome(
+  state: { note: string; noteLevel: NoteLevel },
+  recoveryNotice: string,
+): { note: string; noteLevel: NoteLevel } {
+  return recoveryNotice && state.note === recoveryNotice ? { note: "", noteLevel: "info" } : state;
+}
+
 /** Only errors interrupt assistive technology; other notes are polite status. */
 export function noteAnnouncement(level: NoteLevel): "alert" | "status" {
   return level === "error" ? "alert" : "status";
