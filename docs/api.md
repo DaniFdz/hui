@@ -149,18 +149,24 @@ and a session without PI extensions selects nothing more. Durable's hooks carry
 `tool_call` and `tool_result` (tool task), `context` (generation
 `beforeRequest`) and `session_before_compact` (compaction task); the request's
 provider callbacks carry `before_provider_request` and `after_provider_response`;
-the session's event stream carries the lifecycle events, one at a time, and the
-session reports `settled` only after its extensions' `agent_end` and
-`agent_settled` handlers ran. Prompts pass `input` handlers, then skill and
-template expansion, then `before_agent_start`. An extension command runs when
-sent as `/name` (or the `$name` alias); its prompt request returns once it ends
-or first asks something. Dialogs are `question` events answered through the
-question routes, and Stop dismisses them; `notify` is a `notice`.
-`ctx.sessionManager` is an in-memory PI session projected from the history.
-`appendEntry` data is stored as a `hui.pi-entry` entry; a custom message is a
-`hui.pi-message` entry the model reads as user input and the transcript leaves
-out. Load errors and handler failures appear in the session's tool inspection
-`diagnostics`; handler failures are also `notice`s.
+the session's event stream carries the lifecycle events, one at a time and in
+PI's order (a run's start before the prompt that began it), and the session
+reports `settled` only after its extensions' `agent_end` and `agent_settled`
+handlers ran, or after 30 seconds with a `notice`. Prompts pass `input`
+handlers, then skill and template expansion, then `before_agent_start`; the
+session is not streaming until the input is submitted, and Stop meanwhile
+sends nothing. `session_start` holds a session's opening only until it ends or
+first asks something. An extension command runs when sent as `/name` (or the
+`$name` alias); its prompt request returns once it ends or first asks
+something. Dialogs are `question` events answered through the question routes,
+and Stop dismisses them; `notify` is a `notice`. `ctx.sessionManager` is an
+in-memory PI session projected from the history. `appendEntry` data is stored
+as a `hui.pi-entry` entry. A custom message is a `hui.pi-message` entry the
+model reads as user input, written before the prompt `before_agent_start` added
+it to (PI places it after); one that starts or steers a turn is input whose text
+part carries its `customType`. The transcript leaves both out, as for PI
+sessions. Load errors and handler failures appear in the session's tool
+inspection `diagnostics`; handler failures are also `notice`s.
 
 `hui doctor --fix` moves a PI session into a new conversation
 (`server/runtimes/pi-import.ts`) with the gateway stopped. One commit writes the

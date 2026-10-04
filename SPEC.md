@@ -992,16 +992,19 @@ PI's own extension runner, bound to the conversation:
 - Their commands appear in the `/` menu and run in the gateway. A command that
   starts no run settles the session when it ends.
 - Their handlers see the session's lifecycle, its prompts (`input`, and
-  `before_agent_start`, whose messages go to the model as hidden context and
-  whose system prompt applies to that run), the model context before each
-  request, provider requests and responses, tool calls (which they may block or
-  rewrite) and results, and compactions (which they may decline or summarize).
-  A run is over once its `agent_end` and `agent_settled` handlers ran.
+  `before_agent_start`, whose messages go to the model as hidden context just
+  before the prompt and whose system prompt applies to that run), the model
+  context before each request, provider requests and responses, tool calls
+  (which they may block or rewrite) and results, and compactions (which they
+  may decline or summarize). A run is over once its `agent_end` and
+  `agent_settled` handlers ran, or 30 seconds after it ended. Stop while a
+  prompt passes its handlers sends nothing.
 - Their dialogs are HUI questions and their notifications HUI notices.
   Terminal-only UI (status lines, widgets, custom components, shortcuts) is
   ignored.
 - What they store with `appendEntry` and the messages they send are Durable
-  entries, so their state survives a restart.
+  entries, so their state survives a restart. Their messages stay out of the
+  transcript, as in PI sessions, even one that starts a turn.
 - Not available in Durable sessions: registering providers or models,
   replacing or branching the session from a command, turn-boundary entries and
   continuation, replacing a finished message, extra resource paths and nested

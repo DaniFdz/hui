@@ -41,13 +41,19 @@ const { normalizeBuildSystemPromptOptions } = await internal<{
 
 /** A message an extension sent: the model reads it as user input; the transcript hides it, as for PI sessions. */
 export const ExtensionMessageEntry = defineEntry<{ customType: string; display: boolean }>("hui.pi-message");
+/** One that starts or steers a turn is Durable input instead; its text part carries its custom type, which providers
+ * ignore. */
+export function isCustomInput(message: unknown): boolean {
+  const { role, content } = (message ?? {}) as { role?: unknown; content?: unknown };
+  return role === "user" && Array.isArray(content) && typeof (content[0] as { customType?: unknown } | undefined)?.customType === "string";
+}
 /** State an extension stored with `pi.appendEntry`: kept in the store, never sent to the model. */
 export const ExtensionStateEntry = defineEntry<{ customType: string; data?: JsonValue }>("hui.pi-entry");
 
 export type Contribution = { readonly snippet: string; readonly guidelines: readonly string[] };
 /** What `before_agent_start` made of the system prompt for one run. */
 export type RunPrompt = { readonly forced?: string; readonly options?: NormalizedBuildSystemPromptOptions };
-type CustomMessage = { customType: string; content: string | (TextContent | ImageContent)[]; display: boolean; details?: unknown };
+export type CustomMessage = { customType: string; content: string | (TextContent | ImageContent)[]; display: boolean; details?: unknown };
 type Question = { question: RuntimeQuestion; settle(response: RuntimeQuestionResponse | undefined): void };
 type QuestionDraft = RuntimeQuestion extends infer Each ? Each extends RuntimeQuestion ? Omit<Each, "id"> : never : never;
 
@@ -73,8 +79,8 @@ export interface ExtensionSession {
   applyTools(): Promise<void>;
   /** `pi.sendUserMessage`: the prompt pipeline without template expansion. */
   sendUserMessage(text: string, images: readonly ImageContent[], deliverAs?: "steer" | "followUp"): Promise<void>;
-  /** Input that starts or joins a run without passing extension handlers. */
-  submitInput(content: readonly (TextContent | ImageContent)[], whenBusy: "reject" | "steer" | "followUp"): Promise<void>;
+  /** A custom message that starts or steers a turn: input that bypasses extension handlers. */
+  submitInput(message: CustomMessage, whenBusy: "reject" | "steer" | "followUp"): Promise<void>;
   emitRuntime(event: RuntimeEvent): void;
 }
 
@@ -104,6 +110,12 @@ export type LoadOptions = {
 const EMPTY_BOUNDARY = { entries: [], continue: false, context: { contextEntries: [], contextMessages: [], llmMessages: [], pendingMessages: [], canContinue: false } };
 const unsupported = (what: string) => `${what} is not available in Durable sessions.`;
 const context = BACKGROUND_CONTEXT;
+/** Longest a closing session waits for its extensions' `session_shutdown` before it removes their tools anyway. */
+const SHUTDOWN_WAIT_MS = 10_000;
+/** PI's module cache is process-wide: loads run one at a time, so each gets the fresh modules it cleared the cache for. */
+let loading: Promise<unknown> = Promise.resolve();
+/** The run that ended in a batch: its `agent_end` and `agent_settled` follow the batch's own events. */
+type RunEnd = { readonly type: "run_settled"; readonly done: () => void };
 
 /** Colours and styles mean nothing in the web UI: every theme function returns its text. */
 const PLAIN_THEME = new Proxy({}, { get: () => (...args: unknown[]) => { const text = args.at(-1); return typeof text === "string" ? text : ""; } });
@@ -119,9 +131,16 @@ const textOf = (content: unknown): string => typeof content === "string" ? conte
   : "";
 const contentOf = (content: CustomMessage["content"]): (TextContent | ImageContent)[] => typeof content === "string" ? [{ type: "text", text: content }] : content;
 const isDeclarable = (tool: RegisteredTool) => ["direct", "model-only"].includes(tool.definition.exposure ?? "direct");
-/** A custom message as Durable stores it: a user message that keeps its custom fields. */
-const isCustom = (message: unknown): message is Message & { customType: string } =>
-  (message as { role?: unknown }).role === "user" && typeof (message as { customType?: unknown }).customType === "string";
+/** A custom message as Durable stores it: a user message that keeps its custom fields, or input whose text part does. */
+const isCustom = (message: unknown): boolean =>
+  (message as { role?: unknown }).role === "user" && typeof (message as { customType?: unknown }).customType === "string" || isCustomInput(message);
+/** The message as PI's extensions see it: a custom message has PI's `custom` role. */
+function asPi(message: Message): unknown {
+  if (!isCustom(message)) return message;
+  const tagged = message.content[0] as { customType?: string; display?: boolean } | undefined;
+  const fields = message as Message & { customType?: string; display?: boolean };
+  return { ...message, role: "custom", customType: fields.customType ?? tagged?.customType, display: fields.display ?? tagged?.display ?? false };
+}
 
 export class DurableExtensions {
   readonly #host: ExtensionHost;
@@ -146,6 +165,12 @@ export class DurableExtensions {
   #pendingPrompt: RunPrompt | undefined;
   #nextTurn: CustomMessage[] = [];
   #abortRequested = false;
+  /** Base prompt options of the latest prompt, for a command's `ctx.getSystemPromptOptions()`. */
+  #promptOptions: BuildSystemPromptOptions | undefined;
+  /** The Durable events of the batch the session is processing. */
+  #batch: (AgentEvent | RunEnd)[] = [];
+  /** Entries extensions asked to write that Durable has not admitted yet. */
+  #writes = new Set<Promise<unknown>>();
   #compactions: { onComplete?: (result: never) => void; onError?: (error: Error) => void }[] = [];
   /** Compactions whose summary a `session_before_compact` handler supplied. */
   #fromExtension = 0;
@@ -180,8 +205,12 @@ export class DurableExtensions {
       cwd, agentDir: this.#host.agentDir, settingsManager: this.#settings,
       noSkills: true, noPromptTemplates: true, noContextFiles: true, noThemes: true,
     });
-    clearExtensionCache();
-    await loader.reload();
+    const load = loading.then(async () => {
+      clearExtensionCache();
+      await loader.reload();
+    });
+    loading = load.catch(() => undefined);
+    await load;
     const loaded = loader.getExtensions();
     this.#loadErrors = loaded.errors.map((item) => `${basename(item.path)}: ${item.error}`);
     this.#resources = await this.#host.resources(cwd);
@@ -204,6 +233,8 @@ export class DurableExtensions {
 
   #bind(runner: ExtensionRunner): void {
     const session = this.#session;
+    // First: binding reports the providers extensions registered while loading.
+    runner.onError((error) => this.#onError(error));
     runner.bindCore({
       sendMessage: (message, options) => { void this.#sendMessage(message as CustomMessage, options).catch((error: unknown) => this.#report("send_message", error)); },
       sendUserMessage: (content, options) => {
@@ -251,6 +282,7 @@ export class DurableExtensions {
         void session.compact(options?.customInstructions).catch((error: unknown) => this.#compactionEnded("failed", errorText(error)));
       },
       getSystemPrompt: () => this.#host.lastPrompt(session.conversation()),
+      getSystemPromptOptions: () => this.#promptOptions ?? { cwd: session.cwd },
     }, {
       // One model runtime serves every Durable session, so no session may change it.
       registerProvider: () => { throw new Error(unsupported("Registering a provider")); },
@@ -269,7 +301,6 @@ export class DurableExtensions {
       reload: () => session.reload(),
     });
     runner.setUIContext(this.#ui(), "rpc");
-    runner.onError((error) => this.#onError(error));
   }
 
   #model() {
@@ -506,8 +537,7 @@ export class DurableExtensions {
         beforeRequest: async (request) => {
           if (!this.#runner.hasHandlers("context") && !this.#runner.hasHandlers("context_with_system")) return undefined;
           // Handlers see custom messages as PI's `custom` role; the request carries them as user messages.
-          const messages = request.messages.map((message) => isCustom(message) ? { ...message, role: "custom" } : message);
-          const result = convertToLlm(await this.#runner.emitContext(messages as never));
+          const result = convertToLlm(await this.#runner.emitContext(request.messages.map(asPi) as never));
           return isDeepStrictEqual(result, request.messages) ? undefined : { messages: result };
         },
       }),
@@ -594,16 +624,24 @@ export class DurableExtensions {
     return id;
   }
 
+  /** Projected at once, as PI appends it; stored as a write, so mid-run Durable places it at the next boundary. */
   #appendEntry(customType: string, data: unknown): void {
     const json = jsonSafe(data);
     this.#project().appendCustomEntry(customType, json);
     this.#echoes.push({ customType, data: json });
-    // It carries no model message, so it is written at once, even mid-run.
-    const conversation = this.#session.conversation();
-    void conversation.commit(async (tx) => {
-      await tx.appendEntry(ExtensionStateEntry, conversation.id, { data: { customType, ...(json === undefined ? {} : { data: json }) } });
-      return undefined;
-    }, context).catch((error: unknown) => this.#report("append_entry", error));
+    void this.#write(this.#session.conversation().submit({ type: "write", entry: {
+      kind: ExtensionStateEntry.kind, data: { customType, ...(json === undefined ? {} : { data: json }) },
+    } }, context)).catch((error: unknown) => this.#report("append_entry", error));
+  }
+
+  #write<T>(admission: Promise<T>): Promise<T> {
+    this.#writes.add(admission);
+    return admission.finally(() => this.#writes.delete(admission));
+  }
+
+  /** Resolves once what extensions wrote so far is admitted: PI appends it at once, so it precedes the next input. */
+  async writesAdmitted(): Promise<void> {
+    await Promise.allSettled([...this.#writes]);
   }
 
   async #sendMessage(message: CustomMessage, options: { triggerTurn?: boolean; deliverAs?: "steer" | "followUp" | "nextTurn" } | undefined): Promise<void> {
@@ -613,7 +651,7 @@ export class DurableExtensions {
     // As in PI: mid-run it steers (or follows up) unless told not to trigger a turn; idle, it starts a run only when
     // asked to. Otherwise it is context, written as a hidden entry (mid-run at the next boundary).
     if (streaming ? options?.triggerTurn !== false : options?.triggerTurn === true) {
-      await this.#session.submitInput(contentOf(custom.content), streaming ? options?.deliverAs === "followUp" ? "followUp" : "steer" : "reject");
+      await this.#session.submitInput(custom, streaming ? options?.deliverAs === "followUp" ? "followUp" : "steer" : "reject");
       return;
     }
     await this.writeMessages([custom]);
@@ -624,11 +662,11 @@ export class DurableExtensions {
     const conversation = this.#session.conversation();
     for (const message of messages) {
       const details = jsonSafe(message.details);
-      await conversation.submit({ type: "write", entry: {
+      await this.#write(conversation.submit({ type: "write", entry: {
         kind: ExtensionMessageEntry.kind,
         model: [{ role: "user", content: contentOf(message.content), timestamp: Date.now(), customType: message.customType, ...(details === undefined ? {} : { details }) } as Message],
         data: { customType: message.customType, display: message.display },
-      } }, context);
+      } }, context));
     }
   }
 
@@ -665,8 +703,9 @@ export class DurableExtensions {
     return { finished };
   }
 
-  /** PI's `input` event: undefined when an extension handled the input itself. */
+  /** PI's `input` event, the first step of every prompt: undefined when an extension handled the input itself. */
   async input(text: string, images: readonly ImageContent[], source: InputSource, behavior?: "steer" | "followUp") {
+    this.#abortRequested = false;
     if (!this.#runner.hasHandlers("input")) return { text, images };
     const result = await this.#runner.emitInput(text, images.length ? [...images] : undefined, source, behavior);
     if (result.action === "handled") return undefined;
@@ -675,24 +714,39 @@ export class DurableExtensions {
 
   /**
    * PI's `before_agent_start` for a prompt that starts a run: the custom messages to send with it, and the system
-   * prompt the run uses. `aborted` when a handler called `ctx.abort()`.
+   * prompt the run uses. `aborted` when a handler called `ctx.abort()`, or Stop came, since the prompt's `input`.
    */
   async beforeAgentStart(prompt: string, images: readonly ImageContent[]): Promise<{ messages: CustomMessage[]; aborted: boolean }> {
-    const messages = this.#nextTurn.splice(0);
-    this.#abortRequested = false;
+    const queued = this.#nextTurn.splice(0);
     this.#pendingPrompt = undefined;
-    if (!this.#runner.hasHandlers("before_agent_start")) return { messages, aborted: false };
     const active = this.#activeNames();
     const base = normalizeBuildSystemPromptOptions(await this.#host.promptOptions(this.#session.cwd, active, this.contributions()));
-    const result = await this.#runner.emitBeforeAgentStart(prompt, images.length ? [...images] : undefined, structuredClone(base));
-    const options = result.systemPromptOptions;
-    // An edited tool selection becomes the active tools; otherwise the live selection stays authoritative.
-    if (!isDeepStrictEqual(options.selectedTools, active)) { this.#active = new Set(options.selectedTools); this.#applyTools(); }
-    if (options.forceSystemPrompt !== undefined || !isDeepStrictEqual({ ...options, selectedTools: active }, base)) {
-      this.#pendingPrompt = { ...(options.forceSystemPrompt === undefined ? {} : { forced: options.forceSystemPrompt }), options };
+    this.#promptOptions = base;
+    let added: CustomMessage[] = [];
+    if (this.#runner.hasHandlers("before_agent_start") && !this.#abortRequested) {
+      const result = await this.#runner.emitBeforeAgentStart(prompt, images.length ? [...images] : undefined, structuredClone(base));
+      const options = result.systemPromptOptions;
+      // An edited tool selection becomes the active tools; otherwise the live selection stays authoritative.
+      if (!isDeepStrictEqual(options.selectedTools, active)) { this.#active = new Set(options.selectedTools); this.#applyTools(); }
+      if (options.forceSystemPrompt !== undefined || !isDeepStrictEqual({ ...options, selectedTools: active }, base)) {
+        this.#pendingPrompt = { ...(options.forceSystemPrompt === undefined ? {} : { forced: options.forceSystemPrompt }), options };
+      }
+      added = result.messages.map((message) => ({ ...message, content: message.content ?? [], display: message.display === true }));
     }
-    const added = result.messages.map((message) => ({ ...message, content: message.content ?? [], display: message.display === true }));
-    return { messages: [...messages, ...added], aborted: this.#abortRequested };
+    if (!this.#abortRequested) return { messages: [...queued, ...added], aborted: false };
+    // Nothing starts: the next prompt gets the queued messages, and no run takes this prompt.
+    this.#nextTurn.unshift(...queued);
+    this.#pendingPrompt = undefined;
+    return { messages: [], aborted: true };
+  }
+
+  /** Stop came while a prompt passed its handlers: the prompt is not sent. */
+  abortStart(): void {
+    this.#abortRequested = true;
+  }
+
+  get startAborted(): boolean {
+    return this.#abortRequested;
   }
 
   /** The prompt `before_agent_start` gave the current run. */
@@ -714,9 +768,14 @@ export class DurableExtensions {
     void this.#enqueue(event.type, () => event.type === "message_end" ? this.#runner.emitMessageEnd(event as never) : this.#runner.emit(event as never));
   }
 
-  /** `session_start`, ahead of any event of the session's runs. */
-  start(reason: "startup" | "reload" | "new"): Promise<void> {
-    return this.#enqueue("session_start", () => this.#runner.emit({ type: "session_start", reason }));
+  /** `session_start`, ahead of any event of the session's runs. Resolves once its handlers ran or one asks the user
+   * something: the question can only be answered once the session is open. */
+  async start(reason: "startup" | "reload" | "new"): Promise<void> {
+    let release!: () => void;
+    const asked = new Promise<void>((resolve) => { release = resolve; });
+    this.#asked.add(release);
+    const started = this.#enqueue("session_start", () => this.#runner.emit({ type: "session_start", reason }));
+    await Promise.race([started, asked]).finally(() => this.#asked.delete(release));
   }
 
   /** `session_shutdown` after the events before it; the instances are stale from then on. */
@@ -734,36 +793,61 @@ export class DurableExtensions {
     await this.start(reason);
   }
 
-  /** The Durable event the session just processed. */
+  /** A Durable event the session processed; `flush()` hands the batch to the extensions. */
   observe(event: AgentEvent): void {
-    switch (event.type) {
-      case "run_start":
-        this.#run = { controller: new AbortController(), start: this.#session.rows().length, turn: 0, ...(this.#pendingPrompt ? { prompt: this.#pendingPrompt } : {}) };
-        this.#pendingPrompt = undefined;
-        this.#emit({ type: "agent_start" });
-        return;
-      case "turn_start":
-        this.#emit({ type: "turn_start", turnIndex: this.#run?.turn ?? 0, timestamp: Date.now() });
-        return;
-      case "turn_end":
-        this.#turnEnd();
-        return;
-      case "message_end":
-      case "entry_appended":
-        this.#messageEvents(event.entry);
-        return;
-      case "tool_execution_start":
-        this.#emit({ type: "tool_execution_start", toolCallId: event.toolCallId, toolName: event.toolName, args: event.args });
-        return;
-      case "tool_execution_end": {
-        const result = event.entry?.model?.[0] as { content?: unknown; details?: unknown; isError?: boolean } | undefined;
-        this.#emit({ type: "tool_execution_end", toolCallId: event.toolCallId, toolName: event.toolName, result: { content: result?.content ?? [], details: result?.details }, isError: result?.isError === true });
-        if (event.entry) this.#messageEvents(event.entry);
-        return;
+    this.#batch.push(event);
+  }
+
+  /**
+   * Emits the batch the session just processed in PI's order. Durable commits the input of a run with its start but
+   * lists the start last, so that input's messages follow `agent_start` and `turn_start` here, as in PI.
+   */
+  flush(): void {
+    const batch = this.#batch.splice(0);
+    const start = batch.find((event): event is Extract<AgentEvent, { type: "run_start" }> => event.type === "run_start");
+    const inputs = new Set<EntryId>(start ? batch.flatMap((event) =>
+      event.type === "submission" && start.inputs.includes(event.record.id) && "entry" in event.record && event.record.entry !== undefined ? [event.record.entry] : []) : []);
+    let held: EntryRecord[] = [];
+    const release = () => { for (const entry of held) this.#messageEvents(entry); held = []; };
+    for (const event of batch) {
+      switch (event.type) {
+        case "run_start": {
+          const rows = this.#session.rows();
+          const first = rows.findIndex((entry) => inputs.has(entry.id));
+          this.#run = { controller: new AbortController(), start: first === -1 ? rows.length : first, turn: 0, ...(this.#pendingPrompt ? { prompt: this.#pendingPrompt } : {}) };
+          this.#pendingPrompt = undefined;
+          this.#emit({ type: "agent_start" });
+          if (!batch.some((each) => each.type === "turn_start")) release();
+          break;
+        }
+        case "turn_start":
+          this.#emit({ type: "turn_start", turnIndex: this.#run?.turn ?? 0, timestamp: Date.now() });
+          release();
+          break;
+        case "turn_end":
+          this.#turnEnd();
+          break;
+        case "message_end":
+          if (inputs.has(event.entry.id)) held.push(event.entry);
+          else this.#messageEvents(event.entry);
+          break;
+        case "tool_execution_start":
+          this.#emit({ type: "tool_execution_start", toolCallId: event.toolCallId, toolName: event.toolName, args: event.args });
+          break;
+        case "tool_execution_end": {
+          // Durable reports the result's message right after, as `message_end`.
+          const result = event.entry?.model?.[0] as { content?: unknown; details?: unknown; isError?: boolean } | undefined;
+          this.#emit({ type: "tool_execution_end", toolCallId: event.toolCallId, toolName: event.toolName, result: { content: result?.content ?? [], details: result?.details }, isError: result?.isError === true });
+          break;
+        }
+        case "run_settled":
+          this.#runSettled(event.done);
+          break;
+        default:
+          break;
       }
-      default:
-        return;
     }
+    release();
   }
 
   /** `turn_end` for the newest answer and its tool results. Durable decides continuation itself, so results are ignored. */
@@ -781,24 +865,30 @@ export class DurableExtensions {
     });
   }
 
+  /** Message events for the conversation's messages. A summary or reset is no message to PI's extensions. */
   #messageEvents(entry: EntryRecord): void {
-    if (SystemEntry.is(entry) || ExtensionStateEntry.is(entry)) return;
+    if (SystemEntry.is(entry) || ExtensionStateEntry.is(entry) || CompactionEntry.is(entry) || ResetEntry.is(entry)) return;
     for (const raw of entry.model ?? []) {
-      const message = isCustom(raw) ? { ...raw, role: "custom", display: ExtensionMessageEntry.is(entry) && entry.data.display } : raw;
+      const message = ExtensionMessageEntry.is(entry) ? { ...(asPi(raw) as object), display: entry.data.display } : asPi(raw);
       this.#emit({ type: "message_start", message });
       this.#emit({ type: "message_end", message });
     }
   }
 
-  /** The run settled: `agent_end` with what it added, then `agent_settled`. Resolves once their handlers ran: as in PI,
-   * the session is idle only then. */
+  /** The run settled: `agent_end` with what it added, then `agent_settled`, after the batch's own events. Resolves
+   * once their handlers ran: as in PI, the session is idle only then. */
   settled(): Promise<void> {
+    return new Promise((done) => { this.#batch.push({ type: "run_settled", done }); });
+  }
+
+  #runSettled(done: () => void): void {
     const run = this.#run;
     this.#run = undefined;
-    const messages = this.#session.rows().slice(run?.start ?? 0).flatMap((entry) => SystemEntry.is(entry) || ExtensionStateEntry.is(entry) ? [] : entry.model ?? []);
+    const messages = this.#session.rows().slice(run?.start ?? 0)
+      .flatMap((entry) => SystemEntry.is(entry) || ExtensionStateEntry.is(entry) || CompactionEntry.is(entry) ? [] : (entry.model ?? []).map((message) => asPi(message)));
     this.#emit({ type: "agent_end", messages });
     this.#emit({ type: "agent_settled" });
-    return this.#queue;
+    void this.#queue.then(done);
   }
 
   /** A compaction ended; a written summary is `session_compact`. */
@@ -857,10 +947,11 @@ export class DurableExtensions {
     };
   }
 
-  /** `session_shutdown`, then the session's tools and hooks leave the registry. */
+  /** `session_shutdown`, then the session's tools and hooks leave the registry, at the latest after `SHUTDOWN_WAIT_MS`. */
   async dispose(): Promise<void> {
     if (this.#disposed) return;
-    await this.#shutdown("quit");
+    let timer: NodeJS.Timeout | undefined;
+    await Promise.race([this.#shutdown("quit"), new Promise((resolve) => { timer = setTimeout(resolve, SHUTDOWN_WAIT_MS); })]).finally(() => clearTimeout(timer));
     this.#disposed = true;
     this.#host.uninstall(this.#extension);
   }

@@ -654,9 +654,10 @@ test("Durable requests give each HUI session its own PI_CLIENT_SESSION_ID for pr
  * command that asks the user and stores state, and lifecycle events. It logs what it saw, one JSON line each. */
 function fixtureExtension(log: string): string {
   return `import { appendFileSync } from "node:fs";
+const record = (entry) => appendFileSync(${JSON.stringify(log)}, JSON.stringify(entry) + "\\n");
+// Module state: a fresh module (a new session, a reload) has a new stamp.
+const loaded = Date.now() + Math.random();
 export default function (pi) {
-  const record = (entry) => appendFileSync(${JSON.stringify(log)}, JSON.stringify(entry) + "\\n");
-  const loaded = Date.now() + Math.random();
   pi.on("session_start", (event, ctx) => {
     const choices = ctx.sessionManager.getEntries().filter((entry) => entry.type === "custom" && entry.customType === "fixture-choice");
     record({ event: "session_start", reason: event.reason, loaded, session: ctx.sessionManager.getSessionId(), choices: choices.map((entry) => entry.data.choice), hasUI: ctx.hasUI });
@@ -664,6 +665,9 @@ export default function (pi) {
   pi.on("session_shutdown", (event) => record({ event: "session_shutdown", reason: event.reason, loaded }));
   pi.on("agent_end", (event) => record({ event: "agent_end", roles: event.messages.map((message) => message.role) }));
   pi.on("tool_execution_end", (event) => record({ event: "tool_execution_end", tool: event.toolName, isError: event.isError }));
+  for (const name of ["agent_start", "turn_start", "turn_end", "agent_settled", "message_end", "tool_execution_end"]) {
+    pi.on(name, (event) => record({ event: "order", name: event.type === "message_end" ? "message_end:" + event.message.role : name }));
+  }
   pi.registerTool({
     name: "fixture_echo", label: "Echo", description: "Echoes text with the session it ran in.", promptSnippet: "Echo text back",
     parameters: { type: "object", properties: { text: { type: "string" } }, required: ["text"] },
@@ -678,11 +682,18 @@ export default function (pi) {
   pi.on("tool_result", (event) => {
     if (event.toolName === "fixture_echo") return { content: [...event.content, { type: "text", text: " (seen by tool_result)" }] };
   });
-  pi.on("input", (event) => event.text.startsWith("FIXTURE_ALIAS") ? { action: "transform", text: event.text.replace("FIXTURE_ALIAS", "E2E_EXTENSION_TOOL") } : { action: "continue" });
-  pi.on("before_agent_start", (event) => ({
-    message: { customType: "fixture-context", content: "FIXTURE_CONTEXT_MARKER", display: false },
-    systemPrompt: "FIXTURE_PROTOCOL\\n" + event.systemPrompt,
-  }));
+  pi.on("input", async (event, ctx) => {
+    if (event.text.startsWith("FIXTURE_ASK_FIRST")) await ctx.ui.confirm("Go ahead?", "The fixture asks before sending.");
+    return event.text.startsWith("FIXTURE_ALIAS") ? { action: "transform", text: event.text.replace("FIXTURE_ALIAS", "E2E_EXTENSION_TOOL") } : { action: "continue" };
+  });
+  pi.on("before_agent_start", (event) => {
+    // Context an extension adds while idle, without a turn of its own.
+    pi.sendMessage({ customType: "fixture-note", content: "FIXTURE_NOTE_MARKER", display: false });
+    return {
+      message: { customType: "fixture-context", content: "FIXTURE_CONTEXT_MARKER", display: false },
+      systemPrompt: "FIXTURE_PROTOCOL\\n" + event.systemPrompt,
+    };
+  });
   pi.registerCommand("fixture-ask", {
     description: "Asks for a colour and keeps it",
     handler: async (_args, ctx) => {
@@ -692,6 +703,10 @@ export default function (pi) {
     },
   });
   pi.registerCommand("fixture-send", { description: "Sends a prompt", handler: async (args) => { pi.sendUserMessage("E2E_EXTENSION_TOOL " + args); } });
+  pi.registerCommand("fixture-trigger", {
+    description: "Starts a turn with a custom message",
+    handler: async () => { pi.sendMessage({ customType: "fixture-result", content: "E2E_EXTENSION_TOOL from a custom message", display: true }, { triggerTurn: true }); },
+  });
 }
 `;
 }
@@ -738,14 +753,63 @@ test("Durable sessions load PI extensions: their tools, hooks and prompt additio
   assert.match(request, /FIXTURE_PROTOCOL/u, "before_agent_start's system prompt is the run's");
   assert.match(request, /fixture_echo: Echo text back/u, "the tool's snippet is in HUI's active-tool list");
   assert.ok(!JSON.stringify(session.transcript()).includes("FIXTURE_CONTEXT_MARKER"), "the custom message is context only");
-  assert.deepEqual(await logged(f.events, "tool_execution_end"), [{ event: "tool_execution_end", tool: "fixture_echo", isError: false }]);
+  // PI's order, each message once. Durable writes the run's custom messages just before its input.
+  assert.deepEqual((await logged(f.events, "order")).map((entry) => entry["name"]), [
+    "message_end:custom", "message_end:custom", "agent_start", "turn_start", "message_end:user", "message_end:assistant",
+    "tool_execution_end", "message_end:toolResult", "turn_end", "turn_start", "message_end:assistant", "turn_end", "agent_settled",
+  ]);
+  assert.match(request, /FIXTURE_NOTE_MARKER/u, "a message sent without a turn is context for the prompt");
+  assert.equal(session.transcript().filter((entry) => entry.kind === "message" && entry.role === "user").length, 1, "and starts no run of its own");
   const [end] = await logged(f.events, "agent_end");
   assert.ok((end?.["roles"] as string[]).includes("toolResult"), JSON.stringify(end));
 
   const blocked = nextEvent(session, (event) => event.type === "tool_end");
-  await session.prompt("E2E_COMMAND run it");
+  await settledAfter(session, "E2E_COMMAND run it");
   const result = await blocked;
   assert(result.type === "tool_end" && result.failed === true && /the fixture extension blocks it/u.test(String(result.output)), JSON.stringify(result));
+});
+
+test("Stop while an input handler asks leaves the prompt unsent", { timeout: 45_000 }, async (t) => {
+  const f = await extensionFixture(t);
+  const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-stop-input" }, f.host());
+  const asked = nextEvent(session, (event) => event.type === "question");
+  const settled = nextEvent(session, (event) => event.type === "settled");
+  const prompting = session.prompt("FIXTURE_ASK_FIRST E2E_EXTENSION_TOOL");
+  assert.equal((await asked).type, "question");
+  assert.equal(session.isStreaming, false, "a prompt still passing its handlers is not a run");
+  await session.abort();
+  await prompting;
+  await settled;
+  assert.deepEqual(session.transcript(), [], "nothing was sent");
+  assert.deepEqual(session.pendingQuestions(), []);
+  assert.equal(await readFile(f.log, "utf8").catch(() => ""), "", "the model was never asked");
+});
+
+test("a session_start dialog does not hold the session from opening", { timeout: 45_000 }, async (t) => {
+  const asks = "export default function (pi) { pi.on('session_start', async (_event, ctx) => { const ok = await ctx.ui.confirm('Fixture start', 'Allow it?'); ctx.ui.notify('start ' + ok, 'info'); }); }\n";
+  const f = await extensionFixture(t, { extensions: { "asks.js": asks } });
+  const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-start-dialog" }, f.host());
+  const [question] = session.pendingQuestions();
+  assert(question?.method === "confirm" && question.title === "Fixture start", JSON.stringify(question));
+  const notified = nextEvent(session, (event) => event.type === "notice");
+  await session.respondQuestion(question.id, { confirmed: true });
+  assert.deepEqual(await notified, { type: "notice", level: "info", message: "start true" });
+});
+
+test("rewinding to before the first message keeps the session's extensions", { timeout: 45_000 }, async (t) => {
+  const tool = "export default function (pi) { pi.registerTool({ name: 'fixture_echo', label: 'Echo', description: 'Echoes.', parameters: { type: 'object', properties: { text: { type: 'string' } } }, async execute(_id, params) { return { content: [{ type: 'text', text: 'echo: ' + params.text }], details: {} }; } }); }\n";
+  const f = await fixture(t, { extensions: { "tool.js": tool } });
+  const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-rewind-extensions" }, f.host());
+  await settledAfter(session, "E2E_RICH first");
+  const before = session.sessionFile;
+  await session.rewind({ userFromEnd: 0 }, { excludeUserMessage: true });
+  assert.notEqual(session.sessionFile, before, "the session continues in a new conversation");
+  assert.deepEqual(session.transcript(), []);
+  assert.ok((await session.inspect()).tools.some((each) => each.name === "fixture_echo"), "with the extension's tool");
+  const ended = nextEvent(session, (event) => event.type === "tool_end");
+  await settledAfter(session, "E2E_EXTENSION_TOOL after the rewind");
+  const result = await ended;
+  assert(result.type === "tool_end" && result.output === "echo: from the model", JSON.stringify(result));
 });
 
 test("extension commands run in the gateway, ask through HUI questions and keep their state across a reopen", { timeout: 45_000 }, async (t) => {
@@ -769,6 +833,13 @@ test("extension commands run in the gateway, ask through HUI questions and keep 
   // The command's own prompt starts a run through the input pipeline.
   await settledAfter(session, "/fixture-send now");
   assert.ok(answered("Tool complete")(session.transcript()));
+  // A custom message that starts a turn reaches the model and stays out of the transcript, as in PI sessions.
+  const users = (entries: TranscriptEntry[]) => entries.filter((entry) => entry.kind === "message" && entry.role === "user").length;
+  const before = users(session.transcript());
+  await settledAfter(session, "/fixture-trigger");
+  assert.match(JSON.stringify((await providerRequests(f.log)).at(-2)?.messages), /from a custom message/u);
+  assert.equal(users(session.transcript()), before, "no user message shows for it");
+  assert.equal(session.transcript().filter((entry) => entry.kind === "tool").length, 2, "but its turn does");
 
   const reference = session.sessionFile;
   session.dispose();
