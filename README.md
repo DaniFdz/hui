@@ -8,7 +8,7 @@
 <p align="center">
   <a href="https://github.com/DaniFdz/hui/releases/latest"><img src="https://img.shields.io/github/v/release/DaniFdz/hui?style=flat-square&label=release" alt="Latest release"></a>
   <a href="https://github.com/DaniFdz/hui/actions/workflows/nix.yml"><img src="https://img.shields.io/github/actions/workflow/status/DaniFdz/hui/nix.yml?branch=main&style=flat-square&label=ci" alt="CI status"></a>
-  <a href="https://nodejs.org"><img src="https://img.shields.io/badge/node-%E2%89%A522.18-339933?style=flat-square&logo=nodedotjs&logoColor=white" alt="Node.js 22.18 or newer"></a>
+  <a href="https://nodejs.org"><img src="https://img.shields.io/badge/node-%E2%89%A522.19-339933?style=flat-square&logo=nodedotjs&logoColor=white" alt="Node.js 22.19 or newer"></a>
   <a href="https://pi.dev"><img src="https://img.shields.io/badge/runtime-PI-8b5cf6?style=flat-square" alt="Runtime: PI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License: MIT"></a>
 </p>
@@ -39,7 +39,7 @@ PI transcripts into its own storage.
 
 Requirements:
 
-- Node.js **22.18 or newer** and npm.
+- Node.js **22.19 or newer** and npm.
 - Git for source checkouts.
 - Optional: Google Chrome, Brave, Microsoft Edge or Chromium for the agent
   browser tool. HUI launches it with its own profile; nothing is downloaded.
