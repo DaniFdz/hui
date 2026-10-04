@@ -846,7 +846,7 @@ export class HuiApp extends HuiElement {
       if (!this.embeddedPane) document.title = documentTitle(activeSessionTitle);
     }
     // A selector that matches nothing walks the whole open transcript, and
-    // this runs on every keystroke: query a dialog only while it is open.
+    // this runs on every keystroke: query a dialog only while its state shows it.
     const worktreeDialog = this.worktreeConfirm && this.worktreeConfirm !== "merged" ? this.renderRoot.querySelector?.(".worktree-remove-dialog") : null;
     if (worktreeDialog instanceof HTMLDialogElement && !worktreeDialog.open) {
       ensureModal(worktreeDialog);

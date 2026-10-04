@@ -12,7 +12,7 @@ type Tool = Extract<TranscriptItem, { kind: "tool" }>;
 type CommandToolView = { command: string; preview: string; extras: [string, unknown][] };
 
 // Every render of the transcript asks for each tool row's view, and parsing
-// the shell for its preview costs ~10 ms per render on a long session.
+// the shell for its preview costs ~12 ms per render on a long session.
 // Transcript items are replaced, never mutated, so one parse per item holds.
 const views = new WeakMap<Tool, CommandToolView | null>();
 
