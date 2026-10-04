@@ -9,8 +9,20 @@ import { renderHighlightedCommand } from "./command-highlight.ts";
 import { displayToolValue, syncToolOverflow } from "./read-tool-card.ts";
 
 type Tool = Extract<TranscriptItem, { kind: "tool" }>;
+type CommandToolView = { command: string; preview: string; extras: [string, unknown][] };
 
-export function commandToolPresentation(item: Tool) {
+// Every render of the transcript asks for each tool row's view, and parsing
+// the shell for its preview costs ~10 ms per render on a long session.
+// Transcript items are replaced, never mutated, so one parse per item holds.
+const views = new WeakMap<Tool, CommandToolView | null>();
+
+export function commandToolPresentation(item: Tool): CommandToolView | null {
+  let view = views.get(item);
+  if (view === undefined) views.set(item, view = presentCommandTool(item));
+  return view;
+}
+
+function presentCommandTool(item: Tool): CommandToolView | null {
   const args = item.args && typeof item.args === "object" && !Array.isArray(item.args) ? item.args as Record<string, unknown> : null;
   if (!args || typeof args.command !== "string" || !args.command.trim()) return null;
   const namedCommand = ["bash", "exec", "shell", "run_command", "run_terminal_cmd"].includes(item.name.trim().toLowerCase());

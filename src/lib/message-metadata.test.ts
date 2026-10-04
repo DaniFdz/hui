@@ -13,6 +13,7 @@ test("time labels handle boundaries, clock skew and missing measurements", () =>
   assert.equal(relativeTime(0, 180000), "3m ago");
   assert.equal(metricSummary(), "");
   assert.equal(metricSummary({ outputTokens: 0 }), "0 output tokens");
+  assert.equal(metricSummary({ outputTokens: 1234567 }), "1,234,567 output tokens");
 });
 test("snapshot normalization retains measured zeroes and rejects invalid values", () => {
   const [entry] = normalizeTranscript([{ kind: "message", role: "assistant", text: "Answer", metrics: { inputTokens: 0, outputTokens: -1, costUsd: NaN, durationMs: 87, completedAt: 1234 } }]);

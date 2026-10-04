@@ -16,6 +16,16 @@ test("command previews unwrap shell wrappers, bound text and retain invalid inpu
   assert.equal(commandToolPresentation({ kind: "tool", id: "c1", name: "bash", args: { command: "  " } }), null);
 });
 
+test("every transcript re-render reuses a command row's parsed preview", () => {
+  // Keystrokes, streamed tokens and the 3s poll re-render the whole transcript;
+  // re-parsing every command made typing lag on long sessions.
+  const item = { kind: "tool" as const, id: "c1", name: "bash", args: { command: "cd /tmp && ls" } };
+  const view = commandToolPresentation(item);
+  assert.equal(commandToolPresentation(item), view);
+  // A changed row is a new item, so it never shows the old command.
+  assert.equal(commandToolPresentation({ ...item, args: { command: "pwd" } })?.preview, "pwd");
+});
+
 test("the original display highlighter bounds work and does not interpret shell input", () => {
   const source = "x".repeat(2001);
   assert.deepEqual(renderHighlightedCommand(source).values, [source]);

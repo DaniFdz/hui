@@ -1,4 +1,4 @@
-import { metricSummary, relativeTime, replyDraft } from "../lib/message-metadata.ts";
+import { formatCount, metricSummary, relativeTime, replyDraft } from "../lib/message-metadata.ts";
 import { renderDirectoryPicker } from "./directory-picker.ts";
 import { html, nothing, type TemplateResult } from "lit";
 import { ref } from "lit/directives/ref.js";
@@ -791,7 +791,7 @@ function renderMetrics(item: TranscriptItem) {
       ["Input tokens", metrics.inputTokens], ["Output tokens", metrics.outputTokens],
       ["Cache read tokens", metrics.cacheReadTokens], ["Cache write tokens", metrics.cacheWriteTokens],
       ["Cost (USD)", metrics.costUsd],
-    ] as const).filter(([, value]) => value !== undefined).map(([label, value]) => html`<div><dt>${label}</dt><dd>${label === "Cost (USD)" ? `$${value!.toFixed(6)}` : value!.toLocaleString("en-US")}</dd></div>`)}</dl>
+    ] as const).filter(([, value]) => value !== undefined).map(([label, value]) => html`<div><dt>${label}</dt><dd>${label === "Cost (USD)" ? `$${value!.toFixed(6)}` : formatCount(value!)}</dd></div>`)}</dl>
     <small>Tokens and cost belong to the model call, including reasoning; not individual text fragments. Tool timing excludes model generation.</small>
   </details>`;
 }

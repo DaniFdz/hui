@@ -845,15 +845,17 @@ export class HuiApp extends HuiElement {
         : undefined;
       if (!this.embeddedPane) document.title = documentTitle(activeSessionTitle);
     }
-    const worktreeDialog = this.renderRoot.querySelector?.(".worktree-remove-dialog");
-    if (worktreeDialog instanceof HTMLDialogElement && this.worktreeConfirm && this.worktreeConfirm !== "merged" && !worktreeDialog.open) {
+    // A selector that matches nothing walks the whole open transcript, and
+    // this runs on every keystroke: query a dialog only while it is open.
+    const worktreeDialog = this.worktreeConfirm && this.worktreeConfirm !== "merged" ? this.renderRoot.querySelector?.(".worktree-remove-dialog") : null;
+    if (worktreeDialog instanceof HTMLDialogElement && !worktreeDialog.open) {
       ensureModal(worktreeDialog);
       worktreeDialog.querySelector<HTMLButtonElement>(".worktree-remove-cancel")?.focus();
     }
-    const backlogRemoveDialog = this.renderRoot.querySelector?.(".backlog-remove-dialog");
-    if (backlogRemoveDialog instanceof HTMLDialogElement && this.backlogRemove) ensureModal(backlogRemoveDialog);
-    const deleteDialog = this.renderRoot.querySelector?.(".delete-session-dialog");
-    if (deleteDialog instanceof HTMLDialogElement && this.deletingFor) {
+    const backlogRemoveDialog = this.backlogRemove ? this.renderRoot.querySelector?.(".backlog-remove-dialog") : null;
+    if (backlogRemoveDialog instanceof HTMLDialogElement) ensureModal(backlogRemoveDialog);
+    const deleteDialog = this.deletingFor ? this.renderRoot.querySelector?.(".delete-session-dialog") : null;
+    if (deleteDialog instanceof HTMLDialogElement) {
       ensureModal(deleteDialog);
     }
     if (this.deleteNeedsFocus && this.deletingFor) {
@@ -865,14 +867,14 @@ export class HuiApp extends HuiElement {
       const questionControl = this.renderRoot.querySelector?.('.session-question-card [role="radio"][tabindex="0"], .session-question-card input:not([type="hidden"]), .session-question-card textarea');
       if (questionControl instanceof HTMLElement) questionControl.focus();
     }
-    const groupDialog = this.renderRoot.querySelector?.(".group-action-dialog");
-    const updateDialog = this.renderRoot.querySelector?.(".hui-update-dialog");
-    if (updateDialog instanceof HTMLDialogElement && this.updateOpen) ensureModal(updateDialog);
-    if (groupDialog instanceof HTMLDialogElement && this.groupAction) ensureModal(groupDialog);
-    const resourceReader = this.renderRoot.querySelector?.(".pi-resource-reader-modal");
-    if (resourceReader instanceof HTMLDialogElement && this.piResourceReader) ensureModal(resourceReader);
-    const commandPalette = this.renderRoot.querySelector?.(".command-palette-dialog");
-    if (commandPalette instanceof HTMLDialogElement && this.commandPaletteOpen) {
+    const groupDialog = this.groupAction ? this.renderRoot.querySelector?.(".group-action-dialog") : null;
+    const updateDialog = this.updateOpen ? this.renderRoot.querySelector?.(".hui-update-dialog") : null;
+    if (updateDialog instanceof HTMLDialogElement) ensureModal(updateDialog);
+    if (groupDialog instanceof HTMLDialogElement) ensureModal(groupDialog);
+    const resourceReader = this.piResourceReader ? this.renderRoot.querySelector?.(".pi-resource-reader-modal") : null;
+    if (resourceReader instanceof HTMLDialogElement) ensureModal(resourceReader);
+    const commandPalette = this.commandPaletteOpen ? this.renderRoot.querySelector?.(".command-palette-dialog") : null;
+    if (commandPalette instanceof HTMLDialogElement) {
       ensureModal(commandPalette);
       if (changed.has("commandPaletteOpen")) {
         const input = this.renderRoot.querySelector?.("#command-palette-input");
