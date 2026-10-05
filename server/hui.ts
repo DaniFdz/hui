@@ -25,6 +25,12 @@ import { fileURLToPath } from "node:url";
 import type { Connect, Plugin } from "vite";
 import { workers } from "./workers.ts";
 import { createWorkerRoutes, WORKERS_ROUTE } from "./worker-routes.ts";
+import { BotInputError, BotRegistry, BotStoreError } from "./bots.ts";
+import { BotService } from "./bot-service.ts";
+import { BOTS_EVENTS_ROUTE, BOTS_ROUTE, createBotRoutes } from "./bot-routes.ts";
+import { durableBotConversations } from "./bot-conversations.ts";
+import { unavailableBotMemory } from "./bot-memory.ts";
+import type { BotsUpdate, BotView } from "../shared/bots.ts";
 import { progressCardFromTranscript, type ProgressCard } from "../shared/progress-card.ts";
 import type { SessionPullRequest } from "../shared/pull-requests.ts";
 import {
@@ -75,6 +81,7 @@ import {
   AutomationInputError,
   AutomationNotFoundError,
   AutomationService,
+  AutomationStoreError,
   type AutomationExecution,
 } from "./automation.ts";
 import type { AutomationTask } from "../src/lib/automation-types.ts";
@@ -242,6 +249,50 @@ function forWorkerSessions(workerId: string, act: (record: SessionRecord) => voi
 }
 workers.onConnected((workerId) => forWorkerSessions(workerId, (record) => liveSessions.ensure(record, true)));
 workers.onStopped((workerId) => forWorkerSessions(workerId, (record) => liveSessions.stopReconnecting(record.id)));
+/** Bots (HUI-18): their registry, and the service that runs each one's forever chat as an ordinary Durable session.
+ * Memory is OptChat's; until this build wires it, `unavailableBotMemory` leaves the chats plain Durable conversations. */
+const botRegistry = new BotRegistry(undefined, (count) => recordDiagnosticEvent({
+  area: "session", level: "warning", action: "bots_invalid_records",
+  summary: `bots.json holds ${count} invalid bot record${count === 1 ? "" : "s"}; HUI keeps them in the file but does not show them.`,
+}));
+const bots = new BotService({
+  registry: botRegistry,
+  sessions: liveSessions,
+  readSessions: readRegistry,
+  updateSessions: updateRegistry,
+  createSession: (body, bot) => createSession(body, liveSessions, updateRegistry, undefined, { bot }),
+  removeSession: (id) => deleteSession(id),
+  conversations: durableBotConversations(durableHost(), unavailableBotMemory),
+  memory: unavailableBotMemory,
+  routines: {
+    // A broken automation store is a storage failure (500), not the caller's.
+    tasks: async () => (await automation.snapshot().catch(automationStoreFailure)).tasks,
+    disable: async (task) => {
+      await automation.update(task.id, {
+        name: task.name, description: task.description, sessionId: task.sessionId, prompt: task.prompt,
+        schedule: task.schedule, enabled: false, timeoutSeconds: task.timeoutSeconds,
+      }).catch(automationStoreFailure);
+    },
+  },
+  report: (event) => recordDiagnosticEvent({ area: "session", ...event }),
+});
+const botRoutes = createBotRoutes({
+  service: bots,
+  readAttachments: async (sessionId, raw) => {
+    try {
+      return await readAttachments(sessionId, raw);
+    } catch (error) {
+      throw error instanceof AttachmentInputError ? new BotInputError(error.message) : error;
+    }
+  },
+});
+function automationStoreFailure(error: unknown): never {
+  throw error instanceof AutomationStoreError ? new BotStoreError(error.message, { cause: error }) : error;
+}
+// A bot's chat lists the other bots in its `bots` prompt section.
+durableHost().botSection = (botId) => bots.section(botId);
+/** The bot list every Bots screen shares, recomputed while one listens, like the session list. */
+const botList = createSessionListHub<BotView>(async () => [{ label: "bots", sessions: await bots.list({ archived: "all" }) }]);
 const subagents = new SubagentService(liveSessions);
 const taskSuggestions = new TaskSuggestionStore({ onChange: (id) => liveSessions.notifySnapshot(id) });
 const watchers = new WatcherService({
@@ -261,6 +312,8 @@ liveSessions.setWatcherProvider((id) => watchers.list(id));
 // A stopped turn must not leave its pages running in the headless browser.
 liveSessions.setAbortListener((id) => managedBrowser.closeOwner(id));
 registerAgentToolHandler(async (invocation) => {
+  // A bot's chat only: the service refuses every other caller.
+  if (invocation.action === "message_bot") return bots.messageBot(invocation.callerSessionId, invocation.params);
   if (invocation.action === "suggest_task" || invocation.action === "dismiss_task") {
     const caller = (await readRegistry()).find(({ id }) => id === invocation.callerSessionId);
     if (!caller) throw new TaskSuggestionInputError("Conversation no longer exists.");
@@ -604,6 +657,17 @@ function sendJson(response: ServerResponse, status: number, body: unknown): void
   response.end(JSON.stringify(body));
 }
 
+/** A page HUI renders itself (a bot's memory). Its text comes from a chat, so it may run nothing and load nothing. */
+function sendHtml(response: ServerResponse, status: number, html: string): void {
+  if (response.writableEnded) return;
+  response.statusCode = status;
+  response.setHeader("content-type", "text/html; charset=utf-8");
+  response.setHeader("cache-control", "no-store");
+  response.setHeader("x-content-type-options", "nosniff");
+  response.setHeader("content-security-policy", "default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'self'");
+  response.end(html);
+}
+
 async function readBody(
   request: Connect.IncomingMessage,
   maxBytes = MAX_BODY_BYTES,
@@ -795,6 +859,8 @@ type SessionView = {
   icon?: string;
   parentId?: string;
   subagent?: NonNullable<SessionRecord["subagent"]>;
+  /** The bot whose forever chat this is; the Sessions list leaves these to the Bots tab. */
+  bot?: { id: string; handle: string; name: string };
   /** Effective Kanban stage; see `effectiveSessionStage`. */
   stage: SessionStage;
   stageOrigin: SessionStageOrigin;
@@ -804,6 +870,18 @@ type SessionView = {
 
 export class SessionNotFoundError extends Error {
   override name = "SessionNotFoundError";
+}
+
+/** Why a bot's chat refuses an operation that would end, shorten or fork it (409). Without a handle (an unreadable
+ * bot registry), the record's `bot` field alone refuses. */
+function foreverChatRefusal(handle: string | undefined, operation: "clear" | "compact" | "rewind" | "delete"): string {
+  const chat = handle ? `@${handle}'s` : "a bot's";
+  return {
+    clear: `This is ${chat} forever chat: it cannot be cleared. Its memory keeps everything; archive the bot when you are done with it.`,
+    compact: `This is ${chat} forever chat: its memory condenses it by itself, so it is not compacted by hand.`,
+    rewind: `This is ${chat} forever chat: it cannot be rewound or forked.`,
+    delete: `This is ${chat} forever chat: archive the bot instead${handle ? ` (hui bot remove ${handle})` : ""}; its chat and memory are kept.`,
+  }[operation];
 }
 
 function sessionText(
@@ -1009,6 +1087,7 @@ function toView(
   const transcript = liveSessions.transcript(record.id);
   const pullRequests = pullRequestsFromTranscript(transcript).map((ref) => pullRequestStatuses.view(ref));
   const jiraIssues = sessionJiraIssues(record, transcript);
+  const bot = record.bot ? bots.identity(record.bot) : undefined;
   return {
     id: record.id,
     progress: progressCardFromTranscript(transcript),
@@ -1033,6 +1112,7 @@ function toView(
     ...(record.icon ? { icon: record.icon } : {}),
     ...(record.parentId ? { parentId: record.parentId } : {}),
     ...(record.subagent ? { subagent: record.subagent } : {}),
+    ...(bot ? { bot } : {}),
     ...effectiveSessionStage(record, pullRequests),
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
@@ -1111,6 +1191,8 @@ async function listSessionViews(): Promise<{ label: string; sessions: SessionVie
   // Taken before the registry read: a record is persisted before its pending
   // entry is dropped, so every list contains a finishing session once.
   const pendingSnapshot = [...pendingSessions.values()];
+  // Refreshes the bot names session views show; a broken bots.json leaves them plain sessions.
+  await botRegistry.list().catch(() => undefined);
   const registry = await readSessionRegistry();
   const runtimes = liveSessions.runtimeTelemetry();
   const memoryByPid = await runtimeMemoryByPid([...runtimes.values()].flatMap(({ pid }) => pid ? [pid] : []));
@@ -1230,6 +1312,9 @@ async function executeAutomationTask(
 ): Promise<AutomationExecution> {
   const record = (await readRegistry()).find((session) => session.id === task.sessionId);
   if (!record) throw new AutomationNotFoundError("The target session no longer exists.");
+  // A bot's routine: marked as such, and queued behind a busy bot instead of skipped.
+  const bot = record.bot ? await bots.botForSession(record.id) : undefined;
+  if (bot) return bots.runRoutine(bot, record, task, signal);
   if (liveSessions.status(record.id) === "running") {
     throw new AutomationConflictError("The target session is already running.");
   }
@@ -1282,6 +1367,8 @@ export async function createSession(
     stage?: SessionStage;
     onPending?: (record: SessionRecord) => void;
     nameSession?: typeof generateSessionNames;
+    /** A bot's chat: its bot, and the Durable conversation already created for it (bot-service.ts). */
+    bot?: { id: string; piSessionFile: string };
   } = {},
 ): Promise<SessionRecord> {
   if (typeof body["cwd"] !== "string") throw new Error("Working directory must be text.");
@@ -1372,6 +1459,7 @@ export async function createSession(
     ...(model ? { model } : {}),
     ...(thinking ? { thinking } : {}),
     ...(seed.stage ? { stage: seed.stage, stageSource: "operator" as const } : {}),
+    ...(seed.bot ? { bot: seed.bot.id, piSessionFile: seed.bot.piSessionFile } : {}),
     createdAt: now,
     updatedAt: now,
     source: "hui",
@@ -2021,6 +2109,30 @@ export function streamSessionStatuses(
   });
 }
 
+/** `GET /__hui/bots/events`: the complete bot list first, then only the bots whose views changed. */
+export function streamBots(response: ServerResponse, list: Pick<typeof botList, "subscribe"> = botList): void {
+  response.writeHead(200, {
+    "content-type": "text/event-stream; charset=utf-8",
+    "cache-control": "no-store",
+    connection: "keep-alive",
+    "x-accel-buffering": "no",
+  });
+  response.flushHeaders();
+  const unlist = list.subscribe((update) => writeEvent(response, "bots", {
+    revision: update.revision,
+    ...(update.groups ? { ids: update.groups.flatMap((group) => group.ids) } : {}),
+    upserts: update.upserts,
+  } satisfies BotsUpdate));
+  const heartbeat = setInterval(() => {
+    if (!response.writableEnded) response.write(": heartbeat\n\n");
+  }, HEARTBEAT_MS);
+  heartbeat.unref();
+  response.on("close", () => {
+    clearInterval(heartbeat);
+    unlist();
+  });
+}
+
 async function handleRequest(
   request: Connect.IncomingMessage,
   response: ServerResponse,
@@ -2323,6 +2435,29 @@ async function handleRequest(
     const result = await workerRoutes.handle(request.method ?? "GET", path, () => readBody(request));
     if (result) sendJson(response, result.status, result.body);
     else sendJson(response, 404, { error: "not found" });
+    return;
+  }
+
+  if (path === BOTS_EVENTS_ROUTE) {
+    if (request.method === "GET") streamBots(response);
+    else sendJson(response, 405, { error: "method not allowed" });
+    return;
+  }
+
+  if (path === BOTS_ROUTE || path.startsWith(`${BOTS_ROUTE}/`)) {
+    // A client that leaves ends its wait for a reply, never the bot's turn.
+    const gone = new AbortController();
+    response.once("close", () => gone.abort());
+    const result = await botRoutes.handle({
+      method: request.method ?? "GET",
+      path,
+      query: new URL(request.url ?? "/", "http://localhost").searchParams,
+      body: (maxBytes) => readBody(request, maxBytes),
+      signal: gone.signal,
+    });
+    if (!result) sendJson(response, 404, { error: `unknown route: ${path}` });
+    else if ("html" in result) sendHtml(response, result.status, result.html);
+    else sendJson(response, result.status, result.body);
     return;
   }
 
@@ -3106,6 +3241,12 @@ async function handleRequest(
     }
 
     if (request.method === "DELETE") {
+      // A bot owns its chat: deleting the row would orphan the bot. Archiving keeps both.
+      const bot = await bots.botForSession(id).catch(() => undefined);
+      if (bot) {
+        sendJson(response, 409, { error: foreverChatRefusal(bot.handle, "delete") });
+        return;
+      }
       // Block stale opens first, but keep the runtime and streams alive until
       // registry removal commits. A storage failure rolls the tombstone back.
       try {
@@ -3150,6 +3291,15 @@ async function handleRequest(
         error: pending ? pending.error ?? "The Git worktree is still being created." : `unknown session: ${id}`,
       });
       return;
+    }
+    // A bot's chat never ends: what would reset, shorten or fork it is refused here; the model stays switchable.
+    if (record.bot && request.method === "POST" && (action[2] === "clear" || action[2] === "compact" || action[2] === "rewind")) {
+      // The bot registry decides; one that cannot be read refuses rather than risk the chat.
+      const owner = await bots.botForSession(record.id).then((bot) => bot ? { handle: bot.handle } : undefined, () => ({ handle: undefined }));
+      if (owner) {
+        sendJson(response, 409, { error: foreverChatRefusal(owner.handle, action[2]) });
+        return;
+      }
     }
     if (action[2] === "open" && request.method === "POST") {
       if (!liveSessions.ensure(record)) {
@@ -3529,6 +3679,8 @@ export async function startBackend(): Promise<void> {
   await ensureConfigDir();
   void macPower?.start((await readSettings()).power.keepAwake);
   await automation.start();
+  // Session views name bots' chats from this list; a broken bots.json is reported by the bot routes.
+  await botRegistry.list().catch(() => undefined);
   initializeWatchers();
   initializeSubagents();
   await workers.list().catch(() => undefined);
