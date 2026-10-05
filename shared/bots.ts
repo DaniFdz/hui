@@ -12,7 +12,7 @@ export const BOT_LIMITS = {
   title: 80,
   description: 500,
   instructions: 20_000,
-  /** One `message_bot` message or one message sent through the bot routes. */
+  /** One `message_bot` message. */
   message: 20_000,
   /** `lastMessage.text`, a one-line preview. */
   preview: 200,
