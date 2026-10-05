@@ -2,7 +2,7 @@
 
 Date: 2026-10-05. The full journey ran against `feat/bots-ui` at `093f1a9`
 (stacked on `feat/bots` at `67ad1e8`); after rebasing onto `feat/bots` at
-`fc8df08` (backend and CLI commits only) a shorter smoke ran again (see the end).
+`fc8df08` (backend and CLI commits only) a shorter smoke ran again (see *Final smoke*).
 Both were launched with `e2e/visual-verification.mjs` and
 driven with the Browser tool (OpenClaw's managed profile attached to an owned
 headless Brave on CDP port 18800). Only the model provider is mocked
@@ -84,6 +84,20 @@ with 503. No operator transcript, credential or account was used.
     failed-request lines for 503 memory reads, repeated every three seconds while
     the Memory tab stayed open; the commit after the run stops polling a memory
     the gateway reports unavailable.
+
+## Final smoke (after the rebase)
+
+On `3f225dd` (the commit that added this file, stacked on `feat/bots` at
+`fc8df08`), launched and doctored before and after: Settings switch on, a bot
+created through the dialog, "Hi Scout, what can you do?" answered and signed
+"Scout"; a Daily 08:00 routine added and run, its `[routine: Inbox digest]`
+message answered and the run Completed. Memory: one 503 read when the tab
+opened and none in the next nine seconds (the browser's error count stayed
+put). A routine run started from the Automations page, with the bot's chat not
+on screen, marked its row unread ("Scout, Research assistant, idle, unread",
+bold with a dot) and the Bots tab ("Bots, unread") while Sessions showed;
+opening the bot cleared both. 390×844: chat, drawer roster and Routines sheet;
+document width 390. Browser page errors: none.
 
 ## Evidence
 
