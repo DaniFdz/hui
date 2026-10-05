@@ -67,8 +67,10 @@ on edit replaces the list. Edit changes only the fields given; a new command
 applies the next time the worker connects.
 Bots are named agents with one forever chat each, managed through the running
 gateway like the Bots tab; "bots" works as "bot". <bot> is an id, a handle or
-an exact name. Remove archives: the chat transcript and memory are kept and its
-routines are disabled. Chat streams the replies as plain text and sends what you
+an exact name. On edit, --model "" and --thinking "" go back to the model and
+thinking level a new chat gets, --memory-model "" to the chat's own model.
+Remove archives: the chat transcript and memory are kept and its routines are
+disabled. Chat streams the replies as plain text and sends what you
 type (steering a turn that runs); Ctrl+C stops a turn, twice exits. Send -
 reads the message from stdin; with --wait it prints the reply and exits 0, 1 on
 failure or timeout, 2 while the bot waits for an answer (give it in chat).
@@ -154,8 +156,10 @@ function checkBotCommand(command: string, operands: readonly string[], values: R
   if (command === "bot add" && !values["name"]) throw new Error("bot add needs --name.");
   if (command === "bot edit" && !BOT_FIELDS.some(given)) throw new Error(`bot edit needs at least one of ${BOT_FIELDS.map((flag) => `--${flag}`).join(", ")}.`);
   if (given("instructions") && given("instructions-file")) throw new Error("Use either --instructions or --instructions-file.");
-  if (given("thinking") && !(BOT_THINKING_LEVELS as readonly string[]).includes(String(values["thinking"]))) throw new Error(`--thinking must be one of: ${BOT_THINKING_LEVELS.join(", ")}.`);
-  for (const flag of ["model", "memory-model"]) if (given(flag) && !MODEL_REF.test(String(values[flag]))) throw new Error(`--${flag} must be provider/model.`);
+  // `""` clears a choice: the gateway's default for the chat, the chat's own model for the memory.
+  const cleared = (flag: string) => values[flag] === "";
+  if (given("thinking") && !cleared("thinking") && !(BOT_THINKING_LEVELS as readonly string[]).includes(String(values["thinking"]))) throw new Error(`--thinking must be one of: ${BOT_THINKING_LEVELS.join(", ")}.`);
+  for (const flag of ["model", "memory-model"]) if (given(flag) && !cleared(flag) && !MODEL_REF.test(String(values[flag]))) throw new Error(`--${flag} must be provider/model.`);
   if (given("timeout") && (!values["wait"] || !/^\d+$/u.test(String(values["timeout"])) || Number(values["timeout"]) < 1 || Number(values["timeout"]) > 3600)) {
     throw new Error("--timeout needs --wait and 1-3600 seconds.");
   }

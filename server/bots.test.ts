@@ -46,6 +46,7 @@ test("input is validated at the boundary: limits, formats, unknown fields and on
   assert.deepEqual(normalizeBotInput({ name: "  Ada  ", title: "", avatar: { emoji: "🦊", color: "#AABBCC" }, hidden: false }), {
     name: "Ada", avatar: { emoji: "🦊", color: "#aabbcc" },
   });
+  assert.deepEqual(normalizeBotInput({ name: "Ada", model: "", thinking: "" }), { name: "Ada" }, "an empty model or level is the default a new chat gets anyway");
   const full = normalizeBotInput({
     name: "Ada", handle: "@ada", title: "Researcher", description: "Reads papers", instructions: "  Be brief.\n  ",
     cwd: "~/work", model: "vercel-ai-gateway/anthropic/claude", thinking: "high", memoryModel: "openai/gpt-mini", memoryThinking: "low", hidden: true,
@@ -69,7 +70,6 @@ test("input is validated at the boundary: limits, formats, unknown fields and on
     [{ name: "Ada", description: "d".repeat(501) }, /at most 500/u],
     [{ name: "Ada", instructions: "i".repeat(20_001) }, /at most 20000/u],
     [{ name: "Ada", model: "gpt" }, /provider\/id/u],
-    [{ name: "Ada", model: "" }, /provider\/id/u],
     [{ name: "Ada", thinking: "max" }, /Thinking level must be one of/u],
     [{ name: "Ada", memoryModel: "bad model" }, /provider\/id/u],
     [{ name: "Ada", cwd: "" }, /Working directory must be 1-/u],
@@ -91,8 +91,10 @@ test("a patch carries only what changes and may clear optional text and avatar k
   assert.throws(() => normalizeBotPatch({}), /Nothing to change/u);
   assert.deepEqual(normalizeBotPatch({ title: "", instructions: "", memoryModel: "", memoryThinking: "" }), { title: "", instructions: "", memoryModel: "", memoryThinking: "" });
   assert.deepEqual(normalizeBotPatch({ avatar: null, hidden: false }), { avatar: null, hidden: false });
-  assert.throws(() => normalizeBotPatch({ model: "" }), /provider\/id/u, "a chat always has a model");
-  assert.throws(() => normalizeBotPatch({ thinking: "" }), /Thinking level/u);
+  assert.deepEqual(normalizeBotPatch({ model: "", thinking: "" }), { model: "", thinking: "" }, "the chat goes back to the gateway's defaults");
+  assert.throws(() => normalizeBotPatch({ model: "gpt" }), /provider\/id/u);
+  assert.throws(() => normalizeBotPatch({ model: 7 }), /Bot model must be text/u);
+  assert.throws(() => normalizeBotPatch({ thinking: "loud" }), /Thinking level must be one of/u);
   assert.throws(() => normalizeBotPatch({ name: " " }), /Bot name must be 1-60/u);
   assert.throws(() => normalizeBotPatch({ sessionId: "x" }), /Unknown bot field: sessionId/u);
   assert.deepEqual(patchedAvatar({ emoji: "🦊", color: "#000000" }, { emoji: "" }), { color: "#000000" });

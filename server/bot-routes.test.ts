@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { createServer } from "node:http";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -27,10 +27,10 @@ const [ready] = await once(provider.stdout!, "data");
 const providerUrl = String(ready).match(/http:\/\/127\.0\.0\.1:\d+/u)?.[0];
 assert(providerUrl, String(ready));
 await writeFile(join(agentDir, "models.json"), JSON.stringify({ providers: { "hui-e2e": {
-  baseUrl: providerUrl, api: "anthropic-messages", apiKey: "fixture-key", models: [{
-    id: "fixture", name: "fixture", reasoning: true, input: ["text"], contextWindow: 200_000, maxTokens: 4096,
+  baseUrl: providerUrl, api: "anthropic-messages", apiKey: "fixture-key", models: ["fixture", "other"].map((id) => ({
+    id, name: id, reasoning: true, input: ["text"], contextWindow: 200_000, maxTokens: 4096,
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-  }],
+  })),
 } } }));
 await writeFile(join(agentDir, "settings.json"), JSON.stringify({ defaultProvider: "hui-e2e", defaultModel: "fixture", defaultThinkingLevel: "low" }));
 
@@ -103,6 +103,11 @@ function settledWith(id: string, predicate: (entries: TranscriptEntry[]) => bool
     const watched = liveSessions.watch(id, check);
     check();
   });
+}
+
+/** Every request the provider received, compactor calls included. */
+async function providerRequests(): Promise<Array<{ model?: string; system?: unknown; messages?: unknown }>> {
+  return (await readFile(log, "utf8")).trim().split("\n").map((line) => JSON.parse(line) as { model?: string; system?: unknown; messages?: unknown });
 }
 
 const says = (role: "user" | "assistant", text: string) => (entries: TranscriptEntry[]) =>
@@ -263,6 +268,28 @@ test("a bot's memory page opens from a same-origin link, which cannot send x-hui
   // Only the page: every other bot route still needs x-hui.
   for (const path of ["/__hui/bots/mem/memory", "/__hui/bots/mem/memory/zoom?id=0&n=1", "/__hui/bots/mem", "/__hui/bots"]) {
     assert.equal((await load(path, { "sec-fetch-site": "same-origin" })).status, 403, path);
+  }
+});
+
+test("clearing a bot's model and thinking puts its live chat back on the gateway defaults, as a new chat", { timeout: 120_000 }, async () => {
+  const chosen = botOf(await call("/__hui/bots/mem", "PATCH", { model: "hui-e2e/other", thinking: "high" }));
+  assert.deepEqual([chosen.model, chosen.thinking], ["hui-e2e/other", "high"]);
+  assert.deepEqual([liveSessions.snapshot(chosen.sessionId).model?.id, liveSessions.currentThinking(chosen.sessionId)], ["other", "high"]);
+
+  const cleared = await call("/__hui/bots/mem", "PATCH", { model: "", thinking: "" });
+  assert.equal(cleared.status, 200);
+  assert.deepEqual([botOf(cleared).model, botOf(cleared).thinking], [undefined, undefined], "no choice of its own: the default");
+  assert.deepEqual([liveSessions.snapshot(chosen.sessionId).model?.id, liveSessions.currentThinking(chosen.sessionId)], ["fixture", "low"], "PI's default model and level");
+  const record = (await readRegistry()).find((each) => each.id === chosen.sessionId);
+  assert.deepEqual([record?.model, record?.thinking], [undefined, undefined], "its chat's record keeps no choice either");
+  assert.deepEqual((await call("/__hui/bots/mem/messages", "POST", { text: "OPT_RESET after clearing", wait: true, timeoutSeconds: 60 })).body, { status: "answered", reply: "Fixture response." });
+  const turn = (await providerRequests()).findLast((request) => JSON.stringify(request.messages).includes("OPT_RESET after clearing") && !JSON.stringify(request.system).includes("You write the memory of"));
+  assert.equal(turn?.model, "fixture", "its next turn asks the default model");
+
+  for (const [body, pattern] of [[{ model: "gpt" }, /provider\/id/u], [{ model: "hui-e2e/missing" }, /Unknown model/u], [{ thinking: "loud" }, /Thinking level/u]] as const) {
+    const refused = await call("/__hui/bots/mem", "PATCH", body);
+    assert.equal(refused.status, 400, JSON.stringify(body));
+    assert.match(String(refused.body["error"]), pattern);
   }
 });
 

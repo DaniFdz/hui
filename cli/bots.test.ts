@@ -232,6 +232,8 @@ test("list, show, add, edit, remove, restore and stop talk to the bot routes and
 
   await botCommand(gateway.base, "edit", ["ada"], { title: "Lead", thinking: "high" }, terminal().io);
   assert.deepEqual(gateway.calls.at(-1), { method: "PATCH", path: "/__hui/bots/id-ada", body: { title: "Lead", thinking: "high" } }, "only the given fields");
+  await botCommand(gateway.base, "edit", ["ada"], { model: "", thinking: "", "memory-model": "" }, terminal().io);
+  assert.deepEqual(gateway.calls.at(-1)?.body, { model: "", thinking: "", memoryModel: "" }, "empty values clear, back to the defaults");
   const removed = terminal();
   await botCommand(gateway.base, "remove", ["bob"], {}, removed.io);
   assert.equal(gateway.calls.at(-1)?.method, "DELETE");

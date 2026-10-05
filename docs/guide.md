@@ -211,7 +211,10 @@ directory. The persona becomes the chat's standing instructions before its first
 message can arrive; editing it applies from the bot's next request. A model
 change goes through the chat like the model picker, and a new working directory
 is accepted only while the bot is idle (its chat starts again there).
-`--memory-model` picks the model that writes the memory's summaries.
+`--memory-model` picks the model that writes the memory's summaries. An empty
+value clears a choice: `hui bot edit ada --model "" --thinking ""` puts the chat
+back on the model and thinking level a new chat gets, and `--memory-model ""`
+hands the summaries back to the chat's own model.
 
 A bot's chat refuses what would end or fork it: `/clear`, `/compact`, rewind
 and deleting the session all answer with an explanation instead.

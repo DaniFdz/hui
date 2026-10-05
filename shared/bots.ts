@@ -73,7 +73,9 @@ export type BotInput = {
 
 /**
  * `PATCH /__hui/bots/:id`: only what changes. `""` clears `title`,
- * `description`, `instructions`, `memoryModel` and `memoryThinking`; an avatar
+ * `description`, `instructions`, `model`, `thinking`, `memoryModel` and
+ * `memoryThinking` (a cleared `model` or `thinking` puts the chat back on what
+ * a new chat gets: the gateway's default model and thinking level); an avatar
  * key set to `""` clears that key and `avatar: null` clears both.
  */
 export type BotPatch = Partial<Omit<BotInput, "avatar">> & { avatar?: BotAvatar | null };

@@ -1,8 +1,9 @@
 /**
  * The Durable side of bots' chats (HUI-18): creating a bot's conversation in
  * one commit with its agent, its `hui.bot` document and OptChat; changing its
- * instructions or directory; and reading its newest message while no session
- * has it loaded. The gateway is the store's only writer, so these run in it.
+ * instructions or directory; the model and thinking level a new chat would get;
+ * and reading its newest message while no session has it loaded. The gateway
+ * is the store's only writer, so these run in it.
  */
 import { clampThinkingLevel, type Message, type ModelThinkingLevel } from "@earendil-works/pi-ai";
 import { ResetEntry, SystemEntry, type Conversation, type EntryRecord } from "@earendil-works/pi-durable";
@@ -66,6 +67,23 @@ export function durableBotConversations(host: DurableHost, memory: BotMemory): B
         ...(change.instructions !== undefined ? { instructions: change.instructions } : {}),
         ...(change.cwd !== undefined ? { cwd: change.cwd } : {}),
       }, durableContext);
+    },
+
+    // As `startDurable` chooses them for a new conversation.
+    async defaultModel(cwd) {
+      await host.open();
+      await host.refreshModels();
+      const model = await initialModel(host, cwd, undefined);
+      return model ? `${model.provider}/${model.modelId}` : undefined;
+    },
+
+    async defaultThinking(cwd, model) {
+      await host.open();
+      const ref = modelRef(model);
+      const known = ref ? host.models.getModel(ref.provider, ref.modelId) : undefined;
+      const requested = defaultThinking(host, cwd);
+      // A new conversation without a level stored runs at Durable's "off".
+      return requested && known ? clampThinkingLevel(known, requested as ModelThinkingLevel) : "off";
     },
 
     async lastMessage(reference) {

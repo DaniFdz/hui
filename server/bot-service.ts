@@ -66,6 +66,10 @@ export type BotConversations = {
   lastMessage(reference: string): Promise<BotStoredMessage | undefined>;
   /** Rejects a `provider/id` this gateway cannot resolve. */
   checkModel(model: string): Promise<void>;
+  /** The model a new chat in `cwd` starts on (PI's default there, else the first available), as `provider/id`. */
+  defaultModel(cwd: string): Promise<string | undefined>;
+  /** The thinking level a new chat in `cwd` starts at on `model`: PI's default fitted to the model, else `off`. */
+  defaultThinking(cwd: string, model: string | undefined): Promise<string>;
 };
 
 /** Automation tasks, which are a bot's routines when they target its chat. */
@@ -245,7 +249,9 @@ export class BotService {
    * Applies a patch: model and thinking through the live chat, instructions and
    * directory on its conversation, name and compactor model on its memory,
    * name and directory on its session record, then the bot. The directory
-   * changes only while the chat is idle; its runtime boots again there.
+   * changes only while the chat is idle; its runtime boots again there. A
+   * cleared model or thinking level (`""`) puts the chat back on what a new
+   * chat gets, and leaves the bot and its chat's record without a choice.
    */
   async update(target: string, body: unknown): Promise<BotView> {
     const patch = normalizeBotPatch(body);
@@ -264,11 +270,19 @@ export class BotService {
     if (patch.memoryModel) await this.#deps.conversations.checkModel(patch.memoryModel);
     if (patch.model !== undefined || patch.thinking !== undefined) {
       await this.#open(record);
+      // Cleared: what a new chat in the bot's directory would start on now.
+      const where = cwd ?? bot.cwd;
       if (patch.model !== undefined) {
-        const slash = patch.model.indexOf("/");
-        await this.#sessions.setModel(bot.sessionId, patch.model.slice(0, slash), patch.model.slice(slash + 1));
+        const model = patch.model || await this.#deps.conversations.defaultModel(where);
+        if (!model) throw new BotConflictError("This gateway has no model a chat could start on.");
+        const slash = model.indexOf("/");
+        await this.#sessions.setModel(bot.sessionId, model.slice(0, slash), model.slice(slash + 1));
       }
-      if (patch.thinking !== undefined) await this.#sessions.setThinking(bot.sessionId, patch.thinking);
+      if (patch.thinking !== undefined) {
+        const current = this.#sessions.snapshot(bot.sessionId).model;
+        const level = patch.thinking || await this.#deps.conversations.defaultThinking(where, current && `${current.provider}/${current.id}`);
+        await this.#sessions.setThinking(bot.sessionId, level);
+      }
     }
     if (patch.instructions !== undefined || moving) {
       await this.#deps.conversations.configure(reference, {
@@ -284,10 +298,16 @@ export class BotService {
         patch.memoryThinking === undefined ? bot.memoryThinking : patch.memoryThinking || undefined,
       ));
     }
-    if (patch.name !== undefined || moving) {
-      await this.#deps.updateSessions((records) => records.map((current) => current.id === bot.sessionId
-        ? { ...current, ...(patch.name !== undefined ? { title: name } : {}), ...(moving ? { cwd } : {}) }
-        : current));
+    const cleared = { model: patch.model === "", thinking: patch.thinking === "" };
+    if (patch.name !== undefined || moving || cleared.model || cleared.thinking) {
+      await this.#deps.updateSessions((records) => records.map((current) => {
+        if (current.id !== bot.sessionId) return current;
+        const next: SessionRecord = { ...current, ...(patch.name !== undefined ? { title: name } : {}), ...(moving ? { cwd } : {}) };
+        // The live chat recorded the default it switched to; like a new bot's chat, the record keeps no choice.
+        if (cleared.model) delete next.model;
+        if (cleared.thinking) delete next.thinking;
+        return next;
+      }));
     }
     if (moving && this.#sessions.isLive(bot.sessionId)) {
       const moved = (await this.#deps.readSessions()).find((current) => current.id === bot.sessionId);
@@ -749,15 +769,13 @@ function patched(bot: BotRecord, patch: BotPatch, cwd: string | undefined, updat
   const next: BotRecord = { ...bot, updatedAt };
   if (patch.name !== undefined) next.name = patch.name;
   if (patch.handle !== undefined) next.handle = patch.handle;
-  for (const key of ["title", "description", "instructions", "memoryModel", "memoryThinking"] as const) {
+  for (const key of ["title", "description", "instructions", "model", "thinking", "memoryModel", "memoryThinking"] as const) {
     const value = patch[key];
     if (value === undefined) continue;
     if (value) next[key] = value;
     else delete next[key];
   }
   if (cwd !== undefined) next.cwd = cwd;
-  if (patch.model !== undefined) next.model = patch.model;
-  if (patch.thinking !== undefined) next.thinking = patch.thinking;
   if (patch.avatar !== undefined) {
     const avatar = patchedAvatar(bot.avatar, patch.avatar);
     if (avatar) next.avatar = avatar;

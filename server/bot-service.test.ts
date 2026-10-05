@@ -144,6 +144,10 @@ async function harness(t: TestContext, options: { messagesPerHour?: number; memo
       return { role: "assistant" as const, text: "stored reply", at: "2026-10-01T09:00:00.000Z" };
     },
     async checkModel(model: string) { if (!model.startsWith("fixture/")) throw new BotInputError(`Unknown model: ${model}`); },
+    /** What clearing asked for: [cwd] for the model, [cwd, model] for the thinking level. */
+    defaults: [] as string[][],
+    async defaultModel(cwd: string) { this.defaults.push([cwd]); return "fixture/default"; },
+    async defaultThinking(cwd: string, model: string | undefined) { this.defaults.push([cwd, String(model)]); return model === "fixture/default" ? "low" : "minimal"; },
   };
   const memoryCalls: Array<[string, ...unknown[]]> = [];
   // A memory the gateway cannot read (no OptChat for the chat) answers nothing and refuses every read.
@@ -339,6 +343,29 @@ test("editing a bot propagates to its chat, its conversation and its memory", as
   await assert.rejects(h.service.update("prime", { memoryModel: "elsewhere/model" }), /Unknown model/u);
   await assert.rejects(h.service.update("prime", { nickname: "x" }), BotInputError);
   await assert.rejects(h.service.update("nobody", { title: "x" }), BotNotFoundError);
+});
+
+test("clearing a bot's model or thinking puts its chat back on what a new chat gets, and keeps no choice", async (t) => {
+  const h = await harness(t);
+  const bot = await h.service.create({ name: "Ada", model: "fixture/two", thinking: "high" });
+  const chat = await h.chat(bot.sessionId);
+  assert.deepEqual([h.record(bot.sessionId)?.model, h.record(bot.sessionId)?.thinking], ["fixture/two", "high"]);
+
+  const cleared = await h.service.update(bot.id, { model: "", thinking: "" });
+  assert.deepEqual(chat.model, { provider: "fixture", id: "default", name: "default" }, "the live chat switches to the default model");
+  assert.equal(chat.thinking, "low", "and to the default level for that model");
+  assert.deepEqual(h.conversations.defaults, [[bot.cwd], [bot.cwd, "fixture/default"]], "resolved as for a new chat in the bot's directory");
+  assert.deepEqual([cleared.model, cleared.thinking], [undefined, undefined], "the view shows the gateway default");
+  assert.deepEqual([h.record(bot.sessionId)?.model, h.record(bot.sessionId)?.thinking], [undefined, undefined], "its chat's record keeps no choice");
+  const stored = (await h.registry.list()).find((each) => each.id === bot.id)!;
+  assert.deepEqual([stored.model, stored.thinking], [undefined, undefined]);
+
+  // Thinking alone: the default for the model the chat is on, which stays chosen.
+  await h.service.update(bot.id, { model: "fixture/two" });
+  const thinking = await h.service.update(bot.id, { thinking: "" });
+  assert.deepEqual(h.conversations.defaults.at(-1), [bot.cwd, "fixture/two"]);
+  assert.equal(chat.thinking, "minimal");
+  assert.deepEqual([thinking.model, thinking.thinking, h.record(bot.sessionId)?.model], ["fixture/two", undefined, "fixture/two"]);
 });
 
 test("a bot's directory moves only while it is idle, and its chat boots again there", async (t) => {

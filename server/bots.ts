@@ -272,16 +272,18 @@ function textField(raw: unknown, key: string, maximum: number, options: { line?:
   return value;
 }
 
-function modelField(raw: unknown, key: string, allowEmpty: boolean): string {
+/** `provider/id`, or `""` to clear it. */
+function modelField(raw: unknown, key: string): string {
   const value = textField(raw, key, 200);
-  if (allowEmpty && !value) return "";
+  if (!value) return "";
   if (!MODEL.test(value)) throw new BotInputError(`${LABELS[key]} must use provider/id format.`);
   return value;
 }
 
-function levelField(raw: unknown, key: string, allowEmpty: boolean): string {
+/** A thinking level, or `""` to clear it. */
+function levelField(raw: unknown, key: string): string {
   const value = textField(raw, key, 16);
-  if (allowEmpty && !value) return "";
+  if (!value) return "";
   if (!LEVELS.has(value)) throw new BotInputError(`${LABELS[key]} must be one of: ${BOT_THINKING_LEVELS.join(", ")}.`);
   return value;
 }
@@ -352,10 +354,11 @@ export function normalizeBotPatch(value: unknown): BotPatch {
   if ("description" in input) patch.description = textField(input["description"], "description", BOT_LIMITS.description);
   if ("instructions" in input) patch.instructions = textField(input["instructions"], "instructions", BOT_LIMITS.instructions);
   if ("cwd" in input) patch.cwd = cwdField(input["cwd"]);
-  if ("model" in input) patch.model = modelField(input["model"], "model", false);
-  if ("thinking" in input) patch.thinking = levelField(input["thinking"], "thinking", false);
-  if ("memoryModel" in input) patch.memoryModel = modelField(input["memoryModel"], "memoryModel", true);
-  if ("memoryThinking" in input) patch.memoryThinking = levelField(input["memoryThinking"], "memoryThinking", true);
+  // `""` puts the chat back on the model or thinking level a new chat gets, and the memory on the chat's own model.
+  if ("model" in input) patch.model = modelField(input["model"], "model");
+  if ("thinking" in input) patch.thinking = levelField(input["thinking"], "thinking");
+  if ("memoryModel" in input) patch.memoryModel = modelField(input["memoryModel"], "memoryModel");
+  if ("memoryThinking" in input) patch.memoryThinking = levelField(input["memoryThinking"], "memoryThinking");
   if ("avatar" in input) patch.avatar = input["avatar"] === null ? null : avatarField(input["avatar"]);
   if ("hidden" in input) {
     if (typeof input["hidden"] !== "boolean") throw new BotInputError("Hidden must be a boolean.");

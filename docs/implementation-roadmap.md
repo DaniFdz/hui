@@ -705,7 +705,8 @@ for now. It lands as stacked pull requests:
 2. **Bots backend and `hui bot`** (implemented 2026-10-05; Bots tab and browser
    E2E pending): `bots.json` registry and `shared/bots.ts` types; bot chats as
    ordinary Durable sessions whose conversation is created with its persona,
-   `hui.bot` document and OptChat in one commit; edit, archive (routines
+   `hui.bot` document and OptChat in one commit; edit (an empty model or
+   thinking level goes back to the gateway defaults), archive (routines
    disabled, nothing deleted) and restore; `/__hui/bots` routes with messages
    (prompt or follow-up, optional wait for the answering run), stop, memory and
    an events stream; forever-chat refusals of clear, compact, rewind and

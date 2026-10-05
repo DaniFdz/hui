@@ -54,6 +54,8 @@ test("CLI parses bot commands, accepting bot and bots, with their operands and o
   assert.equal(add.values["memory-model"], "openai/gpt-mini");
   const edit = parseCli(["bot", "edit", "@ada", "--instructions", "Be brief."]);
   assert.deepEqual([edit.command, edit.operands, edit.values.instructions], ["bot edit", ["@ada"], "Be brief."]);
+  const cleared = parseCli(["bot", "edit", "ada", "--model", "", "--thinking", "", "--memory-model", ""]);
+  assert.deepEqual([cleared.values.model, cleared.values.thinking, cleared.values["memory-model"]], ["", "", ""], "an empty value clears the choice");
   assert.deepEqual(parseCli(["bot", "send", "ada", "-", "--wait", "--timeout", "90"]).operands, ["ada", "-"]);
   assert.equal(parseCli(["bot", "send", "ada", "hello there"]).operands?.[1], "hello there");
   assert.equal(parseCli(["bot", "chat", "Ada Lovelace"]).operands?.[0], "Ada Lovelace");
@@ -116,6 +118,7 @@ test("HELP lists every hui bot command", () => {
     "hui bot routine add <bot> --name <name> --prompt <text> (--at <ISO time> | --every <duration> | --cron <expr>",
     "hui bot routine run <bot> <routine>",
     "hui bot routine remove <bot> <routine> [--json]",
+    "On edit, --model \"\" and --thinking \"\" go back to the model and",
   ]) assert.ok(HELP.includes(line), line);
 });
 
