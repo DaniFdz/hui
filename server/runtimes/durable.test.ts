@@ -663,7 +663,13 @@ export default function (pi) {
     record({ event: "session_start", reason: event.reason, loaded, session: ctx.sessionManager.getSessionId(), choices: choices.map((entry) => entry.data.choice), hasUI: ctx.hasUI });
   });
   pi.on("session_shutdown", (event) => record({ event: "session_shutdown", reason: event.reason, loaded }));
-  pi.on("agent_end", (event) => record({ event: "agent_end", roles: event.messages.map((message) => message.role) }));
+  pi.on("agent_end", async (event, ctx) => {
+    record({ event: "agent_end", roles: event.messages.map((message) => message.role), stopped: ctx.signal?.aborted === true });
+    if (globalThis.fixtureHoldAgentEnd) {
+      ctx.ui.notify("agent_end is holding", "info");
+      await globalThis.fixtureHoldAgentEnd;
+    }
+  });
   pi.on("tool_execution_end", (event) => record({ event: "tool_execution_end", tool: event.toolName, isError: event.isError }));
   for (const name of ["agent_start", "turn_start", "turn_end", "agent_settled", "message_end", "tool_execution_end"]) {
     pi.on(name, (event) => record({ event: "order", name: event.type === "message_end" ? "message_end:" + event.message.role : name }));
@@ -774,15 +780,52 @@ test("Stop while an input handler asks leaves the prompt unsent", { timeout: 45_
   const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-stop-input" }, f.host());
   const asked = nextEvent(session, (event) => event.type === "question");
   const settled = nextEvent(session, (event) => event.type === "settled");
-  const prompting = session.prompt("FIXTURE_ASK_FIRST E2E_EXTENSION_TOOL");
-  assert.equal((await asked).type, "question");
+  await session.prompt("FIXTURE_ASK_FIRST E2E_EXTENSION_TOOL");
+  assert.equal((await asked).type, "question", "the prompt returns once a handler asks, as PI's does");
   assert.equal(session.isStreaming, false, "a prompt still passing its handlers is not a run");
   await session.abort();
-  await prompting;
   await settled;
   assert.deepEqual(session.transcript(), [], "nothing was sent");
   assert.deepEqual(session.pendingQuestions(), []);
   assert.equal(await readFile(f.log, "utf8").catch(() => ""), "", "the model was never asked");
+});
+
+test("end-of-run handlers see a Stop in ctx.signal and hold the settle, not the extensions' idle view", { timeout: 45_000 }, async (t) => {
+  const f = await extensionFixture(t);
+  const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-end-handlers" }, f.host());
+  let release!: () => void;
+  (globalThis as { fixtureHoldAgentEnd?: Promise<void> }).fixtureHoldAgentEnd = new Promise((resolve) => { release = resolve; });
+  t.after(() => { release(); delete (globalThis as { fixtureHoldAgentEnd?: Promise<void> }).fixtureHoldAgentEnd; });
+  const settled = nextEvent(session, (event) => event.type === "settled");
+  const holding = nextEvent(session, (event) => event.type === "notice" && event.message === "agent_end is holding");
+  await session.prompt("E2E_RICH read the fixture");
+  await holding;
+  assert.equal(session.running, false, "extensions see the run over");
+  assert.equal(session.isStreaming, true, "HUI waits while agent_end runs, as PI does");
+  release();
+  await settled;
+  assert.equal(session.isStreaming, false);
+  assert.equal((await logged(f.events, "agent_end"))[0]?.["stopped"], false);
+
+  (globalThis as { fixtureHoldAgentEnd?: Promise<void> }).fixtureHoldAgentEnd = undefined;
+  const running = nextEvent(session, (event) => event.type === "tool_start");
+  const stopped = nextEvent(session, (event) => event.type === "settled");
+  await session.prompt("E2E_COMMAND_RUNNING hold the command");
+  await running;
+  await session.abort();
+  await stopped;
+  assert.equal((await logged(f.events, "agent_end"))[1]?.["stopped"], true, "a handler tells a user's Stop by ctx.signal");
+});
+
+test("rewinding to before a prompt also drops the hidden context its extensions wrote for it", { timeout: 45_000 }, async (t) => {
+  const f = await extensionFixture(t);
+  const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-rewind-context" }, f.host());
+  await settledAfter(session, "E2E_RICH first");
+  await session.rewind({ userFromEnd: 0 }, { excludeUserMessage: true });
+  await settledAfter(session, "E2E_RICH again");
+  const request = JSON.stringify((await providerRequests(f.log)).filter((each) => JSON.stringify(each.messages).includes("E2E_RICH again"))[0]?.messages);
+  assert.equal(request.split("FIXTURE_CONTEXT_MARKER").length - 1, 1, "only the new prompt's context");
+  assert.doesNotMatch(request, /E2E_RICH first/u);
 });
 
 test("a session_start dialog does not hold the session from opening", { timeout: 45_000 }, async (t) => {

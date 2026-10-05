@@ -34,6 +34,12 @@ export const durableContext = BACKGROUND_CONTEXT;
 /** Longest interrupted runs wait for their sessions to load their PI extensions again before they resume anyway. */
 const RESUME_WAIT_MS = 30_000;
 
+function deferred(): { promise: Promise<void>; resolve: () => void } {
+  let resolve!: () => void;
+  const promise = new Promise<void>((done) => { resolve = done; });
+  return { promise, resolve };
+}
+
 // PI's `configureHttpDispatcher` is deliberately not installed: it replaces
 // `globalThis.fetch` for the whole process, and the harness shares the gateway
 // with every other HUI subsystem. Provider requests use Node's fetch, whose
@@ -192,6 +198,7 @@ export class DurableHost implements ExtensionHost {
    * otherwise finds no tool. Absent, they resume at once.
    */
   beforeResume: ((conversations: readonly ConversationId[]) => Promise<unknown>) | undefined;
+  #resumed = deferred();
 
   constructor(options: DurableHostOptions) {
     this.dir = options.dir;
@@ -227,6 +234,8 @@ export class DurableHost implements ExtensionHost {
     return (this.#tools.tools ?? []).filter((tool) => names.includes(tool.name)) as ToolRegistration[];
   }
 
+  /** Settles once the open store schedules work. */
+  get resumed(): Promise<void> { return this.#resumed.promise; }
   get models(): Models { return this.#models.view; }
   /** PI's model runtime, current at each use, for extensions' `ctx.modelRegistry`. */
   get modelRuntime(): ModelRuntime { return this.#models.view as unknown as ModelRuntime; }
@@ -316,7 +325,9 @@ export class DurableHost implements ExtensionHost {
         detail: error instanceof Error ? error.message : String(error),
       });
     }
-    if (this.#harness === harness) harness.resume();
+    if (this.#harness !== harness) return;
+    harness.resume();
+    this.#resumed.resolve();
   }
 
   #env({ cwd }: EnvTarget): NodeExecutionEnv {
@@ -406,6 +417,7 @@ export class DurableHost implements ExtensionHost {
       this.#release?.();
       this.#release = undefined;
       this.#callers.clear();
+      this.#resumed = deferred();
     }
   }
 }

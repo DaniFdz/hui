@@ -60,7 +60,8 @@ type QuestionDraft = RuntimeQuestion extends infer Each ? Each extends RuntimeQu
 /** What a Durable session lends its extensions. */
 export interface ExtensionSession {
   readonly cwd: string;
-  readonly isStreaming: boolean;
+  /** A run is going. Its end handlers see it over, as in PI's `agent_settled`. */
+  readonly running: boolean;
   /** The conversation the session follows now; a rewind replaces it. */
   conversation(): Conversation;
   /** Entries since the latest reset, oldest first. */
@@ -88,6 +89,8 @@ export interface ExtensionSession {
 export interface ExtensionHost {
   readonly agentDir: string;
   readonly modelRuntime: ModelRuntime;
+  /** Settles once the store schedules work: until then a write would resume interrupted runs early. */
+  readonly resumed: Promise<void>;
   /** Tools every Durable conversation has, before extensions: the coding tools, then HUI's. */
   readonly codingTools: readonly ToolRegistration[];
   readonly huiTools: readonly ToolRegistration[];
@@ -161,6 +164,8 @@ export class DurableExtensions {
   #queue: Promise<void> = Promise.resolve();
   #disposed = false;
   #run: { controller: AbortController; start: number; turn: number; prompt?: RunPrompt } | undefined;
+  /** The signal of the run the event being handled belongs to, which may have ended since. */
+  #eventSignal: AbortSignal | undefined;
   /** The prompt `before_agent_start` gave a run that has not started yet. */
   #pendingPrompt: RunPrompt | undefined;
   #nextTurn: CustomMessage[] = [];
@@ -267,9 +272,9 @@ export class DurableExtensions {
     }, {
       getModel: () => this.#model(),
       getScopedModels: () => [],
-      isIdle: () => !session.isStreaming,
+      isIdle: () => !session.running,
       isProjectTrusted: () => this.#settings.isProjectTrusted(),
-      getSignal: () => this.#run?.controller.signal,
+      getSignal: () => this.#eventSignal ?? this.#run?.controller.signal,
       abort: () => { this.#abortRequested = true; void session.abort().catch((error: unknown) => this.#report("abort", error)); },
       hasPendingMessages: () => session.pendingCount() > 0,
       shutdown: () => this.#report("shutdown", new Error(unsupported("Shutting down"))),
@@ -629,12 +634,16 @@ export class DurableExtensions {
     const json = jsonSafe(data);
     this.#project().appendCustomEntry(customType, json);
     this.#echoes.push({ customType, data: json });
-    void this.#write(this.#session.conversation().submit({ type: "write", entry: {
+    const conversation = this.#session.conversation();
+    void this.#write(() => conversation.submit({ type: "write", entry: {
       kind: ExtensionStateEntry.kind, data: { customType, ...(json === undefined ? {} : { data: json }) },
     } }, context)).catch((error: unknown) => this.#report("append_entry", error));
   }
 
-  #write<T>(admission: Promise<T>): Promise<T> {
+  /** Admits a write once the store schedules work, so a write from a reopened session cannot resume interrupted runs
+   * before every interrupted session reopened. */
+  #write<T>(write: () => Promise<T>): Promise<T> {
+    const admission = this.#host.resumed.then(write);
     this.#writes.add(admission);
     return admission.finally(() => this.#writes.delete(admission));
   }
@@ -647,7 +656,7 @@ export class DurableExtensions {
   async #sendMessage(message: CustomMessage, options: { triggerTurn?: boolean; deliverAs?: "steer" | "followUp" | "nextTurn" } | undefined): Promise<void> {
     const custom: CustomMessage = { ...message, content: message.content ?? [], display: message.display === true };
     if (options?.deliverAs === "nextTurn") { this.#nextTurn.push(custom); return; }
-    const streaming = this.#session.isStreaming;
+    const streaming = this.#session.running;
     // As in PI: mid-run it steers (or follows up) unless told not to trigger a turn; idle, it starts a run only when
     // asked to. Otherwise it is context, written as a hidden entry (mid-run at the next boundary).
     if (streaming ? options?.triggerTurn !== false : options?.triggerTurn === true) {
@@ -662,7 +671,7 @@ export class DurableExtensions {
     const conversation = this.#session.conversation();
     for (const message of messages) {
       const details = jsonSafe(message.details);
-      await this.#write(conversation.submit({ type: "write", entry: {
+      await this.#write(() => conversation.submit({ type: "write", entry: {
         kind: ExtensionMessageEntry.kind,
         model: [{ role: "user", content: contentOf(message.content), timestamp: Date.now(), customType: message.customType, ...(details === undefined ? {} : { details }) } as Message],
         data: { customType: message.customType, display: message.display },
@@ -687,20 +696,28 @@ export class DurableExtensions {
     return this.#command(text) !== undefined;
   }
 
+  /**
+   * Starts `work`. `released` settles with it, or once it first asks the user something: a request waiting on an
+   * answer would hold the browser, so PI sessions also take a question as acceptance.
+   */
+  whileAsking<T>(work: () => Promise<T>): { done: Promise<T>; released: Promise<void> } {
+    let release!: () => void;
+    const asked = new Promise<void>((resolve) => { release = resolve; });
+    this.#asked.add(release);
+    const done = (async () => await work())().finally(() => this.#asked.delete(release));
+    return { done, released: Promise.race([done, asked]).then(() => undefined) };
+  }
+
   /** Runs an extension command. Resolves once it finishes or first asks the user something; `finished` is its end. */
   async runCommand(text: string): Promise<{ finished: Promise<void> }> {
     const found = this.#command(text);
     if (!found) throw new Error(`Unknown extension command: ${text}`);
-    let release!: () => void;
-    const asked = new Promise<void>((resolve) => { release = resolve; });
-    this.#asked.add(release);
-    const finished = (async () => {
+    const { done, released } = this.whileAsking(async () => {
       try { await found.command.handler(found.args, this.#runner.createCommandContext()); }
       catch (error) { this.#onError({ extensionPath: `command:${found.command.invocationName}`, event: "command", error: errorText(error) }); }
-      finally { this.#asked.delete(release); }
-    })();
-    await Promise.race([finished, asked]);
-    return { finished };
+    });
+    await released;
+    return { finished: done };
   }
 
   /** PI's `input` event, the first step of every prompt: undefined when an extension handled the input itself. */
@@ -763,19 +780,23 @@ export class DurableExtensions {
     return next;
   }
 
-  #emit(event: { type: string } & Record<string, unknown>): void {
+  /** Queues a lifecycle event; its handlers see the signal of the run it belongs to as `ctx.signal`. */
+  #emit(event: { type: string } & Record<string, unknown>, signal = this.#run?.controller.signal): void {
     if (this.#disposed) return;
-    void this.#enqueue(event.type, () => event.type === "message_end" ? this.#runner.emitMessageEnd(event as never) : this.#runner.emit(event as never));
+    void this.#enqueue(event.type, async () => {
+      this.#eventSignal = signal;
+      try {
+        await (event.type === "message_end" ? this.#runner.emitMessageEnd(event as never) : this.#runner.emit(event as never));
+      } finally {
+        this.#eventSignal = undefined;
+      }
+    });
   }
 
   /** `session_start`, ahead of any event of the session's runs. Resolves once its handlers ran or one asks the user
    * something: the question can only be answered once the session is open. */
   async start(reason: "startup" | "reload" | "new"): Promise<void> {
-    let release!: () => void;
-    const asked = new Promise<void>((resolve) => { release = resolve; });
-    this.#asked.add(release);
-    const started = this.#enqueue("session_start", () => this.#runner.emit({ type: "session_start", reason }));
-    await Promise.race([started, asked]).finally(() => this.#asked.delete(release));
+    await this.whileAsking(() => this.#enqueue("session_start", () => this.#runner.emit({ type: "session_start", reason }))).released;
   }
 
   /** `session_shutdown` after the events before it; the instances are stale from then on. */
@@ -886,8 +907,9 @@ export class DurableExtensions {
     this.#run = undefined;
     const messages = this.#session.rows().slice(run?.start ?? 0)
       .flatMap((entry) => SystemEntry.is(entry) || ExtensionStateEntry.is(entry) || CompactionEntry.is(entry) ? [] : (entry.model ?? []).map((message) => asPi(message)));
-    this.#emit({ type: "agent_end", messages });
-    this.#emit({ type: "agent_settled" });
+    // A handler checks `ctx.signal` to tell a user's Stop from a failed run.
+    this.#emit({ type: "agent_end", messages }, run?.controller.signal);
+    this.#emit({ type: "agent_settled" }, run?.controller.signal);
     void this.#queue.then(done);
   }
 

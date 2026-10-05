@@ -188,6 +188,8 @@ export class DurableSession implements RuntimeSession, ExtensionSession {
   #streaming = false;
   /** Prompts passing their extension handlers before anything is submitted. */
   #starting = 0;
+  /** Runs that ended whose extensions' end-of-run handlers still run. */
+  #settling = 0;
   #disposed = false;
   /** `rows()`, until the history changes. */
   #rows: readonly EntryRecord[] | undefined;
@@ -206,7 +208,10 @@ export class DurableSession implements RuntimeSession, ExtensionSession {
 
   get sessionId(): string { return String(this.#conversation.id); }
   get sessionFile(): string { return durableReference(this.#conversation.id); }
-  get isStreaming(): boolean { return this.#streaming; }
+  /** HUI's view: a run is over once its extensions' end-of-run handlers ran, as in PI. */
+  get isStreaming(): boolean { return this.#streaming || this.#settling > 0; }
+  /** The extensions' view: from the submit of a run's input to its end. */
+  get running(): boolean { return this.#streaming; }
   get cwd(): string { return this.#cwd; }
   conversation(): Conversation { return this.#conversation; }
 
@@ -505,8 +510,10 @@ export class DurableSession implements RuntimeSession, ExtensionSession {
     // for a run it starts. One that never finishes holds the settle only so long.
     let timer: NodeJS.Timeout | undefined;
     const late = new Promise<"late">((resolve) => { timer = setTimeout(() => resolve("late"), QUIET_TIMEOUT_MS); });
+    this.#settling += 1;
     void Promise.race([ended, late]).then((outcome) => {
       clearTimeout(timer);
+      this.#settling -= 1;
       if (this.#disposed) return;
       if (outcome === "late") this.#emit({ type: "notice", level: "warning", message: "An extension is still handling the end of the run." });
       this.#emit({ type: "settled", historyRefreshed });
@@ -662,8 +669,8 @@ export class DurableSession implements RuntimeSession, ExtensionSession {
       // PI sends them after the prompt; Durable admits input in a commit of its own, so they go just before it.
       if (start.messages.length) await extensions.writeMessages(start.messages);
     }
-    if (extensions?.startAborted) return false;
     await extensions?.writesAdmitted();
+    if (extensions?.startAborted) return false;
     // The message names every attachment; the images themselves are the ones the handlers left.
     const payload = promptPayload(text, attachments);
     await this.#submit([{ type: "text", text: payload.message }, ...images], whenBusy);
@@ -681,18 +688,33 @@ export class DurableSession implements RuntimeSession, ExtensionSession {
     }
   }
 
-  /** Starts a run with `text`. While its handlers run the session is starting, not running, as in PI. One that never
-   * starts (handled or aborted) settles at once, unless another prompt or run is underway. */
+  /**
+   * Starts a run with `text`. While its handlers run the session is starting, not running, as in PI. One that never
+   * starts (handled or aborted) settles at once, unless another prompt or run is underway. Resolves once the input is
+   * submitted, or when a handler first asks the user something: the start then goes on, and reports its own failure.
+   */
   async #start(text: string, sending: Sending): Promise<void> {
     this.#starting += 1;
-    let sent: boolean;
-    try {
-      sent = await this.#send(text, "reject", sending);
-    } finally {
+    const start = () => this.#send(text, "reject", sending).then((sent) => {
+      if (!sent && !this.#streaming && this.#starting === 1) this.#emit({ type: "settled" });
+    }).finally(() => {
       this.#starting -= 1;
       this.#notifyQuiet();
+    });
+    if (!this.#extensions) return start();
+    const { done, released } = this.#extensions.whileAsking(start);
+    let returned = false;
+    // Until the prompt returned, it reports a failure itself; after, the failure is the session's error.
+    void done.catch((error: unknown) => {
+      if (!returned) return;
+      this.#emit({ type: "error", message: error instanceof Error ? error.message : String(error) });
+      this.#emit({ type: "settled" });
+    });
+    try {
+      await released;
+    } finally {
+      returned = true;
     }
-    if (!sent && !this.#streaming && this.#starting === 0) this.#emit({ type: "settled" });
   }
 
   async prompt(text: string, attachments: readonly PromptAttachment[] = []): Promise<void> {
@@ -918,7 +940,10 @@ export class DurableSession implements RuntimeSession, ExtensionSession {
     if (!row) throw new Error("That rewind point is no longer available.");
     const index = this.#history.indexOf(row);
     const isUser = role(row.shown[0]) === "user";
-    const at = options?.excludeUserMessage === true && isUser ? this.#history[index - 1]?.entry.id : row.entry.id;
+    // Before a prompt also means before the hidden context its extensions wrote for it, just ahead of it.
+    let before = index;
+    while (before > 0 && ExtensionMessageEntry.is(this.#history[before - 1]!.entry)) before--;
+    const at = options?.excludeUserMessage === true && isUser ? this.#history[before - 1]?.entry.id : row.entry.id;
     const next = at
       ? await this.#conversation.fork(at, { ownership: { kind: "ownerless" } }, context)
       : await this.#harness.createConversation({ ownership: { kind: "ownerless" }, agent: {
