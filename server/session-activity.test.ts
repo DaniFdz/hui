@@ -123,6 +123,8 @@ test("a session's project is its repository, shared by its worktrees and subdire
   git("-c", "user.email=e2e@hui.test", "-c", "user.name=HUI", "commit", "-q", "--allow-empty", "-m", "init");
   git("worktree", "add", "-q", join(dir, "elsewhere", "retry-fix"));
   await mkdir(join(dir, "notes"));
+  await mkdir(join(dir, "hui-worktrees", "billing-abcdefabcdef", "left"), { recursive: true });
+  await mkdir(join(dir, "hui-worktrees", "billing-abcdefabcdef", "right"), { recursive: true });
   // HUI's worktrees: `<checkout>-<hash>/<branch>`, made from a repository or from another worktree.
   const worktrees = join(dir, "hui-worktrees");
   git("worktree", "add", "-q", join(worktrees, "checkout-api-0123456789ab", "dani--retries"));
@@ -135,8 +137,11 @@ test("a session's project is its repository, shared by its worktrees and subdire
     name(join(worktrees, "dani--retries-abcdef012345", "dani--follow-up")),
     // Removed, made from a removed worktree: a sibling made from the same one still exists.
     name(join(worktrees, "checkout-api-0123456789ab", "dani--removed")),
+    // Leftover folders Git no longer knows name each other's checkout instead of waiting on each other.
+    name(join(worktrees, "billing-abcdefabcdef", "left")),
+    name(join(worktrees, "billing-abcdefabcdef", "right")),
     name(join(dir, "notes")),
     name(join(dir, "gone")),
     name(join(dir, "home")),
-  ]), ["checkout-api", "checkout-api", "dd-source", "checkout-api", "checkout-api", "notes", "gone", "~"]);
+  ]), ["checkout-api", "checkout-api", "dd-source", "checkout-api", "checkout-api", "billing", "billing", "notes", "gone", "~"]);
 });

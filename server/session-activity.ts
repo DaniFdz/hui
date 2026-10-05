@@ -7,7 +7,7 @@
  * once `hui doctor --fix` moves them. Subagent sessions are left out: their
  * work is the parent session's work.
  */
-import { readdir, stat } from "node:fs/promises";
+import { readdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, join, relative, sep } from "node:path";
 import { AssistantEntry, ToolResultEntry, UserEntry } from "@earendil-works/pi-durable";
@@ -17,7 +17,7 @@ import { textOf } from "./runtimes/durable.ts";
 import { WORKTREES_DIR } from "./paths.ts";
 import { operatorText } from "./session-digest.ts";
 import type { SessionRecord } from "./sessions.ts";
-import { runGit } from "./worktrees.ts";
+import { runCommand } from "./worktree-inventory.ts";
 
 const ACTIVITY_GAP_MS = 30 * 60_000;
 const MAX_RANGE_MS = 31 * 86_400_000;
@@ -113,28 +113,37 @@ const projects = new Map<string, Promise<string>>();
  * The repository a session directory belongs to: Git's common directory, so
  * every worktree and subdirectory of a repository shares it. A removed HUI
  * worktree is named by its parent, `<checkout>-<hash>` (createSessionWorktree):
- * a repository, or a worktree it was made from, resolved the same way. The
- * home directory is `~`; any other directory outside Git is its own name.
+ * Git still answers for another worktree made from that checkout or, when it
+ * was a worktree itself, for that checkout; otherwise the checkout's name.
+ * The home directory is always `~`; any other directory outside Git is its own name.
  */
 export function repositoryName(cwd: string, worktrees = WORKTREES_DIR, home = homedir()): Promise<string> {
-  let name = projects.get(cwd);
-  if (!name) projects.set(cwd, name = resolveRepository(cwd, worktrees, home));
+  const key = `${worktrees}\0${home}\0${cwd}`;
+  let name = projects.get(key);
+  if (!name) projects.set(key, name = resolveRepository(cwd, worktrees, home));
   return name;
+}
+
+/** The repository Git reports for a directory, if it can. */
+async function gitRepository(cwd: string): Promise<string | undefined> {
+  const { code, stdout } = await runCommand("git", ["-C", cwd, "rev-parse", "--path-format=absolute", "--git-common-dir"]);
+  const common = code === 0 ? stdout.trim() : "";
+  if (!common) return undefined;
+  return basename(common) === ".git" ? basename(dirname(common)) : basename(common).replace(/\.git$/u, "");
 }
 
 async function resolveRepository(cwd: string, worktrees: string, home: string): Promise<string> {
   if (cwd === home) return "~";
-  const git = await runGit(cwd, ["rev-parse", "--path-format=absolute", "--git-common-dir"]).catch(() => undefined);
-  const common = git?.code === 0 ? git.stdout.trim() : "";
-  if (common) return basename(common) === ".git" ? basename(dirname(common)) : basename(common).replace(/\.git$/u, "");
+  const own = await gitRepository(cwd);
+  if (own) return own;
   const [key, branch] = relative(worktrees, cwd).split(sep);
   if (!key || key === ".." || !branch) return basename(cwd);
-  // Another worktree made from the same checkout, or that checkout itself, still knows the repository.
   const checkout = key.replace(/-[0-9a-f]{12}$/u, "");
   const siblings = (await readdir(join(worktrees, key)).catch(() => [])).map((name) => join(worktrees, key, name));
   const sources = (await readdir(worktrees).catch(() => [])).map((parent) => join(worktrees, parent, checkout));
   for (const candidate of [...siblings, ...sources]) {
-    if (candidate !== cwd && await stat(candidate).then(() => true, () => false)) return repositoryName(candidate, worktrees, home);
+    const name = candidate === cwd ? undefined : await gitRepository(candidate);
+    if (name) return name;
   }
   return checkout;
 }

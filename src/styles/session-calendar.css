@@ -1,4 +1,16 @@
 /* Contributions → Calendar: a week of HUI sessions. Blocks use the session palette. */
+.content:has(hui-session-calendar) .content-header--settings,
+.contributions-page:has(hui-session-calendar) {
+  max-width: none;
+}
+
+.session-calendar__focus {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  color: var(--text-strong);
+  overflow-wrap: anywhere;
+}
 hui-session-calendar {
   display: flex;
   flex-direction: column;
@@ -349,10 +361,9 @@ hui-session-calendar {
   white-space: nowrap;
 }
 
-.session-calendar__popover-more {
-  margin-top: 2px;
-  color: var(--muted);
-  font-size: var(--control-ui-text-xs);
+.session-calendar__popover-sessions {
+  max-height: 220px;
+  overflow-y: auto;
 }
 
 .session-calendar__members {

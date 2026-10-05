@@ -6,7 +6,7 @@ import { fetchJson } from "./settings-store.ts";
 
 const MINUTE = 60_000;
 const DAY_START_HOUR = 5;
-/** The server's silence between blocks; work across sessions follows the same rule. */
+/** Nearby blocks join visually; these gaps never add to recorded activity time. */
 const GAP_MS = 30 * MINUTE;
 /** Shortest drawn block, so a one-message stretch stays visible and clickable. */
 export const MIN_DRAWN_MS = 30 * MINUTE;
@@ -15,7 +15,8 @@ const COLORS = 16;
 
 /** What the grid draws as one color: a repository, a sidebar group or each session. */
 export type CalendarGrouping = "project" | "group" | "session";
-export type CalendarSession = { session: ActivitySession; ms: number };
+export type CalendarSession = { session: ActivitySession; ms: number; first?: string; model?: string };
+type CalendarPart = { session: ActivitySession; block: ActivityBlock };
 export type CalendarUnit = {
   key: string;
   label: string;
@@ -27,11 +28,9 @@ export type CalendarUnit = {
 };
 export type CalendarBlock = {
   unit: CalendarUnit;
-  /** The whole stretch, in epoch milliseconds: its sessions' blocks with no gap over 30 minutes. */
-  from: number;
-  to: number;
-  /** The session blocks it is made of. */
-  parts: { session: ActivitySession; block: ActivityBlock }[];
+  /** Recorded activity within this day's part of the stretch, parallel time counted once. */
+  ms: number;
+  sessions: CalendarSession[];
   /** The part of the stretch inside its day. */
   start: number;
   end: number;
@@ -47,7 +46,7 @@ export type CalendarWeek = {
   units: CalendarUnit[];
   /** Sessions with time this week. */
   sessions: number;
-  /** Working time: any pause under 30 minutes counts, in whichever session work continues; parallel sessions count once. */
+  /** Recorded session activity: parallel sessions count once; visual joining adds no time. */
   activeMs: number;
   /** Time summed per session. */
   sessionMs: number;
@@ -89,12 +88,12 @@ export function localHour(ms: number, day: Date): number {
   return date.getDate() === day.getDate() ? hours : hours + 24;
 }
 
-/** Blocks of `parts` no more than the gap apart, merged, oldest first. */
-function stretches<T extends { block: ActivityBlock }>(parts: readonly T[]): { from: number; to: number; parts: T[] }[] {
-  const merged: { from: number; to: number; parts: T[] }[] = [];
+/** Merge nearby blocks for display; gap=0 is the union used for recorded time. */
+function stretches(parts: readonly CalendarPart[], gap = GAP_MS): { from: number; to: number; parts: CalendarPart[] }[] {
+  const merged: { from: number; to: number; parts: CalendarPart[] }[] = [];
   for (const part of [...parts].sort((a, b) => a.block.start - b.block.start)) {
     const last = merged.at(-1);
-    if (last && part.block.start - last.to <= GAP_MS) {
+    if (last && part.block.start - last.to <= gap) {
       last.to = Math.max(last.to, part.block.end);
       last.parts.push(part);
     } else merged.push({ from: part.block.start, to: part.block.end, parts: [part] });
@@ -105,6 +104,20 @@ function stretches<T extends { block: ActivityBlock }>(parts: readonly T[]): { f
 /** Length of the stretches inside `[from, to)`. */
 const within = (merged: readonly { from: number; to: number }[], from: number, to: number) =>
   merged.reduce((sum, stretch) => sum + Math.max(0, Math.min(stretch.to, to) - Math.max(stretch.from, from)), 0);
+
+/** Session blocks do not overlap one another. Clip them to the shown range before adding. */
+function sessionTimes(parts: readonly CalendarPart[], from: number, to: number): CalendarSession[] {
+  const sessions = new Map<string, CalendarSession>();
+  for (const { session, block } of parts) {
+    if (!overlaps(block, from, to)) continue;
+    const entry = sessions.get(session.id) ?? { session, ms: 0 };
+    entry.ms += Math.min(block.end, to) - Math.max(block.start, from);
+    entry.first ??= block.firstMessage;
+    if (block.model) entry.model = block.model;
+    sessions.set(session.id, entry);
+  }
+  return [...sessions.values()].sort((a, b) => b.ms - a.ms || a.session.title.localeCompare(b.session.title));
+}
 
 function peakOverlap(intervals: readonly (readonly [number, number])[]): number {
   // Ends sort before starts at the same instant: back-to-back is not parallel.
@@ -165,21 +178,24 @@ export function calendarWeek(activity: SessionActivity, start: Date, grouping: C
   }
   const ranked = [...units].map(([key, { label, parts: own }]) => {
     const merged = stretches(own);
-    const sessions = [...new Set(own.map(({ session }) => session))]
-      .map((session) => ({ session, ms: within(stretches(own.filter((part) => part.session === session)), weekFrom, weekTo) }))
-      .sort((a, b) => b.ms - a.ms || a.session.title.localeCompare(b.session.title));
-    return { unit: { key, label, color: 0, ms: within(merged, weekFrom, weekTo), sessions }, merged };
+    const sessions = sessionTimes(own, weekFrom, weekTo);
+    return { unit: { key, label, color: 0, ms: within(stretches(own, 0), weekFrom, weekTo), sessions }, merged };
   }).sort((a, b) => b.unit.ms - a.unit.ms || a.unit.label.localeCompare(b.unit.label));
   ranked.forEach(({ unit }, index) => { unit.color = index % COLORS; });
 
-  const all = stretches(parts);
+  const all = stretches(parts, 0);
   let first = 9;
   let last = 18;
   const calendarDays = days.map(({ date, next }) => {
     const from = date.valueOf();
     const blocks: CalendarBlock[] = ranked.flatMap(({ unit, merged }) => merged
       .filter((stretch) => overlaps({ start: stretch.from, end: stretch.to }, from, next))
-      .map((stretch) => ({ unit, ...stretch, start: Math.max(stretch.from, from), end: Math.min(stretch.to, next), lane: 0, lanes: 1, span: 1 })));
+      .map((stretch) => ({
+        unit,
+        start: Math.max(stretch.from, from), end: Math.min(stretch.to, next),
+        ms: within(stretches(stretch.parts, 0), from, next),
+        sessions: sessionTimes(stretch.parts, from, next), lane: 0, lanes: 1, span: 1,
+      })));
     assignLanes(blocks);
     for (const block of blocks) {
       first = Math.min(first, Math.floor(localHour(block.start, date)));

@@ -67,7 +67,7 @@ const seeds: Seed[] = [
     [at(5, 11, 0), 140, "Polish the onboarding flow"],
   ] },
   { title: "Hotfix: currency rounding", project: "checkout-api", group: "Payments", model: OPUS, blocks: [
-    [at(1, 23, 30), 75, "Totals in JPY round to the wrong yen"],
+    [at(2, 21, 0), 80, "Totals in JPY round to the wrong yen"],
   ] },
   // The last few hours, never before this week starts.
   { title: "Calendar week view", project: "hui", group: "Tools", model: OPUS, blocks: [

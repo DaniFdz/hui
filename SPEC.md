@@ -195,8 +195,10 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   ran in, which its worktrees and subdirectories share (`~` for the home
   directory, a folder's own name outside Git); *Group*, the sidebar group
   (*Other* when ungrouped); or *Session*. A project's or group's sessions merge
-  into one block wherever they are under 30 minutes apart, and a pause under 30
-  minutes counts as work whichever session it continues in. A day runs from
+  visually into one block wherever they are at most 30 minutes apart. The
+  recorded activity totals remain unions of the original session blocks;
+  visual joining never adds idle time, and grouping never changes the total.
+  A day runs from
   5 AM to 5 AM, so late-night work stays in the column of the day it began; the
   hour axis covers 9 AM to 6 PM and every block. Colors come from the session
   palette, then the same colors shaded, busiest first, repeating after sixteen.
@@ -205,19 +207,21 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   color, and a one-message block is drawn 30 minutes tall.
   Today's column is tinted with a line at the current time. Activating a block
   opens a card beside it (below it on narrow screens) with its name, day,
-  start–end and length, and its total this week. Under *Session* it shows the
+  start–end and recorded activity for that day's part, and its total this week.
+  Under *Session* it shows the
   session's project, group and model, the operator's first message in the block
   and *Open session*; under *Project* or *Group* it lists the block's sessions,
-  most time first, with their time in it and first message (six, then "and N
-  more"), each opening its session. Escape or a click elsewhere closes it. The
+  most time first, with their recorded time in that day's part and first message,
+  in a scrollable list, each opening its session. Escape or a click elsewhere closes it. The
   heading shows the week, how many sessions and blocks it had and, when more
   than one, the most sessions running at once. Beside the grid (below it on
   narrow screens), the total working time counts parallel sessions once
-  ("52h 58m across 6 projects", a bar split by color, and the summed session
+  ("29h 25m across 5 projects", a bar split by color, and the summed session
   time); every project, group or session follows with its time, most first.
-  Hovering one dims the others' blocks; activating it keeps them dimmed until
-  activated again and, for a project or group, lists its sessions with their
-  time, each opening its session. *Hours per day* charts each day's working
+  Hovering one dims the others' blocks; activating it focuses the grid on only
+  that item, with full-width day blocks, and, for a project or group, lists its
+  sessions with their time, each opening its session. *Show all* or activating
+  the same item again restores the overview. *Hours per day* charts each day's working
   time and labels the busiest. Only Durable conversations are read; sessions
   still on PI's worker appear once `hui doctor --fix` moves them. A rewind
   continues the session on a copy of the history before that point, so the

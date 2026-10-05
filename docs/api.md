@@ -2157,18 +2157,23 @@ whole history. `model` is the `provider/model` of the block's last answer;
 `project` names the session's repository: the parent of Git's absolute common
 directory (`rev-parse --git-common-dir`) for a `.git` directory, else that
 directory without `.git`, so a repository's worktrees and subdirectories share
-it. When Git cannot answer, a directory under HUI's worktrees directory is
-resolved through its siblings or the checkout it was made from (its parent is
-`<checkout>-<hash>`), else named after that checkout; the home directory is `~`
-and any other directory its own name. Answers are kept in gateway memory per
-directory. `firstMessage` is the operator's first message in the block (user entries only,
+it. The home directory is always `~`, without asking Git. When Git cannot
+answer, a directory under HUI's worktrees directory is checked against its
+siblings or the checkout it was made from (its parent is `<checkout>-<hash>`).
+Candidates are queried with Git, never recursively resolved; if none can
+answer, the checkout name is used. Other directories use their own name.
+Git queries use the existing command runner's 15-second timeout. Answers are
+kept in gateway memory per directory. `firstMessage` is the operator's first message in the block (user entries only,
 HUI's control prompts excluded, at most 400 characters). Sessions without a
 block in the range, and sessions on PI's worker, are omitted. Only the
 session's current conversation is read: after a rewind that is a fork holding
 the history before the rewound message, so the abandoned branch's time is not
 counted. Entries are read in pages (20, then 200) with a macrotask yield
-between pages. Nothing is cached or persisted. The browser computes the week,
-days, lanes and totals in local time.
+between pages. Activity is neither cached nor persisted. The browser computes
+the week, days, lanes and totals in local time. Project/group blocks may join
+across gaps of at most 30 minutes for display, but those gaps never add to the
+recorded activity totals. Per-item, daily and weekly totals count overlapping
+session blocks once, and the weekly total is independent of grouping.
 
 ### GitHub link previews
 

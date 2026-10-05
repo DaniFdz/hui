@@ -40,6 +40,7 @@ test("parallel sessions count once in the week's working time and per day, and o
   assert.deepEqual(week.days.map((day) => day.activeMs / HOUR), [4, 0, 4, 1, 0, 0, 0]);
   assert.deepEqual(week.days[2]!.blocks.map(({ start, end }) => [start, end]), [[at(2, 22), at(3, 1)], [at(3, 4), at(3, 5)]]);
   assert.deepEqual(week.days[3]!.blocks.map(({ start, end }) => [start, end]), [[at(3, 5), at(3, 6)]]);
+  assert.equal(week.days[3]!.blocks[0]!.sessions[0]!.ms, HOUR, "the detail card counts only the part shown on Thursday");
   assert.deepEqual(week.hours, [5, 29], "from 5 AM to 5 AM the next morning");
 });
 
@@ -50,8 +51,8 @@ test("a project draws its sessions as one block wherever they are under 30 minut
     session("pricing", [block(at(0, 11, 20), at(0, 12))], "marketing-site", "Payments"),
   ];
   const projects = calendarWeek({ sessions }, MONDAY, "project");
-  assert.deepEqual(projects.days[0]!.blocks.map(({ unit, from, to, parts }) => [unit.label, from, to, parts.map((part) => part.session.id)]), [
-    ["checkout-api", at(0, 9), at(0, 11), ["retry", "webhook"]],
+  assert.deepEqual(projects.days[0]!.blocks.map(({ unit, start, end, sessions }) => [unit.label, start, end, sessions.map(({ session }) => session.id)]), [
+    ["checkout-api", at(0, 9), at(0, 11), ["webhook", "retry"]],
     ["marketing-site", at(0, 11, 20), at(0, 12), ["pricing"]],
     ["checkout-api", at(0, 14), at(0, 15), ["retry"]],
   ]);
@@ -61,9 +62,27 @@ test("a project draws its sessions as one block wherever they are under 30 minut
   ]);
   // Grouped by sidebar group, the 20-minute pause before Pricing joins the morning.
   const groups = calendarWeek({ sessions }, MONDAY, "group");
-  assert.deepEqual(groups.days[0]!.blocks.map(({ unit, from, to }) => [unit.label, from, to]), [["Payments", at(0, 9), at(0, 12)], ["Payments", at(0, 14), at(0, 15)]]);
-  assert.equal(groups.activeMs, 4 * HOUR, "the pause counts as work in the total too");
+  assert.deepEqual(groups.days[0]!.blocks.map(({ unit, start, end }) => [unit.label, start, end]), [["Payments", at(0, 9), at(0, 12)], ["Payments", at(0, 14), at(0, 15)]]);
+  for (const grouping of ["project", "group", "session"] as const) {
+    assert.equal(calendarWeek({ sessions }, MONDAY, grouping).activeMs, 220 * 60_000, "changing grouping must not add the 20-minute pause to activity");
+  }
+  assert.equal(groups.units[0]!.ms, 220 * 60_000);
+  assert.equal(groups.days[0]!.blocks[0]!.ms, 160 * 60_000, "a 3-hour drawn stretch contains 2h 40m of activity");
   assert.equal(calendarWeek({ sessions: [session("x", [block(at(0, 9), at(0, 10))])] }, MONDAY, "group").units[0]!.label, "Other");
+});
+
+test("joining stretches at exactly 30 minutes does not invent work between projects", () => {
+  const sessions = [
+    session("a", [block(at(0, 10), at(0, 10, 10))], "api", "Payments"),
+    session("b", [block(at(0, 10, 40), at(0, 10, 50))], "web", "Payments"),
+  ];
+  for (const grouping of ["project", "group", "session"] as const) {
+    const week = calendarWeek({ sessions }, MONDAY, grouping);
+    assert.equal(week.activeMs, 20 * 60_000);
+    assert.equal(week.sessionMs, 20 * 60_000);
+    assert.equal(week.days[0]!.activeMs, 20 * 60_000);
+    assert.equal(week.days[0]!.blocks.length, grouping === "group" ? 1 : 2);
+  }
 });
 
 test("overlapping blocks share their day in lanes and widen into lanes free beside them", () => {
