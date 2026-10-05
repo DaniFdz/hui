@@ -61,7 +61,7 @@ after(async () => {
   await rm(dir, { recursive: true, force: true });
 });
 
-async function call(path: string, method = "GET", body?: unknown, guard = true): Promise<{ status: number; body: Record<string, unknown>; text: string; type: string }> {
+async function call(path: string, method = "GET", body?: unknown, guard = true): Promise<{ status: number; body: Record<string, unknown>; text: string; type: string; headers: Headers }> {
   const response = await fetch(origin + path, {
     method,
     headers: { ...(guard ? { "x-hui": "1" } : {}), ...(body === undefined ? {} : { "content-type": "application/json" }) },
@@ -70,7 +70,7 @@ async function call(path: string, method = "GET", body?: unknown, guard = true):
   const text = await response.text();
   let parsed: Record<string, unknown> = {};
   try { parsed = JSON.parse(text) as Record<string, unknown>; } catch { /* html */ }
-  return { status: response.status, body: parsed, text, type: response.headers.get("content-type") ?? "" };
+  return { status: response.status, body: parsed, text, type: response.headers.get("content-type") ?? "", headers: response.headers };
 }
 
 const botOf = (reply: { body: Record<string, unknown> }) => reply.body["bot"] as BotView;
@@ -230,7 +230,7 @@ test("a bot's memory is OptChat's: built summaries, the view, zoom down to a who
   assert.deepEqual((await call("/__hui/bots/mem/memory/zoom?id=0&n=1")).body, { text: `0+0|user: ${long}` }, "the whole message, word for word");
   assert.deepEqual((await call("/__hui/bots/mem/memory/zoom?id=8&n=1")).body, { text: "No line 8+1." });
 
-  // The browse page: the view, every message and each level, escaped.
+  // The browse page: the view, every message and each level, escaped, under a policy that runs and frames nothing.
   const page = await call("/__hui/bots/mem/memory/html");
   assert.equal(page.status, 200);
   assert.equal(page.type, "text/html; charset=utf-8");
@@ -238,6 +238,32 @@ test("a bot's memory is OptChat's: built summaries, the view, zoom down to a who
   assert.match(page.text, /<h2>View · 4 lines<\/h2>[\s\S]*<h2>ROOT · 4 messages<\/h2>[\s\S]*<h2>Level 2 · 1 nodes<\/h2>/u);
   assert.match(page.text, /&lt;b&gt;keep&lt;\/b&gt; the blue door/u);
   assert.doesNotMatch(page.text, /<b>keep<\/b>/u, "chat text never becomes markup");
+  assert.deepEqual(Object.fromEntries(["content-security-policy", "x-content-type-options", "cache-control", "cross-origin-resource-policy"].map((name) => [name, page.headers.get(name)])), {
+    "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+    "x-content-type-options": "nosniff",
+    "cache-control": "no-store",
+    "cross-origin-resource-policy": "same-origin",
+  });
+});
+
+test("a bot's memory page opens from a same-origin link, which cannot send x-hui; everything cross-site is refused", { timeout: 60_000 }, async () => {
+  const load = (path: string, headers: Record<string, string>, method = "GET") => fetch(origin + path, { method, headers });
+  const linked = await load("/__hui/bots/mem/memory/html", { "sec-fetch-site": "same-origin", "sec-fetch-mode": "navigate", "sec-fetch-dest": "document" });
+  assert.equal(linked.status, 200, "a link on HUI's own page");
+  assert.match(await linked.text(), /<title>OptChat memory of Mem<\/title>/u);
+  assert.match(linked.headers.get("content-security-policy") ?? "", /frame-ancestors 'none'/u);
+  for (const site of ["cross-site", "same-site", "none"]) {
+    const refused = await load("/__hui/bots/mem/memory/html", { "sec-fetch-site": site });
+    assert.equal(refused.status, 403, site);
+    assert.deepEqual(await refused.json(), { error: "missing x-hui header" });
+  }
+  assert.equal((await load("/__hui/bots/mem/memory/html", {})).status, 403, "no browser attestation at all");
+  assert.equal((await load("/__hui/bots/mem/memory/html", { "sec-fetch-site": "same-origin" }, "POST")).status, 405, "the page is read-only");
+  assert.equal((await load("/__hui/bots/nobody/memory/html", { "sec-fetch-site": "same-origin" })).status, 404);
+  // Only the page: every other bot route still needs x-hui.
+  for (const path of ["/__hui/bots/mem/memory", "/__hui/bots/mem/memory/zoom?id=0&n=1", "/__hui/bots/mem", "/__hui/bots"]) {
+    assert.equal((await load(path, { "sec-fetch-site": "same-origin" })).status, 403, path);
+  }
 });
 
 test("a routine runs marked as one, and archiving the bot disables it", { timeout: 120_000 }, async () => {

@@ -271,7 +271,8 @@ view's size and lines, and what the compactor spent since the gateway opened the
 memory (calls, tokens, cost). Every view line is `id+n|text`: `n` messages
 from `id`, in one summary; `--zoom id+n` opens it, down to a single message
 with `n` = 1. The page lists the view, every message and each level of the
-tree.
+tree; a browser opens it from a link on HUI's own pages, such as the Bots tab
+(another site cannot load or frame it).
 
 ### Archiving
 

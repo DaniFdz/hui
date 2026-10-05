@@ -27,7 +27,7 @@ import { workers } from "./workers.ts";
 import { createWorkerRoutes, WORKERS_ROUTE } from "./worker-routes.ts";
 import { BotInputError, BotRegistry, BotStoreError } from "./bots.ts";
 import { BotService } from "./bot-service.ts";
-import { BOTS_EVENTS_ROUTE, BOTS_ROUTE, createBotRoutes } from "./bot-routes.ts";
+import { BOT_MEMORY_PAGE, BOTS_EVENTS_ROUTE, BOTS_ROUTE, createBotRoutes } from "./bot-routes.ts";
 import { durableBotConversations } from "./bot-conversations.ts";
 import { optChatBotMemory } from "./bot-memory.ts";
 import type { BotsUpdate, BotView } from "../shared/bots.ts";
@@ -658,14 +658,18 @@ function sendJson(response: ServerResponse, status: number, body: unknown): void
   response.end(JSON.stringify(body));
 }
 
-/** A page HUI renders itself (a bot's memory). Its text comes from a chat, so it may run nothing and load nothing. */
+/** A page HUI renders itself (a bot's memory). Its text comes from a chat, so it may run nothing, load nothing but its
+ * inline styles, submit nothing, and be framed by no page, HUI's own included. */
+const BOT_PAGE_POLICY = "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
+
 function sendHtml(response: ServerResponse, status: number, html: string): void {
   if (response.writableEnded) return;
   response.statusCode = status;
   response.setHeader("content-type", "text/html; charset=utf-8");
   response.setHeader("cache-control", "no-store");
   response.setHeader("x-content-type-options", "nosniff");
-  response.setHeader("content-security-policy", "default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'self'");
+  response.setHeader("content-security-policy", BOT_PAGE_POLICY);
+  response.setHeader("cross-origin-resource-policy", "same-origin");
   response.end(html);
 }
 
@@ -2134,6 +2138,23 @@ export function streamBots(response: ServerResponse, list: Pick<typeof botList, 
   });
 }
 
+/** `/__hui/bots` and everything under it but the events stream (`bot-routes.ts`). */
+async function serveBotRoute(request: Connect.IncomingMessage, response: ServerResponse, path: string): Promise<void> {
+  // A client that leaves ends its wait for a reply, never the bot's turn.
+  const gone = new AbortController();
+  response.once("close", () => gone.abort());
+  const result = await botRoutes.handle({
+    method: request.method ?? "GET",
+    path,
+    query: new URL(request.url ?? "/", "http://localhost").searchParams,
+    body: (maxBytes) => readBody(request, maxBytes),
+    signal: gone.signal,
+  });
+  if (!result) sendJson(response, 404, { error: `unknown route: ${path}` });
+  else if ("html" in result) sendHtml(response, result.status, result.html);
+  else sendJson(response, result.status, result.body);
+}
+
 async function handleRequest(
   request: Connect.IncomingMessage,
   response: ServerResponse,
@@ -2186,6 +2207,18 @@ async function handleRequest(
     response.setHeader("x-content-type-options", "nosniff");
     response.setHeader("cross-origin-resource-policy", "same-origin");
     response.end(attachment.data);
+    return;
+  }
+
+  if (BOT_MEMORY_PAGE.test(path)) {
+    // A link (a bot's memory in a new tab) cannot send x-hui either: like an
+    // attachment, accept it or a browser-attested same-origin load, and refuse
+    // everything cross-site.
+    if (request.headers[CLIENT_HEADER] !== "1" && request.headers["sec-fetch-site"] !== "same-origin") {
+      sendJson(response, 403, { error: `missing ${CLIENT_HEADER} header` });
+      return;
+    }
+    await serveBotRoute(request, response, path);
     return;
   }
 
@@ -2446,19 +2479,7 @@ async function handleRequest(
   }
 
   if (path === BOTS_ROUTE || path.startsWith(`${BOTS_ROUTE}/`)) {
-    // A client that leaves ends its wait for a reply, never the bot's turn.
-    const gone = new AbortController();
-    response.once("close", () => gone.abort());
-    const result = await botRoutes.handle({
-      method: request.method ?? "GET",
-      path,
-      query: new URL(request.url ?? "/", "http://localhost").searchParams,
-      body: (maxBytes) => readBody(request, maxBytes),
-      signal: gone.signal,
-    });
-    if (!result) sendJson(response, 404, { error: `unknown route: ${path}` });
-    else if ("html" in result) sendHtml(response, result.status, result.html);
-    else sendJson(response, result.status, result.body);
+    await serveBotRoute(request, response, path);
     return;
   }
 

@@ -14,7 +14,7 @@
  *   POST   /__hui/bots/:id/stop              stop the current turn ({ bot })
  *   GET    /__hui/bots/:id/memory            { status, view }
  *   GET    /__hui/bots/:id/memory/zoom?id=&n= { text }
- *   GET    /__hui/bots/:id/memory/html       the OptChat browse page (text/html)
+ *   GET    /__hui/bots/:id/memory/html       the OptChat browse page (text/html); also a same-origin link's page load
  *
  * `GET /__hui/bots/events` streams the list and is served by `hui.ts`.
  */
@@ -27,6 +27,8 @@ import type { PromptAttachment } from "./runtimes/types.ts";
 
 export const BOTS_ROUTE = "/__hui/bots";
 export const BOTS_EVENTS_ROUTE = "/__hui/bots/events";
+/** The memory page, which a link opens: `hui.ts` also accepts a same-origin page load there (docs/api.md#bots). */
+export const BOT_MEMORY_PAGE = /^\/__hui\/bots\/[A-Za-z0-9_-]{1,100}\/memory\/html$/u;
 const ROUTE = /^\/__hui\/bots(?:\/([A-Za-z0-9_-]{1,100})(?:\/(restore|messages|stop|memory|memory\/zoom|memory\/html))?)?$/u;
 /** Instructions reach 20,000 characters, up to four bytes each. */
 const BOT_BODY_BYTES = 256 * 1024;

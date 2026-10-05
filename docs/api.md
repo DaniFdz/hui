@@ -1146,8 +1146,8 @@ mode 0700.
 
 ### Routes
 
-All under `/__hui/bots`, with the usual `x-hui` guard. `:id` is a bot's id or
-handle. Bodies are JSON (create and edit up to 256 KiB, messages up to 24 MB);
+All under `/__hui/bots`, with the usual `x-hui` guard (the memory page also
+accepts a same-origin page load, below). `:id` is a bot's id or handle. Bodies are JSON (create and edit up to 256 KiB, messages up to 24 MB);
 unknown fields are refused. Errors use the common `{ "error" }` shape: 400 for
 input (including an unknown model or a missing directory), 404 for an unknown
 bot, 409 when the bot's state refuses the request, 503 when the gateway cannot
@@ -1165,7 +1165,7 @@ read the chat's memory, 500 for storage failures; other methods answer 405.
 | `POST /__hui/bots/:id/stop` | 200 `{ bot }` | Aborts the chat's running turn; an idle bot is unchanged; 409 while its chat starts |
 | `GET /__hui/bots/:id/memory` | 200 `{ status: BotMemoryStatus, view: string }` | The rendered current view (`<chat>`, one `id+n\|text` line per part, `</chat>`), read once the memory has caught up with the chat; the status counts the same messages |
 | `GET /__hui/bots/:id/memory/zoom?id=&n=` | 200 `{ text }` | OptChat's `zoom(id, n)` output: the two lines under line `id+n`, `n = 1` the whole message (`id+0\|kind: text`), or its own "No line id+n."; `id`/`n` must be whole numbers (400) |
-| `GET /__hui/bots/:id/memory/html` | 200 `text/html` | OptChat's self-contained browse page, served with `default-src 'none'` (inline styles only) and `nosniff` |
+| `GET /__hui/bots/:id/memory/html` | 200 `text/html` | OptChat's self-contained browse page (the view, every message, each tree level; everything escaped). A link opens it, so like an attachment it takes `x-hui: 1` or a browser-attested `sec-fetch-site: same-origin` page load; any other request is 403 (cross-site, same-site, `none`, none at all). Served with `content-security-policy: default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'` (inline styles only, never framed), `nosniff`, `cache-control: no-store` and `cross-origin-resource-policy: same-origin` |
 
 `POST /__hui/bots/:id/messages` takes `{ text, attachments?, wait?: boolean,
 timeoutSeconds? }`. `attachments` follow the prompt route's rules; an image
