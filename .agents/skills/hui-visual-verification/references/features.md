@@ -7,6 +7,7 @@ labels from Browser snapshots; older journey notes record historical observation
 | Change | Journey / fixture | Required observable result |
 | --- | --- | --- |
 | Basic SDK/chat/tool rendering | `e2e/sdk-backend.browser.md`; default launcher + `E2E_RICH` | Real read tool, response, second prompt accepted, persisted session after reload |
+| PI extensions in Durable | `e2e/durable-extensions.browser.md`; default launcher + `E2E_EXTENSION_TOOL`, `$check-status`, `$hui-e2e-question`; separate plain-text session + `$fixture-compact` | Extension tool executes, plugin commands appear, question answers settle desktop/mobile, repeated turns and extension-driven compaction work |
 | Compaction / rewind | `e2e/compaction-rewind.browser.md`; default launcher (Durable sessions) + `/compact`, `E2E_SLOW_COMPACT`; PI's worker: `launch … --pi-sessions` + `/fixture-compact` | Earlier turns stay visible with the divider; rewind inside the kept window keeps the summary, behind it sends the original turns; live divider, queued input sent after, failure and Stop-cancel dividers |
 | Composer / streaming / queue | `e2e/chat-composer.browser.md`, `e2e/steer-enqueue-fix.browser.md` | Usable composer during held turn; queued vs steer delivery; no false editors |
 | Sidebar / groups | `e2e/session-groups.browser.md`, `e2e/sidebar-toolbar.browser.md` | Group/filter/sort changes visible and durable after reload; group Git defaults persist and drive Branch/Worktree launches |
@@ -27,8 +28,9 @@ labels from Browser snapshots; older journey notes record historical observation
 ## Fixture selection
 
 - **Default:** `visual-verification.mjs` uses the existing local Anthropic-compatible
-  provider and the real PI SDK worker. The model's answer is deterministic; the
-  app, worker, tools, routing and persistence are real.
+  provider and real Pi Durable with PI extensions. `--pi-sessions` selects the
+  PI SDK worker instead. The model's answer is deterministic; the app, runtime,
+  tools, routing and persistence are real.
 - **Seeded state:** feature fixtures create a reproducible transcript or registry.
   Useful for menus, errors and layout. A seeded tool call does not prove a model
   chose/executed the tool. Use the feature recipe's isolated directories/ports.

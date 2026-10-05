@@ -169,6 +169,8 @@ type Live = {
   /** Terminal subagent cleanup waits until a browser displaying the child has
    * left, so its final transcript does not turn into a dead stream. */
   releaseWhenUnread?: boolean;
+  /** The current runtime attempt, settled once it is ready or has failed. */
+  boot?: Promise<void>;
 };
 
 export type DeleteToken = symbol;
@@ -280,7 +282,7 @@ export class LiveSessions {
       existing.bootStartedAt = Date.now();
       existing.bootDurationMs = undefined;
       this.#setStatus(existing, "starting");
-      void this.#boot(existing);
+      existing.boot = this.#boot(existing);
       return true;
     }
     const live: Live = {
@@ -303,8 +305,13 @@ export class LiveSessions {
     };
     this.#live.set(record.id, live);
     this.#publishStatus(live, "starting", false);
-    void this.#boot(live);
+    live.boot = this.#boot(live);
     return true;
+  }
+
+  /** Settles once the session's runtime is ready or has failed to start. */
+  booted(id: string): Promise<void> {
+    return this.#live.get(id)?.boot ?? Promise.resolve();
   }
 
   status(id: string): SessionStatus {

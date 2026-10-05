@@ -4,10 +4,12 @@
  * transcript, queue and crash recovery; this adapter translates its committed
  * state and events into HUI's runtime contract. Nothing here retries or
  * replays work after a restart: the harness resumes interrupted runs itself.
+ * The session's PI extensions (`durable-extensions.ts`) see its prompts and
+ * events through it.
  */
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { clampThinkingLevel, type Message, type ModelThinkingLevel } from "@earendil-works/pi-ai";
+import { clampThinkingLevel, type ImageContent, type Message, type ModelThinkingLevel, type TextContent } from "@earendil-works/pi-ai";
 import {
   CompactionEntry, InboxDoc, ResetEntry, SystemEntry, watchEvents,
   type AgentEvent, type AgentState, type CompactionResult, type Conversation, type ConversationId, type Cursor,
@@ -19,14 +21,16 @@ import { SettingsManager } from "@earendil-works/pi-coding-agent";
 import { resolveCommandReference } from "../../src/lib/command-references.ts";
 import type { RuntimeInspection } from "../../src/lib/tools-types.ts";
 import { durableContext as context, durableHost, type DurableHost } from "./durable-host.ts";
+import { DurableExtensions, ExtensionMessageEntry, isCustomInput, type CustomMessage, type ExtensionSession } from "./durable-extensions.ts";
 import { filterConfiguredModels } from "./pi-models.ts";
 import {
   fileFromMessages, imageFromMessages, latestRunUsage, promptPayload, restoreAttachmentNames, toolOutput, transcriptFrom,
 } from "./pi.ts";
 import { RuntimeTimings } from "./transcript-metrics.ts";
 import type {
-  AgentRuntime, CompactionReason, PromptAttachment, RuntimeCommand, RuntimeEvent, RuntimeModel, RuntimeQueue,
-  RuntimeRewindOptions, RuntimeRewindTarget, RuntimeSession, RuntimeUsage, StartOptions, TranscriptEntry,
+  AgentRuntime, CompactionReason, PromptAttachment, RuntimeCommand, RuntimeEvent, RuntimeModel, RuntimeQuestion,
+  RuntimeQuestionResponse, RuntimeQueue, RuntimeRewindOptions, RuntimeRewindTarget, RuntimeSession, RuntimeUsage, StartOptions,
+  TranscriptEntry,
 } from "./types.ts";
 
 export const DURABLE_VERSION = "1.0.1";
@@ -44,10 +48,13 @@ const QUIET_TIMEOUT_MS = 30_000;
 type SnapshotEvent = Extract<AgentEvent, { type: "snapshot" }>;
 /** One stored entry, and the messages the transcript shows for it. */
 type Row = { readonly entry: EntryRecord; readonly shown: readonly unknown[] };
-type CompactionOutcome = { outcome: "done" | "failed" | "cancelled"; message?: string };
+type CompactionOutcome = { outcome: "done" | "failed" | "cancelled"; message?: string; result?: CompactionResult };
 type CompactionStart = Extract<RuntimeEvent, { type: "compaction_start" }>;
 /** One running compaction, of the kind Durable gave it (`createCompaction`). */
 type Compaction = { readonly reason: CompactionReason; readonly blocking: boolean; readonly background: boolean };
+/** How input reaches the conversation: `reject` starts a run, the others queue into one. */
+type Delivery = "reject" | "steer" | "followUp";
+type Sending = { readonly attachments?: readonly PromptAttachment[]; readonly images?: readonly ImageContent[]; readonly source: "rpc" | "extension"; readonly expand: boolean };
 
 /**
  * Durable's kinds of compaction: one a generation owns is `blocking`, and its run waits for the summary; a manual one
@@ -147,7 +154,7 @@ export async function initialModel(host: DurableHost, cwd: string, requested: st
   return first ? { provider: first.provider, modelId: first.id } : undefined;
 }
 
-export class DurableSession implements RuntimeSession {
+export class DurableSession implements RuntimeSession, ExtensionSession {
   readonly #host: DurableHost;
   readonly #harness: Harness;
   readonly #cwd: string;
@@ -177,8 +184,19 @@ export class DurableSession implements RuntimeSession {
   #agent: AgentState = {};
   #queue: RuntimeQueue = { steering: [], followUp: [] };
   #toolOutput = new Map<string, string>();
+  /** A run is going: from the submit of its input to its end. */
   #streaming = false;
+  /** Prompts passing their extension handlers before anything is submitted. */
+  #starting = 0;
+  /** Runs that ended whose extensions' end-of-run handlers still run. */
+  #settling = 0;
   #disposed = false;
+  /** `rows()`, until the history changes. */
+  #rows: readonly EntryRecord[] | undefined;
+  /** The session's PI extensions; absent when its PI setup has none. */
+  #extensions: DurableExtensions | undefined;
+  #extensionFailure: string | undefined;
+  #huiSessionId: string | undefined;
   readonly resumesInterruptedRuns = true;
 
   constructor(host: DurableHost, harness: Harness, conversation: Conversation, cwd: string) {
@@ -190,7 +208,61 @@ export class DurableSession implements RuntimeSession {
 
   get sessionId(): string { return String(this.#conversation.id); }
   get sessionFile(): string { return durableReference(this.#conversation.id); }
-  get isStreaming(): boolean { return this.#streaming; }
+  /** HUI's view: a run is over once its extensions' end-of-run handlers ran, as in PI. */
+  get isStreaming(): boolean { return this.#streaming || this.#settling > 0; }
+  /** The extensions' view: from the submit of a run's input to its end. */
+  get running(): boolean { return this.#streaming; }
+  get cwd(): string { return this.#cwd; }
+  conversation(): Conversation { return this.#conversation; }
+
+  /** Loads the HUI session's PI extensions and offers the conversation their tools; `startExtensions` starts them. A
+   * setup that fails to load leaves the session without extensions, and says why in its inspection. */
+  async loadExtensions(huiSessionId: string): Promise<void> {
+    this.#huiSessionId = huiSessionId;
+    this.#extensionFailure = undefined;
+    try {
+      const settings = await this.#host.settings();
+      this.#extensions = await DurableExtensions.load({
+        host: this.#host, session: this, huiSessionId,
+        disabledPluginIds: new Set(settings.disabledPlugins.map((plugin) => plugin.id)),
+      });
+    } catch (error) {
+      this.#extensionFailure = `PI extensions did not load: ${error instanceof Error ? error.message : String(error)}`;
+    }
+    if (this.#extensions) this.#host.attachExtensions(huiSessionId, this.#extensions);
+    await this.applyTools();
+  }
+
+  /** `session_start`, once the history is read, so extensions restore their state from it. */
+  async startExtensions(reason: "startup" | "reload"): Promise<void> {
+    await this.#extensions?.start(reason);
+  }
+
+  /** Offers the conversation its extensions and the tools they keep active, and drops the browser when Settings turns it
+   * off. Applies per conversation, at start and on every change. */
+  async applyTools(): Promise<void> {
+    const browserEnabled = (await this.#host.settings()).browser.enabled !== false;
+    const inactive = new Map([...(browserEnabled ? [] : this.#host.toolsNamed(["browser"])), ...(this.#extensions?.inactiveTools() ?? [])].map((tool) => [tool.name, tool]));
+    await this.#conversation.configure({
+      // A view with no HUI session (a probe) leaves the selection of the session that owns the conversation alone.
+      ...(this.#huiSessionId === undefined ? {} : { extensions: this.#extensions ? { add: [this.#extensions.extension] } : null }),
+      tools: inactive.size ? { remove: [...inactive.values()] } : null,
+    }, context);
+  }
+
+  /** Entries since the latest reset, oldest first: what the extensions' PI session view holds. */
+  rows(): readonly EntryRecord[] {
+    this.#rows ??= this.#history.slice(this.#resetIndex()).map((row) => row.entry);
+    return this.#rows;
+  }
+
+  pendingCount(): number {
+    return this.#queue.steering.length + this.#queue.followUp.length;
+  }
+
+  emitRuntime(event: RuntimeEvent): void {
+    this.#emit(event);
+  }
 
   /** Attach to the conversation's committed state, read its history, then follow every commit. */
   async attach(): Promise<void> {
@@ -209,6 +281,12 @@ export class DurableSession implements RuntimeSession {
     await this.#refreshQueue();
     stream.start(async (events) => {
       for (const event of events) await this.#onEvent(event);
+      // Extensions' failures are theirs: they must never stop this view from following the conversation.
+      try {
+        if (!this.#disposed) this.#extensions?.flush();
+      } catch (error) {
+        this.#emit({ type: "notice", level: "warning", message: `PI extensions missed an event: ${error instanceof Error ? error.message : String(error)}` });
+      }
     });
     this.#stop = async () => { await stream.stop(); };
   }
@@ -248,7 +326,8 @@ export class DurableSession implements RuntimeSession {
     this.#ids.add(entry.id);
     let index = this.#history.length;
     while (index > 0 && this.#history[index - 1]!.entry.id > entry.id) index--;
-    const shown = SystemEntry.is(entry) ? []
+    // An extension's custom message is context only; PI sessions do not show it either.
+    const shown = SystemEntry.is(entry) || ExtensionMessageEntry.is(entry) || isCustomInput(entry.model?.[0]) ? []
       : CompactionEntry.is(entry) ? [{ role: "compaction", summary: compactionSummary(entry), tokensBefore: this.#contextTokens(index) }]
       : (entry.model ?? []).map((message) => ({ ...message, entryId: String(entry.id) }));
     this.#history.splice(index, 0, { entry, shown });
@@ -258,6 +337,7 @@ export class DurableSession implements RuntimeSession {
   #changed(): void {
     this.#shown = undefined;
     this.#contextSize = undefined;
+    this.#rows = undefined;
   }
 
   /** Where the history since the latest reset (`/clear`) starts. */
@@ -324,6 +404,11 @@ export class DurableSession implements RuntimeSession {
   }
 
   async #onEvent(event: AgentEvent): Promise<void> {
+    await this.#handle(event);
+    if (!this.#disposed) this.#extensions?.observe(event);
+  }
+
+  async #handle(event: AgentEvent): Promise<void> {
     if (this.#disposed) return;
     switch (event.type) {
       case "snapshot":
@@ -415,8 +500,24 @@ export class DurableSession implements RuntimeSession {
       this.#emit({ type: "error", message: error instanceof Error ? error.message : "Durable history refresh failed." });
     }
     this.#streaming = false;
-    this.#emit({ type: "settled", historyRefreshed });
     this.#notifyQuiet();
+    const ended = this.#extensions?.settled();
+    if (!ended) {
+      this.#emit({ type: "settled", historyRefreshed });
+      return;
+    }
+    // As in PI, the run is over once its extensions' end-of-run handlers ran; they run beside the stream, so one may wait
+    // for a run it starts. One that never finishes holds the settle only so long.
+    let timer: NodeJS.Timeout | undefined;
+    const late = new Promise<"late">((resolve) => { timer = setTimeout(() => resolve("late"), QUIET_TIMEOUT_MS); });
+    this.#settling += 1;
+    void Promise.race([ended, late]).then((outcome) => {
+      clearTimeout(timer);
+      this.#settling -= 1;
+      if (this.#disposed) return;
+      if (outcome === "late") this.#emit({ type: "notice", level: "warning", message: "An extension is still handling the end of the run." });
+      this.#emit({ type: "settled", historyRefreshed });
+    });
   }
 
   /** Reports a compaction's outcome. Durable places a summary at once on an idle conversation, otherwise at the next
@@ -430,10 +531,17 @@ export class DurableSession implements RuntimeSession {
   }
 
   async #reportEnd(taskId: TaskId, reason: CompactionReason, blocking: boolean): Promise<void> {
-    const result = await this.#compactionOutcome(taskId, reason);
+    const { result: _summary, ...result } = await this.#compactionOutcome(taskId, reason);
     if (result.outcome === "done") await this.#read().catch(() => {});
     this.#ended({ type: "compaction_end", reason, ...result, willRetry: blocking && result.outcome === "done" });
     this.#notifyQuiet();
+  }
+
+  /** Every compaction end the session reports also reaches its extensions. */
+  #ended(event: Extract<RuntimeEvent, { type: "compaction_end" }>): void {
+    this.#lastStart = undefined;
+    this.#emit(event);
+    this.#announce();
   }
 
   /** Reports the compaction the session shows, unless it is the one reported last: `compact()` reports a manual one
@@ -448,13 +556,6 @@ export class DurableSession implements RuntimeSession {
     this.#emit(start);
   }
 
-  /** Reports an end, then whichever compaction still runs: a blocking one may start while a background one works. */
-  #ended(event: Extract<RuntimeEvent, { type: "compaction_end" }>): void {
-    this.#lastStart = undefined;
-    this.#emit(event);
-    this.#announce();
-  }
-
   /** The compaction the session shows while several run: one its run waits for, then a manual one, then background. */
   #leading(): Compaction | undefined {
     const rank = (compaction: Compaction) => compaction.blocking ? 2 : compaction.background ? 0 : 1;
@@ -467,6 +568,7 @@ export class DurableSession implements RuntimeSession {
 
   /** The compaction task's receipt: a summary, nothing old enough to summarize, a cancel or a failure. */
   async #compactionOutcome(taskId: TaskId, reason: CompactionReason): Promise<CompactionOutcome> {
+    await this.#host.resumed;
     let outcome;
     try {
       outcome = (await this.#harness.waitForTask(taskId as unknown as TaskId<CompactionResult>, context)).state.outcome;
@@ -474,7 +576,7 @@ export class DurableSession implements RuntimeSession {
       return { outcome: "failed", message: error instanceof Error ? error.message : "Durable lost track of this compaction." };
     }
     if (outcome.status === "completed") {
-      if (outcome.result?.entryId !== undefined || outcome.result?.submissionId !== undefined) return { outcome: "done" };
+      if (outcome.result?.entryId !== undefined || outcome.result?.submissionId !== undefined) return { outcome: "done", result: outcome.result };
       // Durable found nothing old enough to summarize; only a requested compaction reports that, in PI's words.
       return reason === "manual" ? { outcome: "failed", message: "Nothing to compact (session too small)" } : { outcome: "done" };
     }
@@ -508,70 +610,195 @@ export class DurableSession implements RuntimeSession {
     else await this.#read().catch(() => {});
   }
 
-  /** A run, or a compaction of Durable's ordinary scope (blocking or manual, which Stop cancels), is live in this view. */
+  /** A run or a starting prompt, or a compaction of Durable's ordinary scope (blocking or manual, which Stop cancels),
+   * is live in this view. */
   #busy(): boolean {
-    return this.#streaming || [...this.#compactions.values()].some((compaction) => !compaction.background);
+    return this.#streaming || this.#starting > 0 || [...this.#compactions.values()].some((compaction) => !compaction.background);
   }
 
   #notifyQuiet(): void {
     for (const waiter of [...this.#waiters]) if (waiter.done()) waiter.resolve();
   }
 
-  /** Resolves once `done` holds in this view, or after `QUIET_TIMEOUT_MS`. */
-  #until(done: () => boolean): Promise<void> {
+  /** Resolves once `done` holds in this view, or after `timeoutMs`. */
+  #until(done: () => boolean, timeoutMs = QUIET_TIMEOUT_MS): Promise<void> {
     if (done()) return Promise.resolve();
     return new Promise((resolve) => {
       const waiter = { done, resolve: () => { clearTimeout(timer); this.#waiters.delete(waiter); resolve(); } };
-      const timer = setTimeout(waiter.resolve, QUIET_TIMEOUT_MS);
+      const timer = Number.isFinite(timeoutMs) ? setTimeout(waiter.resolve, timeoutMs) : undefined;
       this.#waiters.add(waiter);
     });
   }
 
+  /** An extension's `ctx.waitForIdle()`: until the run and the compactions it waits on are over. */
+  waitForIdle(): Promise<void> {
+    return this.#until(() => !this.#busy(), Number.POSITIVE_INFINITY);
+  }
+
+  /** HUI's `$name` alias for a skill or extension command, as `/name`. */
+  async #alias(text: string): Promise<string> {
+    return /^\$[^\s]+(?:\s|$)/u.test(text) ? resolveCommandReference(text, await this.listCommands()) : text;
+  }
+
   async #expand(text: string): Promise<string> {
     const loader = await this.#host.prompt.loader(this.#cwd);
-    if (/^\$[^\s]+(?:\s|$)/u.test(text)) text = resolveCommandReference(text, await this.listCommands());
-    text = expandSkill(text, loader.getSkills().skills);
-    return expandPromptTemplate(text, loader.getPrompts().prompts);
+    return expandPromptTemplate(expandSkill(text, loader.getSkills().skills), loader.getPrompts().prompts);
   }
 
-  async #submit(text: string, attachments: readonly PromptAttachment[], whenBusy: "reject" | "steer" | "followUp"): Promise<void> {
-    const payload = promptPayload(await this.#expand(text), attachments);
-    await this.#conversation.submit({
-      type: "input", whenBusy,
-      content: [{ type: "text", text: payload.message }, ...(payload.images ?? [])],
-    }, context);
+  /**
+   * PI's order for input: `input` handlers, then skill and template expansion, then, for input that starts a run,
+   * `before_agent_start`, whose custom messages are written just before it. False when an extension handled the input
+   * or aborted the run before it started, so nothing was submitted.
+   */
+  async #send(text: string, whenBusy: Delivery, sending: Sending): Promise<boolean> {
+    const extensions = this.#extensions;
+    const attachments = sending.attachments ?? [];
+    let images: readonly ImageContent[] = [
+      ...(sending.images ?? []),
+      ...attachments.flatMap((item) => item.kind === "image" ? [{ type: "image" as const, data: item.dataBase64, mimeType: item.mimeType }] : []),
+    ];
+    if (extensions) {
+      const input = await extensions.input(text, images, sending.source, whenBusy === "reject" ? undefined : whenBusy);
+      if (!input) return false;
+      ({ text, images } = input);
+    }
+    if (sending.expand) text = await this.#expand(text);
+    if (extensions && whenBusy === "reject") {
+      const start = await extensions.beforeAgentStart(text, images);
+      if (start.aborted) return false;
+      // PI sends them after the prompt; Durable admits input in a commit of its own, so they go just before it.
+      if (start.messages.length) await extensions.writeMessages(start.messages, true);
+    }
+    await extensions?.writesAdmitted();
+    await this.#host.resumed;
+    if (extensions?.startAborted) return false;
+    // The message names every attachment; the images themselves are the ones the handlers left.
+    const payload = promptPayload(text, attachments);
+    await this.#submit([{ type: "text", text: payload.message }, ...images], whenBusy);
+    return true;
   }
 
-  async prompt(text: string, attachments: readonly PromptAttachment[] = []): Promise<void> {
-    this.#streaming = true;
+  /** A run is going from the moment its input is submitted. */
+  async #submit(content: readonly (TextContent | ImageContent)[], whenBusy: Delivery): Promise<void> {
+    // Durable submission resumes the whole store, not just this conversation.
+    await this.#host.resumed;
+    if (whenBusy === "reject") this.#streaming = true;
     try {
-      await this.#submit(text, attachments, "reject");
+      await this.#conversation.submit({ type: "input", whenBusy, content: [...content] }, context);
     } catch (error) {
-      this.#streaming = false;
+      if (whenBusy === "reject") this.#streaming = false;
       throw error;
     }
   }
 
+  /**
+   * Starts a run with `text`. While its handlers run the session is starting, not running, as in PI. One that never
+   * starts (handled or aborted) settles at once, unless another prompt or run is underway. Resolves once the input is
+   * submitted, or when a handler first asks the user something: the start then goes on, and reports its own failure.
+   */
+  async #start(text: string, sending: Sending): Promise<void> {
+    this.#starting += 1;
+    const start = () => this.#send(text, "reject", sending).then((sent) => {
+      if (!sent && !this.#streaming && this.#starting === 1) this.#emit({ type: "settled" });
+    }).finally(() => {
+      this.#starting -= 1;
+      this.#notifyQuiet();
+    });
+    if (!this.#extensions) return start();
+    const { done, released } = this.#extensions.whileAsking(start);
+    await released;
+    // Before release a failure rejects the prompt; after a question releases it, report the failure as an event.
+    void done.catch((error: unknown) => {
+      this.#emit({ type: "error", message: error instanceof Error ? error.message : String(error) });
+      this.#emit({ type: "settled" });
+    });
+  }
+
+  async prompt(text: string, attachments: readonly PromptAttachment[] = []): Promise<void> {
+    text = await this.#alias(text);
+    if (this.#extensions?.isCommand(text)) {
+      await this.#command(text);
+      return;
+    }
+    await this.#start(text, { attachments, source: "rpc", expand: true });
+  }
+
+  /** An extension command runs in the gateway; one that starts no run settles once it ends. A prompt it sent settles
+   * by itself. */
+  async #command(text: string): Promise<void> {
+    const { finished } = await this.#extensions!.runCommand(text);
+    void finished.then(() => { if (!this.#streaming && this.#starting === 0 && !this.#disposed) this.#emit({ type: "settled" }); });
+  }
+
+  async #queueInput(text: string, attachments: readonly PromptAttachment[], whenBusy: "steer" | "followUp"): Promise<void> {
+    text = await this.#alias(text);
+    if (this.#extensions?.isCommand(text)) throw new Error(`Extension command "${text.split(/\s/u)[0]}" cannot be queued. Send it when the session is idle.`);
+    await this.#send(text, whenBusy, { attachments, source: "rpc", expand: true });
+  }
+
   async steer(text: string, attachments: readonly PromptAttachment[] = []): Promise<void> {
-    await this.#submit(text, attachments, "steer");
+    await this.#queueInput(text, attachments, "steer");
   }
 
   async followUp(text: string, attachments: readonly PromptAttachment[] = []): Promise<void> {
-    await this.#submit(text, attachments, "followUp");
+    await this.#queueInput(text, attachments, "followUp");
+  }
+
+  /** `pi.sendUserMessage`: input from an extension, with no command or template expansion, as in PI. */
+  async sendUserMessage(text: string, images: readonly ImageContent[], deliverAs?: "steer" | "followUp"): Promise<void> {
+    if (!this.#streaming) return this.#start(text, { images, source: "extension", expand: false });
+    if (!deliverAs) throw new Error("The session is already working. Send the message with deliverAs \"steer\" or \"followUp\".");
+    await this.#send(text, deliverAs, { images, source: "extension", expand: false });
+  }
+
+  /** A custom message that starts or steers a turn: input that bypasses extension handlers. Its text part keeps the
+   * custom type, so the transcript hides it as PI sessions do and extensions see it as custom. */
+  async submitInput(message: CustomMessage, whenBusy: Delivery): Promise<void> {
+    const parts = typeof message.content === "string" ? [{ type: "text" as const, text: message.content }] : [...message.content];
+    const index = parts.findIndex((part) => part.type === "text");
+    // Providers refuse an empty text part: one with only images is labelled.
+    const text = index === -1 ? { type: "text" as const, text: `[${message.customType}]` } : parts.splice(index, 1)[0] as TextContent;
+    const tagged: TextContent & Pick<CustomMessage, "customType" | "display"> = { ...text, customType: message.customType, display: message.display };
+    await this.#submit([tagged, ...parts], whenBusy);
   }
 
   /** Starts a manual compaction, which Durable runs beside the conversation: input is admitted meanwhile and the
    * summary is placed at the next boundary. Its start is reported before Durable lists it, so the gateway never holds
    * a prompt for it; the outcome arrives as `compaction_end`. */
   async compact(instructions?: string): Promise<void> {
+    await this.#startCompaction(instructions).catch(() => undefined);
+  }
+
+  /** An extension's `ctx.compact()`: the summary entry its own compaction placed. A run defers the summary to its next
+   * boundary, so this waits for that write; a summary Durable drops as stale, or one left on a conversation a rewind
+   * replaced, fails. */
+  async compactEntry(instructions?: string): Promise<EntryId> {
+    const conversation = this.#conversation;
+    const taskId = await this.#startCompaction(instructions);
+    const { outcome, message, result } = await this.#compactionOutcome(taskId as unknown as TaskId, "manual");
+    if (outcome !== "done") throw new Error(message ?? "Compaction cancelled");
+    let entry = result?.entryId;
+    if (entry === undefined && result?.submissionId !== undefined) {
+      const write = await (await this.#harness.submission(result.submissionId, context))?.wait(context);
+      if (write?.status !== "done") throw new Error(`The compaction summary was not placed${write ? `: ${write.reason}` : ""}`);
+      entry = write.entry;
+    }
+    if (entry === undefined || this.#conversation !== conversation) throw new Error("Compaction cancelled");
+    await this.#read();
+    return entry;
+  }
+
+  /** Starts a manual compaction and reports its start; a failure to start is reported as its end, then thrown. */
+  async #startCompaction(instructions?: string): Promise<TaskId<CompactionResult>> {
     this.#lastStart = { type: "compaction_start", reason: "manual", blocking: false };
     this.#emit(this.#lastStart);
+    await this.#host.resumed;
     let taskId: TaskId<CompactionResult>;
     try {
       taskId = await this.#conversation.compact(instructions?.trim() || undefined, context);
     } catch (error) {
       this.#ended({ type: "compaction_end", reason: "manual", outcome: "failed", willRetry: false, message: error instanceof Error ? error.message : "Durable could not start the compaction." });
-      return;
+      throw error;
     }
     const id = taskId as unknown as TaskId;
     if (!this.#compactions.has(id)) this.#requested.add(id);
@@ -582,6 +809,7 @@ export class DurableSession implements RuntimeSession {
       this.#superseded.add(id);
       await this.#reportEnd(id, "manual", false);
     }, () => undefined);
+    return taskId;
   }
 
   subscribe(listener: (event: RuntimeEvent) => void): () => void {
@@ -629,6 +857,7 @@ export class DurableSession implements RuntimeSession {
   async listCommands(): Promise<readonly RuntimeCommand[]> {
     const loader = await this.#host.prompt.loader(this.#cwd);
     return [
+      ...(this.#extensions?.commands() ?? []),
       ...loader.getSkills().skills.map((skill) => ({ name: `skill:${skill.name}`, description: skill.description, source: "skill" as const })),
       ...loader.getPrompts().prompts.map((prompt) => ({ name: prompt.name, description: prompt.description ?? "", source: "prompt" as const })),
     ];
@@ -638,8 +867,10 @@ export class DurableSession implements RuntimeSession {
     const model = this.#host.models.getModel(provider, id);
     if (!model) throw new Error(`Unknown model: ${provider}/${id}`);
     const thinking = clampThinkingLevel(model, (this.#agent.thinkingLevel ?? "off") as ModelThinkingLevel);
+    const previous = this.currentModel();
     await this.#conversation.configure({ model: { provider, modelId: id }, thinkingLevel: thinking }, context);
     this.#agent = { ...this.#agent, model: { provider, modelId: id }, thinkingLevel: thinking };
+    this.#extensions?.modelSelected(previous);
   }
 
   currentThinking(): string | undefined {
@@ -647,18 +878,38 @@ export class DurableSession implements RuntimeSession {
   }
 
   async setThinking(level: string): Promise<void> {
+    const previous = this.#agent.thinkingLevel;
     await this.#conversation.configure({ thinkingLevel: level as ModelThinkingLevel }, context);
     this.#agent = { ...this.#agent, thinkingLevel: level as ModelThinkingLevel };
+    this.#extensions?.thinkingSelected(previous, level);
   }
 
   pendingQueue(): RuntimeQueue {
     return { steering: [...this.#queue.steering], followUp: [...this.#queue.followUp] };
   }
 
+  /** Questions the session's extensions are waiting on. */
+  pendingQuestions(): readonly RuntimeQuestion[] {
+    return this.#extensions?.pendingQuestions() ?? [];
+  }
+
+  async respondQuestion(id: string, response: RuntimeQuestionResponse): Promise<void> {
+    if (!this.#extensions) throw new Error(`Unknown question: ${id}`);
+    this.#extensions.respondQuestion(id, response);
+  }
+
+  async cancelQuestion(id: string): Promise<void> {
+    if (!this.#extensions) throw new Error(`Unknown question: ${id}`);
+    this.#extensions.cancelQuestion(id);
+  }
+
   /** Durable's Stop (`Conversation.abort`): withdraws queued input and cancels the run and every compaction of its
    * ordinary scope, blocking and manual ones; background compactions keep running. Resolves once this view has seen
    * that work end: HUI treats a resolved Stop as idle. */
   async abort(): Promise<void> {
+    this.#extensions?.aborted();
+    if (this.#starting > 0) this.#extensions?.abortStart();
+    await this.#host.resumed;
     await this.#conversation.abort(context);
     await this.#until(() => !this.#busy());
   }
@@ -678,16 +929,25 @@ export class DurableSession implements RuntimeSession {
    * but the reset makes its summary stale and Durable drops it, so its end is not reported. */
   async clear(): Promise<void> {
     if (this.#streaming) throw new Error("Wait for the current run to finish before clearing the session.");
+    await this.#host.resumed;
     await this.#conversation.reset(undefined, context);
     for (const taskId of this.#compactions.keys()) this.#superseded.add(taskId);
     this.#compactions.clear();
     this.#lastStart = undefined;
     await this.#read();
+    // A cleared PI session is a new one, with new extension instances.
+    await this.#extensions?.restart("new");
   }
 
   async reload(): Promise<void> {
     this.#host.prompt.reload(this.#cwd);
     await this.#host.prompt.loader(this.#cwd);
+    if (this.#extensions) {
+      await this.#extensions.restart("reload");
+    } else if (this.#huiSessionId) {
+      await this.loadExtensions(this.#huiSessionId);
+      await this.startExtensions("reload");
+    }
   }
 
   /** Durable history is append-only, so a rewind forks the conversation at that point and continues in the fork; the
@@ -705,7 +965,14 @@ export class DurableSession implements RuntimeSession {
     if (!row) throw new Error("That rewind point is no longer available.");
     const index = this.#history.indexOf(row);
     const isUser = role(row.shown[0]) === "user";
-    const at = options?.excludeUserMessage === true && isUser ? this.#history[index - 1]?.entry.id : row.entry.id;
+    // Drop this prompt's context, not independent messages an idle extension or command wrote before it.
+    let before = index;
+    while (before > 0) {
+      const previous = this.#history[before - 1]!.entry;
+      if (!ExtensionMessageEntry.is(previous) || !previous.data.forPrompt) break;
+      before--;
+    }
+    const at = options?.excludeUserMessage === true && isUser ? this.#history[before - 1]?.entry.id : row.entry.id;
     const next = at
       ? await this.#conversation.fork(at, { ownership: { kind: "ownerless" } }, context)
       : await this.#harness.createConversation({ ownership: { kind: "ownerless" }, agent: {
@@ -718,6 +985,9 @@ export class DurableSession implements RuntimeSession {
     this.#conversation = next;
     this.#toolOutput.clear();
     await this.attach();
+    // A fork keeps its parent's agent; a conversation started over needs the session's extensions and tools again.
+    if (!at) await this.applyTools();
+    this.#extensions?.rewound();
   }
 
   attachmentImage(message: number, image: number): { mimeType: string; data: Buffer } | undefined {
@@ -737,26 +1007,28 @@ export class DurableSession implements RuntimeSession {
     const huiTools = new Set(this.#host.huiToolNames);
     const tools = agent.tools.map((tool) => ({
       name: tool.name, description: tool.description,
-      source: huiTools.has(tool.name) ? "HUI" : "Durable",
+      source: huiTools.has(tool.name) ? "HUI" : this.#extensions?.sourceOf(tool.name) ?? "Durable",
       active: true, parameters: tool.parameters,
     }));
-    const prompt = await this.#host.prompt.render(this.#cwd, agent.tools.map((tool) => tool.name));
+    const prompt = await this.#host.prompt.render(this.#cwd, agent.tools.map((tool) => tool.name), this.#conversation.id);
     const data = {
       status: "live" as const, backend: "durable", version: DURABLE_VERSION, tools, prompt,
       promptPhase: this.#streaming ? "current-turn" as const : "initialized" as const,
       promptSource: (await this.#host.prompt.loader(this.#cwd)).getSystemPromptSource() ? "SYSTEM.md override" : "hui-v4",
-      diagnostics: [] as string[],
+      diagnostics: [...(this.#extensionFailure ? [this.#extensionFailure] : []), ...(this.#extensions?.diagnostics ?? [])],
     };
     return { ...data, revision: createHash("sha256").update(JSON.stringify(data)).digest("hex").slice(0, 16) };
   }
 
-  /** Detaches this view. The conversation keeps running in the harness. */
+  /** Detaches this view, and shuts its extensions down. The conversation keeps running in the harness. */
   dispose(): void {
     if (this.#disposed) return;
     this.#disposed = true;
     this.#listeners.clear();
     for (const waiter of [...this.#waiters]) waiter.resolve();
     void this.#stop?.().catch(() => {});
+    if (this.#huiSessionId && this.#extensions) this.#host.detachExtensions(this.#huiSessionId, this.#extensions);
+    void this.#extensions?.dispose().catch(() => {});
   }
 }
 
@@ -780,12 +1052,18 @@ export async function startDurable(options: StartOptions, host: DurableHost = du
     } }, context);
   }
   host.bindCaller(conversation.id, options.huiSessionId);
-  // Settings → Tools → Browser applies per conversation, at start.
-  const browserEnabled = (await host.settings()).browser.enabled !== false;
-  await conversation.configure({ tools: browserEnabled ? null : { remove: host.toolsNamed(["browser"]) } }, context);
   await host.prompt.loader(options.cwd);
   const session = new DurableSession(host, harness, conversation, options.cwd);
-  await session.attach();
+  try {
+    // PI extensions are a HUI session's own; without one (a probe), only the conversation's tools apply.
+    if (options.huiSessionId) await session.loadExtensions(options.huiSessionId);
+    else await session.applyTools();
+    await session.attach();
+    await session.startExtensions("startup");
+  } catch (error) {
+    session.dispose();
+    throw error;
+  }
   return session;
 }
 

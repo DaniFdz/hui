@@ -125,7 +125,10 @@ directory). A lock file refuses a second gateway on the same store; Durable has
 no cross-process locking of its own. Each HUI session is one Durable
 conversation and stores `durable:<conversationId>` in `piSessionFile`.
 
-Opening the store resumes every unfinished run. A gateway restart therefore
+Opening the store resumes every unfinished run, once the gateway has reopened
+the sessions that own them and they have loaded their PI extensions again
+(`DurableHost.beforeResume`, at most 30 seconds), so a resumed tool call finds
+its tool. A gateway restart therefore
 does not interrupt Durable work: the run continues, an interrupted tool call is
 reported to the model as interrupted (never rerun), and HUI's recovery prompt is
 not used (`RuntimeSession.resumesInterruptedRuns`). Prompts, steering and
@@ -136,6 +139,38 @@ the agent-tool handler directly with the conversation's bound HUI session,
 falling back to the registry after a restart. Usage totals read Durable's
 per-conversation spend. `HUI_SESSION_RUNTIME=pi` creates new sessions on the
 PI worker described below.
+
+Each session loads its PI extensions (`server/runtimes/durable-extensions.ts`):
+the set the PI worker would load, with the same plugin policy, as fresh
+instances driven by PI's `ExtensionRunner` in the gateway. Their tools and
+hooks form one Durable extension, `pi:<HUI session id>`, that only the session's
+conversations select; the harness's default selection is HUI's own extensions,
+and a session without PI extensions selects nothing more. Durable's hooks carry
+`tool_call` and `tool_result` (tool task), `context` (generation
+`beforeRequest`) and `session_before_compact` (compaction task); the request's
+provider callbacks carry `before_provider_request` and `after_provider_response`;
+the session's event stream carries the lifecycle events, one at a time and in
+PI's order (a run's start before the prompt that began it), and the session
+reports `settled` only after its extensions' `agent_end` and `agent_settled`
+handlers ran, or after 30 seconds with a `notice`; until then the session is
+still busy for HUI, while its extensions see the run over. Prompts pass
+`input` handlers, then skill and template expansion, then
+`before_agent_start`; the prompt request returns once the input is submitted or
+a handler first asks something, as for PI sessions. The session is not running
+until the input is submitted, and Stop meanwhile sends nothing.
+`session_start` holds a session's opening only until it ends or first asks
+something. Each lifecycle handler's `ctx.signal` is the signal of the run its
+event belongs to, aborted by Stop. An extension command runs when sent as `/name` (or the
+`$name` alias); its prompt request returns once it ends or first asks
+something. Dialogs are `question` events answered through the question routes,
+and Stop dismisses them; `notify` is a `notice`. `ctx.sessionManager` is an
+in-memory PI session projected from the history. `appendEntry` data is stored
+as a `hui.pi-entry` entry. A custom message is a `hui.pi-message` entry the
+model reads as user input, written before the prompt `before_agent_start` added
+it to (PI places it after), so a rewind to before that prompt leaves it out too;
+one that starts or steers a turn is input whose text part carries its
+`customType`. The transcript leaves both out, as for PI sessions. Load errors and handler failures appear in the session's tool
+inspection `diagnostics`; handler failures are also `notice`s.
 
 `hui doctor --fix` moves a PI session into a new conversation
 (`server/runtimes/pi-import.ts`) with the gateway stopped. One commit writes the
@@ -189,6 +224,18 @@ verbatim.
   after a fork it finishes on the abandoned branch.
 - A compaction already running when a session opens (Durable resumes it after a
   restart) is reported to each new subscriber.
+- Extensions get `session_compact` when a summary entry is placed, with that
+  entry; a compaction that places none (declined, nothing to summarize, or
+  dropped as stale) sends none. An extension's `ctx.compact()` waits for its
+  own task's summary, at the run's next boundary if a run is going, and calls
+  `onComplete` with that entry or `onError` once with why it was not placed.
+  `/clear`, `/reload`, a rewind or closing the session ends a pending one with
+  "Compaction cancelled". These go beside the gateway's own compactions and
+  bypass the 409 above. Unlike PI, completion callbacks do not wait for queued
+  `session_compact` handlers. The projection retains Durable's summary wrapper
+  and reports `tokensBefore: 0`. After a stream gap, `fromExtension` can be false
+  when the summary's originating compaction cannot be recovered from its entry;
+  the summary and callback correlation still use the actual placed entry.
 
 ## PI process binding
 
@@ -458,7 +505,8 @@ and `PUT /__hui/settings` include `disabledSkills`, a normalized array of
 files and configuration untouched and applies when a HUI PI runtime next starts.
 The SDK worker filters packages and direct extensions from a process-local
 settings view before PI discovers resources, so their executable code and
-bundled skills/prompts never load. Individual disabled skills are removed before
+bundled skills/prompts never load. Durable sessions load extensions, skills and
+prompts through the same filtered view. Individual disabled skills are removed before
 prompt and command assembly. Existing live runtimes are not killed or restarted.
 When `HUI_PI_BACKEND=cli`, an active plugin policy fails startup explicitly rather
 than silently loading disabled code.

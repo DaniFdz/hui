@@ -15,6 +15,7 @@ const {
   deleteSession,
   readAttachments,
   recoverInterruptedSessions,
+  reopenDurableSessions,
   renameWithGeneratedTitle,
   sessionMutationErrorStatus,
   storeAttachmentFile,
@@ -43,6 +44,25 @@ test("gateway startup eagerly opens only interrupted sessions", () => {
 
   assert.equal(count, 1);
   assert.deepEqual(opened, ["interrupted"]);
+});
+
+test("interrupted Durable work waits for its owning sessions to open", async () => {
+  const now = new Date().toISOString();
+  const base: SessionRecord = { id: "idle", title: "Idle", group: "", cwd: tmpdir(), tool: "durable", createdAt: now, updatedAt: now };
+  const opened: string[] = [];
+  let booted!: () => void;
+  const booting = new Promise<void>((resolve) => { booted = resolve; });
+  let settled = false;
+  const reopening = reopenDurableSessions([7], [
+    { ...base, id: "owner", piSessionFile: "durable:7" },
+    { ...base, id: "other", piSessionFile: "durable:8" },
+  ], { ensure: (record) => { opened.push(record.id); return true; }, booted: () => booting }).then(() => { settled = true; });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(opened, ["owner"]);
+  assert.equal(settled, false, "the runs wait for the owner's boot");
+  booted();
+  await reopening;
+  assert.equal(settled, true);
 });
 
 class FakeResponse extends EventEmitter {

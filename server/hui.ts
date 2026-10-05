@@ -3446,7 +3446,9 @@ export async function startBackend(): Promise<void> {
   initializeWatchers();
   initializeSubagents();
   // Opening the Durable store resumes its interrupted runs, including those of
-  // sessions no browser has reopened yet. Another gateway owning it is reported.
+  // sessions no browser has reopened yet, once those sessions have loaded their
+  // PI extensions again. Another gateway owning it is reported.
+  durableHost().beforeResume = async (conversations) => reopenDurableSessions(conversations, await readRegistry());
   void durableHost().open().catch((error: unknown) => recordDiagnosticEvent({
     area: "runtime", level: "warning", action: "durable_open_failed",
     summary: "The Durable session store did not open",
@@ -3455,6 +3457,18 @@ export async function startBackend(): Promise<void> {
   recoverInterruptedSessions(await readRegistry());
   // Auto-star the HUI repo when GitHub is connected.
   void githubCli.starHuiRepo().catch(() => {}); // best-effort, non-blocking
+}
+
+/** The sessions of Durable conversations with unfinished work, whose runs
+ * resume once they are open (the store, not HUI's run marker, knows them all). */
+export async function reopenDurableSessions(
+  conversations: readonly unknown[],
+  records: readonly SessionRecord[],
+  sessions: Pick<typeof liveSessions, "ensure" | "booted"> = liveSessions,
+): Promise<void> {
+  const references = new Set(conversations.map((id) => `durable:${String(id)}`));
+  const owners = records.filter((record) => record.piSessionFile && references.has(record.piSessionFile));
+  await Promise.all(owners.map((record) => sessions.ensure(record) ? sessions.booted(record.id) : undefined));
 }
 
 /** Startup recovery is eager: interrupted work resumes even when no browser
