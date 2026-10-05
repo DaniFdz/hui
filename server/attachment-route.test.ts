@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createServer } from "node:http";
 import { once } from "node:events";
-import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, rm, symlink } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -32,15 +32,37 @@ test("attachment image route is guarded, typed and never resolves unknown sessio
   assert.equal(outOfRange.status, 404);
   assert.doesNotMatch(await outOfRange.text(), new RegExp(dir.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   assert.equal((await get("/__hui/sessions/alpha/attachments/0/0", true, "DELETE")).status, 405);
+  assert.equal((await get("/__hui/sessions/alpha/attachments/0/files/0", false)).status, 403);
+  assert.equal((await get("/__hui/sessions/alpha/attachments/0/files/0")).status, 404);
 });
 
-test("public transcript replaces runtime image locations with opaque URLs", async () => {
+test("stored attachment files are only read from inside the attachment store", async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "hui-attachment-store-"));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const store = join(dir, "store");
+  const { readStoredAttachment, storeAttachmentFile } = await import("./hui.ts");
+  const stored = await storeAttachmentFile("alpha", "notes.md", Buffer.from("notes").toString("base64"), store);
+  assert.equal((await readStoredAttachment(stored.path, store))?.toString(), "notes");
+
+  const outside = join(dir, "secret.txt");
+  await writeFile(outside, "secret");
+  await symlink(outside, join(store, "alpha", "link.txt"));
+  assert.equal(await readStoredAttachment(outside, store), undefined);
+  assert.equal(await readStoredAttachment(join(store, "alpha", "..", "..", "secret.txt"), store), undefined);
+  assert.equal(await readStoredAttachment(join(store, "alpha", "link.txt"), store), undefined);
+  assert.equal(await readStoredAttachment(join(store, "alpha"), store), undefined);
+  assert.equal(await readStoredAttachment(join(store, "alpha", "missing"), store), undefined);
+});
+
+test("public transcript replaces runtime attachment locations with opaque URLs", async () => {
   const { publicTranscript } = await import("./live-sessions.ts");
   assert.deepEqual(publicTranscript("a b", [{ kind: "message", role: "user", text: "", attachments: [
     { name: "s.png", kind: "image", mimeType: "image/png", source: { message: 3, image: 1 } },
-    { name: "n.txt", kind: "file" },
+    { name: "n.txt", kind: "file", source: { message: 3, file: 0 } },
+    { name: "legacy.txt", kind: "file" },
   ] }]), [{ kind: "message", role: "user", text: "", attachments: [
     { name: "s.png", kind: "image", mimeType: "image/png", url: "/__hui/sessions/a%20b/attachments/3/1" },
-    { name: "n.txt", kind: "file" },
+    { name: "n.txt", kind: "file", url: "/__hui/sessions/a%20b/attachments/3/files/0" },
+    { name: "legacy.txt", kind: "file" },
   ] }]);
 });

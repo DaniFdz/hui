@@ -21,7 +21,7 @@ import type { RuntimeInspection } from "../../src/lib/tools-types.ts";
 import { durableContext as context, durableHost, type DurableHost } from "./durable-host.ts";
 import { filterConfiguredModels } from "./pi-models.ts";
 import {
-  imageFromMessages, latestRunUsage, promptPayload, restoreAttachmentNames, toolOutput, transcriptFrom,
+  fileFromMessages, imageFromMessages, latestRunUsage, promptPayload, restoreAttachmentNames, toolOutput, transcriptFrom,
 } from "./pi.ts";
 import { RuntimeTimings } from "./transcript-metrics.ts";
 import type {
@@ -722,6 +722,10 @@ export class DurableSession implements RuntimeSession {
 
   attachmentImage(message: number, image: number): { mimeType: string; data: Buffer } | undefined {
     return imageFromMessages(this.#visible(), message, image);
+  }
+
+  attachmentFile(message: number, file: number): string | undefined {
+    return fileFromMessages(this.#visible(), message, file);
   }
 
   transcript(): TranscriptEntry[] {

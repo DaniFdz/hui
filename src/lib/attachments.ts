@@ -62,16 +62,17 @@ export async function readAttachment(file: File): Promise<Attachment> {
   };
 }
 
-/** Reads a sent message's images back into composer attachments. Files stay
- * behind: only their name reaches the browser. Unreadable images are skipped. */
-export async function readTranscriptImages(items: readonly (string | TranscriptAttachment)[] = []): Promise<Attachment[]> {
-  const images = items.filter((item): item is TranscriptAttachment & { url: string } =>
-    typeof item !== "string" && item.kind === "image" && Boolean(item.url));
-  const read = await Promise.allSettled(images.map(async (item) => {
-    const response = await fetch(item.url);
+/** Reads a sent message's attachments back into composer attachments.
+ * Unreadable ones are skipped. */
+export async function readTranscriptAttachments(items: readonly (string | TranscriptAttachment)[] = []): Promise<Attachment[]> {
+  const readable = items.filter((item): item is TranscriptAttachment & { url: string } =>
+    typeof item !== "string" && Boolean(item.url));
+  const read = await Promise.allSettled(readable.map(async (item) => {
+    // A rewind can reuse this URL for another message, so never trust a cached copy.
+    const response = await fetch(item.url, { cache: "no-store" });
     if (!response.ok) throw new Error(`Could not read ${item.name}.`);
     const blob = await response.blob();
-    return readAttachment(new File([blob], item.name, { type: blob.type || item.mimeType || "" }));
+    return readAttachment(new File([blob], item.name, { type: item.mimeType || blob.type }));
   }));
   return read.flatMap((result) => result.status === "fulfilled" ? [result.value] : []);
 }

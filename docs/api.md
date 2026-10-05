@@ -638,6 +638,9 @@ type SubagentTaskView = SubagentRecord & {
 // 200 with the image's raster MIME type, `cache-control: private, max-age=3600`,
 // `x-content-type-options: nosniff`; 403 without x-hui, 404 for an unknown
 // session, index or non-image part, 405 for other methods.
+// Files a user attached have `url` GET /__hui/sessions/:id/attachments/:message/files/:file
+// with the same guard and headers, served as `application/octet-stream`; 404 also
+// when the stored path is missing or resolves outside HUI's attachment store.
 type TranscriptAttachment = { name: string; kind: "image" | "file"; mimeType?: string; url?: string };
 
 type TranscriptEntry =
@@ -1452,7 +1455,9 @@ Body: `{ "entryId": "...", "excludeUserMessage": true }`. Moves PI's active
 leaf to that existing entry, refreshes HUI's authoritative transcript and emits
 a snapshot. When `excludeUserMessage` is true and the entry is a user message,
 PI stops before it so the browser can restore the selected text to the composer
-for editing. The browser sends the `entryId` of the transcript message itself.
+for editing. The browser first reads the message's images and files through
+their attachment URLs, which stop resolving once the rewind leaves that branch,
+and restores them with the text; any it cannot read are left out. The browser sends the `entryId` of the transcript message itself.
 A user message shown without one (the running prompt, or one delivered during
 the run) is sent as `{ "userFromEnd": n }` instead: after the run is stopped,
 the PI worker counts n user messages back from the end of PI's own active

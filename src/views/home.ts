@@ -280,7 +280,7 @@ export type HomeProps = {
   onSelectThinking: (level: string) => void;
   onAbort: () => void;
   onContinue: () => void;
-  /** Rewind to before a user message, restoring its text and images to the composer. */
+  /** Rewind to before a user message, restoring its text and attachments to the composer. */
   onRewind: (target: RewindTarget, text: string, attachments?: readonly (string | TranscriptAttachment)[]) => void;
   /** Same as sending `/compact`. */
   onCompact: () => void;
