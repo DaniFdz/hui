@@ -61,6 +61,10 @@ export type SessionRecord = {
   /** Durable task projection for a session-born subagent. PI still owns the
    * transcript; HUI only owns lineage and lifecycle presentation. */
   subagent?: SubagentRecord;
+  /** The bot (bots.json id) whose forever chat this is. Optional like
+   * `parentId`, so existing version-2 registries need no migration. The bot
+   * registry decides: a record whose bot is gone is an ordinary session. */
+  bot?: string;
   /** Jira work items created for this session from HUI, oldest first. Only
    * the reference is stored; Jira facts are fetched and cached in memory. */
   jiraIssues?: { key: string; url: string }[];
@@ -190,6 +194,7 @@ function toRecord(raw: unknown): SessionRecord | undefined {
       ? raw["runRecoveryAttempts"]
       : undefined;
   const parentId = str(raw["parentId"]).trim();
+  const bot = str(raw["bot"]).trim();
   const subagent = raw["subagent"] === undefined ? undefined : toSubagent(raw["subagent"]);
   if (raw["subagent"] !== undefined && !subagent) return undefined;
   const jiraIssues = Array.isArray(raw["jiraIssues"])
@@ -226,6 +231,7 @@ function toRecord(raw: unknown): SessionRecord | undefined {
     ...(icon ? { icon } : {}),
     ...(parentId ? { parentId } : {}),
     ...(subagent ? { subagent } : {}),
+    ...(bot ? { bot } : {}),
     ...(jiraIssues.length ? { jiraIssues } : {}),
     ...(stage ? { stage, stageSource: stageSource ?? "agent" } : {}),
     ...(stagePullRequests.length ? { stagePullRequests } : {}),
