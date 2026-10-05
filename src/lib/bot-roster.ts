@@ -86,16 +86,31 @@ export function botMatches(bot: Pick<BotView, "name" | "handle" | "title">, quer
 
 export type RosterOptions = { query: string; showHidden: boolean };
 
+/** Latest activity first; the name breaks ties so the order is stable. */
+function byActivity(a: BotView, b: BotView): number {
+  return botActivityAt(b) - botActivityAt(a) || a.name.localeCompare(b.name) || a.id.localeCompare(b.id);
+}
+
 /** The rows the Bots tab lists: archived bots never, hidden ones on request,
- * latest activity first; the name breaks ties so the order is stable. */
+ * latest activity first. */
 export function rosterBots(bots: readonly BotView[], options: RosterOptions): BotView[] {
   return bots
     .filter((bot) => !bot.archived && (options.showHidden || !bot.hidden) && botMatches(bot, options.query))
-    .toSorted((a, b) => botActivityAt(b) - botActivityAt(a) || a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+    .toSorted(byActivity);
 }
 
 export function hiddenBotCount(bots: readonly BotView[]): number {
   return bots.filter((bot) => bot.hidden && !bot.archived).length;
+}
+
+/** What Show archived lists, hidden or not: the archived bots the search
+ * matches, latest activity first. */
+export function archivedRosterBots(bots: readonly BotView[], query: string): BotView[] {
+  return bots.filter((bot) => bot.archived && botMatches(bot, query)).toSorted(byActivity);
+}
+
+export function archivedBotCount(bots: readonly BotView[]): number {
+  return bots.filter((bot) => bot.archived).length;
 }
 
 /** Colors the avatar draws from (the session palette in tokens.css). */

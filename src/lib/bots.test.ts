@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { applyBotsUpdate, botInputFromDraft, botMemoryPageUrl, BotMemoryUnavailableError, botPatchFromDraft, isBotSession, isNewBotsFrame, loadBotMemory, parseBotsUpdate, subscribeBots, parseBot, parseBotList, parseBotMemory, parseBotMemoryStatus, upsertBot, withoutBotSessions, type BotDraft, type BotView } from "./bots.ts";
+import { applyBotsUpdate, botInputFromDraft, botMemoryPageUrl, BotMemoryUnavailableError, botPatchFromDraft, isBotSession, isNewBotsFrame, loadBotMemory, loadBots, parseBotsUpdate, subscribeBots, parseBot, parseBotList, parseBotMemory, parseBotMemoryStatus, upsertBot, withoutBotSessions, type BotDraft, type BotView } from "./bots.ts";
 import type { SessionGroup, SessionView } from "./sessions-store.ts";
 
 const RECORD = {
@@ -168,6 +168,24 @@ test("memory reads tell a memory the gateway cannot read apart from a failed rea
     await assert.rejects(loadBotMemory("b1"), (error: unknown) => !(error instanceof BotMemoryUnavailableError) && /unknown bot/u.test((error as Error).message));
     assert.deepEqual(await loadBotMemory("b1"), { status: { messages: 2, built: 1, pending: 1, viewBytes: 40, viewLines: 1, usage: NO_USAGE }, view: "<chat>\n0+1|user: hi\n</chat>" });
     assert.equal(urls[0], "/__hui/bots/b%201/memory");
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test("reading the list asks for active and archived bots, as the stream lists both", async () => {
+  const original = globalThis.fetch;
+  const urls: string[] = [];
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = String(input);
+    urls.push(url);
+    const bots = url.endsWith("?archived=1") ? [{ id: "b9", name: "Old", sessionId: "s9", archived: true }, RECORD] : [RECORD, { id: "b2", name: "Ledger", sessionId: "s2" }];
+    return new Response(JSON.stringify({ bots }), { status: 200, headers: { "content-type": "application/json" } });
+  }) as typeof fetch;
+  try {
+    const bots = await loadBots();
+    assert.deepEqual(bots.map((bot) => [bot.id, bot.archived === true]), [["b1", false], ["b2", false], ["b9", true]], "a bot listed twice keeps its first copy");
+    assert.deepEqual(urls.toSorted(), ["/__hui/bots", "/__hui/bots?archived=1"]);
   } finally {
     globalThis.fetch = original;
   }

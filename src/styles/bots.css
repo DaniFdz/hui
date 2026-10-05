@@ -236,6 +236,27 @@
   color: var(--text);
 }
 .app-shell .bot-roster__hidden-toggle:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.app-shell .bot-roster__toggles { display: flex; flex-wrap: wrap; gap: 4px; margin: 8px 0 0 14px; }
+.app-shell .bot-roster__toggles .bot-roster__hidden-toggle { margin: 0; }
+/* Archived bots: no chat to open until restored, so plain rows with Restore. */
+.app-shell .bot-roster__archived { margin: 6px 0 0; }
+.app-shell .bot-roster__archived .sidebar-list__note { margin-inline-start: 14px; }
+.app-shell .bot-roster__archived-list { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.app-shell .bot-archived-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 6px 8px 6px 14px;
+  border-radius: var(--radius-md);
+}
+.app-shell .bot-archived-row .bot-avatar { opacity: .72; }
+.app-shell .bot-archived-row__text { display: flex; flex: 1 1 auto; flex-direction: column; gap: 1px; min-width: 0; }
+.app-shell .bot-archived-row__name,
+.app-shell .bot-archived-row__meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.app-shell .bot-archived-row__name { color: var(--text); font-size: calc(13px * var(--control-ui-text-scale)); font-weight: 550; }
+.app-shell .bot-archived-row__meta { color: var(--muted); font-size: calc(12px * var(--control-ui-text-scale)); }
+.app-shell .bot-archived-row__restore { flex: none; }
 
 /* ── bot view: the chat with its docked panel ── */
 .app-shell > .content--chat:has(> .bot-workspace) { gap: 0; padding: 0; }

@@ -13,6 +13,8 @@ import { BOT_LIMITS, BOT_THINKING_LEVELS } from "../../shared/bots.ts";
 import type { RuntimeModel } from "../lib/sessions-store.ts";
 import type { AutomationRun, AutomationSnapshot, AutomationTask, AutomationTaskInput } from "../lib/automation-types.ts";
 import {
+  archivedBotCount,
+  archivedRosterBots,
   botAccessibleName,
   botActivity,
   botActivityAt,
@@ -63,11 +65,13 @@ export type BotRosterProps = {
   error: string;
   query: string;
   showHidden: boolean;
+  /** Archived bots listed below the roster, each with Restore. */
+  showArchived: boolean;
   activeBotId: string;
   menuFor: string;
   notice: string;
   noticeFailed: boolean;
-  /** Pending Hide/Unhide or archive, so the row cannot be acted on twice. */
+  /** Pending Hide/Unhide, archive or restore, so the row cannot be acted on twice. */
   pendingId: string;
   now: number;
   onSelect: (bot: BotView) => void;
@@ -76,6 +80,8 @@ export type BotRosterProps = {
   onSetHidden: (bot: BotView, hidden: boolean) => void;
   onArchive: (bot: BotView) => void;
   onToggleShowHidden: () => void;
+  onToggleShowArchived: () => void;
+  onRestore: (bot: BotView) => void;
   onRetry: () => void;
   onToggleMenu: (id: string) => void;
   onCloseMenu: () => void;
@@ -147,6 +153,41 @@ function botRow(bot: BotView, props: BotRosterProps, drawer: RosterDrawer) {
   </div>`;
 }
 
+/** An archived bot keeps its chat and memory but has no chat to open until
+ * it is restored, so its row is not a link. */
+function archivedRow(bot: BotView, props: BotRosterProps) {
+  const pending = props.pendingId === bot.id;
+  return html`<li class="bot-archived-row" data-bot-id=${bot.id}>
+    ${renderBotAvatar(bot, "sm")}
+    <span class="bot-archived-row__text">
+      <span class="bot-archived-row__name">${bot.name}</span>
+      <span class="bot-archived-row__meta">${bot.title || botPreview(bot)}</span>
+    </span>
+    <button type="button" class="btn btn--sm bot-archived-row__restore" ?disabled=${pending} aria-label=${`Restore ${bot.name}`}
+      @click=${() => props.onRestore(bot)}>${pending ? "Restoring…" : "Restore"}</button>
+  </li>`;
+}
+
+/** Show hidden (N) and Show archived (N), each only while some are; then,
+ * while Show archived is on, the archived bots with Restore. */
+function renderRosterToggles(props: BotRosterProps) {
+  const hidden = hiddenBotCount(props.bots);
+  const archived = archivedBotCount(props.bots);
+  if (!hidden && !archived) return nothing;
+  const rows = props.showArchived && archived ? archivedRosterBots(props.bots, props.query) : [];
+  return html`<div class="bot-roster__toggles">
+      ${hidden ? html`<button type="button" class="bot-roster__hidden-toggle" aria-pressed=${String(props.showHidden)} @click=${props.onToggleShowHidden}>
+        ${icons.eye}<span>Show hidden (${hidden})</span></button>` : nothing}
+      ${archived ? html`<button type="button" class="bot-roster__hidden-toggle" aria-pressed=${String(props.showArchived)} @click=${props.onToggleShowArchived}>
+        ${icons.box}<span>Show archived (${archived})</span></button>` : nothing}
+    </div>
+    ${props.showArchived && archived ? html`<section class="bot-roster__archived" aria-label="Archived bots">
+      ${rows.length
+        ? html`<ul class="bot-roster__archived-list">${rows.map((bot) => archivedRow(bot, props))}</ul>`
+        : html`<p class="sidebar-list__note" role="status">No matching archived bots.</p>`}
+    </section>` : nothing}`;
+}
+
 export function renderBotRoster(props: BotRosterProps, drawer: RosterDrawer) {
   const notice = props.notice
     ? html`<p class="sidebar-list__note sidebar-session-move-note ${props.noticeFailed ? "is-error" : ""}" role=${props.noticeFailed ? "alert" : "status"} aria-live="polite">${props.notice}</p>`
@@ -158,17 +199,17 @@ export function renderBotRoster(props: BotRosterProps, drawer: RosterDrawer) {
         <button type="button" class="btn btn--sm" @click=${props.onRetry}>Retry</button></div>`;
     }
     if (props.loading) return html`<p class="sidebar-list__note" role="status">Loading bots…</p>`;
-    const archived = props.bots.filter((bot) => bot.archived).length;
+    const archived = archivedBotCount(props.bots);
     return html`${notice}<div class="sidebar-empty bot-roster__empty">
       <p class="bot-roster__empty-title">${archived ? "No active bots" : "No bots yet"}</p>
       <p class="sidebar-list__note">${archived
-        ? html`${archived === 1 ? "One archived bot keeps its chat and memory" : `${archived} archived bots keep their chats and memory`}; <code>hui bot restore</code> brings ${archived === 1 ? "it" : "one"} back.`
+        ? `${archived === 1 ? "One archived bot keeps its chat and memory" : `${archived} archived bots keep their chats and memory`}; Show archived lists ${archived === 1 ? "it" : "them"} for Restore.`
         : "A bot is a named agent with one permanent chat, its own model and a memory that summarizes older messages by itself. Routines can message it on a schedule."}</p>
       <button type="button" class="btn btn--sm bot-roster__new" @click=${(event: Event) => { drawer.dialog(event); props.onNew(); }}>${icons.plus}<span>New bot</span></button>
-    </div>`;
+    </div>
+    ${renderRosterToggles(props)}`;
   }
   const rows = rosterBots(props.bots, { query: props.query, showHidden: props.showHidden });
-  const hidden = hiddenBotCount(props.bots);
   return html`${notice}
     ${props.error ? html`<p class="sidebar-list__note is-error" role="alert">${props.error} <button type="button" class="btn btn--sm" @click=${props.onRetry}>Retry</button></p>` : nothing}
     <div class="session-group__rows sidebar-recent-sessions__list bot-roster__rows">
@@ -176,8 +217,7 @@ export function renderBotRoster(props: BotRosterProps, drawer: RosterDrawer) {
         ? rows.map((bot) => botRow(bot, props, drawer))
         : html`<p class="sidebar-list__note" role="status">${props.query.trim() ? "No matching bots." : "Every bot is hidden."}</p>`}
     </div>
-    ${hidden ? html`<button type="button" class="bot-roster__hidden-toggle" aria-pressed=${String(props.showHidden)} @click=${props.onToggleShowHidden}>
-      ${icons.eye}<span>Show hidden (${hidden})</span></button>` : nothing}`;
+    ${renderRosterToggles(props)}`;
 }
 
 /* ── chat placeholder (no bot or no chat yet) ─────────────────────────────── */
@@ -188,6 +228,8 @@ export type BotPlaceholderProps = {
   tone: "status" | "alert";
   mobileNav: boolean;
   onRetry?: () => void;
+  /** The action's label; "Retry" unless the placeholder offers something else. */
+  actionLabel?: string;
   onToggleNavigation: (event: Event) => void;
 };
 
@@ -202,7 +244,7 @@ export function renderBotPlaceholder(props: BotPlaceholderProps) {
     </header>
     <div class="agent-chat__empty bot-workspace__message" role=${props.tone}>
       <span>${props.message}</span>
-      ${props.onRetry ? html`<button type="button" class="btn btn--sm" @click=${props.onRetry}>Retry</button>` : nothing}
+      ${props.onRetry ? html`<button type="button" class="btn btn--sm" @click=${props.onRetry}>${props.actionLabel ?? "Retry"}</button>` : nothing}
     </div>
   </div>`;
 }

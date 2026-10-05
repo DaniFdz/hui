@@ -83,7 +83,7 @@ import {
   zoomBotMemory,
   type BotView,
 } from "./lib/bots.ts";
-import { hiddenBotCount, readBotPanel, readSidebarTab, writeBotPanel, writeSidebarTab, type BotPanelState, type BotPanelTab, type SidebarTab } from "./lib/bot-roster.ts";
+import { archivedBotCount, hiddenBotCount, readBotPanel, readSidebarTab, writeBotPanel, writeSidebarTab, type BotPanelState, type BotPanelTab, type SidebarTab } from "./lib/bot-roster.ts";
 import { memoryStatusChanged, parseMemoryView, parseMemoryZoom, type MemoryLine } from "./lib/bot-memory.ts";
 import { renderBotArchiveDialog, renderBotDialog, renderBotPanel, renderBotPlaceholder, type BotFormValues, type BotMemoryState, type MemoryZoomState } from "./views/bots.ts";
 import { checkUpdate, checkUpdateInBackground, installUpdate, loadUpdate } from "./lib/update-store.ts";
@@ -490,6 +490,7 @@ export class HuiApp extends HuiElement {
   /** The sidebar's Sessions | Bots choice, remembered by the browser. */
   @state() private sidebarTab: SidebarTab = readSidebarTab();
   @state() private showHiddenBots = false;
+  @state() private showArchivedBots = false;
   @state() private botMenuFor = "";
   @state() private botNotice = "";
   @state() private botNoticeFailed = false;
@@ -3676,6 +3677,7 @@ export class HuiApp extends HuiElement {
         error: this.botsError,
         query: this.botSearch,
         showHidden: this.showHiddenBots,
+        showArchived: this.showArchivedBots,
         activeBotId: this.view === "bot" ? this.activeBotId : "",
         menuFor: this.botMenuFor,
         notice: this.botNotice,
@@ -3688,6 +3690,8 @@ export class HuiApp extends HuiElement {
         onSetHidden: this.setBotHidden,
         onArchive: this.requestArchiveBot,
         onToggleShowHidden: () => { this.showHiddenBots = !this.showHiddenBots; },
+        onToggleShowArchived: () => { this.showArchivedBots = !this.showArchivedBots; },
+        onRestore: this.restoreBotFromRoster,
         onRetry: this.retryBots,
         onToggleMenu: (id) => { this.botMenuFor = this.botMenuFor === id ? "" : id; },
         onCloseMenu: () => { this.botMenuFor = ""; },
@@ -3817,6 +3821,29 @@ export class HuiApp extends HuiElement {
       })
       .finally(() => {
         this.botArchivePending = false;
+      });
+  };
+
+  /** Restore from Show archived: the row stays until the gateway confirms. */
+  private restoreBotFromRoster = (bot: BotView) => {
+    if (this.botPendingId) return;
+    this.botPendingId = bot.id;
+    void restoreBot(bot.id)
+      .then((restored) => {
+        this.bots = upsertBot(this.bots, restored);
+        // With nothing archived any more, the next archived bot starts out of sight again.
+        if (!archivedBotCount(this.bots)) this.showArchivedBots = false;
+        if (this.botArchiveToast?.bot.id === restored.id) this.dismissBotArchiveToast();
+        this.botNotice = `Restored ${restored.name}. Its routines stay paused until you turn them on.`;
+        this.botNoticeFailed = false;
+        void this.refreshBots();
+      })
+      .catch((error: unknown) => {
+        this.botNotice = error instanceof Error ? error.message : "Could not restore that bot.";
+        this.botNoticeFailed = true;
+      })
+      .finally(() => {
+        this.botPendingId = "";
       });
   };
 
@@ -3983,8 +4010,8 @@ export class HuiApp extends HuiElement {
 
   private renderBotWorkspace() {
     const bot = this.activeBot();
-    const placeholder = (title: string, message: string, tone: "status" | "alert", onRetry?: () => void) => renderBotPlaceholder({
-      title, message, tone, mobileNav: this.mobileNavLayout, onToggleNavigation: toggleNavigationDrawer, ...(onRetry ? { onRetry } : {}),
+    const placeholder = (title: string, message: string, tone: "status" | "alert", onRetry?: () => void, actionLabel?: string) => renderBotPlaceholder({
+      title, message, tone, mobileNav: this.mobileNavLayout, onToggleNavigation: toggleNavigationDrawer, ...(onRetry ? { onRetry } : {}), ...(actionLabel ? { actionLabel } : {}),
     });
     if (!bot) {
       if (!this.botsLoaded) {
@@ -3993,6 +4020,11 @@ export class HuiApp extends HuiElement {
           : placeholder("Bot", "Loading bot…", "status");
       }
       return placeholder("Bot not found", "This bot does not exist or has been archived.", "alert");
+    }
+    // Its chat opens again once it is restored; until then it takes no messages from here.
+    if (bot.archived) {
+      return placeholder(bot.name, `${bot.name} is archived. Its chat and memory are kept; restore it to open the chat again.`, "status",
+        () => this.restoreBotFromRoster(bot), this.botPendingId === bot.id ? "Restoring…" : "Restore");
     }
     const session = this.listedSession(bot.sessionId);
     if (!session) {

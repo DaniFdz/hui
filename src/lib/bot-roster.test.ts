@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  archivedBotCount,
+  archivedRosterBots,
   botAccessibleName,
   botActivity,
   botActivityAt,
@@ -50,6 +52,20 @@ test("the roster orders by latest activity and never lists archived bots", () =>
   assert.equal(hiddenBotCount([bot("gone", { hidden: true, archived: true })]), 0);
   // Equal activity falls back to the name, so the order never flickers.
   assert.deepEqual(rosterBots([bot("beta"), bot("alpha")], { query: "", showHidden: false }).map(({ id }) => id), ["alpha", "beta"]);
+});
+
+test("Show archived lists archived bots only, hidden or not, matching the search, latest first", () => {
+  const bots = [
+    bot("scout"),
+    bot("old", { archived: true, lastMessage: { role: "user", text: "x", at: "2026-10-03T00:00:00.000Z" } }),
+    bot("older", { archived: true, hidden: true, title: "Inbox keeper", updatedAt: "2026-09-01T00:00:00.000Z" }),
+    bot("newest", { archived: true, lastMessage: { role: "assistant", text: "y", at: "2026-10-05T00:00:00.000Z" } }),
+  ];
+  assert.deepEqual(archivedRosterBots(bots, "").map(({ id }) => id), ["newest", "old", "older"]);
+  assert.deepEqual(archivedRosterBots(bots, "inbox").map(({ id }) => id), ["older"], "the search applies to archived bots too");
+  assert.deepEqual(archivedRosterBots(bots, "scout"), [], "active bots never list as archived");
+  assert.equal(archivedBotCount(bots), 3);
+  assert.equal(archivedBotCount([bot("scout")]), 0);
 });
 
 test("activity falls back from the last message to the record's own times", () => {

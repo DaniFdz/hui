@@ -348,8 +348,12 @@ function botUrl(id: string, suffix = ""): string {
   return `${BOTS_URL}/${encodeURIComponent(id)}${suffix}`;
 }
 
+/** Every bot, archived ones included, as the events stream lists them (the
+ * route answers active and archived bots separately). */
 export async function loadBots(): Promise<BotView[]> {
-  return parseBotList(await fetchJson<unknown>(BOTS_URL));
+  const [active, archived] = await Promise.all([fetchJson<unknown>(BOTS_URL), fetchJson<unknown>(`${BOTS_URL}?archived=1`)]);
+  const entries = (body: unknown): unknown[] => isRecord(body) && Array.isArray(body["bots"]) ? body["bots"] : [];
+  return parseBotList({ bots: [...entries(active), ...entries(archived)] });
 }
 
 /** Resolves only once the gateway created the bot, its chat and its memory. */
