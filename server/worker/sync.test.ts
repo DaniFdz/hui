@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { configuredResourceId } from "../runtimes/resource-policy.ts";
-import { buildSyncPlan, mirrorPath } from "./sync.ts";
+import { brokeredModels, buildSyncPlan, mirrorPath } from "./sync.ts";
 
 test("the mirror holds the user's PI resources with remote paths and no secrets", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "hui-sync-"));
@@ -22,7 +22,7 @@ test("the mirror holds the user's PI resources with remote paths and no secrets"
   await writeFile(join(agentDir, "skills", "local", "SKILL.md"), "local skill");
   await writeFile(join(agentDir, "auth.json"), "{\"p\":{\"type\":\"api_key\",\"key\":\"secret\"}}");
   await writeFile(join(agentDir, "sessions", "transcript.jsonl"), "{}");
-  await writeFile(join(agentDir, "models.json"), "{}");
+  await writeFile(join(agentDir, "models.json"), "{\"providers\":{\"p\":{\"baseUrl\":\"https://example.test\"}}}");
   await writeFile(join(agentDir, "AGENTS.md"), "global context");
   await writeFile(join(pkg, "package.json"), "{\"name\":\"my-package\"}");
   await writeFile(join(pkg, "index.ts"), "export default () => {}");
@@ -62,4 +62,62 @@ test("the mirror holds the user's PI resources with remote paths and no secrets"
   // HUI's disabled-plugin ids follow the rewritten source.
   assert.equal(plan.pluginIds.get(configuredResourceId("package", "../../src/my-package")), configuredResourceId("package", `${remoteMirror}/home/src/my-package`));
   assert.equal(mirrorPath(join(agentDir, "npm", "x"), { agentDir, home }), "agent/npm/x");
+});
+
+test("literal keys and header values in models.json are left out of the mirror for the gateway to serve", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "hui-sync-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const home = join(root, "home");
+  const agentDir = join(home, ".pi", "agent");
+  await mkdir(agentDir, { recursive: true });
+  const secrets = ["sk-literal-key", "literal-header-secret", "model-header-secret", "built-in-key"];
+  await writeFile(join(agentDir, "models.json"), `{
+    // PI accepts comments.
+    "providers": {
+      "custom": {
+        "baseUrl": "https://example.test", "api": "anthropic-messages", "apiKey": "sk-literal-key",
+        "headers": { "x-secret": "literal-header-secret", "x-env": "$GATEWAY_TOKEN", "x-mixed": "Bearer \${TOKEN}", "x-command": "!print-token" },
+        "models": [{ "id": "m", "headers": { "x-model": "model-header-secret" } }],
+      },
+      "from-env": { "baseUrl": "https://example.test", "apiKey": "$FROM_ENV_KEY" },
+      "from-command": { "baseUrl": "https://example.test", "apiKey": "!print-key" },
+      "anthropic": { "apiKey": "built-in-key" },
+    },
+  }`);
+
+  const plan = await buildSyncPlan({ agentDir, home, remoteMirror: "/remote/mirror" });
+  const file = plan.files.find((entry) => entry.path === "agent/models.json")!;
+  const text = file.content!.toString();
+  for (const secret of secrets) assert.ok(!text.includes(secret), `the mirror holds ${secret}`);
+  const { providers } = JSON.parse(text);
+  assert.equal(providers.custom.apiKey, undefined);
+  assert.equal(providers.custom.headers["x-env"], "$GATEWAY_TOKEN");
+  assert.equal(providers.custom.headers["x-mixed"], "Bearer ${TOKEN}");
+  assert.equal(providers.custom.headers["x-command"], "!print-token");
+  assert.deepEqual(providers["from-env"], { baseUrl: "https://example.test", apiKey: "$FROM_ENV_KEY" });
+  assert.deepEqual(providers["from-command"], { baseUrl: "https://example.test", apiKey: "!print-key" });
+  // Nothing is left of a built-in provider's key override; its credential is served.
+  assert.equal(providers.anthropic, undefined);
+
+  // The gateway serves exactly what the mirror left out, under the names it uses.
+  const { secrets: served } = await brokeredModels(join(agentDir, "models.json"));
+  assert.deepEqual([...served.keys()].toSorted(), ["anthropic", "custom"]);
+  assert.equal(served.get("anthropic")!.key, "built-in-key");
+  const custom = served.get("custom")!;
+  assert.equal(custom.key, "sk-literal-key");
+  const variable = (value: string) => value.match(/^\$\{(HUI_SECRET_[0-9A-F]{16})\}$/u)![1]!;
+  assert.equal(custom.env[variable(providers.custom.headers["x-secret"])], "literal-header-secret");
+  assert.equal(custom.env[variable(providers.custom.models[0].headers["x-model"])], "model-header-secret");
+  assert.equal(Object.keys(custom.env).length, 2);
+});
+
+test("an invalid models.json is not mirrored", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "hui-sync-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const agentDir = join(root, ".pi", "agent");
+  await mkdir(agentDir, { recursive: true });
+  await writeFile(join(agentDir, "models.json"), "{ \"providers\": { \"p\": { \"apiKey\": \"sk-unparsed\" ");
+  const plan = await buildSyncPlan({ agentDir, home: root, remoteMirror: "/remote/mirror" });
+  assert.ok(!plan.files.some((entry) => entry.path === "agent/models.json"));
+  assert.deepEqual(plan.skipped, ["models.json: invalid, not mirrored"]);
 });

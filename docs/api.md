@@ -963,8 +963,15 @@ gateway connected a `bridge` call fails at once, and one in flight fails when
 the connection drops. `read` and `list` answers are cached in host memory
 until the credential's `expires` (API keys: while the host runs) and served
 while no gateway is connected; nothing is written to disk. Without a cached
-answer the remote's own PI login is used. The worker needs Node.js 22.19 or
-newer.
+answer the remote's own PI login is used. The mirrored PI `models.json` holds
+no literal secrets: a literal `apiKey` is dropped, and the gateway answers a
+`pi` `read` for that provider with `{type: "api_key", key}` when its auth.json
+has none (and lists it); a literal header value (provider, model or model
+override) becomes `${HUI_SECRET_<16 hex>}`, a name derived from its place, and
+every credential the gateway serves for that provider carries those variables
+in `env`. Values PI resolves itself (`$NAME`, `${NAME}`, `!command`) are
+mirrored unchanged; an invalid models.json is not mirrored. The worker needs
+Node.js 22.19 or newer.
 
 ### `GET /__hui/workers`
 

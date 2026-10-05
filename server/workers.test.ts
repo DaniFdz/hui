@@ -20,6 +20,7 @@ const agentDir = join(root, "gateway", "agent");
 const remoteHome = join(root, "remote");
 const project = join(remoteHome, "project");
 const KEY = "fixture-secret-key";
+const HEADER_SECRET = "fixture-secret-header";
 // The gateway's home too: nothing is read from the real user's files.
 process.env["HOME"] = join(root, "gateway", "home");
 process.env["PI_CODING_AGENT_DIR"] = agentDir;
@@ -101,10 +102,12 @@ before(async () => {
   });
   const [ready] = await once(provider.stdout!, "data");
   baseUrl = String(ready).match(/http:\/\/127\.0\.0\.1:\d+/u)![0];
-  await writeFile(join(agentDir, "models.json"), JSON.stringify({ providers: { fx: {
-    baseUrl, api: "anthropic-messages",
-    models: [{ id: "fixture", name: "Fixture", reasoning: false, input: ["text"], contextWindow: 32000, maxTokens: 4096, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } }],
-  } } }));
+  const models = [{ id: "fixture", name: "Fixture", reasoning: false, input: ["text"], contextWindow: 32000, maxTokens: 4096, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } }];
+  await writeFile(join(agentDir, "models.json"), JSON.stringify({ providers: {
+    fx: { baseUrl, api: "anthropic-messages", models },
+    // Its key and header exist only as literals here, never in a PI login.
+    "fx-literal": { baseUrl, api: "anthropic-messages", apiKey: KEY, headers: { "x-e2e-header": HEADER_SECRET }, models },
+  } }));
   // The key exists only in the gateway's PI login.
   await writeFile(join(agentDir, "auth.json"), JSON.stringify({
     fx: { type: "api_key", key: KEY },
@@ -600,6 +603,38 @@ test("a follow-up queued before the gateway leaves runs on the worker with the c
     assert.deepEqual(second.transcript().filter((entry) => entry.kind === "message").map((entry) => entry.kind === "message" && entry.text),
       ["E2E_REPLAY please", "Replay prefix — replay suffix", "queued while away", "Fixture response."]);
     for (const file of await remoteFiles()) assert.ok(!(await readFile(file, "utf8")).includes(KEY), `${file} holds the provider key`);
+  } finally {
+    second.dispose();
+  }
+});
+
+test("a key and header written literally in the gateway's models.json reach the worker from memory, with the gateway or without it", async () => {
+  const key = "remote-literal-models";
+  const first = await durable.start({ cwd: project, worker: workerId, huiSessionId: key, model: "fx-literal/fixture" });
+  const done = settled(first);
+  await first.prompt("literal key with the gateway");
+  await done;
+  assert.equal(lastAnswer(first), "Fixture response.");
+  await first.prompt("E2E_REPLAY please");
+  await control("wait-replay-ready");
+  await first.followUp!("literal key without the gateway");
+  workers.disconnect(workerId);
+  first.dispose();
+  await control("release-replay", { method: "POST" });
+  const log = () => readFile(join(root, "provider.jsonl"), "utf8");
+  // Answered before any gateway is back: only the host's memory had the key.
+  await waitFor(async () => (await log()).includes("literal key without the gateway") || undefined, "the follow-up to reach the provider");
+  const second = await reattach(key, first.sessionFile!, (session) => session.transcript().some((entry) => entry.kind === "message" && entry.text === "literal key without the gateway") && lastAnswer(session) === "Fixture response.", "the follow-up to run");
+  try {
+    const requests = (await log()).trim().split("\n").map((line) => JSON.parse(line) as { messages: unknown; header?: string });
+    for (const prompt of ["literal key with the gateway", "literal key without the gateway"]) {
+      const request = requests.find((entry) => JSON.stringify(entry.messages).includes(prompt));
+      assert.equal(request?.header, HEADER_SECRET, `the request for "${prompt}" carried the literal header`);
+    }
+    for (const file of await remoteFiles()) {
+      const text = await readFile(file, "utf8");
+      assert.ok(!text.includes(KEY) && !text.includes(HEADER_SECRET), `${file} holds a models.json secret`);
+    }
   } finally {
     second.dispose();
   }

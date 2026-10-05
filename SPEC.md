@@ -1025,7 +1025,16 @@ leaves worker records unchanged.
   expires. Without a gateway and a cached answer, the remote's own PI login
   is used. Provider keys
   that models.json resolves from environment variables or commands resolve on
-  the remote.
+  the remote. A key or header value written literally in models.json is never
+  mirrored: the remote's copy drops the key, which the gateway serves as that
+  provider's credential when its PI login has none (PI's own precedence), and
+  names a `HUI_SECRET_…` variable in place of the header value, which rides in
+  the `env` of the credential the gateway serves for that provider. A literal
+  header of a provider with no such credential (its key comes from the remote's
+  environment or a command, or nothing is stored), or of a model of an OAuth
+  provider, therefore fails on the remote with PI's message naming that
+  variable, and without a gateway or a cached answer only the remote's own
+  login applies. An invalid models.json is not mirrored at all.
 - **Sessions.** New Session's **Run on** picker lists workers. A remote
   directory must be absolute or start with `~/` and is checked when the session
   starts; creating one never waits on a connection. The header shows the worker.

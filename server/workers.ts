@@ -28,7 +28,7 @@ import { bundledSkills, enabledBundledSkillPaths, isBundledSkillPreference } fro
 import { readHuiSettings } from "./hui-settings.ts";
 import { BootstrapError, connectScript, markers, nodeInstallScript, probeScript, releaseInstallScript, runScript } from "./worker/bootstrap.ts";
 import { remoteReleasePath, workerRelease, type WorkerRelease } from "./worker/release.ts";
-import { buildSyncPlan, contentFile, mirrorPath } from "./worker/sync.ts";
+import { brokeredModels, buildSyncPlan, contentFile, mirrorPath, type ModelSecrets } from "./worker/sync.ts";
 import type { Settings } from "../src/lib/settings.ts";
 import type { HostInfo, RemoteLaunch, RemoteState } from "./worker/host.ts";
 import { RuntimeUnreachableError, type RuntimeEvent, type RuntimeUnreachable, type TranscriptEntry } from "./runtimes/types.ts";
@@ -95,13 +95,40 @@ function writeWorkers(workers: readonly WorkerConfig[]): Promise<void> {
 }
 
 /** Gateway-side store for a name the host may ask about; nothing else. */
-function gatewayStore(name: unknown): CredentialStore {
-  if (name === "pi") return credentialStore(join(resolvePiAgentDir(), "auth.json"));
+async function gatewayStore(name: unknown): Promise<CredentialStore> {
+  if (name === "pi") {
+    const agentDir = resolvePiAgentDir();
+    return withModelSecrets(credentialStore(join(agentDir, "auth.json")), (await brokeredModels(join(agentDir, "models.json"))).secrets);
+  }
   if (typeof name === "string" && name.startsWith("hui:")) {
     const rel = name.slice(4);
     if (BROKERED_PROVIDER_FILE.test(rel)) return credentialStore(join(PROVIDERS_DIR, ...rel.split("/")));
   }
   throw new Error("Unknown credential store.");
+}
+
+/** PI's login, plus the literals the worker's models.json leaves out: a
+ * literal key stands in for a missing login, as it does in PI, and literal
+ * header values ride in the credential's `env`. */
+function withModelSecrets(store: CredentialStore, secrets: ModelSecrets): CredentialStore {
+  type Credential = Awaited<ReturnType<CredentialStore["read"]>>;
+  const served = (providerId: string, stored: Credential): Credential => {
+    const secret = secrets.get(providerId);
+    const credential = stored ?? (secret?.key === undefined ? undefined : { type: "api_key", key: secret.key });
+    if (!credential || !secret || !Object.keys(secret.env).length) return credential;
+    const env = isRecord(credential.env) ? credential.env as Record<string, string> : {};
+    return { ...credential, env: { ...env, ...secret.env } };
+  };
+  return {
+    read: async (providerId, options) => served(providerId, await store.read(providerId, options)),
+    modify: async (providerId, fn, options) => served(providerId, await store.modify(providerId, fn, options)),
+    delete: (providerId, options) => store.delete(providerId, options),
+    list: async (options) => {
+      const stored = await store.list(options);
+      const keys = [...secrets].filter(([id, secret]) => secret.key !== undefined && !stored.some((entry) => entry.providerId === id));
+      return [...stored, ...keys.map(([providerId]) => ({ providerId, type: "api_key" as const }))];
+    },
+  };
 }
 
 /** A state snapshot and maybe a transcript from the host, stamped with its
@@ -408,7 +435,7 @@ class WorkerConnection {
   }
 
   async #credential(params: Record<string, unknown>): Promise<unknown> {
-    const store = gatewayStore(params["store"]);
+    const store = await gatewayStore(params["store"]);
     const providerId = typeof params["providerId"] === "string" ? params["providerId"] : "";
     switch (params["op"]) {
       case "read": return (await store.read(providerId)) ?? null;
