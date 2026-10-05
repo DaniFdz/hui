@@ -1106,7 +1106,54 @@ leaves worker records unchanged.
   worktree and branch checkouts, and multi-account quota rotation (the default
   account is used). Usage totals skip remote transcripts.
 
+## Bots
+
+A **bot** is a named, persistent agent: a role and standing instructions, its
+own model, a working directory and **one chat that never ends**, whose memory is
+OptChat (HUI-18). Sessions keep everything they have (worktrees, rewind,
+`/compact`); bots are for assistants the operator returns to every day. The
+sidebar splits into **Sessions | Bots**; the Bots tab is the UI follow-up, and
+the `hui bot` CLI can do everything it can, through the same routes.
+
+- **A chat is a session.** A bot's chat is an ordinary Durable session on this
+  gateway, created through New Session's path, so the chat view, streaming,
+  steering, follow-ups, questions and model switching are the session's own.
+  Its record names the bot; the bot registry (`bots.json`) holds the rest.
+  Remote workers do not run bots.
+- **Before the first word.** The persona becomes the conversation's standing
+  instructions, and OptChat is switched on, in the commit that creates the
+  conversation.
+- **Forever.** Clearing, compacting, rewinding or deleting a bot's chat is
+  refused; archiving the bot deletes nothing, disables its routines and stops a
+  running turn, and restoring it brings it back with its routines still off.
+- **Messages.** A message to a bot is a prompt when it is idle and a follow-up
+  when it is busy; a caller may wait for the reply of the turn that answers it,
+  and learns at once when that turn asks a question.
+- **Routines** are Automation tasks aimed at a bot's chat, marked
+  `[routine: <name>]`, queued behind a busy bot instead of skipped.
+- **Bots talk to bots** with a `message_bot` tool only bots' chats have,
+  beside a byte-stable list of the other bots in their system prompt. A message
+  arrives as `[from @handle] …`; chains stop after three hops and each bot sends
+  at most 30 bot messages an hour.
+- **Memory** is OptChat's: every message kept word for word and condensed into a
+  summary tree a fresh turn reads. Bots reach it only through one interface, so
+  its engine stays separate. Until this build includes OptChat, a bot's chat is
+  a plain Durable conversation and its memory routes report that.
+
+The contract is [docs/api.md#bots](docs/api.md#bots).
+
 ## Decisions
+
+### Bots are named chats, not an agent selector (2026-10-05)
+
+The owner approved GrokBot/Hermes-style bots on 2026-10-05: a **Sessions | Bots**
+sidebar split, bots as named Durable conversations with OptChat memory, `hui bot`
+CLI parity with the Bots tab, routines through Automation and voice through
+VoiceStudio later. This satisfies the rule against new Agents or Approvals
+surfaces without a product decision: a bot is a chat with a name and standing
+instructions, not an Agents page or a global agent identity, and it adds no
+approval layer. Bots run with the same Full Access as every session, on this
+gateway only (remote workers are a later follow-up).
 
 ### New sessions run on Pi Durable
 
@@ -1257,7 +1304,8 @@ to show that it is starting.
 - A global agent identity/selector surface and approval queues. HUI runs the
   installed PI configuration in Full Access, subject only to HUI-owned resource
   enablement; session-born subagents share that runtime configuration and do not
-  add an approval interception layer.
+  add an approval interception layer. Bots (above) are named chats under that
+  same configuration, not an agent selector.
 - Attaching to tmux panes, accounts and MCP plumbing.
 - Restoring Git worktrees, or bulk-removing or bulk-forcing worktrees. See
   Worktrees for the confirmed per-row removal HUI does own.

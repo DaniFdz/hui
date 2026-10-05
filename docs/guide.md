@@ -180,6 +180,98 @@ provider quota windows and reset times. Unsupported quotas are labeled explicitl
 Reopen existing sessions after changing connections; new sessions use the updated
 configuration. HUI-managed connections require the default PI SDK backend.
 
+## Bots
+
+A **bot** is a named, persistent agent: a role and standing instructions (its
+persona), its own model, a working directory, and **one chat that never ends**.
+Sessions stay what they were (coding work with worktrees, rewind and
+`/compact`); a bot is for the assistant you come back to every day. Its chat is
+an ordinary Pi Durable session on this gateway, so the chat view, streaming,
+steering, follow-ups, questions and model switching work as in any session.
+
+**Memory.** A bot's chat is meant to carry OptChat memory: every message is kept
+word for word and a cheap model condenses it into a tree of one-line summaries,
+so each turn starts fresh from a fixed-size view of the whole history and the
+bot zooms in when it needs detail. This build does not include OptChat yet: a
+bot's chat is then a plain Durable conversation that Durable compacts by itself
+when it grows, `hui bot memory` reports that memory is not available, and the
+bot's view has no `memory` status.
+
+### Creating and editing
+
+```sh
+hui bot add --name Ada --title Researcher --instructions-file ada.md --model openai/gpt-5.6
+hui bot edit ada --thinking high --emoji 🦊
+hui bot show ada
+```
+
+The handle (`@ada`) comes from the name: lowercase letters, digits and dashes,
+with `-2`, `-3`… when another bot has it. Renaming keeps the handle. Without
+`--cwd` a bot gets a private directory of its own in HUI's configuration
+directory. The persona becomes the chat's standing instructions before its first
+message can arrive; editing it applies from the bot's next request. A model
+change goes through the chat like the model picker, and a new working directory
+is accepted only while the bot is idle (its chat starts again there).
+`--memory-model` picks the model that writes the memory's summaries.
+
+A bot's chat refuses what would end or fork it: `/clear`, `/compact`, rewind
+and deleting the session all answer with an explanation instead.
+
+### Talking to a bot
+
+`hui bot chat ada` streams the bot's replies as plain text, so it works over
+SSH. Typed lines are prompts while the bot is idle and steer the turn while it
+works; questions the bot asks are answered inline (a number, `y`/`n`, text or
+`/cancel`). The first Ctrl+C stops a running turn, the next one leaves.
+
+`hui bot send ada "summarize today's PRs"` delivers one message: a prompt when
+the bot is idle, a follow-up after its current turn when it is busy. `-` reads
+the message from stdin. With `--wait` it prints the reply of the turn that
+answers it and exits 0, 1 if that turn fails or `--timeout` (default 300
+seconds) passes first (the bot keeps working), and 2 when the bot asks a
+question, which you then answer in `hui bot chat`.
+
+### Routines
+
+Routines are Automation tasks aimed at a bot's chat; they appear in Automations
+too.
+
+```sh
+hui bot routine add ada --name Standup --prompt "Summarize yesterday's work" --cron "0 9 * * 1-5"
+hui bot routine add ada --name Inbox --prompt "Triage new issues" --every 2h
+hui bot routine run ada Standup
+hui bot routine list ada
+```
+
+A routine's message reaches the bot as `[routine: <name>] <prompt>`. A busy bot
+takes it as a follow-up instead of skipping it, and the run completes when the
+turn answering it ends. `--every` takes `30s`, `5m`, `2h` or `1d`; Automation
+refuses intervals under a minute. `--cron` uses this machine's time zone unless
+`--timezone` names another.
+
+### Bots talking to bots
+
+Every bot's chat has a `message_bot` tool and a short list of the other bots.
+A message arrives in the other bot's chat as `[from @ada] …`, and that bot
+answers in its own chat; nothing comes back to the sender by itself. To stop
+loops, an answer to a bot message is marked `[from @bob · hop 2]` and HUI
+refuses to go beyond three hops; a bot can also send at most 30 bot messages an
+hour. Archived bots can neither send nor receive them.
+
+### Archiving
+
+`hui bot remove ada` archives the bot: its chat transcript and memory are kept,
+a running turn stops and its routines are disabled. `hui bot list --archived`
+shows archived bots and `hui bot restore ada` brings one back; its routines stay
+disabled until you turn them on again in Automations.
+
+### Privacy
+
+Bots live in HUI's own files on this machine: `bots.json` (owner-only) in HUI's
+configuration directory, their chats in the Pi Durable store and their memory
+beside it. Nothing about a bot leaves the machine except the model requests its
+chat and its memory's compactor make to the providers you configured.
+
 ## After an upgrade: `hui doctor`
 
 `hui doctor` reports state that an upgraded HUI needs changed, and
