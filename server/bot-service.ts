@@ -312,8 +312,9 @@ export class BotService {
 
   /**
    * Archives without deleting anything: marks the bot, disables its routines,
-   * stops a running turn and archives its chat's session record. Every step is
-   * idempotent, so archiving again finishes what an interrupted attempt left.
+   * withdraws messages still queued for it, stops a running turn and archives
+   * its chat's session record. Every step is idempotent, so archiving again
+   * finishes what an interrupted attempt left.
    */
   async archive(target: string): Promise<BotView> {
     const found = await this.resolve(target);
@@ -326,6 +327,10 @@ export class BotService {
     });
     for (const task of (await this.#deps.routines.tasks()).filter((task) => task.sessionId === bot.sessionId && task.enabled)) {
       await this.#deps.routines.disable(task);
+    }
+    // Messages still waiting in HUI's queue would start a new turn once the current one stops.
+    for (const item of this.#sessions.snapshot(bot.sessionId).queue.items ?? []) {
+      try { this.#sessions.removeFollowUp(bot.sessionId, item.id); } catch { /* sent meanwhile */ }
     }
     const status = this.#sessions.status(bot.sessionId);
     if (status === "running" || status === "waiting") {

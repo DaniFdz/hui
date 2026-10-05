@@ -261,7 +261,8 @@ hour. Archived bots can neither send nor receive them.
 ### Archiving
 
 `hui bot remove ada` archives the bot: its chat transcript and memory are kept,
-a running turn stops and its routines are disabled. `hui bot list --archived`
+a running turn stops, messages still queued for it are withdrawn and its
+routines are disabled. `hui bot list --archived`
 shows archived bots and `hui bot restore ada` brings one back; its routines stay
 disabled until you turn them on again in Automations.
 

@@ -355,10 +355,13 @@ test("archiving keeps every byte, disables the bot's routines and stops its turn
   assert.equal((await h.service.get(bot.id)).routines, 2);
   await h.service.send(bot.id, { text: "long task" });
   assert.equal(h.sessions.status(bot.sessionId), "running");
+  assert.deepEqual(await h.service.send(bot.id, { text: "queued behind it" }), { status: "queued" });
 
   const archived = await h.service.archive(bot.id);
   assert.equal(archived.archived, true);
   assert.equal(chat.aborts, 1, "its running turn stopped");
+  assert.deepEqual(h.sessions.snapshot(bot.sessionId).queue.items ?? [], [], "and what waited behind it was withdrawn");
+  assert.deepEqual(chat.prompts, ["long task"], "so nothing starts in the archived chat");
   assert.deepEqual(h.tasks.map((each) => [each.name, each.enabled]), [["Morning", false], ["Paused", false], ["Bob's", true]]);
   assert.equal(h.record(bot.sessionId)?.archived, true, "its chat's session record is archived, not removed");
   assert.equal(h.record(bot.sessionId)?.piSessionFile, "durable:1");
