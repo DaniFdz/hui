@@ -252,11 +252,16 @@ export function callStatusLabel(state: CallState, summarizing = false): string {
 
 export type CallMicrophone = { sampleRate: number; setEnabled(enabled: boolean): void; close(): void };
 
+/** A message of the bot's chat, as its snapshot lists it. */
+export type CallMessage = { role: "user" | "assistant"; text: string };
+
 export type CallSessionHandlers = {
   /** The chat's status: running, waiting and starting are busy. */
   onBusy(busy: boolean): void;
   /** Its live events: text, turn_start, settled, tool_start, tool_end. */
   onEvent(event: RuntimeEvent): void;
+  /** Its messages whenever the stream sends them whole (it attached, came back after a drop, or refreshed). */
+  onMessages(messages: readonly CallMessage[]): void;
 };
 
 export type CallPlatform = {
@@ -295,6 +300,8 @@ export class VoiceCall {
   #order: Promise<void> = Promise.resolve();
   /** The reply text of the current turn, as streamed. */
   #reply = "";
+  /** What the call last put in the chat, as the chat shows it (`[voice] …`): its reply follows it there. */
+  #sent = "";
   /** After a barge-in the interrupted turn stays silent: until what interrupted it is sent and a new turn starts. */
   #ignoring: false | "interrupted" | "until-next-turn" = false;
   #cancelTimer: (() => void) | undefined;
@@ -324,6 +331,7 @@ export class VoiceCall {
     this.#unwatch = this.#platform.watch({
       onBusy: (busy) => this.#dispatch({ type: "bot-busy", busy }),
       onEvent: (event) => this.#onSessionEvent(event),
+      onMessages: (messages) => this.#onMessages(messages),
     });
     let microphone: CallMicrophone;
     try {
@@ -407,6 +415,23 @@ export class VoiceCall {
     }
   }
 
+  /**
+   * The chat as a whole, when the stream attaches late or comes back after a drop: a reply to what the call sent
+   * whose live text (or end) never arrived is said from the chat, after what was already said of it, and an idle
+   * chat ends the wait.
+   */
+  #onMessages(messages: readonly CallMessage[]): void {
+    if (terminal(this.#state.phase) || !this.#state.awaitingReply || this.#ignoring || !this.#sent) return;
+    // Only the chat's latest user message: an older one with the same words has an older answer.
+    let at = messages.length - 1;
+    while (at >= 0 && messages[at]!.role !== "user") at--;
+    if (at < 0 || messages[at]!.text.trim() !== this.#sent.trim()) return;
+    const reply = messages.slice(at + 1).filter((message) => message.role === "assistant").map((message) => message.text).join("\n\n");
+    if (!reply.trim()) return;
+    if (reply.startsWith(this.#reply) && reply.length > this.#reply.length) this.#onSessionEvent({ type: "text", delta: reply.slice(this.#reply.length) });
+    if (!this.#state.botBusy && this.#state.awaitingReply) this.#onSessionEvent({ type: "settled" });
+  }
+
   #speak(chunk: string): void {
     if (!this.#state.speakerMuted && !terminal(this.#state.phase)) this.#queue.enqueue(chunk);
   }
@@ -426,6 +451,7 @@ export class VoiceCall {
         if (this.#ignoring === "interrupted") this.#ignoring = "until-next-turn";
         // The caption starts again with the new words; a sentence the turn is halfway through still gets said.
         this.#reply = "";
+        this.#sent = effect.text;
         void this.#platform.send(effect.text, effect.mode).then(
           (delivery) => this.#dispatch({ type: "delivered", delivery }),
           (error: unknown) => this.#dispatch({ type: "send-failed", message: message(error, "The message could not be sent to the chat.") }),

@@ -3,14 +3,19 @@
  * AudioWorklet, VoiceStudio through the gateway, the bot's chat through the
  * session API and its live stream. `VoiceCall` (voice-call.ts) holds the logic.
  */
-import type { CallPlatform } from "./voice-call.ts";
+import type { CallMessage, CallPlatform } from "./voice-call.ts";
 import { microphoneContext, openCallMicrophone, utteranceWav, voicePlayer } from "./voice-audio.ts";
 import { microphoneErrorMessage, sendBotMessage, synthesizeSpeech, transcribeRecording } from "./voice.ts";
-import { steerSession, subscribeSession, type SessionStatus } from "./sessions-store.ts";
+import { steerSession, subscribeSession, type SessionStatus, type TranscriptEntry } from "./sessions-store.ts";
 
 /** A chat that is running, waiting on a question or starting cannot take a prompt: what is said steers it. */
 export function chatBusy(status: SessionStatus): boolean {
   return status === "running" || status === "waiting" || status === "starting";
+}
+
+/** A chat's messages, for a call that missed the live text of a reply (voice-call.ts). */
+export function callMessages(transcript: readonly TranscriptEntry[]): CallMessage[] {
+  return transcript.flatMap((entry) => entry.kind === "message" && !entry.pending && !entry.failed ? [{ role: entry.role, text: entry.text }] : []);
 }
 
 export function botCallPlatform(bot: { id: string; sessionId: string }): CallPlatform {
@@ -35,10 +40,13 @@ export function botCallPlatform(bot: { id: string; sessionId: string }): CallPla
       return sendBotMessage(bot.id, text);
     },
     watch: (handlers) => subscribeSession(bot.sessionId, {
-      onSnapshot: (snapshot) => handlers.onBusy(chatBusy(snapshot.status)),
+      onSnapshot: (snapshot) => {
+        handlers.onBusy(chatBusy(snapshot.status));
+        handlers.onMessages(callMessages(snapshot.transcript));
+      },
       onStatus: (status) => handlers.onBusy(chatBusy(status)),
       onEvent: (event) => handlers.onEvent(event),
-      onTranscript: () => undefined,
+      onTranscript: (transcript) => handlers.onMessages(callMessages(transcript)),
       onModel: () => undefined,
       onThinking: () => undefined,
       onConnection: () => undefined,

@@ -140,14 +140,17 @@ function fakePlatform(options: { microphone?: () => Promise<never> } = {}) {
     timers: [] as { callback: () => void; ms: number; cancelled: boolean }[],
     frames(list: Float32Array[]) { for (const frame of list) onFrame(frame); },
     busy(value: boolean) { handlers?.onBusy(value); },
+    /** The stream (re)attached: a snapshot with the chat's status and messages. */
+    snapshot(busy: boolean, messages: Parameters<CallSessionHandlers["onMessages"]>[0]) { handlers?.onBusy(busy); handlers?.onMessages(messages); },
     event(event: Parameters<CallSessionHandlers["onEvent"]>[0]) { handlers?.onEvent(event); },
     async finishPlaying() {
       for (let guard = 0; guard < 20; guard++) {
+        // A clip still being synthesized starts playing first.
+        await settle();
         const playing = fake.plays.find((item) => !item.signal.aborted && !(item as { finished?: boolean }).finished);
         if (!playing) return;
         (playing as { finished?: boolean }).finished = true;
         playing.done.resolve();
-        await settle();
       }
     },
   };
@@ -290,6 +293,50 @@ test("utterances reach the chat in the order they were said", async () => {
   fake.transcriptions[0]!.resolve("first");
   await settle();
   assert.deepEqual(fake.sent.map((item) => item.text), ["[voice] first", "[voice] second"]);
+});
+
+test("a reply whose live text the stream missed is said from the chat's snapshot", async () => {
+  const { platform, fake } = fakePlatform();
+  const call = new VoiceCall(platform);
+  await call.start();
+  fake.frames(say(500));
+  fake.transcriptions[0]!.resolve("Are you there?");
+  await settle();
+  assert.equal(call.state.phase, "thinking");
+  // Prompt accepted: the chat shows the message and works, nothing answered yet.
+  fake.snapshot(true, [{ role: "user", text: "[voice] Are you there?" }]);
+  assert.deepEqual(fake.synthesized, []);
+  // The stream came back after the whole turn: only its snapshot tells what the bot said.
+  fake.snapshot(false, [{ role: "user", text: "[voice] Are you there?" }, { role: "assistant", text: "Yes, I am right here. What do you need today?" }]);
+  await fake.finishPlaying();
+  assert.deepEqual(fake.synthesized, ["Yes, I am right here.", "What do you need today?"]);
+  assert.equal(call.state.bot, "Yes, I am right here. What do you need today?");
+  assert.equal(call.state.phase, "listening");
+  // A later snapshot of the same chat says nothing again.
+  fake.snapshot(false, [{ role: "user", text: "[voice] Are you there?" }, { role: "assistant", text: "Yes, I am right here. What do you need today?" }]);
+  await settle();
+  assert.equal(fake.synthesized.length, 2);
+});
+
+test("a turn whose end the stream missed finishes from the snapshot, after what was already said", async () => {
+  const { platform, fake } = fakePlatform();
+  const call = new VoiceCall(platform);
+  await call.start();
+  fake.frames(say(500));
+  fake.transcriptions[0]!.resolve("What's the plan?");
+  await settle();
+  fake.busy(true);
+  fake.event({ type: "text", delta: "First, the design. Then" });
+  await settle();
+  assert.deepEqual(fake.synthesized, ["First, the design."]);
+  // An older identical question is not this one: its answer is never taken for this reply.
+  fake.snapshot(false, [{ role: "user", text: "[voice] What's the plan?" }, { role: "assistant", text: "Old answer." }, { role: "user", text: "[routine: Digest] go" }]);
+  await settle();
+  assert.equal(call.state.awaitingReply, true);
+  fake.snapshot(false, [{ role: "user", text: "[voice] What's the plan?" }, { role: "assistant", text: "First, the design. Then the code." }]);
+  await fake.finishPlaying();
+  assert.deepEqual(fake.synthesized, ["First, the design.", "Then the code."]);
+  assert.equal(call.state.phase, "listening");
 });
 
 test("a sent utterance that starts no turn stops waiting after the reply timeout", async () => {
