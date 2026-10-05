@@ -463,3 +463,59 @@ test("composer notices render above the progress card and queue, which underlap 
     .map((marker) => source.indexOf(marker));
   assert.ok(order.every((index, i) => index > 0 && (i === 0 || index > order[i - 1]!)), String(order));
 });
+
+/** A Lit template's markup, with bound values written out. */
+function markup(value: unknown): string {
+  if (Array.isArray(value)) return value.map(markup).join("");
+  if (value && typeof value === "object" && "strings" in value && "values" in value) {
+    const template = value as { strings: readonly string[]; values: unknown[] };
+    return template.strings.map((part, i) => part + markup(template.values[i])).join("");
+  }
+  return ["string", "number", "boolean"].includes(typeof value) ? String(value) : "";
+}
+
+/** An open worker session; handlers are inert and unlisted props absent. */
+async function renderWorkerSession(status: string, overrides: Record<string, unknown> = {}): Promise<string> {
+  const { renderHome } = await import("./home.ts");
+  const props: Record<string, unknown> = {
+    session: { id: "s", title: "Build", group: "", cwd: "/repo", displayCwd: "devbox:/repo", tool: "durable", status, worker: { id: "w", name: "devbox" } },
+    transcript: [{ kind: "message", role: "user", text: "long task" }], subagents: [], draft: "keep this draft", attachments: [],
+    connection: "live", connectionNote: "", queue: { steering: [], followUp: [] }, models: [], expandedActivityIds: new Set(),
+    chatPreferences: { collapseTaskProgress: false, sendShortcut: "enter", githubEmbeds: false },
+    commandMenu: { open: false, commands: [], activeIndex: 0, paths: [] }, localPathMenu: { open: false, paths: [], activeIndex: 0 },
+    ...overrides,
+  };
+  const inert = new Proxy(props, { get: (target, key) => key in target ? target[key as string] : typeof key === "string" && key.startsWith("on") ? () => {} : undefined });
+  return markup(renderHome(inert as unknown as import("./home.ts").HomeProps)).replace(/\s+/gu, " ");
+}
+
+const sendButton = (html: string) => html.match(/<button type="submit" class="chat-send-btn chat-send-btn--send" \?disabled=(\w+)/u)?.[1];
+
+test("a worker session HUI is reconnecting to reads calm: a status, one notice, the draft kept and no failure", async () => {
+  const html = await renderWorkerSession("reconnecting");
+  assert.match(html, /durable on devbox · [^<]* · Reconnecting to devbox… </u);
+  assert.match(html, /Reconnecting to devbox — draft preserved\./u);
+  assert.equal(html.split("Connection to devbox lost — the session keeps running there. HUI reconnects automatically.").length, 2, "exactly one notice");
+  assert.doesNotMatch(html, /The runtime could not start|Retry session|chat-error|exited|no longer streaming|Stream stopped/u);
+  assert.doesNotMatch(html, /reconnect-session/u, "HUI reconnects by itself; there is nothing to click");
+  assert.match(html, /\.value=keep this draft/u);
+  assert.match(html, /placeholder=Draft while HUI reconnects…/u);
+  assert.equal(sendButton(html), "true", "sending waits for the worker");
+});
+
+test("a worker session HUI no longer retries says it is disconnected and offers Reconnect", async () => {
+  const html = await renderWorkerSession("disconnected");
+  assert.match(html, /· Disconnected from devbox </u);
+  assert.match(html, /Disconnected from devbox — draft preserved\./u);
+  assert.match(html, /Disconnected from devbox\. The session may still be running there\. <button type="button" class="btn btn--sm reconnect-session" @click=>Reconnect<\/button>/u);
+  assert.doesNotMatch(html, /The runtime could not start|Retry session|chat-error|exited|no longer streaming|Stream stopped/u);
+  assert.match(html, /\.value=keep this draft/u);
+  assert.equal(sendButton(html), "true");
+});
+
+test("a reachable worker session shows neither notice, and a failed one keeps its error banner", async () => {
+  const idle = await renderWorkerSession("idle");
+  assert.doesNotMatch(idle, /Reconnecting to|Disconnected from|reconnect-session/u);
+  assert.equal(sendButton(idle), "false");
+  assert.match(await renderWorkerSession("error"), /The runtime could not start\./u);
+});

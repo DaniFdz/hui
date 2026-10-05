@@ -151,10 +151,11 @@ export type DurableHostOptions = {
 };
 
 /** Registry fallback: the HUI session whose resume reference names this conversation. */
-async function registryCaller(conversationId: ConversationId): Promise<string | undefined> {
+export async function registryCaller(conversationId: ConversationId): Promise<string | undefined> {
   const { readRegistry } = await import("../sessions.ts");
   const reference = `durable:${conversationId}`;
-  return (await readRegistry()).find((record) => record.piSessionFile === reference)?.id;
+  // A worker's `durable:N` names a conversation in that worker's own store.
+  return (await readRegistry()).find((record) => record.piSessionFile === reference && !record.worker)?.id;
 }
 
 export class DurableHost implements ExtensionHost {
@@ -240,6 +241,14 @@ export class DurableHost implements ExtensionHost {
   /** PI's model runtime, current at each use, for extensions' `ctx.modelRegistry`. */
   get modelRuntime(): ModelRuntime { return this.#models.view as unknown as ModelRuntime; }
   get isOpen(): boolean { return this.#harness !== undefined; }
+
+  /** Whether the open store has work to do: queued input or a task that can
+   * run. A background compaction, or a task this build cannot run, is not. */
+  async busy(): Promise<boolean> {
+    if (!this.#harness) return false;
+    const { tasks, submissions } = await this.#harness.inspect(durableContext);
+    return submissions.length > 0 || tasks.some((task) => !task.record.background && task.state.kind !== "blocked");
+  }
 
   get codingTools(): readonly ToolRegistration[] { return CodingTools.tools ?? []; }
   get huiTools(): readonly ToolRegistration[] { return this.#tools.tools ?? []; }

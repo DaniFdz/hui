@@ -16,7 +16,7 @@ import type { RuntimeEvent, TranscriptEntry } from "./types.ts";
 const configDir = await mkdtemp(join(tmpdir(), "hui-durable-config-"));
 process.env["XDG_CONFIG_HOME"] = configDir;
 after(() => rm(configDir, { recursive: true, force: true }));
-const { DurableHost, durableContext } = await import("./durable-host.ts");
+const { DurableHost, durableContext, registryCaller } = await import("./durable-host.ts");
 // The estimate Durable's compaction thresholds use; the package root does not export it.
 const { estimateContext } = await import(new URL("./harness/compaction.js", import.meta.resolve("@earendil-works/pi-durable")).href) as {
   estimateContext(view: unknown, extra: readonly unknown[]): number;
@@ -253,9 +253,11 @@ test("a gateway killed mid-tool resumes the run without replaying bash", { timeo
 
 test("steering and follow-ups queue in the Durable inbox while a tool runs", { timeout: 45_000 }, async (t) => {
   const f = await fixture(t);
-  const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-queue" }, f.host());
+  const host = f.host();
+  const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-queue" }, host);
   await session.prompt("E2E_COMMAND_RUNNING hold the command");
   assert.equal((await f.control("/control/wait-replay-ready")).status, 200);
+  assert.equal(await host.busy(), true, "a running turn keeps a worker host up");
   const queued = nextEvent(session, (event) => event.type === "queue_update" && event.queue.followUp.length === 1);
   await session.steer("Steer note for the running turn");
   await session.followUp("Follow-up note for later");
@@ -268,6 +270,7 @@ test("steering and follow-ups queue in the Durable inbox while a tool runs", { t
   const users = entries.flatMap((entry) => entry.kind === "message" && entry.role === "user" ? [entry.text] : []);
   assert.deepEqual(users, ["E2E_COMMAND_RUNNING hold the command", "Steer note for the running turn", "Follow-up note for later"]);
   assert.deepEqual(session.pendingQueue(), { steering: [], followUp: [] });
+  assert.equal(await host.busy(), false, "an open store with nothing to run lets a worker host stop");
 });
 
 test("HUI tools reach the gateway handler as the bound session, never a model-chosen one", { timeout: 45_000 }, async (t) => {
@@ -457,9 +460,10 @@ test("cancelling right after starting reaches a compaction the stream has not li
 });
 
 test("a background compaction leaves the session idle and survives Stop", { timeout: 60_000 }, async (t) => {
-  const { f, session, events } = await heldBackgroundCompaction(t);
+  const { f, host, session, events } = await heldBackgroundCompaction(t);
   assert.deepEqual(events, [{ type: "compaction_start", reason: "threshold", blocking: false, background: true }]);
   assert.equal(session.isStreaming, false, "the run ended; Durable compacts beside the idle conversation");
+  assert.equal(await host.busy(), false, "a background compaction resumes later; it does not keep a worker host up");
 
   await session.abort();
   await session.cancelCompaction();
@@ -648,6 +652,18 @@ test("Durable requests give each HUI session its own PI_CLIENT_SESSION_ID for pr
   process.env["PI_CLIENT_SESSION_ID"] = "operator-id";
   await turns(second, ["IDENTITY_OPERATOR two"]);
   assert.deepEqual([...await identities("IDENTITY_OPERATOR")], ["operator-id"], "an explicit gateway value is kept, as for PI workers");
+});
+
+test("a worker row with the same durable:N never becomes the caller of a gateway conversation", async () => {
+  const { updateRegistry } = await import("../sessions.ts");
+  const base = { cwd: configDir, tool: "durable", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+  await updateRegistry(() => [
+    { ...base, id: "remote-row", piSessionFile: "durable:7", worker: "w1" },
+    { ...base, id: "local-row", piSessionFile: "durable:7" },
+  ] as never);
+  assert.equal(await registryCaller(7 as never), "local-row");
+  await updateRegistry(() => [{ ...base, id: "remote-row", piSessionFile: "durable:7", worker: "w1" }] as never);
+  assert.equal(await registryCaller(7 as never), undefined);
 });
 
 /** A PI extension using the surfaces Durable sessions bind: a tool, tool hooks, `input`, `before_agent_start`, a

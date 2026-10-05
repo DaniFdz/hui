@@ -4,7 +4,7 @@ import { html, nothing, type TemplateResult } from "lit";
 import { ref } from "lit/directives/ref.js";
 import { renderPaneMoveHandle } from "./pane-move-handle.ts";
 import { matchesModelSearch, modelSearchText } from "../lib/model-selection.ts";
-import { sessionGroupLabel } from "../lib/sessions-store.ts";
+import { sessionGroupLabel, unreachableHost } from "../lib/sessions-store.ts";
 import type {
   Attachment,
   RuntimeModel,
@@ -81,6 +81,8 @@ const STATUS_TEXT: Record<SessionStatus, string> = {
   waiting: "Waiting for your answer",
   starting: "Starting",
   error: "Error",
+  reconnecting: "Reconnecting",
+  disconnected: "Disconnected",
 };
 
 const SEND_LONG_PRESS_MS = 450;
@@ -232,7 +234,7 @@ export type HomeProps = {
   onDismissNote: () => void;
   /** A muted line about the event stream: reconnecting, or why it stopped. */
   connectionNote: string;
-  onLaunch: (input: { cwd: string; title?: string; group?: string; prompt?: string; commandDraft?: string; model?: string; thinking?: string; worktree?: boolean; branchName?: string; baseRef?: string }) => void;
+  onLaunch: (input: { cwd: string; title?: string; group?: string; prompt?: string; commandDraft?: string; model?: string; thinking?: string; worktree?: boolean; branchName?: string; baseRef?: string; worker?: string }) => void;
   onSelectSession: (session: SessionView) => void;
   /** Pane identity keeps controls unique when the same session is split twice. */
   controlScope?: string;
@@ -301,7 +303,14 @@ export type HomeProps = {
   onCancelDelete: () => void;
   onConfirmDelete: () => void;
   onRetry: () => void;
+  /** Connects the machine a disconnected session runs on again. */
+  onReconnect: () => void;
   launchDefaults?: { group: string; cwd: string };
+  /** Remote workers a new session can run on; none hides the picker. */
+  launchWorkers?: readonly { id: string; name: string; state: string }[];
+  /** Selected worker id; absent runs the session on this machine. */
+  launchWorker?: string;
+  onSelectLaunchWorker?: (id: string | undefined) => void;
   launchModels: readonly RuntimeModel[];
   launchModel: RuntimeModel | undefined;
   launchThinking: string;
@@ -386,7 +395,7 @@ function onSubmit(props: HomeProps) {
       ...(value("group") ? { group: value("group") } : {}),
       ...(props.launchModel ? { model: modelValue(props.launchModel) } : {}),
       ...(props.launchThinking ? { thinking: props.launchThinking } : {}),
-      ...(props.workspaceWorktree ? {
+      ...(props.launchWorker ? { worker: props.launchWorker } : props.workspaceWorktree ? {
         worktree: true,
         ...(props.workspaceBranch ? { branchName: props.workspaceBranch } : {}),
         ...(props.workspaceBaseRef ? { baseRef: props.workspaceBaseRef } : {}),
@@ -395,6 +404,29 @@ function onSubmit(props: HomeProps) {
       } : {}),
     });
   };
+}
+
+/** Where the session runs: this machine or a remote worker. */
+function renderWorkerPicker(props: HomeProps) {
+  const workers = props.launchWorkers ?? [];
+  const selected = workers.find((worker) => worker.id === props.launchWorker);
+  const local = html`<span class="new-session-page__target-icon">${icons.terminal}</span>`;
+  if (!workers.length) return html`<span class="new-session-page__trigger new-session-page__runtime">${local}Local</span>`;
+  const choose = (event: Event, id: string | undefined) => {
+    (event.currentTarget as HTMLElement).closest("details")?.removeAttribute("open");
+    props.onSelectLaunchWorker?.(id);
+  };
+  return html`<details class="new-session-page__group-picker new-session-page__worker-picker" @keydown=${closeComposerPicker}>
+    <summary class="new-session-page__trigger new-session-page__runtime" aria-label="Choose where the session runs">
+      <span class="new-session-page__target-icon">${selected ? icons.globe : icons.terminal}</span><span data-launch-worker>${selected?.name ?? "Local"}</span>
+      <span class="new-session-page__trigger-chevron" aria-hidden="true">${chevronDownIcon}</span>
+    </summary>
+    <div class="new-session-page__group-menu" role="menu" aria-label="Run on">
+      <button type="button" role="menuitemradio" aria-checked=${String(!selected)} @click=${(event: Event) => choose(event, undefined)}>Local</button>
+      ${workers.map((worker) => html`<button type="button" role="menuitemradio" aria-checked=${String(worker.id === selected?.id)}
+        @click=${(event: Event) => choose(event, worker.id)}>${worker.name}${worker.state === "connected" ? "" : html` <span class="settings-row__muted">· ${worker.state === "error" ? "offline" : worker.state}</span>`}</button>`)}
+    </div>
+  </details>`;
 }
 
 function renderCheckoutPicker(props: HomeProps) {
@@ -566,7 +598,7 @@ function renderLaunchForm(props: HomeProps) {
       </div>
       <form class="launch new-session-page__draft" aria-describedby=${props.note ? "launch-feedback" : nothing} @submit=${onSubmit(props)}>
         <div class="new-session-page__triggers">
-          <span class="new-session-page__trigger new-session-page__runtime"><span class="new-session-page__target-icon">${icons.terminal}</span>Local</span>
+          ${renderWorkerPicker(props)}
           ${renderDirectoryPicker({ id: "launch-cwd", label: "Project directory", value: props.launchDefaults?.cwd ?? "~/", suggestions: props.directorySuggestions, onInput: props.onDirectoryInput, inputClass: "new-session-page__trigger", required: true })}
           <details class="new-session-page__group-picker" @keydown=${closeComposerPicker}>
             <summary class="new-session-page__trigger" aria-label="Choose session group">
@@ -592,7 +624,7 @@ function renderLaunchForm(props: HomeProps) {
             </div>
           </details>
           <input id="launch-group" name="group" type="hidden" .value=${initialGroup} />
-          ${renderCheckoutPicker(props)}
+          ${props.launchWorker ? nothing : renderCheckoutPicker(props)}
         </div>
         <div class="agent-chat__composer-shell new-session-page__composer">
           <div class="agent-chat__input agent-chat__input--mobile-toolbar" @click=${focusComposerFromSurface}>
@@ -1369,7 +1401,9 @@ function renderAttachments(props: HomeProps) {
 function renderComposer(props: HomeProps) {
   // Locked for the whole boot too: a prompt sent while pi is starting is rejected.
   const booting = props.opening || props.session?.status === "starting";
-  const disconnected = props.connection !== "live";
+  // Unreachable, the session runs elsewhere: drafting stays open, sending waits.
+  const unreachable = props.session ? unreachableHost(props.session) : undefined;
+  const disconnected = props.connection !== "live" || unreachable !== undefined;
   const showStop = props.streaming && !props.draft.trim() && !props.attachments.some((item) => item.kind === "image");
   const canSend = !booting && !props.sending && !disconnected && Boolean(props.draft.trim() || props.attachments.some((item) => item.kind === "image"));
   return html`
@@ -1429,7 +1463,7 @@ function renderComposer(props: HomeProps) {
                 }
               }}
               @paste=${onComposerPaste(props)}
-              placeholder=${disconnected ? "Draft while HUI reconnects…" : props.streaming ? "Add to this run…" : "Send a message…"}
+              placeholder=${props.session?.status === "disconnected" ? "Draft while disconnected…" : disconnected ? "Draft while HUI reconnects…" : props.streaming ? "Add to this run…" : "Send a message…"}
               ?disabled=${booting || props.sending}
               aria-label="Message"
               role="combobox" aria-autocomplete="list" aria-haspopup="listbox"
@@ -1483,7 +1517,7 @@ function renderComposer(props: HomeProps) {
           </div>
         </div>
       </form>
-      ${disconnected ? html`<div class="agent-chat__composer-underlaps" data-tone="warn"><div class="agent-chat__composer-status-band" role="status"><span class="agent-chat__composer-status-text">${props.connection === "reconnecting" ? "Reconnecting — draft preserved." : "Stream stopped — draft preserved."}</span></div></div>` : nothing}
+      ${disconnected ? html`<div class="agent-chat__composer-underlaps" data-tone="warn"><div class="agent-chat__composer-status-band" role="status"><span class="agent-chat__composer-status-text">${unreachable ? `${unreachable.status.replace(/…$/u, "")} — draft preserved.` : props.connection === "reconnecting" ? "Reconnecting — draft preserved." : "Stream stopped — draft preserved."}</span></div></div>` : nothing}
     </div>
   `;
 }
@@ -1540,6 +1574,13 @@ function renderTaskProgress(props: HomeProps) {
 function renderConnection(props: HomeProps) {
   // Deliberately muted, not an error: a reconnect usually fixes itself, and a
   // scary red row would be a lie about a stream that is already coming back.
+  // So is a session whose machine is out of reach: it goes on there.
+  const unreachable = props.session ? unreachableHost(props.session) : undefined;
+  if (unreachable) {
+    return html`<p class="transcript__note" role="status">${unreachable.notice}${props.session?.status === "disconnected"
+      ? html` <button type="button" class="btn btn--sm reconnect-session" @click=${props.onReconnect}>Reconnect</button>`
+      : nothing}</p>`;
+  }
   return props.connectionNote
     ? html`<p class="transcript__note" role="status">${props.connectionNote}</p>`
     : nothing;
@@ -2046,7 +2087,7 @@ function renderHeader(props: HomeProps, session: SessionView) {
           <span class="session-row__dot" data-status=${session.status} aria-hidden="true"></span>
           <h2 class="transcript__title chat-pane__session-title" title=${session.title}>${session.title}</h2>
           <span class="transcript__meta" title=${session.cwd}>
-            ${session.parentId ? "Subagent" : session.tool} · ${sessionGroupLabel(session.group)} · ${STATUS_TEXT[session.status]}
+            ${session.parentId ? "Subagent" : session.tool}${session.worker ? ` on ${session.worker.name}` : ""} · ${sessionGroupLabel(session.group)} · ${unreachableHost(session)?.status ?? STATUS_TEXT[session.status]}
           </span>
         </div>`}
         ${session.parentId ? html`<button
@@ -2060,7 +2101,7 @@ function renderHeader(props: HomeProps, session: SessionView) {
       <div class="chat-pane__header-trailing">
         <div class="chat-pane__actions chat-pane__header-actions">
           ${props.onOpenBrowser ? html`<button type="button" class="btn btn--ghost btn--icon chat-icon-btn chat-open-browser" aria-label="Open browser panel" title="Open browser panel" @click=${props.onOpenBrowser}>${icons.globe}</button>` : nothing}
-          ${props.onOpenTerminal ? html`<button type="button" class="btn btn--ghost btn--icon chat-icon-btn" aria-label="Open terminal" title="Open terminal" ?disabled=${props.terminalOpening} @click=${props.onOpenTerminal}>${icons.squareTerminal}</button>` : nothing}
+          ${props.onOpenTerminal && !session.worker ? html`<button type="button" class="btn btn--ghost btn--icon chat-icon-btn" aria-label="Open terminal" title="Open terminal" ?disabled=${props.terminalOpening} @click=${props.onOpenTerminal}>${icons.squareTerminal}</button>` : nothing}
           <button type="button" class="btn btn--ghost btn--sm session-history-action" ?disabled=${props.opening || props.streaming || props.continuing || props.transcript.length === 0} @click=${props.onContinue} aria-label="Continue without a prompt">
             <span class="session-history-action__icon">${continueIcon}</span><span class="session-history-action__label">${props.continuing ? "Continuing…" : "Continue"}</span>
           </button>

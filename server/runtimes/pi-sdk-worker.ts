@@ -2,7 +2,8 @@
  * composition and a versioned, bounded inspection channel over Node IPC. */
 import { createHash } from "node:crypto";
 import { Console } from "node:console";
-import { createSessionModelRuntime } from "./hui-models.ts";
+import { createSessionModelRuntime, PROVIDERS_DIR } from "./hui-models.ts";
+import { installBrokeredCredentials, setSecretEnv } from "../worker/credentials.ts";
 import { basename } from "node:path";
 import {
   createAgentSessionFromServices, createAgentSessionRuntime, createAgentSessionServices,
@@ -56,6 +57,12 @@ async function main() {
   const launch = JSON.parse(process.env["HUI_PI_WORKER_LAUNCH"] ?? "{}") as Launch;
   delete process.env["HUI_PI_WORKER_LAUNCH"];
   if (!launch.cwd || !launch.agentDir || !process.send) throw new Error("Invalid HUI worker launch.");
+  // On a remote worker host, credentials come from the connected gateway.
+  if (process.env["HUI_WORKER_BROKER"] === "1") {
+    installBrokeredCredentials({ agentDir: launch.agentDir, providersDir: PROVIDERS_DIR, fallbackAuth: process.env["HUI_WORKER_FALLBACK_AUTH"] ?? "" });
+    setSecretEnv(JSON.parse(process.env["HUI_WORKER_SECRETS"] ?? "{}"));
+    for (const name of ["HUI_WORKER_BROKER", "HUI_WORKER_FALLBACK_AUTH", "HUI_PROVIDERS_DIR", "HUI_WORKER_SECRETS"]) delete process.env[name];
+  }
   const disabledSkills = new Set((launch.safeProbe ? [] : disabledSkillsFrom(process.env["HUI_DISABLED_SKILLS"])).map((skill) => skill.path));
   const disabledPluginIds = new Set(launch.safeProbe ? [] : launch.disabledPluginIds ?? []);
   // PI clears turn-time prompt overrides when a run settles. Preserve the last
@@ -116,6 +123,8 @@ async function main() {
     if (!raw || typeof raw !== "object") return;
     const message = raw as Record<string, unknown>;
     if (typeof message["id"] !== "string") return;
+    // Credential brokering has its own listener (worker/credentials.ts).
+    if (typeof message["type"] === "string" && message["type"].startsWith("credential")) return;
     try {
       if (message["version"] !== 1) throw new Error("Unsupported HUI worker request.");
       const session = runtime.session;

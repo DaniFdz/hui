@@ -1,10 +1,11 @@
-/** Where HUI keeps its own state, following XDG. */
+/** Where HUI keeps its own state, following XDG. `HUI_CONFIG_DIR` replaces
+ * the whole directory (a worker host points it at its mirror of the gateway's)
+ * without changing `XDG_CONFIG_HOME` for the agent's own shells. */
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-export const CONFIG_DIR = process.env["XDG_CONFIG_HOME"]
-  ? join(process.env["XDG_CONFIG_HOME"], "hui")
-  : join(homedir(), ".config", "hui");
+export const CONFIG_DIR = process.env["HUI_CONFIG_DIR"]
+  || (process.env["XDG_CONFIG_HOME"] ? join(process.env["XDG_CONFIG_HOME"], "hui") : join(homedir(), ".config", "hui"));
 
 export const USER_THEME_DIR = join(CONFIG_DIR, "themes");
 

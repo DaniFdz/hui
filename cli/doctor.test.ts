@@ -50,7 +50,8 @@ function piSession(prompt: string): string {
 const record = (id: string, title: string, extra: Record<string, unknown> = {}) =>
   ({ id, title, group: "", cwd: workspace, tool: "pi", createdAt: TIME, updatedAt: TIME, ...extra }) as never;
 
-/** Fresh state: a PI session to move, one never started, one interrupted, one whose file is gone and a Durable one. */
+/** Fresh state: a PI session to move, one never started, one interrupted, one whose file is gone, a Durable one
+ * and one on a remote worker, whose transcript lives there. */
 async function setup(): Promise<void> {
   await rm(store, { recursive: true, force: true });
   await rm(join(config, "backups"), { recursive: true, force: true });
@@ -62,6 +63,7 @@ async function setup(): Promise<void> {
     record("interrupted-session", "Interrupted run", { piSessionFile: files.interrupted, runStartedAt: TIME, runPrompt: "keep going" }),
     record("missing-session", "Lost transcript", { piSessionFile: join(root, "gone.jsonl") }),
     record("durable-session", "Already on Durable", { tool: "durable" }),
+    record("worker-session", "On a worker", { worker: "devbox", piSessionFile: "/home/dev/.pi/sessions/remote.jsonl" }),
   ]);
 }
 
@@ -116,6 +118,7 @@ test("--fix moves sessions to Durable, keeps PI's transcripts and backs up the r
   assert.equal(sessions.get("fresh-session")!.piSessionFile, undefined);
   assert.equal(sessions.get("interrupted-session")!.tool, "pi");
   assert.equal(sessions.get("interrupted-session")!.runStartedAt, TIME, "an interrupted run stays for the gateway to recover");
+  assert.equal(sessions.get("worker-session")!.tool, "pi", "a worker's session stays on PI there");
   assert.equal(await readFile(files.moves, "utf8"), transcript, "PI's transcript is unchanged");
   const backup = check.notes.find((note) => note.startsWith("Registry backup: "))!.slice("Registry backup: ".length);
   assert.equal(await readFile(backup, "utf8"), registry);

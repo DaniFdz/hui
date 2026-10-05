@@ -28,3 +28,6 @@ hui-browser-settings .settings-section { margin: 28px 0; }
 .browser-tab__url { font: 12px/1.5 var(--mono); overflow-wrap: anywhere; }
 .browser-tab__preview { flex: 1 0 100%; width: 100%; max-width: 480px; aspect-ratio: 16 / 10; object-fit: cover; object-position: top; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); }
 .browser-tab__preview-note { flex: 1 0 100%; margin: 0; font-size: 12px; color: var(--muted); }
+
+/* Its section takes the settings page's own section rhythm. */
+hui-workers-settings { display: contents; }

@@ -209,7 +209,8 @@ export async function aggregateUsage(sessions: readonly SessionRecord[], durable
   let hasCost = false;
   for (const session of sessions) {
     const path = session.piSessionFile;
-    if (!path) continue;
+    // Remote transcripts and stores live on their worker.
+    if (!path || session.worker) continue;
     const durable = /^durable:(\d+)$/u.exec(path);
     if (durable) {
       // Durable keeps spend per conversation and model, including prompt-cache

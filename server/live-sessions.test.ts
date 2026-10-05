@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { test } from "node:test";
+import { test, type TestContext } from "node:test";
 
 import type {
   AgentRuntime,
@@ -19,7 +19,7 @@ import type {
   TranscriptEntry,
 } from "./runtimes/types.ts";
 import { DEFAULT_SETTINGS } from "../src/lib/settings.ts";
-import { RuntimeOutputError } from "./runtimes/types.ts";
+import { RuntimeOutputError, RuntimeUnreachableError } from "./runtimes/types.ts";
 
 // The registry path is read once, at import time, so the throwaway home has to
 // be in place before the module is loaded.
@@ -29,6 +29,7 @@ const { LiveSessions, SessionBusyError } = await import("./live-sessions.ts");
 const { deleteSession } = await import("./hui.ts");
 const { readRegistry, SessionRegistryError } = await import("./sessions.ts");
 const { readObservability } = await import("./observability.ts");
+const { workers } = await import("./workers.ts");
 type SessionRecord = import("./sessions.ts").SessionRecord;
 type SessionStreamMessage = import("./live-sessions.ts").SessionStreamMessage;
 type SessionSnapshot = import("./live-sessions.ts").SessionSnapshot;
@@ -1887,6 +1888,252 @@ test("HUI-owned follow-ups can be edited, reordered, removed and steered before 
   });
   assert.deepEqual(started[0]?.prompts, ["active turn", "second edited"]);
   assert.equal(manager.snapshot("editable-queue").queue.items, undefined);
+});
+
+/** A worker connection scripted in memory: a prompt streams on the worker
+ * until `settle`, and `hold` keeps the next prompt on its way there. A start
+ * fails with `unreachable` while it is set, as a worker HUI cannot reach. */
+function scriptedWorker(t: TestContext) {
+  const calls: string[] = [];
+  let streaming = false;
+  let seq = 1;
+  let sink!: Parameters<typeof workers.startSession>[4];
+  let held: Promise<void> | undefined;
+  const state = () => ({ sessionId: "remote", isStreaming: streaming, resumesInterruptedRuns: true });
+  const control = {
+    starts: 0,
+    /** The conversation as the worker holds it. */
+    history: [] as TranscriptEntry[],
+    unreachable: undefined as RuntimeUnreachableError | undefined,
+  };
+  t.mock.method(workers, "startSession", async (...args: Parameters<typeof workers.startSession>) => {
+    control.starts += 1;
+    if (control.unreachable) throw control.unreachable;
+    sink = args[4];
+    return {
+      started: { state: state(), seq: ++seq, transcript: [...control.history], methods: ["followUp"] },
+      call: async (method: string, callArgs: unknown[]) => {
+        calls.push(`${method}:${String(callArgs[0])}`);
+        if (method === "prompt") {
+          await held;
+          streaming = true;
+        }
+        return { state: state(), seq: ++seq };
+      },
+      transcript: async () => [],
+      dispose: () => undefined,
+    };
+  });
+  return Object.assign(control, {
+    calls,
+    /** The worker goes on with a run of its own. */
+    stream(): void {
+      streaming = true;
+    },
+    hold(): () => void {
+      let release!: () => void;
+      held = new Promise((resolve) => { release = resolve; });
+      return () => { held = undefined; release(); };
+    },
+    settle(): void {
+      streaming = false;
+      sink.receive({ event: { type: "settled" }, state: state(), seq: ++seq });
+    },
+    /** The gateway loses the worker, where the run settles meanwhile. */
+    lose(reconnecting?: boolean): void {
+      streaming = false;
+      sink.lost(reconnecting === undefined ? undefined : new RuntimeUnreachableError("Connection lost.", reconnecting));
+    },
+    /** Only the connection drops; the run goes on there. */
+    drop(reconnecting: boolean): void {
+      sink.lost(new RuntimeUnreachableError("Connection lost.", reconnecting));
+    },
+  });
+}
+
+async function until(done: () => boolean, label: string): Promise<void> {
+  for (const deadline = Date.now() + 5_000; !done();) {
+    if (Date.now() > deadline) throw new Error(`Timed out waiting for ${label}.`);
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+}
+
+test("a worker session hands a follow-up to its runtime only while a run streams there and none waits in HUI's queue", async (t) => {
+  const worker = scriptedWorker(t);
+  const id = "remote-follow-up";
+  const manager = new LiveSessions(factory([]));
+  manager.ensure({ ...recordFor(id), worker: "w" });
+  await waitForBoot(manager, id);
+  // Running on the worker, it queues there and runs even if the gateway leaves.
+  await manager.prompt(id, "first turn");
+  await manager.followUp(id, "while running");
+  assert.deepEqual(worker.calls, ["prompt:first turn", "followUp:while running"]);
+  worker.settle();
+  await waitForStatus(manager, id, "idle");
+
+  const release = worker.hold();
+  const prompted = manager.prompt(id, "second turn");
+  // The prompt is still on its way: HUI keeps the follow-up, editable, behind it,
+  await manager.followUp(id, "A");
+  release();
+  await prompted;
+  // and keeps one sent once the run streams behind that one.
+  await manager.followUp(id, "B");
+  assert.deepEqual(manager.snapshot(id).queue.items?.map((item) => item.text), ["A", "B"]);
+  worker.settle();
+  await until(() => worker.calls.length === 4, "the first held follow-up");
+  worker.settle();
+  await until(() => worker.calls.length === 5, "the second held follow-up");
+  assert.deepEqual(worker.calls.slice(2), ["prompt:second turn", "prompt:A", "prompt:B"]);
+  manager.disposeAll();
+});
+
+test("follow-ups HUI holds for an unreachable worker session hold up a gateway restart and run once it reattaches", async (t) => {
+  const worker = scriptedWorker(t);
+  const id = "remote-reattach-follow-up";
+  const record = { ...recordFor(id), worker: "w" };
+  const manager = new LiveSessions(factory([]));
+  manager.ensure(record);
+  await waitForBoot(manager, id);
+  const release = worker.hold();
+  const prompted = manager.prompt(id, "turn");
+  await manager.followUp(id, "held here");
+  release();
+  await prompted;
+  worker.lose(true);
+  await waitForStatus(manager, id, "reconnecting");
+  assert.equal(manager.blockingWorkCount, 1, "the follow-up HUI holds would be lost by a gateway restart");
+  manager.stopReconnecting(id);
+  assert.equal(manager.status(id), "disconnected");
+  assert.equal(manager.blockingWorkCount, 1);
+  manager.ensure(record, true);
+  await until(() => worker.calls.length === 2, "the held follow-up");
+  assert.deepEqual(worker.calls, ["prompt:turn", "prompt:held here"]);
+  manager.disposeAll();
+});
+
+/** Every message a session's streams receive. */
+function messagesOf(manager: InstanceType<typeof LiveSessions>, id: string): SessionStreamMessage[] {
+  const seen: SessionStreamMessage[] = [];
+  manager.subscribe(id, (message) => seen.push(message));
+  return seen;
+}
+
+const failures = (seen: readonly SessionStreamMessage[]) =>
+  seen.filter((message) => message.kind === "closed" || (message.kind === "event" && message.event.type === "error")
+    || (message.kind === "status" && message.status === "error"));
+
+test("a worker session whose connection drops is reconnecting, not failed, and comes back caught up", async (t) => {
+  const worker = scriptedWorker(t);
+  const id = "remote-drop";
+  const record = { ...recordFor(id), worker: "w" };
+  const manager = new LiveSessions(factory([]));
+  manager.ensure(record);
+  await waitForBoot(manager, id);
+  await manager.prompt(id, "long task");
+  const seen = messagesOf(manager, id);
+  worker.drop(true);
+  await waitForStatus(manager, id, "reconnecting");
+  assert.deepEqual(failures(seen), [], "a dropped connection is neither an error nor a dead stream");
+  assert.deepEqual(manager.transcript(id).map((entry) => entry.kind === "message" ? entry.text : entry.kind), ["long task"]);
+  assert.equal(manager.blockingWorkCount, 0, "the run goes on there, so a gateway restart loses nothing");
+  // Opening it again waits for HUI's own reconnect rather than starting one.
+  manager.ensure(record);
+  assert.equal(worker.starts, 1);
+  await assert.rejects(manager.prompt(id, "more"), (error: unknown) =>
+    error instanceof SessionBusyError && /reconnecting/u.test(error.message));
+  await assert.rejects(manager.followUp(id, "more"), SessionBusyError);
+
+  worker.history = [{ kind: "message", role: "user", text: "long task" }, { kind: "message", role: "assistant", text: "done there" }];
+  worker.stream();
+  manager.ensure(record, true);
+  assert.equal(manager.status(id), "reconnecting", "reattaching is still reconnecting, not a fresh start");
+  await waitForStatus(manager, id, "running");
+  assert.equal(worker.starts, 2);
+  assert.deepEqual(manager.transcript(id).map((entry) => entry.kind === "message" ? entry.text : entry.kind), ["long task", "done there"]);
+  assert.deepEqual(failures(seen), []);
+  manager.disposeAll();
+});
+
+test("a worker session HUI stopped reconnecting is disconnected until it is reattached explicitly", async (t) => {
+  const worker = scriptedWorker(t);
+  const id = "remote-disconnected";
+  const record = { ...recordFor(id), worker: "w" };
+  const manager = new LiveSessions(factory([]));
+  manager.ensure(record);
+  await waitForBoot(manager, id);
+  const seen = messagesOf(manager, id);
+  worker.drop(true);
+  await waitForStatus(manager, id, "reconnecting");
+  manager.stopReconnecting(id);
+  assert.equal(manager.status(id), "disconnected");
+  // Opening it must not reconnect a worker the user disconnected.
+  manager.ensure(record);
+  assert.equal(worker.starts, 1);
+  await assert.rejects(manager.prompt(id, "hello"), (error: unknown) =>
+    error instanceof SessionBusyError && /Reconnect/u.test(error.message));
+  assert.equal(manager.blockingWorkCount, 0);
+  manager.ensure(record, true);
+  await waitForBoot(manager, id);
+  assert.equal(worker.starts, 2);
+  assert.deepEqual(failures(seen), []);
+
+  // A user disconnect (or removal) reports it directly.
+  worker.drop(false);
+  await waitForStatus(manager, id, "disconnected");
+  assert.deepEqual(failures(seen), []);
+  manager.disposeAll();
+});
+
+test("a run that finished on the worker while HUI was away settles for what waits on it when HUI reattaches", async (t) => {
+  const worker = scriptedWorker(t);
+  const id = "remote-settled-away";
+  let records: SessionRecord[] = [{ ...recordFor(id), worker: "w" }];
+  // As the gateway reattaches: with the record the registry holds.
+  const reattach = () => manager.ensure(records[0]!, true);
+  const manager = new LiveSessions(factory([]), async (mutate) => (records = [...mutate(records)]));
+  manager.ensure(records[0]!);
+  await waitForBoot(manager, id);
+  await manager.prompt(id, "long task");
+  const seen = messagesOf(manager, id);
+  worker.lose(true);
+  await waitForStatus(manager, id, "reconnecting");
+  worker.history = [{ kind: "message", role: "user", text: "long task" }, { kind: "message", role: "assistant", text: "done there" }];
+  reattach();
+  await waitForBoot(manager, id);
+  const settled = () => seen.filter((message) => message.kind === "event" && message.event.type === "settled").length;
+  await until(() => settled() === 1, "the settled event");
+  assert.equal(records[0]!.runStartedAt, undefined, "the run is no longer unfinished work");
+  // Reattaching to a session with no run in flight settles nothing.
+  worker.lose(true);
+  await waitForStatus(manager, id, "reconnecting");
+  reattach();
+  await waitForBoot(manager, id);
+  assert.equal(settled(), 1);
+  manager.disposeAll();
+});
+
+test("a worker HUI cannot reach leaves a session reconnecting while HUI retries, else disconnected", async (t) => {
+  const worker = scriptedWorker(t);
+  const manager = new LiveSessions(factory([]));
+  worker.unreachable = new RuntimeUnreachableError("Connection refused", true);
+  const record = { ...recordFor("remote-unreachable"), worker: "w" };
+  const seen = messagesOf(manager, record.id);
+  manager.ensure(record);
+  await waitForStatus(manager, record.id, "reconnecting");
+
+  worker.unreachable = new RuntimeUnreachableError("ssh: connect to host devbox: Connection refused", false);
+  manager.ensure(record, true);
+  await waitForStatus(manager, record.id, "disconnected");
+  assert.deepEqual(failures(seen), [], "no failure banner: the session may well be running there");
+  manager.ensure(record);
+  assert.equal(worker.starts, 2, "an open does not retry a disconnected worker");
+
+  worker.unreachable = undefined;
+  manager.ensure(record, true);
+  await waitForBoot(manager, record.id);
+  assert.deepEqual(failures(seen), []);
+  manager.disposeAll();
 });
 
 test("a consumed queued instruction becomes a visible user turn before settlement", async () => {

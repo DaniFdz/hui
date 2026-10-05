@@ -4,6 +4,7 @@ export const ROUTABLE_SETTINGS_PAGES = [
   "appearance",
   "connection",
   "integrations",
+  "workers",
   "sessions",
   "worktrees",
   "models",

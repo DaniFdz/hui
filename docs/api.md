@@ -43,7 +43,8 @@ Neither the public health route nor `hui gateway status --json` reveals the
 control URL or token. No shutdown route is added to `/__hui/`.
 
 Normal stop returns 409 while turns, questions, follow-ups or HTTP mutations are
-active. Forced stop explicitly interrupts work. CLI lifecycle operations are
+active; worker sessions that are `reconnecting` or `disconnected` run on their
+worker and count only for the follow-ups HUI holds for them. Forced stop explicitly interrupts work. CLI lifecycle operations are
 serialized, refuse unauthenticated live PIDs and wait for the old process to
 exit before replacement. `gateway.log` is private and receives the gateway's
 stderr, including one line per Logs entry (see `GET /__hui/observability`); the
@@ -532,7 +533,7 @@ cheap, fast, tool-free route for generated session titles and `/btw`. Example:
 ### `GET /__hui/health`
 
 Returns gateway uptime, `HTTP + SSE`, the fixed `Full Access` product mode and
-registered/live PI runtime counts. This endpoint is diagnostic and read-only.
+registered/live PI runtime counts per session status. This endpoint is diagnostic and read-only.
 
 ### macOS power
 
@@ -627,7 +628,9 @@ that case the base falls back to `origin/HEAD`’s target, the current branch or
 ## Shapes
 
 ```ts
-type SessionStatus = "idle" | "running" | "waiting" | "starting" | "error";
+type SessionStatus = "idle" | "running" | "waiting" | "starting" | "error"
+  | "reconnecting"   // worker session: connection down, HUI retries by itself
+  | "disconnected";  // worker session: HUI is not retrying (disconnected or removed worker)
 
 type SessionView = {
   id: string;
@@ -953,6 +956,116 @@ the route additionally requires the exact stored display name and sends
 byte range (`206`/`416`) for native video/audio seek. Recognized media is inline;
 unknown formats use `application/octet-stream` and attachment disposition.
 
+## Remote workers
+
+Workers are stored in `~/.config/hui/workers.json` (`{ version: 1, workers: [{ id,
+name, command: string[], extraPaths: string[], createdAt, updatedAt }] }`). A
+session record's optional `worker` names the worker it runs on; `piSessionFile`
+and `cwd` are then remote paths. `SessionView` adds `worker: { id, name }` and a
+`displayCwd` of `name:path`.
+
+### Transport and protocol
+
+Every remote step runs `<command> sh -s` with a script on stdin: a probe, an
+optional Node install, an optional release install (gzip+base64 JSON bundle of
+the gateway's own worker code, then `npm install --omit=dev`), and finally
+`exec node <release>/…/worker/main(.ts|.js) connect`. The bridge prints
+`{"t":"ready"}` once it reaches the host's Unix socket; earlier output is shell
+noise and ignored. From then on both sides exchange `\n`-delimited JSON frames:
+`{t:"req",id,op,p}` / `{t:"res",id,ok,result|error}` requests in either
+direction, plus pushed `session.event` and `session.exit` frames.
+Gateway requests: `hello` (the host's protocol version and release; a
+mismatch replaces an idle host), `shutdown` (only when idle and no other
+gateway is connected; running Durable work does not count, it resumes in the
+new host), `session.start {key,tool,launch}` (start or reattach the `durable`
+or `pi` runtime for one HUI session id; replies `{state,seq,transcript,methods}`
+with the optional `RuntimeSession` methods it offers), `session.call
+{key,method,args}` (one of those methods; replies `{result?,state,seq,transcript?}`;
+a `followUp` that arrives once the run has settled starts the next run, as a
+`prompt`), `session.transcript {key,seq,offset}` (one page of at most 8 MB of
+the transcript a frame with that `seq` left behind, `{entries,total}`),
+`session.dispose {key}`, `forget {keys}`,
+`put-file`, `get-file` and `sync-plan`/`sync-put`/`sync-commit`. `state` is the runtime's
+synchronous view (`sessionId`, `sessionFile`, `isStreaming`,
+`resumesInterruptedRuns`, `model`, `usage`, `thinking`, `queue` and
+`questions`). Every reply and every `session.event {key,event,state,seq}`
+carries it, plus the whole `transcript` after `settled` and `compaction_end`
+and after `clear`, `rewind`, `reload`, `abort` and `continueRun` calls. `seq`
+grows with every frame and reply sent for a session; the gateway applies
+neither state nor transcript when it already holds a newer one, since a reply
+resumes after the events that followed it on the stream. A transcript over
+8 MB is replaced by `transcriptPaged: true`; the host keeps it as it was under
+that frame's `seq`, and the gateway reads it with `session.transcript` before
+handling that frame and the ones after it. A
+record with `worker` uses this remote adapter and its `tool` names the runtime
+the host runs; a Durable `durable:N` names a conversation in that worker's own
+store. A PI session's `resumesInterruptedRuns` is false only while its last
+run started and was never seen settling (the host records those session ids
+in its state directory's `pi-runs.json` before the run starts, and drops them
+on `forget`), so HUI recovers exactly the PI runs a host or runtime stop cut
+off. The host records which HUI session each Durable conversation belongs to,
+including one a rewind moved it to, in `conversations.json`, so runs a
+restarted host resumes call HUI tools as that session. Host requests: `credential`
+(`read`, `list`, `delete`, `modify` against the gateway store `pi` or
+`hui:<providers-relative path>`), the nested `credential-step` that runs an
+OAuth refresh callback on the remote while the gateway holds its lock, and
+`bridge` (a HUI agent tool call; the gateway refuses callers whose session is
+not on that worker, and refuses `terminal`, `browser` and `watcher`). With no
+gateway connected a `bridge` call fails at once, and one in flight fails when
+the connection drops. `read` and `list` answers are cached in host memory
+until the credential's `expires` (API keys: while the host runs) and served
+while no gateway is connected; nothing is written to disk. Without a cached
+answer the remote's own PI login is used (its `auth.json` only if it already
+exists; HUI never creates it). The mirrored PI `models.json` holds
+no literal secrets: a literal `apiKey` is dropped, and the gateway answers a
+`pi` `read` for that provider with `{type: "api_key", key}` when its auth.json
+has none (and lists it); a literal value of a credential-like header (a name
+with a `-`/`_`/`.`-separated part `auth`, `authorization`, `cookie`, `token`,
+`secret`, `password`, `passphrase`, `passcode`, `credential(s)`, `jwt`,
+`signature`, `bearer` or `csrf`, or containing `api-key`, `apikey`,
+`access-key`, `private-key` or `secret-key`, case-insensitively; provider,
+model or model override) becomes `${HUI_SECRET_<16 hex>}`, a name derived from its place,
+whose values ride in `sync-commit`'s `env`. The host keeps them in memory
+(replaced by each sync, lost when it stops) and serves them to PI as
+environment variables, its own reads and those of the PI workers it starts,
+while leaving them out of every environment a process it starts inherits. Values PI resolves itself (`$NAME`, `${NAME}`, `!command`) are
+mirrored unchanged; an invalid models.json is not mirrored. The worker needs
+Node.js 22.19 or newer.
+
+### `GET /__hui/workers`
+
+`{ "workers": WorkerView[] }`: `{ id, name, command, extraPaths, state:
+"disconnected" | "connecting" | "connected" | "error", phase?, error?, host?: {
+hostname, platform, arch, node, home, release }, sync?: { at, files, uploaded,
+deleted, installed, skipped, errors } }`. Connection state is gateway memory.
+
+### `POST /__hui/workers` · `PATCH|DELETE /__hui/workers/:id`
+
+Body `{ name, command, extraPaths? }`; `command` is parsed like a shell would
+split plain words and quotes, without expansion. `POST` responds 201 `{ worker
+}`. A new command applies to the next connection. `DELETE` returns 409 while any
+session record names the worker; nothing on the remote is deleted.
+
+### `POST /__hui/workers/:id/connect|sync|disconnect`
+
+`connect` and `sync` respond 202 and continue in the gateway (a first connect
+may install Node and HUI); follow `GET /__hui/workers`. Both sides ping every
+15 s and drop a connection that stays silent for 45 s. A worker whose lost
+connection had sessions attached reconnects after 5 s, 30 s, 1 min, then every
+5 min; sessions the loss interrupted are then reopened and reattach to their
+still-running processes. Meanwhile those sessions report `reconnecting`, with
+no error event and no `closed` frame: their streams stay open and receive the
+caught-up snapshot on reattach, preceded by a `settled` event when a run HUI
+saw start finished there meanwhile. A subagent or automation run waiting on a
+session fails once it is `disconnected`. A disconnect or removal stops the retries and
+reports `disconnected`, as does opening a worker session whose worker cannot be
+reached while no retry is scheduled (after a gateway restart, say). Opening a
+`reconnecting` or `disconnected` session never connects its worker, nor does
+opening any session of a worker this route disconnected (gateway memory, until
+a `connect` or `sync`); any successful `connect` (automatic or this route)
+reattaches them. Prompts and
+other runtime requests to them return 409 with a message saying why.
+
 ## Routes
 
 ### `GET /__hui/sessions/:id/commands`
@@ -1086,7 +1199,10 @@ Registers a new session **and starts it**. Body:
 { "cwd": "/abs/path", "title": "optional", "initialPrompt": "optional", "group": "optional", "tool": "pi", "model": "openai/gpt-5.6", "thinking": "high", "worktree": true, "baseRef": "main", "branchName": "my-feature" }
 ```
 
-`cwd` must be an existing absolute directory. When supplied, `title` is trimmed
+`cwd` must be an existing absolute directory. With `"worker": "<worker id>"`
+the session runs on that remote worker instead: `cwd` is a remote path that
+must be absolute or start with `~/`, it is checked when the runtime starts
+(not during this request), and `worktree`/`baseRef` are rejected. When supplied, `title` is trimmed
 and must be 1–200 characters; `group` is trimmed and may be empty but cannot
 exceed 200 characters. Responds `{ "session": SessionView }`.
 The id is HUI's own UUID. `tool` may be omitted or `pi`; other values are

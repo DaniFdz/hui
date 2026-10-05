@@ -174,6 +174,7 @@ import type { BacklogStartTarget } from "./components/backlog-start-dialog.ts";
 import { addSuggestionToBacklog, backlogItemMarkdown, loadBacklog, removeBacklogItem, setBacklogItemGroup, type BacklogItem, type BacklogJiraState } from "./lib/backlog.ts";
 import { loadJiraConnection } from "./lib/jira.ts";
 import type { AutomationProps } from "./views/settings-automation.ts";
+import { loadWorkers, workerAction, type WorkerView } from "./lib/workers.ts";
 import { hasOpenWebAwesomePopup } from "./lib/web-awesome.ts";
 import { APP_SHELL_DRAWER_MEDIA, closeDrawerOnEscape, renderMain, renderSidebar, type GroupDropTarget, type GroupMenuAction, type NavId, type SessionCopyAction, type SessionOpenAction } from "./views/shell.ts";
 import { writeClipboardText } from "./lib/clipboard.ts";
@@ -347,6 +348,9 @@ export class HuiApp extends HuiElement {
   private groupCheckoutRequest = 0;
   private groupCheckoutDirectory = "";
   @state() private launchDefaults: { group: string; cwd: string; workspaceMode?: "branch" | "worktree"; baseRef?: string } | undefined;
+  @state() private launchWorkers: readonly WorkerView[] = [];
+  /** Sticky across launches: the worker new sessions run on, if any. */
+  @state() private launchWorker: string | undefined;
   @state() private launchModel = "";
   @state() private launchThinking = "";
   @state() private directorySuggestions: readonly string[] = [];
@@ -682,6 +686,8 @@ export class HuiApp extends HuiElement {
     if (!this.embeddedPane) {
       void this.refreshSessions();
       this.loadLaunchPreferences();
+      // The home page shows the launch form too, without a page navigation.
+      this.loadLaunchWorkers();
       void loadThemePreviews().then((previews) => {
         this.previews = previews;
       });
@@ -730,8 +736,18 @@ export class HuiApp extends HuiElement {
         : session),
     }));
     if (created) void this.refreshSessions(true);
-    if (!this.embeddedPane && this.selected?.id === id) this.selected = { ...this.selected, status, ...(title ? { title } : {}) };
+    if (!this.embeddedPane && this.selected?.id === id) {
+      this.reopenIfRestarted(id, status);
+      this.selected = { ...this.selected, status, ...(title ? { title } : {}) };
+    }
   };
+
+  /** The gateway restarted a runtime whose stream had ended: a remote session
+   * reattached after a lost connection, or a retry from another screen. */
+  private reopenIfRestarted(id: string, status: SessionStatus) {
+    if (this.selected?.id !== id || this.opening || this.connection !== "stopped") return;
+    if (this.selected.status === "error" && status !== "error") void this.openSelected(id);
+  }
 
   private async refreshSessions(background = false) {
     if (this.embeddedPane) {
@@ -808,7 +824,11 @@ export class HuiApp extends HuiElement {
         : this.paneGroups;
       // Renames (by another screen or the gateway's generated name) reach the header.
       const listed = selected && this.listedSession(selected.id);
-      if (listed) this.selected = { ...selected, ...listed, status: selected.status, interrupted: selected.interrupted };
+      // The stream clears an interruption when a run starts; the gateway clears
+      // it when a reattached remote run turns out to have finished.
+      if (listed) this.selected = { ...selected, ...listed, status: selected.status, interrupted: selected.interrupted && listed.interrupted };
+      const shellStatus = selected && this.paneGroups.flatMap((group) => group.sessions).find((session) => session.id === selected.id)?.status;
+      if (selected && shellStatus) this.reopenIfRestarted(selected.id, shellStatus);
       this.sessionsLoading = false;
       this.openPendingSession();
     }
@@ -995,6 +1015,7 @@ export class HuiApp extends HuiElement {
         this.switchComposerDraft(NEW_SESSION_DRAFT_KEY);
         this.loadLaunchPreferences();
         this.requestGitCheckout(this.launchDefaults?.cwd ?? "~/");
+        this.loadLaunchWorkers();
       }
       this.pendingSessionId = "";
       this.activePage = target.page;
@@ -1996,7 +2017,7 @@ export class HuiApp extends HuiElement {
     this.requestModelsWhenReady(id, status);
     if (status === "idle") {
       this.flushPendingLaunchPrompt();
-    } else if (status === "error" && this.pendingLaunchPrompt) {
+    } else if ((status === "error" || status === "reconnecting" || status === "disconnected") && this.pendingLaunchPrompt) {
       this.composerDraftEdit += 1;
       this.setDraft(this.pendingLaunchPrompt);
       this.attachments = this.pendingLaunchAttachments;
@@ -3155,7 +3176,17 @@ export class HuiApp extends HuiElement {
     if (id && !this.opening) void this.openSelected(id);
   };
 
-  private launch = (input: { cwd: string; title?: string; group?: string; prompt?: string; commandDraft?: string; model?: string; thinking?: string; worktree?: boolean; branchName?: string; baseRef?: string }) => {
+  /** The worker's own connect: once it is up, the gateway reattaches its sessions. */
+  private reconnectSelected = () => {
+    const worker = this.selected?.worker;
+    if (!worker) return;
+    void workerAction(worker.id, "connect").catch((error: unknown) => {
+      this.note = error instanceof Error ? error.message : `Could not reconnect to ${worker.name}.`;
+      this.noteLevel = "error";
+    });
+  };
+
+  private launch = (input: { cwd: string; title?: string; group?: string; prompt?: string; commandDraft?: string; model?: string; thinking?: string; worktree?: boolean; branchName?: string; baseRef?: string; worker?: string }) => {
     if (input.prompt && this.handleUpdateCommand(input.prompt)) return;
     if (this.launching) return;
     this.launching = true;
@@ -3563,6 +3594,13 @@ export class HuiApp extends HuiElement {
       );
     }
     if (!this.launchThinking) this.launchThinking = snapshot.model.thinking ?? "medium";
+  }
+
+  private loadLaunchWorkers() {
+    void loadWorkers().then((list) => {
+      this.launchWorkers = list;
+      if (this.launchWorker && !list.some((worker) => worker.id === this.launchWorker)) this.launchWorker = undefined;
+    }).catch(() => undefined);
   }
 
   private loadLaunchPreferences() {
@@ -4159,14 +4197,19 @@ export class HuiApp extends HuiElement {
       onCancelDelete: this.cancelDelete,
       onConfirmDelete: this.confirmDelete,
       onRetry: this.retrySelected,
+      onReconnect: this.reconnectSelected,
       launchDefaults: this.launchDefaults,
       launchModels,
       launchModel,
       launchThinking: this.launchThinking || "medium",
       onSelectLaunchModel: (provider, modelId) => { this.launchModel = `${provider}/${modelId}`; },
       onSelectLaunchThinking: (level) => { this.launchThinking = level; },
-      directorySuggestions: this.directorySuggestions,
-      onDirectoryInput: this.requestDirectorySuggestions,
+      launchWorkers: this.launchWorkers,
+      ...(this.launchWorker ? { launchWorker: this.launchWorker } : {}),
+      onSelectLaunchWorker: (id) => { this.launchWorker = id; },
+      // Suggestions and Git inspection read this machine's disk.
+      directorySuggestions: this.launchWorker ? [] : this.directorySuggestions,
+      onDirectoryInput: this.launchWorker ? () => undefined : this.requestDirectorySuggestions,
       branchPrefix: this.settings.branchPrefix,
       gitCheckout: this.gitCheckout,
       gitCheckoutLoading: this.gitCheckoutLoading,
