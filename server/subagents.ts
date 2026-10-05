@@ -404,6 +404,8 @@ export class SubagentService {
         if (message.kind === "event" && message.event.type === "settled") settle("completed");
         else if (message.kind === "status" && message.status === "error") {
           settle("failed", "The subagent runtime failed.");
+        } else if (message.kind === "status" && message.status === "disconnected") {
+          settle("failed", "HUI is disconnected from the machine the subagent runs on.");
         } else if (message.kind === "closed") {
           settle("failed", "The subagent runtime exited.");
         }

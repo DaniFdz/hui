@@ -2082,6 +2082,34 @@ test("a worker session HUI stopped reconnecting is disconnected until it is reat
   manager.disposeAll();
 });
 
+test("a run that finished on the worker while HUI was away settles for what waits on it when HUI reattaches", async (t) => {
+  const worker = scriptedWorker(t);
+  const id = "remote-settled-away";
+  let records: SessionRecord[] = [{ ...recordFor(id), worker: "w" }];
+  // As the gateway reattaches: with the record the registry holds.
+  const reattach = () => manager.ensure(records[0]!, true);
+  const manager = new LiveSessions(factory([]), async (mutate) => (records = [...mutate(records)]));
+  manager.ensure(records[0]!);
+  await waitForBoot(manager, id);
+  await manager.prompt(id, "long task");
+  const seen = messagesOf(manager, id);
+  worker.lose({ reconnecting: true });
+  await waitForStatus(manager, id, "reconnecting");
+  worker.history = [{ kind: "message", role: "user", text: "long task" }, { kind: "message", role: "assistant", text: "done there" }];
+  reattach();
+  await waitForBoot(manager, id);
+  const settled = () => seen.filter((message) => message.kind === "event" && message.event.type === "settled").length;
+  await until(() => settled() === 1, "the settled event");
+  assert.equal(records[0]!.runStartedAt, undefined, "the run is no longer unfinished work");
+  // Reattaching to a session with no run in flight settles nothing.
+  worker.lose({ reconnecting: true });
+  await waitForStatus(manager, id, "reconnecting");
+  reattach();
+  await waitForBoot(manager, id);
+  assert.equal(settled(), 1);
+  manager.disposeAll();
+});
+
 test("a worker HUI cannot reach leaves a session reconnecting while HUI retries, else disconnected", async (t) => {
   const worker = scriptedWorker(t);
   const manager = new LiveSessions(factory([]));

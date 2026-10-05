@@ -4,7 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 
-import { sessionGroupPatch, discoverThemes, mergeThemes, registryUrlFor, type ThemeEntry } from "./hui.ts";
+import { sessionGroupPatch, discoverThemes, mergeThemes, registryUrlFor, waitForAutomationRun, type ThemeEntry } from "./hui.ts";
+import type { SessionStreamMessage } from "./live-sessions.ts";
+import type { SessionRecord } from "./sessions.ts";
 
 async function dirOf(files: Record<string, string>): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), "hui-themes-"));
@@ -124,4 +126,33 @@ test("group defaults patch validates modes and bounded refs", async () => {
   }
   await assert.rejects(sessionGroupPatch({ baseRef: 123 }), /must be text/);
   await assert.rejects(sessionGroupPatch({ baseRef: "x".repeat(201) }), /at most 200/);
+});
+
+/** One session's stream, driven by the test. */
+function watchedSession(status = "running") {
+  let listener!: (message: SessionStreamMessage) => void;
+  const sessions = {
+    watch: (_id: string, next: (message: SessionStreamMessage) => void) => {
+      listener = next;
+      return { snapshot: { status }, unsubscribe: () => undefined };
+    },
+    transcript: () => [{ kind: "message", role: "assistant", text: "Done there." }],
+    abort: async () => undefined,
+  } as unknown as Parameters<typeof waitForAutomationRun>[2];
+  return { sessions, emit: (message: SessionStreamMessage) => listener(message) };
+}
+
+const automationTarget = { id: "target", title: "Target", group: "", cwd: "/tmp", tool: "durable", worker: "w", createdAt: "", updatedAt: "" } satisfies SessionRecord;
+
+test("an automation run ends when its session settles, and fails once HUI is disconnected from its machine", async () => {
+  const settling = watchedSession();
+  const done = waitForAutomationRun(automationTarget, new AbortController().signal, settling.sessions);
+  settling.emit({ kind: "status", status: "reconnecting" });
+  settling.emit({ kind: "event", event: { type: "settled" } });
+  assert.deepEqual(await done, { summary: "Done there." });
+
+  const disconnecting = watchedSession();
+  const failed = waitForAutomationRun(automationTarget, new AbortController().signal, disconnecting.sessions);
+  disconnecting.emit({ kind: "status", status: "disconnected" });
+  await assert.rejects(failed, /disconnected/u);
 });

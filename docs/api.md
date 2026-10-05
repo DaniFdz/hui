@@ -999,7 +999,9 @@ connection had sessions attached reconnects after 5 s, 30 s, 1 min, then every
 5 min; sessions the loss interrupted are then reopened and reattach to their
 still-running processes. Meanwhile those sessions report `reconnecting`, with
 no error event and no `closed` frame: their streams stay open and receive the
-caught-up snapshot on reattach. A disconnect or removal stops the retries and
+caught-up snapshot on reattach, preceded by a `settled` event when a run HUI
+saw start finished there meanwhile. A subagent or automation run waiting on a
+session fails once it is `disconnected`. A disconnect or removal stops the retries and
 reports `disconnected`, as does opening a worker session whose worker cannot be
 reached while no retry is scheduled (after a gateway restart, say). Opening a
 `reconnecting` or `disconnected` session never connects its worker; any

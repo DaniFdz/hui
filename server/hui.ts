@@ -1168,9 +1168,10 @@ function waitForAutomationSession(
   });
 }
 
-function waitForAutomationRun(
+export function waitForAutomationRun(
   record: SessionRecord,
   signal: AbortSignal,
+  sessions: Pick<typeof liveSessions, "watch" | "transcript" | "abort"> = liveSessions,
 ): Promise<AutomationExecution> {
   return new Promise((resolve, reject) => {
     let settled = false;
@@ -1183,20 +1184,22 @@ function waitForAutomationRun(
         reject(error);
         return;
       }
-      const lastAssistant = liveSessions.transcript(record.id)
+      const lastAssistant = sessions.transcript(record.id)
         .findLast((entry) => entry.kind === "message" && entry.role === "assistant");
       const summary = lastAssistant?.kind === "message" ? lastAssistant.text.trim() : "";
       resolve(summary ? { summary } : {});
     };
     const onAbort = () => {
-      void liveSessions.abort(record.id).finally(() => {
+      void sessions.abort(record.id).finally(() => {
         finish(new DOMException("Run cancelled.", "AbortError"));
       });
     };
-    const watched = liveSessions.watch(record.id, (message) => {
+    const watched = sessions.watch(record.id, (message) => {
       if (message.kind === "event" && message.event.type === "settled") finish();
       else if (message.kind === "status" && message.status === "error") {
         finish(new Error("The target session runtime failed."));
+      } else if (message.kind === "status" && message.status === "disconnected") {
+        finish(new Error("HUI is disconnected from the machine the target session runs on."));
       } else if (message.kind === "closed") {
         finish(new Error("The target session runtime exited."));
       }

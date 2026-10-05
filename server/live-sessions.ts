@@ -1199,8 +1199,12 @@ export class LiveSessions {
       if (live.record.runStartedAt && readyStatus === "idle") {
         // A runtime that resumes its own runs has already finished this one or
         // recorded its interruption; replaying it would repeat the request.
-        if (runtime.resumesInterruptedRuns) this.#clearRunMarker(live);
-        else await this.#recoverInterrupted(live);
+        if (runtime.resumesInterruptedRuns) {
+          this.#clearRunMarker(live);
+          // It settled on its host while HUI was away: what waits on it (a
+          // subagent, an automation) hears that now.
+          if (live.reattaching) this.#broadcast(live, { kind: "event", event: { type: "settled" } });
+        } else await this.#recoverInterrupted(live);
       }
       // A resumed session only has its history after boot, so the transcript is
       // sent now rather than left empty at connect.
