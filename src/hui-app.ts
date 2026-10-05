@@ -85,7 +85,7 @@ import {
 } from "./lib/bots.ts";
 import { archivedBotCount, hiddenBotCount, readBotPanel, readSidebarTab, writeBotPanel, writeSidebarTab, type BotPanelState, type BotPanelTab, type SidebarTab } from "./lib/bot-roster.ts";
 import { memoryStatusChanged, parseMemoryView, parseMemoryZoom, type MemoryLine } from "./lib/bot-memory.ts";
-import { renderBotArchiveDialog, renderBotDialog, renderBotPanel, renderBotPlaceholder, type BotFormValues, type BotMemoryState, type MemoryZoomState } from "./views/bots.ts";
+import { renderBotArchiveDialog, renderBotDialog, renderBotPanel, renderBotPlaceholder, type BotDialogVoice, type BotFormValues, type BotMemoryState, type MemoryZoomState } from "./views/bots.ts";
 import { checkUpdate, checkUpdateInBackground, installUpdate, loadUpdate } from "./lib/update-store.ts";
 import { availableUpdate, watchUpdateAvailability } from "./lib/update-notice.ts";
 import type { UpdateSnapshot } from "./lib/update-types.ts";
@@ -195,14 +195,14 @@ import type { BacklogCardAction, SessionCardAction } from "./views/kanban.ts";
 import type { BacklogStartTarget } from "./components/backlog-start-dialog.ts";
 import { addSuggestionToBacklog, backlogItemMarkdown, loadBacklog, removeBacklogItem, setBacklogItemGroup, type BacklogItem, type BacklogJiraState } from "./lib/backlog.ts";
 import { loadJiraConnection } from "./lib/jira.ts";
-import { loadVoiceConnection, microphoneErrorMessage, synthesizeSpeech, transcribeRecording, withTranscript } from "./lib/voice.ts";
+import { loadVoiceConnection, loadVoices, microphoneErrorMessage, synthesizeSpeech, transcribeRecording, withTranscript } from "./lib/voice.ts";
 import { microphoneContext, startVoiceNote, voicePlayer } from "./lib/voice-audio.ts";
 import { VoiceController } from "./lib/voice-controller.ts";
 import { VoiceNoteController } from "./lib/voice-notes.ts";
 import { botCallPlatform } from "./lib/voice-session.ts";
 import { renderCallBar, renderCallView, type CallViewProps } from "./views/bot-voice.ts";
 import { VOICE_CONNECTION_EVENT } from "./views/settings-voice.ts";
-import { VOICE_MESSAGE_PREFIX, type VoiceConnection } from "../shared/voice.ts";
+import { VOICE_MESSAGE_PREFIX, type VoiceConnection, type VoiceProfile } from "../shared/voice.ts";
 import type { HomeVoice } from "./views/home.ts";
 import { localTimezone, type AutomationProps } from "./views/settings-automation.ts";
 import { loadWorkers, workerAction, type WorkerView } from "./lib/workers.ts";
@@ -264,6 +264,9 @@ const paneCallback = { attribute: false, hasChanged: (value: unknown, old: unkno
 type PaneVoice = { botId: string; readingId: string; readingStatus: "idle" | "loading" | "playing"; readingError: string; inCall: boolean };
 type PaneVoiceActions = { readAloud: (id: string, text: string) => void; stopReading: () => void; call: () => void };
 const paneVoiceProperty = { attribute: false, hasChanged: (value: unknown, old: unknown) => JSON.stringify(value) !== JSON.stringify(old) };
+/** The bot dialog's voice preview, read aloud like a message under this id. */
+const BOT_VOICE_PREVIEW = "bot-voice-preview";
+const BOT_VOICE_PREVIEW_TEXT = "Hi! This is how I sound when I read my replies aloud and when we talk on a call.";
 
 /** The bot pane's header data, without its callback (passed separately as a
  * pane callback). Compared by value: the parent rebuilds it on every render. */
@@ -520,6 +523,14 @@ export class HuiApp extends HuiElement {
   @state() private botDraftModel = "";
   @state() private botDraftThinking = "";
   @state() private botDraftMemoryModel = "";
+  /** The dialog's voice (HUI-18): a VoiceStudio voice id ("" for its default) and speed, offered while it is connected. */
+  @state() private botDraftVoice = "";
+  @state() private botDraftVoiceSpeed = 1;
+  /** VoiceStudio's voices for the dialog's picker; undefined until the connection is known to be configured. */
+  @state() private botDialogVoices: { loading: boolean; error: string; voices: readonly VoiceProfile[] } | undefined;
+  /** The dialog asked for a preview, so a failed one is explained there. */
+  @state() private botVoicePreviewed = false;
+  private botDialogVoicesRequest = 0;
   @state() private botArchive: BotView | undefined;
   @state() private botArchivePending = false;
   @state() private botArchiveError = "";
@@ -3798,6 +3809,7 @@ export class HuiApp extends HuiElement {
     this.directorySuggestions = [];
     // The model pickers read PI's catalog; New Session loads it the same way.
     this.loadLaunchPreferences();
+    this.openBotDialogVoice(undefined);
   };
 
   private openEditBot = (bot: BotView) => {
@@ -3810,13 +3822,66 @@ export class HuiApp extends HuiElement {
     ++this.directorySuggestionRequest;
     this.directorySuggestions = [];
     this.loadLaunchPreferences();
+    this.openBotDialogVoice(bot);
   };
+
+  /** The dialog's voice section starts from the bot's voice and lists VoiceStudio's voices once the gateway says it is
+   * connected; without VoiceStudio the section stays hidden and an edit leaves the voice alone. */
+  private openBotDialogVoice(bot: BotView | undefined) {
+    this.botDraftVoice = bot?.voice?.profile ?? "";
+    this.botDraftVoiceSpeed = bot?.voice?.speed ?? 1;
+    this.botVoicePreviewed = false;
+    this.botDialogVoices = undefined;
+    const request = ++this.botDialogVoicesRequest;
+    void this.voice.loadConnection().then(async () => {
+      if (request !== this.botDialogVoicesRequest || !this.voice.available) return;
+      this.botDialogVoices = { loading: true, error: "", voices: [] };
+      try {
+        const voices = await loadVoices();
+        if (request === this.botDialogVoicesRequest) this.botDialogVoices = { loading: false, error: "", voices };
+      } catch (error) {
+        if (request === this.botDialogVoicesRequest) {
+          this.botDialogVoices = { loading: false, error: error instanceof Error ? error.message : "VoiceStudio's voices could not be read.", voices: [] };
+        }
+      }
+    });
+  }
+
+  /** The voice section's props while it shows; the preview plays through the app's one read-aloud. */
+  private botDialogVoice(): BotDialogVoice | undefined {
+    const voices = this.botDialogVoices;
+    if (!voices || !this.voice.available) return undefined;
+    const reading = this.voice.readAloud;
+    const previewing = reading.id === BOT_VOICE_PREVIEW && reading.status !== "idle";
+    const previewError = this.botVoicePreviewed && reading.status === "idle" ? reading.error ?? "" : "";
+    return {
+      voices: voices.voices,
+      loading: voices.loading,
+      error: previewError || voices.error,
+      profile: this.botDraftVoice,
+      speed: this.botDraftVoiceSpeed,
+      previewing,
+      onProfile: (value) => { this.botDraftVoice = value; },
+      onSpeed: (value) => { this.botDraftVoiceSpeed = value; },
+      onPreview: () => {
+        if (previewing) {
+          this.voice.stopReading();
+          return;
+        }
+        this.botVoicePreviewed = true;
+        this.voice.read(BOT_VOICE_PREVIEW, BOT_VOICE_PREVIEW_TEXT, { voice: this.botDraftVoice, speed: this.botDraftVoiceSpeed });
+      },
+    };
+  }
 
   private closeBotDialog = () => {
     const dialog = this.renderRoot.querySelector?.(".bot-dialog");
     if (dialog instanceof HTMLDialogElement) closeModal(dialog);
     this.botDialog = undefined;
     this.botDialogError = "";
+    ++this.botDialogVoicesRequest;
+    this.botDialogVoices = undefined;
+    if (this.voice.readAloud.id === BOT_VOICE_PREVIEW) this.voice.stopReading();
   };
 
   /** Nothing changes until the gateway confirms; a refusal stays in the dialog. */
@@ -3827,7 +3892,9 @@ export class HuiApp extends HuiElement {
       this.botDialogError = "Name the bot.";
       return;
     }
-    const draft = { ...values, model: this.botDraftModel, thinking: this.botDraftThinking, memoryModel: this.botDraftMemoryModel };
+    // The voice goes only while the dialog showed it; otherwise the bot keeps the one it has.
+    const voice = this.botDialogVoice() ? { voice: this.botDraftVoice, voiceSpeed: this.botDraftVoiceSpeed } : {};
+    const draft = { ...values, model: this.botDraftModel, thinking: this.botDraftThinking, memoryModel: this.botDraftMemoryModel, ...voice };
     this.botDialogPending = true;
     this.botDialogError = "";
     const request = state.mode === "create"
@@ -4195,6 +4262,7 @@ export class HuiApp extends HuiElement {
   private renderBotDialogs() {
     if (this.embeddedPane) return nothing;
     const dialog = this.botDialog;
+    const voice = dialog ? this.botDialogVoice() : undefined;
     return html`${dialog ? renderBotDialog({
       mode: dialog.mode,
       ...(dialog.mode === "edit" ? { bot: dialog.bot } : {}),
@@ -4211,6 +4279,7 @@ export class HuiApp extends HuiElement {
       onMemoryModel: (value) => { this.botDraftMemoryModel = value; },
       onSubmit: this.submitBotDialog,
       onCancel: this.closeBotDialog,
+      ...(voice ? { voice } : {}),
     }) : nothing}
     ${this.botArchive ? renderBotArchiveDialog(this.botArchive, this.botArchivePending, this.botArchiveError, this.confirmArchiveBot, this.closeBotArchive) : nothing}`;
   }

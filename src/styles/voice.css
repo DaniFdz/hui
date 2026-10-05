@@ -14,6 +14,14 @@
 .voice-settings__status { overflow-wrap: anywhere; }
 .voice-settings__status[data-reachable="false"] { color: var(--danger); }
 
+/* ── the bot dialog: voice, preview and speed ── */
+.bot-dialog__voice-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.bot-dialog__voice-row > hui-select-picker { flex: 1 1 auto; min-width: 0; }
+.bot-dialog__preview { flex: 0 0 auto; min-width: 76px; }
+.bot-dialog__speed { display: grid; grid-template-columns: auto minmax(0, 1fr) 3.5em; align-items: center; gap: 10px; }
+.field .bot-dialog__speed input[type="range"] { width: 100%; height: auto; margin: 0; padding: 0; border: 0; background: transparent; box-shadow: none; accent-color: var(--accent); }
+.bot-dialog__speed output { color: var(--text); font-size: 13px; font-variant-numeric: tabular-nums; text-align: end; }
+
 /* ── composer: the voice-note microphone and its status ── */
 .agent-chat__input .chat-voice-btn {
   display: inline-flex;

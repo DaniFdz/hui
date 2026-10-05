@@ -10,6 +10,8 @@ import { closeDropdownOnEscape, labelDropdown } from "../lib/web-awesome.ts";
 import { navigationPath } from "../lib/navigation.ts";
 import type { BotDraft, BotMemoryStatus, BotView } from "../lib/bots.ts";
 import { BOT_LIMITS, BOT_THINKING_LEVELS } from "../../shared/bots.ts";
+import { VOICE_LIMITS, type VoiceProfile } from "../../shared/voice.ts";
+import { speedLabel, voiceOptions } from "../lib/voice.ts";
 import type { RuntimeModel } from "../lib/sessions-store.ts";
 import type { AutomationRun, AutomationSnapshot, AutomationTask, AutomationTaskInput } from "../lib/automation-types.ts";
 import {
@@ -537,7 +539,40 @@ export type BotDialogProps = {
   onMemoryModel: (value: string) => void;
   onSubmit: (values: BotFormValues) => void;
   onCancel: () => void;
+  /** The voice section: present while VoiceStudio is connected (HUI-18). */
+  voice?: BotDialogVoice;
 };
+
+export type BotDialogVoice = {
+  voices: readonly VoiceProfile[];
+  loading: boolean;
+  error: string;
+  profile: string;
+  speed: number;
+  /** A preview of the chosen voice is loading or playing. */
+  previewing: boolean;
+  onProfile: (value: string) => void;
+  onSpeed: (value: number) => void;
+  /** Plays a sentence in the chosen voice and speed, or stops it. */
+  onPreview: () => void;
+};
+
+function renderVoiceField(voice: BotDialogVoice, pending: boolean) {
+  return html`<div class="field input-dialog__field bot-dialog__voice"><span>Voice</span>
+    <div class="bot-dialog__voice-row">
+      ${renderPicker({ label: "Voice", value: voice.profile, disabled: pending, searchable: true, searchPlaceholder: "Search voices",
+        options: voiceOptions(voice.voices, voice.profile), onChange: voice.onProfile })}
+      <button type="button" class="btn btn--sm bot-dialog__preview" aria-pressed=${String(voice.previewing)} ?disabled=${pending}
+        @click=${voice.onPreview}>${voice.previewing ? "Stop" : "Preview"}</button>
+    </div>
+    <label class="bot-dialog__speed"><span>Speed</span>
+      <input type="range" min=${String(VOICE_LIMITS.speedMin)} max=${String(VOICE_LIMITS.speedMax)} step="0.05" .value=${String(voice.speed)}
+        aria-valuetext=${speedLabel(voice.speed)} ?disabled=${pending}
+        @input=${(event: Event) => voice.onSpeed(Number((event.target as HTMLInputElement).value))} />
+      <output>${speedLabel(voice.speed)}</output></label>
+    <span class="bot-field__hint" role=${voice.error ? "alert" : nothing}>${voice.error || (voice.loading ? "Reading VoiceStudio's voices…" : "How the bot sounds when it reads aloud and on calls, through your VoiceStudio.")}</span>
+  </div>`;
+}
 
 const THINKING_LABELS: Record<(typeof BOT_THINKING_LEVELS)[number], string> = { off: "Off", minimal: "Minimal", low: "Low", medium: "Medium", high: "High", xhigh: "Extra high" };
 /** "Gateway default" sends "": a new bot leaves the choice to the gateway, an
@@ -593,6 +628,7 @@ export function renderBotDialog(props: BotDialogProps) {
         ${renderPicker({ label: "Memory model", value: props.memoryModel, disabled: props.pending, searchable: true, searchPlaceholder: "Search models",
           options: modelOptions(props.models, "Same as bot", props.memoryModel), onChange: props.onMemoryModel })}
         <span class="bot-field__hint">Writes the summaries that let the chat go on forever. A fast, cheap model is enough.</span></div>
+      ${props.voice ? renderVoiceField(props.voice, props.pending) : nothing}
       <div class="field input-dialog__field"><label for="bot-dialog-cwd">Workspace directory</label>
         ${renderDirectoryPicker({ id: "bot-dialog-cwd", label: "Workspace directory", value: editing?.cwd ?? "", suggestions: props.directorySuggestions, onInput: props.onDirectoryInput, inputClass: "settings-input", externalLabel: true, placeholder: "Automatic" })}
         <span class="bot-field__hint">${editing ? "Can change only while the bot is idle." : "Leave empty for a private folder HUI creates for this bot."}</span></div>
