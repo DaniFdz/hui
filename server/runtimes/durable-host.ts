@@ -27,6 +27,7 @@ import { createSessionModelRuntime } from "./hui-models.ts";
 import { DurablePrompt, type PromptSettings } from "./durable-prompt.ts";
 import { huiDurableTools, type DurableToolInvoker } from "./durable-tools.ts";
 import type { Contribution, DurableExtensions, ExtensionHost } from "./durable-extensions.ts";
+import { OptChatManager, type OptChatTuning } from "./durable-optchat.ts";
 import { invokeAgentTool } from "../agent-tools-bridge.ts";
 
 /** Durable APIs take a cancellation context; HUI's own calls are not scoped. */
@@ -148,6 +149,8 @@ export type DurableHostOptions = {
   lookupCaller?: (conversationId: ConversationId) => Promise<string | undefined>;
   /** Resume interrupted runs when the store opens (default). `hui doctor` opens it without running any work. */
   resume?: boolean;
+  /** OptChat constants a test changes (docs/optchat.md). */
+  optchat?: OptChatTuning;
 };
 
 /** Registry fallback: the HUI session whose resume reference names this conversation. */
@@ -163,6 +166,8 @@ export class DurableHost implements ExtensionHost {
   readonly agentDir: string;
   readonly prompt: DurablePrompt;
   readonly settings: () => Promise<PromptSettings>;
+  /** OptChat memories of the conversations that enable it; a no-op for every other conversation. */
+  readonly optchat: OptChatManager;
   #invokeTool: DurableToolInvoker;
   #lookupCaller: (conversationId: ConversationId) => Promise<string | undefined>;
   #tools: Extension;
@@ -206,6 +211,7 @@ export class DurableHost implements ExtensionHost {
     this.agentDir = options.agentDir;
     this.#resume = options.resume !== false;
     this.settings = options.readSettings ?? readHuiSettings;
+    this.optchat = new OptChatManager({ dir: options.dir, models: () => this.models, ...(options.optchat ? { tuning: options.optchat } : {}) });
     this.prompt = new DurablePrompt(options.agentDir, this.settings);
     this.prompt.extras = (conversationId) => {
       const extensions = this.#extensionsOf(conversationId);
@@ -293,8 +299,10 @@ export class DurableHost implements ExtensionHost {
     try {
       const settings = SettingsManager.create(this.agentDir, this.agentDir);
       this.#models.target = await createSessionModelRuntime(this.agentDir);
-      const base = [CodingTools, this.#tools, this.prompt.extension, this.#identity];
-      for (const extension of base) this.#registry.install(extension);
+      // OptChat's hooks come before every session's PI extensions: its compaction decline is the first decision, and its
+      // request is what their context handlers see. Its tools are installed outside the default selection.
+      const base = [CodingTools, this.#tools, this.prompt.extension, this.#identity, this.optchat.extension];
+      for (const extension of [...base, this.optchat.toolsExtension]) this.#registry.install(extension);
       const harness = await Harness.open(await openNodeSqliteStorage(join(this.dir, "harness.sqlite")), {
         models: this.#models.view,
         registry: this.#registry,
@@ -306,6 +314,7 @@ export class DurableHost implements ExtensionHost {
           detail: error instanceof Error ? error.message : String(error),
         }),
       }, durableContext);
+      this.optchat.attach(harness, { follow: this.#resume });
       this.#harness = harness;
       // Unfinished generations and tool calls continue even before any browser
       // reopens their session. Without it, nothing is scheduled: the store is
@@ -365,10 +374,20 @@ export class DurableHost implements ExtensionHost {
     return undefined;
   }
 
-  /** `before_provider_request` and `after_provider_response` of the request's session. */
+  /** `before_provider_request` and `after_provider_response` of the request's session; an OptChat turn's cache marks go
+   * on the payload those handlers leave. */
   #requestCallbacks(options: RequestOptions): RequestCallbacks {
     const caller = options?.signal ? this.#requestSessions.get(options.signal) : undefined;
-    return (caller === undefined ? undefined : this.#extensions.get(caller)?.requestCallbacks()) ?? {};
+    const callbacks = (caller === undefined ? undefined : this.#extensions.get(caller)?.requestCallbacks()) ?? {};
+    const marks = options?.signal ? this.optchat.payloadHook(options.signal) : undefined;
+    if (!marks) return callbacks;
+    return {
+      ...callbacks,
+      onPayload: async (payload, model) => {
+        const replaced = await callbacks.onPayload?.(payload);
+        return marks(replaced === undefined ? payload : replaced, model) ?? replaced;
+      },
+    };
   }
 
   #clientSession(key: string): string {
@@ -423,6 +442,8 @@ export class DurableHost implements ExtensionHost {
       this.#envs.clear();
       for (const env of envs) await env.cleanup(durableContext);
     } finally {
+      // Its files are covered by the store lock: closed before the lock is released.
+      await this.optchat.close().catch(() => undefined);
       this.#release?.();
       this.#release = undefined;
       this.#callers.clear();
