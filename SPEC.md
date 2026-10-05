@@ -1177,6 +1177,22 @@ everything the Bots tab can, through the same routes.
   into its halves, down to a message whole); while open it reads the memory
   again whenever the bots stream reports it changed, with no timer. *Open memory
   page* is a plain link to OptChat's browse page, opened in a new tab.
+- **Voice** goes through [VoiceStudio](https://github.com/debpalash/VoiceStudio),
+  a separate speech service the gateway only calls over HTTP. The connection is
+  the gateway's (Settings → Integrations → VoiceStudio, verified before it is
+  saved, its key write-only), and bot chats offer voice only while it is
+  configured. A bot has a voice and a speed (its dialog, with a preview, or
+  `--voice`/`--voice-speed`). Its composer records **voice notes** that
+  VoiceStudio writes into the composer, or sends at once marked `[voice] ` when
+  Settings says so; **Read aloud** speaks a reply sentence by sentence, one at a
+  time; the header's **Call** starts a hands-free call. There is no
+  speech-to-speech API, so a call is a cascade: the browser's voice-activity
+  detection cuts what is said, VoiceStudio transcribes it, it reaches the chat
+  as an ordinary `[voice] ` message, and the reply is spoken as it streams;
+  speaking over the bot stops its voice and steers a turn that still runs. The
+  call view shows a timer, both sides' captions, mute and hang up, and minimizes
+  to a bar; hanging up deletes nothing. The microphone opens only on a click and
+  closes with the note or call; HUI stores no audio, only the chat's text.
 
 The contract is [docs/api.md#bots](docs/api.md#bots).
 

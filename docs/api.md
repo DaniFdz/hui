@@ -2001,7 +2001,9 @@ catalogue, a `fontTerminal` local family name (1–128 characters, default
 `JetBrains Mono`; blank or invalid values reset to default), the shared `textScale`,
 OpenClaw-compatible HUI chat preferences (`messageWidth`,
 `collapseTaskProgress`, `sendShortcut` and `githubEmbeds`),
-[`power`](#macos-power), the Git workspace `branchPrefix` (`feature/` by default), Profile presentation
+[`power`](#macos-power), the Git workspace `branchPrefix` (`feature/` by default),
+`voice.sendNotesImmediately` (default `false`: a bot chat's voice note waits in
+the composer; see [VoiceStudio](#voicestudio-bots-voice)), Profile presentation
 fields and reversible Labs flags. These values affect HUI
 only. They never change PI configuration, provider identity, runtime permissions
 or transcripts.

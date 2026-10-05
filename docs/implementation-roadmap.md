@@ -687,8 +687,8 @@ is kept in an append-only log, a cheap model compresses it into a tree of
 one-line summaries, and every turn starts fresh from a fixed-size view of the
 whole chat. `hui bot` can do everything the Bots tab can, through the same
 routes. Routines are Automation tasks aimed at a bot's chat; bots message each
-other; voice comes later through VoiceStudio. Bots run on the local gateway only
-for now. It lands as stacked pull requests:
+other; they listen and speak through VoiceStudio. Bots run on the local gateway
+only for now. It lands as stacked pull requests:
 
 1. **OptChat memory for Pi Durable conversations** — done 2026-10-05. The engine
    (`server/optchat/`) and its Durable integration
@@ -752,7 +752,23 @@ for now. It lands as stacked pull requests:
    memory live in the panel with *Summarizing memory…*, zoom to a message, the
    memory page, Gateway default, hide, archive, Show archived and Restore, lists
    without the bot chat, desktop, mobile and landscape).
-4. Voice through VoiceStudio. Not started.
+4. **Voice through VoiceStudio** (implemented 2026-10-05; live VoiceStudio not
+   verified, only a deterministic fake): the gateway-owned connection
+   (`voicestudio.json`, write-only key, discovery and model list checked before
+   saving, same-origin redirects only) and `/__hui/voice` routes that relay
+   transcriptions and stream speech without storing audio; `BotRecord.voice`
+   (`PATCH` key by key, `hui bot add|edit --voice --voice-speed`); Settings →
+   Integrations → VoiceStudio; in bot chats the composer's voice notes, Read
+   aloud on replies and Calls (browser voice-activity detection, `[voice] `
+   messages into the forever chat, replies spoken sentence by sentence,
+   barge-in, mute, minimize, hang up). Durable now streams text it sends whole,
+   so a short reply is spoken too. Every call turn is a full bot turn; a faster
+   voice front model is a later follow-up. Proof: `server/voice.test.ts`,
+   `server/voice-routes.test.ts`, `server/bot-routes.test.ts`,
+   `server/bots.test.ts`, `server/runtimes/durable.test.ts`,
+   `src/lib/voice*.test.ts`, `src/lib/bots.test.ts`, `cli/*.test.ts` (against
+   `e2e/voicestudio-fixture.mjs`) and the Browser-tool journey
+   `e2e/bots-voice.browser.md` (fake microphone in headless Brave).
 
 ## Recommended implementation order
 
