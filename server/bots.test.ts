@@ -7,7 +7,7 @@ import { test, type TestContext } from "node:test";
 import { handleFromName, previewLine, type BotRecord } from "../shared/bots.ts";
 import {
   BotConflictError, BotInputError, BotNotFoundError, BotRegistry, BotStoreError,
-  findBot, isOneGrapheme, normalizeBotInput, normalizeBotPatch, parseBotRecord, patchedAvatar, uniqueHandle,
+  findBot, isOneGrapheme, normalizeBotInput, normalizeBotPatch, parseBotRecord, patchedAvatar, patchedVoice, uniqueHandle,
 } from "./bots.ts";
 
 async function tempFile(t: TestContext): Promise<string> {
@@ -165,4 +165,31 @@ test("previews are one line of at most 200 characters", () => {
   const long = previewLine("word ".repeat(100));
   assert.equal(long.length, 200);
   assert.ok(long.endsWith("…"));
+});
+
+test("a bot's voice is a VoiceStudio voice id and a speed from 0.5 to 2, cleared key by key", () => {
+  assert.deepEqual(normalizeBotInput({ name: "Ada", voice: { profile: " vp-aria ", speed: 1.256 } }).voice, { profile: "vp-aria", speed: 1.26 });
+  assert.equal(normalizeBotInput({ name: "Ada", voice: { profile: "", speed: null } }).voice, undefined, "a new bot has nothing to clear");
+  for (const [voice, message] of [
+    ["loud", /Voice must be an object/u],
+    [{ volume: 3 }, /Unknown voice field: volume/u],
+    [{ profile: "x".repeat(201) }, /voice id of at most 200/u],
+    [{ profile: "a\nb" }, /voice id/u],
+    [{ speed: 3 }, /from 0.5 to 2/u],
+    [{ speed: "1" }, /from 0.5 to 2/u],
+  ] as const) {
+    assert.throws(() => normalizeBotInput({ name: "Ada", voice }), (error: unknown) => error instanceof BotInputError && message.test(error.message), JSON.stringify(voice));
+  }
+  assert.deepEqual(normalizeBotPatch({ voice: { profile: "" } }), { voice: { profile: "" } });
+  assert.deepEqual(normalizeBotPatch({ voice: { speed: null } }), { voice: { speed: null } });
+  assert.deepEqual(normalizeBotPatch({ voice: null }), { voice: null });
+  const current = { profile: "vp-aria", speed: 1.25 };
+  assert.deepEqual(patchedVoice(current, { speed: 0.8 }), { profile: "vp-aria", speed: 0.8 });
+  assert.deepEqual(patchedVoice(current, { profile: "" }), { speed: 1.25 });
+  assert.deepEqual(patchedVoice(current, { speed: null }), { profile: "vp-aria" });
+  assert.equal(patchedVoice(current, { profile: "", speed: null }), undefined);
+  assert.equal(patchedVoice(current, null), undefined);
+  // A stored voice keeps what validates.
+  assert.deepEqual(parseBotRecord({ ...bot("a", "ada"), voice: { profile: "vp-dani", speed: 9 } })?.voice, { profile: "vp-dani" });
+  assert.equal(parseBotRecord({ ...bot("a", "ada"), voice: "x" })?.voice, undefined);
 });

@@ -52,6 +52,11 @@ test("CLI parses bot commands, accepting bot and bots, with their operands and o
   assert.equal(add.command, "bot add");
   assert.deepEqual(add.operands, []);
   assert.equal(add.values["memory-model"], "openai/gpt-mini");
+  const voiced = parseCli(["bot", "add", "--name", "Ada", "--voice", "vp-aria", "--voice-speed", "1.25"]);
+  assert.deepEqual([voiced.values.voice, voiced.values["voice-speed"]], ["vp-aria", "1.25"]);
+  assert.equal(parseCli(["bot", "edit", "ada", "--voice-speed", ""]).values["voice-speed"], "", "\"\" clears the speed");
+  assert.equal(parseCli(["bot", "edit", "ada", "--voice", ""]).values.voice, "", "\"\" clears the voice");
+  for (const speed of ["3", "0.2", "fast"]) assert.throws(() => parseCli(["bot", "edit", "ada", "--voice-speed", speed]), /--voice-speed must be a number from 0.5 to 2/u, speed);
   const edit = parseCli(["bot", "edit", "@ada", "--instructions", "Be brief."]);
   assert.deepEqual([edit.command, edit.operands, edit.values.instructions], ["bot edit", ["@ada"], "Be brief."]);
   const cleared = parseCli(["bot", "edit", "ada", "--model", "", "--thinking", "", "--memory-model", ""]);

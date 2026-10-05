@@ -62,7 +62,7 @@ import { PiResourceNotFoundError, readPiResourceDocument } from "./pi-resource-r
 import { readToolsCatalog } from "./tools.ts";
 import { updates, UpdateConflict } from "./updates.ts";
 import { VoiceService } from "./voice.ts";
-import { createVoiceRoutes, storedBotVoice, VOICE_ROUTE, VoiceTooLargeError } from "./voice-routes.ts";
+import { createVoiceRoutes, VOICE_ROUTE, VoiceTooLargeError } from "./voice-routes.ts";
 import { parseClearCommand, parseCompactCommand, parseReloadCommand, parseUpdateCommand } from "../src/lib/slash-commands.ts";
 import {
   PiMutationBusyError,
@@ -414,7 +414,7 @@ const providerService = new ProviderService(undefined, invalidateModelCatalog);
 /** The VoiceStudio connection bots listen and speak through (HUI-18); audio only passes through. */
 const voiceRoutes = createVoiceRoutes({
   service: new VoiceService(),
-  botVoice: async (id) => storedBotVoice(await bots.resolve(id)),
+  botVoice: async (id) => (await bots.resolve(id)).voice,
 });
 
 const SETTINGS_FILE = join(CONFIG_DIR, "settings.json");

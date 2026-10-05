@@ -245,3 +245,16 @@ test("bot chats leave every session list while groups keep their meaning", () =>
   // OTHER stays while it still lists ordinary sessions.
   assert.deepEqual(withoutBotSessions([{ label: "ungrouped", sessions: [scout, session("loose", "")] }]).map((group) => group.sessions.map(({ id }) => id)), [["loose"]]);
 });
+
+test("the dialog's voice goes with a new bot and an edit sends only the voice keys that changed", () => {
+  assert.equal(botInputFromDraft({ ...EMPTY_DRAFT, name: "Vox", voice: "", voiceSpeed: 1 }).voice, undefined, "VoiceStudio's defaults are no voice at all");
+  assert.deepEqual(botInputFromDraft({ ...EMPTY_DRAFT, name: "Vox", voice: " vp-aria ", voiceSpeed: 1.25 }).voice, { profile: "vp-aria", speed: 1.25 });
+  const bot = { ...(parseBot(RECORD) as BotView), voice: { profile: "vp-aria", speed: 1.25 } };
+  const unchanged: BotDraft = { name: "Scout", title: "Research assistant", instructions: "Find things.", cwd: bot.cwd, emoji: "🔭", model: "anthropic/claude", thinking: "medium", memoryModel: "", voice: "vp-aria", voiceSpeed: 1.25 };
+  assert.deepEqual(botPatchFromDraft(bot, unchanged), {});
+  assert.deepEqual(botPatchFromDraft(bot, { ...unchanged, voiceSpeed: 0.8 }), { voice: { speed: 0.8 } });
+  assert.deepEqual(botPatchFromDraft(bot, { ...unchanged, voice: "", voiceSpeed: 1 }), { voice: { profile: "", speed: null } }, "back to VoiceStudio's defaults");
+  const { voice: _voice, voiceSpeed: _speed, ...withoutVoice } = unchanged;
+  assert.deepEqual(botPatchFromDraft(bot, withoutVoice), {}, "a dialog without VoiceStudio leaves the voice alone");
+  assert.deepEqual(parseBot({ ...RECORD, voice: { profile: "vp-dani", speed: 7 } })?.voice, { profile: "vp-dani" });
+});

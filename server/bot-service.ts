@@ -24,7 +24,7 @@ import {
 import type { AutomationTask } from "../src/lib/automation-types.ts";
 import { BotMemoryUnavailableError, type BotMemory, type BotMemorySettings } from "./bot-memory.ts";
 import {
-  BOTS_DIR, BotConflictError, BotInputError, BotNotFoundError, findBot, normalizeBotInput, normalizeBotPatch, patchedAvatar, uniqueHandle,
+  BOTS_DIR, BotConflictError, BotInputError, BotNotFoundError, findBot, normalizeBotInput, normalizeBotPatch, patchedAvatar, patchedVoice, uniqueHandle,
   type BotRegistry,
 } from "./bots.ts";
 import { SessionBusyError, type LiveSessions } from "./live-sessions.ts";
@@ -230,6 +230,7 @@ export class BotService {
           ...(input.memoryModel ? { memoryModel: input.memoryModel } : {}),
           ...(input.memoryThinking ? { memoryThinking: input.memoryThinking } : {}),
           ...(input.avatar ? { avatar: input.avatar } : {}),
+          ...(input.voice ? { voice: input.voice } : {}),
           ...(input.hidden ? { hidden: true } : {}),
           sessionId: session.id,
           createdAt: now,
@@ -780,6 +781,11 @@ function patched(bot: BotRecord, patch: BotPatch, cwd: string | undefined, updat
     const avatar = patchedAvatar(bot.avatar, patch.avatar);
     if (avatar) next.avatar = avatar;
     else delete next.avatar;
+  }
+  if (patch.voice !== undefined) {
+    const voice = patchedVoice(bot.voice, patch.voice);
+    if (voice) next.voice = voice;
+    else delete next.voice;
   }
   if (patch.hidden !== undefined) {
     if (patch.hidden) next.hidden = true;

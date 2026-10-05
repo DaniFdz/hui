@@ -396,6 +396,43 @@ test("the bot list streams: the whole list first, then the bots that changed", {
   await reader.cancel().catch(() => {});
 });
 
+test("a bot's voice is kept with it, edited key by key and used when VoiceStudio speaks for it", { timeout: 60_000 }, async (t) => {
+  const voiceStudio = spawn(process.execPath, [fileURLToPath(new URL("../e2e/voicestudio-fixture.mjs", import.meta.url))], {
+    stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, HUI_E2E_VOICE_PORT: "0" },
+  });
+  t.after(async () => { const exit = once(voiceStudio, "exit"); voiceStudio.kill(); await exit; });
+  const [listening] = await once(voiceStudio.stdout!, "data");
+  const voiceUrl = String(listening).match(/http:\/\/127\.0\.0\.1:\d+/u)?.[0] ?? "";
+  assert.ok(voiceUrl, String(listening));
+  assert.equal((await call("/__hui/voice", "PUT", { url: voiceUrl })).status, 200);
+
+  const created = await call("/__hui/bots", "POST", { name: "Vox", voice: { profile: "vp-aria", speed: 1.25 } });
+  assert.equal(created.status, 201);
+  assert.deepEqual(botOf(created).voice, { profile: "vp-aria", speed: 1.25 });
+  assert.equal((await call("/__hui/bots", "POST", { name: "Vox 2", voice: { speed: 4 } })).status, 400);
+  assert.deepEqual(botOf(await call("/__hui/bots/vox", "PATCH", { voice: { speed: 0.8 } })).voice, { profile: "vp-aria", speed: 0.8 });
+  assert.deepEqual(botOf(await call("/__hui/bots/vox")).voice, { profile: "vp-aria", speed: 0.8 }, "stored, not just echoed");
+
+  const speak = async (body: unknown) => {
+    const response = await fetch(`${origin}/__hui/voice/speech`, { method: "POST", headers: { "x-hui": "1", "content-type": "application/json" }, body: JSON.stringify(body) });
+    assert.equal(response.status, 200, await response.clone().text());
+    assert.equal(response.headers.get("content-type"), "audio/mpeg");
+    await response.arrayBuffer();
+  };
+  await speak({ text: "Hello from Vox.", botId: "vox" });
+  assert.equal((await call("/__hui/bots/vox", "PATCH", { voice: { profile: "" } })).status, 200);
+  await speak({ text: "Default voice now.", botId: botOf(created).id });
+  assert.equal(botOf(await call("/__hui/bots/vox", "PATCH", { voice: null })).voice, undefined);
+  const notFound = await fetch(`${origin}/__hui/voice/speech`, { method: "POST", headers: { "x-hui": "1", "content-type": "application/json" }, body: JSON.stringify({ text: "Hi", botId: "nobody" }) });
+  assert.equal(notFound.status, 404);
+  const spoken = await (await fetch(`${voiceUrl}/control/requests`)).json() as { speech?: { voice: string; speed: number; input: string } }[];
+  assert.deepEqual(spoken.flatMap((item) => item.speech ? [[item.speech.input, item.speech.voice, item.speech.speed]] : []), [
+    ["Hello from Vox.", "vp-aria", 0.8],
+    ["Default voice now.", "default", 0.8],
+  ]);
+  assert.equal((await call("/__hui/voice", "DELETE")).status, 200);
+});
+
 // Last: hui bot chat also follows the bot list, whose cached frame would otherwise lead the stream test.
 test("hui bot chat shows what the bot gets from elsewhere before its reply, and never repeats what was typed in it", { timeout: 120_000 }, async () => {
   const bob = botOf(await call("/__hui/bots/bob"));

@@ -12,7 +12,7 @@ import type { VoiceRouteRequest } from "./voice-routes.ts";
 // HUI's state lives in a temporary directory: set before any module reads CONFIG_DIR.
 const dir = await mkdtemp(join(tmpdir(), "hui-voice-routes-"));
 process.env["HUI_CONFIG_DIR"] = join(dir, "hui");
-const { createVoiceRoutes, storedBotVoice, VoiceTooLargeError } = await import("./voice-routes.ts");
+const { createVoiceRoutes, VoiceTooLargeError } = await import("./voice-routes.ts");
 const { VoiceConfigStore, VoiceService } = await import("./voice.ts");
 const { BotNotFoundError } = await import("./bots.ts");
 
@@ -241,13 +241,6 @@ test("answers 504 when VoiceStudio takes longer than the gateway waits, and 499 
   const pending = voice.handle(request("POST", "/__hui/voice/speech", { json: { text: "Never mind." }, signal: leaving.signal }));
   leaving.abort();
   assert.equal(body(await pending).status, 499);
-});
-
-test("reads a stored bot's voice tolerantly", () => {
-  assert.deepEqual(storedBotVoice({ id: "a", voice: { profile: " vp-aria ", speed: 1.234 } }), { profile: "vp-aria", speed: 1.23 });
-  assert.deepEqual(storedBotVoice({ id: "a", voice: { speed: 9, profile: "" } }), undefined);
-  assert.deepEqual(storedBotVoice({ id: "a", voice: "loud" }), undefined);
-  assert.equal(storedBotVoice({ id: "a" }), undefined);
 });
 
 /* ── the gateway boundary: hui.ts, over HTTP ── */

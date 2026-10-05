@@ -10,6 +10,7 @@ import { LOG_FILE, withLifecycleLock } from "./state.ts";
 import { updateRelease } from "./update.ts";
 import { checkNightly, checkRelease } from "./releases.ts";
 import { BOT_THINKING_LEVELS } from "../shared/bots.ts";
+import { voiceSpeed } from "../shared/voice.ts";
 
 export const HELP = `Usage:
   hui gateway start [--host <IP|tailnet>] [--port <number>] [--allow-host <name>] [--json]
@@ -33,7 +34,8 @@ export const HELP = `Usage:
   hui bot list [--archived] [--json]
   hui bot show <bot> [--json]
   hui bot add --name <name> [--title <text>] [--instructions <text> | --instructions-file <path>] [--cwd <dir>]
-              [--model <provider/model>] [--thinking <level>] [--memory-model <provider/model>] [--emoji <e>] [--json]
+              [--model <provider/model>] [--thinking <level>] [--memory-model <provider/model>] [--emoji <e>]
+              [--voice <VoiceStudio voice id>] [--voice-speed <0.5-2>] [--json]
   hui bot edit <bot> [same flags as add] [--json]
   hui bot remove <bot> [--json]
   hui bot restore <bot> [--json]
@@ -90,7 +92,7 @@ export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {
     name: { type: "string" }, command: { type: "string" }, "extra-path": { type: "string", multiple: true },
     archived: { type: "boolean" }, title: { type: "string" }, instructions: { type: "string" }, "instructions-file": { type: "string" },
     cwd: { type: "string" }, model: { type: "string" }, thinking: { type: "string" }, "memory-model": { type: "string" },
-    emoji: { type: "string" }, wait: { type: "boolean" }, timeout: { type: "string" }, zoom: { type: "string" }, html: { type: "string" },
+    emoji: { type: "string" }, voice: { type: "string" }, "voice-speed": { type: "string" }, wait: { type: "boolean" }, timeout: { type: "string" }, zoom: { type: "string" }, html: { type: "string" },
     prompt: { type: "string" }, at: { type: "string" }, every: { type: "string" }, cron: { type: "string" }, timezone: { type: "string" },
   } });
   if (values.help || !args.length) return { command: "help", values };
@@ -137,7 +139,7 @@ export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {
 }
 
 /** The flags `bot add` and `bot edit` share. */
-const BOT_FIELDS = ["name", "title", "instructions", "instructions-file", "cwd", "model", "thinking", "memory-model", "emoji"];
+const BOT_FIELDS = ["name", "title", "instructions", "instructions-file", "cwd", "model", "thinking", "memory-model", "emoji", "voice", "voice-speed"];
 /** Operands each bot command takes, in order. */
 const BOT_OPERANDS: Record<string, readonly string[]> = {
   "bot list": [], "bot add": [], "bot show": ["bot"], "bot edit": ["bot"], "bot remove": ["bot"], "bot restore": ["bot"],
@@ -157,10 +159,12 @@ function checkBotCommand(command: string, operands: readonly string[], values: R
   if (command === "bot add" && !values["name"]) throw new Error("bot add needs --name.");
   if (command === "bot edit" && !BOT_FIELDS.some(given)) throw new Error(`bot edit needs at least one of ${BOT_FIELDS.map((flag) => `--${flag}`).join(", ")}.`);
   if (given("instructions") && given("instructions-file")) throw new Error("Use either --instructions or --instructions-file.");
-  // `""` clears a choice: the gateway's default for the chat, the chat's own model for the memory.
+  // `""` clears a choice: the gateway's default for the chat, the chat's own model for the memory, VoiceStudio's speed.
   const cleared = (flag: string) => values[flag] === "";
   if (given("thinking") && !cleared("thinking") && !(BOT_THINKING_LEVELS as readonly string[]).includes(String(values["thinking"]))) throw new Error(`--thinking must be one of: ${BOT_THINKING_LEVELS.join(", ")}.`);
   for (const flag of ["model", "memory-model"]) if (given(flag) && !cleared(flag) && !MODEL_REF.test(String(values[flag]))) throw new Error(`--${flag} must be provider/model.`);
+  // Otherwise the same 0.5-2 the gateway accepts.
+  if (given("voice-speed") && !cleared("voice-speed") && voiceSpeed(Number(values["voice-speed"])) === undefined) throw new Error("--voice-speed must be a number from 0.5 to 2.");
   if (given("timeout") && (!values["wait"] || !/^\d+$/u.test(String(values["timeout"])) || Number(values["timeout"]) < 1 || Number(values["timeout"]) > 3600)) {
     throw new Error("--timeout needs --wait and 1-3600 seconds.");
   }

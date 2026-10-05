@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { test, type TestContext } from "node:test";
 import type { BotMessageResult, BotView } from "../shared/bots.ts";
 import type { AutomationTask } from "../src/lib/automation-types.ts";
-import { botCommand, findBot, formatBots, parseDuration, parseZoom, questionAnswer, routineSchedule, type BotIO } from "./bots.ts";
+import { botCommand, findBot, formatBot, formatBots, parseDuration, parseZoom, questionAnswer, routineSchedule, type BotIO } from "./bots.ts";
 
 function view(id: string, handle: string, extra: Partial<BotView> = {}): BotView {
   return {
@@ -234,6 +234,10 @@ test("list, show, add, edit, remove, restore and stop talk to the bot routes and
   assert.deepEqual(gateway.calls.at(-1), { method: "PATCH", path: "/__hui/bots/id-ada", body: { title: "Lead", thinking: "high" } }, "only the given fields");
   await botCommand(gateway.base, "edit", ["ada"], { model: "", thinking: "", "memory-model": "" }, terminal().io);
   assert.deepEqual(gateway.calls.at(-1)?.body, { model: "", thinking: "", memoryModel: "" }, "empty values clear, back to the defaults");
+  await botCommand(gateway.base, "edit", ["ada"], { voice: "vp-aria", "voice-speed": "1.25" }, terminal().io);
+  assert.deepEqual(gateway.calls.at(-1)?.body, { voice: { profile: "vp-aria", speed: 1.25 } });
+  await botCommand(gateway.base, "edit", ["ada"], { "voice-speed": "" }, terminal().io);
+  assert.deepEqual(gateway.calls.at(-1)?.body, { voice: { speed: null } }, "an empty speed clears it");
   const removed = terminal();
   await botCommand(gateway.base, "remove", ["bob"], {}, removed.io);
   assert.equal(gateway.calls.at(-1)?.method, "DELETE");
@@ -511,4 +515,11 @@ test("chat ends cleanly when stdin closes, and reports a runtime that exits", as
   gateway2.push("session", "closed", {});
   assert.equal(await failed, 1);
   assert.match(crashed.out, /@bob's chat runtime exited\./u);
+});
+
+test("show names a bot's VoiceStudio voice and speed", () => {
+  const base: BotView = { id: "id-vox", handle: "vox", name: "Vox", cwd: "/tmp", sessionId: "s", createdAt: "2026-10-05T10:00:00.000Z", updatedAt: "2026-10-05T10:00:00.000Z", status: "idle", unread: false, routines: 0 };
+  assert.match(formatBot({ ...base, voice: { profile: "vp-aria", speed: 1.25 } }), /\nvoice: vp-aria · 1\.25×\n/u);
+  assert.match(formatBot({ ...base, voice: { speed: 0.8 } }), /\nvoice: VoiceStudio default · 0\.8×\n/u);
+  assert.doesNotMatch(formatBot(base), /voice:/u);
 });

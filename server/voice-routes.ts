@@ -81,16 +81,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
-/** A stored bot's voice, read tolerantly: a record without one, or with a damaged one, speaks with VoiceStudio's defaults. */
-export function storedBotVoice(record: { id: string; voice?: unknown }): BotVoice | undefined {
-  const voice = record.voice;
-  if (!isRecord(voice)) return undefined;
-  const profile = voiceProfileId(voice["profile"]);
-  const speed = voiceSpeed(voice["speed"]);
-  if (!profile && speed === undefined) return undefined;
-  return { ...(profile ? { profile } : {}), ...(speed !== undefined ? { speed } : {}) };
-}
-
 /** `audio/webm;codecs=opus` → `audio/webm`. */
 function mediaType(value: string): string {
   return value.split(";")[0]!.trim().toLowerCase();
