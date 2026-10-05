@@ -2,10 +2,11 @@
 
 Run against `node e2e/visual-verification.mjs launch --branch <branch>
 --activity-fixture`. `e2e/activity-fixture.ts` seeds the isolated store before
-the gateway starts: eleven synthetic Durable sessions in six groups, worked
-through the week before the current one (parallel sessions on Monday, Wednesday
-and Thursday, a Wednesday night block from 10:40 PM to 1:55 AM) and two blocks
-in the last few hours, plus one subagent session, which the calendar leaves out.
+the gateway starts: ten synthetic Durable sessions in five groups worked through
+the week before the current one (parallel sessions on Monday, Wednesday and
+Thursday, a Wednesday night block from 10:40 PM to 1:55 AM), one more worked in
+the last few hours of this week, and one subagent session, which the calendar
+leaves out.
 No operator session or PI transcript is read.
 
 ## Journeys
@@ -13,16 +14,15 @@ No operator session or PI transcript is read.
 1. Sidebar **Contributions**, then the **Calendar** tab: the heading shows the
    current week (Monday to Sunday), *This week* and *Next week* are disabled,
    today's column is tinted with a line at the current time, and the recent
-   *Calendar week view* blocks are drawn (or sit on Sunday night of the week
-   before when it is earlier than 5 AM on Monday). Reloading keeps the tab.
-2. **Previous week**: "Sep 28 – Oct 4"-style heading with 11 sessions, 22
+   *Calendar week view* blocks are drawn. Reloading keeps the tab.
+2. **Previous week**: "Sep 28 – Oct 4"-style heading with 10 sessions, 21
    blocks and "up to 2 at once". Overlapping blocks (Monday morning, Wednesday
    afternoon) share their column in lanes. *Webhook double charge* runs in
    Wednesday's column from 10:40 PM past the 12:00 AM label to 1:55 AM.
-3. The side panel reads "31h 10m across 11 sessions", a bar split by session,
-   "Parallel sessions counted once · 34h 05m of session time" and every session
+3. The side panel reads "29h 20m across 10 sessions", a bar split by session,
+   "Parallel sessions counted once · 32h 15m of session time" and every session
    with its time, *Pricing page redesign* (5h 45m) first. *Hours per day* labels
-   Wednesday (7h 25m) as the busiest. The 9th to 11th sessions use the shaded
+   Wednesday (7h 25m) as the busiest. The 9th and 10th sessions use the shaded
    colors, so no two share a color.
 4. Click the Wednesday night block: the card beside it shows *Webhook double
    charge*, "Wed, Sep 30 · 10:40 PM – 1:55 AM · 3h 15m", the *checkout-api*

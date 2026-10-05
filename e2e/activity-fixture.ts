@@ -68,9 +68,10 @@ const seeds: Seed[] = [
   { title: "Hotfix: currency rounding", group: "checkout-api", model: OPUS, blocks: [
     [at(1, 23, 30), 75, "Totals in JPY round to the wrong yen"],
   ] },
+  // The last few hours, never before this week starts.
   { title: "Calendar week view", group: "hui", model: OPUS, blocks: [
-    [now - 200 * MINUTE, 110, "Add a calendar of what we did to HUI"],
-    [now - 50 * MINUTE, 40, "Make the popover match the reference"],
+    [Math.max(at(7, 5), now - 200 * MINUTE), 110, "Add a calendar of what we did to HUI"],
+    [Math.max(at(7, 5), now - 50 * MINUTE), 40, "Make the popover match the reference"],
   ] },
   { title: "Grader subagent", group: "evals", model: OPUS, parent: "Eval baseline scoring", blocks: [
     [at(1, 16, 55), 40, "Score the refusals set"],
