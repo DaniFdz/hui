@@ -199,16 +199,19 @@
   color: var(--text);
   font-size: var(--text-sm, 13px);
 }
-.bot-call-bar--floating {
-  position: fixed;
-  z-index: 60;
-  top: max(10px, var(--safe-area-top, 0px));
-  left: 50%;
-  transform: translateX(-50%);
-  width: min(560px, calc(100vw - 24px));
-  margin: 0;
+/* Away from the bot's chat the bar takes a band at the top of the shell's content cell, and the page moves down
+ * to make room (`shell--call-bar`), so it never covers a header, a title or the navigation button. */
+.shell > .bot-call-bar--floating {
+  grid-area: content;
+  align-self: start;
+  justify-self: center;
+  position: relative;
+  z-index: 30;
+  width: min(640px, calc(100% - 24px));
+  margin: 8px 0 0;
   box-shadow: var(--shadow-md, 0 4px 18px rgb(0 0 0 / 0.18));
 }
+.shell.shell--call-bar > .content { margin-top: 58px; }
 .bot-call-bar__open {
   display: flex;
   align-items: center;

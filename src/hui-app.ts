@@ -4345,11 +4345,18 @@ export class HuiApp extends HuiElement {
     };
   }
 
-  /** The minimized call stays in sight while the operator is elsewhere in HUI. */
-  private renderFloatingCallBar() {
+  /** The call, while the operator is elsewhere in HUI (another page, another bot, Settings). */
+  private floatingCall() {
     const call = this.voice.call;
-    if (this.embeddedPane || !call) return nothing;
-    if (this.view === "bot" && this.activeBotId === call.bot.id && !this.settingsOpen) return nothing;
+    if (this.embeddedPane || !call) return undefined;
+    if (this.view === "bot" && this.activeBotId === call.bot.id && !this.settingsOpen) return undefined;
+    return call;
+  }
+
+  /** That call stays in sight in a band above the page's content (`shell--call-bar` makes room), never over it. */
+  private renderFloatingCallBar() {
+    const call = this.floatingCall();
+    if (!call) return nothing;
     const bot = this.bots.find((candidate) => candidate.id === call.bot.id) ?? { id: call.bot.id, name: call.bot.name, sessionId: call.bot.sessionId };
     return renderCallBar({ ...this.callViewProps(bot, call), floating: true });
   }
@@ -5377,7 +5384,7 @@ export class HuiApp extends HuiElement {
     }
 
     if (this.settingsOpen) {
-      return html`<div class="shell shell--settings settings-shell ${this.mobileNavLayout ? "shell--mobile-nav" : ""}">
+      return html`<div class="shell shell--settings settings-shell ${this.mobileNavLayout ? "shell--mobile-nav" : ""} ${this.floatingCall() ? "shell--call-bar" : ""}">
         ${renderSettingsPage({
           page: this.settingsPage,
           worktrees: {
@@ -5452,6 +5459,7 @@ export class HuiApp extends HuiElement {
           onReadPlugin: (resource) => this.readPiResource("plugin", resource),
           ...this.automationProps(),
         })}
+        ${this.renderFloatingCallBar()}
         ${this.commandPalette()}
         ${this.updateDialog()}
         ${renderPiResourceReader(this.piResourceReader, this.closePiResourceReader, this.copyPiResource)}
@@ -5554,7 +5562,7 @@ export class HuiApp extends HuiElement {
       (this.view === "surface" && this.activePage?.id === "new-session");
 
     return html`<div
-      class="shell app-shell ${this.mobileNavLayout ? "shell--mobile-nav" : ""} ${chatLikeRoute ? "shell--chat" : ""} ${chatLikeRoute && this.mobileNavLayout ? "shell--merged-chat-chrome" : ""}"
+      class="shell app-shell ${this.mobileNavLayout ? "shell--mobile-nav" : ""} ${chatLikeRoute ? "shell--chat" : ""} ${chatLikeRoute && this.mobileNavLayout ? "shell--merged-chat-chrome" : ""} ${this.floatingCall() ? "shell--call-bar" : ""}"
       @keydown=${closeDrawerOnEscape}
     >
       ${renderSidebar(props)}
