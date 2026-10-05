@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 
-import { sessionGroupPatch, discoverThemes, mergeThemes, registryUrlFor, waitForAutomationRun, type ThemeEntry } from "./hui.ts";
+import { sessionGroupPatch, discoverThemes, mergeThemes, registryUrlFor, waitForAutomationRun, waitForSessionReady, type ThemeEntry } from "./hui.ts";
 import type { SessionStreamMessage } from "./live-sessions.ts";
 import type { SessionRecord } from "./sessions.ts";
 
@@ -155,4 +155,13 @@ test("an automation run ends when its session settles, and fails once HUI is dis
   const failed = waitForAutomationRun(automationTarget, new AbortController().signal, disconnecting.sessions);
   disconnecting.emit({ kind: "status", status: "disconnected" });
   await assert.rejects(failed, /disconnected/u);
+});
+
+test("a new session HUI is disconnected from fails at once instead of taking its first prompt later", async () => {
+  const session = watchedSession("starting");
+  const ready = waitForSessionReady("target", 2_000, session.sessions);
+  session.emit({ kind: "status", status: "disconnected" });
+  await assert.rejects(ready, /disconnected/u);
+  const already = waitForSessionReady("target", 2_000, watchedSession("disconnected").sessions);
+  await assert.rejects(already, /disconnected/u);
 });

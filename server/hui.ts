@@ -1551,8 +1551,10 @@ export async function startWorktreeSession(
   return accepted;
 }
 
-/** Resolves once a freshly created session can accept its first prompt. */
-function waitForSessionReady(
+/** Resolves once a freshly created session can accept its first prompt. A
+ * session HUI is disconnected from fails at once, so its prompt is never sent
+ * later, behind the caller's back. */
+export function waitForSessionReady(
   id: string,
   timeoutMs = SUGGESTION_READY_TIMEOUT_MS,
   sessions: Pick<typeof liveSessions, "watch"> = liveSessions,
@@ -1570,6 +1572,7 @@ function waitForSessionReady(
     const inspect = (status: SessionStatus) => {
       if (status === "idle") finish();
       else if (status === "error") finish(new Error("The new session runtime could not start."));
+      else if (status === "disconnected") finish(new Error("HUI is disconnected from the machine the new session runs on. Reconnect it and try again."));
     };
     const timer = setTimeout(() => finish(new Error("The new session did not start in time.")), timeoutMs);
     timer.unref();
