@@ -409,29 +409,9 @@ export async function zoomBotMemory(id: string, line: { id: number; n: number })
   return body["text"];
 }
 
+/** OptChat's browse page. A link opens it: the gateway accepts a page load the
+ * browser attests as same-origin, and serves it under a policy that runs,
+ * loads and frames nothing (docs/api.md#bots). */
 export function botMemoryPageUrl(id: string): string {
   return botUrl(id, "/memory/html");
-}
-
-/** The browse page is a guarded route like every other, so a plain link cannot
- * open it: the page is read with the HUI header and shown from a copy. */
-export async function loadBotMemoryPage(id: string): Promise<string> {
-  const response = await trackedFetch(botMemoryPageUrl(id), { headers: CLIENT_HEADERS, cache: "no-store", signal: AbortSignal.timeout(15_000) });
-  if (!response.ok) {
-    const detail = (await response.json().catch(() => undefined)) as { error?: string } | undefined;
-    throw new Error(detail?.error ?? `The memory page returned HTTP ${response.status}.`);
-  }
-  return response.text();
-}
-
-/** Its text comes from a chat: like the gateway's own response, the copy may
- * run nothing and load nothing. The policy goes first in <head>. */
-const MEMORY_PAGE_POLICY = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'">`;
-
-export function inertMemoryPage(html: string): string {
-  const head = /<head(?:\s[^>]*)?>/iu.exec(html);
-  if (head) return html.slice(0, head.index + head[0].length) + MEMORY_PAGE_POLICY + html.slice(head.index + head[0].length);
-  const doctype = /^\s*<!doctype[^>]*>/iu.exec(html);
-  if (doctype) return doctype[0] + MEMORY_PAGE_POLICY + html.slice(doctype[0].length);
-  return MEMORY_PAGE_POLICY + html;
 }

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { applyBotsUpdate, botInputFromDraft, BotMemoryUnavailableError, botPatchFromDraft, inertMemoryPage, isBotSession, isNewBotsFrame, loadBotMemory, parseBotsUpdate, subscribeBots, parseBot, parseBotList, parseBotMemory, parseBotMemoryStatus, upsertBot, withoutBotSessions, type BotDraft, type BotView } from "./bots.ts";
+import { applyBotsUpdate, botInputFromDraft, botMemoryPageUrl, BotMemoryUnavailableError, botPatchFromDraft, isBotSession, isNewBotsFrame, loadBotMemory, parseBotsUpdate, subscribeBots, parseBot, parseBotList, parseBotMemory, parseBotMemoryStatus, upsertBot, withoutBotSessions, type BotDraft, type BotView } from "./bots.ts";
 import type { SessionGroup, SessionView } from "./sessions-store.ts";
 
 const RECORD = {
@@ -145,14 +145,9 @@ test("the bot stream reads SSE frames, reports a gateway without it, and stops w
   assert.equal(unsupported, "unsupported");
 });
 
-test("the memory page copy gets a no-script, no-load policy at the top of its head", () => {
-  const policy = /<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline';/u;
-  const page = inertMemoryPage("<!doctype html><html><head><title>Scout</title></head><body>x</body></html>");
-  assert.match(page, /^<!doctype html><html><head><meta http-equiv="Content-Security-Policy"/u);
-  assert.match(page, /form-action 'none'"><title>Scout<\/title><\/head><body>x<\/body>/u, "the page itself follows unchanged");
-  assert.match(inertMemoryPage("<!DOCTYPE html><body>x</body>"), /^<!DOCTYPE html><meta http-equiv/u);
-  assert.match(inertMemoryPage("<p>x</p>"), policy);
-  assert.match(inertMemoryPage('<html><head lang="en"><style>p{}</style></head></html>'), /<head lang="en"><meta http-equiv/u);
+test("the memory page is the gateway's own route, which a same-origin link opens", () => {
+  assert.equal(botMemoryPageUrl("b1"), "/__hui/bots/b1/memory/html");
+  assert.equal(botMemoryPageUrl("b 1/x"), "/__hui/bots/b%201%2Fx/memory/html", "an id never escapes its path segment");
 });
 
 test("memory reads tell a memory the gateway cannot read apart from a failed read", async () => {

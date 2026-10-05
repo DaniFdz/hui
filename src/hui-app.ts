@@ -69,10 +69,9 @@ import {
   applyBotsUpdate,
   archiveBot,
   botInputFromDraft,
+  botMemoryPageUrl,
   botPatchFromDraft,
-  inertMemoryPage,
   isNewBotsFrame,
-  loadBotMemoryPage,
   createBot,
   loadBotMemory,
   loadBots,
@@ -513,7 +512,6 @@ export class HuiApp extends HuiElement {
   private botArchiveToastTimer: ReturnType<typeof setTimeout> | undefined;
   @state() private botMemory: BotMemoryState & { botId: string } = { botId: "", loading: false, error: "" };
   @state() private botMemoryZoom: ReadonlyMap<string, MemoryZoomState> = new Map();
-  @state() private botMemoryPageError = "";
   private botMemoryRequest = 0;
   private botMemoryInFlight = false;
   /** A change arrived while a read was on its way: read once more after it. */
@@ -3931,7 +3929,6 @@ export class HuiApp extends HuiElement {
     this.botMemoryAgain = false;
     this.botMemory = { botId, loading: false, error: "" };
     this.botMemoryZoom = new Map();
-    this.botMemoryPageError = "";
   }
 
   /** A manual refresh shows itself; a live one only replaces what changed. */
@@ -3982,32 +3979,6 @@ export class HuiApp extends HuiElement {
     void zoomBotMemory(bot.id, line)
       .then((text) => settle({ loading: false, error: "", lines: parseMemoryZoom(text, line) }))
       .catch((error: unknown) => settle({ loading: false, error: error instanceof Error ? error.message : "Could not open that line.", lines: [] }));
-  };
-
-  /** The tab opens inside the click (so it is not a blocked popup) and shows
-   * the guarded page once read; a refusal closes it and is reported here. */
-  private openBotMemoryPage = () => {
-    const bot = this.activeBot();
-    if (!bot) return;
-    this.botMemoryPageError = "";
-    const tab = window.open("", "_blank");
-    if (!tab) {
-      this.botMemoryPageError = "The browser blocked the new tab. Allow pop-ups for HUI and try again.";
-      return;
-    }
-    tab.opener = null;
-    tab.document.title = `${bot.name} · memory`;
-    void loadBotMemoryPage(bot.id)
-      .then((html) => {
-        const url = URL.createObjectURL(new Blob([inertMemoryPage(html)], { type: "text/html" }));
-        tab.location.replace(url);
-        // The tab keeps its document; the URL only has to outlive the load.
-        setTimeout(() => URL.revokeObjectURL(url), 60_000);
-      })
-      .catch((error: unknown) => {
-        tab.close();
-        this.botMemoryPageError = error instanceof Error ? error.message : "Could not open the memory page.";
-      });
   };
 
   private renderBotWorkspace() {
@@ -4087,8 +4058,7 @@ export class HuiApp extends HuiElement {
           zoom: this.botMemoryZoom,
           onZoom: this.zoomBotMemoryLine,
           onRefresh: () => void this.refreshBotMemory(true),
-          onOpenPage: this.openBotMemoryPage,
-          pageError: this.botMemoryPageError,
+          pageUrl: botMemoryPageUrl(bot.id),
         },
       }) : nothing}
     </div>`;

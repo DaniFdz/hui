@@ -245,8 +245,8 @@ export type BotPanelProps = {
     zoom: ReadonlyMap<string, MemoryZoomState>;
     onZoom: (line: MemoryLine) => void;
     onRefresh: () => void;
-    onOpenPage: () => void;
-    pageError: string;
+    /** OptChat's browse page; a same-origin link opens it in a new tab. */
+    pageUrl: string;
   };
 };
 
@@ -445,10 +445,9 @@ function renderMemoryTab(props: BotPanelProps) {
     ${status.failing ? html`<p class="bot-memory__notice bot-memory__notice--failing" role="alert">Summaries are failing${status.failing.node ? ` at ${status.failing.node}` : ""}: ${status.failing.error}. HUI keeps retrying.</p>` : nothing}
     ${state.error ? html`<p class="bot-field__error" role="alert">Refresh failed: ${state.error}</p>` : nothing}
     <div class="bot-memory__actions">
-      <button type="button" class="btn btn--sm" @click=${props.memory.onOpenPage}>${icons.externalLink}<span>Open memory page</span></button>
+      <a class="btn btn--sm" href=${props.memory.pageUrl} target="_blank" rel="noopener">${icons.externalLink}<span>Open memory page</span></a>
       <button type="button" class="btn btn--sm btn--ghost" ?disabled=${state.loading} @click=${props.memory.onRefresh}>${icons.refresh}<span>${state.loading ? "Refreshing…" : "Refresh"}</span></button>
     </div>
-    ${props.memory.pageError ? html`<p class="bot-field__error" role="alert">${props.memory.pageError}</p>` : nothing}
     ${lines.length
       ? html`<ol class="bot-memory__view" aria-label="Memory view, oldest first">${lines.map((line) => renderMemoryLine(line, props, 0))}</ol>`
       : html`<p class="bot-panel__hint">Nothing remembered yet. Each message joins the memory; older ones are summarized into shorter lines you can zoom back into.</p>`}`;
