@@ -1025,11 +1025,15 @@ leaves worker records unchanged.
   expires. Without a gateway and a cached answer, the remote's own PI login
   is used. Provider keys
   that models.json resolves from environment variables or commands resolve on
-  the remote. A key or header value written literally in models.json is never
-  mirrored: the remote's copy drops the key, which the gateway serves as that
-  provider's credential when its PI login has none (PI's own precedence), and
-  names a `HUI_SECRET_…` variable in place of the header value, which rides in
-  the `env` of the credential the gateway serves for that provider. A literal
+  the remote. A key written literally in models.json, or a literal value of a
+  header whose name looks like a credential (it contains `auth`, `cookie`,
+  `token`, `secret`, `password` or `key`), is never mirrored: the remote's copy
+  drops the key, which the gateway serves as that provider's credential when
+  its PI login has none (PI's own precedence), and names a `HUI_SECRET_…`
+  variable in place of the header value, which rides in the `env` of the
+  credential the gateway serves for that provider. Other literal headers are
+  configuration and are mirrored. A placeholder key for a proxy the remote runs
+  itself works offline only when written as `$NAME` or `!command`. A withheld
   header of a provider with no such credential (its key comes from the remote's
   environment or a command, or nothing is stored), or of a model of an OAuth
   provider, therefore fails on the remote with PI's message naming that

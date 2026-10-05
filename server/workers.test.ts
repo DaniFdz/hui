@@ -106,7 +106,7 @@ before(async () => {
   await writeFile(join(agentDir, "models.json"), JSON.stringify({ providers: {
     fx: { baseUrl, api: "anthropic-messages", models },
     // Its key and header exist only as literals here, never in a PI login.
-    "fx-literal": { baseUrl, api: "anthropic-messages", apiKey: KEY, headers: { "x-e2e-header": HEADER_SECRET }, models },
+    "fx-literal": { baseUrl, api: "anthropic-messages", apiKey: KEY, headers: { "x-e2e-token": HEADER_SECRET }, models },
   } }));
   // The key exists only in the gateway's PI login.
   await writeFile(join(agentDir, "auth.json"), JSON.stringify({

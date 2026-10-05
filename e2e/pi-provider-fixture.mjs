@@ -168,8 +168,8 @@ const server = createServer(async (request, response) => {
   // A fixture provider whose x-client-session-id header interpolates `${PI_CLIENT_SESSION_ID}`
   // logs the identity HUI resolved for the request.
   const clientSessionId = request.headers["x-client-session-id"];
-  // And one with an x-e2e-header header logs that, e.g. to prove a remote worker got it.
-  const header = request.headers["x-e2e-header"];
+  // And one with an x-e2e-token header logs that, e.g. to prove a remote worker got it.
+  const header = request.headers["x-e2e-token"];
   await appendFile(logFile, `${JSON.stringify({ ...body, ...(clientSessionId === undefined ? {} : { clientSessionId }), ...(header === undefined ? {} : { header }) })}\n`, "utf8");
   const source = flattenedText(body.messages?.at(-1));
   const latestToolResult = toolResultFrom(body.messages?.at(-1));

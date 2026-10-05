@@ -61,6 +61,11 @@ export type SyncSource = {
   providerFiles?: Record<string, string>;
 };
 
+/** Headers whose names carry credentials. Other literal headers (routing,
+ * tags, feature flags) are configuration, mirrored so the worker keeps them
+ * even with nothing served. */
+const CREDENTIAL_HEADER = /auth|cookie|token|secret|password|key/iu;
+
 /** Literal models.json values a worker gets from the gateway, by provider:
  * the key and the header values, under the variable names the mirror uses. */
 export type ModelSecrets = Map<string, { key?: string; env: Record<string, string> }>;
@@ -68,8 +73,8 @@ export type ModelSecrets = Map<string, { key?: string; env: Record<string, strin
 /**
  * PI's models.json as a worker gets it, and the literals it leaves out. A
  * literal key is dropped (the gateway serves it as the provider's credential
- * when PI's login has none, which is PI's own precedence) and a literal header
- * value becomes `${HUI_SECRET_…}`, resolved from the `env` of the credential
+ * when PI's login has none, which is PI's own precedence) and a literal
+ * credential header value becomes `${HUI_SECRET_…}`, resolved from the `env` of the credential
  * the gateway serves. Values PI resolves itself (`$NAME`, `!command`) stay.
  */
 export async function brokeredModels(path: string): Promise<{ mirrored?: Buffer; secrets: ModelSecrets; error?: string }> {
@@ -84,7 +89,7 @@ export async function brokeredModels(path: string): Promise<{ mirrored?: Buffer;
     const env: Record<string, string> = {};
     const broker = (headers: Headers | undefined, scope: string) => {
       for (const [name, value] of Object.entries(headers ?? {})) {
-        if (!literal(value)) continue;
+        if (!literal(value) || !CREDENTIAL_HEADER.test(name)) continue;
         const variable = `HUI_SECRET_${createHash("sha256").update(JSON.stringify([id, scope, name])).digest("hex").slice(0, 16).toUpperCase()}`;
         env[variable] = configValue.resolveConfigValue(value) ?? "";
         headers![name] = `\${${variable}}`;

@@ -966,8 +966,9 @@ while no gateway is connected; nothing is written to disk. Without a cached
 answer the remote's own PI login is used. The mirrored PI `models.json` holds
 no literal secrets: a literal `apiKey` is dropped, and the gateway answers a
 `pi` `read` for that provider with `{type: "api_key", key}` when its auth.json
-has none (and lists it); a literal header value (provider, model or model
-override) becomes `${HUI_SECRET_<16 hex>}`, a name derived from its place, and
+has none (and lists it); a literal value of a credential-like header (a name
+containing `auth`, `cookie`, `token`, `secret`, `password` or `key`; provider,
+model or model override) becomes `${HUI_SECRET_<16 hex>}`, a name derived from its place, and
 every credential the gateway serves for that provider carries those variables
 in `env`. Values PI resolves itself (`$NAME`, `${NAME}`, `!command`) are
 mirrored unchanged; an invalid models.json is not mirrored. The worker needs

@@ -76,8 +76,8 @@ test("literal keys and header values in models.json are left out of the mirror f
     "providers": {
       "custom": {
         "baseUrl": "https://example.test", "api": "anthropic-messages", "apiKey": "sk-literal-key",
-        "headers": { "x-secret": "literal-header-secret", "x-env": "$GATEWAY_TOKEN", "x-mixed": "Bearer \${TOKEN}", "x-command": "!print-token" },
-        "models": [{ "id": "m", "headers": { "x-model": "model-header-secret" } }],
+        "headers": { "org-id": "2", "x-secret": "literal-header-secret", "x-env": "$GATEWAY_TOKEN", "x-mixed": "Bearer \${TOKEN}", "x-command": "!print-token" },
+        "models": [{ "id": "m", "headers": { "x-model-token": "model-header-secret" } }],
       },
       "from-env": { "baseUrl": "https://example.test", "apiKey": "$FROM_ENV_KEY" },
       "from-command": { "baseUrl": "https://example.test", "apiKey": "!print-key" },
@@ -91,6 +91,7 @@ test("literal keys and header values in models.json are left out of the mirror f
   for (const secret of secrets) assert.ok(!text.includes(secret), `the mirror holds ${secret}`);
   const { providers } = JSON.parse(text);
   assert.equal(providers.custom.apiKey, undefined);
+  assert.equal(providers.custom.headers["org-id"], "2", "a header that carries no credential stays configuration");
   assert.equal(providers.custom.headers["x-env"], "$GATEWAY_TOKEN");
   assert.equal(providers.custom.headers["x-mixed"], "Bearer ${TOKEN}");
   assert.equal(providers.custom.headers["x-command"], "!print-token");
@@ -107,7 +108,7 @@ test("literal keys and header values in models.json are left out of the mirror f
   assert.equal(custom.key, "sk-literal-key");
   const variable = (value: string) => value.match(/^\$\{(HUI_SECRET_[0-9A-F]{16})\}$/u)![1]!;
   assert.equal(custom.env[variable(providers.custom.headers["x-secret"])], "literal-header-secret");
-  assert.equal(custom.env[variable(providers.custom.models[0].headers["x-model"])], "model-header-secret");
+  assert.equal(custom.env[variable(providers.custom.models[0].headers["x-model-token"])], "model-header-secret");
   assert.equal(Object.keys(custom.env).length, 2);
 });
 
