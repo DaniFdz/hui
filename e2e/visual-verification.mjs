@@ -286,7 +286,7 @@ export async function launch(expectedBranch) {
     // A small kept window lets /compact and /fixture-compact summarize a few short turns.
     await writeFile(join(agentDir, "settings.json"), JSON.stringify({ defaultProvider: "hui-e2e", defaultModel: "fixture", defaultThinkingLevel: "high", compaction: { keepRecentTokens: 400 } }));
     const serverEnv = {};
-    // New sessions run on Durable; journeys that need PI's worker (its extensions, /fixture-compact) opt in.
+    // New sessions run on Durable, including PI extensions; journeys checking PI-worker semantics opt in.
     if (process.argv.includes("--pi-sessions")) serverEnv.HUI_SESSION_RUNTIME = "pi";
     if (process.argv.includes("--jira-fixture")) {
       // Local Jira Cloud subset (e2e/jira-fixture.mjs), connected with its

@@ -14,6 +14,7 @@ import type {
   QueueSnapshot,
   RewindTarget,
   RuntimeCompaction,
+  TranscriptAttachment,
   SessionConnection,
   SessionGroup,
   SessionStatus,
@@ -116,7 +117,7 @@ function hasCoarsePointer(): boolean {
 }
 
 function updateComposerDraft(props: HomeProps, textarea: HTMLTextAreaElement) {
-  props.onDraftChange(textarea.value);
+  props.onDraftInput(textarea.value);
   updateCompletionQueries(props, textarea);
   syncComposerTextarea(textarea);
 }
@@ -255,6 +256,7 @@ export type HomeProps = {
   /** HUI-run background watchers for the open session. */
   watchers?: WatcherActivityProps;
   onDraftChange: (draft: string) => void;
+  onDraftInput: (draft: string) => void;
   commandMenu: SlashMenuProps;
   onCommandQuery: (query: string | null) => void;
   onCommandKeydown: (event: KeyboardEvent) => void;
@@ -280,8 +282,8 @@ export type HomeProps = {
   onSelectThinking: (level: string) => void;
   onAbort: () => void;
   onContinue: () => void;
-  /** Rewind to before a user message, restoring its text to the composer. */
-  onRewind: (target: RewindTarget, text: string) => void;
+  /** Rewind to before a user message, restoring its text and attachments to the composer. */
+  onRewind: (target: RewindTarget, text: string, attachments?: readonly (string | TranscriptAttachment)[]) => void;
   /** Same as sending `/compact`. */
   onCompact: () => void;
   /** Cancels a manual compaction running beside the conversation (Durable's). */
@@ -829,11 +831,13 @@ function renderMetrics(item: TranscriptItem) {
 }
 
 function replyToMessage(event: Event, props: HomeProps, text: string) {
-  props.onDraftChange(replyDraft(props.draft, text));
   const source = event.currentTarget as HTMLElement;
   const root = source.closest("hui-app") ?? source.getRootNode() as Document | ShadowRoot;
+  // Typing does not re-render, so props.draft can trail the textarea: quote onto
+  // the live value instead of the one this click handler closed over.
+  const editor = root.querySelector<HTMLTextAreaElement>(".agent-chat__input textarea");
+  props.onDraftChange(replyDraft(editor?.value ?? props.draft, text));
   requestAnimationFrame(() => {
-    const editor = root.querySelector<HTMLTextAreaElement>(".agent-chat__input textarea");
     editor?.focus();
     if (editor) editor.setSelectionRange(editor.value.length, editor.value.length);
   });
@@ -1062,7 +1066,7 @@ function renderTranscriptRows(props: HomeProps, rows: readonly ChatProjectionRow
         `)}${renderCopy(props, last.text, `message-${last.id}`, row.role === "assistant" ? "Copy response" : "Copy prompt")}</div>` : nothing}
         ${rewindTo ? html`<div class="chat-group-footer-actions">
           ${renderActionTooltip(rewindTooltipId, props.rewindPending ? "Rewinding…" : "Rewind", html`
-            <button type="button" class="chat-group-rewind" aria-label=${props.rewindPending ? "Rewinding…" : "Rewind to here"} aria-describedby=${rewindTooltipId} ?disabled=${props.rewindPending} @click=${() => props.onRewind(rewindTo, last?.text ?? "")}>${rewindIcon}</button>
+            <button type="button" class="chat-group-rewind" aria-label=${props.rewindPending ? "Rewinding…" : "Rewind to here"} aria-describedby=${rewindTooltipId} ?disabled=${props.rewindPending} @click=${() => props.onRewind(rewindTo, last?.text ?? "", last?.attachments)}>${rewindIcon}</button>
           `)}
         </div>` : nothing}
       </div>`}

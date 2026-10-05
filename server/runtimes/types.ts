@@ -229,12 +229,14 @@ export type RuntimeSession = {
   /** Bytes of an image attached to a history message, located by the
    * `source` of a transcript attachment. */
   attachmentImage?(message: number, image: number): Promise<{ mimeType: string; data: Buffer } | undefined>;
+  /** Stored path of a file the user attached; the gateway confines it to HUI's attachment store. */
+  attachmentFile?(message: number, file: number): string | undefined;
   /** Messages already in the conversation, for a first paint. */
   transcript(): TranscriptEntry[];
   dispose(): void;
 };
 
-/** An attachment shown on a transcript message. `source` locates image bytes
+/** An attachment shown on a transcript message. `source` locates its bytes
  * inside the runtime's history and is replaced by an opaque gateway `url`
  * before leaving the server. */
 export type TranscriptAttachment = {
@@ -242,7 +244,7 @@ export type TranscriptAttachment = {
   kind: "image" | "file";
   mimeType?: string;
   url?: string;
-  source?: { message: number; image: number };
+  source?: { message: number; image: number } | { message: number; file: number };
 };
 
 export type TranscriptEntry = { metrics?: TranscriptMetrics } & (

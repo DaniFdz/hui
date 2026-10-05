@@ -45,14 +45,14 @@ import type { Settings } from "../src/lib/settings.ts";
 export type SessionStatus = "idle" | "running" | "waiting" | "starting" | "error" | "reconnecting" | "disconnected";
 const MAX_AUTOMATIC_RECOVERY_ATTEMPTS = 3;
 
-/** Replace runtime-internal image locations with opaque gateway URLs. */
+/** Replace runtime-internal attachment locations with opaque gateway URLs. */
 export function publicTranscript(id: string, entries: readonly TranscriptEntry[]): TranscriptEntry[] {
   return entries.map((entry) => {
     if (entry.kind !== "message" || !entry.attachments?.some((item) => item.source)) return entry;
     return {
       ...entry,
       attachments: entry.attachments.map(({ source, ...item }) => source
-        ? { ...item, url: `/__hui/sessions/${encodeURIComponent(id)}/attachments/${source.message}/${source.image}` }
+        ? { ...item, url: `/__hui/sessions/${encodeURIComponent(id)}/attachments/${source.message}/${"file" in source ? `files/${source.file}` : source.image}` }
         : item),
     };
   });
@@ -174,6 +174,8 @@ type Live = {
   /** Terminal subagent cleanup waits until a browser displaying the child has
    * left, so its final transcript does not turn into a dead stream. */
   releaseWhenUnread?: boolean;
+  /** The current runtime attempt, settled once it is ready or has failed. */
+  boot?: Promise<void>;
 };
 
 export type DeleteToken = symbol;
@@ -293,7 +295,7 @@ export class LiveSessions {
       existing.bootDurationMs = undefined;
       existing.reattaching = unreachable;
       this.#setStatus(existing, existing.reattaching ? "reconnecting" : "starting");
-      void this.#boot(existing);
+      existing.boot = this.#boot(existing);
       return true;
     }
     const live: Live = {
@@ -316,8 +318,13 @@ export class LiveSessions {
     };
     this.#live.set(record.id, live);
     this.#publishStatus(live, "starting", false);
-    void this.#boot(live);
+    live.boot = this.#boot(live);
     return true;
+  }
+
+  /** Settles once the session's runtime is ready or has failed to start. */
+  booted(id: string): Promise<void> {
+    return this.#live.get(id)?.boot ?? Promise.resolve();
   }
 
   status(id: string): SessionStatus {
@@ -399,6 +406,10 @@ export class LiveSessions {
   /** Image bytes for a transcript attachment, from the runtime's history. */
   async attachmentImage(id: string, message: number, image: number): Promise<{ mimeType: string; data: Buffer } | undefined> {
     return this.#live.get(id)?.runtime?.attachmentImage?.(message, image);
+  }
+
+  attachmentFile(id: string, message: number, file: number): string | undefined {
+    return this.#live.get(id)?.runtime?.attachmentFile?.(message, file);
   }
 
   snapshot(id: string): SessionSnapshot {

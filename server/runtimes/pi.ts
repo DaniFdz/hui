@@ -313,6 +313,21 @@ export function imageFromMessages(
   return { mimeType: mimeType.toLowerCase(), data: Buffer.from(data, "base64") };
 }
 
+/** The stored path of one file a user attached to a PI history message. */
+export function fileFromMessages(messages: readonly unknown[], message: number, file: number): string | undefined {
+  const raw = messages[message];
+  if (!isRecord(raw) || raw["role"] !== "user") return undefined;
+  const content = raw["content"];
+  const parts: unknown[] = typeof content === "string" ? [{ type: "text", text: content }] : Array.isArray(content) ? content : [];
+  const imageCount = parts.filter((part) => isRecord(part) && part["type"] === "image").length;
+  for (const part of parts) {
+    if (!isRecord(part) || part["type"] !== "text" || typeof part["text"] !== "string") continue;
+    const attachments = restoreAttachmentNames(part["text"], imageCount).attachments;
+    if (attachments) return attachments.flatMap((item) => item.kind === "file" ? [item.path] : [])[file];
+  }
+  return undefined;
+}
+
 export function transcriptFrom(messages: readonly unknown[], timings = new RuntimeTimings()): TranscriptEntry[] {
   const entries: TranscriptEntry[] = [];
   const tools = new Map<string, number>();
@@ -371,8 +386,10 @@ export function transcriptFrom(messages: readonly unknown[], timings = new Runti
         source: { message: messageIndex, image: index },
       };
     };
+    let fileIndex = 0;
     const attachments: TranscriptAttachment[] = durableAttachments?.map((item) =>
-      item.kind === "image" ? imageAttachment(item.name) : { name: item.name, kind: "file" as const },
+      item.kind === "image" ? imageAttachment(item.name)
+        : { name: item.name, kind: "file" as const, source: { message: messageIndex, file: fileIndex++ } },
     ) ?? Array.from({ length: imageCount }, (_, index) => imageAttachment(imageCount > 1 ? `image ${index + 1}` : "image"));
     const usage = isRecord(raw["usage"]) ? raw["usage"] : {};
     const metrics = sanitizeMetrics({
@@ -1247,6 +1264,10 @@ export class PiSession implements RuntimeSession {
 
   async attachmentImage(message: number, image: number): Promise<{ mimeType: string; data: Buffer } | undefined> {
     return imageFromMessages(this.#messages, message, image);
+  }
+
+  attachmentFile(message: number, file: number): string | undefined {
+    return fileFromMessages(this.#messages, message, file);
   }
 
   transcript(): TranscriptEntry[] {
