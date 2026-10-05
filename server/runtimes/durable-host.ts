@@ -28,7 +28,7 @@ import { DurablePrompt, type PromptSettings } from "./durable-prompt.ts";
 import { huiDurableTools, type DurableToolInvoker } from "./durable-tools.ts";
 import type { Contribution, DurableExtensions, ExtensionHost } from "./durable-extensions.ts";
 import { OptChatManager, type OptChatTuning } from "./durable-optchat.ts";
-import { huiBotsExtension } from "./durable-bots.ts";
+import { conversationBot, huiBotsExtensions } from "./durable-bots.ts";
 import { invokeAgentTool } from "../agent-tools-bridge.ts";
 
 /** Durable APIs take a cancellation context; HUI's own calls are not scoped. */
@@ -172,8 +172,8 @@ export class DurableHost implements ExtensionHost {
   #invokeTool: DurableToolInvoker;
   #lookupCaller: (conversationId: ConversationId) => Promise<string | undefined>;
   #tools: Extension;
-  /** `message_bot` and the `bots` section; inert outside bots' chats (`durable-bots.ts`). */
-  #bots: Extension;
+  /** The `bots` section (inert outside bots' chats) and `message_bot`, selected by bots' chats only (`durable-bots.ts`). */
+  #bots: { section: Extension; tools: Extension };
   /** The `bots` section of a bot's chat; the gateway sets it, a worker host leaves it unset. */
   botSection: ((botId: string) => Promise<string | undefined>) | undefined;
   #models = new CurrentModels((options) => this.#requestEnv(options), (options) => this.#requestCallbacks(options));
@@ -228,7 +228,7 @@ export class DurableHost implements ExtensionHost {
     this.#lookupCaller = options.lookupCaller ?? registryCaller;
     const invoke = (conversationId: ConversationId, action: string, params: Record<string, unknown>) => this.#invokeAs(conversationId, action, params);
     this.#tools = huiDurableTools({ invoke });
-    this.#bots = huiBotsExtension({ invoke, section: async (botId) => this.botSection?.(botId) });
+    this.#bots = huiBotsExtensions({ invoke, section: async (botId) => this.botSection?.(botId) });
   }
 
   /** HUI's agent-tool handler, called as the HUI session bound to the conversation. */
@@ -241,11 +241,17 @@ export class DurableHost implements ExtensionHost {
 
   /** Names of the HUI-owned tools, for inspection labels. */
   get huiToolNames(): readonly string[] {
-    return [...this.#tools.tools ?? [], ...this.#bots.tools ?? []].map((tool) => tool.name);
+    return [...this.#tools.tools ?? [], ...this.#bots.tools.tools ?? []].map((tool) => tool.name);
   }
 
   /** Tools only bots' chats are offered. */
-  get botTools(): readonly ToolRegistration[] { return this.#bots.tools ?? []; }
+  get botTools(): readonly ToolRegistration[] { return this.#bots.tools.tools ?? []; }
+
+  /** The extension carrying `message_bot` when the conversation is a bot's chat; its session selects it. */
+  async botToolsFor(conversationId: ConversationId): Promise<Extension | undefined> {
+    const harness = this.#harness;
+    return harness && await conversationBot(harness, conversationId, durableContext) ? this.#bots.tools : undefined;
+  }
 
   /** HUI tool registrations by name, for per-conversation tool selection. */
   toolsNamed(names: readonly string[]): ToolRegistration[] {
@@ -311,9 +317,10 @@ export class DurableHost implements ExtensionHost {
       const settings = SettingsManager.create(this.agentDir, this.agentDir);
       this.#models.target = await createSessionModelRuntime(this.agentDir);
       // OptChat's hooks come before every session's PI extensions: its compaction decline is the first decision, and its
-      // request is what their context handlers see. Its tools are installed outside the default selection.
-      const base = [CodingTools, this.#tools, this.prompt.extension, this.#identity, this.optchat.extension, this.#bots];
-      for (const extension of [...base, this.optchat.toolsExtension]) this.#registry.install(extension);
+      // request is what their context handlers see. OptChat's tools and bots' tools are installed but not in the default
+      // selection: only an OptChat conversation, or a bot's chat, adds them.
+      const base = [CodingTools, this.#tools, this.prompt.extension, this.#identity, this.optchat.extension, this.#bots.section];
+      for (const extension of [...base, this.optchat.toolsExtension, this.#bots.tools]) this.#registry.install(extension);
       const harness = await Harness.open(await openNodeSqliteStorage(join(this.dir, "harness.sqlite")), {
         models: this.#models.view,
         registry: this.#registry,

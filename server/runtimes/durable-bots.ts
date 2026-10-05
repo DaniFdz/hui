@@ -1,12 +1,13 @@
 /**
  * Bots in Pi Durable (HUI-18): the document that marks a conversation as a
- * bot's chat, and the one global extension that gives only those chats the
- * `message_bot` tool and the `bots` prompt section.
+ * bot's chat, the `bots` prompt section and the `message_bot` tool only those
+ * chats get.
  *
- * The extension is in every gateway's base selection. Its tool and section read
- * the conversation's `hui.bot` document and do nothing without it, and
- * `DurableSession.applyTools` removes the tool from every other conversation,
- * so their requests stay exactly as they were.
+ * The section's extension is in every gateway's default selection and renders
+ * nothing without the conversation's `hui.bot` document. The tool lives in an
+ * extension of its own that only a bot's chat selects
+ * (`DurableSession.applyTools`), and refuses anywhere else; every other
+ * conversation's tools, prompt and stored agent stay exactly as they were.
  */
 import type { Context } from "@earendil-works/chord";
 import {
@@ -45,7 +46,8 @@ export type BotsExtensionOptions = {
   section(botId: string): Promise<string | undefined>;
 };
 
-export function huiBotsExtension(options: BotsExtensionOptions): Extension {
+/** `section`: global, inert outside bots' chats. `tools`: installed, selected by bots' chats only. */
+export function huiBotsExtensions(options: BotsExtensionOptions): { section: Extension; tools: Extension } {
   const messageBot: ToolRegistration = defineTool({
     name: MESSAGE_BOT_TOOL,
     description: "Send a message to another bot of this HUI. It arrives in that bot's own chat, marked with your handle, and the bot answers there: nothing comes back to you by itself.",
@@ -70,13 +72,15 @@ export function huiBotsExtension(options: BotsExtensionOptions): Extension {
       }
     },
   });
-  return defineExtension({
-    name: "hui-bots",
-    tools: [messageBot],
-    sections: [section("bots", async (input, context) => {
-      const bot = await conversationBot(input.read, input.conversationId, context);
-      // A roster HUI cannot read (a broken bots.json) leaves the section out; it never fails the request.
-      return bot ? await options.section(bot).catch(() => undefined) : undefined;
-    })],
-  });
+  return {
+    section: defineExtension({
+      name: "hui-bots",
+      sections: [section("bots", async (input, context) => {
+        const bot = await conversationBot(input.read, input.conversationId, context);
+        // A roster HUI cannot read (a broken bots.json) leaves the section out; it never fails the request.
+        return bot ? await options.section(bot).catch(() => undefined) : undefined;
+      })],
+    }),
+    tools: defineExtension({ name: "hui-bots-tools", tools: [messageBot] }),
+  };
 }

@@ -1203,14 +1203,16 @@ disables a bot's routines; restoring leaves them disabled.
 
 ### Bot-to-bot messages
 
-Every gateway's Durable selection includes one extension, `hui-bots`. Its tool
-`message_bot({ to, message })` (`to` ≤ 100, `message` ≤ 20,000 characters) and
-its prompt section `bots` read the conversation's `hui.bot` document and do
-nothing without it; `DurableSession.applyTools` removes the tool from every
-other conversation, so their offered tools and system prompt are unchanged.
-The section lists the bot itself and the other non-archived bots (handle, name,
-title, ordered by handle) and how to use the tool; it is byte-identical while
-that roster is unchanged.
+Every gateway's default Durable selection includes the `hui-bots` extension,
+whose prompt section `bots` reads the conversation's `hui.bot` document and
+renders nothing without it. The tool `message_bot({ to, message })` (`to` ≤ 100,
+`message` ≤ 20,000 characters) lives in a second extension, `hui-bots-tools`,
+installed but selected only by a bot's chat (`DurableSession.applyTools`), and
+refuses in any conversation without the document. Every other conversation's
+offered tools, system prompt and stored agent are unchanged. The section lists
+the bot itself and the other non-archived bots (handle, name, title, ordered by
+handle) and how to use the tool; it is byte-identical while that roster is
+unchanged.
 
 `message_bot` reaches HUI's agent-tool handler as the calling chat's session,
 which must be a non-archived bot's chat. Targets resolve by handle (`@`

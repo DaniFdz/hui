@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { after, test, type TestContext } from "node:test";
-import { defineDoc, type ConversationId, type ToolExecutionApi } from "@earendil-works/pi-durable";
+import { AgentDoc, defineDoc, type ConversationId, type ToolExecutionApi } from "@earendil-works/pi-durable";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { normalizeSettings } from "../../src/lib/settings.ts";
 import type { AgentToolInvocation } from "../agent-tools-bridge.ts";
@@ -130,7 +130,12 @@ test("a plain conversation is offered no message_bot and no bots section; its re
   assert.ok(!request?.tools?.some((tool) => tool.name === MESSAGE_BOT_TOOL));
   assert.doesNotMatch(JSON.stringify(request?.system), /<bots>|Roster for|message_bot/u);
   assert.ok(!(await session.inspect()).tools.some((tool) => tool.name === MESSAGE_BOT_TOOL));
-  assert.equal(await (await f.host.open()).snapshot(BotDoc, durableConversationId(session.sessionFile)!, durableContext), undefined, "no bot document is written");
+  const harness = await f.host.open();
+  const id = durableConversationId(session.sessionFile)!;
+  assert.equal(await harness.snapshot(BotDoc, id, durableContext), undefined, "no bot document is written");
+  const agent = await harness.snapshot(AgentDoc, id, durableContext);
+  assert.equal(agent?.tools, undefined, "nothing is filtered: the stored agent is what it was before bots");
+  assert.equal(agent?.extensions, undefined);
 });
 
 test("a bot's conversation is created in one commit with persona, bot document and memory, and offers message_bot", { timeout: 90_000 }, async (t) => {
@@ -146,6 +151,7 @@ test("a bot's conversation is created in one commit with persona, bot document a
   assert.equal((await (await harness.conversation(id, durableContext))!.agent(durableContext)).instructions, "You are Ada. Answer tersely.");
 
   const session = await startDurable({ cwd: f.cwd, sessionFile: reference, huiSessionId: "ada-chat" }, f.host);
+  assert.deepEqual((await harness.snapshot(AgentDoc, id, durableContext))?.extensions, { add: ["hui-bots-tools"] }, "only a bot's chat selects message_bot");
   const inspection = await session.inspect();
   assert.equal(inspection.tools.find((tool) => tool.name === MESSAGE_BOT_TOOL)?.source, "HUI");
   await session.prompt("E2E_MESSAGE_BOT tell bob hello");
