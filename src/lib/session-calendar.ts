@@ -1,6 +1,6 @@
-/** Browser half of the Calendar tab: loads a week of session activity and lays
- * its blocks out in local-time days, Monday first. A day runs from 5 AM to
- * 5 AM, so late-night work stays on the day it began. */
+/** Browser half of the Calendar tab: lays out a day or week of activity.
+ * Weeks start Monday; days run from 5 AM to 5 AM, so late-night work stays
+ * on the day it began. */
 import type { ActivityBlock, ActivitySession, SessionActivity } from "../../shared/session-activity.ts";
 import { fetchJson } from "./settings-store.ts";
 
@@ -21,9 +21,9 @@ export type CalendarUnit = {
   key: string;
   label: string;
   color: number;
-  /** Time this week; parallel sessions counted once. */
+  /** Time in the selected period; parallel sessions counted once. */
   ms: number;
-  /** Its sessions with time this week, most first. */
+  /** Its sessions with time in the selected period, most first. */
   sessions: CalendarSession[];
 };
 export type CalendarBlock = {
@@ -40,11 +40,11 @@ export type CalendarBlock = {
   span: number;
 };
 export type CalendarDay = { date: Date; blocks: CalendarBlock[]; activeMs: number };
-export type CalendarWeek = {
+export type CalendarPeriod = {
   days: CalendarDay[];
-  /** Every unit with time this week, most time first. */
+  /** Every unit with time in the selected period, most time first. */
   units: CalendarUnit[];
-  /** Sessions with time this week. */
+  /** Sessions with time in the selected period. */
   sessions: number;
   /** Recorded session activity: parallel sessions count once; visual joining adds no time. */
   activeMs: number;
@@ -61,10 +61,17 @@ export function loadSessionActivity(start: Date, end: Date): Promise<SessionActi
   return fetchJson<SessionActivity>(`/__hui/session-activity?from=${start.valueOf()}&to=${end.valueOf()}`);
 }
 
-/** 5 AM on the Monday of the calendar day `date` falls in. */
+/** Local 5 AM on or before `date`, including early mornings across DST changes. */
+export function dayStart(date: Date): Date {
+  const day = new Date(date.getFullYear(), date.getMonth(), date.getDate(), DAY_START_HOUR);
+  if (date < day) day.setDate(day.getDate() - 1);
+  return day;
+}
+
+/** 5 AM on the Monday of the activity week `date` falls in. */
 export function weekStart(date: Date): Date {
-  const day = new Date(date.getFullYear(), date.getMonth(), date.getDate(), date.getHours() - DAY_START_HOUR, date.getMinutes());
-  return new Date(day.getFullYear(), day.getMonth(), day.getDate() - ((day.getDay() + 6) % 7), DAY_START_HOUR);
+  const day = dayStart(date);
+  return addDays(day, -((day.getDay() + 6) % 7));
 }
 
 /** The same wall-clock time `days` later, across daylight saving changes. */
@@ -163,11 +170,11 @@ const unitOf: Record<CalendarGrouping, (session: ActivitySession) => [key: strin
   session: (session) => [session.id, session.title],
 };
 
-export function calendarWeek(activity: SessionActivity, start: Date, grouping: CalendarGrouping = "project"): CalendarWeek {
-  const days = Array.from({ length: 7 }, (_, index) => ({ date: addDays(start, index), next: addDays(start, index + 1).valueOf() }));
-  const weekFrom = start.valueOf();
-  const weekTo = days[6]!.next;
-  const parts = activity.sessions.flatMap((session) => session.blocks.filter((block) => overlaps(block, weekFrom, weekTo)).map((block) => ({ session, block })));
+export function calendarPeriod(activity: SessionActivity, start: Date, grouping: CalendarGrouping = "project", length: 1 | 7 = 7): CalendarPeriod {
+  const days = Array.from({ length }, (_, index) => ({ date: addDays(start, index), next: addDays(start, index + 1).valueOf() }));
+  const rangeStart = start.valueOf();
+  const rangeEnd = addDays(start, length).valueOf();
+  const parts = activity.sessions.flatMap((session) => session.blocks.filter((block) => overlaps(block, rangeStart, rangeEnd)).map((block) => ({ session, block })));
 
   const units = new Map<string, { label: string; parts: typeof parts }>();
   for (const part of parts) {
@@ -178,8 +185,8 @@ export function calendarWeek(activity: SessionActivity, start: Date, grouping: C
   }
   const ranked = [...units].map(([key, { label, parts: own }]) => {
     const merged = stretches(own);
-    const sessions = sessionTimes(own, weekFrom, weekTo);
-    return { unit: { key, label, color: 0, ms: within(stretches(own, 0), weekFrom, weekTo), sessions }, merged };
+    const sessions = sessionTimes(own, rangeStart, rangeEnd);
+    return { unit: { key, label, color: 0, ms: within(stretches(own, 0), rangeStart, rangeEnd), sessions }, merged };
   }).sort((a, b) => b.unit.ms - a.unit.ms || a.unit.label.localeCompare(b.unit.label));
   ranked.forEach(({ unit }, index) => { unit.color = index % COLORS; });
 
@@ -208,9 +215,9 @@ export function calendarWeek(activity: SessionActivity, start: Date, grouping: C
     days: calendarDays,
     units: ranked.map(({ unit }) => unit),
     sessions: new Set(parts.map(({ session }) => session)).size,
-    activeMs: within(all, weekFrom, weekTo),
+    activeMs: within(all, rangeStart, rangeEnd),
     sessionMs,
-    peak: peakOverlap(parts.map(({ block }) => [Math.max(block.start, weekFrom), Math.min(block.end, weekTo)] as const)),
+    peak: peakOverlap(parts.map(({ block }) => [Math.max(block.start, rangeStart), Math.min(block.end, rangeEnd)] as const)),
     hours: [first, last],
   };
 }

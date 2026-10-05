@@ -90,13 +90,38 @@ hui-session-calendar {
   min-width: 720px;
 }
 
+.session-calendar__grid--day {
+  grid-template-columns: 56px minmax(0, 1fr);
+  min-width: 0;
+}
+
 .session-calendar__day-head {
   display: flex;
   align-items: center;
   gap: 6px;
+  margin: 0;
   padding: 0 var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
   color: var(--muted);
+  font: inherit;
   font-size: var(--control-ui-text-md);
+  text-align: left;
+}
+
+button.session-calendar__day-head:not(:disabled) {
+  cursor: pointer;
+}
+
+button.session-calendar__day-head:hover:not(:disabled),
+button.session-calendar__day-head:focus-visible {
+  background: var(--bg-hover);
+  color: var(--text-strong);
+}
+
+button.session-calendar__day-head:disabled {
+  opacity: 0.5;
 }
 
 .session-calendar__day-number {

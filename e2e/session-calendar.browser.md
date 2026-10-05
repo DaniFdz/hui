@@ -45,10 +45,25 @@ which the calendar leaves out. No operator session or PI transcript is read.
 7. Select **Group**, reload, and confirm **Group** remains selected without
    leaving Calendar. A week before the fixture shows an empty state, and
    **Next week** restores the data. The weekly total stays the same in all modes.
-8. 390×844: the heading, summary, *Group by* and week buttons wrap; the grid
-   scrolls sideways with the hour labels pinned and starts at today's column;
-   the card opens below the block at the grid's width; the side panels follow
-   the grid. Repeat 2 and 5 in dark and light (Settings → Appearance).
+8. Activate Wednesday's date heading (click or Enter/Space). **Day** shows
+   "Wed, Sep 30" as one full-width column, five sessions, four grouped blocks,
+   "up to 2 at once", 8h 45m of recorded activity and 10h 45m of session time.
+   Project totals are checkout-api 6h 55m, ios-app 2h 30m and marketing-site
+   1h 20m. The card's footer says "this day" and *Hours per day* is absent.
+   Changing Group/Session keeps the same day and recorded total. Item focus
+   remains usable and **Show all** restores that day's other items.
+9. **Previous day** keeps keyboard focus on the arrow, so another Enter goes
+   back another day. **Next day** crosses Sunday to Monday; **Back to week**
+   returns to that Monday's week with the grouping preserved. **Today** shows
+   the current activity day and disables Today/Next day. Future dates in Week
+   are disabled. A day before the fixture shows "No HUI session activity this
+   day.". On a failed navigation, the previously loaded date/view and data
+   remain together with an error; Retry/Refresh can read again.
+10. 390×844: the heading, summary, *Group by* and date controls wrap; Week
+   scrolls sideways with pinned hour labels; Day fits the available width
+   without keeping the seven-column minimum. Cards and item breakdowns work
+   in both views. Repeat the day selection/return and card flow in light/dark
+   at 1440×900 and 390×844; also check the card at 844×390.
 
 `?from=` empty, `1e3`, `0x10`, negative or more than 31 days apart return 400
 (`server/session-activity.test.ts`).

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { ActivityBlock, ActivitySession } from "../../shared/session-activity.ts";
-import { calendarWeek, formatDuration, weekStart } from "./session-calendar.ts";
+import { addDays, calendarPeriod, dayStart, formatDuration, weekStart } from "./session-calendar.ts";
 
 const MONDAY = new Date(2026, 8, 28, 5);
 const HOUR = 3_600_000;
@@ -17,12 +17,60 @@ test("weeks start at 5 AM on Monday, so the small hours belong to the day before
   assert.equal(weekStart(new Date(2026, 9, 5, 8)).valueOf(), new Date(2026, 9, 5, 5).valueOf());
 });
 
+test("day navigation uses local 5 AM across week, year and daylight-saving boundaries", () => {
+  assert.equal(dayStart(new Date(2027, 0, 1, 4, 59)).valueOf(), new Date(2026, 11, 31, 5).valueOf());
+  assert.equal(dayStart(new Date(2027, 0, 1, 5)).valueOf(), new Date(2027, 0, 1, 5).valueOf());
+  const sunday = dayStart(new Date(2026, 9, 4, 23));
+  const monday = addDays(sunday, 1);
+  assert.equal(monday.valueOf(), new Date(2026, 9, 5, 5).valueOf());
+  assert.equal(weekStart(monday).valueOf(), monday.valueOf());
+  // Run this file under America/New_York too: these days are 23h and 25h long there.
+  for (const [month, date] of [[2, 7], [9, 31]]) {
+    const start = new Date(2026, month!, date!, 5);
+    const next = addDays(start, 1);
+    assert.equal(next.valueOf(), new Date(2026, month!, date! + 1, 5).valueOf());
+    assert.equal(dayStart(new Date(2026, month!, date! + 1, 4, 30)).valueOf(), start.valueOf());
+  }
+});
+
+test("day view clips overnight work and computes its own counts, totals and parallelism", () => {
+  const activity = { sessions: [
+    session("checkout", [block(at(1, 23), at(2, 5, 30)), block(at(2, 9), at(2, 11)), block(at(3, 4, 30), at(3, 5, 30))], "api", "Payments"),
+    session("review", [block(at(2, 10), at(2, 12))], "api", "Payments"),
+    session("ends-before", [block(at(2, 4), at(2, 5))]),
+    session("starts-after", [block(at(3, 5), at(3, 6))]),
+    session("other-day", [block(at(0, 9), at(0, 12))]),
+  ] };
+  const start = addDays(MONDAY, 2);
+  for (const grouping of ["project", "group", "session"] as const) {
+    const day = calendarPeriod(activity, start, grouping, 1);
+    assert.equal(day.days.length, 1);
+    assert.equal(day.days[0]!.date.valueOf(), at(2, 5));
+    assert.equal(day.sessions, 2);
+    assert.equal(day.peak, 2);
+    assert.equal(day.activeMs, 4 * HOUR);
+    assert.equal(day.sessionMs, 5 * HOUR);
+    assert.equal(day.days[0]!.activeMs, 4 * HOUR);
+    assert.deepEqual([...new Set(day.units.flatMap((unit) => unit.sessions.map(({ session }) => session.id)))].sort(), ["checkout", "review"]);
+    assert.equal(day.days[0]!.blocks[0]!.start, at(2, 5));
+    assert.equal(day.days[0]!.blocks.at(-1)!.end, at(3, 5));
+    assert.equal(day.days[0]!.blocks.at(-1)!.sessions[0]!.ms, HOUR / 2);
+  }
+  const next = calendarPeriod(activity, addDays(start, 1), "session", 1);
+  assert.equal(next.activeMs, HOUR, "Thursday counts only 5–6 AM");
+  assert.equal(next.units.find(({ key }) => key === "checkout")!.ms, HOUR / 2);
+  const empty = calendarPeriod(activity, addDays(start, 2), "project", 1);
+  assert.deepEqual(empty.units, []);
+  assert.equal(empty.activeMs, 0);
+  assert.deepEqual(empty.hours, [9, 18]);
+});
+
 test("durations read as hours and zero-padded minutes", () => {
   assert.deepEqual([0, 29_000, 22 * 60_000, 3 * HOUR + 5 * 60_000, 43 * HOUR + 6 * 60_000].map(formatDuration), ["<1m", "<1m", "22m", "3h 05m", "43h 06m"]);
 });
 
 test("parallel sessions count once in the week's working time and per day, and once each per session", () => {
-  const week = calendarWeek({ sessions: [
+  const week = calendarPeriod({ sessions: [
     session("checkout", [block(at(0, 9), at(0, 12)), block(at(2, 22), at(3, 1)), block(at(3, 4), at(3, 6))]),
     session("evals", [block(at(0, 10), at(0, 11))]),
     session("infra", [block(at(0, 11, 30), at(0, 13))]),
@@ -50,7 +98,7 @@ test("a project draws its sessions as one block wherever they are under 30 minut
     session("webhook", [block(at(0, 9, 30), at(0, 11))], "checkout-api", "Payments"),
     session("pricing", [block(at(0, 11, 20), at(0, 12))], "marketing-site", "Payments"),
   ];
-  const projects = calendarWeek({ sessions }, MONDAY, "project");
+  const projects = calendarPeriod({ sessions }, MONDAY, "project");
   assert.deepEqual(projects.days[0]!.blocks.map(({ unit, start, end, sessions }) => [unit.label, start, end, sessions.map(({ session }) => session.id)]), [
     ["checkout-api", at(0, 9), at(0, 11), ["webhook", "retry"]],
     ["marketing-site", at(0, 11, 20), at(0, 12), ["pricing"]],
@@ -61,14 +109,14 @@ test("a project draws its sessions as one block wherever they are under 30 minut
     ["marketing-site", 2 / 3, [["pricing", 2 / 3]]],
   ]);
   // Grouped by sidebar group, the 20-minute pause before Pricing joins the morning.
-  const groups = calendarWeek({ sessions }, MONDAY, "group");
+  const groups = calendarPeriod({ sessions }, MONDAY, "group");
   assert.deepEqual(groups.days[0]!.blocks.map(({ unit, start, end }) => [unit.label, start, end]), [["Payments", at(0, 9), at(0, 12)], ["Payments", at(0, 14), at(0, 15)]]);
   for (const grouping of ["project", "group", "session"] as const) {
-    assert.equal(calendarWeek({ sessions }, MONDAY, grouping).activeMs, 220 * 60_000, "changing grouping must not add the 20-minute pause to activity");
+    assert.equal(calendarPeriod({ sessions }, MONDAY, grouping).activeMs, 220 * 60_000, "changing grouping must not add the 20-minute pause to activity");
   }
   assert.equal(groups.units[0]!.ms, 220 * 60_000);
   assert.equal(groups.days[0]!.blocks[0]!.ms, 160 * 60_000, "a 3-hour drawn stretch contains 2h 40m of activity");
-  assert.equal(calendarWeek({ sessions: [session("x", [block(at(0, 9), at(0, 10))])] }, MONDAY, "group").units[0]!.label, "Other");
+  assert.equal(calendarPeriod({ sessions: [session("x", [block(at(0, 9), at(0, 10))])] }, MONDAY, "group").units[0]!.label, "Other");
 });
 
 test("joining stretches at exactly 30 minutes does not invent work between projects", () => {
@@ -77,7 +125,7 @@ test("joining stretches at exactly 30 minutes does not invent work between proje
     session("b", [block(at(0, 10, 40), at(0, 10, 50))], "web", "Payments"),
   ];
   for (const grouping of ["project", "group", "session"] as const) {
-    const week = calendarWeek({ sessions }, MONDAY, grouping);
+    const week = calendarPeriod({ sessions }, MONDAY, grouping);
     assert.equal(week.activeMs, 20 * 60_000);
     assert.equal(week.sessionMs, 20 * 60_000);
     assert.equal(week.days[0]!.activeMs, 20 * 60_000);
@@ -86,7 +134,7 @@ test("joining stretches at exactly 30 minutes does not invent work between proje
 });
 
 test("overlapping blocks share their day in lanes and widen into lanes free beside them", () => {
-  const week = calendarWeek({ sessions: [
+  const week = calendarPeriod({ sessions: [
     session("a", [block(at(1, 9), at(1, 12))]),
     session("b", [block(at(1, 10), at(1, 11))]),
     session("c", [block(at(1, 10, 30), at(1, 11, 30))]),
@@ -100,7 +148,7 @@ test("overlapping blocks share their day in lanes and widen into lanes free besi
 });
 
 test("blocks outside the week, or ending as it starts, are left out", () => {
-  const week = calendarWeek({ sessions: [
+  const week = calendarPeriod({ sessions: [
     session("before", [block(at(-1, 22), at(0, 5))]),
     session("after", [block(at(7, 9), at(7, 10))]),
   ] }, MONDAY);

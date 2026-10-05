@@ -186,10 +186,18 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   its error above the charts while the others still render, and a year that
   fails to load leaves the previous one selected; with no account, the page
   links to Settings → Integrations.
-- The Calendar tab shows one week (Monday first, *Previous week* / *This
+- The Calendar tab opens on one week (Monday first, *Previous week* / *This
   week* / *Next week*, never past the current week, and *Refresh*) of the
   operator's HUI sessions: subagent sessions are left out, archived ones
-  included. A session was worked on from one message to the next until 30
+  included. Selecting a non-future date heading opens that day as one
+  full-width column. *Previous day* / *Today* / *Next day* navigate days,
+  never past the current activity day; *Back to week* shows the week containing
+  the selected day. Grouping is retained, as is item focus when that item has
+  activity in the new period. Titles, counts, totals, session breakdowns and
+  card totals refer only to the selected day or week; the *Hours per day*
+  chart appears only in Week. Loading disables date navigation; a failed
+  request keeps the previous period and shows the error. The date/view is not
+  saved between visits. A session was worked on from one message to the next until 30
   minutes pass without one. *Group by* (remembered by the browser) chooses what
   the grid draws as one color: *Project* (default), the Git repository a session
   ran in, which its worktrees and subdirectories share (`~` for the home
@@ -201,13 +209,13 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   A day runs from
   5 AM to 5 AM, so late-night work stays in the column of the day it began; the
   hour axis covers 9 AM to 6 PM and every block. Colors come from the session
-  palette, then the same colors shaded, busiest first, repeating after sixteen.
+  palette, then the same colors shaded, busiest in the selected period first, repeating after sixteen.
   Overlapping blocks share their day in side-by-side lanes and widen into lanes
   nothing beside them uses; a block too narrow for its name shows only its
   color, and a one-message block is drawn 30 minutes tall.
   Today's column is tinted with a line at the current time. Activating a block
   opens a card beside it (below it on narrow screens) with its name, day,
-  start–end and recorded activity for that day's part, and its total this week.
+  start–end and recorded activity for that day's part, and its total for the selected day or week.
   Under *Session* it shows the
   session's project, group and model, the operator's first message in the block
   and *Open session*; under *Project* or *Group* it lists the block's sessions,

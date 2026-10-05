@@ -2128,7 +2128,10 @@ account is not cached. The browser buckets timestamps into local days and Sunday
 ### Session activity
 
 The Contributions page's Calendar tab lays out when each HUI session was
-worked on.
+worked on, as a week or a selected day. Both views use the same endpoint:
+Week requests seven local activity days and Day requests one, each starting at
+5 AM and ending at 5 AM after the last date. Date arithmetic uses local calendar
+days, not fixed 24-hour offsets, to retain those boundaries across clock changes.
 
 | Route | Behaviour |
 | --- | --- |
@@ -2173,7 +2176,10 @@ between pages. Activity is neither cached nor persisted. The browser computes
 the week, days, lanes and totals in local time. Project/group blocks may join
 across gaps of at most 30 minutes for display, but those gaps never add to the
 recorded activity totals. Per-item, daily and weekly totals count overlapping
-session blocks once, and the weekly total is independent of grouping.
+session blocks once, and the selected period's total is independent of grouping.
+Day view clips counts, peak concurrency and summary/member times to the same
+one-day range; returning to Week requests the containing week's range. Date
+selection is browser-only state and does not change the API response shape.
 
 ### GitHub link previews
 
