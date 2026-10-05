@@ -28,7 +28,7 @@ import { bundledSkills, enabledBundledSkillPaths, isBundledSkillPreference } fro
 import { readHuiSettings } from "./hui-settings.ts";
 import { BootstrapError, connectScript, markers, nodeInstallScript, probeScript, releaseInstallScript, runScript } from "./worker/bootstrap.ts";
 import { remoteReleasePath, workerRelease, type WorkerRelease } from "./worker/release.ts";
-import { brokeredModels, buildSyncPlan, contentFile, mirrorPath, type ModelSecrets } from "./worker/sync.ts";
+import { brokeredModels, buildSyncPlan, contentFile, mirrorPath } from "./worker/sync.ts";
 import type { Settings } from "../src/lib/settings.ts";
 import type { HostInfo, RemoteLaunch, RemoteState } from "./worker/host.ts";
 import { RuntimeUnreachableError, type RuntimeEvent, type RuntimeUnreachable, type TranscriptEntry } from "./runtimes/types.ts";
@@ -98,7 +98,7 @@ function writeWorkers(workers: readonly WorkerConfig[]): Promise<void> {
 async function gatewayStore(name: unknown): Promise<CredentialStore> {
   if (name === "pi") {
     const agentDir = resolvePiAgentDir();
-    return withModelSecrets(credentialStore(join(agentDir, "auth.json")), (await brokeredModels(join(agentDir, "models.json"))).secrets);
+    return withModelKeys(credentialStore(join(agentDir, "auth.json")), (await brokeredModels(join(agentDir, "models.json"))).keys);
   }
   if (typeof name === "string" && name.startsWith("hui:")) {
     const rel = name.slice(4);
@@ -107,17 +107,13 @@ async function gatewayStore(name: unknown): Promise<CredentialStore> {
   throw new Error("Unknown credential store.");
 }
 
-/** PI's login, plus the literals the worker's models.json leaves out: a
- * literal key stands in for a missing login, as it does in PI, and literal
- * header values ride in the credential's `env`. */
-function withModelSecrets(store: CredentialStore, secrets: ModelSecrets): CredentialStore {
+/** PI's login, plus the literal keys the worker's models.json leaves out:
+ * one stands in for a missing login, as it does in PI. */
+function withModelKeys(store: CredentialStore, keys: Map<string, string>): CredentialStore {
   type Credential = Awaited<ReturnType<CredentialStore["read"]>>;
   const served = (providerId: string, stored: Credential): Credential => {
-    const secret = secrets.get(providerId);
-    const credential = stored ?? (secret?.key === undefined ? undefined : { type: "api_key", key: secret.key });
-    if (!credential || !secret || !Object.keys(secret.env).length) return credential;
-    const env = isRecord(credential.env) ? credential.env as Record<string, string> : {};
-    return { ...credential, env: { ...env, ...secret.env } };
+    const key = keys.get(providerId);
+    return stored ?? (key === undefined ? undefined : { type: "api_key", key });
   };
   return {
     read: async (providerId, options) => served(providerId, await store.read(providerId, options)),
@@ -125,8 +121,8 @@ function withModelSecrets(store: CredentialStore, secrets: ModelSecrets): Creden
     delete: (providerId, options) => store.delete(providerId, options),
     list: async (options) => {
       const stored = await store.list(options);
-      const keys = [...secrets].filter(([id, secret]) => secret.key !== undefined && !stored.some((entry) => entry.providerId === id));
-      return [...stored, ...keys.map(([providerId]) => ({ providerId, type: "api_key" as const }))];
+      const missing = [...keys.keys()].filter((id) => !stored.some((entry) => entry.providerId === id));
+      return [...stored, ...missing.map((providerId) => ({ providerId, type: "api_key" as const }))];
     },
   };
 }
@@ -344,7 +340,8 @@ class WorkerConnection {
       bytes += data.byteLength;
     }
     await flush();
-    const result = await this.#peer.request<SyncResult>("sync-commit", { entries, packageRoots: plan.packageRoots }, 1_800_000);
+    // The header values the mirrored models.json names, for host memory only.
+    const result = await this.#peer.request<SyncResult>("sync-commit", { entries, packageRoots: plan.packageRoots, env: plan.env }, 1_800_000);
     this.#sync = {
       at: new Date().toISOString(), files: result.files, uploaded: wanted.size, deleted: result.deleted,
       installed: result.installed, skipped: plan.skipped, errors: result.errors, pluginIds: plan.pluginIds,

@@ -119,6 +119,32 @@ export function relayCredentials(child: ChildProcess): void {
   });
 }
 
+/** Values of literal models.json headers the worker's mirror names as
+ * `HUI_SECRET_…` variables. The gateway sends them with each sync; they live
+ * in memory only. PI reads them as environment variables, but no spawned
+ * process inherits them, agent shells included: they are served by reads of
+ * `process.env` and left out of its keys. */
+const secrets = new Map<string, string>();
+const SECRET_ENV = /^HUI_SECRET_[0-9A-F]{16}$/u;
+
+let served = false;
+
+export function setSecretEnv(values: unknown): void {
+  if (!served) {
+    served = true;
+    process.env = new Proxy(process.env, { get: (env, name) => typeof name === "string" && secrets.has(name) ? secrets.get(name) : Reflect.get(env, name) });
+  }
+  secrets.clear();
+  if (values && typeof values === "object") {
+    for (const [name, value] of Object.entries(values)) if (SECRET_ENV.test(name) && typeof value === "string") secrets.set(name, value);
+  }
+}
+
+/** The served values, for a PI worker this process starts. */
+export function secretEnv(): Record<string, string> {
+  return Object.fromEntries(secrets);
+}
+
 /** HUI provider credential files a gateway serves, relative to its providers dir. */
 export const BROKERED_PROVIDER_FILE = /^(?:auth\.json|accounts\/[0-9a-f-]{36}\/auth\.json)$/u;
 

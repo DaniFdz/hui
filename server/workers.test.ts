@@ -107,6 +107,9 @@ before(async () => {
     fx: { baseUrl, api: "anthropic-messages", models },
     // Its key and header exist only as literals here, never in a PI login.
     "fx-literal": { baseUrl, api: "anthropic-messages", apiKey: KEY, headers: { "x-e2e-token": HEADER_SECRET }, models },
+    // Its key resolves on the remote, so the gateway has no credential to
+    // serve for it; only its header is a literal here.
+    "fx-remote-key": { baseUrl, api: "anthropic-messages", apiKey: "$HUI_TEST_REMOTE_KEY", headers: { "x-e2e-token": HEADER_SECRET }, models },
   } }));
   // The key exists only in the gateway's PI login.
   await writeFile(join(agentDir, "auth.json"), JSON.stringify({
@@ -130,7 +133,7 @@ before(async () => {
   await mkdir(join(remoteHome, ".local", "share", "hui-worker", "state"), { recursive: true });
   await writeFile(join(remoteHome, ".local", "share", "hui-worker", "state", "host.pid"), String(process.pid));
 
-  const command = ["env", "-u", "PI_CODING_AGENT_DIR", "-u", "XDG_CONFIG_HOME", "-u", "PI_OFFLINE", `HOME=${remoteHome}`, "SHELL=/bin/sh", `HUI_TEST_BASE_URL=${baseUrl}`, `HUI_TEST_ACCESS=${KEY}`];
+  const command = ["env", "-u", "PI_CODING_AGENT_DIR", "-u", "XDG_CONFIG_HOME", "-u", "PI_OFFLINE", `HOME=${remoteHome}`, "SHELL=/bin/sh", `HUI_TEST_BASE_URL=${baseUrl}`, `HUI_TEST_ACCESS=${KEY}`, `HUI_TEST_REMOTE_KEY=${KEY}`];
   workerId = (await workers.create({ name: "test remote", command: command.map((word) => `'${word}'`).join(" ") })).id;
 });
 
@@ -437,7 +440,7 @@ test("a Durable session on the worker honors HUI's settings and providers, whose
   }
 });
 
-test("agent shells on the worker do not inherit the host's HUI and PI directories", async () => {
+test("agent shells on the worker do not inherit the host's HUI and PI directories or the secrets it holds", async () => {
   const shellEnv = async (session: Session) => {
     const done = settled(session);
     await session.prompt("E2E_PRINT_ENV");
@@ -446,13 +449,15 @@ test("agent shells on the worker do not inherit the host's HUI and PI directorie
     assert.ok(tool?.kind === "tool" && tool.output?.includes("env-done"), JSON.stringify(tool));
     return tool.output!.replace("env-done", "").trim();
   };
-  const durableSession = await durable.start({ cwd: project, worker: workerId, huiSessionId: "remote-env-durable" });
+  // Their runs need the header the host holds, so their processes hold it.
+  const model = "fx-remote-key/fixture";
+  const durableSession = await durable.start({ cwd: project, worker: workerId, huiSessionId: "remote-env-durable", model });
   try {
     assert.equal(await shellEnv(durableSession), "");
   } finally {
     durableSession.dispose();
   }
-  const piSession = await piRuntime.start({ cwd: project, worker: workerId, huiSessionId: "remote-env-pi" });
+  const piSession = await piRuntime.start({ cwd: project, worker: workerId, huiSessionId: "remote-env-pi", model });
   try {
     // PI and its extensions read their agent directory from it, as in a local PI worker.
     assert.equal(await shellEnv(piSession), `PI_CODING_AGENT_DIR=${join(remoteHome, ".local", "share", "hui-worker", "mirror", "agent")}`);
@@ -631,6 +636,46 @@ test("a key and header written literally in the gateway's models.json reach the 
       const request = requests.find((entry) => JSON.stringify(entry.messages).includes(prompt));
       assert.equal(request?.header, HEADER_SECRET, `the request for "${prompt}" carried the literal header`);
     }
+    for (const file of await remoteFiles()) {
+      const text = await readFile(file, "utf8");
+      assert.ok(!text.includes(KEY) && !text.includes(HEADER_SECRET), `${file} holds a models.json secret`);
+    }
+  } finally {
+    second.dispose();
+  }
+});
+
+test("a literal header of a provider whose key resolves on the remote reaches the worker from memory, with the gateway or without it", async () => {
+  const log = () => readFile(join(root, "provider.jsonl"), "utf8");
+  const headerOf = async (prompt: string) => (await log()).trim().split("\n").map((line) => JSON.parse(line) as { messages: unknown; header?: string })
+    .find((entry) => JSON.stringify(entry.messages).includes(prompt))?.header;
+  // A PI worker gets the values from the host when it starts.
+  const pi = await piRuntime.start({ cwd: project, worker: workerId, huiSessionId: "remote-header-pi", model: "fx-remote-key/fixture" });
+  try {
+    const done = settled(pi);
+    await pi.prompt("remote key on PI");
+    await done;
+    assert.equal(lastAnswer(pi), "Fixture response.", JSON.stringify(pi.transcript()));
+    assert.equal(await headerOf("remote key on PI"), HEADER_SECRET);
+  } finally {
+    pi.dispose();
+  }
+  const key = "remote-header-durable";
+  const first = await durable.start({ cwd: project, worker: workerId, huiSessionId: key, model: "fx-remote-key/fixture" });
+  const done = settled(first);
+  await first.prompt("remote key with the gateway");
+  await done;
+  assert.equal(lastAnswer(first), "Fixture response.", JSON.stringify(first.transcript()));
+  await first.prompt("E2E_REPLAY please");
+  await control("wait-replay-ready");
+  await first.followUp!("remote key without the gateway");
+  workers.disconnect(workerId);
+  first.dispose();
+  await control("release-replay", { method: "POST" });
+  const second = await reattach(key, first.sessionFile!, (session) => session.transcript().some((entry) => entry.kind === "message" && entry.text === "remote key without the gateway") && lastAnswer(session) === "Fixture response.", "the follow-up to run");
+  try {
+    assert.equal(await headerOf("remote key with the gateway"), HEADER_SECRET);
+    assert.equal(await headerOf("remote key without the gateway"), HEADER_SECRET);
     for (const file of await remoteFiles()) {
       const text = await readFile(file, "utf8");
       assert.ok(!text.includes(KEY) && !text.includes(HEADER_SECRET), `${file} holds a models.json secret`);

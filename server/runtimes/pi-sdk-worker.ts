@@ -3,7 +3,7 @@
 import { createHash } from "node:crypto";
 import { Console } from "node:console";
 import { createSessionModelRuntime, PROVIDERS_DIR } from "./hui-models.ts";
-import { installBrokeredCredentials } from "../worker/credentials.ts";
+import { installBrokeredCredentials, setSecretEnv } from "../worker/credentials.ts";
 import { basename } from "node:path";
 import {
   createAgentSessionFromServices, createAgentSessionRuntime, createAgentSessionServices,
@@ -60,7 +60,8 @@ async function main() {
   // On a remote worker host, credentials come from the connected gateway.
   if (process.env["HUI_WORKER_BROKER"] === "1") {
     installBrokeredCredentials({ agentDir: launch.agentDir, providersDir: PROVIDERS_DIR, fallbackAuth: process.env["HUI_WORKER_FALLBACK_AUTH"] ?? "" });
-    for (const name of ["HUI_WORKER_BROKER", "HUI_WORKER_FALLBACK_AUTH", "HUI_PROVIDERS_DIR"]) delete process.env[name];
+    setSecretEnv(JSON.parse(process.env["HUI_WORKER_SECRETS"] ?? "{}"));
+    for (const name of ["HUI_WORKER_BROKER", "HUI_WORKER_FALLBACK_AUTH", "HUI_PROVIDERS_DIR", "HUI_WORKER_SECRETS"]) delete process.env[name];
   }
   const disabledSkills = new Set((launch.safeProbe ? [] : disabledSkillsFrom(process.env["HUI_DISABLED_SKILLS"])).map((skill) => skill.path));
   const disabledPluginIds = new Set(launch.safeProbe ? [] : launch.disabledPluginIds ?? []);

@@ -1030,15 +1030,16 @@ leaves worker records unchanged.
   `token`, `secret`, `password` or `key`), is never mirrored: the remote's copy
   drops the key, which the gateway serves as that provider's credential when
   its PI login has none (PI's own precedence), and names a `HUI_SECRET_…`
-  variable in place of the header value, which rides in the `env` of the
-  credential the gateway serves for that provider. Other literal headers are
-  configuration and are mirrored. A placeholder key for a proxy the remote runs
-  itself works offline only when written as `$NAME` or `!command`. A withheld
-  header of a provider with no such credential (its key comes from the remote's
-  environment or a command, or nothing is stored), or of a model of an OAuth
-  provider, therefore fails on the remote with PI's message naming that
-  variable, and without a gateway or a cached answer only the remote's own
-  login applies. An invalid models.json is not mirrored at all.
+  variable in place of the header value. The gateway sends those values with
+  each sync; the host keeps them in memory only, and PI resolves them as
+  environment variables whatever the provider's credential, but no process
+  the host starts inherits them, agent shells included. Other literal headers
+  are configuration and are mirrored. A placeholder key for a proxy the remote
+  runs itself works offline only when written as `$NAME` or `!command`. After
+  a host restart the header values return with the gateway's next sync; until
+  then a model that needs one fails with PI's message naming that variable.
+  Without a gateway or a cached answer only the remote's own login applies.
+  An invalid models.json is not mirrored at all.
 - **Sessions.** New Session's **Run on** picker lists workers. A remote
   directory must be absolute or start with `~/` and is checked when the session
   starts; creating one never waits on a connection. The header shows the worker.

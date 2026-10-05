@@ -11,7 +11,7 @@ import { RuntimeTimings, sanitizeMetrics } from "./transcript-metrics.ts";
  */
 import { resolveCommandReference } from "../../src/lib/command-references.ts";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { relayCredentials } from "../worker/credentials.ts";
+import { relayCredentials, secretEnv } from "../worker/credentials.ts";
 import { fileURLToPath } from "node:url";
 import { enabledBundledSkillPaths, isBundledSkillPreference } from "../bundled-skills.ts";
 import { resolvePiAgentDir } from "../pi-paths.ts";
@@ -1354,7 +1354,7 @@ async function startPi(options: {
   const env = {
     ...piEnvironment(), ...agentToolEnv, PI_CODING_AGENT_DIR: agentDir,
     HUI_DISABLED_SKILLS: JSON.stringify(disabledSkills),
-    ...(hostLaunch ? { HUI_WORKER_BROKER: "1", HUI_WORKER_FALLBACK_AUTH: hostLaunch.fallbackAuth, HUI_PROVIDERS_DIR: PROVIDERS_DIR } : {}),
+    ...(hostLaunch ? { HUI_WORKER_BROKER: "1", HUI_WORKER_FALLBACK_AUTH: hostLaunch.fallbackAuth, HUI_PROVIDERS_DIR: PROVIDERS_DIR, HUI_WORKER_SECRETS: JSON.stringify(secretEnv()) } : {}),
   };
   // The launch travels in the environment, not argv: endpoint security agents
   // can SIGKILL an exec whose cwd plus one argument reaches MAXPATHLEN (1024).

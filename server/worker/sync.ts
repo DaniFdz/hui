@@ -22,15 +22,13 @@ import { inside, type SyncEntry } from "./sync-apply.ts";
 const internal = async <T>(path: string): Promise<T> =>
   await import(new URL(path, import.meta.resolve("@earendil-works/pi-coding-agent")).href) as T;
 type Headers = Record<string, string>;
-type ProviderConfig = { apiKey?: string; headers?: Headers; models?: { id: string; headers?: Headers }[]; modelOverrides?: Record<string, { headers?: Headers }> };
+type ProviderConfig = { name?: string; api?: string; apiKey?: string; headers?: Headers; models?: { id: string; headers?: Headers }[]; modelOverrides?: Record<string, { headers?: Headers }> };
 const { ModelConfig } = await internal<{ ModelConfig: { load(path: string): Promise<{ providers: Map<string, ProviderConfig>; error?: string }> } }>("./core/model-config.js");
 const configValue = await internal<{
   isCommandConfigValue(value: string): boolean;
   getConfigValueEnvVarNames(value: string): string[];
   resolveConfigValue(value: string): string | undefined;
 }>("./core/resolve-config-value.js");
-/** PI rejects a models.json provider that sets none of these. */
-const PROVIDER_FIELDS = ["models", "baseUrl", "headers", "compat", "modelOverrides", "apiKey", "oauth", "authHeader"];
 
 const MAX_FILE_BYTES = 8 * 1024 * 1024;
 const MAX_FILES = 20_000;
@@ -48,6 +46,8 @@ export type SyncPlan = {
   packageRoots: string[];
   /** Local HUI plugin id → the id of the same resource on the remote. */
   pluginIds: Map<string, string>;
+  /** The `HUI_SECRET_…` values the mirrored models.json names. */
+  env: Record<string, string>;
   skipped: string[];
 };
 
@@ -64,32 +64,28 @@ export type SyncSource = {
 /** Headers whose names carry credentials. Other literal headers (routing,
  * tags, feature flags) are configuration, mirrored so the worker keeps them
  * even with nothing served. */
-const CREDENTIAL_HEADER = /auth|cookie|token|secret|password|key/iu;
-
-/** Literal models.json values a worker gets from the gateway, by provider:
- * the key and the header values, under the variable names the mirror uses. */
-export type ModelSecrets = Map<string, { key?: string; env: Record<string, string> }>;
+const credentialHeader = (name: string) => /auth|cookie|token|secret|password|key/iu.test(name);
 
 /**
  * PI's models.json as a worker gets it, and the literals it leaves out. A
  * literal key is dropped (the gateway serves it as the provider's credential
  * when PI's login has none, which is PI's own precedence) and a literal
- * credential header value becomes `${HUI_SECRET_…}`, resolved from the `env` of the credential
- * the gateway serves. Values PI resolves itself (`$NAME`, `!command`) stay.
+ * credential header value becomes `${HUI_SECRET_…}`, a variable the host
+ * holds in memory (`env`). Values PI resolves itself (`$NAME`, `!command`) stay.
  */
-export async function brokeredModels(path: string): Promise<{ mirrored?: Buffer; secrets: ModelSecrets; error?: string }> {
-  const secrets: ModelSecrets = new Map();
+export async function brokeredModels(path: string): Promise<{ mirrored?: Buffer; keys: Map<string, string>; env: Record<string, string>; error?: string }> {
+  const keys = new Map<string, string>();
+  const env: Record<string, string> = {};
   const loaded = await ModelConfig.load(path);
-  if (loaded.error) return { secrets, error: loaded.error };
-  if (!loaded.providers.size) return { secrets };
+  if (loaded.error) return { keys, env, error: loaded.error };
+  if (!loaded.providers.size) return { keys, env };
   const literal = (value: string) => !configValue.isCommandConfigValue(value) && !configValue.getConfigValueEnvVarNames(value).length;
   const providers: Record<string, ProviderConfig> = {};
   for (const [id, frozen] of loaded.providers) {
     const provider = structuredClone(frozen);
-    const env: Record<string, string> = {};
     const broker = (headers: Headers | undefined, scope: string) => {
       for (const [name, value] of Object.entries(headers ?? {})) {
-        if (!literal(value) || !CREDENTIAL_HEADER.test(name)) continue;
+        if (!literal(value) || !credentialHeader(name)) continue;
         const variable = `HUI_SECRET_${createHash("sha256").update(JSON.stringify([id, scope, name])).digest("hex").slice(0, 16).toUpperCase()}`;
         env[variable] = configValue.resolveConfigValue(value) ?? "";
         headers![name] = `\${${variable}}`;
@@ -99,12 +95,18 @@ export async function brokeredModels(path: string): Promise<{ mirrored?: Buffer;
     for (const model of provider.models ?? []) broker(model.headers, `model:${model.id}`);
     for (const [model, override] of Object.entries(provider.modelOverrides ?? {})) broker(override.headers, `override:${model}`);
     const key = provider.apiKey !== undefined && literal(provider.apiKey) ? configValue.resolveConfigValue(provider.apiKey) : undefined;
-    if (key !== undefined) delete provider.apiKey;
-    if (key !== undefined || Object.keys(env).length) secrets.set(id, { ...(key === undefined ? {} : { key }), env });
-    // A built-in provider's key alone: the served credential is all it needs.
-    if (PROVIDER_FIELDS.some((field) => field in provider)) providers[id] = provider;
+    if (key === undefined) {
+      providers[id] = provider;
+      continue;
+    }
+    keys.set(id, key);
+    delete provider.apiKey;
+    // A built-in provider's key alone: the served credential is all it needs,
+    // and PI would reject what is left.
+    const { name: _name, api: _api, ...rest } = provider;
+    if (Object.keys(rest).length) providers[id] = provider;
   }
-  return { mirrored: Buffer.from(`${JSON.stringify({ providers }, null, 2)}\n`), secrets };
+  return { mirrored: Buffer.from(`${JSON.stringify({ providers }, null, 2)}\n`), keys, env };
 }
 
 /** Where a local path lives inside the mirror. */
@@ -209,5 +211,5 @@ export async function buildSyncPlan(source: SyncSource): Promise<SyncPlan> {
     files.set(path, { path, local, mode: info.mode & 0o777, size: info.size, hash: await fileHash(local, info) });
   };
   for (const root of roots) await walk(root, new Set());
-  return { files: [...files.values()].toSorted((a, b) => a.path.localeCompare(b.path)), packageRoots: [...new Set(packageRoots)], pluginIds, skipped };
+  return { files: [...files.values()].toSorted((a, b) => a.path.localeCompare(b.path)), packageRoots: [...new Set(packageRoots)], pluginIds, env: models.env, skipped };
 }

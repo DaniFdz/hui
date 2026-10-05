@@ -10,7 +10,8 @@
  * are keyed by HUI session id; reopening a key reattaches to the running one,
  * whose pending questions travel in its state. Credentials and HUI agent
  * tools are served by whichever gateway is connected; credentials are kept in
- * memory until they expire, never on disk.
+ * memory until they expire, and literal models.json header values until the
+ * host stops, never on disk.
  */
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
@@ -23,7 +24,7 @@ import { DurableHost } from "../runtimes/durable-host.ts";
 import { durableConversationId, startDurable } from "../runtimes/durable.ts";
 import { piRuntime } from "../runtimes/pi.ts";
 import type { RuntimeModel, RuntimeQueue, RuntimeQuestion, RuntimeSession, RuntimeUsage, TranscriptEntry } from "../runtimes/types.ts";
-import { installBrokeredCredentials, OfflineError, setCredentialTransport } from "./credentials.ts";
+import { installBrokeredCredentials, OfflineError, setCredentialTransport, setSecretEnv } from "./credentials.ts";
 import { resolveWorkingDirectory } from "../working-directories.ts";
 import { attachPeer, isRecord, PROTOCOL_VERSION, type Peer } from "./protocol.ts";
 import { PACKAGE_ROOT } from "./release.ts";
@@ -247,10 +248,14 @@ export class WorkerHost {
     peer.handle("get-file", (params) => this.#getFile(params));
     peer.handle("sync-plan", (params) => planSync(this.paths, params["entries"]));
     peer.handle("sync-put", (params) => putSyncFiles(this.paths, params["files"]));
-    peer.handle("sync-commit", (params) => applySync(this.paths, params as unknown as SyncCommit).then(async (result) => {
-      if (this.#durable.isOpen) await this.#durable.refreshModels().catch(() => undefined);
-      return result;
-    }));
+    peer.handle("sync-commit", (params) => {
+      // Before the mirrored models.json that names them takes effect.
+      setSecretEnv(params["env"]);
+      return applySync(this.paths, params as unknown as SyncCommit).then(async (result) => {
+        if (this.#durable.isOpen) await this.#durable.refreshModels().catch(() => undefined);
+        return result;
+      });
+    });
     peer.handle("credential-step", async (params) => {
       const modify = this.#modifiers.get(String(params["step"] ?? ""));
       if (!modify) throw new Error("That credential update is no longer pending.");

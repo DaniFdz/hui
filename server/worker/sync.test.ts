@@ -101,15 +101,14 @@ test("literal keys and header values in models.json are left out of the mirror f
   assert.equal(providers.anthropic, undefined);
 
   // The gateway serves exactly what the mirror left out, under the names it uses.
-  const { secrets: served } = await brokeredModels(join(agentDir, "models.json"));
-  assert.deepEqual([...served.keys()].toSorted(), ["anthropic", "custom"]);
-  assert.equal(served.get("anthropic")!.key, "built-in-key");
-  const custom = served.get("custom")!;
-  assert.equal(custom.key, "sk-literal-key");
+  const { keys, env } = await brokeredModels(join(agentDir, "models.json"));
+  assert.deepEqual(Object.fromEntries(keys), { anthropic: "built-in-key", custom: "sk-literal-key" });
   const variable = (value: string) => value.match(/^\$\{(HUI_SECRET_[0-9A-F]{16})\}$/u)![1]!;
-  assert.equal(custom.env[variable(providers.custom.headers["x-secret"])], "literal-header-secret");
-  assert.equal(custom.env[variable(providers.custom.models[0].headers["x-model-token"])], "model-header-secret");
-  assert.equal(Object.keys(custom.env).length, 2);
+  assert.deepEqual(env, {
+    [variable(providers.custom.headers["x-secret"])]: "literal-header-secret",
+    [variable(providers.custom.models[0].headers["x-model-token"])]: "model-header-secret",
+  });
+  assert.deepEqual(plan.env, env);
 });
 
 test("an invalid models.json is not mirrored", async (t) => {
