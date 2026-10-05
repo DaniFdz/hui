@@ -164,7 +164,9 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   OpenClaw's device-code layout; once GitHub confirms, the section turns
   Connected. Without `gh` on the gateway's PATH it shows "GitHub CLI required"
   with an install link instead of a sign-in button. The token stays in gh.
-- Contributions (first sidebar destination) charts the GitHub activity of every
+- Contributions (first sidebar destination) has two tabs, *GitHub* (default)
+  and *Calendar*; the browser remembers the choice, and GitHub is read only
+  once its tab is shown. The GitHub tab charts the GitHub activity of every
   account signed in to `gh` on the HUI machine: a GitHub-style calendar (a
   square per local day, month and Mon/Wed/Fri labels, Less→More legend, hover
   for the day's count) and a bar per week (hover for the week's count). One *Commits* / *Pull requests*
@@ -184,6 +186,32 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   its error above the charts while the others still render, and a year that
   fails to load leaves the previous one selected; with no account, the page
   links to Settings → Integrations.
+- The Calendar tab shows one week (Monday first, *Previous week* / *This
+  week* / *Next week*, never past the current week, and *Refresh*) of the
+  operator's HUI sessions: subagent sessions are left out, archived ones
+  included. A session was worked on from one message to the next until 30
+  minutes pass without one; each such stretch is a block. A day runs from
+  5 AM to 5 AM, so late-night work stays in the column of the day it began; the
+  hour axis covers 9 AM to 6 PM and every block. Each session has one color:
+  the session palette, then the same colors shaded, busiest first, repeating
+  after sixteen sessions; overlapping blocks share their day
+  in side-by-side lanes, and a one-message block is drawn 15 minutes tall.
+  Today's column is tinted with a line at the current time. Activating a block
+  opens a card beside it (below it on narrow screens): title, day, start–end and
+  length, the session's group and the block's model, the operator's first
+  message in the block, the session's total this week, and *Open session*;
+  Escape or a click elsewhere closes it. The heading shows the week, how many
+  sessions and blocks it had and, when more than one, the most sessions running
+  at once. Beside the
+  grid (below it on narrow screens), the total working time counts parallel
+  sessions once ("31h 10m across 11 sessions", a bar split by session, and
+  the summed session time); every session follows with its time, most first.
+  Hovering a session dims the others' blocks; activating it keeps them dimmed
+  until activated again. *Hours per day* charts each day's working time and
+  labels the busiest. Only Durable conversations are read; sessions still on
+  PI's worker appear once `hui doctor --fix` moves them. A rewind continues the
+  session on a copy of the history before that point, so the time spent on the
+  abandoned branch leaves the calendar.
 - Chat messages unfurl GitHub repositories, pull requests and issues (URLs or
   `owner/repo#N`) as cards after the message, at most three per message like
   Slack: PRs show state, title, description snippet, author and diff stats;
