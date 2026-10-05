@@ -159,6 +159,8 @@ export type StartOptions = {
   /** HUI registry id. PI extensions use it to address their private, local
    * coordination bridge without exposing session state to the browser. */
   huiSessionId?: string;
+  /** Remote worker that hosts the session; absent means this machine. */
+  worker?: string;
 };
 
 export type RuntimeSession = {
@@ -220,17 +222,21 @@ export type RuntimeSession = {
   /** Resume the model from the current non-assistant tail without a user prompt. */
   continueRun?(): Promise<void>;
   /** Fires when the tool's process ends on its own, so a gateway can mark the
-   * session failed rather than wait on a session that is already gone. */
-  onExit?(listener: () => void): () => void;
+   * session failed rather than wait on a session that is already gone. A
+   * runtime hosted elsewhere also fires it, with `unreachable`, when only the
+   * connection to it ended and the session goes on there. */
+  onExit?(listener: (unreachable?: RuntimeUnreachableError) => void): () => void;
   /** Bytes of an image attached to a history message, located by the
    * `source` of a transcript attachment. */
-  attachmentImage?(message: number, image: number): { mimeType: string; data: Buffer } | undefined;
+  attachmentImage?(message: number, image: number): Promise<{ mimeType: string; data: Buffer } | undefined>;
+  /** Stored path of a file the user attached; the gateway confines it to HUI's attachment store. */
+  attachmentFile?(message: number, file: number): string | undefined;
   /** Messages already in the conversation, for a first paint. */
   transcript(): TranscriptEntry[];
   dispose(): void;
 };
 
-/** An attachment shown on a transcript message. `source` locates image bytes
+/** An attachment shown on a transcript message. `source` locates its bytes
  * inside the runtime's history and is replaced by an opaque gateway `url`
  * before leaving the server. */
 export type TranscriptAttachment = {
@@ -238,7 +244,7 @@ export type TranscriptAttachment = {
   kind: "image" | "file";
   mimeType?: string;
   url?: string;
-  source?: { message: number; image: number };
+  source?: { message: number; image: number } | { message: number; file: number };
 };
 
 export type TranscriptEntry = { metrics?: TranscriptMetrics } & (
@@ -270,6 +276,19 @@ export type AgentRuntime = {
   readonly id: string;
   start(options: StartOptions): Promise<RuntimeSession>;
 };
+
+/** The host of a runtime that runs elsewhere cannot be reached, which says
+ * nothing about the session: it goes on there. `reconnecting` says whether
+ * HUI retries by itself. */
+export class RuntimeUnreachableError extends Error {
+  readonly reconnecting: boolean;
+
+  constructor(message: string, reconnecting: boolean) {
+    super(message);
+    this.name = "RuntimeUnreachableError";
+    this.reconnecting = reconnecting;
+  }
+}
 
 /** A runtime that failed to start, with the process output that explains why.
  * `message` is user-facing; `output` feeds diagnostics only. */

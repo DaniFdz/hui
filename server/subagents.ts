@@ -277,6 +277,8 @@ export class SubagentService {
         group: caller.group,
         ...(caller.archived ? { archived: true } : {}),
         cwd: caller.cwd,
+        // A remote session's children run on the same worker.
+        ...(caller.worker ? { worker: caller.worker } : {}),
         tool: caller.tool,
         model: model ?? caller.model,
         thinking: thinking ?? caller.thinking,
@@ -402,6 +404,8 @@ export class SubagentService {
         if (message.kind === "event" && message.event.type === "settled") settle("completed");
         else if (message.kind === "status" && message.status === "error") {
           settle("failed", "The subagent runtime failed.");
+        } else if (message.kind === "status" && message.status === "disconnected") {
+          settle("failed", "HUI is disconnected from the machine the subagent runs on.");
         } else if (message.kind === "closed") {
           settle("failed", "The subagent runtime exited.");
         }
@@ -781,6 +785,7 @@ export class SubagentService {
       const inspect = (status: SessionStatus) => {
         if (status === "idle" || status === "running" || status === "waiting") finish();
         else if (status === "error") finish(new Error("The target runtime could not start."));
+        else if (status === "disconnected") finish(new Error("The target runtime's machine is disconnected."));
       };
       const watched = this.sessions.watch(sessionId, (message) => {
         if (message.kind === "status") inspect(message.status);

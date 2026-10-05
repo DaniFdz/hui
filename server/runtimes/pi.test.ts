@@ -609,7 +609,7 @@ test("steer and follow-up preserve images, file references and durable display n
     { type: "text", text: steer?.["message"] },
     { type: "image", data: "AAAA", mimeType: "image/png" },
   ] }]), [
-    { kind: "message", role: "user", text: "look", attachments: [{ name: "captura final 🏂.png", kind: "image", mimeType: "image/png", source: { message: 0, image: 0 } }, { name: "notas finales.txt", kind: "file" }] },
+    { kind: "message", role: "user", text: "look", attachments: [{ name: "captura final 🏂.png", kind: "image", mimeType: "image/png", source: { message: 0, image: 0 } }, { name: "notas finales.txt", kind: "file", source: { message: 0, file: 0 } }] },
   ]);
   session.dispose();
 });
@@ -642,11 +642,14 @@ test("settled transcript restores image and file names without exposing transpor
     role: "user",
     text: "inspect these",
     entryId: "e0",
-    attachments: [{ name: "screen.png", kind: "image", mimeType: "image/png", source: { message: 0, image: 0 } }, { name: "report.txt", kind: "file" }],
+    attachments: [{ name: "screen.png", kind: "image", mimeType: "image/png", source: { message: 0, image: 0 } }, { name: "report.txt", kind: "file", source: { message: 0, file: 0 } }],
   }]);
-  assert.deepEqual(session.attachmentImage(0, 0), { mimeType: "image/png", data: Buffer.from("AAAA", "base64") });
-  assert.equal(session.attachmentImage(0, 1), undefined);
-  assert.equal(session.attachmentImage(5, 0), undefined);
+  assert.deepEqual(await session.attachmentImage(0, 0), { mimeType: "image/png", data: Buffer.from("AAAA", "base64") });
+  assert.equal(await session.attachmentImage(0, 1), undefined);
+  assert.equal(await session.attachmentImage(5, 0), undefined);
+  assert.equal(session.attachmentFile(0, 0), "/tmp/uuid-report.txt");
+  assert.equal(session.attachmentFile(0, 1), undefined);
+  assert.equal(session.attachmentFile(5, 0), undefined);
   const restored = transcript[0];
   assert.doesNotMatch(restored?.kind === "message" ? restored.text : "", /hui-attachments|uuid-report/);
   session.dispose();

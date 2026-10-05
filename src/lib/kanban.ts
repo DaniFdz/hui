@@ -34,6 +34,7 @@ export function kanbanStatus(session: Pick<SessionView, "status" | "unread">): K
   if (session.status === "error") return "error";
   if (session.status === "waiting") return "waiting";
   if (session.status === "running" || session.status === "starting") return "working";
+  // Out of reach (`reconnecting`, `disconnected`) is not a failure; it reads idle.
   return session.unread ? "done" : "idle";
 }
 

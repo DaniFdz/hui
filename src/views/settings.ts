@@ -19,6 +19,7 @@ import "./settings-browser.ts";
 import "./settings-jira.ts";
 import "./settings-github.ts";
 import "./settings-providers.ts";
+import "./settings-workers.ts";
 import { renderAutomationPage, type AutomationProps } from "./settings-automation.ts";
 import { renderWorktreesPage, type WorktreesPageProps } from "./worktrees.ts";
 import {
@@ -50,6 +51,7 @@ export const SETTINGS_PAGES = [
   { id: "appearance", label: "Appearance", group: "", icon: "palette" },
   { id: "connection", label: "Gateway", group: "Connections", icon: "radio" },
   { id: "integrations", label: "Integrations", group: "Connections", icon: "grid" },
+  { id: "workers", label: "Workers", group: "Connections", icon: "globe" },
   { id: "models", label: "Models", group: "Agents & Tools", icon: "box" },
   { id: "plugins", label: "Plugins", group: "Agents & Tools", icon: "plug" },
   { id: "skills", label: "Skills", group: "Agents & Tools", icon: "zap" },
@@ -971,7 +973,7 @@ function renderSecurityPage(props: SettingsProps) {
     ${props.piError || props.healthError ? html`<div class="settings-page__note settings-page__intro" role="alert">${[props.piError, props.healthError].filter(Boolean).join(" ")}<button type="button" class="btn" @click=${props.onRetryPi}>Retry</button></div>` : nothing}`;
 }
 
-const SETTINGS_SUMMARIES: Record<Exclude<SettingsPage, "appearance" | "skills" | "tools" | "models" | "automation" | "sessions" | "security" | "worktrees">, string> = {
+const SETTINGS_SUMMARIES: Record<Exclude<SettingsPage, "appearance" | "skills" | "tools" | "models" | "automation" | "sessions" | "security" | "worktrees" | "workers">, string> = {
   connection: "HUI server, local PI runtime, reconnect behaviour and health.",
   integrations: "Connections to external services such as Jira and GitHub.",
   plugins: "Packages, extensions, permissions and provider adapters.",
@@ -1098,7 +1100,7 @@ export function renderSettingsPage(props: SettingsProps) {
         </div>
       </header>
       <div class="settings-workspace"><div class="settings-workspace__body">
-        <div class="settings-page ${["plugins", "skills", "automation", "sessions", "worktrees"].includes(props.page) ? "settings-page--wide" : ""}">
+        <div class="settings-page ${["plugins", "skills", "automation", "sessions", "worktrees", "workers"].includes(props.page) ? "settings-page--wide" : ""}">
           ${props.page === "appearance"
             ? renderAppearancePage(props)
             : props.page === "skills"
@@ -1111,6 +1113,8 @@ export function renderSettingsPage(props: SettingsProps) {
                     ? renderConnectionPage(props)
                     : props.page === "integrations"
                     ? renderIntegrationsPage()
+                    : props.page === "workers"
+                    ? html`<hui-workers-settings></hui-workers-settings>`
                     : props.page === "plugins"
                       ? renderPluginsPage(props)
                       : props.page === "memory"

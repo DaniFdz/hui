@@ -71,14 +71,15 @@ test("session history actions expose direct editable rewind and prompt-free cont
   assert.doesNotMatch(source, /aria-label="Rewind session"/u);
   assert.match(source, /class="chat-group-rewind" aria-label=\$\{props\.rewindPending \? "Rewinding…" : "Rewind to here"\}/u);
   assert.match(source, /renderActionTooltip\(rewindTooltipId, props\.rewindPending \? "Rewinding…" : "Rewind"/u);
-  assert.match(source, /props\.onRewind\(rewindTo, last\?\.text \?\? ""\)/u);
+  assert.match(source, /props\.onRewind\(rewindTo, last\?\.text \?\? "", last\?\.attachments\)/u);
   assert.doesNotMatch(source, /row\.role === "user" && !props\.streaming/u);
   assert.match(source, /aria-label="Continue without a prompt"/u);
   assert.doesNotMatch(source, /rewind-session-dialog|Rewind here|Rewind point/u);
   assert.doesNotMatch(app, /loadSessionCheckpoints/u);
   assert.doesNotMatch(app, /!session \|\| this\.streaming \|\| this\.opening \|\| this\.rewindPending/u);
   assert.match(app, /rewindSession\(session\.id, target, true\)/u);
-  assert.match(app, /this\.draft = text/u);
+  assert.match(app, /this\.setDraft\(text\)/u);
+  assert.match(app, /this\.attachments = attachments/u);
   assert.match(app, /this\.composerTextarea\?\.focus\(\)/u);
   assert.match(app, /resumeSession\(session\.id\)/u);
 });
@@ -124,7 +125,7 @@ test("the composer ports OpenClaw input interactions without unsupported control
   const app = readFileSync(new URL("../hui-app.ts", import.meta.url), "utf8");
   assert.match(app, /observeTextareaOverflow\(textarea\)/);
   assert.match(app, /disconnectTextareaOverflowObserver\(this\.composerTextarea\)/);
-  assert.match(app, /changed\.has\("draft"\)/);
+  assert.match(app, /changed\.has\("draftRevision"\)/);
   assert.doesNotMatch(source, /@scroll=\$\{[^\n]*syncComposerTextarea/);
   assert.match(source, /@paste=\$\{onComposerPaste\(props\)\}/);
   assert.match(source, /PASTED_TEXT_ATTACHMENT_THRESHOLD/);
@@ -136,6 +137,26 @@ test("the composer ports OpenClaw input interactions without unsupported control
   assert.match(styles, /\.chat\[data-attachment-drop-active\]/);
   assert.doesNotMatch(source, /Full Access/);
   assert.doesNotMatch(source, /aria-label="Dictate"/);
+});
+
+test("typing edits the composer without re-rendering the transcript behind it", () => {
+  const app = readFileSync(new URL("../hui-app.ts", import.meta.url), "utf8");
+  const home = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
+
+  // The draft is a plain field, so assigning it never schedules a Lit update.
+  assert.match(app, /private draft = "";/u);
+  assert.doesNotMatch(app, /@state\(\) private draft\b/u);
+  // Typing asks for a render only when the composer stops or starts holding text
+  // (Send/Stop), and never for the post-render measuring pass.
+  const typed = app.slice(app.indexOf("private typeDraft"), app.indexOf("private setDraft"));
+  assert.match(typed, /if \(\(draft\.trim\(\) !== ""\) !== hadText\) this\.requestUpdate\(\);/u);
+  assert.doesNotMatch(typed, /draftRevision/u);
+  // A draft HUI puts in the composer does reach the textarea and its height.
+  assert.match(app, /private setDraft\(draft: string\) \{\s*this\.draft = draft;\s*this\.draftRevision \+= 1;\s*\}/u);
+  assert.match(app, /onDraftInput: this\.typeDraft,/u);
+  // Reply quotes onto the live textarea value, not a draft rendered earlier.
+  assert.match(home, /props\.onDraftInput\(textarea\.value\)/u);
+  assert.match(home, /props\.onDraftChange\(replyDraft\(editor\?\.value \?\? props\.draft, text\)\)/u);
 });
 
 test("chat and New Session expose cursor-aware local path completion", () => {
@@ -441,4 +462,60 @@ test("composer notices render above the progress card and queue, which underlap 
   const order = ["${renderRunError(", "agent-chat__interrupted-recovery\" role", "${renderTaskProgress(", "${renderQueue(", "<form class=\"agent-chat__input"]
     .map((marker) => source.indexOf(marker));
   assert.ok(order.every((index, i) => index > 0 && (i === 0 || index > order[i - 1]!)), String(order));
+});
+
+/** A Lit template's markup, with bound values written out. */
+function markup(value: unknown): string {
+  if (Array.isArray(value)) return value.map(markup).join("");
+  if (value && typeof value === "object" && "strings" in value && "values" in value) {
+    const template = value as { strings: readonly string[]; values: unknown[] };
+    return template.strings.map((part, i) => part + markup(template.values[i])).join("");
+  }
+  return ["string", "number", "boolean"].includes(typeof value) ? String(value) : "";
+}
+
+/** An open worker session; handlers are inert and unlisted props absent. */
+async function renderWorkerSession(status: string, overrides: Record<string, unknown> = {}): Promise<string> {
+  const { renderHome } = await import("./home.ts");
+  const props: Record<string, unknown> = {
+    session: { id: "s", title: "Build", group: "", cwd: "/repo", displayCwd: "devbox:/repo", tool: "durable", status, worker: { id: "w", name: "devbox" } },
+    transcript: [{ kind: "message", role: "user", text: "long task" }], subagents: [], draft: "keep this draft", attachments: [],
+    connection: "live", connectionNote: "", queue: { steering: [], followUp: [] }, models: [], expandedActivityIds: new Set(),
+    chatPreferences: { collapseTaskProgress: false, sendShortcut: "enter", githubEmbeds: false },
+    commandMenu: { open: false, commands: [], activeIndex: 0, paths: [] }, localPathMenu: { open: false, paths: [], activeIndex: 0 },
+    ...overrides,
+  };
+  const inert = new Proxy(props, { get: (target, key) => key in target ? target[key as string] : typeof key === "string" && key.startsWith("on") ? () => {} : undefined });
+  return markup(renderHome(inert as unknown as import("./home.ts").HomeProps)).replace(/\s+/gu, " ");
+}
+
+const sendButton = (html: string) => html.match(/<button type="submit" class="chat-send-btn chat-send-btn--send" \?disabled=(\w+)/u)?.[1];
+
+test("a worker session HUI is reconnecting to reads calm: a status, one notice, the draft kept and no failure", async () => {
+  const html = await renderWorkerSession("reconnecting");
+  assert.match(html, /durable on devbox · [^<]* · Reconnecting to devbox… </u);
+  assert.match(html, /Reconnecting to devbox — draft preserved\./u);
+  assert.equal(html.split("Connection to devbox lost — the session keeps running there. HUI reconnects automatically.").length, 2, "exactly one notice");
+  assert.doesNotMatch(html, /The runtime could not start|Retry session|chat-error|exited|no longer streaming|Stream stopped/u);
+  assert.doesNotMatch(html, /reconnect-session/u, "HUI reconnects by itself; there is nothing to click");
+  assert.match(html, /\.value=keep this draft/u);
+  assert.match(html, /placeholder=Draft while HUI reconnects…/u);
+  assert.equal(sendButton(html), "true", "sending waits for the worker");
+});
+
+test("a worker session HUI no longer retries says it is disconnected and offers Reconnect", async () => {
+  const html = await renderWorkerSession("disconnected");
+  assert.match(html, /· Disconnected from devbox </u);
+  assert.match(html, /Disconnected from devbox — draft preserved\./u);
+  assert.match(html, /Disconnected from devbox\. The session may still be running there\. <button type="button" class="btn btn--sm reconnect-session" @click=>Reconnect<\/button>/u);
+  assert.doesNotMatch(html, /The runtime could not start|Retry session|chat-error|exited|no longer streaming|Stream stopped/u);
+  assert.match(html, /\.value=keep this draft/u);
+  assert.equal(sendButton(html), "true");
+});
+
+test("a reachable worker session shows neither notice, and a failed one keeps its error banner", async () => {
+  const idle = await renderWorkerSession("idle");
+  assert.doesNotMatch(idle, /Reconnecting to|Disconnected from|reconnect-session/u);
+  assert.equal(sendButton(idle), "false");
+  assert.match(await renderWorkerSession("error"), /The runtime could not start\./u);
 });

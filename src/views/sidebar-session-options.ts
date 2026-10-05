@@ -38,7 +38,7 @@ export function renderSidebarSessionOptions(
       <div class="session-menu__separator" role="separator"></div>
       ${section("Sort by", "sortBy", [["created", "Created"], ["updated", "Last updated"], ["title", "Name"], ["stage", "Stage"]])}
       <div class="session-menu__separator" role="separator"></div>
-      ${section("Status", "status", [["all", "All"], ["running", "Running"], ["starting", "Starting"], ["waiting", "Waiting"], ["idle", "Idle"], ["error", "Error"]])}
+      ${section("Status", "status", [["all", "All"], ["running", "Running"], ["starting", "Starting"], ["waiting", "Waiting"], ["idle", "Idle"], ["error", "Error"], ["reconnecting", "Reconnecting"], ["disconnected", "Disconnected"]])}
       <div class="session-menu__separator" role="separator"></div>
       ${section("Hide empty groups", "hideEmpty", [["filtering", "When filtering"], ["always", "Always"], ["never", "Never"]])}
     </wa-dropdown>

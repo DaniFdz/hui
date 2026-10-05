@@ -43,7 +43,8 @@ Neither the public health route nor `hui gateway status --json` reveals the
 control URL or token. No shutdown route is added to `/__hui/`.
 
 Normal stop returns 409 while turns, questions, follow-ups or HTTP mutations are
-active. Forced stop explicitly interrupts work. CLI lifecycle operations are
+active; worker sessions that are `reconnecting` or `disconnected` run on their
+worker and count only for the follow-ups HUI holds for them. Forced stop explicitly interrupts work. CLI lifecycle operations are
 serialized, refuse unauthenticated live PIDs and wait for the old process to
 exit before replacement. `gateway.log` is private and receives the gateway's
 stderr, including one line per Logs entry (see `GET /__hui/observability`); the
@@ -125,7 +126,10 @@ directory). A lock file refuses a second gateway on the same store; Durable has
 no cross-process locking of its own. Each HUI session is one Durable
 conversation and stores `durable:<conversationId>` in `piSessionFile`.
 
-Opening the store resumes every unfinished run. A gateway restart therefore
+Opening the store resumes every unfinished run, once the gateway has reopened
+the sessions that own them and they have loaded their PI extensions again
+(`DurableHost.beforeResume`, at most 30 seconds), so a resumed tool call finds
+its tool. A gateway restart therefore
 does not interrupt Durable work: the run continues, an interrupted tool call is
 reported to the model as interrupted (never rerun), and HUI's recovery prompt is
 not used (`RuntimeSession.resumesInterruptedRuns`). Prompts, steering and
@@ -136,6 +140,38 @@ the agent-tool handler directly with the conversation's bound HUI session,
 falling back to the registry after a restart. Usage totals read Durable's
 per-conversation spend. `HUI_SESSION_RUNTIME=pi` creates new sessions on the
 PI worker described below.
+
+Each session loads its PI extensions (`server/runtimes/durable-extensions.ts`):
+the set the PI worker would load, with the same plugin policy, as fresh
+instances driven by PI's `ExtensionRunner` in the gateway. Their tools and
+hooks form one Durable extension, `pi:<HUI session id>`, that only the session's
+conversations select; the harness's default selection is HUI's own extensions,
+and a session without PI extensions selects nothing more. Durable's hooks carry
+`tool_call` and `tool_result` (tool task), `context` (generation
+`beforeRequest`) and `session_before_compact` (compaction task); the request's
+provider callbacks carry `before_provider_request` and `after_provider_response`;
+the session's event stream carries the lifecycle events, one at a time and in
+PI's order (a run's start before the prompt that began it), and the session
+reports `settled` only after its extensions' `agent_end` and `agent_settled`
+handlers ran, or after 30 seconds with a `notice`; until then the session is
+still busy for HUI, while its extensions see the run over. Prompts pass
+`input` handlers, then skill and template expansion, then
+`before_agent_start`; the prompt request returns once the input is submitted or
+a handler first asks something, as for PI sessions. The session is not running
+until the input is submitted, and Stop meanwhile sends nothing.
+`session_start` holds a session's opening only until it ends or first asks
+something. Each lifecycle handler's `ctx.signal` is the signal of the run its
+event belongs to, aborted by Stop. An extension command runs when sent as `/name` (or the
+`$name` alias); its prompt request returns once it ends or first asks
+something. Dialogs are `question` events answered through the question routes,
+and Stop dismisses them; `notify` is a `notice`. `ctx.sessionManager` is an
+in-memory PI session projected from the history. `appendEntry` data is stored
+as a `hui.pi-entry` entry. A custom message is a `hui.pi-message` entry the
+model reads as user input, written before the prompt `before_agent_start` added
+it to (PI places it after), so a rewind to before that prompt leaves it out too;
+one that starts or steers a turn is input whose text part carries its
+`customType`. The transcript leaves both out, as for PI sessions. Load errors and handler failures appear in the session's tool
+inspection `diagnostics`; handler failures are also `notice`s.
 
 `hui doctor --fix` moves a PI session into a new conversation
 (`server/runtimes/pi-import.ts`) with the gateway stopped. One commit writes the
@@ -189,6 +225,18 @@ verbatim.
   after a fork it finishes on the abandoned branch.
 - A compaction already running when a session opens (Durable resumes it after a
   restart) is reported to each new subscriber.
+- Extensions get `session_compact` when a summary entry is placed, with that
+  entry; a compaction that places none (declined, nothing to summarize, or
+  dropped as stale) sends none. An extension's `ctx.compact()` waits for its
+  own task's summary, at the run's next boundary if a run is going, and calls
+  `onComplete` with that entry or `onError` once with why it was not placed.
+  `/clear`, `/reload`, a rewind or closing the session ends a pending one with
+  "Compaction cancelled". These go beside the gateway's own compactions and
+  bypass the 409 above. Unlike PI, completion callbacks do not wait for queued
+  `session_compact` handlers. The projection retains Durable's summary wrapper
+  and reports `tokensBefore: 0`. After a stream gap, `fromExtension` can be false
+  when the summary's originating compaction cannot be recovered from its entry;
+  the summary and callback correlation still use the actual placed entry.
 
 ## PI process binding
 
@@ -458,7 +506,8 @@ and `PUT /__hui/settings` include `disabledSkills`, a normalized array of
 files and configuration untouched and applies when a HUI PI runtime next starts.
 The SDK worker filters packages and direct extensions from a process-local
 settings view before PI discovers resources, so their executable code and
-bundled skills/prompts never load. Individual disabled skills are removed before
+bundled skills/prompts never load. Durable sessions load extensions, skills and
+prompts through the same filtered view. Individual disabled skills are removed before
 prompt and command assembly. Existing live runtimes are not killed or restarted.
 When `HUI_PI_BACKEND=cli`, an active plugin policy fails startup explicitly rather
 than silently loading disabled code.
@@ -484,7 +533,7 @@ cheap, fast, tool-free route for generated session titles and `/btw`. Example:
 ### `GET /__hui/health`
 
 Returns gateway uptime, `HTTP + SSE`, the fixed `Full Access` product mode and
-registered/live PI runtime counts. This endpoint is diagnostic and read-only.
+registered/live PI runtime counts per session status. This endpoint is diagnostic and read-only.
 
 ### macOS power
 
@@ -579,7 +628,9 @@ that case the base falls back to `origin/HEAD`’s target, the current branch or
 ## Shapes
 
 ```ts
-type SessionStatus = "idle" | "running" | "waiting" | "starting" | "error";
+type SessionStatus = "idle" | "running" | "waiting" | "starting" | "error"
+  | "reconnecting"   // worker session: connection down, HUI retries by itself
+  | "disconnected";  // worker session: HUI is not retrying (disconnected or removed worker)
 
 type SessionView = {
   id: string;
@@ -635,9 +686,13 @@ type SubagentTaskView = SubagentRecord & {
 // `url` is present for images whose bytes the gateway can serve:
 // GET /__hui/sessions/:id/attachments/:message/:image (x-hui: 1, or
 // `sec-fetch-site: same-origin` so <img> can load it; cross-site is refused).
-// 200 with the image's raster MIME type, `cache-control: private, max-age=3600`,
+// 200 with the image's raster MIME type, `cache-control: no-store` (a rewind
+// gives the next message the same position, so the URL can name new bytes),
 // `x-content-type-options: nosniff`; 403 without x-hui, 404 for an unknown
 // session, index or non-image part, 405 for other methods.
+// Files a user attached have `url` GET /__hui/sessions/:id/attachments/:message/files/:file
+// with the same guard and headers, served as `application/octet-stream`; 404 also
+// when the stored path is missing or resolves outside HUI's attachment store.
 type TranscriptAttachment = { name: string; kind: "image" | "file"; mimeType?: string; url?: string };
 
 type TranscriptEntry =
@@ -901,6 +956,116 @@ the route additionally requires the exact stored display name and sends
 byte range (`206`/`416`) for native video/audio seek. Recognized media is inline;
 unknown formats use `application/octet-stream` and attachment disposition.
 
+## Remote workers
+
+Workers are stored in `~/.config/hui/workers.json` (`{ version: 1, workers: [{ id,
+name, command: string[], extraPaths: string[], createdAt, updatedAt }] }`). A
+session record's optional `worker` names the worker it runs on; `piSessionFile`
+and `cwd` are then remote paths. `SessionView` adds `worker: { id, name }` and a
+`displayCwd` of `name:path`.
+
+### Transport and protocol
+
+Every remote step runs `<command> sh -s` with a script on stdin: a probe, an
+optional Node install, an optional release install (gzip+base64 JSON bundle of
+the gateway's own worker code, then `npm install --omit=dev`), and finally
+`exec node <release>/…/worker/main(.ts|.js) connect`. The bridge prints
+`{"t":"ready"}` once it reaches the host's Unix socket; earlier output is shell
+noise and ignored. From then on both sides exchange `\n`-delimited JSON frames:
+`{t:"req",id,op,p}` / `{t:"res",id,ok,result|error}` requests in either
+direction, plus pushed `session.event` and `session.exit` frames.
+Gateway requests: `hello` (the host's protocol version and release; a
+mismatch replaces an idle host), `shutdown` (only when idle and no other
+gateway is connected; running Durable work does not count, it resumes in the
+new host), `session.start {key,tool,launch}` (start or reattach the `durable`
+or `pi` runtime for one HUI session id; replies `{state,seq,transcript,methods}`
+with the optional `RuntimeSession` methods it offers), `session.call
+{key,method,args}` (one of those methods; replies `{result?,state,seq,transcript?}`;
+a `followUp` that arrives once the run has settled starts the next run, as a
+`prompt`), `session.transcript {key,seq,offset}` (one page of at most 8 MB of
+the transcript a frame with that `seq` left behind, `{entries,total}`),
+`session.dispose {key}`, `forget {keys}`,
+`put-file`, `get-file` and `sync-plan`/`sync-put`/`sync-commit`. `state` is the runtime's
+synchronous view (`sessionId`, `sessionFile`, `isStreaming`,
+`resumesInterruptedRuns`, `model`, `usage`, `thinking`, `queue` and
+`questions`). Every reply and every `session.event {key,event,state,seq}`
+carries it, plus the whole `transcript` after `settled` and `compaction_end`
+and after `clear`, `rewind`, `reload`, `abort` and `continueRun` calls. `seq`
+grows with every frame and reply sent for a session; the gateway applies
+neither state nor transcript when it already holds a newer one, since a reply
+resumes after the events that followed it on the stream. A transcript over
+8 MB is replaced by `transcriptPaged: true`; the host keeps it as it was under
+that frame's `seq`, and the gateway reads it with `session.transcript` before
+handling that frame and the ones after it. A
+record with `worker` uses this remote adapter and its `tool` names the runtime
+the host runs; a Durable `durable:N` names a conversation in that worker's own
+store. A PI session's `resumesInterruptedRuns` is false only while its last
+run started and was never seen settling (the host records those session ids
+in its state directory's `pi-runs.json` before the run starts, and drops them
+on `forget`), so HUI recovers exactly the PI runs a host or runtime stop cut
+off. The host records which HUI session each Durable conversation belongs to,
+including one a rewind moved it to, in `conversations.json`, so runs a
+restarted host resumes call HUI tools as that session. Host requests: `credential`
+(`read`, `list`, `delete`, `modify` against the gateway store `pi` or
+`hui:<providers-relative path>`), the nested `credential-step` that runs an
+OAuth refresh callback on the remote while the gateway holds its lock, and
+`bridge` (a HUI agent tool call; the gateway refuses callers whose session is
+not on that worker, and refuses `terminal`, `browser` and `watcher`). With no
+gateway connected a `bridge` call fails at once, and one in flight fails when
+the connection drops. `read` and `list` answers are cached in host memory
+until the credential's `expires` (API keys: while the host runs) and served
+while no gateway is connected; nothing is written to disk. Without a cached
+answer the remote's own PI login is used (its `auth.json` only if it already
+exists; HUI never creates it). The mirrored PI `models.json` holds
+no literal secrets: a literal `apiKey` is dropped, and the gateway answers a
+`pi` `read` for that provider with `{type: "api_key", key}` when its auth.json
+has none (and lists it); a literal value of a credential-like header (a name
+with a `-`/`_`/`.`-separated part `auth`, `authorization`, `cookie`, `token`,
+`secret`, `password`, `passphrase`, `passcode`, `credential(s)`, `jwt`,
+`signature`, `bearer` or `csrf`, or containing `api-key`, `apikey`,
+`access-key`, `private-key` or `secret-key`, case-insensitively; provider,
+model or model override) becomes `${HUI_SECRET_<16 hex>}`, a name derived from its place,
+whose values ride in `sync-commit`'s `env`. The host keeps them in memory
+(replaced by each sync, lost when it stops) and serves them to PI as
+environment variables, its own reads and those of the PI workers it starts,
+while leaving them out of every environment a process it starts inherits. Values PI resolves itself (`$NAME`, `${NAME}`, `!command`) are
+mirrored unchanged; an invalid models.json is not mirrored. The worker needs
+Node.js 22.19 or newer.
+
+### `GET /__hui/workers`
+
+`{ "workers": WorkerView[] }`: `{ id, name, command, extraPaths, state:
+"disconnected" | "connecting" | "connected" | "error", phase?, error?, host?: {
+hostname, platform, arch, node, home, release }, sync?: { at, files, uploaded,
+deleted, installed, skipped, errors } }`. Connection state is gateway memory.
+
+### `POST /__hui/workers` · `PATCH|DELETE /__hui/workers/:id`
+
+Body `{ name, command, extraPaths? }`; `command` is parsed like a shell would
+split plain words and quotes, without expansion. `POST` responds 201 `{ worker
+}`. A new command applies to the next connection. `DELETE` returns 409 while any
+session record names the worker; nothing on the remote is deleted.
+
+### `POST /__hui/workers/:id/connect|sync|disconnect`
+
+`connect` and `sync` respond 202 and continue in the gateway (a first connect
+may install Node and HUI); follow `GET /__hui/workers`. Both sides ping every
+15 s and drop a connection that stays silent for 45 s. A worker whose lost
+connection had sessions attached reconnects after 5 s, 30 s, 1 min, then every
+5 min; sessions the loss interrupted are then reopened and reattach to their
+still-running processes. Meanwhile those sessions report `reconnecting`, with
+no error event and no `closed` frame: their streams stay open and receive the
+caught-up snapshot on reattach, preceded by a `settled` event when a run HUI
+saw start finished there meanwhile. A subagent or automation run waiting on a
+session fails once it is `disconnected`. A disconnect or removal stops the retries and
+reports `disconnected`, as does opening a worker session whose worker cannot be
+reached while no retry is scheduled (after a gateway restart, say). Opening a
+`reconnecting` or `disconnected` session never connects its worker, nor does
+opening any session of a worker this route disconnected (gateway memory, until
+a `connect` or `sync`); any successful `connect` (automatic or this route)
+reattaches them. Prompts and
+other runtime requests to them return 409 with a message saying why.
+
 ## Routes
 
 ### `GET /__hui/sessions/:id/commands`
@@ -1034,7 +1199,10 @@ Registers a new session **and starts it**. Body:
 { "cwd": "/abs/path", "title": "optional", "initialPrompt": "optional", "group": "optional", "tool": "pi", "model": "openai/gpt-5.6", "thinking": "high", "worktree": true, "baseRef": "main", "branchName": "my-feature" }
 ```
 
-`cwd` must be an existing absolute directory. When supplied, `title` is trimmed
+`cwd` must be an existing absolute directory. With `"worker": "<worker id>"`
+the session runs on that remote worker instead: `cwd` is a remote path that
+must be absolute or start with `~/`, it is checked when the runtime starts
+(not during this request), and `worktree`/`baseRef` are rejected. When supplied, `title` is trimmed
 and must be 1–200 characters; `group` is trimmed and may be empty but cannot
 exceed 200 characters. Responds `{ "session": SessionView }`.
 The id is HUI's own UUID. `tool` may be omitted or `pi`; other values are
@@ -1452,7 +1620,9 @@ Body: `{ "entryId": "...", "excludeUserMessage": true }`. Moves PI's active
 leaf to that existing entry, refreshes HUI's authoritative transcript and emits
 a snapshot. When `excludeUserMessage` is true and the entry is a user message,
 PI stops before it so the browser can restore the selected text to the composer
-for editing. The browser sends the `entryId` of the transcript message itself.
+for editing. The browser first reads the message's images and files through
+their attachment URLs, which stop resolving once the rewind leaves that branch,
+and restores them with the text; any it cannot read are left out. The browser sends the `entryId` of the transcript message itself.
 A user message shown without one (the running prompt, or one delivered during
 the run) is sent as `{ "userFromEnd": n }` instead: after the run is stopped,
 the PI worker counts n user messages back from the end of PI's own active

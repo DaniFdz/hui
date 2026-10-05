@@ -8,8 +8,11 @@
  *
  * Exactly one runtime exists per id, so opening a session twice (a second tab,
  * a reload) reuses the one already running. A runtime that dies marks its
- * session `error` and ends its streams; it never takes the server down.
+ * session `error` and ends its streams; it never takes the server down. One
+ * hosted elsewhere that only became unreachable is `reconnecting` (HUI retries
+ * by itself) or `disconnected` (it waits for a reconnect); its streams stay open.
  */
+import { remoteRuntime } from "./runtimes/remote.ts";
 import { CONTINUE_PROMPT } from "../src/lib/subagent-completion.ts";
 import { interruptedRunPrompt } from "./interrupted-run.ts";
 import type { SessionRecord } from "./sessions.ts";
@@ -34,22 +37,22 @@ import type {
   RuntimeUsage,
   TranscriptEntry,
 } from "./runtimes/types.ts";
-import { RuntimeOutputError } from "./runtimes/types.ts";
+import { RuntimeOutputError, RuntimeUnreachableError } from "./runtimes/types.ts";
 import { recordDiagnosticEvent } from "./observability.ts";
 import { readHuiSettings } from "./hui-settings.ts";
 import type { Settings } from "../src/lib/settings.ts";
 
-export type SessionStatus = "idle" | "running" | "waiting" | "starting" | "error";
+export type SessionStatus = "idle" | "running" | "waiting" | "starting" | "error" | "reconnecting" | "disconnected";
 const MAX_AUTOMATIC_RECOVERY_ATTEMPTS = 3;
 
-/** Replace runtime-internal image locations with opaque gateway URLs. */
+/** Replace runtime-internal attachment locations with opaque gateway URLs. */
 export function publicTranscript(id: string, entries: readonly TranscriptEntry[]): TranscriptEntry[] {
   return entries.map((entry) => {
     if (entry.kind !== "message" || !entry.attachments?.some((item) => item.source)) return entry;
     return {
       ...entry,
       attachments: entry.attachments.map(({ source, ...item }) => source
-        ? { ...item, url: `/__hui/sessions/${encodeURIComponent(id)}/attachments/${source.message}/${source.image}` }
+        ? { ...item, url: `/__hui/sessions/${encodeURIComponent(id)}/attachments/${source.message}/${"file" in source ? `files/${source.file}` : source.image}` }
         : item),
     };
   });
@@ -166,9 +169,13 @@ type Live = {
   loggedRunError?: string;
   /** Set before removing this entry so a slow boot cannot resurrect it. */
   closed?: boolean;
+  /** A boot reattaching to a runtime hosted elsewhere is in flight. */
+  reattaching?: boolean;
   /** Terminal subagent cleanup waits until a browser displaying the child has
    * left, so its final transcript does not turn into a dead stream. */
   releaseWhenUnread?: boolean;
+  /** The current runtime attempt, settled once it is ready or has failed. */
+  boot?: Promise<void>;
 };
 
 export type DeleteToken = symbol;
@@ -216,6 +223,8 @@ export class LiveSessions {
   }
 
   #activeWork(): Live[] {
+    // A session whose host is unreachable runs there, not in this process;
+    // the follow-ups HUI holds for it exist only here.
     return [...this.#live.values()].filter((live) => live.status === "starting"
       || live.status === "running" || live.status === "waiting" || live.followUps.length > 0);
   }
@@ -251,7 +260,8 @@ export class LiveSessions {
   #runtimeFor(record: SessionRecord): AgentRuntime {
     const runtime = this.#runtimes.get(record.tool);
     if (runtime) {
-      return runtime;
+      // The worker's host runs this same adapter; the gateway only proxies it.
+      return record.worker ? remoteRuntime(record.tool) : runtime;
     }
     throw new Error(`Unsupported session tool: ${record.tool}`);
   }
@@ -261,15 +271,19 @@ export class LiveSessions {
    * is the five seconds; holding an HTTP reply for it would make opening a
    * session feel broken, so `starting` carries that news instead.
    */
-  ensure(record: SessionRecord): boolean {
+  ensure(record: SessionRecord, reattach = false): boolean {
     if (this.#isDeleted(record.id)) {
       return false;
     }
     const existing = this.#live.get(record.id);
-    // An errored session has no runtime left to protect, so a fresh open retries
-    // it; anything else is already being handled.
+    // An errored session has no runtime left to protect, so a fresh open
+    // retries it. One whose host is unreachable comes back only on `reattach`,
+    // once its host is reachable again: an open must not reconnect a worker
+    // the user disconnected. Anything else is already being handled.
     if (existing) {
-      if (existing.status !== "error") {
+      const unreachable = existing.status === "reconnecting" || existing.status === "disconnected";
+      const retry = existing.status === "error" || (reattach && unreachable && !existing.reattaching);
+      if (!retry) {
         return true;
       }
       // Preserve listeners across a failed boot. A retry is a state transition
@@ -279,8 +293,9 @@ export class LiveSessions {
       existing.record = record;
       existing.bootStartedAt = Date.now();
       existing.bootDurationMs = undefined;
-      this.#setStatus(existing, "starting");
-      void this.#boot(existing);
+      existing.reattaching = unreachable;
+      this.#setStatus(existing, existing.reattaching ? "reconnecting" : "starting");
+      existing.boot = this.#boot(existing);
       return true;
     }
     const live: Live = {
@@ -303,8 +318,13 @@ export class LiveSessions {
     };
     this.#live.set(record.id, live);
     this.#publishStatus(live, "starting", false);
-    void this.#boot(live);
+    live.boot = this.#boot(live);
     return true;
+  }
+
+  /** Settles once the session's runtime is ready or has failed to start. */
+  booted(id: string): Promise<void> {
+    return this.#live.get(id)?.boot ?? Promise.resolve();
   }
 
   status(id: string): SessionStatus {
@@ -363,13 +383,14 @@ export class LiveSessions {
   }
 
   /**
-   * The status the UI should show. `starting` and `error` are lifecycle facts
-   * the runtime knows nothing about; otherwise the runtime's own streaming flag
-   * decides, because that is exactly what `prompt` refuses on. Reporting idle
-   * while a prompt would be refused was a real inconsistency.
+   * The status the UI should show. `starting`, `error`, `reconnecting` and
+   * `disconnected` are lifecycle facts the runtime knows nothing about;
+   * otherwise the runtime's own streaming flag decides, because that is
+   * exactly what `prompt` refuses on. Reporting idle while a prompt would be
+   * refused was a real inconsistency.
    */
   #reported(live: Live): SessionStatus {
-    if (live.status === "starting" || live.status === "error") {
+    if (["starting", "error", "reconnecting", "disconnected"].includes(live.status)) {
       return live.status;
     }
     if (live.questions.size > 0) {
@@ -383,8 +404,12 @@ export class LiveSessions {
   }
 
   /** Image bytes for a transcript attachment, from the runtime's history. */
-  attachmentImage(id: string, message: number, image: number): { mimeType: string; data: Buffer } | undefined {
+  async attachmentImage(id: string, message: number, image: number): Promise<{ mimeType: string; data: Buffer } | undefined> {
     return this.#live.get(id)?.runtime?.attachmentImage?.(message, image);
+  }
+
+  attachmentFile(id: string, message: number, file: number): string | undefined {
+    return this.#live.get(id)?.runtime?.attachmentFile?.(message, file);
   }
 
   snapshot(id: string): SessionSnapshot {
@@ -501,7 +526,7 @@ export class LiveSessions {
   ): Promise<void> {
     const live = this.#live.get(id);
     if (!live?.runtime) {
-      throw new SessionBusyError("That session is still starting.");
+      throw this.#unavailable(live);
     }
     if (this.#holdWhileCompacting(live)) return this.followUp(id, text, attachments);
     if (live.promptPending || live.runtime.isStreaming) {
@@ -600,14 +625,14 @@ export class LiveSessions {
   async models(id: string): Promise<readonly RuntimeModel[]> {
     const live = this.#live.get(id);
     if (!live?.runtime) {
-      throw new SessionBusyError("That session is still starting.");
+      throw this.#unavailable(live);
     }
     return live.runtime.listModels ? await live.runtime.listModels() : [];
   }
 
   async commands(id: string): Promise<readonly RuntimeCommand[]> {
     const live = this.#live.get(id);
-    if (!live?.runtime) throw new SessionBusyError("That session is still starting.");
+    if (!live?.runtime) throw this.#unavailable(live);
     return live.runtime.listCommands ? await live.runtime.listCommands() : [];
   }
 
@@ -621,7 +646,7 @@ export class LiveSessions {
   async setModel(id: string, provider: string, modelId: string): Promise<RuntimeModel | undefined> {
     const live = this.#live.get(id);
     if (!live?.runtime) {
-      throw new SessionBusyError("That session is still starting.");
+      throw this.#unavailable(live);
     }
     if (!live.runtime.setModel) {
       throw new Error(`${live.record.tool} cannot switch models in this build.`);
@@ -664,7 +689,7 @@ export class LiveSessions {
   async abort(id: string): Promise<void> {
     const live = this.#live.get(id);
     if (!live?.runtime) {
-      throw new SessionBusyError("That session is still starting.");
+      throw this.#unavailable(live);
     }
     if (!live.runtime.abort) {
       throw new Error(`${live.record.tool} cannot stop a turn in this build.`);
@@ -821,6 +846,18 @@ export class LiveSessions {
 
   async followUp(id: string, text: string, attachments?: readonly PromptAttachment[]): Promise<void> {
     const live = this.#ready(id);
+    // HUI's queue drains only while this gateway runs; a worker keeps going
+    // without it, so a follow-up to a run streaming there queues in its
+    // runtime and runs even if the gateway leaves. Like steering, it is then
+    // shown but no longer editable. Before the run streams (the prompt is
+    // still on its way, a compaction holds the session) or while earlier ones
+    // wait in HUI's editable queue, it waits there too, behind them.
+    if (live.record.worker && live.runtime?.followUp && live.runtime.isStreaming && !live.followUps.length) {
+      await live.runtime.followUp(text, attachments);
+      live.queue = live.runtime.pendingQueue?.() ?? live.queue;
+      this.#broadcastQueue(live);
+      return;
+    }
     live.followUps.push({
       id: crypto.randomUUID(),
       text,
@@ -998,9 +1035,24 @@ export class LiveSessions {
     this.#broadcast(live, { kind: "snapshot", snapshot: this.snapshot(id) });
   }
 
+  /** Why a session without a runtime cannot take a request yet. */
+  #unavailable(live: Live | undefined): SessionBusyError {
+    const why: Partial<Record<SessionStatus, string>> = {
+      reconnecting: "HUI is reconnecting to the machine this session runs on; it keeps running there. Try again once it is back.",
+      disconnected: "HUI is disconnected from the machine this session runs on. Reconnect it to continue.",
+    };
+    return new SessionBusyError((live && why[live.status]) ?? "That session is still starting.");
+  }
+
+  /** HUI stopped retrying the host of sessions it was reconnecting to. */
+  stopReconnecting(id: string): void {
+    const live = this.#live.get(id);
+    if (live?.status === "reconnecting" && !live.reattaching) this.#setStatus(live, "disconnected");
+  }
+
   #ready(id: string): Live {
     const live = this.#live.get(id);
-    if (!live?.runtime) throw new SessionBusyError("That session is still starting.");
+    if (!live?.runtime) throw this.#unavailable(live);
     return live;
   }
 
@@ -1105,6 +1157,7 @@ export class LiveSessions {
         ...(live.record.title ? { title: live.record.title } : {}),
         ...(live.record.model ? { model: live.record.model } : {}),
         ...(live.record.thinking ? { thinking: live.record.thinking } : {}),
+        ...(live.record.worker ? { worker: live.record.worker } : {}),
         huiSessionId: live.record.id,
       });
       // Deletion or gateway shutdown can happen while a runtime takes several
@@ -1119,7 +1172,7 @@ export class LiveSessions {
       live.queue = runtime.pendingQueue?.() ?? { steering: [], followUp: [] };
       live.questions = new Map((runtime.pendingQuestions?.() ?? []).map((question) => [question.id, question]));
       live.unsubscribe = runtime.subscribe((event) => this.#onEvent(live, runtime!, event));
-      live.unsubscribeExit = runtime.onExit?.(() => this.#onExit(live, runtime!));
+      live.unsubscribeExit = runtime.onExit?.((unreachable) => this.#onExit(live, runtime!, unreachable));
       if (runtime.sessionFile) {
         // Persisted before the session is reported ready. Announcing `idle`
         // first meant a caller could act on a record that was still being
@@ -1153,12 +1206,19 @@ export class LiveSessions {
       if (live.record.runStartedAt && readyStatus === "idle") {
         // A runtime that resumes its own runs has already finished this one or
         // recorded its interruption; replaying it would repeat the request.
-        if (runtime.resumesInterruptedRuns) this.#clearRunMarker(live);
-        else await this.#recoverInterrupted(live);
+        if (runtime.resumesInterruptedRuns) {
+          this.#clearRunMarker(live);
+          // It settled on its host while HUI was away: what waits on it (a
+          // subagent, an automation) hears that now.
+          if (live.reattaching) this.#broadcast(live, { kind: "event", event: { type: "settled" } });
+        } else await this.#recoverInterrupted(live);
       }
       // A resumed session only has its history after boot, so the transcript is
       // sent now rather than left empty at connect.
       this.#broadcast(live, { kind: "snapshot", snapshot: this.snapshot(live.record.id) });
+      // Messages queued here before the runtime was lost (a worker's run that
+      // settled while this gateway was away) run now.
+      void this.#drainFollowUp(live);
     } catch (error) {
       // A runtime may exit while its identity is being persisted and the caller
       // may already have started a replacement. Cleanup from the older boot
@@ -1176,6 +1236,13 @@ export class LiveSessions {
       if (live.closed || this.#live.get(live.record.id) !== live) {
         return;
       }
+      // An unreachable host says nothing about the session, which may be
+      // running there: no failure to report, only the status.
+      if (error instanceof RuntimeUnreachableError) {
+        recordDiagnosticEvent({ area: "runtime", level: "warning", action: "boot_unreachable", summary: "Runtime host unreachable", detail: error.message, sessionId: live.record.id });
+        this.#setStatus(live, error.reconnecting ? "reconnecting" : "disconnected");
+        return;
+      }
       recordDiagnosticEvent({ area: "runtime", level: "error", action: "boot_failed", summary: "Runtime did not start", detail: failureDetail(error), sessionId: live.record.id });
       this.#broadcast(live, {
         kind: "event",
@@ -1185,6 +1252,8 @@ export class LiveSessions {
         },
       });
       this.#setStatus(live, "error");
+    } finally {
+      live.reattaching = undefined;
     }
   }
 
@@ -1392,7 +1461,7 @@ export class LiveSessions {
     recordDiagnosticEvent({ area: "session", level: "error", action: "run_failed", summary: "Agent run ended with an error", detail: last.message, sessionId: live.record.id });
   }
 
-  #onExit(live: Live, runtime: RuntimeSession): void {
+  #onExit(live: Live, runtime: RuntimeSession, unreachable?: RuntimeUnreachableError): void {
     if (live.closed || live.runtime !== runtime) {
       return;
     }
@@ -1403,6 +1472,13 @@ export class LiveSessions {
     live.runtime = undefined;
     live.promptPending = false;
     live.compaction = undefined;
+    if (unreachable) {
+      recordDiagnosticEvent({ area: "runtime", level: "warning", action: "unreachable", summary: "Lost the connection to the runtime's host", sessionId: live.record.id });
+      // Streams stay open: the conversation goes on there and a reattach
+      // brings its state back to them.
+      this.#setStatus(live, unreachable.reconnecting ? "reconnecting" : "disconnected");
+      return;
+    }
     recordDiagnosticEvent({ area: "runtime", level: "error", action: "exit", summary: "Runtime process exited", sessionId: live.record.id });
     this.#setStatus(live, "error");
     this.#broadcast(live, { kind: "closed" });

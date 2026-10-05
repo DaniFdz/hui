@@ -19,7 +19,9 @@ const CREATE_SESSION_TIMEOUT_MS = 120_000;
 const SESSION_STREAM_GONE = 4404;
 const SESSION_STATUSES_URL = `${SESSIONS_URL}/events`;
 
-export type SessionStatus = "idle" | "running" | "waiting" | "starting" | "error";
+/** `reconnecting` and `disconnected`: the session runs on a machine HUI
+ * cannot reach right now, retrying by itself or not. */
+export type SessionStatus = "idle" | "running" | "waiting" | "starting" | "error" | "reconnecting" | "disconnected";
 export type SessionStatusUpdate = {
   id: string;
   status: SessionStatus;
@@ -59,6 +61,8 @@ export type SessionView = {
   cwd: string;
   /** `cwd` with home shortened to `~/`; absent from older gateways. */
   displayCwd?: string;
+  /** Remote worker the session runs on; `cwd` is a path there. */
+  worker?: { id: string; name: string };
   tool: string;
   status: SessionStatus;
   /** Git worktree progress while the gateway still creates this session. */
@@ -321,6 +325,19 @@ export function statusCounts(groups: readonly SessionGroup[]): {
   return { running, starting, total };
 }
 
+/** How a session on a machine HUI cannot reach reads: its status and the
+ * notice that explains it. Undefined while the session is reachable. */
+export function unreachableHost(session: Pick<SessionView, "status" | "worker">): { status: string; notice: string } | undefined {
+  const name = session.worker?.name ?? "its machine";
+  if (session.status === "reconnecting") {
+    return { status: `Reconnecting to ${name}…`, notice: `Connection to ${name} lost — the session keeps running there. HUI reconnects automatically.` };
+  }
+  if (session.status === "disconnected") {
+    return { status: `Disconnected from ${name}`, notice: `Disconnected from ${name}. The session may still be running there.` };
+  }
+  return undefined;
+}
+
 /** `revision` orders this full list against the status stream's changes. */
 export type SessionList = { revision: number; groups: SessionGroup[] };
 
@@ -388,6 +405,8 @@ export async function createSession(input: {
   worktree?: boolean;
   branchName?: string;
   baseRef?: string;
+  /** Remote worker id; absent runs on the gateway machine. */
+  worker?: string;
 }): Promise<SessionView> {
   const body = await fetchJson<{ session?: SessionView }>(SESSIONS_URL, {
     method: "POST",
@@ -740,7 +759,7 @@ export function subscribeSession(id: string, handlers: SessionStreamHandlers): (
         return;
       }
       if (outcome.kind === "ended") {
-        handlers.onConnection("stopped", "pi exited — this session is no longer streaming.");
+        handlers.onConnection("stopped", "The runtime exited — this session is no longer streaming.");
         return;
       }
       if (outcome.kind === "refused") {

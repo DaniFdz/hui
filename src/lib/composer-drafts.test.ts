@@ -1,12 +1,21 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { mergeComposerDraft, NEW_SESSION_DRAFT_KEY, sessionDraftKey, sessionIdFromDraftKey } from "./composer-drafts.ts";
+import { mayUseComposerDraftKey, mergeComposerDraft, NEW_SESSION_DRAFT_KEY, sessionDraftKey, sessionIdFromDraftKey } from "./composer-drafts.ts";
 
 test("draft keys isolate New Session and each registered session", () => {
   assert.equal(NEW_SESSION_DRAFT_KEY, "new-session");
   assert.equal(sessionDraftKey("abc"), "session:abc");
   assert.notEqual(sessionDraftKey("abc"), sessionDraftKey("def"));
+});
+
+test("only the app that renders it may use the launch draft key", () => {
+  // A pane connects to `session:<id>`; every draft it reads or writes belongs
+  // to that session, so the launch slot stays the shell's text alone.
+  assert.equal(mayUseComposerDraftKey(false, NEW_SESSION_DRAFT_KEY), true);
+  assert.equal(mayUseComposerDraftKey(false, sessionDraftKey("abc")), true);
+  assert.equal(mayUseComposerDraftKey(true, NEW_SESSION_DRAFT_KEY), false);
+  assert.equal(mayUseComposerDraftKey(true, sessionDraftKey("abc")), true);
 });
 
 test("only session draft keys project back to sidebar session ids", () => {

@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test, type TestContext } from "node:test";
 
 import { LiveSessions, type SessionStreamMessage } from "./live-sessions.ts";
 import type { SessionRecord } from "./sessions.ts";
 import { SubagentService } from "./subagents.ts";
+import { workers, type RemoteSessionSink } from "./workers.ts";
+import { RuntimeUnreachableError } from "./runtimes/types.ts";
 import type {
   AgentRuntime,
   RuntimeEvent,
@@ -692,4 +694,87 @@ test("forgetting a deleted subtree removes its background-task projections", asy
   assert.deepEqual(state.service.snapshot("parent").map((task) => task.sessionId), ["other"]);
   state.service.forgetSessions(new Set(["parent", "other"]));
   assert.deepEqual(state.service.snapshot("parent"), []);
+});
+
+/** Worker sessions scripted in memory: a prompt runs there until the test ends it. */
+function scriptedWorker(t: TestContext) {
+  const sinks = new Map<string, RemoteSessionSink>();
+  const running = new Set<string>();
+  const histories = new Map<string, TranscriptEntry[]>();
+  const prompts = new Map<string, () => void>();
+  let seq = 0;
+  const state = (key: string) => ({ sessionId: key, isStreaming: running.has(key), resumesInterruptedRuns: true });
+  t.mock.method(workers, "startSession", async (...[, key, , , sink]: Parameters<typeof workers.startSession>) => {
+    sinks.set(key, sink);
+    const history = histories.get(key) ?? [];
+    histories.set(key, history);
+    return {
+      started: { state: state(key), seq: ++seq, transcript: [...history], methods: ["followUp", "abort"] },
+      call: async (method: string, args: unknown[]) => {
+        if (method === "prompt") {
+          running.add(key);
+          history.push({ kind: "message", role: "user", text: String(args[0]) });
+          queueMicrotask(() => prompts.get(key)?.());
+        }
+        return { state: state(key), seq: ++seq };
+      },
+      transcript: async () => [...history],
+      dispose: () => undefined,
+    };
+  });
+  return {
+    /** Resolves once a prompt for the session has reached the worker. */
+    prompted(key: string): Promise<void> {
+      return new Promise((resolve) => prompts.set(key, resolve));
+    },
+    /** The connection to a session drops and, maybe, its run finishes there meanwhile. */
+    lose(key: string, reconnecting: boolean, reply?: string): void {
+      if (reply !== undefined) {
+        running.delete(key);
+        histories.get(key)!.push({ kind: "message", role: "assistant", text: reply });
+      }
+      sinks.get(key)!.lost(new RuntimeUnreachableError("Connection lost.", reconnecting));
+    },
+  };
+}
+
+async function spawnRemoteChild(t: TestContext) {
+  const worker = scriptedWorker(t);
+  const parent = record("remote-parent", { worker: "w" });
+  const state = harness([parent]);
+  state.manager.ensure(parent);
+  await waitForStatus(state.manager, parent.id, "idle");
+  await state.service.initialize();
+  const prompted = worker.prompted("child-1");
+  await state.service.handle(parent.id, "sessions_spawn", { task: "Inspect remotely" });
+  await prompted;
+  const child = () => state.records().find((item) => item.id === "child-1")!;
+  assert.equal(child().worker, "w");
+  const finished = (status: string) => new Promise<void>((resolve, reject) => {
+    const deadline = Date.now() + 5_000;
+    const check = () => child().subagent?.status === status ? resolve()
+      : Date.now() > deadline ? reject(new Error(`The subagent is ${child().subagent?.status}, not ${status}.`)) : setTimeout(check, 5);
+    check();
+  });
+  return { ...state, worker, parent, child, finished };
+}
+
+test("a remote subagent whose run finished while HUI was away completes once HUI reattaches", async (t) => {
+  const state = await spawnRemoteChild(t);
+  state.worker.lose("child-1", true, "Done remotely");
+  await waitForStatus(state.manager, "child-1", "reconnecting");
+  state.manager.ensure(state.child(), true);
+  await state.finished("completed");
+  assert.match(state.child().subagent?.summary ?? "", /Done remotely/u);
+  state.service.dispose();
+  state.manager.disposeAll();
+});
+
+test("a remote subagent fails when HUI is disconnected from its machine", async (t) => {
+  const state = await spawnRemoteChild(t);
+  state.worker.lose("child-1", false);
+  await state.finished("failed");
+  assert.match(state.child().subagent?.error ?? "", /disconnected/u);
+  state.service.dispose();
+  state.manager.disposeAll();
 });

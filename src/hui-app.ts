@@ -30,6 +30,7 @@ import {
   resumeSession,
   rewindSession,
   type RewindTarget,
+  type TranscriptAttachment,
   cancelCompaction,
   compactSession,
   sendPrompt,
@@ -60,7 +61,7 @@ import {
   type GitCheckoutInfo,
   type WorktreeProgress,
 } from "./lib/sessions-store.ts";
-import { readAttachment, validateAttachmentTotal } from "./lib/attachments.ts";
+import { readAttachment, readTranscriptAttachments, validateAttachmentTotal } from "./lib/attachments.ts";
 import { resolveLaunchModel } from "./lib/model-selection.ts";
 import { completeCommandReference, composerCommands, filterSlashCommands, parseClearCommand, parseCompactCommand, parseReloadCommand, parseUpdateCommand, slashCommandQuery, type ComposerCommand } from "./lib/slash-commands.ts";
 import { checkUpdate, checkUpdateInBackground, installUpdate, loadUpdate } from "./lib/update-store.ts";
@@ -84,6 +85,7 @@ import {
 import {
   deleteComposerDraft,
   listComposerDraftSessionIds,
+  mayUseComposerDraftKey,
   mergeComposerDraft,
   NEW_SESSION_DRAFT_KEY,
   readComposerDraft,
@@ -172,6 +174,7 @@ import type { BacklogStartTarget } from "./components/backlog-start-dialog.ts";
 import { addSuggestionToBacklog, backlogItemMarkdown, loadBacklog, removeBacklogItem, setBacklogItemGroup, type BacklogItem, type BacklogJiraState } from "./lib/backlog.ts";
 import { loadJiraConnection } from "./lib/jira.ts";
 import type { AutomationProps } from "./views/settings-automation.ts";
+import { loadWorkers, workerAction, type WorkerView } from "./lib/workers.ts";
 import { hasOpenWebAwesomePopup } from "./lib/web-awesome.ts";
 import { APP_SHELL_DRAWER_MEDIA, closeDrawerOnEscape, renderMain, renderSidebar, type GroupDropTarget, type GroupMenuAction, type NavId, type SessionCopyAction, type SessionOpenAction } from "./views/shell.ts";
 import { writeClipboardText } from "./lib/clipboard.ts";
@@ -307,7 +310,13 @@ export class HuiApp extends HuiElement {
   @state() private continuing = false;
   @state() private rewindPending = false;
   @state() private sideChat: HomeProps["sideChat"];
-  @state() private draft = "";
+  /** The composer's live text, deliberately not reactive: a keystroke only
+   * changes what its own textarea already shows, so typing must not re-render
+   * the transcript behind it. Code-owned changes go through `setDraft`. */
+  private draft = "";
+  /** Bumped by `setDraft` so `updated()` measures a textarea whose value code
+   * replaced, never one the operator is typing into. */
+  @state() private draftRevision = 0;
   @state() private queue: QueueSnapshot = EMPTY_QUEUE;
   @state() private queueEditingId = "";
   @state() private queueEditingText = "";
@@ -339,6 +348,9 @@ export class HuiApp extends HuiElement {
   private groupCheckoutRequest = 0;
   private groupCheckoutDirectory = "";
   @state() private launchDefaults: { group: string; cwd: string; workspaceMode?: "branch" | "worktree"; baseRef?: string } | undefined;
+  @state() private launchWorkers: readonly WorkerView[] = [];
+  /** Sticky across launches: the worker new sessions run on, if any. */
+  @state() private launchWorker: string | undefined;
   @state() private launchModel = "";
   @state() private launchThinking = "";
   @state() private directorySuggestions: readonly string[] = [];
@@ -674,6 +686,8 @@ export class HuiApp extends HuiElement {
     if (!this.embeddedPane) {
       void this.refreshSessions();
       this.loadLaunchPreferences();
+      // The home page shows the launch form too, without a page navigation.
+      this.loadLaunchWorkers();
       void loadThemePreviews().then((previews) => {
         this.previews = previews;
       });
@@ -722,8 +736,18 @@ export class HuiApp extends HuiElement {
         : session),
     }));
     if (created) void this.refreshSessions(true);
-    if (!this.embeddedPane && this.selected?.id === id) this.selected = { ...this.selected, status, ...(title ? { title } : {}) };
+    if (!this.embeddedPane && this.selected?.id === id) {
+      this.reopenIfRestarted(id, status);
+      this.selected = { ...this.selected, status, ...(title ? { title } : {}) };
+    }
   };
+
+  /** The gateway restarted a runtime whose stream had ended: a remote session
+   * reattached after a lost connection, or a retry from another screen. */
+  private reopenIfRestarted(id: string, status: SessionStatus) {
+    if (this.selected?.id !== id || this.opening || this.connection !== "stopped") return;
+    if (this.selected.status === "error" && status !== "error") void this.openSelected(id);
+  }
 
   private async refreshSessions(background = false) {
     if (this.embeddedPane) {
@@ -800,7 +824,11 @@ export class HuiApp extends HuiElement {
         : this.paneGroups;
       // Renames (by another screen or the gateway's generated name) reach the header.
       const listed = selected && this.listedSession(selected.id);
-      if (listed) this.selected = { ...selected, ...listed, status: selected.status, interrupted: selected.interrupted };
+      // The stream clears an interruption when a run starts; the gateway clears
+      // it when a reattached remote run turns out to have finished.
+      if (listed) this.selected = { ...selected, ...listed, status: selected.status, interrupted: selected.interrupted && listed.interrupted };
+      const shellStatus = selected && this.paneGroups.flatMap((group) => group.sessions).find((session) => session.id === selected.id)?.status;
+      if (selected && shellStatus) this.reopenIfRestarted(selected.id, shellStatus);
       this.sessionsLoading = false;
       this.openPendingSession();
     }
@@ -830,7 +858,9 @@ export class HuiApp extends HuiElement {
         observeTextareaOverflow(textarea);
         scheduleTextareaHeightAdjustment(textarea);
       }
-    } else if (textarea && changed.has("draft")) {
+    } else if (textarea && changed.has("draftRevision")) {
+      // Typing measures its own textarea in the input handler; only a draft that
+      // code replaced under it needs a measuring pass after the render.
       scheduleTextareaHeightAdjustment(textarea);
     }
     if (this.pendingCommandBrowse && this.selected?.status === "idle" && !this.opening && textarea) {
@@ -845,15 +875,17 @@ export class HuiApp extends HuiElement {
         : undefined;
       if (!this.embeddedPane) document.title = documentTitle(activeSessionTitle);
     }
-    const worktreeDialog = this.renderRoot.querySelector?.(".worktree-remove-dialog");
-    if (worktreeDialog instanceof HTMLDialogElement && this.worktreeConfirm && this.worktreeConfirm !== "merged" && !worktreeDialog.open) {
+    // A selector that matches nothing walks the whole open transcript, and
+    // this runs on every keystroke: query a dialog only while its state shows it.
+    const worktreeDialog = this.worktreeConfirm && this.worktreeConfirm !== "merged" ? this.renderRoot.querySelector?.(".worktree-remove-dialog") : null;
+    if (worktreeDialog instanceof HTMLDialogElement && !worktreeDialog.open) {
       ensureModal(worktreeDialog);
       worktreeDialog.querySelector<HTMLButtonElement>(".worktree-remove-cancel")?.focus();
     }
-    const backlogRemoveDialog = this.renderRoot.querySelector?.(".backlog-remove-dialog");
-    if (backlogRemoveDialog instanceof HTMLDialogElement && this.backlogRemove) ensureModal(backlogRemoveDialog);
-    const deleteDialog = this.renderRoot.querySelector?.(".delete-session-dialog");
-    if (deleteDialog instanceof HTMLDialogElement && this.deletingFor) {
+    const backlogRemoveDialog = this.backlogRemove ? this.renderRoot.querySelector?.(".backlog-remove-dialog") : null;
+    if (backlogRemoveDialog instanceof HTMLDialogElement) ensureModal(backlogRemoveDialog);
+    const deleteDialog = this.deletingFor ? this.renderRoot.querySelector?.(".delete-session-dialog") : null;
+    if (deleteDialog instanceof HTMLDialogElement) {
       ensureModal(deleteDialog);
     }
     if (this.deleteNeedsFocus && this.deletingFor) {
@@ -865,14 +897,14 @@ export class HuiApp extends HuiElement {
       const questionControl = this.renderRoot.querySelector?.('.session-question-card [role="radio"][tabindex="0"], .session-question-card input:not([type="hidden"]), .session-question-card textarea');
       if (questionControl instanceof HTMLElement) questionControl.focus();
     }
-    const groupDialog = this.renderRoot.querySelector?.(".group-action-dialog");
-    const updateDialog = this.renderRoot.querySelector?.(".hui-update-dialog");
-    if (updateDialog instanceof HTMLDialogElement && this.updateOpen) ensureModal(updateDialog);
-    if (groupDialog instanceof HTMLDialogElement && this.groupAction) ensureModal(groupDialog);
-    const resourceReader = this.renderRoot.querySelector?.(".pi-resource-reader-modal");
-    if (resourceReader instanceof HTMLDialogElement && this.piResourceReader) ensureModal(resourceReader);
-    const commandPalette = this.renderRoot.querySelector?.(".command-palette-dialog");
-    if (commandPalette instanceof HTMLDialogElement && this.commandPaletteOpen) {
+    const groupDialog = this.groupAction ? this.renderRoot.querySelector?.(".group-action-dialog") : null;
+    const updateDialog = this.updateOpen ? this.renderRoot.querySelector?.(".hui-update-dialog") : null;
+    if (updateDialog instanceof HTMLDialogElement) ensureModal(updateDialog);
+    if (groupDialog instanceof HTMLDialogElement) ensureModal(groupDialog);
+    const resourceReader = this.piResourceReader ? this.renderRoot.querySelector?.(".pi-resource-reader-modal") : null;
+    if (resourceReader instanceof HTMLDialogElement) ensureModal(resourceReader);
+    const commandPalette = this.commandPaletteOpen ? this.renderRoot.querySelector?.(".command-palette-dialog") : null;
+    if (commandPalette instanceof HTMLDialogElement) {
       ensureModal(commandPalette);
       if (changed.has("commandPaletteOpen")) {
         const input = this.renderRoot.querySelector?.("#command-palette-input");
@@ -983,6 +1015,7 @@ export class HuiApp extends HuiElement {
         this.switchComposerDraft(NEW_SESSION_DRAFT_KEY);
         this.loadLaunchPreferences();
         this.requestGitCheckout(this.launchDefaults?.cwd ?? "~/");
+        this.loadLaunchWorkers();
       }
       this.pendingSessionId = "";
       this.activePage = target.page;
@@ -1984,9 +2017,9 @@ export class HuiApp extends HuiElement {
     this.requestModelsWhenReady(id, status);
     if (status === "idle") {
       this.flushPendingLaunchPrompt();
-    } else if (status === "error" && this.pendingLaunchPrompt) {
+    } else if ((status === "error" || status === "reconnecting" || status === "disconnected") && this.pendingLaunchPrompt) {
       this.composerDraftEdit += 1;
-      this.draft = this.pendingLaunchPrompt;
+      this.setDraft(this.pendingLaunchPrompt);
       this.attachments = this.pendingLaunchAttachments;
       this.pendingLaunchPrompt = "";
       this.pendingLaunchAttachments = [];
@@ -2006,6 +2039,7 @@ export class HuiApp extends HuiElement {
     text = this.draft,
     attachments: readonly Attachment[] = this.attachments,
   ) {
+    if (!mayUseComposerDraftKey(this.embeddedPane, key)) return;
     const sessionId = sessionIdFromDraftKey(key);
     if (sessionId) {
       const hasDraft = Boolean(text || attachments.length);
@@ -2031,24 +2065,43 @@ export class HuiApp extends HuiElement {
   }
 
   private switchComposerDraft(key: string) {
+    if (!mayUseComposerDraftKey(this.embeddedPane, key)) return;
     if (key === this.composerDraftKey && this.composerDraftHydrated) return;
     if (key !== this.composerDraftKey) void this.persistComposerDraft();
     this.composerDraftKey = key;
     this.composerDraftHydrated = true;
     const load = ++this.composerDraftLoad;
     const edit = ++this.composerDraftEdit;
-    this.draft = "";
+    this.setDraft("");
     this.attachments = [];
     void readComposerDraft(key).then((draft) => {
       if (load !== this.composerDraftLoad || edit !== this.composerDraftEdit || key !== this.composerDraftKey) return;
-      this.draft = draft.text;
+      this.setDraft(draft.text);
       this.attachments = draft.attachments;
     });
   }
 
-  private updateDraft = (draft: string) => {
+  /** A keystroke. The textarea already shows this text, so the value itself
+   * needs no update; only what the draft makes the composer show (Send/Stop
+   * instead of nothing to send) does, and that flips at most twice per message. */
+  private typeDraft = (draft: string) => {
+    const hadText = this.draft.trim() !== "";
     this.composerDraftEdit += 1;
     this.draft = draft;
+    if ((draft.trim() !== "") !== hadText) this.requestUpdate();
+    void this.persistComposerDraft();
+  };
+
+  /** A draft HUI set, not one typed into the textarea: it has to reach the
+   * value, the controls derived from it and the textarea's measured height. */
+  private setDraft(draft: string) {
+    this.draft = draft;
+    this.draftRevision += 1;
+  }
+
+  private updateDraft = (draft: string) => {
+    this.composerDraftEdit += 1;
+    this.setDraft(draft);
     void this.persistComposerDraft();
   };
 
@@ -2085,7 +2138,7 @@ export class HuiApp extends HuiElement {
       // must survive the session switch.
       if (sourceOwner.composerDraftKey === sourceDraftKey && sourceOwner.draft === sourceDraft && sourceDraft.trim() === draft) {
         sourceOwner.composerDraftEdit += 1;
-        sourceOwner.draft = "";
+        sourceOwner.setDraft("");
         void sourceOwner.persistComposerDraft(sourceDraftKey, "", []);
       }
       this.resetSessionEphemeral();
@@ -2439,7 +2492,7 @@ export class HuiApp extends HuiElement {
       this.noteLevel = "info";
       this.sending = true;
       this.composerDraftEdit += 1;
-      this.draft = "";
+      this.setDraft("");
       this.attachments = [];
       void this.persistComposerDraft(sessionDraftKey(session.id), "", []);
       const run = command === "clear"
@@ -2488,7 +2541,7 @@ export class HuiApp extends HuiElement {
         return;
       }
       this.composerDraftEdit += 1;
-      this.draft = "";
+      this.setDraft("");
       void this.persistComposerDraft(sessionDraftKey(session.id), "", []);
       this.sideChat = { question: sideQuestion, answer: "", model: "", loading: true, error: "" };
       void askSideQuestion(session.id, sideQuestion).then((result) => {
@@ -2516,7 +2569,7 @@ export class HuiApp extends HuiElement {
     // for the short acknowledgement window, so a rejection can restore this
     // transaction without mixing it with a second draft.
     this.composerDraftEdit += 1;
-    this.draft = "";
+    this.setDraft("");
     this.attachments = [];
     void this.persistComposerDraft(sessionDraftKey(session.id), "", []);
     this.streaming = streamingAfterSubmission(
@@ -2550,7 +2603,7 @@ export class HuiApp extends HuiElement {
         await this.persistComposerDraft(sessionDraftKey(session.id), restored.text, restored.attachments);
         if (!stillSelected) return;
         this.composerDraftEdit += 1;
-        this.draft = restored.text;
+        this.setDraft(restored.text);
         this.attachments = restored.attachments;
         this.streaming = streamingAfterSubmission(
           this.streaming,
@@ -2685,7 +2738,7 @@ export class HuiApp extends HuiElement {
     this.sending = true;
     if (typed !== undefined) {
       this.composerDraftEdit += 1;
-      this.draft = "";
+      this.setDraft("");
       void this.persistComposerDraft(sessionDraftKey(session.id), "", []);
     }
     // Progress and the outcome arrive as compaction events.
@@ -2710,23 +2763,25 @@ export class HuiApp extends HuiElement {
     await this.persistComposerDraft(sessionDraftKey(sessionId), restored.text, restored.attachments);
     if (!stillSelected) return false;
     this.composerDraftEdit += 1;
-    this.draft = restored.text;
+    this.setDraft(restored.text);
     this.attachments = restored.attachments;
     return true;
   }
 
-  private rewindToMessage = (target: RewindTarget, text: string) => {
+  private rewindToMessage = (target: RewindTarget, text: string, sent: readonly (string | TranscriptAttachment)[] = []) => {
     const session = this.selected;
     if (!session || this.opening || this.rewindPending) return;
     this.rewindPending = true;
     this.note = "";
     this.noteLevel = "info";
-    void rewindSession(session.id, target, true)
-      .then(async () => {
+    // Read the attachments first: their URLs point into the branch the rewind leaves.
+    void readTranscriptAttachments(sent)
+      .then(async (attachments) => {
+        await rewindSession(session.id, target, true);
         if (!isSelectedSession(session.id, this.selected?.id)) return;
         this.composerDraftEdit += 1;
-        this.draft = text;
-        this.attachments = [];
+        this.setDraft(text);
+        this.attachments = attachments;
         await this.persistComposerDraft();
         await this.updateComplete;
         if (!isSelectedSession(session.id, this.selected?.id)) return;
@@ -3121,7 +3176,17 @@ export class HuiApp extends HuiElement {
     if (id && !this.opening) void this.openSelected(id);
   };
 
-  private launch = (input: { cwd: string; title?: string; group?: string; prompt?: string; commandDraft?: string; model?: string; thinking?: string; worktree?: boolean; branchName?: string; baseRef?: string }) => {
+  /** The worker's own connect: once it is up, the gateway reattaches its sessions. */
+  private reconnectSelected = () => {
+    const worker = this.selected?.worker;
+    if (!worker) return;
+    void workerAction(worker.id, "connect").catch((error: unknown) => {
+      this.note = error instanceof Error ? error.message : `Could not reconnect to ${worker.name}.`;
+      this.noteLevel = "error";
+    });
+  };
+
+  private launch = (input: { cwd: string; title?: string; group?: string; prompt?: string; commandDraft?: string; model?: string; thinking?: string; worktree?: boolean; branchName?: string; baseRef?: string; worker?: string }) => {
     if (input.prompt && this.handleUpdateCommand(input.prompt)) return;
     if (this.launching) return;
     this.launching = true;
@@ -3142,7 +3207,7 @@ export class HuiApp extends HuiElement {
         this.composerDraftHydrated = true;
         this.composerDraftLoad += 1;
         this.composerDraftEdit += 1;
-        this.draft = commandDraft ?? "";
+        this.setDraft(commandDraft ?? "");
         this.pendingCommandBrowse = commandDraft !== undefined;
         this.attachments = [];
         if (commandDraft !== undefined) void this.persistComposerDraft();
@@ -3163,12 +3228,12 @@ export class HuiApp extends HuiElement {
           app.flushPendingLaunchPrompt();
         });
         this.composerDraftKey = NEW_SESSION_DRAFT_KEY;
-        this.draft = "";
+        this.setDraft("");
       })
       .catch((error: unknown) => {
         if (this.pendingLaunchPrompt) {
           this.composerDraftEdit += 1;
-          this.draft = this.pendingLaunchPrompt;
+          this.setDraft(this.pendingLaunchPrompt);
           this.pendingLaunchPrompt = "";
           void this.persistComposerDraft();
         }
@@ -3529,6 +3594,13 @@ export class HuiApp extends HuiElement {
       );
     }
     if (!this.launchThinking) this.launchThinking = snapshot.model.thinking ?? "medium";
+  }
+
+  private loadLaunchWorkers() {
+    void loadWorkers().then((list) => {
+      this.launchWorkers = list;
+      if (this.launchWorker && !list.some((worker) => worker.id === this.launchWorker)) this.launchWorker = undefined;
+    }).catch(() => undefined);
   }
 
   private loadLaunchPreferences() {
@@ -4041,6 +4113,7 @@ export class HuiApp extends HuiElement {
         onDismiss: this.dismissWatcher,
       } : undefined,
       onDraftChange: this.updateDraft,
+      onDraftInput: this.typeDraft,
       commandMenu: {
         open: this.slashQuery !== null && !this.sending && !this.opening && !this.launching && (!this.selected || this.connection === "live"),
         commands: filterSlashCommands(this.slashQuery?.startsWith("$") ? this.commands : composerCommands(this.selected ? this.commands : [], !!this.selected), this.slashQuery ?? ""),
@@ -4124,14 +4197,19 @@ export class HuiApp extends HuiElement {
       onCancelDelete: this.cancelDelete,
       onConfirmDelete: this.confirmDelete,
       onRetry: this.retrySelected,
+      onReconnect: this.reconnectSelected,
       launchDefaults: this.launchDefaults,
       launchModels,
       launchModel,
       launchThinking: this.launchThinking || "medium",
       onSelectLaunchModel: (provider, modelId) => { this.launchModel = `${provider}/${modelId}`; },
       onSelectLaunchThinking: (level) => { this.launchThinking = level; },
-      directorySuggestions: this.directorySuggestions,
-      onDirectoryInput: this.requestDirectorySuggestions,
+      launchWorkers: this.launchWorkers,
+      ...(this.launchWorker ? { launchWorker: this.launchWorker } : {}),
+      onSelectLaunchWorker: (id) => { this.launchWorker = id; },
+      // Suggestions and Git inspection read this machine's disk.
+      directorySuggestions: this.launchWorker ? [] : this.directorySuggestions,
+      onDirectoryInput: this.launchWorker ? () => undefined : this.requestDirectorySuggestions,
       branchPrefix: this.settings.branchPrefix,
       gitCheckout: this.gitCheckout,
       gitCheckoutLoading: this.gitCheckoutLoading,

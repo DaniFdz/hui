@@ -15,13 +15,16 @@
  * A theme file carries both modes, so there is no pairing to describe and no
  * manifest to keep in step.
  */
-import { mkdir, readFile, readdir, stat, unlink, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, realpath, stat, unlink, writeFile } from "node:fs/promises";
 import type { ServerResponse } from "node:http";
 import { randomUUID } from "node:crypto";
-import { basename, join } from "node:path";
+import { homedir } from "node:os";
+import { basename, join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import type { Connect, Plugin } from "vite";
+import { workers } from "./workers.ts";
+import { createWorkerRoutes, WORKERS_ROUTE } from "./worker-routes.ts";
 import { progressCardFromTranscript, type ProgressCard } from "../shared/progress-card.ts";
 import type { SessionPullRequest } from "../shared/pull-requests.ts";
 import {
@@ -229,6 +232,16 @@ const PRESENTED_MEDIA_ROUTE = /^\/__hui\/media\/([0-9a-f-]+)\/([^/]+)$/u;
 /** How long an event stream may sit idle before a comment proves it is alive. */
 const HEARTBEAT_MS = 15_000;
 const piMutations = new PiMutationService();
+const workerRoutes = createWorkerRoutes({ service: workers, readRegistry });
+// Sessions a lost connection interrupted reattach once their worker is back,
+// and stop showing a reconnect once HUI no longer tries.
+function forWorkerSessions(workerId: string, act: (record: SessionRecord) => void): void {
+  void readRegistry().then((records) => {
+    for (const record of records) if (record.worker === workerId && liveSessions.isLive(record.id)) act(record);
+  }).catch(() => undefined);
+}
+workers.onConnected((workerId) => forWorkerSessions(workerId, (record) => liveSessions.ensure(record, true)));
+workers.onStopped((workerId) => forWorkerSessions(workerId, (record) => liveSessions.stopReconnecting(record.id)));
 const subagents = new SubagentService(liveSessions);
 const taskSuggestions = new TaskSuggestionStore({ onChange: (id) => liveSessions.notifySnapshot(id) });
 const watchers = new WatcherService({
@@ -251,7 +264,7 @@ registerAgentToolHandler(async (invocation) => {
   if (invocation.action === "suggest_task" || invocation.action === "dismiss_task") {
     const caller = (await readRegistry()).find(({ id }) => id === invocation.callerSessionId);
     if (!caller) throw new TaskSuggestionInputError("Conversation no longer exists.");
-    return taskSuggestions.tool(caller.id, invocation.action, invocation.params, caller.cwd);
+    return taskSuggestions.tool(caller.id, invocation.action, invocation.params, caller.cwd, caller.worker);
   }
   if (invocation.action === "set_stage") {
     return setAgentStage(invocation.callerSessionId, invocation.params);
@@ -626,6 +639,19 @@ export async function storeAttachmentFile(
   return { path, name };
 }
 
+/** Reads a file `storeAttachmentFile` wrote; any other path, including one
+ * a symlink leads out of the store, is refused. */
+export async function readStoredAttachment(path: string, root = ATTACHMENTS_DIR): Promise<Buffer | undefined> {
+  try {
+    const [file, store] = await Promise.all([realpath(path), realpath(root)]);
+    if (!file.startsWith(store + sep)) return undefined;
+    const info = await stat(file);
+    return info.isFile() && info.size <= MAX_ATTACHMENT_BYTES ? await readFile(file) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export class AttachmentInputError extends Error {
   override name = "AttachmentInputError";
 }
@@ -744,6 +770,8 @@ type SessionView = {
   cwd: string;
   /** `cwd` with the home directory shortened to `~/`, for display only. */
   displayCwd: string;
+  /** Remote worker the session runs on; absent for this machine. */
+  worker?: { id: string; name: string };
   tool: string;
   status: SessionStatus;
   /** Git worktree progress while the session's checkout is still created. */
@@ -989,7 +1017,8 @@ function toView(
     title: record.title,
     group: record.group,
     cwd: record.cwd,
-    displayCwd: record.cwd ? displayPath(record.cwd) : "",
+    displayCwd: record.worker ? `${workers.nameOf(record.worker) ?? "Remote"}:${record.cwd}` : record.cwd ? displayPath(record.cwd) : "",
+    ...(record.worker ? { worker: { id: record.worker, name: workers.nameOf(record.worker) ?? "Remote worker" } } : {}),
     tool: record.tool,
     status,
     ...(runtime ? { runtime } : {}),
@@ -1137,6 +1166,8 @@ function waitForAutomationSession(
         finish(new AutomationConflictError("The target session is already running."));
       } else if (message.status === "error") {
         finish(new Error("The target session runtime could not start."));
+      } else if (message.status === "disconnected") {
+        finish(new Error("The target session's machine is disconnected."));
       }
     });
     signal.addEventListener("abort", onAbort, { once: true });
@@ -1146,13 +1177,16 @@ function waitForAutomationSession(
       finish(new AutomationConflictError("The target session is already running."));
     } else if (watched.snapshot.status === "error") {
       finish(new Error("The target session runtime could not start."));
+    } else if (watched.snapshot.status === "disconnected") {
+      finish(new Error("The target session's machine is disconnected."));
     }
   });
 }
 
-function waitForAutomationRun(
+export function waitForAutomationRun(
   record: SessionRecord,
   signal: AbortSignal,
+  sessions: Pick<typeof liveSessions, "watch" | "transcript" | "abort"> = liveSessions,
 ): Promise<AutomationExecution> {
   return new Promise((resolve, reject) => {
     let settled = false;
@@ -1165,20 +1199,22 @@ function waitForAutomationRun(
         reject(error);
         return;
       }
-      const lastAssistant = liveSessions.transcript(record.id)
+      const lastAssistant = sessions.transcript(record.id)
         .findLast((entry) => entry.kind === "message" && entry.role === "assistant");
       const summary = lastAssistant?.kind === "message" ? lastAssistant.text.trim() : "";
       resolve(summary ? { summary } : {});
     };
     const onAbort = () => {
-      void liveSessions.abort(record.id).finally(() => {
+      void sessions.abort(record.id).finally(() => {
         finish(new DOMException("Run cancelled.", "AbortError"));
       });
     };
-    const watched = liveSessions.watch(record.id, (message) => {
+    const watched = sessions.watch(record.id, (message) => {
       if (message.kind === "event" && message.event.type === "settled") finish();
       else if (message.kind === "status" && message.status === "error") {
         finish(new Error("The target session runtime failed."));
+      } else if (message.kind === "status" && message.status === "disconnected") {
+        finish(new Error("HUI is disconnected from the machine the target session runs on."));
       } else if (message.kind === "closed") {
         finish(new Error("The target session runtime exited."));
       }
@@ -1249,15 +1285,29 @@ export async function createSession(
   } = {},
 ): Promise<SessionRecord> {
   if (typeof body["cwd"] !== "string") throw new Error("Working directory must be text.");
-  let cwd = resolveWorkingDirectory(body["cwd"]);
-  let info;
-  try {
-    info = await stat(cwd);
-  } catch {
-    throw new Error(`No such directory: ${cwd}`);
+  if (body["worker"] !== undefined && (typeof body["worker"] !== "string" || !body["worker"].trim())) {
+    throw new Error("Worker must be a worker id.");
   }
-  if (!info.isDirectory()) {
-    throw new Error(`Not a directory: ${cwd}`);
+  const worker = typeof body["worker"] === "string" ? body["worker"].trim() : undefined;
+  let cwd: string;
+  if (worker) {
+    // The remote checks the directory when the session starts, so creating
+    // one never waits on a first connection or installation.
+    await workers.get(worker);
+    cwd = body["cwd"].trim();
+    if (!cwd.startsWith("/") && cwd !== "~" && !cwd.startsWith("~/")) throw new Error("A remote directory must be absolute or start with ~/.");
+    if (body["worktree"] === true || body["baseRef"] !== undefined) throw new Error("Worktrees and branch checkouts are not available on remote workers yet.");
+  } else {
+    cwd = resolveWorkingDirectory(body["cwd"]);
+    let info;
+    try {
+      info = await stat(cwd);
+    } catch {
+      throw new Error(`No such directory: ${cwd}`);
+    }
+    if (!info.isDirectory()) {
+      throw new Error(`Not a directory: ${cwd}`);
+    }
   }
 
   const title = sessionText(body, "title", SESSION_TITLE_MAX, {
@@ -1307,6 +1357,7 @@ export async function createSession(
   if (thinking && !NEW_SESSION_THINKING_LEVELS.has(thinking)) {
     throw new Error(`Unsupported thinking level: ${thinking}`);
   }
+  // A worker runs the same runtime a local session would.
   const runtimeTool = tool || defaultSessionTool();
   const settings = await readSettings();
   const id = randomUUID();
@@ -1316,6 +1367,7 @@ export async function createSession(
     title: named,
     group,
     cwd,
+    ...(worker ? { worker } : {}),
     tool: runtimeTool,
     ...(model ? { model } : {}),
     ...(thinking ? { thinking } : {}),
@@ -1335,9 +1387,11 @@ export async function createSession(
   // title at once and renamed when the utility model answers, so the request
   // never waits on a model call.
   const namesLater = Boolean(initialPrompt && !title && !requestedWorktree);
+  // Utility calls are tool-free and run on this machine.
+  const namingCwd = worker ? homedir() : cwd;
   const names = initialPrompt && !namesLater
     ? await nameSession({
-        cwd,
+        cwd: namingCwd,
         prompt: initialPrompt,
         settings,
         ...(title ? { title } : {}),
@@ -1379,7 +1433,7 @@ export async function createSession(
   sessions.accept(record.id);
   sessions.ensure(record);
   if (namesLater && initialPrompt) {
-    void renameWithGeneratedTitle(record, () => nameSession({ cwd, prompt: initialPrompt, settings }), registryUpdater);
+    void renameWithGeneratedTitle(record, () => nameSession({ cwd: namingCwd, prompt: initialPrompt, settings }), registryUpdater);
   }
   return record;
 }
@@ -1512,8 +1566,10 @@ export async function startWorktreeSession(
   return accepted;
 }
 
-/** Resolves once a freshly created session can accept its first prompt. */
-function waitForSessionReady(
+/** Resolves once a freshly created session can accept its first prompt. A
+ * session HUI is disconnected from fails at once, so its prompt is never sent
+ * later, behind the caller's back. */
+export function waitForSessionReady(
   id: string,
   timeoutMs = SUGGESTION_READY_TIMEOUT_MS,
   sessions: Pick<typeof liveSessions, "watch"> = liveSessions,
@@ -1531,6 +1587,7 @@ function waitForSessionReady(
     const inspect = (status: SessionStatus) => {
       if (status === "idle") finish();
       else if (status === "error") finish(new Error("The new session runtime could not start."));
+      else if (status === "disconnected") finish(new Error("HUI is disconnected from the machine the new session runs on. Reconnect it and try again."));
     };
     const timer = setTimeout(() => finish(new Error("The new session did not start in time.")), timeoutMs);
     timer.unref();
@@ -1577,6 +1634,7 @@ async function startTaskSuggestion(
       title: suggestion.title.slice(0, SESSION_TITLE_MAX),
       group: source.group,
       tool: defaultSessionTool(),
+      ...(suggestion.worker ? { worker: suggestion.worker } : {}),
       ...(mode === "worktree" ? { worktree: true } : {}),
     });
     await waitForSessionReady(record.id);
@@ -1705,6 +1763,8 @@ export async function startBacklogItem(itemId: string, body: Record<string, unkn
 async function saveSuggestionToBacklog(sessionId: string, suggestionId: string) {
   const suggestion = taskSuggestions.claim(sessionId, suggestionId);
   try {
+    // Backlog items start on this machine; a remote directory means nothing here.
+    if (suggestion.worker) throw new TaskSuggestionInputError("Suggestions from a remote worker can't go to the backlog yet. Start it in a new session instead.");
     const task = await backlogStore.addTask({ title: suggestion.title, problem: suggestion.problem, fix: suggestion.fix, cwd: suggestion.cwd, group: "" });
     taskSuggestions.remove(sessionId, suggestionId);
     return task;
@@ -1724,6 +1784,7 @@ export async function deleteSession(
   registryUpdater: typeof updateRegistry = updateRegistry,
 ): Promise<void> {
   const tokens = new Map<string, DeleteToken>([[id, sessions.tombstone(id)]]);
+  const remote: SessionRecord[] = [];
   try {
     await registryUpdater((records) => {
       if (!records.some((record) => record.id === id)) {
@@ -1733,6 +1794,7 @@ export async function deleteSession(
       for (const descendant of tree) {
         if (!tokens.has(descendant)) tokens.set(descendant, sessions.tombstone(descendant));
       }
+      remote.push(...records.filter((record) => tree.has(record.id) && record.worker));
       return records.filter((record) => !tree.has(record.id));
     });
   } catch (error) {
@@ -1741,6 +1803,10 @@ export async function deleteSession(
   }
   subagents.forgetSessions(new Set(tokens.keys()));
   taskSuggestions.forget(tokens.keys());
+  // A remote process this gateway is not attached to would otherwise linger.
+  for (const worker of new Set(remote.map((record) => record.worker!))) {
+    void workers.forget(worker, remote.filter((record) => record.worker === worker).map((record) => record.id)).catch(() => undefined);
+  }
   for (const [sessionId, token] of tokens) {
     sessions.finishDelete(sessionId, token);
     terminals.closeOwner(sessionId);
@@ -1969,7 +2035,7 @@ async function handleRequest(
     }
     return;
   }
-  const attachmentRoute = path.match(/^\/__hui\/sessions\/([^/]+)\/attachments\/(\d{1,9})\/(\d{1,4})$/u);
+  const attachmentRoute = path.match(/^\/__hui\/sessions\/([^/]+)\/attachments\/(\d{1,9})\/(files\/)?(\d{1,4})$/u);
   if (attachmentRoute) {
     // <img> cannot send x-hui; accept it or a browser-attested same-origin
     // fetch, and refuse everything cross-site.
@@ -1988,18 +2054,25 @@ async function handleRequest(
       sendJson(response, 404, { error: `unknown session: ${id}` });
       return;
     }
-    const image = liveSessions.attachmentImage(id, Number(attachmentRoute[2]), Number(attachmentRoute[3]));
-    if (!image) {
+    const message = Number(attachmentRoute[2]);
+    const index = Number(attachmentRoute[4]);
+    const filePath = attachmentRoute[3] ? liveSessions.attachmentFile(id, message, index) : undefined;
+    const fileData = filePath ? await readStoredAttachment(filePath) : undefined;
+    const attachment = attachmentRoute[3]
+      ? fileData && { mimeType: "application/octet-stream", data: fileData }
+      : await liveSessions.attachmentImage(id, message, index);
+    if (!attachment) {
       sendJson(response, 404, { error: "attachment not found" });
       return;
     }
     response.statusCode = 200;
-    response.setHeader("content-type", image.mimeType);
-    response.setHeader("content-length", String(image.data.length));
-    response.setHeader("cache-control", "private, max-age=3600");
+    response.setHeader("content-type", attachment.mimeType);
+    response.setHeader("content-length", String(attachment.data.length));
+    // The URL names a position in the history, which a rewind hands to the next message.
+    response.setHeader("cache-control", "no-store");
     response.setHeader("x-content-type-options", "nosniff");
     response.setHeader("cross-origin-resource-policy", "same-origin");
-    response.end(image.data);
+    response.end(attachment.data);
     return;
   }
 
@@ -2019,6 +2092,7 @@ async function handleRequest(
       const id = terminalRoute[2];
       const session = (await readRegistry()).find((record) => record.id === owner);
       if (!session) throw new TerminalError("Conversation not found.", 404);
+      if (session.worker) throw new TerminalError("Terminals are not available for sessions on a remote worker yet.", 409);
       if (request.method === "GET") {
         if (terminalRoute[3]) throw new TerminalError("Method not allowed.", 405);
         sendJson(response, 200, id ? terminals.read(owner, id) : { terminals: terminals.list(owner) });
@@ -2238,6 +2312,13 @@ async function handleRequest(
         error: error instanceof Error ? error.message : "Could not read the resource.",
       });
     }
+    return;
+  }
+
+  if (path === WORKERS_ROUTE || path.startsWith(`${WORKERS_ROUTE}/`)) {
+    const result = await workerRoutes.handle(request.method ?? "GET", path, () => readBody(request));
+    if (result) sendJson(response, result.status, result.body);
+    else sendJson(response, 404, { error: "not found" });
     return;
   }
 
@@ -2680,7 +2761,8 @@ async function handleRequest(
           project,
           parents,
           title: suggestion?.title ?? record.title,
-          cwd: record.cwd,
+          // Utility calls run on this machine, even for remote sessions.
+          cwd: record.worker ? homedir() : record.cwd,
           context: suggestion ? taskSuggestionJiraDescription(suggestion) : digest?.text ?? "",
           ...(digest?.goal ? { goal: digest.goal } : {}),
           model: (await readSettings()).models.utility,
@@ -3218,7 +3300,7 @@ async function handleRequest(
         const question = typeof body["question"] === "string" ? body["question"].trim() : "";
         if (!question) throw new Error("A side question is required.");
         const result = await answerSideQuestion({
-          cwd: record.cwd,
+          cwd: record.worker ? homedir() : record.cwd,
           question,
           transcript: liveSessions.transcript(id),
           settings: await readSettings(),
@@ -3445,8 +3527,11 @@ export async function startBackend(): Promise<void> {
   await automation.start();
   initializeWatchers();
   initializeSubagents();
+  await workers.list().catch(() => undefined);
   // Opening the Durable store resumes its interrupted runs, including those of
-  // sessions no browser has reopened yet. Another gateway owning it is reported.
+  // sessions no browser has reopened yet, once those sessions have loaded their
+  // PI extensions again. Another gateway owning it is reported.
+  durableHost().beforeResume = async (conversations) => reopenDurableSessions(conversations, await readRegistry());
   void durableHost().open().catch((error: unknown) => recordDiagnosticEvent({
     area: "runtime", level: "warning", action: "durable_open_failed",
     summary: "The Durable session store did not open",
@@ -3455,6 +3540,18 @@ export async function startBackend(): Promise<void> {
   recoverInterruptedSessions(await readRegistry());
   // Auto-star the HUI repo when GitHub is connected.
   void githubCli.starHuiRepo().catch(() => {}); // best-effort, non-blocking
+}
+
+/** The sessions of Durable conversations with unfinished work, whose runs
+ * resume once they are open (the store, not HUI's run marker, knows them all). */
+export async function reopenDurableSessions(
+  conversations: readonly unknown[],
+  records: readonly SessionRecord[],
+  sessions: Pick<typeof liveSessions, "ensure" | "booted"> = liveSessions,
+): Promise<void> {
+  const references = new Set(conversations.map((id) => `durable:${String(id)}`));
+  const owners = records.filter((record) => record.piSessionFile && references.has(record.piSessionFile));
+  await Promise.all(owners.map((record) => sessions.ensure(record) ? sessions.booted(record.id) : undefined));
 }
 
 /** Startup recovery is eager: interrupted work resumes even when no browser
@@ -3479,6 +3576,9 @@ export function stopBackend(): void {
   subagents.dispose();
   watchers.dispose();
   stopAgentToolBridge();
+  // Closed first: remote sessions then keep running on their hosts instead of
+  // receiving a kill from the disposal below.
+  workers.disconnectAll();
   liveSessions.disposeAll();
   // Closing records no outcome: running Durable work resumes on the next start.
   void durableHost().close();

@@ -157,13 +157,20 @@ const server = createServer(async (request, response) => {
     return json(response, 404, { error: "not found" });
   }
 
+  // Opt-in credential check, e.g. to prove a remote worker got the key.
+  const requiredKey = process.env.HUI_E2E_PROVIDER_KEY;
+  if (requiredKey && request.headers["x-api-key"] !== requiredKey) {
+    return json(response, 401, { type: "error", error: { type: "authentication_error", message: "fixture provider: wrong API key" } });
+  }
   const chunks = [];
   for await (const chunk of request) chunks.push(chunk);
   const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
   // A fixture provider whose x-client-session-id header interpolates `${PI_CLIENT_SESSION_ID}`
   // logs the identity HUI resolved for the request.
   const clientSessionId = request.headers["x-client-session-id"];
-  await appendFile(logFile, `${JSON.stringify(clientSessionId === undefined ? body : { ...body, clientSessionId })}\n`, "utf8");
+  // And one with an x-e2e-token header logs that, e.g. to prove a remote worker got it.
+  const header = request.headers["x-e2e-token"];
+  await appendFile(logFile, `${JSON.stringify({ ...body, ...(clientSessionId === undefined ? {} : { clientSessionId }), ...(header === undefined ? {} : { header }) })}\n`, "utf8");
   const source = flattenedText(body.messages?.at(-1));
   const latestToolResult = toolResultFrom(body.messages?.at(-1));
   if (source.includes("E2E_ERROR")) return json(response, 500, { type: "error", error: { type: "api_error", message: "fixture provider error" } });
@@ -433,6 +440,14 @@ const server = createServer(async (request, response) => {
     event(response, { type: "content_block_stop", index: 0 });
     return finish(response, "tool_use");
   }
+  if (source.includes("E2E_PRINT_ENV")) {
+    // The HUI and PI directories and HUI-held secrets an agent shell inherits, if any.
+    const input = { command: "env | grep -E '^(HUI_CONFIG_DIR|HUI_DURABLE_DIR|PI_CODING_AGENT_DIR|HUI_SECRET_[0-9A-F]+|HUI_WORKER_SECRETS)=' ; echo env-done", timeout: 120 };
+    event(response, { type: "content_block_start", index: 0, content_block: { type: "tool_use", id: "tool-e2e-env", name: "bash", input: {} } });
+    event(response, { type: "content_block_delta", index: 0, delta: { type: "input_json_delta", partial_json: JSON.stringify(input) } });
+    event(response, { type: "content_block_stop", index: 0 });
+    return finish(response, "tool_use");
+  }
   if (source.includes("E2E_COMMAND")) {
     const command = source.includes("E2E_COMMAND_RUNNING")
       ? `curl --silent --show-error --noproxy '*' --fail http://127.0.0.1:${port}/control/wait-command`
@@ -460,6 +475,11 @@ const server = createServer(async (request, response) => {
       purpose: "Wait for #21532 review signals",
       command: "printf 'watching #21532\\n'; sleep 600",
     }, 1);
+    return finish(response, "tool_use");
+  }
+  // A tool a PI extension registers, which only exists when the runtime loaded it.
+  if (source.includes("E2E_EXTENSION_TOOL")) {
+    toolUse(response, "tool-e2e-extension", "fixture_echo", { text: "from the model" });
     return finish(response, "tool_use");
   }
   if (source.includes("E2E_SUGGEST_TASK")) {

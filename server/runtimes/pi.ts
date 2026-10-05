@@ -11,10 +11,11 @@ import { RuntimeTimings, sanitizeMetrics } from "./transcript-metrics.ts";
  */
 import { resolveCommandReference } from "../../src/lib/command-references.ts";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { relayCredentials, secretEnv } from "../worker/credentials.ts";
 import { fileURLToPath } from "node:url";
 import { enabledBundledSkillPaths, isBundledSkillPreference } from "../bundled-skills.ts";
 import { resolvePiAgentDir } from "../pi-paths.ts";
-import { readProviderSelections } from "./hui-models.ts";
+import { PROVIDERS_DIR, readProviderSelections } from "./hui-models.ts";
 import { filterConfiguredModels } from "./pi-models.ts";
 import { piBackend } from "./pi-backend.ts";
 import { piCommand } from "./pi-command.ts";
@@ -312,6 +313,21 @@ export function imageFromMessages(
   return { mimeType: mimeType.toLowerCase(), data: Buffer.from(data, "base64") };
 }
 
+/** The stored path of one file a user attached to a PI history message. */
+export function fileFromMessages(messages: readonly unknown[], message: number, file: number): string | undefined {
+  const raw = messages[message];
+  if (!isRecord(raw) || raw["role"] !== "user") return undefined;
+  const content = raw["content"];
+  const parts: unknown[] = typeof content === "string" ? [{ type: "text", text: content }] : Array.isArray(content) ? content : [];
+  const imageCount = parts.filter((part) => isRecord(part) && part["type"] === "image").length;
+  for (const part of parts) {
+    if (!isRecord(part) || part["type"] !== "text" || typeof part["text"] !== "string") continue;
+    const attachments = restoreAttachmentNames(part["text"], imageCount).attachments;
+    if (attachments) return attachments.flatMap((item) => item.kind === "file" ? [item.path] : [])[file];
+  }
+  return undefined;
+}
+
 export function transcriptFrom(messages: readonly unknown[], timings = new RuntimeTimings()): TranscriptEntry[] {
   const entries: TranscriptEntry[] = [];
   const tools = new Map<string, number>();
@@ -370,8 +386,10 @@ export function transcriptFrom(messages: readonly unknown[], timings = new Runti
         source: { message: messageIndex, image: index },
       };
     };
+    let fileIndex = 0;
     const attachments: TranscriptAttachment[] = durableAttachments?.map((item) =>
-      item.kind === "image" ? imageAttachment(item.name) : { name: item.name, kind: "file" as const },
+      item.kind === "image" ? imageAttachment(item.name)
+        : { name: item.name, kind: "file" as const, source: { message: messageIndex, file: fileIndex++ } },
     ) ?? Array.from({ length: imageCount }, (_, index) => imageAttachment(imageCount > 1 ? `image ${index + 1}` : "image"));
     const usage = isRecord(raw["usage"]) ? raw["usage"] : {};
     const metrics = sanitizeMetrics({
@@ -698,6 +716,10 @@ export class PiSession implements RuntimeSession {
   get processId(): number | undefined {
     return this.#child.pid;
   }
+
+  /** Attached to a remote run that kept going without this gateway: an `idle`
+   * boot then means it finished, not that it died. */
+  readonly resumesInterruptedRuns = false;
 
   constructor(child: ChildProcessWithoutNullStreams, agentDir?: string, disabledSkillNames: readonly string[] = [], sdk = false) {
     this.#child = child;
@@ -1206,6 +1228,7 @@ export class PiSession implements RuntimeSession {
 
   async reload(): Promise<void> {
     if (!this.#inspector) throw new Error("Reload requires HUI's PI SDK backend.");
+    // A remote session re-reads the mirror, so refresh it from this machine first.
     await this.#inspector.reload();
   }
 
@@ -1239,8 +1262,12 @@ export class PiSession implements RuntimeSession {
     };
   }
 
-  attachmentImage(message: number, image: number): { mimeType: string; data: Buffer } | undefined {
+  async attachmentImage(message: number, image: number): Promise<{ mimeType: string; data: Buffer } | undefined> {
     return imageFromMessages(this.#messages, message, image);
+  }
+
+  attachmentFile(message: number, file: number): string | undefined {
+    return fileFromMessages(this.#messages, message, file);
   }
 
   transcript(): TranscriptEntry[] {
@@ -1270,6 +1297,14 @@ export class PiSession implements RuntimeSession {
   }
 }
 
+export type HostLaunch = {
+  disabledSkills: { name: string; path: string }[];
+  bundledSkillPaths: string[];
+  disabledPluginIds: string[];
+  browserTool: boolean;
+  fallbackAuth: string;
+};
+
 async function startPi(options: {
   cwd: string;
   sessionFile?: string;
@@ -1287,10 +1322,14 @@ async function startPi(options: {
   backend?: "sdk" | "cli";
   /** Isolated test/probe configuration; otherwise use the configured PI path. */
   agentDir?: string;
+  /** On a worker host: the gateway's skill and plugin choices, already mapped
+   * to this machine, and the remote's own login for when no gateway answers. */
+  hostLaunch?: HostLaunch;
 }): Promise<PiSession> {
   const args = ["--mode", "rpc"];
+  const hostLaunch = options.hostLaunch;
   const huiSettings = options.safeProbe ? undefined : await readHuiSettings();
-  const browserTool = !options.safeProbe && huiSettings?.browser.enabled !== false;
+  const browserTool = !options.safeProbe && (hostLaunch ? hostLaunch.browserTool : huiSettings?.browser.enabled !== false);
   if (!options.safeProbe) {
     args.push("--extension", fileURLToPath(new URL("./progress-card-extension.mjs", import.meta.url)));
     args.push("--extension", fileURLToPath(new URL("./agent-tools-extension.mjs", import.meta.url)));
@@ -1318,10 +1357,10 @@ async function startPi(options: {
   const disabled = huiSettings?.disabledSkills ?? [];
   // Bundled opt-out controls only the fallback. A PI/user/project skill with
   // the same name remains independently configurable through its own path.
-  const disabledSkills = disabled.filter((entry) => !isBundledSkillPreference(entry));
-  const bundledSkillPaths = options.safeProbe ? [] : enabledBundledSkillPaths(disabled);
+  const disabledSkills = hostLaunch?.disabledSkills ?? disabled.filter((entry) => !isBundledSkillPreference(entry));
+  const bundledSkillPaths = options.safeProbe ? [] : hostLaunch?.bundledSkillPaths ?? enabledBundledSkillPaths(disabled);
   for (const path of bundledSkillPaths) args.push("--skill", path);
-  const disabledPluginIds = huiSettings?.disabledPlugins.map((plugin) => plugin.id) ?? [];
+  const disabledPluginIds = hostLaunch?.disabledPluginIds ?? huiSettings?.disabledPlugins.map((plugin) => plugin.id) ?? [];
   const agentToolEnv = options.huiSessionId && !options.safeProbe
     ? await agentToolEnvironment(options.huiSessionId)
     : {};
@@ -1336,15 +1375,17 @@ async function startPi(options: {
   const env = {
     ...piEnvironment(), ...agentToolEnv, PI_CODING_AGENT_DIR: agentDir,
     HUI_DISABLED_SKILLS: JSON.stringify(disabledSkills),
+    ...(hostLaunch ? { HUI_WORKER_BROKER: "1", HUI_WORKER_FALLBACK_AUTH: hostLaunch.fallbackAuth, HUI_PROVIDERS_DIR: PROVIDERS_DIR, HUI_WORKER_SECRETS: JSON.stringify(secretEnv()) } : {}),
   };
   // The launch travels in the environment, not argv: endpoint security agents
   // can SIGKILL an exec whose cwd plus one argument reaches MAXPATHLEN (1024).
   const child = backend === "sdk"
     ? spawn(process.execPath, [fileURLToPath(new URL(import.meta.url.endsWith(".ts") ? "./pi-sdk-worker.ts" : "./pi-sdk-worker.js", import.meta.url))], {
         cwd: options.cwd, stdio: ["pipe", "pipe", "pipe", "ipc"],
-        env: { ...env, HUI_PI_WORKER_LAUNCH: JSON.stringify({ ...options, agentDir, disabledPluginIds, bundledSkillPaths, browserTool }) },
+        env: { ...env, HUI_PI_WORKER_LAUNCH: JSON.stringify({ ...withoutHostLaunch(options), agentDir, disabledPluginIds, bundledSkillPaths, browserTool }) },
       }) as ChildProcessWithoutNullStreams
     : spawn(cli.command, cli.args, { cwd: options.cwd, stdio: ["pipe", "pipe", "pipe"], env });
+  if (hostLaunch && backend === "sdk") relayCredentials(child);
 
   const session = new PiSession(child, agentDir, disabledSkills.map((skill) => skill.name), backend === "sdk");
   try {
@@ -1361,6 +1402,11 @@ async function startPi(options: {
     throw output && error instanceof Error ? new RuntimeOutputError(error.message, output, { cause: error }) : error;
   }
   return session;
+}
+
+function withoutHostLaunch<T extends { hostLaunch?: unknown }>(options: T): Omit<T, "hostLaunch"> {
+  const { hostLaunch: _launch, ...rest } = options;
+  return rest;
 }
 
 export const piRuntime = {

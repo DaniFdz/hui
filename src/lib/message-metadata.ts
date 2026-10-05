@@ -14,10 +14,18 @@ export function relativeTime(timestamp: number, now = Date.now()): string {
   return `${Math.floor(seconds / 86400)}d ago`;
 }
 
+// `toLocaleString("en-US")` builds a new formatter on every call (~7 µs), and
+// every render of a long transcript formats thousands of token counts.
+const countFormat = new Intl.NumberFormat("en-US");
+
+export function formatCount(value: number): string {
+  return countFormat.format(value);
+}
+
 export function metricSummary(metrics?: TranscriptMetrics): string {
   if (!metrics) return "";
   return [metrics.durationMs !== undefined ? `Completed in ${elapsedLabel(metrics.durationMs)}` : "",
-    metrics.outputTokens !== undefined ? `${metrics.outputTokens.toLocaleString("en-US")} output ${metrics.outputTokens === 1 ? "token" : "tokens"}` : ""].filter(Boolean).join(" · ");
+    metrics.outputTokens !== undefined ? `${formatCount(metrics.outputTokens)} output ${metrics.outputTokens === 1 ? "token" : "tokens"}` : ""].filter(Boolean).join(" · ");
 }
 
 /** Plain Markdown quote: persists with the existing draft/prompt format. */

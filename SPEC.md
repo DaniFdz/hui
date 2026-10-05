@@ -1003,6 +1003,109 @@ If Git fails, the session stays listed in an error state showing Git's error;
 deleting it returns its prompt to New Session. A gateway restart forgets an
 unfinished session.
 
+## Remote workers
+
+A session can run on another machine. A **worker** is a name and a connect
+command: any argv prefix that opens a stdio pipe to a POSIX shell there, such as
+`ssh devbox`, `docker exec -i box` or `kubectl exec -i pod --`. HUI never asks
+for passwords or keys; the command must work non-interactively. Settings →
+Workers adds, connects, re-syncs, disconnects and removes workers and shows
+the remote host, sync summary and errors. A worker that sessions still use
+cannot be removed. A worker session runs on the same runtime a local one
+would (Pi Durable by default, PI with `HUI_SESSION_RUNTIME=pi`), inside the
+worker's host; its conversation lives in that worker's own store. `hui doctor`
+leaves worker records unchanged.
+
+- **Setup through the command only.** Each step runs `<command> sh -s` with a
+  script on stdin. HUI looks for Node.js 22.19+ (Pi Durable needs its
+  built-in SQLite) with npm on the remote and, if missing, downloads the
+  gateway's own Node version from nodejs.org (curl or wget required). Those
+  builds need glibc: on Alpine or another musl system HUI stops with a message
+  asking for Node.js 22.19+ from the system's packages. It then uploads its own
+  worker code (the same HUI version) and installs the PI SDK, Pi Durable and
+  their peers with `npm install`, at the versions HUI's lockfile pins. Everything lives under `~/.local/share/hui-worker` (or
+  `$XDG_DATA_HOME/hui-worker`); the remote user's own files are not touched.
+- **A durable host.** One per-user host daemon runs HUI's runtime adapters on
+  the remote (Pi Durable in-process, PI SDK workers as children); the gateway
+  reaches it through the command's stdio and drives each session through the
+  same runtime contract as a local one. Losing the connection (laptop asleep,
+  gateway restart, network drop) leaves remote sessions running: runs finish,
+  follow-ups sent while a run streams there run (they queue on the worker and
+  are shown read-only, like steering; while earlier ones wait in HUI's
+  editable queue they wait there too, behind them, and run once HUI is back
+  and the run has settled), and a Durable run interrupted by a host restart
+  resumes when the host starts again. HUI notices a silent connection within
+  45 s, reconnects by itself and reopens the sessions the loss interrupted;
+  reopening reattaches to the live session, replays its pending questions and
+  catches up on its transcript. Meanwhile the header and sidebar show
+  "Reconnecting to <worker>…" with one notice, "Connection to <worker> lost —
+  the session keeps running there. HUI reconnects automatically.", never a
+  failure; the composer keeps the draft, and sending waits for the worker.
+  When HUI is not retrying (the worker was disconnected or removed, or after a
+  gateway restart could not be reached) the session reads "Disconnected from
+  <worker>" with a **Reconnect** action, which connects the worker (explaining
+  when it no longer exists); opening the session alone never reconnects it.
+  Such sessions hold up a gateway restart or update only while HUI holds
+  follow-ups for them. A run that finished meanwhile is not
+  "recovered", even once its idle runtime has stopped or the host restarted;
+  a PI run cut off mid-way (the host or its runtime stopped) is continued by
+  HUI on the next open, as a local one after a gateway restart. Detached idle workers stop after ten minutes, an idle host
+  after thirty, unless Durable work still has to run (an
+  open store alone keeps nothing alive). A newer gateway replaces an idle older
+  host; one that is busy, or that another HUI is connected to, keeps serving.
+- **Your PI setup, mirrored.** Before a session starts (at most every 30 s)
+  HUI mirrors the user's PI settings, models, context files (`AGENTS.md`,
+  `SYSTEM.md`, …), extensions, skills, prompts, `~/.agents/skills`, every local
+  path named in PI settings, HUI's settings and provider selections and the
+  worker's extra paths. Local paths in settings become absolute mirror paths.
+  `npm:` and `git:` packages, and the dependencies of mirrored local packages,
+  are installed on the remote. A worker session gets what a local one gets:
+  skills (HUI's bundled ones included), context files, prompt templates,
+  models including HUI-managed providers, HUI tools and HUI's skill and plugin
+  choices, and PI extensions load on both runtimes, as locally. Agent
+  shells there do not inherit the host's HUI directories, so a `hui` or `pi`
+  run from one uses the remote user's own; only a PI session's shells see
+  `PI_CODING_AGENT_DIR` (the mirror), as a local PI worker's see PI's.
+  Credentials, transcripts, `node_modules`, `.git` and files over 8 MB are not
+  mirrored; files HUI mirrored earlier and no longer sends are removed.
+- **Credentials stay on the gateway.** The remote runtimes ask the connected
+  gateway for each credential; an OAuth refresh runs on the remote while the
+  gateway holds its own credential lock, and the rotated token is written only
+  there. The host keeps the answers in memory only, never on disk, so runs
+  keep going while the gateway is away; an answer is dropped when its token
+  expires. Without a gateway and a cached answer, the remote's own PI login
+  is used, read only if its `auth.json` exists; HUI never creates it. Provider keys
+  that models.json resolves from environment variables or commands resolve on
+  the remote. A key written literally in models.json, or a literal value of a
+  header whose name looks like a credential (one of its `-`, `_` or `.`
+  separated parts is `auth`, `authorization`, `cookie`, `token`, `secret`,
+  `password`, `passphrase`, `passcode`, `credential(s)`, `jwt`, `signature`,
+  `bearer` or `csrf`, or it contains `api-key`, `apikey`, `access-key`,
+  `private-key` or `secret-key`; `x-max-tokens` or `idempotency-key` do not),
+  is never mirrored: the remote's copy
+  drops the key, which the gateway serves as that provider's credential when
+  its PI login has none (PI's own precedence), and names a `HUI_SECRET_…`
+  variable in place of the header value. The gateway sends those values with
+  each sync; the host keeps them in memory only, and PI resolves them as
+  environment variables whatever the provider's credential, but no process
+  the host starts inherits them, agent shells included. Other literal headers
+  are configuration and are mirrored. A placeholder key for a proxy the remote
+  runs itself works offline only when written as `$NAME` or `!command`. After
+  a host restart the header values return with the gateway's next sync; until
+  then a model that needs one fails with PI's message naming that variable.
+  Without a gateway or a cached answer only the remote's own login applies.
+  An invalid models.json is not mirrored at all.
+- **Sessions.** New Session's **Run on** picker lists workers. A remote
+  directory must be absolute or start with `~/` and is checked when the session
+  starts; creating one never waits on a connection. The header shows the worker.
+  Subagents of a remote session run on the same worker. HUI agent tools work
+  through the gateway; presented media is copied back from the remote. With no
+  gateway connected (or when it leaves mid-call) a HUI tool call fails at once
+  with a message saying HUI is not connected; it is never replayed.
+  Not yet available remotely: terminals, watchers, the managed browser, New
+  worktree and branch checkouts, and multi-account quota rotation (the default
+  account is used). Usage totals skip remote transcripts.
+
 ## Decisions
 
 ### New sessions run on Pi Durable
@@ -1018,17 +1121,52 @@ rerun, because no HUI or coding tool is marked replay-safe. HUI therefore never
 sends its recovery prompt to a Durable session.
 
 PI still owns configuration: the harness reads PI's `settings.json`,
-`models.json`, credentials, skills, `AGENTS.md`/`SYSTEM.md`/`APPEND_SYSTEM`
-and prompt templates through PI's SDK, and builds the system prompt with PI's
-own section builder plus HUI's sections, as the SDK worker does. A provider
-header that interpolates `PI_CLIENT_SESSION_ID` gets a value per HUI session,
-as a PI worker gets one in its environment. Durable runs
-only HUI-owned code: its read/write/edit/bash tools and HUI's tools, which call
-the gateway's agent-tool handler in process as the conversation's bound HUI
-session. Third-party PI extensions and packages do not load in Durable
-sessions. A rewind forks the conversation, so the abandoned branch stays
+`models.json`, credentials, skills, extensions, `AGENTS.md`/`SYSTEM.md`/
+`APPEND_SYSTEM` and prompt templates through PI's SDK, and builds the system
+prompt with PI's own section builder plus HUI's sections, as the SDK worker
+does. A provider header that interpolates `PI_CLIENT_SESSION_ID` gets a value
+per HUI session, as a PI worker gets one in its environment. Durable's own
+tools are its read/write/edit/bash tools and HUI's tools, which call the
+gateway's agent-tool handler in process as the conversation's bound HUI
+session. A rewind forks the conversation, so the abandoned branch stays
 stored. Prompt-free Continue is not available on Durable; an aborted run
 continues from a new prompt.
+
+Each Durable session also loads the PI extensions its PI worker would: the
+packages and extensions PI settings name and the `extensions/` directories,
+with HUI's plugin choices applied. Every session gets instances of its own,
+started once its history is read and shut down when it closes; `/reload` loads
+them again and `/clear` starts new ones. They run in the gateway process through
+PI's own extension runner, bound to the conversation:
+
+- Their tools are offered beside Durable's. One named like a coding tool
+  replaces it; HUI's tools win over theirs. Inspection names the extension
+  behind each tool and lists load errors.
+- Their commands appear in the `/` menu and run in the gateway. A command that
+  starts no run settles the session when it ends.
+- Their handlers see the session's lifecycle, its prompts (`input`, and
+  `before_agent_start`, whose messages go to the model as hidden context just
+  before the prompt and whose system prompt applies to that run), the model
+  context before each request, provider requests and responses, tool calls
+  (which they may block or rewrite) and results, and compactions (which they
+  may decline or summarize). A run is over once its `agent_end` and
+  `agent_settled` handlers ran, or 30 seconds after it ended. Stop while a
+  prompt passes its handlers sends nothing.
+- Their dialogs are HUI questions and their notifications HUI notices.
+  Terminal-only UI (status lines, widgets, custom components, shortcuts) is
+  ignored.
+- What they store with `appendEntry` and the messages they send are Durable
+  entries, so their state survives a restart. Their messages stay out of the
+  transcript, as in PI sessions, even one that starts a turn.
+- Not available in Durable sessions: registering providers or models,
+  replacing or branching the session from a command, turn-boundary entries and
+  continuation, replacing a finished message, extra resource paths and nested
+  tool calls.
+- After a gateway restart, interrupted runs resume once their sessions have
+  loaded their extensions again, or after 30 seconds.
+
+An extension that blocks the event loop holds up every session; PI's worker
+isolates each session's extensions in a process of its own.
 
 Compaction is Durable's too, with Durable's semantics where they differ from
 PI's. `/compact`, **Compact now** and the harness's own compactions (background
@@ -1073,13 +1211,15 @@ and entries on abandoned branches stay only in the PI file.
 ### HUI owns an isolated PI SDK backend, not a PI fork
 
 Sessions on the `pi` runtime (sessions created before Durable that
-`hui doctor --fix` has not moved, and new ones under `HUI_SESSION_RUNTIME=pi`)
+`hui doctor --fix` has not moved, worker sessions, and new ones under
+`HUI_SESSION_RUNTIME=pi`)
 keep this design. Each active one runs a
 Node child with the pinned
 `@earendil-works/pi-coding-agent` SDK (1.0.1). HUI owns the versioned default
 prompt, HUI tool definitions and runtime inspection; PI still owns its agent
-loop, configuration, credentials, resources and JSONL transcript writer. The
-gateway does not embed the agent loop or execute third-party extensions.
+loop, configuration, credentials, resources and JSONL transcript writer. For
+these sessions the gateway neither embeds the agent loop nor runs their
+extensions; Durable sessions run theirs in the gateway (above).
 
 The worker reuses PI's `runRpcMode` for streaming, queues and extension questions.
 HUI's client uses strict newline framing, plus a versioned Node IPC channel for

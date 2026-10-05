@@ -15,7 +15,7 @@ function text(value: unknown): string {
 
 const health: SettingsProps["health"] = {
   status: "online", transport: "HTTP + SSE", access: "Full Access", uptimeSeconds: 183840,
-  sessions: { registered: 12, running: 2, starting: 0, idle: 10, error: 0, processes: 2 },
+  sessions: { registered: 12, running: 2, starting: 0, idle: 10, waiting: 0, error: 0, reconnecting: 0, disconnected: 0, processes: 2 },
 };
 const render = (overrides: Partial<SettingsProps>) => text(renderConnectionPage({
   healthError: "", ...overrides,

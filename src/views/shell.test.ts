@@ -94,13 +94,14 @@ test("the primary sidebar lists work destinations and ends with Settings", () =>
   assert.match(nav, /sidebar-nav__settings[\s\S]*props\.onOpenSettings\(\)[\s\S]*>Settings<\/span>\s*<\/a>\s*$/u);
 });
 
-test("settings navigation contains only the thirteen accepted regions", () => {
+test("settings navigation contains only the fourteen accepted regions", () => {
   assert.deepEqual(
     SETTINGS_PAGES.map((page) => page.id),
     [
       "appearance",
       "connection",
       "integrations",
+      "workers",
       "models",
       "plugins",
       "skills",
@@ -245,6 +246,9 @@ test("session rows mirror OpenClaw run and attention states", () => {
   assert.match(components, /\.session-glyph__ring[\s\S]*?animation: session-run-spin 1\.6s linear infinite/);
   assert.match(styles, /\.sidebar-session-attention__icon--question \{ color: var\(--warn\)/);
   assert.match(styles, /\.sidebar-session-attention__icon--error \{ color: var\(--danger\)/);
+  // A session out of reach is calm: its own muted mark, labelled by unreachableHost.
+  assert.match(source, /away \? \{ label: away\.status, icon: icons\.plug, tone: "away" \}/);
+  assert.match(styles, /\.sidebar-session-attention__icon--away \{ color: var\(--status-stopped\)/);
   assert.match(source, /const unread = session\.unread === true && !attention/);
   assert.doesNotMatch(source, /const unread =[^;]*!selected/);
   assert.match(source, /class="sidebar-session-unread-dot"/);
@@ -314,6 +318,15 @@ test("returning to the still-selected session restores its composer draft key", 
     app,
     /if \(this\.selected\?\.id === target\.id\) \{[^}]*this\.switchComposerDraft\(sessionDraftKey\(target\.id\)\);[^}]*return;/s,
   );
+});
+
+test("the app refuses the launch draft key to panes at both composer boundaries", () => {
+  // firstUpdated used to hand a pane the launch key milliseconds after its own
+  // navigation set `session:<id>`, and persisting the launch key let a pane
+  // clobber, or an unmounting pane clear, the shell's unsent text.
+  const app = readFileSync(new URL("../hui-app.ts", import.meta.url), "utf8");
+  const refusals = app.match(/if \(!mayUseComposerDraftKey\(this\.embeddedPane, key\)\) return;/g) ?? [];
+  assert.equal(refusals.length, 2, "switchComposerDraft and persistComposerDraft must both refuse the launch key");
 });
 
 test("active search reveals matches without changing the collapsed preference", () => {
