@@ -31,6 +31,8 @@ async function fakeGateway(t: TestContext) {
   const waiting = new Map<string, () => void>();
   let promptRefusal: string | undefined;
   let onPrompt: (text: string) => void = () => {};
+  /** Prompts that arrived while no session stream was open. */
+  const unseenPrompts: string[] = [];
   const server = createServer(async (request, response) => {
     let text = "";
     for await (const chunk of request) text += chunk;
@@ -43,6 +45,8 @@ async function fakeGateway(t: TestContext) {
     const stream = (key: string) => {
       response.writeHead(200, { "content-type": "text/event-stream" });
       response.flushHeaders();
+      // Like the gateway, a session stream begins with one coherent snapshot.
+      if (key === "session") response.write(`event: snapshot\ndata: ${JSON.stringify({ status: "idle", questions: [], transcript: [] })}\n\n`);
       streams.set(key, response);
       waiting.get(key)?.();
     };
@@ -94,6 +98,7 @@ async function fakeGateway(t: TestContext) {
       if (verb === "open") return reply(200, { session: {}, snapshot: { status: "idle", questions: [], transcript: [{ kind: "message", role: "user", text: "hi" }, { kind: "message", role: "assistant", text: "Last time we spoke." }] } });
       if (verb === "events") return stream("session");
       if (verb === "prompt" && promptRefusal) return reply(409, { error: promptRefusal });
+      if (verb === "prompt" && !streams.has("session")) unseenPrompts.push(String(body?.["text"]));
       if (verb === "prompt") onPrompt(String(body?.["text"]));
       return reply(200, { ok: true });
     }
@@ -107,10 +112,17 @@ async function fakeGateway(t: TestContext) {
   });
   const address = server.address() as { port: number };
   return {
-    base: `http://127.0.0.1:${address.port}/`, bots, tasks, calls, replies,
+    base: `http://127.0.0.1:${address.port}/`, bots, tasks, calls, replies, unseenPrompts,
     /** Resolves once the CLI holds the `session` or `bots` stream open. */
     connected: (key: string) => streams.has(key) ? Promise.resolve() : new Promise<void>((resolve) => waiting.set(key, resolve)),
     push: (key: string, event: string, data: unknown) => { streams.get(key)!.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`); },
+    /** A run settles as the gateway reports it: the event, the idle status, then a snapshot with the settled transcript. */
+    settle: (transcript: unknown[]) => {
+      const write = (event: string, data: unknown) => streams.get("session")!.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+      write("event", { type: "settled", historyRefreshed: true });
+      write("status", { status: "idle" });
+      write("snapshot", { status: "idle", questions: [], transcript });
+    },
     refusePrompts: (message: string | undefined) => { promptRefusal = message; },
     onPrompt: (listener: (text: string) => void) => { onPrompt = listener; },
     callsTo: (suffix: string) => calls.filter((call) => call.path.endsWith(suffix)),
@@ -355,8 +367,13 @@ test("chat streams replies, prompts when idle and steers a running turn, answers
   term.ctrlC();
   await term.until(/Stopping… \(Ctrl\+C again to exit\)\n/u);
   await gateway.received("/abort");
-  gateway.push("session", "event", { type: "settled" });
-  gateway.push("session", "status", { status: "idle" });
+  gateway.settle([
+    { kind: "message", role: "user", text: "hello" },
+    { kind: "message", role: "assistant", text: "On it: hello" },
+    { kind: "tool", id: "t1", name: "read" },
+    { kind: "message", role: "user", text: "also run the tests" },
+    { kind: "message", role: "assistant", text: "Tests pass." },
+  ]);
 
   gateway.push("session", "event", { type: "question", question: { id: "q1", method: "select", title: "Which branch?", options: ["main", "dev"] } });
   await term.until(/\? Which branch\?\n {2}1\. main\n {2}2\. dev\n {2}Answer with a number, or \/cancel\.\n/u);
@@ -375,6 +392,50 @@ test("chat streams replies, prompts when idle and steers a running turn, answers
   term.ctrlC();
   assert.equal(await exit, 130, "Ctrl+C on an idle chat exits");
   assert.equal(gateway.callsTo("/abort").length, 1, "nothing was running to stop");
+});
+
+test("chat sends nothing typed before its live stream is attached, so no reply finishes unseen", async (t) => {
+  const gateway = await fakeGateway(t);
+  const term = terminal();
+  term.type("typed at once");
+  gateway.onPrompt((text) => {
+    gateway.push("session", "status", { status: "running" });
+    gateway.push("session", "event", { type: "text", delta: `Reply to ${text}` });
+    gateway.settle([{ kind: "message", role: "user", text }, { kind: "message", role: "assistant", text: `Reply to ${text}` }]);
+  });
+  const done = botCommand(gateway.base, "chat", ["ada"], {}, term.io);
+  await term.until(/@ada: Reply to typed at once\n/u);
+  assert.deepEqual(gateway.unseenPrompts, []);
+  term.end();
+  assert.equal(await done, 0);
+  assert.equal(term.out.split("Reply to typed at once").length, 2, "a streamed reply is not repeated from the settled transcript");
+});
+
+test("chat prints what a settled run said without streaming it, and only the unstreamed tail of a partial stream", async (t) => {
+  const gateway = await fakeGateway(t);
+  const term = terminal();
+  const history = [{ kind: "message", role: "user", text: "hi" }, { kind: "message", role: "assistant", text: "Last time we spoke." }];
+  let turn = 0;
+  gateway.onPrompt((text) => {
+    turn += 1;
+    gateway.push("session", "status", { status: "running" });
+    if (turn === 1) {
+      // Durable committed the quick reply whole: no deltas at all.
+      gateway.settle([...history, { kind: "message", role: "user", text }, { kind: "tool", id: "t9", name: "bash" }, { kind: "message", role: "assistant", text: "Whole reply, never streamed." }]);
+    } else {
+      gateway.push("session", "event", { type: "text", delta: "Hello wor" });
+      gateway.settle([...history, { kind: "message", role: "user", text: "first" }, { kind: "tool", id: "t9", name: "bash" }, { kind: "message", role: "assistant", text: "Whole reply, never streamed." }, { kind: "message", role: "user", text }, { kind: "message", role: "assistant", text: "Hello world." }]);
+    }
+  });
+  const done = botCommand(gateway.base, "chat", ["ada"], {}, term.io);
+  await gateway.connected("session");
+  term.type("first");
+  await term.until(/· bash\n@ada: Whole reply, never streamed\.\n/u);
+  term.type("second");
+  await term.until(/@ada: Hello world\.\n/u);
+  term.end();
+  assert.equal(await done, 0);
+  assert.equal(term.out.split("Whole reply").length, 2, "printed once");
 });
 
 test("chat ends cleanly when stdin closes, and reports a runtime that exits", async (t) => {

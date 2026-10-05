@@ -299,8 +299,9 @@ async function memory(base: string, bot: BotView, flags: BotFlags, io: BotIO): P
   return 0;
 }
 
-type ChatSnapshot = { status: string; questions?: BotQuestion[]; transcript?: readonly { kind: string; role?: string; text?: string }[] };
-type ChatEvent = { type: string; delta?: string; name?: string; message?: string; level?: string; question?: BotQuestion };
+type ChatEntry = { kind: string; role?: string; text?: string; id?: string; name?: string };
+type ChatSnapshot = { status: string; questions?: BotQuestion[]; transcript?: readonly ChatEntry[] };
+type ChatEvent = { type: string; id?: string; delta?: string; name?: string; message?: string; level?: string; question?: BotQuestion };
 
 /** Frames of one server-sent `/__hui/` stream until it ends or `signal` aborts. */
 async function* frames(base: string, path: string, signal: AbortSignal): AsyncGenerator<{ event: string; data: unknown }> {
@@ -369,8 +370,18 @@ export async function botChat(base: string, bot: BotView, io: BotIO): Promise<nu
   let speaking = false;
   let interrupts = 0;
   let summarizing = false;
+  // Durable may commit a quick reply whole, with no text deltas: the transcript a settle brings is then the only
+  // record of it. `seen` entries are accounted for; `streamed` is the text printed live since the last settle.
+  let seen = 0;
+  let streamed = "";
+  let settling = false;
+  let firstSnapshot = true;
+  const toolsShown = new Set<string>();
   let finish!: (code: number) => void;
   const finished = new Promise<number>((resolveCode) => { finish = resolveCode; });
+  // Nothing typed is sent before the live stream is attached: a fast reply would otherwise finish unseen.
+  let attached!: () => void;
+  const streaming = new Promise<void>((resolveStream) => { attached = resolveStream; });
   const write = (text: string) => {
     if (!text) return;
     io.out(text);
@@ -393,6 +404,25 @@ export async function botChat(base: string, bot: BotView, io: BotIO): Promise<nu
     questions = [...snapshot.questions ?? []];
     for (const question of questions) if (!known.has(question.id)) ask(question);
   };
+  /** After a settle: prints what the run said that never streamed (or the tail of what streamed partly). */
+  const reconcile = (transcript: readonly ChatEntry[]) => {
+    let pending = streamed;
+    for (const entry of transcript.slice(seen)) {
+      if (entry.kind === "tool" && entry.id && entry.name && !toolsShown.has(entry.id)) line(`· ${entry.name}`);
+      if (entry.kind !== "message" || entry.role !== "assistant" || !entry.text?.trim()) continue;
+      const text = entry.text;
+      if (pending && pending.startsWith(text)) pending = pending.slice(text.length);
+      else if (pending && text.startsWith(pending)) {
+        write(text.slice(pending.length));
+        pending = "";
+      } else line(`@${bot.handle}: ${text.trim()}`);
+    }
+    if (!atLineStart) write("\n");
+    seen = transcript.length;
+    streamed = "";
+    speaking = false;
+    toolsShown.clear();
+  };
 
   const opened = await request<{ snapshot: ChatSnapshot }>(base, `${session}/open`, { method: "POST", body: {}, timeoutMs: 60_000 });
   line(`Chatting with @${bot.handle} (${bot.name}). Type a message and press Enter. Ctrl+C stops a turn; twice exits.`);
@@ -408,7 +438,11 @@ export async function botChat(base: string, bot: BotView, io: BotIO): Promise<nu
         speaking = true;
       }
       write(event.delta);
-    } else if (event.type === "tool_start" && event.name) line(`· ${event.name}`);
+      streamed += event.delta;
+    } else if (event.type === "tool_start" && event.name) {
+      if (event.id) toolsShown.add(event.id);
+      line(`· ${event.name}`);
+    }
     else if (event.type === "question" && event.question) {
       if (!questions.some((question) => question.id === event.question!.id)) {
         questions.push(event.question);
@@ -417,8 +451,8 @@ export async function botChat(base: string, bot: BotView, io: BotIO): Promise<nu
     } else if (event.type === "notice" && event.message && event.level !== "info") line(`${event.level}: ${event.message}`);
     else if (event.type === "error" && event.message) line(`error: ${event.message}`);
     else if (event.type === "settled") {
-      if (!atLineStart) write("\n");
-      speaking = false;
+      // The snapshot that follows carries the settled transcript.
+      settling = true;
       summarizing = false;
       // The next turn's first Ctrl+C stops it again.
       interrupts = 0;
@@ -428,8 +462,16 @@ export async function botChat(base: string, bot: BotView, io: BotIO): Promise<nu
   void (async () => {
     try {
       for await (const { event, data } of frames(base, `${session}/events`, closing.signal)) {
-        if (event === "snapshot") adopt(data as ChatSnapshot);
-        else if (event === "status") status = (data as { status: string }).status;
+        if (event === "snapshot") {
+          const snapshot = data as ChatSnapshot;
+          adopt(snapshot);
+          if (settling) reconcile(snapshot.transcript ?? []);
+          // The first snapshot is history already on screen (its last reply was printed on opening).
+          else if (firstSnapshot) seen = snapshot.transcript?.length ?? 0;
+          settling = false;
+          firstSnapshot = false;
+          attached();
+        } else if (event === "status") status = (data as { status: string }).status;
         else if (event === "event") onEvent(data as ChatEvent);
         else if (event === "closed") {
           line(`@${bot.handle}'s chat runtime exited.`);
@@ -445,6 +487,8 @@ export async function botChat(base: string, bot: BotView, io: BotIO): Promise<nu
       if (closing.signal.aborted) return;
       failed(error);
       finish(1);
+    } finally {
+      attached();
     }
   })();
 
@@ -501,6 +545,7 @@ export async function botChat(base: string, bot: BotView, io: BotIO): Promise<nu
   const input = io.lines()[Symbol.asyncIterator]();
   void (async () => {
     try {
+      await streaming;
       for (;;) {
         const next = await input.next();
         if (next.done || closing.signal.aborted) break;
