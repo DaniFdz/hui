@@ -90,6 +90,9 @@ export type SessionView = {
   icon?: string;
   /** Parent session for a child created through `sessions_spawn`. */
   parentId?: string;
+  /** Set when this session is a bot's one permanent chat. Bot chats belong to
+   * the Bots tab and never appear in session lists or pickers. */
+  bot?: { id: string; handle: string; name: string };
   subagent?: {
     taskId: string;
     task: string;
@@ -939,7 +942,8 @@ function dispatch(name: string, payload: unknown, handlers: SessionStreamHandler
   return false;
 }
 
-function decodeSseFrame(chunk: string): { name: string; payload: unknown } | undefined {
+/** One SSE frame; shared with other HUI event streams (bots). */
+export function decodeSseFrame(chunk: string): { name: string; payload: unknown } | undefined {
   let name = "message";
   const data: string[] = [];
   for (const line of chunk.split("\n")) {

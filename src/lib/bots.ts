@@ -1,0 +1,486 @@
+/**
+ * Client half of the bots API (`/__hui/bots`, owned by `server/`; the contract
+ * is in `docs/api.md`). A bot is a named agent with one permanent chat: its
+ * session is an ordinary HUI session whose view carries `bot`, so the chat
+ * itself reuses the session API and only roster, settings and memory live here.
+ *
+ * Responses are normalized on the way in, like settings: a malformed or newer
+ * record is skipped or narrowed rather than reaching the roster as `undefined`.
+ */
+import { CLIENT_HEADERS, fetchJson } from "./settings-store.ts";
+import { decodeSseFrame, reconnectDelay, STATUS_STREAM_STALL_MS, type SessionGroup, type SessionStatus, type SessionView } from "./sessions-store.ts";
+import { trackedFetch } from "./ui-errors.ts";
+
+const BOTS_URL = "/__hui/bots";
+const BOTS_EVENTS_URL = "/__hui/bots/events";
+/** Creating a bot starts its session and memory before the gateway answers. */
+const CREATE_BOT_TIMEOUT_MS = 60_000;
+
+export type BotAvatar = { emoji?: string; color?: string };
+
+/** The memory engine's state, as the gateway reports it for one bot. */
+export type BotMemoryStatus = {
+  /** Messages in the bot's permanent log. */
+  messages: number;
+  /** Summary nodes written so far. */
+  built: number;
+  /** Summaries still waiting for the memory model. */
+  pending: number;
+  /** UTF-8 bytes of the current view; the budget is BOT_MEMORY_BUDGET_BYTES. */
+  viewBytes: number;
+  viewLines?: number;
+  /** A turn waits for summaries before it starts ("Summarizing memory…"). */
+  waiting?: boolean;
+  /** The oldest summary that keeps failing; the gateway keeps retrying it. */
+  failing?: { error: string; node?: string; since?: string };
+  /** What the memory model has used so far, as far as providers report it. */
+  usage?: BotMemoryUsage;
+};
+
+export type BotMemoryUsage = { input?: number; output?: number; cacheRead?: number; cacheWrite?: number; cost?: number };
+
+export type BotView = {
+  id: string;
+  /** Unique slug used by `hui bot` and bot-to-bot messages. */
+  handle: string;
+  name: string;
+  /** Role line shown under the name. */
+  title?: string;
+  description?: string;
+  /** Standing instructions (persona) the bot's conversation is configured with. */
+  instructions?: string;
+  /** Absolute workspace directory on the gateway machine. */
+  cwd: string;
+  /** `provider/id`; absent uses the gateway's default model. */
+  model?: string;
+  thinking?: string;
+  /** `provider/id` of the memory model; absent uses the bot's own model. */
+  memoryModel?: string;
+  memoryThinking?: string;
+  avatar?: BotAvatar;
+  hidden?: boolean;
+  archived?: boolean;
+  /** The HUI session that is this bot's permanent chat. */
+  sessionId: string;
+  createdAt: string;
+  updatedAt: string;
+  /** The chat session's live status. */
+  status: SessionStatus;
+  lastMessage?: { role: "user" | "assistant"; text: string; at: string };
+  unread: boolean;
+  memory?: BotMemoryStatus;
+  /** Automation tasks that target the bot's chat. */
+  routines: number;
+};
+
+/** What the New bot dialog sends. Empty optional fields are left out. */
+export type BotInput = {
+  name: string;
+  title?: string;
+  instructions?: string;
+  cwd?: string;
+  model?: string;
+  thinking?: string;
+  memoryModel?: string;
+  avatar?: BotAvatar;
+};
+
+/** Edit and Hide/Unhide: only what changes. "" clears title, instructions and
+ * the memory model; an avatar key set to "" clears that key. */
+export type BotPatch = Partial<Omit<BotInput, "avatar">> & { avatar?: BotAvatar; hidden?: boolean };
+
+export type BotMemory = { status: BotMemoryStatus; view: string };
+
+/** The New/Edit dialog as typed. Empty model fields mean the default: the
+ * gateway's model, the default thinking level, the bot's own model for memory. */
+export type BotDraft = {
+  name: string;
+  title: string;
+  instructions: string;
+  /** Empty: a private folder the gateway creates for the bot. */
+  cwd: string;
+  emoji: string;
+  model: string;
+  thinking: string;
+  memoryModel: string;
+};
+
+/** OptChat's view budget: the memory panel reports sizes against it. */
+export const BOT_MEMORY_BUDGET_BYTES = 128_000;
+
+const SESSION_STATUSES: readonly SessionStatus[] = ["idle", "running", "waiting", "starting", "error", "reconnecting", "disconnected"];
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function text(value: unknown, maximum = 20_000): string {
+  return typeof value === "string" ? value.trim().slice(0, maximum) : "";
+}
+
+function optionalText(value: unknown, maximum = 20_000): string | undefined {
+  return text(value, maximum) || undefined;
+}
+
+function count(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? Math.floor(value) : 0;
+}
+
+function optionalNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : undefined;
+}
+
+function parseAvatar(value: unknown): BotAvatar | undefined {
+  if (!isRecord(value)) return undefined;
+  const emoji = optionalText(value["emoji"], 32);
+  const color = typeof value["color"] === "string" && /^#[0-9a-f]{6}$/iu.test(value["color"].trim())
+    ? value["color"].trim().toLowerCase()
+    : undefined;
+  return emoji || color ? { ...(emoji ? { emoji } : {}), ...(color ? { color } : {}) } : undefined;
+}
+
+function parseUsage(value: unknown): BotMemoryUsage | undefined {
+  if (!isRecord(value)) return undefined;
+  const usage: BotMemoryUsage = {};
+  for (const key of ["input", "output", "cacheRead", "cacheWrite", "cost"] as const) {
+    const number = optionalNumber(value[key]);
+    if (number !== undefined) usage[key] = number;
+  }
+  return Object.keys(usage).length ? usage : undefined;
+}
+
+export function parseBotMemoryStatus(value: unknown): BotMemoryStatus | undefined {
+  if (!isRecord(value)) return undefined;
+  const failingSource = isRecord(value["failing"]) ? value["failing"] : undefined;
+  const failingError = text(failingSource?.["error"], 2_000);
+  const failingNode = text(failingSource?.["node"], 200);
+  const failingSince = text(failingSource?.["since"], 100);
+  const usage = parseUsage(value["usage"]);
+  const viewLines = optionalNumber(value["viewLines"]);
+  return {
+    messages: count(value["messages"]),
+    built: count(value["built"]),
+    pending: count(value["pending"]),
+    viewBytes: count(value["viewBytes"]),
+    ...(viewLines !== undefined ? { viewLines: Math.floor(viewLines) } : {}),
+    ...(value["waiting"] === true ? { waiting: true } : {}),
+    ...(failingError ? { failing: { error: failingError, ...(failingNode ? { node: failingNode } : {}), ...(failingSince ? { since: failingSince } : {}) } } : {}),
+    ...(usage ? { usage } : {}),
+  };
+}
+
+function parseLastMessage(value: unknown): BotView["lastMessage"] {
+  if (!isRecord(value)) return undefined;
+  const role = value["role"];
+  const at = text(value["at"], 100);
+  if ((role !== "user" && role !== "assistant") || !at) return undefined;
+  // The gateway already sends one short line; keep the roster safe from a long one.
+  return { role, text: text(value["text"], 400).replace(/\s+/gu, " "), at };
+}
+
+/** A bot record the roster can render, or undefined when it lacks identity. */
+export function parseBot(value: unknown): BotView | undefined {
+  if (!isRecord(value)) return undefined;
+  const id = text(value["id"], 200);
+  const name = text(value["name"], 200);
+  const sessionId = text(value["sessionId"], 200);
+  if (!id || !name || !sessionId) return undefined;
+  const status = SESSION_STATUSES.find((candidate) => candidate === value["status"]) ?? "idle";
+  const avatar = parseAvatar(value["avatar"]);
+  const lastMessage = parseLastMessage(value["lastMessage"]);
+  const memory = parseBotMemoryStatus(value["memory"]);
+  const optional: Partial<Record<"title" | "description" | "instructions" | "model" | "thinking" | "memoryModel" | "memoryThinking", string>> = {};
+  for (const [key, maximum] of [["title", 200], ["description", 2_000], ["instructions", 20_000], ["model", 200], ["thinking", 40], ["memoryModel", 200], ["memoryThinking", 40]] as const) {
+    const entry = optionalText(value[key], maximum);
+    if (entry) optional[key] = entry;
+  }
+  return {
+    id,
+    handle: text(value["handle"], 64),
+    name,
+    ...optional,
+    cwd: text(value["cwd"], 4_096),
+    ...(avatar ? { avatar } : {}),
+    ...(value["hidden"] === true ? { hidden: true } : {}),
+    ...(value["archived"] === true ? { archived: true } : {}),
+    sessionId,
+    createdAt: text(value["createdAt"], 100),
+    updatedAt: text(value["updatedAt"], 100),
+    status,
+    ...(lastMessage ? { lastMessage } : {}),
+    unread: value["unread"] === true,
+    ...(memory ? { memory } : {}),
+    routines: count(value["routines"]),
+  };
+}
+
+/** `{ bots: [...] }`; invalid entries are skipped and duplicate ids keep the first. */
+export function parseBotList(body: unknown): BotView[] {
+  const list = isRecord(body) && Array.isArray(body["bots"]) ? body["bots"] : [];
+  const seen = new Set<string>();
+  return list.flatMap((entry) => {
+    const bot = parseBot(entry);
+    if (!bot || seen.has(bot.id)) return [];
+    seen.add(bot.id);
+    return [bot];
+  });
+}
+
+function parseBotBody(body: unknown, failure: string): BotView {
+  const bot = isRecord(body) ? parseBot(body["bot"]) : undefined;
+  if (!bot) throw new Error(failure);
+  return bot;
+}
+
+export function parseBotMemory(body: unknown): BotMemory {
+  const status = isRecord(body) ? parseBotMemoryStatus(body["status"]) : undefined;
+  if (!status) throw new Error("The bot's memory status did not come back.");
+  return { status, view: isRecord(body) && typeof body["view"] === "string" ? body["view"] : "" };
+}
+
+/* ── live list ────────────────────────────────────────────────────────────── */
+
+/** A frame of `GET /__hui/bots/events`: the complete list first, then only
+ * the bots whose views changed; `ids` (every bot, in order) when that changed.
+ * The stream includes archived bots; the roster leaves them out. */
+export type BotsUpdate = { revision: number; ids?: string[]; upserts: BotView[] };
+
+export function parseBotsUpdate(payload: unknown): BotsUpdate | undefined {
+  if (!isRecord(payload) || typeof payload["revision"] !== "number" || !Number.isFinite(payload["revision"])) return undefined;
+  const ids = Array.isArray(payload["ids"]) ? payload["ids"].filter((id): id is string => typeof id === "string") : undefined;
+  return { revision: payload["revision"], ...(ids ? { ids } : {}), upserts: parseBotList({ bots: payload["upserts"] }) };
+}
+
+/** Changed bots replace their copies; `ids`, when present, is the whole list. */
+export function applyBotsUpdate(bots: readonly BotView[], update: Pick<BotsUpdate, "ids" | "upserts">): BotView[] {
+  const byId = new Map(bots.map((bot) => [bot.id, bot]));
+  for (const bot of update.upserts) byId.set(bot.id, bot);
+  if (update.ids) return update.ids.flatMap((id) => byId.get(id) ?? []);
+  const known = new Set(bots.map(({ id }) => id));
+  return [...bots.map((bot) => byId.get(bot.id) ?? bot), ...update.upserts.filter((bot) => !known.has(bot.id))];
+}
+
+export type BotsStreamHandlers = {
+  /** `first` marks the complete list each (re)connect starts with. */
+  onUpdate: (update: BotsUpdate, first: boolean) => void;
+  /** `unsupported`: the gateway has no bot stream (an older build); stop asking. */
+  onConnection: (state: "live" | "reconnecting" | "unsupported") => void;
+};
+
+function waitFor(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    const done = () => { clearTimeout(timer); signal.removeEventListener("abort", done); resolve(); };
+    const timer = setTimeout(done, ms);
+    signal.addEventListener("abort", done, { once: true });
+  });
+}
+
+/** Keeps the shared bot list current, reconnecting like the session status
+ * stream (same backoff, same heartbeat stall). Returns the stop function. */
+export function subscribeBots(handlers: BotsStreamHandlers, fetcher: typeof fetch = trackedFetch): () => void {
+  const abort = new AbortController();
+  void (async () => {
+    let attempt = 0;
+    while (!abort.signal.aborted) {
+      const outcome = await connectBotsOnce(handlers, abort.signal, fetcher, () => { attempt = 0; });
+      if (abort.signal.aborted) return;
+      if (outcome === "unsupported") {
+        handlers.onConnection("unsupported");
+        return;
+      }
+      handlers.onConnection("reconnecting");
+      attempt += 1;
+      await waitFor(reconnectDelay(attempt), abort.signal);
+    }
+  })();
+  return () => abort.abort();
+}
+
+async function connectBotsOnce(handlers: BotsStreamHandlers, signal: AbortSignal, fetcher: typeof fetch, onLive: () => void): Promise<"dropped" | "unsupported"> {
+  let response: Response;
+  try {
+    response = await fetcher(BOTS_EVENTS_URL, { headers: { ...CLIENT_HEADERS, accept: "text/event-stream" }, cache: "no-store", signal });
+  } catch {
+    return "dropped";
+  }
+  if (!response.ok || !response.body) return response.status === 404 || response.status === 405 ? "unsupported" : "dropped";
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let first = true;
+  let stall: ReturnType<typeof setTimeout> | undefined;
+  try {
+    for (;;) {
+      clearTimeout(stall);
+      stall = setTimeout(() => void reader.cancel(), STATUS_STREAM_STALL_MS);
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer = (buffer + decoder.decode(value, { stream: true })).replace(/\r\n/g, "\n");
+      let at: number;
+      while ((at = buffer.indexOf("\n\n")) !== -1) {
+        const frame = decodeSseFrame(buffer.slice(0, at));
+        buffer = buffer.slice(at + 2);
+        const update = frame?.name === "bots" ? parseBotsUpdate(frame.payload) : undefined;
+        if (!update) continue;
+        if (first) {
+          onLive();
+          handlers.onConnection("live");
+        }
+        handlers.onUpdate(update, first);
+        first = false;
+      }
+    }
+  } catch {
+    return "dropped";
+  } finally {
+    clearTimeout(stall);
+  }
+  return "dropped";
+}
+
+/* ── dialog drafts ────────────────────────────────────────────────────────── */
+
+/** Create payload: trimmed, with empty optional fields left to the gateway's defaults. */
+export function botInputFromDraft(draft: BotDraft): BotInput {
+  const optional = (value: string) => value.trim() || undefined;
+  const entries = {
+    title: optional(draft.title),
+    instructions: optional(draft.instructions),
+    cwd: optional(draft.cwd),
+    model: optional(draft.model),
+    thinking: optional(draft.thinking),
+    memoryModel: optional(draft.memoryModel),
+  };
+  const emoji = draft.emoji.trim();
+  return {
+    name: draft.name.trim(),
+    ...Object.fromEntries(Object.entries(entries).filter(([, value]) => value !== undefined)),
+    ...(emoji ? { avatar: { emoji } } : {}),
+  };
+}
+
+/** Edit payload: only what changed, so an untouched workspace never trips the
+ * gateway's "only while idle" rule. Title, instructions and the memory model
+ * clear with an empty string; a chat keeps a model and thinking level once set,
+ * so those change but never clear. An avatar key set to "" clears that key. */
+export function botPatchFromDraft(bot: BotView, draft: BotDraft): BotPatch {
+  const patch: BotPatch = {};
+  const name = draft.name.trim();
+  if (name && name !== bot.name) patch.name = name;
+  for (const key of ["title", "instructions", "memoryModel"] as const) {
+    const value = draft[key].trim();
+    if (value !== (bot[key] ?? "")) patch[key] = value;
+  }
+  for (const key of ["model", "thinking"] as const) {
+    const value = draft[key].trim();
+    if (value && value !== bot[key]) patch[key] = value;
+  }
+  const cwd = draft.cwd.trim();
+  if (cwd && cwd !== bot.cwd) patch.cwd = cwd;
+  const emoji = draft.emoji.trim();
+  if (emoji !== (bot.avatar?.emoji ?? "")) patch.avatar = { emoji };
+  return patch;
+}
+
+/** Puts a confirmed bot record in place of its old copy, or adds it. */
+export function upsertBot(bots: readonly BotView[], bot: BotView): BotView[] {
+  return bots.some(({ id }) => id === bot.id) ? bots.map((entry) => entry.id === bot.id ? bot : entry) : [...bots, bot];
+}
+
+/* ── session lists ────────────────────────────────────────────────────────── */
+
+export function isBotSession(session: Pick<SessionView, "bot">): boolean {
+  return Boolean(session.bot);
+}
+
+/** Bot chats live in the Bots tab, never in session lists, search, the board
+ * or session pickers. Configured groups stay even when emptied, as they would
+ * without the bot; OTHER exists only for listed sessions, so it goes when bot
+ * chats were all it held. Groups without bot chats keep their identity. */
+export function withoutBotSessions(groups: readonly SessionGroup[]): SessionGroup[] {
+  return groups.flatMap((group) => {
+    if (!group.sessions.some(isBotSession)) return [group];
+    const sessions = group.sessions.filter((session) => !isBotSession(session));
+    return sessions.length || (group.label && group.label !== "ungrouped") ? [{ ...group, sessions }] : [];
+  });
+}
+
+/* ── requests ─────────────────────────────────────────────────────────────── */
+
+const JSON_HEADERS = { "content-type": "application/json" } as const;
+
+function botUrl(id: string, suffix = ""): string {
+  return `${BOTS_URL}/${encodeURIComponent(id)}${suffix}`;
+}
+
+export async function loadBots(): Promise<BotView[]> {
+  return parseBotList(await fetchJson<unknown>(BOTS_URL));
+}
+
+/** Resolves only once the gateway created the bot, its chat and its memory. */
+export async function createBot(input: BotInput): Promise<BotView> {
+  return parseBotBody(await fetchJson<unknown>(BOTS_URL, {
+    method: "POST",
+    headers: JSON_HEADERS,
+    body: JSON.stringify(input),
+    signal: AbortSignal.timeout(CREATE_BOT_TIMEOUT_MS),
+  }), "The bot was created but could not be read back.");
+}
+
+export async function updateBot(id: string, patch: BotPatch): Promise<BotView> {
+  return parseBotBody(await fetchJson<unknown>(botUrl(id), {
+    method: "PATCH",
+    headers: JSON_HEADERS,
+    body: JSON.stringify(patch),
+    signal: AbortSignal.timeout(30_000),
+  }), "The bot's change did not come back.");
+}
+
+/** Archives: the gateway keeps the chat and memory and disables its routines. */
+export async function archiveBot(id: string): Promise<BotView> {
+  return parseBotBody(await fetchJson<unknown>(botUrl(id), { method: "DELETE", signal: AbortSignal.timeout(30_000) }),
+    "The archived bot did not come back.");
+}
+
+export async function restoreBot(id: string): Promise<BotView> {
+  return parseBotBody(await fetchJson<unknown>(botUrl(id, "/restore"), { method: "POST", headers: JSON_HEADERS, body: "{}" }),
+    "The restored bot did not come back.");
+}
+
+export async function loadBotMemory(id: string): Promise<BotMemory> {
+  return parseBotMemory(await fetchJson<unknown>(botUrl(id, "/memory")));
+}
+
+/** One line of the view opened into its two halves, or a message whole (n = 1). */
+export async function zoomBotMemory(id: string, line: { id: number; n: number }): Promise<string> {
+  const body = await fetchJson<unknown>(botUrl(id, `/memory/zoom?id=${line.id}&n=${line.n}`));
+  if (!isRecord(body) || typeof body["text"] !== "string") throw new Error("The memory line did not come back.");
+  return body["text"];
+}
+
+export function botMemoryPageUrl(id: string): string {
+  return botUrl(id, "/memory/html");
+}
+
+/** The browse page is a guarded route like every other, so a plain link cannot
+ * open it: the page is read with the HUI header and shown from a copy. */
+export async function loadBotMemoryPage(id: string): Promise<string> {
+  const response = await trackedFetch(botMemoryPageUrl(id), { headers: CLIENT_HEADERS, cache: "no-store", signal: AbortSignal.timeout(15_000) });
+  if (!response.ok) {
+    const detail = (await response.json().catch(() => undefined)) as { error?: string } | undefined;
+    throw new Error(detail?.error ?? `The memory page returned HTTP ${response.status}.`);
+  }
+  return response.text();
+}
+
+/** Its text comes from a chat: like the gateway's own response, the copy may
+ * run nothing and load nothing. The policy goes first in <head>. */
+const MEMORY_PAGE_POLICY = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'">`;
+
+export function inertMemoryPage(html: string): string {
+  const head = /<head(?:\s[^>]*)?>/iu.exec(html);
+  if (head) return html.slice(0, head.index + head[0].length) + MEMORY_PAGE_POLICY + html.slice(head.index + head[0].length);
+  const doctype = /^\s*<!doctype[^>]*>/iu.exec(html);
+  if (doctype) return doctype[0] + MEMORY_PAGE_POLICY + html.slice(doctype[0].length);
+  return MEMORY_PAGE_POLICY + html;
+}

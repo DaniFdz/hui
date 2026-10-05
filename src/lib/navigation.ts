@@ -24,7 +24,9 @@ export type NavigationTarget =
   | { kind: "kanban" }
   | { kind: "page"; page: HuiPage }
   | { kind: "settings"; page: RoutableSettingsPage }
-  | { kind: "session"; id: string };
+  | { kind: "session"; id: string }
+  /** A bot's one permanent chat, opened from the sidebar's Bots tab. */
+  | { kind: "bot"; id: string };
 
 export type NavigationResolution = {
   target: NavigationTarget;
@@ -80,6 +82,10 @@ export function resolveNavigation(pathname: string): NavigationResolution {
     return { target: { kind: "session", id: value }, path: navigationPath({ kind: "session", id: value }) };
   }
 
+  if (segments[0] === "bots") {
+    return { target: { kind: "bot", id: value }, path: navigationPath({ kind: "bot", id: value }) };
+  }
+
   return { target: { kind: "home" }, path: "/" };
 }
 
@@ -95,6 +101,8 @@ export function navigationPath(target: NavigationTarget): string {
       return `/settings/${encodeURIComponent(target.page)}`;
     case "session":
       return `/sessions/${encodeURIComponent(target.id)}`;
+    case "bot":
+      return `/bots/${encodeURIComponent(target.id)}`;
   }
 }
 

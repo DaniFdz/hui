@@ -22,6 +22,8 @@ import { jiraIssueAccessibleLabel, primaryJiraIssue } from "../../shared/jira.ts
 import { brandIcons } from "../lib/brand-icons.ts";
 import { worktreeProgressLabel } from "../lib/worktree-progress.ts";
 import type { JiraBadgeData } from "../components/jira-hovercard.ts";
+import { renderBotRoster, type BotRosterProps } from "./bots.ts";
+import { SIDEBAR_TABS, tabAfterKey, type SidebarTab } from "../lib/bot-roster.ts";
 
 // Node's focused view tests import this module without a CSS loader. The real
 // browser entry loads the shell sheet before this view can render.
@@ -100,11 +102,25 @@ export function unbindDrawerMedia(drawer: HTMLElement) {
   drawerMediaListeners.delete(drawer);
 }
 
-export type NavId = "home" | "surface" | "kanban";
+export type NavId = "home" | "surface" | "kanban" | "bot";
 export type GroupMenuAction = "defaults" | "rename" | "new" | "delete";
 export type SessionCopyAction = "link" | "markdown" | "id" | "jira";
 export type SessionOpenAction = "tab" | "window" | "editor" | "jira";
 export type GroupDropTarget = { group: string; position: "before" | "after" };
+
+/** The Sessions | Bots tab strip. Present only while Settings → Sessions →
+ * Show the Bots tab is on; without it the sidebar renders exactly as before. */
+export type ShellBotsProps = {
+  tab: SidebarTab;
+  onTab: (tab: SidebarTab) => void;
+  /** The roster has its own query, so switching tabs keeps each search. */
+  search: string;
+  onSearch: (value: string) => void;
+  onNew: () => void;
+  /** An unread bot marks the Bots tab while Sessions is shown. */
+  unread: boolean;
+  roster: BotRosterProps;
+};
 
 export type ShellProps = {
   view: NavId;
@@ -178,6 +194,7 @@ export type ShellProps = {
   /** Drops `group` before/after `target`; `ungrouped` as target means last. */
   onReorderGroup: (group: string, target: GroupDropTarget) => void;
   onDeleteSession: (session: SessionView) => void;
+  bots?: ShellBotsProps;
 };
 
 export function sessionMoveGroupOptions(groups: readonly SessionGroup[]): Array<{ label: string; value: string }> {
@@ -730,10 +747,32 @@ function kanbanNavItem(props: ShellProps) {
   </a>`;
 }
 
+/** "Sessions | Bots" as WAI-ARIA tabs with automatic activation. */
+function renderSidebarTabs(bots: ShellBotsProps) {
+  const tabs = [["sessions", "Sessions"], ["bots", "Bots"]] as const;
+  return html`<div class="sidebar-tabs" role="tablist" aria-label="Sidebar lists">
+    ${tabs.map(([tab, label]) => html`<button type="button" role="tab" class="sidebar-tabs__tab" id=${`sidebar-tab-${tab}`}
+      aria-selected=${String(bots.tab === tab)} aria-controls="sidebar-tabpanel" tabindex=${bots.tab === tab ? "0" : "-1"}
+      @click=${() => { if (bots.tab !== tab) bots.onTab(tab); }}
+      @keydown=${(event: KeyboardEvent) => {
+        const next = tabAfterKey(SIDEBAR_TABS, bots.tab, event.key);
+        if (!next) return;
+        event.preventDefault();
+        if (next !== bots.tab) bots.onTab(next);
+        const list = (event.currentTarget as HTMLElement).parentElement;
+        queueMicrotask(() => list?.querySelector<HTMLElement>(`#sidebar-tab-${next}`)?.focus());
+      }}>${label}${tab === "bots" && bots.unread && bots.tab !== "bots"
+        ? html`<span class="sidebar-tabs__dot" aria-hidden="true"></span><span class="sidebar-tabs__sr">, unread</span>`
+        : nothing}</button>`)}
+  </div>`;
+}
+
 export function renderSidebar(props: ShellProps) {
   const query = props.search.trim().toLocaleLowerCase();
   const filtering = Boolean(query) || props.sessionOptions.status !== "all";
   const visibleGroups = sidebarSessionGroups(props.groups, props.search, props.sessionOptions);
+  const botsTab = props.bots?.tab === "bots" ? props.bots : undefined;
+  const searchLabel = botsTab ? "Search bots" : "Search sessions";
   return html`<hui-session-hovercard-provider .sessions=${props.groups.flatMap((group) => group.sessions)}>
     <header class="topbar">
       <div class="topnav-shell">
@@ -806,14 +845,14 @@ export function renderSidebar(props: ShellProps) {
           </div>
           </div>
 
-          <label class="sidebar-search ${query ? "sidebar-search--active" : ""}">
+          <label class="sidebar-search ${(botsTab ? botsTab.search.trim() : query) ? "sidebar-search--active" : ""}">
             <span class="sidebar-search__icon" aria-hidden="true">${icons.search}</span>
             <input
               type="search"
-              placeholder="Search sessions"
-              aria-label="Search sessions"
-              .value=${props.search}
-              @input=${(event: Event) => props.onSearch((event.target as HTMLInputElement).value)}
+              placeholder=${searchLabel}
+              aria-label=${searchLabel}
+              .value=${botsTab ? botsTab.search : props.search}
+              @input=${(event: Event) => (botsTab ? botsTab.onSearch : props.onSearch)((event.target as HTMLInputElement).value)}
             />
           </label>
 
@@ -856,17 +895,27 @@ export function renderSidebar(props: ShellProps) {
 
           <div class="sidebar-sessions">
           <div class="sidebar-recent-sessions__toolbar sidebar-session-toolbar">
-            <span>Sessions</span>
+            ${props.bots ? renderSidebarTabs(props.bots) : html`<span>Sessions</span>`}
             <span>
+              ${botsTab ? html`<button type="button" aria-label="New bot" title="New bot" data-new-bot-trigger @click=${(event: Event) => {
+                botsTab.onNew();
+                closeContainingDrawer(event);
+              }}>${icons.plus}</button>` : html`
               ${renderSidebarSessionOptions(props.sessionOptions, props.onSessionOptions)}
               <button type="button" aria-label="New group" title="New group" data-new-group-trigger @click=${(event: Event) => {
                 props.onNewGroup();
                 closeContainingDrawer(event);
-              }}>${icons.plus}</button>
+              }}>${icons.plus}</button>`}
             </span>
           </div>
 
-          <div class="sidebar-list sidebar-recent-sessions" aria-label="Sessions">
+          ${botsTab ? html`<div class="sidebar-list sidebar-recent-sessions bot-roster" id="sidebar-tabpanel" role="tabpanel" aria-labelledby="sidebar-tab-bots">
+            ${renderBotRoster(botsTab.roster, {
+              navigate: (event) => closeContainingDrawer(event, false, true),
+              dialog: (event) => closeContainingDrawer(event),
+            })}
+          </div>` : html`<div class="sidebar-list sidebar-recent-sessions" aria-label=${props.bots ? nothing : "Sessions"}
+            id=${props.bots ? "sidebar-tabpanel" : nothing} role=${props.bots ? "tabpanel" : nothing} aria-labelledby=${props.bots ? "sidebar-tab-sessions" : nothing}>
         ${props.sessionMoveNotice ? html`<p class="sidebar-list__note sidebar-session-move-note ${props.sessionMoveFailed ? "is-error" : ""}" role=${props.sessionMoveFailed ? "alert" : "status"} aria-live="polite">${props.sessionMoveNotice}</p>` : nothing}
         ${
           props.error
@@ -882,7 +931,7 @@ export function renderSidebar(props: ShellProps) {
                   `
                 : html`${visibleGroups.map((group) => groupSection(group, props, filtering))}`
         }
-          </div>
+          </div>`}
           </div>
           </div>
 
@@ -1013,6 +1062,7 @@ export function setNavigationDrawer(
 export function renderMain(props: ShellProps, body: TemplateResult) {
   const chatLike =
     props.view === "home" ||
+    props.view === "bot" ||
     (props.view === "surface" && props.activePage?.id === "new-session");
   return html`
     <main id="control-ui-main" class="main content ${chatLike ? "content--chat" : ""}">

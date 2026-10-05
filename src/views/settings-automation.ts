@@ -25,6 +25,8 @@ export type AutomationProps = {
   automationFormError: string;
   /** A refused task or run action, reported next to the list that owns it. */
   automationActionError: string;
+  /** Every registered session. Bot chats label their routines but are not
+   * offered as targets: a bot's routines are added from its own panel. */
   sessions: readonly SessionView[];
   onRetryAutomation: () => void;
   /** Resolves `true` once the scheduler accepted the task, so the form clears. */
@@ -156,6 +158,7 @@ export function localTimezone(): string {
 function sessionLabel(props: AutomationProps, sessionId: string): string {
   const session = props.sessions.find((item) => item.id === sessionId);
   if (!session) return `${sessionId} (missing)`;
+  if (session.bot) return `Bot · ${session.bot.name}`;
   return session.group ? `${session.group} — ${session.title}` : session.title;
 }
 
@@ -236,6 +239,8 @@ function scheduleValue(task: AutomationTask | undefined, kind: AutomationSchedul
 
 function renderTaskForm(props: AutomationProps, renderSection: SectionRenderer) {
   const editing = props.automation?.tasks.find((task) => task.id === props.automationEditingId);
+  // Bot chats are not offered as targets, except the one a bot routine being edited already uses.
+  const targets = props.sessions.filter((session) => !session.bot || session.id === editing?.sessionId);
   const initialKind = editing?.schedule.kind ?? "cron";
   const submit = (event: SubmitEvent) => {
     event.preventDefault();
@@ -279,7 +284,7 @@ function renderTaskForm(props: AutomationProps, renderSection: SectionRenderer) 
   };
   return renderSection(
     editing ? "Edit task" : "New task",
-    props.sessions.length
+    targets.length
       ? "The task sends its prompt to an existing session on the schedule you pick."
       : "Start a session first: automation runs inside a session HUI already owns.",
     html`
@@ -291,9 +296,9 @@ function renderTaskForm(props: AutomationProps, renderSection: SectionRenderer) 
           <input class="settings-input" name="description" type="text" maxlength="500" placeholder="Optional" .value=${editing?.description ?? ""} />
         </span></span></label>
         <label class="settings-row automation-field"><span class="settings-row__text"><span class="settings-row__title">Session</span></span><span class="settings-row__control"><span class="cron-control">
-          <wa-select class="settings-select" size="s" placeholder="Choose a session" name="sessionId" ?disabled=${!props.sessions.length} .value=${editing?.sessionId ?? ""}>
+          <wa-select class="settings-select" size="s" placeholder="Choose a session" name="sessionId" ?disabled=${!targets.length} .value=${editing?.sessionId ?? ""}>
             <span slot="label" class="settings-control__sr-label">Session</span>
-            ${props.sessions.map(
+            ${targets.map(
               (session) => html`<wa-option value=${session.id}>${sessionLabel(props, session.id)}</wa-option>`,
             )}
           </wa-select>
@@ -325,7 +330,7 @@ function renderTaskForm(props: AutomationProps, renderSection: SectionRenderer) 
           <input class="settings-input" name="timeoutSeconds" type="number" min="10" max="86400" step="1" .value=${String(editing?.timeoutSeconds ?? 900)} />
         </span></span></label>
         <div class="automation-actions cron-editor-actions">
-          <button type="submit" class="btn" ?disabled=${props.automationPending || !props.sessions.length}>${editing ? "Update task" : "Create task"}</button>
+          <button type="submit" class="btn" ?disabled=${props.automationPending || !targets.length}>${editing ? "Update task" : "Create task"}</button>
           ${editing ? html`<button type="button" class="btn" ?disabled=${props.automationPending} @click=${props.onCancelAutomationEdit}>Cancel edit</button>` : nothing}
         </div>
         ${props.automationFormError

@@ -3,7 +3,8 @@ import { groupCheckoutDefaults } from "./lib/group-session-defaults.ts";
 import { renderDirectoryPicker } from "./views/directory-picker.ts";
 import { sessionTreeIds } from "./lib/session-tree.ts";
 import { applySessionListUpdate, type SessionListUpdate } from "../shared/session-list.ts";
-import { html, type PropertyValues } from "lit";
+import { html, nothing, type PropertyValues } from "lit";
+import { keyed } from "lit/directives/keyed.js";
 import { customElement, property, state } from "lit/decorators.js";
 import { HuiElement } from "./lit/hui-element.ts";
 import {
@@ -63,7 +64,28 @@ import {
 } from "./lib/sessions-store.ts";
 import { readAttachment, readTranscriptAttachments, validateAttachmentTotal } from "./lib/attachments.ts";
 import { resolveLaunchModel } from "./lib/model-selection.ts";
-import { completeCommandReference, composerCommands, filterSlashCommands, parseClearCommand, parseCompactCommand, parseReloadCommand, parseUpdateCommand, slashCommandQuery, type ComposerCommand } from "./lib/slash-commands.ts";
+import { botChatCommandRefusal, completeCommandReference, composerCommands, filterSlashCommands, parseClearCommand, parseCompactCommand, parseReloadCommand, parseUpdateCommand, slashCommandQuery, type ComposerCommand } from "./lib/slash-commands.ts";
+import {
+  applyBotsUpdate,
+  archiveBot,
+  botInputFromDraft,
+  botPatchFromDraft,
+  inertMemoryPage,
+  loadBotMemoryPage,
+  createBot,
+  loadBotMemory,
+  loadBots,
+  restoreBot,
+  subscribeBots,
+  updateBot,
+  upsertBot,
+  withoutBotSessions,
+  zoomBotMemory,
+  type BotView,
+} from "./lib/bots.ts";
+import { readBotPanel, readSidebarTab, writeBotPanel, writeSidebarTab, type BotPanelState, type BotPanelTab, type SidebarTab } from "./lib/bot-roster.ts";
+import { parseMemoryView, parseMemoryZoom, type MemoryLine } from "./lib/bot-memory.ts";
+import { renderBotArchiveDialog, renderBotDialog, renderBotPanel, renderBotPlaceholder, type BotFormValues, type BotMemoryState, type MemoryZoomState } from "./views/bots.ts";
 import { checkUpdate, checkUpdateInBackground, installUpdate, loadUpdate } from "./lib/update-store.ts";
 import { availableUpdate, watchUpdateAvailability } from "./lib/update-notice.ts";
 import type { UpdateSnapshot } from "./lib/update-types.ts";
@@ -159,7 +181,7 @@ import {
 } from "./lib/control-surfaces.ts";
 import type { PowerStatus } from "../shared/power.ts";
 import { downloadDiagnostics, loadObservability, type ObservabilitySnapshot } from "./lib/observability.ts";
-import { renderHome, renderNewSession, type HomeProps } from "./views/home.ts";
+import { renderHome, renderNewSession, type HomeBot, type HomeProps } from "./views/home.ts";
 import { DEFAULT_SESSIONS_PAGE_FILTERS, renderSessionsPage, type SessionsPageFilters, type SessionsPageState } from "./views/sessions.ts";
 import type { WorktreeFilter } from "./views/worktrees.ts";
 import "./views/contributions.ts";
@@ -173,10 +195,10 @@ import type { BacklogCardAction, SessionCardAction } from "./views/kanban.ts";
 import type { BacklogStartTarget } from "./components/backlog-start-dialog.ts";
 import { addSuggestionToBacklog, backlogItemMarkdown, loadBacklog, removeBacklogItem, setBacklogItemGroup, type BacklogItem, type BacklogJiraState } from "./lib/backlog.ts";
 import { loadJiraConnection } from "./lib/jira.ts";
-import type { AutomationProps } from "./views/settings-automation.ts";
+import { localTimezone, type AutomationProps } from "./views/settings-automation.ts";
 import { loadWorkers, workerAction, type WorkerView } from "./lib/workers.ts";
 import { hasOpenWebAwesomePopup } from "./lib/web-awesome.ts";
-import { APP_SHELL_DRAWER_MEDIA, closeDrawerOnEscape, renderMain, renderSidebar, type GroupDropTarget, type GroupMenuAction, type NavId, type SessionCopyAction, type SessionOpenAction } from "./views/shell.ts";
+import { APP_SHELL_DRAWER_MEDIA, closeDrawerOnEscape, renderMain, renderSidebar, toggleNavigationDrawer, type GroupDropTarget, type GroupMenuAction, type NavId, type SessionCopyAction, type SessionOpenAction, type ShellBotsProps } from "./views/shell.ts";
 import { writeClipboardText } from "./lib/clipboard.ts";
 import { renderSettingsPage, type SettingsPage } from "./views/settings.ts";
 import type { JiraCreatedDetail } from "./components/jira-create-dialog.ts";
@@ -228,6 +250,14 @@ function readCollapsed(): Set<string> {
  * update or resize step. Lit still stores the newest value, but a rendered
  * button may keep an older one: capture only the pane/session id and the parent. */
 const paneCallback = { attribute: false, hasChanged: (value: unknown, old: unknown) => !value !== !old };
+
+/** The bot pane's header data, without its callback (passed separately as a
+ * pane callback). Compared by value: the parent rebuilds it on every render. */
+type PaneBot = Omit<HomeBot, "onTogglePanel">;
+const paneBotProperty = { attribute: false, hasChanged: (value: unknown, old: unknown) => JSON.stringify(value) !== JSON.stringify(old) };
+
+/** Same cadence as the Automations page; memory summaries settle in the gateway. */
+const BOT_MEMORY_POLL_MS = 3000;
 
 @customElement("hui-app")
 export class HuiApp extends HuiElement {
@@ -447,6 +477,52 @@ export class HuiApp extends HuiElement {
   @state() private commandPaletteQuery = "";
   @state() private commandPaletteActiveIndex = 0;
   @state() private mobileNavLayout = false;
+  /* ── bots (top-level app only; panes never read bots) ── */
+  @state() private bots: readonly BotView[] = [];
+  @state() private botsLoading = false;
+  @state() private botsLoaded = false;
+  @state() private botsError = "";
+  private botsInFlight: Promise<void> | undefined;
+  private botsAgain = false;
+  /** The gateway pushes the bot list; reads by GET are only its fallback. */
+  private botsStreamStop: (() => void) | undefined;
+  private botsStreamLive = false;
+  private botsStreamUnsupported = false;
+  private botsRevision = 0;
+  @state() private botSearch = "";
+  /** The sidebar's Sessions | Bots choice, remembered by the browser. */
+  @state() private sidebarTab: SidebarTab = readSidebarTab();
+  @state() private showHiddenBots = false;
+  @state() private botMenuFor = "";
+  @state() private botNotice = "";
+  @state() private botNoticeFailed = false;
+  @state() private botPendingId = "";
+  /** The bot whose chat the bot route shows. */
+  @state() private activeBotId = "";
+  @state() private botPanel: BotPanelState = readBotPanel();
+  /** Narrow layouts open the panel as a sheet only on request; never remembered. */
+  @state() private botSheetOpen = false;
+  @state() private botDialog: { mode: "create" } | { mode: "edit"; bot: BotView } | undefined;
+  @state() private botDialogPending = false;
+  @state() private botDialogError = "";
+  @state() private botDraftModel = "";
+  @state() private botDraftThinking = "";
+  @state() private botDraftMemoryModel = "";
+  @state() private botArchive: BotView | undefined;
+  @state() private botArchivePending = false;
+  @state() private botArchiveError = "";
+  @state() private botArchiveToast: { bot: BotView; restoring: boolean; error?: string } | undefined;
+  private botArchiveToastTimer: ReturnType<typeof setTimeout> | undefined;
+  @state() private botMemory: BotMemoryState & { botId: string } = { botId: "", loading: false, error: "" };
+  @state() private botMemoryZoom: ReadonlyMap<string, MemoryZoomState> = new Map();
+  @state() private botMemoryPageError = "";
+  private botMemoryRequest = 0;
+  private botMemoryInFlight = false;
+  private botMemoryPoll: number | undefined;
+  private botRosterTick = 0;
+  /** Set on the bot route's embedded pane: header identity and panel state. */
+  @property(paneBotProperty) paneBot: PaneBot | undefined;
+  @property(paneCallback) onPaneBotPanel: (() => void) | undefined;
   /** Browser-owned presentation state; each pane still owns its own runtime state. */
   @state() private sessionLayout: SessionLayout | undefined;
   @property({ type: Boolean, attribute: "embedded-pane" }) embeddedPane = false;
@@ -484,6 +560,8 @@ export class HuiApp extends HuiElement {
   private composerTextarea: HTMLTextAreaElement | null = null;
   private readonly onMobileNavChange = (event: MediaQueryListEvent) => {
     this.mobileNavLayout = event.matches;
+    // The bot panel moves between the side and a sheet; what it polls follows.
+    this.syncBotPanelData();
   };
 
   /** Ends the current event stream; replaced on every session switch. */
@@ -559,6 +637,15 @@ export class HuiApp extends HuiElement {
       this.closeSettings();
       return;
     }
+    if (!this.embeddedPane && this.view === "bot") {
+      if (this.mobileNavLayout && this.botSheetOpen) {
+        event.preventDefault();
+        this.closeBotPanel();
+        return;
+      }
+      this.botPaneApp()?.handleGlobalEscape(event);
+      return;
+    }
     if (!this.embeddedPane && this.view === "home" && this.selected) {
       this.activePaneApp()?.handleGlobalEscape(event);
       return;
@@ -592,6 +679,7 @@ export class HuiApp extends HuiElement {
         onStatus: this.applySessionStatusUpdate,
         onSessions: this.applySessionListChange,
       });
+      this.syncBotsStream();
       this.updateMonitor = watchUpdateAvailability({
         check: checkUpdateInBackground,
         receive: (snapshot) => {
@@ -630,11 +718,16 @@ export class HuiApp extends HuiElement {
     if (this.subagentExpiryTimer !== undefined) window.clearTimeout(this.subagentExpiryTimer);
     this.subagentExpiryTimer = undefined;
     this.stopAutomationPolling();
+    this.stopBotMemoryPolling();
+    if (this.botArchiveToastTimer) clearTimeout(this.botArchiveToastTimer);
     if (this.piResourceCopyTimer !== undefined) window.clearTimeout(this.piResourceCopyTimer);
     this.piResourceCopyTimer = undefined;
     if (this.updatePollTimer !== undefined) window.clearTimeout(this.updatePollTimer);
     this.statusStreamStop?.();
     this.statusStreamStop = undefined;
+    this.botsStreamStop?.();
+    this.botsStreamStop = undefined;
+    this.botsStreamLive = false;
   }
 
   private sessionProgressPoll?: number;
@@ -680,6 +773,10 @@ export class HuiApp extends HuiElement {
       if (!this.embeddedPane && !document.hidden && this.settingsOpen && this.settingsPage === "connection") {
         void this.refreshGatewayHealth();
       }
+      // Roster times ("2m") age while nothing else re-renders the sidebar.
+      if (!this.embeddedPane && !document.hidden && this.settings.bots.showTab && this.sidebarTab === "bots" && ++this.botRosterTick % 10 === 0) {
+        this.requestUpdate();
+      }
     }, 3000);
     this.switchComposerDraft(NEW_SESSION_DRAFT_KEY);
     this.refreshDraftIndicators();
@@ -713,6 +810,15 @@ export class HuiApp extends HuiElement {
         return { ...session, status, unread: isUnread || undefined };
       }),
     }));
+    // Bot chats are sessions too: their roster rows follow the same stream.
+    if (this.bots.length) {
+      this.bots = this.bots.map((bot) => {
+        const status = this.sessionStatuses.get(bot.sessionId);
+        const isUnread = unread.get(bot.sessionId);
+        if (status === undefined && isUnread === undefined) return bot;
+        return { ...bot, ...(status ? { status } : {}), ...(isUnread !== undefined ? { unread: isUnread && !this.isSessionPresented(bot.sessionId) } : {}) };
+      });
+    }
   };
 
   private applySessionStatusUpdate = ({ id, status, unread, creating, creationError, title }: SessionStatusUpdate) => {
@@ -736,6 +842,15 @@ export class HuiApp extends HuiElement {
         : session),
     }));
     if (created) void this.refreshSessions(true);
+    const bot = this.bots.find((candidate) => candidate.sessionId === id);
+    if (bot) {
+      this.bots = this.bots.map((candidate) => candidate.sessionId === id
+        ? { ...candidate, status, unread: presented ? false : unread === undefined ? candidate.unread : unread }
+        : candidate);
+      // A turn started or settled: its latest message moved. The bot stream
+      // pushes that itself; without it (an older gateway) read the list again.
+      if (bot.status !== status && !this.botsStreamLive) void this.refreshBots();
+    }
     if (!this.embeddedPane && this.selected?.id === id) {
       this.reopenIfRestarted(id, status);
       this.selected = { ...this.selected, status, ...(title ? { title } : {}) };
@@ -869,11 +984,22 @@ export class HuiApp extends HuiElement {
       textarea.setSelectionRange(this.draft.length, this.draft.length);
       this.setCommandQuery(slashCommandQuery(this.draft, this.draft.length));
     }
-    if (changed.has("selected") || changed.has("view") || changed.has("settingsOpen")) {
-      const activeSessionTitle = this.view === "home" && !this.settingsOpen
-        ? this.selected?.title
-        : undefined;
+    if (changed.has("selected") || changed.has("view") || changed.has("settingsOpen") || changed.has("activeBotId") || changed.has("bots")) {
+      const activeSessionTitle = this.settingsOpen ? undefined
+        : this.view === "home" ? this.selected?.title
+          : this.view === "bot" ? this.activeBot()?.name
+            : undefined;
       if (!this.embeddedPane) document.title = documentTitle(activeSessionTitle);
+    }
+    const botDialog = this.botDialog ? this.renderRoot.querySelector?.(".bot-dialog") : null;
+    if (botDialog instanceof HTMLDialogElement && !botDialog.open) {
+      ensureModal(botDialog);
+      botDialog.querySelector<HTMLInputElement>('input[name="name"]')?.focus();
+    }
+    const botArchiveDialog = this.botArchive ? this.renderRoot.querySelector?.(".bot-archive-dialog") : null;
+    if (botArchiveDialog instanceof HTMLDialogElement && !botArchiveDialog.open) {
+      ensureModal(botArchiveDialog);
+      botArchiveDialog.querySelector<HTMLButtonElement>(".bot-archive-cancel")?.focus();
     }
     // A selector that matches nothing walks the whole open transcript, and
     // this runs on every keystroke: query a dialog only while its state shows it.
@@ -963,6 +1089,7 @@ export class HuiApp extends HuiElement {
    * detailed stream. */
   private isSessionPresented(id: string): boolean {
     if (this.embeddedPane) return this.paneVisible && this.paneSessionId === id;
+    if (this.view === "bot") return !this.settingsOpen && this.activeBot()?.sessionId === id;
     if (this.view === "home" && !this.settingsOpen && this.sessionLayout) {
       const narrow = this.renderRoot.querySelector<SessionMultiplexer>("hui-session-multiplexer")?.narrow;
       return visibleSessionPanes(this.sessionLayout).some((pane) => isChatPane(pane) && pane.sessionId === id && (!narrow || pane.id === this.sessionLayout?.activePaneId));
@@ -993,11 +1120,34 @@ export class HuiApp extends HuiElement {
       }
       if (target.page === "automation") this.startAutomationPolling();
       else this.stopAutomationPolling();
+      this.stopBotMemoryPolling();
       return;
     }
 
     this.settingsOpen = false;
     this.stopAutomationPolling();
+    this.stopBotMemoryPolling();
+    if (target.kind === "bot") {
+      // Bots are part of the sidebar only while Settings → Bots shows the tab.
+      if (this.embeddedPane || !this.settings.bots.showTab) {
+        this.navigate({ kind: "home" }, true);
+        return;
+      }
+      this.suspendSelectedSessionView();
+      this.resetSessionEphemeral();
+      this.pendingSessionId = "";
+      this.activePage = undefined;
+      if (this.activeBotId !== target.id) {
+        this.botSheetOpen = false;
+        this.resetBotMemory(target.id);
+      }
+      this.activeBotId = target.id;
+      this.view = "bot";
+      this.setSidebarTab("bots");
+      this.ensureBots();
+      this.syncBotPanelData();
+      return;
+    }
     if (target.kind === "kanban") {
       this.suspendSelectedSessionView();
       this.resetSessionEphemeral();
@@ -1059,6 +1209,11 @@ export class HuiApp extends HuiElement {
       ?? (this.paneSession?.id === id ? this.paneSession : undefined);
     if (session) {
       this.pendingSessionId = "";
+      // A bot's chat opens as the bot (with its panel) wherever it is linked from.
+      if (!this.embeddedPane && session.bot && this.settings.bots.showTab) {
+        this.navigate({ kind: "bot", id: session.bot.id }, true);
+        return;
+      }
       this.activateSession(session);
       return;
     }
@@ -1118,7 +1273,7 @@ export class HuiApp extends HuiElement {
       query: this.commandPaletteQuery,
       activeIndex: this.commandPaletteActiveIndex,
       pages: HUI_PAGES,
-      groups: this.groups,
+      groups: this.listedGroups,
       onQuery: (query) => {
         this.commandPaletteQuery = query;
         this.commandPaletteActiveIndex = 0;
@@ -2329,7 +2484,7 @@ export class HuiApp extends HuiElement {
 
   private commandKeydown = (event: KeyboardEvent) => {
     if (this.slashQuery === null || event.isComposing || !(event.target instanceof HTMLTextAreaElement)) return;
-    const commands = filterSlashCommands(this.slashQuery?.startsWith("$") ? this.commands : composerCommands(this.selected ? this.commands : [], !!this.selected), this.slashQuery);
+    const commands = filterSlashCommands(this.slashQuery?.startsWith("$") ? this.commands : composerCommands(this.selected ? this.commands : [], !!this.selected, Boolean(this.selected?.bot)), this.slashQuery);
     const paths = this.localPathQuery ? this.localPaths : [];
     const count = commands.length + paths.length;
     if (event.key === "Escape") {
@@ -2472,6 +2627,13 @@ export class HuiApp extends HuiElement {
     const trimmed = text.trim();
     const hasImage = attachments.some((item) => item.kind === "image");
     if (!session || (!trimmed && !hasImage) || this.opening || this.sending || this.connection !== "live") {
+      return;
+    }
+    // The gateway refuses these for a bot's permanent chat; say why without a round trip.
+    const botRefusal = session.bot ? botChatCommandRefusal(trimmed) : undefined;
+    if (botRefusal) {
+      this.note = botRefusal;
+      this.noteLevel = "error";
       return;
     }
     const clearCommand = parseClearCommand(trimmed);
@@ -3373,6 +3535,578 @@ export class HuiApp extends HuiElement {
     localStorage.setItem(COLLAPSED_KEY, JSON.stringify([...next]));
   };
 
+  /* ── bots ─────────────────────────────────────────────────────────────── */
+
+  /** Session lists never show bot chats; the Bots tab lists their bots. The
+   * unfiltered registry stays in `groups` so a bot pane can open its chat. */
+  private listedGroupsSource: readonly SessionGroup[] | undefined;
+  private listedGroupsCache: readonly SessionGroup[] = [];
+  private get listedGroups(): readonly SessionGroup[] {
+    if (this.listedGroupsSource !== this.groups) {
+      this.listedGroupsSource = this.groups;
+      this.listedGroupsCache = withoutBotSessions(this.groups);
+    }
+    return this.listedGroupsCache;
+  }
+
+  private activeBot(): BotView | undefined {
+    return this.bots.find((bot) => bot.id === this.activeBotId);
+  }
+
+  private botPaneApp(): HuiApp | undefined {
+    return this.renderRoot.querySelector<HuiApp>(".bot-workspace__pane") ?? undefined;
+  }
+
+  /** Session statuses arrive on their own stream and win over a list's
+   * snapshot; the bot on screen is read, as its detailed stream says. */
+  private withLiveBotState(bots: readonly BotView[]): BotView[] {
+    return bots.map((bot) => {
+      const status = this.sessionStatuses.get(bot.sessionId);
+      const presented = bot.unread && this.isSessionPresented(bot.sessionId);
+      return status || presented ? { ...bot, ...(status ? { status } : {}), ...(presented ? { unread: false } : {}) } : bot;
+    });
+  }
+
+  /** The gateway's bot stream while the Bots tab is enabled. It starts with the
+   * whole list, then sends what changed; a gateway without it falls back to
+   * reading the list whenever a bot's session changes status. */
+  private syncBotsStream() {
+    if (this.embeddedPane) return;
+    const wanted = this.settings.bots.showTab && !this.botsStreamUnsupported;
+    if (wanted && !this.botsStreamStop) {
+      this.botsStreamStop = subscribeBots({
+        onUpdate: (update, first) => {
+          if (!first && update.revision <= this.botsRevision) return;
+          this.botsRevision = update.revision;
+          this.bots = this.withLiveBotState(applyBotsUpdate(this.bots, update));
+          this.botsLoaded = true;
+          this.botsError = "";
+        },
+        onConnection: (state) => {
+          this.botsStreamLive = state === "live";
+          if (state === "reconnecting" && !this.botsLoaded) this.botsError = "Could not reach the gateway for the bot list. Retrying…";
+          if (state === "unsupported") {
+            this.botsStreamUnsupported = true;
+            this.botsStreamStop = undefined;
+            void this.refreshBots();
+          }
+        },
+      });
+    } else if (!wanted && this.botsStreamStop) {
+      this.botsStreamStop();
+      this.botsStreamStop = undefined;
+      this.botsStreamLive = false;
+    }
+  }
+
+  /** The list is current when the stream runs; otherwise it is read now. */
+  private ensureBots() {
+    if (this.botsStreamUnsupported) void this.refreshBots();
+    else this.syncBotsStream();
+  }
+
+  /** Retry from an error state: restart a stopped stream or read the list. */
+  private retryBots = () => {
+    this.botsError = "";
+    if (this.botsStreamUnsupported || this.botsStreamLive) {
+      void this.refreshBots();
+      return;
+    }
+    this.botsStreamStop?.();
+    this.botsStreamStop = undefined;
+    this.syncBotsStream();
+  };
+
+  /** One read at a time; a change that lands meanwhile reads once more after it.
+   * Only used without a live stream, whose newer frames a read could overwrite. */
+  private refreshBots(): Promise<void> {
+    if (this.embeddedPane || this.botsStreamLive) return Promise.resolve();
+    if (this.botsInFlight) {
+      this.botsAgain = true;
+      return this.botsInFlight;
+    }
+    this.botsLoading = true;
+    this.botsInFlight = (async () => {
+      try {
+        do {
+          this.botsAgain = false;
+          try {
+            const bots = await loadBots();
+            // A stream that went live meanwhile is newer than this read.
+            if (!this.botsStreamLive) this.bots = this.withLiveBotState(bots);
+            this.botsLoaded = true;
+            this.botsError = "";
+          } catch (error) {
+            this.botsError = error instanceof Error ? error.message : "Could not read bots.";
+          }
+        } while (this.botsAgain);
+      } finally {
+        this.botsLoading = false;
+        this.botsInFlight = undefined;
+      }
+    })();
+    return this.botsInFlight;
+  }
+
+  private setSidebarTab = (tab: SidebarTab) => {
+    this.botMenuFor = "";
+    if (this.sidebarTab === tab) return;
+    this.sidebarTab = tab;
+    writeSidebarTab(tab);
+    if (tab === "bots") this.ensureBots();
+  };
+
+  private selectBot = (bot: BotView) => {
+    this.botMenuFor = "";
+    this.navigate({ kind: "bot", id: bot.id });
+  };
+
+  private shellBotsProps(): ShellBotsProps | undefined {
+    if (!this.settings.bots.showTab) return undefined;
+    return {
+      tab: this.sidebarTab,
+      onTab: this.setSidebarTab,
+      search: this.botSearch,
+      onSearch: (value) => { this.botSearch = value; },
+      onNew: this.openNewBot,
+      unread: this.bots.some((bot) => bot.unread && !bot.archived && !bot.hidden),
+      roster: {
+        bots: this.bots,
+        loading: this.botsLoading || !this.botsLoaded,
+        error: this.botsError,
+        query: this.botSearch,
+        showHidden: this.showHiddenBots,
+        activeBotId: this.view === "bot" ? this.activeBotId : "",
+        menuFor: this.botMenuFor,
+        notice: this.botNotice,
+        noticeFailed: this.botNoticeFailed,
+        pendingId: this.botPendingId,
+        now: Date.now(),
+        onSelect: this.selectBot,
+        onNew: this.openNewBot,
+        onEdit: this.openEditBot,
+        onSetHidden: this.setBotHidden,
+        onArchive: this.requestArchiveBot,
+        onToggleShowHidden: () => { this.showHiddenBots = !this.showHiddenBots; },
+        onRetry: this.retryBots,
+        onToggleMenu: (id) => { this.botMenuFor = this.botMenuFor === id ? "" : id; },
+        onCloseMenu: () => { this.botMenuFor = ""; },
+      },
+    };
+  }
+
+  private openNewBot = () => {
+    this.botMenuFor = "";
+    this.botDialog = { mode: "create" };
+    this.botDialogError = "";
+    this.botDraftModel = "";
+    this.botDraftThinking = "";
+    this.botDraftMemoryModel = "";
+    ++this.directorySuggestionRequest;
+    this.directorySuggestions = [];
+    // The model pickers read PI's catalog; New Session loads it the same way.
+    this.loadLaunchPreferences();
+  };
+
+  private openEditBot = (bot: BotView) => {
+    this.botMenuFor = "";
+    this.botDialog = { mode: "edit", bot };
+    this.botDialogError = "";
+    this.botDraftModel = bot.model ?? "";
+    this.botDraftThinking = bot.thinking ?? "";
+    this.botDraftMemoryModel = bot.memoryModel ?? "";
+    ++this.directorySuggestionRequest;
+    this.directorySuggestions = [];
+    this.loadLaunchPreferences();
+  };
+
+  private closeBotDialog = () => {
+    const dialog = this.renderRoot.querySelector?.(".bot-dialog");
+    if (dialog instanceof HTMLDialogElement) closeModal(dialog);
+    this.botDialog = undefined;
+    this.botDialogError = "";
+  };
+
+  /** Nothing changes until the gateway confirms; a refusal stays in the dialog. */
+  private submitBotDialog = (values: BotFormValues) => {
+    const state = this.botDialog;
+    if (!state || this.botDialogPending) return;
+    if (!values.name) {
+      this.botDialogError = "Name the bot.";
+      return;
+    }
+    const draft = { ...values, model: this.botDraftModel, thinking: this.botDraftThinking, memoryModel: this.botDraftMemoryModel };
+    this.botDialogPending = true;
+    this.botDialogError = "";
+    const request = state.mode === "create"
+      ? createBot(botInputFromDraft(draft))
+      : updateBot(state.bot.id, botPatchFromDraft(state.bot, draft));
+    void request
+      .then((bot) => {
+        this.closeBotDialog();
+        this.bots = upsertBot(this.bots, bot);
+        this.botNotice = state.mode === "create" ? "" : `Saved ${bot.name}.`;
+        this.botNoticeFailed = false;
+        void this.refreshBots();
+        if (state.mode === "create") {
+          // The new chat is a new session; open the bot once the list has it.
+          void this.refreshSessions(true);
+          this.navigate({ kind: "bot", id: bot.id });
+        }
+      })
+      .catch((error: unknown) => {
+        this.botDialogError = error instanceof Error ? error.message : state.mode === "create" ? "Could not create the bot." : "Could not save the bot.";
+      })
+      .finally(() => {
+        this.botDialogPending = false;
+      });
+  };
+
+  private setBotHidden = (bot: BotView, hidden: boolean) => {
+    this.botMenuFor = "";
+    if (this.botPendingId) return;
+    this.botPendingId = bot.id;
+    void updateBot(bot.id, { hidden })
+      .then((updated) => {
+        this.bots = upsertBot(this.bots, updated);
+        this.botNotice = hidden ? `${updated.name} is hidden. Show hidden lists it again.` : `${updated.name} is back in the roster.`;
+        this.botNoticeFailed = false;
+      })
+      .catch((error: unknown) => {
+        this.botNotice = error instanceof Error ? error.message : "Could not change that bot.";
+        this.botNoticeFailed = true;
+      })
+      .finally(() => {
+        this.botPendingId = "";
+      });
+  };
+
+  private requestArchiveBot = (bot: BotView) => {
+    this.botMenuFor = "";
+    this.botArchive = bot;
+    this.botArchiveError = "";
+  };
+
+  private closeBotArchive = () => {
+    const dialog = this.renderRoot.querySelector?.(".bot-archive-dialog");
+    if (dialog instanceof HTMLDialogElement) closeModal(dialog);
+    this.botArchive = undefined;
+    this.botArchiveError = "";
+  };
+
+  private confirmArchiveBot = () => {
+    const bot = this.botArchive;
+    if (!bot || this.botArchivePending) return;
+    this.botArchivePending = true;
+    this.botArchiveError = "";
+    void archiveBot(bot.id)
+      .then((archived) => {
+        this.closeBotArchive();
+        this.bots = upsertBot(this.bots, archived);
+        this.botNotice = "";
+        this.botArchiveToast = { bot: archived, restoring: false };
+        this.scheduleBotArchiveToast();
+        if (this.view === "bot" && this.activeBotId === bot.id) this.navigate({ kind: "home" }, true);
+        void this.refreshBots();
+        void this.refreshSessions(true);
+      })
+      .catch((error: unknown) => {
+        this.botArchiveError = error instanceof Error ? error.message : "Could not archive that bot.";
+      })
+      .finally(() => {
+        this.botArchivePending = false;
+      });
+  };
+
+  private pauseBotArchiveToast = () => {
+    if (this.botArchiveToastTimer) clearTimeout(this.botArchiveToastTimer);
+    this.botArchiveToastTimer = undefined;
+  };
+
+  private dismissBotArchiveToast = () => {
+    this.pauseBotArchiveToast();
+    this.botArchiveToast = undefined;
+  };
+
+  /** Same lifetime as the session archive toast: 15 s without hover or focus. */
+  private scheduleBotArchiveToast = () => {
+    this.pauseBotArchiveToast();
+    if (!this.botArchiveToast || this.botArchiveToast.restoring || this.botArchiveToast.error) return;
+    const element = this.querySelector(".bot-archive-toast");
+    if (element?.matches(":hover") || element?.contains(document.activeElement)) return;
+    this.botArchiveToastTimer = setTimeout(this.dismissBotArchiveToast, 15_000);
+  };
+
+  private restoreArchivedBot = async () => {
+    const toast = this.botArchiveToast;
+    if (!toast || toast.restoring) return;
+    this.pauseBotArchiveToast();
+    this.botArchiveToast = { bot: toast.bot, restoring: true };
+    try {
+      const restored = await restoreBot(toast.bot.id);
+      this.bots = upsertBot(this.bots, restored);
+      if (this.botArchiveToast?.bot.id === toast.bot.id) this.dismissBotArchiveToast();
+      this.botNotice = `Restored ${restored.name}. Its routines stay paused until you turn them on.`;
+      this.botNoticeFailed = false;
+      void this.refreshBots();
+      void this.refreshSessions(true);
+    } catch (error) {
+      if (this.botArchiveToast?.bot.id === toast.bot.id) {
+        this.botArchiveToast = { bot: toast.bot, restoring: false, error: error instanceof Error ? error.message : "Could not restore that bot." };
+      }
+    }
+  };
+
+  private botPanelVisible(): boolean {
+    return this.view === "bot" && !this.settingsOpen && (this.mobileNavLayout ? this.botSheetOpen : this.botPanel.open);
+  }
+
+  /** The panel's visible tab decides what is read and polled. */
+  private syncBotPanelData() {
+    if (this.embeddedPane) return;
+    const visible = this.botPanelVisible();
+    if (visible && this.botPanel.tab === "routines") {
+      this.loadAutomationData();
+      this.startAutomationPolling();
+    } else if (this.view === "bot") {
+      this.stopAutomationPolling();
+    }
+    if (visible && this.botPanel.tab === "memory") {
+      void this.refreshBotMemory();
+      this.startBotMemoryPolling();
+    } else {
+      this.stopBotMemoryPolling();
+    }
+  }
+
+  private toggleBotPanel = () => {
+    if (this.mobileNavLayout) {
+      this.botSheetOpen = !this.botSheetOpen;
+    } else {
+      this.botPanel = { ...this.botPanel, open: !this.botPanel.open };
+      writeBotPanel(this.botPanel);
+    }
+    this.automationFormError = "";
+    this.automationActionError = "";
+    this.syncBotPanelData();
+    if (this.botPanelVisible()) {
+      void this.updateComplete.then(() => this.renderRoot.querySelector<HTMLElement>('.bot-panel [role="tab"][aria-selected="true"]')?.focus());
+    }
+  };
+
+  private closeBotPanel = () => {
+    if (this.mobileNavLayout) this.botSheetOpen = false;
+    else {
+      this.botPanel = { ...this.botPanel, open: false };
+      writeBotPanel(this.botPanel);
+    }
+    this.syncBotPanelData();
+    void this.updateComplete.then(() => this.botPaneApp()?.updateComplete).then(() => {
+      this.renderRoot.querySelector<HTMLElement>(".bot-panel-toggle")?.focus();
+    });
+  };
+
+  private selectBotPanelTab = (tab: BotPanelTab) => {
+    this.botPanel = { ...this.botPanel, tab };
+    writeBotPanel(this.botPanel);
+    this.syncBotPanelData();
+  };
+
+  private resetBotMemory(botId: string) {
+    this.botMemoryRequest += 1;
+    this.botMemoryInFlight = false;
+    this.botMemory = { botId, loading: false, error: "" };
+    this.botMemoryZoom = new Map();
+    this.botMemoryPageError = "";
+  }
+
+  /** A manual refresh shows itself; the poll only replaces what changed. */
+  private refreshBotMemory = async (manual = false) => {
+    const bot = this.activeBot();
+    if (!bot) return;
+    if (this.botMemory.botId !== bot.id) this.resetBotMemory(bot.id);
+    if (this.botMemoryInFlight) return;
+    this.botMemoryInFlight = true;
+    const request = ++this.botMemoryRequest;
+    if (manual || !this.botMemory.status) this.botMemory = { ...this.botMemory, loading: true };
+    try {
+      const memory = await loadBotMemory(bot.id);
+      if (request !== this.botMemoryRequest) return;
+      this.botMemory = { botId: bot.id, loading: false, error: "", status: memory.status, lines: parseMemoryView(memory.view) };
+    } catch (error) {
+      if (request !== this.botMemoryRequest) return;
+      this.botMemory = { ...this.botMemory, loading: false, error: error instanceof Error ? error.message : "Could not read the bot's memory." };
+    } finally {
+      if (request === this.botMemoryRequest) this.botMemoryInFlight = false;
+    }
+  };
+
+  private startBotMemoryPolling() {
+    if (this.botMemoryPoll !== undefined) return;
+    this.botMemoryPoll = window.setInterval(() => {
+      if (!document.hidden) void this.refreshBotMemory();
+    }, BOT_MEMORY_POLL_MS);
+  }
+
+  private stopBotMemoryPolling() {
+    if (this.botMemoryPoll === undefined) return;
+    window.clearInterval(this.botMemoryPoll);
+    this.botMemoryPoll = undefined;
+  }
+
+  /** Opens a line into its two halves (or a message whole); again folds it. */
+  private zoomBotMemoryLine = (line: MemoryLine) => {
+    const bot = this.activeBot();
+    if (!bot) return;
+    const next = new Map(this.botMemoryZoom);
+    if (next.delete(line.address)) {
+      this.botMemoryZoom = next;
+      return;
+    }
+    next.set(line.address, { loading: true, error: "", lines: [] });
+    this.botMemoryZoom = next;
+    const settle = (state: MemoryZoomState) => {
+      if (this.botMemory.botId !== bot.id || !this.botMemoryZoom.has(line.address)) return;
+      this.botMemoryZoom = new Map(this.botMemoryZoom).set(line.address, state);
+    };
+    void zoomBotMemory(bot.id, line)
+      .then((text) => settle({ loading: false, error: "", lines: parseMemoryZoom(text, line) }))
+      .catch((error: unknown) => settle({ loading: false, error: error instanceof Error ? error.message : "Could not open that line.", lines: [] }));
+  };
+
+  /** The tab opens inside the click (so it is not a blocked popup) and shows
+   * the guarded page once read; a refusal closes it and is reported here. */
+  private openBotMemoryPage = () => {
+    const bot = this.activeBot();
+    if (!bot) return;
+    this.botMemoryPageError = "";
+    const tab = window.open("", "_blank");
+    if (!tab) {
+      this.botMemoryPageError = "The browser blocked the new tab. Allow pop-ups for HUI and try again.";
+      return;
+    }
+    tab.opener = null;
+    tab.document.title = `${bot.name} · memory`;
+    void loadBotMemoryPage(bot.id)
+      .then((html) => {
+        const url = URL.createObjectURL(new Blob([inertMemoryPage(html)], { type: "text/html" }));
+        tab.location.replace(url);
+        // The tab keeps its document; the URL only has to outlive the load.
+        setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      })
+      .catch((error: unknown) => {
+        tab.close();
+        this.botMemoryPageError = error instanceof Error ? error.message : "Could not open the memory page.";
+      });
+  };
+
+  private renderBotWorkspace() {
+    const bot = this.activeBot();
+    const placeholder = (title: string, message: string, tone: "status" | "alert", onRetry?: () => void) => renderBotPlaceholder({
+      title, message, tone, mobileNav: this.mobileNavLayout, onToggleNavigation: toggleNavigationDrawer, ...(onRetry ? { onRetry } : {}),
+    });
+    if (!bot) {
+      if (!this.botsLoaded) {
+        return this.botsError
+          ? placeholder("Bot", this.botsError, "alert", this.retryBots)
+          : placeholder("Bot", "Loading bot…", "status");
+      }
+      return placeholder("Bot not found", "This bot does not exist or has been archived.", "alert");
+    }
+    const session = this.listedSession(bot.sessionId);
+    if (!session) {
+      return this.sessionsError
+        ? placeholder(bot.name, this.sessionsError, "alert", () => void this.refreshSessions())
+        : placeholder(bot.name, `Opening ${bot.name}'s chat…`, "status");
+    }
+    const sheet = this.mobileNavLayout;
+    const panelOpen = sheet ? this.botSheetOpen : this.botPanel.open;
+    const panelId = `bot-panel-${bot.id.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+    const paneBot: PaneBot = {
+      bot: { id: bot.id, name: bot.name, ...(bot.title ? { title: bot.title } : {}), ...(bot.avatar ? { avatar: bot.avatar } : {}), ...(bot.memory ? { memory: bot.memory } : {}) },
+      panelOpen,
+      panelId,
+    };
+    return html`<div class="bot-workspace ${panelOpen && !sheet ? "bot-workspace--panel" : ""}" data-bot-id=${bot.id}>
+      <div class="bot-workspace__chat">
+        ${keyed(bot.id, html`<hui-app
+          class="hui-session-pane-app bot-workspace__pane"
+          embedded-pane
+          pane-session-id=${bot.sessionId}
+          .paneSession=${session}
+          .paneId=${`bot-${bot.id}`}
+          .paneActive=${true}
+          .paneVisible=${true}
+          .paneNarrow=${sheet}
+          .paneMobileNav=${this.mobileNavLayout}
+          .paneBot=${paneBot}
+          .onPaneBotPanel=${this.toggleBotPanel}
+          .onPaneNavigate=${(id: string) => {
+            const target = this.listedSession(id);
+            if (target && id !== bot.sessionId) this.selectSession(target);
+          }}
+          .onPaneRegistryChange=${() => this.refreshSessions(true).then(() => this.updateComplete).then(() => {})}
+          .paneGroups=${this.sessionListRevision ? this.groups : undefined}
+          .onPaneUpdate=${(text: string, attachments: readonly Attachment[]) => this.handleUpdateCommand(text, attachments)}
+          .onPaneDraftChange=${(sessionId: string, hasDraft: boolean) => this.markSessionDraft(sessionId, hasDraft)}
+        ></hui-app>`)}
+      </div>
+      ${panelOpen ? renderBotPanel({
+        bot,
+        id: panelId,
+        tab: this.botPanel.tab,
+        sheet,
+        timezone: localTimezone(),
+        onTab: this.selectBotPanelTab,
+        onClose: this.closeBotPanel,
+        routines: {
+          automation: this.automation,
+          error: this.automationError,
+          pending: this.automationPending,
+          formError: this.automationFormError,
+          actionError: this.automationActionError,
+          onCreate: this.createAutomationTask,
+          onFormError: this.reportAutomationFormError,
+          onSetEnabled: this.setAutomationEnabled,
+          onRun: this.runAutomationTaskNow,
+          onDelete: this.deleteAutomationTask,
+          onRetry: this.loadAutomationData,
+        },
+        memory: {
+          state: this.botMemory.botId === bot.id ? this.botMemory : { loading: true, error: "" },
+          zoom: this.botMemoryZoom,
+          onZoom: this.zoomBotMemoryLine,
+          onRefresh: () => void this.refreshBotMemory(true),
+          onOpenPage: this.openBotMemoryPage,
+          pageError: this.botMemoryPageError,
+        },
+      }) : nothing}
+    </div>`;
+  }
+
+  private renderBotDialogs() {
+    if (this.embeddedPane) return nothing;
+    const dialog = this.botDialog;
+    return html`${dialog ? renderBotDialog({
+      mode: dialog.mode,
+      ...(dialog.mode === "edit" ? { bot: dialog.bot } : {}),
+      pending: this.botDialogPending,
+      error: this.botDialogError,
+      models: this.pi?.model.catalog ?? [],
+      model: this.botDraftModel,
+      thinking: this.botDraftThinking,
+      memoryModel: this.botDraftMemoryModel,
+      directorySuggestions: this.directorySuggestions,
+      onDirectoryInput: this.requestDirectorySuggestions,
+      onModel: (value) => { this.botDraftModel = value; },
+      onThinking: (value) => { this.botDraftThinking = value; },
+      onMemoryModel: (value) => { this.botDraftMemoryModel = value; },
+      onSubmit: this.submitBotDialog,
+      onCancel: this.closeBotDialog,
+    }) : nothing}
+    ${this.botArchive ? renderBotArchiveDialog(this.botArchive, this.botArchivePending, this.botArchiveError, this.confirmArchiveBot, this.closeBotArchive) : nothing}`;
+  }
+
   /* ── settings ─────────────────────────────────────────────────────────── */
 
   private async save(patch: Partial<Settings>) {
@@ -4040,7 +4774,8 @@ export class HuiApp extends HuiElement {
       session: this.selected,
       mobileNavLayout: this.embeddedPane ? this.paneMobileNav && this.paneActive : this.mobileNavLayout,
       controlScope: this.embeddedPane ? this.paneId : undefined,
-      groups: this.groups,
+      groups: this.listedGroups,
+      ...(this.paneBot && this.onPaneBotPanel ? { bot: { ...this.paneBot, onTogglePanel: () => this.onPaneBotPanel?.() } } : {}),
       transcript: this.transcript,
       subagents: this.subagents,
       opening: this.opening,
@@ -4120,7 +4855,7 @@ export class HuiApp extends HuiElement {
       onDraftInput: this.typeDraft,
       commandMenu: {
         open: this.slashQuery !== null && !this.sending && !this.opening && !this.launching && (!this.selected || this.connection === "live"),
-        commands: filterSlashCommands(this.slashQuery?.startsWith("$") ? this.commands : composerCommands(this.selected ? this.commands : [], !!this.selected), this.slashQuery ?? ""),
+        commands: filterSlashCommands(this.slashQuery?.startsWith("$") ? this.commands : composerCommands(this.selected ? this.commands : [], !!this.selected, Boolean(this.selected?.bot)), this.slashQuery ?? ""),
         catalog: this.commands,
         paths: this.localPathQuery ? this.localPaths : undefined,
         pathsLoading: this.localPathsLoading,
@@ -4291,6 +5026,17 @@ export class HuiApp extends HuiElement {
         <button type="button" class="app-toast__dismiss" aria-label="Dismiss archive notification"
           @click=${this.dismissArchiveToast}><span aria-hidden="true">×</span></button>
       </div>` : null}
+      ${this.botArchiveToast ? html`<div class="app-toast session-archive-toast bot-archive-toast"
+        @pointerenter=${this.pauseBotArchiveToast} @pointerleave=${this.scheduleBotArchiveToast}
+        @focusin=${this.pauseBotArchiveToast} @focusout=${this.scheduleBotArchiveToast}>
+        <span class="app-toast__message" role=${this.botArchiveToast.error ? "alert" : "status"}>
+          ${this.botArchiveToast.error ?? `Archived “${this.botArchiveToast.bot.name}”. Its chat and memory are kept.`}
+        </span>
+        <button type="button" class="app-toast__action" ?disabled=${this.botArchiveToast.restoring}
+          @click=${this.restoreArchivedBot}>${this.botArchiveToast.restoring ? "Restoring…" : "Restore"}</button>
+        <button type="button" class="app-toast__dismiss" aria-label="Dismiss archive notification"
+          @click=${this.dismissBotArchiveToast}><span aria-hidden="true">×</span></button>
+      </div>` : null}
     </div>`;
   }
 
@@ -4436,6 +5182,7 @@ export class HuiApp extends HuiElement {
           onChangeChat: (chat) => void this.save({ chat }),
           onChangeBrowser: (browser) => this.save({ browser }),
           onChangePower: (power) => void this.save({ power }).then(() => this.refreshPower()),
+          onChangeBots: (bots) => void this.save({ bots }).then(() => this.syncBotsStream()),
           onSetLidAwake: this.setLidAwakeFromUi,
           onChangeModels: (models) => {
             this.launchModel = models.primary;
@@ -4465,10 +5212,11 @@ export class HuiApp extends HuiElement {
     const props = {
       view: this.view,
       activePage: this.activePage,
-      selectedSessionId: this.selected?.id ?? "",
+      selectedSessionId: this.view === "bot" ? "" : this.selected?.id ?? "",
       splitSessionId: "",
       openSessionIds: new Set(this.sessionLayout && sessionPanes(this.sessionLayout).length > 1 ? sessionPanes(this.sessionLayout).map(({ sessionId }) => sessionId) : []),
-      groups: this.groups,
+      groups: this.listedGroups,
+      bots: this.shellBotsProps(),
       draftSessionIds: this.draftSessionIds,
       collapsed: this.collapsed,
       loading: this.sessionsLoading,
@@ -4553,6 +5301,7 @@ export class HuiApp extends HuiElement {
 
     const chatLikeRoute =
       (this.view === "home" && Boolean(this.selected)) ||
+      this.view === "bot" ||
       (this.view === "surface" && this.activePage?.id === "new-session");
 
     return html`<div
@@ -4565,6 +5314,7 @@ export class HuiApp extends HuiElement {
       ${this.renderJiraLinkDialog()}
       ${this.renderBacklogStartDialog()}
       ${this.renderBacklogRemoveDialog()}
+      ${this.renderBotDialogs()}
       ${this.commandPalette()}
       ${this.updateDialog()}
       ${renderPiResourceReader(this.piResourceReader, this.closePiResourceReader, this.copyPiResource)}
@@ -4572,9 +5322,11 @@ export class HuiApp extends HuiElement {
         props,
         this.view === "home"
           ? this.renderSessionMultiplex()
+          : this.view === "bot"
+            ? this.renderBotWorkspace()
           : this.view === "kanban"
             ? renderKanbanPage({
-                groups: this.groups,
+                groups: this.listedGroups,
                 loading: this.sessionsLoading,
                 error: this.sessionsError,
                 query: this.kanbanQuery,
@@ -4609,7 +5361,7 @@ export class HuiApp extends HuiElement {
                   ? renderAutomationSurface(this.automationProps(), this.activePage.id === "cron" ? "Automations" : "Tasks")
                 : this.activePage.id === "sessions"
                   ? renderSessionsPage({
-                      groups: this.groups,
+                      groups: this.listedGroups,
                       loading: this.sessionsLoading,
                       error: this.sessionsError,
                       query: this.search,

@@ -70,6 +70,18 @@ test("session ids are encoded and decoded without changing identity", () => {
   assert.deepEqual(resolveNavigation(path), { target, path });
 });
 
+test("a bot's chat has its own route, distinct from its session's", () => {
+  const target = { kind: "bot", id: "4f0c bot?#" } as const;
+  const path = navigationPath(target);
+  assert.equal(path, "/bots/4f0c%20bot%3F%23");
+  assert.deepEqual(resolveNavigation(path), { target, path });
+  assert.deepEqual(resolveNavigation("/bots/scout/"), { target: { kind: "bot", id: "scout" }, path: "/bots/scout" });
+  for (const invalid of ["/bots", "/bots/scout/memory", "/bots/%E0%A4%A"]) {
+    assert.deepEqual(resolveNavigation(invalid), { target: { kind: "home" }, path: "/" }, invalid);
+  }
+  assert.deepEqual(settingsReturnTarget({ kind: "bot", id: "scout" }), { kind: "bot", id: "scout" });
+});
+
 test("unknown, malformed and overlong routes resolve to canonical home", () => {
   for (const path of [
     "/unknown",

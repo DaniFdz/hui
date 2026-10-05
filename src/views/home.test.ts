@@ -325,8 +325,10 @@ test("the composer exposes PI context usage beside the model", () => {
   const source = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
   const styles = readStyles("../styles/openclaw-chat.css");
 
-  // Compact now waits while the session runs or a compaction already works.
-  assert.match(source, /renderContextPicker\(props\.usage, props\.streaming \|\| props\.compaction\?\.status === "running" \? undefined : props\.onCompact\)/);
+  // Compact now waits while the session runs or a compaction already works,
+  // and is not offered at all in a bot's permanent chat (the gateway refuses it).
+  assert.match(source, /renderContextPicker\(props\.usage, props\.streaming \|\| props\.compaction\?\.status === "running" \? undefined : props\.onCompact, !props\.session\?\.bot\)/);
+  assert.match(source, /\$\{compactable \? html`<button type="button" class="btn btn--ghost btn--sm context-usage__compact"/);
   assert.match(source, />Compact now<\/button>/);
   assert.match(source, /Context window/);
   assert.match(source, /Latest run tokens/);
