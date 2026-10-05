@@ -8,6 +8,7 @@
  * login is used.
  */
 import type { ChildProcess } from "node:child_process";
+import { existsSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileCredentialStore, setCredentialStoreFactory, type CredentialStore } from "../provider-accounts.ts";
 
@@ -148,10 +149,25 @@ export function secretEnv(): Record<string, string> {
 /** HUI provider credential files a gateway serves, relative to its providers dir. */
 export const BROKERED_PROVIDER_FILE = /^(?:auth\.json|accounts\/[0-9a-f-]{36}\/auth\.json)$/u;
 
+/** The remote user's own PI login, opened only once it exists: PI's file store
+ * creates its file when opened, and HUI leaves files outside its own
+ * directory alone. A credential PI itself writes there may create it. */
+export function ownLogin(path: string): CredentialStore {
+  let file: CredentialStore | undefined;
+  const open = () => (file ??= fileCredentialStore(path));
+  const exists = () => file !== undefined || existsSync(path);
+  return {
+    read: async (providerId, options) => exists() ? open().read(providerId, options) : undefined,
+    list: async (options) => exists() ? open().list(options) : [],
+    delete: async (providerId, options) => { if (exists()) await open().delete(providerId, options); },
+    modify: (providerId, fn, options) => open().modify(providerId, fn, options),
+  };
+}
+
 /** Maps the credential files a PI worker opens to gateway-side store names. */
 export function installBrokeredCredentials(options: { agentDir: string; providersDir: string; fallbackAuth: string }): void {
   setCredentialStoreFactory((path) => {
-    if (path === join(options.agentDir, "auth.json")) return brokeredStore("pi", () => fileCredentialStore(options.fallbackAuth));
+    if (path === join(options.agentDir, "auth.json")) return brokeredStore("pi", () => ownLogin(options.fallbackAuth));
     const rel = relative(options.providersDir, path).split("\\").join("/");
     if (BROKERED_PROVIDER_FILE.test(rel)) return brokeredStore(`hui:${rel}`, () => fileCredentialStore(path));
     return fileCredentialStore(path);

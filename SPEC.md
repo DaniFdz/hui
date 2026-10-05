@@ -1024,7 +1024,7 @@ leaves worker records unchanged.
   there. The host keeps the answers in memory only, never on disk, so runs
   keep going while the gateway is away; an answer is dropped when its token
   expires. Without a gateway and a cached answer, the remote's own PI login
-  is used. Provider keys
+  is used, read only if its `auth.json` exists; HUI never creates it. Provider keys
   that models.json resolves from environment variables or commands resolve on
   the remote. A key written literally in models.json, or a literal value of a
   header whose name looks like a credential (one of its `-`, `_` or `.`

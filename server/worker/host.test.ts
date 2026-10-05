@@ -3,7 +3,8 @@
  * a gateway connected to its socket. workers.test.ts runs whole sessions.
  */
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { connect } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -17,7 +18,7 @@ process.env["PI_CODING_AGENT_DIR"] = join(root, "agent");
 const { workerPaths } = await import("./paths.ts");
 const { WorkerHost } = await import("./host.ts");
 const { attachPeer } = await import("./protocol.ts");
-const { brokeredStore } = await import("./credentials.ts");
+const { brokeredStore, ownLogin } = await import("./credentials.ts");
 type Store = ReturnType<typeof brokeredStore>;
 
 const host = new WorkerHost(workerPaths());
@@ -60,4 +61,18 @@ test("cached gateway credentials end at their expiry or deletion; then the remot
   }
   assert.equal((await store.read("later") as { access?: string }).access, "gateway-later");
   assert.deepEqual(await store.read("deleted"), { type: "api_key", key: "own-deleted" });
+});
+
+test("the remote's own login is only opened once it exists, so no file appears outside HUI's directory", async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "hui-own-login-"));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const path = join(dir, ".pi", "agent", "auth.json");
+  const login = ownLogin(path);
+  assert.equal(await login.read("fx"), undefined);
+  assert.deepEqual(await login.list(), []);
+  await login.delete("fx");
+  assert.equal(existsSync(path), false);
+  await mkdir(join(dir, ".pi", "agent"), { recursive: true });
+  await writeFile(path, JSON.stringify({ fx: { type: "api_key", key: "own-key" } }));
+  assert.deepEqual(await login.read("fx"), { type: "api_key", key: "own-key" });
 });

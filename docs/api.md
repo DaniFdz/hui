@@ -963,7 +963,8 @@ gateway connected a `bridge` call fails at once, and one in flight fails when
 the connection drops. `read` and `list` answers are cached in host memory
 until the credential's `expires` (API keys: while the host runs) and served
 while no gateway is connected; nothing is written to disk. Without a cached
-answer the remote's own PI login is used. The mirrored PI `models.json` holds
+answer the remote's own PI login is used (its `auth.json` only if it already
+exists; HUI never creates it). The mirrored PI `models.json` holds
 no literal secrets: a literal `apiKey` is dropped, and the gateway answers a
 `pi` `read` for that provider with `{type: "api_key", key}` when its auth.json
 has none (and lists it); a literal value of a credential-like header (a name
