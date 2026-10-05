@@ -2137,7 +2137,7 @@ worked on.
 ```ts
 type SessionActivity = {
   sessions: {
-    id: string; title: string; group: string; archived?: boolean;
+    id: string; title: string; group: string; project: string; archived?: boolean;
     blocks: { start: number; end: number; model?: string; firstMessage?: string }[];
   }[];
 };
@@ -2154,7 +2154,14 @@ session is listed with its blocks that overlap the range: they end at or after
 `from` and start before `to`. The scan stops at the first such silence before
 `from`, so a block that began earlier keeps its real start without reading the
 whole history. `model` is the `provider/model` of the block's last answer;
-`firstMessage` is the operator's first message in the block (user entries only,
+`project` names the session's repository: the parent of Git's absolute common
+directory (`rev-parse --git-common-dir`) for a `.git` directory, else that
+directory without `.git`, so a repository's worktrees and subdirectories share
+it. When Git cannot answer, a directory under HUI's worktrees directory is
+resolved through its siblings or the checkout it was made from (its parent is
+`<checkout>-<hash>`), else named after that checkout; the home directory is `~`
+and any other directory its own name. Answers are kept in gateway memory per
+directory. `firstMessage` is the operator's first message in the block (user entries only,
 HUI's control prompts excluded, at most 400 characters). Sessions without a
 block in the range, and sessions on PI's worker, are omitted. Only the
 session's current conversation is read: after a rewind that is a fork holding

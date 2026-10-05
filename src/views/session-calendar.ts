@@ -10,13 +10,34 @@ import {
   MIN_DRAWN_MS,
   weekStart,
   type CalendarBlock,
+  type CalendarGrouping,
+  type CalendarUnit,
   type CalendarWeek,
 } from "../lib/session-calendar.ts";
+import type { SessionActivity } from "../../shared/session-activity.ts";
 
 if (typeof document !== "undefined") await import("../styles/session-calendar.css");
 
 const HOUR_PX = 40;
 const POPOVER_PX = 340;
+/** Sessions a stretch's card lists before "and N more". */
+const CARD_SESSIONS = 6;
+const GROUPINGS: readonly [CalendarGrouping, string, string, string][] = [
+  ["project", "Project", "project", "projects"],
+  ["group", "Group", "group", "groups"],
+  ["session", "Session", "session", "sessions"],
+];
+const PREFERENCES_KEY = "hui.calendar";
+
+function readGrouping(): CalendarGrouping {
+  try {
+    const saved = (JSON.parse(localStorage.getItem(PREFERENCES_KEY) ?? "null") as { groupBy?: unknown } | null)?.groupBy;
+    return GROUPINGS.find(([value]) => value === saved)?.[0] ?? "project";
+  } catch {
+    return "project";
+  }
+}
+const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
 
 const time = (ms: number) => new Date(ms).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
 const hourLabel = (hour: number) => new Date(2000, 0, 1, hour % 24).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
@@ -30,18 +51,20 @@ function weekTitle(start: Date, today: Date): string {
   return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", ...year }).formatRange(start, end);
 }
 
-/** A week of HUI sessions: when each one was worked on, laid out by day and
- * hour, with the time each took and parallel work counted once. */
+/** A week of HUI sessions: when work happened, laid out by day and hour as
+ * blocks of one project, group or session each, with the time each took and
+ * parallel work counted once. */
 export class HuiSessionCalendar extends LitElement {
   onOpenSession?: (id: string) => void;
   #start = weekStart(new Date());
-  #shown?: { start: Date; week: CalendarWeek };
+  #shown?: { start: Date; activity: SessionActivity; week: CalendarWeek };
+  #grouping = readGrouping();
   #loading = false;
   #error = "";
   #request = 0;
   /** The clicked block, with the card position its popover takes. */
   #open?: { block: CalendarBlock; left?: number; top?: number; bottom?: number; returnFocus: HTMLElement };
-  /** Session highlighted from the side list: pinned by a click, or hovered. */
+  /** Unit highlighted from the side list: pinned by a click, or hovered. */
   #pinned?: string;
   #hovered?: string;
   #scrollToToday = false;
@@ -85,12 +108,7 @@ export class HuiSessionCalendar extends LitElement {
     try {
       const activity = await loadSessionActivity(start, addDays(start, 7));
       if (request !== this.#request) return;
-      const week = calendarWeek(activity, start);
-      this.#shown = { start, week };
-      this.#open = undefined;
-      // A re-render removes rows without a pointerleave; a pinned session may have no time this week.
-      this.#hovered = undefined;
-      if (!week.sessions.some(({ session }) => session.id === this.#pinned)) this.#pinned = undefined;
+      this.#show(start, activity);
       this.#scrollToToday = true;
     } catch (error) {
       if (request !== this.#request) return;
@@ -99,6 +117,23 @@ export class HuiSessionCalendar extends LitElement {
     } finally {
       if (request === this.#request) { this.#loading = false; this.requestUpdate(); }
     }
+  }
+
+  #show(start: Date, activity: SessionActivity) {
+    const week = calendarWeek(activity, start, this.#grouping);
+    this.#shown = { start, activity, week };
+    this.#open = undefined;
+    // A re-render removes rows without a pointerleave; a pinned unit may have no time this week.
+    this.#hovered = undefined;
+    if (!week.units.some(({ key }) => key === this.#pinned)) this.#pinned = undefined;
+  }
+
+  #group(grouping: CalendarGrouping) {
+    this.#grouping = grouping;
+    try { localStorage.setItem(PREFERENCES_KEY, JSON.stringify({ groupBy: grouping })); } catch { /* Keep the in-memory choice. */ }
+    this.#pinned = undefined;
+    if (this.#shown) this.#show(this.#shown.start, this.#shown.activity);
+    this.requestUpdate();
   }
 
   #go(start: Date) {
@@ -142,21 +177,23 @@ export class HuiSessionCalendar extends LitElement {
     const showTime = height >= 46;
     // Title lines that fit above the time: 15px lines inside 10px of padding.
     const lines = Math.max(1, Math.floor((height - 12 - (showTime ? 17 : 0)) / 15));
-    const duration = formatDuration(entry.block.end - entry.block.start);
+    const duration = formatDuration(entry.to - entry.from);
+    const sessions = new Set(entry.parts.map(({ session }) => session)).size;
+    const detail = sessions > 1 ? `${duration} · ${plural(sessions, "session", "sessions")}` : duration;
     const highlight = this.#highlight();
     const classes = [
       "session-calendar__block",
-      highlight && highlight !== entry.session.id ? "session-calendar__block--dim" : "",
+      highlight && highlight !== entry.unit.key ? "session-calendar__block--dim" : "",
       this.#open?.block === entry ? "session-calendar__block--open" : "",
       height < 30 ? "session-calendar__block--short" : "",
     ].join(" ");
-    return html`<button type="button" class=${classes} data-color=${entry.color} data-session=${entry.session.id}
-      style="top:${top}px;height:${height - 2}px;left:calc(${(entry.lane / entry.lanes) * 100}% + 2px);width:calc(${100 / entry.lanes}% - 4px);--lines:${lines}"
-      aria-label=${`${entry.session.title}, ${time(entry.block.start)} – ${time(entry.block.end)}, ${duration}`}
+    return html`<button type="button" class=${classes} data-color=${entry.unit.color}
+      style="top:${top}px;height:${height - 2}px;left:calc(${(entry.lane / entry.lanes) * 100}% + 2px);width:calc(${(entry.span / entry.lanes) * 100}% - 4px);--lines:${lines}"
+      aria-label=${`${entry.unit.label}, ${time(entry.from)} – ${time(entry.to)}, ${detail}`}
       aria-expanded=${String(this.#open?.block === entry)}
       @click=${(event: Event) => this.#select(entry, event)}>
-      <span class="session-calendar__block-title">${entry.session.title}</span>
-      ${showTime ? html`<span class="session-calendar__block-time">${duration}</span>` : nothing}
+      <span class="session-calendar__block-title">${entry.unit.label}</span>
+      ${showTime ? html`<span class="session-calendar__block-time">${detail}</span>` : nothing}
     </button>`;
   }
 
@@ -184,33 +221,80 @@ export class HuiSessionCalendar extends LitElement {
         })}
       </div>
     </div>
-    ${week.sessions.length === 0 ? html`<div class="session-calendar__empty">No HUI session activity this week.</div>` : nothing}`;
+    ${week.units.length === 0 ? html`<div class="session-calendar__empty">No HUI session activity this week.</div>` : nothing}`;
   }
 
-  #renderPopover(week: CalendarWeek) {
+  #renderPopover() {
     const open = this.#open;
     if (!open) return nothing;
-    const { block, session, color } = open.block;
-    const total = week.sessions.find((entry) => entry.session.id === session.id);
+    const { unit, from, to, parts } = open.block;
     const place = `${open.left === undefined ? "" : `left:${open.left}px;`}${open.top === undefined ? `bottom:${open.bottom}px` : `top:${open.top}px`}`;
+    const single = this.#grouping === "session" ? parts[0]! : undefined;
+    // A stretch's sessions with their time in it, most first, and what each was asked first.
+    const sessions = [...new Set(parts.map(({ session }) => session))].map((session) => {
+      const own = parts.filter((part) => part.session === session);
+      return { session, ms: own.reduce((sum, { block }) => sum + block.end - block.start, 0), first: own.find(({ block }) => block.firstMessage)?.block.firstMessage };
+    }).sort((a, b) => b.ms - a.ms);
     return html`<div class="session-calendar__popover ${open.left === undefined ? "session-calendar__popover--full" : ""}" role="dialog" aria-labelledby="session-calendar-popover-title" tabindex="-1" style=${place}
       @keydown=${(event: KeyboardEvent) => { if (event.key === "Escape") { event.stopPropagation(); this.#close(true); } }}>
-      <h3 class="session-calendar__popover-title" id="session-calendar-popover-title">${session.title}</h3>
+      <h3 class="session-calendar__popover-title" id="session-calendar-popover-title">${unit.label}</h3>
       <div class="session-calendar__popover-when">
-        ${new Date(block.start).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}
-        · ${time(block.start)} – ${time(block.end)} · ${formatDuration(block.end - block.start)}
+        ${new Date(from).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}
+        · ${time(from)} – ${time(to)} · ${formatDuration(to - from)}
       </div>
-      <div class="session-calendar__popover-meta">
-        <span class="session-calendar__chip"><span class="session-calendar__dot" data-color=${color}></span>${session.group || "Other"}</span>
-        ${block.model ? html`<span>${modelName(block.model)}</span>` : nothing}
-      </div>
-      ${block.firstMessage ? html`<div class="session-calendar__popover-label">First message</div>
-        <p class="session-calendar__popover-quote">“${block.firstMessage}”</p>` : nothing}
+      ${single ? html`
+        <div class="session-calendar__popover-meta">
+          <span class="session-calendar__chip"><span class="session-calendar__dot" data-color=${unit.color}></span>${single.session.project}</span>
+          <span>${single.session.group || "Other"}</span>
+          ${single.block.model ? html`<span>${modelName(single.block.model)}</span>` : nothing}
+        </div>
+        ${single.block.firstMessage ? html`<div class="session-calendar__popover-label">First message</div>
+          <p class="session-calendar__popover-quote">“${single.block.firstMessage}”</p>` : nothing}` : html`
+        <div class="session-calendar__popover-label">${plural(sessions.length, "session", "sessions")}</div>
+        <ul class="session-calendar__popover-sessions">
+          ${sessions.slice(0, CARD_SESSIONS).map(({ session, ms, first }) => html`<li>
+            <button type="button" class="session-calendar__popover-session" title=${`Open ${session.title}`} @click=${() => this.onOpenSession?.(session.id)}>
+              <span class="session-calendar__session-title">${session.title}</span>
+              <span class="session-calendar__session-time">${formatDuration(ms)}</span>
+              ${first ? html`<span class="session-calendar__popover-first">${first}</span>` : nothing}
+            </button>
+          </li>`)}
+        </ul>
+        ${sessions.length > CARD_SESSIONS ? html`<div class="session-calendar__popover-more">and ${sessions.length - CARD_SESSIONS} more</div>` : nothing}`}
       <div class="session-calendar__popover-foot">
-        <span><strong>${formatDuration(total?.ms ?? 0)}</strong> this week</span>
-        ${this.onOpenSession ? html`<button type="button" class="btn btn--sm" @click=${() => this.onOpenSession?.(session.id)}>Open session</button>` : nothing}
+        <span><strong>${formatDuration(unit.ms)}</strong> this week</span>
+        ${single && this.onOpenSession ? html`<button type="button" class="btn btn--sm" @click=${() => this.onOpenSession?.(single.session.id)}>Open session</button>` : nothing}
       </div>
     </div>`;
+  }
+
+  #nouns(): [string, string] {
+    const [, , one, many] = GROUPINGS.find(([value]) => value === this.#grouping)!;
+    return [one, many];
+  }
+
+  /** A side-list row; pinning a project or group also lists its sessions. */
+  #renderUnit(unit: CalendarUnit, highlight: string | undefined) {
+    const pinned = this.#pinned === unit.key;
+    return html`<li>
+      <button type="button" class="session-calendar__session ${highlight === unit.key ? "session-calendar__session--active" : ""}"
+        aria-pressed=${String(pinned)}
+        @click=${() => { this.#pinned = pinned ? undefined : unit.key; this.requestUpdate(); }}
+        @pointerenter=${() => { this.#hovered = unit.key; this.requestUpdate(); }}
+        @pointerleave=${() => { this.#hovered = undefined; this.requestUpdate(); }}>
+        <span class="session-calendar__dot" data-color=${unit.color}></span>
+        <span class="session-calendar__session-title">${unit.label}</span>
+        <span class="session-calendar__session-time">${formatDuration(unit.ms)}</span>
+      </button>
+      ${pinned && this.#grouping !== "session" ? html`<ul class="session-calendar__members" aria-label=${`Sessions in ${unit.label}`}>
+        ${unit.sessions.map(({ session, ms }) => html`<li>
+          <button type="button" class="session-calendar__member" title=${`Open ${session.title}`} @click=${() => this.onOpenSession?.(session.id)}>
+            <span class="session-calendar__session-title">${session.title}</span>
+            <span class="session-calendar__session-time">${formatDuration(ms)}</span>
+          </button>
+        </li>`)}
+      </ul>` : nothing}
+    </li>`;
   }
 
   #renderSide(week: CalendarWeek, now: Date) {
@@ -220,25 +304,15 @@ export class HuiSessionCalendar extends LitElement {
     return html`<aside class="session-calendar__side">
       <section class="session-calendar__panel">
         <h2 class="session-calendar__total"><strong>${formatDuration(week.activeMs)}</strong>
-          ${`across ${week.sessions.length} ${week.sessions.length === 1 ? "session" : "sessions"}`}</h2>
+          ${`across ${plural(week.units.length, ...this.#nouns())}`}</h2>
         <div class="session-calendar__stack" aria-hidden="true">
-          ${week.sessions.map(({ session, color, ms }) => html`<span data-color=${color}
-            class=${highlight && highlight !== session.id ? "session-calendar__stack--dim" : ""}
+          ${week.units.map(({ key, color, ms }) => html`<span data-color=${color}
+            class=${highlight && highlight !== key ? "session-calendar__stack--dim" : ""}
             style="flex-grow:${ms}"></span>`)}
         </div>
         <p class="session-calendar__caption">Parallel sessions counted once · ${formatDuration(week.sessionMs)} of session time</p>
-        <ul class="session-calendar__sessions" aria-label="Time per session">
-          ${week.sessions.map(({ session, color, ms }) => html`<li>
-            <button type="button" class="session-calendar__session ${highlight === session.id ? "session-calendar__session--active" : ""}"
-              aria-pressed=${String(this.#pinned === session.id)}
-              @click=${() => { this.#pinned = this.#pinned === session.id ? undefined : session.id; this.requestUpdate(); }}
-              @pointerenter=${() => { this.#hovered = session.id; this.requestUpdate(); }}
-              @pointerleave=${() => { this.#hovered = undefined; this.requestUpdate(); }}>
-              <span class="session-calendar__dot" data-color=${color}></span>
-              <span class="session-calendar__session-title">${session.title}</span>
-              <span class="session-calendar__session-time">${formatDuration(ms)}</span>
-            </button>
-          </li>`)}
+        <ul class="session-calendar__sessions" aria-label=${`Time per ${this.#nouns()[0]}`}>
+          ${week.units.map((unit) => this.#renderUnit(unit, highlight))}
         </ul>
       </section>
       <section class="session-calendar__panel">
@@ -283,9 +357,13 @@ export class HuiSessionCalendar extends LitElement {
       <div class="session-calendar__toolbar">
         <h2 class="session-calendar__title">${weekTitle(shown.start, today)}</h2>
         <div class="session-calendar__summary">
-          <span><strong>${week.sessions.length}</strong> ${week.sessions.length === 1 ? "session" : "sessions"}</span>
+          <span><strong>${week.sessions}</strong> ${week.sessions === 1 ? "session" : "sessions"}</span>
           <span><strong>${blocks}</strong> ${blocks === 1 ? "block" : "blocks"}</span>
           ${week.peak > 1 ? html`<span>up to <strong>${week.peak}</strong> at once</span>` : nothing}
+        </div>
+        <div class="settings-segmented session-calendar__grouping" role="group" aria-label="Group by">
+          ${GROUPINGS.map(([value, label]) => html`<button type="button" class="settings-segmented__btn ${this.#grouping === value ? "settings-segmented__btn--active" : ""}"
+            aria-pressed=${String(this.#grouping === value)} @click=${() => this.#group(value)}>${label}</button>`)}
         </div>
         ${nav}
       </div>
@@ -293,7 +371,7 @@ export class HuiSessionCalendar extends LitElement {
       <div class="session-calendar__layout" aria-busy=${String(this.#loading)}>
         <div class="session-calendar__grid-card">
           ${this.#renderGrid(week, today)}
-          ${this.#renderPopover(week)}
+          ${this.#renderPopover()}
         </div>
         ${this.#renderSide(week, today)}
       </div>`;

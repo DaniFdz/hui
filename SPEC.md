@@ -190,28 +190,38 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   week* / *Next week*, never past the current week, and *Refresh*) of the
   operator's HUI sessions: subagent sessions are left out, archived ones
   included. A session was worked on from one message to the next until 30
-  minutes pass without one; each such stretch is a block. A day runs from
+  minutes pass without one. *Group by* (remembered by the browser) chooses what
+  the grid draws as one color: *Project* (default), the Git repository a session
+  ran in, which its worktrees and subdirectories share (`~` for the home
+  directory, a folder's own name outside Git); *Group*, the sidebar group
+  (*Other* when ungrouped); or *Session*. A project's or group's sessions merge
+  into one block wherever they are under 30 minutes apart, and a pause under 30
+  minutes counts as work whichever session it continues in. A day runs from
   5 AM to 5 AM, so late-night work stays in the column of the day it began; the
-  hour axis covers 9 AM to 6 PM and every block. Each session has one color:
-  the session palette, then the same colors shaded, busiest first, repeating
-  after sixteen sessions; overlapping blocks share their day
-  in side-by-side lanes, and a one-message block is drawn 30 minutes tall.
+  hour axis covers 9 AM to 6 PM and every block. Colors come from the session
+  palette, then the same colors shaded, busiest first, repeating after sixteen.
+  Overlapping blocks share their day in side-by-side lanes and widen into lanes
+  nothing beside them uses; a block too narrow for its name shows only its
+  color, and a one-message block is drawn 30 minutes tall.
   Today's column is tinted with a line at the current time. Activating a block
-  opens a card beside it (below it on narrow screens): title, day, start–end and
-  length, the session's group and the block's model, the operator's first
-  message in the block, the session's total this week, and *Open session*;
-  Escape or a click elsewhere closes it. The heading shows the week, how many
-  sessions and blocks it had and, when more than one, the most sessions running
-  at once. Beside the
-  grid (below it on narrow screens), the total working time counts parallel
-  sessions once ("31h 10m across 11 sessions", a bar split by session, and
-  the summed session time); every session follows with its time, most first.
-  Hovering a session dims the others' blocks; activating it keeps them dimmed
-  until activated again. *Hours per day* charts each day's working time and
-  labels the busiest. Only Durable conversations are read; sessions still on
-  PI's worker appear once `hui doctor --fix` moves them. A rewind continues the
-  session on a copy of the history before that point, so the time spent on the
-  abandoned branch leaves the calendar.
+  opens a card beside it (below it on narrow screens) with its name, day,
+  start–end and length, and its total this week. Under *Session* it shows the
+  session's project, group and model, the operator's first message in the block
+  and *Open session*; under *Project* or *Group* it lists the block's sessions,
+  most time first, with their time in it and first message (six, then "and N
+  more"), each opening its session. Escape or a click elsewhere closes it. The
+  heading shows the week, how many sessions and blocks it had and, when more
+  than one, the most sessions running at once. Beside the grid (below it on
+  narrow screens), the total working time counts parallel sessions once
+  ("52h 58m across 6 projects", a bar split by color, and the summed session
+  time); every project, group or session follows with its time, most first.
+  Hovering one dims the others' blocks; activating it keeps them dimmed until
+  activated again and, for a project or group, lists its sessions with their
+  time, each opening its session. *Hours per day* charts each day's working
+  time and labels the busiest. Only Durable conversations are read; sessions
+  still on PI's worker appear once `hui doctor --fix` moves them. A rewind
+  continues the session on a copy of the history before that point, so the
+  time spent on the abandoned branch leaves the calendar.
 - Chat messages unfurl GitHub repositories, pull requests and issues (URLs or
   `owner/repo#N`) as cards after the message, at most three per message like
   Slack: PRs show state, title, description snippet, author and diff stats;

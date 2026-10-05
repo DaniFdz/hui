@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { mkdtemp, mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -10,7 +11,7 @@ import type { SessionRecord } from "./sessions.ts";
 const configDir = await mkdtemp(join(tmpdir(), "hui-activity-config-"));
 process.env["XDG_CONFIG_HOME"] = configDir;
 after(() => rm(configDir, { recursive: true, force: true }));
-const { activityRange, durableScan, readSessionActivity } = await import("./session-activity.ts");
+const { activityRange, durableScan, readSessionActivity, repositoryName } = await import("./session-activity.ts");
 const { DurableHost, durableContext } = await import("./runtimes/durable-host.ts");
 const { AssistantEntry, CompactionEntry, ToolResultEntry, UserEntry } = await import("@earendil-works/pi-durable");
 
@@ -39,11 +40,11 @@ function fakeScan(conversations: Record<number, { kind: string; model: unknown[]
       yield entry as never;
     }
   };
-  return { scan, read };
+  return { options: { scan, project: async (cwd: string) => `project of ${cwd}` }, read };
 }
 
 test("messages split into blocks at silences over 30 minutes", async () => {
-  const { scan } = fakeScan({ 1: [
+  const { options } = fakeScan({ 1: [
     user(0, CONTINUE_PROMPT), answer(1), tool(20),
     // A compaction summary is a user message, but neither work nor the operator's words.
     { kind: CompactionEntry.kind, model: [userMessage(40, "Summary of earlier work")] },
@@ -51,8 +52,8 @@ test("messages split into blocks at silences over 30 minutes", async () => {
     { kind: CompactionEntry.kind, model: [userMessage(100, "Summary placed later")] },
     user(120, "Then fix the popover"), answer(121),
   ] });
-  const { sessions } = await readSessionActivity([session("a", 1)], T, T + 86_400_000, scan);
-  assert.deepEqual(sessions, [{ id: "a", title: "Session a", group: "hui", blocks: [
+  const { sessions } = await readSessionActivity([session("a", 1)], T, T + 86_400_000, options);
+  assert.deepEqual(sessions, [{ id: "a", title: "Session a", group: "hui", project: "project of /repo", blocks: [
     // A HUI control prompt counts as time but is not what the operator asked.
     { start: T, end: T + 46 * MINUTE, model: "anthropic/opus", firstMessage: "Add the calendar tab" },
     { start: T + 120 * MINUTE, end: T + 121 * MINUTE, model: "anthropic/claude", firstMessage: "Then fix the popover" },
@@ -60,21 +61,21 @@ test("messages split into blocks at silences over 30 minutes", async () => {
 });
 
 test("only top-level Durable sessions with blocks in the range are listed", async () => {
-  const { scan } = fakeScan({ 1: [user(0, "one")], 2: [user(0, "two")], 3: [user(0, "three")], 4: [user(-120, "before")] });
+  const { options } = fakeScan({ 1: [user(0, "one")], 2: [user(0, "two")], 3: [user(0, "three")], 4: [user(-120, "before")] });
   const { sessions } = await readSessionActivity([
     session("top", 1, { archived: true }),
     session("child", 2, { parentId: "top" }),
     session("legacy", undefined, { tool: "pi", piSessionFile: "/pi/session.jsonl" }),
     session("later", 3, { createdAt: new Date(T + 86_400_000).toISOString() }),
     session("earlier", 4),
-  ], T - 10 * MINUTE, T + 86_400_000, scan);
+  ], T - 10 * MINUTE, T + 86_400_000, options);
   assert.deepEqual(sessions.map(({ id, archived }) => ({ id, archived })), [{ id: "top", archived: true }]);
 });
 
 test("the scan stops at the first silence before the range, keeping the start of a block that crosses it", async () => {
   const history = [user(-600, "old work"), answer(-599), user(-20, "late night"), answer(-5), tool(10)];
-  const { scan, read } = fakeScan({ 1: history });
-  const { sessions } = await readSessionActivity([session("a", 1)], T, T + 86_400_000, scan);
+  const { options, read } = fakeScan({ 1: history });
+  const { sessions } = await readSessionActivity([session("a", 1)], T, T + 86_400_000, options);
   assert.deepEqual(sessions[0]?.blocks, [{ start: T - 20 * MINUTE, end: T + 10 * MINUTE, model: "anthropic/claude", firstMessage: "late night" }]);
   assert.equal(read[1], 4, "the entry after the silence ends the scan; older history is not read");
 });
@@ -105,9 +106,37 @@ test("a Durable conversation's stored messages become its blocks", async (t) => 
       }
     },
   }, durableContext);
-  const { sessions } = await readSessionActivity([session("a", conversation.id)], T, T + 86_400_000, durableScan(host));
+  const { sessions } = await readSessionActivity([session("a", conversation.id)], T, T + 86_400_000, { scan: durableScan(host), project: async () => "hui" });
   assert.deepEqual(sessions[0]?.blocks, [
     { start: T, end: T + 3 * MINUTE, model: "anthropic/claude", firstMessage: "Build the week view" },
     { start: T + 90 * MINUTE, end: T + 90 * MINUTE, firstMessage: "Polish it" },
   ]);
+});
+
+test("a session's project is its repository, shared by its worktrees and subdirectories", async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "hui-activity-repos-"));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const repo = join(dir, "checkout-api");
+  await mkdir(join(repo, "services", "charge"), { recursive: true });
+  const git = (...args: string[]) => execFileSync("git", ["-C", repo, ...args], { stdio: "ignore" });
+  git("init", "-q");
+  git("-c", "user.email=e2e@hui.test", "-c", "user.name=HUI", "commit", "-q", "--allow-empty", "-m", "init");
+  git("worktree", "add", "-q", join(dir, "elsewhere", "retry-fix"));
+  await mkdir(join(dir, "notes"));
+  // HUI's worktrees: `<checkout>-<hash>/<branch>`, made from a repository or from another worktree.
+  const worktrees = join(dir, "hui-worktrees");
+  git("worktree", "add", "-q", join(worktrees, "checkout-api-0123456789ab", "dani--retries"));
+  const name = (cwd: string) => repositoryName(cwd, worktrees, join(dir, "home"));
+  assert.deepEqual(await Promise.all([
+    name(join(repo, "services", "charge")),
+    name(join(dir, "elsewhere", "retry-fix")),
+    // Removed worktrees: of a repository, and of a worktree that still exists.
+    name(join(worktrees, "dd-source-0123456789ab", "dani--fix-retries")),
+    name(join(worktrees, "dani--retries-abcdef012345", "dani--follow-up")),
+    // Removed, made from a removed worktree: a sibling made from the same one still exists.
+    name(join(worktrees, "checkout-api-0123456789ab", "dani--removed")),
+    name(join(dir, "notes")),
+    name(join(dir, "gone")),
+    name(join(dir, "home")),
+  ]), ["checkout-api", "checkout-api", "dd-source", "checkout-api", "checkout-api", "notes", "gone", "~"]);
 });

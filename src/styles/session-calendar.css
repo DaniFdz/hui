@@ -36,11 +36,14 @@ hui-session-calendar {
   font-weight: 600;
 }
 
+.session-calendar__grouping {
+  margin-left: auto;
+}
+
 .session-calendar__nav {
   display: flex;
   align-items: center;
   gap: var(--space-1);
-  margin-left: auto;
 }
 
 .session-calendar__prev svg {
@@ -308,6 +311,63 @@ hui-session-calendar {
   overflow-wrap: anywhere;
 }
 
+.session-calendar__popover-sessions,
+.session-calendar__members {
+  margin: 4px calc(-1 * var(--space-2)) 0;
+  padding: 0;
+  list-style: none;
+}
+
+.session-calendar__popover-session,
+.session-calendar__member {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0 var(--space-2);
+  width: 100%;
+  padding: 4px var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--control-ui-text-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.session-calendar__popover-session:hover,
+.session-calendar__member:hover {
+  background: var(--bg-hover);
+}
+
+.session-calendar__popover-first {
+  grid-column: 1 / -1;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: var(--control-ui-text-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-calendar__popover-more {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: var(--control-ui-text-xs);
+}
+
+.session-calendar__members {
+  margin: 0 0 var(--space-1) 18px;
+}
+
+.session-calendar__member {
+  color: var(--muted);
+}
+
+.session-calendar__member .session-calendar__session-time {
+  color: var(--text);
+  font-weight: 500;
+}
+
 .session-calendar__popover-foot {
   display: flex;
   align-items: center;
@@ -489,7 +549,13 @@ hui-session-calendar {
   font-weight: 700;
 }
 
-/* A narrow lane keeps only the title. */
+/* A narrow lane keeps only the title, and a sliver only its color. */
+@container (max-width: 44px) {
+  .session-calendar__block-title {
+    visibility: hidden;
+  }
+}
+
 @container (max-width: 64px) {
   .session-calendar__block-title {
     font-size: var(--control-ui-text-xs);
@@ -536,7 +602,7 @@ hui-session-calendar [data-color="15"] { --block: color-mix(in srgb, var(--sessi
     font-size: 22px;
   }
 
-  .session-calendar__nav {
+  .session-calendar__grouping {
     margin-left: 0;
   }
 }

@@ -7,12 +7,17 @@
  * once `hui doctor --fix` moves them. Subagent sessions are left out: their
  * work is the parent session's work.
  */
+import { readdir, stat } from "node:fs/promises";
+import { homedir } from "node:os";
+import { basename, dirname, join, relative, sep } from "node:path";
 import { AssistantEntry, ToolResultEntry, UserEntry } from "@earendil-works/pi-durable";
 import type { ActivityBlock, ActivitySession, SessionActivity } from "../shared/session-activity.ts";
 import { durableContext, durableHost, type DurableHost } from "./runtimes/durable-host.ts";
 import { textOf } from "./runtimes/durable.ts";
+import { WORKTREES_DIR } from "./paths.ts";
 import { operatorText } from "./session-digest.ts";
 import type { SessionRecord } from "./sessions.ts";
+import { runGit } from "./worktrees.ts";
 
 const ACTIVITY_GAP_MS = 30 * 60_000;
 const MAX_RANGE_MS = 31 * 86_400_000;
@@ -102,9 +107,42 @@ export function durableScan(host: DurableHost = durableHost()): ConversationScan
   };
 }
 
+const projects = new Map<string, Promise<string>>();
+
+/**
+ * The repository a session directory belongs to: Git's common directory, so
+ * every worktree and subdirectory of a repository shares it. A removed HUI
+ * worktree is named by its parent, `<checkout>-<hash>` (createSessionWorktree):
+ * a repository, or a worktree it was made from, resolved the same way. The
+ * home directory is `~`; any other directory outside Git is its own name.
+ */
+export function repositoryName(cwd: string, worktrees = WORKTREES_DIR, home = homedir()): Promise<string> {
+  let name = projects.get(cwd);
+  if (!name) projects.set(cwd, name = resolveRepository(cwd, worktrees, home));
+  return name;
+}
+
+async function resolveRepository(cwd: string, worktrees: string, home: string): Promise<string> {
+  if (cwd === home) return "~";
+  const git = await runGit(cwd, ["rev-parse", "--path-format=absolute", "--git-common-dir"]).catch(() => undefined);
+  const common = git?.code === 0 ? git.stdout.trim() : "";
+  if (common) return basename(common) === ".git" ? basename(dirname(common)) : basename(common).replace(/\.git$/u, "");
+  const [key, branch] = relative(worktrees, cwd).split(sep);
+  if (!key || key === ".." || !branch) return basename(cwd);
+  // Another worktree made from the same checkout, or that checkout itself, still knows the repository.
+  const checkout = key.replace(/-[0-9a-f]{12}$/u, "");
+  const siblings = (await readdir(join(worktrees, key)).catch(() => [])).map((name) => join(worktrees, key, name));
+  const sources = (await readdir(worktrees).catch(() => [])).map((parent) => join(worktrees, parent, checkout));
+  for (const candidate of [...siblings, ...sources]) {
+    if (candidate !== cwd && await stat(candidate).then(() => true, () => false)) return repositoryName(candidate, worktrees, home);
+  }
+  return checkout;
+}
+
 /** Blocks of every top-level Durable session that overlap `[from, to)`. */
 export async function readSessionActivity(
-  sessions: readonly SessionRecord[], from: number, to: number, scan: ConversationScan = durableScan(),
+  sessions: readonly SessionRecord[], from: number, to: number,
+  { scan = durableScan(), project = repositoryName }: { scan?: ConversationScan; project?: (cwd: string) => Promise<string> } = {},
 ): Promise<SessionActivity> {
   const result: ActivitySession[] = [];
   for (const session of sessions) {
@@ -113,7 +151,10 @@ export async function readSessionActivity(
     const blocks = activityBlocks(await sessionPoints(scan(Number(conversation)), from))
       .filter((block) => block.end >= from && block.start < to);
     if (blocks.length === 0) continue;
-    result.push({ id: session.id, title: session.title, group: session.group, ...(session.archived ? { archived: true } : {}), blocks });
+    result.push({
+      id: session.id, title: session.title, group: session.group, project: await project(session.cwd),
+      ...(session.archived ? { archived: true } : {}), blocks,
+    });
   }
   return { sessions: result };
 }
