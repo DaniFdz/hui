@@ -195,7 +195,7 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   hour axis covers 9 AM to 6 PM and every block. Each session has one color:
   the session palette, then the same colors shaded, busiest first, repeating
   after sixteen sessions; overlapping blocks share their day
-  in side-by-side lanes, and a one-message block is drawn 15 minutes tall.
+  in side-by-side lanes, and a one-message block is drawn 30 minutes tall.
   Today's column is tinted with a line at the current time. Activating a block
   opens a card beside it (below it on narrow screens): title, day, start–end and
   length, the session's group and the block's model, the operator's first

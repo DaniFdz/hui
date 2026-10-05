@@ -7,7 +7,7 @@ import { fetchJson } from "./settings-store.ts";
 const MINUTE = 60_000;
 const DAY_START_HOUR = 5;
 /** Shortest drawn block, so a one-message stretch stays visible and clickable. */
-export const MIN_DRAWN_MS = 15 * MINUTE;
+export const MIN_DRAWN_MS = 30 * MINUTE;
 /** Colors in session-calendar.css: the session palette, then a shaded set; the week's busiest session takes the first. */
 const COLORS = 16;
 

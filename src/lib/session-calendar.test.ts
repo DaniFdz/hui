@@ -51,7 +51,7 @@ test("overlapping blocks share their day in side-by-side lanes", () => {
   const lanes = Object.fromEntries(week.days[1]!.blocks.map(({ session: { id }, lane, lanes: count }) => [id, [lane, count]]));
   // b's lane is free again once b ends, so c takes it; d stands alone.
   assert.deepEqual(lanes, { a: [0, 2], b: [1, 2], c: [1, 2], d: [0, 1] });
-  assert.deepEqual(week.hours, [9, 19], "working hours, and a one-message block drawn for 15 minutes");
+  assert.deepEqual(week.hours, [9, 19], "working hours, and a one-message block drawn for 30 minutes");
 });
 
 test("blocks outside the week, or ending as it starts, are left out", () => {
