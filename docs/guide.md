@@ -210,7 +210,9 @@ with `-2`, `-3`… when another bot has it. Renaming keeps the handle. Without
 directory. The persona becomes the chat's standing instructions before its first
 message can arrive; editing it applies from the bot's next request. A model
 change goes through the chat like the model picker, and a new working directory
-is accepted only while the bot is idle (its chat starts again there).
+is accepted only while the bot is idle (its chat starts again there; should a
+routine start a turn meanwhile, the edit is refused halfway: repeat it once the
+bot is idle).
 `--memory-model` picks the model that writes the memory's summaries. An empty
 value clears a choice: `hui bot edit ada --model "" --thinking ""` puts the chat
 back on the model and thinking level a new chat gets, and `--memory-model ""`
@@ -251,7 +253,9 @@ hui bot routine list ada
 
 A routine's message reaches the bot as `[routine: <name>] <prompt>`. A busy bot
 takes it as a follow-up instead of skipping it, and the run completes when the
-turn answering it ends. `--every` takes `30s`, `5m`, `2h` or `1d`; Automation
+turn answering it ends. If that turn asks you something, the run waits for
+your answer in the chat until the routine's timeout (15 minutes unless the task
+says otherwise) stops the turn. `--every` takes `30s`, `5m`, `2h` or `1d`; Automation
 refuses intervals under a minute. `--cron` uses this machine's time zone unless
 `--timezone` names another.
 

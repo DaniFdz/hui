@@ -1163,7 +1163,7 @@ read the chat's memory, 500 for storage failures; other methods answer 405.
 | `GET /__hui/bots[?archived=1]` | 200 `{ bots: BotView[] }` | Active bots, or with `archived=1` only archived ones, sorted by name |
 | `POST /__hui/bots` | 201 `{ bot }` | `BotInput`: `name` plus the optional record fields and `handle`. Without `handle` one is derived from the name (`-2`, `-3`… on collision); an explicit handle that is taken is 409 |
 | `GET /__hui/bots/:id` | 200 `{ bot }` | |
-| `PATCH /__hui/bots/:id` | 200 `{ bot }` | Only what changes; `""` clears `title`, `description`, `instructions`, `model`, `thinking` (back to the gateway defaults, above), `memoryModel`, `memoryThinking` (back to the chat's model and OptChat's default level); an avatar key `""` clears it, `avatar: null` clears both. The handle changes only when given (409 if taken). `instructions` reconfigures the conversation; `model`/`thinking` go through the live chat (`setModel`/`setThinking`); `name` and the memory fields reconfigure OptChat, `name` also the session title; `cwd` is accepted only while the chat is idle (409 otherwise) and boots its runtime again there. Archived bots are 409 |
+| `PATCH /__hui/bots/:id` | 200 `{ bot }` | Only what changes; `""` clears `title`, `description`, `instructions`, `model`, `thinking` (back to the gateway defaults, above), `memoryModel`, `memoryThinking` (back to the chat's model and OptChat's default level); an avatar key `""` clears it, `avatar: null` clears both. The handle changes only when given (409 if taken). `instructions` reconfigures the conversation; `model`/`thinking` go through the live chat (`setModel`/`setThinking`); `name` and the memory fields reconfigure OptChat, `name` also the session title; `cwd` is accepted only while the chat is idle (409 otherwise) and boots its runtime again there; a turn that starts during that edit (a routine, say) makes it answer 409 after the conversation and the chat's session record already moved, with the bot record still naming the old directory, so repeat the edit once the bot is idle to finish it. Archived bots are 409 |
 | `DELETE /__hui/bots/:id` | 200 `{ bot }` | Archives, deleting nothing: marks the bot, disables every Automation task aimed at its chat, withdraws messages still in HUI's follow-up queue for it, stops a running turn and archives the chat's session record. Idempotent |
 | `POST /__hui/bots/:id/restore` | 200 `{ bot }` | Unarchives the bot and its session record; routines stay disabled |
 | `POST /__hui/bots/:id/messages` | 202 or 200 | See below |
@@ -1223,8 +1223,11 @@ other scheduler. For such a task the executor delivers `[routine: <task name>]
 instead of skipping the run, and the run completes when the turn answering that
 message settles (its last assistant text becomes the run's `summary`; an error
 fails it). Cancelling the run, or its timeout, withdraws the queued message or
-stops the turn answering it. An archived bot's routine fails. Archiving
-disables a bot's routines; restoring leaves them disabled.
+stops the turn answering it. A turn that asks a question waits for its answer
+like any turn, so its routine's run stays active until someone answers in the
+chat or the task's timeout (`timeoutSeconds`, default 900) stops that turn. An
+archived bot's routine fails. Archiving disables a bot's routines; restoring
+leaves them disabled.
 
 ### Bot-to-bot messages
 

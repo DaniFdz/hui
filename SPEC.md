@@ -1128,7 +1128,9 @@ the `hui bot` CLI can do everything it can, through the same routes.
   running turn, and restoring it brings it back with its routines still off.
 - **Messages.** A message to a bot is a prompt when it is idle and a follow-up
   when it is busy; a caller may wait for the reply of the turn that answers it,
-  and learns at once when that turn asks a question.
+  and learns at once when that turn asks a question. Every screen and terminal
+  on a bot's chat sees a message another one sent (a routine, a bot, the Bots
+  tab) before the reply to it.
 - **Routines** are Automation tasks aimed at a bot's chat, marked
   `[routine: <name>]`, queued behind a busy bot instead of skipped.
 - **Bots talk to bots** with a `message_bot` tool only bots' chats have,
