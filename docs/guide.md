@@ -196,6 +196,18 @@ and the bot opens a line (`zoom`) when it needs the detail. The chat is never
 compacted or cleared; when a turn has to wait for the newest messages to be
 summarized, `hui bot chat` says "Summarizing memory…".
 
+### The Bots tab
+
+Settings → Sessions → **Show the Bots tab** adds a **Sessions | Bots** switch to
+the sidebar (it is off by default, and hiding it never stops a bot or its
+routines). The Bots tab lists your bots, most recently active first, with their
+latest message; **+** creates one. A bot's chat opens beside its **Routines |
+Memory** panel: Routines adds schedules (every few minutes, hours or days,
+daily, weekly or once, in your browser's time zone), runs one now and shows how
+the last runs went; Memory shows how much the bot remembers and lets you open
+any summary line down to the original message. A row's **⋯** menu edits, hides
+or archives the bot. Bot chats never appear among your sessions.
+
 ### Creating and editing
 
 ```sh

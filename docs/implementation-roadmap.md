@@ -732,8 +732,20 @@ for now. It lands as stacked pull requests:
    `message_bot`, a fresh second turn and every read),
    `server/live-sessions.test.ts`, `cli/main.test.ts` and `cli/bots.test.ts`
    (a fake gateway and a scripted terminal).
-3. **Bots tab** (UI): the Sessions | Bots split, bot chat, routines and memory
-   views, and the Browser-tool E2E that drives these routes.
+3. **Bots tab** (UI; implemented 2026-10-05, browser proof of the Memory panel
+   against real OptChat memory pending): Settings → Sessions → *Show the Bots
+   tab* (off by default); the Sessions | Bots tab strip; bot chats filtered from
+   every session list and picker; the roster (activity order, search, unread,
+   badges, New bot, Edit, Hide/Unhide, Archive with Restore) fed by
+   `/__hui/bots/events`; `/bots/<id>` rendering the bot's chat in the ordinary
+   session pane without `/clear`, `/compact` or rewind; the Routines | Memory
+   panel (a sheet on narrow screens). Proof: `src/lib/bots.test.ts`,
+   `src/lib/bot-roster.test.ts`, `src/lib/bot-routines.test.ts`,
+   `src/lib/bot-memory.test.ts`, `src/lib/navigation.test.ts`,
+   `src/lib/settings.test.ts`, `src/lib/slash-commands.test.ts` and the
+   Browser-tool journey `e2e/bots.browser.md` (create, chat, routine with Run
+   now, edit, hide, archive, lists without the bot chat, desktop, mobile and
+   landscape).
 4. Voice through VoiceStudio. Not started.
 
 ## Recommended implementation order
