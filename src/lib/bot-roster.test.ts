@@ -102,7 +102,7 @@ test("the row indicator puts a pending question first and memory waits before ru
   assert.equal(botActivity({ status: "disconnected" }), "away");
   assert.equal(botActivity({ status: "idle" }), "idle");
   assert.equal(
-    botAccessibleName(bot("scout", { name: "Scout", title: "Researcher", status: "running", unread: true, hidden: true, memory: { messages: 2, built: 1, pending: 1, viewBytes: 9, failing: { error: "429" } } })),
+    botAccessibleName(bot("scout", { name: "Scout", title: "Researcher", status: "running", unread: true, hidden: true, memory: { messages: 2, built: 1, pending: 1, viewBytes: 9, failing: { node: "0+1", error: "429", since: "2026-10-05T09:00:00.000Z" } } })),
     "Scout, Researcher, active now, unread, hidden, memory summaries failing",
   );
 });

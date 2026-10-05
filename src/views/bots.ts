@@ -9,6 +9,7 @@ import { icons } from "../lib/icons.ts";
 import { closeDropdownOnEscape, labelDropdown } from "../lib/web-awesome.ts";
 import { navigationPath } from "../lib/navigation.ts";
 import type { BotDraft, BotMemoryStatus, BotView } from "../lib/bots.ts";
+import { BOT_LIMITS, BOT_THINKING_LEVELS } from "../../shared/bots.ts";
 import type { RuntimeModel } from "../lib/sessions-store.ts";
 import type { AutomationRun, AutomationSnapshot, AutomationTask, AutomationTaskInput } from "../lib/automation-types.ts";
 import {
@@ -25,7 +26,7 @@ import {
   type BotPanelTab,
 } from "../lib/bot-roster.ts";
 import { botRoutineRuns, botRoutines, routineCadenceSummary, routineSchedule, RoutineFormError, ROUTINE_WEEKDAYS } from "../lib/bot-routines.ts";
-import { memoryBudgetLabel, memoryUsageLabel, type MemoryLine } from "../lib/bot-memory.ts";
+import { memoryBudgetLabel, type MemoryLine } from "../lib/bot-memory.ts";
 import { describeSchedule, formatTimestamp, runIsActive } from "./settings-automation.ts";
 import { renderSettingsToggle } from "./settings-toggle.ts";
 import { renderPicker } from "./settings-picker.ts";
@@ -428,15 +429,13 @@ function renderMemoryTab(props: BotPanelProps) {
       ? html`<div class="bot-panel__state" role="alert">${state.error} <button type="button" class="btn btn--sm" @click=${props.memory.onRefresh}>Retry</button></div>`
       : html`<p class="bot-panel__state" role="status">Reading memory…</p>`;
   }
-  const usage = memoryUsageLabel(status.usage);
   const lines = state.lines ?? [];
   return html`
     <dl class="bot-memory__stats">
       <div><dt>Messages</dt><dd>${status.messages.toLocaleString()}</dd></div>
       <div><dt>View</dt><dd>${memoryBudgetLabel(status.viewBytes)}</dd></div>
-      <div><dt>Lines</dt><dd>${(status.viewLines ?? lines.length).toLocaleString()}</dd></div>
+      <div><dt>Lines</dt><dd>${lines.length.toLocaleString()}</dd></div>
       <div><dt>Pending summaries</dt><dd>${status.pending.toLocaleString()}</dd></div>
-      ${usage ? html`<div class="bot-memory__usage"><dt>Memory model</dt><dd>${usage}</dd></div>` : nothing}
     </dl>
     ${status.waiting ? html`<p class="bot-memory__notice" role="status">Summarizing memory…</p>` : nothing}
     ${status.failing ? html`<p class="bot-memory__notice bot-memory__notice--failing" role="alert">Summaries are failing${status.failing.node ? ` at ${status.failing.node}` : ""}: ${status.failing.error}. HUI keeps retrying.</p>` : nothing}
@@ -499,7 +498,8 @@ export type BotDialogProps = {
   onCancel: () => void;
 };
 
-const THINKING_CHOICES = [["", "Default"], ["off", "Off"], ["minimal", "Minimal"], ["low", "Low"], ["medium", "Medium"], ["high", "High"], ["xhigh", "Extra high"]] as const;
+const THINKING_LABELS: Record<(typeof BOT_THINKING_LEVELS)[number], string> = { off: "Off", minimal: "Minimal", low: "Low", medium: "Medium", high: "High", xhigh: "Extra high" };
+const THINKING_CHOICES: readonly (readonly [string, string])[] = [["", "Default"], ...BOT_THINKING_LEVELS.map((level) => [level, THINKING_LABELS[level]] as const)];
 
 /** `empty` is the default choice; undefined when it cannot be chosen (a
  * bot's chat keeps its model once set). */
@@ -531,14 +531,14 @@ export function renderBotDialog(props: BotDialogProps) {
         : "A bot keeps one permanent chat with its own model and memory. Say hi once it is created."}</div>
       <div class="bot-dialog__row">
         <label class="field input-dialog__field bot-dialog__name"><span>Name</span>
-          <input class="settings-input" name="name" type="text" required maxlength="60" autocomplete="off" placeholder="Scout" .value=${editing?.name ?? ""} ?disabled=${props.pending} /></label>
+          <input class="settings-input" name="name" type="text" required maxlength=${BOT_LIMITS.name} autocomplete="off" placeholder="Scout" .value=${editing?.name ?? ""} ?disabled=${props.pending} /></label>
         <label class="field input-dialog__field bot-dialog__emoji"><span>Emoji</span>
           <input class="settings-input" name="emoji" type="text" maxlength="16" autocomplete="off" placeholder="🤖" .value=${editing?.avatar?.emoji ?? ""} ?disabled=${props.pending} /></label>
       </div>
       <label class="field input-dialog__field"><span>Title</span>
-        <input class="settings-input" name="title" type="text" maxlength="80" autocomplete="off" placeholder="Research assistant" .value=${editing?.title ?? ""} ?disabled=${props.pending} /></label>
+        <input class="settings-input" name="title" type="text" maxlength=${BOT_LIMITS.title} autocomplete="off" placeholder="Research assistant" .value=${editing?.title ?? ""} ?disabled=${props.pending} /></label>
       <label class="field input-dialog__field"><span>Instructions</span>
-        <textarea class="settings-input bot-dialog__instructions" name="instructions" rows="5" maxlength="20000" placeholder="Who the bot is, what it looks after and how it should work." .value=${editing?.instructions ?? ""} ?disabled=${props.pending}></textarea></label>
+        <textarea class="settings-input bot-dialog__instructions" name="instructions" rows="5" maxlength=${BOT_LIMITS.instructions} placeholder="Who the bot is, what it looks after and how it should work." .value=${editing?.instructions ?? ""} ?disabled=${props.pending}></textarea></label>
       <div class="bot-dialog__row">
         <div class="field input-dialog__field"><span>Model</span>
           ${renderPicker({ label: "Model", value: props.model, disabled: props.pending, searchable: true, searchPlaceholder: "Search models",

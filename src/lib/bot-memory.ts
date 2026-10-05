@@ -3,7 +3,7 @@
  * one summary of the n messages from id on. Zooming a line returns its two
  * halves, and zooming a single message (n = 1) returns it whole.
  */
-import { BOT_MEMORY_BUDGET_BYTES, type BotMemoryUsage } from "./bots.ts";
+import { BOT_MEMORY_BUDGET_BYTES } from "./bots.ts";
 
 export type MemoryLine = {
   id: number;
@@ -73,18 +73,4 @@ export function formatKilobytes(bytes: number): string {
 
 export function memoryBudgetLabel(viewBytes: number): string {
   return `${formatKilobytes(viewBytes)}/${formatKilobytes(BOT_MEMORY_BUDGET_BYTES)} KB`;
-}
-
-const integers = new Intl.NumberFormat("en-US");
-
-/** "1,234 in · 56 out · 7,890 cached · $0.0123"; parts the provider did not report are left out. */
-export function memoryUsageLabel(usage: BotMemoryUsage | undefined): string {
-  if (!usage) return "";
-  const cached = (usage.cacheRead ?? 0) + (usage.cacheWrite ?? 0);
-  return [
-    usage.input !== undefined ? `${integers.format(usage.input)} in` : "",
-    usage.output !== undefined ? `${integers.format(usage.output)} out` : "",
-    usage.cacheRead !== undefined || usage.cacheWrite !== undefined ? `${integers.format(cached)} cached` : "",
-    usage.cost !== undefined ? `$${usage.cost < 0.01 ? usage.cost.toFixed(4) : usage.cost.toFixed(2)}` : "",
-  ].filter(Boolean).join(" · ");
 }

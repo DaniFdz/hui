@@ -19,7 +19,7 @@ const RECORD = {
   status: "running",
   lastMessage: { role: "assistant", text: "Done:\n  three   links", at: "2026-10-05T09:00:00.000Z" },
   unread: true,
-  memory: { messages: 40, built: 38, pending: 2, viewBytes: 92_000, viewLines: 210, waiting: true, failing: { node: "1+4", error: "429 rate limited", since: "2026-10-05T08:59:00.000Z" }, usage: { input: 1200, output: 80, cost: 0.004, junk: "x" } },
+  memory: { messages: 40, built: 38, pending: 2, viewBytes: 92_000, waiting: true, failing: { node: "1+4", error: "429 rate limited", since: "2026-10-05T08:59:00.000Z" }, junk: "x" },
   routines: 2,
 };
 
@@ -41,7 +41,7 @@ test("a complete bot record keeps its fields and narrows display text", () => {
     status: "running",
     lastMessage: { role: "assistant", text: "Done: three links", at: "2026-10-05T09:00:00.000Z" },
     unread: true,
-    memory: { messages: 40, built: 38, pending: 2, viewBytes: 92_000, viewLines: 210, waiting: true, failing: { error: "429 rate limited", node: "1+4", since: "2026-10-05T08:59:00.000Z" }, usage: { input: 1200, output: 80, cost: 0.004 } },
+    memory: { messages: 40, built: 38, pending: 2, viewBytes: 92_000, waiting: true, failing: { node: "1+4", error: "429 rate limited", since: "2026-10-05T08:59:00.000Z" } },
     routines: 2,
   });
 });
@@ -64,6 +64,7 @@ test("a bot list skips invalid entries and keeps the first of duplicate ids", ()
 
 test("memory status counts are whole and failures need an error to show", () => {
   assert.deepEqual(parseBotMemoryStatus({ messages: 3.7, built: "2", pending: -1, viewBytes: 512, failing: { node: "0+1" } }), { messages: 3, built: 0, pending: 0, viewBytes: 512 });
+  assert.deepEqual(parseBotMemoryStatus({ messages: 1, built: 0, pending: 1, viewBytes: 9, failing: { error: "timeout" } })?.failing, { node: "", error: "timeout", since: "" });
   assert.equal(parseBotMemoryStatus(undefined), undefined);
   assert.deepEqual(parseBotMemory({ status: { messages: 1, built: 1, pending: 0, viewBytes: 20 }, view: "<chat>\n0+1|user: hi\n</chat>" }), {
     status: { messages: 1, built: 1, pending: 0, viewBytes: 20 },

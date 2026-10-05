@@ -7,87 +7,17 @@
  * Responses are normalized on the way in, like settings: a malformed or newer
  * record is skipped or narrowed rather than reaching the roster as `undefined`.
  */
+import type { BotAvatar, BotInput, BotMemoryStatus, BotPatch, BotSessionStatus, BotsUpdate, BotView } from "../../shared/bots.ts";
 import { CLIENT_HEADERS, fetchJson } from "./settings-store.ts";
-import { decodeSseFrame, reconnectDelay, STATUS_STREAM_STALL_MS, type SessionGroup, type SessionStatus, type SessionView } from "./sessions-store.ts";
+import { decodeSseFrame, reconnectDelay, STATUS_STREAM_STALL_MS, type SessionGroup, type SessionView } from "./sessions-store.ts";
 import { trackedFetch } from "./ui-errors.ts";
+
+export type { BotAvatar, BotInput, BotMemoryStatus, BotPatch, BotsUpdate, BotView } from "../../shared/bots.ts";
 
 const BOTS_URL = "/__hui/bots";
 const BOTS_EVENTS_URL = "/__hui/bots/events";
 /** Creating a bot starts its session and memory before the gateway answers. */
 const CREATE_BOT_TIMEOUT_MS = 60_000;
-
-export type BotAvatar = { emoji?: string; color?: string };
-
-/** The memory engine's state, as the gateway reports it for one bot. */
-export type BotMemoryStatus = {
-  /** Messages in the bot's permanent log. */
-  messages: number;
-  /** Summary nodes written so far. */
-  built: number;
-  /** Summaries still waiting for the memory model. */
-  pending: number;
-  /** UTF-8 bytes of the current view; the budget is BOT_MEMORY_BUDGET_BYTES. */
-  viewBytes: number;
-  viewLines?: number;
-  /** A turn waits for summaries before it starts ("Summarizing memory…"). */
-  waiting?: boolean;
-  /** The oldest summary that keeps failing; the gateway keeps retrying it. */
-  failing?: { error: string; node?: string; since?: string };
-  /** What the memory model has used so far, as far as providers report it. */
-  usage?: BotMemoryUsage;
-};
-
-export type BotMemoryUsage = { input?: number; output?: number; cacheRead?: number; cacheWrite?: number; cost?: number };
-
-export type BotView = {
-  id: string;
-  /** Unique slug used by `hui bot` and bot-to-bot messages. */
-  handle: string;
-  name: string;
-  /** Role line shown under the name. */
-  title?: string;
-  description?: string;
-  /** Standing instructions (persona) the bot's conversation is configured with. */
-  instructions?: string;
-  /** Absolute workspace directory on the gateway machine. */
-  cwd: string;
-  /** `provider/id`; absent uses the gateway's default model. */
-  model?: string;
-  thinking?: string;
-  /** `provider/id` of the memory model; absent uses the bot's own model. */
-  memoryModel?: string;
-  memoryThinking?: string;
-  avatar?: BotAvatar;
-  hidden?: boolean;
-  archived?: boolean;
-  /** The HUI session that is this bot's permanent chat. */
-  sessionId: string;
-  createdAt: string;
-  updatedAt: string;
-  /** The chat session's live status. */
-  status: SessionStatus;
-  lastMessage?: { role: "user" | "assistant"; text: string; at: string };
-  unread: boolean;
-  memory?: BotMemoryStatus;
-  /** Automation tasks that target the bot's chat. */
-  routines: number;
-};
-
-/** What the New bot dialog sends. Empty optional fields are left out. */
-export type BotInput = {
-  name: string;
-  title?: string;
-  instructions?: string;
-  cwd?: string;
-  model?: string;
-  thinking?: string;
-  memoryModel?: string;
-  avatar?: BotAvatar;
-};
-
-/** Edit and Hide/Unhide: only what changes. "" clears title, instructions and
- * the memory model; an avatar key set to "" clears that key. */
-export type BotPatch = Partial<Omit<BotInput, "avatar">> & { avatar?: BotAvatar; hidden?: boolean };
 
 export type BotMemory = { status: BotMemoryStatus; view: string };
 
@@ -108,7 +38,7 @@ export type BotDraft = {
 /** OptChat's view budget: the memory panel reports sizes against it. */
 export const BOT_MEMORY_BUDGET_BYTES = 128_000;
 
-const SESSION_STATUSES: readonly SessionStatus[] = ["idle", "running", "waiting", "starting", "error", "reconnecting", "disconnected"];
+const SESSION_STATUSES: readonly BotSessionStatus[] = ["idle", "running", "waiting", "starting", "error", "reconnecting", "disconnected"];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -126,10 +56,6 @@ function count(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) && value >= 0 ? Math.floor(value) : 0;
 }
 
-function optionalNumber(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : undefined;
-}
-
 function parseAvatar(value: unknown): BotAvatar | undefined {
   if (!isRecord(value)) return undefined;
   const emoji = optionalText(value["emoji"], 32);
@@ -139,33 +65,18 @@ function parseAvatar(value: unknown): BotAvatar | undefined {
   return emoji || color ? { ...(emoji ? { emoji } : {}), ...(color ? { color } : {}) } : undefined;
 }
 
-function parseUsage(value: unknown): BotMemoryUsage | undefined {
-  if (!isRecord(value)) return undefined;
-  const usage: BotMemoryUsage = {};
-  for (const key of ["input", "output", "cacheRead", "cacheWrite", "cost"] as const) {
-    const number = optionalNumber(value[key]);
-    if (number !== undefined) usage[key] = number;
-  }
-  return Object.keys(usage).length ? usage : undefined;
-}
-
 export function parseBotMemoryStatus(value: unknown): BotMemoryStatus | undefined {
   if (!isRecord(value)) return undefined;
-  const failingSource = isRecord(value["failing"]) ? value["failing"] : undefined;
-  const failingError = text(failingSource?.["error"], 2_000);
-  const failingNode = text(failingSource?.["node"], 200);
-  const failingSince = text(failingSource?.["since"], 100);
-  const usage = parseUsage(value["usage"]);
-  const viewLines = optionalNumber(value["viewLines"]);
+  const failing = isRecord(value["failing"]) ? value["failing"] : undefined;
+  const failingError = text(failing?.["error"], 2_000);
   return {
     messages: count(value["messages"]),
     built: count(value["built"]),
     pending: count(value["pending"]),
     viewBytes: count(value["viewBytes"]),
-    ...(viewLines !== undefined ? { viewLines: Math.floor(viewLines) } : {}),
     ...(value["waiting"] === true ? { waiting: true } : {}),
-    ...(failingError ? { failing: { error: failingError, ...(failingNode ? { node: failingNode } : {}), ...(failingSince ? { since: failingSince } : {}) } } : {}),
-    ...(usage ? { usage } : {}),
+    // A failure is shown only with its reason; node and time are details.
+    ...(failingError ? { failing: { node: text(failing?.["node"], 200), error: failingError, since: text(failing?.["since"], 100) } } : {}),
   };
 }
 
@@ -240,11 +151,9 @@ export function parseBotMemory(body: unknown): BotMemory {
 
 /* ── live list ────────────────────────────────────────────────────────────── */
 
-/** A frame of `GET /__hui/bots/events`: the complete list first, then only
- * the bots whose views changed; `ids` (every bot, in order) when that changed.
- * The stream includes archived bots; the roster leaves them out. */
-export type BotsUpdate = { revision: number; ids?: string[]; upserts: BotView[] };
-
+/** Reads one frame of `GET /__hui/bots/events`: the complete list first, then
+ * only the bots whose views changed; `ids` (every bot, in order) when that
+ * changed. The stream includes archived bots; the roster leaves them out. */
 export function parseBotsUpdate(payload: unknown): BotsUpdate | undefined {
   if (!isRecord(payload) || typeof payload["revision"] !== "number" || !Number.isFinite(payload["revision"])) return undefined;
   const ids = Array.isArray(payload["ids"]) ? payload["ids"].filter((id): id is string => typeof id === "string") : undefined;

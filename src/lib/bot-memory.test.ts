@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { formatKilobytes, memoryBudgetLabel, memoryChildren, memoryUsageLabel, MemoryZoomError, parseMemoryView, parseMemoryZoom } from "./bot-memory.ts";
+import { formatKilobytes, memoryBudgetLabel, memoryChildren, MemoryZoomError, parseMemoryView, parseMemoryZoom } from "./bot-memory.ts";
 
 test("the view's lines are parsed without the chat wrapper", () => {
   const lines = parseMemoryView("<chat>\n0+8|user asked for links; talk: found three\n8+2|user: thanks\n10+1|(not summarized yet: zoom it)\n</chat>");
@@ -26,13 +26,9 @@ test("children address the two halves down to single messages", () => {
   assert.equal(memoryChildren({ id: 11, n: 1 }), undefined);
 });
 
-test("sizes read against the 128 KB budget and usage leaves out unknown parts", () => {
+test("sizes read against the 128 KB budget", () => {
   assert.equal(memoryBudgetLabel(92_000), "92/128 KB");
   assert.equal(memoryBudgetLabel(0), "0/128 KB");
   assert.equal(formatKilobytes(1_536), "1.5");
   assert.equal(formatKilobytes(2_000), "2");
-  assert.equal(memoryUsageLabel({ input: 12_345, output: 678, cacheRead: 1_000, cacheWrite: 24, cost: 0.004 }), "12,345 in · 678 out · 1,024 cached · $0.0040");
-  assert.equal(memoryUsageLabel({ output: 5, cost: 1.5 }), "5 out · $1.50");
-  assert.equal(memoryUsageLabel(undefined), "");
-  assert.equal(memoryUsageLabel({}), "");
 });
