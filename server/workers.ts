@@ -712,6 +712,13 @@ export class WorkerService {
     if (connection && !connection.closed && keys.length) await connection.request("forget", { keys: [...keys] });
   }
 
+  /** Folder completion on the worker; empty while the user keeps it disconnected. */
+  async directories(id: string, query: string): Promise<string[]> {
+    if (this.#disconnectedByUser.has(id)) return [];
+    const connection = await this.connect(id);
+    return (await connection.request<{ directories: string[] }>("directories", { q: query })).directories;
+  }
+
   async putFile(id: string, name: string, data: Buffer): Promise<string> {
     const connection = await this.connect(id);
     return (await connection.request<{ path: string }>("put-file", { name, data: data.toString("base64") }, 300_000)).path;

@@ -2167,8 +2167,12 @@ async function handleRequest(
 
   if (path === DIRECTORIES_ROUTE) {
     if (request.method === "GET") {
-      const query = new URL(request.url ?? "/", "http://localhost").searchParams.get("q") ?? "~/";
-      sendJson(response, 200, { directories: await completeWorkingDirectories(query) });
+      const params = new URL(request.url ?? "/", "http://localhost").searchParams;
+      const query = params.get("q") ?? "~/";
+      const worker = params.get("worker");
+      // An unreachable worker just offers no suggestions; launching reports why.
+      const directories = worker ? await workers.directories(worker, query).catch(() => []) : await completeWorkingDirectories(query);
+      sendJson(response, 200, { directories });
       return;
     }
     sendJson(response, 405, { error: "method not allowed" });

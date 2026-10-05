@@ -25,7 +25,7 @@ import { durableConversationId, startDurable } from "../runtimes/durable.ts";
 import { piRuntime } from "../runtimes/pi.ts";
 import type { RuntimeModel, RuntimeQueue, RuntimeQuestion, RuntimeSession, RuntimeUsage, TranscriptEntry } from "../runtimes/types.ts";
 import { installBrokeredCredentials, OfflineError, setCredentialTransport, setSecretEnv } from "./credentials.ts";
-import { resolveWorkingDirectory } from "../working-directories.ts";
+import { completeWorkingDirectories, resolveWorkingDirectory } from "../working-directories.ts";
 import { attachPeer, isRecord, PROTOCOL_VERSION, type Peer } from "./protocol.ts";
 import { PACKAGE_ROOT } from "./release.ts";
 import { applySync, planSync, putSyncFiles, writeAtomic, type SyncCommit } from "./sync-apply.ts";
@@ -244,6 +244,7 @@ export class WorkerHost {
       if (hosted && hosted.peer === peer) this.#stop(hosted);
       return { ok: true };
     });
+    peer.handle("directories", async (params) => ({ directories: await completeWorkingDirectories(String(params["q"] ?? "~/")) }));
     peer.handle("put-file", (params) => this.#putFile(params));
     peer.handle("get-file", (params) => this.#getFile(params));
     peer.handle("sync-plan", (params) => planSync(this.paths, params["entries"]));
