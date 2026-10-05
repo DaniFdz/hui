@@ -44,7 +44,7 @@ control URL or token. No shutdown route is added to `/__hui/`.
 
 Normal stop returns 409 while turns, questions, follow-ups or HTTP mutations are
 active; worker sessions that are `reconnecting` or `disconnected` run on their
-worker and do not count. Forced stop explicitly interrupts work. CLI lifecycle operations are
+worker and count only for the follow-ups HUI holds for them. Forced stop explicitly interrupts work. CLI lifecycle operations are
 serialized, refuse unauthenticated live PIDs and wait for the old process to
 exit before replacement. `gateway.log` is private and receives the gateway's
 stderr, including one line per Logs entry (see `GET /__hui/observability`); the

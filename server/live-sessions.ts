@@ -227,10 +227,10 @@ export class LiveSessions {
   }
 
   #activeWork(): Live[] {
-    // A session whose host is unreachable runs there, not in this process.
+    // A session whose host is unreachable runs there, not in this process;
+    // the follow-ups HUI holds for it exist only here.
     return [...this.#live.values()].filter((live) => live.status === "starting"
-      || live.status === "running" || live.status === "waiting"
-      || (live.followUps.length > 0 && live.status !== "reconnecting" && live.status !== "disconnected"));
+      || live.status === "running" || live.status === "waiting" || live.followUps.length > 0);
   }
   #live = new Map<string, Live>();
   #statusSubscribers = new Set<StatusSubscriber>();

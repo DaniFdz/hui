@@ -1988,7 +1988,7 @@ test("a worker session hands a follow-up to its runtime only while a run streams
   manager.disposeAll();
 });
 
-test("follow-ups HUI holds for a worker session run once it reattaches to a run that settled meanwhile", async (t) => {
+test("follow-ups HUI holds for an unreachable worker session hold up a gateway restart and run once it reattaches", async (t) => {
   const worker = scriptedWorker(t);
   const id = "remote-reattach-follow-up";
   const record = { ...recordFor(id), worker: "w" };
@@ -2002,7 +2002,10 @@ test("follow-ups HUI holds for a worker session run once it reattaches to a run 
   await prompted;
   worker.lose({ reconnecting: true });
   await waitForStatus(manager, id, "reconnecting");
-  assert.equal(manager.blockingWorkCount, 0, "a session whose worker is away never blocks a gateway restart");
+  assert.equal(manager.blockingWorkCount, 1, "the follow-up HUI holds would be lost by a gateway restart");
+  manager.stopReconnecting(id);
+  assert.equal(manager.status(id), "disconnected");
+  assert.equal(manager.blockingWorkCount, 1);
   manager.ensure(record, true);
   await until(() => worker.calls.length === 2, "the held follow-up");
   assert.deepEqual(worker.calls, ["prompt:turn", "prompt:held here"]);

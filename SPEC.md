@@ -995,7 +995,8 @@ leaves worker records unchanged.
   gateway restart could not be reached) the session reads "Disconnected from
   <worker>" with a **Reconnect** action, which connects the worker (explaining
   when it no longer exists); opening the session alone never reconnects it.
-  Such sessions do not hold up a gateway restart or update. A run that finished meanwhile is not
+  Such sessions hold up a gateway restart or update only while HUI holds
+  follow-ups for them. A run that finished meanwhile is not
   "recovered", even once its idle runtime has stopped or the host restarted;
   a PI run cut off mid-way (the host or its runtime stopped) is continued by
   HUI on the next open, as a local one after a gateway restart. Detached idle workers stop after ten minutes, an idle host
