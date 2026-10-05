@@ -1,0 +1,644 @@
+/* Contributions → Calendar: a week of HUI sessions. Blocks use the session palette. */
+.content:has(hui-session-calendar) .content-header--settings,
+.contributions-page:has(hui-session-calendar) {
+  max-width: none;
+}
+
+.session-calendar__focus {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  color: var(--text-strong);
+  overflow-wrap: anywhere;
+}
+hui-session-calendar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+  /* The layout follows the space beside the sidebar, not the viewport. */
+  container: session-calendar / inline-size;
+}
+
+.session-calendar__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+}
+
+.session-calendar__title {
+  margin: 0;
+  color: var(--text-strong);
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.session-calendar__summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
+  color: var(--muted);
+  font-size: var(--control-ui-text-md);
+}
+
+.session-calendar__summary strong {
+  color: var(--text-strong);
+  font-weight: 600;
+}
+
+.session-calendar__grouping {
+  margin-left: auto;
+}
+
+.session-calendar__nav {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.session-calendar__prev svg {
+  transform: rotate(180deg);
+}
+
+.session-calendar__layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: var(--space-4);
+  align-items: start;
+}
+
+.session-calendar__grid-card,
+.session-calendar__panel {
+  position: relative;
+  min-width: 0;
+  background: var(--card);
+  border: 1px solid color-mix(in srgb, var(--border) 85%, transparent);
+  border-radius: var(--radius-lg);
+}
+
+.session-calendar__scroll {
+  overflow-x: auto;
+  padding: var(--space-3) var(--space-3) var(--space-4) 0;
+}
+
+.session-calendar__grid {
+  display: grid;
+  grid-template-columns: 56px repeat(7, minmax(92px, 1fr));
+  grid-template-rows: 36px calc(var(--hours) * var(--hour-px));
+  min-width: 720px;
+}
+
+.session-calendar__grid--day {
+  grid-template-columns: 56px minmax(0, 1fr);
+  min-width: 0;
+}
+
+.session-calendar__day-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 0 var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: var(--control-ui-text-md);
+  text-align: left;
+}
+
+button.session-calendar__day-head:not(:disabled) {
+  cursor: pointer;
+}
+
+button.session-calendar__day-head:hover:not(:disabled),
+button.session-calendar__day-head:focus-visible {
+  background: var(--bg-hover);
+  color: var(--text-strong);
+}
+
+button.session-calendar__day-head:disabled {
+  opacity: 0.5;
+}
+
+.session-calendar__day-number {
+  color: var(--text-strong);
+  font-weight: 600;
+}
+
+.session-calendar__day-head--today {
+  color: var(--text-strong);
+}
+
+.session-calendar__day-head--today .session-calendar__day-number {
+  min-width: 22px;
+  padding: 1px 6px;
+  box-sizing: border-box;
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  color: var(--accent-foreground);
+  text-align: center;
+}
+
+/* The hour labels stay in view while a narrow screen scrolls the days. */
+.session-calendar__corner,
+.session-calendar__hours {
+  position: sticky;
+  left: 0;
+  z-index: 4;
+  background: var(--card);
+}
+
+.session-calendar__hour {
+  position: absolute;
+  right: 10px;
+  transform: translateY(-50%);
+  color: var(--muted);
+  font-size: var(--control-ui-text-xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.session-calendar__day {
+  position: relative;
+  border-left: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
+  /* A faint line every hour; the first sits on the grid's top edge. */
+  background: repeating-linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--border) 45%, transparent) 0 1px,
+    transparent 1px var(--hour-px)
+  );
+}
+
+.session-calendar__day--today {
+  background-color: color-mix(in srgb, var(--accent) 4%, transparent);
+}
+
+.session-calendar__block {
+  position: absolute;
+  z-index: 1;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  margin: 0;
+  padding: 5px 7px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 8px;
+  background: var(--block);
+  color: var(--bg);
+  font: inherit;
+  font-size: var(--control-ui-text-sm);
+  line-height: 1.25;
+  text-align: left;
+  cursor: pointer;
+  /* Separates side-by-side lanes and stacked neighbours. */
+  box-shadow: 0 0 0 1px var(--card);
+  container-type: inline-size;
+  transition: opacity 120ms ease, filter 120ms ease;
+}
+
+.session-calendar__block:hover {
+  filter: brightness(1.06);
+}
+
+.session-calendar__block:focus-visible,
+.session-calendar__block--open {
+  z-index: 2;
+  outline: 2px solid var(--text-strong);
+  outline-offset: 1px;
+}
+
+.session-calendar__block--dim {
+  opacity: 0.22;
+}
+
+.session-calendar__block--short {
+  padding-block: 1px;
+  justify-content: center;
+}
+
+.session-calendar__block-title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: var(--lines, 1);
+  overflow: hidden;
+  font-weight: 600;
+}
+
+.session-calendar__block-time {
+  opacity: 0.72;
+  font-size: var(--control-ui-text-xs);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+:root[data-theme-mode="light"] .session-calendar__block {
+  background: color-mix(in srgb, var(--block) 22%, var(--card));
+  color: color-mix(in srgb, var(--block) 55%, var(--text-strong));
+  box-shadow: inset 3px 0 0 var(--block), 0 0 0 1px var(--card);
+}
+
+.session-calendar__now {
+  position: absolute;
+  z-index: 3;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--accent);
+  pointer-events: none;
+}
+
+.session-calendar__now::before {
+  content: "";
+  position: absolute;
+  left: -4px;
+  top: -3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.session-calendar__empty {
+  position: absolute;
+  inset: 48px 0 0 56px;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  pointer-events: none;
+}
+
+.session-calendar__popover {
+  position: absolute;
+  z-index: 5;
+  box-sizing: border-box;
+  width: 340px;
+  padding: var(--space-4);
+  background: var(--popover);
+  color: var(--popover-foreground);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  outline: none;
+}
+
+/* The card's width, when there is no room beside the block. */
+.session-calendar__popover--full {
+  left: 8px;
+  right: 8px;
+  width: auto;
+}
+
+.session-calendar__popover-title {
+  margin: 0 0 4px;
+  color: var(--text-strong);
+  font-size: var(--control-ui-text-lg);
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.session-calendar__popover-when {
+  color: var(--muted);
+  font-size: var(--control-ui-text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.session-calendar__popover-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  margin-top: var(--space-3);
+  color: var(--muted);
+  font-size: var(--control-ui-text-sm);
+}
+
+.session-calendar__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 10px;
+  border-radius: var(--radius-full);
+  background: var(--bg-muted);
+  color: var(--text-strong);
+  font-weight: 600;
+}
+
+.session-calendar__popover-label {
+  margin-top: var(--space-3);
+  color: var(--muted);
+  font-size: var(--control-ui-text-xs);
+}
+
+.session-calendar__popover-quote {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 6;
+  margin: 4px 0 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: var(--control-ui-text-sm);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.session-calendar__popover-sessions,
+.session-calendar__members {
+  margin: 4px calc(-1 * var(--space-2)) 0;
+  padding: 0;
+  list-style: none;
+}
+
+.session-calendar__popover-session,
+.session-calendar__member {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0 var(--space-2);
+  width: 100%;
+  padding: 4px var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--control-ui-text-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.session-calendar__popover-session:hover,
+.session-calendar__member:hover {
+  background: var(--bg-hover);
+}
+
+.session-calendar__popover-first {
+  grid-column: 1 / -1;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: var(--control-ui-text-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-calendar__popover-sessions {
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.session-calendar__members {
+  margin: 0 0 var(--space-1) 18px;
+}
+
+.session-calendar__member {
+  color: var(--muted);
+}
+
+.session-calendar__member .session-calendar__session-time {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.session-calendar__popover-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  color: var(--muted);
+  font-size: var(--control-ui-text-sm);
+}
+
+.session-calendar__popover-foot strong {
+  color: var(--text-strong);
+}
+
+.session-calendar__dot {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
+  background: var(--block);
+}
+
+.session-calendar__side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.session-calendar__panel {
+  padding: var(--space-4);
+}
+
+.session-calendar__total {
+  margin: 0;
+  color: var(--muted);
+  font-size: 20px;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+}
+
+.session-calendar__total strong {
+  color: var(--text-strong);
+  font-size: 24px;
+  font-weight: 650;
+}
+
+.session-calendar__stack {
+  display: flex;
+  gap: 2px;
+  height: 8px;
+  margin-top: var(--space-3);
+  overflow: hidden;
+  border-radius: 4px;
+  background: var(--bg-muted);
+}
+
+.session-calendar__stack > span {
+  min-width: 3px;
+  background: var(--block);
+  transition: opacity 120ms ease;
+}
+
+.session-calendar__stack > .session-calendar__stack--dim {
+  opacity: 0.22;
+}
+
+.session-calendar__caption {
+  margin: var(--space-2) 0 0;
+  color: var(--muted);
+  font-size: var(--control-ui-text-xs);
+}
+
+.session-calendar__sessions {
+  max-height: 360px;
+  margin: var(--space-3) calc(-1 * var(--space-2)) 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.session-calendar__session {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: 5px var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--control-ui-text-md);
+  text-align: left;
+  cursor: pointer;
+}
+
+.session-calendar__session:hover,
+.session-calendar__session--active {
+  background: var(--bg-hover);
+}
+
+.session-calendar__session[aria-pressed="true"] {
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+}
+
+.session-calendar__session-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-calendar__session-time {
+  color: var(--text-strong);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.session-calendar__panel-title {
+  margin: 0 0 var(--space-3);
+  color: var(--text-strong);
+  font-size: var(--control-ui-text-lg);
+  font-weight: 600;
+}
+
+.session-calendar__days {
+  display: flex;
+  gap: 8px;
+  height: 140px;
+}
+
+.session-calendar__bar {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* Bars scale to the track; the top padding leaves room for the busiest day's label. */
+.session-calendar__bar-track {
+  position: relative;
+  flex: 1;
+  margin-top: 18px;
+}
+
+.session-calendar__bar-fill {
+  position: absolute;
+  inset: auto 0 0;
+  border-radius: 5px 5px 2px 2px;
+  background: color-mix(in srgb, var(--text) 14%, var(--card));
+}
+
+.session-calendar__bar-value {
+  position: absolute;
+  bottom: calc(100% + 3px);
+  left: 50%;
+  transform: translateX(-50%);
+  color: var(--muted);
+  font-size: var(--control-ui-text-xs);
+  white-space: nowrap;
+}
+
+.session-calendar__bar-fill--max {
+  background: var(--accent);
+}
+
+.session-calendar__bar-label {
+  color: var(--muted);
+  font-size: var(--control-ui-text-xs);
+  text-align: center;
+}
+
+.session-calendar__bar--today .session-calendar__bar-label {
+  color: var(--text-strong);
+  font-weight: 700;
+}
+
+/* A narrow lane keeps only the title, and a sliver only its color. */
+@container (max-width: 44px) {
+  .session-calendar__block-title {
+    visibility: hidden;
+  }
+}
+
+@container (max-width: 64px) {
+  .session-calendar__block-title {
+    font-size: var(--control-ui-text-xs);
+  }
+
+  .session-calendar__block-time {
+    display: none;
+  }
+}
+
+/* The session palette, busiest session first, then the same colors shaded
+   toward the text color; after the rules that use it. */
+hui-session-calendar [data-color="0"] { --block: var(--session-color-purple); }
+hui-session-calendar [data-color="1"] { --block: var(--session-color-blue); }
+hui-session-calendar [data-color="2"] { --block: var(--session-color-yellow); }
+hui-session-calendar [data-color="3"] { --block: var(--session-color-green); }
+hui-session-calendar [data-color="4"] { --block: var(--session-color-cyan); }
+hui-session-calendar [data-color="5"] { --block: var(--session-color-pink); }
+hui-session-calendar [data-color="6"] { --block: var(--session-color-orange); }
+hui-session-calendar [data-color="7"] { --block: var(--session-color-red); }
+hui-session-calendar [data-color="8"] { --block: color-mix(in srgb, var(--session-color-purple) 62%, var(--text-strong)); }
+hui-session-calendar [data-color="9"] { --block: color-mix(in srgb, var(--session-color-blue) 62%, var(--text-strong)); }
+hui-session-calendar [data-color="10"] { --block: color-mix(in srgb, var(--session-color-yellow) 62%, var(--text-strong)); }
+hui-session-calendar [data-color="11"] { --block: color-mix(in srgb, var(--session-color-green) 62%, var(--text-strong)); }
+hui-session-calendar [data-color="12"] { --block: color-mix(in srgb, var(--session-color-cyan) 62%, var(--text-strong)); }
+hui-session-calendar [data-color="13"] { --block: color-mix(in srgb, var(--session-color-pink) 62%, var(--text-strong)); }
+hui-session-calendar [data-color="14"] { --block: color-mix(in srgb, var(--session-color-orange) 62%, var(--text-strong)); }
+hui-session-calendar [data-color="15"] { --block: color-mix(in srgb, var(--session-color-red) 62%, var(--text-strong)); }
+
+@container session-calendar (max-width: 1000px) {
+  .session-calendar__layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .session-calendar__side {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    align-items: start;
+  }
+}
+
+@container session-calendar (max-width: 640px) {
+  .session-calendar__title {
+    font-size: 22px;
+  }
+
+  .session-calendar__grouping {
+    margin-left: 0;
+  }
+}

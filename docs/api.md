@@ -2295,6 +2295,62 @@ are cached in gateway memory per range for 15 minutes and shared by concurrent r
 `refresh=1` bypasses the cache, and a result with a failed account or no
 account is not cached. The browser buckets timestamps into local days and Sunday-first weeks.
 
+### Session activity
+
+The Contributions page's Calendar tab lays out when each HUI session was
+worked on, as a week or a selected day. Both views use the same endpoint:
+Week requests seven local activity days and Day requests one, each starting at
+5 AM and ending at 5 AM after the last date. Date arithmetic uses local calendar
+days, not fixed 24-hour offsets, to retain those boundaries across clock changes.
+
+| Route | Behaviour |
+| --- | --- |
+| `GET /__hui/session-activity?from=<ms>&to=<ms>` | `SessionActivity` for `[from, to)`, epoch milliseconds; 400 unless both are decimal digit strings (at most 15) with `to` after `from` and at most 31 days apart |
+
+```ts
+type SessionActivity = {
+  sessions: {
+    id: string; title: string; group: string; project: string; archived?: boolean;
+    blocks: { start: number; end: number; model?: string; firstMessage?: string }[];
+  }[];
+};
+```
+
+Every registry session with a `durable:<id>` reference and no `parentId`,
+created before `to`, is read through its Durable conversation's history,
+newest entry first. The timestamps of its user, assistant and tool-result
+entries (not system, compaction or reset entries) split into blocks wherever
+more than 30 minutes pass between two; `start` and `end` are a block's first
+and last message. An answer is stamped when it starts, so a final long answer
+adds no time, and a tool call or wait of over 30 minutes splits the work. A
+session is listed with its blocks that overlap the range: they end at or after
+`from` and start before `to`. The scan stops at the first such silence before
+`from`, so a block that began earlier keeps its real start without reading the
+whole history. `model` is the `provider/model` of the block's last answer;
+`project` names the session's repository: the parent of Git's absolute common
+directory (`rev-parse --git-common-dir`) for a `.git` directory, else that
+directory without `.git`, so a repository's worktrees and subdirectories share
+it. The home directory is always `~`, without asking Git. When Git cannot
+answer, a directory under HUI's worktrees directory is checked against its
+siblings or the checkout it was made from (its parent is `<checkout>-<hash>`).
+Candidates are queried with Git, never recursively resolved; if none can
+answer, the checkout name is used. Other directories use their own name.
+Git queries use the existing command runner's 15-second timeout. Answers are
+kept in gateway memory per directory. `firstMessage` is the operator's first message in the block (user entries only,
+HUI's control prompts excluded, at most 400 characters). Sessions without a
+block in the range, and sessions on PI's worker, are omitted. Only the
+session's current conversation is read: after a rewind that is a fork holding
+the history before the rewound message, so the abandoned branch's time is not
+counted. Entries are read in pages (20, then 200) with a macrotask yield
+between pages. Activity is neither cached nor persisted. The browser computes
+the week, days, lanes and totals in local time. Project/group blocks may join
+across gaps of at most 30 minutes for display, but those gaps never add to the
+recorded activity totals. Per-item, daily and weekly totals count overlapping
+session blocks once, and the selected period's total is independent of grouping.
+Day view clips counts, peak concurrency and summary/member times to the same
+one-day range; returning to Week requests the containing week's range. Date
+selection is browser-only state and does not change the API response shape.
+
 ### GitHub link previews
 
 Chat messages (user and assistant) unfurl GitHub references after the message

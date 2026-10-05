@@ -109,7 +109,7 @@ export function modelRef(value: string | undefined): { provider: string; modelId
   return value && separator > 0 ? { provider: value.slice(0, separator), modelId: value.slice(separator + 1) } : undefined;
 }
 
-function textOf(message: Message | undefined): string {
+export function textOf(message: Message | undefined): string {
   if (!message || typeof message !== "object") return "";
   const content = (message as { content?: unknown }).content;
   if (typeof content === "string") return content;

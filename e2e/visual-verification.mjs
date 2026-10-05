@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url";
 const repo = dirname(dirname(fileURLToPath(import.meta.url)));
 const help = `HUI visual verification (run from the checkout being reviewed)
 
-  node e2e/visual-verification.mjs launch --branch <expected-branch> [--pi-sessions] [--quota-fixture | --jira-fixture | --github-fixture]
+  node e2e/visual-verification.mjs launch --branch <expected-branch> [--pi-sessions] [--quota-fixture | --jira-fixture | --github-fixture | --activity-fixture]
   node e2e/visual-verification.mjs doctor --receipt <absolute-receipt.json>
   node e2e/visual-verification.mjs cleanup --receipt <absolute-receipt.json>
 
@@ -335,6 +335,10 @@ export async function launch(expectedBranch) {
       }));
       Object.assign(serverEnv, { HUI_GITHUB_CLI: join(repo, "e2e", "github-cli-fixture.mjs"), HUI_FAKE_GH_DIR: gh });
     }
+    if (process.argv.includes("--activity-fixture")) {
+      // Two weeks of synthetic Durable sessions for Contributions → Calendar.
+      execFileSync(process.execPath, [join(repo, "e2e", "activity-fixture.ts")], { cwd: repo, env: { ...env, HUI_E2E_WORKSPACE: workspace }, stdio: ["ignore", "ignore", "inherit"] });
+    }
     const server = start("visual-verification-server.mjs", {
       ...serverEnv,
       HUI_VERIFICATION_IDENTITY: JSON.stringify({ runId: receipt.runId, runnerPid: process.pid, checkout }),
@@ -365,7 +369,7 @@ async function main() {
   const [command, ...args] = process.argv.slice(2);
   if (!command || command === "--help" || args.includes("--help")) return process.stdout.write(help);
   // Trailing launch options; `launch` reads them from argv.
-  if (command === "launch") while (["--pi-sessions", "--quota-fixture", "--jira-fixture", "--github-fixture"].includes(args.at(-1))) args.pop();
+  if (command === "launch") while (["--pi-sessions", "--quota-fixture", "--jira-fixture", "--github-fixture", "--activity-fixture"].includes(args.at(-1))) args.pop();
   const option = command === "launch" ? "--branch" : "--receipt";
   if (!["launch", "doctor", "cleanup"].includes(command) || args.length !== 2 || args[0] !== option) throw new Error("Invalid arguments. Run with --help.");
   if (command === "launch") return launch(args[1]);

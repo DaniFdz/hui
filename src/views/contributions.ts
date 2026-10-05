@@ -13,6 +13,7 @@ import {
 } from "../lib/github-contributions.ts";
 import { icons } from "../lib/icons.ts";
 import { renderPicker } from "./settings-picker.ts";
+import "./session-calendar.ts";
 
 if (typeof document !== "undefined") await import("../styles/contributions.css");
 
@@ -23,14 +24,20 @@ const LEFT = 30;
 const TOP = 16;
 const BAR_HEIGHT = 96;
 const METRICS: readonly [ContributionMetric, string][] = [["commits", "Commits"], ["pullRequests", "Pull requests"]];
+type ContributionsView = "github" | "calendar";
+const VIEWS: readonly [ContributionsView, string][] = [["github", "GitHub"], ["calendar", "Calendar"]];
 const PREFERENCES_KEY = "hui.contributions";
 
-function readPreferences(): { metric: ContributionMetric; account: string } {
+function readPreferences(): { metric: ContributionMetric; account: string; view: ContributionsView } {
   try {
-    const saved = JSON.parse(localStorage.getItem(PREFERENCES_KEY) ?? "null") as { metric?: unknown; account?: unknown } | null;
-    return { metric: saved?.metric === "pullRequests" ? "pullRequests" : "commits", account: typeof saved?.account === "string" ? saved.account : ALL };
+    const saved = JSON.parse(localStorage.getItem(PREFERENCES_KEY) ?? "null") as { metric?: unknown; account?: unknown; view?: unknown } | null;
+    return {
+      metric: saved?.metric === "pullRequests" ? "pullRequests" : "commits",
+      account: typeof saved?.account === "string" ? saved.account : ALL,
+      view: saved?.view === "calendar" ? "calendar" : "github",
+    };
   } catch {
-    return { metric: "commits", account: ALL };
+    return { metric: "commits", account: ALL, view: "github" };
   }
 }
 
@@ -81,11 +88,13 @@ function renderWeekly(weeks: readonly ContributionWeek[], metric: ContributionMe
   </div>`;
 }
 
-/** Contributions page: a GitHub-style calendar and a per-week bar chart of the
- * commits or pull requests of the `gh` accounts the gateway is signed in to,
- * over the last year or one calendar year. */
+/** Contributions page. The GitHub tab charts the commits or pull requests of
+ * the `gh` accounts the gateway is signed in to, as a GitHub-style calendar and
+ * a per-week bar chart, over the last year or one calendar year. The Calendar
+ * tab lays out a week of HUI sessions. */
 export class HuiContributionsPage extends LitElement {
   onOpenSettings?: () => void;
+  onOpenSession?: (id: string) => void;
   /** The loaded range; `year` stays on the previous one until the next arrives. */
   #shown?: { year?: number; data: GitHubContributions };
   #loading = false;
@@ -93,6 +102,7 @@ export class HuiContributionsPage extends LitElement {
   /** Saved in localStorage; an account no longer signed in shows all without forgetting it. */
   #account: string;
   #metric: ContributionMetric;
+  #view: ContributionsView;
   /** The hovered day or week, positioned inside its chart card. */
   #tip?: { card: string; text: string; x: number; y: number; end: boolean };
   /** Selected calendar year; undefined is the last year. */
@@ -102,18 +112,19 @@ export class HuiContributionsPage extends LitElement {
 
   constructor() {
     super();
-    ({ metric: this.#metric, account: this.#account } = readPreferences());
+    ({ metric: this.#metric, account: this.#account, view: this.#view } = readPreferences());
   }
 
   override createRenderRoot() { return this; }
-  override connectedCallback() { super.connectedCallback(); void this.#load(); }
+  override connectedCallback() { super.connectedCallback(); if (this.#view === "github") void this.#load(); }
   override disconnectedCallback() { super.disconnectedCallback(); this.#request++; }
 
   override updated() {
-    if (!this.#scrollToLatest) return;
-    this.#scrollToLatest = false;
     // Narrow screens scroll the charts; start at the most recent weeks, like GitHub.
-    this.querySelectorAll(".contributions-scroll").forEach((element) => { element.scrollLeft = element.scrollWidth; });
+    const charts = this.querySelectorAll(".contributions-scroll");
+    if (!this.#scrollToLatest || charts.length === 0) return;
+    this.#scrollToLatest = false;
+    charts.forEach((element) => { element.scrollLeft = element.scrollWidth; });
   }
 
   async #load(refresh = false) {
@@ -152,10 +163,13 @@ export class HuiContributionsPage extends LitElement {
     return (this.#shown?.data.accounts ?? []).filter((account) => selected === ALL || account.login === selected);
   }
 
-  #savePreferences(change: { metric?: ContributionMetric; account?: string }) {
+  #savePreferences(change: { metric?: ContributionMetric; account?: string; view?: ContributionsView }) {
     this.#metric = change.metric ?? this.#metric;
     this.#account = change.account ?? this.#account;
-    try { localStorage.setItem(PREFERENCES_KEY, JSON.stringify({ metric: this.#metric, account: this.#account })); } catch { /* Keep the in-memory choice. */ }
+    this.#view = change.view ?? this.#view;
+    try { localStorage.setItem(PREFERENCES_KEY, JSON.stringify({ metric: this.#metric, account: this.#account, view: this.#view })); } catch { /* Keep the in-memory choice. */ }
+    // GitHub is read the first time its tab is shown.
+    if (this.#view === "github" && !this.#shown && !this.#loading && !this.#error) void this.#load();
     this.requestUpdate();
   }
 
@@ -246,28 +260,42 @@ export class HuiContributionsPage extends LitElement {
 
   override render() {
     const accounts = this.#shown?.data.accounts ?? [];
+    const calendar = this.#view === "calendar";
     return html`
       <header class="content-header content-header--settings">
         <div>
           <div class="page-title">Contributions</div>
-          <div class="page-subtitle">Commits and pull requests of the GitHub accounts signed in to <code>gh</code>.</div>
+          <div class="page-subtitle">${calendar
+            ? "When you worked in HUI sessions, and how long each one took."
+            : html`Commits and pull requests of the GitHub accounts signed in to <code>gh</code>.`}</div>
         </div>
         <div class="page-header-actions">
-          <div class="settings-segmented" role="group" aria-label="Count">
-            ${METRICS.map(([metric, text]) => html`<button type="button" class="settings-segmented__btn ${this.#metric === metric ? "settings-segmented__btn--active" : ""}"
-              aria-pressed=${String(this.#metric === metric)} @click=${() => this.#savePreferences({ metric })}>${text}</button>`)}
+          <div class="settings-segmented" role="group" aria-label="View">
+            ${VIEWS.map(([view, text]) => html`<button type="button" class="settings-segmented__btn ${this.#view === view ? "settings-segmented__btn--active" : ""}"
+              aria-pressed=${String(this.#view === view)} @click=${() => this.#savePreferences({ view })}>${text}</button>`)}
           </div>
-          <div class="contributions-account">${renderPicker({
-            label: "Account",
-            value: this.#selectedAccount(),
-            options: [{ value: ALL, label: "All accounts" }, ...accounts.map((account) => ({ value: account.login, label: account.login }))],
-            disabled: accounts.length === 0,
-            onChange: (account) => this.#savePreferences({ account }),
-          })}</div>
-          <button class="btn" type="button" ?disabled=${this.#loading} @click=${() => void this.#load(true)}>${icons.refresh}<span>${this.#loading && this.#shown ? "Loading…" : "Refresh"}</span></button>
+          ${calendar ? nothing : this.#githubActions(accounts)}
         </div>
       </header>
-      <main class="settings-page settings-page--wide contributions-page">${this.#body()}</main>`;
+      <main class="settings-page settings-page--wide contributions-page">${calendar
+        ? html`<hui-session-calendar .onOpenSession=${this.onOpenSession}></hui-session-calendar>`
+        : this.#body()}</main>`;
+  }
+
+  #githubActions(accounts: GitHubContributions["accounts"]) {
+    return html`
+      <div class="settings-segmented" role="group" aria-label="Count">
+        ${METRICS.map(([metric, text]) => html`<button type="button" class="settings-segmented__btn ${this.#metric === metric ? "settings-segmented__btn--active" : ""}"
+          aria-pressed=${String(this.#metric === metric)} @click=${() => this.#savePreferences({ metric })}>${text}</button>`)}
+      </div>
+      <div class="contributions-account">${renderPicker({
+        label: "Account",
+        value: this.#selectedAccount(),
+        options: [{ value: ALL, label: "All accounts" }, ...accounts.map((account) => ({ value: account.login, label: account.login }))],
+        disabled: accounts.length === 0,
+        onChange: (account) => this.#savePreferences({ account }),
+      })}</div>
+      <button class="btn" type="button" ?disabled=${this.#loading} @click=${() => void this.#load(true)}>${icons.refresh}<span>${this.#loading && this.#shown ? "Loading…" : "Refresh"}</span></button>`;
   }
 }
 

@@ -87,6 +87,7 @@ import { checkoutSessionRef, createSessionWorktree, inspectGitCheckout, type Wor
 import { fallbackBranchName } from "../shared/branch-names.ts";
 import { answerSideQuestion, fallbackTitle, generateSessionNames, suggestWorktreeName } from "./model-routing.ts";
 import { sessionDigest } from "./session-digest.ts";
+import { activityRange, readSessionActivity } from "./session-activity.ts";
 import { runPiUtilityPrompt } from "./runtimes/pi.ts";
 import type { SessionJiraIssue } from "../shared/jira.ts";
 import {
@@ -186,6 +187,7 @@ const AUTOMATION_RUN_CANCEL = /^\/__hui\/automation\/runs\/([^/]+)\/cancel$/;
 const SESSIONS_ROUTE = `${PREFIX}sessions`;
 const SESSION_STATUSES_ROUTE = `${SESSIONS_ROUTE}/events`;
 const SESSION_GROUPS_ROUTE = `${PREFIX}session-groups`;
+const SESSION_ACTIVITY_ROUTE = `${PREFIX}session-activity`;
 const NEW_SESSION_TOOLS = new Set(["durable", "pi"]);
 /** New sessions run on Pi Durable; `HUI_SESSION_RUNTIME=pi` keeps PI's SDK
  * worker as an explicit fallback. Existing sessions keep the runtime they have. */
@@ -2569,6 +2571,24 @@ async function handleRequest(
       return;
     }
     sendJson(response, 200, { previews: await Promise.all(urls.map((url) => githubPreviews.lookup(url))) });
+    return;
+  }
+
+  if (path === SESSION_ACTIVITY_ROUTE) {
+    if (request.method !== "GET") {
+      sendJson(response, 405, { error: "method not allowed" });
+      return;
+    }
+    const range = activityRange(new URL(request.url ?? "/", "http://localhost").searchParams);
+    if (!range) {
+      sendJson(response, 400, { error: "from and to must be epoch milliseconds, to after from and at most 31 days apart." });
+      return;
+    }
+    try {
+      sendJson(response, 200, await readSessionActivity(await readRegistry(), range.from, range.to));
+    } catch (error) {
+      sendJson(response, 500, { error: error instanceof Error ? error.message : "Session activity could not be read." });
+    }
     return;
   }
 

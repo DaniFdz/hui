@@ -4617,7 +4617,8 @@ export class HuiApp extends HuiElement {
                       onRefresh: () => void this.refreshSessions(),
                     })
                   : this.activePage.id === "contributions"
-                    ? html`<hui-contributions-page .onOpenSettings=${() => this.navigate({ kind: "settings", page: "integrations" })}></hui-contributions-page>`
+                    ? html`<hui-contributions-page .onOpenSettings=${() => this.navigate({ kind: "settings", page: "integrations" })}
+                      .onOpenSession=${(id: string) => this.navigate({ kind: "session", id })}></hui-contributions-page>`
                   : isPiSurface(this.activePage)
                     ? renderPiSurface({
                         page: this.activePage,

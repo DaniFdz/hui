@@ -164,7 +164,9 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   OpenClaw's device-code layout; once GitHub confirms, the section turns
   Connected. Without `gh` on the gateway's PATH it shows "GitHub CLI required"
   with an install link instead of a sign-in button. The token stays in gh.
-- Contributions (first sidebar destination) charts the GitHub activity of every
+- Contributions (first sidebar destination) has two tabs, *GitHub* (default)
+  and *Calendar*; the browser remembers the choice, and GitHub is read only
+  once its tab is shown. The GitHub tab charts the GitHub activity of every
   account signed in to `gh` on the HUI machine: a GitHub-style calendar (a
   square per local day, month and Mon/Wed/Fri labels, Less→More legend, hover
   for the day's count) and a bar per week (hover for the week's count). One *Commits* / *Pull requests*
@@ -184,6 +186,54 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   its error above the charts while the others still render, and a year that
   fails to load leaves the previous one selected; with no account, the page
   links to Settings → Integrations.
+- The Calendar tab opens on one week (Monday first, *Previous week* / *This
+  week* / *Next week*, never past the current week, and *Refresh*) of the
+  operator's HUI sessions: subagent sessions are left out, archived ones
+  included. Selecting a non-future date heading opens that day as one
+  full-width column. *Previous day* / *Today* / *Next day* navigate days,
+  never past the current activity day; *Back to week* shows the week containing
+  the selected day. Grouping is retained, as is item focus when that item has
+  activity in the new period. Titles, counts, totals, session breakdowns and
+  card totals refer only to the selected day or week; the *Hours per day*
+  chart appears only in Week. Loading disables date navigation; a failed
+  request keeps the previous period and shows the error. The date/view is not
+  saved between visits. A session was worked on from one message to the next until 30
+  minutes pass without one. *Group by* (remembered by the browser) chooses what
+  the grid draws as one color: *Project* (default), the Git repository a session
+  ran in, which its worktrees and subdirectories share (`~` for the home
+  directory, a folder's own name outside Git); *Group*, the sidebar group
+  (*Other* when ungrouped); or *Session*. A project's or group's sessions merge
+  visually into one block wherever they are at most 30 minutes apart. The
+  recorded activity totals remain unions of the original session blocks;
+  visual joining never adds idle time, and grouping never changes the total.
+  A day runs from
+  5 AM to 5 AM, so late-night work stays in the column of the day it began; the
+  hour axis covers 9 AM to 6 PM and every block. Colors come from the session
+  palette, then the same colors shaded, busiest in the selected period first, repeating after sixteen.
+  Overlapping blocks share their day in side-by-side lanes and widen into lanes
+  nothing beside them uses; a block too narrow for its name shows only its
+  color, and a one-message block is drawn 30 minutes tall.
+  Today's column is tinted with a line at the current time. Activating a block
+  opens a card beside it (below it on narrow screens) with its name, day,
+  start–end and recorded activity for that day's part, and its total for the selected day or week.
+  Under *Session* it shows the
+  session's project, group and model, the operator's first message in the block
+  and *Open session*; under *Project* or *Group* it lists the block's sessions,
+  most time first, with their recorded time in that day's part and first message,
+  in a scrollable list, each opening its session. Escape or a click elsewhere closes it. The
+  heading shows the week, how many sessions and blocks it had and, when more
+  than one, the most sessions running at once. Beside the grid (below it on
+  narrow screens), the total working time counts parallel sessions once
+  ("29h 25m across 5 projects", a bar split by color, and the summed session
+  time); every project, group or session follows with its time, most first.
+  Hovering one dims the others' blocks; activating it focuses the grid on only
+  that item, with full-width day blocks, and, for a project or group, lists its
+  sessions with their time, each opening its session. *Show all* or activating
+  the same item again restores the overview. *Hours per day* charts each day's working
+  time and labels the busiest. Only Durable conversations are read; sessions
+  still on PI's worker appear once `hui doctor --fix` moves them. A rewind
+  continues the session on a copy of the history before that point, so the
+  time spent on the abandoned branch leaves the calendar.
 - Chat messages unfurl GitHub repositories, pull requests and issues (URLs or
   `owner/repo#N`) as cards after the message, at most three per message like
   Slack: PRs show state, title, description snippet, author and diff stats;
