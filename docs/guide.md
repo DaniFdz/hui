@@ -204,9 +204,11 @@ routines). The Bots tab lists your bots, most recently active first, with their
 latest message; **+** creates one. A bot's chat opens beside its **Routines |
 Memory** panel: Routines adds schedules (every few minutes, hours or days,
 daily, weekly or once, in your browser's time zone), runs one now and shows how
-the last runs went; Memory shows how much the bot remembers and lets you open
-any summary line down to the original message. A row's **⋯** menu edits, hides
-or archives the bot. Bot chats never appear among your sessions.
+the last runs went; Memory shows how much the bot remembers and what writing
+its summaries has cost, lets you open any summary line down to the original
+message, and **Open memory page** opens the whole memory in a new tab. A row's
+**⋯** menu edits, hides or archives the bot; **Show archived** lists archived
+bots so you can restore them. Bot chats never appear among your sessions.
 
 ### Creating and editing
 
@@ -227,8 +229,9 @@ routine start a turn meanwhile, the edit is refused halfway: repeat it once the
 bot is idle).
 `--memory-model` picks the model that writes the memory's summaries. An empty
 value clears a choice: `hui bot edit ada --model "" --thinking ""` puts the chat
-back on the model and thinking level a new chat gets, and `--memory-model ""`
-hands the summaries back to the chat's own model.
+back on the model and thinking level a new chat gets (*Gateway default* in the
+Bots tab's dialog), and `--memory-model ""` hands the summaries back to the
+chat's own model.
 
 A bot's chat refuses what would end or fork it: `/clear`, `/compact`, rewind
 and deleting the session all answer with an explanation instead.
@@ -301,9 +304,10 @@ tree; a browser opens it from a link on HUI's own pages, such as the Bots tab
 
 `hui bot remove ada` archives the bot: its chat transcript and memory are kept,
 a running turn stops, messages still queued for it are withdrawn and its
-routines are disabled. `hui bot list --archived`
-shows archived bots and `hui bot restore ada` brings one back; its routines stay
-disabled until you turn them on again in Automations.
+routines are disabled. `hui bot list --archived` (or **Show archived** in the
+Bots tab) shows archived bots and `hui bot restore ada` (or their **Restore**)
+brings one back; its routines stay disabled until you turn them on again in
+Automations or its Routines panel.
 
 ### Privacy
 

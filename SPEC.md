@@ -1147,17 +1147,22 @@ everything the Bots tab can, through the same routes.
   the sidebar's Sessions label becomes a **Sessions | Bots** tab strip (arrow
   keys, Home/End; the browser remembers the tab), and bot chats never appear in
   the Sessions list, its search, Kanban, the Sessions page, the command palette
-  or session pickers; Automations labels their routines *Bot · name*. The roster
+  or session pickers; Automations labels their routines *Bot · name* and words
+  their schedules as the bot's panel does (*Daily at 08:00*). The roster
   lists bots by latest activity: an emoji or initial on a color stable per bot,
   the name, the latest message or role, a short time, an activity badge (active,
   waiting for an answer, summarizing memory, failed), an unread dot (also on the
   Bots tab while Sessions shows) and a warning while memory summaries keep
   failing. Search matches name, handle and title. The toolbar's + opens **New
   bot** (name, emoji, title, instructions, model, thinking, memory model,
-  workspace; nothing changes until the gateway accepts it); a row's menu offers
-  Edit, Hide/Unhide (*Show hidden* while any are hidden) and Archive, confirmed,
-  with a Restore toast. A bot opens at `/bots/<id>` as its one chat in the
-  ordinary session pane, its header showing avatar, name, role and status;
+  workspace; nothing changes until the gateway accepts it); *Gateway default*
+  leaves the model and thinking level to the gateway, and choosing it when
+  editing clears the bot's own. A row's menu offers Edit, Hide/Unhide (*Show
+  hidden* while any are hidden) and Archive, confirmed, with a Restore toast;
+  *Show archived* (while any are archived) lists archived bots with Restore,
+  and an archived bot's chat opens again only once restored. A bot opens at
+  `/bots/<id>` as its one chat in the ordinary session pane, its header
+  showing avatar, name, role and status;
   assistant turns carry the bot's name, `/clear`, `/compact`, Compact now and
   rewind are not offered, and a new bot says *Say hi to <name>*. Opening it
   marks it read. A **Routines | Memory** panel docks beside the chat (open or
@@ -1166,9 +1171,12 @@ everything the Bots tab can, through the same routes.
   next run, an enable switch, Run now and Delete, adds routines every N
   minutes/hours/days, daily, weekly or once in the browser's time zone, and shows
   the latest runs. Memory shows messages, the view against its 128 KB budget,
-  lines, pending summaries, *Summarizing memory…* and failures, lists the view's
-  `id+n|text` lines (a click opens a line into its halves, down to a message
-  whole) and opens OptChat's browse page in a new tab.
+  its lines, pending summaries, what the summarizer spent since the gateway
+  started (calls, tokens, a cost once one is reported), *Summarizing memory…*
+  and failures, and lists the view's `id+n|text` lines (a click opens a line
+  into its halves, down to a message whole); while open it reads the memory
+  again whenever the bots stream reports it changed, with no timer. *Open memory
+  page* is a plain link to OptChat's browse page, opened in a new tab.
 
 The contract is [docs/api.md#bots](docs/api.md#bots).
 
