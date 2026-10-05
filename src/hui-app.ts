@@ -3245,13 +3245,17 @@ export class HuiApp extends HuiElement {
       });
   };
 
-  private requestDirectorySuggestions = (input: string) => {
+  private loadDirectorySuggestions(input: string, worker?: string) {
     const marker = ++this.directorySuggestionRequest;
-    void loadWorkingDirectorySuggestions(input).then((directories) => {
+    void loadWorkingDirectorySuggestions(input, worker).then((directories) => {
       if (marker === this.directorySuggestionRequest) this.directorySuggestions = directories;
     }).catch(() => {
       if (marker === this.directorySuggestionRequest) this.directorySuggestions = [];
     });
+  }
+
+  private requestDirectorySuggestions = (input: string) => {
+    this.loadDirectorySuggestions(input);
     if (this.groupAction?.action === "defaults") this.requestGroupCheckout(input);
     else this.requestGitCheckout(input);
   };
@@ -4206,10 +4210,14 @@ export class HuiApp extends HuiElement {
       onSelectLaunchThinking: (level) => { this.launchThinking = level; },
       launchWorkers: this.launchWorkers,
       ...(this.launchWorker ? { launchWorker: this.launchWorker } : {}),
-      onSelectLaunchWorker: (id) => { this.launchWorker = id; },
-      // Suggestions and Git inspection read this machine's disk.
-      directorySuggestions: this.launchWorker ? [] : this.directorySuggestions,
-      onDirectoryInput: this.launchWorker ? () => undefined : this.requestDirectorySuggestions,
+      onSelectLaunchWorker: (id) => {
+        this.launchWorker = id;
+        ++this.directorySuggestionRequest;
+        this.directorySuggestions = [];
+      },
+      directorySuggestions: this.directorySuggestions,
+      // Git inspection reads this machine's disk; folder suggestions come from the worker.
+      onDirectoryInput: this.launchWorker ? (input) => this.loadDirectorySuggestions(input, this.launchWorker) : this.requestDirectorySuggestions,
       branchPrefix: this.settings.branchPrefix,
       gitCheckout: this.gitCheckout,
       gitCheckoutLoading: this.gitCheckoutLoading,
