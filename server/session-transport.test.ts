@@ -86,7 +86,7 @@ test("session views stream over one-use, same-origin WebSocket tickets", { timeo
   const closedBefore = unsubscribed;
   emit("closed", {});
   await until(() => connections.length === 4 && unsubscribed === closedBefore + 1);
-  assert.deepEqual(connections[3], ["stopped", "alpha: pi exited — this session is no longer streaming."]);
+  assert.deepEqual(connections[3], ["stopped", "alpha: The runtime exited — this session is no longer streaming."]);
 
   stops.push(subscribeSession("gone", handlers("gone: ")));
   await until(() => connections.length === 5);

@@ -11,7 +11,10 @@ export type GatewayHealth = {
     starting: number;
     idle: number;
     running: number;
+    waiting: number;
     error: number;
+    reconnecting: number;
+    disconnected: number;
     processes: number;
   };
 };

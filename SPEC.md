@@ -987,7 +987,15 @@ leaves worker records unchanged.
   resumes when the host starts again. HUI notices a silent connection within
   45 s, reconnects by itself and reopens the sessions the loss interrupted;
   reopening reattaches to the live session, replays its pending questions and
-  catches up on its transcript. A run that finished meanwhile is not
+  catches up on its transcript. Meanwhile the header and sidebar show
+  "Reconnecting to <worker>…" with one notice, "Connection to <worker> lost —
+  the session keeps running there. HUI reconnects automatically.", never a
+  failure; the composer keeps the draft, and sending waits for the worker.
+  When HUI is not retrying (the worker was disconnected or removed, or after a
+  gateway restart could not be reached) the session reads "Disconnected from
+  <worker>" with a **Reconnect** action, which connects the worker (explaining
+  when it no longer exists); opening the session alone never reconnects it.
+  Such sessions do not hold up a gateway restart or update. A run that finished meanwhile is not
   "recovered", even once its idle runtime has stopped or the host restarted;
   a PI run cut off mid-way (the host or its runtime stopped) is continued by
   HUI on the next open, as a local one after a gateway restart. Detached idle workers stop after ten minutes, an idle host

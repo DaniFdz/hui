@@ -916,6 +916,7 @@
 
 .app-shell .sidebar-session-attention__icon--question { color: var(--warn); }
 .app-shell .sidebar-session-attention__icon--error { color: var(--danger); }
+.app-shell .sidebar-session-attention__icon--away { color: var(--status-stopped); }
 
 .app-shell .sidebar-session-attention__icon svg {
   width: 15px;

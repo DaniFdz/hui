@@ -23,7 +23,7 @@ export type SessionsPageFilters = {
 export const DEFAULT_SESSIONS_PAGE_FILTERS: Readonly<SessionsPageFilters> = { status: "all", groupBy: "none" };
 
 const STATE_OPTIONS = [["all", "All"], ["active", "Active"], ["archived", "Archived"]] as const;
-const STATUS_OPTIONS = [["all", "Any"], ["running", "Running"], ["waiting", "Waiting"], ["idle", "Idle"], ["error", "Error"]] as const;
+const STATUS_OPTIONS = [["all", "Any"], ["running", "Running"], ["waiting", "Waiting"], ["idle", "Idle"], ["error", "Error"], ["reconnecting", "Reconnecting"], ["disconnected", "Disconnected"]] as const;
 const GROUP_OPTIONS = [["none", "None"], ["group", "Group"], ["project", "Project"]] as const;
 
 export type SessionsPageProps = {

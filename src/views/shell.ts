@@ -6,7 +6,7 @@ import { icons as openclawIcons } from "../components/openclaw/icons.ts";
 import { sessionMenuShortcuts } from "../lib/session-menu-shortcuts.ts";
 import { labelDropdown, closeDropdownOnEscape } from "../lib/web-awesome.ts";
 import { renderHoverMarquee } from "../lib/hover-marquee.ts";
-import { sessionGroupLabel, storedSessionGroup, type SessionGroup, type SessionView } from "../lib/sessions-store.ts";
+import { sessionGroupLabel, storedSessionGroup, unreachableHost, type SessionGroup, type SessionView } from "../lib/sessions-store.ts";
 import { subagentElapsed, subagentVisualState } from "../lib/subagent-activity.ts";
 import { customGroupOrder, sessionTreeRows, sidebarSessionGroups, type SidebarSessionGroup, type SidebarSessionOptions, type SidebarSessionTreeRow } from "../lib/sidebar-sessions.ts";
 import { renderSidebarSessionOptions } from "./sidebar-session-options.ts";
@@ -365,11 +365,13 @@ function sessionRow(session: SessionView, selected: boolean, props: ShellProps, 
   const linkedJira = session.jiraIssues?.at(-1);
   const canDrag = props.sessionMovePendingId !== session.id;
   const dragging = props.draggingSessionId === session.id;
+  const away = unreachableHost(session);
   const attention = session.status === "waiting"
-    ? { label: "Waiting for your answer", icon: icons.hand }
+    ? { label: "Waiting for your answer", icon: icons.hand, tone: "question" }
     : session.status === "error"
-      ? { label: "Session failed", icon: icons.alertTriangle }
-      : undefined;
+      ? { label: "Session failed", icon: icons.alertTriangle, tone: "error" }
+      // Calm, not a failure: the session goes on on its machine.
+      : away ? { label: away.status, icon: icons.plug, tone: "away" } : undefined;
   const unread = session.unread === true && !attention && !session.icon && session.status !== "running";
   // The Jira mark sits in the leading status column, aligned with child
   // status glyphs. Live status (attention, running, child result) takes the
@@ -414,7 +416,7 @@ function sessionRow(session: SessionView, selected: boolean, props: ShellProps, 
         }}
       >
         <span class="sidebar-session-indicator" title=${attention?.label ?? (session.creating ? worktreeProgressLabel(session.creating) : unread ? "Unread activity" : nothing)} aria-hidden="true">
-          ${attention ? html`<span class="session-glyph"><span class="session-glyph__content"><span class="sidebar-session-attention__icon sidebar-session-attention__icon--${session.status === "waiting" ? "question" : "error"}">${attention.icon}</span></span></span>` : nothing}
+          ${attention ? html`<span class="session-glyph"><span class="session-glyph__content"><span class="sidebar-session-attention__icon sidebar-session-attention__icon--${attention.tone}">${attention.icon}</span></span></span>` : nothing}
           ${!attention && session.status !== "running" && depth > 0 && session.subagent ? renderChildStatus(session.subagent.status) : nothing}
           ${session.status === "running" || session.creating ? html`<span class="session-glyph session-glyph--running session-glyph--bare"><span class="session-glyph__content"></span><span class="session-glyph__ring"></span></span>` : nothing}
           ${showJiraLead ? renderJiraBadge(session) : nothing}

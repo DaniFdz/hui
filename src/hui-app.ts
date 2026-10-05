@@ -172,7 +172,7 @@ import type { BacklogStartTarget } from "./components/backlog-start-dialog.ts";
 import { addSuggestionToBacklog, backlogItemMarkdown, loadBacklog, removeBacklogItem, setBacklogItemGroup, type BacklogItem, type BacklogJiraState } from "./lib/backlog.ts";
 import { loadJiraConnection } from "./lib/jira.ts";
 import type { AutomationProps } from "./views/settings-automation.ts";
-import { loadWorkers, type WorkerView } from "./lib/workers.ts";
+import { loadWorkers, workerAction, type WorkerView } from "./lib/workers.ts";
 import { hasOpenWebAwesomePopup } from "./lib/web-awesome.ts";
 import { APP_SHELL_DRAWER_MEDIA, closeDrawerOnEscape, renderMain, renderSidebar, type GroupDropTarget, type GroupMenuAction, type NavId, type SessionCopyAction, type SessionOpenAction } from "./views/shell.ts";
 import { writeClipboardText } from "./lib/clipboard.ts";
@@ -2007,7 +2007,7 @@ export class HuiApp extends HuiElement {
     this.requestModelsWhenReady(id, status);
     if (status === "idle") {
       this.flushPendingLaunchPrompt();
-    } else if (status === "error" && this.pendingLaunchPrompt) {
+    } else if ((status === "error" || status === "reconnecting" || status === "disconnected") && this.pendingLaunchPrompt) {
       this.composerDraftEdit += 1;
       this.draft = this.pendingLaunchPrompt;
       this.attachments = this.pendingLaunchAttachments;
@@ -3144,6 +3144,16 @@ export class HuiApp extends HuiElement {
     if (id && !this.opening) void this.openSelected(id);
   };
 
+  /** The worker's own connect: once it is up, the gateway reattaches its sessions. */
+  private reconnectSelected = () => {
+    const worker = this.selected?.worker;
+    if (!worker) return;
+    void workerAction(worker.id, "connect").catch((error: unknown) => {
+      this.note = error instanceof Error ? error.message : `Could not reconnect to ${worker.name}.`;
+      this.noteLevel = "error";
+    });
+  };
+
   private launch = (input: { cwd: string; title?: string; group?: string; prompt?: string; commandDraft?: string; model?: string; thinking?: string; worktree?: boolean; branchName?: string; baseRef?: string; worker?: string }) => {
     if (input.prompt && this.handleUpdateCommand(input.prompt)) return;
     if (this.launching) return;
@@ -4154,6 +4164,7 @@ export class HuiApp extends HuiElement {
       onCancelDelete: this.cancelDelete,
       onConfirmDelete: this.confirmDelete,
       onRetry: this.retrySelected,
+      onReconnect: this.reconnectSelected,
       launchDefaults: this.launchDefaults,
       launchModels,
       launchModel,

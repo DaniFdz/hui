@@ -20,7 +20,7 @@ export function normalizeSidebarSessionOptions(value: unknown): SidebarSessionOp
   return {
     groupBy: raw["groupBy"] === "project" || raw["groupBy"] === "none" ? raw["groupBy"] : "custom",
     sortBy: raw["sortBy"] === "created" || raw["sortBy"] === "title" || raw["sortBy"] === "stage" ? raw["sortBy"] : "updated",
-    status: (["idle", "running", "waiting", "starting", "error"] as const).find((status) => status === raw["status"]) ?? "all",
+    status: (["idle", "running", "waiting", "starting", "error", "reconnecting", "disconnected"] as const).find((status) => status === raw["status"]) ?? "all",
     hideEmpty: raw["hideEmpty"] === "always" || raw["hideEmpty"] === "never" ? raw["hideEmpty"] : "filtering",
   };
 }

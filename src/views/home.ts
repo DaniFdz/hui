@@ -4,7 +4,7 @@ import { html, nothing, type TemplateResult } from "lit";
 import { ref } from "lit/directives/ref.js";
 import { renderPaneMoveHandle } from "./pane-move-handle.ts";
 import { matchesModelSearch, modelSearchText } from "../lib/model-selection.ts";
-import { sessionGroupLabel } from "../lib/sessions-store.ts";
+import { sessionGroupLabel, unreachableHost } from "../lib/sessions-store.ts";
 import type {
   Attachment,
   RuntimeModel,
@@ -80,6 +80,8 @@ const STATUS_TEXT: Record<SessionStatus, string> = {
   waiting: "Waiting for your answer",
   starting: "Starting",
   error: "Error",
+  reconnecting: "Reconnecting",
+  disconnected: "Disconnected",
 };
 
 const SEND_LONG_PRESS_MS = 450;
@@ -299,6 +301,8 @@ export type HomeProps = {
   onCancelDelete: () => void;
   onConfirmDelete: () => void;
   onRetry: () => void;
+  /** Connects the machine a disconnected session runs on again. */
+  onReconnect: () => void;
   launchDefaults?: { group: string; cwd: string };
   /** Remote workers a new session can run on; none hides the picker. */
   launchWorkers?: readonly { id: string; name: string; state: string }[];
@@ -1393,7 +1397,9 @@ function renderAttachments(props: HomeProps) {
 function renderComposer(props: HomeProps) {
   // Locked for the whole boot too: a prompt sent while pi is starting is rejected.
   const booting = props.opening || props.session?.status === "starting";
-  const disconnected = props.connection !== "live";
+  // Unreachable, the session runs elsewhere: drafting stays open, sending waits.
+  const unreachable = props.session ? unreachableHost(props.session) : undefined;
+  const disconnected = props.connection !== "live" || unreachable !== undefined;
   const showStop = props.streaming && !props.draft.trim() && !props.attachments.some((item) => item.kind === "image");
   const canSend = !booting && !props.sending && !disconnected && Boolean(props.draft.trim() || props.attachments.some((item) => item.kind === "image"));
   return html`
@@ -1453,7 +1459,7 @@ function renderComposer(props: HomeProps) {
                 }
               }}
               @paste=${onComposerPaste(props)}
-              placeholder=${disconnected ? "Draft while HUI reconnects…" : props.streaming ? "Add to this run…" : "Send a message…"}
+              placeholder=${props.session?.status === "disconnected" ? "Draft while disconnected…" : disconnected ? "Draft while HUI reconnects…" : props.streaming ? "Add to this run…" : "Send a message…"}
               ?disabled=${booting || props.sending}
               aria-label="Message"
               role="combobox" aria-autocomplete="list" aria-haspopup="listbox"
@@ -1564,6 +1570,13 @@ function renderTaskProgress(props: HomeProps) {
 function renderConnection(props: HomeProps) {
   // Deliberately muted, not an error: a reconnect usually fixes itself, and a
   // scary red row would be a lie about a stream that is already coming back.
+  // So is a session whose machine is out of reach: it goes on there.
+  const unreachable = props.session ? unreachableHost(props.session) : undefined;
+  if (unreachable) {
+    return html`<p class="transcript__note" role="status">${unreachable.notice}${props.session?.status === "disconnected"
+      ? html` <button type="button" class="btn btn--sm reconnect-session" @click=${props.onReconnect}>Reconnect</button>`
+      : nothing}</p>`;
+  }
   return props.connectionNote
     ? html`<p class="transcript__note" role="status">${props.connectionNote}</p>`
     : nothing;
@@ -2070,7 +2083,7 @@ function renderHeader(props: HomeProps, session: SessionView) {
           <span class="session-row__dot" data-status=${session.status} aria-hidden="true"></span>
           <h2 class="transcript__title chat-pane__session-title" title=${session.title}>${session.title}</h2>
           <span class="transcript__meta" title=${session.cwd}>
-            ${session.parentId ? "Subagent" : session.tool}${session.worker ? ` on ${session.worker.name}` : ""} · ${sessionGroupLabel(session.group)} · ${STATUS_TEXT[session.status]}
+            ${session.parentId ? "Subagent" : session.tool}${session.worker ? ` on ${session.worker.name}` : ""} · ${sessionGroupLabel(session.group)} · ${unreachableHost(session)?.status ?? STATUS_TEXT[session.status]}
           </span>
         </div>`}
         ${session.parentId ? html`<button
