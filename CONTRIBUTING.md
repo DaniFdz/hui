@@ -256,7 +256,8 @@ No new token or PAT is needed: publication uses the workflow's `GITHUB_TOKEN`.
 ### Nightly builds
 
 The Nightly workflow runs on every push to `main`. It runs typecheck, the full
-test suite and the installed-package proof, stamps the package with
+test suite and the installed-package proof, and runs that proof again on macOS,
+where the installation, desktop and update paths differ. It stamps the package with
 `scripts/nightly-version.mjs` (a prerelease of the next patch, such as
 `0.1.3-nightly.20261004131149.gb0f30d5`) and replaces the rolling `nightly`
 GitHub prerelease with that archive and its checksum. A newer push cancels an

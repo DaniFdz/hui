@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { execFile, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { once } from "node:events";
-import { cp, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { createServer, get } from "node:http";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -20,7 +20,9 @@ const nextVersion = baseline.replace(/\d+$/u, (patch) => String(Number(patch) + 
 const brokenVersion = baseline.replace(/\d+$/u, (patch) => String(Number(patch) + 2));
 
 test("installed package lifecycle, real SDK resume, verified update and rollback", { timeout: 360_000 }, async (t) => {
-  const temporary = await mkdtemp(join(tmpdir(), "hui-package-proof-"));
+  // The installed CLI reports canonical locations, so resolve the temporary
+  // directory first: macOS puts it behind the /var -> /private/var symlink.
+  const temporary = await realpath(await mkdtemp(join(tmpdir(), "hui-package-proof-")));
   const prefix = join(temporary, "prefix");
   const agentDir = join(temporary, "agent");
   const workspace = join(temporary, "workspace");

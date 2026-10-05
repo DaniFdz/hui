@@ -53,8 +53,23 @@ jobs:
             hui-*.tgz
             hui-*.tgz.sha256
           if-no-files-found: error
+  # The installed-package proof resolves installation paths and launches the
+  # desktop shell differently on macOS, which the Linux job above never sees.
+  package-macos:
+    if: github.event.repository.private == false && github.ref == 'refs/heads/main'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+          cache: npm
+      # Match the npm major used to generate the committed lockfile.
+      - run: npm install -g npm@11
+      - run: npm ci --ignore-scripts
+      - run: npm run test:package
   publish:
-    needs: package
+    needs: [package, package-macos]
     runs-on: ubuntu-latest
     permissions:
       contents: write
