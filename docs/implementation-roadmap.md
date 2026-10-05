@@ -702,8 +702,8 @@ for now. It lands as stacked pull requests:
    plain requests, fresh turns, a frozen view across a tool loop and a restart,
    zoom and date, declined compaction, catch-up without duplicates, waiting for
    summaries and Stop).
-2. **Bots backend and `hui bot`** (implemented 2026-10-05; Bots tab and browser
-   E2E pending): `bots.json` registry and `shared/bots.ts` types; bot chats as
+2. **Bots backend and `hui bot`** (implemented 2026-10-05; browser proof
+   with item 3): `bots.json` registry and `shared/bots.ts` types; bot chats as
    ordinary Durable sessions whose conversation is created with its persona,
    `hui.bot` document and OptChat in one commit; edit (an empty model or
    thinking level goes back to the gateway defaults), archive (routines
@@ -732,20 +732,26 @@ for now. It lands as stacked pull requests:
    `message_bot`, a fresh second turn and every read),
    `server/live-sessions.test.ts`, `cli/main.test.ts` and `cli/bots.test.ts`
    (a fake gateway and a scripted terminal).
-3. **Bots tab** (UI; implemented 2026-10-05, browser proof of the Memory panel
-   against real OptChat memory pending): Settings → Sessions → *Show the Bots
+3. **Bots tab** (UI; done 2026-10-05): Settings → Sessions → *Show the Bots
    tab* (off by default); the Sessions | Bots tab strip; bot chats filtered from
    every session list and picker; the roster (activity order, search, unread,
-   badges, New bot, Edit, Hide/Unhide, Archive with Restore) fed by
-   `/__hui/bots/events`; `/bots/<id>` rendering the bot's chat in the ordinary
-   session pane without `/clear`, `/compact` or rewind; the Routines | Memory
-   panel (a sheet on narrow screens). Proof: `src/lib/bots.test.ts`,
+   badges, New bot, Edit, Hide/Unhide, Archive with Restore, *Show archived*
+   with Restore) fed by `/__hui/bots/events`; the dialog's *Gateway default*
+   for the model and thinking level (clearing them on edit); `/bots/<id>`
+   rendering the bot's chat in the ordinary session pane without `/clear`,
+   `/compact` or rewind; the Routines | Memory panel (a sheet on narrow
+   screens), whose Memory tab shows the memory's stats and summarizer spend,
+   follows the bots stream while open, zooms a line down to its message and
+   links the memory page; bot routines' schedules worded on the Automations
+   page as in the panel. Proof: `src/lib/bots.test.ts`,
    `src/lib/bot-roster.test.ts`, `src/lib/bot-routines.test.ts`,
    `src/lib/bot-memory.test.ts`, `src/lib/navigation.test.ts`,
-   `src/lib/settings.test.ts`, `src/lib/slash-commands.test.ts` and the
-   Browser-tool journey `e2e/bots.browser.md` (create, chat, routine with Run
-   now, edit, hide, archive, lists without the bot chat, desktop, mobile and
-   landscape).
+   `src/lib/settings.test.ts`, `src/lib/slash-commands.test.ts`,
+   `src/views/settings-automation.test.ts` and the Browser-tool journey
+   `e2e/bots.browser.md` (create, chat, routine with Run now, real OptChat
+   memory live in the panel with *Summarizing memory…*, zoom to a message, the
+   memory page, Gateway default, hide, archive, Show archived and Restore, lists
+   without the bot chat, desktop, mobile and landscape).
 4. Voice through VoiceStudio. Not started.
 
 ## Recommended implementation order
