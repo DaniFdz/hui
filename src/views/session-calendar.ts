@@ -201,7 +201,7 @@ export class HuiSessionCalendar extends LitElement {
         · ${time(block.start)} – ${time(block.end)} · ${formatDuration(block.end - block.start)}
       </div>
       <div class="session-calendar__popover-meta">
-        <span class="session-calendar__chip"><span class="session-calendar__dot" data-color=${color}></span>${session.group || "Ungrouped"}</span>
+        <span class="session-calendar__chip"><span class="session-calendar__dot" data-color=${color}></span>${session.group || "Other"}</span>
         ${block.model ? html`<span>${modelName(block.model)}</span>` : nothing}
       </div>
       ${block.firstMessage ? html`<div class="session-calendar__popover-label">First message</div>
