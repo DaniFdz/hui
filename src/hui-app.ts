@@ -83,7 +83,7 @@ import {
   zoomBotMemory,
   type BotView,
 } from "./lib/bots.ts";
-import { readBotPanel, readSidebarTab, writeBotPanel, writeSidebarTab, type BotPanelState, type BotPanelTab, type SidebarTab } from "./lib/bot-roster.ts";
+import { hiddenBotCount, readBotPanel, readSidebarTab, writeBotPanel, writeSidebarTab, type BotPanelState, type BotPanelTab, type SidebarTab } from "./lib/bot-roster.ts";
 import { parseMemoryView, parseMemoryZoom, type MemoryLine } from "./lib/bot-memory.ts";
 import { renderBotArchiveDialog, renderBotDialog, renderBotPanel, renderBotPlaceholder, type BotFormValues, type BotMemoryState, type MemoryZoomState } from "./views/bots.ts";
 import { checkUpdate, checkUpdateInBackground, installUpdate, loadUpdate } from "./lib/update-store.ts";
@@ -3770,6 +3770,8 @@ export class HuiApp extends HuiElement {
     void updateBot(bot.id, { hidden })
       .then((updated) => {
         this.bots = upsertBot(this.bots, updated);
+        // With nothing hidden any more, the next hidden bot starts out of sight again.
+        if (!hiddenBotCount(this.bots)) this.showHiddenBots = false;
         this.botNotice = hidden ? `${updated.name} is hidden. Show hidden lists it again.` : `${updated.name} is back in the roster.`;
         this.botNoticeFailed = false;
       })

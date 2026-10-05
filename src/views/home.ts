@@ -1074,7 +1074,7 @@ function renderTranscriptRows(props: HomeProps, rows: readonly ChatProjectionRow
     return html`<div class="chat-group ${row.role} chat-group--with-footer ${row.id === latestAssistantRowId ? "chat-group--latest-assistant" : ""}" data-chat-row-key=${row.id}>
       <div class="chat-group-messages">${row.messages.map((item) => renderMessage(props, item))}</div>
       ${last?.pending ? nothing : html`<div class="chat-group-footer ${row.role === "user" ? "chat-group-footer--persistent-identity" : ""}">
-        <div class="chat-group-footer__meta"><span class="chat-sender-name">${row.role === "user" ? "You" : "pi"}</span>
+        <div class="chat-group-footer__meta"><span class="chat-sender-name">${row.role === "user" ? "You" : props.session?.bot?.name ?? "pi"}</span>
           ${last?.metrics?.completedAt !== undefined || last?.metrics?.timestamp !== undefined ? html`<time class="chat-group-timestamp" datetime=${new Date(last.metrics.completedAt ?? last.metrics.timestamp!).toISOString()} title=${`${last.metrics.completedAt !== undefined ? "Completed" : "Message created"}: ${new Date(last.metrics.completedAt ?? last.metrics.timestamp!).toLocaleString()}`}>${relativeTime(last.metrics.completedAt ?? last.metrics.timestamp!)}</time>` : nothing}</div>
         ${last?.text ? html`<div class="chat-group-footer-actions">${renderActionTooltip(sessionControlId(props, `reply-tooltip-${row.id}`), "Reply", html`
           <button type="button" class="chat-copy-btn" aria-label="Reply to message" aria-describedby=${sessionControlId(props, `reply-tooltip-${row.id}`)} @click=${(event: Event) => replyToMessage(event, props, last.text)}>${icons.messageSquare}</button>
@@ -2092,7 +2092,7 @@ function renderDeleteConfirmation(props: HomeProps, session: SessionView) {
 function renderBotIdentity(bot: HomeBot, session: SessionView) {
   const status = bot.bot.memory?.waiting ? "Summarizing memory…" : unreachableHost(session)?.status ?? STATUS_TEXT[session.status];
   return html`<div class="transcript__identity chat-pane__crumbs bot-chat-identity">
-    ${renderBotAvatar(bot.bot, "sm")}
+    ${renderBotAvatar(bot.bot, "md")}
     <h2 class="transcript__title chat-pane__session-title" title=${bot.bot.name}>${bot.bot.name}</h2>
     <span class="transcript__meta" title=${session.cwd}>${bot.bot.title ? `${bot.bot.title} · ` : ""}${status}</span>
   </div>`;

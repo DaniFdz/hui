@@ -157,6 +157,8 @@
   min-width: 0;
 }
 .app-shell .bot-row__name {
+  flex: 0 1 auto;
+  min-width: 0;
   overflow: hidden;
   color: var(--text);
   font-size: calc(13px * var(--control-ui-text-scale));
@@ -253,9 +255,21 @@
 .bot-workspace--placeholder { flex-direction: column; }
 .bot-workspace__header { flex: 0 0 auto; min-height: 48px; padding: 0 6px 0 12px; }
 .bot-workspace__message { flex: 1; }
-.bot-chat-identity { display: flex; align-items: center; gap: 8px; min-width: 0; }
+/* The header names the bot beside its avatar: name above role and status. */
+.transcript__head .chat-pane__crumbs.bot-chat-identity {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  align-items: center;
+  column-gap: 8px;
+  row-gap: 1px;
+}
+.transcript__head .chat-pane__crumbs.bot-chat-identity > .bot-avatar { grid-row: 1 / 3; }
 .bot-chat-empty { gap: 10px; }
 .bot-chat-empty .bot-avatar { margin-bottom: 4px; }
+/* The empty-state copy styles every span; the avatar keeps its own size. */
+.agent-chat__empty .bot-avatar--lg .bot-avatar__glyph { font-size: 22px; }
+.agent-chat__empty .bot-avatar--lg.bot-avatar--emoji .bot-avatar__glyph { font-size: 28px; }
 
 /* ── side panel ── */
 .bot-panel {
@@ -431,6 +445,9 @@
 .bot-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; margin: 0; padding: 0; border: 0; }
 .bot-field__label { padding: 0; color: var(--muted); font-size: var(--control-ui-text-xs); font-weight: 600; }
 .bot-field .settings-input { width: 100%; }
+/* Prompts and instructions are prose: wrap them in the interface font. */
+.bot-field textarea.settings-input,
+.bot-dialog textarea.settings-input { font-family: inherit; white-space: pre-wrap; overflow-wrap: anywhere; }
 .bot-field textarea.settings-input { min-height: 72px; resize: vertical; }
 .bot-field__hint { margin: 0; color: var(--muted); font-size: var(--control-ui-text-xs); line-height: 1.4; }
 .bot-field__error { margin: 0; color: var(--danger); font-size: var(--control-ui-text-sm); overflow-wrap: anywhere; }

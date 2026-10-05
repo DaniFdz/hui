@@ -111,10 +111,10 @@ function botRow(bot: BotView, props: BotRosterProps, drawer: RosterDrawer) {
         <span class="bot-row__top">
           <span class="bot-row__name sidebar-recent-session__name">${bot.name}</span>
           ${bot.memory?.failing ? html`<span class="bot-row__warning" title=${`Memory summaries are failing: ${bot.memory.failing.error}`}>${icons.alertTriangle}</span>` : nothing}
-          ${bot.hidden ? html`<span class="bot-row__tag">Hidden</span>` : nothing}
           <time class="bot-row__time" datetime=${at ? new Date(at).toISOString() : nothing} title=${at ? new Date(at).toLocaleString() : nothing}>${compactRelativeTime(at, props.now)}</time>
         </span>
         <span class="bot-row__bottom">
+          ${bot.hidden ? html`<span class="bot-row__tag">Hidden</span>` : nothing}
           <span class="bot-row__preview">${preview}</span>
           ${unread ? html`<span class="sidebar-session-unread-dot bot-row__unread" title="Unread"></span>` : nothing}
         </span>
@@ -158,9 +158,12 @@ export function renderBotRoster(props: BotRosterProps, drawer: RosterDrawer) {
         <button type="button" class="btn btn--sm" @click=${props.onRetry}>Retry</button></div>`;
     }
     if (props.loading) return html`<p class="sidebar-list__note" role="status">Loading bots…</p>`;
+    const archived = props.bots.filter((bot) => bot.archived).length;
     return html`${notice}<div class="sidebar-empty bot-roster__empty">
-      <p class="bot-roster__empty-title">No bots yet</p>
-      <p class="sidebar-list__note">A bot is a named agent with one permanent chat, its own model and a memory that summarizes older messages by itself. Routines can message it on a schedule.</p>
+      <p class="bot-roster__empty-title">${archived ? "No active bots" : "No bots yet"}</p>
+      <p class="sidebar-list__note">${archived
+        ? html`${archived === 1 ? "One archived bot keeps its chat and memory" : `${archived} archived bots keep their chats and memory`}; <code>hui bot restore</code> brings ${archived === 1 ? "it" : "one"} back.`
+        : "A bot is a named agent with one permanent chat, its own model and a memory that summarizes older messages by itself. Routines can message it on a schedule."}</p>
       <button type="button" class="btn btn--sm bot-roster__new" @click=${(event: Event) => { drawer.dialog(event); props.onNew(); }}>${icons.plus}<span>New bot</span></button>
     </div>`;
   }
