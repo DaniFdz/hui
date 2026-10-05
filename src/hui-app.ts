@@ -964,7 +964,8 @@ export class HuiApp extends HuiElement {
   /** Lit cannot autofocus a field that appears on a later render, and typing
    * straight into a rename is the whole point of an inline field. */
   override updated(changed: PropertyValues) {
-    const textarea = !this.embeddedPane && this.view === "home" && this.selected
+    // Session and bot panes measure their own composers.
+    const textarea = !this.embeddedPane && ((this.view === "home" && this.selected) || this.view === "bot")
       ? null : this.renderRoot.querySelector<HTMLTextAreaElement>(".agent-chat__composer-combobox > textarea");
     if (textarea !== this.composerTextarea) {
       if (this.composerTextarea) disconnectTextareaOverflowObserver(this.composerTextarea);
@@ -1128,7 +1129,7 @@ export class HuiApp extends HuiElement {
     this.stopAutomationPolling();
     this.stopBotMemoryPolling();
     if (target.kind === "bot") {
-      // Bots are part of the sidebar only while Settings → Bots shows the tab.
+      // Bots exist in the UI only while Settings → Sessions shows the Bots tab.
       if (this.embeddedPane || !this.settings.bots.showTab) {
         this.navigate({ kind: "home" }, true);
         return;
