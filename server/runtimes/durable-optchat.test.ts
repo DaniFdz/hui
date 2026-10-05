@@ -313,9 +313,10 @@ test("an OptChat turn starts fresh from the view: system messages, then the view
   assert.deepEqual([context!.text, context!.cache_control !== undefined], ["<chat>\n\n</chat>", true]);
   assert(step!.text!.startsWith("For scale, this line is exactly 512 bytes:\n"), String(step!.text));
   assert.match(JSON.stringify(compactor[0]!.system), /You write the memory of Grok/u);
-  const status = await host.optchat.status(id);
-  assert.equal(status?.messages, 4);
-  assert.equal(status?.usage.calls, 1);
+  // The log catches up with the second turn beside it: status() does not wait for that, so wait for its report.
+  const status = await statusWhere(host, id, (current) => current.messages === 4);
+  assert.equal(status.messages, 4);
+  assert.equal(status.usage.calls, 1);
 });
 
 test("the compactor's size loop runs through the provider and keeps the shortest line", { timeout: 45_000 }, async (t) => {
