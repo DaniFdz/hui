@@ -571,7 +571,7 @@ test("a dropped connection leaves a session reconnecting, and HUI's own reconnec
   }
 });
 
-test("a session whose worker was disconnected or removed is disconnected, and an open does not reconnect it", async () => {
+test("a session whose worker was disconnected or removed is disconnected, and no open reconnects it", async () => {
   const { LiveSessions } = await import("./live-sessions.ts");
   const key = "remote-durable-disconnected";
   await registerRemote(key);
@@ -579,16 +579,27 @@ test("a session whose worker was disconnected or removed is disconnected, and an
   try {
     manager.ensure((await readRegistry()).find((item) => item.id === key)!);
     await waitFor(() => manager.status(key) === "idle" || undefined, "the session to start");
-    workers.disconnect(workerId);
+    // As Settings → Workers → Disconnect does.
+    workers.disconnect(workerId, true);
     await waitFor(() => manager.status(key) === "disconnected" || undefined, "the session to show the disconnect");
     manager.ensure((await readRegistry()).find((item) => item.id === key)!);
     assert.equal(manager.status(key), "disconnected");
+    // Nor does opening it afresh, after a gateway restart say.
+    const fresh = new LiveSessions();
+    try {
+      fresh.ensure((await readRegistry()).find((item) => item.id === key)!);
+      await waitFor(() => fresh.status(key) === "disconnected" || undefined, "a fresh open to show the disconnect");
+    } finally {
+      fresh.disposeAll();
+    }
     assert.equal((await workers.list()).find((worker) => worker.id === workerId)?.state, "disconnected", "opening the session left the worker alone");
     const gone = { ...(await readRegistry()).find((item) => item.id === key)!, id: `${key}-gone`, worker: "removed-worker" };
     manager.ensure(gone);
     await waitFor(() => manager.status(gone.id) === "disconnected" || undefined, "a removed worker's session to show the disconnect");
   } finally {
     manager.disposeAll();
+    // The user's reconnect; later tests open sessions on the worker again.
+    await workers.connect(workerId);
   }
 });
 

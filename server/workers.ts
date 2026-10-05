@@ -493,6 +493,8 @@ export class WorkerService {
   /** Last reconnect attempt per worker, so quick failures keep backing off. */
   #attempts = new Map<string, number>();
   #names = new Map<string, string>();
+  /** Workers the user disconnected: opening a session never reconnects them. */
+  #disconnectedByUser = new Set<string>();
 
   async #read(): Promise<WorkerConfig[]> {
     const list = await readWorkers();
@@ -591,6 +593,7 @@ export class WorkerService {
 
   /** The live connection, opening (and if needed installing) it first. */
   connect(id: string): Promise<WorkerConnection> {
+    this.#disconnectedByUser.delete(id);
     const current = this.#connections.get(id);
     if (current && !current.closed) return Promise.resolve(current);
     const pending = this.#connecting.get(id);
@@ -660,7 +663,9 @@ export class WorkerService {
     this.#reconnect.set(id, { timer, attempt });
   }
 
-  disconnect(id: string): void {
+  /** `byUser`: it stays disconnected until the user connects it again. */
+  disconnect(id: string, byUser = false): void {
+    if (byUser) this.#disconnectedByUser.add(id);
     this.#generation.set(id, (this.#generation.get(id) ?? 0) + 1);
     const timer = this.#reconnect.get(id);
     if (timer) clearTimeout(timer.timer);
@@ -694,6 +699,7 @@ export class WorkerService {
     // An unreachable (or removed) worker says nothing about the session, which
     // may well be running there.
     const unreachable = (error: unknown) => new RuntimeUnreachableError(error instanceof Error ? error.message : String(error), this.#reconnect.has(id));
+    if (this.#disconnectedByUser.has(id)) throw unreachable(`Disconnected from ${this.nameOf(id) ?? "the worker"}.`);
     const connection = await this.connect(id).catch((error: unknown) => { throw unreachable(error); });
     // Reported in Settings; never a reason to refuse a running session.
     await connection.ensureSynced().catch(() => undefined);

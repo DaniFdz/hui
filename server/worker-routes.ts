@@ -52,7 +52,7 @@ export function createWorkerRoutes(deps: Deps) {
       }
       if (method !== "POST") return { status: 405, body: { error: "method not allowed" } };
       await service.get(id);
-      if (action === "disconnect") service.disconnect(id);
+      if (action === "disconnect") service.disconnect(id, true);
       else connectInBackground(id, action === "sync");
       return { status: action === "disconnect" ? 200 : 202, body: { ok: true } };
     } catch (error) {

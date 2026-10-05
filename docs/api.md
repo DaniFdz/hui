@@ -1004,8 +1004,10 @@ saw start finished there meanwhile. A subagent or automation run waiting on a
 session fails once it is `disconnected`. A disconnect or removal stops the retries and
 reports `disconnected`, as does opening a worker session whose worker cannot be
 reached while no retry is scheduled (after a gateway restart, say). Opening a
-`reconnecting` or `disconnected` session never connects its worker; any
-successful `connect` (automatic or this route) reattaches them. Prompts and
+`reconnecting` or `disconnected` session never connects its worker, nor does
+opening any session of a worker this route disconnected (gateway memory, until
+a `connect` or `sync`); any successful `connect` (automatic or this route)
+reattaches them. Prompts and
 other runtime requests to them return 409 with a message saying why.
 
 ## Routes
