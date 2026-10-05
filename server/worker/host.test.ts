@@ -76,3 +76,16 @@ test("the remote's own login is only opened once it exists, so no file appears o
   await writeFile(path, JSON.stringify({ fx: { type: "api_key", key: "own-key" } }));
   assert.deepEqual(await login.read("fx"), { type: "api_key", key: "own-key" });
 });
+
+test("folder suggestions list directories on the worker, not the gateway", async () => {
+  await mkdir(join(root, "remote-project"), { recursive: true });
+  await writeFile(join(root, "remote-file"), "");
+  const socket = connect(host.paths.socket);
+  const peer = attachPeer(socket, socket);
+  try {
+    const { directories } = await peer.request<{ directories: string[] }>("directories", { q: "~/remote" });
+    assert.deepEqual(directories, ["~/remote-project/"]);
+  } finally {
+    socket.destroy();
+  }
+});

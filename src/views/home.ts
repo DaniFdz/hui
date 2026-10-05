@@ -421,10 +421,12 @@ function renderWorkerPicker(props: HomeProps) {
       <span class="new-session-page__target-icon">${selected ? icons.globe : icons.terminal}</span><span data-launch-worker>${selected?.name ?? "Local"}</span>
       <span class="new-session-page__trigger-chevron" aria-hidden="true">${chevronDownIcon}</span>
     </summary>
-    <div class="new-session-page__group-menu" role="menu" aria-label="Run on">
-      <button type="button" role="menuitemradio" aria-checked=${String(!selected)} @click=${(event: Event) => choose(event, undefined)}>Local</button>
+    <div class="new-session-page__group-menu new-session-page__worker-menu" role="menu" aria-label="Run on">
+      <button type="button" role="menuitemradio" aria-checked=${String(!selected)} @click=${(event: Event) => choose(event, undefined)}>${local}Local</button>
+      <div class="session-menu__separator" role="separator"></div>
+      <div class="new-session-page__menu-note">Remote workers</div>
       ${workers.map((worker) => html`<button type="button" role="menuitemradio" aria-checked=${String(worker.id === selected?.id)}
-        @click=${(event: Event) => choose(event, worker.id)}>${worker.name}${worker.state === "connected" ? "" : html` <span class="settings-row__muted">· ${worker.state === "error" ? "offline" : worker.state}</span>`}</button>`)}
+        @click=${(event: Event) => choose(event, worker.id)}><span class="new-session-page__target-icon">${icons.globe}</span>${worker.name}${worker.state === "connected" ? "" : html` <span class="settings-row__muted">· ${worker.state === "error" ? "offline" : worker.state}</span>`}</button>`)}
     </div>
   </details>`;
 }

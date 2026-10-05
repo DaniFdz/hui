@@ -1681,12 +1681,14 @@ visible session context through a separate in-memory utility-model call with
 tools and thinking disabled. Nothing is written to PI's transcript. The browser
 renders the result in an ephemeral side rail; `/side` is an alias for `/btw`.
 
-### `GET /__hui/directories?q=<prefix>`
+### `GET /__hui/directories?q=<prefix>[&worker=<id>]`
 
 Returns `{ "directories": string[] }`: existing directories matching the typed
 prefix, used to complete the working directory of a new session or a group
 default. `~` expands to the home directory and relative input resolves against
-it. Directories only; nothing is created.
+it. Directories only; nothing is created. With `worker`, the directories are
+listed on that remote worker (connecting it first); an unreachable worker, or
+one the user disconnected, returns an empty list.
 
 ### `GET /__hui/local-paths?cwd=<directory>&q=<path-prefix>`
 
