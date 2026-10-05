@@ -107,6 +107,18 @@ failures the browser reported, across restarts.
 Settings → Logs shows the running gateway's entries, and **Export diagnostics**
 saves them as JSON.
 
+Remote workers (Settings → Workers) can be managed from a terminal too, through
+the running gateway. A new worker connects at once; edit changes only the fields
+given (a new command applies on the next connect), and `--extra-path`,
+repeatable, replaces the list:
+
+```sh
+hui workers list
+hui workers add --name devbox --command "ssh -o BatchMode=yes devbox"
+hui workers edit devbox --extra-path ~/.pi/agent/mcp.json
+hui workers remove devbox
+```
+
 On a headless host, use `hui ui --no-open` to print the URL without opening a
 browser. `hui browser` is an alias for `hui ui`. The development launcher is
 separate from an installed production gateway.

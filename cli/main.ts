@@ -25,6 +25,10 @@ export const HELP = `Usage:
   hui update --from <local.tgz> [--sha256 <digest>]
   hui update --rollback
   hui doctor [--fix] [--json]
+  hui workers list [--json]
+  hui workers add --name <name> --command <connect command> [--extra-path <path>] [--json]
+  hui workers edit <name|id> [--name <name>] [--command <connect command>] [--extra-path <path>] [--json]
+  hui workers remove <name|id> [--json]
   hui --version
 
 HUI_GATEWAY_HOST and HUI_GATEWAY_PORT configure defaults; CLI flags override them.
@@ -40,6 +44,10 @@ latest stable release; a plain hui update returns to stable once one is newer.
 Doctor reports state an upgraded HUI needs changed, such as sessions still on PI;
 --fix changes it while the gateway is stopped. It exits 1 while anything remains.
 Gateway without a subcommand is an alias for foreground run.
+Workers are the remote machines of Settings → Workers, managed through the
+running gateway. A new worker connects at once; --extra-path is repeatable and
+on edit replaces the list. Edit changes only the fields given; a new command
+applies the next time the worker connects.
 `;
 
 export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {
@@ -49,19 +57,23 @@ export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {
     "allow-host": { type: "string", multiple: true },
     "no-open": { type: "boolean" }, from: { type: "string" }, sha256: { type: "string" }, rollback: { type: "boolean" },
     check: { type: "boolean" }, fix: { type: "boolean" }, nightly: { type: "boolean" },
+    name: { type: "string" }, command: { type: "string" }, "extra-path": { type: "string", multiple: true },
   } });
   if (values.help || !args.length) return { command: "help", values };
   if (values.version) return { command: "version", values };
   const [first, second, ...extra] = positionals;
-  const command = first === "gateway" ? `gateway ${second ?? "run"}` : first;
+  const command = first === "gateway" ? `gateway ${second ?? "run"}` : first === "workers" ? `workers ${second ?? "list"}` : first;
+  // `workers edit` and `workers remove` name the worker they act on.
+  const target = command === "workers edit" || command === "workers remove" ? extra.shift() : undefined;
   const allowed: Record<string, string[]> = {
     "gateway start": ["host", "port", "json", "allow-host"], "gateway run": ["host", "port", "allow-host"],
     "gateway stop": ["force", "json"], "gateway restart": ["host", "port", "force", "json", "allow-host"],
     "gateway status": ["json"], "gateway logs": ["lines"], ui: ["no-open"], browser: ["no-open"],
     update: ["from", "sha256", "rollback", "check", "json", "nightly"], desktop: [], "install-app": [],
-    doctor: ["fix", "json"],
+    doctor: ["fix", "json"], "workers list": ["json"], "workers add": ["name", "command", "extra-path", "json"],
+    "workers edit": ["name", "command", "extra-path", "json"], "workers remove": ["json"],
   };
-  if (!command || !allowed[command] || extra.length || first !== "gateway" && second) throw new Error("Unknown command. Run hui --help.");
+  if (!command || !allowed[command] || extra.length || first !== "gateway" && first !== "workers" && second) throw new Error("Unknown command. Run hui --help.");
   for (const flag of Object.keys(values)) if (!allowed[command]!.includes(flag)) throw new Error(`--${flag} is not valid for ${command}.`);
   if (["gateway start", "gateway run", "gateway restart"].includes(command)) {
     values.host ??= env["HUI_GATEWAY_HOST"];
@@ -74,7 +86,10 @@ export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {
   if (values.sha256 && !/^[a-fA-F0-9]{64}$/u.test(values.sha256)) throw new Error("--sha256 must be a 64-character hexadecimal digest.");
   if (values.check && (values.from || values.sha256 || values.rollback)) throw new Error("--check cannot be combined with --from, --sha256 or --rollback.");
   if (values.nightly && (values.from || values.sha256 || values.rollback)) throw new Error("--nightly cannot be combined with --from, --sha256 or --rollback.");
-  return { command, values };
+  if (command === "workers add" && (!values.name || !values.command)) throw new Error("workers add needs --name and --command.");
+  if ((command === "workers edit" || command === "workers remove") && !target) throw new Error(`${command} needs the worker's name or id.`);
+  if (command === "workers edit" && values.name === undefined && values.command === undefined && !values["extra-path"]) throw new Error("workers edit needs --name, --command or --extra-path.");
+  return { command, values, ...(target ? { target } : {}) };
 }
 
 export function binding(host = "127.0.0.1"): { host: string; allowedHosts: string[] } {
@@ -89,7 +104,7 @@ export function binding(host = "127.0.0.1"): { host: string; allowedHosts: strin
 }
 
 export async function main(args: string[], installation: Installation): Promise<void> {
-  const { command, values } = parseCli(args);
+  const { command, values, target } = parseCli(args);
   if (command === "help") { process.stdout.write(HELP); return; }
   if (command === "version") { console.log(await packageVersion(installation.packageRoot)); return; }
   if (command === "desktop" || command === "install-app") {
@@ -108,6 +123,15 @@ export async function main(args: string[], installation: Installation): Promise<
     const result = await runDoctor({ fix: values.fix === true });
     console.log(values.json ? JSON.stringify(result) : formatDoctorReport(result));
     if (!result.ok) process.exitCode = 1;
+    return;
+  }
+  if (command.startsWith("workers ")) {
+    const status = await gatewayStatus();
+    if (status.status !== "running" || !status.url) throw new Error("Gateway is not running. Start it with hui gateway start.");
+    const { formatWorkers, workersCommand } = await import("./workers.ts");
+    const action = command.slice("workers ".length);
+    const result = await workersCommand(status.url, action, target, values);
+    if (action === "list" && !values.json) console.log(formatWorkers(result as Parameters<typeof formatWorkers>[0])); else report(result);
     return;
   }
   if (command === "gateway status") { const status = await gatewayStatus(); report(status); if (status.status === "unresponsive") process.exitCode = 1; return; }
