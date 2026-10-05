@@ -356,8 +356,20 @@ export async function restoreBot(id: string): Promise<BotView> {
     "The restored bot did not come back.");
 }
 
+/** 503: this build of the gateway has no OptChat memory. Unlike a failed read,
+ * asking again cannot change that until the gateway is updated. */
+export class BotMemoryUnavailableError extends Error {
+  override name = "BotMemoryUnavailableError";
+}
+
 export async function loadBotMemory(id: string): Promise<BotMemory> {
-  return parseBotMemory(await fetchJson<unknown>(botUrl(id, "/memory")));
+  const response = await trackedFetch(botUrl(id, "/memory"), { headers: CLIENT_HEADERS, cache: "no-store", signal: AbortSignal.timeout(5000) });
+  const body = await response.json().catch(() => undefined) as unknown;
+  if (!response.ok) {
+    const message = isRecord(body) && typeof body["error"] === "string" ? body["error"] : `The bot's memory returned HTTP ${response.status}.`;
+    throw response.status === 503 ? new BotMemoryUnavailableError(message) : new Error(message);
+  }
+  return parseBotMemory(body);
 }
 
 /** One line of the view opened into its two halves, or a message whole (n = 1). */

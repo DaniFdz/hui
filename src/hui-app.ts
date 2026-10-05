@@ -73,6 +73,7 @@ import {
   inertMemoryPage,
   loadBotMemoryPage,
   createBot,
+  BotMemoryUnavailableError,
   loadBotMemory,
   loadBots,
   restoreBot,
@@ -3939,6 +3940,8 @@ export class HuiApp extends HuiElement {
     } catch (error) {
       if (request !== this.botMemoryRequest) return;
       this.botMemory = { ...this.botMemory, loading: false, error: error instanceof Error ? error.message : "Could not read the bot's memory." };
+      // Polling cannot make a build without OptChat grow one; Retry still asks.
+      if (error instanceof BotMemoryUnavailableError) this.stopBotMemoryPolling();
     } finally {
       if (request === this.botMemoryRequest) this.botMemoryInFlight = false;
     }

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { applyBotsUpdate, botInputFromDraft, botPatchFromDraft, inertMemoryPage, isBotSession, parseBotsUpdate, subscribeBots, parseBot, parseBotList, parseBotMemory, parseBotMemoryStatus, upsertBot, withoutBotSessions, type BotDraft, type BotView } from "./bots.ts";
+import { applyBotsUpdate, botInputFromDraft, BotMemoryUnavailableError, botPatchFromDraft, inertMemoryPage, isBotSession, loadBotMemory, parseBotsUpdate, subscribeBots, parseBot, parseBotList, parseBotMemory, parseBotMemoryStatus, upsertBot, withoutBotSessions, type BotDraft, type BotView } from "./bots.ts";
 import type { SessionGroup, SessionView } from "./sessions-store.ts";
 
 const RECORD = {
@@ -127,6 +127,29 @@ test("the memory page copy gets a no-script, no-load policy at the top of its he
   assert.match(inertMemoryPage("<!DOCTYPE html><body>x</body>"), /^<!DOCTYPE html><meta http-equiv/u);
   assert.match(inertMemoryPage("<p>x</p>"), policy);
   assert.match(inertMemoryPage('<html><head lang="en"><style>p{}</style></head></html>'), /<head lang="en"><meta http-equiv/u);
+});
+
+test("memory reads tell a build without OptChat apart from a failed read", async () => {
+  const original = globalThis.fetch;
+  const answers = [
+    new Response(JSON.stringify({ error: "OptChat memory is not available in this build of HUI." }), { status: 503 }),
+    new Response(JSON.stringify({ error: "unknown bot: x" }), { status: 404 }),
+    new Response(JSON.stringify({ status: { messages: 2, built: 1, pending: 1, viewBytes: 40 }, view: "<chat>\n0+1|user: hi\n</chat>" }), { status: 200 }),
+  ];
+  const urls: string[] = [];
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    urls.push(String(input));
+    assert.equal(new Headers(init?.headers).get("x-hui"), "1");
+    return answers.shift()!;
+  }) as typeof fetch;
+  try {
+    await assert.rejects(loadBotMemory("b 1"), (error: unknown) => error instanceof BotMemoryUnavailableError && /not available/u.test((error as Error).message));
+    await assert.rejects(loadBotMemory("b1"), (error: unknown) => !(error instanceof BotMemoryUnavailableError) && /unknown bot/u.test((error as Error).message));
+    assert.deepEqual(await loadBotMemory("b1"), { status: { messages: 2, built: 1, pending: 1, viewBytes: 40 }, view: "<chat>\n0+1|user: hi\n</chat>" });
+    assert.equal(urls[0], "/__hui/bots/b%201/memory");
+  } finally {
+    globalThis.fetch = original;
+  }
 });
 
 const EMPTY_DRAFT: BotDraft = { name: "", title: "", instructions: "", cwd: "", emoji: "", model: "", thinking: "", memoryModel: "" };
