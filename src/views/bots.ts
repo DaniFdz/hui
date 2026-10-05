@@ -27,9 +27,9 @@ import {
   BOT_PANEL_TABS,
   type BotPanelTab,
 } from "../lib/bot-roster.ts";
-import { botRoutineRuns, botRoutines, routineCadenceSummary, routineSchedule, RoutineFormError, ROUTINE_WEEKDAYS } from "../lib/bot-routines.ts";
+import { botRoutineRuns, botRoutines, routineSchedule, RoutineFormError, ROUTINE_WEEKDAYS } from "../lib/bot-routines.ts";
 import { memoryBudgetLabel, memoryUsageDetail, memoryUsageLabel, type MemoryLine } from "../lib/bot-memory.ts";
-import { describeSchedule, formatTimestamp, runIsActive } from "./settings-automation.ts";
+import { describeRoutineSchedule, formatTimestamp, runIsActive } from "./settings-automation.ts";
 import { renderSettingsToggle } from "./settings-toggle.ts";
 import { renderPicker } from "./settings-picker.ts";
 import { renderDirectoryPicker } from "./directory-picker.ts";
@@ -318,10 +318,6 @@ const RUN_LABELS: Record<AutomationRun["status"], string> = {
 
 const playIcon = html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="6 3 20 12 6 21 6 3"></polygon></svg>`;
 
-function scheduleSummary(task: AutomationTask): string {
-  return routineCadenceSummary(task.schedule) ?? describeSchedule(task.schedule);
-}
-
 function renderRoutine(task: AutomationTask, props: BotPanelProps) {
   const { routines } = props;
   return html`<li class="bot-routine ${task.enabled ? "" : "bot-routine--paused"}" data-routine=${task.id}>
@@ -329,7 +325,7 @@ function renderRoutine(task: AutomationTask, props: BotPanelProps) {
       <span class="bot-routine__name">${task.name}</span>
       ${renderSettingsToggle(`Enable ${task.name}`, task.enabled, (checked) => routines.onSetEnabled(task, checked), routines.pending)}
     </div>
-    <p class="bot-routine__meta">${scheduleSummary(task)} · ${task.enabled ? `next ${formatTimestamp(task.nextRunAt)}` : "paused"}</p>
+    <p class="bot-routine__meta">${describeRoutineSchedule(task.schedule)} · ${task.enabled ? `next ${formatTimestamp(task.nextRunAt)}` : "paused"}</p>
     <p class="bot-routine__prompt" title=${task.prompt}>${task.prompt}</p>
     <div class="bot-routine__actions">
       <button type="button" class="btn btn--sm bot-routine__run" ?disabled=${routines.pending} aria-label=${`Run now: ${task.name}`} @click=${() => routines.onRun(task)}>${playIcon}<span>Run now</span></button>

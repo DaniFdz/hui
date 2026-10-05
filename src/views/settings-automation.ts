@@ -12,6 +12,7 @@ import type {
   AutomationTaskInput,
 } from "../lib/automation-types.ts";
 import type { SessionView } from "../lib/sessions-store.ts";
+import { routineCadenceSummary } from "../lib/bot-routines.ts";
 import { icons } from "../lib/icons.ts";
 import { labelDropdown, closeDropdownOnEscape } from "../lib/web-awesome.ts";
 import { renderSettingsToggle } from "./settings-toggle.ts";
@@ -80,6 +81,12 @@ export function describeSchedule(schedule: AutomationSchedule): string {
     return `Every ${minutes === 1 ? "minute" : `${minutes} minutes`}`;
   }
   return `Cron ${schedule.expression} (${schedule.timezone})`;
+}
+
+/** A bot routine's schedule as its panel wrote it ("Daily at 08:00",
+ * "Mondays at 09:30"); anything else as the scheduler's own kinds. */
+export function describeRoutineSchedule(schedule: AutomationSchedule): string {
+  return routineCadenceSummary(schedule) ?? describeSchedule(schedule);
 }
 
 export function formatTimestamp(value: string | null | undefined): string {
@@ -164,6 +171,8 @@ function sessionLabel(props: AutomationProps, sessionId: string): string {
 
 function renderTask(props: AutomationProps, task: AutomationTask) {
   const lastRun = props.automation?.runs.find((run) => run.taskId === task.id);
+  // Bot routines read as their bot's panel shows them; other tasks keep the generic summary.
+  const routine = props.sessions.some((session) => session.id === task.sessionId && session.bot);
   return html`
     <article class="cron-table__row ${task.enabled ? "" : "cron-table__row--paused"}" data-task=${task.id}>
       <button type="button" class="cron-table__name" @click=${() => props.onEditAutomationTask(task)} aria-label=${`Edit ${task.name}`}>
@@ -172,7 +181,7 @@ function renderTask(props: AutomationProps, task: AutomationTask) {
           <span class="cron-table__name-meta"><span class="cron-table__description">${task.description || sessionLabel(props, task.sessionId)}</span></span>
         </span>
       </button>
-      <span class="cron-table__cell cron-table__schedule"><span class="cron-table__cell-label">Schedule</span><span class="cron-table__cell-value">${describeSchedule(task.schedule)}</span></span>
+      <span class="cron-table__cell cron-table__schedule"><span class="cron-table__cell-label">Schedule</span><span class="cron-table__cell-value">${routine ? describeRoutineSchedule(task.schedule) : describeSchedule(task.schedule)}</span></span>
       <span class="cron-table__cell cron-table__next"><span class="cron-table__cell-label">Next run</span><span class="cron-table__cell-value">${formatTimestamp(task.nextRunAt)}</span></span>
       <span class="cron-table__cell cron-table__last"><span class="cron-table__cell-label">Last run</span><span class="cron-table__cell-value">${lastRun ? RUN_STATUS_LABELS[lastRun.status] : "—"}</span></span>
       <span class="cron-table__actions">

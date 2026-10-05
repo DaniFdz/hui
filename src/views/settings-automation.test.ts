@@ -5,6 +5,7 @@ import test from "node:test";
 import {
   AutomationFormError,
   automationState,
+  describeRoutineSchedule,
   describeSchedule,
   formatTimestamp,
   runIsActive,
@@ -55,6 +56,13 @@ test("schedules read as the cadence the scheduler will actually use", () => {
     describeSchedule({ kind: "cron", expression: "0 9 * * 1-5", timezone: "Europe/Madrid" }),
     "Cron 0 9 * * 1-5 (Europe/Madrid)",
   );
+});
+
+test("bot routines read as their panel wrote them, with the generic summary for anything else", () => {
+  assert.equal(describeRoutineSchedule({ kind: "cron", expression: "0 8 * * *", timezone: "Europe/Madrid" }), "Daily at 08:00");
+  assert.equal(describeRoutineSchedule({ kind: "cron", expression: "30 9 * * 1", timezone: "Europe/Madrid" }), "Mondays at 09:30");
+  assert.equal(describeRoutineSchedule({ kind: "cron", expression: "0 9 * * 1-5", timezone: "Europe/Madrid" }), "Cron 0 9 * * 1-5 (Europe/Madrid)");
+  assert.equal(describeRoutineSchedule({ kind: "every", everyMs: 2 * 60 * 60_000 }), "Every 2 hours");
 });
 
 test("missing and unparseable timestamps stay honest instead of rendering as a date", () => {
