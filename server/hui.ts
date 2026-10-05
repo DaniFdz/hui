@@ -15,10 +15,10 @@
  * A theme file carries both modes, so there is no pairing to describe and no
  * manifest to keep in step.
  */
-import { mkdir, readFile, readdir, stat, unlink, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, realpath, stat, unlink, writeFile } from "node:fs/promises";
 import type { ServerResponse } from "node:http";
 import { randomUUID } from "node:crypto";
-import { basename, join } from "node:path";
+import { basename, join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import type { Connect, Plugin } from "vite";
@@ -622,6 +622,19 @@ export async function storeAttachmentFile(
   const path = join(dir, `${randomUUID()}-${storedName}`);
   await writeFile(path, Buffer.from(dataBase64, "base64"), { flag: "wx" });
   return { path, name };
+}
+
+/** Reads a file `storeAttachmentFile` wrote; any other path, including one
+ * a symlink leads out of the store, is refused. */
+export async function readStoredAttachment(path: string, root = ATTACHMENTS_DIR): Promise<Buffer | undefined> {
+  try {
+    const [file, store] = await Promise.all([realpath(path), realpath(root)]);
+    if (!file.startsWith(store + sep)) return undefined;
+    const info = await stat(file);
+    return info.isFile() && info.size <= MAX_ATTACHMENT_BYTES ? await readFile(file) : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 export class AttachmentInputError extends Error {
@@ -1967,7 +1980,7 @@ async function handleRequest(
     }
     return;
   }
-  const attachmentRoute = path.match(/^\/__hui\/sessions\/([^/]+)\/attachments\/(\d{1,9})\/(\d{1,4})$/u);
+  const attachmentRoute = path.match(/^\/__hui\/sessions\/([^/]+)\/attachments\/(\d{1,9})\/(files\/)?(\d{1,4})$/u);
   if (attachmentRoute) {
     // <img> cannot send x-hui; accept it or a browser-attested same-origin
     // fetch, and refuse everything cross-site.
@@ -1986,18 +1999,25 @@ async function handleRequest(
       sendJson(response, 404, { error: `unknown session: ${id}` });
       return;
     }
-    const image = liveSessions.attachmentImage(id, Number(attachmentRoute[2]), Number(attachmentRoute[3]));
-    if (!image) {
+    const message = Number(attachmentRoute[2]);
+    const index = Number(attachmentRoute[4]);
+    const filePath = attachmentRoute[3] ? liveSessions.attachmentFile(id, message, index) : undefined;
+    const fileData = filePath ? await readStoredAttachment(filePath) : undefined;
+    const attachment = attachmentRoute[3]
+      ? fileData && { mimeType: "application/octet-stream", data: fileData }
+      : liveSessions.attachmentImage(id, message, index);
+    if (!attachment) {
       sendJson(response, 404, { error: "attachment not found" });
       return;
     }
     response.statusCode = 200;
-    response.setHeader("content-type", image.mimeType);
-    response.setHeader("content-length", String(image.data.length));
-    response.setHeader("cache-control", "private, max-age=3600");
+    response.setHeader("content-type", attachment.mimeType);
+    response.setHeader("content-length", String(attachment.data.length));
+    // The URL names a position in the history, which a rewind hands to the next message.
+    response.setHeader("cache-control", "no-store");
     response.setHeader("x-content-type-options", "nosniff");
     response.setHeader("cross-origin-resource-policy", "same-origin");
-    response.end(image.data);
+    response.end(attachment.data);
     return;
   }
 

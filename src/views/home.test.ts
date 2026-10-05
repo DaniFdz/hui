@@ -71,7 +71,7 @@ test("session history actions expose direct editable rewind and prompt-free cont
   assert.doesNotMatch(source, /aria-label="Rewind session"/u);
   assert.match(source, /class="chat-group-rewind" aria-label=\$\{props\.rewindPending \? "Rewinding…" : "Rewind to here"\}/u);
   assert.match(source, /renderActionTooltip\(rewindTooltipId, props\.rewindPending \? "Rewinding…" : "Rewind"/u);
-  assert.match(source, /props\.onRewind\(rewindTo, last\?\.text \?\? ""\)/u);
+  assert.match(source, /props\.onRewind\(rewindTo, last\?\.text \?\? "", last\?\.attachments\)/u);
   assert.doesNotMatch(source, /row\.role === "user" && !props\.streaming/u);
   assert.match(source, /aria-label="Continue without a prompt"/u);
   assert.doesNotMatch(source, /rewind-session-dialog|Rewind here|Rewind point/u);
@@ -79,6 +79,7 @@ test("session history actions expose direct editable rewind and prompt-free cont
   assert.doesNotMatch(app, /!session \|\| this\.streaming \|\| this\.opening \|\| this\.rewindPending/u);
   assert.match(app, /rewindSession\(session\.id, target, true\)/u);
   assert.match(app, /this\.setDraft\(text\)/u);
+  assert.match(app, /this\.attachments = attachments/u);
   assert.match(app, /this\.composerTextarea\?\.focus\(\)/u);
   assert.match(app, /resumeSession\(session\.id\)/u);
 });

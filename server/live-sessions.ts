@@ -42,14 +42,14 @@ import type { Settings } from "../src/lib/settings.ts";
 export type SessionStatus = "idle" | "running" | "waiting" | "starting" | "error";
 const MAX_AUTOMATIC_RECOVERY_ATTEMPTS = 3;
 
-/** Replace runtime-internal image locations with opaque gateway URLs. */
+/** Replace runtime-internal attachment locations with opaque gateway URLs. */
 export function publicTranscript(id: string, entries: readonly TranscriptEntry[]): TranscriptEntry[] {
   return entries.map((entry) => {
     if (entry.kind !== "message" || !entry.attachments?.some((item) => item.source)) return entry;
     return {
       ...entry,
       attachments: entry.attachments.map(({ source, ...item }) => source
-        ? { ...item, url: `/__hui/sessions/${encodeURIComponent(id)}/attachments/${source.message}/${source.image}` }
+        ? { ...item, url: `/__hui/sessions/${encodeURIComponent(id)}/attachments/${source.message}/${"file" in source ? `files/${source.file}` : source.image}` }
         : item),
     };
   });
@@ -385,6 +385,10 @@ export class LiveSessions {
   /** Image bytes for a transcript attachment, from the runtime's history. */
   attachmentImage(id: string, message: number, image: number): { mimeType: string; data: Buffer } | undefined {
     return this.#live.get(id)?.runtime?.attachmentImage?.(message, image);
+  }
+
+  attachmentFile(id: string, message: number, file: number): string | undefined {
+    return this.#live.get(id)?.runtime?.attachmentFile?.(message, file);
   }
 
   snapshot(id: string): SessionSnapshot {

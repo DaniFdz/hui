@@ -30,6 +30,7 @@ import {
   resumeSession,
   rewindSession,
   type RewindTarget,
+  type TranscriptAttachment,
   cancelCompaction,
   compactSession,
   sendPrompt,
@@ -60,7 +61,7 @@ import {
   type GitCheckoutInfo,
   type WorktreeProgress,
 } from "./lib/sessions-store.ts";
-import { readAttachment, validateAttachmentTotal } from "./lib/attachments.ts";
+import { readAttachment, readTranscriptAttachments, validateAttachmentTotal } from "./lib/attachments.ts";
 import { resolveLaunchModel } from "./lib/model-selection.ts";
 import { completeCommandReference, composerCommands, filterSlashCommands, parseClearCommand, parseCompactCommand, parseReloadCommand, parseUpdateCommand, slashCommandQuery, type ComposerCommand } from "./lib/slash-commands.ts";
 import { checkUpdate, checkUpdateInBackground, installUpdate, loadUpdate } from "./lib/update-store.ts";
@@ -2746,18 +2747,20 @@ export class HuiApp extends HuiElement {
     return true;
   }
 
-  private rewindToMessage = (target: RewindTarget, text: string) => {
+  private rewindToMessage = (target: RewindTarget, text: string, sent: readonly (string | TranscriptAttachment)[] = []) => {
     const session = this.selected;
     if (!session || this.opening || this.rewindPending) return;
     this.rewindPending = true;
     this.note = "";
     this.noteLevel = "info";
-    void rewindSession(session.id, target, true)
-      .then(async () => {
+    // Read the attachments first: their URLs point into the branch the rewind leaves.
+    void readTranscriptAttachments(sent)
+      .then(async (attachments) => {
+        await rewindSession(session.id, target, true);
         if (!isSelectedSession(session.id, this.selected?.id)) return;
         this.composerDraftEdit += 1;
         this.setDraft(text);
-        this.attachments = [];
+        this.attachments = attachments;
         await this.persistComposerDraft();
         await this.updateComplete;
         if (!isSelectedSession(session.id, this.selected?.id)) return;
