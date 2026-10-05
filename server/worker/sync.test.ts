@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { configuredResourceId } from "../runtimes/resource-policy.ts";
-import { brokeredModels, buildSyncPlan, credentialHeader, mirrorPath } from "./sync.ts";
+import { brokeredModels, buildSyncPlan, commandCredential, credentialHeader, mirrorPath } from "./sync.ts";
 
 test("the mirror holds the user's PI resources with remote paths and no secrets", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "hui-sync-"));
@@ -101,14 +101,46 @@ test("literal keys and header values in models.json are left out of the mirror f
   assert.equal(providers.anthropic, undefined);
 
   // The gateway serves exactly what the mirror left out, under the names it uses.
-  const { keys, env } = await brokeredModels(join(agentDir, "models.json"));
+  const { keys, commands, env } = await brokeredModels(join(agentDir, "models.json"));
   assert.deepEqual(Object.fromEntries(keys), { anthropic: "built-in-key", custom: "sk-literal-key" });
+  assert.deepEqual(Object.fromEntries(commands), { "from-command": "!print-key" });
   const variable = (value: string) => value.match(/^\$\{(HUI_SECRET_[0-9A-F]{16})\}$/u)![1]!;
   assert.deepEqual(env, {
     [variable(providers.custom.headers["x-secret"])]: "literal-header-secret",
     [variable(providers.custom.models[0].headers["x-model-token"])]: "model-header-secret",
   });
   assert.deepEqual(plan.env, env);
+});
+
+test("a command key run on the gateway expires with its JWT, and is not kept without one", async () => {
+  const exp = 2_000_000_000;
+  const jwt = ["e30", Buffer.from(JSON.stringify({ exp })).toString("base64url"), "sig"].join(".");
+  assert.deepEqual(await commandCredential(`!printf '%s\\n' ${jwt}`), { type: "api_key", key: jwt, expires: exp * 1000 });
+  assert.deepEqual(await commandCredential("!printf opaque"), { type: "api_key", key: "opaque", expires: 0 });
+  assert.equal(await commandCredential("!exit 1"), undefined);
+  assert.equal(await commandCredential("!true"), undefined);
+});
+
+test("a command key is minted once while its JWT is valid, and rerun every time without one", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "hui-command-key-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const runs = join(root, "runs");
+  const count = async () => (await readFile(runs, "utf8")).length;
+  const valid = ["e30", Buffer.from(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 3600 })).toString("base64url"), "sig"].join(".");
+  const jwt = `!printf x >> '${runs}'; printf ${valid}`;
+  const both = await Promise.all([commandCredential(jwt), commandCredential(jwt)]);
+  await commandCredential(jwt);
+  assert.equal(both[0]?.key, valid);
+  assert.equal(await count(), 1, "concurrent and later reads share one run");
+  const almostExpired = ["e30", Buffer.from(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 60 })).toString("base64url"), "sig"].join(".");
+  const soon = `!printf x >> '${runs}'; printf ${almostExpired}`;
+  await commandCredential(soon);
+  await commandCredential(soon);
+  assert.equal(await count(), 3, "a token about to expire is minted again");
+  const opaque = `!printf x >> '${runs}'; printf opaque`;
+  await commandCredential(opaque);
+  await commandCredential(opaque);
+  assert.equal(await count(), 5, "a key with no expiry runs every time, as in PI");
 });
 
 test("an invalid models.json is not mirrored", async (t) => {

@@ -28,7 +28,7 @@ import { bundledSkills, enabledBundledSkillPaths, isBundledSkillPreference } fro
 import { readHuiSettings } from "./hui-settings.ts";
 import { BootstrapError, connectScript, markers, nodeInstallScript, probeScript, releaseInstallScript, runScript } from "./worker/bootstrap.ts";
 import { remoteReleasePath, workerRelease, type WorkerRelease } from "./worker/release.ts";
-import { brokeredModels, buildSyncPlan, contentFile, mirrorPath } from "./worker/sync.ts";
+import { brokeredModels, buildSyncPlan, commandCredential, contentFile, mirrorPath } from "./worker/sync.ts";
 import type { Settings } from "../src/lib/settings.ts";
 import type { HostInfo, RemoteLaunch, RemoteState } from "./worker/host.ts";
 import { RuntimeUnreachableError, type RuntimeEvent, type TranscriptEntry } from "./runtimes/types.ts";
@@ -98,7 +98,7 @@ function writeWorkers(workers: readonly WorkerConfig[]): Promise<void> {
 async function gatewayStore(name: unknown): Promise<CredentialStore> {
   if (name === "pi") {
     const agentDir = resolvePiAgentDir();
-    return withModelKeys(credentialStore(join(agentDir, "auth.json")), (await brokeredModels(join(agentDir, "models.json"))).keys);
+    return withModelKeys(credentialStore(join(agentDir, "auth.json")), await brokeredModels(join(agentDir, "models.json")));
   }
   if (typeof name === "string" && name.startsWith("hui:")) {
     const rel = name.slice(4);
@@ -107,13 +107,17 @@ async function gatewayStore(name: unknown): Promise<CredentialStore> {
   throw new Error("Unknown credential store.");
 }
 
-/** PI's login, plus the literal keys the worker's models.json leaves out:
- * one stands in for a missing login, as it does in PI. */
-function withModelKeys(store: CredentialStore, keys: Map<string, string>): CredentialStore {
+/** PI's login, plus the literal keys the worker's models.json leaves out and
+ * the `!command` keys run here: one stands in for a missing login, as it does
+ * in PI. A command that yields nothing leaves the worker to run its own. */
+function withModelKeys(store: CredentialStore, { keys, commands }: { keys: Map<string, string>; commands: Map<string, string> }): CredentialStore {
   type Credential = Awaited<ReturnType<CredentialStore["read"]>>;
-  const served = (providerId: string, stored: Credential): Credential => {
+  const served = async (providerId: string, stored: Credential): Promise<Credential> => {
+    if (stored) return stored;
     const key = keys.get(providerId);
-    return stored ?? (key === undefined ? undefined : { type: "api_key", key });
+    if (key !== undefined) return { type: "api_key", key };
+    const command = commands.get(providerId);
+    return command === undefined ? undefined : await commandCredential(command);
   };
   return {
     read: async (providerId, options) => served(providerId, await store.read(providerId, options)),

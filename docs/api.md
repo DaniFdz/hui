@@ -1028,8 +1028,20 @@ model or model override) becomes `${HUI_SECRET_<16 hex>}`, a name derived from i
 whose values ride in `sync-commit`'s `env`. The host keeps them in memory
 (replaced by each sync, lost when it stops) and serves them to PI as
 environment variables, its own reads and those of the PI workers it starts,
-while leaving them out of every environment a process it starts inherits. Values PI resolves itself (`$NAME`, `${NAME}`, `!command`) are
-mirrored unchanged; an invalid models.json is not mirrored. The worker needs
+while leaving them out of every environment a process it starts inherits.
+Values PI resolves itself (`$NAME`, `${NAME}`, `!command`) are mirrored
+unchanged; an invalid models.json is not mirrored. A `!command` `apiKey` also
+runs on the gateway when the host reads that provider and the gateway's
+auth.json has none, so while a gateway is connected its answer wins over the
+worker's own: a non-empty output answers as `{type: "api_key", key, expires}`,
+with `expires` the output's JWT `exp` in milliseconds, or `0` when it has none
+(the host never keeps it). The gateway reuses a JWT until five minutes before
+its `exp` (a revoked token stays in use until then, or until the gateway
+restarts) and shares one run among concurrent reads; a key without a JWT `exp`
+runs on every read. A command that fails or prints nothing, or no gateway,
+leaves the worker to run its mirrored copy. Any connected worker can therefore
+obtain the output of every `!command` key in the gateway's models.json, as it
+can every other gateway credential. The worker needs
 Node.js 22.19 or newer.
 
 ### `GET /__hui/workers`

@@ -110,7 +110,12 @@ before(async () => {
     // Its key resolves on the remote, so the gateway has no credential to
     // serve for it; only its header is a literal here.
     "fx-remote-key": { baseUrl, api: "anthropic-messages", apiKey: "$HUI_TEST_REMOTE_KEY", headers: { "x-e2e-token": HEADER_SECRET }, models },
+    // Its key comes from a command, which reads a file only the gateway's home
+    // has and marks the home it ran in.
+    "fx-command": { baseUrl, api: "anthropic-messages", apiKey: "!touch \"$HOME/command-ran\"; cat \"$HOME/command-key\"", models },
   } }));
+  await mkdir(process.env["HOME"]!, { recursive: true });
+  await writeFile(join(process.env["HOME"]!, "command-key"), KEY);
   // The key exists only in the gateway's PI login.
   await writeFile(join(agentDir, "auth.json"), JSON.stringify({
     fx: { type: "api_key", key: KEY },
@@ -654,6 +659,37 @@ test("a key and header written literally in the gateway's models.json reach the 
   } finally {
     second.dispose();
   }
+});
+
+test("a command key runs on the gateway while it is attached, and the worker runs its own copy without it", async () => {
+  const key = "remote-command-key";
+  const log = () => readFile(join(root, "provider.jsonl"), "utf8");
+  const first = await durable.start({ cwd: project, worker: workerId, huiSessionId: key, model: "fx-command/fixture" });
+  const done = settled(first);
+  // The remote cannot run the command: its home has no key file.
+  await first.prompt("command key with the gateway");
+  await done;
+  assert.equal(lastAnswer(first), "Fixture response.", JSON.stringify(first.transcript()));
+  const ranOnRemote = join(remoteHome, "command-ran");
+  assert.ok(existsSync(join(process.env["HOME"]!, "command-ran")) && !existsSync(ranOnRemote), "the gateway ran the command, the remote did not");
+  await first.prompt("E2E_REPLAY please");
+  await control("wait-replay-ready");
+  await first.followUp!("command key without the gateway");
+  workers.disconnect(workerId);
+  first.dispose();
+  // A key with no expiry is not kept: without the gateway only the remote's own command can answer.
+  const remoteKey = join(remoteHome, "command-key");
+  await writeFile(remoteKey, KEY);
+  try {
+    await control("release-replay", { method: "POST" });
+    await waitFor(async () => (await log()).includes("command key without the gateway") || undefined, "the follow-up to reach the provider");
+    assert.ok(existsSync(ranOnRemote), "the remote ran its own copy rather than a kept key");
+  } finally {
+    await rm(remoteKey);
+    await rm(ranOnRemote, { force: true });
+  }
+  const second = await reattach(key, first.sessionFile!, (session) => session.transcript().some((entry) => entry.kind === "message" && entry.text === "command key without the gateway") && lastAnswer(session) === "Fixture response.", "the follow-up to run");
+  second.dispose();
 });
 
 test("a literal header of a provider whose key resolves on the remote reaches the worker from memory, with the gateway or without it", async () => {

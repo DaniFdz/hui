@@ -7,15 +7,18 @@
  * prompts), HUI's settings and provider selections and the worker's extra
  * paths. Never
  * mirrored: credentials (they are brokered, as are literal keys and header
- * values in PI's models.json: `brokeredModels`), transcripts, installed
+ * values in PI's models.json: `brokeredModels`; `!command` keys are mirrored
+ * and also run here), transcripts, installed
  * npm/git packages (the remote installs its own), `node_modules` and `.git`.
  *
  * Local paths in settings become absolute mirror paths, so relative sources and
  * `~` keep meaning the same files on a remote with another home directory.
  */
+import { exec } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readdir, readFile, realpath, stat } from "node:fs/promises";
 import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { promisify } from "node:util";
 import { configuredResourceId } from "../runtimes/resource-policy.ts";
 import { inside, type SyncEntry } from "./sync-apply.ts";
 
@@ -78,14 +81,17 @@ export function credentialHeader(name: string): boolean {
  * literal key is dropped (the gateway serves it as the provider's credential
  * when PI's login has none, which is PI's own precedence) and a literal
  * credential header value becomes `${HUI_SECRET_…}`, a variable the host
- * holds in memory (`env`). Values PI resolves itself (`$NAME`, `!command`) stay.
+ * holds in memory (`env`). Values PI resolves itself (`$NAME`, `!command`) stay;
+ * a `!command` key is also run on the gateway when the worker asks (`commands`),
+ * so a token the gateway's login can mint needs no login on the worker.
  */
-export async function brokeredModels(path: string): Promise<{ mirrored?: Buffer; keys: Map<string, string>; env: Record<string, string>; error?: string }> {
+export async function brokeredModels(path: string): Promise<{ mirrored?: Buffer; keys: Map<string, string>; commands: Map<string, string>; env: Record<string, string>; error?: string }> {
   const keys = new Map<string, string>();
+  const commands = new Map<string, string>();
   const env: Record<string, string> = {};
   const loaded = await ModelConfig.load(path);
-  if (loaded.error) return { keys, env, error: loaded.error };
-  if (!loaded.providers.size) return { keys, env };
+  if (loaded.error) return { keys, commands, env, error: loaded.error };
+  if (!loaded.providers.size) return { keys, commands, env };
   const literal = (value: string) => !configValue.isCommandConfigValue(value) && !configValue.getConfigValueEnvVarNames(value).length;
   const providers: Record<string, ProviderConfig> = {};
   for (const [id, frozen] of loaded.providers) {
@@ -103,6 +109,7 @@ export async function brokeredModels(path: string): Promise<{ mirrored?: Buffer;
     for (const [model, override] of Object.entries(provider.modelOverrides ?? {})) broker(override.headers, `override:${model}`);
     const key = provider.apiKey !== undefined && literal(provider.apiKey) ? configValue.resolveConfigValue(provider.apiKey) : undefined;
     if (key === undefined) {
+      if (provider.apiKey !== undefined && configValue.isCommandConfigValue(provider.apiKey)) commands.set(id, provider.apiKey);
       providers[id] = provider;
       continue;
     }
@@ -113,7 +120,39 @@ export async function brokeredModels(path: string): Promise<{ mirrored?: Buffer;
     const { name: _name, api: _api, ...rest } = provider;
     if (Object.keys(rest).length) providers[id] = provider;
   }
-  return { mirrored: Buffer.from(`${JSON.stringify({ providers }, null, 2)}\n`), keys, env };
+  return { mirrored: Buffer.from(`${JSON.stringify({ providers }, null, 2)}\n`), keys, commands, env };
+}
+
+const run = promisify(exec);
+type CommandCredential = { type: "api_key"; key: string; expires: number };
+const minted = new Map<string, { credential: Promise<CommandCredential | undefined>; until: number }>();
+/** A minted JWT is reused until this long before its `exp`. */
+const REUSE_MARGIN_MS = 5 * 60_000;
+
+/**
+ * A `!command` key run on the gateway and served as a PI login. It expires
+ * with its JWT `exp`, so a host that lost the gateway keeps it only while it
+ * is valid and then runs its own mirrored copy; a key with no readable expiry
+ * is not kept there at all. Here a JWT is reused until shortly before it
+ * expires and concurrent reads share one run: a worker reads every provider
+ * at once, and a token command (`ddtool auth token`) is slow.
+ */
+export async function commandCredential(command: string): Promise<CommandCredential | undefined> {
+  const hit = minted.get(command);
+  if (hit && hit.until > Date.now()) return await hit.credential;
+  const entry = { credential: mint(command), until: Infinity };
+  minted.set(command, entry);
+  const credential = await entry.credential;
+  entry.until = credential?.expires ? credential.expires - REUSE_MARGIN_MS : 0;
+  return credential;
+}
+
+async function mint(command: string): Promise<CommandCredential | undefined> {
+  const key = (await run(command.slice(1), { timeout: 10_000 }).catch(() => undefined))?.stdout.trim();
+  if (!key) return undefined;
+  let exp = 0;
+  try { exp = Number(JSON.parse(Buffer.from(key.split(".")[1] ?? "", "base64url").toString()).exp) * 1000 || 0; } catch { /* not a JWT */ }
+  return { type: "api_key", key, expires: exp };
 }
 
 /** Where a local path lives inside the mirror. */
