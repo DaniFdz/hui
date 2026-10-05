@@ -323,17 +323,19 @@ export class HuiSessionCalendar extends LitElement {
     const highlight = this.#highlight();
     const dayMax = Math.max(1, ...period.days.map((day) => day.activeMs));
     const busiest = period.days.reduce((best, day) => day.activeMs > best.activeMs ? day : best, period.days[0]!);
+    // "<1m" means a one-message stretch; a period without any is plainly zero.
+    const total = (ms: number) => period.units.length ? formatDuration(ms) : "0m";
     return html`<aside class="session-calendar__side">
       <section class="session-calendar__panel">
-        <h2 class="session-calendar__total"><strong>${formatDuration(period.activeMs)}</strong>
+        <h2 class="session-calendar__total"><strong>${total(period.activeMs)}</strong>
           ${`across ${plural(period.units.length, ...this.#nouns())}`}</h2>
         <div class="session-calendar__stack" aria-hidden="true">
           ${period.units.map(({ key, color, ms }) => html`<span data-color=${color}
             class=${highlight !== undefined && highlight !== key ? "session-calendar__stack--dim" : ""}
             style="flex-grow:${ms}"></span>`)}
         </div>
-        <p class="session-calendar__caption">Recorded activity, parallel time counted once · ${formatDuration(period.sessionMs)} of session time</p>
-        <p class="session-calendar__caption">Select a ${this.#nouns()[0]} to focus the calendar.</p>
+        <p class="session-calendar__caption">Recorded activity, parallel time counted once · ${total(period.sessionMs)} of session time</p>
+        ${period.units.length ? html`<p class="session-calendar__caption">Select a ${this.#nouns()[0]} to focus the calendar.</p>` : nothing}
         <ul class="session-calendar__sessions" aria-label=${`Time per ${this.#nouns()[0]}`}>
           ${period.units.map((unit) => this.#renderUnit(unit, highlight))}
         </ul>
