@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { after, before, test } from "node:test";
-import type { BotsUpdate, BotView } from "../shared/bots.ts";
+import type { BotMemoryStatus, BotsUpdate, BotView } from "../shared/bots.ts";
 import type { TranscriptEntry } from "./runtimes/types.ts";
 
 // One isolated gateway: HUI's directory, PI's agent directory and a deterministic provider, all temporary.
@@ -36,6 +36,9 @@ await writeFile(join(agentDir, "settings.json"), JSON.stringify({ defaultProvide
 
 const { middleware, startBackend, stopBackend } = await import("./hui.ts");
 const { liveSessions } = await import("./live-sessions.ts");
+const { readRegistry } = await import("./sessions.ts");
+const { durableHost } = await import("./runtimes/durable-host.ts");
+const { optChatBotMemory } = await import("./bot-memory.ts");
 let origin = "";
 const server = createServer((request, response) => middleware(request, response, () => { response.writeHead(404).end(); }));
 
@@ -71,6 +74,21 @@ async function call(path: string, method = "GET", body?: unknown, guard = true):
 }
 
 const botOf = (reply: { body: Record<string, unknown> }) => reply.body["bot"] as BotView;
+const EMPTY_MEMORY = { messages: 0, built: 0, pending: 0, viewBytes: 0, viewLines: 0, usage: { calls: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 } };
+
+/** Resolves with a bot's memory status once `done` holds, as OptChat reports each change. */
+async function memoryWhere(sessionId: string, done: (status: BotMemoryStatus) => boolean): Promise<BotMemoryStatus> {
+  const reference = (await readRegistry()).find((record) => record.id === sessionId)?.piSessionFile;
+  assert(reference, `no conversation for ${sessionId}`);
+  return new Promise((resolve) => {
+    let off = (): void => {};
+    off = optChatBotMemory(durableHost()).subscribe(reference, (status) => {
+      if (!done(status)) return;
+      off();
+      resolve(status);
+    });
+  });
+}
 
 /** Resolves once a session is idle with a transcript `predicate` accepts. */
 function settledWith(id: string, predicate: (entries: TranscriptEntry[]) => boolean): Promise<TranscriptEntry[]> {
@@ -111,7 +129,7 @@ test("bots are created, read, edited, archived and restored through the guarded 
   assert.equal(ada.handle, "ada");
   assert.equal(ada.cwd, join(dir, "config", "hui", "bots", ada.id));
   assert.equal(ada.routines, 0);
-  assert.equal(ada.memory, undefined, "no OptChat in this build yet");
+  assert.deepEqual(ada.memory, EMPTY_MEMORY, "its chat has OptChat memory from the start");
   assert.equal(botOf(await call("/__hui/bots", "POST", { name: "Bob", avatar: { emoji: "🐻" } })).handle, "bob");
   assert.deepEqual(((await call("/__hui/bots")).body["bots"] as BotView[]).map((bot) => bot.handle), ["ada", "bob"]);
   assert.equal(botOf(await call(`/__hui/bots/${ada.id}`)).handle, "ada");
@@ -129,11 +147,12 @@ test("bots are created, read, edited, archived and restored through the guarded 
   assert.equal((await call("/__hui/bots/ada", "PATCH", {})).status, 400);
   assert.equal((await call("/__hui/bots/ada", "PATCH", { handle: "bob" })).status, 409);
 
-  // Memory needs OptChat; until this build wires it, the routes say so (and still validate their input first).
-  assert.equal((await call("/__hui/bots/ada/memory")).status, 503);
-  assert.equal((await call("/__hui/bots/ada/memory/zoom?id=0&n=1")).status, 503);
+  // An empty memory: nothing to zoom into yet; the routes validate their input first.
+  assert.deepEqual((await call("/__hui/bots/ada/memory")).body, { status: EMPTY_MEMORY, view: "<chat>\n\n</chat>" });
+  assert.deepEqual((await call("/__hui/bots/ada/memory/zoom?id=0&n=1")).body, { text: "No line 0+1." });
   assert.equal((await call("/__hui/bots/ada/memory/zoom?id=x&n=1")).status, 400);
-  assert.equal((await call("/__hui/bots/ada/memory/html")).status, 503);
+  assert.equal((await call("/__hui/bots/nobody/memory")).status, 404);
+  assert.equal((await call("/__hui/bots/ada/memory", "POST", {})).status, 405);
 
   // A forever chat refuses what would reset, shorten, fork or delete it.
   for (const [path, method, body] of [["clear", "POST", {}], ["compact", "POST", {}], ["rewind", "POST", { entryId: "1" }]] as const) {
@@ -187,6 +206,40 @@ test("messages reach the chat, a wait returns the reply, and message_bot crosses
   assert.equal(view.lastMessage?.text, "Fixture response.");
 });
 
+test("a bot's memory is OptChat's: built summaries, the view, zoom down to a whole message, and its page", { timeout: 120_000 }, async () => {
+  const mem = botOf(await call("/__hui/bots", "POST", { name: "Mem" }));
+  // Over 512 bytes, so the compactor writes its line; the reply and the second message fit as they are.
+  const long = `OPT_MEM <b>keep</b> ${"the blue door opens at nine ".repeat(20).trim()}`;
+  for (const text of [long, "second message"]) {
+    assert.deepEqual((await call("/__hui/bots/mem/messages", "POST", { text, wait: true, timeoutSeconds: 60 })).body, { status: "answered", reply: "Fixture response." });
+  }
+  // The log catches up and the compactor finishes beside the chat: wait until OptChat reports it.
+  await memoryWhere(mem.sessionId, (status) => status.messages === 4 && status.pending === 0);
+  const lines = ["user: FIXTURE_MEMORY OPT_MEM", "talk: Fixture response.", "user: second message", "talk: Fixture response."];
+  const memory = await call("/__hui/bots/mem/memory");
+  assert.equal(memory.status, 200);
+  assert.deepEqual(memory.body, {
+    status: { messages: 4, built: 7, pending: 0, viewBytes: Buffer.byteLength(lines.join("")), viewLines: 4, usage: { calls: 1, input: 1, output: 1, cacheRead: 0, cacheWrite: 0, cost: 0 } },
+    view: `<chat>\n${lines.map((line, index) => `${index}+1|${line}`).join("\n")}\n</chat>`,
+  }, "the long message is a summary line written by one compactor call; the rest are their own lines");
+  assert.deepEqual(botOf(await call("/__hui/bots/mem")).memory, memory.body["status"], "the bot's view carries the same status");
+
+  // From the top of the tree down to the original message.
+  assert.deepEqual((await call("/__hui/bots/mem/memory/zoom?id=0&n=4")).body, { text: `0+2|${lines[0]} ${lines[1]}\n2+2|${lines[2]} ${lines[3]}` });
+  assert.deepEqual((await call("/__hui/bots/mem/memory/zoom?id=0&n=2")).body, { text: `0+1|${lines[0]}\n1+1|${lines[1]}` });
+  assert.deepEqual((await call("/__hui/bots/mem/memory/zoom?id=0&n=1")).body, { text: `0+0|user: ${long}` }, "the whole message, word for word");
+  assert.deepEqual((await call("/__hui/bots/mem/memory/zoom?id=8&n=1")).body, { text: "No line 8+1." });
+
+  // The browse page: the view, every message and each level, escaped.
+  const page = await call("/__hui/bots/mem/memory/html");
+  assert.equal(page.status, 200);
+  assert.equal(page.type, "text/html; charset=utf-8");
+  assert.match(page.text, /<title>OptChat memory of Mem<\/title>/u);
+  assert.match(page.text, /<h2>View · 4 lines<\/h2>[\s\S]*<h2>ROOT · 4 messages<\/h2>[\s\S]*<h2>Level 2 · 1 nodes<\/h2>/u);
+  assert.match(page.text, /&lt;b&gt;keep&lt;\/b&gt; the blue door/u);
+  assert.doesNotMatch(page.text, /<b>keep<\/b>/u, "chat text never becomes markup");
+});
+
 test("a routine runs marked as one, and archiving the bot disables it", { timeout: 120_000 }, async () => {
   const ada = botOf(await call("/__hui/bots/ada"));
   const created = await call("/__hui/automation/tasks", "POST", {
@@ -231,8 +284,8 @@ test("the bot list streams: the whole list first, then the bots that changed", {
     }
   };
   const first = await next();
-  assert.deepEqual(first.upserts.map((bot) => bot.handle).toSorted(), ["ada", "bob"]);
-  assert.deepEqual(first.ids?.length, 2);
+  assert.deepEqual(first.upserts.map((bot) => bot.handle).toSorted(), ["ada", "bob", "mem"]);
+  assert.deepEqual(first.ids?.length, 3);
   await call("/__hui/bots/bob", "PATCH", { title: "Helper" });
   const changed = await next();
   assert.deepEqual(changed.upserts.map((bot) => [bot.handle, bot.title]), [["bob", "Helper"]]);

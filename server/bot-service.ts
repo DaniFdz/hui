@@ -133,10 +133,6 @@ export class BotService {
     this.#readyTimeoutMs = deps.readyTimeoutMs ?? READY_TIMEOUT_MS;
   }
 
-  get memoryAvailable(): boolean {
-    return this.#deps.memory.available;
-  }
-
   /** Active bots, or with `archived` only archived ones (`"all"`: both), sorted by name. */
   async list(options: { archived?: boolean | "all" } = {}): Promise<BotView[]> {
     const bots = (await this.#registry.list()).filter((bot) => options.archived === "all" || Boolean(bot.archived) === Boolean(options.archived));
@@ -379,8 +375,10 @@ export class BotService {
 
   async memory(target: string): Promise<{ status: BotMemoryStatus; view: string }> {
     const { bot, reference } = await this.#memoryOf(target);
-    const [status, view] = await Promise.all([this.#deps.memory.status(reference), this.#deps.memory.view(reference)]);
-    if (!status) throw new BotMemoryUnavailableError(`@${bot.handle}'s chat has no OptChat memory.`);
+    // The view first: reading it catches the memory up with the chat, so the status counts the messages it shows.
+    const view = await this.#deps.memory.view(reference);
+    const status = await this.#deps.memory.status(reference);
+    if (!status) throw new BotMemoryUnavailableError(`@${bot.handle}'s chat has no OptChat memory in this gateway.`);
     return { status: memoryStatus(status), view };
   }
 
@@ -458,7 +456,7 @@ export class BotService {
 
   async #view(bot: BotRecord, record: SessionRecord | undefined, tasks: readonly AutomationTask[]): Promise<BotView> {
     const reference = record?.piSessionFile;
-    const memory = reference && this.#deps.memory.available ? await this.#deps.memory.status(reference).catch(() => undefined) : undefined;
+    const memory = reference ? await this.#deps.memory.status(reference).catch(() => undefined) : undefined;
     const lastMessage = await this.#lastMessage(bot, record);
     return {
       ...bot,
@@ -510,7 +508,6 @@ export class BotService {
   }
 
   async #memoryOf(target: string): Promise<{ bot: BotRecord; reference: string }> {
-    if (!this.#deps.memory.available) throw new BotMemoryUnavailableError();
     const bot = await this.resolve(target);
     return { bot, reference: this.#reference(bot, await this.#sessionOf(bot)) };
   }
@@ -723,13 +720,16 @@ function memorySettings(name: string, model: string | undefined, thinking: strin
 
 /** Only the fields of the shared contract, whatever else the memory reports. */
 function memoryStatus(status: BotMemoryStatus): BotMemoryStatus {
+  const { usage } = status;
   return {
     messages: status.messages,
     built: status.built,
     pending: status.pending,
     viewBytes: status.viewBytes,
+    viewLines: status.viewLines,
     ...(status.waiting ? { waiting: true } : {}),
     ...(status.failing ? { failing: { node: status.failing.node, error: status.failing.error, since: status.failing.since } } : {}),
+    usage: { calls: usage.calls, input: usage.input, output: usage.output, cacheRead: usage.cacheRead, cacheWrite: usage.cacheWrite, cost: usage.cost },
   };
 }
 

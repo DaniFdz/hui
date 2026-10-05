@@ -29,7 +29,7 @@ import { BotInputError, BotRegistry, BotStoreError } from "./bots.ts";
 import { BotService } from "./bot-service.ts";
 import { BOTS_EVENTS_ROUTE, BOTS_ROUTE, createBotRoutes } from "./bot-routes.ts";
 import { durableBotConversations } from "./bot-conversations.ts";
-import { unavailableBotMemory } from "./bot-memory.ts";
+import { optChatBotMemory } from "./bot-memory.ts";
 import type { BotsUpdate, BotView } from "../shared/bots.ts";
 import { progressCardFromTranscript, type ProgressCard } from "../shared/progress-card.ts";
 import type { SessionPullRequest } from "../shared/pull-requests.ts";
@@ -249,8 +249,9 @@ function forWorkerSessions(workerId: string, act: (record: SessionRecord) => voi
 }
 workers.onConnected((workerId) => forWorkerSessions(workerId, (record) => liveSessions.ensure(record, true)));
 workers.onStopped((workerId) => forWorkerSessions(workerId, (record) => liveSessions.stopReconnecting(record.id)));
-/** Bots (HUI-18): their registry, and the service that runs each one's forever chat as an ordinary Durable session.
- * Memory is OptChat's; until this build wires it, `unavailableBotMemory` leaves the chats plain Durable conversations. */
+/** Bots (HUI-18): their registry, and the service that runs each one's forever chat as an ordinary Durable session
+ * whose memory is OptChat's (docs/optchat.md). */
+const botMemory = optChatBotMemory(durableHost());
 const botRegistry = new BotRegistry(undefined, (count) => recordDiagnosticEvent({
   area: "session", level: "warning", action: "bots_invalid_records",
   summary: `bots.json holds ${count} invalid bot record${count === 1 ? "" : "s"}; HUI keeps them in the file but does not show them.`,
@@ -262,8 +263,8 @@ const bots = new BotService({
   updateSessions: updateRegistry,
   createSession: (body, bot) => createSession(body, liveSessions, updateRegistry, undefined, { bot }),
   removeSession: (id) => deleteSession(id),
-  conversations: durableBotConversations(durableHost(), unavailableBotMemory),
-  memory: unavailableBotMemory,
+  conversations: durableBotConversations(durableHost(), botMemory),
+  memory: botMemory,
   routines: {
     // A broken automation store is a storage failure (500), not the caller's.
     tasks: async () => (await automation.snapshot().catch(automationStoreFailure)).tasks,

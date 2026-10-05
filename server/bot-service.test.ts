@@ -16,6 +16,7 @@ process.env["XDG_CONFIG_HOME"] = await mkdtemp(join(tmpdir(), "hui-bot-service-c
 const { LiveSessions } = await import("./live-sessions.ts");
 const { BotRegistry, BotConflictError, BotInputError, BotNotFoundError } = await import("./bots.ts");
 const { BotService, botsSection, hopOf, MAX_BOT_HOPS } = await import("./bot-service.ts");
+const { BotMemoryUnavailableError } = await import("./bot-memory.ts");
 type SessionRecord = import("./sessions.ts").SessionRecord;
 type BotConversationInput = import("./bot-service.ts").BotConversationInput;
 
@@ -99,7 +100,13 @@ class FakeChat implements RuntimeSession {
 
 type Harness = Awaited<ReturnType<typeof harness>>;
 
-async function harness(t: TestContext, options: { messagesPerHour?: number; memoryAvailable?: boolean } = {}) {
+/** The fake memory's status as the shared contract carries it. */
+const MEMORY: BotMemoryStatus = {
+  messages: 4, built: 3, pending: 1, viewBytes: 900, viewLines: 3, waiting: true,
+  usage: { calls: 2, input: 1_200, output: 80, cacheRead: 300, cacheWrite: 0, cost: 0.0042 },
+};
+
+async function harness(t: TestContext, options: { messagesPerHour?: number; memoryReadable?: boolean } = {}) {
   const dir = await mkdtemp(join(tmpdir(), "hui-bot-service-"));
   t.after(() => rm(dir, { recursive: true, force: true }));
   const botsDir = join(dir, "bots");
@@ -139,14 +146,20 @@ async function harness(t: TestContext, options: { messagesPerHour?: number; memo
     async checkModel(model: string) { if (!model.startsWith("fixture/")) throw new BotInputError(`Unknown model: ${model}`); },
   };
   const memoryCalls: Array<[string, ...unknown[]]> = [];
+  // A memory the gateway cannot read (no OptChat for the chat) answers nothing and refuses every read.
+  const readable = options.memoryReadable !== false;
+  const unreadable = async (): Promise<never> => { throw new BotMemoryUnavailableError(); };
   const memory: BotMemory = {
-    available: options.memoryAvailable !== false,
     enable: async () => {},
     configure: async (reference, settings) => { memoryCalls.push(["configure", reference, settings]); },
-    status: async () => ({ messages: 4, built: 3, pending: 1, viewBytes: 900, waiting: true, viewLines: 3 } as BotMemoryStatus),
-    view: async () => "<chat>\n0+1|user: hi\n</chat>",
-    zoom: async (_reference, id, n) => `${id}+${n - 1}|user: hi`,
-    html: async () => "<!doctype html><title>memory</title>",
+    // What OptChat reports, with a field the shared contract does not have.
+    status: async () => readable ? {
+      messages: 4, built: 3, pending: 1, viewBytes: 900, viewLines: 3, waiting: true,
+      usage: { calls: 2, input: 1_200, output: 80, cacheRead: 300, cacheWrite: 0, cost: 0.0042 }, extra: "internal",
+    } as BotMemoryStatus : undefined,
+    view: async () => readable ? "<chat>\n0+1|user: hi\n</chat>" : unreadable(),
+    zoom: async (_reference, id, n) => readable ? `${id}+${n - 1}|user: hi` : unreadable(),
+    html: async () => readable ? "<!doctype html><title>memory</title>" : unreadable(),
     subscribe: () => () => {},
   };
   const tasks: AutomationTask[] = [];
@@ -255,7 +268,7 @@ test("creating a bot makes its conversation with persona and memory, then its ch
   assert.equal(record.tool, "durable");
   await h.sessions.booted(view.sessionId);
   assert.deepEqual(await h.service.get(view.id), {
-    ...view, status: "idle", memory: { messages: 4, built: 3, pending: 1, viewBytes: 900, waiting: true },
+    ...view, status: "idle", memory: MEMORY,
     lastMessage: { role: "assistant", text: "stored reply", at: "2026-10-01T09:00:00.000Z" },
   }, "a chat with nothing loaded yet shows the newest stored message; memory keeps only the shared fields");
   assert.deepEqual(h.service.identity(view.id), { id: view.id, handle: "ada-lovelace", name: "Ada Lovelace" });
@@ -570,16 +583,18 @@ test("the newest message comes from a live chat, or from one store read while no
   assert.deepEqual((await h.service.get(bot.id)).lastMessage, { role: "user", text: "line one line two", at: "2026-10-05T08:00:00.000Z" });
 });
 
-test("memory reads go through BotMemory, and a build without OptChat says so", async (t) => {
+test("memory reads go through BotMemory, and a chat whose memory cannot be read says so", async (t) => {
   const h = await harness(t);
   const bot = await h.service.create({ name: "Ada" });
-  assert.deepEqual(await h.service.memory(bot.id), { status: { messages: 4, built: 3, pending: 1, viewBytes: 900, waiting: true }, view: "<chat>\n0+1|user: hi\n</chat>" });
+  assert.deepEqual(await h.service.memory(bot.id), { status: MEMORY, view: "<chat>\n0+1|user: hi\n</chat>" });
   assert.equal(await h.service.zoom(bot.id, 8, 4), "8+3|user: hi");
   await assert.rejects(h.service.zoom(bot.id, -1, 4), BotInputError);
   assert.match(await h.service.memoryHtml(bot.id), /<title>memory<\/title>/u);
 
-  const plain = await harness(t, { memoryAvailable: false });
+  const plain = await harness(t, { memoryReadable: false });
   const other = await plain.service.create({ name: "Bob" });
-  assert.equal((await plain.service.get(other.id)).memory, undefined);
-  await assert.rejects(plain.service.memory(other.id), (error: unknown) => error instanceof Error && error.name === "BotMemoryUnavailableError");
+  assert.equal((await plain.service.get(other.id)).memory, undefined, "the view leaves it out");
+  for (const read of [() => plain.service.memory(other.id), () => plain.service.zoom(other.id, 0, 1), () => plain.service.memoryHtml(other.id)]) {
+    await assert.rejects(read(), BotMemoryUnavailableError);
+  }
 });

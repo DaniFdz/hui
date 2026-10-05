@@ -19,7 +19,10 @@ type Call = { method: string; path: string; body?: Record<string, unknown> };
 
 /** A stand-in gateway: the bot, Automation and session routes over in-memory state, recording each request. */
 async function fakeGateway(t: TestContext) {
-  const bots: BotView[] = [view("id-ada", "ada", { title: "Researcher", routines: 1 }), view("id-bob", "bob"), view("id-old", "old", { archived: true })];
+  const bots: BotView[] = [
+    view("id-ada", "ada", { title: "Researcher", routines: 1, memory: { messages: 2, built: 3, pending: 0, viewBytes: 300, viewLines: 2, usage: { calls: 1, input: 1, output: 1, cacheRead: 0, cacheWrite: 0, cost: 0 } } }),
+    view("id-bob", "bob"), view("id-old", "old", { archived: true }),
+  ];
   const tasks: AutomationTask[] = [{
     id: "task-1", name: "Morning", description: "", sessionId: "s-ada", prompt: "check", schedule: { kind: "every", everyMs: 86_400_000 },
     enabled: true, timeoutSeconds: 900, createdAt: "", updatedAt: "", nextRunAt: "2026-10-06T07:00:00.000Z",
@@ -74,7 +77,10 @@ async function fakeGateway(t: TestContext) {
         const next = replies.shift() ?? { status: "sent" };
         return reply(body?.["wait"] ? 200 : 202, next);
       }
-      if (action === "memory") return reply(200, { status: { messages: 12, built: 11, pending: 1, viewBytes: 4096, waiting: true }, view: "<chat>\n0+8|user: plans\n</chat>" });
+      if (action === "memory") {
+        const usage = { calls: 3, input: 5_000, output: 400, cacheRead: 1_000, cacheWrite: 200, cost: 0.0123 };
+        return reply(200, { status: { messages: 12, built: 11, pending: 1, viewBytes: 4096, viewLines: 9, waiting: true, usage }, view: "<chat>\n0+8|user: plans\n</chat>" });
+      }
       if (action === "memory/zoom") return reply(200, { text: `${url.searchParams.get("id")}+0|user: the plan` });
       if (action === "memory/html") { response.writeHead(200, { "content-type": "text/html" }); response.end("<!doctype html><title>memory</title>"); return; }
       return reply(405, { error: "method not allowed" });
@@ -207,7 +213,10 @@ test("list, show, add, edit, remove, restore and stop talk to the bot routes and
 
   const shown = terminal();
   await botCommand(gateway.base, "show", ["ada"], {}, shown.io);
-  assert.match(shown.out, /^@ada · Ada \(Researcher\)\nstatus: idle\nmodel: default\nmemory: not available in this build\nroutines: 1\n/u);
+  assert.match(shown.out, /^@ada · Ada \(Researcher\)\nstatus: idle\nmodel: default\nmemory: 2 messages · 3 summaries built · 0 pending · view 300 B in 2 lines · compactor 1 call, 1 token in, 1 out\nroutines: 1\n/u);
+  const unread = terminal();
+  await botCommand(gateway.base, "show", ["bob"], {}, unread.io);
+  assert.match(unread.out, /\nmemory: unavailable\n/u, "a memory the gateway cannot read");
 
   await writeFile(join(dir, "persona.md"), "You are Nova.\nBe kind.\n");
   const added = terminal();
@@ -276,7 +285,7 @@ test("memory prints the status and view, zooms a line and saves the browse page"
   t.after(() => rm(dir, { recursive: true, force: true }));
   const term = terminal();
   await botCommand(gateway.base, "memory", ["ada"], {}, term.io);
-  assert.equal(term.out, "12 messages · 11 summaries built · 1 pending · view 4 KB · summarizing\n<chat>\n0+8|user: plans\n</chat>\n");
+  assert.equal(term.out, "12 messages · 11 summaries built · 1 pending · view 4 KB in 9 lines · summarizing · compactor 3 calls, 6200 tokens in, 400 out, $0.0123\n<chat>\n0+8|user: plans\n</chat>\n");
   const zoom = terminal();
   await botCommand(gateway.base, "memory", ["ada"], { zoom: "16+4" }, zoom.io);
   assert.equal(gateway.calls.at(-1)?.path, "/__hui/bots/id-ada/memory/zoom?id=16&n=4");

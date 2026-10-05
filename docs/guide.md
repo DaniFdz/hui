@@ -189,13 +189,12 @@ Sessions stay what they were (coding work with worktrees, rewind and
 an ordinary Pi Durable session on this gateway, so the chat view, streaming,
 steering, follow-ups, questions and model switching work as in any session.
 
-**Memory.** A bot's chat is meant to carry OptChat memory: every message is kept
-word for word and a cheap model condenses it into a tree of one-line summaries,
-so each turn starts fresh from a fixed-size view of the whole history and the
-bot zooms in when it needs detail. This build does not include OptChat yet: a
-bot's chat is then a plain Durable conversation that Durable compacts by itself
-when it grows, `hui bot memory` reports that memory is not available, and the
-bot's view has no `memory` status.
+**Memory.** A bot's chat carries [OptChat](optchat.md) memory: every message is
+kept word for word and a cheap model condenses the chat into a tree of one-line
+summaries, so each turn starts fresh from a fixed-size view of the whole history
+and the bot opens a line (`zoom`) when it needs the detail. The chat is never
+compacted or cleared; when a turn has to wait for the newest messages to be
+summarized, `hui bot chat` says "Summarizing memory…".
 
 ### Creating and editing
 
@@ -257,6 +256,22 @@ answers in its own chat; nothing comes back to the sender by itself. To stop
 loops, an answer to a bot message is marked `[from @bob · hop 2]` and HUI
 refuses to go beyond three hops; a bot can also send at most 30 bot messages an
 hour. Archived bots can neither send nor receive them.
+
+### Memory
+
+```sh
+hui bot memory ada                 # status, then the view the next turn starts from
+hui bot memory ada --zoom 0+8      # open a view line into the two lines under it
+hui bot memory ada --zoom 3+1      # n = 1: message 3, word for word
+hui bot memory ada --html ada.html # the whole memory as one page
+```
+
+The status line counts the messages, the summaries built and still pending, the
+view's size and lines, and what the compactor spent since the gateway opened the
+memory (calls, tokens, cost). Every view line is `id+n|text`: `n` messages
+from `id`, in one summary; `--zoom id+n` opens it, down to a single message
+with `n` = 1. The page lists the view, every message and each level of the
+tree.
 
 ### Archiving
 

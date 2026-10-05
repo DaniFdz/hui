@@ -492,7 +492,7 @@ export async function botChat(base: string, bot: BotView, io: BotIO): Promise<nu
     }
   })();
 
-  // "Summarizing memory…" while a turn waits on OptChat's compactor; nothing when the build has no memory.
+  // "Summarizing memory…" while a turn waits on OptChat's compactor; nothing while the gateway cannot read the memory.
   void (async () => {
     try {
       for await (const { event, data } of frames(base, "/__hui/bots/events", closing.signal)) {
@@ -586,15 +586,20 @@ function formatQuestion(question: BotQuestion): string {
   return `${lines.join("\n")}\n`;
 }
 
+const plural = (count: number, one: string, many = `${one}s`) => `${count} ${count === 1 ? one : many}`;
+
+/** One line: the log, the tree, the view, and what the compactor spent since the gateway opened the memory. */
 function formatMemory(status: NonNullable<BotView["memory"]>): string {
-  const kilobytes = Math.round(status.viewBytes / 1024);
+  const size = status.viewBytes < 1024 ? `${status.viewBytes} B` : `${Math.round(status.viewBytes / 1024)} KB`;
+  const { usage } = status;
   return [
-    `${status.messages} messages`,
-    `${status.built} summaries built`,
+    plural(status.messages, "message"),
+    `${plural(status.built, "summary", "summaries")} built`,
     `${status.pending} pending`,
-    `view ${kilobytes} KB`,
+    `view ${size} in ${plural(status.viewLines, "line")}`,
     ...(status.waiting ? ["summarizing"] : []),
     ...(status.failing ? [`retrying ${status.failing.node} since ${status.failing.since}: ${status.failing.error}`] : []),
+    `compactor ${plural(usage.calls, "call")}, ${plural(usage.input + usage.cacheRead + usage.cacheWrite, "token")} in, ${usage.output} out${usage.cost > 0 ? `, $${usage.cost.toFixed(4)}` : ""}`,
   ].join(" · ");
 }
 
@@ -616,7 +621,7 @@ export function formatBot(bot: BotView): string {
     `${bot.avatar?.emoji ? `${bot.avatar.emoji} ` : ""}@${bot.handle} · ${bot.name}${bot.title ? ` (${bot.title})` : ""}${bot.archived ? " · archived" : ""}`,
     `status: ${bot.status}${bot.unread ? " · unread" : ""}`,
     `model: ${bot.model ?? "default"}${bot.thinking ? ` · thinking ${bot.thinking}` : ""}`,
-    `memory: ${bot.memory ? formatMemory(bot.memory) : "not available in this build"}${bot.memoryModel ? ` · compactor ${bot.memoryModel}` : ""}`,
+    `memory: ${bot.memory ? formatMemory(bot.memory) : "unavailable"}${bot.memoryModel ? ` · compactor model ${bot.memoryModel}` : ""}`,
     `routines: ${bot.routines}`,
     `cwd: ${bot.cwd}`,
     `chat session: ${bot.sessionId}`,

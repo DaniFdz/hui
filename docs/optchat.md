@@ -19,8 +19,10 @@ HUI implements it in two parts:
   per Durable conversation that enables it, kept current from the conversation's
   entries, and a fresh-turn request for each of its generations.
 
-Nothing else uses it yet: bots, their routes, UI and `hui bot` CLI come later
-(roadmap HUI-18). Every conversation without OptChat behaves exactly as before.
+Bots use it (roadmap HUI-18): a bot's chat enables it in the commit that
+creates its conversation, and `hui bot memory` and the `/__hui/bots/:id/memory`
+routes ([api.md](api.md#bots)) read it through `DurableHost.optchat`. Every
+conversation without OptChat behaves exactly as before.
 
 ## Enabling
 
@@ -42,7 +44,7 @@ without OptChat. Change it only with the helpers, which also select OptChat's
 tools for the conversation in the same commit:
 
 ```ts
-// In the commit that creates the conversation (what creating a bot will do):
+// In the commit that creates the conversation (what creating a bot does):
 await harness.createConversation({
   ownership: { kind: "ownerless" },
   agent: { model, cwd },
@@ -172,6 +174,8 @@ const page = await host.optchat.html(id); // view, every message and each tree l
 const stop = host.optchat.subscribe(id, (status) => render(status)); // e.g. "Summarizing memory…" while waiting
 ```
 
+For a bot, `hui bot memory <bot>` prints the status and the view, `--zoom id+n`
+opens a line and `--html <file>` saves the page, through the running gateway.
 The files are plain JSONL, readable with `jq` while the gateway runs (they only
 grow), for example `jq -r '"\(.i) \(.kind): \(.text)"' main/*.jsonl`.
 
@@ -210,7 +214,7 @@ grow), for example `jq -r '"\(.i) \(.kind): \(.text)"' main/*.jsonl`.
 
 ## Limits
 
-- No bots, routes, UI or CLI yet.
+- Only bots' chats enable it; ordinary sessions have no switch for it.
 - PI extension messages written outside a run (`before_agent_start` context,
   `sendMessage`) and a reset's handoff message are neither logged nor sent in
   an OptChat turn.

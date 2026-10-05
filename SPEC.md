@@ -1135,10 +1135,11 @@ the `hui bot` CLI can do everything it can, through the same routes.
   beside a byte-stable list of the other bots in their system prompt. A message
   arrives as `[from @handle] …`; chains stop after three hops and each bot sends
   at most 30 bot messages an hour.
-- **Memory** is OptChat's: every message kept word for word and condensed into a
-  summary tree a fresh turn reads. Bots reach it only through one interface, so
-  its engine stays separate. Until this build includes OptChat, a bot's chat is
-  a plain Durable conversation and its memory routes report that.
+- **Memory** is OptChat's ([docs/optchat.md](docs/optchat.md)): every message
+  kept word for word and condensed into a summary tree a fresh turn reads, so
+  the chat is never compacted. Bots reach it only through one interface, so its
+  engine stays separate; `hui bot memory` and the memory routes show its
+  status, its view, any line zoomed down to a message, and a browse page.
 
 The contract is [docs/api.md#bots](docs/api.md#bots).
 

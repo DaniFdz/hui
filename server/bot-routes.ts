@@ -55,7 +55,7 @@ type Deps = {
   readAttachments(sessionId: string, raw: unknown): Promise<{ attachments: PromptAttachment[]; cleanupRejected(): Promise<void> }>;
 };
 
-/** 400 for input, 404/409 for a bot's state, 503 without OptChat, 500 for storage. */
+/** 400 for input, 404/409 for a bot's state, 503 when the chat's memory cannot be read, 500 for storage. */
 export function botErrorStatus(error: unknown): number {
   if (error instanceof BotInputError || error instanceof SyntaxError) return 400;
   if (error instanceof BotNotFoundError) return 404;

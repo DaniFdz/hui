@@ -81,6 +81,9 @@ export type BotPatch = Partial<Omit<BotInput, "avatar">> & { avatar?: BotAvatar 
 /** A bot chat's session status, as `SessionView.status` reports it. */
 export type BotSessionStatus = "idle" | "running" | "waiting" | "starting" | "error" | "reconnecting" | "disconnected";
 
+/** What OptChat's compactor spent: model calls, tokens and cost (USD) as the providers report them. */
+export type BotMemoryUsage = { calls: number; input: number; output: number; cacheRead: number; cacheWrite: number; cost: number };
+
 /** What OptChat reports about one bot's memory. */
 export type BotMemoryStatus = {
   /** Messages in the log. */
@@ -88,12 +91,15 @@ export type BotMemoryStatus = {
   /** Summary nodes built, and those still to build. */
   built: number;
   pending: number;
-  /** UTF-8 bytes of the current view. */
+  /** UTF-8 bytes of the current view, and its lines. */
   viewBytes: number;
+  viewLines: number;
   /** A turn waits for the compactor to summarize the newest messages ("Summarizing memory…"). */
   waiting?: boolean;
   /** A node keeps failing; OptChat retries it. */
   failing?: { node: string; error: string; since: string };
+  /** The compactor's spend since the gateway opened this memory (it is not persisted). */
+  usage: BotMemoryUsage;
 };
 
 export type BotLastMessage = { role: "user" | "assistant"; text: string; at: string };
@@ -104,7 +110,7 @@ export type BotView = BotRecord & {
   lastMessage?: BotLastMessage;
   /** A turn settled while nobody watched the chat. */
   unread: boolean;
-  /** Absent when this build has no OptChat memory for the chat. */
+  /** Absent when the gateway cannot read the chat's memory. */
   memory?: BotMemoryStatus;
   /** Automation tasks targeting its chat. */
   routines: number;

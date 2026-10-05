@@ -1104,16 +1104,28 @@ type BotView = BotRecord & {
   status: SessionStatus;       // the chat's session status
   lastMessage?: { role: "user" | "assistant"; text: string /* one line, ≤ 200 */; at: string };
   unread: boolean;             // the chat's session record is unread
-  memory?: BotMemoryStatus;    // absent while this build has no OptChat memory
+  memory?: BotMemoryStatus;    // absent when the gateway cannot read the chat's memory
   routines: number;            // Automation tasks whose sessionId is the chat
 };
 
 type BotMemoryStatus = {
-  messages: number; built: number; pending: number; viewBytes: number;
+  messages: number;            // lines of OptChat's log
+  built: number; pending: number; // summary nodes built, and complete ones not built yet
+  viewBytes: number; viewLines: number; // the current view
   waiting?: boolean;           // a turn waits for the compactor ("Summarizing memory…")
-  failing?: { node: string; error: string; since: string };
+  failing?: { node: string; error: string; since: string }; // a node OptChat keeps retrying
+  usage: BotMemoryUsage;       // the compactor's spend since the gateway opened this memory; not persisted
 };
+
+type BotMemoryUsage = { calls: number; input: number; output: number; cacheRead: number; cacheWrite: number; cost: number }; // tokens; cost in USD as providers report it
 ```
+
+A bot's memory is [OptChat](optchat.md): its chat's conversation enables it in
+its creating commit, every turn starts fresh from the memory's view, and
+Durable's compactions are declined. The gateway reads it through
+`DurableHost.optchat` (`optChatBotMemory` in `server/bot-memory.ts`); a chat
+whose conversation has no OptChat, or a store this process does not own, has no
+memory to read.
 
 `model` and `thinking` in a view are the chat's own (its session record), which
 the session's model controls may change at any time; `PATCH` sets both.
@@ -1138,8 +1150,8 @@ All under `/__hui/bots`, with the usual `x-hui` guard. `:id` is a bot's id or
 handle. Bodies are JSON (create and edit up to 256 KiB, messages up to 24 MB);
 unknown fields are refused. Errors use the common `{ "error" }` shape: 400 for
 input (including an unknown model or a missing directory), 404 for an unknown
-bot, 409 when the bot's state refuses the request, 503 when this build has no
-OptChat memory, 500 for storage failures; other methods answer 405.
+bot, 409 when the bot's state refuses the request, 503 when the gateway cannot
+read the chat's memory, 500 for storage failures; other methods answer 405.
 
 | Route | Success | Behavior |
 | --- | --- | --- |
@@ -1151,8 +1163,8 @@ OptChat memory, 500 for storage failures; other methods answer 405.
 | `POST /__hui/bots/:id/restore` | 200 `{ bot }` | Unarchives the bot and its session record; routines stay disabled |
 | `POST /__hui/bots/:id/messages` | 202 or 200 | See below |
 | `POST /__hui/bots/:id/stop` | 200 `{ bot }` | Aborts the chat's running turn; an idle bot is unchanged; 409 while its chat starts |
-| `GET /__hui/bots/:id/memory` | 200 `{ status: BotMemoryStatus, view: string }` | The rendered view (`<chat>…</chat>`) |
-| `GET /__hui/bots/:id/memory/zoom?id=&n=` | 200 `{ text }` | OptChat's `zoom(id, n)` output, including its own "No line id+n."; `id`/`n` must be whole numbers (400) |
+| `GET /__hui/bots/:id/memory` | 200 `{ status: BotMemoryStatus, view: string }` | The rendered current view (`<chat>`, one `id+n\|text` line per part, `</chat>`), read once the memory has caught up with the chat; the status counts the same messages |
+| `GET /__hui/bots/:id/memory/zoom?id=&n=` | 200 `{ text }` | OptChat's `zoom(id, n)` output: the two lines under line `id+n`, `n = 1` the whole message (`id+0\|kind: text`), or its own "No line id+n."; `id`/`n` must be whole numbers (400) |
 | `GET /__hui/bots/:id/memory/html` | 200 `text/html` | OptChat's self-contained browse page, served with `default-src 'none'` (inline styles only) and `nosniff` |
 
 `POST /__hui/bots/:id/messages` takes `{ text, attachments?, wait?: boolean,
