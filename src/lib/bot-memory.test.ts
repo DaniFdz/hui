@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { formatKilobytes, formatMemoryCost, memoryBudgetLabel, memoryChildren, memoryUsageDetail, memoryUsageLabel, MemoryZoomError, parseMemoryView, parseMemoryZoom } from "./bot-memory.ts";
+import { formatKilobytes, formatMemoryCost, memoryBudgetLabel, memoryChildren, memoryStatusChanged, memoryUsageDetail, memoryUsageLabel, MemoryZoomError, parseMemoryView, parseMemoryZoom } from "./bot-memory.ts";
+import type { BotMemoryStatus } from "./bots.ts";
 
 test("the view's lines are parsed without the chat wrapper", () => {
   const lines = parseMemoryView("<chat>\n0+8|user asked for links; talk: found three\n8+2|user: thanks\n10+1|(not summarized yet: zoom it)\n</chat>");
@@ -42,6 +43,24 @@ test("the summarizer's spend reads as calls, tokens in and out, and a cost only 
   assert.equal(memoryUsageDetail({ ...none, calls: 1, input: 1, output: 1 }), "1 model call; tokens: 1 input, 0 cache read, 0 cache write, 1 output");
   assert.equal(formatMemoryCost(0.00004), "<$0.0001");
   assert.equal(formatMemoryCost(1.5), "$1.5000");
+});
+
+test("the open Memory tab reads again only when the pushed status differs from the one shown", () => {
+  const shown: BotMemoryStatus = { messages: 4, built: 7, pending: 0, viewBytes: 92, viewLines: 4, usage: { calls: 1, input: 1, output: 1, cacheRead: 0, cacheWrite: 0, cost: 0 } };
+  assert.equal(memoryStatusChanged(shown, { ...shown, usage: { ...shown.usage } }), false, "an equal copy is no change");
+  assert.equal(memoryStatusChanged(shown, undefined), false, "a bot without a readable memory pushes nothing to follow");
+  assert.equal(memoryStatusChanged(undefined, shown), true, "nothing shown yet");
+  for (const pushed of [
+    { ...shown, messages: 5 },
+    { ...shown, pending: 1 },
+    { ...shown, viewBytes: 120, viewLines: 5 },
+    { ...shown, waiting: true },
+    { ...shown, failing: { node: "4+1", error: "429", since: "2026-10-05T20:00:00.000Z" } },
+    { ...shown, usage: { ...shown.usage, calls: 2, input: 2, output: 2 } },
+  ]) {
+    assert.equal(memoryStatusChanged(shown, pushed), true, JSON.stringify(pushed));
+  }
+  assert.equal(memoryStatusChanged({ ...shown, waiting: false }, shown), false, "waiting false and absent read the same");
 });
 
 test("sizes read against the 128 KB budget", () => {

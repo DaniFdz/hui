@@ -180,6 +180,15 @@ export function parseBotsUpdate(payload: unknown): BotsUpdate | undefined {
   return { revision: payload["revision"], ...(ids ? { ids } : {}), upserts: parseBotList({ bots: payload["upserts"] }) };
 }
 
+/** Whether a stream frame says something the list has not seen. Every
+ * (re)connect starts with the gateway's cached list: at the revision already
+ * applied it replays what the list shows (older, even, once confirmed edits
+ * landed on top), so it is not news. Any other first revision is newer, or
+ * comes from a gateway that started again. Later frames only move forward. */
+export function isNewBotsFrame(revision: number, first: boolean, applied: number): boolean {
+  return first ? revision !== applied : revision > applied;
+}
+
 /** Changed bots replace their copies; `ids`, when present, is the whole list. */
 export function applyBotsUpdate(bots: readonly BotView[], update: Pick<BotsUpdate, "ids" | "upserts">): BotView[] {
   const byId = new Map(bots.map((bot) => [bot.id, bot]));

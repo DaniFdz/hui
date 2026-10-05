@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { applyBotsUpdate, botInputFromDraft, BotMemoryUnavailableError, botPatchFromDraft, inertMemoryPage, isBotSession, loadBotMemory, parseBotsUpdate, subscribeBots, parseBot, parseBotList, parseBotMemory, parseBotMemoryStatus, upsertBot, withoutBotSessions, type BotDraft, type BotView } from "./bots.ts";
+import { applyBotsUpdate, botInputFromDraft, BotMemoryUnavailableError, botPatchFromDraft, inertMemoryPage, isBotSession, isNewBotsFrame, loadBotMemory, parseBotsUpdate, subscribeBots, parseBot, parseBotList, parseBotMemory, parseBotMemoryStatus, upsertBot, withoutBotSessions, type BotDraft, type BotView } from "./bots.ts";
 import type { SessionGroup, SessionView } from "./sessions-store.ts";
 
 const RECORD = {
@@ -98,6 +98,16 @@ test("stream frames update bots in place and replace the list when they carry it
   assert.deepEqual(applyBotsUpdate([scout, ledger], { ids: ["b3", "b1"], upserts: [coach] }).map(({ id }) => id), ["b3", "b1"], "ids drop bots no longer listed");
   assert.deepEqual(parseBotsUpdate({ revision: 4, ids: ["b1", 2], upserts: [RECORD, { id: "x" }] }), { revision: 4, ids: ["b1"], upserts: [scout] });
   assert.equal(parseBotsUpdate({ ids: [], upserts: [] }), undefined);
+});
+
+test("a reconnect's cached first frame at the applied revision is a replay, not news", () => {
+  assert.equal(isNewBotsFrame(1_000, true, 0), true, "the first list of a fresh page");
+  assert.equal(isNewBotsFrame(1_007, true, 1_007), false, "the gateway's cached list after a gap: already shown");
+  assert.equal(isNewBotsFrame(1_009, true, 1_007), true, "changes made while this client was away");
+  assert.equal(isNewBotsFrame(900, true, 1_007), true, "a gateway that started again");
+  assert.equal(isNewBotsFrame(1_008, false, 1_007), true);
+  assert.equal(isNewBotsFrame(1_007, false, 1_007), false);
+  assert.equal(isNewBotsFrame(1_006, false, 1_007), false);
 });
 
 test("the bot stream reads SSE frames, reports a gateway without it, and stops when asked", async () => {

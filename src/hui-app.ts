@@ -71,9 +71,9 @@ import {
   botInputFromDraft,
   botPatchFromDraft,
   inertMemoryPage,
+  isNewBotsFrame,
   loadBotMemoryPage,
   createBot,
-  BotMemoryUnavailableError,
   loadBotMemory,
   loadBots,
   restoreBot,
@@ -85,7 +85,7 @@ import {
   type BotView,
 } from "./lib/bots.ts";
 import { hiddenBotCount, readBotPanel, readSidebarTab, writeBotPanel, writeSidebarTab, type BotPanelState, type BotPanelTab, type SidebarTab } from "./lib/bot-roster.ts";
-import { parseMemoryView, parseMemoryZoom, type MemoryLine } from "./lib/bot-memory.ts";
+import { memoryStatusChanged, parseMemoryView, parseMemoryZoom, type MemoryLine } from "./lib/bot-memory.ts";
 import { renderBotArchiveDialog, renderBotDialog, renderBotPanel, renderBotPlaceholder, type BotFormValues, type BotMemoryState, type MemoryZoomState } from "./views/bots.ts";
 import { checkUpdate, checkUpdateInBackground, installUpdate, loadUpdate } from "./lib/update-store.ts";
 import { availableUpdate, watchUpdateAvailability } from "./lib/update-notice.ts";
@@ -256,9 +256,6 @@ const paneCallback = { attribute: false, hasChanged: (value: unknown, old: unkno
  * pane callback). Compared by value: the parent rebuilds it on every render. */
 type PaneBot = Omit<HomeBot, "onTogglePanel">;
 const paneBotProperty = { attribute: false, hasChanged: (value: unknown, old: unknown) => JSON.stringify(value) !== JSON.stringify(old) };
-
-/** Same cadence as the Automations page; memory summaries settle in the gateway. */
-const BOT_MEMORY_POLL_MS = 3000;
 
 @customElement("hui-app")
 export class HuiApp extends HuiElement {
@@ -519,7 +516,8 @@ export class HuiApp extends HuiElement {
   @state() private botMemoryPageError = "";
   private botMemoryRequest = 0;
   private botMemoryInFlight = false;
-  private botMemoryPoll: number | undefined;
+  /** A change arrived while a read was on its way: read once more after it. */
+  private botMemoryAgain = false;
   private botRosterTick = 0;
   /** Set on the bot route's embedded pane: header identity and panel state. */
   @property(paneBotProperty) paneBot: PaneBot | undefined;
@@ -561,7 +559,7 @@ export class HuiApp extends HuiElement {
   private composerTextarea: HTMLTextAreaElement | null = null;
   private readonly onMobileNavChange = (event: MediaQueryListEvent) => {
     this.mobileNavLayout = event.matches;
-    // The bot panel moves between the side and a sheet; what it polls follows.
+    // The bot panel moves between the side and a sheet; what it reads follows.
     this.syncBotPanelData();
   };
 
@@ -719,7 +717,6 @@ export class HuiApp extends HuiElement {
     if (this.subagentExpiryTimer !== undefined) window.clearTimeout(this.subagentExpiryTimer);
     this.subagentExpiryTimer = undefined;
     this.stopAutomationPolling();
-    this.stopBotMemoryPolling();
     if (this.botArchiveToastTimer) clearTimeout(this.botArchiveToastTimer);
     if (this.piResourceCopyTimer !== undefined) window.clearTimeout(this.piResourceCopyTimer);
     this.piResourceCopyTimer = undefined;
@@ -849,8 +846,12 @@ export class HuiApp extends HuiElement {
         ? { ...candidate, status, unread: presented ? false : unread === undefined ? candidate.unread : unread }
         : candidate);
       // A turn started or settled: its latest message moved. The bot stream
-      // pushes that itself; without it (an older gateway) read the list again.
-      if (bot.status !== status && !this.botsStreamLive) void this.refreshBots();
+      // pushes that itself; without it (an older gateway) read the list again,
+      // and the open Memory tab reads its memory again.
+      if (bot.status !== status && !this.botsStreamLive) {
+        void this.refreshBots();
+        if (bot.id === this.activeBotId && this.botMemoryTabVisible()) void this.refreshBotMemory();
+      }
     }
     if (!this.embeddedPane && this.selected?.id === id) {
       this.reopenIfRestarted(id, status);
@@ -1122,13 +1123,11 @@ export class HuiApp extends HuiElement {
       }
       if (target.page === "automation") this.startAutomationPolling();
       else this.stopAutomationPolling();
-      this.stopBotMemoryPolling();
       return;
     }
 
     this.settingsOpen = false;
     this.stopAutomationPolling();
-    this.stopBotMemoryPolling();
     if (target.kind === "bot") {
       // Bots exist in the UI only while Settings → Sessions shows the Bots tab.
       if (this.embeddedPane || !this.settings.bots.showTab) {
@@ -3578,11 +3577,12 @@ export class HuiApp extends HuiElement {
     if (wanted && !this.botsStreamStop) {
       this.botsStreamStop = subscribeBots({
         onUpdate: (update, first) => {
-          if (!first && update.revision <= this.botsRevision) return;
+          if (!isNewBotsFrame(update.revision, first, this.botsRevision)) return;
           this.botsRevision = update.revision;
           this.bots = this.withLiveBotState(applyBotsUpdate(this.bots, update));
           this.botsLoaded = true;
           this.botsError = "";
+          this.followBotMemory();
         },
         onConnection: (state) => {
           this.botsStreamLive = state === "live";
@@ -3865,7 +3865,12 @@ export class HuiApp extends HuiElement {
     return this.view === "bot" && !this.settingsOpen && (this.mobileNavLayout ? this.botSheetOpen : this.botPanel.open);
   }
 
-  /** The panel's visible tab decides what is read and polled. */
+  private botMemoryTabVisible(): boolean {
+    return this.botPanelVisible() && this.botPanel.tab === "memory";
+  }
+
+  /** The panel's visible tab decides what is read: Routines polls Automation
+   * like its page; Memory reads once, then follows the bots stream. */
   private syncBotPanelData() {
     if (this.embeddedPane) return;
     const visible = this.botPanelVisible();
@@ -3875,12 +3880,16 @@ export class HuiApp extends HuiElement {
     } else if (this.view === "bot") {
       this.stopAutomationPolling();
     }
-    if (visible && this.botPanel.tab === "memory") {
-      void this.refreshBotMemory();
-      this.startBotMemoryPolling();
-    } else {
-      this.stopBotMemoryPolling();
-    }
+    if (this.botMemoryTabVisible()) void this.refreshBotMemory();
+  }
+
+  /** The open Memory tab stays live without a timer: the bots stream carries
+   * each bot's memory status, and a status other than the one on screen means
+   * the memory moved (a message joined, a summary was built, a turn waits). */
+  private followBotMemory() {
+    if (!this.botMemoryTabVisible()) return;
+    const bot = this.activeBot();
+    if (bot && this.botMemory.botId === bot.id && memoryStatusChanged(this.botMemory.status, bot.memory)) void this.refreshBotMemory();
   }
 
   private toggleBotPanel = () => {
@@ -3919,17 +3928,21 @@ export class HuiApp extends HuiElement {
   private resetBotMemory(botId: string) {
     this.botMemoryRequest += 1;
     this.botMemoryInFlight = false;
+    this.botMemoryAgain = false;
     this.botMemory = { botId, loading: false, error: "" };
     this.botMemoryZoom = new Map();
     this.botMemoryPageError = "";
   }
 
-  /** A manual refresh shows itself; the poll only replaces what changed. */
+  /** A manual refresh shows itself; a live one only replaces what changed. */
   private refreshBotMemory = async (manual = false) => {
     const bot = this.activeBot();
     if (!bot) return;
     if (this.botMemory.botId !== bot.id) this.resetBotMemory(bot.id);
-    if (this.botMemoryInFlight) return;
+    if (this.botMemoryInFlight) {
+      this.botMemoryAgain = true;
+      return;
+    }
     this.botMemoryInFlight = true;
     const request = ++this.botMemoryRequest;
     if (manual || !this.botMemory.status) this.botMemory = { ...this.botMemory, loading: true };
@@ -3940,25 +3953,16 @@ export class HuiApp extends HuiElement {
     } catch (error) {
       if (request !== this.botMemoryRequest) return;
       this.botMemory = { ...this.botMemory, loading: false, error: error instanceof Error ? error.message : "Could not read the bot's memory." };
-      // Polling cannot make a build without OptChat grow one; Retry still asks.
-      if (error instanceof BotMemoryUnavailableError) this.stopBotMemoryPolling();
     } finally {
-      if (request === this.botMemoryRequest) this.botMemoryInFlight = false;
+      if (request === this.botMemoryRequest) {
+        this.botMemoryInFlight = false;
+        if (this.botMemoryAgain) {
+          this.botMemoryAgain = false;
+          if (this.botMemoryTabVisible()) void this.refreshBotMemory();
+        }
+      }
     }
   };
-
-  private startBotMemoryPolling() {
-    if (this.botMemoryPoll !== undefined) return;
-    this.botMemoryPoll = window.setInterval(() => {
-      if (!document.hidden) void this.refreshBotMemory();
-    }, BOT_MEMORY_POLL_MS);
-  }
-
-  private stopBotMemoryPolling() {
-    if (this.botMemoryPoll === undefined) return;
-    window.clearInterval(this.botMemoryPoll);
-    this.botMemoryPoll = undefined;
-  }
 
   /** Opens a line into its two halves (or a message whole); again folds it. */
   private zoomBotMemoryLine = (line: MemoryLine) => {

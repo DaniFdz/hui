@@ -3,7 +3,7 @@
  * one summary of the n messages from id on. Zooming a line returns its two
  * halves, and zooming a single message (n = 1) returns it whole.
  */
-import { BOT_MEMORY_BUDGET_BYTES, type BotMemoryUsage } from "./bots.ts";
+import { BOT_MEMORY_BUDGET_BYTES, type BotMemoryStatus, type BotMemoryUsage } from "./bots.ts";
 import { formatCount } from "./message-metadata.ts";
 
 export type MemoryLine = {
@@ -64,6 +64,26 @@ export function memoryChildren(line: Pick<MemoryLine, "id" | "n">): [{ id: numbe
   if (line.n < 2) return undefined;
   const half = line.n / 2;
   return [{ id: line.id, n: half }, { id: line.id + half, n: half }];
+}
+
+function statusFacts(status: BotMemoryStatus): readonly (number | string | boolean)[] {
+  const { usage } = status;
+  return [
+    status.messages, status.built, status.pending, status.viewBytes, status.viewLines, status.waiting === true,
+    status.failing?.node ?? "", status.failing?.error ?? "",
+    usage.calls, usage.input, usage.output, usage.cacheRead, usage.cacheWrite, usage.cost,
+  ];
+}
+
+/** Whether the bots stream reports another memory than the one on screen, so
+ * the open Memory tab reads it again. Without a pushed status there is
+ * nothing to go by (the gateway cannot read that memory); without a shown one
+ * the tab has yet to read it. */
+export function memoryStatusChanged(shown: BotMemoryStatus | undefined, pushed: BotMemoryStatus | undefined): boolean {
+  if (!pushed) return false;
+  if (!shown) return true;
+  const before = statusFacts(shown);
+  return statusFacts(pushed).some((fact, index) => fact !== before[index]);
 }
 
 /** Decimal kilobytes, as the 128 KB budget is stated. */
