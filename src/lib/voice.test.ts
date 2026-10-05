@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
-import { formatCallTime, microphoneErrorMessage, sendBotMessage, speedLabel, synthesizeSpeech, transcribeRecording, voiceConnectionSummary, voiceOptions, withTranscript } from "./voice.ts";
+import { formatCallTime, microphoneErrorMessage, sendBotMessage, speedLabel, synthesizeSpeech, transcribeRecording, voiceConnectionSummary, voiceOptions, voiceStatusChip, withTranscript } from "./voice.ts";
 
 const realFetch = globalThis.fetch;
 afterEach(() => { globalThis.fetch = realFetch; });
@@ -81,6 +81,10 @@ test("Settings sums the connection up in one line, never with the key", () => {
   assert.equal(voiceConnectionSummary({ configured: true, url: "https://gpu.ts.net", keySet: true, reachable: true, service: "VoiceStudio", version: "2.4.0" }), "Reachable · VoiceStudio 2.4.0 · API key saved");
   assert.equal(voiceConnectionSummary({ configured: true, url: "http://127.0.0.1:3900", keySet: false, reachable: false, error: "VoiceStudio could not be reached at http://127.0.0.1:3900 (connection refused; is it running?)." }), "Not reachable: VoiceStudio could not be reached at http://127.0.0.1:3900 (connection refused; is it running?).");
   assert.equal(voiceConnectionSummary({ configured: true, url: "http://127.0.0.1:3900", keySet: false }), "Saved; not checked yet.");
+  assert.deepEqual(voiceStatusChip(undefined), { kind: "muted", label: "Checking…" });
+  assert.deepEqual(voiceStatusChip({ configured: false, url: "", keySet: false }), { kind: "muted", label: "Not connected" });
+  assert.deepEqual(voiceStatusChip({ configured: true, url: "x", keySet: false, reachable: true }), { kind: "ok", label: "Connected" });
+  assert.deepEqual(voiceStatusChip({ configured: true, url: "x", keySet: false, reachable: false }), { kind: "danger", label: "Unreachable" });
 });
 
 test("a voice note joins what the composer already holds", () => {

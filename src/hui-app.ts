@@ -195,6 +195,15 @@ import type { BacklogCardAction, SessionCardAction } from "./views/kanban.ts";
 import type { BacklogStartTarget } from "./components/backlog-start-dialog.ts";
 import { addSuggestionToBacklog, backlogItemMarkdown, loadBacklog, removeBacklogItem, setBacklogItemGroup, type BacklogItem, type BacklogJiraState } from "./lib/backlog.ts";
 import { loadJiraConnection } from "./lib/jira.ts";
+import { loadVoiceConnection, microphoneErrorMessage, synthesizeSpeech, transcribeRecording, withTranscript } from "./lib/voice.ts";
+import { microphoneContext, startVoiceNote, voicePlayer } from "./lib/voice-audio.ts";
+import { VoiceController } from "./lib/voice-controller.ts";
+import { VoiceNoteController } from "./lib/voice-notes.ts";
+import { botCallPlatform } from "./lib/voice-session.ts";
+import { renderCallBar, renderCallView, type CallViewProps } from "./views/bot-voice.ts";
+import { VOICE_CONNECTION_EVENT } from "./views/settings-voice.ts";
+import { VOICE_MESSAGE_PREFIX, type VoiceConnection } from "../shared/voice.ts";
+import type { HomeVoice } from "./views/home.ts";
 import { localTimezone, type AutomationProps } from "./views/settings-automation.ts";
 import { loadWorkers, workerAction, type WorkerView } from "./lib/workers.ts";
 import { hasOpenWebAwesomePopup } from "./lib/web-awesome.ts";
@@ -250,6 +259,11 @@ function readCollapsed(): Set<string> {
  * update or resize step. Lit still stores the newest value, but a rendered
  * button may keep an older one: capture only the pane/session id and the parent. */
 const paneCallback = { attribute: false, hasChanged: (value: unknown, old: unknown) => !value !== !old };
+
+/** A bot pane's voice (HUI-18): what the app, which owns playback and calls, tells it. Compared by value. */
+type PaneVoice = { botId: string; readingId: string; readingStatus: "idle" | "loading" | "playing"; readingError: string; inCall: boolean };
+type PaneVoiceActions = { readAloud: (id: string, text: string) => void; stopReading: () => void; call: () => void };
+const paneVoiceProperty = { attribute: false, hasChanged: (value: unknown, old: unknown) => JSON.stringify(value) !== JSON.stringify(old) };
 
 /** The bot pane's header data, without its callback (passed separately as a
  * pane callback). Compared by value: the parent rebuilds it on every render. */
@@ -554,6 +568,28 @@ export class HuiApp extends HuiElement {
   /** Embedded panes own the composer but not the sidebar; report draft
    * presence so the shell can project the pencil onto the session row. */
   @property(paneCallback) onPaneDraftChange: ((sessionId: string, hasDraft: boolean) => void) | undefined;
+  /** Set on the bot route's pane while VoiceStudio is connected: voice notes and Read aloud. */
+  @property(paneVoiceProperty) paneVoice: PaneVoice | undefined;
+  @property(paneCallback) onPaneVoice: PaneVoiceActions | undefined;
+  /** The pane's voice note; the microphone is held only while it records. */
+  private readonly voiceNotes = new VoiceNoteController(this, {
+    start: (options) => startVoiceNote(options),
+    transcribe: (audio) => transcribeRecording(audio),
+    deliver: (text) => this.deliverVoiceNote(text),
+    microphoneError: (error) => microphoneErrorMessage(error, microphoneContext()),
+    now: () => Date.now(),
+    setInterval: (callback, ms) => { const timer = window.setInterval(callback, ms); return () => window.clearInterval(timer); },
+  });
+  private lastReadingError = "";
+  /** The app's voice (top-level only): VoiceStudio's connection, the one read-aloud and the one call. */
+  private readonly voice = new VoiceController(this, {
+    loadConnection: loadVoiceConnection,
+    synthesize: synthesizeSpeech,
+    play: (audio, signal) => voicePlayer().play(audio, signal),
+    platform: botCallPlatform,
+    now: () => Date.now(),
+    setInterval: (callback, ms) => { const timer = window.setInterval(callback, ms); return () => window.clearInterval(timer); },
+  });
   private mobileNavMedia: MediaQueryList | undefined;
   private composerTextarea: HTMLTextAreaElement | null = null;
   private readonly onMobileNavChange = (event: MediaQueryListEvent) => {
@@ -689,8 +725,15 @@ export class HuiApp extends HuiElement {
       window.addEventListener("online", this.onUpdateVisibility);
       window.addEventListener("offline", this.onUpdateVisibility);
       window.addEventListener("focus", this.onUpdateVisibility);
+      this.addEventListener(VOICE_CONNECTION_EVENT, this.onVoiceConnection);
     }
   }
+
+  /** Settings → Integrations saved, changed or removed the VoiceStudio connection. */
+  private readonly onVoiceConnection = (event: Event) => {
+    const connection = (event as CustomEvent<VoiceConnection>).detail;
+    if (connection) this.voice.setConnection(connection);
+  };
 
   override disconnectedCallback() {
     this.pauseArchiveToast();
@@ -711,6 +754,9 @@ export class HuiApp extends HuiElement {
     window.removeEventListener("focus", this.onUpdateVisibility);
     this.updateMonitor?.stop();
     this.updateMonitor = undefined;
+    this.removeEventListener(VOICE_CONNECTION_EVENT, this.onVoiceConnection);
+    this.voiceNotes.dispose();
+    if (!this.embeddedPane) this.voice.dispose();
     this.streamStop?.();
     this.streamStop = undefined;
     if (this.subagentExpiryTimer !== undefined) window.clearTimeout(this.subagentExpiryTimer);
@@ -985,6 +1031,16 @@ export class HuiApp extends HuiElement {
       textarea.focus();
       textarea.setSelectionRange(this.draft.length, this.draft.length);
       this.setCommandQuery(slashCommandQuery(this.draft, this.draft.length));
+    }
+    // A bot's chat offers voice once the gateway says VoiceStudio is connected.
+    if (!this.embeddedPane && this.view === "bot" && !this.voice.connection && !this.voice.connectionError) void this.voice.loadConnection();
+    if (this.embeddedPane && changed.has("paneVoice")) {
+      const error = this.paneVoice?.readingError ?? "";
+      if (error && error !== this.lastReadingError) {
+        this.note = error;
+        this.noteLevel = "error";
+      }
+      this.lastReadingError = error;
     }
     if (changed.has("selected") || changed.has("view") || changed.has("settingsOpen") || changed.has("activeBotId") || changed.has("bots")) {
       const activeSessionTitle = this.settingsOpen ? undefined
@@ -2259,6 +2315,38 @@ export class HuiApp extends HuiElement {
     this.setDraft(draft);
     void this.persistComposerDraft();
   };
+
+  /** A voice note's words: sent at once (marked as spoken) when Settings says so and the composer is empty,
+   * otherwise into the composer to check, joining what is already typed. */
+  private deliverVoiceNote(text: string) {
+    if (currentSettings().voice.sendNotesImmediately && !this.draft.trim() && !this.attachments.length) {
+      this.send(`${VOICE_MESSAGE_PREFIX}${text}`, [], this.streaming ? "steer" : "prompt");
+      return;
+    }
+    this.updateDraft(withTranscript(this.draft, text));
+    void this.updateComplete.then(() => {
+      const textarea = this.renderRoot.querySelector<HTMLTextAreaElement>(".agent-chat__composer-combobox > textarea");
+      textarea?.focus();
+      textarea?.setSelectionRange(textarea.value.length, textarea.value.length);
+    });
+  }
+
+  private homeVoice(pane: PaneVoice, actions: PaneVoiceActions): HomeVoice {
+    const notes = this.voiceNotes;
+    return {
+      note: notes.state,
+      now: notes.now,
+      readingId: pane.readingId,
+      readingStatus: pane.readingStatus,
+      onStartNote: () => void notes.start(),
+      onStopNote: () => void notes.stop(),
+      onCancelNote: () => notes.cancel(),
+      onDismissNote: () => notes.dismiss(),
+      onReadAloud: (id, text) => actions.readAloud(id, text),
+      onStopReading: () => actions.stopReading(),
+      call: { inCall: pane.inCall, onCall: () => actions.call() },
+    };
+  }
 
   private isUpdateSession(session: SessionView | undefined): boolean {
     return session?.title === HUI_UPDATE_SESSION_TITLE && session.group === "";
@@ -4040,8 +4128,13 @@ export class HuiApp extends HuiElement {
       panelOpen,
       panelId,
     };
+    const call = this.voice.call?.bot.id === bot.id ? this.voice.call : undefined;
+    const paneVoice: PaneVoice | undefined = this.voice.available
+      ? { botId: bot.id, readingId: this.voice.readAloud.id, readingStatus: this.voice.readAloud.status, readingError: this.voice.readAloud.error ?? "", inCall: Boolean(call) }
+      : undefined;
     return html`<div class="bot-workspace ${panelOpen && !sheet ? "bot-workspace--panel" : ""}" data-bot-id=${bot.id}>
       <div class="bot-workspace__chat">
+        ${call?.minimized ? renderCallBar({ ...this.callViewProps(bot, call), floating: false }) : nothing}
         ${keyed(bot.id, html`<hui-app
           class="hui-session-pane-app bot-workspace__pane"
           embedded-pane
@@ -4062,7 +4155,10 @@ export class HuiApp extends HuiElement {
           .paneGroups=${this.sessionListRevision ? this.groups : undefined}
           .onPaneUpdate=${(text: string, attachments: readonly Attachment[]) => this.handleUpdateCommand(text, attachments)}
           .onPaneDraftChange=${(sessionId: string, hasDraft: boolean) => this.markSessionDraft(sessionId, hasDraft)}
+          .paneVoice=${paneVoice}
+          .onPaneVoice=${paneVoice ? this.paneVoiceActions(bot) : undefined}
         ></hui-app>`)}
+        ${call && !call.minimized ? renderCallView(this.callViewProps(bot, call)) : nothing}
       </div>
       ${panelOpen ? renderBotPanel({
         bot,
@@ -4117,6 +4213,76 @@ export class HuiApp extends HuiElement {
       onCancel: this.closeBotDialog,
     }) : nothing}
     ${this.botArchive ? renderBotArchiveDialog(this.botArchive, this.botArchivePending, this.botArchiveError, this.confirmArchiveBot, this.closeBotArchive) : nothing}`;
+  }
+
+  /* ── voice (HUI-18): read-aloud and calls with bots ─────────────────────── */
+
+  /** Captures only the bot's id: a rendered button may keep an older closure, and the bot is read again when used. */
+  private paneVoiceActions(bot: BotView): PaneVoiceActions {
+    const botId = bot.id;
+    return {
+      readAloud: (id, text) => this.voice.read(id, text, { botId }),
+      stopReading: () => this.voice.stopReading(),
+      call: () => {
+        const current = this.bots.find((candidate) => candidate.id === botId);
+        if (current) this.openCall(current);
+      },
+    };
+  }
+
+  /** Calls a bot (or returns to its call) and shows its view. One call at a time. */
+  private openCall = (bot: BotView) => {
+    if (!this.voice.startCall({ id: bot.id, sessionId: bot.sessionId, name: bot.name })) {
+      this.botNotice = `Hang up the call with ${this.voice.call?.bot.name ?? "the other bot"} first.`;
+      this.botNoticeFailed = true;
+      return;
+    }
+    if (this.view !== "bot" || this.activeBotId !== bot.id || this.settingsOpen) this.navigate({ kind: "bot", id: bot.id });
+    void this.updateComplete.then(() => this.renderRoot.querySelector<HTMLElement>(".bot-call__control--hangup, .bot-call__close")?.focus());
+  };
+
+  /** After the call view closes, focus returns to the chat it covered. */
+  private focusBotChat() {
+    void this.updateComplete.then(() => this.botPaneApp()?.updateComplete).then(() => {
+      this.botPaneApp()?.renderRoot.querySelector<HTMLElement>(".bot-call-toggle, .agent-chat__composer-combobox > textarea")?.focus();
+    });
+  }
+
+  private callViewProps(bot: Pick<BotView, "id" | "name" | "title" | "avatar" | "sessionId" | "memory">, call: NonNullable<VoiceController["call"]>): CallViewProps {
+    return {
+      bot: { id: bot.id, name: bot.name, ...(bot.title ? { title: bot.title } : {}), ...(bot.avatar ? { avatar: bot.avatar } : {}) },
+      state: call.state,
+      now: this.voice.now,
+      summarizing: Boolean(bot.memory?.waiting),
+      onToggleMic: () => this.voice.toggleMic(),
+      onToggleSpeaker: () => this.voice.toggleSpeaker(),
+      onMinimize: () => {
+        this.voice.minimize();
+        void this.updateComplete.then(() => this.renderRoot.querySelector<HTMLElement>(".bot-call-bar__open")?.focus());
+      },
+      onExpand: () => {
+        if (this.view !== "bot" || this.activeBotId !== bot.id || this.settingsOpen) this.navigate({ kind: "bot", id: bot.id });
+        this.voice.expand();
+        void this.updateComplete.then(() => this.renderRoot.querySelector<HTMLElement>(".bot-call__control--hangup")?.focus());
+      },
+      onHangUp: () => {
+        this.voice.hangUp();
+        this.focusBotChat();
+      },
+      onClose: () => {
+        this.voice.closeCall();
+        this.focusBotChat();
+      },
+    };
+  }
+
+  /** The minimized call stays in sight while the operator is elsewhere in HUI. */
+  private renderFloatingCallBar() {
+    const call = this.voice.call;
+    if (this.embeddedPane || !call) return nothing;
+    if (this.view === "bot" && this.activeBotId === call.bot.id && !this.settingsOpen) return nothing;
+    const bot = this.bots.find((candidate) => candidate.id === call.bot.id) ?? { id: call.bot.id, name: call.bot.name, sessionId: call.bot.sessionId };
+    return renderCallBar({ ...this.callViewProps(bot, call), floating: true });
   }
 
   /* ── settings ─────────────────────────────────────────────────────────── */
@@ -4803,6 +4969,7 @@ export class HuiApp extends HuiElement {
       question: this.question,
       connection: this.connection,
       copiedId: this.copiedId,
+      ...(this.paneVoice && this.onPaneVoice ? { voice: this.homeVoice(this.paneVoice, this.onPaneVoice) } : {}),
       expandedActivityIds: this.expandedActivityIds,
       showScrollToBottom: this.showScrollToBottom,
       models: this.models,
@@ -5328,6 +5495,7 @@ export class HuiApp extends HuiElement {
       ${this.renderBacklogStartDialog()}
       ${this.renderBacklogRemoveDialog()}
       ${this.renderBotDialogs()}
+      ${this.renderFloatingCallBar()}
       ${this.commandPalette()}
       ${this.updateDialog()}
       ${renderPiResourceReader(this.piResourceReader, this.closePiResourceReader, this.copyPiResource)}

@@ -148,3 +148,12 @@ export function withTranscript(draft: string, text: string): string {
   if (!draft.trim()) return words;
   return /\s$/u.test(draft) ? `${draft}${words}` : `${draft} ${words}`;
 }
+
+/** The chip beside the section's heading, like GitHub's. */
+export function voiceStatusChip(connection: VoiceConnection | undefined): { kind: "ok" | "warn" | "danger" | "muted"; label: string } {
+  if (!connection) return { kind: "muted", label: "Checking…" };
+  if (!connection.configured) return { kind: "muted", label: "Not connected" };
+  if (connection.reachable === true) return { kind: "ok", label: "Connected" };
+  if (connection.reachable === false) return { kind: "danger", label: "Unreachable" };
+  return { kind: "warn", label: "Not checked" };
+}

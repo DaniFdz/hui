@@ -52,7 +52,7 @@ import { renderWatcherActivity, type WatcherActivityProps } from "./chat/watcher
 import { browserToolSummary } from "../lib/browser-tool-display.ts";
 import { toggleNavigationDrawer } from "./shell.ts";
 import { renderBotAvatar } from "./bots.ts";
-import { renderVoiceNoteButton, renderVoiceNoteStatus, voiceIcons } from "./bot-voice.ts";
+import { renderCallButton, renderVoiceNoteButton, renderVoiceNoteStatus, voiceIcons } from "./bot-voice.ts";
 import type { VoiceNoteState } from "../lib/voice.ts";
 import type { BotView } from "../lib/bots.ts";
 import { slashCommandQuery } from "../lib/slash-commands.ts";
@@ -358,6 +358,8 @@ export type HomeVoice = {
   onDismissNote: () => void;
   onReadAloud: (id: string, text: string) => void;
   onStopReading: () => void;
+  /** The bot header's Call button: starts a call, or returns to the one under way. */
+  call: { inCall: boolean; onCall: () => void };
 };
 
 /** The bot view's header: who the bot is and its Routines | Memory panel. */
@@ -2161,6 +2163,7 @@ function renderHeader(props: HomeProps, session: SessionView) {
       </div>
       <div class="chat-pane__header-trailing">
         <div class="chat-pane__actions chat-pane__header-actions">
+          ${props.bot && props.voice ? renderCallButton({ botName: props.bot.bot.name, inCall: props.voice.call.inCall, onCall: props.voice.call.onCall }) : nothing}
           ${props.bot ? html`<button type="button" class="btn btn--ghost btn--icon chat-icon-btn bot-panel-toggle"
             aria-label=${props.bot.panelOpen ? "Hide routines and memory" : "Show routines and memory"} title="Routines and memory"
             aria-expanded=${String(props.bot.panelOpen)} aria-controls=${props.bot.panelOpen ? props.bot.panelId : nothing}

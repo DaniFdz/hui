@@ -1,7 +1,7 @@
 import { LitElement, html, nothing } from "lit";
 import type { VoiceConnection } from "../../shared/voice.ts";
 import { icons } from "../lib/icons.ts";
-import { connectVoice, disconnectVoice, loadVoiceConnection, voiceConnectionSummary } from "../lib/voice.ts";
+import { connectVoice, disconnectVoice, loadVoiceConnection, voiceConnectionSummary, voiceStatusChip } from "../lib/voice.ts";
 import { renderSettingsToggle } from "./settings-toggle.ts";
 
 // Node's focused view tests import views without a CSS loader.
@@ -129,12 +129,14 @@ export class HuiVoiceSettings extends LitElement {
     const connection = this.#connection;
     const connected = connection?.configured === true;
     const status = this.#loading ? "Checking…" : connection ? voiceConnectionSummary(connection) : "";
+    const chip = voiceStatusChip(this.#loading ? undefined : connection);
     return html`
       <section class="settings-section" data-integration="voicestudio">
         <div class="settings-section__header"><div class="settings-section__copy">
           <h2 class="settings-section__heading">VoiceStudio</h2>
-          <p class="settings-section__desc">Talk to bots: voice notes, read-aloud and calls through your own VoiceStudio speech service. ${connected ? "" : status}</p>
-        </div></div>
+          <p class="settings-section__desc">Talk to bots: voice notes, read-aloud and calls through your own VoiceStudio speech service, on this machine or a GPU box over Tailscale.</p>
+        </div>
+        <div class="settings-section__actions"><span class="settings-status ${chip.kind === "muted" ? "" : `settings-status--${chip.kind}`}" data-voice-status=${chip.kind}><span class="settings-status__dot" aria-hidden="true"></span>${chip.label}</span></div></div>
         ${this.#error ? html`<p class="voice-settings__error" role="alert">${this.#error}</p>` : nothing}
         ${this.#notice ? html`<p class="voice-settings__notice" role="status">${this.#notice}</p>` : nothing}
         <div class="settings-group">
