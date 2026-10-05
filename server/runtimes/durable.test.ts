@@ -708,6 +708,7 @@ export default function (pi) {
       ctx.ui.notify("picked " + choice, "info");
     },
   });
+  pi.registerCommand("fixture-note", { description: "Adds independent context", handler: async () => { pi.sendMessage({ customType: "fixture-idle", content: "FIXTURE_IDLE_MARKER", display: false }); } });
   pi.registerCommand("fixture-send", { description: "Sends a prompt", handler: async (args) => { pi.sendUserMessage("E2E_EXTENSION_TOOL " + args); } });
   pi.registerCommand("fixture-trigger", {
     description: "Starts a turn with a custom message",
@@ -817,14 +818,16 @@ test("end-of-run handlers see a Stop in ctx.signal and hold the settle, not the 
   assert.equal((await logged(f.events, "agent_end"))[1]?.["stopped"], true, "a handler tells a user's Stop by ctx.signal");
 });
 
-test("rewinding to before a prompt also drops the hidden context its extensions wrote for it", { timeout: 45_000 }, async (t) => {
+test("rewinding drops prompt-specific extension context but keeps independent context", { timeout: 45_000 }, async (t) => {
   const f = await extensionFixture(t);
   const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-rewind-context" }, f.host());
+  await settledAfter(session, "/fixture-note");
   await settledAfter(session, "E2E_RICH first");
   await session.rewind({ userFromEnd: 0 }, { excludeUserMessage: true });
   await settledAfter(session, "E2E_RICH again");
   const request = JSON.stringify((await providerRequests(f.log)).filter((each) => JSON.stringify(each.messages).includes("E2E_RICH again"))[0]?.messages);
   assert.equal(request.split("FIXTURE_CONTEXT_MARKER").length - 1, 1, "only the new prompt's context");
+  assert.match(request, /FIXTURE_IDLE_MARKER/u, "the independent command's context survives");
   assert.doesNotMatch(request, /E2E_RICH first/u);
 });
 
@@ -940,8 +943,13 @@ test("a disabled package loads neither its extension nor its skills, and a broke
   assert.ok(answered("Tool complete")(session.transcript()));
 });
 
-test("interrupted runs resume once their sessions have loaded their PI extensions again", { timeout: 60_000 }, async (t) => {
-  const f = await extensionFixture(t);
+test("interrupted runs wait for their extensions even when another session's startup starts work", { timeout: 60_000 }, async (t) => {
+  const f = await extensionFixture(t, { extensions: { "startup.js": `export default function(pi) {
+    pi.on("session_start", (_event, ctx) => {
+      if (ctx.sessionManager.getSessionId() === "resume-trigger")
+        pi.sendMessage({ customType: "startup", content: "STARTUP_NEW_RUN", display: false }, { triggerTurn: true });
+    });
+  }` } });
   const hostUrl = new URL("./durable-host.ts", import.meta.url).href;
   const durableUrl = new URL("./durable.ts", import.meta.url).href;
   const settingsUrl = new URL("../../src/lib/settings.ts", import.meta.url).href;
@@ -973,12 +981,115 @@ test("interrupted runs resume once their sessions have loaded their PI extension
   const reopening = new Promise<DurableSession>((resolve) => { reopened = resolve; });
   host.beforeResume = async (conversations) => {
     interrupted = conversations;
+    // This session's startup handler must not resume the entire store while the interrupted session is still loading.
+    await startDurable({ cwd: f.cwd, huiSessionId: "resume-trigger" }, host);
     reopened(await startDurable({ cwd: f.cwd, sessionFile: reference, huiSessionId: "crash-extensions" }, host));
   };
   await host.open();
   await transcriptWhere(await reopening, answered("Tool complete"));
   assert.deepEqual(interrupted.map(String), [reference.slice("durable:".length)]);
-  const resumed = (await providerRequests(f.log)).at(-1) as ProviderRequest & { tools?: unknown };
+  const resumed = (await providerRequests(f.log)).filter((request) => JSON.stringify(request.messages).includes("E2E_COMMAND_RUNNING")).at(-1) as ProviderRequest & { tools?: unknown };
   assert.match(JSON.stringify(resumed.tools), /fixture_echo/u, "the resumed run's next request offers the extension's tool");
 });
 
+
+/** Logs every `ctx.compact()` outcome and `session_compact`. `/ext-compact TAG` compacts with the model's summary
+ * (held by E2E_SLOW_COMPACT); instructions `HOOK:<summary>` get that summary from `session_before_compact`; automatic
+ * compactions are declined. */
+const compactingExtension = (log: string) => `
+import { appendFileSync } from "node:fs";
+const write = (entry) => appendFileSync(${JSON.stringify(log)}, JSON.stringify(entry) + "\\n");
+export default function (pi) {
+  pi.registerCommand("ext-compact", {
+    description: "compacts",
+    handler: async (tag, ctx) => {
+      ctx.compact({
+        onComplete: (result) => write({ event: "complete", tag, summary: result.summary }),
+        onError: (error) => {
+          write({ event: "error", tag, message: error.message });
+          if (tag === "A") ctx.compact({
+            onComplete: () => write({ event: "complete", tag: "retry" }),
+            onError: (retry) => write({ event: "error", tag: "retry", message: retry.message }),
+          });
+        },
+      });
+    },
+  });
+  pi.on("session_before_compact", (event) => {
+    if (event.reason !== "manual") return { cancel: true };
+    const hook = event.customInstructions?.match(/^HOOK:(.*)$/);
+    return hook ? { compaction: { summary: hook[1], firstKeptEntryId: event.preparation.firstKeptEntryId, tokensBefore: 0 } } : undefined;
+  });
+  pi.on("session_compact", (event) => write({ event: "session_compact", summary: event.compactionEntry.summary, reason: event.reason, fromExtension: event.fromExtension }));
+}
+`;
+
+async function compactionFixture(t: TestContext, options: Parameters<typeof fixture>[1]) {
+  const dir = await mkdtemp(join(tmpdir(), "hui-durable-compaction-log-"));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const log = join(dir, "extension.jsonl");
+  const f = await fixture(t, { ...options, extensions: { "compaction.js": compactingExtension(log) } });
+  const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-extension-compaction" }, f.host());
+  /** Resolves once the extension logged `count` entries of `event`. */
+  const loggedAtLeast = async (event: string, count = 1) => {
+    for (const deadline = Date.now() + 20_000; Date.now() < deadline;) {
+      const entries = await logged(log, event);
+      if (entries.length >= count) return entries;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    throw new Error(`Expected extension log never arrived: ${JSON.stringify(await extensionLog(log))}`);
+  };
+  return { ...f, session, entries: () => extensionLog(log), loggedAtLeast };
+}
+
+const outcomes = (entries: Record<string, unknown>[]) => entries.filter((entry) => entry["event"] === "complete" || entry["event"] === "error");
+
+test("ctx.compact() completes with its own summary, not one another compaction placed first", { timeout: 60_000 }, async (t) => {
+  const { session, control, entries, loggedAtLeast } = await compactionFixture(t, KEPT_WINDOW);
+  await turns(session, ["E2E_SLOW_COMPACT first turn", LONG_TURN]);
+  await session.prompt("/ext-compact A");
+  assert.equal((await control("/control/wait-replay-ready")).status, 200, "the extension's summary request is held");
+
+  await compacted(session, "HOOK:USER_SUMMARY");
+  await loggedAtLeast("session_compact");
+  assert.deepEqual(outcomes(await entries()), [], "the user's compaction ending is not the extension's");
+
+  await control("/control/release-replay", "POST");
+  const [result] = await loggedAtLeast("complete");
+  assert.equal(result?.["tag"], "A");
+  assert.match(String(result?.["summary"]), /FIXTURE_SUMMARY/u);
+  assert.doesNotMatch(String(result?.["summary"]), /USER_SUMMARY/u);
+  const placed = await loggedAtLeast("session_compact", 2);
+  assert.deepEqual(placed.map((entry) => [/USER_SUMMARY/u.test(String(entry["summary"])) ? "user" : /FIXTURE_SUMMARY/u.test(String(entry["summary"])) ? "model" : entry["summary"], entry["fromExtension"]]),
+    [["user", true], ["model", false]], "each placed summary once, flagged by who wrote it");
+});
+
+test("a compaction that placed no summary sends no session_compact with an earlier one", { timeout: 60_000 }, async (t) => {
+  // A 32k window has Durable compact in the background before each request with a cut; the extension declines those.
+  const { session, entries, loggedAtLeast } = await compactionFixture(t, { contextWindow: 32_000, settings: { compaction: { keepRecentTokens: 40 } } });
+  await turns(session, ["first turn", LONG_TURN]);
+  await compacted(session, "HOOK:FIRST_SUMMARY");
+  await loggedAtLeast("session_compact");
+
+  const declined = nextEvent(session, (event) => event.type === "compaction_end" && event.reason !== "manual");
+  await turns(session, ["third turn", LONG_TURN, "fifth turn"]);
+  const end = await declined;
+  assert(end.type === "compaction_end" && end.outcome === "done", JSON.stringify(end));
+  assert.deepEqual((await entries()).filter((entry) => entry["event"] === "session_compact").map((entry) => entry["reason"]), ["manual"]);
+});
+
+test("clearing the session cancels a pending ctx.compact() once; a later compaction is not reported to it", { timeout: 60_000 }, async (t) => {
+  const { session, control, entries, loggedAtLeast } = await compactionFixture(t, KEPT_WINDOW);
+  await turns(session, ["E2E_SLOW_COMPACT first turn", LONG_TURN]);
+  await session.prompt("/ext-compact A");
+  assert.equal((await control("/control/wait-replay-ready")).status, 200, "the extension's summary request is held");
+
+  await session.clear();
+  await loggedAtLeast("error");
+  await control("/control/release-replay", "POST");
+  await turns(session, ["after clear", LONG_TURN]);
+  await session.prompt("/ext-compact B");
+  await loggedAtLeast("complete");
+  assert.deepEqual(outcomes(await entries()).map((entry) => `${String(entry["event"])}:${String(entry["tag"])}:${String(entry["message"] ?? "")}`),
+    ["error:A:Compaction cancelled", "complete:B:"]);
+});

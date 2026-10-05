@@ -40,7 +40,7 @@ const { normalizeBuildSystemPromptOptions } = await internal<{
 }>("./core/system-prompt.js");
 
 /** A message an extension sent: the model reads it as user input; the transcript hides it, as for PI sessions. */
-export const ExtensionMessageEntry = defineEntry<{ customType: string; display: boolean }>("hui.pi-message");
+export const ExtensionMessageEntry = defineEntry<{ customType: string; display: boolean; forPrompt?: boolean }>("hui.pi-message");
 /** One that starts or steers a turn is Durable input instead; its text part carries its custom type, which providers
  * ignore. */
 export function isCustomInput(message: unknown): boolean {
@@ -72,7 +72,8 @@ export interface ExtensionSession {
   currentUsage(): RuntimeUsage | undefined;
   setModel(provider: string, id: string): Promise<void>;
   setThinking(level: string): Promise<void>;
-  compact(instructions?: string): Promise<void>;
+  /** Starts a compaction and resolves with the summary entry it placed. */
+  compactEntry(instructions?: string): Promise<EntryId>;
   abort(): Promise<void>;
   waitForIdle(): Promise<void>;
   reload(): Promise<void>;
@@ -163,6 +164,7 @@ export class DurableExtensions {
   /** Lifecycle events run one after another, never holding up the session's own processing. */
   #queue: Promise<void> = Promise.resolve();
   #disposed = false;
+  #stopping = false;
   #run: { controller: AbortController; start: number; turn: number; prompt?: RunPrompt } | undefined;
   /** The signal of the run the event being handled belongs to, which may have ended since. */
   #eventSignal: AbortSignal | undefined;
@@ -176,9 +178,12 @@ export class DurableExtensions {
   #batch: (AgentEvent | RunEnd)[] = [];
   /** Entries extensions asked to write that Durable has not admitted yet. */
   #writes = new Set<Promise<unknown>>();
-  #compactions: { onComplete?: (result: never) => void; onError?: (error: Error) => void }[] = [];
-  /** Compactions whose summary a `session_before_compact` handler supplied. */
-  #fromExtension = 0;
+  /** `ctx.compact()` calls waiting for their own summary, each with its cancel: a new conversation or instances end it. */
+  #compactions = new Set<() => void>();
+  /** Compaction tasks whose summary a `session_before_compact` handler supplied, as `compaction:<task>`. */
+  #suppliedBy = new Set<string>();
+  /** Summary entries in the history that `session_compact` reported, or that were there before. */
+  #summaries = new Set<EntryId>();
   // `ctx.sessionManager`: an in-memory PI session projected from the Durable history.
   #manager!: SessionManager;
   #projected: EntryRecord[] = [];
@@ -224,6 +229,7 @@ export class DurableExtensions {
     this.#piIds.clear();
     this.#echoes = [];
     this.#runner = new ExtensionRunner(loaded.extensions, loaded.runtime, cwd, this.#sessionManager(), new ModelRegistry(this.#host.modelRuntime));
+    this.#stopping = false;
     this.#bind(this.#runner);
     this.#active = undefined;
     this.#rebuild();
@@ -283,8 +289,21 @@ export class DurableExtensions {
         return usage ? { tokens: usage.contextTokens, contextWindow: usage.contextWindow, percent: usage.percent } : undefined;
       },
       compact: (options) => {
-        this.#compactions.push({ ...(options?.onComplete ? { onComplete: options.onComplete as never } : {}), ...(options?.onError ? { onError: options.onError } : {}) });
-        void session.compact(options?.customInstructions).catch((error: unknown) => this.#compactionEnded("failed", errorText(error)));
+        if (this.#stopping) throw new Error("This extension instance is shutting down.");
+        const cancel = () => { options?.onError?.(new Error("Compaction cancelled")); };
+        this.#compactions.add(cancel);
+        void session.compactEntry(options?.customInstructions).then((id) => {
+          this.#project();
+          const piId = this.#piIds.get(id);
+          // Absent from this session's history: a clear or rewind replaced the conversation it was placed on.
+          const entry = piId === undefined ? undefined : this.#manager.getEntry(piId);
+          if (entry?.type !== "compaction") throw new Error("Compaction cancelled");
+          return entry;
+        }).then((entry) => {
+          if (this.#compactions.delete(cancel)) options?.onComplete?.({ summary: entry.summary, firstKeptEntryId: entry.firstKeptEntryId, tokensBefore: entry.tokensBefore } as never);
+        }, (error: unknown) => {
+          if (this.#compactions.delete(cancel)) options?.onError?.(error instanceof Error ? error : new Error(errorText(error)));
+        }).catch((error: unknown) => this.#report("compact", error));
       },
       getSystemPrompt: () => this.#host.lastPrompt(session.conversation()),
       getSystemPromptOptions: () => this.#promptOptions ?? { cwd: session.cwd },
@@ -547,7 +566,7 @@ export class DurableExtensions {
         },
       }),
       hook(CompactionTask, {
-        beforeCompact: async (compaction, _api, hookContext) => {
+        beforeCompact: async (compaction, api, hookContext) => {
           if (!this.#runner.hasHandlers("session_before_compact")) return undefined;
           const manager = this.#project();
           const result = await this.#runner.emit({
@@ -567,7 +586,7 @@ export class DurableExtensions {
           } as never) as { cancel?: boolean; compaction?: { summary?: string } } | undefined;
           if (result?.cancel) return { decline: true as const };
           if (!result?.compaction?.summary) return undefined;
-          this.#fromExtension += 1;
+          this.#suppliedBy.add(`compaction:${api.taskId}`);
           return { summary: result.compaction.summary };
         },
       }),
@@ -667,14 +686,14 @@ export class DurableExtensions {
   }
 
   /** Writes custom messages as hidden entries the model reads as user input. */
-  async writeMessages(messages: readonly CustomMessage[]): Promise<void> {
+  async writeMessages(messages: readonly CustomMessage[], forPrompt = false): Promise<void> {
     const conversation = this.#session.conversation();
     for (const message of messages) {
       const details = jsonSafe(message.details);
       await this.#write(() => conversation.submit({ type: "write", entry: {
         kind: ExtensionMessageEntry.kind,
         model: [{ role: "user", content: contentOf(message.content), timestamp: Date.now(), customType: message.customType, ...(details === undefined ? {} : { details }) } as Message],
-        data: { customType: message.customType, display: message.display },
+        data: { customType: message.customType, display: message.display, ...(forPrompt ? { forPrompt: true } : {}) },
       } }, context));
     }
   }
@@ -796,6 +815,7 @@ export class DurableExtensions {
   /** `session_start`, ahead of any event of the session's runs. Resolves once its handlers ran or one asks the user
    * something: the question can only be answered once the session is open. */
   async start(reason: "startup" | "reload" | "new"): Promise<void> {
+    this.#knownSummaries();
     await this.whileAsking(() => this.#enqueue("session_start", () => this.#runner.emit({ type: "session_start", reason }))).released;
   }
 
@@ -808,6 +828,8 @@ export class DurableExtensions {
 
   /** `/reload` or a cleared session: the extensions shut down, load again from disk and start. */
   async restart(reason: "reload" | "new"): Promise<void> {
+    this.#stopping = true;
+    this.#cancelCompactions();
     await this.#shutdown(reason);
     await this.#load();
     await this.#session.applyTools();
@@ -828,6 +850,9 @@ export class DurableExtensions {
     const start = batch.find((event): event is Extract<AgentEvent, { type: "run_start" }> => event.type === "run_start");
     const inputs = new Set<EntryId>(start ? batch.flatMap((event) =>
       event.type === "submission" && start.inputs.includes(event.record.id) && "entry" in event.record && event.record.entry !== undefined ? [event.record.entry] : []) : []);
+    // A run defers a conversation's summary: the write Durable admitted for it (`compaction:<task>`) places it.
+    const writers = new Map(batch.flatMap((event) => event.type === "submission" && event.record.type === "write" && event.record.status === "done"
+      && event.record.requestId !== undefined ? [[event.record.entry, event.record.requestId] as const] : []));
     let held: EntryRecord[] = [];
     const release = () => { for (const entry of held) this.#messageEvents(entry); held = []; };
     for (const event of batch) {
@@ -849,7 +874,8 @@ export class DurableExtensions {
           this.#turnEnd();
           break;
         case "message_end":
-          if (inputs.has(event.entry.id)) held.push(event.entry);
+          if (CompactionEntry.is(event.entry)) this.#compacted(event.entry, writers.get(event.entry.id));
+          else if (inputs.has(event.entry.id)) held.push(event.entry);
           else this.#messageEvents(event.entry);
           break;
         case "tool_execution_start":
@@ -863,6 +889,10 @@ export class DurableExtensions {
         }
         case "run_settled":
           this.#runSettled(event.done);
+          break;
+        case "snapshot":
+          // The stream fell behind and skipped commits, the summaries they placed among them; the session read them.
+          for (const entry of this.#session.rows()) if (CompactionEntry.is(entry)) this.#compacted(entry);
           break;
         default:
           break;
@@ -913,25 +943,36 @@ export class DurableExtensions {
     void this.#queue.then(done);
   }
 
-  /** A compaction ended; a written summary is `session_compact`. */
-  compacted(reason: CompactionReason, outcome: "done" | "failed" | "cancelled", message?: string): void {
-    if (reason === "manual") this.#compactionEnded(outcome, message);
-    if (outcome !== "done") return;
-    const fromExtension = this.#fromExtension > 0;
-    if (fromExtension) this.#fromExtension -= 1;
-    const compactionEntry = this.#project().getEntries().findLast((entry) => entry.type === "compaction");
-    if (compactionEntry) this.#emit({ type: "session_compact", compactionEntry, fromExtension, reason, willRetry: reason !== "manual" });
+  /** A summary Durable placed is `session_compact`, with the entry it placed; a compaction that placed none has none. */
+  #compacted(entry: EntryRecord, writer?: string): void {
+    if (this.#summaries.has(entry.id)) return;
+    this.#summaries.add(entry.id);
+    this.#project();
+    const piId = this.#piIds.get(entry.id);
+    const compactionEntry = piId === undefined ? undefined : this.#manager.getEntry(piId);
+    if (compactionEntry?.type !== "compaction") return;
+    // A blocking compaction appends its summary itself. After a skipped stream the write that placed one is unknown.
+    const fromExtension = this.#suppliedBy.delete(writer ?? `compaction:${entry.byTaskId}`);
+    const reason = (entry.data as { reason?: CompactionReason } | undefined)?.reason ?? "manual";
+    this.#emit({ type: "session_compact", compactionEntry, fromExtension, reason, willRetry: reason !== "manual" });
   }
 
-  #compactionEnded(outcome: "done" | "failed" | "cancelled", message?: string): void {
-    const waiting = this.#compactions.shift();
-    if (!waiting) return;
-    if (outcome !== "done") {
-      waiting.onError?.(new Error(message ?? (outcome === "cancelled" ? "Compaction cancelled" : "Compaction failed")));
-      return;
+  /** The summaries already in the history, which no `session_compact` reports. */
+  #knownSummaries(): void {
+    for (const entry of this.#session.rows()) if (CompactionEntry.is(entry)) this.#summaries.add(entry.id);
+  }
+
+  /** The conversation or the instances `ctx.compact()` calls belong to are gone: each fails once, now. */
+  #cancelCompactions(): void {
+    const pending = [...this.#compactions];
+    this.#compactions.clear();
+    for (const cancel of pending) {
+      try {
+        cancel();
+      } catch (error) {
+        this.#report("compact", error);
+      }
     }
-    const entry = this.#project().getEntries().findLast((each) => each.type === "compaction") as { summary?: string; firstKeptEntryId?: string; tokensBefore?: number } | undefined;
-    waiting.onComplete?.({ summary: entry?.summary ?? "", firstKeptEntryId: entry?.firstKeptEntryId ?? "", tokensBefore: entry?.tokensBefore ?? 0 } as never);
   }
 
   modelSelected(previous: { provider: string; id: string } | undefined): void {
@@ -946,6 +987,8 @@ export class DurableExtensions {
 
   /** A rewind moved the session to a fork. */
   rewound(): void {
+    this.#cancelCompactions();
+    this.#knownSummaries();
     const oldLeafId = this.#manager.getLeafId();
     this.#emit({ type: "session_tree", newLeafId: this.#project().getLeafId(), oldLeafId });
   }
@@ -972,6 +1015,8 @@ export class DurableExtensions {
   /** `session_shutdown`, then the session's tools and hooks leave the registry, at the latest after `SHUTDOWN_WAIT_MS`. */
   async dispose(): Promise<void> {
     if (this.#disposed) return;
+    this.#stopping = true;
+    this.#cancelCompactions();
     let timer: NodeJS.Timeout | undefined;
     await Promise.race([this.#shutdown("quit"), new Promise((resolve) => { timer = setTimeout(resolve, SHUTDOWN_WAIT_MS); })]).finally(() => clearTimeout(timer));
     this.#disposed = true;

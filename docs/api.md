@@ -224,6 +224,18 @@ verbatim.
   after a fork it finishes on the abandoned branch.
 - A compaction already running when a session opens (Durable resumes it after a
   restart) is reported to each new subscriber.
+- Extensions get `session_compact` when a summary entry is placed, with that
+  entry; a compaction that places none (declined, nothing to summarize, or
+  dropped as stale) sends none. An extension's `ctx.compact()` waits for its
+  own task's summary, at the run's next boundary if a run is going, and calls
+  `onComplete` with that entry or `onError` once with why it was not placed.
+  `/clear`, `/reload`, a rewind or closing the session ends a pending one with
+  "Compaction cancelled". These go beside the gateway's own compactions and
+  bypass the 409 above. Unlike PI, completion callbacks do not wait for queued
+  `session_compact` handlers. The projection retains Durable's summary wrapper
+  and reports `tokensBefore: 0`. After a stream gap, `fromExtension` can be false
+  when the summary's originating compaction cannot be recovered from its entry;
+  the summary and callback correlation still use the actual placed entry.
 
 ## PI process binding
 

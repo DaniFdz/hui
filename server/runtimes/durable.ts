@@ -48,7 +48,7 @@ const QUIET_TIMEOUT_MS = 30_000;
 type SnapshotEvent = Extract<AgentEvent, { type: "snapshot" }>;
 /** One stored entry, and the messages the transcript shows for it. */
 type Row = { readonly entry: EntryRecord; readonly shown: readonly unknown[] };
-type CompactionOutcome = { outcome: "done" | "failed" | "cancelled"; message?: string };
+type CompactionOutcome = { outcome: "done" | "failed" | "cancelled"; message?: string; result?: CompactionResult };
 type CompactionStart = Extract<RuntimeEvent, { type: "compaction_start" }>;
 /** One running compaction, of the kind Durable gave it (`createCompaction`). */
 type Compaction = { readonly reason: CompactionReason; readonly blocking: boolean; readonly background: boolean };
@@ -531,7 +531,7 @@ export class DurableSession implements RuntimeSession, ExtensionSession {
   }
 
   async #reportEnd(taskId: TaskId, reason: CompactionReason, blocking: boolean): Promise<void> {
-    const result = await this.#compactionOutcome(taskId, reason);
+    const { result: _summary, ...result } = await this.#compactionOutcome(taskId, reason);
     if (result.outcome === "done") await this.#read().catch(() => {});
     this.#ended({ type: "compaction_end", reason, ...result, willRetry: blocking && result.outcome === "done" });
     this.#notifyQuiet();
@@ -541,7 +541,6 @@ export class DurableSession implements RuntimeSession, ExtensionSession {
   #ended(event: Extract<RuntimeEvent, { type: "compaction_end" }>): void {
     this.#lastStart = undefined;
     this.#emit(event);
-    this.#extensions?.compacted(event.reason, event.outcome, event.message);
     this.#announce();
   }
 
@@ -569,6 +568,7 @@ export class DurableSession implements RuntimeSession, ExtensionSession {
 
   /** The compaction task's receipt: a summary, nothing old enough to summarize, a cancel or a failure. */
   async #compactionOutcome(taskId: TaskId, reason: CompactionReason): Promise<CompactionOutcome> {
+    await this.#host.resumed;
     let outcome;
     try {
       outcome = (await this.#harness.waitForTask(taskId as unknown as TaskId<CompactionResult>, context)).state.outcome;
@@ -576,7 +576,7 @@ export class DurableSession implements RuntimeSession, ExtensionSession {
       return { outcome: "failed", message: error instanceof Error ? error.message : "Durable lost track of this compaction." };
     }
     if (outcome.status === "completed") {
-      if (outcome.result?.entryId !== undefined || outcome.result?.submissionId !== undefined) return { outcome: "done" };
+      if (outcome.result?.entryId !== undefined || outcome.result?.submissionId !== undefined) return { outcome: "done", result: outcome.result };
       // Durable found nothing old enough to summarize; only a requested compaction reports that, in PI's words.
       return reason === "manual" ? { outcome: "failed", message: "Nothing to compact (session too small)" } : { outcome: "done" };
     }
@@ -667,9 +667,10 @@ export class DurableSession implements RuntimeSession, ExtensionSession {
       const start = await extensions.beforeAgentStart(text, images);
       if (start.aborted) return false;
       // PI sends them after the prompt; Durable admits input in a commit of its own, so they go just before it.
-      if (start.messages.length) await extensions.writeMessages(start.messages);
+      if (start.messages.length) await extensions.writeMessages(start.messages, true);
     }
     await extensions?.writesAdmitted();
+    await this.#host.resumed;
     if (extensions?.startAborted) return false;
     // The message names every attachment; the images themselves are the ones the handlers left.
     const payload = promptPayload(text, attachments);
@@ -679,6 +680,8 @@ export class DurableSession implements RuntimeSession, ExtensionSession {
 
   /** A run is going from the moment its input is submitted. */
   async #submit(content: readonly (TextContent | ImageContent)[], whenBusy: Delivery): Promise<void> {
+    // Durable submission resumes the whole store, not just this conversation.
+    await this.#host.resumed;
     if (whenBusy === "reject") this.#streaming = true;
     try {
       await this.#conversation.submit({ type: "input", whenBusy, content: [...content] }, context);
@@ -703,18 +706,12 @@ export class DurableSession implements RuntimeSession, ExtensionSession {
     });
     if (!this.#extensions) return start();
     const { done, released } = this.#extensions.whileAsking(start);
-    let returned = false;
-    // Until the prompt returned, it reports a failure itself; after, the failure is the session's error.
+    await released;
+    // Before release a failure rejects the prompt; after a question releases it, report the failure as an event.
     void done.catch((error: unknown) => {
-      if (!returned) return;
       this.#emit({ type: "error", message: error instanceof Error ? error.message : String(error) });
       this.#emit({ type: "settled" });
     });
-    try {
-      await released;
-    } finally {
-      returned = true;
-    }
   }
 
   async prompt(text: string, attachments: readonly PromptAttachment[] = []): Promise<void> {
@@ -769,14 +766,39 @@ export class DurableSession implements RuntimeSession, ExtensionSession {
    * summary is placed at the next boundary. Its start is reported before Durable lists it, so the gateway never holds
    * a prompt for it; the outcome arrives as `compaction_end`. */
   async compact(instructions?: string): Promise<void> {
+    await this.#startCompaction(instructions).catch(() => undefined);
+  }
+
+  /** An extension's `ctx.compact()`: the summary entry its own compaction placed. A run defers the summary to its next
+   * boundary, so this waits for that write; a summary Durable drops as stale, or one left on a conversation a rewind
+   * replaced, fails. */
+  async compactEntry(instructions?: string): Promise<EntryId> {
+    const conversation = this.#conversation;
+    const taskId = await this.#startCompaction(instructions);
+    const { outcome, message, result } = await this.#compactionOutcome(taskId as unknown as TaskId, "manual");
+    if (outcome !== "done") throw new Error(message ?? "Compaction cancelled");
+    let entry = result?.entryId;
+    if (entry === undefined && result?.submissionId !== undefined) {
+      const write = await (await this.#harness.submission(result.submissionId, context))?.wait(context);
+      if (write?.status !== "done") throw new Error(`The compaction summary was not placed${write ? `: ${write.reason}` : ""}`);
+      entry = write.entry;
+    }
+    if (entry === undefined || this.#conversation !== conversation) throw new Error("Compaction cancelled");
+    await this.#read();
+    return entry;
+  }
+
+  /** Starts a manual compaction and reports its start; a failure to start is reported as its end, then thrown. */
+  async #startCompaction(instructions?: string): Promise<TaskId<CompactionResult>> {
     this.#lastStart = { type: "compaction_start", reason: "manual", blocking: false };
     this.#emit(this.#lastStart);
+    await this.#host.resumed;
     let taskId: TaskId<CompactionResult>;
     try {
       taskId = await this.#conversation.compact(instructions?.trim() || undefined, context);
     } catch (error) {
       this.#ended({ type: "compaction_end", reason: "manual", outcome: "failed", willRetry: false, message: error instanceof Error ? error.message : "Durable could not start the compaction." });
-      return;
+      throw error;
     }
     const id = taskId as unknown as TaskId;
     if (!this.#compactions.has(id)) this.#requested.add(id);
@@ -787,6 +809,7 @@ export class DurableSession implements RuntimeSession, ExtensionSession {
       this.#superseded.add(id);
       await this.#reportEnd(id, "manual", false);
     }, () => undefined);
+    return taskId;
   }
 
   subscribe(listener: (event: RuntimeEvent) => void): () => void {
@@ -886,6 +909,7 @@ export class DurableSession implements RuntimeSession, ExtensionSession {
   async abort(): Promise<void> {
     this.#extensions?.aborted();
     if (this.#starting > 0) this.#extensions?.abortStart();
+    await this.#host.resumed;
     await this.#conversation.abort(context);
     await this.#until(() => !this.#busy());
   }
@@ -905,6 +929,7 @@ export class DurableSession implements RuntimeSession, ExtensionSession {
    * but the reset makes its summary stale and Durable drops it, so its end is not reported. */
   async clear(): Promise<void> {
     if (this.#streaming) throw new Error("Wait for the current run to finish before clearing the session.");
+    await this.#host.resumed;
     await this.#conversation.reset(undefined, context);
     for (const taskId of this.#compactions.keys()) this.#superseded.add(taskId);
     this.#compactions.clear();
@@ -940,9 +965,13 @@ export class DurableSession implements RuntimeSession, ExtensionSession {
     if (!row) throw new Error("That rewind point is no longer available.");
     const index = this.#history.indexOf(row);
     const isUser = role(row.shown[0]) === "user";
-    // Before a prompt also means before the hidden context its extensions wrote for it, just ahead of it.
+    // Drop this prompt's context, not independent messages an idle extension or command wrote before it.
     let before = index;
-    while (before > 0 && ExtensionMessageEntry.is(this.#history[before - 1]!.entry)) before--;
+    while (before > 0) {
+      const previous = this.#history[before - 1]!.entry;
+      if (!ExtensionMessageEntry.is(previous) || !previous.data.forPrompt) break;
+      before--;
+    }
     const at = options?.excludeUserMessage === true && isUser ? this.#history[before - 1]?.entry.id : row.entry.id;
     const next = at
       ? await this.#conversation.fork(at, { ownership: { kind: "ownerless" } }, context)
