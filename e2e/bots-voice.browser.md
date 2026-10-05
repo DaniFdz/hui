@@ -72,9 +72,11 @@ account is involved.
    → *Speaker off* and back.
 9. **Minimize the call** → the bar above the chat ("Vox · <status> · time",
    mute, hang up) with focus on it; the header's Call button reads *Return to
-   the call with Vox*, in green. Another page (Automations) → the same bar floats
-   at the top. The bar → back to `/bots/<id>` and the call view, focus on Hang
-   up.
+   the call with Vox*, in green. Another bot, another page (Automations) or
+   Settings → the same bar in a band at the top of the page, which moves down
+   (`shell--call-bar`): the other bot's header buttons and the phone's
+   navigation button stay uncovered and clickable. The bar → back to
+   `/bots/<id>` and the call view, focus on Hang up.
 10. **Hang up** → the chat, focus on Call Vox, every `[voice] ` message and its
     reply in the transcript.
 11. Edit Vox (row menu → Edit bot…): the dialog shows Aria and 1.3×; a new speed
@@ -91,11 +93,19 @@ commit after it), stacked on `feat/bots-ui` `ad3abf8`: steps 1–12 behaved as
 described, the call's whole loop included (listening → hearing → transcribed →
 "[voice] Can you hear me on this call?" → "Fixture response." spoken →
 listening, about four seconds after the call opened; the fake microphone's next
-loop arrived as a second `[voice]` turn before the microphone was muted). Two
-defects found there are fixed by the following commits: the header's Call button
-stayed grey during a call (theme specificity), and on a phone the dialog's last
-fields scrolled past its card's background. No page or console errors. The PR's
-evidence run is recorded with the PR, outside the repository.
+loop arrived as a second `[voice]` turn before the microphone was muted).
+Defects found in these passes, each fixed by a later commit: the header's Call
+button stayed grey during a call (theme specificity); on a phone (and on desktop
+with the voice section) the dialog's last fields scrolled past its card's
+background; the minimized bar, fixed over the top of the window, covered another
+bot's header buttons, page titles and the phone's navigation button, and did
+not show in Settings; and once, on a bot created a moment before the call, the
+first reply reached the chat but was never captioned or spoken (most likely the
+call's stream attached after that turn; the call now reads a missed reply from
+the chat's snapshot). After the fixes, rebased on `feat/bots-ui` `d3cecb3`, the
+band was checked on another bot, Automations, Settings and 390×844, and the
+dialog card at both sizes. No page or console errors. The PR's evidence run is
+recorded with the PR, outside the repository.
 
 ## Limits and gaps
 
