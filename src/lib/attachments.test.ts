@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { File } from "node:buffer";
-import { attachmentBytes, readAttachment, validateAttachmentTotal } from "./attachments.ts";
+import { attachmentBytes, readAttachment, readTranscriptImages, validateAttachmentTotal } from "./attachments.ts";
 import type { Attachment } from "./sessions-store.ts";
 
 const attachment = (dataBase64: string): Attachment => ({ kind: "file", name: "a", mimeType: "text/plain", dataBase64 });
@@ -40,4 +40,16 @@ test("rejects names the gateway cannot safely store", async () => {
     () => validateAttachmentTotal([{ ...attachment("YQ=="), name: ".." }]),
     /path separators or controls/,
   );
+});
+
+test("reads a sent message's images back into composer attachments, skipping files and unreadable images", async (t) => {
+  const served = new Map([["/ok", new Response(new Blob(["png"], { type: "image/png" }))]]);
+  t.mock.method(globalThis, "fetch", async (url: string) => served.get(url) ?? new Response("", { status: 404 }));
+  const restored = await readTranscriptImages([
+    "legacy.txt",
+    { name: "notes.md", kind: "file" },
+    { name: "shot.png", kind: "image", mimeType: "image/png", url: "/ok" },
+    { name: "gone.png", kind: "image", mimeType: "image/png", url: "/gone" },
+  ]);
+  assert.deepEqual(restored, [{ kind: "image", name: "shot.png", mimeType: "image/png", dataBase64: "cG5n" }]);
 });
