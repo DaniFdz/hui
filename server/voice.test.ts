@@ -173,6 +173,9 @@ test("transcribes a recording with the recognizer fields OpenAI's API takes", as
 });
 
 test("streams speech in the content type VoiceStudio sends", async () => {
+  // VoiceStudio holds the rest of the clip after its first chunk: what arrives before the rest is sent proves the
+  // client streams it rather than waiting for the whole body (socket reads alone may merge chunks under load).
+  await control("delay", { path: "/v1/audio/speech", ms: 400, phase: "body" });
   const client = new VoiceStudioClient({ url: origin });
   const mp3 = await client.speech({ input: "Good morning, Dani. Here is your plan.", voice: "vp-aria", speed: 1.25, format: "mp3" });
   assert.equal(mp3.contentType, "audio/mpeg");
