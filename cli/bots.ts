@@ -356,10 +356,14 @@ export function questionAnswer(question: BotQuestion, typed: string): Record<str
   return { id: question.id, value: typed };
 }
 
+const isUserMessage = (entry: ChatEntry) => entry.kind === "message" && entry.role === "user" && Boolean(entry.text?.trim());
+
 /**
  * `chat`: the bot's replies as they stream, typed lines as prompts while it is
- * idle and steering while it works, questions answered inline. Plain text, so
- * it works over SSH. The first Ctrl+C stops a running turn, the next one exits.
+ * idle and steering while it works, questions answered inline, and every
+ * message the bot gets from elsewhere (a routine, another bot, the Bots tab)
+ * as a `> ` line before its reply. Plain text, so it works over SSH. The first
+ * Ctrl+C stops a running turn, the next one exits.
  */
 export async function botChat(base: string, bot: BotView, io: BotIO): Promise<number> {
   const session = `/__hui/sessions/${encodeURIComponent(bot.sessionId)}`;
@@ -377,6 +381,10 @@ export async function botChat(base: string, bot: BotView, io: BotIO): Promise<nu
   let settling = false;
   let firstSnapshot = true;
   const toolsShown = new Set<string>();
+  // Lines typed here (prompts and steering) no transcript has shown yet, and how many user messages after `seen` are
+  // accounted for: printed when they arrived, or found to be typed here.
+  const typed: string[] = [];
+  let users = 0;
   let finish!: (code: number) => void;
   const finished = new Promise<number>((resolveCode) => { finish = resolveCode; });
   // Nothing typed is sent before the live stream is attached: a fast reply would otherwise finish unseen.
@@ -398,6 +406,18 @@ export async function botChat(base: string, bot: BotView, io: BotIO): Promise<nu
     speaking = false;
   };
   const failed = (error: unknown) => line(`error: ${error instanceof Error ? error.message : String(error)}`);
+  /** A message the bot received: one typed here is on screen already; any other is printed as a user line. */
+  const received = (text: string) => {
+    const own = typed.indexOf(text.trim());
+    if (own >= 0) typed.splice(own, 1);
+    else line(`> ${text.trim().replace(/\n/gu, "\n> ")}`);
+  };
+  /** The user messages a snapshot holds after `seen` that are not accounted for yet, in order. */
+  const announce = (transcript: readonly ChatEntry[]) => {
+    const messages = transcript.slice(seen).filter(isUserMessage);
+    for (const entry of messages.slice(users)) received(entry.text!);
+    users = Math.max(users, messages.length);
+  };
   const adopt = (snapshot: ChatSnapshot) => {
     status = snapshot.status;
     const known = new Set(questions.map((question) => question.id));
@@ -407,7 +427,13 @@ export async function botChat(base: string, bot: BotView, io: BotIO): Promise<nu
   /** After a settle: prints what the run said that never streamed (or the tail of what streamed partly). */
   const reconcile = (transcript: readonly ChatEntry[]) => {
     let pending = streamed;
+    let user = 0;
     for (const entry of transcript.slice(seen)) {
+      // Printed when it arrived, or now in its place.
+      if (isUserMessage(entry)) {
+        if (user++ >= users) received(entry.text!);
+        continue;
+      }
       if (entry.kind === "tool" && entry.id && entry.name && !toolsShown.has(entry.id)) line(`· ${entry.name}`);
       if (entry.kind !== "message" || entry.role !== "assistant" || !entry.text?.trim()) continue;
       const text = entry.text;
@@ -419,6 +445,7 @@ export async function botChat(base: string, bot: BotView, io: BotIO): Promise<nu
     }
     if (!atLineStart) write("\n");
     seen = transcript.length;
+    users = 0;
     streamed = "";
     speaking = false;
     toolsShown.clear();
@@ -468,6 +495,8 @@ export async function botChat(base: string, bot: BotView, io: BotIO): Promise<nu
           if (settling) reconcile(snapshot.transcript ?? []);
           // The first snapshot is history already on screen (its last reply was printed on opening).
           else if (firstSnapshot) seen = snapshot.transcript?.length ?? 0;
+          // A bot's chat sends one when it accepts a message, and when a turn takes in steering: before the reply.
+          else announce(snapshot.transcript ?? []);
           settling = false;
           firstSnapshot = false;
           attached();
@@ -505,12 +534,12 @@ export async function botChat(base: string, bot: BotView, io: BotIO): Promise<nu
     } catch { /* optional: the chat works without it */ }
   })();
 
-  const submit = async (typed: string) => {
+  const submit = async (entered: string) => {
     if (questions.length) {
       const question = questions[0]!;
       let answer: Record<string, unknown>;
       try {
-        answer = questionAnswer(question, typed);
+        answer = questionAnswer(question, entered);
       } catch (error) {
         failed(error);
         return;
@@ -522,9 +551,11 @@ export async function botChat(base: string, bot: BotView, io: BotIO): Promise<nu
       });
       return;
     }
-    const text = typed.trim();
+    const text = entered.trim();
     if (!text) return;
     const steer = () => request(base, `${session}/steer`, { method: "POST", body: { text }, timeoutMs: 60_000 });
+    // Before the request: the snapshot that shows it may come before the reply to it.
+    typed.push(text);
     try {
       if (SESSION_STATUSES_BUSY.has(status)) await steer();
       else {
@@ -537,6 +568,7 @@ export async function botChat(base: string, bot: BotView, io: BotIO): Promise<nu
         }
       }
     } catch (error) {
+      typed.splice(typed.lastIndexOf(text), 1);
       failed(error);
     }
   };

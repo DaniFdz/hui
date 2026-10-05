@@ -1207,6 +1207,14 @@ message naming the bot: `POST /__hui/sessions/:id/clear`, `POST …/compact`,
 Model and thinking changes stay allowed. The prompt route already refuses
 `/clear` and `/compact` text for every session.
 
+A bot's chat has several writers: its routines, other bots, the bot messages
+route and every client of the session routes. So that each sees a message
+another sent before the reply to it, the chat's session stream sends a
+`snapshot` as soon as it accepts a prompt (its transcript ends with that user
+message); steering already arrives that way when a turn takes it in. Ordinary
+sessions send no such frame. `hui bot chat` prints each user message it did
+not send itself as a `> ` line, as the Bots tab shows it.
+
 ### Routines
 
 Routines are Automation tasks whose `sessionId` is a bot's chat; there is no

@@ -224,7 +224,11 @@ and deleting the session all answer with an explanation instead.
 `hui bot chat ada` streams the bot's replies as plain text, so it works over
 SSH. Typed lines are prompts while the bot is idle and steer the turn while it
 works; questions the bot asks are answered inline (a number, `y`/`n`, text or
-`/cancel`). The first Ctrl+C stops a running turn, the next one leaves.
+`/cancel`). What the bot gets from elsewhere appears as a `> ` line before its
+reply: a routine (`> [routine: Standup] …`), another bot (`> [from @bob] …`), a
+message typed in the Bots tab or sent with `hui bot send`, so the terminal
+shows the same conversation as the Bots tab. The first Ctrl+C stops a running
+turn, the next one leaves.
 
 `hui bot send ada "summarize today's PRs"` delivers one message: a prompt when
 the bot is idle, a follow-up after its current turn when it is busy. `-` reads

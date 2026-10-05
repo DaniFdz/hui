@@ -713,21 +713,25 @@ for now. It lands as stacked pull requests:
    delete; routines marked `[routine: <name>]` and queued behind a busy bot;
    `message_bot` and a byte-stable `bots` section only in bots' chats, with a
    three-hop loop guard and an hourly limit; the `hui bot` CLI with streamed
-   `chat`, `send --wait` exit codes and routines. OptChat reaches bots through
-   the `BotMemory` port only, whose adapter (`optChatBotMemory`) maps it onto
-   the engine: a bot's chat has its memory from its creating commit, and the
-   memory routes and `hui bot memory` read its status (with view lines and the
-   compactor's usage), view, zoom and browse page. Proof:
-   `server/bots.test.ts`, `server/bot-service.test.ts`,
-   `server/bot-routes.test.ts` (a real gateway with a deterministic provider:
-   routes, guards, a waited reply, a bot-to-bot message, a routine, the events
-   stream, and real OptChat memory: built summaries, the view, zoom down to a
-   whole message and the page), `server/runtimes/durable-bots.test.ts`
-   (requests of plain conversations unchanged; a bot conversation's commit,
-   persona, section and tool; with the real adapter, OptChat on in the creating
-   commit, zoom and date beside `message_bot`, a fresh second turn and every
-   read), `server/live-sessions.test.ts`, `cli/main.test.ts` and
-   `cli/bots.test.ts` (a fake gateway and a scripted terminal).
+   `chat` (what the bot gets from elsewhere shown before its reply, since the
+   chat's stream announces each prompt it accepts), `send --wait` exit codes
+   and routines. OptChat reaches bots through the `BotMemory` port only, whose
+   adapter (`optChatBotMemory`) maps it onto the engine: a bot's chat has its
+   memory from its creating commit, and the memory routes and `hui bot memory`
+   read its status (with view lines and the compactor's usage), view, zoom and
+   browse page, which a same-origin link opens. Proof: `server/bots.test.ts`,
+   `server/bot-service.test.ts`, `server/bot-routes.test.ts` (a real gateway
+   with a deterministic provider: routes, guards, a waited reply, a bot-to-bot
+   message, a routine, the events stream, real OptChat memory with built
+   summaries, the view, zoom down to a whole message and the page under its
+   same-origin rule, clearing the model and thinking, and `hui bot chat`
+   showing a message from elsewhere and a routine before their replies),
+   `server/runtimes/durable-bots.test.ts` (requests of plain conversations
+   unchanged; a bot conversation's commit, persona, section and tool; with the
+   real adapter, OptChat on in the creating commit, zoom and date beside
+   `message_bot`, a fresh second turn and every read),
+   `server/live-sessions.test.ts`, `cli/main.test.ts` and `cli/bots.test.ts`
+   (a fake gateway and a scripted terminal).
 3. **Bots tab** (UI): the Sessions | Bots split, bot chat, routines and memory
    views, and the Browser-tool E2E that drives these routes.
 4. Voice through VoiceStudio. Not started.

@@ -449,6 +449,53 @@ test("chat prints what a settled run said without streaming it, and only the uns
   assert.equal(term.out.split("Whole reply").length, 2, "printed once");
 });
 
+test("chat prints what the bot gets from elsewhere as > lines before the reply, and never what was typed here", async (t) => {
+  const gateway = await fakeGateway(t);
+  const term = terminal();
+  const done = botCommand(gateway.base, "chat", ["ada"], {}, term.io);
+  await gateway.connected("session");
+  await term.until(/@ada: Last time we spoke\.\n$/u);
+  const user = (text: string) => ({ kind: "message", role: "user", text });
+  const reply = (text: string) => ({ kind: "message", role: "assistant", text });
+
+  // A routine starts a turn: the snapshot that accepts its message comes before the reply streams.
+  gateway.push("session", "status", { status: "running" });
+  gateway.push("session", "snapshot", { status: "running", questions: [], transcript: [user("[routine: Morning] status report")] });
+  await term.until(/> \[routine: Morning\] status report\n$/u);
+  gateway.push("session", "event", { type: "text", delta: "All green." });
+  let transcript = [user("[routine: Morning] status report"), reply("All green.")];
+  gateway.settle(transcript);
+  await term.until(/> \[routine: Morning\] status report\n@ada: All green\.\n$/u);
+
+  // What is typed here is on screen already, prompt or steering: the snapshots that show it print nothing.
+  gateway.onPrompt((text) => {
+    transcript = [...transcript, user(text)];
+    gateway.push("session", "status", { status: "running" });
+    gateway.push("session", "snapshot", { status: "running", questions: [], transcript });
+    gateway.push("session", "event", { type: "text", delta: `Got ${text}.` });
+  });
+  term.type("thanks");
+  await term.until(/@ada: Got thanks\.$/u);
+  term.type("and one more");
+  await gateway.received("/steer");
+  transcript = [...transcript, reply("Got thanks."), user("and one more")];
+  gateway.push("session", "snapshot", { status: "running", questions: [], transcript });
+  gateway.push("session", "event", { type: "text", delta: " Noted." });
+  await term.until(/@ada: Got thanks\. Noted\.$/u);
+  transcript = [...transcript.slice(0, -2), reply("Got thanks. Noted."), user("and one more")];
+  gateway.settle(transcript);
+  await term.until(/Noted\.\n$/u);
+
+  // A message only the settled transcript shows (from the Bots tab, say): printed in its place, every line marked.
+  gateway.push("session", "status", { status: "running" });
+  gateway.settle([...transcript, user("from the tab\nsecond line"), reply("Seen it.")]);
+  await term.until(/> from the tab\n> second line\n@ada: Seen it\.\n$/u);
+  term.end();
+  assert.equal(await done, 0);
+  assert.doesNotMatch(term.out, /> thanks|> and one more/u, "lines typed here are never printed again");
+  assert.equal(term.out.split("> [routine: Morning]").length, 2, "an announced message is not printed again at the settle");
+});
+
 test("chat ends cleanly when stdin closes, and reports a runtime that exits", async (t) => {
   const gateway = await fakeGateway(t);
   const closing = terminal();

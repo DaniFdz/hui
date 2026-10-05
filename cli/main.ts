@@ -71,7 +71,8 @@ an exact name. On edit, --model "" and --thinking "" go back to the model and
 thinking level a new chat gets, --memory-model "" to the chat's own model.
 Remove archives: the chat transcript and memory are kept and its routines are
 disabled. Chat streams the replies as plain text and sends what you
-type (steering a turn that runs); Ctrl+C stops a turn, twice exits. Send -
+type (steering a turn that runs); messages from elsewhere (routines, other
+bots, the Bots tab) show as > lines. Ctrl+C stops a turn, twice exits. Send -
 reads the message from stdin; with --wait it prints the reply and exits 0, 1 on
 failure or timeout, 2 while the bot waits for an answer (give it in chat).
 Routines are Automation tasks aimed at the bot's chat. --every takes 30s, 5m,

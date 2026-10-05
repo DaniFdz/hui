@@ -310,6 +310,27 @@ test("a follow-up reports its queue item, which leaves the queue when HUI sends 
   manager.disposeAll();
 });
 
+test("a bot's chat announces each prompt it accepts with a snapshot; other sessions' streams stay as they were", async () => {
+  const started: FakeSession[] = [];
+  const manager = new LiveSessions(factory(started));
+  const framesOf = async (record: SessionRecord): Promise<string[]> => {
+    manager.ensure(record);
+    await waitForBoot(manager, record.id);
+    const frames: string[] = [];
+    const unsubscribe = manager.subscribe(record.id, (message) => {
+      if (message.kind === "status") frames.push(message.status);
+      else if (message.kind === "snapshot") frames.push(`snapshot: ${message.snapshot.transcript.map((entry) => entry.kind === "message" ? `${entry.role} ${entry.text}` : entry.kind).join(" | ")}`);
+    });
+    await manager.prompt(record.id, "[routine: Morning] check");
+    unsubscribe();
+    return frames;
+  };
+  assert.deepEqual(await framesOf({ ...recordFor("bot-chat"), bot: "bot-1" }), ["running", "snapshot: user hello | user [routine: Morning] check"],
+    "every screen and terminal sees a message another client sent, before its reply");
+  assert.deepEqual(await framesOf(recordFor("plain-chat")), ["running"], "an ordinary session gets no extra frame");
+  manager.disposeAll();
+});
+
 test("restart boots an idle session again from a new record and keeps its listeners", async () => {
   const started: FakeSession[] = [];
   const options: StartOptions[] = [];

@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { after, before, test } from "node:test";
 import type { BotMemoryStatus, BotsUpdate, BotView } from "../shared/bots.ts";
+import type { BotIO } from "../cli/bots.ts";
 import type { TranscriptEntry } from "./runtimes/types.ts";
 
 // One isolated gateway: HUI's directory, PI's agent directory and a deterministic provider, all temporary.
@@ -39,6 +40,7 @@ const { liveSessions } = await import("./live-sessions.ts");
 const { readRegistry } = await import("./sessions.ts");
 const { durableHost } = await import("./runtimes/durable-host.ts");
 const { optChatBotMemory } = await import("./bot-memory.ts");
+const { botChat } = await import("../cli/bots.ts");
 let origin = "";
 const server = createServer((request, response) => middleware(request, response, () => { response.writeHead(404).end(); }));
 
@@ -314,6 +316,52 @@ test("a routine runs marked as one, and archiving the bot disables it", { timeou
   assert.equal(((await call("/__hui/automation")).body["tasks"] as Array<{ id: string; enabled: boolean }>).find((each) => each.id === task.id)?.enabled, false, "restoring leaves it off");
 });
 
+/** A scripted terminal for `hui bot chat`: lines the test types, and everything written. */
+function terminal() {
+  let out = "";
+  const watchers = new Set<() => void>();
+  const queued: string[] = [];
+  let ended = false;
+  let wake: (() => void) | undefined;
+  const written = (text: string) => {
+    out += text;
+    for (const watcher of [...watchers]) watcher();
+  };
+  const io: BotIO = {
+    out: written,
+    err: written,
+    readStdin: async () => "",
+    lines: () => ({
+      [Symbol.asyncIterator]: () => ({
+        next: async () => {
+          while (!queued.length && !ended) await new Promise<void>((resolve) => { wake = resolve; });
+          return queued.length ? { done: false, value: queued.shift()! } : { done: true, value: undefined };
+        },
+        return: async () => { ended = true; wake?.(); return { done: true, value: undefined }; },
+      }),
+    }),
+    onInterrupt: () => () => {},
+    cwd: dir,
+    timezone: "UTC",
+  };
+  return {
+    io,
+    get out() { return out; },
+    type: (line: string) => { queued.push(line); wake?.(); },
+    end: () => { ended = true; wake?.(); },
+    /** Resolves once what was written matches. */
+    until: (pattern: RegExp) => new Promise<void>((resolve) => {
+      const check = () => {
+        if (!pattern.test(out)) return;
+        watchers.delete(check);
+        resolve();
+      };
+      watchers.add(check);
+      check();
+    }),
+  };
+}
+
 test("the bot list streams: the whole list first, then the bots that changed", { timeout: 60_000 }, async () => {
   const stop = new AbortController();
   const response = await fetch(`${origin}/__hui/bots/events`, { headers: { "x-hui": "1" }, signal: stop.signal });
@@ -346,4 +394,27 @@ test("the bot list streams: the whole list first, then the bots that changed", {
   assert.ok(changed.revision > first.revision);
   stop.abort();
   await reader.cancel().catch(() => {});
+});
+
+// Last: hui bot chat also follows the bot list, whose cached frame would otherwise lead the stream test.
+test("hui bot chat shows what the bot gets from elsewhere before its reply, and never repeats what was typed in it", { timeout: 120_000 }, async () => {
+  const bob = botOf(await call("/__hui/bots/bob"));
+  const term = terminal();
+  const chat = botChat(origin, bob, term.io);
+  await term.until(/^Chatting with @bob \(Bob\)\. .*\n@bob: Fixture response\.\n$/u);
+  // A typed line goes out once the live stream is attached, so its reply also proves the stream is.
+  term.type("hello from the terminal");
+  await term.until(/\n@bob: Fixture response\.\n@bob: Fixture response\.\n$/u);
+
+  // A message from another client (the Bots tab, hui bot send), then a routine: each shown as a user line first.
+  assert.deepEqual((await call("/__hui/bots/bob/messages", "POST", { text: "sent from elsewhere", wait: true, timeoutSeconds: 60 })).body, { status: "answered", reply: "Fixture response." });
+  await term.until(/\n> sent from elsewhere\n@bob: Fixture response\.\n$/u);
+  const created = await call("/__hui/automation/tasks", "POST", { name: "Ping", sessionId: bob.sessionId, prompt: "ping", schedule: { kind: "every", everyMs: 3_600_000 } });
+  const task = created.body["task"] as { id: string };
+  assert.equal((await call(`/__hui/automation/tasks/${task.id}/run`, "POST", {})).status, 202);
+  await term.until(/\n> \[routine: Ping\] ping\n@bob: Fixture response\.\n$/u);
+  term.end();
+  assert.equal(await chat, 0);
+  assert.doesNotMatch(term.out, /> hello from the terminal/u, "a line typed here is on screen already");
+  await settledWith(bob.sessionId, says("user", "[routine: Ping] ping"));
 });

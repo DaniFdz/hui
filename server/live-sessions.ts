@@ -579,6 +579,10 @@ export class LiveSessions {
         text,
         ...(attachments?.length ? { attachments: attachments.map((item) => ({ name: item.name, kind: item.kind, ...(item.kind === "image" ? { mimeType: item.mimeType } : {}) })) } : {}),
       });
+      // A bot's chat has many writers (its routines, other bots, every Bots
+      // screen and `hui bot chat`): each sees a message another one sent before
+      // the reply it starts. Other sessions keep their stream as it was.
+      if (live.record.bot) this.#broadcast(live, { kind: "snapshot", snapshot: this.snapshot(id) });
     }
     // Activity is what orders the sidebar, and the write is one small record on
     // a prompt rather than one per token; a failed save must not fail a prompt
