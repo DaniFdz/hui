@@ -14,6 +14,7 @@ import { createPolicySettingsManager } from "./resource-policy.ts";
 import { HUI_DEFAULT_PROMPT } from "./hui-prompt.ts";
 import { HUI_PRESENTATION_PROMPT } from "./hui-presentation.ts";
 import { huiToolDefinitions } from "./hui-tools.ts";
+import { BOT_TOOL_CONTRIBUTIONS } from "./durable-bots.ts";
 import type { Contribution, RunPrompt } from "./durable-extensions.ts";
 
 export type PromptSettings = Pick<Settings, "disabledSkills" | "browser" | "disabledPlugins">;
@@ -30,9 +31,12 @@ const PI_TOOL_CONTRIBUTIONS: Record<string, Contribution> = {
   edit: (await internal<{ editToolSystemPromptContribution: Contribution }>("./core/tools/edit.js")).editToolSystemPromptContribution,
   write: (await internal<{ writeToolSystemPromptContribution: Contribution }>("./core/tools/write.js")).writeToolSystemPromptContribution,
 };
-const HUI_TOOL_CONTRIBUTIONS: Record<string, Contribution> = Object.fromEntries(huiToolDefinitions().map((tool) => [
-  tool.name, { snippet: tool.promptSnippet ?? "", guidelines: tool.promptGuidelines ?? [] },
-]));
+const HUI_TOOL_CONTRIBUTIONS: Record<string, Contribution> = {
+  ...BOT_TOOL_CONTRIBUTIONS,
+  ...Object.fromEntries(huiToolDefinitions().map((tool) => [
+    tool.name, { snippet: tool.promptSnippet ?? "", guidelines: tool.promptGuidelines ?? [] },
+  ])),
+};
 
 /** PI's section order, then HUI's; the builder tags every section but the preamble. Sections an extension adds in
  * `before_agent_start` follow PI's, already tagged, in `extension_sections`. */

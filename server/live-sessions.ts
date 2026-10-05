@@ -528,7 +528,10 @@ export class LiveSessions {
     if (!live?.runtime) {
       throw this.#unavailable(live);
     }
-    if (this.#holdWhileCompacting(live)) return this.followUp(id, text, attachments);
+    if (this.#holdWhileCompacting(live)) {
+      await this.followUp(id, text, attachments);
+      return;
+    }
     if (live.promptPending || live.runtime.isStreaming) {
       throw new SessionBusyError("That session is already working on a prompt.");
     }
@@ -831,7 +834,10 @@ export class LiveSessions {
 
   async steer(id: string, text: string, attachments?: readonly PromptAttachment[]): Promise<void> {
     const live = this.#ready(id);
-    if (this.#holdWhileCompacting(live)) return this.followUp(id, text, attachments);
+    if (this.#holdWhileCompacting(live)) {
+      await this.followUp(id, text, attachments);
+      return;
+    }
     // A runtime that compacts beside the conversation (Durable) takes input
     // meanwhile. With no run to steer, the message starts one, through the
     // prompt path so it is recorded and shown like any prompt.
@@ -844,7 +850,9 @@ export class LiveSessions {
     await live.runtime.steer(text, attachments);
   }
 
-  async followUp(id: string, text: string, attachments?: readonly PromptAttachment[]): Promise<void> {
+  /** Queues work for after the current run. Returns the id of HUI's queue item, which leaves the queue when HUI sends
+   * it; undefined when the runtime queued it itself (a worker's streaming run). */
+  async followUp(id: string, text: string, attachments?: readonly PromptAttachment[]): Promise<string | undefined> {
     const live = this.#ready(id);
     // HUI's queue drains only while this gateway runs; a worker keeps going
     // without it, so a follow-up to a run streaming there queues in its
@@ -856,16 +864,18 @@ export class LiveSessions {
       await live.runtime.followUp(text, attachments);
       live.queue = live.runtime.pendingQueue?.() ?? live.queue;
       this.#broadcastQueue(live);
-      return;
+      return undefined;
     }
+    const item = crypto.randomUUID();
     live.followUps.push({
-      id: crypto.randomUUID(),
+      id: item,
       text,
       mode: "followUp",
       ...(attachments?.length ? { attachments: [...attachments] } : {}),
     });
     this.#broadcastQueue(live);
     if (this.#reported(live) === "idle") void this.#drainFollowUp(live);
+    return item;
   }
 
   /** PI refuses a prompt while it compacts outside a run, and a steer would wait
@@ -1042,6 +1052,30 @@ export class LiveSessions {
       disconnected: "HUI is disconnected from the machine this session runs on. Reconnect it to continue.",
     };
     return new SessionBusyError((live && why[live.status]) ?? "That session is still starting.");
+  }
+
+  /**
+   * Boots an idle session's runtime again from `record` (a bot whose chat moved to another directory), keeping its
+   * listeners: they see `starting`, then the fresh snapshot. A cold session has nothing to restart.
+   */
+  async restart(record: SessionRecord): Promise<void> {
+    const live = this.#live.get(record.id);
+    if (!live) return;
+    if (this.#reported(live) !== "idle" || live.followUps.length || live.questions.size) {
+      throw new SessionBusyError("Finish or stop active work before restarting the session.");
+    }
+    live.unsubscribe?.();
+    live.unsubscribe = undefined;
+    live.unsubscribeExit?.();
+    live.unsubscribeExit = undefined;
+    live.runtime?.dispose();
+    live.runtime = undefined;
+    live.record = record;
+    live.bootStartedAt = Date.now();
+    live.bootDurationMs = undefined;
+    this.#setStatus(live, "starting");
+    live.boot = this.#boot(live);
+    await live.boot;
   }
 
   /** HUI stopped retrying the host of sessions it was reconnecting to. */

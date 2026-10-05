@@ -290,6 +290,51 @@ test("tool inspection never boots cold sessions and marks unsupported runtimes h
   manager.disposeAll();
 });
 
+test("a follow-up reports its queue item, which leaves the queue when HUI sends it", async () => {
+  const started: FakeSession[] = [];
+  const manager = new LiveSessions(factory(started));
+  manager.ensure(recordFor("queued-id"));
+  await waitForBoot(manager, "queued-id");
+  await manager.prompt("queued-id", "first");
+  const item = await manager.followUp("queued-id", "second");
+  assert.equal(typeof item, "string");
+  assert.deepEqual(manager.snapshot("queued-id").queue.items?.map((entry) => entry.id), [item]);
+  const runtime = started[0]!;
+  const original = runtime.prompt.bind(runtime);
+  const sent = new Promise<string>((resolve) => {
+    runtime.prompt = async (text, attachments) => { await original(text, attachments); resolve(text); };
+  });
+  runtime.emit({ type: "settled" });
+  assert.equal(await sent, "second", "HUI sends it once the run settles");
+  assert.equal(manager.snapshot("queued-id").queue.items, undefined, "and it left the queue");
+  manager.disposeAll();
+});
+
+test("restart boots an idle session again from a new record and keeps its listeners", async () => {
+  const started: FakeSession[] = [];
+  const options: StartOptions[] = [];
+  const manager = new LiveSessions(factory(started, options));
+  const record = recordFor("moved");
+  manager.ensure(record);
+  await waitForBoot(manager, "moved");
+  const seen: string[] = [];
+  manager.subscribe("moved", (message) => {
+    if (message.kind === "status") seen.push(message.status);
+    else if (message.kind === "snapshot") seen.push(`snapshot:${message.snapshot.status}`);
+  });
+  await manager.restart({ ...record, cwd: "/srv/elsewhere" });
+  assert.equal(started.length, 2);
+  assert.equal(started[0]!.disposed, true);
+  assert.equal(options[1]!.cwd, "/srv/elsewhere");
+  assert.equal(manager.status("moved"), "idle");
+  assert.deepEqual(seen, ["starting", "snapshot:idle"], "listeners see the restart and the fresh snapshot");
+  await manager.prompt("moved", "work");
+  await assert.rejects(manager.restart(record), SessionBusyError);
+  await manager.restart(recordFor("cold"));
+  assert.equal(started.length, 2, "a cold session has nothing to restart");
+  manager.disposeAll();
+});
+
 test("a session reports starting at once and becomes idle when pi is up", async () => {
   const started: FakeSession[] = [];
   const manager = new LiveSessions(factory(started));

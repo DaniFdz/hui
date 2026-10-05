@@ -22,6 +22,7 @@ import { resolveCommandReference } from "../../src/lib/command-references.ts";
 import type { RuntimeInspection } from "../../src/lib/tools-types.ts";
 import { durableContext as context, durableHost, type DurableHost } from "./durable-host.ts";
 import { DurableExtensions, ExtensionMessageEntry, isCustomInput, type CustomMessage, type ExtensionSession } from "./durable-extensions.ts";
+import { conversationBot } from "./durable-bots.ts";
 import { filterConfiguredModels } from "./pi-models.ts";
 import {
   fileFromMessages, imageFromMessages, latestRunUsage, promptPayload, restoreAttachmentNames, toolOutput, transcriptFrom,
@@ -239,11 +240,16 @@ export class DurableSession implements RuntimeSession, ExtensionSession {
   }
 
   /** Offers the conversation its extensions and the tools they keep active, OptChat's zoom and date when the
-   * conversation has OptChat, and drops the browser when Settings turns it off. Applies per conversation, at start and
-   * on every change. */
+   * conversation has OptChat, drops the browser when Settings turns it off and `message_bot` unless it is a bot's chat.
+   * Applies per conversation, at start and on every change. */
   async applyTools(): Promise<void> {
     const browserEnabled = (await this.#host.settings()).browser.enabled !== false;
-    const inactive = new Map([...(browserEnabled ? [] : this.#host.toolsNamed(["browser"])), ...(this.#extensions?.inactiveTools() ?? [])].map((tool) => [tool.name, tool]));
+    const bot = await conversationBot(this.#harness, this.#conversation.id, context);
+    const inactive = new Map([
+      ...(browserEnabled ? [] : this.#host.toolsNamed(["browser"])),
+      ...(bot ? [] : this.#host.botTools),
+      ...(this.#extensions?.inactiveTools() ?? []),
+    ].map((tool) => [tool.name, tool]));
     // Last, so OptChat's zoom and date win over same-named extension tools where OptChat is on, and only there.
     const optchat = await this.#host.optchat.toolsFor(this.#conversation.id);
     const added = [...(this.#extensions ? [this.#extensions.extension] : []), ...(optchat ? [optchat] : [])];

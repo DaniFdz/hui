@@ -220,6 +220,16 @@ const server = createServer(async (request, response) => {
   response.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-store", connection: "keep-alive" });
   messageStart(response);
 
+  // A bot messaging another bot through HUI's message_bot tool.
+  if (source.includes("E2E_MESSAGE_BOT")) {
+    toolUse(response, "tool-e2e-message-bot", "message_bot", { to: "@bob", message: "hello from the fixture" });
+    return finish(response, "tool_use");
+  }
+  if (latestToolResult?.id === "tool-e2e-message-bot") {
+    text(response, `message_bot answered: ${typeof latestToolResult.result === "string" ? latestToolResult.result : JSON.stringify(latestToolResult.result)}`);
+    return finish(response);
+  }
+
   if (source.includes("E2E_SHARED_TERMINAL")) {
     toolUse(response, "tool-terminal-list", "terminal", { action: "list" });
     return finish(response, "tool_use");
