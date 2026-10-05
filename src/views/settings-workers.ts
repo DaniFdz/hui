@@ -78,6 +78,16 @@ export class HuiWorkersSettings extends LitElement {
     }, editing ? "Worker saved. Connect again to use the new command." : "Worker added. HUI is setting it up now.");
   }
 
+  /** The form sits below every worker, often out of view: bring it to the user. */
+  async #edit(worker: WorkerView) {
+    this.#editingWorker = worker;
+    this.requestUpdate();
+    await this.updateComplete;
+    const form = this.querySelector<HTMLFormElement>("[data-worker-form]");
+    form?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    form?.querySelector<HTMLInputElement>("input[name=name]")?.focus({ preventScroll: true });
+  }
+
   #renderWorker(worker: WorkerView) {
     const status = STATUS[worker.state];
     const busy = this.#busy.has(worker.id);
@@ -94,7 +104,7 @@ export class HuiWorkersSettings extends LitElement {
             ? html`<button type="button" class="btn btn--sm" ?disabled=${busy} @click=${() => void this.#act(worker.id, () => workerAction(worker.id, "sync"), "Sync started.")}>Sync now</button>
               <button type="button" class="btn btn--sm" ?disabled=${busy} @click=${() => void this.#act(worker.id, () => workerAction(worker.id, "disconnect"))}>Disconnect</button>`
             : html`<button type="button" class="btn btn--sm primary" ?disabled=${busy || worker.state === "connecting"} @click=${() => void this.#act(worker.id, () => workerAction(worker.id, "connect"))}>Connect</button>`}
-          <button type="button" class="btn btn--sm" @click=${() => { this.#editingWorker = worker; this.requestUpdate(); }}>Edit</button>
+          <button type="button" class="btn btn--sm" @click=${() => void this.#edit(worker)}>Edit</button>
           <button type="button" class="btn btn--sm" ?disabled=${busy} @click=${() => {
             if (confirm(`Remove ${worker.name}? Sessions on it must be deleted first; nothing on the remote is deleted.`)) void this.#act(worker.id, () => removeWorker(worker.id));
           }}>Remove</button>
