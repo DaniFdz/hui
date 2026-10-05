@@ -1,6 +1,6 @@
 /**
  * `/__hui/voice` routes (HUI-18): the VoiceStudio connection and the speech
- * HUI relays for bots; see docs/api.md#voice. No audio is stored: a recording
+ * HUI relays for bots; see docs/api.md#voicestudio-bots-voice. No audio is stored: a recording
  * streams to VoiceStudio and its text comes back, speech streams back as
  * VoiceStudio sends it.
  *
