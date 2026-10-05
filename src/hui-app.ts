@@ -5193,6 +5193,7 @@ export class HuiApp extends HuiElement {
           onChangeAppearance: (next) => void this.save(next),
           onChangeChat: (chat) => void this.save({ chat }),
           onChangeBrowser: (browser) => this.save({ browser }),
+          onChangeVoice: (voice) => void this.save({ voice }),
           onChangePower: (power) => void this.save({ power }).then(() => this.refreshPower()),
           onChangeBots: (bots) => void this.save({ bots }).then(() => this.syncBotsStream()),
           onSetLidAwake: this.setLidAwakeFromUi,

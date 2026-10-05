@@ -1,0 +1,15 @@
+/* Talking to bots (HUI-18): the VoiceStudio settings section, the composer's
+ * voice notes, read-aloud, and the call view with its minimized bar. Built on
+ * the shared tokens and the settings/chat classes; only what voice adds is here. */
+
+/* ── Settings → Integrations → VoiceStudio ── */
+.voice-settings__form { display: grid; gap: 12px; width: 100%; }
+.voice-settings__steps { margin: 0; padding-left: 20px; color: var(--text); font-size: 13px; line-height: 1.6; }
+.voice-settings__steps a { display: inline-flex; align-items: center; gap: 4px; }
+.voice-settings__steps a svg { width: 12px; height: 12px; }
+.voice-settings__actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.voice-settings__notice { margin: 0 0 12px; color: var(--ok); font-size: 13px; }
+.voice-settings__error { margin: 0 0 12px; color: var(--danger); font-size: 13px; overflow-wrap: anywhere; }
+.voice-settings__address { overflow-wrap: anywhere; }
+.voice-settings__status { overflow-wrap: anywhere; }
+.voice-settings__status[data-reachable="false"] { color: var(--danger); }

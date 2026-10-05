@@ -17,6 +17,7 @@ import { renderSettingsToggle } from "./settings-toggle.ts";
 import "./settings-tools.ts";
 import "./settings-browser.ts";
 import "./settings-jira.ts";
+import "./settings-voice.ts";
 import "./settings-github.ts";
 import "./settings-providers.ts";
 import "./settings-workers.ts";
@@ -112,6 +113,7 @@ export type SettingsProps = AutomationProps & {
   /** Resolves once the settings write lands, so the Browser section can re-read status. */
   onChangeBrowser: (next: Settings["browser"]) => Promise<unknown> | void;
   onChangeModels: (next: Settings["models"]) => void;
+  onChangeVoice: (next: Settings["voice"]) => void;
   onChangePower: (next: Settings["power"]) => void;
   onChangeBots: (next: Settings["bots"]) => void;
   onSetLidAwake: (on: boolean) => void;
@@ -639,12 +641,14 @@ function renderSkillsPage(props: SettingsProps) {
   `;
 }
 
-/** One section per external service: Jira, then GitHub. */
-function renderIntegrationsPage() {
+/** One section per external service: Jira, GitHub, then VoiceStudio (bots' voice). */
+function renderIntegrationsPage(props: SettingsProps) {
   return html`
     <p class="settings-page__intro">Connect HUI to external services. Credentials stay on this machine and are never sent to the browser.</p>
     <hui-jira-settings></hui-jira-settings>
     <hui-github-settings></hui-github-settings>
+    <hui-voice-settings .sendNotes=${props.settings.voice.sendNotesImmediately}
+      .onSendNotes=${(sendNotesImmediately: boolean) => props.onChangeVoice({ ...props.settings.voice, sendNotesImmediately })}></hui-voice-settings>
   `;
 }
 
@@ -987,7 +991,7 @@ function renderSecurityPage(props: SettingsProps) {
 
 const SETTINGS_SUMMARIES: Record<Exclude<SettingsPage, "appearance" | "skills" | "tools" | "models" | "automation" | "sessions" | "security" | "worktrees" | "workers">, string> = {
   connection: "HUI server, local PI runtime, reconnect behaviour and health.",
-  integrations: "Connections to external services such as Jira and GitHub.",
+  integrations: "Connections to external services such as Jira, GitHub and VoiceStudio.",
   plugins: "Packages, extensions, permissions and provider adapters.",
   memory: "Workspace memory files, search, import and indexing.",
   diagnostics: "Runtime logs, activity, health and exportable reports.",
@@ -1124,7 +1128,7 @@ export function renderSettingsPage(props: SettingsProps) {
                   : props.page === "connection"
                     ? renderConnectionPage(props)
                     : props.page === "integrations"
-                    ? renderIntegrationsPage()
+                    ? renderIntegrationsPage(props)
                     : props.page === "workers"
                     ? html`<hui-workers-settings></hui-workers-settings>`
                     : props.page === "plugins"

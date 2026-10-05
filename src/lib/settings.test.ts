@@ -162,3 +162,11 @@ test("normalizes a safe worktree branch prefix", () => {
     assert.equal(normalizeBranchPrefix(prefix), "feature/");
   }
 });
+
+test("voice notes wait in the composer unless sending them at once is switched on", () => {
+  assert.deepEqual(DEFAULT_SETTINGS.voice, { sendNotesImmediately: false });
+  for (const voice of [undefined, null, "yes", [], { sendNotesImmediately: "true" }, { sendNotesImmediately: 1 }]) {
+    assert.deepEqual(normalizeSettings({ voice }).voice, { sendNotesImmediately: false }, JSON.stringify(voice));
+  }
+  assert.deepEqual(normalizeSettings({ voice: { sendNotesImmediately: true, url: "never here" } }).voice, { sendNotesImmediately: true });
+});

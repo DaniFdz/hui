@@ -34,6 +34,10 @@ export type Settings = {
     /** Prevent idle sleep while the gateway runs, like `caffeinate -i`. */
     keepAwake: boolean;
   };
+  /** Settings → Integrations → VoiceStudio. A bot chat's voice note lands in the
+   * composer for review unless this sends it at once (marked `[voice] `). The
+   * connection itself is the gateway's (`/__hui/voice`). */
+  voice: { sendNotesImmediately: boolean };
   /** HUI-owned model routing. Empty values inherit PI's configured default. */
   models: {
     primary: string;
@@ -82,6 +86,7 @@ export const DEFAULT_SETTINGS: Settings = {
   branchPrefix: DEFAULT_BRANCH_PREFIX,
   browser: DEFAULT_BROWSER_SETTINGS,
   power: { keepAwake: true },
+  voice: { sendNotesImmediately: false },
   models: { primary: "", fallback: "", utility: "" },
   disabledSkills: [],
   disabledPlugins: [],
@@ -108,6 +113,7 @@ export function normalizeSettings(raw: unknown): Settings {
     branchPrefix: normalizeBranchPrefix(source["branchPrefix"]),
     browser: normalizeBrowserSettings(source["browser"]),
     power: normalizePower(source["power"]),
+    voice: { sendNotesImmediately: isRecord(source["voice"]) && source["voice"]["sendNotesImmediately"] === true },
     models: normalizeModels(source["models"]),
     disabledSkills: normalizeDisabledSkills(source["disabledSkills"]),
     disabledPlugins: normalizeDisabledPlugins(source["disabledPlugins"]),

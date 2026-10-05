@@ -120,3 +120,15 @@ export function microphoneErrorMessage(error: unknown, context: { secure: boolea
   if (name === "NotReadableError" || name === "TrackStartError" || name === "AbortError") return "The microphone is busy or unavailable. Close other apps using it and try again.";
   return error instanceof Error && error.message ? `The microphone could not be opened: ${error.message}` : "The microphone could not be opened.";
 }
+
+/** One line about the connection for Settings: who answered, or why not. */
+export function voiceConnectionSummary(connection: VoiceConnection): string {
+  if (!connection.configured) return "Not connected.";
+  const key = connection.keySet ? " · API key saved" : "";
+  if (connection.reachable === true) {
+    const service = [connection.service ?? "VoiceStudio", connection.version].filter(Boolean).join(" ");
+    return `Reachable · ${service}${key}`;
+  }
+  if (connection.reachable === false) return `Not reachable${key}: ${connection.error ?? "no answer."}`;
+  return `Saved${key}; not checked yet.`;
+}

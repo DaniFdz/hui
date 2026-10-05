@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
-import { formatCallTime, microphoneErrorMessage, sendBotMessage, speedLabel, synthesizeSpeech, transcribeRecording, voiceOptions } from "./voice.ts";
+import { formatCallTime, microphoneErrorMessage, sendBotMessage, speedLabel, synthesizeSpeech, transcribeRecording, voiceConnectionSummary, voiceOptions } from "./voice.ts";
 
 const realFetch = globalThis.fetch;
 afterEach(() => { globalThis.fetch = realFetch; });
@@ -74,4 +74,11 @@ test("speech is asked for with the bot and comes back as audio", async () => {
   assert.equal(await sendBotMessage("scout", "[voice] Hello"), "queued");
   assert.equal(sent[0]!.url, "/__hui/bots/scout/messages");
   assert.deepEqual(JSON.parse(String(sent[0]!.init.body)), { text: "[voice] Hello" });
+});
+
+test("Settings sums the connection up in one line, never with the key", () => {
+  assert.equal(voiceConnectionSummary({ configured: false, url: "", keySet: false }), "Not connected.");
+  assert.equal(voiceConnectionSummary({ configured: true, url: "https://gpu.ts.net", keySet: true, reachable: true, service: "VoiceStudio", version: "2.4.0" }), "Reachable · VoiceStudio 2.4.0 · API key saved");
+  assert.equal(voiceConnectionSummary({ configured: true, url: "http://127.0.0.1:3900", keySet: false, reachable: false, error: "VoiceStudio could not be reached at http://127.0.0.1:3900 (connection refused; is it running?)." }), "Not reachable: VoiceStudio could not be reached at http://127.0.0.1:3900 (connection refused; is it running?).");
+  assert.equal(voiceConnectionSummary({ configured: true, url: "http://127.0.0.1:3900", keySet: false }), "Saved; not checked yet.");
 });
