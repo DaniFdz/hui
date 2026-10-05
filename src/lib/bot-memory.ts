@@ -3,7 +3,8 @@
  * one summary of the n messages from id on. Zooming a line returns its two
  * halves, and zooming a single message (n = 1) returns it whole.
  */
-import { BOT_MEMORY_BUDGET_BYTES } from "./bots.ts";
+import { BOT_MEMORY_BUDGET_BYTES, type BotMemoryUsage } from "./bots.ts";
+import { formatCount } from "./message-metadata.ts";
 
 export type MemoryLine = {
   id: number;
@@ -73,4 +74,34 @@ export function formatKilobytes(bytes: number): string {
 
 export function memoryBudgetLabel(viewBytes: number): string {
   return `${formatKilobytes(viewBytes)}/${formatKilobytes(BOT_MEMORY_BUDGET_BYTES)} KB`;
+}
+
+function plural(count: number, one: string, many: string): string {
+  return `${formatCount(count)} ${count === 1 ? one : many}`;
+}
+
+/** US dollars as providers report them; a sliver below a hundredth of a cent
+ * still reads as spent rather than as $0.0000. */
+export function formatMemoryCost(cost: number): string {
+  return cost < 0.0001 ? "<$0.0001" : `$${cost.toFixed(4)}`;
+}
+
+/** What the summarizer spent, in one line: model calls, tokens read (cache
+ * reads and writes are input too) and written, and the cost once a provider
+ * reported one. Short messages are their own summaries, so a memory can grow
+ * without any call. */
+export function memoryUsageLabel(usage: BotMemoryUsage): string {
+  if (!usage.calls) return "No model calls yet";
+  const input = usage.input + usage.cacheRead + usage.cacheWrite;
+  return [
+    plural(usage.calls, "call", "calls"),
+    `${plural(input, "token", "tokens")} in, ${formatCount(usage.output)} out`,
+    ...(usage.cost > 0 ? [formatMemoryCost(usage.cost)] : []),
+  ].join(" · ");
+}
+
+/** The same spend, every counter spelled out (the line's tooltip). */
+export function memoryUsageDetail(usage: BotMemoryUsage): string {
+  const tokens = `tokens: ${formatCount(usage.input)} input, ${formatCount(usage.cacheRead)} cache read, ${formatCount(usage.cacheWrite)} cache write, ${formatCount(usage.output)} output`;
+  return [plural(usage.calls, "model call", "model calls"), tokens, ...(usage.cost > 0 ? [`${formatMemoryCost(usage.cost)} reported`] : [])].join("; ");
 }

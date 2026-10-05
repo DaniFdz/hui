@@ -26,7 +26,7 @@ import {
   type BotPanelTab,
 } from "../lib/bot-roster.ts";
 import { botRoutineRuns, botRoutines, routineCadenceSummary, routineSchedule, RoutineFormError, ROUTINE_WEEKDAYS } from "../lib/bot-routines.ts";
-import { memoryBudgetLabel, type MemoryLine } from "../lib/bot-memory.ts";
+import { memoryBudgetLabel, memoryUsageDetail, memoryUsageLabel, type MemoryLine } from "../lib/bot-memory.ts";
 import { describeSchedule, formatTimestamp, runIsActive } from "./settings-automation.ts";
 import { renderSettingsToggle } from "./settings-toggle.ts";
 import { renderPicker } from "./settings-picker.ts";
@@ -437,8 +437,9 @@ function renderMemoryTab(props: BotPanelProps) {
     <dl class="bot-memory__stats">
       <div><dt>Messages</dt><dd>${status.messages.toLocaleString()}</dd></div>
       <div><dt>View</dt><dd>${memoryBudgetLabel(status.viewBytes)}</dd></div>
-      <div><dt>Lines</dt><dd>${lines.length.toLocaleString()}</dd></div>
+      <div><dt>Lines</dt><dd>${status.viewLines.toLocaleString()}</dd></div>
       <div><dt>Pending summaries</dt><dd>${status.pending.toLocaleString()}</dd></div>
+      <div class="bot-memory__usage"><dt>Summarizer since the gateway started</dt><dd title=${memoryUsageDetail(status.usage)}>${memoryUsageLabel(status.usage)}</dd></div>
     </dl>
     ${status.waiting ? html`<p class="bot-memory__notice" role="status">Summarizing memory…</p>` : nothing}
     ${status.failing ? html`<p class="bot-memory__notice bot-memory__notice--failing" role="alert">Summaries are failing${status.failing.node ? ` at ${status.failing.node}` : ""}: ${status.failing.error}. HUI keeps retrying.</p>` : nothing}

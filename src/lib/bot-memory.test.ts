@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { formatKilobytes, memoryBudgetLabel, memoryChildren, MemoryZoomError, parseMemoryView, parseMemoryZoom } from "./bot-memory.ts";
+import { formatKilobytes, formatMemoryCost, memoryBudgetLabel, memoryChildren, memoryUsageDetail, memoryUsageLabel, MemoryZoomError, parseMemoryView, parseMemoryZoom } from "./bot-memory.ts";
 
 test("the view's lines are parsed without the chat wrapper", () => {
   const lines = parseMemoryView("<chat>\n0+8|user asked for links; talk: found three\n8+2|user: thanks\n10+1|(not summarized yet: zoom it)\n</chat>");
@@ -24,6 +24,24 @@ test("children address the two halves down to single messages", () => {
   assert.deepEqual(memoryChildren({ id: 8, n: 4 }), [{ id: 8, n: 2 }, { id: 10, n: 2 }]);
   assert.deepEqual(memoryChildren({ id: 10, n: 2 }), [{ id: 10, n: 1 }, { id: 11, n: 1 }]);
   assert.equal(memoryChildren({ id: 11, n: 1 }), undefined);
+});
+
+test("the summarizer's spend reads as calls, tokens in and out, and a cost only when one was reported", () => {
+  const none = { calls: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 };
+  assert.equal(memoryUsageLabel(none), "No model calls yet");
+  assert.equal(memoryUsageLabel({ ...none, calls: 1, input: 1, output: 1 }), "1 call · 1 token in, 1 out", "the fixture's one compactor call");
+  assert.equal(
+    memoryUsageLabel({ calls: 12, input: 48_000, output: 1_200, cacheRead: 30_000, cacheWrite: 2_000, cost: 0.0421 }),
+    "12 calls · 80,000 tokens in, 1,200 out · $0.0421",
+    "cache reads and writes count as input",
+  );
+  assert.equal(
+    memoryUsageDetail({ calls: 12, input: 48_000, output: 1_200, cacheRead: 30_000, cacheWrite: 2_000, cost: 0.0421 }),
+    "12 model calls; tokens: 48,000 input, 30,000 cache read, 2,000 cache write, 1,200 output; $0.0421 reported",
+  );
+  assert.equal(memoryUsageDetail({ ...none, calls: 1, input: 1, output: 1 }), "1 model call; tokens: 1 input, 0 cache read, 0 cache write, 1 output");
+  assert.equal(formatMemoryCost(0.00004), "<$0.0001");
+  assert.equal(formatMemoryCost(1.5), "$1.5000");
 });
 
 test("sizes read against the 128 KB budget", () => {
