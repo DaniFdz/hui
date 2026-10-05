@@ -298,20 +298,17 @@ export function botInputFromDraft(draft: BotDraft): BotInput {
 }
 
 /** Edit payload: only what changed, so an untouched workspace never trips the
- * gateway's "only while idle" rule. Title, instructions and the memory model
- * clear with an empty string; a chat keeps a model and thinking level once set,
- * so those change but never clear. An avatar key set to "" clears that key. */
+ * gateway's "only while idle" rule. An emptied field clears: title and
+ * instructions go, the memory model goes back to the bot's own, and an empty
+ * model or thinking level ("Gateway default") puts the chat back on what a new
+ * chat gets. An avatar key set to "" clears that key. */
 export function botPatchFromDraft(bot: BotView, draft: BotDraft): BotPatch {
   const patch: BotPatch = {};
   const name = draft.name.trim();
   if (name && name !== bot.name) patch.name = name;
-  for (const key of ["title", "instructions", "memoryModel"] as const) {
+  for (const key of ["title", "instructions", "model", "thinking", "memoryModel"] as const) {
     const value = draft[key].trim();
     if (value !== (bot[key] ?? "")) patch[key] = value;
-  }
-  for (const key of ["model", "thinking"] as const) {
-    const value = draft[key].trim();
-    if (value && value !== bot[key]) patch[key] = value;
   }
   const cwd = draft.cwd.trim();
   if (cwd && cwd !== bot.cwd) patch.cwd = cwd;

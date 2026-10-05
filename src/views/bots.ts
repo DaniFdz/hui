@@ -502,12 +502,13 @@ export type BotDialogProps = {
 };
 
 const THINKING_LABELS: Record<(typeof BOT_THINKING_LEVELS)[number], string> = { off: "Off", minimal: "Minimal", low: "Low", medium: "Medium", high: "High", xhigh: "Extra high" };
-const THINKING_CHOICES: readonly (readonly [string, string])[] = [["", "Default"], ...BOT_THINKING_LEVELS.map((level) => [level, THINKING_LABELS[level]] as const)];
+/** "Gateway default" sends "": a new bot leaves the choice to the gateway, an
+ * edited one goes back to it (the model and thinking level a new chat gets). */
+const THINKING_CHOICES: readonly (readonly [string, string])[] = [["", "Gateway default"], ...BOT_THINKING_LEVELS.map((level) => [level, THINKING_LABELS[level]] as const)];
 
-/** `empty` is the default choice; undefined when it cannot be chosen (a
- * bot's chat keeps its model once set). */
-function modelOptions(models: readonly RuntimeModel[], empty: string | undefined, current: string) {
-  const options = [...(empty ? [{ value: "", label: empty }] : []), ...models.map((model) => ({ value: `${model.provider}/${model.id}`, label: model.name, description: model.provider }))];
+/** `empty` labels the default choice, the empty value. */
+function modelOptions(models: readonly RuntimeModel[], empty: string, current: string) {
+  const options = [{ value: "", label: empty }, ...models.map((model) => ({ value: `${model.provider}/${model.id}`, label: model.name, description: model.provider }))];
   // A model no longer in the catalog still shows what the bot runs on.
   return current && !options.some((option) => option.value === current) ? [...options, { value: current, label: current }] : options;
 }
@@ -545,10 +546,10 @@ export function renderBotDialog(props: BotDialogProps) {
       <div class="bot-dialog__row">
         <div class="field input-dialog__field"><span>Model</span>
           ${renderPicker({ label: "Model", value: props.model, disabled: props.pending, searchable: true, searchPlaceholder: "Search models",
-            options: modelOptions(props.models, editing?.model ? undefined : "Gateway default", props.model), onChange: props.onModel })}</div>
+            options: modelOptions(props.models, "Gateway default", props.model), onChange: props.onModel })}</div>
         <div class="field input-dialog__field"><span>Thinking</span>
           ${renderPicker({ label: "Thinking", value: props.thinking, disabled: props.pending,
-            options: THINKING_CHOICES.filter(([value]) => value || !editing?.thinking).map(([value, label]) => ({ value, label })), onChange: props.onThinking })}</div>
+            options: THINKING_CHOICES.map(([value, label]) => ({ value, label })), onChange: props.onThinking })}</div>
       </div>
       <div class="field input-dialog__field"><span>Memory model</span>
         ${renderPicker({ label: "Memory model", value: props.memoryModel, disabled: props.pending, searchable: true, searchPlaceholder: "Search models",

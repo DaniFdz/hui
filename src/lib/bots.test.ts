@@ -192,7 +192,9 @@ test("an edit sends only what changed, clears emptied fields and keeps an untouc
   assert.deepEqual(botPatchFromDraft(bot, unchanged), {});
   assert.deepEqual(botPatchFromDraft(bot, { ...unchanged, name: "Scout II", title: "", cwd: "" }), { name: "Scout II", title: "" });
   assert.deepEqual(botPatchFromDraft(bot, { ...unchanged, cwd: "/srv/scout", model: "openai/gpt", thinking: "high", memoryModel: "openai/mini" }), { cwd: "/srv/scout", model: "openai/gpt", thinking: "high", memoryModel: "openai/mini" });
-  assert.deepEqual(botPatchFromDraft(bot, { ...unchanged, model: "", thinking: "" }), {}, "a chat's model and thinking change but never clear");
+  assert.deepEqual(botPatchFromDraft(bot, { ...unchanged, model: "", thinking: "" }), { model: "", thinking: "" }, "Gateway default clears the chat's model and thinking");
+  assert.deepEqual(botPatchFromDraft({ ...bot, model: undefined, thinking: undefined }, { ...unchanged, model: "", thinking: "" }), {}, "a bot already on the defaults stays untouched");
+  assert.deepEqual(botPatchFromDraft({ ...bot, model: undefined }, unchanged), { model: "anthropic/claude" }, "a model chosen for a bot on the default");
   assert.deepEqual(botPatchFromDraft({ ...bot, memoryModel: "openai/mini" }, unchanged), { memoryModel: "" }, "an emptied memory model goes back to the bot's own");
   assert.deepEqual(botPatchFromDraft(bot, { ...unchanged, emoji: "" }), { avatar: { emoji: "" } }, "removing the emoji clears only that key");
   assert.deepEqual(botPatchFromDraft(bot, { ...unchanged, emoji: "🦉" }), { avatar: { emoji: "🦉" } });
