@@ -84,7 +84,8 @@
 .chat-copy-btn.chat-read-aloud[data-status="loading"] svg { animation: voice-dot 1s ease-in-out infinite; }
 
 /* ── bot header: Call ── */
-.bot-call-toggle--active { color: var(--ok); }
+/* Above the theme's ghost-icon color (:root[data-theme-mode] .btn--icon). */
+:root .chat-icon-btn.bot-call-toggle--active { color: var(--ok); }
 .bot-call-toggle--active svg { animation: voice-dot 1.6s ease-in-out infinite; }
 
 /* ── the call view, over the bot's chat ── */
