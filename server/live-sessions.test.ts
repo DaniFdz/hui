@@ -19,7 +19,7 @@ import type {
   TranscriptEntry,
 } from "./runtimes/types.ts";
 import { DEFAULT_SETTINGS } from "../src/lib/settings.ts";
-import { RuntimeOutputError, RuntimeUnreachableError, type RuntimeUnreachable } from "./runtimes/types.ts";
+import { RuntimeOutputError, RuntimeUnreachableError } from "./runtimes/types.ts";
 
 // The registry path is read once, at import time, so the throwaway home has to
 // be in place before the module is loaded.
@@ -1940,13 +1940,13 @@ function scriptedWorker(t: TestContext) {
       sink.receive({ event: { type: "settled" }, state: state(), seq: ++seq });
     },
     /** The gateway loses the worker, where the run settles meanwhile. */
-    lose(unreachable?: RuntimeUnreachable): void {
+    lose(reconnecting?: boolean): void {
       streaming = false;
-      sink.lost(unreachable);
+      sink.lost(reconnecting === undefined ? undefined : new RuntimeUnreachableError("Connection lost.", reconnecting));
     },
     /** Only the connection drops; the run goes on there. */
-    drop(unreachable: RuntimeUnreachable): void {
-      sink.lost(unreachable);
+    drop(reconnecting: boolean): void {
+      sink.lost(new RuntimeUnreachableError("Connection lost.", reconnecting));
     },
   });
 }
@@ -2000,7 +2000,7 @@ test("follow-ups HUI holds for an unreachable worker session hold up a gateway r
   await manager.followUp(id, "held here");
   release();
   await prompted;
-  worker.lose({ reconnecting: true });
+  worker.lose(true);
   await waitForStatus(manager, id, "reconnecting");
   assert.equal(manager.blockingWorkCount, 1, "the follow-up HUI holds would be lost by a gateway restart");
   manager.stopReconnecting(id);
@@ -2032,7 +2032,7 @@ test("a worker session whose connection drops is reconnecting, not failed, and c
   await waitForBoot(manager, id);
   await manager.prompt(id, "long task");
   const seen = messagesOf(manager, id);
-  worker.drop({ reconnecting: true });
+  worker.drop(true);
   await waitForStatus(manager, id, "reconnecting");
   assert.deepEqual(failures(seen), [], "a dropped connection is neither an error nor a dead stream");
   assert.deepEqual(manager.transcript(id).map((entry) => entry.kind === "message" ? entry.text : entry.kind), ["long task"]);
@@ -2063,7 +2063,7 @@ test("a worker session HUI stopped reconnecting is disconnected until it is reat
   manager.ensure(record);
   await waitForBoot(manager, id);
   const seen = messagesOf(manager, id);
-  worker.drop({ reconnecting: true });
+  worker.drop(true);
   await waitForStatus(manager, id, "reconnecting");
   manager.stopReconnecting(id);
   assert.equal(manager.status(id), "disconnected");
@@ -2079,7 +2079,7 @@ test("a worker session HUI stopped reconnecting is disconnected until it is reat
   assert.deepEqual(failures(seen), []);
 
   // A user disconnect (or removal) reports it directly.
-  worker.drop({ reconnecting: false });
+  worker.drop(false);
   await waitForStatus(manager, id, "disconnected");
   assert.deepEqual(failures(seen), []);
   manager.disposeAll();
@@ -2096,7 +2096,7 @@ test("a run that finished on the worker while HUI was away settles for what wait
   await waitForBoot(manager, id);
   await manager.prompt(id, "long task");
   const seen = messagesOf(manager, id);
-  worker.lose({ reconnecting: true });
+  worker.lose(true);
   await waitForStatus(manager, id, "reconnecting");
   worker.history = [{ kind: "message", role: "user", text: "long task" }, { kind: "message", role: "assistant", text: "done there" }];
   reattach();
@@ -2105,7 +2105,7 @@ test("a run that finished on the worker while HUI was away settles for what wait
   await until(() => settled() === 1, "the settled event");
   assert.equal(records[0]!.runStartedAt, undefined, "the run is no longer unfinished work");
   // Reattaching to a session with no run in flight settles nothing.
-  worker.lose({ reconnecting: true });
+  worker.lose(true);
   await waitForStatus(manager, id, "reconnecting");
   reattach();
   await waitForBoot(manager, id);

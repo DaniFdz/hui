@@ -5,9 +5,9 @@ import { LiveSessions, type SessionStreamMessage } from "./live-sessions.ts";
 import type { SessionRecord } from "./sessions.ts";
 import { SubagentService } from "./subagents.ts";
 import { workers, type RemoteSessionSink } from "./workers.ts";
+import { RuntimeUnreachableError } from "./runtimes/types.ts";
 import type {
   AgentRuntime,
-  RuntimeUnreachable,
   RuntimeEvent,
   RuntimeModel,
   RuntimeSession,
@@ -728,12 +728,12 @@ function scriptedWorker(t: TestContext) {
       return new Promise((resolve) => prompts.set(key, resolve));
     },
     /** The connection to a session drops and, maybe, its run finishes there meanwhile. */
-    lose(key: string, unreachable: RuntimeUnreachable, reply?: string): void {
+    lose(key: string, reconnecting: boolean, reply?: string): void {
       if (reply !== undefined) {
         running.delete(key);
         histories.get(key)!.push({ kind: "message", role: "assistant", text: reply });
       }
-      sinks.get(key)!.lost(unreachable);
+      sinks.get(key)!.lost(new RuntimeUnreachableError("Connection lost.", reconnecting));
     },
   };
 }
@@ -761,7 +761,7 @@ async function spawnRemoteChild(t: TestContext) {
 
 test("a remote subagent whose run finished while HUI was away completes once HUI reattaches", async (t) => {
   const state = await spawnRemoteChild(t);
-  state.worker.lose("child-1", { reconnecting: true }, "Done remotely");
+  state.worker.lose("child-1", true, "Done remotely");
   await waitForStatus(state.manager, "child-1", "reconnecting");
   state.manager.ensure(state.child(), true);
   await state.finished("completed");
@@ -772,7 +772,7 @@ test("a remote subagent whose run finished while HUI was away completes once HUI
 
 test("a remote subagent fails when HUI is disconnected from its machine", async (t) => {
   const state = await spawnRemoteChild(t);
-  state.worker.lose("child-1", { reconnecting: false });
+  state.worker.lose("child-1", false);
   await state.finished("failed");
   assert.match(state.child().subagent?.error ?? "", /disconnected/u);
   state.service.dispose();

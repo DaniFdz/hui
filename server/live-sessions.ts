@@ -37,19 +37,13 @@ import type {
   RuntimeUsage,
   TranscriptEntry,
 } from "./runtimes/types.ts";
-import { RuntimeOutputError, RuntimeUnreachableError, type RuntimeUnreachable } from "./runtimes/types.ts";
+import { RuntimeOutputError, RuntimeUnreachableError } from "./runtimes/types.ts";
 import { recordDiagnosticEvent } from "./observability.ts";
 import { readHuiSettings } from "./hui-settings.ts";
 import type { Settings } from "../src/lib/settings.ts";
 
 export type SessionStatus = "idle" | "running" | "waiting" | "starting" | "error" | "reconnecting" | "disconnected";
-/** Lifecycle facts the runtime knows nothing about. */
-const LIFECYCLE_STATUSES = new Set<SessionStatus>(["starting", "error", "reconnecting", "disconnected"]);
 const MAX_AUTOMATIC_RECOVERY_ATTEMPTS = 3;
-
-function unreachableStatus(unreachable: RuntimeUnreachable): SessionStatus {
-  return unreachable.reconnecting ? "reconnecting" : "disconnected";
-}
 
 /** Replace runtime-internal image locations with opaque gateway URLs. */
 export function publicTranscript(id: string, entries: readonly TranscriptEntry[]): TranscriptEntry[] {
@@ -389,7 +383,7 @@ export class LiveSessions {
    * refused was a real inconsistency.
    */
   #reported(live: Live): SessionStatus {
-    if (LIFECYCLE_STATUSES.has(live.status)) {
+    if (["starting", "error", "reconnecting", "disconnected"].includes(live.status)) {
       return live.status;
     }
     if (live.questions.size > 0) {
@@ -1032,9 +1026,11 @@ export class LiveSessions {
 
   /** Why a session without a runtime cannot take a request yet. */
   #unavailable(live: Live | undefined): SessionBusyError {
-    if (live?.status === "reconnecting") return new SessionBusyError("HUI is reconnecting to the machine this session runs on; it keeps running there. Try again once it is back.");
-    if (live?.status === "disconnected") return new SessionBusyError("HUI is disconnected from the machine this session runs on. Reconnect it to continue.");
-    return new SessionBusyError("That session is still starting.");
+    const why: Partial<Record<SessionStatus, string>> = {
+      reconnecting: "HUI is reconnecting to the machine this session runs on; it keeps running there. Try again once it is back.",
+      disconnected: "HUI is disconnected from the machine this session runs on. Reconnect it to continue.",
+    };
+    return new SessionBusyError((live && why[live.status]) ?? "That session is still starting.");
   }
 
   /** HUI stopped retrying the host of sessions it was reconnecting to. */
@@ -1233,7 +1229,7 @@ export class LiveSessions {
       // running there: no failure to report, only the status.
       if (error instanceof RuntimeUnreachableError) {
         recordDiagnosticEvent({ area: "runtime", level: "warning", action: "boot_unreachable", summary: "Runtime host unreachable", detail: error.message, sessionId: live.record.id });
-        this.#setStatus(live, unreachableStatus(error));
+        this.#setStatus(live, error.reconnecting ? "reconnecting" : "disconnected");
         return;
       }
       recordDiagnosticEvent({ area: "runtime", level: "error", action: "boot_failed", summary: "Runtime did not start", detail: failureDetail(error), sessionId: live.record.id });
@@ -1454,7 +1450,7 @@ export class LiveSessions {
     recordDiagnosticEvent({ area: "session", level: "error", action: "run_failed", summary: "Agent run ended with an error", detail: last.message, sessionId: live.record.id });
   }
 
-  #onExit(live: Live, runtime: RuntimeSession, unreachable?: RuntimeUnreachable): void {
+  #onExit(live: Live, runtime: RuntimeSession, unreachable?: RuntimeUnreachableError): void {
     if (live.closed || live.runtime !== runtime) {
       return;
     }
@@ -1469,7 +1465,7 @@ export class LiveSessions {
       recordDiagnosticEvent({ area: "runtime", level: "warning", action: "unreachable", summary: "Lost the connection to the runtime's host", sessionId: live.record.id });
       // Streams stay open: the conversation goes on there and a reattach
       // brings its state back to them.
-      this.#setStatus(live, unreachableStatus(unreachable));
+      this.#setStatus(live, unreachable.reconnecting ? "reconnecting" : "disconnected");
       return;
     }
     recordDiagnosticEvent({ area: "runtime", level: "error", action: "exit", summary: "Runtime process exited", sessionId: live.record.id });

@@ -12,7 +12,7 @@ import { readFile } from "node:fs/promises";
 import { workers, type RemoteSessionLink, type RemoteSessionSink, type RemoteSnapshot } from "../workers.ts";
 import type { RemoteState } from "../worker/host.ts";
 import type { RuntimeInspection } from "../../src/lib/tools-types.ts";
-import type { AgentRuntime, PromptAttachment, RuntimeCommand, RuntimeEvent, RuntimeModel, RuntimeSession, RuntimeUnreachable, StartOptions, TranscriptEntry } from "./types.ts";
+import type { AgentRuntime, PromptAttachment, RuntimeCommand, RuntimeEvent, RuntimeModel, RuntimeSession, RuntimeUnreachableError, StartOptions, TranscriptEntry } from "./types.ts";
 
 type Frame = RemoteSnapshot & { event?: RuntimeEvent };
 
@@ -30,10 +30,10 @@ class RemoteRuntimeSession implements RuntimeSession, RemoteSessionSink {
    * behind a transcript being read in pages. */
   #delivery: Promise<void> | undefined;
   #attached!: () => void;
-  #exitListeners = new Set<(unreachable?: RuntimeUnreachable) => void>();
+  #exitListeners = new Set<(unreachable?: RuntimeUnreachableError) => void>();
   #ended = false;
   /** Set once lost: how, for listeners that arrive later. */
-  #lost: { unreachable?: RuntimeUnreachable } | undefined;
+  #lost: { unreachable?: RuntimeUnreachableError } | undefined;
 
   constructor(worker: string) {
     this.#worker = worker;
@@ -103,7 +103,7 @@ class RemoteRuntimeSession implements RuntimeSession, RemoteSessionSink {
   }
 
   /** The remote runtime is gone, or only the connection to it (`unreachable`). */
-  lost(unreachable?: RuntimeUnreachable): void {
+  lost(unreachable?: RuntimeUnreachableError): void {
     if (this.#ended) return;
     this.#ended = true;
     this.#lost = unreachable ? { unreachable } : {};
@@ -162,7 +162,7 @@ class RemoteRuntimeSession implements RuntimeSession, RemoteSessionSink {
   async cancelCompaction(): Promise<void> { await this.#call("cancelCompaction"); }
   async rewind(target: unknown, options?: unknown): Promise<void> { await this.#call("rewind", target, ...(options === undefined ? [] : [options])); }
   async continueRun(): Promise<void> { await this.#call("continueRun"); }
-  onExit(listener: (unreachable?: RuntimeUnreachable) => void): () => void {
+  onExit(listener: (unreachable?: RuntimeUnreachableError) => void): () => void {
     this.#exitListeners.add(listener);
     // Lost before anyone listened: still reported, after the caller's setup.
     const lost = this.#lost;

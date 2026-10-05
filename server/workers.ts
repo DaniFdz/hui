@@ -31,7 +31,7 @@ import { remoteReleasePath, workerRelease, type WorkerRelease } from "./worker/r
 import { brokeredModels, buildSyncPlan, contentFile, mirrorPath } from "./worker/sync.ts";
 import type { Settings } from "../src/lib/settings.ts";
 import type { HostInfo, RemoteLaunch, RemoteState } from "./worker/host.ts";
-import { RuntimeUnreachableError, type RuntimeEvent, type RuntimeUnreachable, type TranscriptEntry } from "./runtimes/types.ts";
+import { RuntimeUnreachableError, type RuntimeEvent, type TranscriptEntry } from "./runtimes/types.ts";
 import { formatCommand, parseCommand, type WorkerInput, type WorkerView } from "../shared/workers.ts";
 import { invokeAgentTool } from "./agent-tools-bridge.ts";
 import { readRegistry } from "./sessions.ts";
@@ -136,7 +136,7 @@ export type RemoteSnapshot = { state?: RemoteState; seq?: number; transcript?: T
 export type RemoteSessionSink = {
   receive(frame: RemoteSnapshot & { event?: RuntimeEvent }): void;
   /** The remote runtime stopped, or only this connection did (`unreachable`). */
-  lost(unreachable?: RuntimeUnreachable): void;
+  lost(unreachable?: RuntimeUnreachableError): void;
 };
 
 export type RemoteSessionLink = {
@@ -275,7 +275,7 @@ class WorkerConnection {
         const sinks = [...this.#sessions.values()];
         this.#sessions.clear();
         // Their runs go on there; HUI reconnects unless this was a disconnect.
-        for (const sink of sinks) sink.lost({ reconnecting: !this.#closing });
+        for (const sink of sinks) sink.lost(new RuntimeUnreachableError(`Lost the connection to ${this.worker.name}.`, !this.#closing));
         transport.kill();
       });
       transport.stdin.write(connectScript(this.release, node));
