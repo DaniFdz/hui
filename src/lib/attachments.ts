@@ -68,8 +68,7 @@ export async function readTranscriptAttachments(items: readonly (string | Transc
   const readable = items.filter((item): item is TranscriptAttachment & { url: string } =>
     typeof item !== "string" && Boolean(item.url));
   const read = await Promise.allSettled(readable.map(async (item) => {
-    // A rewind can reuse this URL for another message, so never trust a cached copy.
-    const response = await fetch(item.url, { cache: "no-store" });
+    const response = await fetch(item.url);
     if (!response.ok) throw new Error(`Could not read ${item.name}.`);
     const blob = await response.blob();
     return readAttachment(new File([blob], item.name, { type: item.mimeType || blob.type }));

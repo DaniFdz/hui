@@ -47,11 +47,7 @@ test("reads a sent message's attachments back into the composer, skipping unread
     ["/image", () => new Response(new Blob(["png"], { type: "image/png" }))],
     ["/file", () => new Response(new Blob(["notes"], { type: "application/octet-stream" }))],
   ]);
-  const fetched: RequestInit[] = [];
-  t.mock.method(globalThis, "fetch", async (url: string, init: RequestInit) => {
-    fetched.push(init);
-    return served.get(url)?.() ?? new Response("", { status: 404 });
-  });
+  t.mock.method(globalThis, "fetch", async (url: string) => served.get(url)?.() ?? new Response("", { status: 404 }));
   const restored = await readTranscriptAttachments([
     "legacy.txt",
     { name: "unsent.md", kind: "file" },
@@ -63,5 +59,4 @@ test("reads a sent message's attachments back into the composer, skipping unread
     { kind: "image", name: "shot.png", mimeType: "image/png", dataBase64: "cG5n" },
     { kind: "file", name: "notes.md", mimeType: "application/octet-stream", dataBase64: "bm90ZXM=" },
   ]);
-  assert.ok(fetched.every((init) => init.cache === "no-store"));
 });

@@ -2013,7 +2013,8 @@ async function handleRequest(
     response.statusCode = 200;
     response.setHeader("content-type", attachment.mimeType);
     response.setHeader("content-length", String(attachment.data.length));
-    response.setHeader("cache-control", "private, max-age=3600");
+    // The URL names a position in the history, which a rewind hands to the next message.
+    response.setHeader("cache-control", "no-store");
     response.setHeader("x-content-type-options", "nosniff");
     response.setHeader("cross-origin-resource-policy", "same-origin");
     response.end(attachment.data);

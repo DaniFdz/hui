@@ -635,7 +635,8 @@ type SubagentTaskView = SubagentRecord & {
 // `url` is present for images whose bytes the gateway can serve:
 // GET /__hui/sessions/:id/attachments/:message/:image (x-hui: 1, or
 // `sec-fetch-site: same-origin` so <img> can load it; cross-site is refused).
-// 200 with the image's raster MIME type, `cache-control: private, max-age=3600`,
+// 200 with the image's raster MIME type, `cache-control: no-store` (a rewind
+// gives the next message the same position, so the URL can name new bytes),
 // `x-content-type-options: nosniff`; 403 without x-hui, 404 for an unknown
 // session, index or non-image part, 405 for other methods.
 // Files a user attached have `url` GET /__hui/sessions/:id/attachments/:message/files/:file
