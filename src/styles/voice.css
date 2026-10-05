@@ -152,7 +152,21 @@
 .bot-call__notice, .bot-call__error { margin: 0; max-width: 640px; font-size: var(--text-sm, 13px); text-align: center; overflow-wrap: anywhere; }
 .bot-call__notice { color: var(--warn, var(--muted)); }
 .bot-call__error { color: var(--danger); }
-.bot-call__controls { display: flex; flex-wrap: wrap; justify-content: center; gap: 14px; margin-top: auto; padding-top: 8px; }
+/* Sticky so Mute, Speaker and Hang up stay in view when the captions outgrow the view (a long reply, a phone in
+ * landscape); the band fades into the page over the text scrolling under it. */
+.bot-call__controls {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 14px;
+  width: 100%;
+  margin-top: auto;
+  padding: 8px 0 2px;
+  background: linear-gradient(to bottom, transparent, var(--bg) 14px);
+}
 .bot-call__control {
   display: inline-flex;
   flex-direction: column;
@@ -256,6 +270,17 @@
   .bot-call__controls { gap: 8px; }
   .bot-call__control { min-width: 64px; }
   .bot-call-bar { margin-inline: 8px; }
+}
+/* Short screens (a phone in landscape): a smaller avatar and tighter spacing leave room for the captions. */
+@media (max-height: 520px) {
+  .bot-call { gap: 8px; padding-top: max(10px, var(--safe-area-top, 0px)); }
+  .bot-call__stage { gap: 4px; margin-top: 0; }
+  .bot-call__orb { width: 64px; height: 64px; }
+  .bot-call__orb .bot-avatar--lg { width: 44px; height: 44px; }
+  .bot-call__orb .bot-avatar--lg .bot-avatar__glyph { font-size: 20px; }
+  .bot-call__orb .bot-avatar--lg.bot-avatar--emoji .bot-avatar__glyph { font-size: 26px; }
+  .bot-call__name { margin: 0; font-size: var(--text-lg, 18px); }
+  .bot-call__control svg { padding: 12px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .bot-call__orb, .chat-voice-note__dot--live, .bot-call-bar__pulse, .bot-call-toggle--active svg,
