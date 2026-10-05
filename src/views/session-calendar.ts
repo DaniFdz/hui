@@ -220,7 +220,7 @@ export class HuiSessionCalendar extends LitElement {
     return html`<aside class="session-calendar__side">
       <section class="session-calendar__panel">
         <h2 class="session-calendar__total"><strong>${formatDuration(week.activeMs)}</strong>
-          across ${week.sessions.length} ${week.sessions.length === 1 ? "session" : "sessions"}</h2>
+          ${`across ${week.sessions.length} ${week.sessions.length === 1 ? "session" : "sessions"}`}</h2>
         <div class="session-calendar__stack" aria-hidden="true">
           ${week.sessions.map(({ session, color, ms }) => html`<span data-color=${color}
             class=${highlight && highlight !== session.id ? "session-calendar__stack--dim" : ""}
@@ -245,7 +245,8 @@ export class HuiSessionCalendar extends LitElement {
         <h2 class="session-calendar__panel-title">Hours per day</h2>
         <div class="session-calendar__days" role="list">
           ${week.days.map((day) => html`<div class="session-calendar__bar ${holds(day.date, now) ? "session-calendar__bar--today" : ""}" role="listitem"
-            aria-label=${`${day.date.toLocaleDateString(undefined, { weekday: "long" })}: ${formatDuration(day.activeMs)}`} title=${formatDuration(day.activeMs)}>
+            aria-label=${`${day.date.toLocaleDateString(undefined, { weekday: "long" })}: ${day.blocks.length ? formatDuration(day.activeMs) : "none"}`}
+            title=${day.blocks.length ? formatDuration(day.activeMs) : "None"}>
             <span class="session-calendar__bar-track">
               <span class="session-calendar__bar-fill ${day === busiest && day.activeMs > 0 ? "session-calendar__bar-fill--max" : ""}" style="height:${Math.max(2, (day.activeMs / dayMax) * 100)}%">
                 ${day === busiest && day.activeMs > 0 ? html`<span class="session-calendar__bar-value">${formatDuration(day.activeMs)}</span>` : nothing}
