@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { binding, parseCli } from "./main.ts";
+import { binding, HELP, parseCli } from "./main.ts";
 
 test("CLI parses doctor with only --fix and --json", () => {
   assert.equal(parseCli(["doctor"]).command, "doctor");
@@ -41,6 +41,82 @@ test("CLI parses workers commands, their target and only their own flags", () =>
     ["workers", "remove"], ["workers", "remove", "box", "extra"], ["workers", "list", "box"], ["workers", "remove", "box", "--name", "x"], ["workers", "sync"], ["doctor", "--name", "x"]]) {
     assert.throws(() => parseCli(args), Error, args.join(" "));
   }
+});
+
+test("CLI parses bot commands, accepting bot and bots, with their operands and only their own flags", () => {
+  assert.equal(parseCli(["bot"]).command, "bot list");
+  assert.equal(parseCli(["bots"]).command, "bot list");
+  assert.deepEqual({ ...parseCli(["bots", "list", "--archived", "--json"]).values }, { archived: true, json: true });
+  const add = parseCli(["bot", "add", "--name", "Ada", "--title", "Researcher", "--instructions-file", "persona.md", "--cwd", ".",
+    "--model", "openai/gpt-5", "--thinking", "high", "--memory-model", "openai/gpt-mini", "--emoji", "🦊", "--json"]);
+  assert.equal(add.command, "bot add");
+  assert.deepEqual(add.operands, []);
+  assert.equal(add.values["memory-model"], "openai/gpt-mini");
+  const edit = parseCli(["bot", "edit", "@ada", "--instructions", "Be brief."]);
+  assert.deepEqual([edit.command, edit.operands, edit.values.instructions], ["bot edit", ["@ada"], "Be brief."]);
+  assert.deepEqual(parseCli(["bot", "send", "ada", "-", "--wait", "--timeout", "90"]).operands, ["ada", "-"]);
+  assert.equal(parseCli(["bot", "send", "ada", "hello there"]).operands?.[1], "hello there");
+  assert.equal(parseCli(["bot", "chat", "Ada Lovelace"]).operands?.[0], "Ada Lovelace");
+  assert.equal(parseCli(["bot", "memory", "ada", "--zoom", "2184+8"]).values.zoom, "2184+8");
+  assert.equal(parseCli(["bot", "memory", "ada", "--html", "memory.html"]).values.html, "memory.html");
+  for (const verb of ["show", "remove", "restore", "stop"]) assert.deepEqual(parseCli(["bot", verb, "ada", "--json"]).operands, ["ada"]);
+  assert.equal(parseCli(["bot", "routine", "list", "ada"]).command, "bot routine list");
+  assert.equal(parseCli(["bot", "routines", "list", "ada"]).command, "bot routine list");
+  const routine = parseCli(["bot", "routine", "add", "ada", "--name", "Morning", "--prompt", "Check the inbox", "--cron", "0 9 * * 1-5", "--timezone", "Europe/Madrid"]);
+  assert.deepEqual([routine.command, routine.operands, routine.values.cron, routine.values.timezone], ["bot routine add", ["ada"], "0 9 * * 1-5", "Europe/Madrid"]);
+  assert.equal(parseCli(["bot", "routine", "add", "ada", "--name", "Tick", "--prompt", "Tick", "--every", "30s"]).values.every, "30s", "Automation enforces its own minimum");
+  assert.equal(parseCli(["bot", "routine", "add", "ada", "--name", "Once", "--prompt", "Ping", "--at", "2026-10-06T09:00:00+02:00"]).values.at, "2026-10-06T09:00:00+02:00");
+  assert.deepEqual(parseCli(["bot", "routine", "run", "ada", "Morning"]).operands, ["ada", "Morning"]);
+  assert.deepEqual(parseCli(["bot", "routine", "remove", "ada", "Morning", "--json"]).operands, ["ada", "Morning"]);
+  for (const [args, message] of [
+    [["bot", "add"], /needs --name/u],
+    [["bot", "add", "ada", "--name", "Ada"], /takes no operands/u],
+    [["bot", "edit", "ada"], /needs at least one of/u],
+    [["bot", "edit", "--name", "x"], /needs <bot>/u],
+    [["bot", "show"], /needs <bot>/u],
+    [["bot", "send", "ada"], /needs <bot> <message>/u],
+    [["bot", "send", "ada", "hello", "there"], /quote the message/u],
+    [["bot", "send", "ada", "hi", "--timeout", "10"], /--timeout needs --wait/u],
+    [["bot", "send", "ada", "hi", "--wait", "--timeout", "0"], /1-3600/u],
+    [["bot", "add", "--name", "Ada", "--instructions", "x", "--instructions-file", "y"], /either --instructions or --instructions-file/u],
+    [["bot", "add", "--name", "Ada", "--thinking", "max"], /--thinking must be one of/u],
+    [["bot", "add", "--name", "Ada", "--model", "gpt-5"], /--model must be provider\/model/u],
+    [["bot", "memory", "ada", "--zoom", "12"], /id\+n/u],
+    [["bot", "memory", "ada", "--zoom", "1+1", "--html", "x"], /either --zoom or --html/u],
+    [["bot", "routine", "add", "ada", "--name", "x"], /needs --name and --prompt/u],
+    [["bot", "routine", "add", "ada", "--name", "x", "--prompt", "y"], /exactly one of --at, --every or --cron/u],
+    [["bot", "routine", "add", "ada", "--name", "x", "--prompt", "y", "--every", "5m", "--cron", "* * * * *"], /exactly one/u],
+    [["bot", "routine", "add", "ada", "--name", "x", "--prompt", "y", "--every", "5 minutes"], /duration such as 30s/u],
+    [["bot", "routine", "add", "ada", "--name", "x", "--prompt", "y", "--every", "5m", "--timezone", "UTC"], /--timezone only applies to --cron/u],
+    [["bot", "routine", "add", "ada", "--name", "x", "--prompt", "y", "--at", "tomorrow"], /ISO date/u],
+    [["bot", "routine", "run", "ada"], /needs <bot> <routine>/u],
+    [["bot", "list", "--name", "x"], /--name is not valid for bot list/u],
+    [["bot", "chat", "ada", "--json"], /--json is not valid for bot chat/u],
+    [["bot", "dance"], /Unknown command/u],
+    [["bot", "routine", "pause", "ada"], /Unknown command/u],
+    [["workers", "list", "--archived"], /--archived is not valid/u],
+  ] as const) {
+    assert.throws(() => parseCli([...args]), message, args.join(" "));
+  }
+});
+
+test("HELP lists every hui bot command", () => {
+  for (const line of [
+    "hui bot list [--archived] [--json]",
+    "hui bot show <bot> [--json]",
+    "hui bot add --name <name> [--title <text>] [--instructions <text> | --instructions-file <path>] [--cwd <dir>]",
+    "hui bot edit <bot> [same flags as add] [--json]",
+    "hui bot remove <bot> [--json]",
+    "hui bot restore <bot> [--json]",
+    "hui bot chat <bot>",
+    "hui bot send <bot> <message|-> [--wait] [--timeout <seconds>] [--json]",
+    "hui bot stop <bot> [--json]",
+    "hui bot memory <bot> [--zoom <id+n>] [--html <file>] [--json]",
+    "hui bot routine list <bot> [--json]",
+    "hui bot routine add <bot> --name <name> --prompt <text> (--at <ISO time> | --every <duration> | --cron <expr>",
+    "hui bot routine run <bot> <routine>",
+    "hui bot routine remove <bot> <routine> [--json]",
+  ]) assert.ok(HELP.includes(line), line);
 });
 
 test("production binding is explicit and never a wildcard", () => {

@@ -9,6 +9,7 @@ import { packageVersion, type Installation } from "./installation.ts";
 import { LOG_FILE, withLifecycleLock } from "./state.ts";
 import { updateRelease } from "./update.ts";
 import { checkNightly, checkRelease } from "./releases.ts";
+import { BOT_THINKING_LEVELS } from "../shared/bots.ts";
 
 export const HELP = `Usage:
   hui gateway start [--host <IP|tailnet>] [--port <number>] [--allow-host <name>] [--json]
@@ -29,6 +30,22 @@ export const HELP = `Usage:
   hui workers add --name <name> --command <connect command> [--extra-path <path>] [--json]
   hui workers edit <name|id> [--name <name>] [--command <connect command>] [--extra-path <path>] [--json]
   hui workers remove <name|id> [--json]
+  hui bot list [--archived] [--json]
+  hui bot show <bot> [--json]
+  hui bot add --name <name> [--title <text>] [--instructions <text> | --instructions-file <path>] [--cwd <dir>]
+              [--model <provider/model>] [--thinking <level>] [--memory-model <provider/model>] [--emoji <e>] [--json]
+  hui bot edit <bot> [same flags as add] [--json]
+  hui bot remove <bot> [--json]
+  hui bot restore <bot> [--json]
+  hui bot chat <bot>
+  hui bot send <bot> <message|-> [--wait] [--timeout <seconds>] [--json]
+  hui bot stop <bot> [--json]
+  hui bot memory <bot> [--zoom <id+n>] [--html <file>] [--json]
+  hui bot routine list <bot> [--json]
+  hui bot routine add <bot> --name <name> --prompt <text> (--at <ISO time> | --every <duration> | --cron <expr>
+              [--timezone <tz>]) [--json]
+  hui bot routine run <bot> <routine>
+  hui bot routine remove <bot> <routine> [--json]
   hui --version
 
 HUI_GATEWAY_HOST and HUI_GATEWAY_PORT configure defaults; CLI flags override them.
@@ -48,6 +65,16 @@ Workers are the remote machines of Settings → Workers, managed through the
 running gateway. A new worker connects at once; --extra-path is repeatable and
 on edit replaces the list. Edit changes only the fields given; a new command
 applies the next time the worker connects.
+Bots are named agents with one forever chat each, managed through the running
+gateway like the Bots tab; "bots" works as "bot". <bot> is an id, a handle or
+an exact name. Remove archives: the chat transcript and memory are kept and its
+routines are disabled. Chat streams the replies as plain text and sends what you
+type (steering a turn that runs); Ctrl+C stops a turn, twice exits. Send -
+reads the message from stdin; with --wait it prints the reply and exits 0, 1 on
+failure or timeout, 2 while the bot waits for an answer (give it in chat).
+Routines are Automation tasks aimed at the bot's chat. --every takes 30s, 5m,
+2h or 1d (Automation allows one minute at least); --cron uses this machine's
+time zone unless --timezone names another.
 `;
 
 export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {
@@ -58,13 +85,22 @@ export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {
     "no-open": { type: "boolean" }, from: { type: "string" }, sha256: { type: "string" }, rollback: { type: "boolean" },
     check: { type: "boolean" }, fix: { type: "boolean" }, nightly: { type: "boolean" },
     name: { type: "string" }, command: { type: "string" }, "extra-path": { type: "string", multiple: true },
+    archived: { type: "boolean" }, title: { type: "string" }, instructions: { type: "string" }, "instructions-file": { type: "string" },
+    cwd: { type: "string" }, model: { type: "string" }, thinking: { type: "string" }, "memory-model": { type: "string" },
+    emoji: { type: "string" }, wait: { type: "boolean" }, timeout: { type: "string" }, zoom: { type: "string" }, html: { type: "string" },
+    prompt: { type: "string" }, at: { type: "string" }, every: { type: "string" }, cron: { type: "string" }, timezone: { type: "string" },
   } });
   if (values.help || !args.length) return { command: "help", values };
   if (values.version) return { command: "version", values };
   const [first, second, ...extra] = positionals;
-  const command = first === "gateway" ? `gateway ${second ?? "run"}` : first === "workers" ? `workers ${second ?? "list"}` : first;
+  const bots = first === "bot" || first === "bots";
+  const routine = bots && (second === "routine" || second === "routines");
+  const command = bots ? (routine ? `bot routine ${extra.shift() ?? "list"}` : `bot ${second ?? "list"}`)
+    : first === "gateway" ? `gateway ${second ?? "run"}` : first === "workers" ? `workers ${second ?? "list"}` : first;
   // `workers edit` and `workers remove` name the worker they act on.
   const target = command === "workers edit" || command === "workers remove" ? extra.shift() : undefined;
+  // A bot command's operands: the bot, then a message or a routine.
+  const operands = bots ? extra.splice(0) : [];
   const allowed: Record<string, string[]> = {
     "gateway start": ["host", "port", "json", "allow-host"], "gateway run": ["host", "port", "allow-host"],
     "gateway stop": ["force", "json"], "gateway restart": ["host", "port", "force", "json", "allow-host"],
@@ -72,9 +108,14 @@ export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {
     update: ["from", "sha256", "rollback", "check", "json", "nightly"], desktop: [], "install-app": [],
     doctor: ["fix", "json"], "workers list": ["json"], "workers add": ["name", "command", "extra-path", "json"],
     "workers edit": ["name", "command", "extra-path", "json"], "workers remove": ["json"],
+    "bot list": ["archived", "json"], "bot show": ["json"], "bot add": [...BOT_FIELDS, "json"], "bot edit": [...BOT_FIELDS, "json"],
+    "bot remove": ["json"], "bot restore": ["json"], "bot chat": [], "bot send": ["wait", "timeout", "json"], "bot stop": ["json"],
+    "bot memory": ["zoom", "html", "json"], "bot routine list": ["json"],
+    "bot routine add": ["name", "prompt", "at", "every", "cron", "timezone", "json"], "bot routine run": [], "bot routine remove": ["json"],
   };
-  if (!command || !allowed[command] || extra.length || first !== "gateway" && first !== "workers" && second) throw new Error("Unknown command. Run hui --help.");
+  if (!command || !allowed[command] || extra.length || first !== "gateway" && first !== "workers" && !bots && second) throw new Error("Unknown command. Run hui --help.");
   for (const flag of Object.keys(values)) if (!allowed[command]!.includes(flag)) throw new Error(`--${flag} is not valid for ${command}.`);
+  if (bots) checkBotCommand(command, operands, values);
   if (["gateway start", "gateway run", "gateway restart"].includes(command)) {
     values.host ??= env["HUI_GATEWAY_HOST"];
     values.port ??= env["HUI_GATEWAY_PORT"];
@@ -89,7 +130,44 @@ export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {
   if (command === "workers add" && (!values.name || !values.command)) throw new Error("workers add needs --name and --command.");
   if ((command === "workers edit" || command === "workers remove") && !target) throw new Error(`${command} needs the worker's name or id.`);
   if (command === "workers edit" && values.name === undefined && values.command === undefined && !values["extra-path"]) throw new Error("workers edit needs --name, --command or --extra-path.");
-  return { command, values, ...(target ? { target } : {}) };
+  return { command, values, ...(target ? { target } : {}), ...(bots ? { operands } : {}) };
+}
+
+/** The flags `bot add` and `bot edit` share. */
+const BOT_FIELDS = ["name", "title", "instructions", "instructions-file", "cwd", "model", "thinking", "memory-model", "emoji"];
+/** Operands each bot command takes, in order. */
+const BOT_OPERANDS: Record<string, readonly string[]> = {
+  "bot list": [], "bot add": [], "bot show": ["bot"], "bot edit": ["bot"], "bot remove": ["bot"], "bot restore": ["bot"],
+  "bot chat": ["bot"], "bot send": ["bot", "message"], "bot stop": ["bot"], "bot memory": ["bot"],
+  "bot routine list": ["bot"], "bot routine add": ["bot"], "bot routine run": ["bot", "routine"], "bot routine remove": ["bot", "routine"],
+};
+const MODEL_REF = /^[^/\s]+\/\S+$/u;
+
+/** What the gateway would refuse anyway, refused before a request. */
+function checkBotCommand(command: string, operands: readonly string[], values: Record<string, string | boolean | string[] | undefined>): void {
+  const expected = BOT_OPERANDS[command] ?? [];
+  if (operands.length !== expected.length) {
+    if (command === "bot send" && operands.length > 2) throw new Error("bot send takes the bot and one message: quote the message, or pass - to read it from stdin.");
+    throw new Error(expected.length ? `${command} needs ${expected.map((name) => `<${name}>`).join(" ")}.` : `${command} takes no operands.`);
+  }
+  const given = (flag: string) => values[flag] !== undefined;
+  if (command === "bot add" && !values["name"]) throw new Error("bot add needs --name.");
+  if (command === "bot edit" && !BOT_FIELDS.some(given)) throw new Error(`bot edit needs at least one of ${BOT_FIELDS.map((flag) => `--${flag}`).join(", ")}.`);
+  if (given("instructions") && given("instructions-file")) throw new Error("Use either --instructions or --instructions-file.");
+  if (given("thinking") && !(BOT_THINKING_LEVELS as readonly string[]).includes(String(values["thinking"]))) throw new Error(`--thinking must be one of: ${BOT_THINKING_LEVELS.join(", ")}.`);
+  for (const flag of ["model", "memory-model"]) if (given(flag) && !MODEL_REF.test(String(values[flag]))) throw new Error(`--${flag} must be provider/model.`);
+  if (given("timeout") && (!values["wait"] || !/^\d+$/u.test(String(values["timeout"])) || Number(values["timeout"]) < 1 || Number(values["timeout"]) > 3600)) {
+    throw new Error("--timeout needs --wait and 1-3600 seconds.");
+  }
+  if (given("zoom") && given("html")) throw new Error("Use either --zoom or --html.");
+  if (given("zoom") && !/^\d{1,15}\+\d{1,15}$/u.test(String(values["zoom"]))) throw new Error("--zoom takes a view line's id+n, such as 2184+8.");
+  if (command === "bot routine add") {
+    if (!values["name"] || !values["prompt"]) throw new Error("bot routine add needs --name and --prompt.");
+    if (["at", "every", "cron"].filter(given).length !== 1) throw new Error("bot routine add needs exactly one of --at, --every or --cron.");
+    if (given("timezone") && !given("cron")) throw new Error("--timezone only applies to --cron.");
+    if (given("every") && !/^\d{1,9}(s|m|h|d)$/u.test(String(values["every"]))) throw new Error("--every takes a duration such as 30s, 5m, 2h or 1d.");
+    if (given("at") && !Number.isFinite(Date.parse(String(values["at"])))) throw new Error("--at takes an ISO date and time, such as 2026-10-06T09:00:00+02:00.");
+  }
 }
 
 export function binding(host = "127.0.0.1"): { host: string; allowedHosts: string[] } {
@@ -104,7 +182,7 @@ export function binding(host = "127.0.0.1"): { host: string; allowedHosts: strin
 }
 
 export async function main(args: string[], installation: Installation): Promise<void> {
-  const { command, values, target } = parseCli(args);
+  const { command, values, target, operands } = parseCli(args);
   if (command === "help") { process.stdout.write(HELP); return; }
   if (command === "version") { console.log(await packageVersion(installation.packageRoot)); return; }
   if (command === "desktop" || command === "install-app") {
@@ -132,6 +210,13 @@ export async function main(args: string[], installation: Installation): Promise<
     const action = command.slice("workers ".length);
     const result = await workersCommand(status.url, action, target, values);
     if (action === "list" && !values.json) console.log(formatWorkers(result as Parameters<typeof formatWorkers>[0])); else report(result);
+    return;
+  }
+  if (command.startsWith("bot ")) {
+    const status = await gatewayStatus();
+    if (status.status !== "running" || !status.url) throw new Error("Gateway is not running. Start it with hui gateway start.");
+    const { botCommand, terminalBotIO } = await import("./bots.ts");
+    process.exitCode = await botCommand(status.url, command.slice("bot ".length), operands ?? [], values, terminalBotIO());
     return;
   }
   if (command === "gateway status") { const status = await gatewayStatus(); report(status); if (status.status === "unresponsive") process.exitCode = 1; return; }
