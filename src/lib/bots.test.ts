@@ -19,9 +19,17 @@ const RECORD = {
   status: "running",
   lastMessage: { role: "assistant", text: "Done:\n  three   links", at: "2026-10-05T09:00:00.000Z" },
   unread: true,
-  memory: { messages: 40, built: 38, pending: 2, viewBytes: 92_000, waiting: true, failing: { node: "1+4", error: "429 rate limited", since: "2026-10-05T08:59:00.000Z" }, junk: "x" },
+  memory: {
+    messages: 40, built: 38, pending: 2, viewBytes: 92_000, viewLines: 31, waiting: true,
+    failing: { node: "1+4", error: "429 rate limited", since: "2026-10-05T08:59:00.000Z" },
+    usage: { calls: 12, input: 48_000, output: 1_200, cacheRead: 30_000, cacheWrite: 2_000, cost: 0.0421 },
+    junk: "x",
+  },
   routines: 2,
 };
+
+const USAGE = { calls: 12, input: 48_000, output: 1_200, cacheRead: 30_000, cacheWrite: 2_000, cost: 0.0421 };
+const NO_USAGE = { calls: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 };
 
 test("a complete bot record keeps its fields and narrows display text", () => {
   const bot = parseBot(RECORD);
@@ -41,7 +49,7 @@ test("a complete bot record keeps its fields and narrows display text", () => {
     status: "running",
     lastMessage: { role: "assistant", text: "Done: three links", at: "2026-10-05T09:00:00.000Z" },
     unread: true,
-    memory: { messages: 40, built: 38, pending: 2, viewBytes: 92_000, waiting: true, failing: { node: "1+4", error: "429 rate limited", since: "2026-10-05T08:59:00.000Z" } },
+    memory: { messages: 40, built: 38, pending: 2, viewBytes: 92_000, viewLines: 31, waiting: true, failing: { node: "1+4", error: "429 rate limited", since: "2026-10-05T08:59:00.000Z" }, usage: USAGE },
     routines: 2,
   });
 });
@@ -63,14 +71,22 @@ test("a bot list skips invalid entries and keeps the first of duplicate ids", ()
 });
 
 test("memory status counts are whole and failures need an error to show", () => {
-  assert.deepEqual(parseBotMemoryStatus({ messages: 3.7, built: "2", pending: -1, viewBytes: 512, failing: { node: "0+1" } }), { messages: 3, built: 0, pending: 0, viewBytes: 512 });
+  assert.deepEqual(parseBotMemoryStatus({ messages: 3.7, built: "2", pending: -1, viewBytes: 512, viewLines: 2.5, failing: { node: "0+1" } }), { messages: 3, built: 0, pending: 0, viewBytes: 512, viewLines: 2, usage: NO_USAGE });
   assert.deepEqual(parseBotMemoryStatus({ messages: 1, built: 0, pending: 1, viewBytes: 9, failing: { error: "timeout" } })?.failing, { node: "", error: "timeout", since: "" });
   assert.equal(parseBotMemoryStatus(undefined), undefined);
-  assert.deepEqual(parseBotMemory({ status: { messages: 1, built: 1, pending: 0, viewBytes: 20 }, view: "<chat>\n0+1|user: hi\n</chat>" }), {
-    status: { messages: 1, built: 1, pending: 0, viewBytes: 20 },
+  assert.deepEqual(parseBotMemory({ status: { messages: 1, built: 1, pending: 0, viewBytes: 20, viewLines: 1, usage: USAGE }, view: "<chat>\n0+1|user: hi\n</chat>" }), {
+    status: { messages: 1, built: 1, pending: 0, viewBytes: 20, viewLines: 1, usage: USAGE },
     view: "<chat>\n0+1|user: hi\n</chat>",
   });
   assert.throws(() => parseBotMemory({ view: "" }), /memory status/u);
+});
+
+test("the compactor's usage keeps whole token counts and a cost only when one was reported", () => {
+  const usage = (value: unknown) => parseBotMemoryStatus({ messages: 1, usage: value })?.usage;
+  assert.deepEqual(usage(USAGE), USAGE);
+  assert.deepEqual(usage({ calls: 2.9, input: "10", output: -4, cacheRead: Number.NaN, cost: -1 }), { ...NO_USAGE, calls: 2 });
+  assert.deepEqual(usage({ calls: 1, input: 1, output: 1, cost: Number.POSITIVE_INFINITY }), { ...NO_USAGE, calls: 1, input: 1, output: 1 });
+  assert.deepEqual(usage(undefined), NO_USAGE, "an older gateway without usage reports none");
 });
 
 test("stream frames update bots in place and replace the list when they carry its order", () => {
@@ -129,12 +145,12 @@ test("the memory page copy gets a no-script, no-load policy at the top of its he
   assert.match(inertMemoryPage('<html><head lang="en"><style>p{}</style></head></html>'), /<head lang="en"><meta http-equiv/u);
 });
 
-test("memory reads tell a build without OptChat apart from a failed read", async () => {
+test("memory reads tell a memory the gateway cannot read apart from a failed read", async () => {
   const original = globalThis.fetch;
   const answers = [
-    new Response(JSON.stringify({ error: "OptChat memory is not available in this build of HUI." }), { status: 503 }),
+    new Response(JSON.stringify({ error: "@scout's chat has no OptChat memory in this gateway." }), { status: 503 }),
     new Response(JSON.stringify({ error: "unknown bot: x" }), { status: 404 }),
-    new Response(JSON.stringify({ status: { messages: 2, built: 1, pending: 1, viewBytes: 40 }, view: "<chat>\n0+1|user: hi\n</chat>" }), { status: 200 }),
+    new Response(JSON.stringify({ status: { messages: 2, built: 1, pending: 1, viewBytes: 40, viewLines: 1, usage: NO_USAGE }, view: "<chat>\n0+1|user: hi\n</chat>" }), { status: 200 }),
   ];
   const urls: string[] = [];
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -143,9 +159,9 @@ test("memory reads tell a build without OptChat apart from a failed read", async
     return answers.shift()!;
   }) as typeof fetch;
   try {
-    await assert.rejects(loadBotMemory("b 1"), (error: unknown) => error instanceof BotMemoryUnavailableError && /not available/u.test((error as Error).message));
+    await assert.rejects(loadBotMemory("b 1"), (error: unknown) => error instanceof BotMemoryUnavailableError && /no OptChat memory/u.test((error as Error).message));
     await assert.rejects(loadBotMemory("b1"), (error: unknown) => !(error instanceof BotMemoryUnavailableError) && /unknown bot/u.test((error as Error).message));
-    assert.deepEqual(await loadBotMemory("b1"), { status: { messages: 2, built: 1, pending: 1, viewBytes: 40 }, view: "<chat>\n0+1|user: hi\n</chat>" });
+    assert.deepEqual(await loadBotMemory("b1"), { status: { messages: 2, built: 1, pending: 1, viewBytes: 40, viewLines: 1, usage: NO_USAGE }, view: "<chat>\n0+1|user: hi\n</chat>" });
     assert.equal(urls[0], "/__hui/bots/b%201/memory");
   } finally {
     globalThis.fetch = original;

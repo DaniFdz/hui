@@ -7,12 +7,12 @@
  * Responses are normalized on the way in, like settings: a malformed or newer
  * record is skipped or narrowed rather than reaching the roster as `undefined`.
  */
-import type { BotAvatar, BotInput, BotMemoryStatus, BotPatch, BotSessionStatus, BotsUpdate, BotView } from "../../shared/bots.ts";
+import type { BotAvatar, BotInput, BotMemoryStatus, BotMemoryUsage, BotPatch, BotSessionStatus, BotsUpdate, BotView } from "../../shared/bots.ts";
 import { CLIENT_HEADERS, fetchJson } from "./settings-store.ts";
 import { decodeSseFrame, reconnectDelay, STATUS_STREAM_STALL_MS, type SessionGroup, type SessionView } from "./sessions-store.ts";
 import { trackedFetch } from "./ui-errors.ts";
 
-export type { BotAvatar, BotInput, BotMemoryStatus, BotPatch, BotsUpdate, BotView } from "../../shared/bots.ts";
+export type { BotAvatar, BotInput, BotMemoryStatus, BotMemoryUsage, BotPatch, BotsUpdate, BotView } from "../../shared/bots.ts";
 
 const BOTS_URL = "/__hui/bots";
 const BOTS_EVENTS_URL = "/__hui/bots/events";
@@ -56,6 +56,11 @@ function count(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) && value >= 0 ? Math.floor(value) : 0;
 }
 
+/** A provider-reported amount such as a cost in USD: finite, never negative. */
+function amount(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : 0;
+}
+
 function parseAvatar(value: unknown): BotAvatar | undefined {
   if (!isRecord(value)) return undefined;
   const emoji = optionalText(value["emoji"], 32);
@@ -63,6 +68,19 @@ function parseAvatar(value: unknown): BotAvatar | undefined {
     ? value["color"].trim().toLowerCase()
     : undefined;
   return emoji || color ? { ...(emoji ? { emoji } : {}), ...(color ? { color } : {}) } : undefined;
+}
+
+/** The compactor's spend; a gateway that reports none spent nothing it can show. */
+function parseBotMemoryUsage(value: unknown): BotMemoryUsage {
+  const usage = isRecord(value) ? value : {};
+  return {
+    calls: count(usage["calls"]),
+    input: count(usage["input"]),
+    output: count(usage["output"]),
+    cacheRead: count(usage["cacheRead"]),
+    cacheWrite: count(usage["cacheWrite"]),
+    cost: amount(usage["cost"]),
+  };
 }
 
 export function parseBotMemoryStatus(value: unknown): BotMemoryStatus | undefined {
@@ -74,9 +92,11 @@ export function parseBotMemoryStatus(value: unknown): BotMemoryStatus | undefine
     built: count(value["built"]),
     pending: count(value["pending"]),
     viewBytes: count(value["viewBytes"]),
+    viewLines: count(value["viewLines"]),
     ...(value["waiting"] === true ? { waiting: true } : {}),
     // A failure is shown only with its reason; node and time are details.
     ...(failingError ? { failing: { node: text(failing?.["node"], 200), error: failingError, since: text(failing?.["since"], 100) } } : {}),
+    usage: parseBotMemoryUsage(value["usage"]),
   };
 }
 
@@ -356,8 +376,9 @@ export async function restoreBot(id: string): Promise<BotView> {
     "The restored bot did not come back.");
 }
 
-/** 503: this build of the gateway has no OptChat memory. Unlike a failed read,
- * asking again cannot change that until the gateway is updated. */
+/** 503: the gateway cannot read this chat's memory (no OptChat for it, or a
+ * store another process owns). Unlike a failed read, asking again on every
+ * change cannot fix that; Retry still asks. */
 export class BotMemoryUnavailableError extends Error {
   override name = "BotMemoryUnavailableError";
 }

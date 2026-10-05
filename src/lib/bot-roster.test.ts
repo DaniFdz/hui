@@ -18,6 +18,8 @@ import {
 } from "./bot-roster.ts";
 import type { BotView } from "./bots.ts";
 
+const NO_USAGE = { calls: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 };
+
 function bot(id: string, overrides: Partial<BotView> = {}): BotView {
   return {
     id,
@@ -94,15 +96,15 @@ test("chat-list times are compact", () => {
 });
 
 test("the row indicator puts a pending question first and memory waits before running", () => {
-  assert.equal(botActivity({ status: "waiting", memory: { messages: 1, built: 1, pending: 0, viewBytes: 1, waiting: true } }), "waiting");
-  assert.equal(botActivity({ status: "running", memory: { messages: 1, built: 0, pending: 1, viewBytes: 1, waiting: true } }), "summarizing");
+  assert.equal(botActivity({ status: "waiting", memory: { messages: 1, built: 1, pending: 0, viewBytes: 1, viewLines: 1, waiting: true, usage: NO_USAGE } }), "waiting");
+  assert.equal(botActivity({ status: "running", memory: { messages: 1, built: 0, pending: 1, viewBytes: 1, viewLines: 1, waiting: true, usage: NO_USAGE } }), "summarizing");
   assert.equal(botActivity({ status: "running" }), "running");
   assert.equal(botActivity({ status: "starting" }), "running");
   assert.equal(botActivity({ status: "error" }), "error");
   assert.equal(botActivity({ status: "disconnected" }), "away");
   assert.equal(botActivity({ status: "idle" }), "idle");
   assert.equal(
-    botAccessibleName(bot("scout", { name: "Scout", title: "Researcher", status: "running", unread: true, hidden: true, memory: { messages: 2, built: 1, pending: 1, viewBytes: 9, failing: { node: "0+1", error: "429", since: "2026-10-05T09:00:00.000Z" } } })),
+    botAccessibleName(bot("scout", { name: "Scout", title: "Researcher", status: "running", unread: true, hidden: true, memory: { messages: 2, built: 1, pending: 1, viewBytes: 9, viewLines: 2, failing: { node: "0+1", error: "429", since: "2026-10-05T09:00:00.000Z" }, usage: NO_USAGE } })),
     "Scout, Researcher, active now, unread, hidden, memory summaries failing",
   );
 });
