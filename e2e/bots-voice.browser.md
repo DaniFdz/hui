@@ -83,8 +83,12 @@ account is involved.
     → Save → `GET /__hui/bots/vox` keeps `vp-aria` with the new speed.
 12. 390×844: the header keeps Call, the composer the microphone; the call view
     and the minimized bar fit the width; the dialog's voice section fits and the
-    card stays behind every field when it scrolls. The document never gets wider
-    than the viewport. Browser page errors and console errors: none expected.
+    card stays behind every field when it scrolls. 844×390 (a phone in
+    landscape): the call view is compact (small avatar) and Mute, Speaker and
+    Hang up stay at the bottom of the view, in reach, while the captions scroll
+    under them. The document never gets wider than the viewport. Browser page
+    errors and console errors: none expected (Lit's development-mode warnings
+    are).
 
 ## Observed during development (2026-10-05)
 
@@ -104,8 +108,11 @@ first reply reached the chat but was never captioned or spoken (most likely the
 call's stream attached after that turn; the call now reads a missed reply from
 the chat's snapshot). After the fixes, rebased on `feat/bots-ui` `d3cecb3`, the
 band was checked on another bot, Automations, Settings and 390×844, and the
-dialog card at both sizes. No page or console errors. The PR's evidence run is
-recorded with the PR, outside the repository.
+dialog card at both sizes. No page or console errors. The first evidence run, at
+`b9ee588` on `feat/bots-ui` `b156101`, found one more: at 844×390 the call
+view scrolled and its controls, Hang up included, sat below the fold; the
+controls are now sticky and the view compact on short screens. The PR's
+evidence run is recorded with the PR, outside the repository.
 
 ## Limits and gaps
 
