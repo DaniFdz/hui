@@ -231,14 +231,15 @@ const PRESENTED_MEDIA_ROUTE = /^\/__hui\/media\/([0-9a-f-]+)\/([^/]+)$/u;
 const HEARTBEAT_MS = 15_000;
 const piMutations = new PiMutationService();
 const workerRoutes = createWorkerRoutes({ service: workers, readRegistry });
-// Sessions a lost connection interrupted reattach once their worker is back.
-workers.onConnected((workerId) => {
+// Sessions a lost connection interrupted reattach once their worker is back,
+// and stop showing a reconnect once HUI no longer tries.
+function forWorkerSessions(workerId: string, act: (record: SessionRecord) => void): void {
   void readRegistry().then((records) => {
-    for (const record of records) {
-      if (record.worker === workerId && liveSessions.isLive(record.id) && liveSessions.status(record.id) === "error") liveSessions.ensure(record);
-    }
+    for (const record of records) if (record.worker === workerId && liveSessions.isLive(record.id)) act(record);
   }).catch(() => undefined);
-});
+}
+workers.onConnected((workerId) => forWorkerSessions(workerId, (record) => liveSessions.ensure(record, true)));
+workers.onStopped((workerId) => forWorkerSessions(workerId, (record) => liveSessions.stopReconnecting(record.id)));
 const subagents = new SubagentService(liveSessions);
 const taskSuggestions = new TaskSuggestionStore({ onChange: (id) => liveSessions.notifySnapshot(id) });
 const watchers = new WatcherService({
@@ -1150,6 +1151,8 @@ function waitForAutomationSession(
         finish(new AutomationConflictError("The target session is already running."));
       } else if (message.status === "error") {
         finish(new Error("The target session runtime could not start."));
+      } else if (message.status === "disconnected") {
+        finish(new Error("The target session's machine is disconnected."));
       }
     });
     signal.addEventListener("abort", onAbort, { once: true });
@@ -1159,6 +1162,8 @@ function waitForAutomationSession(
       finish(new AutomationConflictError("The target session is already running."));
     } else if (watched.snapshot.status === "error") {
       finish(new Error("The target session runtime could not start."));
+    } else if (watched.snapshot.status === "disconnected") {
+      finish(new Error("The target session's machine is disconnected."));
     }
   });
 }

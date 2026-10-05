@@ -783,6 +783,7 @@ export class SubagentService {
       const inspect = (status: SessionStatus) => {
         if (status === "idle" || status === "running" || status === "waiting") finish();
         else if (status === "error") finish(new Error("The target runtime could not start."));
+        else if (status === "disconnected") finish(new Error("The target runtime's machine is disconnected."));
       };
       const watched = this.sessions.watch(sessionId, (message) => {
         if (message.kind === "status") inspect(message.status);

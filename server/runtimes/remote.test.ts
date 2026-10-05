@@ -59,7 +59,7 @@ test("events and a lost connection before anyone subscribed still reach the sess
   });
   const events: string[] = [];
   session.subscribe((event) => events.push(event.type));
-  const exited = new Promise<void>((resolve) => session.onExit!(resolve));
+  const exited = new Promise<void>((resolve) => session.onExit!(() => resolve()));
   await exited;
   assert.deepEqual(events, ["compaction_start", "question"]);
 });

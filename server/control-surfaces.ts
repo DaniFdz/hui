@@ -238,6 +238,8 @@ export async function readGatewayHealth(): Promise<GatewayHealth> {
     running: 0,
     waiting: 0,
     error: 0,
+    reconnecting: 0,
+    disconnected: 0,
     processes: 0,
   };
   for (const record of records) {

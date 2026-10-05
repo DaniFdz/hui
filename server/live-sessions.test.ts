@@ -19,7 +19,7 @@ import type {
   TranscriptEntry,
 } from "./runtimes/types.ts";
 import { DEFAULT_SETTINGS } from "../src/lib/settings.ts";
-import { RuntimeOutputError } from "./runtimes/types.ts";
+import { RuntimeOutputError, RuntimeUnreachableError, type RuntimeUnreachable } from "./runtimes/types.ts";
 
 // The registry path is read once, at import time, so the throwaway home has to
 // be in place before the module is loaded.
@@ -1891,7 +1891,8 @@ test("HUI-owned follow-ups can be edited, reordered, removed and steered before 
 });
 
 /** A worker connection scripted in memory: a prompt streams on the worker
- * until `settle`, and `hold` keeps the next prompt on its way there. */
+ * until `settle`, and `hold` keeps the next prompt on its way there. A start
+ * fails with `unreachable` while it is set, as a worker HUI cannot reach. */
 function scriptedWorker(t: TestContext) {
   const calls: string[] = [];
   let streaming = false;
@@ -1899,10 +1900,18 @@ function scriptedWorker(t: TestContext) {
   let sink!: Parameters<typeof workers.startSession>[4];
   let held: Promise<void> | undefined;
   const state = () => ({ sessionId: "remote", isStreaming: streaming, resumesInterruptedRuns: true });
+  const control = {
+    starts: 0,
+    /** The conversation as the worker holds it. */
+    history: [] as TranscriptEntry[],
+    unreachable: undefined as RuntimeUnreachableError | undefined,
+  };
   t.mock.method(workers, "startSession", async (...args: Parameters<typeof workers.startSession>) => {
+    control.starts += 1;
+    if (control.unreachable) throw control.unreachable;
     sink = args[4];
     return {
-      started: { state: state(), seq: ++seq, transcript: [], methods: ["followUp"] },
+      started: { state: state(), seq: ++seq, transcript: [...control.history], methods: ["followUp"] },
       call: async (method: string, callArgs: unknown[]) => {
         calls.push(`${method}:${String(callArgs[0])}`);
         if (method === "prompt") {
@@ -1915,8 +1924,12 @@ function scriptedWorker(t: TestContext) {
       dispose: () => undefined,
     };
   });
-  return {
+  return Object.assign(control, {
     calls,
+    /** The worker goes on with a run of its own. */
+    stream(): void {
+      streaming = true;
+    },
     hold(): () => void {
       let release!: () => void;
       held = new Promise((resolve) => { release = resolve; });
@@ -1927,11 +1940,15 @@ function scriptedWorker(t: TestContext) {
       sink.receive({ event: { type: "settled" }, state: state(), seq: ++seq });
     },
     /** The gateway loses the worker, where the run settles meanwhile. */
-    lose(): void {
+    lose(unreachable?: RuntimeUnreachable): void {
       streaming = false;
-      sink.lost();
+      sink.lost(unreachable);
     },
-  };
+    /** Only the connection drops; the run goes on there. */
+    drop(unreachable: RuntimeUnreachable): void {
+      sink.lost(unreachable);
+    },
+  });
 }
 
 async function until(done: () => boolean, label: string): Promise<void> {
@@ -1983,11 +2000,108 @@ test("follow-ups HUI holds for a worker session run once it reattaches to a run 
   await manager.followUp(id, "held here");
   release();
   await prompted;
-  worker.lose();
-  await waitForStatus(manager, id, "error");
-  manager.ensure(record);
+  worker.lose({ reconnecting: true });
+  await waitForStatus(manager, id, "reconnecting");
+  assert.equal(manager.blockingWorkCount, 0, "a session whose worker is away never blocks a gateway restart");
+  manager.ensure(record, true);
   await until(() => worker.calls.length === 2, "the held follow-up");
   assert.deepEqual(worker.calls, ["prompt:turn", "prompt:held here"]);
+  manager.disposeAll();
+});
+
+/** Every message a session's streams receive. */
+function messagesOf(manager: InstanceType<typeof LiveSessions>, id: string): SessionStreamMessage[] {
+  const seen: SessionStreamMessage[] = [];
+  manager.subscribe(id, (message) => seen.push(message));
+  return seen;
+}
+
+const failures = (seen: readonly SessionStreamMessage[]) =>
+  seen.filter((message) => message.kind === "closed" || (message.kind === "event" && message.event.type === "error")
+    || (message.kind === "status" && message.status === "error"));
+
+test("a worker session whose connection drops is reconnecting, not failed, and comes back caught up", async (t) => {
+  const worker = scriptedWorker(t);
+  const id = "remote-drop";
+  const record = { ...recordFor(id), worker: "w" };
+  const manager = new LiveSessions(factory([]));
+  manager.ensure(record);
+  await waitForBoot(manager, id);
+  await manager.prompt(id, "long task");
+  const seen = messagesOf(manager, id);
+  worker.drop({ reconnecting: true });
+  await waitForStatus(manager, id, "reconnecting");
+  assert.deepEqual(failures(seen), [], "a dropped connection is neither an error nor a dead stream");
+  assert.deepEqual(manager.transcript(id).map((entry) => entry.kind === "message" ? entry.text : entry.kind), ["long task"]);
+  assert.equal(manager.blockingWorkCount, 0, "the run goes on there, so a gateway restart loses nothing");
+  // Opening it again waits for HUI's own reconnect rather than starting one.
+  manager.ensure(record);
+  assert.equal(worker.starts, 1);
+  await assert.rejects(manager.prompt(id, "more"), (error: unknown) =>
+    error instanceof SessionBusyError && /reconnecting/u.test(error.message));
+  await assert.rejects(manager.followUp(id, "more"), SessionBusyError);
+
+  worker.history = [{ kind: "message", role: "user", text: "long task" }, { kind: "message", role: "assistant", text: "done there" }];
+  worker.stream();
+  manager.ensure(record, true);
+  assert.equal(manager.status(id), "reconnecting", "reattaching is still reconnecting, not a fresh start");
+  await waitForStatus(manager, id, "running");
+  assert.equal(worker.starts, 2);
+  assert.deepEqual(manager.transcript(id).map((entry) => entry.kind === "message" ? entry.text : entry.kind), ["long task", "done there"]);
+  assert.deepEqual(failures(seen), []);
+  manager.disposeAll();
+});
+
+test("a worker session HUI stopped reconnecting is disconnected until it is reattached explicitly", async (t) => {
+  const worker = scriptedWorker(t);
+  const id = "remote-disconnected";
+  const record = { ...recordFor(id), worker: "w" };
+  const manager = new LiveSessions(factory([]));
+  manager.ensure(record);
+  await waitForBoot(manager, id);
+  const seen = messagesOf(manager, id);
+  worker.drop({ reconnecting: true });
+  await waitForStatus(manager, id, "reconnecting");
+  manager.stopReconnecting(id);
+  assert.equal(manager.status(id), "disconnected");
+  // Opening it must not reconnect a worker the user disconnected.
+  manager.ensure(record);
+  assert.equal(worker.starts, 1);
+  await assert.rejects(manager.prompt(id, "hello"), (error: unknown) =>
+    error instanceof SessionBusyError && /Reconnect/u.test(error.message));
+  assert.equal(manager.blockingWorkCount, 0);
+  manager.ensure(record, true);
+  await waitForBoot(manager, id);
+  assert.equal(worker.starts, 2);
+  assert.deepEqual(failures(seen), []);
+
+  // A user disconnect (or removal) reports it directly.
+  worker.drop({ reconnecting: false });
+  await waitForStatus(manager, id, "disconnected");
+  assert.deepEqual(failures(seen), []);
+  manager.disposeAll();
+});
+
+test("a worker HUI cannot reach leaves a session reconnecting while HUI retries, else disconnected", async (t) => {
+  const worker = scriptedWorker(t);
+  const manager = new LiveSessions(factory([]));
+  worker.unreachable = new RuntimeUnreachableError("Connection refused", true);
+  const record = { ...recordFor("remote-unreachable"), worker: "w" };
+  const seen = messagesOf(manager, record.id);
+  manager.ensure(record);
+  await waitForStatus(manager, record.id, "reconnecting");
+
+  worker.unreachable = new RuntimeUnreachableError("ssh: connect to host devbox: Connection refused", false);
+  manager.ensure(record, true);
+  await waitForStatus(manager, record.id, "disconnected");
+  assert.deepEqual(failures(seen), [], "no failure banner: the session may well be running there");
+  manager.ensure(record);
+  assert.equal(worker.starts, 2, "an open does not retry a disconnected worker");
+
+  worker.unreachable = undefined;
+  manager.ensure(record, true);
+  await waitForBoot(manager, record.id);
+  assert.deepEqual(failures(seen), []);
   manager.disposeAll();
 });
 

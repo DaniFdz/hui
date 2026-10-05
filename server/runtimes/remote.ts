@@ -5,14 +5,14 @@
  * the synchronous reads below are never behind the event being handled.
  * Every snapshot carries a sequence: a reply resumes after the events that
  * followed it in the stream, and must not overwrite them with its older
- * state. Losing the connection reads as the runtime exiting; the host keeps
- * the session running and a later start reattaches.
+ * state. Losing the connection reads as an exit marked unreachable: the
+ * host keeps the session running and a later start reattaches.
  */
 import { readFile } from "node:fs/promises";
 import { workers, type RemoteSessionLink, type RemoteSessionSink, type RemoteSnapshot } from "../workers.ts";
 import type { RemoteState } from "../worker/host.ts";
 import type { RuntimeInspection } from "../../src/lib/tools-types.ts";
-import type { AgentRuntime, PromptAttachment, RuntimeCommand, RuntimeEvent, RuntimeModel, RuntimeSession, StartOptions, TranscriptEntry } from "./types.ts";
+import type { AgentRuntime, PromptAttachment, RuntimeCommand, RuntimeEvent, RuntimeModel, RuntimeSession, RuntimeUnreachable, StartOptions, TranscriptEntry } from "./types.ts";
 
 type Frame = RemoteSnapshot & { event?: RuntimeEvent };
 
@@ -30,9 +30,10 @@ class RemoteRuntimeSession implements RuntimeSession, RemoteSessionSink {
    * behind a transcript being read in pages. */
   #delivery: Promise<void> | undefined;
   #attached!: () => void;
-  #exitListeners = new Set<() => void>();
+  #exitListeners = new Set<(unreachable?: RuntimeUnreachable) => void>();
   #ended = false;
-  #lost = false;
+  /** Set once lost: how, for listeners that arrive later. */
+  #lost: { unreachable?: RuntimeUnreachable } | undefined;
 
   constructor(worker: string) {
     this.#worker = worker;
@@ -101,12 +102,12 @@ class RemoteRuntimeSession implements RuntimeSession, RemoteSessionSink {
     this.#transcriptSeq = seq;
   }
 
-  /** The connection or the remote runtime is gone. */
-  lost(): void {
+  /** The remote runtime is gone, or only the connection to it (`unreachable`). */
+  lost(unreachable?: RuntimeUnreachable): void {
     if (this.#ended) return;
     this.#ended = true;
-    this.#lost = true;
-    for (const listener of [...this.#exitListeners]) listener();
+    this.#lost = unreachable ? { unreachable } : {};
+    for (const listener of [...this.#exitListeners]) listener(unreachable);
   }
 
   async #call<T = unknown>(method: string, ...args: unknown[]): Promise<T> {
@@ -161,10 +162,11 @@ class RemoteRuntimeSession implements RuntimeSession, RemoteSessionSink {
   async cancelCompaction(): Promise<void> { await this.#call("cancelCompaction"); }
   async rewind(target: unknown, options?: unknown): Promise<void> { await this.#call("rewind", target, ...(options === undefined ? [] : [options])); }
   async continueRun(): Promise<void> { await this.#call("continueRun"); }
-  onExit(listener: () => void): () => void {
+  onExit(listener: (unreachable?: RuntimeUnreachable) => void): () => void {
     this.#exitListeners.add(listener);
     // Lost before anyone listened: still reported, after the caller's setup.
-    if (this.#lost) queueMicrotask(() => { if (this.#exitListeners.has(listener)) listener(); });
+    const lost = this.#lost;
+    if (lost) queueMicrotask(() => { if (this.#exitListeners.has(listener)) listener(lost.unreachable); });
     return () => this.#exitListeners.delete(listener);
   }
   async attachmentImage(message: number, image: number): Promise<{ mimeType: string; data: Buffer } | undefined> {

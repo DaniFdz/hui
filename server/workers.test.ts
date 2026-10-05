@@ -238,7 +238,7 @@ const hostPid = async () => Number(await readFile(join(remoteHome, ".local", "sh
 /** Kills the host and its PI workers, as a crash or reboot would, and connects a new one. */
 async function restartHost(session: Session): Promise<void> {
   const pid = await hostPid();
-  const lost = new Promise<void>((resolve) => session.onExit!(resolve));
+  const lost = new Promise<void>((resolve) => session.onExit!(() => resolve()));
   execFileSync("pkill", ["-KILL", "-f", remoteHome]);
   await lost;
   session.dispose();
@@ -529,6 +529,61 @@ test("losing the gateway during a HUI tool call fails that call, and the run set
   }
 });
 
+test("a dropped connection leaves a session reconnecting, and HUI's own reconnect catches it up", async () => {
+  const { LiveSessions } = await import("./live-sessions.ts");
+  const key = "remote-durable-reconnect";
+  await registerRemote(key);
+  const record = async () => (await readRegistry()).find((item) => item.id === key)!;
+  const manager = new LiveSessions();
+  // As the gateway does: sessions the loss interrupted reattach once the worker is back.
+  const stop = workers.onConnected((id) => { if (id === workerId) void record().then((item) => manager.ensure(item, true)); });
+  try {
+    manager.ensure(await record());
+    await waitFor(() => manager.status(key) === "idle" || undefined, "the session to start");
+    await manager.prompt(key, "E2E_REPLAY please");
+    await control("wait-replay-ready");
+    // Only the connection dies, as when the network drops; the host lives on.
+    const host = await hostPid();
+    execFileSync("pkill", ["-KILL", "-f", `${remoteHome}/.*worker/main\\.[jt]s connect`]);
+    await waitFor(() => manager.status(key) === "reconnecting" || undefined, "the session to show the reconnect");
+    assert.equal(manager.blockingWorkCount, 0);
+    await control("release-replay", { method: "POST" });
+    // The reconnect HUI scheduled, without waiting out its backoff.
+    await workers.connect(workerId);
+    const answer = await waitFor(() => {
+      const last = manager.transcript(key).filter((entry) => entry.kind === "message").at(-1);
+      return manager.status(key) === "idle" && last?.kind === "message" && last.role === "assistant" ? last.text : undefined;
+    }, "the reconnect to catch up on the run", 60_000);
+    assert.equal(answer, "Replay prefix — replay suffix");
+    assert.equal(await hostPid(), host);
+    assert.ok(!manager.transcript(key).some((entry) => entry.kind === "error"), JSON.stringify(manager.transcript(key)));
+  } finally {
+    stop();
+    manager.disposeAll();
+  }
+});
+
+test("a session whose worker was disconnected or removed is disconnected, and an open does not reconnect it", async () => {
+  const { LiveSessions } = await import("./live-sessions.ts");
+  const key = "remote-durable-disconnected";
+  await registerRemote(key);
+  const manager = new LiveSessions();
+  try {
+    manager.ensure((await readRegistry()).find((item) => item.id === key)!);
+    await waitFor(() => manager.status(key) === "idle" || undefined, "the session to start");
+    workers.disconnect(workerId);
+    await waitFor(() => manager.status(key) === "disconnected" || undefined, "the session to show the disconnect");
+    manager.ensure((await readRegistry()).find((item) => item.id === key)!);
+    assert.equal(manager.status(key), "disconnected");
+    assert.equal((await workers.list()).find((worker) => worker.id === workerId)?.state, "disconnected", "opening the session left the worker alone");
+    const gone = { ...(await readRegistry()).find((item) => item.id === key)!, id: `${key}-gone`, worker: "removed-worker" };
+    manager.ensure(gone);
+    await waitFor(() => manager.status(gone.id) === "disconnected" || undefined, "a removed worker's session to show the disconnect");
+  } finally {
+    manager.disposeAll();
+  }
+});
+
 test("a follow-up queued before the gateway leaves runs on the worker with the credentials it brokered", async () => {
   const key = "remote-durable-follow-up";
   const first = await durable.start({ cwd: project, worker: workerId, huiSessionId: key });
@@ -583,7 +638,7 @@ test("a host restarted mid-run resumes Durable work, whose HUI tool calls still 
     await first.followUp!("E2E_SUGGEST_TASK after the restart");
     const pidFile = join(remoteHome, ".local", "share", "hui-worker", "state", "host.pid");
     const pid = Number(await readFile(pidFile, "utf8"));
-    const lost = new Promise<void>((resolve) => first.onExit!(resolve));
+    const lost = new Promise<void>((resolve) => first.onExit!(() => resolve()));
     process.kill(pid, "SIGKILL");
     await lost;
     // Its store lock now names a live, unrelated process, as after a container restart.

@@ -222,8 +222,10 @@ export type RuntimeSession = {
   /** Resume the model from the current non-assistant tail without a user prompt. */
   continueRun?(): Promise<void>;
   /** Fires when the tool's process ends on its own, so a gateway can mark the
-   * session failed rather than wait on a session that is already gone. */
-  onExit?(listener: () => void): () => void;
+   * session failed rather than wait on a session that is already gone. A
+   * runtime hosted elsewhere also fires it, with `unreachable`, when only the
+   * connection to it ended and the session goes on there. */
+  onExit?(listener: (unreachable?: RuntimeUnreachable) => void): () => void;
   /** Bytes of an image attached to a history message, located by the
    * `source` of a transcript attachment. */
   attachmentImage?(message: number, image: number): Promise<{ mimeType: string; data: Buffer } | undefined>;
@@ -272,6 +274,22 @@ export type AgentRuntime = {
   readonly id: string;
   start(options: StartOptions): Promise<RuntimeSession>;
 };
+
+/** The connection to a runtime hosted elsewhere is down; the session goes on
+ * there. `reconnecting` says whether HUI retries by itself. */
+export type RuntimeUnreachable = { reconnecting: boolean };
+
+/** Starting a runtime hosted elsewhere failed because its host could not be
+ * reached, not because the session failed. */
+export class RuntimeUnreachableError extends Error implements RuntimeUnreachable {
+  readonly reconnecting: boolean;
+
+  constructor(message: string, reconnecting: boolean) {
+    super(message);
+    this.name = "RuntimeUnreachableError";
+    this.reconnecting = reconnecting;
+  }
+}
 
 /** A runtime that failed to start, with the process output that explains why.
  * `message` is user-facing; `output` feeds diagnostics only. */

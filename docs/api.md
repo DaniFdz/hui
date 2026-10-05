@@ -43,7 +43,8 @@ Neither the public health route nor `hui gateway status --json` reveals the
 control URL or token. No shutdown route is added to `/__hui/`.
 
 Normal stop returns 409 while turns, questions, follow-ups or HTTP mutations are
-active. Forced stop explicitly interrupts work. CLI lifecycle operations are
+active; worker sessions that are `reconnecting` or `disconnected` run on their
+worker and do not count. Forced stop explicitly interrupts work. CLI lifecycle operations are
 serialized, refuse unauthenticated live PIDs and wait for the old process to
 exit before replacement. `gateway.log` is private and receives the gateway's
 stderr, including one line per Logs entry (see `GET /__hui/observability`); the
@@ -484,7 +485,7 @@ cheap, fast, tool-free route for generated session titles and `/btw`. Example:
 ### `GET /__hui/health`
 
 Returns gateway uptime, `HTTP + SSE`, the fixed `Full Access` product mode and
-registered/live PI runtime counts. This endpoint is diagnostic and read-only.
+registered/live PI runtime counts per session status. This endpoint is diagnostic and read-only.
 
 ### macOS power
 
@@ -579,7 +580,9 @@ that case the base falls back to `origin/HEAD`’s target, the current branch or
 ## Shapes
 
 ```ts
-type SessionStatus = "idle" | "running" | "waiting" | "starting" | "error";
+type SessionStatus = "idle" | "running" | "waiting" | "starting" | "error"
+  | "reconnecting"   // worker session: connection down, HUI retries by itself
+  | "disconnected";  // worker session: HUI is not retrying (disconnected or removed worker)
 
 type SessionView = {
   id: string;
@@ -984,7 +987,14 @@ may install Node and HUI); follow `GET /__hui/workers`. Both sides ping every
 15 s and drop a connection that stays silent for 45 s. A worker whose lost
 connection had sessions attached reconnects after 5 s, 30 s, 1 min, then every
 5 min; sessions the loss interrupted are then reopened and reattach to their
-still-running processes.
+still-running processes. Meanwhile those sessions report `reconnecting`, with
+no error event and no `closed` frame: their streams stay open and receive the
+caught-up snapshot on reattach. A disconnect or removal stops the retries and
+reports `disconnected`, as does opening a worker session whose worker cannot be
+reached while no retry is scheduled (after a gateway restart, say). Opening a
+`reconnecting` or `disconnected` session never connects its worker; any
+successful `connect` (automatic or this route) reattaches them. Prompts and
+other runtime requests to them return 409 with a message saying why.
 
 ## Routes
 

@@ -31,7 +31,7 @@ import { remoteReleasePath, workerRelease, type WorkerRelease } from "./worker/r
 import { buildSyncPlan, contentFile, mirrorPath } from "./worker/sync.ts";
 import type { Settings } from "../src/lib/settings.ts";
 import type { HostInfo, RemoteLaunch, RemoteState } from "./worker/host.ts";
-import type { RuntimeEvent, TranscriptEntry } from "./runtimes/types.ts";
+import { RuntimeUnreachableError, type RuntimeEvent, type RuntimeUnreachable, type TranscriptEntry } from "./runtimes/types.ts";
 import { formatCommand, parseCommand, type WorkerInput, type WorkerView } from "../shared/workers.ts";
 import { invokeAgentTool } from "./agent-tools-bridge.ts";
 import { readRegistry } from "./sessions.ts";
@@ -112,7 +112,8 @@ export type RemoteSnapshot = { state?: RemoteState; seq?: number; transcript?: T
 /** What a remote session's proxy hears from its connection. */
 export type RemoteSessionSink = {
   receive(frame: RemoteSnapshot & { event?: RuntimeEvent }): void;
-  lost(): void;
+  /** The remote runtime stopped, or only this connection did (`unreachable`). */
+  lost(unreachable?: RuntimeUnreachable): void;
 };
 
 export type RemoteSessionLink = {
@@ -153,6 +154,8 @@ class WorkerConnection {
   #syncing: Promise<SyncState> | undefined;
   /** Sessions were attached when the connection was lost. */
   lostSessions = false;
+  /** Closed on purpose (a disconnect), so nothing reconnects by itself. */
+  #closing = false;
 
   constructor(worker: WorkerConfig, onPhase: (phase: string) => void) {
     this.worker = worker;
@@ -244,14 +247,12 @@ class WorkerConnection {
         fail(`${command[0]} exited with code ${code} before the worker host started.`);
         peer.close(`${command[0]} exited${signal ? ` after ${signal}` : ` with code ${code}`}`);
       });
-      peer.onClose((reason) => {
+      peer.onClose(() => {
         this.lostSessions = this.#sessions.size > 0;
         const sinks = [...this.#sessions.values()];
         this.#sessions.clear();
-        for (const sink of sinks) {
-          sink.receive({ event: { type: "error", message: `Lost the connection to ${this.worker.name} (${reason.replace(/\.$/u, "")}).` } });
-          sink.lost();
-        }
+        // Their runs go on there; HUI reconnects unless this was a disconnect.
+        for (const sink of sinks) sink.lost({ reconnecting: !this.#closing });
         transport.kill();
       });
       transport.stdin.write(connectScript(this.release, node));
@@ -259,6 +260,7 @@ class WorkerConnection {
   }
 
   close(): void {
+    this.#closing = true;
     this.#peer?.close(`Disconnected from ${this.worker.name}.`);
     this.#transport?.kill();
   }
@@ -487,6 +489,15 @@ export class WorkerService {
     return () => this.#connectedListeners.delete(listener);
   }
 
+  #stoppedListeners = new Set<(workerId: string) => void>();
+
+  /** HUI stopped trying to reach a worker: a disconnect, a removal, or a
+   * worker that no longer exists when a reconnect comes due. */
+  onStopped(listener: (workerId: string) => void): () => void {
+    this.#stoppedListeners.add(listener);
+    return () => this.#stoppedListeners.delete(listener);
+  }
+
   onChange(listener: () => void): () => void {
     this.#listeners.add(listener);
     return () => this.#listeners.delete(listener);
@@ -616,7 +627,9 @@ export class WorkerService {
       this.#reconnect.delete(id);
       if (!current()) return;
       this.connect(id).catch((error: unknown) => {
-        if (!(error instanceof WorkerNotFoundError) && current()) this.#scheduleReconnect(id, attempt + 1);
+        if (!current()) return;
+        if (error instanceof WorkerNotFoundError) this.#notifyStopped(id);
+        else this.#scheduleReconnect(id, attempt + 1);
       });
     }, RECONNECT_MS[Math.min(attempt, RECONNECT_MS.length - 1)]);
     timer.unref();
@@ -632,6 +645,11 @@ export class WorkerService {
     this.#connections.delete(id);
     connection?.close();
     this.#status.set(id, { state: "disconnected" });
+    this.#notifyStopped(id);
+  }
+
+  #notifyStopped(id: string): void {
+    for (const listener of this.#stoppedListeners) listener(id);
   }
 
   /** Gateway shutdown: remote sessions keep running and are reattached later. */
@@ -649,10 +667,13 @@ export class WorkerService {
 
   /** Starts (or reattaches to) one HUI session's runtime on the worker. */
   async startSession(id: string, key: string, tool: string, options: { cwd: string; sessionFile?: string; model?: string; thinking?: string; title?: string }, sink: RemoteSessionSink): Promise<RemoteSessionLink> {
-    const connection = await this.connect(id);
+    // An unreachable (or removed) worker says nothing about the session, which
+    // may well be running there.
+    const unreachable = (error: unknown) => new RuntimeUnreachableError(error instanceof Error ? error.message : String(error), this.#reconnect.has(id));
+    const connection = await this.connect(id).catch((error: unknown) => { throw unreachable(error); });
     // Reported in Settings; never a reason to refuse a running session.
     await connection.ensureSynced().catch(() => undefined);
-    return connection.startSession(key, tool, options, sink);
+    return connection.startSession(key, tool, options, sink).catch((error: unknown) => { throw connection.closed ? unreachable(error) : error; });
   }
 
   /** Deleted sessions: stop their remote processes, attached or not. */
