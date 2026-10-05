@@ -29,6 +29,20 @@ test("CLI parses lifecycle, UI and local update commands without accepting stray
   }
 });
 
+test("CLI parses workers commands, their target and only their own flags", () => {
+  assert.equal(parseCli(["workers"]).command, "workers list");
+  assert.equal(parseCli(["workers", "list", "--json"]).values.json, true);
+  const add = parseCli(["workers", "add", "--name", "box", "--command", "ssh -o BatchMode=yes box", "--extra-path", "~/a", "--extra-path", "~/b"]);
+  assert.deepEqual([add.command, add.values.name, add.values.command, add.values["extra-path"]], ["workers add", "box", "ssh -o BatchMode=yes box", ["~/a", "~/b"]]);
+  const edit = parseCli(["workers", "edit", "box", "--command", "ssh box"]);
+  assert.deepEqual([edit.command, edit.target, edit.values.command], ["workers edit", "box", "ssh box"]);
+  assert.equal(parseCli(["workers", "remove", "box"]).target, "box");
+  for (const args of [["workers", "add", "--name", "box"], ["workers", "add", "--command", "ssh box"], ["workers", "edit", "box"], ["workers", "edit", "--name", "x"],
+    ["workers", "remove"], ["workers", "remove", "box", "extra"], ["workers", "list", "box"], ["workers", "remove", "box", "--name", "x"], ["workers", "sync"], ["doctor", "--name", "x"]]) {
+    assert.throws(() => parseCli(args), Error, args.join(" "));
+  }
+});
+
 test("production binding is explicit and never a wildcard", () => {
   assert.deepEqual(binding(), { host: "127.0.0.1", allowedHosts: [] });
   assert.equal(binding("localhost").host, "127.0.0.1");
