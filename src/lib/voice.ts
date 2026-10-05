@@ -132,3 +132,19 @@ export function voiceConnectionSummary(connection: VoiceConnection): string {
   if (connection.reachable === false) return `Not reachable${key}: ${connection.error ?? "no answer."}`;
   return `Saved${key}; not checked yet.`;
 }
+
+/** A voice note in a bot chat's composer. */
+export type VoiceNoteState =
+  | { status: "idle" }
+  | { status: "starting" }
+  | { status: "recording"; startedAt: number }
+  | { status: "transcribing" }
+  | { status: "error"; message: string };
+
+/** A note's words joined to what the composer already holds. */
+export function withTranscript(draft: string, text: string): string {
+  const words = text.trim();
+  if (!words) return draft;
+  if (!draft.trim()) return words;
+  return /\s$/u.test(draft) ? `${draft}${words}` : `${draft} ${words}`;
+}

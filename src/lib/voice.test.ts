@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
-import { formatCallTime, microphoneErrorMessage, sendBotMessage, speedLabel, synthesizeSpeech, transcribeRecording, voiceConnectionSummary, voiceOptions } from "./voice.ts";
+import { formatCallTime, microphoneErrorMessage, sendBotMessage, speedLabel, synthesizeSpeech, transcribeRecording, voiceConnectionSummary, voiceOptions, withTranscript } from "./voice.ts";
 
 const realFetch = globalThis.fetch;
 afterEach(() => { globalThis.fetch = realFetch; });
@@ -81,4 +81,11 @@ test("Settings sums the connection up in one line, never with the key", () => {
   assert.equal(voiceConnectionSummary({ configured: true, url: "https://gpu.ts.net", keySet: true, reachable: true, service: "VoiceStudio", version: "2.4.0" }), "Reachable · VoiceStudio 2.4.0 · API key saved");
   assert.equal(voiceConnectionSummary({ configured: true, url: "http://127.0.0.1:3900", keySet: false, reachable: false, error: "VoiceStudio could not be reached at http://127.0.0.1:3900 (connection refused; is it running?)." }), "Not reachable: VoiceStudio could not be reached at http://127.0.0.1:3900 (connection refused; is it running?).");
   assert.equal(voiceConnectionSummary({ configured: true, url: "http://127.0.0.1:3900", keySet: false }), "Saved; not checked yet.");
+});
+
+test("a voice note joins what the composer already holds", () => {
+  assert.equal(withTranscript("", "  Call Ana at five. "), "Call Ana at five.");
+  assert.equal(withTranscript("Reminder:", "call Ana"), "Reminder: call Ana");
+  assert.equal(withTranscript("Reminder:\n", "call Ana"), "Reminder:\ncall Ana");
+  assert.equal(withTranscript("Keep this", "   "), "Keep this");
 });

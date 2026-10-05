@@ -52,6 +52,8 @@ import { renderWatcherActivity, type WatcherActivityProps } from "./chat/watcher
 import { browserToolSummary } from "../lib/browser-tool-display.ts";
 import { toggleNavigationDrawer } from "./shell.ts";
 import { renderBotAvatar } from "./bots.ts";
+import { renderVoiceNoteButton, renderVoiceNoteStatus, voiceIcons } from "./bot-voice.ts";
+import type { VoiceNoteState } from "../lib/voice.ts";
 import type { BotView } from "../lib/bots.ts";
 import { slashCommandQuery } from "../lib/slash-commands.ts";
 import { renderSlashMenu, SLASH_MENU_ID, slashOptionId, type SlashMenuProps } from "./slash-menu.ts";
@@ -338,6 +340,24 @@ export type HomeProps = {
   onOpenBranchPrefixSettings: () => void;
   /** Present when this pane is a bot's permanent chat in the bot view. */
   bot?: HomeBot;
+  /** Talking to the bot: present on a bot's chat while VoiceStudio is connected. */
+  voice?: HomeVoice;
+};
+
+/** A bot chat's voice controls (HUI-18): the composer's voice notes and Read aloud on its replies. */
+export type HomeVoice = {
+  note: VoiceNoteState;
+  /** Ticks while a note records, for its timer. */
+  now: number;
+  /** The message being read aloud, and how far it got. */
+  readingId: string;
+  readingStatus: "idle" | "loading" | "playing";
+  onStartNote: () => void;
+  onStopNote: () => void;
+  onCancelNote: () => void;
+  onDismissNote: () => void;
+  onReadAloud: (id: string, text: string) => void;
+  onStopReading: () => void;
 };
 
 /** The bot view's header: who the bot is and its Routines | Memory panel. */
@@ -808,6 +828,17 @@ function renderCopy(props: HomeProps, text: string, id: string, label = "Copy") 
   </button>`);
 }
 
+/** Read aloud a bot's reply with its voice; the same button stops it. One reading plays at a time. */
+function renderReadAloud(props: HomeProps, voice: HomeVoice, rowId: string, messageId: string, text: string) {
+  const reading = voice.readingId === messageId && voice.readingStatus !== "idle";
+  const tooltipId = sessionControlId(props, `read-tooltip-${rowId}`);
+  return renderActionTooltip(tooltipId, reading ? "Stop reading" : "Read aloud", html`<button type="button" class="chat-copy-btn chat-read-aloud"
+    aria-label=${reading ? "Stop reading aloud" : "Read aloud"} aria-pressed=${String(reading)} data-status=${reading ? voice.readingStatus : "idle"} aria-describedby=${tooltipId}
+    @click=${() => reading ? voice.onStopReading() : voice.onReadAloud(messageId, text)}>
+    <span class="chat-copy-btn__icon chat-tool-card__action-icon">${reading ? icons.stop : voiceIcons.volume}</span>
+  </button>`);
+}
+
 /** Long prompts collapse by default, like ChatGPT; expansion is session-scoped UI state. */
 export function isLongPrompt(text: string): boolean {
   return text.length > 700 || text.split("\n").length > 10;
@@ -1078,7 +1109,7 @@ function renderTranscriptRows(props: HomeProps, rows: readonly ChatProjectionRow
           ${last?.metrics?.completedAt !== undefined || last?.metrics?.timestamp !== undefined ? html`<time class="chat-group-timestamp" datetime=${new Date(last.metrics.completedAt ?? last.metrics.timestamp!).toISOString()} title=${`${last.metrics.completedAt !== undefined ? "Completed" : "Message created"}: ${new Date(last.metrics.completedAt ?? last.metrics.timestamp!).toLocaleString()}`}>${relativeTime(last.metrics.completedAt ?? last.metrics.timestamp!)}</time>` : nothing}</div>
         ${last?.text ? html`<div class="chat-group-footer-actions">${renderActionTooltip(sessionControlId(props, `reply-tooltip-${row.id}`), "Reply", html`
           <button type="button" class="chat-copy-btn" aria-label="Reply to message" aria-describedby=${sessionControlId(props, `reply-tooltip-${row.id}`)} @click=${(event: Event) => replyToMessage(event, props, last.text)}>${icons.messageSquare}</button>
-        `)}${renderCopy(props, last.text, `message-${last.id}`, row.role === "assistant" ? "Copy response" : "Copy prompt")}</div>` : nothing}
+        `)}${row.role === "assistant" && props.voice ? renderReadAloud(props, props.voice, row.id, last.id, row.messages.map((item) => item.text).join("\n\n")) : nothing}${renderCopy(props, last.text, `message-${last.id}`, row.role === "assistant" ? "Copy response" : "Copy prompt")}</div>` : nothing}
         ${rewindTo ? html`<div class="chat-group-footer-actions">
           ${renderActionTooltip(rewindTooltipId, props.rewindPending ? "Rewinding…" : "Rewind", html`
             <button type="button" class="chat-group-rewind" aria-label=${props.rewindPending ? "Rewinding…" : "Rewind to here"} aria-describedby=${rewindTooltipId} ?disabled=${props.rewindPending} @click=${() => props.onRewind(rewindTo, last?.text ?? "", last?.attachments)}>${rewindIcon}</button>
@@ -1452,6 +1483,7 @@ function renderComposer(props: HomeProps) {
       ` : nothing}
       ${renderTaskProgress(props)}
       ${renderQueue(props)}
+      ${props.voice ? renderVoiceNoteStatus(props.voice.note, props.voice.now, { onStop: props.voice.onStopNote, onCancel: props.voice.onCancelNote, onDismiss: props.voice.onDismissNote }) : nothing}
       <form class="agent-chat__input agent-chat__input--chat agent-chat__input--mobile-toolbar ${disconnected ? "agent-chat__input--offline" : ""}"
         @submit=${onPromptSubmit(props)} @keydown=${onPromptKeydown(props)}
         @click=${focusComposerFromSurface}>
@@ -1517,6 +1549,7 @@ function renderComposer(props: HomeProps) {
           })}</div>
             </div>
             <div class="agent-chat__composer-actions">
+              ${props.voice ? renderVoiceNoteButton(props.voice.note, booting || props.sending || disconnected, { onStart: props.voice.onStartNote, onStop: props.voice.onStopNote }) : nothing}
               <span class="chat-send-control chat-mobile-primary-action chat-desktop-primary-action">
                 ${showStop ? html`<button type="button" class="chat-send-btn chat-send-btn--stop" ?disabled=${props.stopping} @click=${props.onAbort} aria-label="Stop">${props.stopping ? html`<span class="btn__spinner"></span>` : stopIcon}</button>` : html`<button type="submit" class="chat-send-btn chat-send-btn--send" ?disabled=${!canSend}
                   aria-label=${props.streaming ? "Steer message; touch and hold to enqueue" : "Send message"}

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { initialCallState, reduceCall, VoiceCall, type CallEffect, type CallEvent, type CallPlatform, type CallSessionHandlers, type CallState } from "./voice-call.ts";
+import { callStatusLabel, initialCallState, reduceCall, VoiceCall, type CallEffect, type CallEvent, type CallPlatform, type CallSessionHandlers, type CallState } from "./voice-call.ts";
 
 /* ── the state machine ── */
 
@@ -93,6 +93,18 @@ test("a message queued behind another turn waits for the turn that answers it", 
   ]);
   assert.deepEqual(phases, ["listening", "thinking", "thinking", "thinking", "thinking", "thinking", "thinking", "listening"]);
   assert.deepEqual(effects.filter((effect) => effect.type === "flush-reply").length, 1, "only the second turn was the reply");
+});
+
+test("the call says what it is doing, memory and tools included", () => {
+  const base = { ...initialCallState(0), micReady: true };
+  assert.equal(callStatusLabel(initialCallState(0)), "Waiting for the microphone…");
+  assert.equal(callStatusLabel({ ...base, phase: "listening" }), "Listening");
+  assert.equal(callStatusLabel({ ...base, phase: "listening", micMuted: true }), "Microphone muted");
+  assert.equal(callStatusLabel({ ...base, phase: "thinking" }), "Thinking…");
+  assert.equal(callStatusLabel({ ...base, phase: "thinking", tool: "web_search" }), "Using web_search…");
+  assert.equal(callStatusLabel({ ...base, phase: "thinking", tool: "web_search" }, true), "Summarizing memory…");
+  assert.equal(callStatusLabel({ ...base, phase: "speaking" }), "Speaking");
+  assert.equal(callStatusLabel({ ...base, phase: "failed" }), "Call failed");
 });
 
 /* ── the call, with fake capabilities ── */

@@ -234,6 +234,20 @@ export function reduceCall(state: CallState, event: CallEvent, now: number): { s
   return { state: next, effects };
 }
 
+/** What the call view says it is doing. "Summarizing memory…" while the bot's turn waits on its memory. */
+export function callStatusLabel(state: CallState, summarizing = false): string {
+  switch (state.phase) {
+    case "connecting": return "Waiting for the microphone…";
+    case "listening": return state.micMuted ? "Microphone muted" : "Listening";
+    case "hearing": return "Hearing you…";
+    case "transcribing": return "Transcribing…";
+    case "thinking": return summarizing ? "Summarizing memory…" : state.tool ? `Using ${state.tool}…` : "Thinking…";
+    case "speaking": return "Speaking";
+    case "ended": return "Call ended";
+    case "failed": return "Call failed";
+  }
+}
+
 /* ── the call ──────────────────────────────────────────────────────────── */
 
 export type CallMicrophone = { sampleRate: number; setEnabled(enabled: boolean): void; close(): void };
