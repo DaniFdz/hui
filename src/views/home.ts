@@ -1513,7 +1513,7 @@ function renderComposer(props: HomeProps) {
           </div>
         </div>
       </form>
-      ${disconnected ? html`<div class="agent-chat__composer-underlaps" data-tone="warn"><div class="agent-chat__composer-status-band" role="status"><span class="agent-chat__composer-status-text">${props.connection === "reconnecting" ? "Reconnecting — draft preserved." : "Stream stopped — draft preserved."}</span></div></div>` : nothing}
+      ${disconnected ? html`<div class="agent-chat__composer-underlaps" data-tone="warn"><div class="agent-chat__composer-status-band" role="status"><span class="agent-chat__composer-status-text">${unreachable ? `${unreachable.status.replace(/…$/u, "")} — draft preserved.` : props.connection === "reconnecting" ? "Reconnecting — draft preserved." : "Stream stopped — draft preserved."}</span></div></div>` : nothing}
     </div>
   `;
 }

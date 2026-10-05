@@ -473,8 +473,9 @@ const sendButton = (html: string) => html.match(/<button type="submit" class="ch
 test("a worker session HUI is reconnecting to reads calm: a status, one notice, the draft kept and no failure", async () => {
   const html = await renderWorkerSession("reconnecting");
   assert.match(html, /durable on devbox · [^<]* · Reconnecting to devbox… </u);
+  assert.match(html, /Reconnecting to devbox — draft preserved\./u);
   assert.equal(html.split("Connection to devbox lost — the session keeps running there. HUI reconnects automatically.").length, 2, "exactly one notice");
-  assert.doesNotMatch(html, /The runtime could not start|Retry session|chat-error|exited|no longer streaming/u);
+  assert.doesNotMatch(html, /The runtime could not start|Retry session|chat-error|exited|no longer streaming|Stream stopped/u);
   assert.doesNotMatch(html, /reconnect-session/u, "HUI reconnects by itself; there is nothing to click");
   assert.match(html, /\.value=keep this draft/u);
   assert.match(html, /placeholder=Draft while HUI reconnects…/u);
@@ -484,8 +485,9 @@ test("a worker session HUI is reconnecting to reads calm: a status, one notice, 
 test("a worker session HUI no longer retries says it is disconnected and offers Reconnect", async () => {
   const html = await renderWorkerSession("disconnected");
   assert.match(html, /· Disconnected from devbox </u);
+  assert.match(html, /Disconnected from devbox — draft preserved\./u);
   assert.match(html, /Disconnected from devbox\. The session may still be running there\. <button type="button" class="btn btn--sm reconnect-session" @click=>Reconnect<\/button>/u);
-  assert.doesNotMatch(html, /The runtime could not start|Retry session|chat-error|exited|no longer streaming/u);
+  assert.doesNotMatch(html, /The runtime could not start|Retry session|chat-error|exited|no longer streaming|Stream stopped/u);
   assert.match(html, /\.value=keep this draft/u);
   assert.equal(sendButton(html), "true");
 });
