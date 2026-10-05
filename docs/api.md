@@ -2587,6 +2587,54 @@ it) is the opt-out, exposed as Settings → Appearance → Chat → *GitHub link
 previews*. When off, no preview is requested or rendered; PR badges keep using
 the lookup.
 
+### VoiceStudio: bots' voice
+
+Bots listen and speak through [VoiceStudio](https://github.com/debpalash/VoiceStudio)
+(HUI-18), a separate speech service, often on a GPU machine reached over
+Tailscale, that HUI only calls over HTTP: its discovery document
+`GET /.well-known/voicestudio-speech` (protocol `voicestudio.speech.v1`) and its
+OpenAI-compatible audio routes. HUI stores no audio: a recording streams to
+VoiceStudio and only its text comes back; speech streams back as VoiceStudio
+sends it. Shared types are in `shared/voice.ts`:
+
+```ts
+type VoiceConnection = {
+  configured: boolean;
+  url: string;                       // the service root; "" when not configured
+  keySet: boolean;                   // never the key itself
+  reachable?: boolean;               // the latest discovery probe (at most 30 s old) answered
+  protocol?: string;                 // "voicestudio.speech.v1"
+  service?: string; version?: string;
+  features?: Record<string, boolean>;  // the discovery document's switches
+  error?: string;                    // why the latest probe failed
+  checkedAt?: string;
+};
+type VoiceProfile = { id: string; name: string; type?: string; language?: string; description?: string };
+```
+
+| Route | Result |
+| --- | --- |
+| `GET /__hui/voice` | `VoiceConnection`. Probes discovery (5 s) when the last probe is older than 30 seconds; concurrent reads share one probe |
+| `PUT /__hui/voice` `{ url, apiKey? }` | Verifies with discovery, then `GET /v1/models`, then stores. `url` is the service root: without a scheme it is `http://`, a trailing `/v1` (an OpenAI base URL) is dropped, a reverse-proxy path prefix stays; credentials, `?` and `#` are 400. An absent or empty `apiKey` keeps the stored one while the origin stays the same; `null` removes it. A key is accepted only for `https:`, loopback or a Tailscale address (`100.64.0.0/10`, `fd7a:115c:a1e0::/48`, `*.ts.net`), otherwise 400. Unknown fields are 400; VoiceStudio refusing or unreachable is 502 and nothing is stored |
+| `DELETE /__hui/voice` | Removes the connection and its key |
+| `GET /__hui/voice/voices` | `{ voices: VoiceProfile[] }` from `GET /v1/audio/voices` (VoiceStudio's `voice_id`s, at most 500, in its order: OpenAI aliases, then voice profiles) |
+| `POST /__hui/voice/transcriptions` | The recording with its own `audio/*` content type (`?language=` ISO 639-1, `?prompt=` up to 1,000 characters), or `multipart/form-data` with an `audio/*` `file` part and optional `language`/`prompt` fields. At most 25 MB (413, refused unread when `content-length` says so); not audio is 415, empty 400. Forwarded to `POST /v1/audio/transcriptions` (or the route the discovery document names) with `model: whisper-1` (VoiceStudio uses its active recognizer for any OpenAI model id) and `response_format: json` → `{ text }` |
+| `POST /__hui/voice/speech` `{ text, botId?, voice?, speed?, format? }` | `text` 1–4,000 characters (trimmed). `botId` (id or handle) applies the bot's `voice` profile and speed; `voice` (a voice id, or `""` for VoiceStudio's default) and `speed` (0.5–2) win over the bot's, as a voice preview needs; without either, `default` at 1×. `format` is `mp3` (default) or `opus`. Forwarded to `POST /v1/audio/speech` with `model: tts-1` and `stream_format: "audio"`; the answer relays VoiceStudio's bytes as they arrive with its `content-type` (`audio/mpeg`, `audio/ogg`), `cache-control: no-store`, `nosniff` and no length. An unknown bot is 404 |
+
+Errors use `{ error }`: 400 for input, 404 for an unknown bot, 409 while no
+connection is configured, 413/415 for recordings, 502 when VoiceStudio refuses
+(its OpenAI-shaped `error.message`; for 401, whether the key is missing or
+rejected), fails or cannot be reached, 504 when it does not answer in time
+(discovery 5 s for the status and 10 s to verify, 120 s per transcription, 120 s
+until speech starts and 30 s between its chunks); other methods are 405. A client
+that leaves (a stopped read-aloud, a call hung up) aborts what VoiceStudio was
+asked for it.
+
+The connection lives in `~/.config/hui/voicestudio.json` (mode 0600). The key
+travels only as `Authorization: Bearer <key>` to that origin: redirects are
+followed within it (GET, and 307/308 for a POST, at most three) and refused to
+any other origin. JSON answers are capped at 1 MiB and speech at 64 MiB.
+
 ## Constraints
 
 - Only one runtime per session id. Opening twice returns the same runtime.

@@ -20,6 +20,9 @@ import type { ServerResponse } from "node:http";
 import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
 import { basename, join, sep } from "node:path";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
+import type { ReadableStream as NodeReadableStream } from "node:stream/web";
 import { fileURLToPath } from "node:url";
 
 import type { Connect, Plugin } from "vite";
@@ -58,6 +61,8 @@ import { readPiConfig, invalidateModelCatalog } from "./pi-config.ts";
 import { PiResourceNotFoundError, readPiResourceDocument } from "./pi-resource-reader.ts";
 import { readToolsCatalog } from "./tools.ts";
 import { updates, UpdateConflict } from "./updates.ts";
+import { VoiceService } from "./voice.ts";
+import { createVoiceRoutes, storedBotVoice, VOICE_ROUTE, VoiceTooLargeError } from "./voice-routes.ts";
 import { parseClearCommand, parseCompactCommand, parseReloadCommand, parseUpdateCommand } from "../src/lib/slash-commands.ts";
 import {
   PiMutationBusyError,
@@ -406,6 +411,12 @@ const THEME_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
 
 const providerService = new ProviderService(undefined, invalidateModelCatalog);
 
+/** The VoiceStudio connection bots listen and speak through (HUI-18); audio only passes through. */
+const voiceRoutes = createVoiceRoutes({
+  service: new VoiceService(),
+  botVoice: async (id) => storedBotVoice(await bots.resolve(id)),
+});
+
 const SETTINGS_FILE = join(CONFIG_DIR, "settings.json");
 const BUILTIN_THEME_DIR = fileURLToPath(new URL("../themes/", import.meta.url));
 
@@ -688,6 +699,36 @@ async function readBody(
     chunks.push(buffer);
   }
   return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+}
+
+/** A body as bytes (a recording), at most `maxBytes`. */
+async function readRawBody(request: Connect.IncomingMessage, maxBytes: number, tooLarge: () => Error): Promise<Uint8Array<ArrayBuffer>> {
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const chunk of request) {
+    const buffer = chunk as Buffer;
+    size += buffer.length;
+    if (size > maxBytes) throw tooLarge();
+    chunks.push(buffer);
+  }
+  const body = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return body;
+}
+
+/** Relays audio as it arrives. Once the head is sent a failure can only cut the stream, which the player reports. */
+function sendAudio(response: ServerResponse, result: { status: number; contentType: string; audio: ReadableStream<Uint8Array> }): void {
+  response.statusCode = result.status;
+  response.setHeader("content-type", result.contentType);
+  response.setHeader("cache-control", "no-store");
+  response.setHeader("x-content-type-options", "nosniff");
+  void pipeline(Readable.fromWeb(result.audio as NodeReadableStream<Uint8Array>), response).catch(() => {
+    if (!response.destroyed) response.destroy();
+  });
 }
 
 /** Writes an uploaded file under the config dir and returns its absolute path. */
@@ -2784,6 +2825,26 @@ async function handleRequest(
     } catch (error) {
       sendJson(response, error instanceof GitHubCliError ? error.status : 500, { error: error instanceof Error ? error.message : "Could not sign in to GitHub." });
     }
+    return;
+  }
+
+  if (path === VOICE_ROUTE || path.startsWith(`${VOICE_ROUTE}/`)) {
+    // A client that leaves (a stopped read-aloud, a hung-up call) ends what VoiceStudio was asked for it.
+    const gone = new AbortController();
+    response.once("close", () => gone.abort());
+    const length = Number(request.headers["content-length"]);
+    const result = await voiceRoutes.handle({
+      method: request.method ?? "GET",
+      path,
+      query: new URL(request.url ?? "/", "http://localhost").searchParams,
+      contentType: request.headers["content-type"] ?? "",
+      contentLength: Number.isSafeInteger(length) && length >= 0 ? length : undefined,
+      body: (maxBytes) => readRawBody(request, maxBytes, () => new VoiceTooLargeError(`The request body is larger than ${maxBytes >= 1024 * 1024 ? `${Math.round(maxBytes / 1024 / 1024)} MB` : `${Math.round(maxBytes / 1024)} KB`}.`)),
+      signal: gone.signal,
+    });
+    if (!result) sendJson(response, 404, { error: `unknown route: ${path}` });
+    else if ("audio" in result) sendAudio(response, result);
+    else sendJson(response, result.status, result.body);
     return;
   }
 
