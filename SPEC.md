@@ -1027,8 +1027,12 @@ leaves worker records unchanged.
   is used. Provider keys
   that models.json resolves from environment variables or commands resolve on
   the remote. A key written literally in models.json, or a literal value of a
-  header whose name looks like a credential (it contains `auth`, `cookie`,
-  `token`, `secret`, `password` or `key`), is never mirrored: the remote's copy
+  header whose name looks like a credential (one of its `-`, `_` or `.`
+  separated parts is `auth`, `authorization`, `cookie`, `token`, `secret`,
+  `password`, `passphrase`, `passcode`, `credential(s)`, `jwt`, `signature`,
+  `bearer` or `csrf`, or it contains `api-key`, `apikey`, `access-key`,
+  `private-key` or `secret-key`; `x-max-tokens` or `idempotency-key` do not),
+  is never mirrored: the remote's copy
   drops the key, which the gateway serves as that provider's credential when
   its PI login has none (PI's own precedence), and names a `HUI_SECRET_…`
   variable in place of the header value. The gateway sends those values with

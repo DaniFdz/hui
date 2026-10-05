@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { configuredResourceId } from "../runtimes/resource-policy.ts";
-import { brokeredModels, buildSyncPlan, mirrorPath } from "./sync.ts";
+import { brokeredModels, buildSyncPlan, credentialHeader, mirrorPath } from "./sync.ts";
 
 test("the mirror holds the user's PI resources with remote paths and no secrets", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "hui-sync-"));
@@ -120,4 +120,14 @@ test("an invalid models.json is not mirrored", async (t) => {
   const plan = await buildSyncPlan({ agentDir, home: root, remoteMirror: "/remote/mirror" });
   assert.ok(!plan.files.some((entry) => entry.path === "agent/models.json"));
   assert.deepEqual(plan.skipped, ["models.json: invalid, not mirrored"]);
+});
+
+test("only headers whose names say they carry a credential are withheld", () => {
+  const withheld = ["Authorization", "proxy-authorization", "x-auth-token", "x-api-key", "X-Api-Key", "api_key", "apikey", "x-goog-api-key",
+    "cookie", "set-cookie", "x-access-key", "private-key", "x-secret-key", "x-client-secret", "x-amz-security-token", "x-e2e-token",
+    "x-password", "x-passphrase", "x-passcode", "x-credential", "x-credentials", "x-jwt", "x-signature", "bearer", "x-csrf-token"];
+  const kept = ["x-max-tokens", "x-routing-key", "idempotency-key", "cache-key", "x-author", "org-id", "source", "anthropic-beta",
+    "x-org-tag-client_session_id", "x-request-id", "user-agent", "x-keyboard-layout", "x-tokenizer"];
+  assert.deepEqual(withheld.filter((name) => !credentialHeader(name)), []);
+  assert.deepEqual(kept.filter((name) => credentialHeader(name)), []);
 });

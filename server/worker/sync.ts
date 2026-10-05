@@ -61,10 +61,17 @@ export type SyncSource = {
   providerFiles?: Record<string, string>;
 };
 
-/** Headers whose names carry credentials. Other literal headers (routing,
- * tags, feature flags) are configuration, mirrored so the worker keeps them
- * even with nothing served. */
-const credentialHeader = (name: string) => /auth|cookie|token|secret|password|key/iu.test(name);
+/** Name parts, split at `-`, `_` and `.`, of headers that carry credentials. */
+const CREDENTIAL_PARTS = new Set(["auth", "authorization", "cookie", "token", "secret", "password", "passphrase", "passcode", "credential", "credentials", "jwt", "signature", "bearer", "csrf"]);
+const CREDENTIAL_KEY = /api-?key|access-key|private-key|secret-key/u;
+
+/** Whether a header's name says it carries a credential. Other literal
+ * headers (routing, tags, feature flags, `x-max-tokens`) are configuration,
+ * mirrored so the worker keeps them even with nothing served. */
+export function credentialHeader(name: string): boolean {
+  const parts = name.toLowerCase().split(/[-_.]/u);
+  return parts.some((part) => CREDENTIAL_PARTS.has(part)) || CREDENTIAL_KEY.test(parts.join("-"));
+}
 
 /**
  * PI's models.json as a worker gets it, and the literals it leaves out. A

@@ -967,7 +967,10 @@ answer the remote's own PI login is used. The mirrored PI `models.json` holds
 no literal secrets: a literal `apiKey` is dropped, and the gateway answers a
 `pi` `read` for that provider with `{type: "api_key", key}` when its auth.json
 has none (and lists it); a literal value of a credential-like header (a name
-containing `auth`, `cookie`, `token`, `secret`, `password` or `key`; provider,
+with a `-`/`_`/`.`-separated part `auth`, `authorization`, `cookie`, `token`,
+`secret`, `password`, `passphrase`, `passcode`, `credential(s)`, `jwt`,
+`signature`, `bearer` or `csrf`, or containing `api-key`, `apikey`,
+`access-key`, `private-key` or `secret-key`, case-insensitively; provider,
 model or model override) becomes `${HUI_SECRET_<16 hex>}`, a name derived from its place,
 whose values ride in `sync-commit`'s `env`. The host keeps them in memory
 (replaced by each sync, lost when it stops) and serves them to PI as
