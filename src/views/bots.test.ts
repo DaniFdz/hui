@@ -132,6 +132,7 @@ test("while a worker exists the roster's + is a menu, New bot on Local or on eac
   assert.match(app, /workers: this\.launchWorkers,\n\s+onCreate: this\.createBotOn,/u);
   const create = between(app, "private createBotOn = ", "/** The worker the bot being edited runs on");
   assert.match(create, /createBot\(\{ name: NEW_BOT_NAME, \.\.\.\(worker \? \{ worker \} : \{\}\) \}\)/u, "created at once, where it was chosen");
+  assert.match(app, /import \{[^}]*\bNEW_BOT_NAME\b[^}]*\} from "\.\.\/shared\/bots\.ts";/u, "New Bot, the gateway's own placeholder: its first conversation asks for a name");
   assert.match(create, /this\.navigate\(\{ kind: "bot", id: bot\.id \}\);/u, "and its chat opens");
   assert.match(create, /this\.botNoticeFailed = true;/u, "a refusal (an offline worker) shows in the roster");
 });
@@ -166,6 +167,8 @@ test("a bot on a worker shows the machine compactly in its roster row, its chat 
   assert.match(css, /\.bot-chat-identity__machine svg \{ flex: none; width: 11px; height: 11px; \}/u);
   assert.match(between(source, "export function renderBotArchiveDialog(", "/* ── delete confirmation"), /stay on \$\{bot\.worker\?\.name \?\? "this machine"\}/u);
   assert.match(between(source, "function renderMemoryTab(", "export function renderBotPanel("), /Summarizer since HUI started on \$\{props\.bot\.worker\.name\}/u, "a worker's compactor counts since its host opened the memory");
-  assert.match(source.slice(source.indexOf("export function renderBotDeleteDialog(")), /Its chat stays in the Durable store on \$\{bot\.worker\.name\}, which HUI no longer opens, and the files in its workspace stay there\./u);
+  const deleting = source.slice(source.indexOf("export function renderBotDeleteDialog("));
+  assert.match(deleting, /its memory and its folder\$\{bot\.worker \? ` on \$\{bot\.worker\.name\}` : ""\} \(SOUL\.md and every file in it\) go/u, "its folder on the worker");
+  assert.match(deleting, /bot\.status === "disconnected" \? `; HUI is not connected to \$\{bot\.worker\.name\} now, so those go there when it reconnects` : ""/u, "and when they go while the worker is offline");
 });
 

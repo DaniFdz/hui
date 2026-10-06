@@ -21,6 +21,20 @@ test("groups assistant context into one disclosure and leaves only the final ans
   assert.equal(rows[2]?.kind === "messages" && rows[2].messages[0]?.text, "done");
 });
 
+test("HUI's kickoff of a new bot is a note row, never the operator's message, and the bot's opener follows it", () => {
+  const kickoff = "[HUI bot created]\nname: Scout\nHUI just created you. This message is from HUI, not the operator.";
+  const rows = projectChatTranscript([
+    { kind: "message", id: "k", role: "user", text: kickoff },
+    { kind: "message", id: "a1", role: "assistant", text: "Hi! What should I look after for you?" },
+    { kind: "message", id: "u1", role: "user", text: "My inbox." },
+    { kind: "message", id: "late", role: "user", text: "[HUI bot created]" },
+  ]);
+  assert.deepEqual(rows.map((row) => `${row.kind}:${row.id}`), ["botCreated:k", "messages:a1", "messages:u1", "botCreated:late"]);
+  assert.equal(rows[0]?.kind === "botCreated" && rows[0].name, "Scout");
+  assert.equal(rows[3]?.kind === "botCreated" && rows[3].name, "", "a marker without a name: the chat names the bot itself");
+  assert.equal(projectChatTranscript([{ kind: "message", id: "x", role: "user", text: "[HUI bot created] by hand" }])[0]?.kind, "messages", "only the marker line itself");
+});
+
 test("a compaction marker stays its own row between completed turns", () => {
   const rows = projectChatTranscript([
     { kind: "message", id: "u1", role: "user", text: "one" },

@@ -28,7 +28,7 @@ import { fileURLToPath } from "node:url";
 import type { Connect, Plugin } from "vite";
 import { workers } from "./workers.ts";
 import { createWorkerRoutes, WORKERS_ROUTE } from "./worker-routes.ts";
-import { BotInputError, BotRegistry, BotStoreError } from "./bots.ts";
+import { BOT_CLEANUP_FILE, BotInputError, BotRegistry, BotStoreError } from "./bots.ts";
 import { BotService } from "./bot-service.ts";
 import { remoteBots } from "./bot-remote.ts";
 import { BOT_MEMORY_PAGE, BOTS_EVENTS_ROUTE, BOTS_ROUTE, createBotRoutes } from "./bot-routes.ts";
@@ -37,6 +37,7 @@ import { CallBroker, providerCallAccounts } from "./calls.ts";
 import { CALLS_ROUTE, createCallRoutes } from "./call-routes.ts";
 import { buildCallRecord, createCallDelegate, operatorName, type CallCompletion } from "./call-helper.ts";
 import { optChatBotMemory } from "./bot-memory.ts";
+import { botHome, localBotSouls, operatorName as soulOperatorName } from "./bot-souls.ts";
 import type { BotReply, BotsUpdate, BotView } from "../shared/bots.ts";
 import { clampThinkingLevel } from "@earendil-works/pi-ai";
 import { progressCardFromTranscript, type ProgressCard } from "../shared/progress-card.ts";
@@ -273,10 +274,18 @@ const bots = new BotService({
   updateSessions: updateRegistry,
   createSession: (body, bot) => createSession(body, liveSessions, updateRegistry, undefined, { bot }),
   removeSession: (id) => deleteSession(id),
-  conversations: durableBotConversations(durableHost(), botMemory),
+  // A bot without a model of its own starts on Settings' primary model, as a new session does.
+  conversations: durableBotConversations(durableHost(), botMemory, { primaryModel: async () => (await readSettings()).models.primary || undefined }),
   memory: botMemory,
-  // A bot made on a worker keeps its conversation and memory in that worker's store, where its chat runs.
-  workers: remoteBots(workers),
+  // A bot made on a worker keeps its conversation, memory and SOUL.md there, where its chat runs; what deleting one
+  // leaves there while it is offline waits in BOT_CLEANUP_FILE for its next connection.
+  workers: remoteBots(workers, {
+    cleanupFile: BOT_CLEANUP_FILE,
+    report: (action, summary, error) => recordDiagnosticEvent({
+      area: "session", level: "warning", action, summary, detail: error instanceof Error ? error.message : String(error),
+    }),
+  }),
+  souls: localBotSouls(),
   routines: {
     // A broken automation store is a storage failure (500), not the caller's.
     tasks: async () => (await automation.snapshot().catch(automationStoreFailure)).tasks,
@@ -305,9 +314,21 @@ const botRoutes = createBotRoutes({
 function automationStoreFailure(error: unknown): never {
   throw error instanceof AutomationStoreError ? new BotStoreError(error.message, { cause: error }) : error;
 }
-// A bot's chat lists the other bots in its `bots` prompt section; a worker's host asks for those of the bots there.
+// A bot's chat lists the other bots in its `bots` prompt section (a worker's host asks for those of the bots there, and
+// learns each bot's name with it), and reads its SOUL.md (or has its first conversation) in its `soul` section, from
+// its home folder in HUI's configuration; a worker's host reads the home folders it keeps itself.
 durableHost().botSection = (botId) => bots.section(botId);
-workers.serve("bot.section", async (workerId, params) => ({ section: await bots.workerSection(workerId, String(params["botId"] ?? "")) ?? null }));
+workers.serve("bot.section", async (workerId, params) => {
+  const botId = String(params["botId"] ?? "");
+  const section = await bots.workerSection(workerId, botId);
+  return { section: section ?? null, name: bots.identity(botId)?.name ?? null };
+});
+durableHost().botSouls = {
+  home: (botId) => botHome(botId),
+  operator: async () => soulOperatorName((await readSettings()).profileName),
+  // From the last registry read: a bot still called "New Bot" asks for a name first.
+  name: (botId) => bots.identity(botId)?.name,
+};
 /** The bot list every Bots screen shares, recomputed while one listens, like the session list. */
 const botList = createSessionListHub<BotView>(async () => [{ label: "bots", sessions: await bots.list({ archived: "all" }) }]);
 const subagents = new SubagentService(liveSessions);
@@ -331,6 +352,7 @@ liveSessions.setAbortListener((id) => managedBrowser.closeOwner(id));
 registerAgentToolHandler(async (invocation) => {
   // A bot's chat only: the service refuses every other caller.
   if (invocation.action === "message_bot") return bots.messageBot(invocation.callerSessionId, invocation.params);
+  if (invocation.action === "set_profile") return bots.setProfile(invocation.callerSessionId, invocation.params);
   if (invocation.action === "suggest_task" || invocation.action === "dismiss_task") {
     const caller = (await readRegistry()).find(({ id }) => id === invocation.callerSessionId);
     if (!caller) throw new TaskSuggestionInputError("Conversation no longer exists.");
@@ -471,6 +493,7 @@ const callRoutes = createCallRoutes({
   bots,
   delegate: createCallDelegate({
     view: async (botId) => (await bots.callContext(botId)).view,
+    soul: async (botId) => (await bots.soul(botId)) ?? undefined,
     settings: callSettings,
     completion: callCompletion,
     // Real work goes to the bot's own chat, as any message: a prompt, or a follow-up behind its running turn.
@@ -991,7 +1014,7 @@ function foreverChatRefusal(handle: string | undefined, operation: "clear" | "co
     clear: `This is ${chat} forever chat: it cannot be cleared. Its memory keeps everything; archive the bot when you are done with it.`,
     compact: `This is ${chat} forever chat: its memory condenses it by itself, so it is not compacted by hand.`,
     rewind: `This is ${chat} forever chat: it cannot be rewound or forked.`,
-    delete: `This is ${chat} forever chat: archive the bot instead${handle ? ` (hui bot remove ${handle})` : ""}; its chat and memory are kept.`,
+    delete: `This is ${chat} forever chat: archive the bot instead${handle ? ` (hui bot remove ${handle})` : ""}, which keeps its chat and memory, or delete the bot${handle ? ` (hui bot delete ${handle})` : ""} with its chat, memory and folder.`,
   }[operation];
 }
 
@@ -3844,6 +3867,19 @@ export async function startBackend(): Promise<void> {
   await automation.start();
   // Session views name bots' chats from this list; a broken bots.json is reported by the bot routes.
   await botRegistry.list().catch(() => undefined);
+  // Bots from before SOUL.md: their instructions become SOUL.md once (bots.json keeps them until then).
+  void bots.migrate().then((moved) => {
+    if (moved.souls || moved.cleared) {
+      recordDiagnosticEvent({
+        area: "session", level: "info", action: "bots_souls_migrated",
+        summary: `${moved.souls} bot${moved.souls === 1 ? "" : "s"} got their instructions as SOUL.md; ${moved.cleared} conversation${moved.cleared === 1 ? "" : "s"} no longer carry instructions`,
+      });
+    }
+  }, (error: unknown) => recordDiagnosticEvent({
+    area: "session", level: "warning", action: "bots_souls_migration_failed",
+    summary: "Bots' instructions could not become SOUL.md; HUI tries again at its next start",
+    detail: error instanceof Error ? error.message : String(error),
+  }));
   initializeWatchers();
   initializeSubagents();
   await workers.list().catch(() => undefined);

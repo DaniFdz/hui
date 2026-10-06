@@ -4,7 +4,7 @@
  */
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { connect } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -118,11 +118,13 @@ test("a bot's conversation and memory are made in the host's own store, in its o
   const { peer, frames } = gateway;
   try {
     assert.ok(gateway.hello.features?.includes("bots"), "hello says the host runs bots");
-    const created = await peer.request<{ reference: string; cwd: string }>("bot.create", { botId: "bot-ada", instructions: "You are Ada.", memory: { name: "Ada" } });
+    const created = await peer.request<{ reference: string; cwd: string }>("bot.create", { botId: "bot-ada", soul: "# Who I am\r\nAda.\n", memory: { name: "Ada" } });
     assert.match(created.reference, /^durable:\d+$/u);
-    // A private folder under HUI's data directory on the worker, as the gateway makes one under its configuration.
+    // Its home: a private folder under HUI's data directory on the worker, as the gateway makes one under its
+    // configuration, with the SOUL.md it was given.
     assert.equal(created.cwd, join(host.paths.dataDir, "bots", "bot-ada"));
     assert.equal((await stat(created.cwd)).mode & 0o777, 0o700);
+    assert.equal(await readFile(join(created.cwd, "SOUL.md"), "utf8"), "# Who I am\nAda.\n");
     const reference = created.reference;
 
     // OptChat is on from the creating commit: an empty memory, read through the host.
@@ -144,30 +146,62 @@ test("a bot's conversation and memory are made in the host's own store, in its o
     assert.deepEqual(last.message, { role: "assistant", text: "📞 Call · 3 min · Talked about trips.", at: "2026-10-06T20:03:00.000Z" });
     await assert.rejects(peer.request("bot.call-record", { reference, record: { call: "x" } }), /record is not valid/u);
 
-    // Instructions, the directory and the memory's settings change in place; a directory must exist there.
+    // The directory and the memory's settings change in place; a directory must exist there.
     await mkdir(join(root, "bot-work"), { recursive: true });
-    await peer.request("bot.configure", { reference, instructions: null, cwd: "~/bot-work" });
+    await peer.request("bot.configure", { reference, cwd: "~/bot-work" });
     await peer.request("bot.memory.configure", { reference, settings: { name: "Ada Two", thinking: "low" } });
     await assert.rejects(peer.request("bot.configure", { reference, cwd: "~/missing" }), /No such directory on the remote/u);
     assert.deepEqual(await peer.request("bot.directory", { cwd: "~/bot-work" }), { cwd: join(root, "bot-work") });
     await assert.rejects(peer.request("bot.directory", { cwd: "bot-work" }), /absolute or start with ~\//u);
 
     // A bot that names a directory works there; one that does not exist creates nothing.
-    const placed = await peer.request<{ reference: string; cwd: string }>("bot.create", { botId: "bot-placed", memory: { name: "Placed" }, cwd: "~/bot-work" });
+    const placed = await peer.request<{ reference: string; cwd: string }>("bot.create", { botId: "bot-placed", memory: { name: "Placed" }, cwd: "~/bot-work", soul: "# Who I am\nPlaced." });
     assert.equal(placed.cwd, join(root, "bot-work"));
     assert.notEqual(placed.reference, reference);
+    // It still has its home, and SOUL.md lives there, never in the directory chosen for it.
+    const placedHome = join(host.paths.dataDir, "bots", "bot-placed");
+    assert.equal(await readFile(join(placedHome, "SOUL.md"), "utf8"), "# Who I am\nPlaced.\n");
+    assert.equal(existsSync(join(root, "bot-work", "SOUL.md")), false);
     await assert.rejects(peer.request("bot.create", { botId: "bot-lost", memory: { name: "Lost" }, cwd: "~/missing" }), /No such directory on the remote/u);
     await assert.rejects(peer.request("bot.create", { botId: "bot-bad", memory: { name: "Bad" }, model: "nobody/none" }), /Unknown model: nobody\/none/u);
     assert.equal(existsSync(join(host.paths.dataDir, "bots", "bot-bad")), false, "a refused create leaves no folder behind");
 
-    // The folder the host made goes only while empty: a bot's files never do.
-    await writeFile(join(created.cwd, "notes.md"), "kept");
-    assert.deepEqual(await peer.request("bot.remove-home", { botId: "bot-ada" }), { removed: false });
-    assert.equal(existsSync(join(created.cwd, "notes.md")), true);
-    await peer.request("bot.create", { botId: "bot-empty", memory: { name: "Empty" } });
-    assert.deepEqual(await peer.request("bot.remove-home", { botId: "bot-empty" }), { removed: true });
-    assert.equal(existsSync(join(host.paths.dataDir, "bots", "bot-empty")), false);
-    assert.deepEqual(await peer.request("bot.remove-home", { botId: "bot-never" }), { removed: false });
+    // SOUL.md read and written there: replaced atomically, removed when empty, within its limit, by a bot id only.
+    await peer.request("bot.soul.write", { botId: "bot-placed", soul: "# Who I am\r\nPlaced, again.\n" });
+    assert.deepEqual(await peer.request("bot.soul.read", { botId: "bot-placed" }), { soul: "# Who I am\nPlaced, again." });
+    await peer.request("bot.soul.write", { botId: "bot-placed" });
+    assert.deepEqual(await peer.request("bot.soul.read", { botId: "bot-placed" }), { soul: null });
+    await assert.rejects(peer.request("bot.soul.write", { botId: "bot-placed", soul: "s".repeat(20_001) }), /at most 20000 characters/u);
+    await assert.rejects(peer.request("bot.soul.read", { botId: "../escape" }), /A bot id is required/u);
+    await peer.request("bot.home.prepare", { botId: "bot-prepared" });
+    assert.equal((await stat(join(host.paths.dataDir, "bots", "bot-prepared"))).mode & 0o777, 0o700);
+
+    // A deleted bot's home goes with everything in it, as the gateway removes its own; the directory it worked in stays.
+    await writeFile(join(created.cwd, "notes.md"), "the bot's own file");
+    await peer.request("bot.remove-home", { botId: "bot-ada", cwd: join(root, "bot-work") });
+    assert.equal(existsSync(created.cwd), false, "SOUL.md and every file in it");
+    await peer.request("bot.remove-home", { botId: "bot-placed", cwd: join(root, "bot-work") });
+    assert.equal(existsSync(placedHome), false);
+    assert.equal(existsSync(join(root, "bot-work")), true, "never the directory chosen for it");
+    // One chosen inside the home stays, and only SOUL.md goes.
+    await peer.request("bot.create", { botId: "bot-nested", memory: { name: "Nested" }, soul: "# Who I am\nNested." });
+    const nested = join(host.paths.dataDir, "bots", "bot-nested");
+    await mkdir(join(nested, "work"));
+    await writeFile(join(nested, "work", "file.md"), "kept");
+    await peer.request("bot.remove-home", { botId: "bot-nested", cwd: join(nested, "work") });
+    assert.deepEqual([existsSync(join(nested, "SOUL.md")), existsSync(join(nested, "work", "file.md"))], [false, true]);
+    // A link in a home's place is removed, never followed out of the bots directory.
+    const outside = join(root, "outside");
+    await mkdir(outside, { recursive: true });
+    await writeFile(join(outside, "keep.md"), "kept");
+    await symlink(outside, join(host.paths.dataDir, "bots", "bot-link"));
+    await peer.request("bot.remove-home", { botId: "bot-link" });
+    assert.deepEqual([existsSync(join(host.paths.dataDir, "bots", "bot-link")), existsSync(join(outside, "keep.md"))], [false, true]);
+    await peer.request("bot.remove-home", { botId: "bot-never" });
+    await assert.rejects(peer.request("bot.remove-home", { botId: "../bots" }), /A bot id is required/u);
+    // Its conversation forgotten: its memory is off and gone, so nothing reads it back.
+    await peer.request("bot.forget", { reference });
+    assert.equal(typeof (await peer.request<{ unavailable?: unknown }>("bot.memory.view", { reference })).unavailable, "string");
 
     // Only this store's references.
     await assert.rejects(peer.request("bot.memory.view", { reference: "/tmp/session.jsonl" }), /conversation reference is required/u);

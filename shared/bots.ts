@@ -1,6 +1,7 @@
 /**
  * Bots (HUI-18): named, persistent agents, each with one forever chat whose
- * memory is OptChat. Shared by the gateway, the `hui bot` CLI and the browser.
+ * memory is OptChat and whose persona is the SOUL.md it writes in its first
+ * conversation. Shared by the gateway, the `hui bot` CLI and the browser.
  * The chat itself is an ordinary Durable session (`BotRecord.sessionId`); the
  * session API drives it like any other.
  */
@@ -15,7 +16,8 @@ export const BOT_LIMITS = {
   handle: 32,
   title: 80,
   description: 500,
-  instructions: 20_000,
+  /** SOUL.md, in characters: what a bot's chat reads of it, and what `PUT …/soul` accepts. */
+  soul: 20_000,
   /** One `message_bot` message. */
   message: 20_000,
   /** `lastMessage.text`, a one-line preview. */
@@ -59,9 +61,8 @@ export type BotRecord = {
   /** Its role, one line. */
   title?: string;
   description?: string;
-  /** Standing instructions (persona): the chat's Durable `instructions`. */
-  instructions?: string;
-  /** Absolute working directory of its chat; on a worker, a directory there. */
+  /** Absolute working directory of its chat; on a worker, a directory there. Its persona is not here: it is SOUL.md in
+   * the bot's home folder, on the machine its chat runs on. */
   cwd: string;
   /**
    * The remote worker (Settings → Workers) its chat runs on, by id: its conversation and OptChat memory live in that
@@ -87,13 +88,17 @@ export type BotRecord = {
   updatedAt: string;
 };
 
-/** `POST /__hui/bots`. Without `handle`, one is derived from the name. */
+/** The name of a bot created without one; it asks the operator for a real one in its first conversation. */
+export const NEW_BOT_NAME = "New Bot";
+
+/** `POST /__hui/bots`. Without `name` the bot is `NEW_BOT_NAME`; without `handle`, one is derived from the name. */
 export type BotInput = {
   name: string;
   handle?: string;
   title?: string;
   description?: string;
-  instructions?: string;
+  /** SOUL.md for the new bot, at most 20,000 characters: it starts with this persona and skips the first conversation. */
+  soul?: string;
   /** Absolute or `~/`; absent: a new directory of its own in HUI's configuration (on a worker, in HUI's data directory there). */
   cwd?: string;
   /** A remote worker's id or exact name: the bot runs there. Only at creation. */
@@ -109,22 +114,50 @@ export type BotInput = {
 
 /**
  * `PATCH /__hui/bots/:id`: only what changes. `""` clears `title`,
- * `description`, `instructions`, `model`, `thinking`, `memoryModel` and
- * `memoryThinking` (a cleared `model` or `thinking` puts the chat back on what
- * a new chat gets: the gateway's default model and thinking level); an avatar
- * key set to `""` clears that key (`emoji: ""` switches the bot to its face,
- * `shape: ""` and `color: ""` back to the ones its id picks) and
- * `avatar: null` clears all three. A voice
- * `profile: ""`, `speed: null`, `language: ""` (back to Auto) or `live: ""`
- * (back to Settings' call voice) clears that key and `voice: null` clears them all.
+ * `description`, `model`, `thinking`, `memoryModel` and `memoryThinking`
+ * (a cleared `model` or `thinking` puts the chat back on what a new chat
+ * gets: the gateway's default model and thinking level); an avatar key set to
+ * `""` clears that key (`emoji: ""` switches the bot to its face, `shape: ""`
+ * and `color: ""` back to the ones its id picks) and `avatar: null` clears all
+ * three. A voice `profile: ""`, `speed: null`, `language: ""` (back to Auto) or
+ * `live: ""` (back to Settings' call voice) clears that key and `voice: null`
+ * clears them all. SOUL.md changes through `PUT /__hui/bots/:id/soul` instead.
  */
-export type BotPatch = Partial<Omit<BotInput, "avatar" | "voice" | "worker">> & { avatar?: BotAvatarPatch | null; voice?: BotVoicePatch | null };
+export type BotPatch = Partial<Omit<BotInput, "avatar" | "voice" | "soul" | "worker">> & { avatar?: BotAvatarPatch | null; voice?: BotVoicePatch | null };
 
 /** A change to a bot's look: given keys replace, `""` clears one. */
 export type BotAvatarPatch = { emoji?: string; color?: string; shape?: BotFaceShape | "" };
 
 /** A change to a bot's voice: given keys replace, `profile: ""`, `speed: null`, `language: ""` and `live: ""` clear one. */
 export type BotVoicePatch = { profile?: string; speed?: number | null; language?: VoiceLanguage | ""; live?: GptLiveVoice | "" };
+
+/** `GET` and `PUT /__hui/bots/:id/soul`: SOUL.md's text, `null` while the bot has none (its first conversation). */
+export type BotSoul = { soul: string | null };
+
+/** The persona file in each bot's home folder. */
+export const BOT_SOUL_FILE = "SOUL.md";
+
+/**
+ * The first line of the message HUI sends a new bot without a soul, so it speaks
+ * first: an ordinary user-role message (like a routine's), which the chat shows
+ * as a note ("<name> was created"), never as the operator's bubble.
+ */
+export const BOT_KICKOFF_MARKER = "[HUI bot created]";
+
+/** The kickoff message: the marker, the bot's name, and what HUI asks of it. */
+export function botKickoffText(name: string): string {
+  return [
+    BOT_KICKOFF_MARKER,
+    `name: ${name.replace(/\s+/gu, " ").trim()}`,
+    "HUI just created you. This note is from HUI, not the operator, who will read your chat when they open it. Write your opening message to them now (your greeting and first question, as your soul section says) and reply with that message only.",
+  ].join("\n");
+}
+
+/** The bot's name when `text` is a kickoff message (`""` if it names none); undefined for every other message. */
+export function botKickoffName(text: string): string | undefined {
+  if (text !== BOT_KICKOFF_MARKER && !text.startsWith(`${BOT_KICKOFF_MARKER}\n`)) return undefined;
+  return /^name: (.*)$/mu.exec(text)?.[1]?.trim() ?? "";
+}
 
 /** A bot chat's session status, as `SessionView.status` reports it. */
 export type BotSessionStatus = "idle" | "running" | "waiting" | "starting" | "error" | "reconnecting" | "disconnected";
@@ -156,6 +189,8 @@ export type BotView = Omit<BotRecord, "worker"> & {
   /** The remote worker its chat runs on, named as session views name it; absent: this machine. */
   worker?: { id: string; name: string };
   status: BotSessionStatus;
+  /** SOUL.md exists in its home folder; false while the bot has its first conversation. */
+  soul: boolean;
   /** The newest message of its chat, one line of at most 200 characters. */
   lastMessage?: BotLastMessage;
   /** A turn settled while nobody watched the chat. */

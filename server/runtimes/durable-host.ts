@@ -28,7 +28,7 @@ import { DurablePrompt, type PromptSettings } from "./durable-prompt.ts";
 import { huiDurableTools, type DurableToolInvoker } from "./durable-tools.ts";
 import type { Contribution, DurableExtensions, ExtensionHost } from "./durable-extensions.ts";
 import { OptChatManager, type OptChatTuning } from "./durable-optchat.ts";
-import { conversationBot, huiBotsExtensions } from "./durable-bots.ts";
+import { conversationBot, huiBotsExtensions, type BotSoulHost } from "./durable-bots.ts";
 import { invokeAgentTool } from "../agent-tools-bridge.ts";
 
 /** Durable APIs take a cancellation context; HUI's own calls are not scoped. */
@@ -181,6 +181,9 @@ export class DurableHost implements ExtensionHost {
   #bots: { section: Extension; tools: Extension };
   /** The `bots` section of a bot's chat; the gateway sets it, a worker host leaves it unset. */
   botSection: ((botId: string) => Promise<string | undefined>) | undefined;
+  /** Where bots' SOUL.md files are on this host, for the `soul` section; the gateway sets it (each bot's home folder in
+   * HUI's configuration), a host without one leaves the section out. */
+  botSouls: BotSoulHost | undefined;
   #models = new CurrentModels((options) => this.#requestEnv(options), (options) => this.#requestCallbacks(options));
   #registry: Registry = createRegistry();
   /** Each live session's PI extensions, by HUI session. */
@@ -239,7 +242,7 @@ export class DurableHost implements ExtensionHost {
     this.#lookupCaller = options.lookupCaller ?? registryCaller;
     const invoke = (conversationId: ConversationId, action: string, params: Record<string, unknown>) => this.#invokeAs(conversationId, action, params);
     this.#tools = huiDurableTools({ invoke });
-    this.#bots = huiBotsExtensions({ invoke, section: async (botId) => this.botSection?.(botId) });
+    this.#bots = huiBotsExtensions({ invoke, section: async (botId) => this.botSection?.(botId), souls: () => this.botSouls });
   }
 
   /** HUI's agent-tool handler, called as the HUI session bound to the conversation. */

@@ -3,19 +3,22 @@
  * chat runs here. Its conversation and OptChat memory live in the host's own
  * Durable store, so these reuse the gateway's adapters (`bot-conversations.ts`
  * and `bot-memory.ts`) against the host's DurableHost: a bot's conversation is
- * created here exactly as the gateway creates a local one, its persona, its
- * `hui.bot` document and OptChat in one commit. A bot's home is HUI's private
- * folder for it under the data directory here (`home(botId)`), as the gateway
- * keeps one under its configuration; a bot without a directory works there.
- * The bot itself (its record, routines, roster) stays with the gateway;
- * nothing here knows other bots.
+ * created here exactly as the gateway creates a local one, its `hui.bot`
+ * document and OptChat in one commit. Every bot has a home here, HUI's private
+ * folder for it under the data directory (`home(botId)`), as the gateway keeps
+ * one under its configuration: its SOUL.md lives there (`bot-souls.ts`, the
+ * gateway's own implementation and guard, on this directory), and a bot without
+ * a directory of its own works there. The bot itself (its record, routines,
+ * roster) stays with the gateway; nothing here knows other bots.
  */
-import { mkdir, rmdir, stat } from "node:fs/promises";
-import { isAbsolute, join } from "node:path";
+import { realpath, stat } from "node:fs/promises";
+import { isAbsolute, join, relative } from "node:path";
 import { BOT_LIMITS, BOT_THINKING_LEVELS, type BotMemoryStatus } from "../../shared/bots.ts";
 import { parseCallRecord } from "../../shared/calls.ts";
 import { durableBotConversations } from "../bot-conversations.ts";
 import { BotMemoryUnavailableError, optChatBotMemory, type BotMemorySettings } from "../bot-memory.ts";
+import { localBotSouls } from "../bot-souls.ts";
+import { normalizeSoul } from "../bots.ts";
 import type { DurableHost } from "../runtimes/durable-host.ts";
 import { durableConversationId } from "../runtimes/durable.ts";
 import { resolveWorkingDirectory } from "../working-directories.ts";
@@ -38,6 +41,8 @@ export type HostBotsOptions = {
   home: string;
   /** Where bots' homes go: `<data dir>/bots/<bot id>`. */
   botsDir: string;
+  /** The model a bot without one of its own starts on: Settings' primary model, as the gateway mirrors it here. */
+  primaryModel?: () => Promise<string | undefined>;
 };
 
 type Handler = (params: Record<string, unknown>) => Promise<unknown>;
@@ -86,9 +91,25 @@ function memorySettings(value: unknown): BotMemorySettings {
 /** The bots a gateway runs on this host: request handlers for each connected gateway, and the memories it watches. */
 export function hostBots(options: HostBotsOptions) {
   const memory = optChatBotMemory(options.durable);
-  const conversations = durableBotConversations(options.durable, memory);
-  /** A bot's home on this worker: HUI's private folder for it. */
+  const conversations = durableBotConversations(options.durable, memory, options.primaryModel ? { primaryModel: options.primaryModel } : {});
+  /** A bot's home on this worker: HUI's private folder for it, where its SOUL.md lives. */
   const home = (id: string) => join(options.botsDir, botId(id));
+  /** SOUL.md in those homes, with the gateway's guard: a deleted bot's home goes only when it really is that folder of
+   * this bots directory, and a link in its place is removed, never followed. */
+  const souls = localBotSouls(options.botsDir);
+  /** Each bot's name as its gateway last gave it (the create, then every `bots` section): a bot still called "New Bot"
+   * asks for a real one in its first conversation. */
+  const names = new Map<string, string>();
+
+  /** A directory chosen for the bot that lies inside its home here: deleting the home would take it along. */
+  const chosenInsideHome = async (id: string, cwd: unknown): Promise<boolean> => {
+    const folder = home(id);
+    if (typeof cwd !== "string" || !cwd.startsWith("/") || cwd === folder) return false;
+    const resolved = (path: string) => realpath(path).catch(() => path);
+    const [inside, root] = await Promise.all([resolved(cwd), resolved(folder)]);
+    const within = relative(root, inside);
+    return within === "" || (!within.startsWith("..") && !isAbsolute(within));
+  };
   /** Each gateway's watched memories, so their status reaches it as it changes. */
   const watches = new Map<Peer, Map<string, () => void>>();
 
@@ -124,44 +145,56 @@ export function hostBots(options: HostBotsOptions) {
   /** The handlers for one gateway's connection. */
   function handlers(peer: Peer): Record<string, Handler> {
     return {
-      /** Creates the bot's conversation in one commit, in the given directory or a private folder made for it. */
+      /**
+       * The bot's home (always: SOUL.md lives there, never in a directory chosen for the bot), SOUL.md when given, then
+       * its conversation in one commit, in the given directory or that home. A failure removes the home and SOUL.md
+       * again; a chosen directory lies outside the home and is never touched.
+       */
       "bot.create": async (params) => {
         const id = botId(params["botId"]);
         const settings = memorySettings(params["memory"]);
         const model = optionalModel(params["model"], "The bot's model");
         const thinking = optionalLevel(params["thinking"], "The thinking level");
-        const instructions = optionalText(params["instructions"], BOT_LIMITS.instructions, "The bot's instructions");
-        let created: string | undefined;
-        let cwd: string;
-        if (params["cwd"] !== undefined) cwd = await directory(params["cwd"]);
-        else {
-          created = home(id);
-          await mkdir(created, { recursive: true, mode: 0o700 });
-          cwd = created;
-        }
+        const soul = params["soul"] === undefined ? "" : normalizeSoul(params["soul"]);
+        const cwd = params["cwd"] === undefined ? home(id) : await directory(params["cwd"]);
+        await souls.prepare(id);
         try {
+          if (soul) await souls.write(id, soul);
           const reference = await conversations.create({
             botId: id, cwd,
             ...(model ? { model } : {}),
             ...(thinking ? { thinking } : {}),
-            ...(instructions ? { instructions } : {}),
             memory: settings,
           });
+          names.set(id, settings.name);
           return { reference, cwd };
         } catch (error) {
-          // Only the empty folder this request made goes.
-          if (created) await rmdir(created).catch(() => {});
+          await souls.remove(id).catch(() => {});
           throw error;
         }
       },
       "bot.directory": async (params) => ({ cwd: await directory(params["cwd"]) }),
+      /** A new working directory, from the conversation's next request: the only change a gateway makes here. */
       "bot.configure": async (params) => {
-        const instructions = params["instructions"] === null ? null : optionalText(params["instructions"], BOT_LIMITS.instructions, "The bot's instructions");
-        const cwd = params["cwd"] === undefined ? undefined : await directory(params["cwd"]);
-        await conversations.configure(reference(params["reference"]), {
-          ...(params["instructions"] !== undefined ? { instructions: instructions ?? null } : {}),
-          ...(cwd !== undefined ? { cwd } : {}),
-        });
+        await conversations.configure(reference(params["reference"]), { cwd: await directory(params["cwd"]) });
+        return {};
+      },
+      /** A deleted bot's conversation stops being a bot's chat, and its memory is turned off and deleted. */
+      "bot.forget": async (params) => {
+        await conversations.forget(reference(params["reference"]));
+        return {};
+      },
+      "bot.home.prepare": async (params) => {
+        await souls.prepare(botId(params["botId"]));
+        return {};
+      },
+      "bot.soul.read": async (params) => ({ soul: (await souls.read(botId(params["botId"]))) ?? null }),
+      /** Replaces SOUL.md atomically; none (or empty) removes it, which brings the first conversation back. */
+      "bot.soul.write": async (params) => {
+        const id = botId(params["botId"]);
+        const soul = params["soul"] === undefined || params["soul"] === null ? "" : normalizeSoul(params["soul"]);
+        if (soul) await souls.prepare(id);
+        await souls.write(id, soul || undefined);
         return {};
       },
       "bot.last-message": async (params) => {
@@ -174,10 +207,17 @@ export function hostBots(options: HostBotsOptions) {
         await conversations.writeCallRecord(reference(params["reference"]), record);
         return {};
       },
-      /** The bot's home, only while it is empty: the bot's files never go. */
+      /**
+       * A deleted bot's home with everything in it (SOUL.md and every file HUI or the bot put there), as the gateway
+       * removes its own (`localBotSouls.remove`): only the folder of this bots directory named by the bot's id, never
+       * through a link. When `cwd`, the directory the bot worked in, lies inside its home, only SOUL.md goes.
+       */
       "bot.remove-home": async (params) => {
-        const removed = await rmdir(home(String(params["botId"] ?? ""))).then(() => true, () => false);
-        return { removed };
+        const id = botId(params["botId"]);
+        if (await chosenInsideHome(id, params["cwd"])) await souls.write(id, undefined);
+        else await souls.remove(id);
+        names.delete(id);
+        return {};
       },
       "bot.memory.configure": async (params) => {
         await memory.configure(reference(params["reference"]), memorySettings(params["settings"]));
@@ -224,6 +264,12 @@ export function hostBots(options: HostBotsOptions) {
   return {
     handlers,
     home,
+    /** The bot's name as its gateway last gave it; undefined until one did since this host started. */
+    nameOf: (id: string): string | undefined => names.get(id),
+    /** What a gateway's `bots` section reply says the bot is called now. */
+    named(id: string, name: string): void {
+      if (ID.test(id) && name) names.set(id, name.slice(0, BOT_LIMITS.name));
+    },
     /** Ends every watch, as the host stops. */
     close(): void {
       for (const peer of [...watches.keys()]) detach(peer);

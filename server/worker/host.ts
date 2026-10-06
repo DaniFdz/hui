@@ -22,6 +22,8 @@ import { chmod, lstat, mkdir, readdir, readFile, realpath, rm, stat, unlink, wri
 import { hostname } from "node:os";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { registerAgentToolHandler, stopAgentToolBridge } from "../agent-tools-bridge.ts";
+import { operatorName } from "../bot-souls.ts";
+import { readHuiSettings } from "../hui-settings.ts";
 import { DurableHost } from "../runtimes/durable-host.ts";
 import { durableConversationId, startDurable } from "../runtimes/durable.ts";
 import { piRuntime } from "../runtimes/pi.ts";
@@ -164,7 +166,18 @@ export class WorkerHost {
     });
     // A bot's chat here lists the other bots as the gateway that owns them says.
     this.#durable.botSection = (botId) => this.#botSection(botId);
-    this.#bots = hostBots({ durable: this.#durable, home: paths.home, botsDir: join(paths.dataDir, "bots") });
+    this.#bots = hostBots({
+      durable: this.#durable, home: paths.home, botsDir: join(paths.dataDir, "bots"),
+      // A bot without a model of its own starts on Settings' primary model, as on the gateway.
+      primaryModel: async () => (await readHuiSettings()).models.primary || undefined,
+    });
+    // Its SOUL.md (or its first conversation) from its home here, and write_soul writes it there. The operator's name
+    // comes from the Settings the gateway mirrors here, as the gateway reads its own.
+    this.#durable.botSouls = {
+      home: (botId) => this.#bots.home(botId),
+      operator: async () => operatorName((await readHuiSettings()).profileName),
+      name: (botId) => this.#bots.nameOf(botId),
+    };
   }
 
   info(): HostInfo {
@@ -490,7 +503,9 @@ export class WorkerHost {
   async #botSection(botId: string): Promise<string | undefined> {
     for (const peer of [...this.#peers]) {
       if (peer.closed) continue;
-      const reply = await peer.request<{ section?: unknown }>("bot.section", { botId }, BOT_SECTION_TIMEOUT_MS).catch(() => undefined);
+      const reply = await peer.request<{ section?: unknown; name?: unknown }>("bot.section", { botId }, BOT_SECTION_TIMEOUT_MS).catch(() => undefined);
+      // Its name with it: the soul section asks a bot still called "New Bot" for a real one.
+      if (typeof reply?.name === "string") this.#bots.named(botId, reply.name);
       if (typeof reply?.section === "string") return reply.section;
     }
     return undefined;

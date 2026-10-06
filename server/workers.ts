@@ -543,6 +543,14 @@ export class WorkerService {
     return () => this.#connectedListeners.delete(listener);
   }
 
+  #removedListeners = new Set<(workerId: string) => void>();
+
+  /** A worker deleted from Settings → Workers, once it is gone from the list. */
+  onRemoved(listener: (workerId: string) => void): () => void {
+    this.#removedListeners.add(listener);
+    return () => this.#removedListeners.delete(listener);
+  }
+
   #stoppedListeners = new Set<(workerId: string) => void>();
 
   /** HUI stopped trying to reach a worker: a disconnect, a removal, or a
@@ -654,6 +662,7 @@ export class WorkerService {
     await writeWorkers(workers.filter((item) => item.id !== id));
     this.#status.delete(id);
     this.#changed();
+    for (const listener of this.#removedListeners) listener(id);
   }
 
   /** The live connection, opening (and if needed installing) it first. */

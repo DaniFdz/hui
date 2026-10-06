@@ -9,13 +9,16 @@
  *   GET    /__hui/bots/:id                   { bot }
  *   PATCH  /__hui/bots/:id                   edit ({ bot })
  *   DELETE /__hui/bots/:id                   archive ({ bot }); nothing is deleted
- *   DELETE /__hui/bots/:id?permanent=1       delete an archived bot for good ({ ok: true }); 409 while active
+ *   DELETE /__hui/bots/:id?permanent=1       delete a bot for good, active or archived ({ ok: true }; queued: true
+ *                                            while its worker is offline: what it left there goes at its next connection)
  *   POST   /__hui/bots/:id/restore           { bot }
  *   POST   /__hui/bots/:id/messages          prompt or follow-up; 202 { status } or, with wait, 200 { status, reply?, … }
  *   POST   /__hui/bots/:id/stop              stop the current turn ({ bot })
  *   GET    /__hui/bots/:id/memory            { status, view }
  *   GET    /__hui/bots/:id/memory/zoom?id=&n= { text }
  *   GET    /__hui/bots/:id/memory/html       the OptChat browse page (text/html); also a same-origin link's page load
+ *   GET    /__hui/bots/:id/soul              { soul } (SOUL.md's text, null while the bot has none)
+ *   PUT    /__hui/bots/:id/soul              { soul } replaces SOUL.md atomically; "" removes it (the first conversation again)
  *
  * `GET /__hui/bots/events` streams the list and is served by `hui.ts`.
  */
@@ -30,8 +33,8 @@ export const BOTS_ROUTE = "/__hui/bots";
 export const BOTS_EVENTS_ROUTE = "/__hui/bots/events";
 /** The memory page, which a link opens: `hui.ts` also accepts a same-origin page load there (docs/api.md#bots). */
 export const BOT_MEMORY_PAGE = /^\/__hui\/bots\/[A-Za-z0-9_-]{1,100}\/memory\/html$/u;
-const ROUTE = /^\/__hui\/bots(?:\/([A-Za-z0-9_-]{1,100})(?:\/(restore|messages|stop|memory|memory\/zoom|memory\/html))?)?$/u;
-/** Instructions reach 20,000 characters, up to four bytes each. */
+const ROUTE = /^\/__hui\/bots(?:\/([A-Za-z0-9_-]{1,100})(?:\/(restore|messages|stop|memory|memory\/zoom|memory\/html|soul))?)?$/u;
+/** SOUL.md reaches 20,000 characters, up to four bytes each, and JSON may escape them. */
 const BOT_BODY_BYTES = 256 * 1024;
 /** Messages may carry attachments, like prompts. */
 const MESSAGE_BODY_BYTES = 24 * 1024 * 1024;
@@ -136,12 +139,23 @@ export function createBotRoutes(deps: Deps) {
           // Without permanent=1 a DELETE archives, the step that can be undone.
           const permanent = request.query.get("permanent");
           if (permanent === "1" || permanent === "true") {
-            await service.delete(id);
-            return { status: 200, body: { ok: true } };
+            // A bot on an offline worker goes at once; what it left there goes at the worker's next connection.
+            const { queued } = await service.delete(id);
+            return { status: 200, body: { ok: true, ...(queued ? { queued: true } : {}) } };
           }
           return { status: 200, body: { bot: await service.archive(id) } };
         }
         return notAllowed;
+      }
+      if (action === "soul") {
+        if (method === "GET") return { status: 200, body: { soul: await service.soul(id) } };
+        if (method !== "PUT") return notAllowed;
+        const body = await json(request, BOT_BODY_BYTES);
+        if (typeof body !== "object" || body === null || Array.isArray(body)) throw new BotInputError("A soul must be an object: { soul }.");
+        const unknown = Object.keys(body).filter((key) => key !== "soul");
+        if (unknown.length) throw new BotInputError(`Unknown soul field: ${unknown.join(", ")}.`);
+        if (!("soul" in body)) throw new BotInputError("soul is required: SOUL.md's text, or \"\" to remove it.");
+        return { status: 200, body: { soul: await service.setSoul(id, (body as { soul: unknown }).soul) } };
       }
       if (action === "restore" || action === "stop" || action === "messages") {
         if (method !== "POST") return notAllowed;

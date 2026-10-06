@@ -1006,10 +1006,14 @@ the transcript a frame with that `seq` left behind, `{entries,total}`),
 `put-file`, `get-file` and `sync-plan`/`sync-put`/`sync-commit`. A host whose
 `hello` lists the `bots` feature also answers the bot operations of
 [bots on a worker](#bots-on-a-worker), against its own store: `bot.create
-{botId,cwd?,model?,thinking?,instructions?,memory}` (`{reference,cwd}`),
-`bot.directory {cwd}`, `bot.configure {reference,instructions?,cwd?}`,
-`bot.last-message {reference}`, `bot.call-record {reference,record}`,
-`bot.remove-home {botId}` (the bot's home, the private folder it made for it, only while empty),
+{botId,cwd?,model?,thinking?,soul?,memory}` (`{reference,cwd}`; it always makes the
+bot's home, and SOUL.md there when `soul` is given), `bot.directory {cwd}`,
+`bot.configure {reference,cwd}`, `bot.forget {reference}`, `bot.last-message
+{reference}`, `bot.call-record {reference,record}`, `bot.home.prepare {botId}`,
+`bot.soul.read {botId}` (`{soul}`, null without one), `bot.soul.write {botId,soul?}`
+(without `soul` it removes SOUL.md), `bot.remove-home {botId,cwd?}` (the bot's
+home with everything in it, under the gateway's own guard; only SOUL.md when
+`cwd`, the bot's working directory, lies inside it),
 `bot.memory.configure|status|view|zoom|html {reference,…}` (a memory this store
 cannot read answers `{unavailable}`) and `bot.memory.watch {references}`, after
 which it pushes `bot.memory.status {reference,status}` frames to that gateway
@@ -1114,8 +1118,7 @@ type BotRecord = {
   name: string;                // 1–60, one line
   title?: string;              // role, ≤ 80, one line
   description?: string;        // ≤ 500
-  instructions?: string;       // persona, ≤ 20,000: the chat's Durable instructions
-  cwd: string;                 // absolute existing directory (on a worker, a directory there)
+  cwd: string;                 // absolute existing directory (on a worker, a directory there); the persona is not here but SOUL.md (below)
   worker?: string;             // the remote worker (Settings → Workers) the chat runs on, by id; set at creation, never changed
   model?: string;              // "provider/id" of the chat
   thinking?: string;
@@ -1133,6 +1136,7 @@ type BotRecord = {
 type BotView = Omit<BotRecord, "worker"> & {
   worker?: { id: string; name: string }; // as SessionView names it
   status: SessionStatus;       // the chat's session status
+  soul: boolean;               // SOUL.md exists in the bot's home folder; false while it has its first conversation
   lastMessage?: { role: "user" | "assistant"; text: string /* one line, ≤ 200 */; at: string };
   unread: boolean;             // the chat's session record is unread
   memory?: BotMemoryStatus;    // absent when the gateway cannot read the chat's memory
@@ -1149,6 +1153,8 @@ type BotMemoryStatus = {
 };
 
 type BotMemoryUsage = { calls: number; input: number; output: number; cacheRead: number; cacheWrite: number; cost: number }; // tokens; cost in USD as providers report it
+
+type BotSoul = { soul: string | null }; // GET/PUT /__hui/bots/:id/soul: SOUL.md's text, null while there is none
 ```
 
 A bot's memory is [OptChat](optchat.md): its chat's conversation enables it in
@@ -1176,30 +1182,36 @@ bot's status, its open chat and its call.
 `model` and `thinking` in a view are the chat's own (its session record), which
 the session's model controls may change at any time; `PATCH` sets both, and
 `""` clears them: the live chat switches (`setModel`/`setThinking`) to what a
-new chat in the bot's directory gets — PI's default model there, else the first
-available one, and PI's default thinking level fitted to that model, else
-`off` — and neither the bot nor its chat's session record keeps a choice, so
-views omit them, as for a bot created without one.
+new bot's chat in its directory gets — Settings' primary model
+(`settings.models.primary`, as for a session started without a choice; a
+primary this gateway cannot resolve is a 400), else PI's default model there,
+else the first available one, and PI's default thinking level fitted to that
+model, else `off` — and neither the bot nor its chat's session record keeps a
+choice, so views omit them, as for a bot created without one.
 `lastMessage` comes from the live transcript, or from one read of the Durable
 store for a chat nothing has opened since the gateway started.
 
-**Creation** makes the Durable conversation first, in one commit: its agent
-(`cwd`, model, thinking clamped to the model, and the persona as Durable
-`instructions`), a `hui.bot` conversation document naming the bot, and OptChat
-through the `BotMemory` port (`server/bot-memory.ts`; name = bot name, model and
-thinking = `memoryModel`/`memoryThinking`). No prompt can reach the chat before
-these exist. Then the session record (with `bot` and `piSessionFile:
-durable:<id>`) is registered and started, then the bot record written. A failed
-step removes what the earlier ones wrote: the directory it created (only when
-empty) and the session record; an unused empty conversation can remain in the
-store, never addressed. Without `cwd` the bot gets `CONFIG_DIR/bots/<id>`,
-mode 0700.
+**Creation** first makes the bot's home folder, `CONFIG_DIR/bots/<id>` (mode
+0700), for every bot, and writes `soul` there as SOUL.md when it is given.
+Without `cwd` the home folder is also its working directory. Then the Durable
+conversation, in one commit: its agent (`cwd`; the bot's model, else Settings'
+primary model, else PI's default, as above; thinking clamped to the model; no
+instructions), a `hui.bot` conversation document naming the bot, and
+OptChat through the `BotMemory` port (`server/bot-memory.ts`; name = bot name,
+model and thinking = `memoryModel`/`memoryThinking`). No prompt can reach the
+chat before these exist. Then the session record (with `bot` and
+`piSessionFile: durable:<id>`) is registered and started, then the bot record
+written. A failed step removes what the earlier ones wrote: SOUL.md, the
+folders it created (only when empty) and the session record; an unused empty
+conversation can remain in the store, never addressed. A bot created without
+`soul` speaks first: once it exists, HUI starts its first turn in the
+background (below); the create does not wait for it.
 
 ### Routes
 
 All under `/__hui/bots`, with the usual `x-hui` guard (the memory page also
-accepts a same-origin page load, below). `:id` is a bot's id or handle. Bodies are JSON (create and edit up to 256 KiB, messages up to 24 MB);
-unknown fields are refused. Errors use the common `{ "error" }` shape: 400 for
+accepts a same-origin page load, below). `:id` is a bot's id or handle. Bodies are JSON (create, edit and soul up to 256 KiB, messages up to 24 MB);
+unknown fields are refused, and `instructions` with a message saying the persona is SOUL.md now. Errors use the common `{ "error" }` shape: 400 for
 input (including an unknown model or a missing directory), 404 for an unknown
 bot, 409 when the bot's state refuses the request, 503 when the gateway cannot
 read the chat's memory or the bot's worker is offline, 500 for storage
@@ -1208,16 +1220,18 @@ failures; other methods answer 405.
 | Route | Success | Behavior |
 | --- | --- | --- |
 | `GET /__hui/bots[?archived=1]` | 200 `{ bots: BotView[] }` | Active bots, or with `archived=1` only archived ones, sorted by name |
-| `POST /__hui/bots` | 201 `{ bot }` | `BotInput`: `name` plus the optional record fields, `handle` and `worker` (a worker's id or name: [the bot runs there](#bots-on-a-worker)). Without `handle` one is derived from the name (`-2`, `-3`… on collision); an explicit handle that is taken is 409 |
+| `POST /__hui/bots` | 201 `{ bot }` | `BotInput`: the record fields, all optional (`{}` is enough), `handle`, `worker` (a worker's id or name: [the bot runs there](#bots-on-a-worker), with its home folder and SOUL.md) and `soul` (SOUL.md's text, ≤ 20,000 characters after trimming; given, the bot skips its first conversation and no kickoff runs). Without `name` the bot is `New Bot` (`NEW_BOT_NAME`), which its first conversation replaces (`set_profile`). Without `handle` one is derived from the name (`-2`, `-3`… on collision); an explicit handle that is taken is 409 |
 | `GET /__hui/bots/:id` | 200 `{ bot }` | |
-| `PATCH /__hui/bots/:id` | 200 `{ bot }` | Only what changes (`worker` is 400: a bot stays on the machine it was created on); `""` clears `title`, `description`, `instructions`, `model`, `thinking` (back to the gateway defaults, above), `memoryModel` (also as `utilityModel`, the same field; giving both with different values is 400), `memoryThinking` (back to Settings' utility model, then the chat's model, and OptChat's default level); an avatar key `""` clears it (`emoji: ""` switches the bot to its face, `shape: ""` and `color: ""` go back to the ones its id picks), `avatar: null` clears all three (an unknown `shape` or a color that is not `#rrggbb` is 400); a voice `profile: ""`, `speed: null`, `language: ""` (back to Auto) or `live: ""` (back to Settings' call voice) clears that key, `voice: null` clears them all (other voice keys are 400, and so is a `language` that is not one of Whisper's codes, a name such as `Spanish` included, or a `live` that is not one of GPT-Live's voices). The handle changes only when given (409 if taken). `instructions` reconfigures the conversation; `model`/`thinking` go through the live chat (`setModel`/`setThinking`); `name` and the memory fields reconfigure OptChat, `name` also the session title; `cwd` is accepted only while the chat is idle (409 otherwise) and boots its runtime again there; a turn that starts during that edit (a routine, say) makes it answer 409 after the conversation and the chat's session record already moved, with the bot record still naming the old directory, so repeat the edit once the bot is idle to finish it. Archived bots are 409 |
+| `PATCH /__hui/bots/:id` | 200 `{ bot }` | Only what changes (`worker` is 400: a bot stays on the machine it was created on); `""` clears `title`, `description`, `model`, `thinking` (back to the gateway defaults, above), `memoryModel` (also as `utilityModel`, the same field; giving both with different values is 400), `memoryThinking` (back to Settings' utility model, then the chat's model, and OptChat's default level); an avatar key `""` clears it (`emoji: ""` switches the bot to its face, `shape: ""` and `color: ""` go back to the ones its id picks), `avatar: null` clears all three (an unknown `shape` or a color that is not `#rrggbb` is 400); a voice `profile: ""`, `speed: null`, `language: ""` (back to Auto) or `live: ""` (back to Settings' call voice) clears that key, `voice: null` clears them all (other voice keys are 400, and so is a `language` that is not one of Whisper's codes, a name such as `Spanish` included, or a `live` that is not one of GPT-Live's voices). `soul` is refused (400): SOUL.md has its own route. A given handle replaces the old one (409 if taken); a new `name` without one re-derives the handle while it is still the automatic one, derived from the old name (kept unique), and a handle chosen before stays. `model`/`thinking` go through the live chat (`setModel`/`setThinking`); `name` and the memory fields reconfigure OptChat, `name` also the session title; `cwd` is accepted only while the chat is idle (409 otherwise) and boots its runtime again there; a turn that starts during that edit (a routine, say) makes it answer 409 after the conversation and the chat's session record already moved, with the bot record still naming the old directory, so repeat the edit once the bot is idle to finish it. Archived bots are 409 |
 | `DELETE /__hui/bots/:id` | 200 `{ bot }` | Archives, deleting nothing: marks the bot, disables every Automation task aimed at its chat, withdraws messages still in HUI's follow-up queue for it, stops a running turn and archives the chat's session record. Idempotent |
-| `DELETE /__hui/bots/:id?permanent=1` | 200 `{ ok: true }` | Deletes an archived bot for good; an active bot is 409 (archive it first). Removes every Automation task aimed at its chat, then the chat's session record as `DELETE /__hui/sessions/:id` does (its runtime stops; the conversation and its memory stay in the Durable store, which HUI no longer opens), then the bot. A directory HUI made for the bot goes only while empty: the bot's files never do. Each step can run again, so deleting again finishes an interrupted attempt; afterwards the bot is 404 |
+| `DELETE /__hui/bots/:id?permanent=1` | 200 `{ ok: true }`, plus `queued: true` for a bot whose worker is offline ([then](#bots-on-a-worker) its memory and home there go at the worker's next connection) | Deletes a bot for good, active or archived: withdraws messages still in HUI's follow-up queue for it and stops a running turn; its conversation stops being a bot's chat and its memory goes, in one commit (the `hui.bot` document cleared, OptChat turned off) and then OptChat's files; then every Automation task aimed at its chat, the chat's session record as `DELETE /__hui/sessions/:id` does (its runtime stops), its home folder `CONFIG_DIR/bots/<id>` with everything in it (SOUL.md and every file HUI or the bot put there; only `<BOTS_DIR>/<id>` itself, resolved, never following a link out), then the bot. A working directory the operator chose is never touched (when it lies inside the home folder, only SOUL.md goes). pi-durable cannot delete a conversation yet, so its raw log stays in the Durable store, where nothing reads it back. Each step can run again, so deleting again finishes an interrupted attempt; afterwards the bot is 404 |
 | `POST /__hui/bots/:id/restore` | 200 `{ bot }` | Unarchives the bot and its session record; routines stay disabled |
 | `POST /__hui/bots/:id/messages` | 202 or 200 | See below |
 | `POST /__hui/bots/:id/stop` | 200 `{ bot }` | Aborts the chat's running turn; an idle bot is unchanged; 409 while its chat starts |
 | `GET /__hui/bots/:id/memory` | 200 `{ status: BotMemoryStatus, view: string }` | The rendered current view (`<chat>`, one `id+n\|text` line per part, `</chat>`), read once the memory has caught up with the chat; the status counts the same messages |
 | `GET /__hui/bots/:id/memory/zoom?id=&n=` | 200 `{ text }` | OptChat's `zoom(id, n)` output: the two lines under line `id+n`, `n = 1` the whole message (`id+0\|kind: text`), or its own "No line id+n."; `id`/`n` must be whole numbers (400) |
+| `GET /__hui/bots/:id/soul` | 200 `BotSoul` | SOUL.md's text, trimmed (at most 256 KiB is read), or `null` while the bot has none. Archived bots too |
+| `PUT /__hui/bots/:id/soul` | 200 `BotSoul` | `{ soul }`, nothing else: text of at most 20,000 characters after trimming (line ends become `\n`), written atomically (a temporary file and a rename, mode 0600) in the bot's home folder; `""` removes SOUL.md, which brings the first conversation back at the bot's next turn (no kickoff). Answers what was stored. The bot's `updatedAt` moves, so every screen reads it again. Archived bots are 409 |
 | `GET /__hui/bots/:id/memory/html` | 200 `text/html` | OptChat's self-contained browse page (the view, every message, each tree level; everything escaped). A link opens it, so like an attachment it takes `x-hui: 1` or a browser-attested `sec-fetch-site: same-origin` page load; any other request is 403 (cross-site, same-site, `none`, none at all). Served with `content-security-policy: default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'` (inline styles only, never framed), `nosniff`, `cache-control: no-store` and `cross-origin-resource-policy: same-origin` |
 
 `POST /__hui/bots/:id/messages` takes `{ text, attachments?, wait?: boolean,
@@ -1247,12 +1261,97 @@ event: bots
 data: {"revision":12,"ids":["<id>","<id>"],"upserts":[/* BotView[] */]}
 ```
 
+### Soul and the first conversation
+
+A bot's persona is its **SOUL.md**, in its home folder `CONFIG_DIR/bots/<id>`,
+never in a working directory the operator chose. The gateway's `hui-bots`
+extension renders it as the prompt section `soul`, the last section, after
+`bots`, where a persona goes (OptChat's prompt points to the user's
+instructions at its end): the file's absolute path; that the bot follows it
+and, when the operator asks for a change, rewrites it with `write_soul` (the
+whole file, at most 20,000 characters) and says what it changed; then the file. It is read
+from disk on every request of the host that runs the conversation, through
+the resolver that host sets (`DurableHost.botSouls`: the gateway's resolves
+each bot's home folder; a host without one leaves the section out), so it is
+byte-identical while the file is. Past 20,000 characters it is cut, with a
+note giving the file's length. Bots never use Durable `instructions`.
+
+While SOUL.md does not exist (or holds only whitespace), the section is the
+**first conversation** instead, in the spirit of OpenClaw's `BOOTSTRAP.md`:
+the operator's request always comes first (a ritual, not a gate); otherwise the
+bot greets the operator, by Settings' profile name when it is set (not the
+default), and finds out over a few messages what to look after, how to work and
+sound, how proactive to be and when to message them, and its boundaries, one or
+two questions at a time, never a questionnaire. A bot still called `New Bot`
+first asks what the operator wants to call it and saves the answer with
+`set_profile` (the host's resolver gives the section the bot's name). Messages from routines (`[routine: …]`) and
+other bots (`[from @…]`) are not the operator. It writes down only what the
+operator said or agreed to, asking about the rest (often its boundaries) rather
+than guessing. Once it knows enough, usually after a few exchanges, it saves
+SOUL.md with `write_soul` (suggested sections: who I am, what I look after,
+how I work, when I reach out, boundaries) and, in the same reply, says so,
+gives a short summary and says how to change it (the Soul tab of its panel, or
+telling it). Those last details come only in `write_soul`'s result, once the
+file is written, so they stay out of SOUL.md.
+
+`set_profile({ name?, title? })`, beside it, changes the calling bot's own name
+and title in HUI under `PATCH`'s rules (so a derived handle follows the name). It
+goes through HUI's agent-tool handler, as `message_bot` does, and is refused in a
+turn that a routine or another bot started (its run's originating input,
+`runPrompt`, starts with `[routine: ` or `[from @`): only the operator names a
+bot.
+
+`write_soul({ soul })` lives in `hui-bots-tools` beside `message_bot`, so only
+bots' chats are offered it. It replaces the whole SOUL.md: the text is trimmed
+(line ends become `\n`), must not be empty and holds at most 20,000
+characters; it is written atomically (a temporary file and a rename, mode
+0600) in the bot's home folder through the same host resolver as the section,
+so a bot needs no file tools for its own soul and the next request already
+carries it. Its result says what the bot's reply owes the operator: after the
+first save (there was no SOUL.md), that this ends the first conversation, so the
+reply says the soul was saved, sums it up and says how to change it; after a
+later one, to say what changed. Its replay is safe (the same soul written again
+is the same file).
+Refusals (empty, too long, not a bot's chat, a host without a resolver) are
+tool errors the model reads.
+
+The **kickoff**: right after a create without `soul`, the gateway delivers one
+message to the new chat, as a prompt (like a routine's, so the run is
+recoverable and a message arriving meanwhile queues behind it):
+```text
+[HUI bot created]
+name: <bot name>
+HUI just created you. This note is from HUI, not the operator, who will read your chat when they open it. Write your opening message to them now (your greeting and first question, as your soul section says) and reply with that message only.
+```
+Clients show a user message whose first line is exactly `[HUI bot created]`
+as a note (`<name> was created`), never as the operator's message; previews
+(`lastMessage`) skip it, and `hui bot chat` prints `· <name> was created`.
+A run that fails shows in the chat like any run's error; a chat that cannot
+start is reported as the diagnostic `bot_kickoff_failed`.
+
+The `soul` flag of a view is read once, then again only when the chat's
+status or session record changed (a settled turn, in which the bot may have
+written SOUL.md), every 10 seconds (a hand edit) or right after HUI wrote it:
+the events stream recomputes the list every second. SOUL.md is reached through
+the `BotSouls` port of `server/bot-service.ts` (`localBotSouls` in
+`server/bot-souls.ts`), so a bot that runs elsewhere can route it.
+
+Bots from before SOUL.md had their persona as `instructions` in `bots.json` and
+in their conversation's Durable instructions. At each start the gateway gives
+every bot its home folder and, for each record still carrying `instructions`,
+writes them as SOUL.md (only while it has none), clears the conversation's
+Durable instructions, then drops the field: in that order, so a restart in
+between finishes the rest, and a bot that fails is retried at the next start
+(diagnostic `bot_soul_migration_failed`). Until then `bots.json` keeps the
+field through every write. No turn starts: a bot with neither has its first
+conversation at its next turn.
+
 ### A forever chat
 
 Bot chats refuse what would reset, shorten, fork or delete them, with 409 and a
 message naming the bot: `POST /__hui/sessions/:id/clear`, `POST …/compact`,
-`POST …/rewind` and `DELETE /__hui/sessions/:id` (archive the bot instead; an
-archived bot can then be deleted with `DELETE /__hui/bots/:id?permanent=1`).
+`POST …/rewind` and `DELETE /__hui/sessions/:id` (archive the bot instead, or
+delete it with `DELETE /__hui/bots/:id?permanent=1`).
 Model and thinking changes stay allowed. The prompt route already refuses
 `/clear` and `/compact` text for every session.
 
@@ -1281,15 +1380,15 @@ leaves them disabled.
 ### Bot-to-bot messages
 
 Every gateway's default Durable selection includes the `hui-bots` extension,
-whose prompt section `bots` reads the conversation's `hui.bot` document and
-renders nothing without it. The tool `message_bot({ to, message })` (`to` ≤ 100,
-`message` ≤ 20,000 characters) lives in a second extension, `hui-bots-tools`,
+whose prompt sections `bots` and `soul` (above) read the conversation's
+`hui.bot` document and render nothing without it. The tool `message_bot({ to, message })` (`to` ≤ 100,
+`message` ≤ 20,000 characters) lives in a second extension, `hui-bots-tools` (with `write_soul` and `set_profile`),
 installed but selected only by a bot's chat (`DurableSession.applyTools`), and
 refuses in any conversation without the document. Every other conversation's
 offered tools, system prompt and stored agent are unchanged. The section lists
 the bot itself and the other non-archived bots (handle, name, title, ordered by
 handle) and how to use the tool; it is byte-identical while that roster is
-unchanged.
+unchanged. The same extension carries `write_soul` (above).
 
 `message_bot` reaches HUI's agent-tool handler as the calling chat's session,
 which must be a non-archived bot's chat. Targets resolve by handle (`@`
@@ -1320,16 +1419,31 @@ Creating one needs a live connection to the worker (503 naming it otherwise:
 create the bot again."). The gateway asks the worker's host to create the
 conversation there (`bot.create`), in the same one commit a local bot gets: the
 host runs `bot-conversations.ts` and `bot-memory.ts` against its own
-`DurableHost`. Without `cwd` the host makes a private folder for the bot,
-`<worker data dir>/bots/<id>` (mode 0700; usually
-`~/.local/share/hui-worker/bots/<id>`); a given `cwd` must be absolute or `~/`
-(400 here otherwise) and exist there (400 with the host's message). The
+`DurableHost`. The host always makes the bot's home there, HUI's private folder
+for it, `<worker data dir>/bots/<id>` (mode 0700; usually
+`~/.local/share/hui-worker/bots/<id>`), with SOUL.md when `soul` is given, and the
+bot works in it unless it names a `cwd`, which must be absolute or `~/` (400 here
+otherwise) and exist there (400 with the host's message); SOUL.md never goes in
+that directory. A failure there removes the home again. The
 gateway then registers the chat through `createSession` with that `worker`, so
 the chat is an ordinary remote Durable session (`durable:N` names a
 conversation in the worker's store). The model and its defaults are still
 checked and chosen here; a `PATCH` of `cwd` is checked on the worker and the
-conversation is reconfigured there, as are the instructions and the memory's
-settings.
+conversation is reconfigured there, as are the memory's settings.
+
+Its SOUL.md is in that home on the worker. The host gives its `soul` prompt
+section the same resolver the gateway gives its own (`BotSoulHost`: the home, the
+operator's name from the Settings the gateway mirrors there, and the bot's name
+as the gateway last gave it, at creation and with each `bots` section), so the
+first conversation and `write_soul` work there, and `GET`/`PUT
+/__hui/bots/:id/soul` and calls read and write it through the host
+(`bot.soul.read`, `bot.soul.write`); 503 naming the worker while it is offline. A
+bot created without a soul has its first turn started through its remote
+session, like any message. `set_profile` reaches this gateway through the
+agent-tool bridge as the bot's session, so the origin check reads that session's
+`runPrompt` here, as for a bot here. A remote bot's `soul` in a list is what the
+worker last said, read in the background when its chat's state changes (known
+at once after a create or a `PUT`), never a request per list.
 
 The host's `bots` prompt section comes from this gateway: the host asks it
 (`bot.section`), which answers only for a bot that runs on that worker, so a
@@ -1357,11 +1471,17 @@ busy when this gateway connected keeps serving its sessions) is refused with
 409 naming it until it is reconnected idle.
 
 Routines, queued messages, steering, questions, Stop, archive and restore go
-through the session paths a remote session uses. Deleting removes the chat's
-session record, which stops its remote process when HUI is connected, and asks
-the host to remove the bot's home there (the private folder it made for it),
-only while empty; with the worker offline that folder stays there. The conversation and its memory stay in
-the worker's store. A call's helper reads the remote memory's view and the
+through the session paths a remote session uses. Deleting asks the host to
+forget the conversation (`bot.forget`: its memory is turned off and deleted
+there) and to remove the bot's home with everything in it (`bot.remove-home`,
+with the bot's working directory, so a chosen one inside the home keeps all
+but SOUL.md), then removes the chat's session record and the bot. With the
+worker offline the bot goes at once all the same (`{ ok: true, queued: true }`):
+those two steps wait on this machine, in `~/.config/hui/bot-cleanup.json`
+(owner-only), and run at the worker's next connection; one the worker refuses
+then stays for the next, and removing the worker drops them. With the worker
+connected, a refusal fails the delete, which can run again. The raw
+conversation stays in the worker's store, which cannot delete one. A call's helper reads the remote memory's view and the
 call's record is written to the remote conversation (`bot.call-record`);
 hand-offs are ordinary messages.
 
@@ -2737,8 +2857,8 @@ listens for (`language` of `POST /v1/audio/transcriptions`, which Whisper-family
 recognizers use instead of detecting the language of each recording) and speaks
 in (`language` of `POST /v1/audio/speech`: the engine and VoiceStudio's text
 normalization of numbers, times and amounts). Absent is Auto: neither request
-carries a `language`. Nothing is translated; the bot's instructions decide the
-language it answers in. Javanese is Whisper's `jw`, which HUI stores and sends
+carries a `language`. Nothing is translated; the bot's SOUL.md (or the operator) decides
+the language it answers in. Javanese is Whisper's `jw`, which HUI stores and sends
 to transcriptions; VoiceStudio's speech knows it by its ISO code, so speech
 sends `jv`. An engine that lacks the language refuses (400), which HUI reports
 as a 502 in VoiceStudio's words and never retries.
@@ -2804,7 +2924,7 @@ call ends as **one record** in the chat.
 | `GET /__hui/calls` | `CallsStatus`. The account is the first signed-in ChatGPT account not waiting for its quota, the order model turns use; `waitingUntil` when every one waits |
 | `POST /__hui/bots/:id/calls` `{ sdp }` | 201 `CallStarted`. Refused with 409 unless `calls.engine` is `"gpt-live"`, and for an archived bot. The offer is at most 64 KB, a session description with audio and no video (400 otherwise). The gateway builds the session (below), posts `{ sdp, session }` to `https://chatgpt.com/backend-api/codex/realtime/calls?intent=quicksilver&architecture=avas` with `Authorization: Bearer <access>`, `chatgpt-account-id`, `OpenAI-Alpha: quicksilver=v2`, fresh `session-id`, `thread-id` and `x-session-id`, and `originator: pi` (30 s timeout, no redirects), and returns only the answer SDP and HUI's own call id. A 401, 403 or 429 hands the call to the next account; when every account refuses, or ChatGPT fails, the answer is 502 `{ error, upstreamStatus }` with a message written for the browser (401: sign in again; 403: not available on this account or plan, or the voice refused; 429: the voice limit reached). ChatGPT's own body goes only to diagnostics, redacted. No ChatGPT login, or every account waiting, is 409; a third concurrent call is 429 |
 | `POST /__hui/bots/:id/calls/:callId/lines` `{ lines: [{ role, text, at? }] }` | `{ kept }`. What was said, in order: 1–40 lines of 1–4,000 characters; `at` (ms) is when it was said, the gateway's now when missing or implausible. The lines stay with the call in the gateway (its newest 400) until it ends; nothing reaches the chat per line |
-| `POST /__hui/bots/:id/calls/:callId/delegations` `{ id, request }` | `CallDelegationResult`. `id` is GPT-Live's delegation item, `request` its text (≤ 4,000 characters, one line). The request goes through one seam (`CallDelegate` in `server/call-routes.ts`, implemented in `server/call-helper.ts`): the bot's **call helper**, one completion on the bot's utility model at low thinking (below), from the bot's instructions, its OptChat view (its newest 16 KB), the call so far and the request. It never waits for or queues behind the bot's own turn. `answered`: `speak` is its answer (≤ 1,800 characters). When the request needs tools, files, current information or an action, the helper hands it off: `[call task] <task>` goes to the bot's chat as any message (a prompt, or a follow-up behind a running turn) on the bot's own model, and the result is `handed-off` with the task's id. The helper has 25 s per question (`timeout` past it: GPT-Live says it is taking long and offers to hand it off) and answers 6 questions per call; past them every request is handed off, and a call hands off at most 4 tasks (`limit`). `failed` says why no model answered. A client that leaves ends the wait |
+| `POST /__hui/bots/:id/calls/:callId/delegations` `{ id, request }` | `CallDelegationResult`. `id` is GPT-Live's delegation item, `request` its text (≤ 4,000 characters, one line). The request goes through one seam (`CallDelegate` in `server/call-routes.ts`, implemented in `server/call-helper.ts`): the bot's **call helper**, one completion on the bot's utility model at low thinking (below), from the bot's SOUL.md (or a note that it has none yet), its OptChat view (its newest 16 KB), the call so far and the request. It never waits for or queues behind the bot's own turn. `answered`: `speak` is its answer (≤ 1,800 characters). When the request needs tools, files, current information or an action, the helper hands it off: `[call task] <task>` goes to the bot's chat as any message (a prompt, or a follow-up behind a running turn) on the bot's own model, and the result is `handed-off` with the task's id. The helper has 25 s per question (`timeout` past it: GPT-Live says it is taking long and offers to hand it off) and answers 6 questions per call; past them every request is handed off, and a call hands off at most 4 tasks (`limit`). `failed` says why no model answered. A client that leaves ends the wait |
 | `POST /__hui/bots/:id/calls/:callId/tasks/:task` | `CallTaskResult` once the handed-off task's own run ends (never the reply of a turn it queued behind): its reply without markdown and at most 1,800 characters, or what to tell the user when it failed, needs an answer in the chat or is still running after 600 s. The browser gives it to GPT-Live as the delegation's speakable answer if the call is still up; either way the reply stays in the chat. 404 once the call ended |
 | `POST /__hui/bots/:id/calls/:callId/heartbeat` | `{ ok: true }`. A call that sends nothing for 90 s (the browser vanished) ends and is recorded; 404 afterwards |
 | `DELETE /__hui/bots/:id/calls/:callId` | `{ ended }`: the slot frees and the call is recorded. The browser writes its last lines first, then closes its connection to ChatGPT after `{ type: "session.close" }` on the data channel. A call also ends after 15 minutes |
@@ -2843,7 +2963,8 @@ call and how to speak on one; the bot's language (`voice.language`; Auto: the
 language the user speaks); when to delegate (anything needing tools, current
 information, files, actions or memory beyond the instructions; small talk and what
 the context answers directly; never invent facts); the speakable/commentary
-contract; the bot's own instructions (at most 6 KB); and the newest end of its
+contract; the bot's SOUL.md, labeled as its soul (at most 6 KB), or, while it has
+none, a line saying so (the call works the same); and the newest end of its
 OptChat view (at most 8 KB of whole lines, without ids), earlier calls' records
 included. Nothing secret.
 

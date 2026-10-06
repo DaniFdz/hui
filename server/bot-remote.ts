@@ -1,21 +1,38 @@
 /**
  * Bots on remote workers (HUI-18), the gateway's half. A bot whose record names
  * a worker keeps its conversation and OptChat memory in that worker's Durable
- * store, where its chat runs as a remote session; these ports reach them
- * through the worker's host (`worker/host-bots.ts`). Only over a live
- * connection: an offline worker fails at once, named, and nothing here ever
- * connects one. Each memory's status arrives by subscription and is kept here,
- * so a bot list never waits on a worker.
+ * store, where its chat runs as a remote session, and its home folder with
+ * SOUL.md in the worker's HUI data directory; these ports reach them through
+ * the worker's host (`worker/host-bots.ts`). Only over a live connection: an
+ * offline worker fails at once, named, and nothing here ever connects one.
+ * Each memory's status arrives by subscription and is kept here, so a bot list
+ * never waits on a worker.
+ *
+ * Deleting a bot whose worker is offline leaves its memory and home there; the
+ * clean-up waits in a small file on this machine (`cleanupFile`) and runs at
+ * the worker's next connection, or is dropped with the worker.
  */
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { dirname } from "node:path";
 import type { BotMemoryStatus } from "../shared/bots.ts";
 import { BotMemoryUnavailableError, type BotMemory } from "./bot-memory.ts";
-import type { BotStoredMessage, BotWorkers, RemoteBotConversations } from "./bot-service.ts";
+import type { BotSouls, BotStoredMessage, BotWorkers, RemoteBotConversations } from "./bot-service.ts";
 import { BotConflictError, BotInputError, BotWorkerOfflineError } from "./bots.ts";
 import { BOT_MEMORY_STATUS_FRAME, BOTS_FEATURE } from "./worker/host-bots.ts";
 import { WorkerOfflineError, type WorkerService } from "./workers.ts";
 
 /** What these ports need of the worker service. */
-export type BotWorkerLink = Pick<WorkerService, "list" | "nameOf" | "connected" | "features" | "hostRequest" | "onHostFrame" | "onClosed" | "onConnected">;
+export type BotWorkerLink = Pick<WorkerService, "list" | "nameOf" | "connected" | "features" | "hostRequest" | "onHostFrame" | "onClosed" | "onConnected" | "onRemoved">;
+
+export type RemoteBotsOptions = {
+  /** Where deleted bots' clean-ups wait for their worker: JSON, owner-only, written atomically. */
+  cleanupFile: string;
+  /** A clean-up that failed with the worker connected, or a queue that could not be read or written. */
+  report?: (action: string, summary: string, error: unknown) => void;
+};
+
+/** What a deleted bot left on its worker: its conversation (forgotten there) and home folder. */
+export type BotCleanup = { worker: string; botId: string; reference?: string; cwd: string; at: string };
 
 /** Creating a conversation may open the worker's store and read its models first. */
 const CREATE_TIMEOUT_MS = 120_000;
@@ -56,8 +73,58 @@ function storedMessage(value: unknown): BotStoredMessage | undefined {
 /** What each connected worker last reported about its bots' memories, and which it was asked to report. */
 type Reports = { statuses: Map<string, BotMemoryStatus>; watched: Set<string>; queued: Set<string> };
 
-export function remoteBots(workers: BotWorkerLink): BotWorkers {
+function parseCleanups(value: unknown): BotCleanup[] {
+  const list = isRecord(value) && Array.isArray(value["cleanups"]) ? value["cleanups"] : [];
+  return list.flatMap((entry): BotCleanup[] => {
+    if (!isRecord(entry)) return [];
+    const { worker, botId, reference, cwd, at } = entry;
+    if (typeof worker !== "string" || !worker || typeof botId !== "string" || !CLEANUP_ID.test(botId) || typeof cwd !== "string") return [];
+    return [{ worker, botId, ...(typeof reference === "string" && REFERENCE.test(reference) ? { reference } : {}), cwd, at: typeof at === "string" ? at : "" }];
+  });
+}
+
+/** The ids a worker's host accepts for a bot (`host-bots.ts`). */
+const CLEANUP_ID = /^[A-Za-z0-9_-]{1,100}$/u;
+
+/** The clean-up queue on disk: read and written one change at a time. */
+function cleanupQueue(file: string, report: NonNullable<RemoteBotsOptions["report"]>) {
+  let chain: Promise<unknown> = Promise.resolve();
+  const read = async (): Promise<BotCleanup[]> => {
+    try {
+      return parseCleanups(JSON.parse(await readFile(file, "utf8")));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") report("bot_cleanup_queue_unreadable", "Deleted bots' clean-ups on their workers could not be read", error);
+      return [];
+    }
+  };
+  const write = async (list: readonly BotCleanup[]) => {
+    await mkdir(dirname(file), { recursive: true, mode: 0o700 });
+    const temporary = `${file}.${process.pid}.tmp`;
+    await writeFile(temporary, `${JSON.stringify({ version: 1, cleanups: list }, null, 2)}\n`, { mode: 0o600 });
+    await rename(temporary, file);
+  };
+  return {
+    list: read,
+    /** One change, after every earlier one; resolves with the new list. */
+    update(change: (list: readonly BotCleanup[]) => readonly BotCleanup[]): Promise<readonly BotCleanup[]> {
+      const next = chain.then(async () => {
+        const before = await read();
+        const after = change(before);
+        if (after !== before) await write(after);
+        return after;
+      });
+      chain = next.catch(() => {});
+      return next;
+    },
+  };
+}
+
+export function remoteBots(workers: BotWorkerLink, options: RemoteBotsOptions): BotWorkers {
   const name = (id: string) => workers.nameOf(id) ?? "That worker";
+  const warn = options.report ?? (() => {});
+  const queue = cleanupQueue(options.cleanupFile, warn);
+  /** Workers whose queued clean-ups are running, so a quick reconnect does not run them twice. */
+  const draining = new Set<string>();
   /** Per worker, for its current connection only: a new one starts over. */
   const reports = new Map<string, Reports>();
   /** Live views of one memory (`BotMemory.subscribe`), kept across reconnects. */
@@ -124,6 +191,49 @@ export function remoteBots(workers: BotWorkerLink): BotWorkers {
   workers.onClosed((id) => reports.delete(id));
   workers.onConnected((id) => { for (const reference of listeners.get(id)?.keys() ?? []) watch(id, reference); });
 
+  /** A deleted bot's conversation forgotten on its worker, then its home folder (or only SOUL.md) removed there. */
+  async function cleanUp(id: string, job: BotCleanup): Promise<void> {
+    if (job.reference) await request(id, "bot.forget", { reference: job.reference });
+    await request(id, "bot.remove-home", { botId: job.botId, cwd: job.cwd });
+  }
+
+  const sameJob = (job: BotCleanup, other: BotCleanup) => job.worker === other.worker && job.botId === other.botId;
+
+  /** At a (re)connection: what deleted bots left there while it was offline. One that fails stays for the next. */
+  async function drain(id: string): Promise<void> {
+    if (draining.has(id)) return;
+    draining.add(id);
+    try {
+      for (const job of (await queue.list()).filter((entry) => entry.worker === id)) {
+        try {
+          await cleanUp(id, job);
+        } catch (error) {
+          // Gone again: the next connection tries again.
+          if (!workers.connected(id)) return;
+          warn("bot_cleanup_failed", `A deleted bot's memory or home folder on ${name(id)} could not be removed yet; HUI tries again at its next connection`, error);
+          continue;
+        }
+        await queue.update((list) => list.filter((entry) => !sameJob(entry, job)));
+      }
+    } catch (error) {
+      warn("bot_cleanup_failed", `Deleted bots' clean-ups on ${name(id)} could not run`, error);
+    } finally {
+      draining.delete(id);
+    }
+  }
+
+  workers.onConnected((id) => void drain(id));
+  // A removed worker takes what was waiting for it along.
+  workers.onRemoved((id) => {
+    void queue.update((list) => list.some((entry) => entry.worker === id) ? list.filter((entry) => entry.worker !== id) : list)
+      .catch((error: unknown) => warn("bot_cleanup_queue_unwritable", "Deleted bots' clean-ups for a removed worker could not be dropped", error));
+  });
+  // A worker removed while this gateway was not running.
+  void Promise.all([queue.list(), workers.list()]).then(async ([list, current]) => {
+    const known = new Set(current.map((worker) => worker.id));
+    if (list.some((entry) => !known.has(entry.worker))) await queue.update((now) => now.filter((entry) => known.has(entry.worker)));
+  }).catch(() => {});
+
   /** A memory read; the worker's own refusal (no memory for that chat there) is the routes' 503. */
   async function text(id: string, op: string, params: { reference: string } & Record<string, unknown>): Promise<string> {
     const reply = await request<{ text?: unknown; unavailable?: unknown; status?: unknown }>(id, op, params);
@@ -174,15 +284,53 @@ export function remoteBots(workers: BotWorkerLink): BotWorkers {
         async writeCallRecord(reference, record) {
           await request(id, "bot.call-record", { reference, record });
         },
-        async removeHome(botId) {
+        async forget(reference) {
+          await request(id, "bot.forget", { reference });
+        },
+      };
+    },
+
+    souls(id): BotSouls {
+      const read = async (botId: string) => {
+        const reply = await request<{ soul?: unknown }>(id, "bot.soul.read", { botId });
+        return typeof reply.soul === "string" && reply.soul ? reply.soul : undefined;
+      };
+      return {
+        async prepare(botId) {
+          await request(id, "bot.home.prepare", { botId });
+        },
+        read,
+        exists: async (botId) => (await read(botId)) !== undefined,
+        async write(botId, soul) {
+          await request(id, "bot.soul.write", { botId, ...(soul ? { soul } : {}) });
+        },
+        // The whole home: a bot's working directory is never inside a home made at its creation (`cleanUp` passes it).
+        async remove(botId) {
           await request(id, "bot.remove-home", { botId });
         },
       };
     },
 
+    async cleanUp(id, bot) {
+      const job: BotCleanup = { worker: id, botId: bot.botId, ...(bot.reference ? { reference: bot.reference } : {}), cwd: bot.cwd, at: new Date().toISOString() };
+      try {
+        await cleanUp(id, job);
+        // Done now: an older attempt waiting for this worker is moot.
+        await queue.update((list) => list.some((entry) => sameJob(entry, job)) ? list.filter((entry) => !sameJob(entry, job)) : list);
+        return "done";
+      } catch (error) {
+        // Refused with the worker connected (a folder that is not the bot's, say): the delete fails and can run again.
+        if (!(error instanceof BotWorkerOfflineError)) throw error;
+      }
+      await queue.update((list) => [...list.filter((entry) => !sameJob(entry, job)), job]);
+      return "queued";
+    },
+
     memory(id): BotMemory {
       return {
         enable: async () => { throw new Error("A worker turns on a bot's memory itself, in the commit that creates its conversation."); },
+        disable: async () => { throw new Error("A worker turns off a deleted bot's memory itself, as it forgets its conversation (bot.forget)."); },
+        purge: async () => { throw new Error("A worker deletes a deleted bot's memory itself, as it forgets its conversation (bot.forget)."); },
         async configure(reference, settings) {
           await request(id, "bot.memory.configure", { reference, settings });
         },

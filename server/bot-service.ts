@@ -3,10 +3,15 @@
  *
  * A bot's chat is an ordinary Durable session registered through New
  * Session's code path, and its record carries `bot`; the bot registry
- * (`bots.ts`) owns the rest. Durable and OptChat arrive through two injected
- * ports, so the lifecycle is tested without a harness: `BotConversations` (the
- * conversation, its instructions and directory; `bot-conversations.ts`) and
- * `BotMemory` (OptChat; `bot-memory.ts`).
+ * (`bots.ts`) owns the rest. Durable, OptChat and SOUL.md arrive through
+ * injected ports, so the lifecycle is tested without a harness and a bot that
+ * runs elsewhere can route them: `BotConversations` (the conversation and its
+ * directory; `bot-conversations.ts`), `BotMemory` (OptChat; `bot-memory.ts`)
+ * and `BotSouls` (SOUL.md in the bot's home folder; `bot-souls.ts`).
+ *
+ * A bot's persona is its SOUL.md. A bot created without one speaks first: HUI
+ * starts its first turn with a kickoff message, and the chat's `soul` section
+ * has it ask the operator what they expect and write SOUL.md itself.
  *
  * Delivery follows the composer: a prompt while the chat is idle, a follow-up
  * while it works. A waiting caller resolves when the run that answers its
@@ -21,18 +26,18 @@
  * reported, its newest message from the live chat or one read per connection.
  */
 import { randomUUID } from "node:crypto";
-import { mkdir, rmdir, stat } from "node:fs/promises";
-import { isAbsolute, join } from "node:path";
+import { mkdir, realpath, rmdir, stat } from "node:fs/promises";
+import { isAbsolute, join, relative } from "node:path";
 
 import {
-  BOT_LIMITS, handleFromName, previewLine,
+  BOT_LIMITS, botKickoffName, botKickoffText, handleFromName, previewLine,
   type BotLastMessage, type BotMemoryStatus, type BotMessageResult, type BotPatch, type BotQuestion, type BotRecord, type BotReply, type BotView,
 } from "../shared/bots.ts";
 import type { CallRecord } from "../shared/calls.ts";
 import type { AutomationTask } from "../src/lib/automation-types.ts";
 import { BotMemoryUnavailableError, type BotMemory, type BotMemorySettings } from "./bot-memory.ts";
 import {
-  BOTS_DIR, BotConflictError, BotInputError, BotNotFoundError, BotWorkerOfflineError, findBot, normalizeBotInput, normalizeBotPatch, patchedAvatar, patchedVoice, uniqueHandle,
+  BOTS_DIR, BotConflictError, BotInputError, BotNotFoundError, BotWorkerOfflineError, findBot, isDerivedHandle, normalizeBotInput, normalizeBotPatch, normalizeSoul, patchedAvatar, patchedVoice, uniqueHandle,
   type BotRegistry,
 } from "./bots.ts";
 import { SessionBusyError, type LiveSessions } from "./live-sessions.ts";
@@ -46,6 +51,8 @@ const HOUR_MS = 3_600_000;
 /** Bot-to-bot messages a chain may cross before HUI stops it. */
 export const MAX_BOT_HOPS = 3;
 const READY_TIMEOUT_MS = 60_000;
+/** How often the bot list looks at SOUL.md again by itself, for a hand edit; HUI's own writes and a settled turn count at once. */
+const SOUL_RECHECK_MS = 10_000;
 const HOP = /^\[from @[a-z0-9-]+(?: · hop ([1-9]\d*))?\] /u;
 
 export type BotSessions = Pick<
@@ -61,16 +68,19 @@ export type BotConversationInput = {
   cwd: string;
   model?: string;
   thinking?: string;
-  instructions?: string;
   memory: BotMemorySettings;
 };
 
 /** The Durable side of bots' chats. */
 export type BotConversations = {
-  /** One commit: the conversation, its agent (cwd, model, thinking, instructions), its bot document and OptChat. Returns its resume reference. */
+  /** One commit: the conversation, its agent (cwd, model, thinking), its bot document and OptChat. Returns its resume reference. */
   create(input: BotConversationInput): Promise<string>;
-  /** Takes effect at the conversation's next request. `instructions: null` clears them. */
-  configure(reference: string, change: { instructions?: string | null; cwd?: string }): Promise<void>;
+  /** Takes effect at the conversation's next request. `instructions: null` clears the Durable instructions a bot had
+   * before SOUL.md (`BotService.migrate`); bots never set them. */
+  configure(reference: string, change: { instructions?: null; cwd?: string }): Promise<void>;
+  /** For a deleted bot: the conversation stops being a bot's chat and its memory is turned off and deleted, so nothing
+   * reads either back. The raw conversation stays in the store, which cannot delete one. Nothing to clear is fine. */
+  forget(reference: string): Promise<void>;
   lastMessage(reference: string): Promise<BotStoredMessage | undefined>;
   /** A call's record, as one passive entry: no turn runs for it. Safe while a turn runs. */
   writeCallRecord(reference: string, record: CallRecord): Promise<void>;
@@ -82,12 +92,13 @@ export type BotConversations = {
   defaultThinking(cwd: string, model: string | undefined): Promise<string>;
 };
 
-/** What a bot's chat reads and writes in the store that holds it: the gateway's, or its worker's. */
-type BotPorts = { conversations: Pick<BotConversations, "configure" | "lastMessage" | "writeCallRecord">; memory: BotMemory };
+/** What a bot's chat reads and writes in the store that holds it, and its SOUL.md: the gateway's, or its worker's. */
+type BotPorts = { conversations: Pick<BotConversations, "configure" | "forget" | "lastMessage" | "writeCallRecord">; memory: BotMemory; souls: BotSouls };
 
 /**
  * Remote workers' half of the bots that run on them (HUI-18): each worker's own Durable store holds their conversations
- * and memories, reached through its host (`bot-remote.ts`), only over a live connection; nothing here connects one.
+ * and memories, and its HUI data directory their home folders with SOUL.md, reached through its host (`bot-remote.ts`),
+ * only over a live connection; nothing here connects one.
  */
 export type BotWorkers = {
   /** The worker an id or exact name names; rejects with `BotInputError` when none does or two share the name. */
@@ -97,21 +108,47 @@ export type BotWorkers = {
   conversations(id: string): RemoteBotConversations;
   /** Its bots' memories; `status` answers from what the worker last reported, without asking it. */
   memory(id: string): BotMemory;
+  /** Its bots' SOUL.md, each in the bot's home folder there. */
+  souls(id: string): BotSouls;
+  /**
+   * What deleting a bot leaves on its worker: its conversation forgotten (`BotConversations.forget`) and its home folder
+   * there removed with everything in it (only SOUL.md when its working directory lies inside it). At once while HUI is
+   * connected to the worker; otherwise, or when that fails, kept on this machine and done at the worker's next
+   * connection, and dropped if the worker is removed first. Never waits on an offline worker.
+   */
+  cleanUp(id: string, bot: { botId: string; reference?: string; cwd: string }): Promise<"done" | "queued">;
   /** Each (re)connection: what the worker's store may have changed meanwhile is read again. */
   onConnected(listener: (id: string) => void): () => void;
 };
 
 /** A worker's bot conversations. Each fails at once, naming the worker, while HUI is not connected to it. */
-export type RemoteBotConversations = Pick<BotConversations, "configure" | "lastMessage" | "writeCallRecord"> & {
+export type RemoteBotConversations = Pick<BotConversations, "configure" | "forget" | "lastMessage" | "writeCallRecord"> & {
   /**
-   * `BotConversations.create` on the worker, in one commit there: in `cwd` (absolute or `~/`, checked there) or a
-   * private folder the worker makes for the bot. Returns the conversation's reference and the absolute directory.
+   * `BotConversations.create` on the worker, in one operation there: the bot's home folder (always; SOUL.md lives
+   * there), SOUL.md when `soul` is given, and the conversation in `cwd` (absolute or `~/`, checked there) or in that
+   * home. A failure there undoes what it made. Returns the conversation's reference and the absolute directory.
    */
-  create(input: Omit<BotConversationInput, "cwd"> & { cwd?: string }): Promise<{ reference: string; cwd: string }>;
+  create(input: Omit<BotConversationInput, "cwd"> & { cwd?: string; soul?: string }): Promise<{ reference: string; cwd: string }>;
   /** A directory on the worker, `~/` resolved there; refuses one that does not exist. */
   directory(cwd: string): Promise<string>;
-  /** The bot's home on the worker (the private folder made for it there), only while it is empty. */
-  removeHome(botId: string): Promise<void>;
+};
+
+/**
+ * SOUL.md, each bot's persona, in its home folder on the host that runs its chat (`bot-souls.ts` on this gateway, the
+ * worker's host for a bot there: `BotWorkers.souls`). Every bot has that folder, whatever its working directory.
+ */
+export type BotSouls = {
+  /** Creates the bot's home folder (owner-only) if it is missing. */
+  prepare(botId: string): Promise<void>;
+  /** SOUL.md's text, trimmed; undefined while there is none (no file, or only whitespace). */
+  read(botId: string): Promise<string | undefined>;
+  /** Whether `read` would find a soul. The bot list asks again only when a bot's chat changes state. */
+  exists(botId: string): Promise<boolean>;
+  /** Replaces SOUL.md atomically; undefined removes it, which brings the first conversation back. */
+  write(botId: string, soul: string | undefined): Promise<void>;
+  /** For a deleted bot: removes its home folder with everything in it (SOUL.md and every file HUI or the bot put
+   * there), never following a link out of HUI's bots directory. */
+  remove(botId: string): Promise<void>;
 };
 
 /** Automation tasks, which are a bot's routines when they target its chat. */
@@ -133,6 +170,7 @@ export type BotServiceDeps = {
   removeSession(id: string): Promise<void>;
   conversations: BotConversations;
   memory: BotMemory;
+  souls: BotSouls;
   routines: BotRoutines;
   /** Bots on remote workers; absent, a bot can only run here. */
   workers?: BotWorkers;
@@ -172,8 +210,12 @@ export class BotService {
   #sent = new Map<string, number[]>();
   /** Newest message per bot, from its live transcript or one store read while no session holds it. */
   #lastMessages = new Map<string, { reference: string | undefined; message: BotLastMessage | undefined }>();
-  /** Bots on a worker whose newest message is being read there, in the background. */
+  /** Bots on a worker whose newest message, or whether they have a SOUL.md, is being read there, in the background. */
   #reading = new Set<string>();
+  #readingSouls = new Set<string>();
+  /** Whether each bot has a soul, and the chat state it was read in: the bot list asks every second, and only a turn
+   * (the bot writing SOUL.md), HUI's own write or a hand edit (`SOUL_RECHECK_MS`) can change it. */
+  #souls = new Map<string, { key: string; soul: boolean }>();
 
   constructor(deps: BotServiceDeps) {
     this.#deps = deps;
@@ -218,12 +260,15 @@ export class BotService {
   }
 
   /**
-   * Creates the bot's conversation (persona, bot document and memory in its
-   * creating commit), registers its chat through New Session's path, then the
-   * bot. A failed step undoes the earlier ones it can: the directory it made,
-   * the session record. An empty conversation left behind is never addressed.
-   * On a worker, the conversation and its folder are made there, and its chat
-   * is a remote session; HUI must be connected to the worker.
+   * Makes the bot's home folder (and SOUL.md when `soul` is given), creates its
+   * conversation (bot document and memory in its creating commit), registers
+   * its chat through New Session's path, then the bot. A failed step undoes the
+   * earlier ones it can: SOUL.md, the folders it made while empty, the session
+   * record. An empty conversation left behind is never addressed. Without a
+   * soul, the bot's first turn starts once it exists, in the background: it
+   * speaks first. On a worker, its home folder, SOUL.md and conversation are
+   * made there, its chat is a remote session (the first turn goes through it
+   * like any message), and HUI must be connected to the worker.
    */
   async create(body: unknown): Promise<BotView> {
     const input = normalizeBotInput(body);
@@ -237,7 +282,6 @@ export class BotService {
       botId: id,
       ...(input.model ? { model: input.model } : {}),
       ...(input.thinking ? { thinking: input.thinking } : {}),
-      ...(input.instructions ? { instructions: input.instructions } : {}),
       memory: memorySettings(input.name, input.memoryModel, input.memoryThinking),
     };
     let created: string | undefined;
@@ -245,10 +289,14 @@ export class BotService {
     let reference: string;
     let undo: () => Promise<void>;
     if (worker) {
-      // In the worker's store, with the folder made there unless the bot names one.
-      const remote = this.#remote().conversations(worker.id);
-      ({ reference, cwd } = await remote.create({ ...conversation, ...(input.cwd ? { cwd: input.cwd } : {}) }));
-      undo = async () => { if (!input.cwd) await remote.removeHome(id).catch(() => {}); };
+      // On the worker, in one operation there: the home folder (always), SOUL.md when given, and the conversation in
+      // the chosen folder or that home. SOUL.md never goes in a chosen folder.
+      const remote = this.#remote();
+      ({ reference, cwd } = await remote.conversations(worker.id).create({
+        ...conversation, ...(input.cwd ? { cwd: input.cwd } : {}), ...(input.soul ? { soul: input.soul } : {}),
+      }));
+      // Its home folder there goes with SOUL.md; a chosen folder lies outside it and stays.
+      undo = async () => { await remote.souls(worker.id).remove(id).catch(() => {}); };
     } else {
       if (input.cwd) cwd = await existingDirectory(input.cwd);
       else {
@@ -256,9 +304,15 @@ export class BotService {
         await mkdir(created, { recursive: true, mode: 0o700 });
         cwd = created;
       }
-      // Only an empty directory this request made goes; a bot's files never do.
-      undo = async () => { if (created) await rmdir(created).catch(() => {}); };
+      // SOUL.md goes, then only empty folders this request made; a bot's files never do.
+      undo = async () => {
+        await this.#deps.souls.remove(id).catch(() => {});
+        if (created) await rmdir(created).catch(() => {});
+      };
       try {
+        // Every bot has its home folder, whatever its working directory: SOUL.md lives there.
+        await this.#deps.souls.prepare(id);
+        if (input.soul) await this.#deps.souls.write(id, input.soul);
         reference = await this.#deps.conversations.create({ ...conversation, cwd });
       } catch (error) {
         await undo();
@@ -289,7 +343,6 @@ export class BotService {
           name: input.name,
           ...(input.title ? { title: input.title } : {}),
           ...(input.description ? { description: input.description } : {}),
-          ...(input.instructions ? { instructions: input.instructions } : {}),
           cwd,
           ...(worker ? { worker: worker.id } : {}),
           ...(input.model ? { model: input.model } : {}),
@@ -305,6 +358,9 @@ export class BotService {
         };
         return { bots: [...bots, record], result: record };
       });
+      // Known from the create, so the first list of a bot on a worker need not wait for the worker's answer.
+      this.#souls.set(bot.id, { key: "", soul: Boolean(input.soul) });
+      if (!input.soul) this.#kickoff(bot);
       return await this.#viewOf(bot);
     } catch (error) {
       await this.#deps.removeSession(session.id).catch((cleanup: unknown) => this.#report("error", "bot_create_rollback_failed", "A bot's chat could not be removed after a failed create", cleanup));
@@ -314,12 +370,25 @@ export class BotService {
   }
 
   /**
-   * Applies a patch: model and thinking through the live chat, instructions and
-   * directory on its conversation, name and compactor model on its memory,
-   * name and directory on its session record, then the bot. The directory
-   * changes only while the chat is idle; its runtime boots again there. A
-   * cleared model or thinking level (`""`) puts the chat back on what a new
-   * chat gets, and leaves the bot and its chat's record without a choice.
+   * The first turn of a bot created without a soul, started by HUI so the bot
+   * speaks first: a kickoff message (`botKickoffText`) the chat shows as a note.
+   * The create does not wait for it. A run that fails shows in the chat like any
+   * run's error; a chat that cannot start is reported.
+   */
+  #kickoff(bot: BotRecord): void {
+    void (async () => {
+      await this.#deliver(await this.#sessionOf(bot), botKickoffText(bot.name), undefined);
+    })().catch((error: unknown) => this.#report("warning", "bot_kickoff_failed", `@${bot.handle}'s first turn did not start`, error));
+  }
+
+  /**
+   * Applies a patch: model and thinking through the live chat, the directory on
+   * its conversation, name and compactor model on its memory, name and
+   * directory on its session record, then the bot. The directory changes only
+   * while the chat is idle; its runtime boots again there. A cleared model or
+   * thinking level (`""`) puts the chat back on what a new chat gets, and
+   * leaves the bot and its chat's record without a choice. SOUL.md is
+   * `setSoul`'s.
    */
   async update(target: string, body: unknown): Promise<BotView> {
     const patch = normalizeBotPatch(body);
@@ -353,12 +422,7 @@ export class BotService {
       }
     }
     const ports = this.#ports(bot);
-    if (patch.instructions !== undefined || moving) {
-      await ports.conversations.configure(reference, {
-        ...(patch.instructions !== undefined ? { instructions: patch.instructions || null } : {}),
-        ...(moving ? { cwd } : {}),
-      });
-    }
+    if (moving) await ports.conversations.configure(reference, { cwd });
     const name = patch.name ?? bot.name;
     if (patch.name !== undefined || patch.memoryModel !== undefined || patch.memoryThinking !== undefined) {
       await ports.memory.configure(reference, memorySettings(
@@ -389,10 +453,36 @@ export class BotService {
       if (patch.handle && bots.some((other) => other.id !== bot.id && other.handle === patch.handle)) {
         throw new BotConflictError(`@${patch.handle} is already taken.`);
       }
-      const next = patched(current, patch, cwd, now);
+      // A handle derived from the old name follows the new one, kept unique; a handle the operator chose stays.
+      const renamed = patch.handle === undefined && patch.name !== undefined && patch.name !== current.name && isDerivedHandle(current.handle, current.name);
+      const handle = renamed ? uniqueHandle(handleFromName(patch.name!), new Set(bots.filter((other) => other.id !== bot.id).map((other) => other.handle))) : patch.handle;
+      const next = patched(current, { ...patch, ...(handle !== undefined ? { handle } : {}) }, cwd, now);
       return { bots: bots.map((candidate) => candidate.id === bot.id ? next : candidate), result: next };
     });
     return this.#viewOf(updated);
+  }
+
+  /**
+   * `set_profile` from the bot whose chat `callerSessionId` is: its own name and/or title, under `PATCH`'s rules
+   * (`update`, so a derived handle follows the name). Only the operator decides them: a turn that a routine or another
+   * bot started is refused, as its run's originating input (`runPrompt`) shows.
+   */
+  async setProfile(callerSessionId: string, params: Record<string, unknown>): Promise<{ text: string; name: string; handle: string }> {
+    const bot = (await this.#registry.list()).find((candidate) => candidate.sessionId === callerSessionId);
+    if (!bot) throw new BotInputError("set_profile is only available in a bot's chat.");
+    if (bot.archived) throw new BotConflictError("An archived bot cannot change its profile.");
+    const origin = (await this.#deps.readSessions()).find((record) => record.id === callerSessionId)?.runPrompt;
+    if (origin && (origin.startsWith("[routine: ") || hopOf(origin) !== undefined)) {
+      throw new BotConflictError("Only the operator changes your name or title, and this turn was started by a routine or another bot. Ask the operator instead.");
+    }
+    const unknown = Object.keys(params).filter((key) => key !== "name" && key !== "title");
+    if (unknown.length) throw new BotInputError(`set_profile takes name and title only, not ${unknown.join(", ")}.`);
+    if (!Object.keys(params).length) throw new BotInputError("Give a name, a title or both.");
+    const view = await this.update(bot.id, params);
+    return {
+      text: `Saved: you are ${view.name} (@${view.handle})${view.title ? `, ${view.title}` : ""}. Tell the operator.`,
+      name: view.name, handle: view.handle,
+    };
   }
 
   /**
@@ -413,16 +503,31 @@ export class BotService {
     for (const task of (await this.#deps.routines.tasks()).filter((task) => task.sessionId === bot.sessionId && task.enabled)) {
       await this.#deps.routines.disable(task);
     }
-    // Messages still waiting in HUI's queue would start a new turn once the current one stops.
+    await this.#quiet(bot, "bot_archive_stop_failed");
+    await this.#deps.updateSessions((records) => records.map((record) => record.id === bot.sessionId && !record.archived ? { ...record, archived: true } : record));
+    return this.#viewOf(bot);
+  }
+
+  /** Withdraws the messages still waiting in HUI's queue for the bot (they would start a new turn once the current one
+   * stops), then stops a running turn. */
+  async #quiet(bot: BotRecord, action: string): Promise<void> {
     for (const item of this.#sessions.snapshot(bot.sessionId).queue.items ?? []) {
       try { this.#sessions.removeFollowUp(bot.sessionId, item.id); } catch { /* sent meanwhile */ }
     }
     const status = this.#sessions.status(bot.sessionId);
     if (status === "running" || status === "waiting") {
-      await this.#sessions.abort(bot.sessionId).catch((error: unknown) => this.#report("warning", "bot_archive_stop_failed", "An archived bot's turn could not be stopped", error));
+      await this.#sessions.abort(bot.sessionId).catch((error: unknown) => this.#report("warning", action, `@${bot.handle}'s turn could not be stopped`, error));
     }
-    await this.#deps.updateSessions((records) => records.map((record) => record.id === bot.sessionId && !record.archived ? { ...record, archived: true } : record));
-    return this.#viewOf(bot);
+  }
+
+  /** A working directory the operator chose inside the bot's home folder: deleting the folder would take it along. */
+  async #chosenInsideHome(bot: BotRecord): Promise<boolean> {
+    const home = join(this.#botsDir, bot.id);
+    if (bot.cwd === home) return false;
+    const resolved = (path: string) => realpath(path).catch(() => path);
+    const [cwd, folder] = await Promise.all([resolved(bot.cwd), resolved(home)]);
+    const within = relative(folder, cwd);
+    return within === "" || (!within.startsWith("..") && !isAbsolute(within));
   }
 
   /** Unarchives the bot and its chat. Its routines stay disabled until the operator turns them on. */
@@ -441,25 +546,107 @@ export class BotService {
   }
 
   /**
-   * Deletes an archived bot for good. Archiving stays the step that can be
-   * undone, so an active bot is refused. Removes every Automation task aimed at
-   * its chat, deletes the chat's session record (its runtime stops), then the
-   * bot. As with a deleted session, its conversation and memory stay in the
-   * Durable store, which HUI no longer opens. A folder HUI made for the bot goes
-   * only while empty: the bot's files never do. Each step can run again, so
-   * deleting again finishes what an interrupted attempt left.
+   * Deletes a bot for good, active or archived: withdraws messages still queued
+   * for it and stops a running turn; its conversation stops being a bot's chat
+   * and its memory is turned off and deleted (`BotConversations.forget`; the raw
+   * conversation stays in the Durable store, which cannot delete one, and HUI
+   * never opens it again); then every Automation task aimed at its chat, the
+   * chat's session record (its runtime stops), its home folder with everything
+   * in it (SOUL.md and every file HUI or the bot put there), and the bot. A
+   * working directory the operator chose is never touched: when it lies inside
+   * the home folder, only SOUL.md goes. Each step can run again, so deleting
+   * again finishes what an interrupted attempt left.
+   *
+   * A bot on a worker keeps its memory and home folder there: the worker
+   * forgets its conversation and removes that folder (`BotWorkers.cleanUp`)
+   * first, while HUI is connected to it. Otherwise that waits on this machine
+   * for the worker's next connection (`queued`), and the bot goes at once all
+   * the same.
    */
-  async delete(target: string): Promise<void> {
+  async delete(target: string): Promise<{ queued: boolean }> {
     const bot = await this.resolve(target);
-    if (!bot.archived) throw new BotConflictError(`@${bot.handle} is not archived. Archive it before deleting it.`);
+    await this.#quiet(bot, "bot_delete_stop_failed");
+    const record = (await this.#deps.readSessions()).find((candidate) => candidate.id === bot.sessionId);
+    let queued = false;
+    if (bot.worker) {
+      const left = { botId: bot.id, cwd: bot.cwd, ...(record?.piSessionFile ? { reference: record.piSessionFile } : {}) };
+      queued = await this.#remote().cleanUp(bot.worker, left) === "queued";
+    } else if (record?.piSessionFile) await this.#deps.conversations.forget(record.piSessionFile);
     for (const task of (await this.#deps.routines.tasks()).filter((task) => task.sessionId === bot.sessionId)) {
       await this.#deps.routines.remove(task);
     }
-    if ((await this.#deps.readSessions()).some((record) => record.id === bot.sessionId)) await this.#deps.removeSession(bot.sessionId);
-    // On a worker, the bot's home there goes the same way while HUI is connected to it; otherwise it stays.
-    if (bot.worker) await this.#deps.workers?.conversations(bot.worker).removeHome(bot.id).catch(() => {});
-    else if (bot.cwd === join(this.#botsDir, bot.id)) await rmdir(bot.cwd).catch(() => {});
+    if (record) await this.#deps.removeSession(bot.sessionId);
+    if (!bot.worker) {
+      if (await this.#chosenInsideHome(bot)) await this.#deps.souls.write(bot.id, undefined);
+      else await this.#deps.souls.remove(bot.id);
+    }
     await this.#registry.update((bots) => ({ bots: bots.filter((candidate) => candidate.id !== bot.id), result: undefined }));
+    this.#souls.delete(bot.id);
+    this.#lastMessages.delete(bot.id);
+    return { queued };
+  }
+
+  /** SOUL.md's text; null while the bot has none (before or during its first conversation). */
+  async soul(target: string): Promise<string | null> {
+    const bot = await this.resolve(target);
+    // A bot on a worker: from its home there, so an offline worker is the routes' 503.
+    return (await this.#ports(bot).souls.read(bot.id)) ?? null;
+  }
+
+  /**
+   * Replaces SOUL.md atomically with `raw` (`normalizeSoul`); `""` removes it,
+   * which brings the first conversation back at the bot's next turn. The chat
+   * reads it from its next request; the bot's `updatedAt` moves, so every
+   * screen reads it again. An archived bot is refused, as for edits.
+   */
+  async setSoul(target: string, raw: unknown): Promise<string | null> {
+    const soul = normalizeSoul(raw);
+    const bot = await this.resolve(target);
+    if (bot.archived) throw new BotConflictError(`@${bot.handle} is archived. Restore it before changing its soul.`);
+    await this.#ports(bot).souls.write(bot.id, soul || undefined);
+    // Known now; the next list reads it again (in the background for a bot on a worker) without showing a stale answer.
+    this.#souls.set(bot.id, { key: "", soul: Boolean(soul) });
+    const now = new Date(this.#now()).toISOString();
+    await this.#registry.update((bots) => ({ bots: bots.map((each) => each.id === bot.id ? { ...each, updatedAt: now } : each), result: undefined }));
+    return soul || null;
+  }
+
+  /**
+   * Bots from before SOUL.md, once, at the gateway's start: every bot gets its
+   * home folder; a bot whose record still carries `instructions` gets them as
+   * its SOUL.md (only while it has none), then its conversation's Durable
+   * instructions are cleared, then the field leaves bots.json. In that order, so
+   * a restart in between finishes the rest; a bot that fails stays as it was
+   * and is tried again at the next start. Nothing starts a turn: a bot without
+   * either has its first conversation at its next turn.
+   */
+  async migrate(): Promise<{ souls: number; cleared: number }> {
+    // Bots on workers came with SOUL.md: their homes are made there at creation, and none ever had instructions here.
+    const bots = (await this.#registry.list()).filter((bot) => !bot.worker);
+    for (const bot of bots) {
+      await this.#deps.souls.prepare(bot.id).catch((error: unknown) => this.#report("warning", "bot_home_failed", `@${bot.handle}'s home folder could not be created`, error));
+    }
+    const result = { souls: 0, cleared: 0 };
+    for (const [id, instructions] of await this.#registry.legacyInstructions()) {
+      const bot = bots.find((candidate) => candidate.id === id);
+      if (!bot) continue;
+      try {
+        if (!await this.#deps.souls.exists(id)) {
+          await this.#deps.souls.write(id, instructions.replace(/\r\n?/gu, "\n").trim());
+          result.souls += 1;
+        }
+        const reference = (await this.#deps.readSessions()).find((record) => record.id === bot.sessionId)?.piSessionFile;
+        if (reference) {
+          await this.#deps.conversations.configure(reference, { instructions: null });
+          result.cleared += 1;
+        }
+        await this.#registry.forgetInstructions(id);
+        this.#souls.delete(id);
+      } catch (error) {
+        this.#report("warning", "bot_soul_migration_failed", `@${bot.handle}'s instructions could not become its SOUL.md yet; HUI tries again at its next start`, error);
+      }
+    }
+    return result;
   }
 
   /**
@@ -479,13 +666,18 @@ export class BotService {
    * What a GPT-Live call with the bot starts from: the bot, and its memory's view when it can be read (a call goes on
    * without it).
    */
-  async callContext(target: string): Promise<{ bot: BotRecord; view?: string }> {
+  async callContext(target: string): Promise<{ bot: BotRecord; view?: string; soul?: string }> {
     const bot = await this.resolve(target);
     if (bot.archived) throw new BotConflictError(`@${bot.handle} is archived. Restore it before calling it.`);
     const record = (await this.#deps.readSessions()).find((candidate) => candidate.id === bot.sessionId);
     const reference = record?.piSessionFile;
-    const view = reference ? await this.#ports(bot).memory.view(reference).catch(() => undefined) : undefined;
-    return { bot, ...(view ? { view } : {}) };
+    const ports = this.#ports(bot);
+    const [view, soul] = await Promise.all([
+      reference ? ports.memory.view(reference).catch(() => undefined) : undefined,
+      // Its persona on the call too, read where its chat runs; a call goes on without one.
+      ports.souls.read(bot.id).catch(() => undefined),
+    ]);
+    return { bot, ...(view ? { view } : {}), ...(soul ? { soul } : {}) };
   }
 
   /** A call's record into the bot's chat (one card) and so its memory (its transcript and summary). */
@@ -600,6 +792,7 @@ export class BotService {
     const memory = reference ? await Promise.resolve().then(() => this.#ports(bot).memory.status(reference)).catch(() => undefined) : undefined;
     const lastMessage = await this.#lastMessage(bot, record);
     const { worker, ...stored } = bot;
+    const soul = await this.#hasSoul(bot, record);
     return {
       ...stored,
       ...(worker ? { worker: { id: worker, name: this.#deps.workers?.nameOf(worker) ?? "Remote worker" } } : {}),
@@ -607,11 +800,39 @@ export class BotService {
       ...(record?.model ? { model: record.model } : {}),
       ...(record?.thinking ? { thinking: record.thinking } : {}),
       status: this.#sessions.status(bot.sessionId),
+      soul,
       ...(lastMessage ? { lastMessage } : {}),
       unread: record?.unread === true,
       ...(memory ? { memory: memoryStatus(memory) } : {}),
       routines: tasks.filter((task) => task.sessionId === bot.sessionId).length,
     };
+  }
+
+  /** Read again only when the chat's state or record changed since, or `SOUL_RECHECK_MS` passed; an unreadable folder
+   * keeps the last answer. */
+  async #hasSoul(bot: BotRecord, record: SessionRecord | undefined): Promise<boolean> {
+    const key = `${this.#sessions.status(bot.sessionId)}|${record?.updatedAt ?? ""}|${Math.floor(this.#now() / SOUL_RECHECK_MS)}`;
+    const cached = this.#souls.get(bot.id);
+    if (cached?.key === key) return cached.soul;
+    if (bot.worker) {
+      // Never a request to the worker per list: read there in the background, and a later list shows it; until then
+      // (or while the worker is offline) the last answer stands.
+      this.#readRemoteSoul(bot, key);
+      return cached?.soul ?? false;
+    }
+    const soul = await this.#deps.souls.exists(bot.id).catch(() => cached?.soul ?? false);
+    this.#souls.set(bot.id, { key, soul });
+    return soul;
+  }
+
+  /** Whether a worker's bot has a SOUL.md, read there once per change of its chat's state (`#hasSoul`'s key). */
+  #readRemoteSoul(bot: BotRecord, key: string): void {
+    const workers = this.#deps.workers;
+    if (!workers || !bot.worker || this.#readingSouls.has(bot.id)) return;
+    this.#readingSouls.add(bot.id);
+    void workers.souls(bot.worker).exists(bot.id).then((soul) => {
+      this.#souls.set(bot.id, { key, soul });
+    }, () => {}).finally(() => this.#readingSouls.delete(bot.id));
   }
 
   /** A broken automation store reports no routines rather than hiding every bot. */
@@ -659,9 +880,9 @@ export class BotService {
 
   /** The ports of the store that holds the bot's chat: this gateway's, or its worker's. */
   #ports(bot: BotRecord): BotPorts {
-    if (!bot.worker) return { conversations: this.#deps.conversations, memory: this.#deps.memory };
+    if (!bot.worker) return { conversations: this.#deps.conversations, memory: this.#deps.memory, souls: this.#deps.souls };
     const workers = this.#remote();
-    return { conversations: workers.conversations(bot.worker), memory: workers.memory(bot.worker) };
+    return { conversations: workers.conversations(bot.worker), memory: workers.memory(bot.worker), souls: workers.souls(bot.worker) };
   }
 
   #remote(): BotWorkers {
@@ -891,11 +1112,12 @@ export function botsSection(self: BotRecord, others: readonly BotRecord[]): stri
   ].join("\n\n");
 }
 
-/** The newest message a transcript shows, as a one-line preview. */
+/** The newest message a transcript shows, as a one-line preview; HUI's kickoff is a note, not a message. */
 export function lastTranscriptMessage(transcript: readonly TranscriptEntry[], fallbackAt: string): BotLastMessage | undefined {
   for (let index = transcript.length - 1; index >= 0; index -= 1) {
     const entry = transcript[index]!;
     if (entry.kind !== "message" || !entry.text.trim()) continue;
+    if (entry.role === "user" && botKickoffName(entry.text) !== undefined) continue;
     const timestamp = entry.metrics?.timestamp;
     return { role: entry.role, text: previewLine(entry.text), at: timestamp === undefined ? fallbackAt : new Date(timestamp).toISOString() };
   }
@@ -953,7 +1175,7 @@ function patched(bot: BotRecord, patch: BotPatch, cwd: string | undefined, updat
   const next: BotRecord = { ...bot, updatedAt };
   if (patch.name !== undefined) next.name = patch.name;
   if (patch.handle !== undefined) next.handle = patch.handle;
-  for (const key of ["title", "description", "instructions", "model", "thinking", "memoryModel", "memoryThinking"] as const) {
+  for (const key of ["title", "description", "model", "thinking", "memoryModel", "memoryThinking"] as const) {
     const value = patch[key];
     if (value === undefined) continue;
     if (value) next[key] = value;

@@ -47,11 +47,12 @@ test("CLI parses bot commands, accepting bot and bots, with their operands and o
   assert.equal(parseCli(["bot"]).command, "bot list");
   assert.equal(parseCli(["bots"]).command, "bot list");
   assert.deepEqual({ ...parseCli(["bots", "list", "--archived", "--json"]).values }, { archived: true, json: true });
-  const add = parseCli(["bot", "add", "--name", "Ada", "--title", "Researcher", "--instructions-file", "persona.md", "--cwd", ".",
+  const add = parseCli(["bot", "add", "--name", "Ada", "--title", "Researcher", "--soul-file", "soul.md", "--cwd", ".",
     "--model", "openai/gpt-5", "--thinking", "high", "--memory-model", "openai/gpt-mini", "--emoji", "🦊", "--json"]);
   assert.equal(add.command, "bot add");
   assert.deepEqual(add.operands, []);
   assert.equal(add.values["memory-model"], "openai/gpt-mini");
+  assert.equal(add.values["soul-file"], "soul.md");
   const voiced = parseCli(["bot", "add", "--name", "Ada", "--voice", "vp-aria", "--voice-speed", "1.25"]);
   assert.deepEqual([voiced.values.voice, voiced.values["voice-speed"]], ["vp-aria", "1.25"]);
   assert.equal(parseCli(["bot", "edit", "ada", "--voice-speed", ""]).values["voice-speed"], "", "\"\" clears the speed");
@@ -77,12 +78,19 @@ test("CLI parses bot commands, accepting bot and bots, with their operands and o
   assert.throws(() => parseCli(["bot", "edit", "ada", "--shape", "star"]), /--shape must be one of: blob, round, triangle, heart, cookie; "" goes back to the one its id picks\./u);
   for (const color of ["red", "#12345", "3a7bfa"]) assert.throws(() => parseCli(["bot", "edit", "ada", "--color", color]), /--color must be one of blue, yellow, magenta, mint, coral, lilac or #rrggbb/u, color);
   assert.throws(() => parseCli(["bot", "show", "ada", "--shape", "heart"]), /--shape is not valid for bot show/u);
-  const edit = parseCli(["bot", "edit", "@ada", "--instructions", "Be brief."]);
-  assert.deepEqual([edit.command, edit.operands, edit.values.instructions], ["bot edit", ["@ada"], "Be brief."]);
+  const edit = parseCli(["bot", "edit", "@ada", "--title", "Lead"]);
+  assert.deepEqual([edit.command, edit.operands, edit.values.title], ["bot edit", ["@ada"], "Lead"]);
+  const soul = parseCli(["bot", "soul", "ada", "--file", "-", "--json"]);
+  assert.deepEqual([soul.command, soul.operands, soul.values.file, soul.values.json], ["bot soul", ["ada"], "-", true]);
+  assert.deepEqual(parseCli(["bot", "soul", "Ada Lovelace"]).operands, ["Ada Lovelace"]);
+  assert.deepEqual({ ...parseCli(["bot", "add"]).values }, {}, "a bot without a name is New Bot");
+  assert.equal(parseCli(["bot", "delete", "ada", "--yes"]).values.yes, true);
+  assert.equal(parseCli(["bot", "delete", "ada", "-y"]).values.yes, true);
   // A bot on a worker: chosen once, at creation, with a folder there.
   const remote = parseCli(["bot", "add", "--name", "Rover", "--worker", "devbox", "--cwd", "~/src"]);
   assert.deepEqual([remote.values.worker, remote.values.cwd], ["devbox", "~/src"]);
   assert.equal(parseCli(["bot", "add", "--name", "Rover", "--worker", "devbox", "--cwd", "/srv/rover"]).values.cwd, "/srv/rover");
+  assert.equal(parseCli(["bot", "add", "--worker", "devbox"]).values.worker, "devbox", "a new bot on a worker needs no name either");
   assert.throws(() => parseCli(["bot", "edit", "rover", "--worker", "devbox"]), /^Error: A bot stays on the machine it was created on: --worker only applies to bot add.$/u);
   assert.throws(() => parseCli(["bot", "add", "--name", "Rover", "--worker", " "]), /--worker needs a worker's name or id/u);
   assert.throws(() => parseCli(["bot", "add", "--name", "Rover", "--worker", "devbox", "--cwd", "src"]), /With --worker, --cwd is a folder on the worker: absolute or ~\/…\./u);
@@ -107,7 +115,6 @@ test("CLI parses bot commands, accepting bot and bots, with their operands and o
   assert.deepEqual(parseCli(["bot", "routine", "run", "ada", "Morning"]).operands, ["ada", "Morning"]);
   assert.deepEqual(parseCli(["bot", "routine", "remove", "ada", "Morning", "--json"]).operands, ["ada", "Morning"]);
   for (const [args, message] of [
-    [["bot", "add"], /needs --name/u],
     [["bot", "add", "ada", "--name", "Ada"], /takes no operands/u],
     [["bot", "edit", "ada"], /needs at least one of/u],
     [["bot", "edit", "--name", "x"], /needs <bot>/u],
@@ -116,7 +123,13 @@ test("CLI parses bot commands, accepting bot and bots, with their operands and o
     [["bot", "send", "ada", "hello", "there"], /quote the message/u],
     [["bot", "send", "ada", "hi", "--timeout", "10"], /--timeout needs --wait/u],
     [["bot", "send", "ada", "hi", "--wait", "--timeout", "0"], /1-3600/u],
-    [["bot", "add", "--name", "Ada", "--instructions", "x", "--instructions-file", "y"], /either --instructions or --instructions-file/u],
+    [["bot", "add", "--name", "Ada", "--instructions", "x"], /Unknown option '--instructions'/u],
+    [["bot", "add", "--name", "Ada", "--instructions-file", "y"], /Unknown option '--instructions-file'/u],
+    [["bot", "edit", "ada", "--soul-file", "x"], /bot edit does not change SOUL\.md: use hui bot soul <bot> --file/u],
+    [["bot", "soul"], /needs <bot>/u],
+    [["bot", "remove", "ada", "--yes"], /--yes is not valid for bot remove/u],
+    [["bot", "soul", "ada", "--title", "x"], /--title is not valid for bot soul/u],
+    [["bot", "show", "ada", "--file", "x"], /--file is not valid for bot show/u],
     [["bot", "add", "--name", "Ada", "--thinking", "max"], /--thinking must be one of/u],
     [["bot", "add", "--name", "Ada", "--model", "gpt-5"], /--model must be provider\/model/u],
     [["bot", "memory", "ada", "--zoom", "12"], /id\+n/u],
@@ -142,12 +155,15 @@ test("HELP lists every hui bot command", () => {
   for (const line of [
     "hui bot list [--archived] [--json]",
     "hui bot show <bot> [--json]",
-    "hui bot add --name <name> [--title <text>] [--instructions <text> | --instructions-file <path>] [--cwd <dir>]",
-    "hui bot edit <bot> [same flags as add except --worker] [--json]",
+    "hui bot add [--name <name>] [--title <text>] [--soul-file <path|->] [--cwd <dir>]",
     "[--worker <name|id>] [--model <provider/model>]",
+    "hui bot delete <bot> [--yes] [--json]",
+    "Delete removes a bot for good, active or archived",
+    "hui bot edit <bot> [same flags as add but --soul-file and --worker] [--json]",
+    "hui bot soul <bot> [--file <path|->] [--json]",
+    "A new bot starts by asking what you expect from it (talk with\nhui bot chat <handle>), then writes its persona, SOUL.md, itself",
     "hui bot remove <bot> [--json]",
     "hui bot restore <bot> [--json]",
-    "hui bot delete <bot> [--json]",
     "hui bot chat <bot>",
     "hui bot send <bot> <message|-> [--wait] [--timeout <seconds>] [--json]",
     "hui bot stop <bot> [--json]",

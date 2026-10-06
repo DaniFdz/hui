@@ -16,7 +16,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { after, before, test } from "node:test";
 import { fileURLToPath } from "node:url";
-import type { BotMemoryStatus, BotView } from "../shared/bots.ts";
+import { botKickoffName, type BotMemoryStatus, type BotView } from "../shared/bots.ts";
 import type { TranscriptEntry } from "./runtimes/types.ts";
 
 const repo = fileURLToPath(new URL("../", import.meta.url));
@@ -153,13 +153,14 @@ async function memoryOf(handle: string): Promise<{ status: BotMemoryStatus; view
 const EMPTY_MEMORY = { messages: 0, built: 0, pending: 0, viewBytes: 0, viewLines: 0, usage: { calls: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 } };
 
 test("a bot made on the worker keeps its conversation and memory there, answers there with the bots section, and summarizes with its utility model", { timeout: 180_000 }, async () => {
-  const created = await call("/__hui/bots", "POST", { name: "Rover", title: "Explorer", worker: "devbox", memoryModel: "fx/utility" });
+  // With a soul of its own: no first conversation, so this chat's exchanges are only the ones below.
+  const created = await call("/__hui/bots", "POST", { name: "Rover", title: "Explorer", worker: "devbox", memoryModel: "fx/utility", soul: "# Who I am\nROVER_SOUL: I map ridges." });
   assert.equal(created.status, 201, JSON.stringify(created.body));
   const rover = botOf(created);
-  assert.deepEqual(rover.worker, { id: workerId, name: "devbox" });
-  assert.equal(rover.cwd, join(remoteData, "bots", rover.id), "a private folder under HUI's data directory on the worker");
-  assert.ok(existsSync(rover.cwd));
-  assert.ok(!existsSync(join(root, "gateway", "config", "hui", "bots", rover.id)), "and none here");
+  assert.deepEqual([rover.worker, rover.soul], [{ id: workerId, name: "devbox" }, true]);
+  assert.equal(rover.cwd, join(remoteData, "bots", rover.id), "its home: a private folder under HUI's data directory on the worker");
+  assert.equal(await readFile(join(rover.cwd, "SOUL.md"), "utf8"), "# Who I am\nROVER_SOUL: I map ridges.\n", "its SOUL.md in that home");
+  assert.ok(!existsSync(join(root, "gateway", "config", "hui", "bots", rover.id)), "and nothing of it here");
   const record = (await readRegistry()).find((entry) => entry.id === rover.sessionId)!;
   assert.deepEqual([record.worker, record.tool, record.bot], [workerId, "durable", rover.id], "its chat is a Durable session on the worker");
   const conversation = record.piSessionFile!.replace(/^durable:/u, "");
@@ -178,6 +179,10 @@ test("a bot made on the worker keeps its conversation and memory there, answers 
   // The worker's host asked this gateway for the bots section, so the chat on the worker knows who it is.
   const request = await chatRequest("hello from the gateway");
   assert.match(systemOf(request), /You are @rover \(Rover\), one of the bots of this HUI\./u);
+  // Its soul section, read from its home on the worker.
+  assert.ok(systemOf(request).includes(JSON.stringify(`<soul>\nYour soul is ${join(rover.cwd, "SOUL.md")}`).slice(1, -1)));
+  assert.match(systemOf(request), /ROVER_SOUL: I map ridges\./u);
+  assert.doesNotMatch(systemOf(request), /You have no soul yet/u);
   assert.equal(request?.model, "fixture");
   // OptChat summarizes beside the chat on the worker, with the bot's utility model.
   const status = await waitFor(async () => {
@@ -197,7 +202,7 @@ test("a bot on the worker without a utility model of its own summarizes with the
   // Settings' utility model reaches the worker with the mirrored settings.
   await writeFile(join(root, "gateway", "config", "hui", "settings.json"), JSON.stringify({ models: { utility: "fx/utility" } }));
   await workers.sync(workerId);
-  const sparrow = botOf(await call("/__hui/bots", "POST", { name: "Sparrow", worker: "devbox" }));
+  const sparrow = botOf(await call("/__hui/bots", "POST", { name: "Sparrow", worker: "devbox", soul: "# Who I am\nSparrow." }));
   assert.equal(sparrow.memoryModel, undefined, "no utility model of its own");
   const text = `OPT_SPARROW ${"the south valley floods every spring ".repeat(20).trim()}`;
   assert.deepEqual((await call("/__hui/bots/sparrow/messages", "POST", { text, wait: true, timeoutSeconds: 120 })).body, { status: "answered", reply: "Fixture response." });
@@ -212,7 +217,7 @@ test("a bot on the worker without a utility model of its own summarizes with the
 });
 
 test("message_bot crosses both ways between a bot here and the bot on the worker", { timeout: 180_000 }, async () => {
-  const home = botOf(await call("/__hui/bots", "POST", { name: "Home" }));
+  const home = botOf(await call("/__hui/bots", "POST", { name: "Home", soul: "# Who I am\nHome." }));
   assert.equal(home.worker, undefined);
   const rover = botOf(await call("/__hui/bots/rover"));
   // From the worker: its host calls message_bot on this gateway as the bot's session.
@@ -225,6 +230,61 @@ test("message_bot crosses both ways between a bot here and the bot on the worker
   await settledWith(rover.sessionId, (entries) => says("user", "[from @home] hello from the fixture")(entries), "Rover to get Home's message");
   await waitFor(async () => await chatRequest("[from @home] hello from the fixture"), "Rover's run on the worker");
   assert.match(systemOf(await chatRequest("[from @home] hello from the fixture")), /- @home: Home/u, "its roster on the worker lists the bot here");
+});
+
+test("a bot made on the worker without a soul speaks first there, writes SOUL.md in its home there, names itself only when the operator says, and its delete takes that home", { timeout: 240_000 }, async () => {
+  // Grok-style: no name, no soul. HUI starts its first turn through the remote session, like any message.
+  const created = await call("/__hui/bots", "POST", { worker: "devbox" });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  const fresh = botOf(created);
+  assert.deepEqual([fresh.name, fresh.handle, fresh.soul, fresh.worker?.name], ["New Bot", "new-bot", false, "devbox"]);
+  const home = join(remoteData, "bots", fresh.id);
+  const soulPath = join(home, "SOUL.md");
+  assert.equal(fresh.cwd, home);
+  const opened = await settledWith(fresh.sessionId, says("assistant", "What would you like me to look after for you?"), "its opener, from the worker");
+  const users = opened.filter((entry) => entry.kind === "message" && entry.role === "user");
+  assert.deepEqual(users.map((entry) => entry.kind === "message" ? botKickoffName(entry.text) : undefined), ["New Bot"], "nobody typed anything: HUI's kickoff");
+  const kickoff = (await providerRequests()).find((request) => !isCompactor(request) && JSON.stringify(request.messages).includes("[HUI bot created]\\nname: New Bot\\n"));
+  assert.ok(kickoff, "the kickoff reached the model from the worker");
+  assert.ok(systemOf(kickoff).includes(JSON.stringify(`<soul>\nYou have no soul yet: ${soulPath} does not exist.`).slice(1, -1)), "its first conversation, with SOUL.md's place in its home on the worker");
+  assert.match(systemOf(kickoff), /You have no name yet/u, "the worker's host knows it is still New Bot");
+  assert.equal(botOf(await call(`/__hui/bots/${fresh.id}`)).lastMessage?.text, "Hi, I'm new here. What would you like me to look after for you?", "the list previews the opener, not the kickoff");
+  assert.deepEqual((await call(`/__hui/bots/${fresh.id}/soul`)).body, { soul: null });
+
+  // set_profile crosses to this gateway as the bot's session, whose record holds the turn's origin: a routine's turn
+  // is refused, the operator's renames it.
+  const task = (await call("/__hui/automation/tasks", "POST", { name: "Rename", sessionId: fresh.sessionId, prompt: "E2E_SET_PROFILE call yourself Echo", schedule: { kind: "every", everyMs: 3_600_000 } })).body["task"] as { id: string };
+  assert.equal((await call(`/__hui/automation/tasks/${task.id}/run`, "POST", {})).status, 202);
+  await settledWith(fresh.sessionId, says("assistant", "Only the operator changes your name or title"), "the routine's set_profile to be refused");
+  assert.equal(botOf(await call(`/__hui/bots/${fresh.id}`)).name, "New Bot");
+  const named = await call(`/__hui/bots/${fresh.id}/messages`, "POST", { text: "E2E_SET_PROFILE call yourself Echo", wait: true, timeoutSeconds: 120 });
+  assert.deepEqual(named.body, { status: "answered", reply: "set_profile answered: Saved: you are Echo (@echo), Fixture tester. Tell the operator." });
+
+  // write_soul runs on the worker: SOUL.md lands in the bot's home there, and nothing of it on this machine.
+  const wrote = await call("/__hui/bots/echo/messages", "POST", { text: "E2E_WRITE_SOUL keep the trail notes", wait: true, timeoutSeconds: 120 });
+  assert.deepEqual(wrote.body, { status: "answered", reply: "I wrote my SOUL.md. Change it in the Soul tab, or just tell me." });
+  assert.equal(await readFile(soulPath, "utf8"), "# Who I am\nE2E_SOUL_TEXT: a terse fixture bot.\n");
+  assert.ok(!existsSync(join(root, "gateway", "config", "hui", "bots", fresh.id)));
+  assert.deepEqual((await call("/__hui/bots/echo/soul")).body, { soul: "# Who I am\nE2E_SOUL_TEXT: a terse fixture bot." }, "the Soul tab reads it from the worker");
+  await waitFor(async () => botOf(await call("/__hui/bots/echo")).soul || undefined, "the list to see it, read on the worker in the background");
+  // The operator's edit is written there too, and the next request there reads it.
+  assert.deepEqual((await call("/__hui/bots/echo/soul", "PUT", { soul: "# Who I am\r\nOPERATOR_SOUL on devbox.\n" })).body, { soul: "# Who I am\nOPERATOR_SOUL on devbox." });
+  assert.equal(await readFile(soulPath, "utf8"), "# Who I am\nOPERATOR_SOUL on devbox.\n");
+  await call("/__hui/bots/echo/messages", "POST", { text: "SOUL_AFTER_PUT_REMOTE", wait: true, timeoutSeconds: 120 });
+  const next = systemOf(await chatRequest("SOUL_AFTER_PUT_REMOTE"));
+  assert.match(next, /OPERATOR_SOUL on devbox\./u);
+  assert.match(next, /You are @echo \(Echo\)/u);
+  assert.doesNotMatch(next, /You have no (soul|name) yet/u);
+
+  // Deleting it, active, takes its whole home on the worker (SOUL.md and every file in it) and its memory there.
+  await writeFile(join(home, "trail-notes.md"), "north ridge: safe path down the east gully");
+  const conversation = (await readRegistry()).find((entry) => entry.id === fresh.sessionId)!.piSessionFile!.replace(/^durable:/u, "");
+  assert.ok(existsSync(join(remoteStore, "optchat", conversation)));
+  const deleted = await call(`/__hui/bots/${fresh.id}?permanent=1`, "DELETE");
+  assert.deepEqual([deleted.status, deleted.body], [200, { ok: true }]);
+  assert.equal(existsSync(home), false, "its home on the worker, with everything in it");
+  assert.equal(existsSync(join(remoteStore, "optchat", conversation)), false, "its memory, deleted on the worker");
+  assert.equal((await call("/__hui/bots/echo")).status, 404);
 });
 
 test("a routine, a queued message, steering, a question and Stop all reach the bot on the worker", { timeout: 240_000 }, async () => {
@@ -269,7 +329,7 @@ test("a call's record joins the worker bot's chat and memory, which its helper r
   const rover = botOf(await call("/__hui/bots/rover"));
   const reference = (await readRegistry()).find((entry) => entry.id === rover.sessionId)!.piSessionFile!;
   // What BotService.recordCall does for a bot on a worker, through the same ports.
-  const ports = remoteBots(workers);
+  const ports = remoteBots(workers, { cleanupFile: join(root, "ports-cleanup.json") });
   await ports.conversations(workerId).writeCallRecord(reference, {
     call: "call-1", bot: "Rover", startedAt: Date.parse("2026-10-06T20:00:00Z"), endedAt: Date.parse("2026-10-06T20:02:00Z"),
     summary: "Agreed to map the north ridge.", lines: [{ role: "user", text: "Map the north ridge tomorrow.", at: Date.parse("2026-10-06T20:00:10Z") }],
@@ -291,16 +351,18 @@ test("archiving, restoring and deleting a bot on the worker", { timeout: 120_000
   assert.equal(botOf(await call("/__hui/bots/rover/restore", "POST", {})).archived, undefined);
   assert.deepEqual((await call("/__hui/bots/rover/messages", "POST", { text: "back again", wait: true, timeoutSeconds: 120 })).body, { status: "answered", reply: "Fixture response." });
   assert.equal((await call("/__hui/bots/rover", "DELETE")).status, 200);
+  const conversation = (await readRegistry()).find((entry) => entry.id === rover.sessionId)!.piSessionFile!.replace(/^durable:/u, "");
   const deleted = await call(`/__hui/bots/${rover.id}?permanent=1`, "DELETE");
   assert.deepEqual([deleted.status, deleted.body], [200, { ok: true }]);
   assert.equal((await readRegistry()).some((entry) => entry.id === rover.sessionId), false, "its chat's record is gone");
-  assert.equal(existsSync(rover.cwd), false, "the empty folder the worker made for it went, through the worker");
-  assert.ok(existsSync(join(remoteStore, "optchat", (await readdir(join(remoteStore, "optchat")))[0]!)), "its conversation and memory stay in the worker's store");
+  assert.equal(existsSync(rover.cwd), false, "its home on the worker went, SOUL.md with it, through the worker");
+  assert.equal(existsSync(join(remoteStore, "optchat", conversation)), false, "its memory was deleted there");
+  assert.ok(existsSync(join(remoteStore, "harness.sqlite")), "the conversation itself stays in the worker's store, which cannot delete one");
   assert.equal((await call("/__hui/bots/rover")).status, 404);
 });
 
 test("a disconnected worker: creating there, its bot's memory and messages fail naming it, and the list stays fast", { timeout: 180_000 }, async () => {
-  const crow = botOf(await call("/__hui/bots", "POST", { name: "Crow", worker: workerId }));
+  const crow = botOf(await call("/__hui/bots", "POST", { name: "Crow", worker: workerId, soul: "# Who I am\nCrow." }));
   assert.equal(crow.worker?.name, "devbox");
   assert.equal((await call("/__hui/bots/crow/messages", "POST", { text: "before the disconnect", wait: true, timeoutSeconds: 120 })).body["status"], "answered");
   assert.equal((await call(`/__hui/workers/${workerId}/disconnect`, "POST", {})).status, 200);
@@ -314,6 +376,11 @@ test("a disconnected worker: creating there, its bot's memory and messages fail 
   const message = await call("/__hui/bots/crow/messages", "POST", { text: "are you there?" });
   assert.equal(message.status, 503);
   assert.match(String(message.body["error"]), /runs on devbox, which HUI is disconnected from/u);
+  // Its Soul tab cannot read or write SOUL.md, which is on the worker.
+  for (const reply of [await call("/__hui/bots/crow/soul"), await call("/__hui/bots/crow/soul", "PUT", { soul: "# Who I am\nElsewhere." })]) {
+    assert.equal(reply.status, 503);
+    assert.match(String(reply.body["error"]), /^devbox, where this bot runs, is offline/u);
+  }
   const started = Date.now();
   const listed = await call("/__hui/bots");
   assert.equal(listed.status, 200);
@@ -325,4 +392,22 @@ test("a disconnected worker: creating there, its bot's memory and messages fail 
   // Connected again, its memory reads as before.
   await workers.connect(workerId);
   assert.equal((await memoryOf("crow")).status.messages >= 2, true);
+
+  // Deleted while devbox is away: the bot goes at once, and what it left there waits on this machine.
+  assert.equal((await call(`/__hui/workers/${workerId}/disconnect`, "POST", {})).status, 200);
+  await waitFor(() => liveSessions.status(crow.sessionId) === "disconnected" || undefined, "the chat to show the disconnect again");
+  const queueFile = join(root, "gateway", "config", "hui", "bot-cleanup.json");
+  const before = Date.now();
+  const deleted = await call(`/__hui/bots/${crow.id}?permanent=1`, "DELETE");
+  assert.deepEqual([deleted.status, deleted.body], [200, { ok: true, queued: true }]);
+  assert.ok(Date.now() - before < 2_000, "the delete never waits on the worker");
+  assert.equal((await call("/__hui/bots/crow")).status, 404);
+  assert.equal(((await call("/__hui/bots")).body["bots"] as BotView[]).some((bot) => bot.id === crow.id), false, "off the roster at once");
+  const waiting = JSON.parse(await readFile(queueFile, "utf8")) as { cleanups: Array<{ worker: string; botId: string; cwd: string }> };
+  assert.deepEqual(waiting.cleanups.map(({ worker, botId, cwd }) => [worker, botId, cwd]), [[workerId, crow.id, crow.cwd]]);
+  assert.ok(existsSync(join(crow.cwd, "SOUL.md")), "its home is still on the worker");
+  // At the next connection the worker removes it, and the note goes.
+  await workers.connect(workerId);
+  await waitFor(() => !existsSync(crow.cwd) || undefined, "the worker to remove its home");
+  await waitFor(async () => (JSON.parse(await readFile(queueFile, "utf8")) as { cleanups: unknown[] }).cleanups.length === 0 || undefined, "the note to go");
 });
