@@ -730,23 +730,29 @@ function workerStateLabel(state: WorkerState): string {
   return state === "connected" ? "Remote worker" : `Remote worker · ${state === "error" ? "offline" : state}`;
 }
 
-/** Runs on: a picker while the bot is new, the machine it stays on while it is edited. Its chat and memory live in that
- * machine's store, so it is chosen once. */
-function renderMachineField(props: BotDialogProps, editing: BotView | undefined) {
-  if (editing) {
-    if (!editing.worker && !props.machine) return nothing;
+/** The machine a bot runs on, read-only: its worker, or this machine. */
+export function renderBotMachine(worker: BotView["worker"]) {
+  return html`<span class="bot-dialog__machine-value" data-bot-machine>${worker ? icons.globe : icons.terminal}<span>${worker?.name ?? "Local"}</span></span>`;
+}
+
+/**
+ * Runs on: a picker while the bot is new (only while a worker exists), and once it exists the machine it stays on,
+ * read-only. Its chat and memory live in that machine's store, so it is chosen once.
+ */
+export function renderRunsOnField(machine: BotDialogMachine | undefined, bot: Pick<BotView, "worker"> | undefined, pending: boolean) {
+  if (bot) {
+    if (!bot.worker && !machine) return nothing;
     return html`<div class="field input-dialog__field bot-dialog__machine"><span>Runs on</span>
-      <span class="bot-dialog__machine-value" data-bot-machine>${editing.worker ? icons.globe : icons.terminal}<span>${editing.worker?.name ?? "Local"}</span></span>
+      ${renderBotMachine(bot.worker)}
       <span class="bot-field__hint">A bot stays on the machine it was created on: its chat and memory live there.</span></div>`;
   }
-  const machine = props.machine;
   if (!machine) return nothing;
   const options = [
     { value: "", label: "Local", description: "This machine" },
     ...machine.workers.map((worker) => ({ value: worker.id, label: worker.name, description: workerStateLabel(worker.state) })),
   ];
   return html`<div class="field input-dialog__field bot-dialog__machine"><span>Runs on</span>
-    ${renderPicker({ label: "Runs on", value: machine.worker, disabled: props.pending, options, onChange: machine.onWorker,
+    ${renderPicker({ label: "Runs on", value: machine.worker, disabled: pending, options, onChange: machine.onWorker,
       renderLeading: (option) => option.value ? icons.globe : icons.terminal })}
     <span class="bot-field__hint">${machine.worker
       ? "Its chat, memory and folder live on that worker, which HUI must be connected to. Terminals, the browser and watchers stay on this machine, so the bot can't use them there. It can't move later."
@@ -754,8 +760,8 @@ function renderMachineField(props: BotDialogProps, editing: BotView | undefined)
 }
 
 /** What the workspace field says: a folder on the machine the bot runs on. */
-function workspaceHint(props: BotDialogProps, editing: BotView | undefined): string {
-  const remote = editing ? editing.worker : props.machine?.workers.find((worker) => worker.id === props.machine?.worker);
+function workspaceHint(machine: BotDialogMachine | undefined, editing: BotView | undefined): string {
+  const remote = editing ? editing.worker : machine?.workers.find((worker) => worker.id === machine.worker);
   if (editing) return remote ? `A folder on ${remote.name}. Can change only while the bot is idle.` : "Can change only while the bot is idle.";
   return remote
     ? `A folder on ${remote.name}: absolute or ~/…. Leave empty for a private folder HUI creates there.`
@@ -791,6 +797,7 @@ export function renderBotDialog(props: BotDialogProps) {
       <label class="field input-dialog__field bot-dialog__name"><span>Name</span>
         <input class="settings-input" name="name" type="text" required maxlength=${BOT_LIMITS.name} autocomplete="off" placeholder="Scout" .value=${editing?.name ?? ""} ?disabled=${props.pending} /></label>
       ${renderLookField(props.look, props.pending)}
+      ${renderRunsOnField(props.machine, editing, props.pending)}
       <label class="field input-dialog__field"><span>Title</span>
         <input class="settings-input" name="title" type="text" maxlength=${BOT_LIMITS.title} autocomplete="off" placeholder="Research assistant" .value=${editing?.title ?? ""} ?disabled=${props.pending} /></label>
       <label class="field input-dialog__field"><span>Instructions</span>
@@ -811,10 +818,9 @@ export function renderBotDialog(props: BotDialogProps) {
       ${props.voice ? renderVoiceField(props.voice, props.pending, !props.call) : nothing}
       ${props.call ? renderCallVoiceField(props.call, props.pending) : nothing}
       ${languageField(props)}
-      ${renderMachineField(props, editing)}
       <div class="field input-dialog__field"><label for="bot-dialog-cwd">Workspace directory</label>
         ${renderDirectoryPicker({ id: "bot-dialog-cwd", label: "Workspace directory", value: editing?.cwd ?? "", suggestions: props.directorySuggestions, onInput: props.onDirectoryInput, inputClass: "settings-input", externalLabel: true, placeholder: "Automatic" })}
-        <span class="bot-field__hint">${workspaceHint(props, editing)}</span></div>
+        <span class="bot-field__hint">${workspaceHint(props.machine, editing)}</span></div>
       ${props.error ? html`<p class="group-action-dialog__error bot-field__error" role="alert">${props.error}</p>` : nothing}
       <div class="exec-approval-actions">
         <button type="submit" class="btn primary" ?disabled=${props.pending}>${props.pending ? (editing ? "Saving…" : "Creating…") : editing ? "Save" : "Create bot"}</button>

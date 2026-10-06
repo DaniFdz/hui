@@ -116,17 +116,20 @@ test("the dialog's Model and Thinking pickers line up although only Model has a 
 
 test("the New bot dialog offers Runs on while a worker exists, an edit only shows the machine, and the workspace follows it", () => {
   const source = read("./bots.ts");
-  const field = between(source, "function renderMachineField(", "/** What the workspace field says");
-  assert.match(field, /if \(editing\) \{\n\s+if \(!editing\.worker && !props\.machine\) return nothing;/u, "an edit shows the machine, read-only");
-  assert.match(field, /data-bot-machine>\$\{editing\.worker \? icons\.globe : icons\.terminal\}<span>\$\{editing\.worker\?\.name \?\? "Local"\}<\/span>/u);
+  const machine = between(source, "export function renderBotMachine(", "/**\n * Runs on:");
+  assert.match(machine, /data-bot-machine>\$\{worker \? icons\.globe : icons\.terminal\}<span>\$\{worker\?\.name \?\? "Local"\}<\/span>/u, "a helper any view can show read-only");
+  const field = between(source, "export function renderRunsOnField(", "/** What the workspace field says");
+  assert.match(field, /renderRunsOnField\(machine: BotDialogMachine \| undefined, bot: Pick<BotView, "worker"> \| undefined, pending: boolean\)/u, "self-contained: only what it shows");
+  assert.match(field, /if \(bot\) \{\n\s+if \(!bot\.worker && !machine\) return nothing;/u, "an existing bot shows its machine, read-only");
+  assert.match(field, /\$\{renderBotMachine\(bot\.worker\)\}/u);
   assert.match(field, /A bot stays on the machine it was created on: its chat and memory live there\./u);
-  assert.match(field, /const machine = props\.machine;\n\s+if \(!machine\) return nothing;/u, "no picker without a worker");
+  assert.match(field, /if \(!machine\) return nothing;\n\s+const options = \[/u, "no picker without a worker");
   assert.match(field, /\{ value: "", label: "Local", description: "This machine" \}/u);
-  assert.match(field, /renderPicker\(\{ label: "Runs on", value: machine\.worker, disabled: props\.pending, options, onChange: machine\.onWorker,/u);
+  assert.match(field, /renderPicker\(\{ label: "Runs on", value: machine\.worker, disabled: pending, options, onChange: machine\.onWorker,/u);
   assert.match(field, /Terminals, the browser and watchers stay on this machine, so the bot can't use them there\./u, "the hint states the limits");
   assert.match(between(source, "function workspaceHint(", "/** One Language field"), /A folder on \$\{remote\.name\}: absolute or ~\/…\. Leave empty for a private folder HUI creates there\./u);
   assert.match(between(source, "export function renderBotDialog(", "/* ── archive confirmation"),
-    /\$\{renderMachineField\(props, editing\)\}\n\s+<div class="field input-dialog__field"><label for="bot-dialog-cwd">Workspace directory<\/label>/u, "Runs on comes right before the folder it decides");
+    /\$\{renderLookField\(props\.look, props\.pending\)\}\n\s+\$\{renderRunsOnField\(props\.machine, editing, props\.pending\)\}/u, "Runs on comes right after Look");
   const app = read("../hui-app.ts");
   assert.match(app, /\.\.\.\(this\.launchWorkers\.length \? \{ machine: \{/u, "only while a worker exists");
   assert.match(app, /onDirectoryInput: this\.botDialogWorker\(\) \? \(input\) => this\.loadDirectorySuggestions\(input, this\.botDialogWorker\(\)\) : this\.requestDirectorySuggestions/u,
