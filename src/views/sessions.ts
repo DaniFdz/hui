@@ -163,7 +163,7 @@ export function formatBootDuration(milliseconds: number | undefined): string {
 
 function sessionRow(session: SessionView, props: SessionsPageProps): TemplateResult {
   return html`
-      <tr class="session-data-row" data-session-id=${session.id}>
+      <tr class="session-data-row ${session.archived ? "session-data-row--archived" : ""}" data-session-id=${session.id}>
         <td class="data-table-checkbox-col">
           <input type="checkbox" aria-label=${`Select ${session.title}`} .checked=${props.selected.has(session.id)}
             @change=${(event: Event) => props.onSelect([session.id], (event.target as HTMLInputElement).checked)} />
@@ -354,6 +354,7 @@ export function renderSessionsPage(props: SessionsPageProps): TemplateResult {
     : undefined;
   const visibleIds = visibleRows(props).map(({ session }) => session.id);
   const selectedIds = visibleIds.filter((id) => props.selected.has(id));
+  const archivedIds = props.loading || props.error ? [] : matchingSessions(props.groups, props.query, "archived", props.filters.status).map(({ session }) => session.id);
   const heaviest = measured.toSorted((a, b) => (b.runtime?.memoryBytes ?? 0) - (a.runtime?.memoryBytes ?? 0))[0];
   return html`
     <section class="settings-workspace hui-workspace-page sessions-workspace">
@@ -441,6 +442,8 @@ export function renderSessionsPage(props: SessionsPageProps): TemplateResult {
                   `)}
                 </div>
                 ${filtersPopover(props)}
+                ${archivedIds.length ? html`<button type="button" class="btn btn--sm"
+                  @click=${() => { props.onState("archived"); props.onSelect(archivedIds, true); }}>Select archived (${archivedIds.length})</button>` : nothing}
               </div>
               ${selectedIds.length || props.deleteNotice ? html`<div class="sessions-bulk-bar">
                 ${selectedIds.length ? html`
