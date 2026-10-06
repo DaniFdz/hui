@@ -149,7 +149,7 @@ test("request_access lets one request per bot wait for the operator; the next ma
 
 function fakeMemory(): BotMemory {
   return {
-    enable: async () => {}, configure: async () => {}, status: async () => undefined,
+    enable: async () => {}, configure: async () => {}, disable: async () => {}, purge: async () => {}, status: async () => undefined,
     view: async () => "", zoom: async () => "", html: async () => "", subscribe: () => () => {},
   };
 }
@@ -273,16 +273,16 @@ test("a bot has every tool and skill a session in its directory has until the op
   const plain = await startDurable({ cwd: f.cwd, huiSessionId: "plain" }, f.host);
   const plainTools = names((await plain.inspect()).tools);
   const { id, session } = await f.bot(NONE);
-  assert.deepEqual(names((await session.inspect()).tools), [...plainTools, "message_bot"], "every tool, and message_bot");
+  assert.deepEqual(names((await session.inspect()).tools), [...plainTools, "message_bot", "write_soul", "set_profile"], "every tool, message_bot and its soul and profile tools");
   assert.deepEqual((await (await f.host.open()).snapshot(AgentDoc, id, durableContext))?.tools, { remove: ["request_access", "load_skill"] },
     "its own tools wait until it has a use for them");
-  assert.deepEqual(names(session.botOffer()), [...plainTools, "message_bot"], "the operator can turn off any of them");
+  assert.deepEqual(names(session.botOffer()), [...plainTools, "message_bot"], "the operator can turn off any of them but its essentials");
   assert.equal(session.botOffer().find((tool) => tool.name === "fixture_other")?.group, "extension");
   assert.deepEqual(plain.botOffer(), []);
   await session.prompt("plain turn");
   await settledWith(session, answered("Fixture response"));
   const [first] = await requests(f.log);
-  assert.deepEqual(toolNames(first), [...plainTools, "message_bot"]);
+  assert.deepEqual(toolNames(first), [...plainTools, "message_bot", "write_soul", "set_profile"]);
   const system = JSON.stringify(first?.system);
   assert.match(system, /Use the read tool to load a skill's file/u, "PI's own skills section, every skill");
   assert.match(system, /<name>alpha<\/name>[^]*<name>beta<\/name>/u);
@@ -489,5 +489,5 @@ test("a bot document from before the lists reads as nothing turned off", { timeo
   assert.deepEqual(await harness.snapshot(BotDoc, created.id, durableContext), { bot: "bot-old", disabledTools: [], disabledSkills: [] });
   const plain = await startDurable({ cwd: f.cwd, huiSessionId: "plain" }, f.host);
   const session = await startDurable({ cwd: f.cwd, sessionFile: `durable:${created.id}`, huiSessionId: "old-chat" }, f.host);
-  assert.deepEqual(names((await session.inspect()).tools), [...names((await plain.inspect()).tools), "message_bot"], "every tool, as before");
+  assert.deepEqual(names((await session.inspect()).tools), [...names((await plain.inspect()).tools), "message_bot", "write_soul", "set_profile"], "every tool, as before");
 });

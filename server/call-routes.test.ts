@@ -14,7 +14,7 @@ const OFFER = "v=0\r\no=- 1 2 IN IP4 127.0.0.1\r\ns=-\r\nm=audio 9 UDP/TLS/RTP/S
 const ANSWER = "v=0\r\no=- 9 9 IN IP4 0.0.0.0\r\ns=-\r\nm=audio 3478 UDP/TLS/RTP/SAVPF 111\r\n";
 
 function fixture(options: { engine?: Settings["calls"]["engine"]; voice?: Settings["calls"]["voice"]; upstream?: number; bot?: Partial<BotRecord> } = {}) {
-  const bot: BotRecord = { id: "b1", handle: "juno", name: "Juno", cwd: "/tmp", sessionId: "s1", createdAt: "x", updatedAt: "x", instructions: "Be Juno.", ...options.bot };
+  const bot: BotRecord = { id: "b1", handle: "juno", name: "Juno", cwd: "/tmp", sessionId: "s1", createdAt: "x", updatedAt: "x", ...options.bot };
   const sessions: unknown[] = [];
   const accounts: CallAccounts = {
     list: async () => [{ id: "default", name: "Main" }],
@@ -40,7 +40,7 @@ function fixture(options: { engine?: Settings["calls"]["engine"]; voice?: Settin
     callContext: async (target: string) => {
       if (target !== bot.id && target !== bot.handle) throw new BotNotFoundError(`No bot named ${target}.`);
       if (bot.archived) throw new BotConflictError("archived");
-      return { bot, view: "<chat>\n0+1|user: My dog is Pancho.\n</chat>" };
+      return { bot, soul: "Be Juno.", view: "<chat>\n0+1|user: My dog is Pancho.\n</chat>" };
     },
   };
   // The seam: the routes hand it the bot, its call (its record so far) and the request.
@@ -95,7 +95,7 @@ test("starting a call builds the bot's session, returns only the answer and refu
   assert.equal(session.audio.output.voice, "vale");
   assert.match(session.instructions, /You are Juno \(@juno\)\./u);
   assert.match(session.instructions, /Speak Spanish\./u);
-  assert.match(session.instructions, /<instructions>\nBe Juno\.\n<\/instructions>/u);
+  assert.match(session.instructions, /<soul>\nBe Juno\.\n<\/soul>/u);
   assert.match(session.instructions, /user: My dog is Pancho\./u);
 
   const own = fixture({ bot: { voice: { live: "ember" } } });

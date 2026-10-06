@@ -26,15 +26,19 @@ import { defineTool, section, type ConversationId, type PromptSection, type Tool
 import type { Skill } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { bundledSkills } from "../bundled-skills.ts";
-import { BotDoc, conversationBotState, MESSAGE_BOT_TOOL, type BotAccess, type BotSkillRef } from "./durable-bots.ts";
+import { BotDoc, conversationBotState, MESSAGE_BOT_TOOL, SET_PROFILE_TOOL, WRITE_SOUL_TOOL, type BotAccess, type BotSkillRef } from "./durable-bots.ts";
 import { huiToolDefinitions } from "./hui-tools.ts";
 import type { QuestionDraft } from "./question-box.ts";
 import type { RuntimeQuestionResponse } from "./types.ts";
 
 export const REQUEST_ACCESS_TOOL = "request_access";
 export const LOAD_SKILL_TOOL = "load_skill";
-/** A bot's own tools. The operator can't turn them off; its chat is offered each one while it has a use for it. */
-export const BOT_OWN_TOOLS: readonly string[] = [REQUEST_ACCESS_TOOL, LOAD_SKILL_TOOL];
+/**
+ * A bot's own tools, its essentials: the operator can't turn them off, and the catalog doesn't offer them. Its soul
+ * and profile tools are always offered; `request_access` and `load_skill` while it has a use for them. OptChat's
+ * memory tools are essentials too, kept apart because only a chat with OptChat has them.
+ */
+export const BOT_OWN_TOOLS: readonly string[] = [WRITE_SOUL_TOOL, SET_PROFILE_TOOL, REQUEST_ACCESS_TOOL, LOAD_SKILL_TOOL];
 /** The file tools a model loads skills with (PI's skills section names one); a bot with neither gets `load_skill`. */
 const SKILL_READERS: readonly string[] = ["read", "bash"];
 

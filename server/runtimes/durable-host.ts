@@ -28,7 +28,7 @@ import { DurablePrompt, type PromptSettings } from "./durable-prompt.ts";
 import { huiDurableTools, type DurableToolInvoker } from "./durable-tools.ts";
 import type { Contribution, DurableExtensions, ExtensionHost } from "./durable-extensions.ts";
 import { OptChatManager, type OptChatTuning } from "./durable-optchat.ts";
-import { conversationBot, conversationBotState, huiBotsExtensions, type BotAccess, type BotState } from "./durable-bots.ts";
+import { conversationBot, conversationBotState, huiBotsExtensions, type BotAccess, type BotSoulHost, type BotState } from "./durable-bots.ts";
 import { botAccessParts, botMayCall, type BotChat } from "./durable-bot-access.ts";
 import { invokeAgentTool } from "../agent-tools-bridge.ts";
 
@@ -178,11 +178,15 @@ export class DurableHost implements ExtensionHost {
   #invokeTool: DurableToolInvoker;
   #lookupCaller: (conversationId: ConversationId) => Promise<string | undefined>;
   #tools: Extension;
-  /** The `bots` and `bot_access` sections (inert outside bots' chats), and the tools only bots' chats select:
-   * `message_bot` and their own (`durable-bots.ts`, `durable-bot-access.ts`). */
+  /** The `bots`, `bot_access` and `soul` sections (inert outside bots' chats), and the tools only bots' chats select:
+   * `message_bot`, `write_soul`, `set_profile`, `request_access` and `load_skill` (`durable-bots.ts`,
+   * `durable-bot-access.ts`). */
   #bots: { section: Extension; tools: Extension };
   /** The `bots` section of a bot's chat; the gateway sets it, a worker host leaves it unset. */
   botSection: ((botId: string) => Promise<string | undefined>) | undefined;
+  /** Where bots' SOUL.md files are on this host, for the `soul` section; the gateway sets it (each bot's home folder in
+   * HUI's configuration), a host without one leaves the section out. */
+  botSouls: BotSoulHost | undefined;
   /** Mirrors a bot's lists into the gateway's roster after the operator allowed one of its requests; a worker host
    * leaves it unset. */
   botAccessRecorded: ((botId: string, access: BotAccess) => Promise<void>) | undefined;
@@ -259,7 +263,10 @@ export class DurableHost implements ExtensionHost {
         detail: error instanceof Error ? error.message : String(error),
       }),
     });
-    this.#bots = huiBotsExtensions({ invoke, section: async (botId) => this.botSection?.(botId), tools: access.tools, sections: access.sections });
+    this.#bots = huiBotsExtensions({
+      invoke, section: async (botId) => this.botSection?.(botId), souls: () => this.botSouls,
+      tools: access.tools, sections: access.sections,
+    });
     // A bot's chat lists only the skills the operator left on.
     this.prompt.disabledSkillsFor = async (conversationId) => (await this.botStateFor(conversationId))?.disabledSkills;
   }

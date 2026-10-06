@@ -120,9 +120,9 @@ export function createCallRoutes(deps: CallRouteDeps) {
     const settings = await deps.settings();
     if (settings.calls.engine !== "gpt-live") throw new BotConflictError("Calls use VoiceStudio. Choose GPT-Live in Settings → Models → Calls.");
     const sdp = checkOffer(body["sdp"]);
-    const { bot, view } = await bots.callContext(id);
+    const { bot, view, soul } = await bots.callContext(id);
     const timeZone = deps.timeZone?.();
-    const { instructions, memoryBytes } = buildCallInstructions({ bot, operator: settings.profileName, ...(view ? { view } : {}), ...(timeZone ? { timeZone } : {}) });
+    const { instructions, memoryBytes } = buildCallInstructions({ bot, operator: settings.profileName, ...(soul ? { soul } : {}), ...(view ? { view } : {}), ...(timeZone ? { timeZone } : {}) });
     const voice = sessionVoice(bot, settings.calls.voice);
     const started = await broker.start({ botId: bot.id, sdp, session: buildCallSession(instructions, voice), ...(request.signal ? { signal: request.signal } : {}) });
     const result: CallStarted = {

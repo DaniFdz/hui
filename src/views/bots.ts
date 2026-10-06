@@ -1,6 +1,6 @@
 /**
- * The Bots tab: the sidebar roster, a bot's side panel (Routines | Memory),
- * the New/Edit bot dialog and the archive confirmation. Rendering only; every
+ * The Bots tab: the sidebar roster, a bot's side panel (Routines | Memory |
+ * Soul), the New/Edit bot dialog and the archive confirmation. Rendering only; every
  * read and write is a prop callback owned by `hui-app.ts`. The bot's chat is
  * the ordinary session pane (`renderHome`) with a bot header, not a fork.
  */
@@ -33,6 +33,7 @@ import {
 } from "../lib/bot-roster.ts";
 import { botRoutineRuns, botRoutines, routineSchedule, RoutineFormError, ROUTINE_WEEKDAYS } from "../lib/bot-routines.ts";
 import { memoryBudgetLabel, memoryUsageDetail, memoryUsageLabel, type MemoryLine } from "../lib/bot-memory.ts";
+import { renderMarkdown } from "../lib/markdown.ts";
 import { describeRoutineSchedule, formatTimestamp, runIsActive } from "./settings-automation.ts";
 import { renderSettingsToggle } from "./settings-toggle.ts";
 import { renderPicker } from "./settings-picker.ts";
@@ -99,7 +100,7 @@ export type BotRosterProps = {
   onToggleShowHidden: () => void;
   onToggleShowArchived: () => void;
   onRestore: (bot: BotView) => void;
-  /** Asks before deleting an archived bot for good. */
+  /** Asks before deleting a bot for good, active or archived. */
   onDelete: (bot: BotView) => void;
   onRetry: () => void;
   onToggleMenu: (id: string) => void;
@@ -158,6 +159,7 @@ function botRow(bot: BotView, props: BotRosterProps, drawer: RosterDrawer) {
             if (action === "edit") { drawer.dialog(event); props.onEdit(bot); }
             if (action === "hide") props.onSetHidden(bot, !bot.hidden);
             if (action === "archive") { drawer.dialog(event); props.onArchive(bot); }
+            if (action === "delete") { drawer.dialog(event); props.onDelete(bot); }
           }}>
           <button slot="trigger" type="button" class="session-action session-row__menu-btn" aria-label=${`Actions for ${bot.name}`} ?disabled=${props.pendingId === bot.id}>
             <span class="session-row__more-icon" aria-hidden="true">${icons.moreHorizontal}</span>
@@ -166,6 +168,7 @@ function botRow(bot: BotView, props: BotRosterProps, drawer: RosterDrawer) {
           <wa-dropdown-item value="hide" class="session-menu__item"><span slot="icon" class="session-menu__icon" aria-hidden="true">${icons.eye}</span><span class="session-menu__text">${bot.hidden ? "Unhide" : "Hide"}</span></wa-dropdown-item>
           <div class="session-menu__separator" role="separator"></div>
           <wa-dropdown-item value="archive" variant="danger" class="session-menu__item session-menu__item--destructive"><span slot="icon" class="session-menu__icon" aria-hidden="true">${icons.box}</span><span class="session-menu__text">Archive…</span></wa-dropdown-item>
+          <wa-dropdown-item value="delete" variant="danger" class="session-menu__item session-menu__item--destructive"><span slot="icon" class="session-menu__icon" aria-hidden="true">${icons.trash}</span><span class="session-menu__text">Delete…</span></wa-dropdown-item>
         </wa-dropdown>
       </span>
     </span>
@@ -282,6 +285,9 @@ export type BotMemoryState = {
 
 export type MemoryZoomState = { loading: boolean; error: string; lines: readonly MemoryLine[] };
 
+/** The Soul tab's read of SOUL.md: `soul` is undefined until read, null while the bot has none. */
+export type BotSoulState = { loading: boolean; error: string; soul?: string | null };
+
 export type BotPanelProps = {
   bot: BotView;
   id: string;
@@ -312,9 +318,22 @@ export type BotPanelProps = {
     /** OptChat's browse page; a same-origin link opens it in a new tab. */
     pageUrl: string;
   };
+  soul: {
+    state: BotSoulState;
+    /** The editor's text; undefined while SOUL.md is only shown. */
+    draft: string | undefined;
+    saving: boolean;
+    saveError: string;
+    /** Opens the editor on SOUL.md, or empty for Write it yourself. */
+    onEdit: () => void;
+    onDraft: (text: string) => void;
+    onSave: () => void;
+    onCancel: () => void;
+    onRetry: () => void;
+  };
 };
 
-const PANEL_TAB_LABELS: Record<BotPanelTab, string> = { routines: "Routines", memory: "Memory" };
+const PANEL_TAB_LABELS: Record<BotPanelTab, string> = { routines: "Routines", memory: "Memory", soul: "Soul" };
 
 function panelTabId(panelId: string, tab: BotPanelTab): string {
   return `${panelId}-tab-${tab}`;
@@ -513,10 +532,70 @@ function renderMemoryTab(props: BotPanelProps) {
       : html`<p class="bot-panel__hint">Nothing remembered yet. Each message joins the memory; older ones are summarized into shorter lines you can zoom back into.</p>`}`;
 }
 
+/** SOUL.md's editor: a textarea with Save and Cancel (Escape), the count against the limit, errors inline. */
+function renderSoulEditor(props: BotPanelProps, draft: string) {
+  const { soul } = props;
+  const length = draft.trim().length;
+  const over = length > BOT_LIMITS.soul;
+  return html`<form class="bot-soul__editor" novalidate
+    @submit=${(event: SubmitEvent) => { event.preventDefault(); if (!over) soul.onSave(); }}
+    @keydown=${(event: KeyboardEvent) => {
+      if (event.key !== "Escape" || soul.saving) return;
+      event.preventDefault();
+      event.stopPropagation();
+      soul.onCancel();
+    }}>
+    <label class="bot-field"><span class="bot-field__label">SOUL.md</span>
+      <textarea class="settings-input bot-soul__textarea" name="soul" rows="16" spellcheck="true" .value=${draft} ?disabled=${soul.saving}
+        aria-invalid=${over ? "true" : "false"} placeholder="# Who I am"
+        @input=${(event: Event) => soul.onDraft((event.currentTarget as HTMLTextAreaElement).value)}></textarea></label>
+    <p class="bot-field__hint ${over ? "bot-field__error" : ""}" aria-live="polite">${length
+      ? `${length.toLocaleString()} of ${BOT_LIMITS.soul.toLocaleString()} characters. ${props.bot.name} reads it from its next turn.`
+      : `Saved empty, SOUL.md goes and ${props.bot.name} asks what you expect from it again.`}</p>
+    ${soul.saveError ? html`<p class="bot-field__error" role="alert">${soul.saveError}</p>` : nothing}
+    <div class="bot-soul__actions">
+      <button type="submit" class="btn primary btn--sm" ?disabled=${soul.saving || over}>${soul.saving ? "Saving…" : "Save"}</button>
+      <button type="button" class="btn btn--sm" ?disabled=${soul.saving} @click=${soul.onCancel}>Cancel</button>
+    </div>
+  </form>`;
+}
+
+/** SOUL.md as markdown with Edit; while the bot has none, what its first conversation does, and Write it yourself. */
+function renderSoulTab(props: BotPanelProps) {
+  const { soul } = props;
+  const { state } = soul;
+  const name = props.bot.name;
+  if (soul.draft !== undefined) return renderSoulEditor(props, soul.draft);
+  if (state.soul === undefined) {
+    return state.error
+      ? html`<div class="bot-panel__state" role="alert">${state.error} <button type="button" class="btn btn--sm" @click=${soul.onRetry}>Retry</button></div>`
+      : html`<p class="bot-panel__state" role="status">Reading ${name}'s soul…</p>`;
+  }
+  const refreshFailed = state.error ? html`<p class="bot-field__error" role="alert">Refresh failed: ${state.error}</p>` : nothing;
+  if (state.soul === null) {
+    return html`<div class="bot-soul__empty">
+      <p class="bot-soul__empty-title">${name} writes its soul in your first conversation</p>
+      <p class="bot-panel__hint">It asks what you expect from it, a question or two at a time, then saves who it is, what it looks after, how it works and when it reaches out to you as its SOUL.md. Later, just tell it what to change.</p>
+      <button type="button" class="btn btn--sm bot-soul__write" @click=${soul.onEdit}>${icons.edit}<span>Write it yourself</span></button>
+    </div>
+    ${refreshFailed}`;
+  }
+  return html`<div class="bot-soul__toolbar">
+      <span class="bot-soul__file">SOUL.md</span>
+      <button type="button" class="btn btn--sm bot-soul__edit" aria-label=${`Edit ${name}'s soul`} @click=${soul.onEdit}>${icons.edit}<span>Edit</span></button>
+    </div>
+    ${state.soul.length > BOT_LIMITS.soul
+      ? html`<p class="bot-memory__notice" role="status">SOUL.md has ${state.soul.length.toLocaleString()} characters; ${name} reads only the first ${BOT_LIMITS.soul.toLocaleString()}.</p>`
+      : nothing}
+    <div class="chat-text bot-soul__body">${renderMarkdown(state.soul)}</div>
+    ${refreshFailed}
+    <p class="bot-panel__hint">${name} follows this every turn. Ask it to change something and it updates SOUL.md and tells you.</p>`;
+}
+
 export function renderBotPanel(props: BotPanelProps) {
   const tabpanel = `${props.id}-tabpanel`;
-  return html`${props.sheet ? html`<button type="button" class="bot-panel__backdrop" tabindex="-1" aria-label="Close routines and memory" @click=${props.onClose}></button>` : nothing}
-    <aside class="bot-panel ${props.sheet ? "bot-panel--sheet" : ""}" id=${props.id} aria-label=${`${props.bot.name}: routines and memory`}
+  return html`${props.sheet ? html`<button type="button" class="bot-panel__backdrop" tabindex="-1" aria-label="Close routines, memory and soul" @click=${props.onClose}></button>` : nothing}
+    <aside class="bot-panel ${props.sheet ? "bot-panel--sheet" : ""}" id=${props.id} aria-label=${`${props.bot.name}: routines, memory and soul`}
       @keydown=${(event: KeyboardEvent) => {
         if (event.key !== "Escape" || !props.sheet || event.defaultPrevented) return;
         event.preventDefault();
@@ -529,10 +608,10 @@ export function renderBotPanel(props: BotPanelProps) {
             aria-selected=${String(props.tab === tab)} aria-controls=${tabpanel} tabindex=${props.tab === tab ? "0" : "-1"}
             @click=${() => props.onTab(tab)} @keydown=${(event: KeyboardEvent) => onPanelTabKeydown(event, props)}>${PANEL_TAB_LABELS[tab]}${tab === "routines" && props.bot.routines ? html`<span class="bot-panel__count">${props.bot.routines}</span>` : nothing}</button>`)}
         </div>
-        <button type="button" class="btn btn--ghost btn--icon chat-icon-btn bot-panel__close" aria-label="Close routines and memory" title="Close" @click=${props.onClose}>${icons.close}</button>
+        <button type="button" class="btn btn--ghost btn--icon chat-icon-btn bot-panel__close" aria-label="Close routines, memory and soul" title="Close" @click=${props.onClose}>${icons.close}</button>
       </header>
       <div class="bot-panel__body" role="tabpanel" id=${tabpanel} aria-labelledby=${panelTabId(props.id, props.tab)} tabindex="0">
-        ${props.tab === "routines" ? renderRoutinesTab(props) : renderMemoryTab(props)}
+        ${props.tab === "routines" ? renderRoutinesTab(props) : props.tab === "memory" ? renderMemoryTab(props) : renderSoulTab(props)}
       </div>
     </aside>`;
 }
@@ -540,7 +619,7 @@ export function renderBotPanel(props: BotPanelProps) {
 /* ── New / Edit bot dialog ────────────────────────────────────────────────── */
 
 /** The dialog's text fields; the pickers are controlled by the app. */
-export type BotFormValues = Pick<BotDraft, "name" | "title" | "instructions" | "cwd" | "emoji">;
+export type BotFormValues = Pick<BotDraft, "name" | "title" | "cwd" | "emoji">;
 
 export type BotDialogProps = {
   mode: "create" | "edit";
@@ -670,7 +749,7 @@ function renderLanguageField(value: string, onLanguage: (value: string) => void,
     ? "What VoiceStudio listens for and speaks in, and the language the bot speaks on calls. Auto detects it each time."
     : live
       ? "The language the bot speaks on calls. Auto answers in the language you speak."
-      : "What VoiceStudio listens for in voice notes and calls and speaks in. Auto detects it each time. Nothing is translated: the bot answers in the language its instructions ask for.";
+      : "What VoiceStudio listens for in voice notes and calls and speaks in. Auto detects it each time. Nothing is translated: the bot answers in the language its soul (or you) asks for.";
   return html`<div class="field input-dialog__field bot-dialog__language"><span>Language</span>
     ${renderPicker({ label: "Language", value, disabled: pending, searchable: true, searchPlaceholder: "Search languages", options: languageChoices, onChange: onLanguage })}
     <span class="bot-field__hint">${hint}</span>
@@ -730,7 +809,6 @@ export function renderBotDialog(props: BotDialogProps) {
       props.onSubmit({
         name: formText(data, "name"),
         title: formText(data, "title"),
-        instructions: formText(data, "instructions"),
         cwd: formText(data, "cwd"),
         emoji: formText(data, "emoji"),
       });
@@ -738,14 +816,12 @@ export function renderBotDialog(props: BotDialogProps) {
       <div class="exec-approval-title" id=${titleId}>${editing ? `Edit ${editing.name}` : "New bot"}</div>
       <div class="exec-approval-sub">${editing
         ? "Changes apply to the bot's next turn. Its chat and memory stay as they are."
-        : "A bot keeps one permanent chat with its own model and memory. Say hi once it is created."}</div>
+        : "A bot keeps one permanent chat with its own model and memory. Once it is created, it starts by asking what you expect from it."}</div>
       <label class="field input-dialog__field bot-dialog__name"><span>Name</span>
         <input class="settings-input" name="name" type="text" required maxlength=${BOT_LIMITS.name} autocomplete="off" placeholder="Scout" .value=${editing?.name ?? ""} ?disabled=${props.pending} /></label>
       ${renderLookField(props.look, props.pending)}
       <label class="field input-dialog__field"><span>Title</span>
         <input class="settings-input" name="title" type="text" maxlength=${BOT_LIMITS.title} autocomplete="off" placeholder="Research assistant" .value=${editing?.title ?? ""} ?disabled=${props.pending} /></label>
-      <label class="field input-dialog__field"><span>Instructions</span>
-        <textarea class="settings-input bot-dialog__instructions" name="instructions" rows="5" maxlength=${BOT_LIMITS.instructions} placeholder="Who the bot is, what it looks after and how it should work." .value=${editing?.instructions ?? ""} ?disabled=${props.pending}></textarea></label>
       <div class="bot-dialog__row">
         <div class="field input-dialog__field"><span>Model</span>
           ${renderPicker({ label: "Model", value: props.model, disabled: props.pending, searchable: true, searchPlaceholder: "Search models",
@@ -799,7 +875,7 @@ export function renderBotDeleteDialog(bot: BotView, pending: boolean, error: str
     @cancel=${(event: Event) => { event.preventDefault(); if (!pending) onCancel(); }}>
     <form class="exec-approval-card" method="dialog" @submit=${(event: SubmitEvent) => { event.preventDefault(); onConfirm(); }}>
       <div class="exec-approval-title" id="bot-delete-title">Delete ${bot.name}?</div>
-      <div class="exec-approval-sub">${bot.name} and its routines are deleted for good; it cannot be restored. Its chat stays in Pi's Durable store, which HUI no longer opens, and the files in its workspace stay on this machine.</div>
+      <div class="exec-approval-sub">${bot.name} is deleted for good: its chat leaves HUI, and its routines, its memory and its folder (SOUL.md and every file in it) go. A workspace you chose for it stays. This cannot be undone.</div>
       ${error ? html`<p class="group-action-dialog__error" role="alert">${error}</p>` : nothing}
       <div class="exec-approval-actions">
         <button type="submit" class="btn danger" ?disabled=${pending}>${pending ? "Deleting…" : "Delete"}</button>
