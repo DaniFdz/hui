@@ -189,7 +189,10 @@ export class DurableHost implements ExtensionHost {
   #envs = new Map<string, NodeExecutionEnv>();
   /** Durable conversation → HUI session, the only caller identity HUI tools accept. */
   #callers = new Map<ConversationId, string>();
+  /** The current open, settled or not; a close takes it. */
   #opening: Promise<Harness> | undefined;
+  /** The latest close, until it has released the store. */
+  #closing: Promise<void> | undefined;
   #harness: Harness | undefined;
   #release: (() => void) | undefined;
   #resume: boolean;
@@ -278,12 +281,18 @@ export class DurableHost implements ExtensionHost {
     return caller === undefined ? undefined : this.#extensions.get(caller);
   }
 
-  /** Opens the store once and resumes every interrupted run in it. */
+  /** Opens the store once and resumes every interrupted run in it. A close
+   * still running finishes first, so the store is released before it reopens. */
   open(): Promise<Harness> {
-    this.#opening ??= this.#open().catch((error: unknown) => {
-      this.#opening = undefined;
-      throw error;
-    });
+    if (!this.#opening) {
+      const closing = this.#closing;
+      const opening: Promise<Harness> = (closing ? closing.catch(() => undefined).then(() => this.#open()) : this.#open())
+        .catch((error: unknown) => {
+          if (this.#opening === opening) this.#opening = undefined;
+          throw error;
+        });
+      this.#opening = opening;
+    }
     return this.#opening;
   }
 
@@ -411,11 +420,22 @@ export class DurableHost implements ExtensionHost {
     return harness.commit(async (tx) => JSON.parse(JSON.stringify(await tx.doc(UsageDoc, conversationId))) as { models?: Record<string, Record<string, unknown>> }, durableContext);
   }
 
-  /** Closing records no outcome: running work resumes when the store reopens. */
-  async close(): Promise<void> {
+  /** Closing records no outcome: running work resumes when the store reopens.
+   * It settles once the store is released. An open in progress finishes
+   * first, and a close called meanwhile shares the one already running. */
+  close(): Promise<void> {
     const opening = this.#opening;
     this.#opening = undefined;
-    const harness = this.#harness ?? await opening?.catch(() => undefined);
+    if (!opening) return this.#closing ?? Promise.resolve();
+    const closing: Promise<void> = this.#close(opening).finally(() => {
+      if (this.#closing === closing) this.#closing = undefined;
+    });
+    this.#closing = closing;
+    return closing;
+  }
+
+  async #close(opening: Promise<Harness>): Promise<void> {
+    const harness = await opening.catch(() => undefined);
     this.#harness = undefined;
     try {
       await harness?.close(durableContext);

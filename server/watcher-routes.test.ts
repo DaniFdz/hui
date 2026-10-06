@@ -27,7 +27,7 @@ test("the watcher tool starts HUI-run processes and the guarded routes control t
   assert.ok(address && typeof address !== "string");
   const origin = `http://127.0.0.1:${address.port}`;
   t.after(async () => {
-    stopBackend();
+    await stopBackend();
     server.closeAllConnections();
     await new Promise<void>((resolve) => server.close(() => resolve()));
     await rm(dir, { recursive: true, force: true });

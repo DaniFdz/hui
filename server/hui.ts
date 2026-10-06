@@ -3604,23 +3604,29 @@ export function recoverInterruptedSessions(
   return started;
 }
 
-export function stopBackend(): void {
-  macPower?.dispose();
-  managedBrowser.dispose();
-  terminals.dispose();
-  githubCli.dispose();
-  automation.dispose();
-  subagents.dispose();
-  watchers.dispose();
-  secretRequests.dispose();
-  secretFiles.dispose();
-  stopAgentToolBridge();
-  // Closed first: remote sessions then keep running on their hosts instead of
-  // receiving a kill from the disposal below.
-  workers.disconnectAll();
-  liveSessions.disposeAll();
-  // Closing records no outcome: running Durable work resumes on the next start.
-  void durableHost().close();
+/** Settles once the Durable store is released, so a backend started next in
+ * this process (a development server restart) can open it. */
+export async function stopBackend(): Promise<void> {
+  try {
+    macPower?.dispose();
+    managedBrowser.dispose();
+    terminals.dispose();
+    githubCli.dispose();
+    automation.dispose();
+    subagents.dispose();
+    watchers.dispose();
+    secretRequests.dispose();
+    secretFiles.dispose();
+    stopAgentToolBridge();
+    // Closed first: remote sessions then keep running on their hosts instead of
+    // receiving a kill from the disposal below.
+    workers.disconnectAll();
+    liveSessions.disposeAll();
+  } finally {
+    // Closing records no outcome: running Durable work resumes on the next start.
+    // A failed disposal above must not leave the store locked.
+    await durableHost().close();
+  }
 }
 
 /** Upgrade handlers for browser panes and session views; the gateway and Vite
@@ -3638,11 +3644,16 @@ export function huiConfig(): Plugin {
   return {
     name: "hui-config",
     configureServer(server) {
-      void startBackend();
       if (server.httpServer) {
+        // Vite restarts by creating this server, closing the previous one (its
+        // `closeBundle` stops that backend and releases the Durable store) and
+        // only then listening. Starting here keeps the two backends apart.
+        server.httpServer.once("listening", () => { void startBackend(); });
         const detach = attachTerminalTransport(server.httpServer);
         const detachStreams = attachLiveStreams(server.httpServer);
         server.httpServer.once("close", () => { detach(); detachStreams(); });
+      } else {
+        void startBackend();
       }
       server.middlewares.use(middleware);
     },
@@ -3653,8 +3664,14 @@ export function huiConfig(): Plugin {
       server.httpServer.once("close", () => { detach(); detachStreams(); });
       server.middlewares.use(middleware);
     },
-    closeBundle() {
-      stopBackend();
+    // Called once per Vite environment; the calls share one store close. Vite
+    // discards a failed hook, so the failure is reported instead.
+    async closeBundle() {
+      await stopBackend().catch((error: unknown) => recordDiagnosticEvent({
+        area: "gateway", level: "error", action: "stop_failed",
+        summary: "The development backend did not stop cleanly",
+        detail: error instanceof Error ? error.message : String(error),
+      }));
     },
   };
 }

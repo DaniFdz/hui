@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
+import { existsSync } from "node:fs";
 import { mkdtemp, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -651,6 +652,28 @@ test("one store has one owner", { timeout: 30_000 }, async (t) => {
   const f = await fixture(t);
   await f.host().open();
   await assert.rejects(() => f.host().open(), /already open in this process/u);
+});
+
+test("overlapping closes settle once the store is released, and a reopen waits for them", { timeout: 30_000 }, async (t) => {
+  // Vite closes the plugins of each environment, so the gateway's stop runs twice at once.
+  const f = await fixture(t);
+  const host = f.host();
+  const lock = join(f.store, "harness.lock");
+  const first = await host.open();
+  const settled: string[] = [];
+  const closes = [host.close(), host.close()].map((close, index) =>
+    close.then(() => { settled.push(`close ${index}: ${existsSync(lock) ? "locked" : "released"}`); }));
+  const reopened = host.open().then((harness) => {
+    settled.push(`open: ${existsSync(lock) ? "locked" : "released"}`);
+    return harness;
+  });
+  await Promise.all(closes);
+  const second = await reopened;
+  assert.deepEqual(settled, ["close 0: released", "close 1: released", "open: locked"], "the second close waits for the first one's release");
+  assert.notEqual(second, first, "the reopened store is a new harness");
+  const session = await startDurable({ cwd: f.cwd }, host);
+  assert.equal(session.transcript().length, 0);
+  session.dispose();
 });
 
 test("Durable requests give each HUI session its own PI_CLIENT_SESSION_ID for provider headers", async (t) => {

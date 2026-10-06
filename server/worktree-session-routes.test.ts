@@ -18,7 +18,7 @@ test("a failed worktree launch stays listed with its prompt until dismissed", { 
   assert.ok(address && typeof address !== "string");
   const origin = `http://127.0.0.1:${address.port}`;
   t.after(async () => {
-    stopBackend();
+    await stopBackend();
     server.closeAllConnections();
     await new Promise<void>((r) => server.close(() => r()));
     await rm(dir, { recursive: true, force: true });

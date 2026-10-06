@@ -98,7 +98,7 @@ export async function runGateway(options: GatewayOptions): Promise<{ state: Gate
       closing = true;
       detachTerminals();
       detachStreams();
-      stopBackend();
+      await stopBackend();
       await Promise.all([close(server), close(control)]);
       await removeState(instance);
       process.off("SIGTERM", onSignal); process.off("SIGINT", onSignal);
@@ -126,6 +126,6 @@ export async function runGateway(options: GatewayOptions): Promise<{ state: Gate
   } catch (error) {
     detachTerminals();
     detachStreams();
-    stopBackend(); await Promise.all([close(server), close(control)]); throw error;
+    await stopBackend(); await Promise.all([close(server), close(control)]); throw error;
   }
 }
