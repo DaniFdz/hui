@@ -101,7 +101,7 @@ test("+ creates a bot named New Bot at once and opens its chat, as in Grok Bot; 
   const app = read("../hui-app.ts");
   const create = between(app, "private createNewBot = ", "/** The roster's Edit");
   assert.match(create, /if \(this\.botCreating\) return;/u, "one at a time");
-  assert.match(create, /createBot\(\{ name: NEW_BOT_NAME \}\)/u, "a placeholder name, everything else on the defaults");
+  assert.match(create, /void createBot\(\{\}\)/u, "no name (the gateway calls it New Bot and its first turn asks for one), everything else on the defaults");
   assert.match(create, /this\.navigate\(\{ kind: "bot", id: bot\.id \}\);/u, "its chat opens");
   assert.match(create, /this\.botNotice = error instanceof Error \? error\.message : "Could not create a bot\.";\n\s+this\.botNoticeFailed = true;/u, "a refusal shows in the roster");
   assert.match(create, /_options: NewBotOptions = \{\}/u, "the hook for the workers pull request's runsOn");
@@ -111,7 +111,7 @@ test("+ creates a bot named New Bot at once and opens its chat, as in Grok Bot; 
   const source = read("./bots.ts");
   assert.match(source, /props\.creating \? "Creating…" : "New bot"/u, "and so does the empty roster's New bot");
   for (const file of [source, app]) assert.doesNotMatch(file, /renderBotDialog\b|bot-dialog|botDialog|botDraft/u, "the New bot and Edit dialogs are gone");
-  assert.match(read("../lib/bots.ts"), /export const NEW_BOT_NAME = "New Bot";/u);
+  assert.match(read("../lib/bots.ts"), /export type NewBotInput = Omit<BotInput, "name"> & \{ name\?: string \};/u, "the create body may leave the name out");
 });
 
 test("the Settings tab: Profile, Model, Calls (with GPT-Live calls) and Workspace, each change saved on its own", () => {
@@ -153,7 +153,7 @@ test("the Settings tab: Profile, Model, Calls (with GPT-Live calls) and Workspac
 
 test("the roster's Edit opens the bot's chat on its Settings tab, docked or as the sheet", () => {
   const source = read("./bots.ts");
-  assert.match(source, /<span class="session-menu__text">Edit bot<\/span>/u, "no dialog, so no ellipsis");
+  assert.match(source, /<span class="session-menu__text">Edit bot…<\/span>/u, "the ellipsis of a place to make choices, as Settings… has, and as the header's ⋯ menu says");
   const app = read("../hui-app.ts");
   assert.match(between(app, "private openEditBot = ", "private showBotSettings("), /this\.showBotSettings\(bot\.id\);/u);
   const show = between(app, "private showBotSettings(", "private toggleBotSettings(");

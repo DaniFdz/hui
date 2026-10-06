@@ -12,11 +12,11 @@ import {
   hiddenBotCount,
   normalizeBotPanel,
   normalizeSidebarTab,
-  BOT_PANEL_TABS,
   botSettingsShortcutLabel,
   isBotSettingsShortcut,
   rosterBots,
   tabAfterKey,
+  BOT_PANEL_TABS,
   SIDEBAR_TABS,
 } from "./bot-roster.ts";
 import type { BotView } from "./bots.ts";
@@ -33,6 +33,7 @@ function bot(id: string, overrides: Partial<BotView> = {}): BotView {
     createdAt: "2026-10-01T00:00:00.000Z",
     updatedAt: "2026-10-01T00:00:00.000Z",
     status: "idle",
+    soul: false,
     unread: false,
     routines: 0,
     ...overrides,
@@ -121,6 +122,12 @@ test("tab strips move with arrows, Home and End and ignore other keys", () => {
   assert.equal(tabAfterKey(SIDEBAR_TABS, "bots", "Home"), "sessions");
   assert.equal(tabAfterKey(SIDEBAR_TABS, "sessions", "End"), "bots");
   assert.equal(tabAfterKey(SIDEBAR_TABS, "sessions", "Enter"), undefined);
+  assert.deepEqual(BOT_PANEL_TABS, ["routines", "memory", "soul", "settings"], "the bot panel: Routines | Memory | Soul | Settings, Settings last");
+  assert.equal(tabAfterKey(BOT_PANEL_TABS, "memory", "ArrowRight"), "soul");
+  assert.equal(tabAfterKey(BOT_PANEL_TABS, "soul", "ArrowRight"), "settings");
+  assert.equal(tabAfterKey(BOT_PANEL_TABS, "settings", "ArrowRight"), "routines", "arrows wrap");
+  assert.equal(tabAfterKey(BOT_PANEL_TABS, "routines", "End"), "settings");
+  assert.equal(tabAfterKey(BOT_PANEL_TABS, "settings", "ArrowLeft"), "soul");
   assert.equal(normalizeSidebarTab("bots"), "bots");
   for (const value of [null, "Bots", "agents", 1]) assert.equal(normalizeSidebarTab(value), "sessions");
 });
@@ -128,15 +135,9 @@ test("tab strips move with arrows, Home and End and ignore other keys", () => {
 test("the side panel remembers open/closed and its tab, defaulting open on Routines", () => {
   assert.deepEqual(normalizeBotPanel(null), { open: true, tab: "routines" });
   assert.deepEqual(normalizeBotPanel({ open: false, tab: "memory" }), { open: false, tab: "memory" });
+  assert.deepEqual(normalizeBotPanel({ open: true, tab: "soul" }), { open: true, tab: "soul" }, "the Soul tab is remembered too");
   assert.deepEqual(normalizeBotPanel({ open: false, tab: "settings" }), { open: false, tab: "settings" }, "Edit and the shortcut leave the panel on Settings");
   assert.deepEqual(normalizeBotPanel({ open: "no", tab: "secrets" }), { open: true, tab: "routines" });
-});
-
-test("the panel's tabs end on Settings, and arrows wrap through all of them", () => {
-  assert.deepEqual(BOT_PANEL_TABS, ["routines", "memory", "settings"]);
-  assert.equal(tabAfterKey(BOT_PANEL_TABS, "memory", "ArrowRight"), "settings");
-  assert.equal(tabAfterKey(BOT_PANEL_TABS, "settings", "ArrowRight"), "routines");
-  assert.equal(tabAfterKey(BOT_PANEL_TABS, "routines", "End"), "settings");
 });
 
 test("Ctrl+Shift+, (⇧⌘, on Apple) toggles a bot's Settings, by the comma key's position", () => {

@@ -527,6 +527,22 @@ export class OptChatManager {
     }
   }
 
+  /**
+   * Deletes the memory files of a conversation whose OptChat is off (a deleted bot's chat): closes its memory if it is
+   * open, then removes `optchat/<id>`. A conversation still enabled is refused, since its memory would open again.
+   */
+  async purge(conversationId: ConversationId): Promise<void> {
+    const harness = this.#harness;
+    if (harness && (await harness.snapshot(OptChatDoc, conversationId, context))?.enabled) {
+      throw new Error(`OptChat is still on for conversation ${conversationId}; turn it off before deleting its memory.`);
+    }
+    const opening = this.#memories.get(conversationId);
+    this.#memories.delete(conversationId);
+    const handle = await opening?.catch(() => undefined);
+    if (handle) await this.#closeMemory(handle);
+    await rm(join(this.#dir, "optchat", String(conversationId)), { recursive: true, force: true });
+  }
+
   async #closeMemory(handle: Memory): Promise<void> {
     await handle.queued?.catch(() => undefined);
     await handle.projecting.catch(() => undefined);

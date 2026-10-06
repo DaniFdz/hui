@@ -40,9 +40,10 @@ export function tabAfterKey<Tab extends string>(tabs: readonly Tab[], current: T
 
 /* ── side panel ───────────────────────────────────────────────────────────── */
 
-export type BotPanelTab = "routines" | "memory" | "settings";
-/** The panel's tabs in order; the bot's Settings tab comes last, after what the bot does and knows. */
-export const BOT_PANEL_TABS: readonly BotPanelTab[] = ["routines", "memory", "settings"];
+export type BotPanelTab = "routines" | "memory" | "soul" | "settings";
+/** The panel's tabs in order: what the bot does and knows, who it is, then its Settings, last (the tools pull request
+ * adds Tools before Settings). */
+export const BOT_PANEL_TABS: readonly BotPanelTab[] = ["routines", "memory", "soul", "settings"];
 export type BotPanelState = { open: boolean; tab: BotPanelTab };
 export const BOT_PANEL_KEY = "hui.bot-panel";
 export const DEFAULT_BOT_PANEL: Readonly<BotPanelState> = { open: true, tab: "routines" };

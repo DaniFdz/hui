@@ -34,15 +34,16 @@ export const HELP = `Usage:
   hui workers remove <name|id> [--json]
   hui bot list [--archived] [--json]
   hui bot show <bot> [--json]
-  hui bot add --name <name> [--title <text>] [--instructions <text> | --instructions-file <path>] [--cwd <dir>]
+  hui bot add [--name <name>] [--title <text>] [--soul-file <path|->] [--cwd <dir>]
               [--model <provider/model>] [--thinking <level>] [--utility-model <provider/model>] [--emoji <e>]
               [--shape <blob|round|triangle|heart|cookie>] [--color <name|#rrggbb>]
               [--voice <VoiceStudio voice id>] [--voice-speed <0.5-2>] [--language <code>]
               [--call-voice <cove|arbor|breeze|ember|juniper|maple|sol|spruce|vale>] [--json]
-  hui bot edit <bot> [same flags as add] [--json]
+  hui bot edit <bot> [same flags as add but --soul-file] [--json]
+  hui bot soul <bot> [--file <path|->] [--json]
   hui bot remove <bot> [--json]
   hui bot restore <bot> [--json]
-  hui bot delete <bot> [--json]
+  hui bot delete <bot> [--yes] [--json]
   hui bot chat <bot>
   hui bot send <bot> <message|-> [--wait] [--timeout <seconds>] [--json]
   hui bot stop <bot> [--json]
@@ -73,7 +74,12 @@ on edit replaces the list. Edit changes only the fields given; a new command
 applies the next time the worker connects.
 Bots are named agents with one forever chat each, managed through the running
 gateway like the Bots tab; "bots" works as "bot". <bot> is an id, a handle or
-an exact name. On edit, --model "" and --thinking "" go back to the model and
+an exact name. A new bot starts by asking what you expect from it (talk with
+hui bot chat <handle>), then writes its persona, SOUL.md, itself; --soul-file
+gives it one instead (- reads stdin) and skips that first conversation. Without
+--name it is "New Bot" and first asks what to call it. Soul prints SOUL.md;
+--file replaces it, and an empty file removes it so the bot asks again.
+On edit, --model "" and --thinking "" go back to the model and
 thinking level a new chat gets. --model is the bot's main model (the smartest you
 have; speed does not matter); --utility-model the fastest, ideally cheap, for its
 memory summaries, quick answers on calls and call summaries (--memory-model is
@@ -90,8 +96,10 @@ back to VoiceStudio's default voice, speed and Auto (the language detected).
 --call-voice is the bot's GPT-Live voice on calls (Settings → Models → Calls);
 "" goes back to the default voice Settings chose. --language applies to calls too.
 Remove archives: the chat transcript and memory are kept and its routines are
-disabled. Delete then removes an archived bot for good: its routines and chat
-go from HUI, the files in its folder stay. Chat streams the replies as plain
+disabled. Delete removes a bot for good, active or archived: its turn stops, its
+chat leaves HUI, and its routines, memory and folder (SOUL.md and every file in
+it) go; a workspace you chose stays. It asks first; --yes skips that, and is
+needed where it cannot ask (no terminal). Chat streams the replies as plain
 text and sends what you
 type (steering a turn that runs); messages from elsewhere (routines, other
 bots, the Bots tab) show as > lines. Ctrl+C stops a turn, twice exits. Send -
@@ -110,7 +118,7 @@ export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {
     "no-open": { type: "boolean" }, from: { type: "string" }, sha256: { type: "string" }, rollback: { type: "boolean" },
     check: { type: "boolean" }, fix: { type: "boolean" }, nightly: { type: "boolean" },
     name: { type: "string" }, command: { type: "string" }, "extra-path": { type: "string", multiple: true },
-    archived: { type: "boolean" }, title: { type: "string" }, instructions: { type: "string" }, "instructions-file": { type: "string" },
+    archived: { type: "boolean" }, title: { type: "string" }, "soul-file": { type: "string" }, file: { type: "string" }, yes: { type: "boolean", short: "y" },
     cwd: { type: "string" }, model: { type: "string" }, thinking: { type: "string" }, "memory-model": { type: "string" }, "utility-model": { type: "string" },
     emoji: { type: "string" }, shape: { type: "string" }, color: { type: "string" }, voice: { type: "string" }, "voice-speed": { type: "string" }, language: { type: "string" }, "call-voice": { type: "string" }, wait: { type: "boolean" }, timeout: { type: "string" }, zoom: { type: "string" }, html: { type: "string" },
     prompt: { type: "string" }, at: { type: "string" }, every: { type: "string" }, cron: { type: "string" }, timezone: { type: "string" },
@@ -133,12 +141,14 @@ export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {
     update: ["from", "sha256", "rollback", "check", "json", "nightly"], desktop: [], "install-app": [],
     doctor: ["fix", "json"], "workers list": ["json"], "workers add": ["name", "command", "extra-path", "json"],
     "workers edit": ["name", "command", "extra-path", "json"], "workers remove": ["json"],
-    "bot list": ["archived", "json"], "bot show": ["json"], "bot add": [...BOT_FIELDS, "json"], "bot edit": [...BOT_FIELDS, "json"],
-    "bot remove": ["json"], "bot restore": ["json"], "bot delete": ["json"], "bot chat": [], "bot send": ["wait", "timeout", "json"], "bot stop": ["json"],
+    "bot list": ["archived", "json"], "bot show": ["json"], "bot add": [...BOT_FIELDS, "soul-file", "json"], "bot edit": [...BOT_FIELDS, "json"],
+    "bot soul": ["file", "json"],
+    "bot remove": ["json"], "bot restore": ["json"], "bot delete": ["yes", "json"], "bot chat": [], "bot send": ["wait", "timeout", "json"], "bot stop": ["json"],
     "bot memory": ["zoom", "html", "json"], "bot routine list": ["json"],
     "bot routine add": ["name", "prompt", "at", "every", "cron", "timezone", "json"], "bot routine run": [], "bot routine remove": ["json"],
   };
   if (!command || !allowed[command] || extra.length || first !== "gateway" && first !== "workers" && !bots && second) throw new Error("Unknown command. Run hui --help.");
+  if (command === "bot edit" && values["soul-file"] !== undefined) throw new Error("bot edit does not change SOUL.md: use hui bot soul <bot> --file <path|->.");
   for (const flag of Object.keys(values)) if (!allowed[command]!.includes(flag)) throw new Error(`--${flag} is not valid for ${command}.`);
   if (bots) checkBotCommand(command, operands, values);
   if (["gateway start", "gateway run", "gateway restart"].includes(command)) {
@@ -159,10 +169,10 @@ export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {
 }
 
 /** The flags `bot add` and `bot edit` share. */
-const BOT_FIELDS = ["name", "title", "instructions", "instructions-file", "cwd", "model", "thinking", "memory-model", "utility-model", "emoji", "shape", "color", "voice", "voice-speed", "language", "call-voice"];
+const BOT_FIELDS = ["name", "title", "cwd", "model", "thinking", "memory-model", "utility-model", "emoji", "shape", "color", "voice", "voice-speed", "language", "call-voice"];
 /** Operands each bot command takes, in order. */
 const BOT_OPERANDS: Record<string, readonly string[]> = {
-  "bot list": [], "bot add": [], "bot show": ["bot"], "bot edit": ["bot"], "bot remove": ["bot"], "bot restore": ["bot"], "bot delete": ["bot"],
+  "bot list": [], "bot add": [], "bot show": ["bot"], "bot edit": ["bot"], "bot soul": ["bot"], "bot remove": ["bot"], "bot restore": ["bot"], "bot delete": ["bot"],
   "bot chat": ["bot"], "bot send": ["bot", "message"], "bot stop": ["bot"], "bot memory": ["bot"],
   "bot routine list": ["bot"], "bot routine add": ["bot"], "bot routine run": ["bot", "routine"], "bot routine remove": ["bot", "routine"],
 };
@@ -176,9 +186,7 @@ function checkBotCommand(command: string, operands: readonly string[], values: R
     throw new Error(expected.length ? `${command} needs ${expected.map((name) => `<${name}>`).join(" ")}.` : `${command} takes no operands.`);
   }
   const given = (flag: string) => values[flag] !== undefined;
-  if (command === "bot add" && !values["name"]) throw new Error("bot add needs --name.");
   if (command === "bot edit" && !BOT_FIELDS.some(given)) throw new Error(`bot edit needs at least one of ${BOT_FIELDS.map((flag) => `--${flag}`).join(", ")}.`);
-  if (given("instructions") && given("instructions-file")) throw new Error("Use either --instructions or --instructions-file.");
   // `""` clears a choice: the gateway's default for the chat, the chat's own model for the memory, VoiceStudio's
   // speed, Auto for the language.
   const cleared = (flag: string) => values[flag] === "";
