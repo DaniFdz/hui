@@ -23,6 +23,7 @@ const { startDurable, durableConversationId } = await import("./durable.ts");
 const { BotDoc } = await import("./durable-bots.ts");
 const access = await import("./durable-bot-access.ts");
 const { durableBotConversations } = await import("../bot-conversations.ts");
+const { botTurnOrigin, isBotAccessQuestion, botKickoffText } = await import("../../shared/bots.ts");
 const { bundledSkills } = await import("../bundled-skills.ts");
 type DurableHost = import("./durable-host.ts").DurableHost;
 type BotAccess = import("./durable-bots.ts").BotAccess;
@@ -107,6 +108,24 @@ test("the access section names what is off and how to ask for it; a bot without 
   assert.deepEqual(question, { method: "select", title: "Allow access to bash (powerful), read and the beta skill?", message: "To run the checks.", options: ["Allow", "Deny"] });
 });
 
+test("who started a turn is read as set_profile reads it, and an access request says so to the operator", () => {
+  assert.deepEqual(botTurnOrigin("[routine: Morning digest] check the inbox"), { kind: "routine", name: "Morning digest" });
+  assert.deepEqual(botTurnOrigin("[from @scout] found it"), { kind: "bot", handle: "scout" });
+  assert.deepEqual(botTurnOrigin("[from @scout · hop 2] found it"), { kind: "bot", handle: "scout" });
+  assert.deepEqual(botTurnOrigin(botKickoffText("Ada")), { kind: "kickoff" });
+  for (const text of ["please look", "[from scout] no @", "[routine without colon]", undefined]) assert.deepEqual(botTurnOrigin(text), { kind: "operator" }, String(text));
+  assert.equal(access.turnNote("[routine: Morning digest] go"), "Asked during the routine \"Morning digest\".");
+  assert.equal(access.turnNote("[from @scout] go"), "Asked while handling a message from @scout.");
+  assert.equal(access.turnNote(botKickoffText("Ada")), "Asked in its first turn, before you wrote.");
+  assert.equal(access.turnNote("hi"), undefined);
+  const bash = access.describeTool({ name: "bash" }, { kind: "coding" });
+  const question = access.accessQuestion([bash], [], "To run tests.", access.turnNote("[from @scout] run them"));
+  assert.equal(question.method === "select" && question.message, "To run tests.\n\nAsked while handling a message from @scout.");
+  assert.equal(isBotAccessQuestion(question), true, "the catalog finds it among the chat's questions");
+  assert.equal(isBotAccessQuestion({ method: "select", title: "Pick a colour", options: ["Allow", "Deny"] }), false);
+  assert.equal(isBotAccessQuestion({ method: "confirm", title: "Allow access to bash?" }), false);
+});
+
 test("request_access lets one request per bot wait for the operator; the next may ask once it is answered", async () => {
   const asked: unknown[] = [];
   let answer!: (response: { value: string }) => void;
@@ -117,6 +136,7 @@ test("request_access lets one request per bot wait for the operator; the next ma
     availableSkills: async () => [],
     ask: (question: unknown) => { asked.push(question); return new Promise<{ value: string }>((resolve) => { answer = resolve; }); },
     applyTools: async () => { applied += 1; },
+    runInput: () => "[routine: Morning digest] check the inbox",
   };
   const tool = access.botAccessParts({ chat: () => chat, skills: async () => [], agentDir: "/nowhere" }).tools.find((each) => each.name === "request_access")!;
   const state = { bot: "bot-a", disabledTools: ["write", "edit"], disabledSkills: [] as BotSkillRef[] };
@@ -128,6 +148,7 @@ test("request_access lets one request per bot wait for the operator; the next ma
   } as unknown as ToolExecutionApi;
   const first = tool.execute({ tools: ["write"], reason: "First." } as never, api, BACKGROUND_CONTEXT);
   while (!asked.length) await new Promise((resolve) => setImmediate(resolve));
+  assert.match(JSON.stringify(asked[0]), /First\.\\n\\nAsked during the routine \\"Morning digest\\"\./u, "a routine's turn may ask; the operator is told");
   const second = await tool.execute({ tools: ["edit"], reason: "Second." } as never, api, BACKGROUND_CONTEXT);
   assert.equal(second.isError, true);
   assert.match(JSON.stringify(second.content), /Another access request is already waiting for the operator/u);

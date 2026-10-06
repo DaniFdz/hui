@@ -206,6 +206,8 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
   /** The tools the operator can turn off in a bot's chat, as the latest `applyTools` found them; empty for every other
    * conversation. */
   #botOffer: readonly OfferedTool[] = [];
+  /** The message that started the latest run this view started; who started the turn (`runInput`). */
+  #runInput: string | undefined;
   readonly resumesInterruptedRuns = true;
 
   constructor(host: DurableHost, harness: Harness, conversation: Conversation, cwd: string) {
@@ -305,6 +307,18 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
   /** Asks the operator in this chat (a bot's access request); resolves with the answer, or undefined once dismissed. */
   ask(question: QuestionDraft, signal?: AbortSignal): Promise<RuntimeQuestionResponse | undefined> {
     return this.#questions.ask(question, signal);
+  }
+
+  /** The message that started the run going now: the one this view started, or, for a run that resumed after a restart,
+   * the latest user message in the history. */
+  runInput(): string | undefined {
+    if (this.#runInput !== undefined) return this.#runInput;
+    const rows = this.rows();
+    for (let index = rows.length - 1; index >= 0; index--) {
+      const message = [...rows[index]!.model ?? []].reverse().find((each) => each.role === "user" && !isCustomInput(each));
+      if (message) return textOf(message);
+    }
+    return undefined;
   }
 
   /** The skills this conversation may use: those of its directory, less the ones the operator turned off in a bot's
@@ -786,6 +800,8 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
    */
   async #start(text: string, sending: Sending): Promise<void> {
     this.#starting += 1;
+    // As HUI records a run's prompt: a routine's or another bot's marker leads it.
+    this.#runInput = text;
     const start = () => this.#send(text, "reject", sending).then((sent) => {
       if (!sent && !this.#streaming && this.#starting === 1) this.#emit({ type: "settled" });
     }).finally(() => {

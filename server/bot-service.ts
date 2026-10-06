@@ -23,7 +23,7 @@ import { mkdir, realpath, rmdir, stat } from "node:fs/promises";
 import { isAbsolute, join, relative } from "node:path";
 
 import {
-  BOT_LIMITS, botKickoffName, botKickoffText, handleFromName, previewLine,
+  BOT_LIMITS, botKickoffName, botKickoffText, botTurnOrigin, handleFromName, previewLine,
   type BotLastMessage, type BotMemoryStatus, type BotMessageResult, type BotPatch, type BotQuestion, type BotRecord, type BotReply, type BotView,
 } from "../shared/bots.ts";
 import type { CallRecord } from "../shared/calls.ts";
@@ -392,8 +392,8 @@ export class BotService {
     const bot = (await this.#registry.list()).find((candidate) => candidate.sessionId === callerSessionId);
     if (!bot) throw new BotInputError("set_profile is only available in a bot's chat.");
     if (bot.archived) throw new BotConflictError("An archived bot cannot change its profile.");
-    const origin = (await this.#deps.readSessions()).find((record) => record.id === callerSessionId)?.runPrompt;
-    if (origin && (origin.startsWith("[routine: ") || hopOf(origin) !== undefined)) {
+    const origin = botTurnOrigin((await this.#deps.readSessions()).find((record) => record.id === callerSessionId)?.runPrompt);
+    if (origin.kind === "routine" || origin.kind === "bot") {
       throw new BotConflictError("Only the operator changes your name or title, and this turn was started by a routine or another bot. Ask the operator instead.");
     }
     const unknown = Object.keys(params).filter((key) => key !== "name" && key !== "title");
@@ -995,6 +995,8 @@ function botQuestion(question: RuntimeQuestion): BotQuestion {
     method: question.method,
     title: question.title,
     ...(question.method === "confirm" ? { message: question.message } : {}),
+    // An access request's reason, and who started the turn.
+    ...(question.method === "select" && question.message ? { message: question.message } : {}),
     ...(question.method === "select" ? { options: [...question.options] } : {}),
     ...(question.method === "input" && question.placeholder ? { placeholder: question.placeholder } : {}),
     ...(question.method === "editor" && question.prefill ? { prefill: question.prefill } : {}),

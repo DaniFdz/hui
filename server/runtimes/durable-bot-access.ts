@@ -25,6 +25,7 @@ import { resolve, sep } from "node:path";
 import { defineTool, section, type ConversationId, type PromptSection, type ToolExecutionResult, type ToolRegistration } from "@earendil-works/pi-durable";
 import type { Skill } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
+import { BOT_ACCESS_ANSWERS, botTurnOrigin } from "../../shared/bots.ts";
 import { bundledSkills } from "../bundled-skills.ts";
 import { BotDoc, conversationBotState, MESSAGE_BOT_TOOL, SET_PROFILE_TOOL, WRITE_SOUL_TOOL, type BotAccess, type BotSkillRef } from "./durable-bots.ts";
 import { huiToolDefinitions } from "./hui-tools.ts";
@@ -63,8 +64,7 @@ export const BOT_ACCESS_CONTRIBUTIONS: Readonly<Record<string, { snippet: string
 const MAX_SKILL_FILE_BYTES = 256 * 1024;
 /** Longest skill description the access section repeats. */
 const ACCESS_DESCRIPTION_CHARS = 100;
-const ALLOW = "Allow";
-const DENY = "Deny";
+const [ALLOW, DENY] = BOT_ACCESS_ANSWERS;
 
 /* ── catalog ─────────────────────────────────────────────────────────── */
 
@@ -255,6 +255,9 @@ export interface BotChat {
   ask(question: QuestionDraft, signal?: AbortSignal): Promise<RuntimeQuestionResponse | undefined>;
   /** Offers the conversation its tools again, after its lists changed. */
   applyTools(): Promise<void>;
+  /** The message that started the run going now (or the latest one): who started the turn, as `botTurnOrigin` reads
+   * it. */
+  runInput(): string | undefined;
 }
 
 export type BotAccessDeps = {
@@ -274,13 +277,25 @@ type Result = ToolExecutionResult;
 const text = (value: string, isError = false): Result => ({ content: [{ type: "text", text: value }], ...(isError ? { isError: true } : {}) });
 const unique = (values: readonly string[] | undefined) => [...new Set((values ?? []).map((value) => value.trim()).filter(Boolean))];
 
-/** What the operator is asked: Allow or Deny, the items (powerful ones marked) and the bot's reason. */
-export function accessQuestion(tools: readonly OfferedTool[], skills: readonly BotSkillRef[], reason: string): QuestionDraft {
+/** Who started the turn that asks, when it wasn't the operator; the operator answers either way. */
+export function turnNote(input: string | undefined): string | undefined {
+  const origin = botTurnOrigin(input);
+  switch (origin.kind) {
+    case "routine": return `Asked during the routine "${origin.name}".`;
+    case "bot": return `Asked while handling a message from @${origin.handle}.`;
+    case "kickoff": return "Asked in its first turn, before you wrote.";
+    case "operator": return undefined;
+  }
+}
+
+/** What the operator is asked: Allow or Deny, the items (powerful ones marked), the bot's reason and, when a routine,
+ * another bot or HUI started the turn, which. */
+export function accessQuestion(tools: readonly OfferedTool[], skills: readonly BotSkillRef[], reason: string, note?: string): QuestionDraft {
   const items = [
     ...tools.map((tool) => (tool.powerful ? `${tool.name} (powerful)` : tool.name)),
     ...skills.map((skill) => `the ${skill.name} skill`),
   ];
-  return { method: "select", title: `Allow access to ${listed(items)}?`, message: reason, options: [ALLOW, DENY] };
+  return { method: "select", title: `Allow access to ${listed(items)}?`, message: note ? `${reason}\n\n${note}` : reason, options: [ALLOW, DENY] };
 }
 
 /** `request_access`, `load_skill` and the `bot_access` section. Allows one request per bot at a time. */
@@ -325,7 +340,8 @@ export function botAccessParts(deps: BotAccessDeps): { tools: ToolRegistration[]
       pending.add(state.bot);
       let response: RuntimeQuestionResponse | undefined;
       try {
-        response = await chat.ask(accessQuestion(tools, skills, args.reason.trim()), context.abortSignal);
+        // A routine's or another bot's turn may ask too; only the operator answers, through HUI's question routes.
+        response = await chat.ask(accessQuestion(tools, skills, args.reason.trim(), turnNote(chat.runInput())), context.abortSignal);
       } finally {
         pending.delete(state.bot);
       }

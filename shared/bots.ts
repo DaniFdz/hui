@@ -229,6 +229,29 @@ export type BotMessageResult = BotDelivery | BotReply;
 /** A frame of `GET /__hui/bots/events`: `ids` (every bot, in list order) only when it changed. */
 export type BotsUpdate = { revision: number; ids?: string[]; upserts: BotView[] };
 
+/* ── access requests ──────────────────────────────────────────────────── */
+
+/** The two answers of an access request. */
+export const BOT_ACCESS_ANSWERS = ["Allow", "Deny"] as const;
+
+/** Whether a session question is a bot's access request, as `request_access` asks it. */
+export function isBotAccessQuestion(question: { method: string; title?: string; options?: readonly string[] }): boolean {
+  return question.method === "select" && (question.title ?? "").startsWith("Allow access to ")
+    && question.options?.length === 2 && question.options[0] === BOT_ACCESS_ANSWERS[0] && question.options[1] === BOT_ACCESS_ANSWERS[1];
+}
+
+/** Who started a bot's turn, by the message that started it: a routine (`[routine: name] …`), another bot
+ * (`[from @handle] …`), HUI's kickoff of a new bot, or else the operator. */
+export type BotTurnOrigin = { kind: "operator" } | { kind: "kickoff" } | { kind: "routine"; name: string } | { kind: "bot"; handle: string };
+
+export function botTurnOrigin(text: string | undefined): BotTurnOrigin {
+  if (!text) return { kind: "operator" };
+  if (text.startsWith("[routine: ")) return { kind: "routine", name: /^\[routine: (.*?)\] /u.exec(text)?.[1] ?? "" };
+  const bot = /^\[from @([a-z0-9-]+)(?: · hop [1-9]\d*)?\] /u.exec(text);
+  if (bot) return { kind: "bot", handle: bot[1]! };
+  return botKickoffName(text) === undefined ? { kind: "operator" } : { kind: "kickoff" };
+}
+
 /* ── look ─────────────────────────────────────────────────────────────── */
 
 export function isBotFaceShape(value: unknown): value is BotFaceShape {
