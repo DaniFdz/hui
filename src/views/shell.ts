@@ -108,8 +108,9 @@ export type SessionCopyAction = "link" | "markdown" | "id" | "jira";
 export type SessionOpenAction = "tab" | "window" | "editor" | "jira";
 export type GroupDropTarget = { group: string; position: "before" | "after" };
 
-/** The Sessions | Bots tab strip. Present only while Settings → Sessions →
- * Show the Bots tab is on; without it the sidebar renders exactly as before. */
+/** The Agents | Bots switch at the top of the sidebar. Present only while
+ * Settings → Sessions → Show the Bots tab is on; without it the sidebar renders
+ * exactly as before. Agents is that sidebar; Bots shows only the roster. */
 export type ShellBotsProps = {
   tab: SidebarTab;
   onTab: (tab: SidebarTab) => void;
@@ -117,7 +118,7 @@ export type ShellBotsProps = {
   search: string;
   onSearch: (value: string) => void;
   onNew: () => void;
-  /** An unread bot marks the Bots tab while Sessions is shown. */
+  /** An unread bot marks the Bots tab while Agents is shown. */
   unread: boolean;
   roster: BotRosterProps;
 };
@@ -747,9 +748,10 @@ function kanbanNavItem(props: ShellProps) {
   </a>`;
 }
 
-/** "Sessions | Bots" as WAI-ARIA tabs with automatic activation. */
+/** "Agents | Bots" as WAI-ARIA tabs with automatic activation. Agents keeps the
+ * `sessions` id that browsers already remember. */
 function renderSidebarTabs(bots: ShellBotsProps) {
-  const tabs = [["sessions", "Sessions"], ["bots", "Bots"]] as const;
+  const tabs = [["sessions", "Agents"], ["bots", "Bots"]] as const;
   return html`<div class="sidebar-tabs" role="tablist" aria-label="Sidebar lists">
     ${tabs.map(([tab, label]) => html`<button type="button" role="tab" class="sidebar-tabs__tab" id=${`sidebar-tab-${tab}`}
       aria-selected=${String(bots.tab === tab)} aria-controls="sidebar-tabpanel" tabindex=${bots.tab === tab ? "0" : "-1"}
@@ -771,6 +773,8 @@ export function renderSidebar(props: ShellProps) {
   const query = props.search.trim().toLocaleLowerCase();
   const filtering = Boolean(query) || props.sessionOptions.status !== "all";
   const visibleGroups = sidebarSessionGroups(props.groups, props.search, props.sessionOptions);
+  // On the Bots tab the sidebar is the roster alone, as in Hermes: the primary
+  // navigation and New session stay under Agents.
   const botsTab = props.bots?.tab === "bots" ? props.bots : undefined;
   const searchLabel = botsTab ? "Search bots" : "Search sessions";
   return html`<hui-session-hovercard-provider .sessions=${props.groups.flatMap((group) => group.sessions)}>
@@ -791,7 +795,7 @@ export function renderSidebar(props: ShellProps) {
           </div>
         </div>
         <div class="topnav-shell__actions">
-          <button type="button" class="topbar-search" aria-label="Search sessions" @click=${focusSessionSearch}>
+          <button type="button" class="topbar-search" aria-label=${searchLabel} @click=${focusSessionSearch}>
             ${icons.search}
           </button>
         </div>
@@ -834,16 +838,18 @@ export function renderSidebar(props: ShellProps) {
         <div class="sidebar-shell sidebar-drawer__body">
           <div class="sidebar-brand">
           <div class="sidebar-brand__utilities">
-            <button type="button" class="sidebar-brand__icon sidebar-brand__header-control sidebar-brand__new-thread" aria-label="New session" title="New session" @click=${(event: Event) => {
+            ${botsTab ? nothing : html`<button type="button" class="sidebar-brand__icon sidebar-brand__header-control sidebar-brand__new-thread" aria-label="New session" title="New session" @click=${(event: Event) => {
               closeContainingDrawer(event);
               openNewSession(props);
-            }}>${icons.plus}</button>
-            <button type="button" class="sidebar-brand__icon sidebar-brand__header-control sidebar-brand__search" aria-label="Search sessions" title="Search sessions" @click=${focusSessionSearch}>${icons.search}</button>
+            }}>${icons.plus}</button>`}
+            <button type="button" class="sidebar-brand__icon sidebar-brand__header-control sidebar-brand__search" aria-label=${searchLabel} title=${searchLabel} @click=${focusSessionSearch}>${icons.search}</button>
           </div>
           <div class="sidebar-brand__actions">
             <button type="button" class="sidebar-brand__icon sidebar-brand__header-control sidebar-brand__collapse" aria-label="Collapse sidebar" title="Collapse sidebar" aria-expanded="true" @click=${toggleDesktopSidebar}>${icons.panelLeftClose}</button>
           </div>
           </div>
+
+          ${props.bots ? html`<div class="sidebar-switch">${renderSidebarTabs(props.bots)}</div>` : nothing}
 
           <label class="sidebar-search ${(botsTab ? botsTab.search.trim() : query) ? "sidebar-search--active" : ""}">
             <span class="sidebar-search__icon" aria-hidden="true">${icons.search}</span>
@@ -857,8 +863,9 @@ export function renderSidebar(props: ShellProps) {
           </label>
 
           <div class="sidebar-shell__content">
-          <div class="sidebar-shell__body">
-          <nav class="sidebar-nav" aria-label="Primary navigation">
+          <div class="sidebar-shell__body" id=${props.bots ? "sidebar-tabpanel" : nothing} role=${props.bots ? "tabpanel" : nothing}
+            aria-labelledby=${props.bots ? `sidebar-tab-${props.bots.tab}` : nothing}>
+          ${botsTab ? nothing : html`<nav class="sidebar-nav" aria-label="Primary navigation">
             ${PRIMARY_NAV.map((item) => {
               const page = HUI_PAGES.find((candidate) => candidate.id === item.id);
               return page ? html`
@@ -891,11 +898,11 @@ export function renderSidebar(props: ShellProps) {
               <span class="nav-item__icon" aria-hidden="true">${icons.settings}</span>
               <span class="nav-item__text">Settings</span>
             </a>
-          </nav>
+          </nav>`}
 
           <div class="sidebar-sessions">
           <div class="sidebar-recent-sessions__toolbar sidebar-session-toolbar">
-            ${props.bots ? renderSidebarTabs(props.bots) : html`<span>Sessions</span>`}
+            <span>${botsTab ? "Bots" : "Sessions"}</span>
             <span>
               ${botsTab ? html`<button type="button" aria-label="New bot" title="New bot" data-new-bot-trigger @click=${(event: Event) => {
                 botsTab.onNew();
@@ -909,13 +916,12 @@ export function renderSidebar(props: ShellProps) {
             </span>
           </div>
 
-          ${botsTab ? html`<div class="sidebar-list sidebar-recent-sessions bot-roster" id="sidebar-tabpanel" role="tabpanel" aria-labelledby="sidebar-tab-bots">
+          ${botsTab ? html`<div class="sidebar-list sidebar-recent-sessions bot-roster" aria-label="Bots">
             ${renderBotRoster(botsTab.roster, {
               navigate: (event) => closeContainingDrawer(event, false, true),
               dialog: (event) => closeContainingDrawer(event),
             })}
-          </div>` : html`<div class="sidebar-list sidebar-recent-sessions" aria-label=${props.bots ? nothing : "Sessions"}
-            id=${props.bots ? "sidebar-tabpanel" : nothing} role=${props.bots ? "tabpanel" : nothing} aria-labelledby=${props.bots ? "sidebar-tab-sessions" : nothing}>
+          </div>` : html`<div class="sidebar-list sidebar-recent-sessions" aria-label="Sessions">
         ${props.sessionMoveNotice ? html`<p class="sidebar-list__note sidebar-session-move-note ${props.sessionMoveFailed ? "is-error" : ""}" role=${props.sessionMoveFailed ? "alert" : "status"} aria-live="polite">${props.sessionMoveNotice}</p>` : nothing}
         ${
           props.error

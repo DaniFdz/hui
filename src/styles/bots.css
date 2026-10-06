@@ -1,9 +1,23 @@
-/* Bots tab (PR "Bots tab UI"): the sidebar's Sessions | Bots strip, the
+/* Bots tab (PR "Bots tab UI"): the sidebar's Agents | Bots switch, the
  * roster, the bot view with its Routines | Memory panel and the bot dialog.
  * Rows, menus, inputs and dialogs reuse the shell/session/settings classes;
  * only what bots add lives here, on the shared tokens. */
 
-/* ── Sessions | Bots tab strip (in the sidebar toolbar) ── */
+/* ── Agents | Bots switch: the top of the sidebar, under its header buttons.
+ * The hidden search below it sits on -4px margins, hence the larger bottom margin. ── */
+.app-shell .sidebar-switch {
+  display: flex;
+  flex: none;
+  align-items: center;
+  min-height: 28px;
+  margin-block-end: 12px;
+  padding: 0 10px 0 calc(var(--sidebar-inset) + var(--sidebar-lead) + var(--sidebar-row-gap));
+  color: var(--muted);
+  font-size: var(--control-ui-text-xs);
+  font-weight: 650;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
 .app-shell .sidebar-tabs {
   display: inline-flex;
   align-items: center;
@@ -11,7 +25,7 @@
   min-width: 0;
   margin-inline-start: -6px;
 }
-.app-shell .sidebar-recent-sessions__toolbar .sidebar-tabs__tab {
+.app-shell .sidebar-tabs__tab {
   position: relative;
   display: inline-flex;
   align-items: center;
@@ -29,7 +43,7 @@
   text-transform: inherit;
   cursor: var(--cursor-action, pointer);
 }
-.app-shell .sidebar-recent-sessions__toolbar .sidebar-tabs__tab + .sidebar-tabs__tab::before {
+.app-shell .sidebar-tabs__tab + .sidebar-tabs__tab::before {
   position: absolute;
   inset-block: 6px;
   inset-inline-start: -3px;
@@ -37,15 +51,15 @@
   content: "";
   pointer-events: none;
 }
-.app-shell .sidebar-recent-sessions__toolbar .sidebar-tabs__tab:hover {
+.app-shell .sidebar-tabs__tab:hover {
   background: color-mix(in srgb, var(--bg-hover) 78%, transparent);
   color: var(--text);
 }
-.app-shell .sidebar-recent-sessions__toolbar .sidebar-tabs__tab[aria-selected="true"] {
+.app-shell .sidebar-tabs__tab[aria-selected="true"] {
   background: transparent;
   color: var(--text-strong);
 }
-.app-shell .sidebar-recent-sessions__toolbar .sidebar-tabs__tab[aria-selected="true"]::after {
+.app-shell .sidebar-tabs__tab[aria-selected="true"]::after {
   position: absolute;
   inset-inline: 6px;
   bottom: 1px;
@@ -54,7 +68,7 @@
   background: var(--accent);
   content: "";
 }
-.app-shell .sidebar-recent-sessions__toolbar .sidebar-tabs__tab:focus-visible {
+.app-shell .sidebar-tabs__tab:focus-visible {
   outline: none;
   box-shadow: var(--focus-ring);
 }

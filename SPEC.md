@@ -1112,7 +1112,7 @@ A **bot** is a named, persistent agent: a role and standing instructions, its
 own model, a working directory and **one chat that never ends**, whose memory is
 OptChat (HUI-18). Sessions keep everything they have (worktrees, rewind,
 `/compact`); bots are for assistants the operator returns to every day. The
-sidebar splits into **Sessions | Bots**, and the `hui bot` CLI can do
+sidebar splits into **Agents | Bots**, and the `hui bot` CLI can do
 everything the Bots tab can, through the same routes.
 
 - **A chat is a session.** A bot's chat is an ordinary Durable session on this
@@ -1144,15 +1144,17 @@ everything the Bots tab can, through the same routes.
   status, its view, any line zoomed down to a message, and a browse page.
 - **The Bots tab** is opt-in: Settings → Sessions → *Show the Bots tab* (off by
   default, saved in HUI settings). Hiding it never stops bots or routines. On,
-  the sidebar's Sessions label becomes a **Sessions | Bots** tab strip (arrow
-  keys, Home/End; the browser remembers the tab), and bot chats never appear in
-  the Sessions list, its search, Kanban, the Sessions page, the command palette
-  or session pickers; Automations labels their routines *Bot · name* and words
+  an **Agents | Bots** switch heads the sidebar (arrow keys, Home/End; the
+  browser remembers the tab): Agents is the sidebar as before, and Bots shows
+  only the roster, without the navigation or New session. Bot chats never
+  appear in the Sessions list, its search, Kanban, the Sessions page, the
+  command palette or session pickers; Automations labels their routines
+  *Bot · name* and words
   their schedules as the bot's panel does (*Daily at 08:00*). The roster
   lists bots by latest activity: an emoji or initial on a color stable per bot,
   the name, the latest message or role, a short time, an activity badge (active,
   waiting for an answer, summarizing memory, failed), an unread dot (also on the
-  Bots tab while Sessions shows) and a warning while memory summaries keep
+  Bots tab while Agents shows) and a warning while memory summaries keep
   failing. Search matches name, handle and title. The toolbar's + opens **New
   bot** (name, emoji, title, instructions, model, thinking, memory model,
   workspace; nothing changes until the gateway accepts it); *Gateway default*
@@ -1210,6 +1212,10 @@ surfaces without a product decision: a bot is a chat with a name and standing
 instructions, not an Agents page or a global agent identity, and it adds no
 approval layer. Bots run with the same Full Access as every session, on this
 gateway only (remote workers are a later follow-up).
+
+On 2026-10-06 the owner asked for Hermes's layout: the switch moved to the top
+of the sidebar and its first tab is named **Agents**. Agents is the same session
+sidebar, not an Agents page or agent selector; Bots shows only the roster.
 
 ### New sessions run on Pi Durable
 

@@ -131,3 +131,28 @@ outside the repository and are not committed.
 - Headless Brave reports no hover, so touch-sized controls show; touch input
   itself was not emulated.
 - The provider is deterministic; no real model or compactor model was used.
+
+## Agents | Bots at the top (2026-10-06)
+
+The owner asked for Hermes's layout: the switch moved from the sessions toolbar
+to the top of the sidebar, and its first tab is now Agents. Checked at
+`9492644` on the launcher with `--pi-sessions` (doctor before and after;
+cleanup closed every port), with two bots created through `POST /__hui/bots`
+(Scout 🔭, Ledger) and one session started from Home's composer, driven in
+headless Chromium through CDP:
+
+1. Agents, the default: AGENTS | BOTS sits right under the header buttons, with
+   Agents selected; below it are the navigation (Contributions … Settings), the
+   SESSIONS toolbar with Filter & sort and New group, and the session list. The
+   header keeps New session and *Search sessions*.
+2. Bots: no navigation and no New session; a BOTS header with its **+** (New
+   bot) and the roster (Ledger, Scout). The header's search reads *Search
+   bots*. Everything under the switch is one tab panel, labelled by the
+   selected tab.
+3. A bot's page keeps the Bots tab. ArrowLeft on the focused tab selects Agents
+   and moves focus to it; ArrowRight goes back to Bots.
+4. 390×844: the drawer shows the same two layouts, and the document stays 390 px
+   wide.
+5. With *Show the Bots tab* off, no switch renders and the sidebar is as before:
+   the navigation, then SESSIONS.
+6. Browser page errors: none. Console errors: none.

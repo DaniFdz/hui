@@ -504,7 +504,7 @@ export class HuiApp extends HuiElement {
   private botsStreamUnsupported = false;
   private botsRevision = 0;
   @state() private botSearch = "";
-  /** The sidebar's Sessions | Bots choice, remembered by the browser. */
+  /** The sidebar's Agents | Bots choice, remembered by the browser. */
   @state() private sidebarTab: SidebarTab = readSidebarTab();
   @state() private showHiddenBots = false;
   @state() private showArchivedBots = false;
