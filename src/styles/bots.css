@@ -264,6 +264,33 @@
 .app-shell .bot-archived-row__name { color: var(--text); font-size: calc(13px * var(--control-ui-text-scale)); font-weight: 550; }
 .app-shell .bot-archived-row__meta { color: var(--muted); font-size: calc(12px * var(--control-ui-text-scale)); }
 .app-shell .bot-archived-row__restore { flex: none; }
+/* Delete, an icon beside Restore as tall as it, red only under the pointer.
+ * Where a pointer hovers, it shows on the row the pointer or the keyboard is
+ * on, like the roster's ⋯ menu, so names keep their room; meanwhile it stays
+ * in the tab order and the accessibility tree. A touch screen always shows it. */
+.app-shell .bot-archived-row__delete {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  padding: 8px;
+  padding-block: calc(6px + (1lh - 14px) / 2);
+  color: var(--muted);
+}
+.app-shell .bot-archived-row__delete svg { width: 14px; height: 14px; }
+@media (hover: hover) {
+  .app-shell .bot-archived-row:not(:hover, :focus-within) .bot-archived-row__delete {
+    width: 0;
+    margin-inline-start: -10px;
+    padding-inline: 0;
+    border-width: 0;
+    overflow: hidden;
+    opacity: 0;
+  }
+  .app-shell .bot-archived-row__delete:not(:disabled):hover {
+    background: var(--danger-subtle);
+    color: var(--danger);
+  }
+}
 
 /* ── bot view: the chat with its docked panel ── */
 .app-shell > .content--chat:has(> .bot-workspace) { gap: 0; padding: 0; }

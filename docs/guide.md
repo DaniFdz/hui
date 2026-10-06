@@ -209,7 +209,8 @@ the last runs went; Memory shows how much the bot remembers and what writing
 its summaries has cost, lets you open any summary line down to the original
 message, and **Open memory page** opens the whole memory in a new tab. A row's
 **⋯** menu edits, hides or archives the bot; **Show archived** lists archived
-bots so you can restore them. Bot chats never appear among your sessions.
+bots so you can restore them, or delete one for good with its trash icon after
+a confirmation. Bot chats never appear among your sessions.
 
 ### Creating and editing
 
@@ -310,7 +311,8 @@ Bots tab) shows archived bots and `hui bot restore ada` (or their **Restore**)
 brings one back; its routines stay disabled until you turn them on again in
 Automations or its Routines panel.
 
-`hui bot delete ada` then deletes an archived bot for good: its routines and its
+`hui bot delete ada` (or an archived bot's trash icon in the Bots tab) then
+deletes an archived bot for good: its routines and its
 chat's session record go, and HUI no longer lists or opens its conversation,
 which stays in the Pi Durable store like a deleted session's transcript. The
 files in its folder stay; a folder HUI made for it goes only when empty. An
