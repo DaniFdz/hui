@@ -659,7 +659,7 @@ function renderCallVoiceField(call: BotDialogCall, pending: boolean) {
   const options = [{ value: "", label: "Default (" + gptLiveVoiceLabel(call.defaultVoice) + ")" }, ...GPT_LIVE_VOICES.map((voice) => ({ value: voice, label: gptLiveVoiceLabel(voice) }))];
   return html`<div class="field input-dialog__field bot-dialog__call-voice"><span>Call voice</span>
     ${renderPicker({ label: "Call voice", value: call.voice, disabled: pending, options, onChange: call.onVoice })}
-    <span class="bot-field__hint">How the bot sounds on GPT-Live calls. Default follows Settings → Models → Calls.</span>
+    <span class="bot-field__hint">How the bot sounds on calls. GPT-Live speaks with its own voices, so calls can't use a VoiceStudio voice. Default follows Settings → Models → Calls.</span>
   </div>`;
 }
 
@@ -677,10 +677,17 @@ function renderLanguageField(value: string, onLanguage: (value: string) => void,
   </div>`;
 }
 
-function renderVoiceField(voice: BotDialogVoice, pending: boolean) {
-  return html`<div class="field input-dialog__field bot-dialog__voice"><span>Voice</span>
+/** VoiceStudio's voice: Read aloud's, and calls' too while they run on VoiceStudio.
+ * While GPT-Live runs them, the Call voice speaks on calls, so beside it this one
+ * is named for what it still does. */
+function renderVoiceField(voice: BotDialogVoice, pending: boolean, calls: boolean) {
+  const label = calls ? "Voice" : "Read-aloud voice";
+  const hint = calls
+    ? "How the bot sounds when it reads aloud and on calls, through your VoiceStudio."
+    : "How the bot sounds when it reads its replies aloud, through your VoiceStudio. Calls use the Call voice below.";
+  return html`<div class="field input-dialog__field bot-dialog__voice"><span>${label}</span>
     <div class="bot-dialog__voice-row">
-      ${renderPicker({ label: "Voice", value: voice.profile, disabled: pending, searchable: true, searchPlaceholder: "Search voices",
+      ${renderPicker({ label, value: voice.profile, disabled: pending, searchable: true, searchPlaceholder: "Search voices",
         options: voiceOptions(voice.voices, voice.profile), onChange: voice.onProfile })}
       <button type="button" class="btn btn--sm bot-dialog__preview" aria-pressed=${String(voice.previewing)} ?disabled=${pending}
         @click=${voice.onPreview}>${voice.previewing ? "Stop" : "Preview"}</button>
@@ -690,7 +697,7 @@ function renderVoiceField(voice: BotDialogVoice, pending: boolean) {
         aria-valuetext=${speedLabel(voice.speed)} ?disabled=${pending}
         @input=${(event: Event) => voice.onSpeed(Number((event.target as HTMLInputElement).value))} />
       <output>${speedLabel(voice.speed)}</output></label>
-    <span class="bot-field__hint" role=${voice.error ? "alert" : nothing}>${voice.error || (voice.loading ? "Reading VoiceStudio's voices…" : "How the bot sounds when it reads aloud and on calls, through your VoiceStudio.")}</span>
+    <span class="bot-field__hint" role=${voice.error ? "alert" : nothing}>${voice.error || (voice.loading ? "Reading VoiceStudio's voices…" : hint)}</span>
   </div>`;
 }
 
@@ -752,7 +759,7 @@ export function renderBotDialog(props: BotDialogProps) {
         ${renderPicker({ label: "Utility model", value: props.memoryModel, disabled: props.pending, searchable: true, searchPlaceholder: "Search models",
           options: modelOptions(props.models, props.utilityDefault ? `Default (${props.utilityDefault})` : "Default (same as the bot)", props.memoryModel), onChange: props.onMemoryModel })}
         <span class="bot-field__hint">The fastest model you have, ideally a cheap one. It writes the memory's summaries, answers quick questions on calls and writes each call's summary.</span></div>
-      ${props.voice ? renderVoiceField(props.voice, props.pending) : nothing}
+      ${props.voice ? renderVoiceField(props.voice, props.pending, !props.call) : nothing}
       ${props.call ? renderCallVoiceField(props.call, props.pending) : nothing}
       ${languageField(props)}
       <div class="field input-dialog__field"><label for="bot-dialog-cwd">Workspace directory</label>

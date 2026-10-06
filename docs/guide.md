@@ -355,7 +355,10 @@ to a Tailscale address. **Disconnect** removes the address and the key.
 **A bot's voice.** While VoiceStudio is connected, the New bot and Edit dialogs
 have a **Voice** picker (VoiceStudio's default and your voice profiles; OpenAI's
 voice names are left out, as VoiceStudio plays its default voice for each of
-them), a speed from 0.5× to 2×, **Preview** and a **Language**. From a terminal:
+them), a speed from 0.5× to 2×, **Preview** and a **Language**. While calls run
+on GPT-Live ([below](#calls-with-gpt-live)), that picker is named **Read-aloud
+voice**: GPT-Live speaks with its own voices, so calls use the bot's **Call
+voice** instead. From a terminal:
 
 ```sh
 hui bot edit ada --voice vp-aria --voice-speed 1.2 --language es
@@ -414,8 +417,9 @@ With **Conversation model: GPT-Live (ChatGPT subscription)** in Settings →
 Models → Calls, a call talks to GPT-Live in real time through the ChatGPT login
 you added in Settings → Models; VoiceStudio is not needed. The section shows the
 account calls use (the first one not waiting for its quota, as model turns
-choose) and the **default voice**; each bot can pick its own **Call voice** in
-its dialog, or with `hui bot edit ada --call-voice ember` (`""` goes back to the
+choose) and the **default voice**; each bot can pick its own **Call voice**, one
+of GPT-Live's own voices (a VoiceStudio voice only reads replies aloud), in its
+dialog, or with `hui bot edit ada --call-voice ember` (`""` goes back to the
 default).
 
 The call works like [OpenDots](https://github.com/CopilotKit/OpenDots):

@@ -98,6 +98,16 @@ test("emoji tiles take a face's width in rows, so names line up whichever look a
   }
 });
 
+test("with GPT-Live calls, VoiceStudio's picker is the read-aloud voice and the call voice says why", () => {
+  const source = read("./bots.ts");
+  assert.match(source, /\$\{props\.voice \? renderVoiceField\(props\.voice, props\.pending, !props\.call\) : nothing\}/u, "calls use VoiceStudio's voice only while GPT-Live does not run them");
+  const voice = between(source, "function renderVoiceField(", "const THINKING_LABELS");
+  assert.match(voice, /const label = calls \? "Voice" : "Read-aloud voice";/u);
+  assert.match(voice, /Calls use the Call voice below\./u);
+  assert.match(voice, /renderPicker\(\{ label, value: voice\.profile/u, "the picker's accessible name follows the label");
+  assert.match(between(source, "function renderCallVoiceField(", "function renderLanguageField("), /GPT-Live speaks with its own voices, so calls can't use a VoiceStudio voice\./u);
+});
+
 test("the dialog's Model and Thinking pickers line up although only Model has a hint", () => {
   const css = readFileSync(new URL("../styles/bots.css", import.meta.url), "utf8");
   assert.match(css, /\.bot-dialog__row \{[^}]*\balign-items: start;/u, "each field keeps its own height instead of stretching to the row");
