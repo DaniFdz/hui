@@ -72,7 +72,10 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   sessions leave the sidebar and remain restorable from Sessions, whose table
   opens on **All** (then Active, Archived) and whose filter popover narrows by
   live status and groups rows by custom group or project directory; these are
-  browser-only view choices. While the row
+  browser-only view choices. Row checkboxes (and a select-all for the rows
+  shown) select sessions for one confirmed bulk delete of their trees; the
+  confirmation can also remove worktrees used only by deleted sessions, never
+  forcing past local changes or a worktree HUI did not create. While the row
   menu is open, its displayed P/R/U/A/D keys activate their actions immediately
   rather than using typeahead (D still opens the delete confirmation). Modified
   shortcuts, held-key repeats, text inputs and nested submenus retain native
