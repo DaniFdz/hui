@@ -45,7 +45,7 @@ export type Settings = {
   /** PI packages/extensions excluded before HUI's SDK worker discovers resources. */
   disabledPlugins: readonly { id: string; name: string; kind: "package" | "extension" }[];
   labs: { denseObservability: boolean; detailedDebug: boolean };
-  /** Settings → Sessions → Bots. The sidebar's Sessions | Bots tab strip is
+  /** Settings → Sessions → Bots. The sidebar's Agents | Bots switch is
    * opt-in, so a machine that never asks for it keeps today's sidebar; hiding
    * the tab never stops bots or their routines, which the gateway owns. */
   bots: { showTab: boolean };

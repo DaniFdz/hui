@@ -938,7 +938,7 @@ function renderSessionsSettingsPage(props: SettingsProps) {
     ${renderSection("Bots", "Named agents with one permanent chat, their own model and a memory that summarizes older messages by itself.", html`
       ${renderRow(
         "Show the Bots tab",
-        "Adds a Sessions | Bots switch to the sidebar. Hiding it never stops bots or their routines.",
+        "Adds an Agents | Bots switch to the top of the sidebar. Hiding it never stops bots or their routines.",
         renderSettingsToggle("Show the Bots tab", props.settings.bots.showTab, (showTab) => props.onChangeBots({ ...props.settings.bots, showTab })),
       )}
       ${renderRow("Command line", "Everything the tab does is also available from a terminal on this machine.", html`<code>hui bot list</code>`)}

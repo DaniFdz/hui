@@ -414,15 +414,44 @@ test("the shell retains reference chrome geometry with header utilities", () => 
   assert.doesNotMatch(source, /sidebar-agent-card|deck-card/);
   assert.match(source, /<div class="sidebar-brand">\s*<div class="sidebar-brand__utilities">/su);
   const header = source.slice(source.indexOf('<div class="sidebar-brand">'), source.indexOf('<div class="sidebar-shell__content">'));
-  assert.match(header, /sidebar-brand__search" aria-label="Search sessions"/);
+  // The search button names the list it searches: sessions, or bots on the Bots tab.
+  assert.match(header, /sidebar-brand__search" aria-label=\$\{searchLabel\}/);
+  assert.match(source, /const searchLabel = botsTab \? "Search bots" : "Search sessions";/);
   const utilities = header.slice(header.indexOf("sidebar-brand__utilities"), header.indexOf("sidebar-brand__actions"));
   const actions = header.slice(header.indexOf("sidebar-brand__actions"), header.indexOf('<label class="sidebar-search'));
-  assert.deepEqual([...utilities.matchAll(/aria-label="([^"]+)"/gu)].map((match) => match[1]), ["New session", "Search sessions"]);
+  assert.deepEqual([...utilities.matchAll(/aria-label=(?:"([^"]+)"|\$\{(\w+)\})/gu)].map((match) => match[1] ?? match[2]), ["New session", "searchLabel"]);
   assert.deepEqual([...actions.matchAll(/aria-label="([^"]+)"/gu)].map((match) => match[1]), ["Collapse sidebar"]);
   assert.doesNotMatch(header, /sidebar-brand__settings|aria-label="Settings"/);
   assert.match(header, /class="sidebar-search /);
   assert.doesNotMatch(source.slice(source.indexOf('<div class="sidebar-sessions">')), /aria-label="Search sessions"/);
   assert.doesNotMatch(source, /sidebar-identity-card/);
+});
+
+test("the Bots tab's Agents | Bots switch heads the sidebar, and Bots shows only the roster", () => {
+  const source = readFileSync(new URL("./shell.ts", import.meta.url), "utf8");
+  const css = readFileSync(new URL("../styles/bots.css", import.meta.url), "utf8");
+  const tabs = source.slice(source.indexOf("function renderSidebarTabs"), source.indexOf("export function renderSidebar("));
+  // Agents keeps the `sessions` id that browsers already remember.
+  assert.match(tabs, /\[\["sessions", "Agents"\], \["bots", "Bots"\]\]/u);
+  const sidebar = source.slice(source.indexOf("export function renderSidebar("));
+  const at = (marker: string) => {
+    const index = sidebar.indexOf(marker);
+    assert.notEqual(index, -1, marker);
+    return index;
+  };
+  // The header buttons, then the switch, then the search and what the selected tab shows.
+  assert.ok(at('<div class="sidebar-brand">') < at("renderSidebarTabs(props.bots)"));
+  assert.ok(at("renderSidebarTabs(props.bots)") < at('<label class="sidebar-search'));
+  assert.ok(at('<label class="sidebar-search') < at('<nav class="sidebar-nav"'));
+  assert.equal(sidebar.split("renderSidebarTabs(").length, 2, "one switch, not one per list");
+  // Bots: no primary navigation and no New session, and the toolbar names the roster.
+  assert.match(sidebar, /\$\{botsTab \? nothing : html`<nav class="sidebar-nav"/u);
+  assert.match(sidebar, /\$\{botsTab \? nothing : html`<button type="button" class="[^"]*sidebar-brand__new-thread" aria-label="New session"/u);
+  assert.match(sidebar, /<span>\$\{botsTab \? "Bots" : "Sessions"\}<\/span>/u);
+  // Everything under the switch is its tab panel, labelled by the selected tab.
+  assert.match(sidebar, /role=\$\{props\.bots \? "tabpanel" : nothing\}\s*aria-labelledby=\$\{props\.bots \? `sidebar-tab-\$\{props\.bots\.tab\}` : nothing\}/u);
+  assert.match(css, /\.app-shell \.sidebar-switch \{/u);
+  assert.doesNotMatch(css, /sidebar-recent-sessions__toolbar \.sidebar-tabs__tab/u, "the tabs no longer sit in the sessions toolbar");
 });
 
 test("mobile topbar icons have a fixed glyph size inside their touch target", () => {
