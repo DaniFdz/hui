@@ -24,7 +24,7 @@ test("roster rows show each bot's state and keep their badges; archived bots sle
 
 test("the dialog's Look is Face (shape, color, live preview) or Emoji, as native radio groups", () => {
   const source = read("./bots.ts");
-  const look = between(source, "function renderLookField(", "/** Every language's English name");
+  const look = between(source, "function renderLookField(", "const THINKING_LABELS");
   assert.match(look, /<fieldset class="field input-dialog__field bot-dialog__look" data-face-stage>/u, "the preview's eyes follow the pointer over the field");
   assert.match(look, /<legend class="bot-dialog__look-legend">Look<\/legend>/u);
   assert.match(look, /role="radiogroup" aria-label="Look"/u);
@@ -52,20 +52,6 @@ test("the chat's header and empty chat show the open chat's state; the large fac
   assert.match(state, /memoryWaiting: Boolean\(props\.bot\?\.bot\.memory\?\.waiting\)/u);
   assert.match(state, /toolRunning: props\.streaming && hasRunningTool\(props\.transcript\)/u);
   assert.match(state, /failed: Boolean\(props\.runError\)/u);
-});
-
-test("a call shows the bot's face listening to the microphone and speaking with its voice, tinted with its color", () => {
-  const source = read("./bot-voice.ts");
-  const view = between(source, "export function renderCallView(", "/** The minimized call");
-  assert.match(view, /style=\$\{`--bot-color: \$\{look\.color\}`\} data-face-stage/u);
-  assert.match(view, /renderBotAvatar\(bot, "xl", \{ state: callFaceState\(state, props\.summarizing\), \.\.\.\(props\.level \? \{ level: props\.level \} : \{\}\) \}\)/u);
-  assert.match(view, /<p class="bot-call__status" role="status" aria-live="polite">\$\{callStatusLabel\(state, props\.summarizing\)\}<\/p>/u, "the status stays in text");
-  const bar = between(source, "export function renderCallBar(", "\n}\n");
-  assert.match(bar, /renderBotAvatar\(bot, "sm", \{ state: callFaceState\(state, props\.summarizing\) \}\)/u);
-  assert.match(bar, /class="bot-call-bar__pulse"/u, "the bar keeps its live dot");
-  const app = read("../hui-app.ts");
-  assert.match(app, /this\.voice\.call\?\.state\.phase === "speaking" \? this\.voice\.voiceLevel\(\) : this\.voice\.micLevel\(\)/u);
-  assert.match(app, /voiceLevel: \(\) => voicePlayer\(\)\.level\(\)/u);
 });
 
 test("faces are decorative, pause when unseen and keep still under reduced motion", () => {

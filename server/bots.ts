@@ -17,8 +17,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join } from "node:path";
 
-import { BOT_FACE_SHAPES, BOT_HANDLE, BOT_LIMITS, BOT_THINKING_LEVELS, isBotFaceShape, type BotAvatar, type BotAvatarPatch, type BotInput, type BotPatch, type BotRecord, type BotVoice, type BotVoicePatch } from "../shared/bots.ts";
-import { VOICE_LANGUAGE_EXAMPLES, VOICE_LIMITS, voiceLanguage, voiceProfileId, voiceSpeed } from "../shared/voice.ts";
+import { BOT_FACE_SHAPES, BOT_HANDLE, BOT_LIMITS, BOT_THINKING_LEVELS, isBotFaceShape, type BotAvatar, type BotAvatarPatch, type BotInput, type BotPatch, type BotRecord } from "../shared/bots.ts";
 import { CONFIG_DIR } from "./paths.ts";
 
 export const BOTS_FILE = join(CONFIG_DIR, "bots.json");
@@ -79,15 +78,6 @@ function storedAvatar(raw: unknown): BotAvatar | undefined {
   return Object.keys(avatar).length ? avatar : undefined;
 }
 
-function storedVoice(raw: unknown): BotVoice | undefined {
-  if (!isRecord(raw)) return undefined;
-  const profile = voiceProfileId(raw["profile"]);
-  const speed = voiceSpeed(raw["speed"]);
-  const language = voiceLanguage(raw["language"]);
-  const voice = { ...(profile ? { profile } : {}), ...(speed !== undefined ? { speed } : {}), ...(language ? { language } : {}) };
-  return Object.keys(voice).length ? voice : undefined;
-}
-
 /**
  * A stored record, or undefined when a required field is missing or invalid.
  * Optional fields that do not validate are dropped, so a bad color never hides
@@ -118,7 +108,6 @@ export function parseBotRecord(raw: unknown): BotRecord | undefined {
   const memoryModel = model("memoryModel");
   const memoryThinking = level("memoryThinking");
   const avatar = storedAvatar(raw["avatar"]);
-  const voice = storedVoice(raw["voice"]);
   return {
     id, handle, name,
     ...(title ? { title } : {}),
@@ -130,7 +119,6 @@ export function parseBotRecord(raw: unknown): BotRecord | undefined {
     ...(memoryModel ? { memoryModel } : {}),
     ...(memoryThinking ? { memoryThinking } : {}),
     ...(avatar ? { avatar } : {}),
-    ...(voice ? { voice } : {}),
     ...(raw["hidden"] === true ? { hidden: true } : {}),
     ...(raw["archived"] === true ? { archived: true } : {}),
     sessionId, createdAt, updatedAt,
@@ -262,7 +250,7 @@ export function findBot(bots: readonly BotRecord[], target: string): BotRecord {
 }
 
 const INPUT_KEYS = new Set([
-  "name", "handle", "title", "description", "instructions", "cwd", "model", "thinking", "memoryModel", "memoryThinking", "avatar", "voice", "hidden",
+  "name", "handle", "title", "description", "instructions", "cwd", "model", "thinking", "memoryModel", "memoryThinking", "avatar", "hidden",
 ]);
 const LABELS: Record<string, string> = {
   name: "Bot name", handle: "Bot handle", title: "Bot title", description: "Bot description", instructions: "Bot instructions",
@@ -333,31 +321,6 @@ function avatarField(raw: unknown): BotAvatarPatch {
   return avatar;
 }
 
-/** `{ profile?, speed?, language? }`; `profile: ""`, `speed: null` and `language: ""` clear a key (kept so a patch can tell). */
-function voiceField(raw: unknown): BotVoicePatch {
-  if (!isRecord(raw)) throw new BotInputError("Voice must be an object with profile, speed and/or language.");
-  const unknown = Object.keys(raw).filter((key) => key !== "profile" && key !== "speed" && key !== "language");
-  if (unknown.length) throw new BotInputError(`Unknown voice field: ${unknown.join(", ")}.`);
-  const voice: BotVoicePatch = {};
-  if ("profile" in raw) {
-    const profile = raw["profile"] === "" ? "" : voiceProfileId(raw["profile"]);
-    if (profile === undefined) throw new BotInputError(`Voice profile must be a VoiceStudio voice id of at most ${VOICE_LIMITS.profile} characters.`);
-    voice.profile = profile;
-  }
-  if ("speed" in raw) {
-    const speed = raw["speed"] === null ? null : voiceSpeed(raw["speed"]);
-    if (speed === undefined) throw new BotInputError(`Voice speed must be a number from ${VOICE_LIMITS.speedMin} to ${VOICE_LIMITS.speedMax}.`);
-    voice.speed = speed;
-  }
-  if ("language" in raw) {
-    // One of Whisper's codes: what VoiceStudio listens for and speaks in. "" goes back to Auto (detection).
-    const language = raw["language"] === "" ? "" : voiceLanguage(raw["language"]);
-    if (language === undefined) throw new BotInputError(`Voice language must be one of Whisper's language codes, such as ${VOICE_LANGUAGE_EXAMPLES}, or "" for Auto.`);
-    voice.language = language;
-  }
-  return voice;
-}
-
 function cwdField(raw: unknown): string {
   const value = textField(raw, "cwd", 4_096, { required: true });
   if (value.includes("\0")) throw new BotInputError("Working directory must be a path.");
@@ -382,8 +345,6 @@ export function normalizeBotInput(value: unknown): BotInput {
   if (patch.memoryThinking) result.memoryThinking = patch.memoryThinking;
   const avatar = patch.avatar ? patchedAvatar(undefined, patch.avatar) : undefined;
   if (avatar) result.avatar = avatar;
-  const voice = patch.voice ? patchedVoice(undefined, patch.voice) : undefined;
-  if (voice) result.voice = voice;
   if (patch.hidden) result.hidden = true;
   return result;
 }
@@ -405,22 +366,11 @@ export function normalizeBotPatch(value: unknown): BotPatch {
   if ("memoryModel" in input) patch.memoryModel = modelField(input["memoryModel"], "memoryModel");
   if ("memoryThinking" in input) patch.memoryThinking = levelField(input["memoryThinking"], "memoryThinking");
   if ("avatar" in input) patch.avatar = input["avatar"] === null ? null : avatarField(input["avatar"]);
-  if ("voice" in input) patch.voice = input["voice"] === null ? null : voiceField(input["voice"]);
   if ("hidden" in input) {
     if (typeof input["hidden"] !== "boolean") throw new BotInputError("Hidden must be a boolean.");
     patch.hidden = input["hidden"];
   }
   return patch;
-}
-
-/** The voice after a patch: given keys replace, `profile: ""`, `speed: null` and `language: ""` clear one, `null` clears all. */
-export function patchedVoice(current: BotVoice | undefined, patch: BotVoicePatch | null): BotVoice | undefined {
-  if (patch === null) return undefined;
-  const profile = patch.profile !== undefined ? patch.profile : current?.profile;
-  const speed = patch.speed !== undefined ? patch.speed : current?.speed;
-  const language = patch.language !== undefined ? patch.language : current?.language;
-  const voice: BotVoice = { ...(profile ? { profile } : {}), ...(typeof speed === "number" ? { speed } : {}), ...(language ? { language } : {}) };
-  return Object.keys(voice).length ? voice : undefined;
 }
 
 /** The avatar after a patch: given keys replace, `""` clears a key, `null` clears all three. */

@@ -4,9 +4,6 @@
  * The chat itself is an ordinary Durable session (`BotRecord.sessionId`); the
  * session API drives it like any other.
  */
-import type { BotVoice, VoiceLanguage } from "./voice.ts";
-
-export type { BotVoice } from "./voice.ts";
 
 /** Limits the gateway enforces at its boundary; the CLI and browser mirror them. */
 export const BOT_LIMITS = {
@@ -69,9 +66,6 @@ export type BotRecord = {
   memoryModel?: string;
   memoryThinking?: string;
   avatar?: BotAvatar;
-  /** How it sounds through VoiceStudio (read-aloud, calls) and the language it hears and speaks in there;
-   * absent keys use VoiceStudio's defaults. */
-  voice?: BotVoice;
   hidden?: boolean;
   /** Archived bots keep their chat and memory; their routines are disabled. */
   archived?: boolean;
@@ -95,7 +89,6 @@ export type BotInput = {
   memoryModel?: string;
   memoryThinking?: string;
   avatar?: BotAvatar;
-  voice?: BotVoice;
   hidden?: boolean;
 };
 
@@ -106,17 +99,12 @@ export type BotInput = {
  * a new chat gets: the gateway's default model and thinking level); an avatar
  * key set to `""` clears that key (`emoji: ""` switches the bot to its face,
  * `shape: ""` and `color: ""` back to the ones its id picks) and
- * `avatar: null` clears all three. A voice
- * `profile: ""`, `speed: null` or `language: ""` (back to Auto) clears that key
- * and `voice: null` clears all three.
+ * `avatar: null` clears all three.
  */
-export type BotPatch = Partial<Omit<BotInput, "avatar" | "voice">> & { avatar?: BotAvatarPatch | null; voice?: BotVoicePatch | null };
+export type BotPatch = Partial<Omit<BotInput, "avatar">> & { avatar?: BotAvatarPatch | null };
 
 /** A change to a bot's look: given keys replace, `""` clears one. */
 export type BotAvatarPatch = { emoji?: string; color?: string; shape?: BotFaceShape | "" };
-
-/** A change to a bot's voice: given keys replace, `profile: ""`, `speed: null` and `language: ""` clear one. */
-export type BotVoicePatch = { profile?: string; speed?: number | null; language?: VoiceLanguage | "" };
 
 /** A bot chat's session status, as `SessionView.status` reports it. */
 export type BotSessionStatus = "idle" | "running" | "waiting" | "starting" | "error" | "reconnecting" | "disconnected";

@@ -1186,25 +1186,6 @@ everything the Bots tab can, through the same routes.
   into its halves, down to a message whole); while open it reads the memory
   again whenever the bots stream reports it changed, with no timer. *Open memory
   page* is a plain link to OptChat's browse page, opened in a new tab.
-- **Voice** goes through [VoiceStudio](https://github.com/debpalash/VoiceStudio),
-  a separate speech service the gateway only calls over HTTP. The connection is
-  the gateway's (Settings → Integrations → VoiceStudio, verified before it is
-  saved, its key write-only), and bot chats offer voice only while it is
-  configured. A bot has a voice, a speed and a language (its dialog, with a
-  preview, or `--voice`/`--voice-speed`/`--language`): one of Whisper's
-  languages that VoiceStudio listens for and speaks in, never a translation, or
-  Auto to let it detect the language. Its composer records **voice notes** that
-  VoiceStudio writes into the composer, or sends at once marked `[voice] ` when
-  Settings says so; **Read aloud** speaks a reply sentence by sentence, one at a
-  time; the header's **Call** starts a hands-free call. There is no
-  speech-to-speech API, so a call is a cascade: the browser's voice-activity
-  detection cuts what is said, VoiceStudio transcribes it, it reaches the chat
-  as an ordinary `[voice] ` message, and the reply is spoken as it streams;
-  speaking over the bot stops its voice and steers a turn that still runs. The
-  call view takes the bot's color and shows its face listening to the
-  microphone and speaking with its voice, a timer, both sides' captions, mute
-  and hang up, and minimizes to a bar; hanging up deletes nothing. The microphone opens only on a click and
-  closes with the note or call; HUI stores no audio, only the chat's text.
 
 The contract is [docs/api.md#bots](docs/api.md#bots).
 
@@ -1240,9 +1221,9 @@ gets a plush SVG shape (Blob, Pebble, Triangle, Heart, Cookie) in one of six
 colors, with two dot eyes and no mouth, drawn by `<hui-bot-face>` with no new
 dependency. Expressions come from the eyes (blinks, glances, squints, closed
 arcs) and the body (breathing, sway, squash and stretch, hops), for ten
-states: idle, thinking, working (a tool runs), speaking, listening, waiting (a
-question), memory (summarizing), error, done (a hop when a turn ends) and
-offline (unreachable or archived).
+states: idle, thinking, working (a tool runs), speaking and listening (for
+calls), waiting (a question), memory (summarizing), error, done (a hop when a
+turn ends) and offline (unreachable or archived).
 
 - **Look on the record, defaults from the id.** `avatar` gains `shape` beside
   `emoji` and `color` (no format change: absent keys stay absent). A bot without
@@ -1253,12 +1234,10 @@ offline (unreachable or archived).
   `--emoji ""`, and `hui bot show` prints the look.
 - **Real states only.** Roster rows follow the bot's status (a running turn is
   thinking); its open chat adds a running tool, a pending question, memory
-  waits and a failed turn; a call listens with the microphone's level (from the
-  frames voice-activity detection already reads) and speaks with the voice's
-  (an envelope of each clip read at its playback position, without rerouting
-  the audio). Text badges and status lines stay; faces are `aria-hidden`.
+  waits and a failed turn. Text badges and status lines stay; faces are
+  `aria-hidden`.
 - **Cheap.** CSS keyframes carry the motion; small faces only blink and glance
-  on timers. Large faces (empty chat, call, the dialog's preview) also follow
+  on timers. Large faces (the empty chat, the dialog's preview) also follow
   the pointer and morph on animation frames. Faces pause while hidden or off
   screen, and prefers-reduced-motion leaves a still expression per state.
 - **Later, if wanted:** accessories (Dots' glasses, hats), more shapes, a custom

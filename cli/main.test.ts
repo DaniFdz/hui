@@ -52,18 +52,6 @@ test("CLI parses bot commands, accepting bot and bots, with their operands and o
   assert.equal(add.command, "bot add");
   assert.deepEqual(add.operands, []);
   assert.equal(add.values["memory-model"], "openai/gpt-mini");
-  const voiced = parseCli(["bot", "add", "--name", "Ada", "--voice", "vp-aria", "--voice-speed", "1.25"]);
-  assert.deepEqual([voiced.values.voice, voiced.values["voice-speed"]], ["vp-aria", "1.25"]);
-  assert.equal(parseCli(["bot", "edit", "ada", "--voice-speed", ""]).values["voice-speed"], "", "\"\" clears the speed");
-  assert.equal(parseCli(["bot", "edit", "ada", "--voice", ""]).values.voice, "", "\"\" clears the voice");
-  for (const speed of ["3", "0.2", "fast"]) assert.throws(() => parseCli(["bot", "edit", "ada", "--voice-speed", speed]), /--voice-speed must be a number from 0.5 to 2/u, speed);
-  for (const language of ["es", "ES", "haw", "yue", "jw"]) assert.equal(parseCli(["bot", "edit", "ada", "--language", language]).values.language, language, language);
-  assert.equal(parseCli(["bot", "add", "--name", "Ada", "--language", "de"]).values.language, "de");
-  assert.equal(parseCli(["bot", "edit", "ada", "--language", ""]).values.language, "", "\"\" goes back to Auto");
-  for (const language of ["spanish", "es-ES", "xx", "jv", "auto"]) {
-    assert.throws(() => parseCli(["bot", "edit", "ada", "--language", language]), /--language must be one of Whisper's language codes, such as en, es, fr, de or ja \(not a name like Spanish\); "" goes back to Auto\./u, language);
-  }
-  assert.throws(() => parseCli(["bot", "list", "--language", "es"]), /--language is not valid for bot list/u);
   const look = parseCli(["bot", "add", "--name", "Ada", "--shape", "heart", "--color", "mint"]);
   assert.deepEqual([look.values.shape, look.values.color], ["heart", "mint"]);
   for (const shape of ["blob", "round", "Pebble", "TRIANGLE", "heart", "cookie", ""]) assert.equal(parseCli(["bot", "edit", "ada", "--shape", shape]).values.shape, shape, shape);
@@ -140,8 +128,6 @@ test("HELP lists every hui bot command", () => {
     "hui bot routine run <bot> <routine>",
     "hui bot routine remove <bot> <routine> [--json]",
     "On edit, --model \"\" and --thinking \"\" go back to the model and",
-    "[--voice <VoiceStudio voice id>] [--voice-speed <0.5-2>] [--language <code>] [--json]",
-    "--language takes a Whisper code",
   ]) assert.ok(HELP.includes(line), line);
 });
 

@@ -217,14 +217,12 @@ a confirmation. Bot chats never appear among your sessions.
 eyes. It shows what the bot is doing: it breathes while idle, squints and
 ponders while it thinks, bobs while a tool runs, tilts and hops while it waits
 for your answer, gets sleepy while it summarizes its memory, droops after a
-failure and does a little hop when a turn ends. On a call it fills the screen
-in the bot's color, puffs up as it listens to your voice and stretches with its
-own. The large faces (an empty chat, a call) look at your pointer. With
-*reduce motion* on in your system settings the faces keep still and change only
-their expression. The bot dialog's **Look** chooses **Face** (shape and color,
-with a live preview) or **Emoji**; a bot that already had an emoji keeps it
-until you choose Face. Bots you never styled get a face picked by their id, the
-same on every screen.
+failure and does a little hop when a turn ends. The large face of an empty chat
+looks at your pointer. With *reduce motion* on in your system settings the
+faces keep still and change only their expression. The bot dialog's **Look**
+chooses **Face** (shape and color, with a live preview) or **Emoji**; a bot that
+already had an emoji keeps it until you choose Face. Bots you never styled get a
+face picked by their id, the same on every screen.
 
 ### Creating and editing
 
@@ -320,77 +318,6 @@ with `n` = 1. The page lists the view, every message and each level of the
 tree; a browser opens it from a link on HUI's own pages, such as the Bots tab
 (another site cannot load or frame it).
 
-### Voice
-
-Bots can listen and speak through [VoiceStudio](https://github.com/debpalash/VoiceStudio),
-a separate speech service that HUI only calls over HTTP; HUI neither ships nor
-installs it.
-
-**Connecting it.** Run VoiceStudio on this machine (it listens on
-`http://127.0.0.1:3900`) or on a GPU box. For a box on your tailnet, start it
-with an API key (`OMNIVOICE_API_KEY`) and serve it over HTTPS with Tailscale
-Serve (`https://<box>.<tailnet>.ts.net`), or use its Tailscale address. In
-Settings → Integrations → **VoiceStudio**, enter that address (and the key for a
-remote box) and press **Test & save**: the gateway reads VoiceStudio's discovery
-document and model list before it saves anything. The key stays in
-`voicestudio.json` (owner-only) in HUI's configuration directory, never reaches
-the browser and is sent only to that VoiceStudio, over HTTPS, to this machine or
-to a Tailscale address. **Disconnect** removes the address and the key.
-
-**A bot's voice.** While VoiceStudio is connected, the New bot and Edit dialogs
-have a **Voice** picker (VoiceStudio's default and your voice profiles; OpenAI's
-voice names are left out, as VoiceStudio plays its default voice for each of
-them), a speed from 0.5× to 2×, **Preview** and a **Language**. From a terminal:
-
-```sh
-hui bot edit ada --voice vp-aria --voice-speed 1.2 --language es
-hui bot edit ada --voice "" --voice-speed "" --language ""   # back to VoiceStudio's defaults and Auto
-```
-
-**Language.** *Auto (detect)* lets VoiceStudio's recognizer guess the language
-of each recording, which a short "sí" or "vale" can throw off. A bot's
-language (one of Whisper's, found by its name or code: `es`, `de`, `yue`…) is
-what VoiceStudio listens for in its voice notes and calls, and the language it
-speaks in when it reads aloud or answers a call, numbers, times and amounts
-included. It translates nothing: the bot answers in the language its
-instructions (or you) ask for, so give it both. A VoiceStudio engine that
-cannot speak the language refuses, and HUI shows VoiceStudio's message (choose
-another engine in VoiceStudio, or Auto). **Preview** speaks in the language
-chosen in the dialog.
-
-**Voice notes.** The microphone beside Send records a note: its time runs above
-the composer, **Cancel** throws it away and **Done** (or the button again) stops
-it. VoiceStudio writes it down and the text waits in the composer for you to
-check and send. Settings → Integrations → VoiceStudio → *Send voice notes
-immediately* sends it at once instead, marked `[voice]`.
-
-**Read aloud.** The speaker button under a bot's reply reads it in the bot's
-voice, sentence by sentence (code and tables are skipped); press it again to
-stop. One reading plays at a time.
-
-**Calls.** The phone button in a bot's header starts a call: a view over the
-chat with a timer, captions of what you said and of the bot's answer, and
-**Mute**, **Speaker** and **Hang up**. Speak, then pause: the browser notices
-the end of what you said, VoiceStudio transcribes it and it goes into the bot's
-chat as an ordinary message marked `[voice] `, so the chat and the bot's memory
-keep the call. The answer is spoken sentence by sentence as it streams.
-Speaking while the bot talks stops its voice and, while its turn still runs,
-steers it with what you said. **Minimize** leaves a bar above the chat, or at
-the top of any other page, with Mute and Hang up; it brings the call back. One
-call runs at a time, and hanging up deletes nothing: a turn still running
-finishes in the chat.
-
-Every call turn is a whole bot turn: transcription, the bot's model with its
-memory, then speech. Expect a few seconds before the bot answers, more while its
-memory is being summarized (the call says *Summarizing memory…*). A faster voice
-model in front of the bot is a possible follow-up.
-
-**Microphone.** Browsers give the microphone only to secure pages: open HUI on
-`https://` (Tailscale Serve) or on this machine's `localhost`. HUI's desktop
-app does not allow the microphone yet; Read aloud works there too. The
-microphone opens only when you press the microphone or Call, and closes when
-the note or the call ends.
-
 ### Archiving and deleting
 
 `hui bot remove ada` archives the bot: its chat transcript and memory are kept,
@@ -412,10 +339,7 @@ active bot is refused, so archiving always comes first.
 Bots live in HUI's own files on this machine: `bots.json` (owner-only) in HUI's
 configuration directory, their chats in the Pi Durable store and their memory
 beside it. Nothing about a bot leaves the machine except the model requests its
-chat and its memory's compactor make to the providers you configured, and, with
-voice, recordings and text to speak sent to the VoiceStudio you connected. HUI
-stores no audio: what stays is the text of voice notes and calls in the bot's
-chat.
+chat and its memory's compactor make to the providers you configured.
 
 ## After an upgrade: `hui doctor`
 

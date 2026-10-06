@@ -7,8 +7,7 @@
  * Responses are normalized on the way in, like settings: a malformed or newer
  * record is skipped or narrowed rather than reaching the roster as `undefined`.
  */
-import { botLook, isBotFaceShape, type BotAvatar, type BotAvatarPatch, type BotFaceShape, type BotInput, type BotMemoryStatus, type BotMemoryUsage, type BotPatch, type BotSessionStatus, type BotsUpdate, type BotView, type BotVoice } from "../../shared/bots.ts";
-import { voiceLanguage, voiceProfileId, voiceSpeed } from "../../shared/voice.ts";
+import { botLook, isBotFaceShape, type BotAvatar, type BotAvatarPatch, type BotFaceShape, type BotInput, type BotMemoryStatus, type BotMemoryUsage, type BotPatch, type BotSessionStatus, type BotsUpdate, type BotView } from "../../shared/bots.ts";
 import { CLIENT_HEADERS, fetchJson } from "./settings-store.ts";
 import { decodeSseFrame, reconnectDelay, STATUS_STREAM_STALL_MS, type SessionGroup, type SessionView } from "./sessions-store.ts";
 import { trackedFetch } from "./ui-errors.ts";
@@ -40,11 +39,6 @@ export type BotDraft = {
   model: string;
   thinking: string;
   memoryModel: string;
-  /** A VoiceStudio voice id ("" for VoiceStudio's default), speed and language code ("" for Auto); absent while
-   * VoiceStudio is not connected. */
-  voice?: string;
-  voiceSpeed?: number;
-  voiceLanguage?: string;
 };
 
 /** OptChat's view budget: the memory panel reports sizes against it. */
@@ -96,15 +90,6 @@ function parseBotMemoryUsage(value: unknown): BotMemoryUsage {
   };
 }
 
-function parseVoice(value: unknown): BotVoice | undefined {
-  if (!isRecord(value)) return undefined;
-  const profile = voiceProfileId(value["profile"]);
-  const speed = voiceSpeed(value["speed"]);
-  const language = voiceLanguage(value["language"]);
-  const voice: BotVoice = { ...(profile ? { profile } : {}), ...(speed !== undefined ? { speed } : {}), ...(language ? { language } : {}) };
-  return Object.keys(voice).length ? voice : undefined;
-}
-
 export function parseBotMemoryStatus(value: unknown): BotMemoryStatus | undefined {
   if (!isRecord(value)) return undefined;
   const failing = isRecord(value["failing"]) ? value["failing"] : undefined;
@@ -140,7 +125,6 @@ export function parseBot(value: unknown): BotView | undefined {
   if (!id || !name || !sessionId) return undefined;
   const status = SESSION_STATUSES.find((candidate) => candidate === value["status"]) ?? "idle";
   const avatar = parseAvatar(value["avatar"]);
-  const voice = parseVoice(value["voice"]);
   const lastMessage = parseLastMessage(value["lastMessage"]);
   const memory = parseBotMemoryStatus(value["memory"]);
   const optional: Partial<Record<"title" | "description" | "instructions" | "model" | "thinking" | "memoryModel" | "memoryThinking", string>> = {};
@@ -155,7 +139,6 @@ export function parseBot(value: unknown): BotView | undefined {
     ...optional,
     cwd: text(value["cwd"], 4_096),
     ...(avatar ? { avatar } : {}),
-    ...(voice ? { voice } : {}),
     ...(value["hidden"] === true ? { hidden: true } : {}),
     ...(value["archived"] === true ? { archived: true } : {}),
     sessionId,
@@ -314,12 +297,10 @@ export function botInputFromDraft(draft: BotDraft): BotInput {
     memoryModel: optional(draft.memoryModel),
   };
   const avatar = draftAvatar(draft);
-  const voice = draftVoice(draft);
   return {
     name: draft.name.trim(),
     ...Object.fromEntries(Object.entries(entries).filter(([, value]) => value !== undefined)),
     ...(avatar ? { avatar } : {}),
-    ...(voice ? { voice } : {}),
   };
 }
 
@@ -336,15 +317,6 @@ function draftAvatar(draft: BotDraft): BotAvatar | undefined {
     ...(draft.shape && isBotFaceShape(draft.shape) ? { shape: draft.shape } : {}),
   };
   return Object.keys(avatar).length ? avatar : undefined;
-}
-
-/** The dialog's voice: a chosen voice id, a speed other than 1× and a language; nothing for VoiceStudio's defaults. */
-function draftVoice(draft: BotDraft): BotVoice | undefined {
-  const profile = draft.voice?.trim() ?? "";
-  const speed = draft.voiceSpeed !== undefined && draft.voiceSpeed !== 1 ? voiceSpeed(draft.voiceSpeed) : undefined;
-  const language = voiceLanguage(draft.voiceLanguage);
-  const voice: BotVoice = { ...(profile ? { profile } : {}), ...(speed !== undefined ? { speed } : {}), ...(language ? { language } : {}) };
-  return Object.keys(voice).length ? voice : undefined;
 }
 
 /** Edit payload: only what changed, so an untouched workspace never trips the
@@ -366,19 +338,6 @@ export function botPatchFromDraft(bot: BotView, draft: BotDraft): BotPatch {
   if (cwd && cwd !== bot.cwd) patch.cwd = cwd;
   const avatar = avatarPatch(bot, draft);
   if (avatar) patch.avatar = avatar;
-  // The voice section shows only while VoiceStudio is connected; without it the voice is left as it is.
-  if (draft.voice !== undefined) {
-    const profile = draft.voice.trim();
-    const speed = draft.voiceSpeed ?? 1;
-    // Auto ("") clears the language; a draft without one leaves it alone.
-    const language = draft.voiceLanguage === undefined ? undefined : voiceLanguage(draft.voiceLanguage) ?? "";
-    const voice: NonNullable<BotPatch["voice"]> = {
-      ...(profile !== (bot.voice?.profile ?? "") ? { profile } : {}),
-      ...(speed !== (bot.voice?.speed ?? 1) ? { speed: speed === 1 ? null : speed } : {}),
-      ...(language !== undefined && language !== (bot.voice?.language ?? "") ? { language } : {}),
-    };
-    if (Object.keys(voice).length) patch.voice = voice;
-  }
   return patch;
 }
 

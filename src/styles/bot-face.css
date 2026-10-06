@@ -1,7 +1,7 @@
 /* Bots' animated faces (HUI-18): <hui-bot-face>, ported from the prototype the
  * owner approved on 2026-10-06 (after OpenAI's Dots). Keyframes carry the body's
- * motion; src/components/bot-face.ts adds blinks, glances, pointer gaze and the
- * call's audio level. Off-screen and hidden faces pause; reduced motion keeps a
+ * motion; src/components/bot-face.ts adds blinks, glances, pointer gaze and an
+ * audio level. Off-screen and hidden faces pause; reduced motion keeps a
  * still expression per state. */
 hui-bot-face {
   --bot-face-size: 36px;
