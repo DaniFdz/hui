@@ -1134,7 +1134,11 @@ everything the Bots tab can, through the same routes.
   needed). It changes SOUL.md when the operator asks, and says so; the operator
   can also edit it in the Soul tab or with `hui bot soul`. A bot without a
   model of its own runs on Settings' primary model, like a new session.
-- **Forever.** Clearing, compacting, rewinding or deleting a bot's chat is
+- **Named by talking.** A bot created without a name is *New Bot*; its first
+  conversation asks what to call it, and it renames itself with a bot-only
+  `set_profile` tool (only in turns the operator started). A handle derived
+  from the old name follows the new one; a chosen handle stays.
+- **Forever, until deleted.** Clearing, compacting, rewinding or deleting a bot's chat is
   refused; archiving the bot deletes nothing, disables its routines and stops a
   running turn, and restoring it brings it back with its routines still off.
 - **Messages.** A message to a bot is a prompt when it is idle and a follow-up
@@ -1227,6 +1231,17 @@ so the bot's opener is waiting when the operator opens the chat. Name and look
 stay in the dialog, so the bot never asks for them. The `instructions` field
 and Durable instructions are gone; the gateway turns existing instructions into
 SOUL.md once.
+
+Later that day the owner chose Grok-style creation, with no New bot dialog: a
+bot created without a name is *New Bot*, asks what to call it in its first
+conversation and renames itself with `set_profile` (the no-dialog flow and a
+bot Settings tab follow on top of the calls branch). He also asked that
+deleting a bot delete its folder ("so SOUL, MEMORY, configs...") and work from
+the ⋯ menu on active bots too: delete now stops its turn, clears what HUI owns
+of its conversation (the bot document and OptChat, whose files go) and removes
+its routines, its chat's session record and its whole home folder, never a
+workspace the operator chose. pi-durable cannot delete a conversation, so the
+raw log stays in the store, unread.
 
 ### Bots are named chats, not an agent selector (2026-10-05)
 

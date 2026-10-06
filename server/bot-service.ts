@@ -19,8 +19,8 @@
  * that message from its queue.
  */
 import { randomUUID } from "node:crypto";
-import { mkdir, rmdir, stat } from "node:fs/promises";
-import { isAbsolute, join } from "node:path";
+import { mkdir, realpath, rmdir, stat } from "node:fs/promises";
+import { isAbsolute, join, relative } from "node:path";
 
 import {
   BOT_LIMITS, botKickoffName, botKickoffText, handleFromName, previewLine,
@@ -29,7 +29,7 @@ import {
 import type { AutomationTask } from "../src/lib/automation-types.ts";
 import { BotMemoryUnavailableError, type BotMemory, type BotMemorySettings } from "./bot-memory.ts";
 import {
-  BOTS_DIR, BotConflictError, BotInputError, BotNotFoundError, findBot, normalizeBotInput, normalizeBotPatch, normalizeSoul, patchedAvatar, uniqueHandle,
+  BOTS_DIR, BotConflictError, BotInputError, BotNotFoundError, findBot, isDerivedHandle, normalizeBotInput, normalizeBotPatch, normalizeSoul, patchedAvatar, uniqueHandle,
   type BotRegistry,
 } from "./bots.ts";
 import { SessionBusyError, type LiveSessions } from "./live-sessions.ts";
@@ -70,6 +70,9 @@ export type BotConversations = {
   /** Takes effect at the conversation's next request. `instructions: null` clears the Durable instructions a bot had
    * before SOUL.md (`BotService.migrate`); bots never set them. */
   configure(reference: string, change: { instructions?: null; cwd?: string }): Promise<void>;
+  /** For a deleted bot: the conversation stops being a bot's chat and its memory is turned off and deleted, so nothing
+   * reads either back. The raw conversation stays in the store, which cannot delete one. Nothing to clear is fine. */
+  forget(reference: string): Promise<void>;
   lastMessage(reference: string): Promise<BotStoredMessage | undefined>;
   /** Rejects a `provider/id` this gateway cannot resolve. */
   checkModel(model: string): Promise<void>;
@@ -92,7 +95,8 @@ export type BotSouls = {
   exists(botId: string): Promise<boolean>;
   /** Replaces SOUL.md atomically; undefined removes it, which brings the first conversation back. */
   write(botId: string, soul: string | undefined): Promise<void>;
-  /** For a deleted bot: removes SOUL.md, then the home folder if that leaves it empty. Its other files stay. */
+  /** For a deleted bot: removes its home folder with everything in it (SOUL.md and every file HUI or the bot put
+   * there), never following a link out of HUI's bots directory. */
   remove(botId: string): Promise<void>;
 };
 
@@ -366,10 +370,36 @@ export class BotService {
       if (patch.handle && bots.some((other) => other.id !== bot.id && other.handle === patch.handle)) {
         throw new BotConflictError(`@${patch.handle} is already taken.`);
       }
-      const next = patched(current, patch, cwd, now);
+      // A handle derived from the old name follows the new one, kept unique; a handle the operator chose stays.
+      const renamed = patch.handle === undefined && patch.name !== undefined && patch.name !== current.name && isDerivedHandle(current.handle, current.name);
+      const handle = renamed ? uniqueHandle(handleFromName(patch.name!), new Set(bots.filter((other) => other.id !== bot.id).map((other) => other.handle))) : patch.handle;
+      const next = patched(current, { ...patch, ...(handle !== undefined ? { handle } : {}) }, cwd, now);
       return { bots: bots.map((candidate) => candidate.id === bot.id ? next : candidate), result: next };
     });
     return this.#viewOf(updated);
+  }
+
+  /**
+   * `set_profile` from the bot whose chat `callerSessionId` is: its own name and/or title, under `PATCH`'s rules
+   * (`update`, so a derived handle follows the name). Only the operator decides them: a turn that a routine or another
+   * bot started is refused, as its run's originating input (`runPrompt`) shows.
+   */
+  async setProfile(callerSessionId: string, params: Record<string, unknown>): Promise<{ text: string; name: string; handle: string }> {
+    const bot = (await this.#registry.list()).find((candidate) => candidate.sessionId === callerSessionId);
+    if (!bot) throw new BotInputError("set_profile is only available in a bot's chat.");
+    if (bot.archived) throw new BotConflictError("An archived bot cannot change its profile.");
+    const origin = (await this.#deps.readSessions()).find((record) => record.id === callerSessionId)?.runPrompt;
+    if (origin && (origin.startsWith("[routine: ") || hopOf(origin) !== undefined)) {
+      throw new BotConflictError("Only the operator changes your name or title, and this turn was started by a routine or another bot. Ask the operator instead.");
+    }
+    const unknown = Object.keys(params).filter((key) => key !== "name" && key !== "title");
+    if (unknown.length) throw new BotInputError(`set_profile takes name and title only, not ${unknown.join(", ")}.`);
+    if (!Object.keys(params).length) throw new BotInputError("Give a name, a title or both.");
+    const view = await this.update(bot.id, params);
+    return {
+      text: `Saved: you are ${view.name} (@${view.handle})${view.title ? `, ${view.title}` : ""}. Tell the operator.`,
+      name: view.name, handle: view.handle,
+    };
   }
 
   /**
@@ -390,16 +420,31 @@ export class BotService {
     for (const task of (await this.#deps.routines.tasks()).filter((task) => task.sessionId === bot.sessionId && task.enabled)) {
       await this.#deps.routines.disable(task);
     }
-    // Messages still waiting in HUI's queue would start a new turn once the current one stops.
+    await this.#quiet(bot, "bot_archive_stop_failed");
+    await this.#deps.updateSessions((records) => records.map((record) => record.id === bot.sessionId && !record.archived ? { ...record, archived: true } : record));
+    return this.#viewOf(bot);
+  }
+
+  /** Withdraws the messages still waiting in HUI's queue for the bot (they would start a new turn once the current one
+   * stops), then stops a running turn. */
+  async #quiet(bot: BotRecord, action: string): Promise<void> {
     for (const item of this.#sessions.snapshot(bot.sessionId).queue.items ?? []) {
       try { this.#sessions.removeFollowUp(bot.sessionId, item.id); } catch { /* sent meanwhile */ }
     }
     const status = this.#sessions.status(bot.sessionId);
     if (status === "running" || status === "waiting") {
-      await this.#sessions.abort(bot.sessionId).catch((error: unknown) => this.#report("warning", "bot_archive_stop_failed", "An archived bot's turn could not be stopped", error));
+      await this.#sessions.abort(bot.sessionId).catch((error: unknown) => this.#report("warning", action, `@${bot.handle}'s turn could not be stopped`, error));
     }
-    await this.#deps.updateSessions((records) => records.map((record) => record.id === bot.sessionId && !record.archived ? { ...record, archived: true } : record));
-    return this.#viewOf(bot);
+  }
+
+  /** A working directory the operator chose inside the bot's home folder: deleting the folder would take it along. */
+  async #chosenInsideHome(bot: BotRecord): Promise<boolean> {
+    const home = join(this.#botsDir, bot.id);
+    if (bot.cwd === home) return false;
+    const resolved = (path: string) => realpath(path).catch(() => path);
+    const [cwd, folder] = await Promise.all([resolved(bot.cwd), resolved(home)]);
+    const within = relative(folder, cwd);
+    return within === "" || (!within.startsWith("..") && !isAbsolute(within));
   }
 
   /** Unarchives the bot and its chat. Its routines stay disabled until the operator turns them on. */
@@ -418,25 +463,31 @@ export class BotService {
   }
 
   /**
-   * Deletes an archived bot for good. Archiving stays the step that can be
-   * undone, so an active bot is refused. Removes every Automation task aimed at
-   * its chat, deletes the chat's session record (its runtime stops), its
-   * SOUL.md (HUI's file) and then its home folder if that left it empty, then
-   * the bot. As with a deleted session, its conversation and memory stay in the
-   * Durable store, which HUI no longer opens; the bot's other files never go.
-   * Each step can run again, so deleting again finishes what an interrupted
-   * attempt left.
+   * Deletes a bot for good, active or archived: withdraws messages still queued
+   * for it and stops a running turn; its conversation stops being a bot's chat
+   * and its memory is turned off and deleted (`BotConversations.forget`; the raw
+   * conversation stays in the Durable store, which cannot delete one, and HUI
+   * never opens it again); then every Automation task aimed at its chat, the
+   * chat's session record (its runtime stops), its home folder with everything
+   * in it (SOUL.md and every file HUI or the bot put there), and the bot. A
+   * working directory the operator chose is never touched: when it lies inside
+   * the home folder, only SOUL.md goes. Each step can run again, so deleting
+   * again finishes what an interrupted attempt left.
    */
   async delete(target: string): Promise<void> {
     const bot = await this.resolve(target);
-    if (!bot.archived) throw new BotConflictError(`@${bot.handle} is not archived. Archive it before deleting it.`);
+    await this.#quiet(bot, "bot_delete_stop_failed");
+    const record = (await this.#deps.readSessions()).find((candidate) => candidate.id === bot.sessionId);
+    if (record?.piSessionFile) await this.#deps.conversations.forget(record.piSessionFile);
     for (const task of (await this.#deps.routines.tasks()).filter((task) => task.sessionId === bot.sessionId)) {
       await this.#deps.routines.remove(task);
     }
-    if ((await this.#deps.readSessions()).some((record) => record.id === bot.sessionId)) await this.#deps.removeSession(bot.sessionId);
-    await this.#deps.souls.remove(bot.id);
+    if (record) await this.#deps.removeSession(bot.sessionId);
+    if (await this.#chosenInsideHome(bot)) await this.#deps.souls.write(bot.id, undefined);
+    else await this.#deps.souls.remove(bot.id);
     await this.#registry.update((bots) => ({ bots: bots.filter((candidate) => candidate.id !== bot.id), result: undefined }));
     this.#souls.delete(bot.id);
+    this.#lastMessages.delete(bot.id);
   }
 
   /** SOUL.md's text; null while the bot has none (before or during its first conversation). */

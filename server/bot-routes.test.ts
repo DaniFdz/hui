@@ -41,6 +41,9 @@ const { readRegistry } = await import("./sessions.ts");
 const { durableHost } = await import("./runtimes/durable-host.ts");
 const { optChatBotMemory } = await import("./bot-memory.ts");
 const { botChat } = await import("../cli/bots.ts");
+const { BotDoc } = await import("./runtimes/durable-bots.ts");
+const { OptChatDoc } = await import("./runtimes/durable-optchat.ts");
+const { durableContext } = await import("./runtimes/durable-host.ts");
 let origin = "";
 const server = createServer((request, response) => middleware(request, response, () => { response.writeHead(404).end(); }));
 
@@ -119,7 +122,6 @@ test("bots are created, read, edited, archived and restored through the guarded 
   assert.equal((await call("/__hui/bots", "GET", undefined, false)).status, 403, "the local-client guard applies");
   assert.deepEqual((await call("/__hui/bots")).body, { bots: [] });
   for (const [body, pattern] of [
-    [{}, /name is required/u],
     [{ name: "Ada", nickname: "x" }, /Unknown bot field: nickname/u],
     [{ name: "Ada", model: "hui-e2e/missing" }, /Unknown model: hui-e2e\/missing/u],
     [{ name: "Ada", cwd: join(dir, "missing") }, /No such directory/u],
@@ -346,6 +348,8 @@ function terminal() {
       }),
     }),
     onInterrupt: () => () => {},
+    interactive: false,
+    ask: async () => "",
     cwd: dir,
     timezone: "UTC",
   };
@@ -424,20 +428,21 @@ test("hui bot chat shows what the bot gets from elsewhere before its reply, and 
   await settledWith(bob.sessionId, says("user", "[routine: Ping] ping"));
 });
 
-test("deleting a bot needs it archived, then its routines, its chat and the folder HUI made for it go", { timeout: 120_000 }, async () => {
+test("deleting a bot, active or archived, removes its routines, its chat, its memory and its whole folder", { timeout: 120_000 }, async () => {
   const cleo = botOf(await call("/__hui/bots", "POST", { name: "Cleo", soul: "You are Cleo." }));
+  await call("/__hui/bots/cleo/messages", "POST", { text: "OPT_CLEO remember the red door", wait: true, timeoutSeconds: 60 });
+  await writeFile(join(cleo.cwd, "MEMORY.md"), "Cleo's own notes");
+  const reference = (await readRegistry()).find((record) => record.id === cleo.sessionId)?.piSessionFile;
+  assert(reference);
   const created = await call("/__hui/automation/tasks", "POST", {
     name: "Evening", sessionId: cleo.sessionId, prompt: "wrap up", schedule: { kind: "every", everyMs: 3_600_000 },
   });
   assert.equal(created.status, 201);
   const task = created.body["task"] as { id: string };
-  const refused = await call("/__hui/bots/cleo?permanent=1", "DELETE");
-  assert.equal(refused.status, 409);
-  assert.match(String(refused.body["error"]), /@cleo is not archived\. Archive it before deleting it\./u);
-  assert.equal(botOf(await call("/__hui/bots/cleo")).archived, undefined, "a refused delete leaves the bot as it was");
-
   assert.equal(botOf(await call("/__hui/bots/cleo", "DELETE")).archived, true, "without permanent=1 a DELETE archives");
   assert.deepEqual((await call("/__hui/bots/cleo/soul")).body, { soul: "You are Cleo." }, "archiving keeps SOUL.md");
+  assert.equal(botOf(await call("/__hui/bots/cleo/restore", "POST", {})).archived, undefined);
+  // Active: no need to archive first.
   const deleted = await call(`/__hui/bots/${cleo.id}?permanent=1`, "DELETE");
   assert.equal(deleted.status, 200);
   assert.deepEqual(deleted.body, { ok: true });
@@ -445,7 +450,12 @@ test("deleting a bot needs it archived, then its routines, its chat and the fold
   assert.equal(((await call("/__hui/bots?archived=1")).body["bots"] as BotView[]).some((bot) => bot.id === cleo.id), false);
   assert.equal((await readRegistry()).some((record) => record.id === cleo.sessionId), false, "its chat's session record is gone");
   assert.equal(((await call("/__hui/automation")).body["tasks"] as Array<{ id: string }>).some((each) => each.id === task.id), false, "and its routine");
-  await assert.rejects(stat(cleo.cwd), { code: "ENOENT" }, "its SOUL.md went, then the folder HUI made for it, empty");
+  await assert.rejects(stat(cleo.cwd), { code: "ENOENT" }, "its whole folder went: SOUL.md and its own files");
+  const id = Number(reference.slice("durable:".length)) as never;
+  const harness = await durableHost().open();
+  assert.deepEqual(await harness.snapshot(BotDoc, id, durableContext), { bot: "" }, "its conversation is no bot's chat any more");
+  assert.equal((await harness.snapshot(OptChatDoc, id, durableContext))?.enabled, false, "and its memory is off");
+  await assert.rejects(stat(join(dir, "config", "hui", "durable", "optchat", String(id))), { code: "ENOENT" }, "OptChat's files are gone");
   assert.equal((await call(`/__hui/bots/${cleo.id}?permanent=1`, "DELETE")).status, 404);
 });
 
@@ -532,4 +542,26 @@ test("a bot without a soul speaks first on the primary model, writes SOUL.md its
   await call("/__hui/bots/given", "DELETE");
   await call(`/__hui/bots/${given.id}?permanent=1`, "DELETE");
   await assert.rejects(stat(join(dir, "config", "hui", "bots", given.id)), { code: "ENOENT" });
+});
+
+
+test("a bot created without a name is New Bot, asks what to call it, and names itself with set_profile", { timeout: 120_000 }, async () => {
+  const created = await call("/__hui/bots", "POST", {});
+  assert.equal(created.status, 201);
+  const fresh = botOf(created);
+  assert.deepEqual([fresh.name, fresh.handle], ["New Bot", "new-bot"]);
+  await settledWith(fresh.sessionId, says("assistant", "What would you like me to look after"));
+  const kickoff = (await chatRequests()).findLast((request) => JSON.stringify(request.messages).includes("[HUI bot created]\\nname: New Bot\\n"));
+  assert.ok(kickoff, "its own kickoff");
+  assert.match(JSON.stringify(kickoff.system), /You have no name yet/u, "it asks for a name first");
+  const named = await call(`/__hui/bots/${fresh.id}/messages`, "POST", { text: "E2E_SET_PROFILE call yourself Echo", wait: true, timeoutSeconds: 60 });
+  assert.deepEqual(named.body, { status: "answered", reply: "set_profile answered: Saved: you are Echo (@echo), Fixture tester. Tell the operator." });
+  const echo = botOf(await call("/__hui/bots/echo"));
+  assert.deepEqual([echo.id, echo.name, echo.title], [fresh.id, "Echo", "Fixture tester"], "the derived handle followed the name");
+  assert.equal((await readRegistry()).find((record) => record.id === fresh.sessionId)?.title, "Echo");
+  await call("/__hui/bots/echo/messages", "POST", { text: "NAMED_TURN hello", wait: true, timeoutSeconds: 60 });
+  const next = JSON.stringify((await chatRequests()).findLast((request) => JSON.stringify(request.messages).includes("NAMED_TURN"))?.system);
+  assert.match(next, /You are @echo \(Echo\)/u);
+  assert.doesNotMatch(next, /You have no name yet/u);
+  await call(`/__hui/bots/${fresh.id}?permanent=1`, "DELETE");
 });

@@ -9,9 +9,11 @@
  * `runtimes/durable-bots.ts`); both writers go through `writeSoulFile`.
  *
  * This is the local implementation of the `BotSouls` port: a bot running
- * elsewhere routes the same calls to the host that runs its chat.
+ * elsewhere routes the same calls to the host that runs its chat. Deleting a
+ * bot removes this folder with everything in it, never following a link out of
+ * HUI's bots directory.
  */
-import { mkdir, rm, rmdir } from "node:fs/promises";
+import { lstat, mkdir, realpath, rm } from "node:fs/promises";
 import { join } from "node:path";
 
 import { BOT_SOUL_FILE } from "../shared/bots.ts";
@@ -51,9 +53,23 @@ export function localBotSouls(botsDir: string = BOTS_DIR): BotSouls {
     },
 
     async remove(botId) {
-      await rm(file(botId), { force: true });
-      // Only an empty folder goes: the bot's own files never do.
-      await rmdir(home(botId)).catch(() => {});
+      const target = home(botId);
+      let info;
+      try {
+        info = await lstat(target);
+      } catch (error) {
+        if ((error as { code?: unknown }).code === "ENOENT") return;
+        throw error;
+      }
+      // A link is removed, never followed: nothing outside HUI's bots directory goes.
+      if (info.isSymbolicLink() || !info.isDirectory()) {
+        await rm(target, { force: true });
+        return;
+      }
+      const [root, real] = await Promise.all([realpath(botsDir), realpath(target)]);
+      if (real !== join(root, botId)) throw new Error(`Refusing to delete ${target}: it is not ${botId}'s folder in HUI's bots directory.`);
+      // Everything in it goes: SOUL.md and every file HUI or the bot put there (links inside are removed, not followed).
+      await rm(target, { recursive: true, force: true });
     },
   };
 }

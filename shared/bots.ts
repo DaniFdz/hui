@@ -54,7 +54,10 @@ export type BotRecord = {
   updatedAt: string;
 };
 
-/** `POST /__hui/bots`. Without `handle`, one is derived from the name. */
+/** The name of a bot created without one; it asks the operator for a real one in its first conversation. */
+export const NEW_BOT_NAME = "New Bot";
+
+/** `POST /__hui/bots`. Without `name` the bot is `NEW_BOT_NAME`; without `handle`, one is derived from the name. */
 export type BotInput = {
   name: string;
   handle?: string;

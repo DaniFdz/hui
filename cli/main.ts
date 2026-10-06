@@ -32,13 +32,13 @@ export const HELP = `Usage:
   hui workers remove <name|id> [--json]
   hui bot list [--archived] [--json]
   hui bot show <bot> [--json]
-  hui bot add --name <name> [--title <text>] [--soul-file <path|->] [--cwd <dir>]
+  hui bot add [--name <name>] [--title <text>] [--soul-file <path|->] [--cwd <dir>]
               [--model <provider/model>] [--thinking <level>] [--memory-model <provider/model>] [--emoji <e>] [--json]
   hui bot edit <bot> [same flags as add but --soul-file] [--json]
   hui bot soul <bot> [--file <path|->] [--json]
   hui bot remove <bot> [--json]
   hui bot restore <bot> [--json]
-  hui bot delete <bot> [--json]
+  hui bot delete <bot> [--yes] [--json]
   hui bot chat <bot>
   hui bot send <bot> <message|-> [--wait] [--timeout <seconds>] [--json]
   hui bot stop <bot> [--json]
@@ -71,13 +71,15 @@ Bots are named agents with one forever chat each, managed through the running
 gateway like the Bots tab; "bots" works as "bot". <bot> is an id, a handle or
 an exact name. A new bot starts by asking what you expect from it (talk with
 hui bot chat <handle>), then writes its persona, SOUL.md, itself; --soul-file
-gives it one instead (- reads stdin) and skips that first conversation. Soul
-prints SOUL.md; --file replaces it, and an empty file removes it so the bot asks
-again. On edit, --model "" and --thinking "" go back to the model and
+gives it one instead (- reads stdin) and skips that first conversation. Without
+--name it is "New Bot" and first asks what to call it. Soul prints SOUL.md;
+--file replaces it, and an empty file removes it so the bot asks again. On edit, --model "" and --thinking "" go back to the model and
 thinking level a new chat gets, --memory-model "" to the chat's own model.
 Remove archives: the chat transcript and memory are kept and its routines are
-disabled. Delete then removes an archived bot for good: its routines and chat
-go from HUI, the files in its folder stay. Chat streams the replies as plain
+disabled. Delete removes a bot for good, active or archived: its turn stops, its
+chat leaves HUI, and its routines, memory and folder (SOUL.md and every file in
+it) go; a workspace you chose stays. It asks first; --yes skips that, and is
+needed where it cannot ask (no terminal). Chat streams the replies as plain
 text and sends what you
 type (steering a turn that runs); messages from elsewhere (routines, other
 bots, the Bots tab) show as > lines. Ctrl+C stops a turn, twice exits. Send -
@@ -96,7 +98,7 @@ export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {
     "no-open": { type: "boolean" }, from: { type: "string" }, sha256: { type: "string" }, rollback: { type: "boolean" },
     check: { type: "boolean" }, fix: { type: "boolean" }, nightly: { type: "boolean" },
     name: { type: "string" }, command: { type: "string" }, "extra-path": { type: "string", multiple: true },
-    archived: { type: "boolean" }, title: { type: "string" }, "soul-file": { type: "string" }, file: { type: "string" },
+    archived: { type: "boolean" }, title: { type: "string" }, "soul-file": { type: "string" }, file: { type: "string" }, yes: { type: "boolean", short: "y" },
     cwd: { type: "string" }, model: { type: "string" }, thinking: { type: "string" }, "memory-model": { type: "string" },
     emoji: { type: "string" }, wait: { type: "boolean" }, timeout: { type: "string" }, zoom: { type: "string" }, html: { type: "string" },
     prompt: { type: "string" }, at: { type: "string" }, every: { type: "string" }, cron: { type: "string" }, timezone: { type: "string" },
@@ -121,7 +123,7 @@ export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {
     "workers edit": ["name", "command", "extra-path", "json"], "workers remove": ["json"],
     "bot list": ["archived", "json"], "bot show": ["json"], "bot add": [...BOT_FIELDS, "soul-file", "json"], "bot edit": [...BOT_FIELDS, "json"],
     "bot soul": ["file", "json"],
-    "bot remove": ["json"], "bot restore": ["json"], "bot delete": ["json"], "bot chat": [], "bot send": ["wait", "timeout", "json"], "bot stop": ["json"],
+    "bot remove": ["json"], "bot restore": ["json"], "bot delete": ["yes", "json"], "bot chat": [], "bot send": ["wait", "timeout", "json"], "bot stop": ["json"],
     "bot memory": ["zoom", "html", "json"], "bot routine list": ["json"],
     "bot routine add": ["name", "prompt", "at", "every", "cron", "timezone", "json"], "bot routine run": [], "bot routine remove": ["json"],
   };
@@ -164,7 +166,6 @@ function checkBotCommand(command: string, operands: readonly string[], values: R
     throw new Error(expected.length ? `${command} needs ${expected.map((name) => `<${name}>`).join(" ")}.` : `${command} takes no operands.`);
   }
   const given = (flag: string) => values[flag] !== undefined;
-  if (command === "bot add" && !values["name"]) throw new Error("bot add needs --name.");
   if (command === "bot edit" && !BOT_FIELDS.some(given)) throw new Error(`bot edit needs at least one of ${BOT_FIELDS.map((flag) => `--${flag}`).join(", ")}.`);
   // `""` clears a choice: the gateway's default for the chat, the chat's own model for the memory.
   const cleared = (flag: string) => values[flag] === "";

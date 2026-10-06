@@ -220,13 +220,17 @@ a confirmation. Bot chats never appear among your sessions.
 ### Creating and editing
 
 ```sh
+hui bot add                      # "New Bot", which asks what to call it
 hui bot add --name Ada --title Researcher --model openai/gpt-5.6
 hui bot edit ada --thinking high --emoji 🦊
 hui bot show ada
 ```
 
 The handle (`@ada`) comes from the name: lowercase letters, digits and dashes,
-with `-2`, `-3`… when another bot has it. Renaming keeps the handle. Every bot
+with `-2`, `-3`… when another bot has it. Renaming moves a handle that came from
+the old name to the new one (`new-bot` becomes `scout`); a handle you chose
+stays. A bot added without a name is "New Bot" until it asks you what to call
+it. Every bot
 gets a private home folder in HUI's configuration directory, where its SOUL.md
 lives; without `--cwd` that folder is also its working directory. Without
 `--model` a bot runs on Settings' primary model, as a new session does (PI's
@@ -251,7 +255,8 @@ and sounds, when it reaches out to you and its boundaries. You don't fill in a
 form for it. A new bot speaks first: as soon as it is created, HUI starts its
 first turn, and its opening message is waiting when you open its chat (the chat
 shows a small note, "Ada was created", where that turn began). It asks what you
-expect from it, one or two questions at a time, and after a few answers it
+expect from it, one or two questions at a time (a bot still called "New Bot"
+first asks what to call it, and renames itself), and after a few answers it
 writes SOUL.md itself (with a tool of its own, so it needs no file access),
 sums it up and tells you how to change it. If your first
 message asks for real work, it does the work first. Its name and look come from
@@ -349,13 +354,14 @@ Bots tab) shows archived bots and `hui bot restore ada` (or their **Restore**)
 brings one back; its routines stay disabled until you turn them on again in
 Automations or its Routines panel.
 
-`hui bot delete ada` (or an archived bot's trash icon in the Bots tab) then
-deletes an archived bot for good: its routines, its chat's session record and
-its SOUL.md go, and HUI no longer lists or opens its conversation, which stays
-in the Pi Durable store like a deleted session's transcript. Its other files
-stay; its home folder goes only when empty, and a folder you chose for it is
-never touched. An active bot is refused, so archiving always comes first.
-Archiving and restoring keep SOUL.md.
+`hui bot delete ada` (or **Delete…** in a bot's ⋯ menu in the Bots tab, or an
+archived bot's trash icon) deletes a bot for good, active or archived, after
+asking (`--yes` skips the question, and is needed where it cannot ask): its turn
+stops, its chat leaves HUI, and its routines, its memory and its folder go,
+SOUL.md and every file in it included. A folder you chose as its workspace is
+never touched. Pi Durable cannot delete a conversation yet, so the chat's raw
+log stays in its store, where nothing reads it back. Archiving and restoring
+keep everything, SOUL.md included.
 
 ### Privacy
 

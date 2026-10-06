@@ -28,6 +28,10 @@ export interface BotMemory {
   enable(tx: Tx, conversationId: ConversationId, settings: BotMemorySettings): Promise<void>;
   /** Changes the agent name or compactor model of an existing bot's memory. */
   configure(reference: string, settings: BotMemorySettings): Promise<void>;
+  /** Turns OptChat off inside the caller's commit (a deleted bot's chat), so nothing reads its memory back. */
+  disable(tx: Tx, conversationId: ConversationId): Promise<void>;
+  /** Deletes the memory files of a chat whose OptChat is off; nothing to delete is fine. */
+  purge(reference: string): Promise<void>;
   /** Undefined when the gateway cannot read the chat's memory. */
   status(reference: string): Promise<BotMemoryStatus | undefined>;
   /** The rendered current view, `<chat>…</chat>`, once the memory has caught up with its chat. */
@@ -72,6 +76,10 @@ export function optChatBotMemory(host: DurableHost): BotMemory {
       ...(settings.model ? { model: settings.model } : {}),
       ...(settings.thinking ? { thinking: settings.thinking as ModelThinkingLevel } : {}),
     }),
+    disable: (tx, conversationId) => configureOptChat(tx, conversationId, { enabled: false }),
+    async purge(reference) {
+      await host.optchat.purge(await conversation(reference));
+    },
     async configure(reference, settings) {
       const id = await conversation(reference);
       const found = await (await host.open()).conversation(id, durableContext);

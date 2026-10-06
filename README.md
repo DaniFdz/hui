@@ -128,12 +128,13 @@ same command). `<bot>` is an id, a handle or an exact name:
 ```sh
 hui bot list [--archived] [--json]
 hui bot show <bot> [--json]
-hui bot add --name <name> [--title <text>] [--soul-file <path|->] [--cwd <dir>]
+hui bot add [--name <name>] [--title <text>] [--soul-file <path|->] [--cwd <dir>]
             [--model <provider/model>] [--thinking <level>] [--memory-model <provider/model>] [--emoji <e>] [--json]
 hui bot edit <bot> [same flags as add but --soul-file] [--json]  # --model "" / --thinking "": back to the defaults
 hui bot soul <bot> [--file <path|->] [--json]   # print SOUL.md, or replace it (empty: ask again)
 hui bot remove <bot> [--json]          # archives: its chat and memory are kept
 hui bot restore <bot> [--json]
+hui bot delete <bot> [--yes] [--json]  # for good: its chat leaves HUI; routines, memory and folder go
 hui bot chat <bot>                     # streamed plain text; works over SSH
 hui bot send <bot> <message|-> [--wait] [--timeout <seconds>] [--json]
 hui bot stop <bot> [--json]

@@ -744,7 +744,12 @@ for now. It lands as stacked pull requests:
    of existing instructions, and `hui bot add --soul-file` / `hui bot soul`.
    The bot saves SOUL.md with a bot-only `write_soul` tool (no file tools
    needed), and a bot without its own model starts on Settings' primary model,
-   as new sessions do, instead of PI's catalog default.
+   as new sessions do, instead of PI's catalog default. Then (owner's
+   answers): a bot created without a name is *New Bot* and names itself in its
+   first conversation with a bot-only `set_profile` (a derived handle follows
+   the name), and delete works on active bots too and removes the bot's whole
+   folder and its OptChat memory (the raw Durable log stays: pi-durable cannot
+   delete conversations), `hui bot delete` asking first or taking `--yes`.
    Proof: `server/bots.test.ts`, `server/bot-service.test.ts` (kickoff,
    soul routes, cache, migration, delete), `server/runtimes/durable-bots.test.ts`
    (the section in real requests, the first conversation's text, truncation, a
