@@ -66,11 +66,24 @@ function findTagEnd(html, offset) {
   return html.length;
 }
 
+/** End of the HTML comment opened at `start`: `-->`, the incorrectly closed
+ * `--!>`, or the abruptly closed `<!-->` and `<!--->`, as the tokenizer reads them. */
+function commentEnd(code, start) {
+  if (code.startsWith(">", start + 4)) return start + 5;
+  if (code.startsWith("->", start + 4)) return start + 6;
+  for (let index = code.indexOf("--", start + 4); index >= 0; index = code.indexOf("--", index + 1)) {
+    if (code[index + 2] === ">") return index + 3;
+    if (code[index + 2] === "!" && code[index + 3] === ">") return index + 4;
+  }
+  return code.length;
+}
+
 /** Script-looking text in double-escaped data cannot close the script element;
- * inside foreign (SVG) content a CDATA section keeps everything up to `]]>`. */
+ * inside foreign (SVG) content a CDATA section keeps everything up to `]]>`.
+ * `--!>` is matched only to be ignored: it ends a comment, not escaped script data. */
 function findRawTextEnd(html, start, name, foreign) {
   const tokens = name === "script"
-    ? foreign ? /<!\[CDATA\[|\]\]>|<!--|-->|<\/?script(?=[\t\n\f\r />])/giu : /<!--|-->|<\/?script(?=[\t\n\f\r />])/giu
+    ? foreign ? /<!\[CDATA\[|\]\]>|<!--|--!?>|<\/?script(?=[\t\n\f\r />])/giu : /<!--|--!?>|<\/?script(?=[\t\n\f\r />])/giu
     : new RegExp(`</${name}(?=[\\t\\n\\f\\r />])`, "giu");
   tokens.lastIndex = start;
   let state = "data";
@@ -106,8 +119,7 @@ function* inlineScripts(code) {
     if (start < 0) break;
     position = start + 1;
     if (code.startsWith("<!--", start)) {
-      const end = code.indexOf("-->", start + 4);
-      position = end < 0 ? code.length : end + 3;
+      position = commentEnd(code, start);
       continue;
     }
     const foreign = svgDepth > 0 && foreignObjectDepth === 0;

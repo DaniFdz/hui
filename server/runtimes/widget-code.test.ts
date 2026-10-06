@@ -69,6 +69,14 @@ test("markup that only looks like a script is not parsed", async () => {
   assert.equal(await findWidgetScriptSyntaxError("<!-- <script>(</script> --><textarea><script>(</script></textarea><p title='<script>('>x</p>"), undefined);
 });
 
+test("comments end where the browser ends them, so the scripts after them are parsed", async () => {
+  for (const comment of ["<!-- x --!>", "<!-->", "<!--->", "<!-- a -- b -->"]) {
+    assert.equal((await findWidgetScriptSyntaxError(`${comment}<script>broken(</script>`))?.scriptIndex, 1, comment);
+  }
+  // Inside a script, "--!>" does not end escaped data: the script still closes at its own end tag.
+  assert.equal(await findWidgetScriptSyntaxError("<script>const s = '<!-- --!>'; console.log(s)</script>"), undefined);
+});
+
 test("SVG scripts may wrap their code in CDATA", async () => {
   assert.equal(await findWidgetScriptSyntaxError("<svg viewBox='0 0 10 10'><script><![CDATA[ if (1 < 2) console.log('ok'); ]]></script></svg>"), undefined);
   assert.equal((await findWidgetScriptSyntaxError("<svg><script><![CDATA[ if (1 < 2) { ]]></script></svg>"))?.message, "Unexpected end of input");

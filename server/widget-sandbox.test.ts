@@ -9,6 +9,12 @@ import vm from "node:vm";
 import { buildWidgetDocument, isCompleteHtmlDocument, WIDGET_SANDBOX_PATH, widgetContentSecurityPolicy, widgetMode, widgetTokenValue } from "../shared/widgets.ts";
 import { WIDGET_SANDBOX_HTML, widgetSandboxHeaders } from "./widget-sandbox.ts";
 
+/** The text between the first `open` and the next `close`. */
+const between = (text: string, open: string, close: string) => {
+  const start = text.indexOf(open) + open.length;
+  return start < open.length ? "" : text.slice(start, text.indexOf(close, start));
+};
+
 const directives = (policy: string) => new Map(policy.split(";").map((part) => part.trim().split(/\s+/u)).map(([name, ...values]) => [name!, values]));
 
 test("the widget policy allows no connection, no frame and only pinned CDNs", () => {
@@ -40,7 +46,7 @@ test("the sandbox page's header policy forces an opaque origin and only HUI may 
 });
 
 test("the sandbox page script refuses to run top-level or with a readable parent", () => {
-  const script = /<script>([\s\S]*)<\/script>/u.exec(WIDGET_SANDBOX_HTML)?.[1] ?? "";
+  const script = between(WIDGET_SANDBOX_HTML, "<script>", "</script>");
   new vm.Script(script);
   assert.match(script, /if \(window\.top === window\) return;/u);
   assert.match(script, /void window\.parent\.document;\s*return;/u);
@@ -90,7 +96,7 @@ test("the canonical document wraps a fragment once, under the same policy and HU
   assert.equal(built.html.split("\n")[built.fragmentLine - 1], "<p id=x>hi</p>");
   assert.equal(built.html.indexOf(code), built.html.lastIndexOf(code));
   assert.ok(built.html.endsWith(`${code}\n</body></html>`));
-  const bridge = /<body><script>([\s\S]*?)<\/script>/u.exec(built.html)?.[1] ?? "";
+  const bridge = between(built.html, "<body><script>", "</script>");
   new vm.Script(bridge);
   for (const method of ["ui/notifications/size-changed", "ui/notifications/host-context-changed", "notifications/message", "ui/open-link", "ui/request-display-mode"]) assert(bridge.includes(method), method);
 });
