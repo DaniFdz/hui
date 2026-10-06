@@ -138,6 +138,7 @@ test("HELP lists every hui bot command", () => {
     "hui bot edit <bot> [same flags as add] [--json]",
     "hui bot remove <bot> [--json]",
     "hui bot restore <bot> [--json]",
+    "hui bot delete <bot> [--json]",
     "hui bot chat <bot>",
     "hui bot send <bot> <message|-> [--wait] [--timeout <seconds>] [--json]",
     "hui bot stop <bot> [--json]",

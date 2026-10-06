@@ -892,7 +892,7 @@ export function renderSidebar(props: ShellProps) {
             </a>
           </nav>`}
 
-          <div class="sidebar-sessions">
+          <div class=${botsTab ? "sidebar-sessions sidebar-sessions--bots" : "sidebar-sessions"}>
           <div class="sidebar-recent-sessions__toolbar sidebar-session-toolbar">
             <span>${botsTab ? "Bots" : "Sessions"}</span>
             <span>

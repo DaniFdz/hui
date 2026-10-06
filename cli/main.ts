@@ -42,6 +42,7 @@ export const HELP = `Usage:
   hui bot edit <bot> [same flags as add] [--json]
   hui bot remove <bot> [--json]
   hui bot restore <bot> [--json]
+  hui bot delete <bot> [--json]
   hui bot chat <bot>
   hui bot send <bot> <message|-> [--wait] [--timeout <seconds>] [--json]
   hui bot stop <bot> [--json]
@@ -89,7 +90,9 @@ back to VoiceStudio's default voice, speed and Auto (the language detected).
 --call-voice is the bot's GPT-Live voice on calls (Settings → Models → Calls);
 "" goes back to the default voice Settings chose. --language applies to calls too.
 Remove archives: the chat transcript and memory are kept and its routines are
-disabled. Chat streams the replies as plain text and sends what you
+disabled. Delete then removes an archived bot for good: its routines and chat
+go from HUI, the files in its folder stay. Chat streams the replies as plain
+text and sends what you
 type (steering a turn that runs); messages from elsewhere (routines, other
 bots, the Bots tab) show as > lines. Ctrl+C stops a turn, twice exits. Send -
 reads the message from stdin; with --wait it prints the reply and exits 0, 1 on
@@ -131,7 +134,7 @@ export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {
     doctor: ["fix", "json"], "workers list": ["json"], "workers add": ["name", "command", "extra-path", "json"],
     "workers edit": ["name", "command", "extra-path", "json"], "workers remove": ["json"],
     "bot list": ["archived", "json"], "bot show": ["json"], "bot add": [...BOT_FIELDS, "json"], "bot edit": [...BOT_FIELDS, "json"],
-    "bot remove": ["json"], "bot restore": ["json"], "bot chat": [], "bot send": ["wait", "timeout", "json"], "bot stop": ["json"],
+    "bot remove": ["json"], "bot restore": ["json"], "bot delete": ["json"], "bot chat": [], "bot send": ["wait", "timeout", "json"], "bot stop": ["json"],
     "bot memory": ["zoom", "html", "json"], "bot routine list": ["json"],
     "bot routine add": ["name", "prompt", "at", "every", "cron", "timezone", "json"], "bot routine run": [], "bot routine remove": ["json"],
   };
@@ -159,7 +162,7 @@ export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {
 const BOT_FIELDS = ["name", "title", "instructions", "instructions-file", "cwd", "model", "thinking", "memory-model", "utility-model", "emoji", "shape", "color", "voice", "voice-speed", "language", "call-voice"];
 /** Operands each bot command takes, in order. */
 const BOT_OPERANDS: Record<string, readonly string[]> = {
-  "bot list": [], "bot add": [], "bot show": ["bot"], "bot edit": ["bot"], "bot remove": ["bot"], "bot restore": ["bot"],
+  "bot list": [], "bot add": [], "bot show": ["bot"], "bot edit": ["bot"], "bot remove": ["bot"], "bot restore": ["bot"], "bot delete": ["bot"],
   "bot chat": ["bot"], "bot send": ["bot", "message"], "bot stop": ["bot"], "bot memory": ["bot"],
   "bot routine list": ["bot"], "bot routine add": ["bot"], "bot routine run": ["bot", "routine"], "bot routine remove": ["bot", "routine"],
 };

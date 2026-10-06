@@ -738,7 +738,7 @@ only for now. It lands as stacked pull requests:
    collapse toggle; Bots shows only the roster); bot chats filtered from
    every session list and picker; the roster (activity order, search, unread,
    badges, New bot, Edit, Hide/Unhide, Archive with Restore, *Show archived*
-   with Restore) fed by `/__hui/bots/events`; the dialog's *Gateway default*
+   with Restore and Delete) fed by `/__hui/bots/events`; the dialog's *Gateway default*
    for the model and thinking level (clearing them on edit); `/bots/<id>`
    rendering the bot's chat in the ordinary session pane without `/clear`,
    `/compact` or rewind; the Routines | Memory panel (a sheet on narrow

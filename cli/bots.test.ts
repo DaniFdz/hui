@@ -70,6 +70,7 @@ async function fakeGateway(t: TestContext) {
       const action = botMatch[2];
       if (!action && request.method === "GET") return reply(200, { bot });
       if (!action && request.method === "PATCH") { bots[index] = { ...bot, ...body }; return reply(200, { bot: bots[index] }); }
+      if (!action && request.method === "DELETE" && url.searchParams.get("permanent") === "1") { bots.splice(index, 1); return reply(200, { ok: true }); }
       if (!action && request.method === "DELETE") { bots[index] = { ...bot, archived: true }; return reply(200, { bot: bots[index] }); }
       if (action === "restore") { const { archived: _archived, ...rest } = bot; bots[index] = rest; return reply(200, { bot: rest }); }
       if (action === "stop") { bots[index] = { ...bot, status: "idle" }; return reply(200, { bot: bots[index] }); }
@@ -279,6 +280,17 @@ test("show names the look: the face's shape and color, or the emoji, and what th
   assert.equal(lookColor(" Lilac "), "#9b7cf6");
   assert.equal(lookColor("#ABCDEF"), "#abcdef");
   assert.equal(lookColor(""), "");
+});
+
+test("delete removes an archived bot for good, and refuses an active one before asking the gateway", async (t) => {
+  const gateway = await fakeGateway(t);
+  await assert.rejects(botCommand(gateway.base, "delete", ["ada"], {}, terminal().io), /@ada is not archived\. Archive it first with hui bot remove ada\./u);
+  assert.equal(gateway.calls.some((call) => call.method === "DELETE"), false, "nothing reached the gateway");
+  const deleted = terminal();
+  assert.equal(await botCommand(gateway.base, "delete", ["old"], {}, deleted.io), 0);
+  assert.deepEqual(gateway.calls.at(-1), { method: "DELETE", path: "/__hui/bots/id-old?permanent=1" });
+  assert.equal(deleted.out, "Deleted @old for good. Its routines and chat are gone from HUI; the files in its folder stay.\n");
+  assert.deepEqual(gateway.bots.map((bot) => bot.handle), ["ada", "bob"]);
 });
 
 test("send reads - from stdin and exits 0 when answered, 1 on failure or timeout and 2 while the bot asks", async (t) => {

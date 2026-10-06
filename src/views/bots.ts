@@ -88,7 +88,7 @@ export type BotRosterProps = {
   menuFor: string;
   notice: string;
   noticeFailed: boolean;
-  /** Pending Hide/Unhide, archive or restore, so the row cannot be acted on twice. */
+  /** Pending Hide/Unhide, archive, restore or delete, so the row cannot be acted on twice. */
   pendingId: string;
   now: number;
   onSelect: (bot: BotView) => void;
@@ -99,6 +99,8 @@ export type BotRosterProps = {
   onToggleShowHidden: () => void;
   onToggleShowArchived: () => void;
   onRestore: (bot: BotView) => void;
+  /** Asks before deleting an archived bot for good. */
+  onDelete: (bot: BotView) => void;
   onRetry: () => void;
   onToggleMenu: (id: string) => void;
   onCloseMenu: () => void;
@@ -171,8 +173,9 @@ function botRow(bot: BotView, props: BotRosterProps, drawer: RosterDrawer) {
 }
 
 /** An archived bot keeps its chat and memory but has no chat to open until
- * it is restored, so its row is not a link. */
-function archivedRow(bot: BotView, props: BotRosterProps) {
+ * it is restored, so its row is not a link. Restore brings it back; Delete,
+ * after a confirmation, removes it for good. */
+function archivedRow(bot: BotView, props: BotRosterProps, drawer: RosterDrawer) {
   const pending = props.pendingId === bot.id;
   return html`<li class="bot-archived-row" data-bot-id=${bot.id}>
     ${renderBotAvatar(bot, "sm", { state: "offline" })}
@@ -182,12 +185,14 @@ function archivedRow(bot: BotView, props: BotRosterProps) {
     </span>
     <button type="button" class="btn btn--sm bot-archived-row__restore" ?disabled=${pending} aria-label=${`Restore ${bot.name}`}
       @click=${() => props.onRestore(bot)}>${pending ? "Restoring…" : "Restore"}</button>
+    <button type="button" class="btn btn--sm bot-archived-row__delete" ?disabled=${pending} aria-label=${`Delete ${bot.name}`} title="Delete"
+      @click=${(event: Event) => { drawer.dialog(event); props.onDelete(bot); }}>${icons.trash}</button>
   </li>`;
 }
 
 /** Show hidden (N) and Show archived (N), each only while some are; then,
- * while Show archived is on, the archived bots with Restore. */
-function renderRosterToggles(props: BotRosterProps) {
+ * while Show archived is on, the archived bots with Restore and Delete. */
+function renderRosterToggles(props: BotRosterProps, drawer: RosterDrawer) {
   const hidden = hiddenBotCount(props.bots);
   const archived = archivedBotCount(props.bots);
   if (!hidden && !archived) return nothing;
@@ -200,7 +205,7 @@ function renderRosterToggles(props: BotRosterProps) {
     </div>
     ${props.showArchived && archived ? html`<section class="bot-roster__archived" aria-label="Archived bots">
       ${rows.length
-        ? html`<ul class="bot-roster__archived-list">${rows.map((bot) => archivedRow(bot, props))}</ul>`
+        ? html`<ul class="bot-roster__archived-list">${rows.map((bot) => archivedRow(bot, props, drawer))}</ul>`
         : html`<p class="sidebar-list__note" role="status">No matching archived bots.</p>`}
     </section>` : nothing}`;
 }
@@ -220,11 +225,11 @@ export function renderBotRoster(props: BotRosterProps, drawer: RosterDrawer) {
     return html`${notice}<div class="sidebar-empty bot-roster__empty">
       <p class="bot-roster__empty-title">${archived ? "No active bots" : "No bots yet"}</p>
       <p class="sidebar-list__note">${archived
-        ? `${archived === 1 ? "One archived bot keeps its chat and memory" : `${archived} archived bots keep their chats and memory`}; Show archived lists ${archived === 1 ? "it" : "them"} for Restore.`
+        ? `${archived === 1 ? "One archived bot keeps its chat and memory" : `${archived} archived bots keep their chats and memory`}; Show archived lists ${archived === 1 ? "it" : "them"} to restore or delete.`
         : "A bot is a named agent with one permanent chat, its own model and a memory that summarizes older messages by itself. Routines can message it on a schedule."}</p>
       <button type="button" class="btn btn--sm bot-roster__new" @click=${(event: Event) => { drawer.dialog(event); props.onNew(); }}>${icons.plus}<span>New bot</span></button>
     </div>
-    ${renderRosterToggles(props)}`;
+    ${renderRosterToggles(props, drawer)}`;
   }
   const rows = rosterBots(props.bots, { query: props.query, showHidden: props.showHidden });
   return html`${notice}
@@ -234,7 +239,7 @@ export function renderBotRoster(props: BotRosterProps, drawer: RosterDrawer) {
         ? rows.map((bot) => botRow(bot, props, drawer))
         : html`<p class="sidebar-list__note" role="status">${props.query.trim() ? "No matching bots." : "Every bot is hidden."}</p>`}
     </div>
-    ${renderRosterToggles(props)}`;
+    ${renderRosterToggles(props, drawer)}`;
 }
 
 /* ── chat placeholder (no bot or no chat yet) ─────────────────────────────── */
@@ -774,6 +779,24 @@ export function renderBotArchiveDialog(bot: BotView, pending: boolean, error: st
       <div class="exec-approval-actions">
         <button type="submit" class="btn danger" ?disabled=${pending}>${pending ? "Archiving…" : "Archive"}</button>
         <button type="button" class="btn bot-archive-cancel" ?disabled=${pending} @click=${onCancel}>Cancel</button>
+      </div>
+    </form>
+  </dialog>`;
+}
+
+/* ── delete confirmation ──────────────────────────────────────────────────── */
+
+/** Deleting cannot be undone, so the dialog says what goes and what stays, and Cancel has the focus. */
+export function renderBotDeleteDialog(bot: BotView, pending: boolean, error: string, onConfirm: () => void, onCancel: () => void) {
+  return html`<dialog class="hui-modal-dialog group-action-dialog bot-delete-dialog" aria-labelledby="bot-delete-title"
+    @cancel=${(event: Event) => { event.preventDefault(); if (!pending) onCancel(); }}>
+    <form class="exec-approval-card" method="dialog" @submit=${(event: SubmitEvent) => { event.preventDefault(); onConfirm(); }}>
+      <div class="exec-approval-title" id="bot-delete-title">Delete ${bot.name}?</div>
+      <div class="exec-approval-sub">${bot.name} and its routines are deleted for good; it cannot be restored. Its chat stays in Pi's Durable store, which HUI no longer opens, and the files in its workspace stay on this machine.</div>
+      ${error ? html`<p class="group-action-dialog__error" role="alert">${error}</p>` : nothing}
+      <div class="exec-approval-actions">
+        <button type="submit" class="btn danger" ?disabled=${pending}>${pending ? "Deleting…" : "Delete"}</button>
+        <button type="button" class="btn bot-delete-cancel" ?disabled=${pending} @click=${onCancel}>Cancel</button>
       </div>
     </form>
   </dialog>`;

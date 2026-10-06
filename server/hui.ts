@@ -283,6 +283,9 @@ const bots = new BotService({
         schedule: task.schedule, enabled: false, timeoutSeconds: task.timeoutSeconds,
       }).catch(automationStoreFailure);
     },
+    remove: async (task) => {
+      await automation.remove(task.id).catch(automationStoreFailure);
+    },
   },
   report: (event) => recordDiagnosticEvent({ area: "session", ...event }),
 });
