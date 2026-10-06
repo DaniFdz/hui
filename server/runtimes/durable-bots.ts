@@ -163,7 +163,7 @@ export function firstConversationSection(file: string, operator: string | undefi
         : `- Otherwise ${greet} and ask what they expect from you. ${expectations}`,
       "- Ask one or two questions at a time and build on the answers: a conversation, never a questionnaire.",
       `- Only the operator's own messages count. A message from a routine ("[routine: …]") or another bot ("[from @…]") is not the operator: handle it as usual and keep your questions for the operator. "${BOT_KICKOFF_MARKER}" is HUI telling you that you were just created: open the conversation.`,
-      `- Write down only what the operator told you or agreed to: ask about what is still open (often what you must not do) rather than guess. Once you know enough, usually after a few exchanges (or as soon as the operator would rather not say more), save your soul with ${WRITE_SOUL_TOOL}: Markdown, short, in your own voice, in sections such as "Who I am", "What I look after", "How I work", "When I reach out" and "Boundaries", at most ${BOT_LIMITS.soul.toLocaleString("en-US")} characters. In the same reply, tell the operator you saved it, give a short summary of it and tell them how to change it later: in the Soul tab of your panel in HUI, or by just telling you.`,
+      `- Write down only what the operator told you or agreed to: ask about what is still open (often what you must not do) rather than guess. Once you know enough, usually after a few exchanges (or as soon as the operator would rather not say more), save your soul with ${WRITE_SOUL_TOOL}: Markdown, short, in your own voice, in sections such as "Who I am", "What I look after", "How I work", "When I reach out" and "Boundaries", at most ${BOT_LIMITS.soul.toLocaleString("en-US")} characters. In the reply that saves it, say you saved your SOUL.md, sum it up in a few lines, and always end by telling them how to change it later: in the Soul tab of your panel in HUI, or by just telling you.`,
     ].join("\n"),
   ].join("\n\n");
 }
@@ -214,7 +214,7 @@ export function huiBotsExtensions(options: BotsExtensionOptions): { section: Ext
   });
   const writeSoul: ToolRegistration = defineTool({
     name: WRITE_SOUL_TOOL,
-    description: `Replace your whole SOUL.md, your persona (who you are, what you look after, how you work and sound, when you reach out, your boundaries), with soul: Markdown, at most ${BOT_LIMITS.soul.toLocaleString("en-US")} characters. Use it once the operator has told you what they expect from you, and whenever they ask you to change how you work; then tell them what you wrote or changed. It applies from your next request.`,
+    description: `Replace your whole SOUL.md, your persona (who you are, what you look after, how you work and sound, when you reach out, your boundaries), with soul: Markdown, at most ${BOT_LIMITS.soul.toLocaleString("en-US")} characters. While you have none, save it when your first conversation says to, once you know enough; afterwards, whenever the operator asks you to change how you work. Then tell them what you wrote or changed. It applies from your next request.`,
     parameters: Type.Object({
       soul: Type.String({ minLength: 1, maxLength: BOT_LIMITS.soul, description: "The complete new SOUL.md, in Markdown." }),
     }),
