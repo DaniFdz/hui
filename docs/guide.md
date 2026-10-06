@@ -182,8 +182,9 @@ configuration. HUI-managed connections require the default PI SDK backend.
 
 ## Bots
 
-A **bot** is a named, persistent agent: a role and standing instructions (its
-persona), its own model, a working directory, and **one chat that never ends**.
+A **bot** is a named, persistent agent: a role, a persona it writes with you
+(its SOUL.md), its own model, a working directory, and **one chat that never
+ends**.
 Sessions stay what they were (coding work with worktrees, rewind and
 `/compact`); a bot is for the assistant you come back to every day. Its chat is
 an ordinary Pi Durable session on this gateway, so the chat view, streaming,
@@ -201,16 +202,21 @@ summarized, `hui bot chat` says "Summarizing memory…".
 Settings → Sessions → **Show the Bots tab** adds an **Agents | Bots** switch to
 the very top of the sidebar (it is off by default, and hiding it never stops a
 bot or its routines). **Agents** is the usual sidebar; **Bots** shows only your bots,
-most recently active first, with their latest message, and **+** creates one.
-A bot's chat opens beside its **Routines |
-Memory** panel: Routines adds schedules (every few minutes, hours or days,
-daily, weekly or once, in your browser's time zone), runs one now and shows how
-the last runs went; Memory shows how much the bot remembers and what writing
-its summaries has cost, lets you open any summary line down to the original
-message, and **Open memory page** opens the whole memory in a new tab. A row's
-**⋯** menu edits, hides or archives the bot; **Show archived** lists archived
-bots so you can restore them, or delete one for good with its trash icon after
-a confirmation. Bot chats never appear among your sessions.
+most recently active first, with their latest message, and **+** creates one,
+which greets you and asks what you expect from it (its chat opens on a small
+note, "Scout was created", where that first turn began).
+A bot's chat opens beside its **Routines | Memory | Soul** panel: Routines adds
+schedules (every few minutes, hours or days, daily, weekly or once, in your
+browser's time zone), runs one now and shows how the last runs went; Memory
+shows how much the bot remembers and what writing its summaries has cost, lets
+you open any summary line down to the original message, and **Open memory
+page** opens the whole memory in a new tab; Soul shows the bot's SOUL.md, with
+**Edit** to change it yourself (or, before the bot has written one, **Write it
+yourself**), and follows it when the bot rewrites it. A row's
+**⋯** menu (also in the bot's chat header) edits, hides, archives or deletes the
+bot; **Show archived** lists archived bots so you can restore them, or delete
+one with its trash icon. Deleting asks first, and takes the bot's chat,
+routines, memory and folder. Bot chats never appear among your sessions.
 
 **Faces.** Every bot has an animated face, after OpenAI's Dots: a plush shape
 (Blob, Pebble, Triangle, Heart or Cookie) in one of six colors, with two dot
@@ -227,18 +233,23 @@ face picked by their id, the same on every screen.
 ### Creating and editing
 
 ```sh
-hui bot add --name Ada --title Researcher --instructions-file ada.md --model openai/gpt-5.6
+hui bot add                      # "New Bot", which asks what to call it
+hui bot add --name Ada --title Researcher --model openai/gpt-5.6
 hui bot edit ada --thinking high --shape heart --color mint
 hui bot edit ada --emoji 🦊      # an emoji instead of the face; --emoji "" goes back to the face
 hui bot show ada
 ```
 
 The handle (`@ada`) comes from the name: lowercase letters, digits and dashes,
-with `-2`, `-3`… when another bot has it. Renaming keeps the handle. Without
-`--cwd` a bot gets a private directory of its own in HUI's configuration
-directory. The persona becomes the chat's standing instructions before its first
-message can arrive; editing it applies from the bot's next request. A model
-change goes through the chat like the model picker, and a new working directory
+with `-2`, `-3`… when another bot has it. Renaming moves a handle that came from
+the old name to the new one (`new-bot` becomes `scout`); a handle you chose
+stays. A bot added without a name is "New Bot" until it asks you what to call
+it. Every bot
+gets a private home folder in HUI's configuration directory, where its SOUL.md
+lives; without `--cwd` that folder is also its working directory. Without
+`--model` a bot runs on Settings' primary model, as a new session does (PI's
+default only while none is set). A model change goes through the chat like the
+model picker, and a new working directory
 is accepted only while the bot is idle (its chat starts again there; should a
 routine start a turn meanwhile, the edit is refused halfway: repeat it once the
 bot is idle).
@@ -253,6 +264,40 @@ chat's own model.
 
 A bot's chat refuses what would end or fork it: `/clear`, `/compact`, rewind
 and deleting the session all answer with an explanation instead.
+
+### Soul and the first conversation
+
+A bot's persona is its **SOUL.md**: who it is, what it looks after, how it works
+and sounds, when it reaches out to you and its boundaries. You don't fill in a
+form for it. A new bot speaks first: as soon as it is created, HUI starts its
+first turn, and its opening message is waiting when you open its chat (the chat
+shows a small note, "Ada was created", where that turn began). It asks what you
+expect from it, one or two questions at a time (a bot still called "New Bot"
+first asks what to call it, and renames itself). Once it knows enough, usually
+after a few answers, it writes SOUL.md itself (with a tool of its own, so it
+needs no file access): only what you told it or agreed to, since it asks rather
+than guesses. Then it says so, sums it up and tells you how to change it. If
+your first message asks for real work, it does the work first. A bot you named
+in the New bot dialog never asks about its name or look. Messages from routines
+and other bots don't count as you.
+
+From then on every turn reads SOUL.md, so a change applies from the next
+request. To change it, tell the bot ("be more formal", "don't message me before
+nine"): it edits SOUL.md and says so. Or edit it yourself in the bot's **Soul**
+tab, or from a terminal:
+
+```sh
+hui bot soul ada                    # print SOUL.md
+hui bot soul ada --file soul.md     # replace it (- reads stdin)
+hui bot add --name Ada --soul-file soul.md   # start with one: no first conversation
+```
+
+An empty file removes SOUL.md, and the bot asks what you expect again at its
+next turn. SOUL.md holds up to 20,000 characters; the chat reads only that
+much of a longer file and the bot is told to shorten it. Bots created before
+SOUL.md had their instructions turned into it once, the first time the gateway
+started with this version; a bot that had none starts its first conversation
+at its next turn.
 
 ### Talking to a bot
 
@@ -327,18 +372,20 @@ Bots tab) shows archived bots and `hui bot restore ada` (or their **Restore**)
 brings one back; its routines stay disabled until you turn them on again in
 Automations or its Routines panel.
 
-`hui bot delete ada` (or an archived bot's trash icon in the Bots tab) then
-deletes an archived bot for good: its routines and its
-chat's session record go, and HUI no longer lists or opens its conversation,
-which stays in the Pi Durable store like a deleted session's transcript. The
-files in its folder stay; a folder HUI made for it goes only when empty. An
-active bot is refused, so archiving always comes first.
+`hui bot delete ada` (or **Delete…** in a bot's ⋯ menu in the Bots tab, or an
+archived bot's trash icon) deletes a bot for good, active or archived, after
+asking (`--yes` skips the question, and is needed where it cannot ask): its turn
+stops, its chat leaves HUI, and its routines, its memory and its folder go,
+SOUL.md and every file in it included. A folder you chose as its workspace is
+never touched. Pi Durable cannot delete a conversation yet, so the chat's raw
+log stays in its store, where nothing reads it back. Archiving and restoring
+keep everything, SOUL.md included.
 
 ### Privacy
 
 Bots live in HUI's own files on this machine: `bots.json` (owner-only) in HUI's
-configuration directory, their chats in the Pi Durable store and their memory
-beside it. Nothing about a bot leaves the machine except the model requests its
+configuration directory, each bot's SOUL.md in its home folder beside it
+(owner-only), their chats in the Pi Durable store and their memory beside it. Nothing about a bot leaves the machine except the model requests its
 chat and its memory's compactor make to the providers you configured.
 
 ## After an upgrade: `hui doctor`

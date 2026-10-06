@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { applyBotsUpdate, botInputFromDraft, botMemoryPageUrl, BotMemoryUnavailableError, botPatchFromDraft, isBotSession, isNewBotsFrame, loadBotMemory, loadBots, parseBotsUpdate, subscribeBots, parseBot, parseBotList, parseBotMemory, parseBotMemoryStatus, upsertBot, withoutBotSessions, type BotDraft, type BotView } from "./bots.ts";
+import { applyBotsUpdate, botInputFromDraft, botMemoryPageUrl, BotMemoryUnavailableError, botPatchFromDraft, botSoulKey, isBotSession, isNewBotsFrame, loadBotMemory, loadBotSoul, loadBots, parseBotsUpdate, parseBotSoul, saveBotSoul, subscribeBots, parseBot, parseBotList, parseBotMemory, parseBotMemoryStatus, upsertBot, withoutBotSessions, type BotDraft, type BotView } from "./bots.ts";
 import type { SessionGroup, SessionView } from "./sessions-store.ts";
 import { botLook } from "../../shared/bots.ts";
 
@@ -9,7 +9,7 @@ const RECORD = {
   handle: "scout",
   name: "Scout",
   title: "Research assistant",
-  instructions: "Find things.",
+  instructions: "A gateway from before SOUL.md: ignored.",
   cwd: "/home/me/.config/hui/bots/b1",
   model: "anthropic/claude",
   thinking: "medium",
@@ -18,6 +18,7 @@ const RECORD = {
   createdAt: "2026-10-05T08:00:00.000Z",
   updatedAt: "2026-10-05T09:00:00.000Z",
   status: "running",
+  soul: true,
   lastMessage: { role: "assistant", text: "Done:\n  three   links", at: "2026-10-05T09:00:00.000Z" },
   unread: true,
   memory: {
@@ -39,7 +40,6 @@ test("a complete bot record keeps its fields and narrows display text", () => {
     handle: "scout",
     name: "Scout",
     title: "Research assistant",
-    instructions: "Find things.",
     model: "anthropic/claude",
     thinking: "medium",
     cwd: "/home/me/.config/hui/bots/b1",
@@ -48,6 +48,7 @@ test("a complete bot record keeps its fields and narrows display text", () => {
     createdAt: "2026-10-05T08:00:00.000Z",
     updatedAt: "2026-10-05T09:00:00.000Z",
     status: "running",
+    soul: true,
     lastMessage: { role: "assistant", text: "Done: three links", at: "2026-10-05T09:00:00.000Z" },
     unread: true,
     memory: { messages: 40, built: 38, pending: 2, viewBytes: 92_000, viewLines: 31, waiting: true, failing: { node: "1+4", error: "429 rate limited", since: "2026-10-05T08:59:00.000Z" }, usage: USAGE },
@@ -59,8 +60,8 @@ test("records without identity are skipped and junk lands on safe defaults", () 
   for (const value of [null, "bot", [], { id: "b" }, { id: "b", name: "B" }, { name: "B", sessionId: "s" }, { id: " ", name: "B", sessionId: "s" }]) {
     assert.equal(parseBot(value), undefined, JSON.stringify(value));
   }
-  const bot = parseBot({ id: "b", name: " Bee ", sessionId: "s", status: "dancing", unread: "yes", routines: -3, hidden: "true", avatar: { color: "blue" }, lastMessage: { role: "system", text: "x", at: "now" }, memory: "full" });
-  assert.deepEqual(bot, { id: "b", handle: "", name: "Bee", cwd: "", sessionId: "s", createdAt: "", updatedAt: "", status: "idle", unread: false, routines: 0 });
+  const bot = parseBot({ id: "b", name: " Bee ", sessionId: "s", status: "dancing", soul: "yes", unread: "yes", routines: -3, hidden: "true", avatar: { color: "blue" }, lastMessage: { role: "system", text: "x", at: "now" }, memory: "full" });
+  assert.deepEqual(bot, { id: "b", handle: "", name: "Bee", cwd: "", sessionId: "s", createdAt: "", updatedAt: "", status: "idle", soul: false, unread: false, routines: 0 });
   assert.deepEqual(parseBot({ id: "b", name: "B", sessionId: "s", hidden: true, archived: true })?.hidden, true);
 });
 
@@ -192,22 +193,65 @@ test("reading the list asks for active and archived bots, as the stream lists bo
   }
 });
 
-const EMPTY_DRAFT: BotDraft = { name: "", title: "", instructions: "", cwd: "", emoji: "", model: "", thinking: "", memoryModel: "" };
+test("SOUL.md is read and replaced through the soul route; null while the bot has none", async () => {
+  assert.equal(parseBotSoul({ soul: "# Who I am\nScout." }), "# Who I am\nScout.");
+  assert.equal(parseBotSoul({ soul: null }), null);
+  assert.equal(parseBotSoul({ soul: "  \n" }), null, "blank is none");
+  assert.throws(() => parseBotSoul({}), /did not come back/u);
+  assert.throws(() => parseBotSoul({ soul: 3 }), /did not come back/u);
+  const original = globalThis.fetch;
+  const calls: Array<{ url: string; method: string; body: string; header: string | null }> = [];
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    calls.push({ url: String(input), method: init?.method ?? "GET", body: String(init?.body ?? ""), header: new Headers(init?.headers).get("x-hui") });
+    if (init?.method === "PUT") {
+      const soul = (JSON.parse(String(init.body)) as { soul: string }).soul.trim();
+      return soul.length > 20_000
+        ? new Response(JSON.stringify({ error: "SOUL.md must be at most 20000 characters (it has 20001)." }), { status: 400 })
+        : new Response(JSON.stringify({ soul: soul || null }), { status: 200 });
+    }
+    return new Response(JSON.stringify({ soul: null }), { status: 200 });
+  }) as typeof fetch;
+  try {
+    assert.equal(await loadBotSoul("b 1"), null);
+    assert.equal(await saveBotSoul("b 1", " # Who I am\n"), "# Who I am");
+    assert.equal(await saveBotSoul("b 1", ""), null, "an empty soul removes SOUL.md");
+    await assert.rejects(saveBotSoul("b 1", "s".repeat(20_001)), /at most 20000 characters/u, "the gateway's refusal, word for word");
+    assert.deepEqual(calls.map(({ url, method, header }) => [url, method, header]), [
+      ["/__hui/bots/b%201/soul", "GET", "1"], ["/__hui/bots/b%201/soul", "PUT", "1"], ["/__hui/bots/b%201/soul", "PUT", "1"], ["/__hui/bots/b%201/soul", "PUT", "1"],
+    ]);
+    assert.deepEqual(JSON.parse(calls[1]!.body), { soul: " # Who I am\n" });
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test("the Soul tab reads SOUL.md again when the bot wrote it, HUI did, or a turn settled", () => {
+  const bot = parseBot(RECORD) as BotView;
+  const key = botSoulKey(bot);
+  assert.equal(botSoulKey({ ...bot }), key, "the same bot: nothing to read");
+  assert.notEqual(botSoulKey({ ...bot, soul: false }), key, "the soul came or went");
+  assert.notEqual(botSoulKey({ ...bot, updatedAt: "2026-10-05T10:00:00.000Z" }), key, "HUI wrote it");
+  assert.notEqual(botSoulKey({ ...bot, lastMessage: { role: "assistant", text: "Saved.", at: "2026-10-05T10:00:00.000Z" } }), key, "a turn moved on");
+  const settledRead: BotView = { ...bot, status: "idle", unread: false };
+  assert.equal(botSoulKey(settledRead), key, "status and unread alone are not news");
+});
+
+const EMPTY_DRAFT: BotDraft = { name: "", title: "", cwd: "", emoji: "", model: "", thinking: "", memoryModel: "" };
 
 test("a new bot sends its name and only the optional fields that were filled in", () => {
   assert.deepEqual(botInputFromDraft({ ...EMPTY_DRAFT, name: "  Scout " }), { name: "Scout" });
   assert.deepEqual(botInputFromDraft({
-    name: "Scout", title: " Researcher ", instructions: "Find things.\n", cwd: " ~/bots/scout ", emoji: "🔭",
+    name: "Scout", title: " Researcher ", cwd: " ~/bots/scout ", emoji: "🔭",
     model: "anthropic/claude", thinking: "high", memoryModel: "openai/mini",
   }), {
-    name: "Scout", title: "Researcher", instructions: "Find things.", cwd: "~/bots/scout",
+    name: "Scout", title: "Researcher", cwd: "~/bots/scout",
     model: "anthropic/claude", thinking: "high", memoryModel: "openai/mini", avatar: { emoji: "🔭" },
   });
 });
 
 test("an edit sends only what changed, clears emptied fields and keeps an untouched workspace out", () => {
   const bot = parseBot(RECORD) as BotView;
-  const unchanged: BotDraft = { name: "Scout", title: "Research assistant", instructions: "Find things.", cwd: bot.cwd, emoji: "🔭", model: "anthropic/claude", thinking: "medium", memoryModel: "" };
+  const unchanged: BotDraft = { name: "Scout", title: "Research assistant", cwd: bot.cwd, emoji: "🔭", model: "anthropic/claude", thinking: "medium", memoryModel: "" };
   assert.deepEqual(botPatchFromDraft(bot, unchanged), {});
   assert.deepEqual(botPatchFromDraft(bot, { ...unchanged, name: "Scout II", title: "", cwd: "" }), { name: "Scout II", title: "" });
   assert.deepEqual(botPatchFromDraft(bot, { ...unchanged, cwd: "/srv/scout", model: "openai/gpt", thinking: "high", memoryModel: "openai/mini" }), { cwd: "/srv/scout", model: "openai/gpt", thinking: "high", memoryModel: "openai/mini" });
@@ -229,7 +273,7 @@ test("the dialog's Look: a new bot keeps the face it showed, or its emoji, with 
 
 test("an edit's Look: Face clears the emoji, and a shape or color goes only when it differs from what the bot shows", () => {
   const bot = parseBot({ ...RECORD, avatar: { emoji: "🔭" } }) as BotView;
-  const base: BotDraft = { name: "Scout", title: "Research assistant", instructions: "Find things.", cwd: bot.cwd, emoji: "🔭", model: "anthropic/claude", thinking: "medium", memoryModel: "" };
+  const base: BotDraft = { name: "Scout", title: "Research assistant", cwd: bot.cwd, emoji: "🔭", model: "anthropic/claude", thinking: "medium", memoryModel: "" };
   // A bot whose id picks its face: the dialog opens on that face, so leaving it alone keeps it derived.
   const plain = parseBot({ ...RECORD, avatar: undefined }) as BotView;
   const picked = botLook(plain);

@@ -8,16 +8,18 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { createInterface } from "node:readline";
-import { BOT_FACE_SHAPE_LABELS, botColorName, botFaceColor, botFaceShape, botLook, type BotMessageResult, type BotQuestion, type BotsUpdate, type BotView } from "../shared/bots.ts";
+import { BOT_FACE_SHAPE_LABELS, botColorName, botFaceColor, botFaceShape, botKickoffName, botLook, NEW_BOT_NAME, type BotMessageResult, type BotQuestion, type BotSoul, type BotsUpdate, type BotView } from "../shared/bots.ts";
 import type { AutomationSchedule, AutomationTask } from "../src/lib/automation-types.ts";
 
 export type BotFlags = {
   archived?: boolean;
   json?: boolean;
+  /** `delete` without asking. */
+  yes?: boolean;
   name?: string;
   title?: string;
-  instructions?: string;
-  "instructions-file"?: string;
+  "soul-file"?: string;
+  file?: string;
   cwd?: string;
   model?: string;
   thinking?: string;
@@ -40,13 +42,17 @@ export type BotFlags = {
 export type BotIO = {
   out(text: string): void;
   err(text: string): void;
-  /** All of stdin, for `send -`. */
+  /** All of stdin, for `send -`, `--soul-file -` and `soul --file -`. */
   readStdin(): Promise<string>;
   /** Lines typed in `chat`; ends with stdin. */
   lines(): AsyncIterable<string>;
   /** Ctrl+C during `chat`; returns an unsubscribe. */
   onInterrupt(listener: () => void): () => void;
-  /** Where relative `--cwd`, `--instructions-file` and `--html` paths resolve. */
+  /** A terminal on both ends, which can be asked to confirm. */
+  interactive: boolean;
+  /** One line typed in answer to `question`. */
+  ask(question: string): Promise<string>;
+  /** Where relative `--cwd`, `--soul-file`, `--file` and `--html` paths resolve. */
   cwd: string;
   /** `--cron` without `--timezone`. */
   timezone: string;
@@ -68,6 +74,11 @@ export function terminalBotIO(): BotIO {
       process.on("SIGINT", listener);
       return () => { process.off("SIGINT", listener); };
     },
+    interactive: Boolean(process.stdin.isTTY && process.stdout.isTTY),
+    ask: (question) => new Promise((resolveAnswer) => {
+      const reader = createInterface({ input: process.stdin, output: process.stdout });
+      reader.question(question, (answer) => { reader.close(); resolveAnswer(answer); });
+    }),
     cwd: process.cwd(),
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
   };
@@ -150,13 +161,17 @@ export function routineSchedule(flags: BotFlags, timezone: string): AutomationSc
   return { kind: "cron", expression: flags.cron ?? "", timezone: flags.timezone ?? timezone };
 }
 
+/** A file's text, or all of stdin for `-`. */
+async function readText(path: string, io: BotIO): Promise<string> {
+  return path === "-" ? io.readStdin() : readFile(resolve(io.cwd, path), "utf8");
+}
+
 /** A bot body from add/edit flags: only what was given. */
 async function botBody(flags: BotFlags, io: BotIO): Promise<Record<string, unknown>> {
   const body: Record<string, unknown> = {};
   if (flags.name !== undefined) body["name"] = flags.name;
   if (flags.title !== undefined) body["title"] = flags.title;
-  if (flags.instructions !== undefined) body["instructions"] = flags.instructions;
-  if (flags["instructions-file"] !== undefined) body["instructions"] = await readFile(resolve(io.cwd, flags["instructions-file"]), "utf8");
+  if (flags["soul-file"] !== undefined) body["soul"] = await readText(flags["soul-file"], io);
   // `~` is the gateway user's home there; anything else is relative to where the command runs.
   if (flags.cwd !== undefined) body["cwd"] = flags.cwd.startsWith("~") ? flags.cwd : resolve(io.cwd, flags.cwd);
   if (flags.model !== undefined) body["model"] = flags.model;
@@ -212,7 +227,11 @@ export async function botCommand(base: string, action: string, operands: readonl
   }
   if (action === "add") {
     const { bot } = await request<{ bot: BotView }>(base, "/__hui/bots", { method: "POST", body: await botBody(flags, io), timeoutMs: 60_000 });
-    print(bot, `Added @${bot.handle} (${bot.name}). Talk to it with hui bot chat ${bot.handle}.`);
+    print(bot, bot.soul
+      ? `Added @${bot.handle} (${bot.name}) with the soul you gave it. Talk to it with hui bot chat ${bot.handle}.`
+      : bot.name === NEW_BOT_NAME && flags.name === undefined
+        ? `Added @${bot.handle} (${bot.name}). It starts by asking what to call it and what you expect from it: talk with hui bot chat ${bot.handle}.`
+        : `Added @${bot.handle} (${bot.name}). It starts by asking what you expect from it: talk with hui bot chat ${bot.handle}.`);
     return 0;
   }
   const bot = await findBot(base, operands[0]!);
@@ -239,9 +258,16 @@ export async function botCommand(base: string, action: string, operands: readonl
       return 0;
     }
     case "delete": {
-      if (!bot.archived) throw new Error(`@${bot.handle} is not archived. Archive it first with hui bot remove ${bot.handle}.`);
-      await request<{ ok: true }>(base, `${path}?permanent=1`, { method: "DELETE" });
-      print({ id: bot.id, handle: bot.handle, deleted: true }, `Deleted @${bot.handle} for good. Its routines and chat are gone from HUI; the files in its folder stay.`);
+      // For good, active or archived: a terminal is asked first, anything else needs --yes.
+      if (!flags.yes) {
+        if (!io.interactive) throw new Error(`hui bot delete cannot ask here (no terminal): add --yes to delete @${bot.handle} for good.`);
+        if (!/^\s*(y|yes)\s*$/iu.test(await io.ask(`Delete @${bot.handle} for good? Its chat leaves HUI and its routines, memory and folder go. [y/N] `))) {
+          io.out("Nothing was deleted.\n");
+          return 1;
+        }
+      }
+      await request<{ ok: true }>(base, `${path}?permanent=1`, { method: "DELETE", timeoutMs: 60_000 });
+      print({ id: bot.id, handle: bot.handle, deleted: true }, `Deleted @${bot.handle} for good: its chat left HUI, and its routines, memory and folder are gone.`);
       return 0;
     }
     case "stop": {
@@ -251,6 +277,7 @@ export async function botCommand(base: string, action: string, operands: readonl
       return 0;
     }
     case "send": return send(base, bot, operands[1]!, flags, io);
+    case "soul": return soul(base, bot, flags, io);
     case "chat": return botChat(base, bot, io);
     case "memory": return memory(base, bot, flags, io);
     case "routine list": {
@@ -309,6 +336,21 @@ async function send(base: string, bot: BotView, message: string, flags: BotFlags
     io.out(`@${bot.handle} needs an answer: reply with hui bot chat ${bot.handle}.\n`);
   }
   return code;
+}
+
+/** `soul`: prints SOUL.md, or with `--file` replaces it; an empty file removes it, so the bot asks what you expect again. */
+async function soul(base: string, bot: BotView, flags: BotFlags, io: BotIO): Promise<number> {
+  const path = `/__hui/bots/${encodeURIComponent(bot.id)}/soul`;
+  if (flags.file !== undefined) {
+    const result = await request<BotSoul>(base, path, { method: "PUT", body: { soul: await readText(flags.file, io) } });
+    io.out(`${flags.json ? JSON.stringify(result) : result.soul === null
+      ? `Removed @${bot.handle}'s SOUL.md. It asks what you expect from it again in its next turn (hui bot chat ${bot.handle}).`
+      : `Replaced @${bot.handle}'s SOUL.md (${result.soul.length} characters); its next turn follows it.`}\n`);
+    return 0;
+  }
+  const result = await request<BotSoul>(base, path);
+  io.out(`${flags.json ? JSON.stringify(result) : result.soul ?? `@${bot.handle} has no SOUL.md yet: it writes one in its first conversation with you (hui bot chat ${bot.handle}).`}\n`);
+  return 0;
 }
 
 async function memory(base: string, bot: BotView, flags: BotFlags, io: BotIO): Promise<number> {
@@ -437,10 +479,12 @@ export async function botChat(base: string, bot: BotView, io: BotIO): Promise<nu
     speaking = false;
   };
   const failed = (error: unknown) => line(`error: ${error instanceof Error ? error.message : String(error)}`);
-  /** A message the bot received: one typed here is on screen already; any other is printed as a user line. */
+  /** A message the bot received: one typed here is on screen already; HUI's kickoff is a note; any other is printed as a user line. */
   const received = (text: string) => {
     const own = typed.indexOf(text.trim());
+    const created = botKickoffName(text.trim());
     if (own >= 0) typed.splice(own, 1);
+    else if (created !== undefined) line(`· ${created || bot.name} was created`);
     else line(`> ${text.trim().replace(/\n/gu, "\n> ")}`);
   };
   /** The user messages a snapshot holds after `seen` that are not accounted for yet, in order. */
@@ -692,7 +736,7 @@ export function formatBot(bot: BotView): string {
     `id: ${bot.id}`,
     ...(bot.lastMessage ? [`last message (${bot.lastMessage.role}, ${bot.lastMessage.at}): ${bot.lastMessage.text}`] : []),
     ...(bot.description ? [`description: ${bot.description}`] : []),
-    ...(bot.instructions ? [`instructions:\n${bot.instructions.replace(/^/gmu, "  ")}`] : []),
+    `soul: ${bot.soul ? `SOUL.md (hui bot soul ${bot.handle})` : "none yet: it writes SOUL.md in its first conversation"}`,
   ].join("\n");
 }
 
