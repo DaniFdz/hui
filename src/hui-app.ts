@@ -912,7 +912,7 @@ export class HuiApp extends HuiElement {
       }
     }
     // The live compaction divider sits below the transcript rows, so its changes follow too.
-    if ((changed.has("transcript") || changed.has("compaction")) && this.autoFollow) this.scrollToBottom();
+    if ((changed.has("transcript") || changed.has("compaction") || changed.has("paneVisible")) && this.autoFollow) this.scrollToBottom();
     if (!this.renamingFor) {
       return;
     }
@@ -3033,7 +3033,9 @@ export class HuiApp extends HuiElement {
   private scrollToBottom = () => {
     this.autoFollow = true;
     void this.updateComplete.then(() => {
-      if (!this.autoFollow) return;
+      // Measuring a pane out of sight would lay out its whole transcript on
+      // every streamed token; it follows once it is shown again.
+      if (!this.autoFollow || !this.paneVisible) return;
       const scroller = this.renderRoot.querySelector?.(".chat-thread");
       if (scroller instanceof HTMLElement) {
         scroller.scrollTop = scroller.scrollHeight;
