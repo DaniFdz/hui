@@ -24,6 +24,7 @@ function harness(options: { microphone?: () => Promise<never> } = {}) {
     loadConnection: async () => { connectionReads += 1; return { configured: true, url: "http://127.0.0.1:3900", keySet: false, reachable: true }; },
     synthesize: async (request) => { synthesized.push(request); return new Blob([request.text]); },
     play: (_, signal) => new Promise<void>((resolve) => signal.addEventListener("abort", () => resolve())),
+    voiceLevel: () => 0.4,
     platform,
     now: () => 5_000,
     setInterval: (callback) => { ticks = callback; return () => { ticks = undefined; }; },
@@ -89,6 +90,17 @@ test("one call at a time: the same bot brings it back, another bot waits", async
   assert.equal(ticking(), false);
   assert.deepEqual(released, { microphone: 1, watch: 1 });
   assert.equal(voice.startCall(ledger), true, "now another bot can be called");
+  voice.dispose();
+});
+
+test("the call's levels feed the bot's face: the microphone's and the bot's voice's, and nothing without a call", async () => {
+  const { voice } = harness();
+  assert.equal(voice.micLevel(), 0);
+  assert.equal(voice.voiceLevel(), 0, "no call, no voice to follow");
+  assert.equal(voice.startCall(scout), true);
+  await settle();
+  assert.equal(voice.micLevel(), 0, "no frame heard yet");
+  assert.equal(voice.voiceLevel(), 0.4, "the player's level during the call");
   voice.dispose();
 });
 

@@ -203,6 +203,7 @@ import { botCallPlatform } from "./lib/voice-session.ts";
 import { renderCallBar, renderCallView, type CallViewProps } from "./views/bot-voice.ts";
 import { VOICE_CONNECTION_EVENT } from "./views/settings-voice.ts";
 import { VOICE_MESSAGE_PREFIX, voiceLanguage, type VoiceConnection, type VoiceProfile } from "../shared/voice.ts";
+import { BOT_FACE_COLORS, BOT_FACE_SHAPES, botLook, botSeed, type BotFaceShape } from "../shared/bots.ts";
 import type { HomeVoice } from "./views/home.ts";
 import { localTimezone, type AutomationProps } from "./views/settings-automation.ts";
 import { loadWorkers, workerAction, type WorkerView } from "./lib/workers.ts";
@@ -523,6 +524,12 @@ export class HuiApp extends HuiElement {
   @state() private botDraftModel = "";
   @state() private botDraftThinking = "";
   @state() private botDraftMemoryModel = "";
+  /** The dialog's Look: a face (shape and color) or an emoji, edited live in its preview. */
+  @state() private botDraftLook: "face" | "emoji" = "face";
+  @state() private botDraftShape: BotFaceShape = "blob";
+  @state() private botDraftColor = "#3a7bfa";
+  @state() private botDraftEmoji = "";
+  private botDraftSeed = 0;
   /** The dialog's voice (HUI-18): a VoiceStudio voice id ("" for its default), speed and language ("" for Auto),
    * offered while it is connected. */
   @state() private botDraftVoice = "";
@@ -599,6 +606,7 @@ export class HuiApp extends HuiElement {
     loadConnection: loadVoiceConnection,
     synthesize: synthesizeSpeech,
     play: (audio, signal) => voicePlayer().play(audio, signal),
+    voiceLevel: () => voicePlayer().level(),
     platform: botCallPlatform,
     now: () => Date.now(),
     setInterval: (callback, ms) => { const timer = window.setInterval(callback, ms); return () => window.clearInterval(timer); },
@@ -3807,6 +3815,13 @@ export class HuiApp extends HuiElement {
     this.botDraftModel = "";
     this.botDraftThinking = "";
     this.botDraftMemoryModel = "";
+    // A new bot starts with a face picked at random; it keeps the one the dialog shows.
+    const random = Math.floor(Math.random() * 2 ** 32);
+    this.botDraftLook = "face";
+    this.botDraftShape = BOT_FACE_SHAPES[random % BOT_FACE_SHAPES.length]!;
+    this.botDraftColor = BOT_FACE_COLORS[Math.floor(random / BOT_FACE_SHAPES.length) % BOT_FACE_COLORS.length]!.hex;
+    this.botDraftEmoji = "";
+    this.botDraftSeed = random;
     ++this.directorySuggestionRequest;
     this.directorySuggestions = [];
     // The model pickers read PI's catalog; New Session loads it the same way.
@@ -3821,6 +3836,13 @@ export class HuiApp extends HuiElement {
     this.botDraftModel = bot.model ?? "";
     this.botDraftThinking = bot.thinking ?? "";
     this.botDraftMemoryModel = bot.memoryModel ?? "";
+    // An emoji bot keeps its emoji until Face is chosen; the face starts as the bot shows it (its own or its id's).
+    const look = botLook(bot);
+    this.botDraftLook = look.kind;
+    this.botDraftShape = look.shape;
+    this.botDraftColor = look.color;
+    this.botDraftEmoji = look.emoji ?? "";
+    this.botDraftSeed = botSeed(bot.id);
     ++this.directorySuggestionRequest;
     this.directorySuggestions = [];
     this.loadLaunchPreferences();
@@ -3898,9 +3920,14 @@ export class HuiApp extends HuiElement {
       this.botDialogError = "Name the bot.";
       return;
     }
+    if (this.botDraftLook === "emoji" && !this.botDraftEmoji.trim()) {
+      this.botDialogError = "Type an emoji, or choose Face.";
+      return;
+    }
     // The voice goes only while the dialog showed it; otherwise the bot keeps the one it has.
     const voice = this.botDialogVoice() ? { voice: this.botDraftVoice, voiceSpeed: this.botDraftVoiceSpeed, voiceLanguage: this.botDraftVoiceLanguage } : {};
-    const draft = { ...values, model: this.botDraftModel, thinking: this.botDraftThinking, memoryModel: this.botDraftMemoryModel, ...voice };
+    const look = { look: this.botDraftLook, shape: this.botDraftShape, color: this.botDraftColor, emoji: this.botDraftEmoji };
+    const draft = { ...values, ...look, model: this.botDraftModel, thinking: this.botDraftThinking, memoryModel: this.botDraftMemoryModel, ...voice };
     const patch = state.mode === "edit" ? botPatchFromDraft(state.bot, draft) : undefined;
     // Saving an untouched bot changes nothing, and the gateway refuses an empty change.
     if (patch && !Object.keys(patch).length) {
@@ -4291,6 +4318,17 @@ export class HuiApp extends HuiElement {
       onMemoryModel: (value) => { this.botDraftMemoryModel = value; },
       onSubmit: this.submitBotDialog,
       onCancel: this.closeBotDialog,
+      look: {
+        kind: this.botDraftLook,
+        shape: this.botDraftShape,
+        color: this.botDraftColor,
+        emoji: this.botDraftEmoji,
+        seed: this.botDraftSeed,
+        onKind: (kind) => { this.botDraftLook = kind; this.botDialogError = ""; },
+        onShape: (shape) => { this.botDraftShape = shape; },
+        onColor: (color) => { this.botDraftColor = color; },
+        onEmoji: (emoji) => { this.botDraftEmoji = emoji; },
+      },
       ...(voice ? { voice } : {}),
     }) : nothing}
     ${this.botArchive ? renderBotArchiveDialog(this.botArchive, this.botArchivePending, this.botArchiveError, this.confirmArchiveBot, this.closeBotArchive) : nothing}`;
@@ -4335,6 +4373,8 @@ export class HuiApp extends HuiElement {
       state: call.state,
       now: this.voice.now,
       summarizing: Boolean(bot.memory?.waiting),
+      // Read every animation frame by the face, never rendered: the bot's voice while it speaks, else the microphone.
+      level: this.callLevel,
       onToggleMic: () => this.voice.toggleMic(),
       onToggleSpeaker: () => this.voice.toggleSpeaker(),
       onMinimize: () => {
@@ -4356,6 +4396,9 @@ export class HuiApp extends HuiElement {
       },
     };
   }
+
+  private readonly callLevel = (): number | undefined =>
+    this.voice.call?.state.phase === "speaking" ? this.voice.voiceLevel() : this.voice.micLevel();
 
   /** The call, while the operator is elsewhere in HUI (another page, another bot, Settings). */
   private floatingCall() {

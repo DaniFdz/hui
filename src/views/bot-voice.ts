@@ -10,6 +10,8 @@ import type { BotView } from "../lib/bots.ts";
 import { callStatusLabel, type CallState } from "../lib/voice-call.ts";
 import { formatCallTime, type VoiceNoteState } from "../lib/voice.ts";
 import { renderBotAvatar } from "./bots.ts";
+import { callFaceState } from "../lib/bot-face.ts";
+import { botLook } from "../../shared/bots.ts";
 
 // Node's focused view tests import views without a CSS loader.
 if (typeof document !== "undefined") {
@@ -82,6 +84,8 @@ export type CallViewProps = {
   now: number;
   /** The bot's turn waits on its memory ("Summarizing memory…"). */
   summarizing: boolean;
+  /** The audio level (0–1) the face follows: the microphone while it listens, the bot's voice while it speaks. */
+  level?: () => number | undefined;
   onToggleMic: () => void;
   onToggleSpeaker: () => void;
   onMinimize: () => void;
@@ -97,7 +101,9 @@ export function renderCallView(props: CallViewProps) {
   const { state, bot } = props;
   const failed = state.phase === "failed";
   const time = elapsed(props);
-  return html`<section class="bot-call" data-phase=${state.phase} role="region" aria-label=${`Call with ${bot.name}`}
+  const look = botLook(bot);
+  // The call takes the bot's color, as Dots' call screen does; a face's eyes follow the pointer anywhere in it.
+  return html`<section class="bot-call" data-phase=${state.phase} role="region" aria-label=${`Call with ${bot.name}`} style=${`--bot-color: ${look.color}`} data-face-stage
     @keydown=${(event: KeyboardEvent) => {
       if (event.key !== "Escape" || failed || event.defaultPrevented) return;
       event.preventDefault();
@@ -109,7 +115,7 @@ export function renderCallView(props: CallViewProps) {
       ${failed ? nothing : html`<button type="button" class="btn btn--ghost btn--icon chat-icon-btn bot-call__minimize" aria-label="Minimize the call" title="Minimize" @click=${props.onMinimize}>${voiceIcons.minimize}</button>`}
     </header>
     <div class="bot-call__stage">
-      <div class="bot-call__orb" data-phase=${state.phase}>${renderBotAvatar(bot, "lg")}</div>
+      <div class="bot-call__orb ${look.kind === "face" ? "bot-call__orb--face" : ""}" data-phase=${state.phase}>${renderBotAvatar(bot, "xl", { state: callFaceState(state, props.summarizing), ...(props.level ? { level: props.level } : {}) })}</div>
       <h2 class="bot-call__name">${bot.name}</h2>
       <p class="bot-call__status" role="status" aria-live="polite">${callStatusLabel(state, props.summarizing)}</p>
     </div>
@@ -138,6 +144,7 @@ export function renderCallBar(props: CallViewProps & { floating: boolean }) {
   const { state, bot } = props;
   return html`<div class="bot-call-bar ${props.floating ? "bot-call-bar--floating" : ""}" data-phase=${state.phase} role="region" aria-label=${`Call with ${bot.name}, minimized`}>
     <button type="button" class="bot-call-bar__open" aria-label=${`Return to the call with ${bot.name}`} @click=${props.onExpand}>
+      ${renderBotAvatar(bot, "sm", { state: callFaceState(state, props.summarizing) })}
       <span class="bot-call-bar__pulse" aria-hidden="true"></span>
       <span class="bot-call-bar__name">${bot.name}</span>
       <span class="bot-call-bar__status">${callStatusLabel(state, props.summarizing)}</span>

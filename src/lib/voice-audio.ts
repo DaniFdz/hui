@@ -6,6 +6,7 @@
  * ends; nothing here stores audio.
  */
 import type { CallMicrophone } from "./voice-call.ts";
+import { audioEnvelope, envelopeAt, mixDown } from "./voice-level.ts";
 
 /* ── pure helpers ── */
 
@@ -191,11 +192,15 @@ export async function startVoiceNote(options: { maxMs?: number; onLimit?: () => 
  * The one `<audio>` element every bot voice plays through (read-aloud, voice
  * previews, calls), so only one plays at a time. It carries its state for
  * tests and assistive tooling: `data-state` (`idle`/`playing`) and
- * `data-clips` (clips played to their end).
+ * `data-clips` (clips played to their end). `level()` follows the playing
+ * clip's loudness for the bot's face: each clip is decoded once beside the
+ * element (which plays it untouched) into an envelope read at its position.
  */
 export class VoicePlayer {
   readonly element: HTMLAudioElement;
   #clips = 0;
+  #clip = 0;
+  #envelope: Float32Array | undefined;
 
   constructor(root: Document = document) {
     const existing = root.getElementById("hui-voice-player");
@@ -213,6 +218,9 @@ export class VoicePlayer {
         return;
       }
       const url = URL.createObjectURL(audio);
+      const clip = ++this.#clip;
+      this.#envelope = undefined;
+      void clipEnvelope(audio).then((envelope) => { if (clip === this.#clip) this.#envelope = envelope; }, () => undefined);
       const finish = (error?: Error) => {
         element.removeEventListener("ended", onEnded);
         element.removeEventListener("error", onError);
@@ -244,6 +252,22 @@ export class VoicePlayer {
       });
     });
   }
+
+  /** The playing clip's level (0–1) where it is now; 0 when nothing plays, undefined until (or unless) the clip is measured. */
+  level(): number | undefined {
+    if (this.element.dataset["state"] !== "playing") return 0;
+    return this.#envelope ? envelopeAt(this.#envelope, this.element.currentTime) : undefined;
+  }
+}
+
+let decoder: OfflineAudioContext | undefined;
+
+/** A clip's loudness envelope; it rejects for audio the browser cannot decode. */
+async function clipEnvelope(audio: Blob): Promise<Float32Array> {
+  decoder ??= new OfflineAudioContext(1, 1, 44_100);
+  const decoded = await decoder.decodeAudioData(await audio.arrayBuffer());
+  const channels = Array.from({ length: decoded.numberOfChannels }, (_, index) => decoded.getChannelData(index));
+  return audioEnvelope(mixDown(channels), decoded.sampleRate);
 }
 
 let shared: VoicePlayer | undefined;

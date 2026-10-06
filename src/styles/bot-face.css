@@ -1,0 +1,83 @@
+/* Bots' animated faces (HUI-18): <hui-bot-face>, ported from the prototype the
+ * owner approved on 2026-10-06 (after OpenAI's Dots). Keyframes carry the body's
+ * motion; src/components/bot-face.ts adds blinks, glances, pointer gaze and the
+ * call's audio level. Off-screen and hidden faces pause; reduced motion keeps a
+ * still expression per state. */
+hui-bot-face {
+  --bot-face-size: 36px;
+  display: inline-block;
+  flex: none;
+  width: var(--bot-face-size);
+  height: var(--bot-face-size);
+  /* The memory state's thought dots. */
+  color: var(--muted);
+  line-height: 0;
+  vertical-align: middle;
+}
+hui-bot-face[size="sm"] { --bot-face-size: 32px; }
+hui-bot-face[size="md"] { --bot-face-size: 36px; }
+hui-bot-face[size="lg"] { --bot-face-size: 112px; }
+hui-bot-face[size="xl"] { --bot-face-size: 176px; }
+hui-bot-face > svg { display: block; width: 100%; height: 100%; overflow: visible; }
+
+hui-bot-face .fx { transform-box: fill-box; transform-origin: 50% 100%; }
+hui-bot-face .bot-face__shadow { transform-box: fill-box; transform-origin: 50% 50%; }
+hui-bot-face .bot-face__gaze { transition: transform .32s cubic-bezier(.3, .7, .2, 1); }
+hui-bot-face .bot-face__eyes { transform-box: fill-box; transform-origin: 50% 50%; transition: transform .06s ease-out; }
+hui-bot-face .bot-face__eyes.blink { transform: scaleY(.08); }
+hui-bot-face .e { display: none; }
+hui-bot-face .e-open { transform-box: fill-box; transform-origin: 50% 50%; transition: transform .25s ease; }
+hui-bot-face svg:is([data-eyes="open"], [data-eyes="squint"], [data-eyes="wide"], [data-eyes="sad"]) .e-open,
+hui-bot-face svg[data-eyes="sad"] .e-brow,
+hui-bot-face svg[data-eyes="closed"] .e-closed,
+hui-bot-face svg[data-eyes="happy"] .e-happy,
+hui-bot-face svg[data-eyes="sleepy"] .e-sleepy { display: inline; }
+hui-bot-face svg[data-eyes="squint"] .e-open { transform: scaleY(.74); }
+hui-bot-face svg[data-eyes="wide"] .e-open { transform: scale(1.14); }
+hui-bot-face svg[data-eyes="sad"] .e-open { transform: scale(.84); }
+hui-bot-face .bot-face__thoughts { display: none; }
+hui-bot-face svg[data-state="memory"] .bot-face__thoughts { display: inline; }
+hui-bot-face .bot-face__thoughts circle { animation: bot-face-float 2.4s ease-in-out infinite; }
+
+hui-bot-face svg[data-state="idle"] .bot-face__squash { animation: bot-face-breathe 3.4s ease-in-out infinite; }
+hui-bot-face svg[data-state="idle"] .bot-face__tilt { animation: bot-face-sway 7s ease-in-out infinite; }
+hui-bot-face svg[data-state="thinking"] .bot-face__squash { animation: bot-face-breathe 3s ease-in-out infinite; }
+hui-bot-face svg[data-state="thinking"] .bot-face__tilt { animation: bot-face-ponder 3.6s ease-in-out infinite; }
+hui-bot-face svg[data-state="working"] .bot-face__bob { animation: bot-face-bob .84s ease-in-out infinite; }
+hui-bot-face svg[data-state="working"] .bot-face__squash { animation: bot-face-bobsquash .84s ease-in-out infinite; }
+hui-bot-face svg[data-state="working"] .bot-face__shadow { animation: bot-face-bobshadow .84s ease-in-out infinite; }
+hui-bot-face svg[data-state="waiting"] .bot-face__tilt { animation: bot-face-ask 2.8s ease-in-out infinite; }
+hui-bot-face svg[data-state="waiting"] .bot-face__bob { animation: bot-face-hop 2.8s ease-in-out infinite; }
+hui-bot-face svg[data-state="waiting"] .bot-face__squash { animation: bot-face-hopsquash 2.8s ease-in-out infinite; }
+hui-bot-face svg[data-state="memory"] .bot-face__squash { animation: bot-face-deep 4.8s ease-in-out infinite; }
+hui-bot-face svg[data-state="error"] .bot-face__squash { transform: scale(1.05, .92); }
+hui-bot-face svg[data-state="error"] .bot-face__tilt { animation: bot-face-droop 5.5s ease-in-out infinite; }
+hui-bot-face svg[data-state="done"] .bot-face__bob { animation: bot-face-jump .95s cubic-bezier(.3, .6, .3, 1) 1; }
+hui-bot-face svg[data-state="done"] .bot-face__squash { animation: bot-face-jumpsquash .95s ease-in-out 1; }
+hui-bot-face svg[data-state="done"] .bot-face__shadow { animation: bot-face-jumpshadow .95s ease-in-out 1; }
+hui-bot-face svg[data-state="offline"] { opacity: .75; }
+
+@keyframes bot-face-breathe { 0%, 100% { transform: scale(1, 1); } 50% { transform: scale(.985, 1.03); } }
+@keyframes bot-face-sway { 0%, 100% { transform: rotate(-1.6deg); } 50% { transform: rotate(1.6deg); } }
+@keyframes bot-face-ponder { 0%, 100% { transform: rotate(-3.5deg); } 50% { transform: rotate(3.5deg); } }
+@keyframes bot-face-bob { 0%, 100% { transform: translateY(0); } 45% { transform: translateY(-5px); } }
+@keyframes bot-face-bobsquash { 0%, 100% { transform: scale(1.05, .94); } 20% { transform: scale(.97, 1.04); } 45%, 80% { transform: scale(1, 1); } }
+@keyframes bot-face-bobshadow { 0%, 100% { transform: scale(1); opacity: 1; } 45% { transform: scale(.82); opacity: .7; } }
+@keyframes bot-face-ask { 0%, 100% { transform: rotate(7deg); } 50% { transform: rotate(9.5deg); } }
+@keyframes bot-face-hop { 0%, 62%, 100% { transform: translateY(0); } 74% { transform: translateY(-7px); } 86% { transform: translateY(0); } }
+@keyframes bot-face-hopsquash { 0%, 58%, 94%, 100% { transform: scale(1, 1); } 64% { transform: scale(1.06, .92); } 74% { transform: scale(.95, 1.06); } 88% { transform: scale(1.04, .95); } }
+@keyframes bot-face-deep { 0%, 100% { transform: scale(1, 1); } 50% { transform: scale(.975, 1.045); } }
+@keyframes bot-face-droop { 0%, 100% { transform: rotate(-2deg); } 50% { transform: rotate(-4deg); } }
+@keyframes bot-face-jump { 0%, 18% { transform: translateY(0); } 50% { transform: translateY(-17px); } 78%, 100% { transform: translateY(0); } }
+@keyframes bot-face-jumpsquash { 0%, 62%, 100% { transform: scale(1, 1); } 18% { transform: scale(1.12, .86); } 40% { transform: scale(.9, 1.12); } 78% { transform: scale(1.1, .9); } 90% { transform: scale(.98, 1.02); } }
+@keyframes bot-face-jumpshadow { 0%, 18%, 78%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(.55); opacity: .45; } }
+@keyframes bot-face-float { 0%, 100% { opacity: .25; transform: translateY(0); } 50% { opacity: .9; transform: translateY(-2px); } }
+
+/* Off screen or in a hidden page: the keyframes hold still (the element stops its timers too). */
+hui-bot-face[data-paused] :is(.fx, .bot-face__shadow, .bot-face__thoughts circle) { animation-play-state: paused; }
+
+@media (prefers-reduced-motion: reduce) {
+  hui-bot-face :is(.fx, .bot-face__shadow, .bot-face__thoughts circle) { animation: none !important; }
+  hui-bot-face :is(.bot-face__gaze, .bot-face__eyes, .e-open) { transition: none; }
+  hui-bot-face svg[data-state="waiting"] .bot-face__tilt { transform: rotate(8deg); }
+}

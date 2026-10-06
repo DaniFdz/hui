@@ -15,6 +15,8 @@ export type VoiceControllerDeps = {
   loadConnection(): Promise<VoiceConnection>;
   synthesize(request: SpeechRequest, signal: AbortSignal): Promise<Blob>;
   play(audio: Blob, signal: AbortSignal): Promise<void>;
+  /** The bot's voice's level where it plays now (0–1), undefined while unmeasured; the face of a speaking bot follows it. */
+  voiceLevel?(): number | undefined;
   platform(bot: CallBot): CallPlatform;
   now(): number;
   setInterval(callback: () => void, ms: number): () => void;
@@ -94,6 +96,16 @@ export class VoiceController {
 
   stopReading(): void {
     this.#reader.stop();
+  }
+
+  /** The call's microphone level (0–1): what the bot's face hears while it listens. Read every frame, never rendered. */
+  micLevel(): number {
+    return this.call ? this.#session?.micLevel ?? 0 : 0;
+  }
+
+  /** The bot's voice's level (0–1) while it speaks in the call; undefined while unmeasured. */
+  voiceLevel(): number | undefined {
+    return this.call ? this.#deps.voiceLevel?.() : 0;
   }
 
   /** Calls a bot, or brings its call back. Another bot's call must be hung up first (false). */

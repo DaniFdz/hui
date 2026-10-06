@@ -9,7 +9,8 @@
  *   GET  /control/requests     every API request (fields such as the language, sizes, auth), never audio bytes
  *   POST /control/transcripts  {"texts": [...]} queues the next transcriptions' text
  *   POST /control/key          {"key": "..." | null} requires a bearer key, or stops requiring one
- *   POST /control/speech       {"secondsPerCharacter"?, "minSeconds"?, "maxSeconds"?} clip length
+ *   POST /control/speech       {"secondsPerCharacter"?, "minSeconds"?, "maxSeconds"?, "voiced"?} clip length; voiced: true
+ *                              answers every format with speech-like syllables as audio/wav (a bot's face follows them)
  *   POST /control/fail         {"path", "status", "message"?, "code"?, "text"?, "times"?}
  *   POST /control/delay        {"path", "ms", "phase"?: "headers" | "body", "times"?}
  *   POST /control/redirect     {"path", "location", "status"?, "times"?}
@@ -32,7 +33,7 @@ const MEDIA = { mp3: "audio/mpeg", opus: "audio/ogg", wav: "audio/wav", pcm: "au
 const PCM_RATE = 24_000;
 const CHUNK = 4096;
 
-const initialSpeech = { secondsPerCharacter: 0.06, minSeconds: 0.6, maxSeconds: 6 };
+const initialSpeech = { secondsPerCharacter: 0.06, minSeconds: 0.6, maxSeconds: 6, voiced: false };
 let key = process.env.HUI_E2E_VOICE_KEY || null;
 let speech = { ...initialSpeech };
 let requests = [];
@@ -51,6 +52,26 @@ function tone(seconds) {
   for (let index = 0; index < count; index++) {
     const envelope = Math.min(1, index / fade, (count - 1 - index) / fade);
     samples[index] = Math.round(Math.sin((2 * Math.PI * 440 * index) / PCM_RATE) * 0.08 * 32767 * envelope);
+  }
+  return Buffer.from(samples.buffer, samples.byteOffset, samples.byteLength);
+}
+
+/** Voiced, speech-like syllables (harmonics under an envelope, short gaps), so a bot's face has a voice to follow. */
+function syllables(seconds) {
+  const count = Math.max(1, Math.round(seconds * PCM_RATE));
+  const samples = new Int16Array(count);
+  let at = 0;
+  for (let index = 0; at < count; index++) {
+    const length = Math.round(PCM_RATE * (0.16 + 0.05 * ((index * 7) % 3)));
+    const pitch = 140 + ((index * 37) % 50);
+    for (let offset = 0; offset < length && at + offset < count; offset++) {
+      const time = offset / PCM_RATE;
+      const envelope = Math.sin((Math.PI * offset) / length) ** 0.6;
+      let value = 0;
+      for (const [harmonic, amplitude] of [[1, 1], [2, 0.6], [3, 0.45], [5, 0.3]]) value += amplitude * Math.sin(2 * Math.PI * pitch * harmonic * time);
+      samples[at + offset] = Math.round((value / 2.35) * 0.4 * envelope * 32767);
+    }
+    at += length + Math.round(PCM_RATE * (index % 4 === 3 ? 0.22 : 0.05));
   }
   return Buffer.from(samples.buffer, samples.byteOffset, samples.byteLength);
 }
@@ -243,7 +264,9 @@ async function synthesize(response, body, record, url) {
   if (!(format in MEDIA)) return openAiError(response, 400, `Invalid value for 'response_format': '${format}'`, { param: "response_format", code: "invalid_value" });
   if (format === "flac" || format === "aac") return openAiError(response, 400, `The fixture does not encode ${format}.`, { param: "response_format", code: "unsupported_response_format" });
   const seconds = Math.min(speech.maxSeconds, Math.max(speech.minSeconds, [...input.input].length * speech.secondsPerCharacter)) / speed;
-  const audio = format === "mp3" ? mp3(seconds) : format === "opus" ? opus(seconds) : format === "wav" ? wav(tone(seconds)) : tone(seconds);
+  const voiced = speech.voiced === true;
+  const audio = voiced ? wav(syllables(seconds)) : format === "mp3" ? mp3(seconds) : format === "opus" ? opus(seconds) : format === "wav" ? wav(tone(seconds)) : tone(seconds);
+  const type = voiced ? MEDIA.wav : MEDIA[format];
   record.speech.bytes = audio.length;
   record.speech.seconds = Math.round(seconds * 1000) / 1000;
   if (input.stream_format === "sse") {
@@ -252,11 +275,11 @@ async function synthesize(response, body, record, url) {
     return response.end(`data: ${JSON.stringify({ type: "speech.audio.done", usage: { input_tokens: 0, output_tokens: 0, total_tokens: 0 } })}\n\n`);
   }
   if (input.stream_format !== "audio") {
-    response.writeHead(200, { "content-type": MEDIA[format], "content-length": audio.length });
+    response.writeHead(200, { "content-type": type, "content-length": audio.length });
     return response.end(audio);
   }
   // Chunked, without content-length, as VoiceStudio streams.
-  response.writeHead(200, { "content-type": MEDIA[format] });
+  response.writeHead(200, { "content-type": type });
   const stall = take(delays, url.pathname, (item) => item.phase === "body");
   for (let offset = 0; offset < audio.length; offset += CHUNK) {
     if (response.destroyed) return;

@@ -101,8 +101,9 @@
   gap: 16px;
   padding: max(16px, var(--safe-area-top, 0px)) 20px max(20px, var(--safe-area-bottom, 0px));
   overflow-y: auto;
+  /* The bot's color tints the call, as Dots' call screen takes its dot's. */
   background:
-    radial-gradient(120% 70% at 50% 0%, color-mix(in srgb, var(--accent) 10%, transparent), transparent 70%),
+    radial-gradient(120% 70% at 50% 0%, color-mix(in srgb, var(--bot-color, var(--accent)) 18%, transparent), transparent 70%),
     var(--bg);
   color: var(--text);
 }
@@ -122,15 +123,16 @@
   box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 30%, transparent);
   transition: box-shadow var(--duration-normal, 200ms) ease, background var(--duration-normal, 200ms) ease;
 }
-.bot-call__orb .bot-avatar--lg { width: 72px; height: 72px; }
-.bot-call__orb .bot-avatar--lg .bot-avatar__glyph { font-size: 30px; }
-.bot-call__orb .bot-avatar--lg.bot-avatar--emoji .bot-avatar__glyph { font-size: 40px; }
+.bot-call__orb .bot-avatar--xl .bot-avatar__glyph { font-size: 30px; }
+.bot-call__orb .bot-avatar--xl.bot-avatar--emoji .bot-avatar__glyph { font-size: 40px; }
 .bot-call__orb[data-phase="listening"] { animation: voice-breathe 3.2s ease-in-out infinite; }
 .bot-call__orb[data-phase="hearing"] { box-shadow: 0 0 0 10px color-mix(in srgb, var(--info, var(--accent)) 28%, transparent); }
 .bot-call__orb[data-phase="transcribing"],
 .bot-call__orb[data-phase="thinking"] { animation: voice-think 1.4s ease-in-out infinite; }
 .bot-call__orb[data-phase="speaking"] { background: color-mix(in srgb, var(--ok) 14%, var(--panel)); animation: voice-speak 0.9s ease-in-out infinite; }
 .bot-call__orb[data-phase="failed"] { background: color-mix(in srgb, var(--danger) 12%, var(--panel)); }
+/* A face is the call's whole stage: no disc and no rings, its body and eyes show the phase. */
+.bot-call__orb.bot-call__orb--face[data-phase] { width: auto; height: auto; background: none; box-shadow: none; animation: none; }
 @keyframes voice-breathe { 50% { box-shadow: 0 0 0 8px color-mix(in srgb, var(--accent) 14%, transparent); } }
 @keyframes voice-think { 50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--muted) 22%, transparent); } }
 @keyframes voice-speak { 50% { box-shadow: 0 0 0 14px color-mix(in srgb, var(--ok) 22%, transparent); } }
@@ -244,6 +246,8 @@
 }
 .bot-call-bar__open:focus-visible, .bot-call-bar__button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .bot-call-bar__pulse { width: 8px; height: 8px; flex: 0 0 8px; border-radius: 50%; background: var(--ok); animation: voice-dot 1.6s ease-in-out infinite; }
+.bot-call-bar .bot-avatar--face hui-bot-face { --bot-face-size: 26px; }
+.bot-call-bar .bot-avatar--emoji { width: 24px; height: 24px; font-size: 14px; }
 .bot-call-bar__name { font-weight: 600; white-space: nowrap; }
 .bot-call-bar__status { min-width: 0; overflow: hidden; color: var(--muted); text-overflow: ellipsis; white-space: nowrap; }
 .bot-call-bar__time { margin-inline-start: auto; font-variant-numeric: tabular-nums; }
@@ -267,6 +271,7 @@
 @media (max-width: 640px) {
   .bot-call { gap: 12px; padding-inline: 14px; }
   .bot-call__orb { width: 112px; height: 112px; }
+  .bot-call__orb.bot-call__orb--face hui-bot-face { --bot-face-size: 148px; }
   .bot-call__controls { gap: 8px; }
   .bot-call__control { min-width: 64px; }
   .bot-call-bar { margin-inline: 8px; }
@@ -276,9 +281,10 @@
   .bot-call { gap: 8px; padding-top: max(10px, var(--safe-area-top, 0px)); }
   .bot-call__stage { gap: 4px; margin-top: 0; }
   .bot-call__orb { width: 64px; height: 64px; }
-  .bot-call__orb .bot-avatar--lg { width: 44px; height: 44px; }
-  .bot-call__orb .bot-avatar--lg .bot-avatar__glyph { font-size: 20px; }
-  .bot-call__orb .bot-avatar--lg.bot-avatar--emoji .bot-avatar__glyph { font-size: 26px; }
+  .bot-call__orb .bot-avatar--xl.bot-avatar--emoji { width: 44px; height: 44px; }
+  .bot-call__orb .bot-avatar--xl .bot-avatar__glyph { font-size: 20px; }
+  .bot-call__orb .bot-avatar--xl.bot-avatar--emoji .bot-avatar__glyph { font-size: 26px; }
+  .bot-call__orb.bot-call__orb--face hui-bot-face { --bot-face-size: 84px; }
   .bot-call__name { margin: 0; font-size: var(--text-lg, 18px); }
   .bot-call__control svg { padding: 12px; }
 }

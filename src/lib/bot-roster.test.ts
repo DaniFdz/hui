@@ -6,7 +6,6 @@ import {
   botAccessibleName,
   botActivity,
   botActivityAt,
-  botAvatar,
   botMatches,
   botPreview,
   compactRelativeTime,
@@ -15,7 +14,6 @@ import {
   normalizeSidebarTab,
   rosterBots,
   tabAfterKey,
-  BOT_AVATAR_TONES,
   SIDEBAR_TABS,
 } from "./bot-roster.ts";
 import type { BotView } from "./bots.ts";
@@ -79,18 +77,6 @@ test("search matches name, handle with or without @, and title, ignoring case", 
   for (const query of ["", "  ", "sco", "SCOUT", "@scout-2", "scout-2", "inbox", "RESEARCH"]) assert.equal(botMatches(scout, query), true, query);
   for (const query of ["ledger", "@ledger", "assistant"]) assert.equal(botMatches(scout, query), false, query);
   assert.deepEqual(rosterBots([scout, bot("ledger")], { query: "@sco", showHidden: false }).map(({ id }) => id), ["scout"]);
-});
-
-test("avatars use the chosen emoji or the first letter on a color stable per bot", () => {
-  const plain = botAvatar({ id: "4f0c", name: "ledger" });
-  assert.equal(plain.initial, "L");
-  assert.equal(plain.emoji, undefined);
-  assert.ok(plain.tone >= 0 && plain.tone < BOT_AVATAR_TONES);
-  assert.deepEqual(botAvatar({ id: "4f0c", name: "Renamed" }).tone, plain.tone, "a rename keeps the color");
-  assert.deepEqual(botAvatar({ id: "x", name: "Ünïcode", avatar: { emoji: "🦉", color: "#a78bfa" } }), { emoji: "🦉", initial: "Ü", color: "#a78bfa", tone: botAvatar({ id: "x", name: "y" }).tone });
-  assert.equal(botAvatar({ id: "y", name: "👩‍💻 Dev" }).initial, "👩‍💻", "the initial is a whole grapheme");
-  const tones = new Set(["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l"].map((id) => botAvatar({ id, name: id }).tone));
-  assert.ok(tones.size > 3, "different bots spread over the palette");
 });
 
 test("a row previews the latest message, else the role, else says it is new", () => {

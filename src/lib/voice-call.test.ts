@@ -202,6 +202,22 @@ test("a call hears an utterance, sends it marked as spoken and speaks the reply 
   assert.deepEqual(phases, ["listening", "hearing", "transcribing", "thinking", "speaking", "listening"]);
 });
 
+test("the microphone's level is there for the bot's face while it listens, and 0 once muted", async () => {
+  const { platform, fake } = fakePlatform();
+  const call = new VoiceCall(platform);
+  assert.equal(call.micLevel, 0, "nothing before the microphone opens");
+  await call.start();
+  fake.frames(frames(40, 0));
+  assert.equal(call.micLevel, 0, "a quiet room");
+  fake.frames(frames(40, 0.3));
+  assert.ok(call.micLevel > 0.9, `speech: ${call.micLevel}`);
+  call.setMicMuted(true);
+  assert.equal(call.micLevel, 0, "muted");
+  call.setMicMuted(false);
+  call.hangUp();
+  assert.equal(call.micLevel, 0, "after the call");
+});
+
 test("barging in stops the bot's voice, silences the rest of that turn and steers it", async () => {
   const { platform, fake } = fakePlatform();
   const call = new VoiceCall(platform);

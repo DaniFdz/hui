@@ -18,6 +18,7 @@
 import { VOICE_MESSAGE_PREFIX } from "../../shared/voice.ts";
 import type { RuntimeEvent } from "./sessions-store.ts";
 import { VoiceActivityDetector, type VadOptions } from "./voice-activity.ts";
+import { frameLevel } from "./voice-level.ts";
 import { SpeechQueue } from "./voice-queue.ts";
 import { SpeechChunker, speakableText } from "./voice-speech.ts";
 
@@ -305,6 +306,9 @@ export class VoiceCall {
   /** After a barge-in the interrupted turn stays silent: until what interrupted it is sent and a new turn starts. */
   #ignoring: false | "interrupted" | "until-next-turn" = false;
   #cancelTimer: (() => void) | undefined;
+  /** The microphone's latest frame level, for the bot's face; never part of the state, so it costs no render. */
+  #micLevel = 0;
+  #micLevelAt = Number.NEGATIVE_INFINITY;
 
   constructor(platform: CallPlatform, options: VoiceCallOptions = {}) {
     this.#platform = platform;
@@ -320,6 +324,12 @@ export class VoiceCall {
 
   get state(): CallState {
     return this.#state;
+  }
+
+  /** The microphone's level (0–1) over its latest frame: 0 while muted, after the call, or once frames stop for 250 ms. */
+  get micLevel(): number {
+    if (this.#state.micMuted || terminal(this.#state.phase) || this.#platform.now() - this.#micLevelAt > 250) return 0;
+    return this.#micLevel;
   }
 
   onChange(listener: (state: CallState) => void): () => void {
@@ -364,6 +374,8 @@ export class VoiceCall {
   #onFrame(frame: Float32Array): void {
     const vad = this.#vad;
     if (!vad || this.#state.micMuted || terminal(this.#state.phase)) return;
+    this.#micLevel = frameLevel(frame);
+    this.#micLevelAt = this.#platform.now();
     vad.bargeIn = this.#state.speaking;
     for (const event of vad.push(frame)) {
       if (event.type === "start") this.#dispatch({ type: "speech-start" });
