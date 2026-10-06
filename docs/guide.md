@@ -257,12 +257,13 @@ form for it. A new bot speaks first: as soon as it is created, HUI starts its
 first turn, and its opening message is waiting when you open its chat (the chat
 shows a small note, "Ada was created", where that turn began). It asks what you
 expect from it, one or two questions at a time (a bot still called "New Bot"
-first asks what to call it, and renames itself), and after a few answers it
-writes SOUL.md itself (with a tool of its own, so it needs no file access),
-sums it up and tells you how to change it. If your first
-message asks for real work, it does the work first. Its name and look come from
-the New bot dialog, so it never asks about them. Messages from routines and
-other bots don't count as you.
+first asks what to call it, and renames itself). Once it knows enough, usually
+after a few answers, it writes SOUL.md itself (with a tool of its own, so it
+needs no file access): only what you told it or agreed to, since it asks rather
+than guesses. Then it says so, sums it up and tells you how to change it. If
+your first message asks for real work, it does the work first. A bot you named
+in the New bot dialog never asks about its name or look. Messages from routines
+and other bots don't count as you.
 
 From then on every turn reads SOUL.md, so a change applies from the next
 request. To change it, tell the bot ("be more formal", "don't message me before
