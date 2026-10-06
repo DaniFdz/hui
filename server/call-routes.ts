@@ -119,9 +119,9 @@ export function createCallRoutes(deps: CallRouteDeps) {
     const body = fields(await json(request, OFFER_BODY_BYTES), ["sdp"], "A call");
     const settings = await deps.settings();
     const sdp = checkOffer(body["sdp"]);
-    const { bot, view } = await bots.callContext(id);
+    const { bot, view, soul } = await bots.callContext(id);
     const timeZone = deps.timeZone?.();
-    const { instructions, memoryBytes } = buildCallInstructions({ bot, operator: settings.profileName, ...(view ? { view } : {}), ...(timeZone ? { timeZone } : {}) });
+    const { instructions, memoryBytes } = buildCallInstructions({ bot, operator: settings.profileName, ...(soul ? { soul } : {}), ...(view ? { view } : {}), ...(timeZone ? { timeZone } : {}) });
     const voice = sessionVoice(bot, settings.calls.voice);
     const started = await broker.start({ botId: bot.id, sdp, session: buildCallSession(instructions, voice), ...(request.signal ? { signal: request.signal } : {}) });
     const result: CallStarted = {

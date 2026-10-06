@@ -120,19 +120,22 @@ hui workers remove devbox
 ```
 
 Bots are named agents with one forever chat each, whose memory never needs
-clearing; they can run routines and message one another. Everything the Bots tab
+clearing. A new bot starts by asking what you expect from it, then writes its
+persona (SOUL.md) itself; they can run routines and message one another. Everything the Bots tab
 does works from a terminal too, through the running gateway (`hui bots` is the
 same command). `<bot>` is an id, a handle or an exact name:
 
 ```sh
 hui bot list [--archived] [--json]
 hui bot show <bot> [--json]
-hui bot add --name <name> [--title <text>] [--instructions <text> | --instructions-file <path>] [--cwd <dir>]
+hui bot add [--name <name>] [--title <text>] [--soul-file <path|->] [--cwd <dir>]
             [--model <provider/model>] [--thinking <level>] [--utility-model <provider/model>] [--emoji <e>]
             [--shape <shape>] [--color <name|#rrggbb>] [--language <code>] [--call-voice <voice>] [--json]
-hui bot edit <bot> [same flags as add] [--json]  # --model "" / --thinking "": back to the defaults; --language "": Auto; --call-voice "": Settings' voice
+hui bot edit <bot> [same flags as add but --soul-file] [--json]  # --model "" / --thinking "": back to the defaults; --language "": Auto; --call-voice "": Settings' voice
+hui bot soul <bot> [--file <path|->] [--json]   # print SOUL.md, or replace it (empty: ask again)
 hui bot remove <bot> [--json]          # archives: its chat and memory are kept
 hui bot restore <bot> [--json]
+hui bot delete <bot> [--yes] [--json]  # for good: its chat leaves HUI; routines, memory and folder go
 hui bot chat <bot>                     # streamed plain text; works over SSH
 hui bot send <bot> <message|-> [--wait] [--timeout <seconds>] [--json]
 hui bot stop <bot> [--json]
@@ -143,8 +146,9 @@ hui bot routine run <bot> <routine>
 hui bot routine remove <bot> <routine> [--json]
 ```
 
-See [Bots](docs/guide.md#bots) for what they remember, how routines and
-bot-to-bot messages work, calls with GPT-Live, and the exit codes of `send --wait`.
+See [Bots](docs/guide.md#bots) for their soul, what they remember, how routines
+and bot-to-bot messages work, calls with GPT-Live, and the exit codes of
+`send --wait`.
 
 On a headless host, use `hui ui --no-open` to print the URL without opening a
 browser. `hui browser` is an alias for `hui ui`. The development launcher is

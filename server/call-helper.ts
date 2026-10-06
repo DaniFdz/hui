@@ -2,8 +2,8 @@
  * The bot's quick helper during a GPT-Live call, and the record of the call at
  * hang-up (HUI-18), after OpenDots (CopilotKit/OpenDots, MIT): the voice model
  * has one tool, which asks the bot. Here that tool is answered by the bot's
- * utility model at low thinking, from the bot's instructions, its memory and
- * the call so far; what needs tools or real work is handed to the bot's own
+ * utility model at low thinking, from the bot's soul (its SOUL.md), its memory
+ * and the call so far; what needs tools or real work is handed to the bot's own
  * chat instead. At hang-up the same utility model writes what happened.
  *
  * The model call is injected (`CallCompletion`), so these run under test.
@@ -36,27 +36,29 @@ function languageRule(bot: Pick<BotRecord, "voice">): string {
 const quote = (text: string, tag: string) => text.replace(new RegExp(`</?${tag}`, "giu"), (match) => match.replace("<", "‹"));
 
 export type HelperInput = {
-  bot: Pick<BotRecord, "name" | "instructions" | "voice">;
+  bot: Pick<BotRecord, "name" | "voice">;
+  /** The bot's SOUL.md; absent while it has none. */
+  soul?: string;
   operator: string;
   view?: string;
   lines: readonly CallRecordLine[];
   request: string;
 };
 
-/** The helper's prompt: who it helps and how it answers, then the instructions, the memory, the call and the request. */
+/** The helper's prompt: who it helps and how it answers, then the soul, the memory, the call and the request. */
 export function helperPrompt(input: HelperInput): { system: string; prompt: string } {
   const name = input.bot.name;
   const system = [
     `You are ${name}'s quick helper during a live phone call between ${input.operator} and ${name}. A fast voice model is talking for ${name}; it asks you what it cannot answer from the call alone.`,
-    `Answer from ${name}'s instructions, its memory and the call below, in one to three short sentences meant to be spoken, in ${languageRule(input.bot)}.`,
+    `Answer from ${name}'s soul (its SOUL.md), its memory and the call below, in one to three short sentences meant to be spoken, in ${languageRule(input.bot)}.`,
     "Use only what is below. Never invent facts, results or memories.",
     `You see only the newest part of ${name}'s memory and none of its files, so when the answer is not below, do not say you do not know: ${name} may still know it or find it. Reply with exactly one line: "HANDOFF: <the task in one sentence>". ${name} then looks into it in its own chat, with its whole memory, its files and its tools.`,
     `Hand off the same way when the request needs tools, files, current information (news, weather, prices, the time), an action, or more than a quick answer, or when the user asks for ${name} to do something or to hand it off.`,
   ].join("\n");
-  const persona = input.bot.instructions?.trim();
+  const soul = input.soul?.trim();
   const memory = input.view ? memorySlice(input.view, CALL_LIMITS.helperMemoryBytes) : "";
   const prompt = [
-    persona ? `<instructions>\n${quote(boundBytes(persona, CALL_LIMITS.personaBytes), "instructions")}\n</instructions>` : "",
+    soul ? `<soul>\n${quote(boundBytes(soul, CALL_LIMITS.personaBytes), "soul")}\n</soul>` : `<soul>\n(${name} has no SOUL.md yet.)\n</soul>`,
     memory ? `<memory>\n${quote(memory, "memory")}\n</memory>` : "<memory>\n(empty)\n</memory>",
     `<call>\n${quote(callTranscriptText(input.lines.slice(-60), name, input.operator), "call") || "(nothing said yet)"}\n</call>`,
     `The voice model asks: ${input.request}`,
@@ -123,6 +125,8 @@ export function operatorName(profileName: string | undefined): string {
 export type CallDelegateDeps = {
   /** The bot's memory view (`BotService.callContext`); a call goes on without it. */
   view(botId: string): Promise<string | undefined>;
+  /** The bot's SOUL.md; a call goes on without it. */
+  soul?(botId: string): Promise<string | undefined>;
   /** Settings' utility model and the operator's name, current at each question. */
   settings(): Promise<{ utility: string; operator: string }>;
   completion: CallCompletion;
@@ -160,8 +164,8 @@ export function createCallDelegate(deps: CallDelegateDeps) {
     const { bot, call, request } = input;
     if (call.questions >= CALL_LIMITS.helperQuestions) return handOff(bot, call, request);
     call.questions += 1;
-    const [view, settings] = await Promise.all([deps.view(bot.id).catch(() => undefined), deps.settings()]);
-    const { system, prompt } = helperPrompt({ bot, operator: settings.operator, ...(view ? { view } : {}), lines: call.lines, request });
+    const [view, soul, settings] = await Promise.all([deps.view(bot.id).catch(() => undefined), deps.soul?.(bot.id).catch(() => undefined), deps.settings()]);
+    const { system, prompt } = helperPrompt({ bot, operator: settings.operator, ...(soul ? { soul } : {}), ...(view ? { view } : {}), lines: call.lines, request });
     const budget = AbortSignal.timeout(deps.budgetMs ?? CALL_LIMITS.helperSeconds * 1000);
     try {
       const { text } = await complete(utilityCandidates(bot, settings.utility), { system, prompt, signal: signal ? AbortSignal.any([signal, budget]) : budget }, deps.completion);
