@@ -316,9 +316,9 @@ test("the first conversation: greet, ask what the operator expects a question or
     "save your soul with write_soul: Markdown, short, in your own voice", "\"Who I am\", \"What I look after\", \"How I work\", \"When I reach out\" and \"Boundaries\"",
     "Write down only what the operator told you or agreed to: ask about what is still open (often what you must not do) rather than guess",
     "Once you know enough, usually after a few exchanges (or as soon as the operator would rather not say more)",
-    "It is about you and your work, so how to change it goes in your reply, never in the file",
-    "In the reply that saves it, say you saved your SOUL.md, sum it up in a few lines, and always end by telling them how to change it later", "in the Soul tab of your panel in HUI, or by just telling you",
+    "about you and your work only", "Its result tells you how to close your first conversation, in that same reply.",
   ]) assert.ok(named.includes(part), part);
+  assert.doesNotMatch(named, /Soul tab|by just telling you/u, "how to change it comes in write_soul's result, once the file is written: told it up front, a real model put that line in SOUL.md");
   const nameless = firstConversationSection(file, undefined);
   assert.match(nameless, /your first conversation with the operator, which starts now/u);
   assert.match(nameless, /greet the operator in a sentence/u);
