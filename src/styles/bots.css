@@ -3,15 +3,19 @@
  * Rows, menus, inputs and dialogs reuse the shell/session/settings classes;
  * only what bots add lives here, on the shared tokens. */
 
-/* ── Agents | Bots switch: the first thing in the sidebar, above even its
- * header buttons, because each tab has a sidebar of its own. Full-width tabs
- * over a divider, in sentence case, so it reads as that choice rather than as
- * one more uppercase section label. ── */
+/* ── Agents | Bots switch: the sidebar's top row, right after the collapse
+ * toggle, because each tab has a sidebar of its own. Full-width tabs over a
+ * divider that spans the row, in sentence case, so it reads as that choice
+ * rather than as one more uppercase section label. ── */
+.app-shell .sidebar-brand:has(> .sidebar-switch) {
+  margin-block-end: 16px;
+  border-bottom: 1px solid var(--border);
+}
 .app-shell .sidebar-switch {
   display: flex;
-  flex: none;
-  margin-block-end: 8px;
-  border-bottom: 1px solid var(--border);
+  flex: 1 1 auto;
+  align-self: stretch;
+  min-width: 0;
 }
 .app-shell .sidebar-tabs {
   display: flex;
@@ -26,7 +30,7 @@
   justify-content: center;
   gap: 6px;
   min-width: 0;
-  height: 36px;
+  height: var(--shell-sidebar-top-row-height);
   padding: 0 8px;
   border: 0;
   border-radius: var(--radius-md) var(--radius-md) 0 0;
@@ -60,9 +64,6 @@
 .app-shell .sidebar-tabs__tab:focus-visible {
   outline: none;
   box-shadow: var(--focus-ring);
-}
-@media (hover: none), (pointer: coarse) {
-  .app-shell .sidebar-tabs__tab { height: 44px; }
 }
 .app-shell .sidebar-tabs__dot {
   width: 6px;
@@ -276,6 +277,19 @@
 }
 .bot-workspace--placeholder { flex-direction: column; }
 .bot-workspace__header { flex: 0 0 auto; min-height: 48px; padding: 0 6px 0 12px; }
+/* A collapsed sidebar's restore control floats over the top-left corner, where
+ * this header starts (the bot view has no content padding): keep the avatar
+ * clear of it, as the session header does. */
+.app-shell:not(.shell--mobile-nav).shell--nav-collapsed .bot-workspace__header,
+.app-shell:not(.shell--mobile-nav)[data-nav-collapsed="true"] .bot-workspace__header {
+  padding-left: var(--shell-chrome-safe-area-left);
+}
+/* The chat itself runs in an embedded pane app, whose header no selector from
+ * here reaches; a custom property crosses its shadow boundary (app.css). */
+.app-shell:not(.shell--mobile-nav).shell--nav-collapsed .bot-workspace__pane,
+.app-shell:not(.shell--mobile-nav)[data-nav-collapsed="true"] .bot-workspace__pane {
+  --hui-pane-chrome-inset: var(--shell-chrome-safe-area-left);
+}
 .bot-workspace__message { flex: 1; }
 /* The header names the bot beside its avatar: name above role and status. */
 .transcript__head .chat-pane__crumbs.bot-chat-identity {
