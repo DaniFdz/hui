@@ -148,7 +148,7 @@ test("a bot's conversation is created in one commit with persona, bot document a
   });
   const id = durableConversationId(reference)!;
   const harness = await f.host.open();
-  assert.deepEqual(await harness.snapshot(BotDoc, id, durableContext), { bot: "bot-ada" });
+  assert.deepEqual(await harness.snapshot(BotDoc, id, durableContext), { bot: "bot-ada", access: null });
   assert.deepEqual(await harness.snapshot(MemoryMarker, id, durableContext), { name: "Ada", model: "hui-e2e/cheap" }, "memory is enabled in the creating commit");
   assert.equal((await (await harness.conversation(id, durableContext))!.agent(durableContext)).instructions, "You are Ada. Answer tersely.");
 

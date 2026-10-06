@@ -1,7 +1,8 @@
 /**
  * Bots in Pi Durable (HUI-18): the document that marks a conversation as a
- * bot's chat, the `bots` prompt section and the `message_bot` tool only those
- * chats get.
+ * bot's chat and holds what it may use, the `bots` prompt section and the
+ * `message_bot` tool only those chats get. A bot's own tools and its access
+ * section live in `durable-bot-access.ts`.
  *
  * The section's extension is in every gateway's default selection and renders
  * nothing without the conversation's `hui.bot` document. The tool lives in an
@@ -12,20 +13,38 @@
 import type { Context } from "@earendil-works/chord";
 import {
   defineDoc, defineEntry, defineExtension, defineTool, section,
-  type ConversationId, type DocumentReader, type Extension, type ToolRegistration,
+  type ConversationId, type DocumentReader, type Extension, type PromptSection, type ToolRegistration,
 } from "@earendil-works/pi-durable";
 import { Type } from "typebox";
 import { BOT_LIMITS } from "../../shared/bots.ts";
 import type { CallRecord } from "../../shared/calls.ts";
 
-/** The bot a conversation is the chat of; `bot` stays empty for every other conversation. A fork stays the bot's. */
-export const BotDoc = defineDoc<{ bot: string }>({
+/** A skill as a bot's list names it: by name and source, as Settings' disabled skills do (its SKILL.md path, or a
+ * bundled skill's stable preference path). */
+export type BotSkillRef = { name: string; path: string };
+
+/** What a bot's chat may use beyond its own tools and OptChat's: tool names and skills. */
+export type BotAccess = { tools: string[]; skills: BotSkillRef[] };
+
+/** The document of a bot's chat; every other conversation has none. */
+export type BotState = {
+  /** The bot whose chat this is; empty for every other conversation. */
+  bot: string;
+  /** Its tools and skills. `null` until recorded: such a chat keeps every tool and skill a session in its directory
+   * gets, which is what bots had before they had lists. */
+  access: BotAccess | null;
+};
+
+/** The bot a conversation is the chat of, and what that chat may use. A fork stays the bot's, with its lists. */
+export const BotDoc = defineDoc<BotState>({
   kind: "hui.bot",
-  version: 1,
+  version: 2,
   scope: "conversation",
   history: "latest",
   fork: "current",
-  initial: () => ({ bot: "" }),
+  initial: () => ({ bot: "", access: null }),
+  // Version 1 had no lists: the chat had everything, and keeps it until they are recorded.
+  migrate: (value) => ({ bot: typeof value["bot"] === "string" ? value["bot"] : "", access: null }),
 });
 
 /**
@@ -48,11 +67,21 @@ export async function conversationBot(reader: DocumentReader, conversationId: Co
   return (await reader.snapshot(BotDoc, conversationId, context))?.bot || undefined;
 }
 
+/** The bot document of a bot's chat; undefined for every other conversation. */
+export async function conversationBotState(reader: DocumentReader, conversationId: ConversationId, context: Context): Promise<BotState | undefined> {
+  const doc = await reader.snapshot(BotDoc, conversationId, context);
+  return doc?.bot ? { bot: doc.bot, access: doc.access ?? null } : undefined;
+}
+
 export type BotsExtensionOptions = {
   /** HUI's agent-tool handler, called as the conversation's bound HUI session. */
   invoke(conversationId: ConversationId, action: string, params: Record<string, unknown>): Promise<unknown>;
   /** The `bots` section of one bot's chat; undefined leaves it out. Byte-stable while the roster is unchanged. */
   section(botId: string): Promise<string | undefined>;
+  /** More tools only bots' chats get, after `message_bot`: their own (`durable-bot-access.ts`). */
+  tools?: readonly ToolRegistration[];
+  /** More sections, inert outside bots' chats, after `bots`. */
+  sections?: readonly PromptSection[];
 };
 
 /** `section`: global, inert outside bots' chats. `tools`: installed, selected by bots' chats only. */
@@ -88,8 +117,8 @@ export function huiBotsExtensions(options: BotsExtensionOptions): { section: Ext
         const bot = await conversationBot(input.read, input.conversationId, context);
         // A roster HUI cannot read (a broken bots.json) leaves the section out; it never fails the request.
         return bot ? await options.section(bot).catch(() => undefined) : undefined;
-      })],
+      }), ...options.sections ?? []],
     }),
-    tools: defineExtension({ name: "hui-bots-tools", tools: [messageBot] }),
+    tools: defineExtension({ name: "hui-bots-tools", tools: [messageBot, ...options.tools ?? []] }),
   };
 }
