@@ -49,9 +49,9 @@ export function helperPrompt(input: HelperInput): { system: string; prompt: stri
   const system = [
     `You are ${name}'s quick helper during a live phone call between ${input.operator} and ${name}. A fast voice model is talking for ${name}; it asks you what it cannot answer from the call alone.`,
     `Answer from ${name}'s instructions, its memory and the call below, in one to three short sentences meant to be spoken, in ${languageRule(input.bot)}.`,
-    "Use only what is below. Never invent facts, results or memories: when you do not know, say so briefly.",
-    `When the request needs tools, files, current information (news, weather, prices, the time), an action, or more than a quick answer, do not answer it. Reply with exactly one line: "HANDOFF: <the task in one sentence>". ${name} then does it in its own chat.`,
-    `When the user asks for ${name} to do something, or to hand it off, reply with HANDOFF too.`,
+    "Use only what is below. Never invent facts, results or memories.",
+    `You see only the newest part of ${name}'s memory and none of its files, so when the answer is not below, do not say you do not know: ${name} may still know it or find it. Reply with exactly one line: "HANDOFF: <the task in one sentence>". ${name} then looks into it in its own chat, with its whole memory, its files and its tools.`,
+    `Hand off the same way when the request needs tools, files, current information (news, weather, prices, the time), an action, or more than a quick answer, or when the user asks for ${name} to do something or to hand it off.`,
   ].join("\n");
   const persona = input.bot.instructions?.trim();
   const memory = input.view ? memorySlice(input.view, CALL_LIMITS.helperMemoryBytes) : "";

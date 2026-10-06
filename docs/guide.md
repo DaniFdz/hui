@@ -423,8 +423,10 @@ The call works like [OpenDots](https://github.com/CopilotKit/OpenDots):
   instructions and recent memory already say, about a second after you stop.
 - **Quick questions go to the bot's helper.** When GPT-Live needs to know
   something, it asks the bot: a helper on the bot's utility model answers from
-  the bot's instructions, its memory and the call so far, in a few seconds. It
-  never waits for the bot's own turn. It has 25 seconds per question; past
+  the bot's instructions, the newest part of its memory and the call so far, in
+  a few seconds. What it cannot see there (older memory, files) it hands to the
+  bot's chat instead of saying it does not know. It never waits for the bot's
+  own turn. It has 25 seconds per question; past
   them GPT-Live says it is taking long and offers to hand it off.
 - **Real work goes to the bot's chat.** What needs tools, files or current
   information arrives in the chat as a message starting with `[call task]`,

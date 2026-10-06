@@ -2746,7 +2746,8 @@ the call's summary) runs on its utility model, `memoryModel` on the record
 (`utilityModel` in a patch is the same field), else Settings' utility model
 (`settings.models.utility`), else the bot's own model; a model that fails hands
 over to the next one. The helper has no tools in this version: it answers from
-memory and the call, and hands off anything that needs a tool.
+the newest 16 KB of the bot's memory and the call, and hands off anything that
+needs a tool or that it cannot find there (older memory, files).
 
 From a terminal, `hui bot add|edit <bot> --call-voice <voice>` sets a bot's
 `voice.live` (`""` goes back to Settings' voice) and `hui bot show` prints it as
