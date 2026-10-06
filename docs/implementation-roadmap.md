@@ -690,6 +690,24 @@ theme, with fitted height, full screen, error notices and click-only links.
 `src/components/widget-card.test.ts`, `src/views/chat/projection.test.ts`,
 `server/runtimes/pi-sdk.test.ts` and `e2e/widgets.browser.md`.
 
+### HUI-20 — Secret requests
+
+Done 2026-10-06. Agents ask the operator for a secret (an API key, a token, a
+password, a one-time code) with the HUI `secret_request` tool instead of the
+chat. The request is a masked *Secret* card in the question dock that leaves
+the session waiting; the gateway writes the answer to a private temporary file
+(`0600` in its own `0700` directory, deleted after 10 minutes or at gateway
+stop, a crashed gateway's at the next start) and the agent receives only its
+path, so the value never reaches the transcript, the model, PI's or Durable's
+stores or diagnostics. Cancel, Stop and a 15-minute expiry end it. The bridge
+now passes a tool call's abort to the gateway handler for PI children and
+Durable alike, and PI children reach it over `node:http`, whose replies may
+take longer than fetch's five minutes. Remote workers do
+not get it yet. Proof: `server/secret-requests.test.ts`,
+`server/agent-tools-bridge.test.ts`, `server/live-sessions.test.ts`,
+`server/runtimes/pi-sdk.test.ts`, `server/runtimes/durable.test.ts` and
+`e2e/secret-requests.browser.md`.
+
 ## Recommended implementation order
 
 `HUI-01 → HUI-02 → HUI-03 → HUI-04 → HUI-05 → HUI-06`, then run HUI-07,

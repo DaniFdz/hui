@@ -1975,13 +1975,18 @@ function renderQuestion(props: HomeProps) {
   const choices = question.method === "confirm"
     ? ["Confirm", "Decline"]
     : question.options ?? [];
+  const secret = question.method === "secret";
   const titleId = sessionControlId(props, "question-title");
+  const reasonId = sessionControlId(props, "question-reason");
   return html`<div class="agent-chat__question-dock" aria-live="polite">
     <form class="session-question-card chat-question-panel" aria-labelledby=${titleId} @submit=${submit}
       @keydown=${(event: KeyboardEvent) => {
         if (event.key === "Escape") {
+          // Consumed either way, or the page's Escape would stop the run. Password
+          // managers close their menus over a secret's field with it, so only
+          // Cancel ends a secret request.
           event.preventDefault();
-          props.onAnswerQuestion({ cancelled: true });
+          if (!secret) props.onAnswerQuestion({ cancelled: true });
           return;
         }
         const target = event.target;
@@ -2009,8 +2014,9 @@ function renderQuestion(props: HomeProps) {
           }
         }
       }}>
-      <header class="chat-question-panel__topline"><strong class="chat-question-panel__title">Question</strong><span class="chat-question-panel__progress">1/1</span></header>
-      <div class="chat-question-panel__heading"><span id=${titleId} class="chat-question-panel__prompt">${question.title || "pi needs your input"}${question.message ? ` — ${question.message}` : ""}</span></div>
+      <header class="chat-question-panel__topline"><strong class="chat-question-panel__title">${secret ? "Secret" : "Question"}</strong><span class="chat-question-panel__progress">1/1</span></header>
+      <div class="chat-question-panel__heading"><span id=${titleId} class="chat-question-panel__prompt">${question.title || "pi needs your input"}${question.message && !secret ? ` — ${question.message}` : ""}</span></div>
+      ${secret ? html`<div class="chat-question-panel__store"><div id=${reasonId}>${question.message}</div><div class="chat-question-panel__store-entry">Kept out of the conversation: the agent gets a temporary file, never the value.</div></div>` : nothing}
       ${question.method === "select" || question.method === "confirm"
         ? html`<input type="hidden" name="answer" value="" /><div class="chat-question-panel__options" role="radiogroup" aria-label=${question.title}>
             ${choices.map((option, index) => html`<button type="button" class="chat-question-panel__option" role="radio" aria-checked="false" tabindex=${index === 0 ? "0" : "-1"} data-number=${String(index + 1)} data-question-choice=${question.method === "confirm" ? String(index === 0) : option}
@@ -2027,8 +2033,11 @@ function renderQuestion(props: HomeProps) {
           </div>`
         : question.method === "editor"
           ? html`<label class="field"><span>Answer</span><textarea class="input" name="answer" aria-label="Answer" rows="6" placeholder=${question.placeholder ?? ""} .value=${question.prefill ?? question.value ?? ""}></textarea></label>`
-          : html`<label class="field"><span>Answer</span><input class="input" name="answer" autocomplete="off" aria-label="Answer" placeholder=${question.placeholder ?? ""} .value=${question.value ?? ""} /></label>`}
-      <footer class="chat-question-panel__footer"><button type="button" class="btn btn--sm chat-question-panel__skip" @click=${() => props.onAnswerQuestion({ cancelled: true })}>Skip</button><button type="submit" class="btn btn--sm primary">Submit</button></footer>
+          : secret
+            // A one-time code to browsers, so they do not offer to save it as this site's password.
+            ? html`<label class="field"><span>Value</span><input class="input" type="password" name="answer" autocomplete="one-time-code" aria-describedby=${reasonId} /></label>`
+            : html`<label class="field"><span>Answer</span><input class="input" name="answer" autocomplete="off" aria-label="Answer" placeholder=${question.placeholder ?? ""} .value=${question.value ?? ""} /></label>`}
+      <footer class="chat-question-panel__footer"><button type="button" class="btn btn--sm chat-question-panel__skip" @click=${() => props.onAnswerQuestion({ cancelled: true })}>${secret ? "Cancel" : "Skip"}</button><button type="submit" class="btn btn--sm primary">Submit</button></footer>
     </form>
   </div>`;
 }

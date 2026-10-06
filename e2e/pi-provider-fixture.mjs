@@ -312,6 +312,24 @@ const server = createServer(async (request, response) => {
     return finish(response);
   }
 
+  // secret_request. E2E_SECRET_REQUEST asks the operator for a secret; once it
+  // is provided, a real bash call reads the file and prints only its length,
+  // so the value itself never reaches this provider, then deletes the file.
+  if (!naming && source.includes("E2E_SECRET_REQUEST")) {
+    toolUse(response, "tool-e2e-secret", "secret_request", { label: "Fixture API key", reason: "The fixture proves an agent can use a secret without seeing it." });
+    return finish(response, "tool_use");
+  }
+  if (latestToolResult?.id === "tool-e2e-secret") {
+    const path = /It is in (\S+) until/u.exec(String(latestToolResult.result))?.[1];
+    if (!path) { text(response, `No secret to use: ${latestToolResult.result}`); return finish(response); }
+    toolUse(response, "tool-e2e-secret-use", "bash", { command: `printf 'Secret length: %s\\n' "$(wc -c < '${path}' | tr -d ' ')" && rm '${path}'` });
+    return finish(response, "tool_use");
+  }
+  if (latestToolResult?.id === "tool-e2e-secret-use") {
+    text(response, "I used the secret in a command without seeing it, then deleted its file.");
+    return finish(response);
+  }
+
   if (source.includes("[HUI subagent completion event]") && source.includes("E2E_STEERING_CHILD")) {
     text(response, "Parent incorporated the child result through steering.");
     return finish(response);

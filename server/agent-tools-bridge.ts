@@ -16,6 +16,8 @@ export type AgentToolInvocation = {
   callerSessionId: string;
   action: string;
   params: Record<string, unknown>;
+  /** Aborts when the tool call does: Stop, or a caller that went away. */
+  signal?: AbortSignal;
 };
 
 type AgentToolHandler = (invocation: AgentToolInvocation) => Promise<unknown>;
@@ -39,7 +41,7 @@ export async function invokeAgentTool(invocation: AgentToolInvocation): Promise<
     throw new Error("Agent tool request is missing callerSessionId, action, or params.");
   }
   if (!handler) throw new Error("Agent tools are not ready.");
-  return handler({ callerSessionId, action, params: invocation.params });
+  return handler({ callerSessionId, action, params: invocation.params, ...(invocation.signal ? { signal: invocation.signal } : {}) });
 }
 
 function sessionForToken(value: string | undefined): string | undefined {
@@ -114,10 +116,14 @@ async function handle(request: IncomingMessage, response: import("node:http").Se
       throw new Error("Agent tool request is missing callerSessionId, action, or params.");
     }
     if (!handler) throw new Error("Agent tools are not ready.");
+    // A PI child aborts its call by dropping the connection.
+    const call = new AbortController();
+    response.once("close", () => { if (!response.writableFinished) call.abort(); });
     const result = await handler({
       callerSessionId,
       action,
       params: params as Record<string, unknown>,
+      signal: call.signal,
     });
     send(response, 200, { ok: true, result });
   } catch (error) {

@@ -340,8 +340,10 @@ test("PI questions use the inline OpenClaw card instead of a modal", () => {
 
   assert.match(source, /class="session-question-card chat-question-panel"/);
   assert.match(source, /Type your own answer here/);
-  assert.match(source, />Skip</);
+  assert.match(source, /secret \? "Cancel" : "Skip"/);
   assert.match(source, />Submit</);
+  // A secret request is masked, kept from password managers and never prefilled.
+  assert.match(source, /<input class="input" type="password" name="answer" autocomplete="one-time-code" aria-describedby=\$\{reasonId\} \/>/);
   assert.doesNotMatch(source, /class="question-dialog"/);
   assert.match(styles, /\.chat-question-panel\s*\{[^}]*gap: 12px;[^}]*padding: 14px;/s);
   assert.match(styles, /\.chat-question-panel__option\s*\{[^}]*padding: 10px 11px;/s);
