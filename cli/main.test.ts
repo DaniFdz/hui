@@ -64,6 +64,14 @@ test("CLI parses bot commands, accepting bot and bots, with their operands and o
     assert.throws(() => parseCli(["bot", "edit", "ada", "--language", language]), /--language must be one of Whisper's language codes, such as en, es, fr, de or ja \(not a name like Spanish\); "" goes back to Auto\./u, language);
   }
   assert.throws(() => parseCli(["bot", "list", "--language", "es"]), /--language is not valid for bot list/u);
+  const look = parseCli(["bot", "add", "--name", "Ada", "--shape", "heart", "--color", "mint"]);
+  assert.deepEqual([look.values.shape, look.values.color], ["heart", "mint"]);
+  for (const shape of ["blob", "round", "Pebble", "TRIANGLE", "heart", "cookie", ""]) assert.equal(parseCli(["bot", "edit", "ada", "--shape", shape]).values.shape, shape, shape);
+  for (const color of ["blue", "Yellow", "#D23CE0", "#123456", ""]) assert.equal(parseCli(["bot", "edit", "ada", "--color", color]).values.color, color, color);
+  assert.equal(parseCli(["bot", "edit", "ada", "--emoji", ""]).values.emoji, "", "\"\" switches the bot to its face");
+  assert.throws(() => parseCli(["bot", "edit", "ada", "--shape", "star"]), /--shape must be one of: blob, round, triangle, heart, cookie; "" goes back to the one its id picks\./u);
+  for (const color of ["red", "#12345", "3a7bfa"]) assert.throws(() => parseCli(["bot", "edit", "ada", "--color", color]), /--color must be one of blue, yellow, magenta, mint, coral, lilac or #rrggbb/u, color);
+  assert.throws(() => parseCli(["bot", "show", "ada", "--shape", "heart"]), /--shape is not valid for bot show/u);
   const edit = parseCli(["bot", "edit", "@ada", "--instructions", "Be brief."]);
   assert.deepEqual([edit.command, edit.operands, edit.values.instructions], ["bot edit", ["@ada"], "Be brief."]);
   const cleared = parseCli(["bot", "edit", "ada", "--model", "", "--thinking", "", "--memory-model", ""]);
