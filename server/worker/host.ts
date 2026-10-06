@@ -45,6 +45,8 @@ const MAX_FILE_BYTES = 100 * 1024 * 1024;
 /** A transcript larger than this is fetched in pages instead of riding along
  * with a frame, which could exceed the frame limit or hold up other sessions. */
 const TRANSCRIPT_PAGE_BYTES = 8 * 1024 * 1024;
+/** How long a bot chat's model request waits for its `bots` section from the gateway before going without it. */
+const BOT_SECTION_TIMEOUT_MS = 10_000;
 
 export type HostInfo = {
   version: number;
@@ -483,11 +485,12 @@ export class WorkerHost {
   }
 
   /** A bot chat's `bots` section, from a connected gateway (the one that owns the bot answers); with none attached the
-   * section is left out, as message_bot cannot reach another bot then either. */
+   * section is left out, as message_bot cannot reach another bot then either. Asked before each of the chat's model
+   * requests, so a gateway that has gone quiet (before the keep-alive drops it) delays a request by seconds at most. */
   async #botSection(botId: string): Promise<string | undefined> {
     for (const peer of [...this.#peers]) {
       if (peer.closed) continue;
-      const reply = await peer.request<{ section?: unknown }>("bot.section", { botId }, 30_000).catch(() => undefined);
+      const reply = await peer.request<{ section?: unknown }>("bot.section", { botId }, BOT_SECTION_TIMEOUT_MS).catch(() => undefined);
       if (typeof reply?.section === "string") return reply.section;
     }
     return undefined;
