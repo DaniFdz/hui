@@ -7,8 +7,10 @@ import {
   ROUTABLE_SETTINGS_PAGES,
   settingsCloseNavigation,
   settingsReturnTarget,
+  type NavigationTarget,
 } from "./navigation.ts";
 import { HUI_PAGES } from "./pages.ts";
+import { isAppRoutePath } from "../../shared/app-routes.ts";
 
 test("home has a stable canonical route", () => {
   assert.deepEqual(resolveNavigation("/"), { target: { kind: "home" }, path: "/" });
@@ -126,4 +128,23 @@ test("closing Settings replaces its history entry instead of pushing the origin 
     target: { kind: "home" },
     replace: true,
   });
+});
+
+test("every route the app can show loads the app again when the page is reloaded", () => {
+  // Listed per kind, so a new kind of route fails typecheck here until it has a sample.
+  const routes: { [K in NavigationTarget["kind"]]: readonly Extract<NavigationTarget, { kind: K }>[] } = {
+    home: [{ kind: "home" }],
+    kanban: [{ kind: "kanban" }],
+    page: HUI_PAGES.filter(isRoutablePage).map((page) => ({ kind: "page" as const, page })),
+    settings: ROUTABLE_SETTINGS_PAGES.map((page) => ({ kind: "settings" as const, page })),
+    session: [{ kind: "session", id: "4f0c2d9e-7a1b-4c3d-9e8f-0a1b2c3d4e5f" }],
+    bot: [{ kind: "bot", id: "4f0c2d9e-7a1b-4c3d-9e8f-0a1b2c3d4e5f" }, { kind: "bot", id: "4f0c bot?#" }],
+  };
+  for (const targets of Object.values(routes)) {
+    for (const target of targets) {
+      // The production server decodes the pathname before it decides (server/static-files.ts).
+      const path = decodeURIComponent(navigationPath(target));
+      assert.ok(isAppRoutePath(path), `${path} must load the app, or reloading it shows a 404`);
+    }
+  }
 });

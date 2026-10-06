@@ -3901,11 +3901,17 @@ export class HuiApp extends HuiElement {
     // The voice goes only while the dialog showed it; otherwise the bot keeps the one it has.
     const voice = this.botDialogVoice() ? { voice: this.botDraftVoice, voiceSpeed: this.botDraftVoiceSpeed, voiceLanguage: this.botDraftVoiceLanguage } : {};
     const draft = { ...values, model: this.botDraftModel, thinking: this.botDraftThinking, memoryModel: this.botDraftMemoryModel, ...voice };
+    const patch = state.mode === "edit" ? botPatchFromDraft(state.bot, draft) : undefined;
+    // Saving an untouched bot changes nothing, and the gateway refuses an empty change.
+    if (patch && !Object.keys(patch).length) {
+      this.closeBotDialog();
+      return;
+    }
     this.botDialogPending = true;
     this.botDialogError = "";
     const request = state.mode === "create"
       ? createBot(botInputFromDraft(draft))
-      : updateBot(state.bot.id, botPatchFromDraft(state.bot, draft));
+      : updateBot(state.bot.id, patch ?? {});
     void request
       .then((bot) => {
         this.closeBotDialog();
