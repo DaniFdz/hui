@@ -32,6 +32,7 @@ function bot(id: string, overrides: Partial<BotView> = {}): BotView {
     createdAt: "2026-10-01T00:00:00.000Z",
     updatedAt: "2026-10-01T00:00:00.000Z",
     status: "idle",
+    soul: false,
     unread: false,
     routines: 0,
     ...overrides,

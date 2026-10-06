@@ -47,13 +47,17 @@ test("CLI parses bot commands, accepting bot and bots, with their operands and o
   assert.equal(parseCli(["bot"]).command, "bot list");
   assert.equal(parseCli(["bots"]).command, "bot list");
   assert.deepEqual({ ...parseCli(["bots", "list", "--archived", "--json"]).values }, { archived: true, json: true });
-  const add = parseCli(["bot", "add", "--name", "Ada", "--title", "Researcher", "--instructions-file", "persona.md", "--cwd", ".",
+  const add = parseCli(["bot", "add", "--name", "Ada", "--title", "Researcher", "--soul-file", "soul.md", "--cwd", ".",
     "--model", "openai/gpt-5", "--thinking", "high", "--memory-model", "openai/gpt-mini", "--emoji", "🦊", "--json"]);
   assert.equal(add.command, "bot add");
   assert.deepEqual(add.operands, []);
   assert.equal(add.values["memory-model"], "openai/gpt-mini");
-  const edit = parseCli(["bot", "edit", "@ada", "--instructions", "Be brief."]);
-  assert.deepEqual([edit.command, edit.operands, edit.values.instructions], ["bot edit", ["@ada"], "Be brief."]);
+  assert.equal(add.values["soul-file"], "soul.md");
+  const edit = parseCli(["bot", "edit", "@ada", "--title", "Lead"]);
+  assert.deepEqual([edit.command, edit.operands, edit.values.title], ["bot edit", ["@ada"], "Lead"]);
+  const soul = parseCli(["bot", "soul", "ada", "--file", "-", "--json"]);
+  assert.deepEqual([soul.command, soul.operands, soul.values.file, soul.values.json], ["bot soul", ["ada"], "-", true]);
+  assert.deepEqual(parseCli(["bot", "soul", "Ada Lovelace"]).operands, ["Ada Lovelace"]);
   const cleared = parseCli(["bot", "edit", "ada", "--model", "", "--thinking", "", "--memory-model", ""]);
   assert.deepEqual([cleared.values.model, cleared.values.thinking, cleared.values["memory-model"]], ["", "", ""], "an empty value clears the choice");
   assert.deepEqual(parseCli(["bot", "send", "ada", "-", "--wait", "--timeout", "90"]).operands, ["ada", "-"]);
@@ -80,7 +84,12 @@ test("CLI parses bot commands, accepting bot and bots, with their operands and o
     [["bot", "send", "ada", "hello", "there"], /quote the message/u],
     [["bot", "send", "ada", "hi", "--timeout", "10"], /--timeout needs --wait/u],
     [["bot", "send", "ada", "hi", "--wait", "--timeout", "0"], /1-3600/u],
-    [["bot", "add", "--name", "Ada", "--instructions", "x", "--instructions-file", "y"], /either --instructions or --instructions-file/u],
+    [["bot", "add", "--name", "Ada", "--instructions", "x"], /Unknown option '--instructions'/u],
+    [["bot", "add", "--name", "Ada", "--instructions-file", "y"], /Unknown option '--instructions-file'/u],
+    [["bot", "edit", "ada", "--soul-file", "x"], /bot edit does not change SOUL\.md: use hui bot soul <bot> --file/u],
+    [["bot", "soul"], /needs <bot>/u],
+    [["bot", "soul", "ada", "--title", "x"], /--title is not valid for bot soul/u],
+    [["bot", "show", "ada", "--file", "x"], /--file is not valid for bot show/u],
     [["bot", "add", "--name", "Ada", "--thinking", "max"], /--thinking must be one of/u],
     [["bot", "add", "--name", "Ada", "--model", "gpt-5"], /--model must be provider\/model/u],
     [["bot", "memory", "ada", "--zoom", "12"], /id\+n/u],
@@ -106,8 +115,10 @@ test("HELP lists every hui bot command", () => {
   for (const line of [
     "hui bot list [--archived] [--json]",
     "hui bot show <bot> [--json]",
-    "hui bot add --name <name> [--title <text>] [--instructions <text> | --instructions-file <path>] [--cwd <dir>]",
-    "hui bot edit <bot> [same flags as add] [--json]",
+    "hui bot add --name <name> [--title <text>] [--soul-file <path|->] [--cwd <dir>]",
+    "hui bot edit <bot> [same flags as add but --soul-file] [--json]",
+    "hui bot soul <bot> [--file <path|->] [--json]",
+    "A new bot starts by asking what you expect from it (talk with\nhui bot chat <handle>), then writes its persona, SOUL.md, itself",
     "hui bot remove <bot> [--json]",
     "hui bot restore <bot> [--json]",
     "hui bot delete <bot> [--json]",

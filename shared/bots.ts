@@ -1,6 +1,7 @@
 /**
  * Bots (HUI-18): named, persistent agents, each with one forever chat whose
- * memory is OptChat. Shared by the gateway, the `hui bot` CLI and the browser.
+ * memory is OptChat and whose persona is the SOUL.md it writes in its first
+ * conversation. Shared by the gateway, the `hui bot` CLI and the browser.
  * The chat itself is an ordinary Durable session (`BotRecord.sessionId`); the
  * session API drives it like any other.
  */
@@ -11,7 +12,8 @@ export const BOT_LIMITS = {
   handle: 32,
   title: 80,
   description: 500,
-  instructions: 20_000,
+  /** SOUL.md, in characters: what a bot's chat reads of it, and what `PUT …/soul` accepts. */
+  soul: 20_000,
   /** One `message_bot` message. */
   message: 20_000,
   /** `lastMessage.text`, a one-line preview. */
@@ -34,9 +36,7 @@ export type BotRecord = {
   /** Its role, one line. */
   title?: string;
   description?: string;
-  /** Standing instructions (persona): the chat's Durable `instructions`. */
-  instructions?: string;
-  /** Absolute working directory of its chat. */
+  /** Absolute working directory of its chat. Its persona is not here: it is SOUL.md in the bot's home folder. */
   cwd: string;
   /** `provider/id` of its chat. */
   model?: string;
@@ -60,7 +60,8 @@ export type BotInput = {
   handle?: string;
   title?: string;
   description?: string;
-  instructions?: string;
+  /** SOUL.md for the new bot, at most 20,000 characters: it starts with this persona and skips the first conversation. */
+  soul?: string;
   /** Absolute or `~/`; absent: a new directory of its own in HUI's configuration. */
   cwd?: string;
   model?: string;
@@ -73,12 +74,41 @@ export type BotInput = {
 
 /**
  * `PATCH /__hui/bots/:id`: only what changes. `""` clears `title`,
- * `description`, `instructions`, `model`, `thinking`, `memoryModel` and
- * `memoryThinking` (a cleared `model` or `thinking` puts the chat back on what
- * a new chat gets: the gateway's default model and thinking level); an avatar
- * key set to `""` clears that key and `avatar: null` clears both.
+ * `description`, `model`, `thinking`, `memoryModel` and `memoryThinking`
+ * (a cleared `model` or `thinking` puts the chat back on what a new chat
+ * gets: the gateway's default model and thinking level); an avatar key set to
+ * `""` clears that key and `avatar: null` clears both. SOUL.md changes through
+ * `PUT /__hui/bots/:id/soul` instead.
  */
-export type BotPatch = Partial<Omit<BotInput, "avatar">> & { avatar?: BotAvatar | null };
+export type BotPatch = Partial<Omit<BotInput, "avatar" | "soul">> & { avatar?: BotAvatar | null };
+
+/** `GET` and `PUT /__hui/bots/:id/soul`: SOUL.md's text, `null` while the bot has none (its first conversation). */
+export type BotSoul = { soul: string | null };
+
+/** The persona file in each bot's home folder. */
+export const BOT_SOUL_FILE = "SOUL.md";
+
+/**
+ * The first line of the message HUI sends a new bot without a soul, so it speaks
+ * first: an ordinary user-role message (like a routine's), which the chat shows
+ * as a note ("<name> was created"), never as the operator's bubble.
+ */
+export const BOT_KICKOFF_MARKER = "[HUI bot created]";
+
+/** The kickoff message: the marker, the bot's name, and what HUI asks of it. */
+export function botKickoffText(name: string): string {
+  return [
+    BOT_KICKOFF_MARKER,
+    `name: ${name.replace(/\s+/gu, " ").trim()}`,
+    "HUI just created you. This message is from HUI, not the operator, who has not written yet: start your first conversation now, as your soul section says.",
+  ].join("\n");
+}
+
+/** The bot's name when `text` is a kickoff message (`""` if it names none); undefined for every other message. */
+export function botKickoffName(text: string): string | undefined {
+  if (text !== BOT_KICKOFF_MARKER && !text.startsWith(`${BOT_KICKOFF_MARKER}\n`)) return undefined;
+  return /^name: (.*)$/mu.exec(text)?.[1]?.trim() ?? "";
+}
 
 /** A bot chat's session status, as `SessionView.status` reports it. */
 export type BotSessionStatus = "idle" | "running" | "waiting" | "starting" | "error" | "reconnecting" | "disconnected";
@@ -108,6 +138,8 @@ export type BotLastMessage = { role: "user" | "assistant"; text: string; at: str
 
 export type BotView = BotRecord & {
   status: BotSessionStatus;
+  /** SOUL.md exists in its home folder; false while the bot has its first conversation. */
+  soul: boolean;
   /** The newest message of its chat, one line of at most 200 characters. */
   lastMessage?: BotLastMessage;
   /** A turn settled while nobody watched the chat. */

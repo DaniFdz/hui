@@ -626,7 +626,6 @@
 .bot-dialog__row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
 .bot-dialog__row:has(.bot-dialog__emoji) { grid-template-columns: minmax(0, 1fr) 96px; }
 .bot-dialog .input-dialog__field { min-width: 0; }
-.bot-dialog__instructions { min-height: 96px; resize: vertical; }
 @media (max-width: 520px) {
   .bot-dialog__row:not(:has(.bot-dialog__emoji)) { grid-template-columns: minmax(0, 1fr); }
 }

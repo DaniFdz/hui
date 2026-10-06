@@ -8,7 +8,7 @@ const RECORD = {
   handle: "scout",
   name: "Scout",
   title: "Research assistant",
-  instructions: "Find things.",
+  instructions: "A gateway from before SOUL.md: ignored.",
   cwd: "/home/me/.config/hui/bots/b1",
   model: "anthropic/claude",
   thinking: "medium",
@@ -17,6 +17,7 @@ const RECORD = {
   createdAt: "2026-10-05T08:00:00.000Z",
   updatedAt: "2026-10-05T09:00:00.000Z",
   status: "running",
+  soul: true,
   lastMessage: { role: "assistant", text: "Done:\n  three   links", at: "2026-10-05T09:00:00.000Z" },
   unread: true,
   memory: {
@@ -38,7 +39,6 @@ test("a complete bot record keeps its fields and narrows display text", () => {
     handle: "scout",
     name: "Scout",
     title: "Research assistant",
-    instructions: "Find things.",
     model: "anthropic/claude",
     thinking: "medium",
     cwd: "/home/me/.config/hui/bots/b1",
@@ -47,6 +47,7 @@ test("a complete bot record keeps its fields and narrows display text", () => {
     createdAt: "2026-10-05T08:00:00.000Z",
     updatedAt: "2026-10-05T09:00:00.000Z",
     status: "running",
+    soul: true,
     lastMessage: { role: "assistant", text: "Done: three links", at: "2026-10-05T09:00:00.000Z" },
     unread: true,
     memory: { messages: 40, built: 38, pending: 2, viewBytes: 92_000, viewLines: 31, waiting: true, failing: { node: "1+4", error: "429 rate limited", since: "2026-10-05T08:59:00.000Z" }, usage: USAGE },
@@ -58,8 +59,8 @@ test("records without identity are skipped and junk lands on safe defaults", () 
   for (const value of [null, "bot", [], { id: "b" }, { id: "b", name: "B" }, { name: "B", sessionId: "s" }, { id: " ", name: "B", sessionId: "s" }]) {
     assert.equal(parseBot(value), undefined, JSON.stringify(value));
   }
-  const bot = parseBot({ id: "b", name: " Bee ", sessionId: "s", status: "dancing", unread: "yes", routines: -3, hidden: "true", avatar: { color: "blue" }, lastMessage: { role: "system", text: "x", at: "now" }, memory: "full" });
-  assert.deepEqual(bot, { id: "b", handle: "", name: "Bee", cwd: "", sessionId: "s", createdAt: "", updatedAt: "", status: "idle", unread: false, routines: 0 });
+  const bot = parseBot({ id: "b", name: " Bee ", sessionId: "s", status: "dancing", soul: "yes", unread: "yes", routines: -3, hidden: "true", avatar: { color: "blue" }, lastMessage: { role: "system", text: "x", at: "now" }, memory: "full" });
+  assert.deepEqual(bot, { id: "b", handle: "", name: "Bee", cwd: "", sessionId: "s", createdAt: "", updatedAt: "", status: "idle", soul: false, unread: false, routines: 0 });
   assert.deepEqual(parseBot({ id: "b", name: "B", sessionId: "s", hidden: true, archived: true })?.hidden, true);
 });
 
@@ -191,22 +192,22 @@ test("reading the list asks for active and archived bots, as the stream lists bo
   }
 });
 
-const EMPTY_DRAFT: BotDraft = { name: "", title: "", instructions: "", cwd: "", emoji: "", model: "", thinking: "", memoryModel: "" };
+const EMPTY_DRAFT: BotDraft = { name: "", title: "", cwd: "", emoji: "", model: "", thinking: "", memoryModel: "" };
 
 test("a new bot sends its name and only the optional fields that were filled in", () => {
   assert.deepEqual(botInputFromDraft({ ...EMPTY_DRAFT, name: "  Scout " }), { name: "Scout" });
   assert.deepEqual(botInputFromDraft({
-    name: "Scout", title: " Researcher ", instructions: "Find things.\n", cwd: " ~/bots/scout ", emoji: "🔭",
+    name: "Scout", title: " Researcher ", cwd: " ~/bots/scout ", emoji: "🔭",
     model: "anthropic/claude", thinking: "high", memoryModel: "openai/mini",
   }), {
-    name: "Scout", title: "Researcher", instructions: "Find things.", cwd: "~/bots/scout",
+    name: "Scout", title: "Researcher", cwd: "~/bots/scout",
     model: "anthropic/claude", thinking: "high", memoryModel: "openai/mini", avatar: { emoji: "🔭" },
   });
 });
 
 test("an edit sends only what changed, clears emptied fields and keeps an untouched workspace out", () => {
   const bot = parseBot(RECORD) as BotView;
-  const unchanged: BotDraft = { name: "Scout", title: "Research assistant", instructions: "Find things.", cwd: bot.cwd, emoji: "🔭", model: "anthropic/claude", thinking: "medium", memoryModel: "" };
+  const unchanged: BotDraft = { name: "Scout", title: "Research assistant", cwd: bot.cwd, emoji: "🔭", model: "anthropic/claude", thinking: "medium", memoryModel: "" };
   assert.deepEqual(botPatchFromDraft(bot, unchanged), {});
   assert.deepEqual(botPatchFromDraft(bot, { ...unchanged, name: "Scout II", title: "", cwd: "" }), { name: "Scout II", title: "" });
   assert.deepEqual(botPatchFromDraft(bot, { ...unchanged, cwd: "/srv/scout", model: "openai/gpt", thinking: "high", memoryModel: "openai/mini" }), { cwd: "/srv/scout", model: "openai/gpt", thinking: "high", memoryModel: "openai/mini" });

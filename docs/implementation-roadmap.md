@@ -681,8 +681,9 @@ restarts. Proof: `server/watchers.test.ts`, `server/watcher-routes.test.ts`,
 Product decision approved by the owner on 2026-10-05 (SPEC.md, "Bots are named
 chats, not an agent selector"): GrokBot/Hermes-style bots beside sessions. The
 sidebar splits into **Agents | Bots**; sessions stay as they are. A bot is a
-named Durable conversation that never ends, with a role, standing instructions,
-its own model and directory; its memory is [OptChat](optchat.md): every message
+named Durable conversation that never ends, with a role, a SOUL.md persona it
+writes in its first conversation, its own model and directory; its memory is
+[OptChat](optchat.md): every message
 is kept in an append-only log, a cheap model compresses it into a tree of
 one-line summaries, and every turn starts fresh from a fixed-size view of the
 whole chat. `hui bot` can do everything the Bots tab can, through the same
@@ -732,6 +733,21 @@ for now. It lands as stacked pull requests:
    `message_bot`, a fresh second turn and every read),
    `server/live-sessions.test.ts`, `cli/main.test.ts` and `cli/bots.test.ts`
    (a fake gateway and a scripted terminal).
+   **After review (2026-10-06):** instructions became SOUL.md plus a first
+   conversation (SPEC.md, "Bots write their own SOUL.md in a first
+   conversation"). Every bot has a home folder with its SOUL.md, rendered as
+   the last prompt section (`soul`) on every request through a resolver the
+   host provides; without it the section is the first conversation, and a bot
+   created without a soul gets a kickoff turn so it speaks first. `soul` on
+   create, `GET`/`PUT /__hui/bots/:id/soul`, `BotView.soul` (cached per chat
+   state), the `BotSouls` port, delete removing SOUL.md, a one-time migration
+   of existing instructions, and `hui bot add --soul-file` / `hui bot soul`.
+   Proof: `server/bots.test.ts`, `server/bot-service.test.ts` (kickoff,
+   soul routes, cache, migration, delete), `server/runtimes/durable-bots.test.ts`
+   (the section in real requests, the first conversation's text, truncation, a
+   host without a resolver), `server/bot-routes.test.ts` (a real gateway: the
+   first turn starts by itself, the bot writes SOUL.md with its write tool and
+   the next request carries it, the routes and guards), `cli/*.test.ts`.
 3. **Bots tab** (UI; done 2026-10-05): Settings → Sessions → *Show the Bots
    tab* (off by default); the Agents | Bots switch in the sidebar's top row
    (renamed from Sessions | Bots and moved there on 2026-10-06, beside the

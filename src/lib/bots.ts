@@ -22,11 +22,11 @@ const CREATE_BOT_TIMEOUT_MS = 60_000;
 export type BotMemory = { status: BotMemoryStatus; view: string };
 
 /** The New/Edit dialog as typed. Empty model fields mean the default: the
- * gateway's model, the default thinking level, the bot's own model for memory. */
+ * gateway's model, the default thinking level, the bot's own model for memory.
+ * The persona is not here: the bot writes its SOUL.md in its first conversation. */
 export type BotDraft = {
   name: string;
   title: string;
-  instructions: string;
   /** Empty: a private folder the gateway creates for the bot. */
   cwd: string;
   emoji: string;
@@ -120,8 +120,8 @@ export function parseBot(value: unknown): BotView | undefined {
   const avatar = parseAvatar(value["avatar"]);
   const lastMessage = parseLastMessage(value["lastMessage"]);
   const memory = parseBotMemoryStatus(value["memory"]);
-  const optional: Partial<Record<"title" | "description" | "instructions" | "model" | "thinking" | "memoryModel" | "memoryThinking", string>> = {};
-  for (const [key, maximum] of [["title", 200], ["description", 2_000], ["instructions", 20_000], ["model", 200], ["thinking", 40], ["memoryModel", 200], ["memoryThinking", 40]] as const) {
+  const optional: Partial<Record<"title" | "description" | "model" | "thinking" | "memoryModel" | "memoryThinking", string>> = {};
+  for (const [key, maximum] of [["title", 200], ["description", 2_000], ["model", 200], ["thinking", 40], ["memoryModel", 200], ["memoryThinking", 40]] as const) {
     const entry = optionalText(value[key], maximum);
     if (entry) optional[key] = entry;
   }
@@ -138,6 +138,7 @@ export function parseBot(value: unknown): BotView | undefined {
     createdAt: text(value["createdAt"], 100),
     updatedAt: text(value["updatedAt"], 100),
     status,
+    soul: value["soul"] === true,
     ...(lastMessage ? { lastMessage } : {}),
     unread: value["unread"] === true,
     ...(memory ? { memory } : {}),
@@ -283,7 +284,6 @@ export function botInputFromDraft(draft: BotDraft): BotInput {
   const optional = (value: string) => value.trim() || undefined;
   const entries = {
     title: optional(draft.title),
-    instructions: optional(draft.instructions),
     cwd: optional(draft.cwd),
     model: optional(draft.model),
     thinking: optional(draft.thinking),
@@ -298,15 +298,15 @@ export function botInputFromDraft(draft: BotDraft): BotInput {
 }
 
 /** Edit payload: only what changed, so an untouched workspace never trips the
- * gateway's "only while idle" rule. An emptied field clears: title and
- * instructions go, the memory model goes back to the bot's own, and an empty
+ * gateway's "only while idle" rule. An emptied field clears: the title goes,
+ * the memory model goes back to the bot's own, and an empty
  * model or thinking level ("Gateway default") puts the chat back on what a new
  * chat gets. An avatar key set to "" clears that key. */
 export function botPatchFromDraft(bot: BotView, draft: BotDraft): BotPatch {
   const patch: BotPatch = {};
   const name = draft.name.trim();
   if (name && name !== bot.name) patch.name = name;
-  for (const key of ["title", "instructions", "model", "thinking", "memoryModel"] as const) {
+  for (const key of ["title", "model", "thinking", "memoryModel"] as const) {
     const value = draft[key].trim();
     if (value !== (bot[key] ?? "")) patch[key] = value;
   }

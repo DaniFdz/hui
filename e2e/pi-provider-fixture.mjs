@@ -229,6 +229,21 @@ const server = createServer(async (request, response) => {
     text(response, `message_bot answered: ${typeof latestToolResult.result === "string" ? latestToolResult.result : JSON.stringify(latestToolResult.result)}`);
     return finish(response);
   }
+  // A new bot's first turn, which HUI starts: the first conversation's opening question.
+  if (source.includes("[HUI bot created]")) {
+    text(response, "Hi, I'm new here. What would you like me to look after for you?");
+    return finish(response);
+  }
+  // A bot writing its own SOUL.md with the write tool, at the path its soul section names.
+  if (source.includes("E2E_WRITE_SOUL")) {
+    const path = /(\/\S+\/SOUL\.md)/u.exec(flattenedText(body.system))?.[1] ?? "SOUL.md";
+    toolUse(response, "tool-e2e-write-soul", "write", { path, content: "# Who I am\nE2E_SOUL_TEXT: a terse fixture bot.\n" });
+    return finish(response, "tool_use");
+  }
+  if (latestToolResult?.id === "tool-e2e-write-soul") {
+    text(response, "I wrote my SOUL.md. Change it in the Soul tab, or just tell me.");
+    return finish(response);
+  }
 
   if (source.includes("E2E_SHARED_TERMINAL")) {
     toolUse(response, "tool-terminal-list", "terminal", { action: "list" });

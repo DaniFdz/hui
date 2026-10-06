@@ -1,13 +1,15 @@
 /**
  * The Durable side of bots' chats (HUI-18): creating a bot's conversation in
  * one commit with its agent, its `hui.bot` document and OptChat; changing its
- * instructions or directory; the model and thinking level a new chat would get;
- * and reading its newest message while no session has it loaded. The gateway
- * is the store's only writer, so these run in it.
+ * directory (or clearing the instructions a bot had before SOUL.md); the model
+ * and thinking level a new chat would get; and reading its newest message while
+ * no session has it loaded. The gateway is the store's only writer, so these
+ * run in it. A bot's persona is not in its conversation: it is the SOUL.md the
+ * `soul` section reads on every request.
  */
 import { clampThinkingLevel, type Message, type ModelThinkingLevel } from "@earendil-works/pi-ai";
 import { ResetEntry, SystemEntry, type Conversation, type EntryRecord } from "@earendil-works/pi-durable";
-import { previewLine } from "../shared/bots.ts";
+import { botKickoffName, previewLine } from "../shared/bots.ts";
 import type { BotMemory } from "./bot-memory.ts";
 import type { BotConversations, BotStoredMessage } from "./bot-service.ts";
 import { BotInputError, BotNotFoundError } from "./bots.ts";
@@ -44,14 +46,14 @@ export function durableBotConversations(host: DurableHost, memory: BotMemory): B
       const model = await initialModel(host, input.cwd, input.model);
       const known = model ? host.models.getModel(model.provider, model.modelId) : undefined;
       const thinking = input.thinking ?? defaultThinking(host, input.cwd);
-      // One commit: no prompt can reach the chat before its persona, its bot document and its memory are in place.
+      // One commit: no prompt can reach the chat before its bot document (which brings its soul section) and its memory
+      // are in place.
       const created = await harness.createConversation({
         ownership: { kind: "ownerless" },
         agent: {
           cwd: input.cwd,
           ...(model ? { model } : {}),
           ...(thinking && known ? { thinkingLevel: clampThinkingLevel(known, thinking as ModelThinkingLevel) } : {}),
-          ...(input.instructions ? { instructions: input.instructions } : {}),
         },
         init: async (tx, conversationId) => {
           const doc = await tx.doc(BotDoc, conversationId);
@@ -105,6 +107,8 @@ function shownMessage(entry: EntryRecord): BotStoredMessage | undefined {
   for (const message of [...entry.model ?? []].reverse() as Message[]) {
     if ((message.role !== "user" && message.role !== "assistant") || isCustomInput(message)) continue;
     const raw = textOf(message);
+    // HUI's kickoff is a note in the chat, not a message.
+    if (message.role === "user" && botKickoffName(raw) !== undefined) continue;
     const text = previewLine(message.role === "user" ? restoreAttachmentNames(raw).text : raw);
     if (!text) continue;
     const timestamp = (message as { timestamp?: unknown }).timestamp;

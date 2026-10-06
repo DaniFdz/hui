@@ -32,9 +32,10 @@ export const HELP = `Usage:
   hui workers remove <name|id> [--json]
   hui bot list [--archived] [--json]
   hui bot show <bot> [--json]
-  hui bot add --name <name> [--title <text>] [--instructions <text> | --instructions-file <path>] [--cwd <dir>]
+  hui bot add --name <name> [--title <text>] [--soul-file <path|->] [--cwd <dir>]
               [--model <provider/model>] [--thinking <level>] [--memory-model <provider/model>] [--emoji <e>] [--json]
-  hui bot edit <bot> [same flags as add] [--json]
+  hui bot edit <bot> [same flags as add but --soul-file] [--json]
+  hui bot soul <bot> [--file <path|->] [--json]
   hui bot remove <bot> [--json]
   hui bot restore <bot> [--json]
   hui bot delete <bot> [--json]
@@ -68,7 +69,11 @@ on edit replaces the list. Edit changes only the fields given; a new command
 applies the next time the worker connects.
 Bots are named agents with one forever chat each, managed through the running
 gateway like the Bots tab; "bots" works as "bot". <bot> is an id, a handle or
-an exact name. On edit, --model "" and --thinking "" go back to the model and
+an exact name. A new bot starts by asking what you expect from it (talk with
+hui bot chat <handle>), then writes its persona, SOUL.md, itself; --soul-file
+gives it one instead (- reads stdin) and skips that first conversation. Soul
+prints SOUL.md; --file replaces it, and an empty file removes it so the bot asks
+again. On edit, --model "" and --thinking "" go back to the model and
 thinking level a new chat gets, --memory-model "" to the chat's own model.
 Remove archives: the chat transcript and memory are kept and its routines are
 disabled. Delete then removes an archived bot for good: its routines and chat
@@ -91,7 +96,7 @@ export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {
     "no-open": { type: "boolean" }, from: { type: "string" }, sha256: { type: "string" }, rollback: { type: "boolean" },
     check: { type: "boolean" }, fix: { type: "boolean" }, nightly: { type: "boolean" },
     name: { type: "string" }, command: { type: "string" }, "extra-path": { type: "string", multiple: true },
-    archived: { type: "boolean" }, title: { type: "string" }, instructions: { type: "string" }, "instructions-file": { type: "string" },
+    archived: { type: "boolean" }, title: { type: "string" }, "soul-file": { type: "string" }, file: { type: "string" },
     cwd: { type: "string" }, model: { type: "string" }, thinking: { type: "string" }, "memory-model": { type: "string" },
     emoji: { type: "string" }, wait: { type: "boolean" }, timeout: { type: "string" }, zoom: { type: "string" }, html: { type: "string" },
     prompt: { type: "string" }, at: { type: "string" }, every: { type: "string" }, cron: { type: "string" }, timezone: { type: "string" },
@@ -114,12 +119,14 @@ export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {
     update: ["from", "sha256", "rollback", "check", "json", "nightly"], desktop: [], "install-app": [],
     doctor: ["fix", "json"], "workers list": ["json"], "workers add": ["name", "command", "extra-path", "json"],
     "workers edit": ["name", "command", "extra-path", "json"], "workers remove": ["json"],
-    "bot list": ["archived", "json"], "bot show": ["json"], "bot add": [...BOT_FIELDS, "json"], "bot edit": [...BOT_FIELDS, "json"],
+    "bot list": ["archived", "json"], "bot show": ["json"], "bot add": [...BOT_FIELDS, "soul-file", "json"], "bot edit": [...BOT_FIELDS, "json"],
+    "bot soul": ["file", "json"],
     "bot remove": ["json"], "bot restore": ["json"], "bot delete": ["json"], "bot chat": [], "bot send": ["wait", "timeout", "json"], "bot stop": ["json"],
     "bot memory": ["zoom", "html", "json"], "bot routine list": ["json"],
     "bot routine add": ["name", "prompt", "at", "every", "cron", "timezone", "json"], "bot routine run": [], "bot routine remove": ["json"],
   };
   if (!command || !allowed[command] || extra.length || first !== "gateway" && first !== "workers" && !bots && second) throw new Error("Unknown command. Run hui --help.");
+  if (command === "bot edit" && values["soul-file"] !== undefined) throw new Error("bot edit does not change SOUL.md: use hui bot soul <bot> --file <path|->.");
   for (const flag of Object.keys(values)) if (!allowed[command]!.includes(flag)) throw new Error(`--${flag} is not valid for ${command}.`);
   if (bots) checkBotCommand(command, operands, values);
   if (["gateway start", "gateway run", "gateway restart"].includes(command)) {
@@ -140,10 +147,10 @@ export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {
 }
 
 /** The flags `bot add` and `bot edit` share. */
-const BOT_FIELDS = ["name", "title", "instructions", "instructions-file", "cwd", "model", "thinking", "memory-model", "emoji"];
+const BOT_FIELDS = ["name", "title", "cwd", "model", "thinking", "memory-model", "emoji"];
 /** Operands each bot command takes, in order. */
 const BOT_OPERANDS: Record<string, readonly string[]> = {
-  "bot list": [], "bot add": [], "bot show": ["bot"], "bot edit": ["bot"], "bot remove": ["bot"], "bot restore": ["bot"], "bot delete": ["bot"],
+  "bot list": [], "bot add": [], "bot show": ["bot"], "bot edit": ["bot"], "bot soul": ["bot"], "bot remove": ["bot"], "bot restore": ["bot"], "bot delete": ["bot"],
   "bot chat": ["bot"], "bot send": ["bot", "message"], "bot stop": ["bot"], "bot memory": ["bot"],
   "bot routine list": ["bot"], "bot routine add": ["bot"], "bot routine run": ["bot", "routine"], "bot routine remove": ["bot", "routine"],
 };
@@ -159,7 +166,6 @@ function checkBotCommand(command: string, operands: readonly string[], values: R
   const given = (flag: string) => values[flag] !== undefined;
   if (command === "bot add" && !values["name"]) throw new Error("bot add needs --name.");
   if (command === "bot edit" && !BOT_FIELDS.some(given)) throw new Error(`bot edit needs at least one of ${BOT_FIELDS.map((flag) => `--${flag}`).join(", ")}.`);
-  if (given("instructions") && given("instructions-file")) throw new Error("Use either --instructions or --instructions-file.");
   // `""` clears a choice: the gateway's default for the chat, the chat's own model for the memory.
   const cleared = (flag: string) => values[flag] === "";
   if (given("thinking") && !cleared("thinking") && !(BOT_THINKING_LEVELS as readonly string[]).includes(String(values["thinking"]))) throw new Error(`--thinking must be one of: ${BOT_THINKING_LEVELS.join(", ")}.`);

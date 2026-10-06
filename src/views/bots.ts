@@ -523,7 +523,7 @@ export function renderBotPanel(props: BotPanelProps) {
 /* ── New / Edit bot dialog ────────────────────────────────────────────────── */
 
 /** The dialog's text fields; the pickers are controlled by the app. */
-export type BotFormValues = Pick<BotDraft, "name" | "title" | "instructions" | "cwd" | "emoji">;
+export type BotFormValues = Pick<BotDraft, "name" | "title" | "cwd" | "emoji">;
 
 export type BotDialogProps = {
   mode: "create" | "edit";
@@ -567,7 +567,6 @@ export function renderBotDialog(props: BotDialogProps) {
       props.onSubmit({
         name: formText(data, "name"),
         title: formText(data, "title"),
-        instructions: formText(data, "instructions"),
         cwd: formText(data, "cwd"),
         emoji: formText(data, "emoji"),
       });
@@ -584,8 +583,6 @@ export function renderBotDialog(props: BotDialogProps) {
       </div>
       <label class="field input-dialog__field"><span>Title</span>
         <input class="settings-input" name="title" type="text" maxlength=${BOT_LIMITS.title} autocomplete="off" placeholder="Research assistant" .value=${editing?.title ?? ""} ?disabled=${props.pending} /></label>
-      <label class="field input-dialog__field"><span>Instructions</span>
-        <textarea class="settings-input bot-dialog__instructions" name="instructions" rows="5" maxlength=${BOT_LIMITS.instructions} placeholder="Who the bot is, what it looks after and how it should work." .value=${editing?.instructions ?? ""} ?disabled=${props.pending}></textarea></label>
       <div class="bot-dialog__row">
         <div class="field input-dialog__field"><span>Model</span>
           ${renderPicker({ label: "Model", value: props.model, disabled: props.pending, searchable: true, searchPlaceholder: "Search models",
