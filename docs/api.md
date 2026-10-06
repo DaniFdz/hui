@@ -1166,6 +1166,7 @@ read the chat's memory, 500 for storage failures; other methods answer 405.
 | `GET /__hui/bots/:id` | 200 `{ bot }` | |
 | `PATCH /__hui/bots/:id` | 200 `{ bot }` | Only what changes; `""` clears `title`, `description`, `instructions`, `model`, `thinking` (back to the gateway defaults, above), `memoryModel`, `memoryThinking` (back to the chat's model and OptChat's default level); an avatar key `""` clears it, `avatar: null` clears both; a voice `profile: ""`, `speed: null` or `language: ""` (back to Auto) clears that key, `voice: null` clears all three (other voice keys are 400, and so is a `language` that is not one of Whisper's codes, a name such as `Spanish` included). The handle changes only when given (409 if taken). `instructions` reconfigures the conversation; `model`/`thinking` go through the live chat (`setModel`/`setThinking`); `name` and the memory fields reconfigure OptChat, `name` also the session title; `cwd` is accepted only while the chat is idle (409 otherwise) and boots its runtime again there; a turn that starts during that edit (a routine, say) makes it answer 409 after the conversation and the chat's session record already moved, with the bot record still naming the old directory, so repeat the edit once the bot is idle to finish it. Archived bots are 409 |
 | `DELETE /__hui/bots/:id` | 200 `{ bot }` | Archives, deleting nothing: marks the bot, disables every Automation task aimed at its chat, withdraws messages still in HUI's follow-up queue for it, stops a running turn and archives the chat's session record. Idempotent |
+| `DELETE /__hui/bots/:id?permanent=1` | 200 `{ ok: true }` | Deletes an archived bot for good; an active bot is 409 (archive it first). Removes every Automation task aimed at its chat, then the chat's session record as `DELETE /__hui/sessions/:id` does (its runtime stops; the conversation and its memory stay in the Durable store, which HUI no longer opens), then the bot. A directory HUI made for the bot goes only while empty: the bot's files never do. Each step can run again, so deleting again finishes an interrupted attempt; afterwards the bot is 404 |
 | `POST /__hui/bots/:id/restore` | 200 `{ bot }` | Unarchives the bot and its session record; routines stay disabled |
 | `POST /__hui/bots/:id/messages` | 202 or 200 | See below |
 | `POST /__hui/bots/:id/stop` | 200 `{ bot }` | Aborts the chat's running turn; an idle bot is unchanged; 409 while its chat starts |
@@ -1204,7 +1205,8 @@ data: {"revision":12,"ids":["<id>","<id>"],"upserts":[/* BotView[] */]}
 
 Bot chats refuse what would reset, shorten, fork or delete them, with 409 and a
 message naming the bot: `POST /__hui/sessions/:id/clear`, `POST …/compact`,
-`POST …/rewind` and `DELETE /__hui/sessions/:id` (archive the bot instead).
+`POST …/rewind` and `DELETE /__hui/sessions/:id` (archive the bot instead; an
+archived bot can then be deleted with `DELETE /__hui/bots/:id?permanent=1`).
 Model and thinking changes stay allowed. The prompt route already refuses
 `/clear` and `/compact` text for every session.
 

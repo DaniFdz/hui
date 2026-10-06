@@ -427,6 +427,11 @@ export async function restoreBot(id: string): Promise<BotView> {
     "The restored bot did not come back.");
 }
 
+/** Deletes an archived bot for good: its routines and chat go from HUI; its files stay. */
+export async function deleteBot(id: string): Promise<void> {
+  await fetchJson<unknown>(botUrl(id, "?permanent=1"), { method: "DELETE", signal: AbortSignal.timeout(30_000) });
+}
+
 /** 503: the gateway cannot read this chat's memory (no OptChat for it, or a
  * store another process owns). Unlike a failed read, asking again on every
  * change cannot fix that; Retry still asks. */

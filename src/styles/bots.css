@@ -8,7 +8,7 @@
  * divider that spans the row, in sentence case, so it reads as that choice
  * rather than as one more uppercase section label. ── */
 .app-shell .sidebar-brand:has(> .sidebar-switch) {
-  margin-block-end: 16px;
+  margin-block-end: 8px;
   border-bottom: 1px solid var(--border);
 }
 .app-shell .sidebar-switch {
@@ -33,7 +33,7 @@
   height: var(--shell-sidebar-top-row-height);
   padding: 0 8px;
   border: 0;
-  border-radius: var(--radius-md) var(--radius-md) 0 0;
+  border-radius: 0;
   background: transparent;
   color: var(--muted);
   font: inherit;
@@ -41,10 +41,10 @@
   font-weight: 600;
   cursor: var(--cursor-action, pointer);
 }
-/* Only where a pointer hovers: a tap would leave the tint on a touch screen. */
+/* A hovered tab only brightens its label: a tinted block over the divider
+ * read as a raised tab. Only where a pointer hovers, so a tap leaves nothing. */
 @media (hover: hover) {
   .app-shell .sidebar-tabs__tab:hover {
-    background: color-mix(in srgb, var(--bg-hover) 78%, transparent);
     color: var(--text);
   }
 }
@@ -142,6 +142,11 @@
 }
 
 /* ── roster rows (session row anatomy, two lines) ── */
+/* The Bots tab has no navigation above its list, so the list starts right under
+ * the tab row, and its header lines up with the avatars, as Show archived and
+ * the archived rows do, rather than with the Agents tab's nav labels. */
+.app-shell .sidebar-sessions--bots { margin-top: 4px; }
+.app-shell .sidebar-sessions--bots > .sidebar-recent-sessions__toolbar { padding-inline-start: 14px; }
 .app-shell .bot-roster__rows { gap: 2px; }
 .app-shell .session-row-wrap.bot-row { min-height: 48px; }
 .app-shell .bot-row .bot-row__link {
@@ -264,6 +269,33 @@
 .app-shell .bot-archived-row__name { color: var(--text); font-size: calc(13px * var(--control-ui-text-scale)); font-weight: 550; }
 .app-shell .bot-archived-row__meta { color: var(--muted); font-size: calc(12px * var(--control-ui-text-scale)); }
 .app-shell .bot-archived-row__restore { flex: none; }
+/* Delete, an icon beside Restore as tall as it, red only under the pointer.
+ * Where a pointer hovers, it shows on the row the pointer or the keyboard is
+ * on, like the roster's ⋯ menu, so names keep their room; meanwhile it stays
+ * in the tab order and the accessibility tree. A touch screen always shows it. */
+.app-shell .bot-archived-row__delete {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  padding: 8px;
+  padding-block: calc(6px + (1lh - 14px) / 2);
+  color: var(--muted);
+}
+.app-shell .bot-archived-row__delete svg { width: 14px; height: 14px; }
+@media (hover: hover) {
+  .app-shell .bot-archived-row:not(:hover, :focus-within) .bot-archived-row__delete {
+    width: 0;
+    margin-inline-start: -10px;
+    padding-inline: 0;
+    border-width: 0;
+    overflow: hidden;
+    opacity: 0;
+  }
+  .app-shell .bot-archived-row__delete:not(:disabled):hover {
+    background: var(--danger-subtle);
+    color: var(--danger);
+  }
+}
 
 /* ── bot view: the chat with its docked panel ── */
 .app-shell > .content--chat:has(> .bot-workspace) { gap: 0; padding: 0; }

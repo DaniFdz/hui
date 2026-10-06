@@ -1,5 +1,5 @@
 /**
- * Bots (HUI-18): create, edit, archive and talk to them.
+ * Bots (HUI-18): create, edit, archive, delete and talk to them.
  *
  * A bot's chat is an ordinary Durable session registered through New
  * Session's code path, and its record carries `bot`; the bot registry
@@ -76,6 +76,8 @@ export type BotConversations = {
 export type BotRoutines = {
   tasks(): Promise<readonly AutomationTask[]>;
   disable(task: AutomationTask): Promise<void>;
+  /** Deletes a routine of a bot that is deleted. */
+  remove(task: AutomationTask): Promise<void>;
 };
 
 export type BotServiceDeps = {
@@ -85,7 +87,7 @@ export type BotServiceDeps = {
   updateSessions(mutate: (records: readonly SessionRecord[]) => readonly SessionRecord[]): Promise<unknown>;
   /** New Session's path: validates the body, writes the record with `bot` and the conversation, starts its runtime. */
   createSession(body: Record<string, unknown>, bot: { id: string; piSessionFile: string }): Promise<SessionRecord>;
-  /** Removes a session record whose bot could not be registered. */
+  /** Deletes a bot chat's session record and stops its runtime: after a failed create, or with its bot. */
   removeSession(id: string): Promise<void>;
   conversations: BotConversations;
   memory: BotMemory;
@@ -370,6 +372,26 @@ export class BotService {
     });
     await this.#deps.updateSessions((records) => records.map((record) => record.id === bot.sessionId && record.archived ? { ...record, archived: undefined } : record));
     return this.#viewOf(bot);
+  }
+
+  /**
+   * Deletes an archived bot for good. Archiving stays the step that can be
+   * undone, so an active bot is refused. Removes every Automation task aimed at
+   * its chat, deletes the chat's session record (its runtime stops), then the
+   * bot. As with a deleted session, its conversation and memory stay in the
+   * Durable store, which HUI no longer opens. A folder HUI made for the bot goes
+   * only while empty: the bot's files never do. Each step can run again, so
+   * deleting again finishes what an interrupted attempt left.
+   */
+  async delete(target: string): Promise<void> {
+    const bot = await this.resolve(target);
+    if (!bot.archived) throw new BotConflictError(`@${bot.handle} is not archived. Archive it before deleting it.`);
+    for (const task of (await this.#deps.routines.tasks()).filter((task) => task.sessionId === bot.sessionId)) {
+      await this.#deps.routines.remove(task);
+    }
+    if ((await this.#deps.readSessions()).some((record) => record.id === bot.sessionId)) await this.#deps.removeSession(bot.sessionId);
+    if (bot.cwd === join(this.#botsDir, bot.id)) await rmdir(bot.cwd).catch(() => {});
+    await this.#registry.update((bots) => ({ bots: bots.filter((candidate) => candidate.id !== bot.id), result: undefined }));
   }
 
   /**

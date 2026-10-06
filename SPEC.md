@@ -1166,8 +1166,10 @@ everything the Bots tab can, through the same routes.
   leaves the model and thinking level to the gateway, and choosing it when
   editing clears the bot's own. A row's menu offers Edit, Hide/Unhide (*Show
   hidden* while any are hidden) and Archive, confirmed, with a Restore toast;
-  *Show archived* (while any are archived) lists archived bots with Restore,
-  and an archived bot's chat opens again only once restored. A bot opens at
+  *Show archived* (while any are archived) lists archived bots with Restore
+  and Delete (an icon that shows on the row under the pointer or keyboard, and
+  always on touch screens; a confirmation says what goes and what stays), and
+  an archived bot's chat opens again only once restored. A bot opens at
   `/bots/<id>` as its one chat in the ordinary session pane, its header
   showing avatar, name, role and status;
   assistant turns carry the bot's name, `/clear`, `/compact`, Compact now and
