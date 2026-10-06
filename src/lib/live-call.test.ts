@@ -3,7 +3,7 @@ import { test } from "node:test";
 
 import { CALL_LIMITS, type CallDelegationResult, type CallLine, type CallTaskResult } from "../../shared/calls.ts";
 import {
-  ActivityGate, CallTranscript, delegationAppends, initialLiveCallState, LiveCall, livePhaseOf, MIC_GATE, parseLiveEvent, reduceLiveCall, sessionAppends, VOICE_GATE,
+  ActivityGate, CallTranscript, delegationAppends, GREETING_FALLBACK_MS, initialLiveCallState, LiveCall, livePhaseOf, MIC_GATE, parseLiveEvent, reduceLiveCall, sessionAppends, VOICE_GATE,
   type LiveCallPlatform, type LiveConnectionHandlers, type LiveEvent,
 } from "./live-call.ts";
 
@@ -211,18 +211,21 @@ function platform(options: { connect?: () => Promise<void>; micError?: Error } =
   };
 }
 
-test("a call greets once connected, follows the audio for its phase and writes every finished turn", async () => {
+test("a call greets once its session started, follows the audio for its phase and writes every finished turn", async () => {
   const p = platform();
   const call = new LiveCall(p.live, { botName: "Juno" });
   await call.start();
   assert.equal(call.state.phase, "connecting");
   p.open();
   assert.equal(call.state.phase, "listening");
+  assert.deepEqual(p.sent, [], "the greeting waits for session.started");
+  p.message(EVENTS.started);
   assert.deepEqual(p.sent, sessionAppends("speakable", "The call just connected. Greet the user briefly, as yourself."));
   p.open();
+  p.message(EVENTS.started);
+  p.advance(GREETING_FALLBACK_MS);
   assert.equal(p.sent.length, 1, "one greeting");
 
-  p.message(EVENTS.started);
   p.message('{"type":"turn.created","turn":{"id":"turn_A0","role":"assistant","transcript":" Hey!"}}');
   p.setVoice(0.8);
   p.advance(50);
@@ -233,7 +236,7 @@ test("a call greets once connected, follows the audio for its phase and writes e
   p.advance(600);
   assert.equal(call.state.phase, "listening");
   await flush();
-  assert.deepEqual(p.lines, [[{ role: "assistant", text: "Hey! Good to hear from you.", at: 1_000 }]]);
+  assert.deepEqual(p.lines, [[{ role: "assistant", text: "Hey! Good to hear from you.", at: 1_000 + GREETING_FALLBACK_MS }]]);
 
   p.setMic(0.7);
   p.advance(50);
@@ -310,6 +313,18 @@ test("a task handed to the bot's chat is followed: its answer is spoken while th
   await flush();
   assert.equal(p.tasks[1]!.signal.aborted, true);
   assert.equal(p.sent.filter((event) => event["type"] === "session.context.append").length, p.sent.slice(0, before).filter((event) => event["type"] === "session.context.append").length, "nothing more is said");
+});
+
+test("without session.started, the greeting is asked for after a while", async () => {
+  const p = platform();
+  const call = new LiveCall(p.live, { botName: "Juno" });
+  await call.start();
+  p.open();
+  p.advance(GREETING_FALLBACK_MS - 1);
+  assert.deepEqual(p.sent, []);
+  p.advance(1);
+  assert.deepEqual(p.sent, sessionAppends("speakable", "The call just connected. Greet the user briefly, as yourself."));
+  void call;
 });
 
 test("a call ends by itself after its time limit", async () => {

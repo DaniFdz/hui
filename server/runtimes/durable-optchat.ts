@@ -27,7 +27,7 @@ import { OptChatMemory, OPTCHAT_DEFAULTS, type OptChatStatus } from "../optchat/
 import { masterPrompt, viewDoc } from "../optchat/prompts.ts";
 import { LineFile, readLines, syncDirectory, type Kind } from "../optchat/store.ts";
 import { recordDiagnosticEvent } from "../observability.ts";
-import { callRecordLines } from "../../shared/calls.ts";
+import { callRecordLines, parseCallRecord } from "../../shared/calls.ts";
 import { CallEntry } from "./durable-bots.ts";
 
 /** A conversation's OptChat choice. `name` is the agent's display name in the prompts; `model` ("provider/id") and
@@ -173,7 +173,9 @@ const contentText = (content: string | readonly { type: string; text?: string }[
 export function projectEntry(entry: EntryRecord): ProjectedLine[] {
   // A call with the bot: its transcript (both sides, the helper's answers, the hand-offs), then its summary.
   if (CallEntry.is(entry)) {
-    const { transcript, summary } = callRecordLines(entry.data);
+    const record = parseCallRecord(entry.data);
+    if (!record?.lines.length) return [];
+    const { transcript, summary } = callRecordLines(record);
     return [{ kind: "user", text: transcript }, ...(summary ? [{ kind: "talk" as const, text: summary }] : [])];
   }
   const message = entry.model?.[0];

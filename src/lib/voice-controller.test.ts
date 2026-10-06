@@ -120,10 +120,12 @@ test("Settings' engine picks the call: GPT-Live runs on its own platform and mea
   const opened: string[] = [];
   let sent: object[] = [];
   let open: (() => void) | undefined;
+  let message: ((raw: string) => void) | undefined;
   const live = (bot: { id: string }): LiveCallPlatform => ({
     openMicrophone: async () => { opened.push(bot.id); return { setEnabled: () => undefined, level: () => 0.3, close: () => undefined }; },
     connect: async (_microphone, handlers) => {
       open = handlers.onOpen;
+      message = (raw) => handlers.onMessage(raw);
       return { callId: "c1", voice: "maple", send: (event) => { sent.push(event); return true; }, level: () => 0.9, setSpeakerMuted: () => undefined, close: () => undefined };
     },
     delegate: async () => ({ status: "answered", speak: "ok" }),
@@ -155,7 +157,8 @@ test("Settings' engine picks the call: GPT-Live runs on its own platform and mea
   assert.equal((controller.call?.state as { voice?: string }).voice, "maple");
   assert.equal(controller.voiceLevel(), 0.9, "the remote stream's level, not VoiceStudio's player");
   assert.equal(controller.micLevel(), 0.3);
-  assert.equal(sent.length, 1, "the greeting cue");
+  message?.('{"type":"session.started","session":{"id":"rtc_1","status":"active"}}');
+  assert.equal(sent.length, 1, "the greeting cue, once the session started");
   controller.hangUp();
   assert.equal(controller.call, undefined);
   sent = [];

@@ -71,6 +71,7 @@ test("Durable entries project to log lines: words, replies, calls and results, n
     { kind: "talk", text: "[call] Juno's summary of that call: **To remember**: teal." },
   ]);
   assert.deepEqual(projectEntry(call({ lines, summaryUnavailable: true })).map((line) => line.kind), ["user"], "without a summary, the transcript alone");
+  assert.deepEqual(projectEntry({ id: 9, conversationId: 1, kind: "hui.call", data: { call: "c0", role: "user", text: "x", at: 1 } } as unknown as EntryRecord), [], "an entry that is not a record logs nothing");
 });
 
 const system = (sections: Record<string, string>): Message => ({ role: "system", content: "", sections, timestamp: 1 }) as Message;

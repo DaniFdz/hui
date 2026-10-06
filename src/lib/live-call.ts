@@ -144,6 +144,8 @@ export class ActivityGate {
 
 /** The bot's voice: GPT-Live's stream is near silence between replies. */
 export const VOICE_GATE = { on: 0.4, off: 0.3, holdMs: 500 } as const;
+/** How long a connected call waits for session.started before it asks for the greeting anyway. */
+export const GREETING_FALLBACK_MS = 8_000;
 /** The microphone: a quiet room stays under it, speech near the microphone goes well over. */
 export const MIC_GATE = { on: 0.55, off: 0.4, holdMs: 700 } as const;
 
@@ -525,9 +527,15 @@ export class LiveCall {
       return;
     }
     this.#dispatch({ type: "connected", voice: this.#connection.voice });
-    if (this.#greeted) return;
+    // The greeting cue waits for session.started: sent before it, GPT-Live may drop it while its session rolls over.
+    this.#stops.push(this.#platform.setTimer(() => this.#greet(), GREETING_FALLBACK_MS));
+  }
+
+  /** Asks GPT-Live to greet, once, when its session has started (or after `GREETING_FALLBACK_MS` without it). */
+  #greet(): void {
+    if (this.#greeted || this.#ended || !this.#connection) return;
     this.#greeted = true;
-    for (const event of sessionAppends("speakable", "The call just connected. Greet the user briefly, as yourself.")) this.#connection?.send(event);
+    for (const event of sessionAppends("speakable", "The call just connected. Greet the user briefly, as yourself.")) this.#connection.send(event);
   }
 
   #onMessage(data: unknown): void {
@@ -551,6 +559,9 @@ export class LiveCall {
       }
       case "delegation":
         void this.#delegate(event);
+        return;
+      case "started":
+        this.#greet();
         return;
       case "closed":
         this.#dispatch({ type: "closed", reason: event.reason });
