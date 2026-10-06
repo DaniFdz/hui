@@ -1,7 +1,8 @@
 # Secret requests browser verification
 
 Date: 2026-10-06. Verified against commit `16c9e8f` of
-`dani.fernandez/add-secret-prompt-agents`, launched with the repository
+`dani.fernandez/add-secret-prompt-agents`, and the PI worker flow again at
+`50e62aa` after its bridge client changed, launched with the repository
 visual-verification fixture (`e2e/visual-verification.mjs launch`, then again
 with `--pi-sessions`) and driven with the Browser tool. Only the model provider
 is mocked (`e2e/pi-provider-fixture.mjs`, `E2E_SECRET_REQUEST`); HUI, the
