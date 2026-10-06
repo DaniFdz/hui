@@ -9,7 +9,7 @@
  */
 import { botLook, isBotFaceShape, type BotAvatar, type BotAvatarPatch, type BotFaceShape, type BotInput, type BotMemoryStatus, type BotMemoryUsage, type BotPatch, type BotSessionStatus, type BotsUpdate, type BotView, type BotVoice } from "../../shared/bots.ts";
 import { gptLiveVoice } from "../../shared/calls.ts";
-import { voiceLanguage, voiceProfileId, voiceSpeed } from "../../shared/voice.ts";
+import { voiceLanguage } from "../../shared/voice.ts";
 import { CLIENT_HEADERS, fetchJson } from "./settings-store.ts";
 import { decodeSseFrame, reconnectDelay, STATUS_STREAM_STALL_MS, type SessionGroup, type SessionView } from "./sessions-store.ts";
 import { trackedFetch } from "./ui-errors.ts";
@@ -32,8 +32,8 @@ export type BotDraft = {
   /** Empty: a private folder the gateway creates for the bot. */
   cwd: string;
   emoji: string;
-  /** The dialog's Look: "face" sends the shape and color and clears the emoji, "emoji" sends the emoji. Absent: the
-   * emoji decides, as before faces. */
+  /** The look: "face" sends the shape and color and clears the emoji, "emoji" sends the emoji. Absent: the emoji
+   * decides, as before faces. */
   look?: "face" | "emoji";
   shape?: BotFaceShape;
   /** #rrggbb */
@@ -41,12 +41,9 @@ export type BotDraft = {
   model: string;
   thinking: string;
   memoryModel: string;
-  /** A VoiceStudio voice id ("" for VoiceStudio's default) and speed; absent while VoiceStudio is not connected. */
-  voice?: string;
-  voiceSpeed?: number;
-  /** A language code ("" for Auto); absent while neither VoiceStudio nor GPT-Live calls are on. */
+  /** The language the bot speaks on calls ("" for Auto); absent leaves it as it is. */
   voiceLanguage?: string;
-  /** A GPT-Live call voice ("" for Settings' default); absent while calls do not use GPT-Live. */
+  /** A GPT-Live call voice ("" for Settings' default); absent leaves it as it is. */
   callVoice?: string;
 };
 
@@ -101,11 +98,9 @@ function parseBotMemoryUsage(value: unknown): BotMemoryUsage {
 
 function parseVoice(value: unknown): BotVoice | undefined {
   if (!isRecord(value)) return undefined;
-  const profile = voiceProfileId(value["profile"]);
-  const speed = voiceSpeed(value["speed"]);
   const language = voiceLanguage(value["language"]);
   const live = gptLiveVoice(value["live"]);
-  const voice: BotVoice = { ...(profile ? { profile } : {}), ...(speed !== undefined ? { speed } : {}), ...(language ? { language } : {}), ...(live ? { live } : {}) };
+  const voice: BotVoice = { ...(language ? { language } : {}), ...(live ? { live } : {}) };
   return Object.keys(voice).length ? voice : undefined;
 }
 
@@ -305,7 +300,7 @@ async function connectBotsOnce(handlers: BotsStreamHandlers, signal: AbortSignal
   return "dropped";
 }
 
-/* ── dialog drafts ────────────────────────────────────────────────────────── */
+/* ── drafts ───────────────────────────────────────────────────────────────── */
 
 /** Create payload: trimmed, with empty optional fields left to the gateway's defaults. */
 export function botInputFromDraft(draft: BotDraft): BotInput {
@@ -331,7 +326,7 @@ function draftLook(draft: BotDraft): "face" | "emoji" {
   return draft.look ?? (draft.emoji.trim() ? "emoji" : "face");
 }
 
-/** A new bot keeps the look its dialog showed: the shape and color picked (or preselected), and the emoji in Emoji. */
+/** A new bot's look from a draft: the shape and color picked, and the emoji in Emoji. */
 function draftAvatar(draft: BotDraft): BotAvatar | undefined {
   const emoji = draft.emoji.trim();
   const avatar: BotAvatar = {
@@ -342,13 +337,11 @@ function draftAvatar(draft: BotDraft): BotAvatar | undefined {
   return Object.keys(avatar).length ? avatar : undefined;
 }
 
-/** The dialog's voice: a chosen voice id, a speed other than 1×, a language and a call voice; nothing for the defaults. */
+/** A draft's call voice and language; nothing for Auto and Settings' default. */
 function draftVoice(draft: BotDraft): BotVoice | undefined {
-  const profile = draft.voice?.trim() ?? "";
-  const speed = draft.voiceSpeed !== undefined && draft.voiceSpeed !== 1 ? voiceSpeed(draft.voiceSpeed) : undefined;
   const language = voiceLanguage(draft.voiceLanguage);
   const live = gptLiveVoice(draft.callVoice);
-  const voice: BotVoice = { ...(profile ? { profile } : {}), ...(speed !== undefined ? { speed } : {}), ...(language ? { language } : {}), ...(live ? { live } : {}) };
+  const voice: BotVoice = { ...(language ? { language } : {}), ...(live ? { live } : {}) };
   return Object.keys(voice).length ? voice : undefined;
 }
 
@@ -371,15 +364,8 @@ export function botPatchFromDraft(bot: BotView, draft: BotDraft): BotPatch {
   if (cwd && cwd !== bot.cwd) patch.cwd = cwd;
   const avatar = avatarPatch(bot, draft);
   if (avatar) patch.avatar = avatar;
-  // Each part of the voice changes only while the dialog showed it: VoiceStudio's voice and speed while it is
-  // connected, the language while VoiceStudio or GPT-Live calls are on, the call voice while calls use GPT-Live.
+  // The call voice and the language change only when they differ from the bot's.
   const voice: NonNullable<BotPatch["voice"]> = {};
-  if (draft.voice !== undefined) {
-    const profile = draft.voice.trim();
-    const speed = draft.voiceSpeed ?? 1;
-    if (profile !== (bot.voice?.profile ?? "")) voice.profile = profile;
-    if (speed !== (bot.voice?.speed ?? 1)) voice.speed = speed === 1 ? null : speed;
-  }
   // Auto ("") clears the language; a draft without one leaves it alone.
   const language = draft.voiceLanguage === undefined ? undefined : voiceLanguage(draft.voiceLanguage) ?? "";
   if (language !== undefined && language !== (bot.voice?.language ?? "")) voice.language = language;
@@ -423,7 +409,7 @@ export function botSettingChange(key: BotSettingKey, value: BotSettingValue): Pa
   return { [key]: value };
 }
 
-/** The draft that changes nothing: the bot as it is, its look as it shows and every voice key as stored. */
+/** The draft that changes nothing: the bot as it is, its look as it shows, and its call voice and language as stored. */
 export function botDraftOf(bot: BotView): BotDraft {
   const look = botLook(bot);
   return {
@@ -437,14 +423,12 @@ export function botDraftOf(bot: BotView): BotDraft {
     model: bot.model ?? "",
     thinking: bot.thinking ?? "",
     memoryModel: bot.memoryModel ?? "",
-    voice: bot.voice?.profile ?? "",
-    voiceSpeed: bot.voice?.speed ?? 1,
     voiceLanguage: bot.voice?.language ?? "",
     callVoice: bot.voice?.live ?? "",
   };
 }
 
-/** One change from the Settings tab or the Edit profile dialog as the PATCH
+/** One change from the Settings tab as the PATCH
  * that makes it: only what differs from the bot now, by the edit rules above
  * (an empty model or thinking level goes back to the gateway's defaults, an
  * empty utility model to Settings', and a blank name or workspace changes

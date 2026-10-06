@@ -3,7 +3,7 @@ import { test } from "node:test";
 
 import type { BotRecord, BotReply } from "../shared/bots.ts";
 import { CALL_LIMITS, type CallDelegationResult } from "../shared/calls.ts";
-import { DEFAULT_SETTINGS, type Settings } from "../src/lib/settings.ts";
+import { DEFAULT_SETTINGS, normalizeSettings, type Settings } from "../src/lib/settings.ts";
 import { BotConflictError, BotNotFoundError } from "./bots.ts";
 import { checkLines, createCallRoutes, type CallRouteRequest } from "./call-routes.ts";
 import { CallBroker, type ActiveCall, type CallAccounts } from "./calls.ts";
@@ -13,7 +13,7 @@ const ACCOUNT_ID = "acct-routes-1";
 const OFFER = "v=0\r\no=- 1 2 IN IP4 127.0.0.1\r\ns=-\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111\r\nm=application 9 UDP/DTLS/SCTP webrtc-datachannel\r\n";
 const ANSWER = "v=0\r\no=- 9 9 IN IP4 0.0.0.0\r\ns=-\r\nm=audio 3478 UDP/TLS/RTP/SAVPF 111\r\n";
 
-function fixture(options: { engine?: Settings["calls"]["engine"]; voice?: Settings["calls"]["voice"]; upstream?: number; bot?: Partial<BotRecord> } = {}) {
+function fixture(options: { settings?: Settings; voice?: Settings["calls"]["voice"]; upstream?: number; bot?: Partial<BotRecord> } = {}) {
   const bot: BotRecord = { id: "b1", handle: "juno", name: "Juno", cwd: "/tmp", sessionId: "s1", createdAt: "x", updatedAt: "x", ...options.bot };
   const sessions: unknown[] = [];
   const accounts: CallAccounts = {
@@ -49,7 +49,7 @@ function fixture(options: { engine?: Settings["calls"]["engine"]; voice?: Settin
     if (handedOff) input.call.tasks.set("task-1", handedOff);
     return reply;
   };
-  const settings: Settings = { ...DEFAULT_SETTINGS, profileName: "Dani", calls: { engine: options.engine ?? "gpt-live", voice: options.voice ?? "vale" } };
+  const settings: Settings = options.settings ?? { ...DEFAULT_SETTINGS, profileName: "Dani", calls: { voice: options.voice ?? "vale" } };
   const routes = createCallRoutes({ broker, bots: bots as never, delegate, settings: async () => settings, timeZone: () => "Europe/Madrid" });
   const call = (method: string, path: string, body?: unknown, raw?: string) => routes.handle({
     method, path,
@@ -101,10 +101,11 @@ test("starting a call builds the bot's session, returns only the answer and refu
   const own = fixture({ bot: { voice: { live: "ember" } } });
   assert.equal(((await own.call("POST", "/__hui/bots/b1/calls", { sdp: OFFER }))?.body as Record<string, unknown>)["voice"], "ember");
 
-  const studio = fixture({ engine: "voicestudio" });
-  const refused = await studio.call("POST", "/__hui/bots/juno/calls", { sdp: OFFER });
-  assert.equal(refused?.status, 409);
-  assert.match(String((refused?.body as { error: string }).error), /Choose GPT-Live in Settings → Models → Calls/u);
+  // Calls run on GPT-Live only: settings saved while VoiceStudio could run them still start one, with their voice.
+  const older = fixture({ settings: normalizeSettings({ profileName: "Dani", calls: { engine: "voicestudio", voice: "sol" } }) });
+  const olderCall = await older.call("POST", "/__hui/bots/juno/calls", { sdp: OFFER });
+  assert.equal(olderCall?.status, 201);
+  assert.equal((olderCall?.body as Record<string, unknown>)["voice"], "sol");
   for (const [body, raw, status] of [
     [{ sdp: "hello" }, undefined, 400], [{ sdp: OFFER, extra: 1 }, undefined, 400], [undefined, "{not json", 400],
     [undefined, JSON.stringify({ sdp: `${OFFER}${"a".repeat(CALL_LIMITS.sdp)}` }), 400],

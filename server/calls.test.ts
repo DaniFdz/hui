@@ -67,7 +67,7 @@ test("the session is GPT-Live's ChatGPT model with the bot's voice, then Setting
   assert.equal(sessionVoice(bot({ voice: { live: "sol" } }), "vale"), "sol");
   assert.equal(sessionVoice(bot(), "vale"), "vale");
   assert.equal(sessionVoice(bot(), "nova"), "cove");
-  assert.equal(sessionVoice(bot({ voice: { profile: "vp-aria" } }), undefined), "cove");
+  assert.equal(sessionVoice(bot({ voice: { language: "es" } }), undefined), "cove");
 });
 
 test("offers must be audio session descriptions within the size limit", () => {

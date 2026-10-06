@@ -42,8 +42,8 @@ export type BotSettingsProps = {
   onChange: (key: BotSettingKey, value: BotSettingValue) => void;
   /** Drops a control's refusal, as Escape does in a text field. */
   onDismiss: (key: BotSettingKey) => void;
-  /** The Calls section, shown while this is present: while calls use GPT-Live (Settings → Models → Calls). */
-  call?: BotSettingsCall;
+  /** The Calls section, always shown: calls run on GPT-Live. */
+  call: BotSettingsCall;
   directory: { suggestions: readonly string[]; onInput: (value: string) => void };
 };
 
@@ -224,9 +224,8 @@ function renderLanguageRow(props: BotSettingsProps) {
       onChange: (next) => props.onChange("voiceLanguage", next) }) });
 }
 
-/** Calls with GPT-Live: shown while the call prop is (calls use GPT-Live), so it stays when that is the only engine. */
+/** Calls, on GPT-Live, the only engine: always shown. */
 function renderCalls(props: BotSettingsProps) {
-  if (!props.call) return nothing;
   return html`<section class="bot-settings__section" aria-labelledby=${`${props.id}-settings-calls`}>
     ${sectionHead(props, "calls", "Calls")}
     <div class="settings-group bot-settings__group">

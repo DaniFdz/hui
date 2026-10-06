@@ -64,7 +64,7 @@ test("a call shows the bot's face listening to the microphone and speaking with 
   assert.match(bar, /class="bot-call-bar__pulse"/u, "the bar keeps its live dot");
   const app = read("../hui-app.ts");
   assert.match(app, /this\.voice\.call\?\.state\.phase === "speaking" \? this\.voice\.voiceLevel\(\) : this\.voice\.micLevel\(\)/u);
-  assert.match(app, /voiceLevel: \(\) => voicePlayer\(\)\.level\(\)/u);
+  assert.match(read("../lib/voice-controller.ts"), /return this\.call \? this\.#session\?\.voiceLevel : 0;/u, "the bot's voice is GPT-Live's stream, as it plays");
 });
 
 test("faces are decorative, pause when unseen and keep still under reduced motion", () => {
@@ -114,7 +114,17 @@ test("+ creates a bot named New Bot at once and opens its chat, as in Grok Bot; 
   assert.match(read("../lib/bots.ts"), /export type NewBotInput = Omit<BotInput, "name"> & \{ name\?: string \};/u, "the create body may leave the name out");
 });
 
-test("the Settings tab: Profile, Model, Calls (with GPT-Live calls) and Workspace, each change saved on its own", () => {
+test("a bot chat offers a call whenever GPT-Live can run, and nothing of VoiceStudio", () => {
+  const app = read("../hui-app.ts");
+  assert.match(between(app, "private callsAvailable(", "private isUpdateSession("), /return callsReady\(this\.callsStatus\);/u);
+  assert.match(app, /if \(!this\.embeddedPane && this\.view === "bot" && !this\.callsStatus\) void this\.loadCallsStatus\(\);/u, "read on every bot page, whatever settings.json holds");
+  assert.doesNotMatch(app, /VoiceStudio|voiceNotes|readAloud|paneVoice|VOICE_CONNECTION_EVENT|calls\.engine/u);
+  const home = read("./home.ts");
+  assert.match(home, /renderCallButton\(\{ botName: props\.bot\.bot\.name, inCall: props\.call\.inCall, onCall: props\.call\.onCall \}\)/u, "the phone button");
+  assert.doesNotMatch(home, /renderVoiceNoteButton|renderVoiceNoteStatus|renderReadAloud|chat-read-aloud|chat-voice-btn/u, "no microphone in the composer, no Read aloud under replies");
+});
+
+test("the Settings tab: Profile, Model, Calls and Workspace, each change saved on its own", () => {
   const source = read("./bot-settings.ts");
   const tab = between(source, "export function renderBotSettings(", "\n}\n");
   assert.ok(tab.indexOf("renderProfile(props)") < tab.indexOf("renderModels(props)") && tab.indexOf("renderModels(props)") < tab.indexOf("renderCalls(props)")
@@ -132,7 +142,7 @@ test("the Settings tab: Profile, Model, Calls (with GPT-Live calls) and Workspac
   assert.match(models, /"Applies from its next turn"/u);
   assert.match(models, /modelOptions\(props\.models, "Gateway default", model\)/u, "Gateway default clears the model");
   const calls = between(source, "/** The call voice:", "/** The text controls");
-  assert.match(calls, /if \(!props\.call\) return nothing;/u, "Calls show while the call prop does (calls on GPT-Live)");
+  assert.doesNotMatch(between(source, "function renderCalls(", "/** The text controls"), /return nothing/u, "Calls always show: calls run on GPT-Live");
   assert.match(calls, /sectionHead\(props, "calls", "Calls"\)/u);
   assert.match(calls, /renderCallVoiceRow\(props, props\.call\)\}[\s\S]*renderLanguageRow\(props\)/u, "the call voice, then the language");
   assert.match(calls, /How it sounds on calls\. Default follows Settings → Models → Calls\./u);
@@ -148,7 +158,8 @@ test("the Settings tab: Profile, Model, Calls (with GPT-Live calls) and Workspac
   const app = read("../hui-app.ts");
   assert.match(app, /this\.botSettingsQueue = this\.botSettingsQueue\.then\(\(\) => this\.sendBotSetting\(botId, key\)\);/u, "one PATCH per change, in order");
   assert.match(between(app, "private async sendBotSetting(", "private dismissBotSetting("), /updateBot\(botId, patch\)/u, "through PATCH /__hui/bots/:id");
-  assert.match(app, /return this\.settings\.calls\.engine === "gpt-live" \? \{ defaultVoice: this\.settings\.calls\.voice \} : undefined;/u);
+  assert.match(between(app, "private botSettingsCall(", "private botSettingsSavesOf("), /return \{ defaultVoice: this\.settings\.calls\.voice \};/u, "Settings' voice, whatever settings.json held");
+  assert.match(app, /\n\s+call: settingsCall,\n/u, "the tab always gets its Calls section");
 });
 
 test("the roster's Edit opens the bot's chat on its Settings tab, docked or as the sheet", () => {

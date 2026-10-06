@@ -1215,31 +1215,20 @@ everything the Bots tab can, through the same routes.
   handle, title, and the look, a row that opens into Face or Emoji),
   Model (model, thinking and utility model; *Gateway default* leaves the model
   and thinking level to the gateway, and choosing it clears the bot's own),
-  Calls while calls use GPT-Live (call voice and language) and Workspace (the
-  directory, locked while the bot works). Each change is its own `PATCH`, sent
-  in order, with the row's pending state and refusal inline and no Save button;
-  typed text saves on Enter or blur. Ctrl+Shift+, (⇧⌘,) shows or hides it on a
-  bot's chat.
-- **Voice** goes through [VoiceStudio](https://github.com/debpalash/VoiceStudio),
-  a separate speech service the gateway only calls over HTTP. The connection is
-  the gateway's (Settings → Integrations → VoiceStudio, verified before it is
-  saved, its key write-only), and bot chats offer voice only while it is
-  configured. A bot has a voice, a speed and a language (`--voice`/
-  `--voice-speed`/`--language`; its Settings tab holds the call voice and
-  language): one of Whisper's
-  languages that VoiceStudio listens for and speaks in, never a translation, or
-  Auto to let it detect the language. Its composer records **voice notes** that
-  VoiceStudio writes into the composer, or sends at once marked `[voice] ` when
-  Settings says so; **Read aloud** speaks a reply sentence by sentence, one at a
-  time; the header's **Call** starts a hands-free call. There is no
-  speech-to-speech API, so a call is a cascade: the browser's voice-activity
-  detection cuts what is said, VoiceStudio transcribes it, it reaches the chat
-  as an ordinary `[voice] ` message, and the reply is spoken as it streams;
-  speaking over the bot stops its voice and steers a turn that still runs. The
+  Calls (call voice and language) and Workspace (the directory, locked while
+  the bot works). Each change is its own `PATCH`, sent in order, with the
+  row's pending state and refusal inline and no Save button; typed text saves
+  on Enter or blur. Ctrl+Shift+, (⇧⌘,) shows or hides it on a bot's chat.
+- **Calls** talk through GPT-Live (see the decisions below): the header's
+  **Call** shows whenever HUI has a ChatGPT login. A bot has a call voice, its
+  own or Settings → Models → Calls' default, and a language it speaks on calls
+  (its Settings tab, or `--call-voice`/`--language`): one of Whisper's
+  languages, never a translation, or Auto to answer in the language spoken. The
   call view takes the bot's color and shows its face listening to the
-  microphone and speaking with its voice, a timer, both sides' captions, mute
-  and hang up, and minimizes to a bar; hanging up deletes nothing. The microphone opens only on a click and
-  closes with the note or call; HUI stores no audio, only the chat's text.
+  microphone and speaking with the bot's audio, a timer, both sides' captions,
+  Mute, Speaker and Hang up, and minimizes to a bar; hanging up deletes
+  nothing. The microphone opens only for a call and closes with it; HUI stores
+  no audio, only the call's card in the chat.
 
 The contract is [docs/api.md#bots](docs/api.md#bots).
 
@@ -1319,10 +1308,10 @@ offline (unreachable or archived).
   `--emoji ""`, and `hui bot show` prints the look.
 - **Real states only.** Roster rows follow the bot's status (a running turn is
   thinking); its open chat adds a running tool, a pending question, memory
-  waits and a failed turn; a call listens with the microphone's level (from the
-  frames voice-activity detection already reads) and speaks with the voice's
-  (an envelope of each clip read at its playback position, without rerouting
-  the audio). Text badges and status lines stay; faces are `aria-hidden`.
+  waits and a failed turn; a call listens with the microphone's level and
+  speaks with the level of the bot's audio as it plays (analysers on both
+  streams, without rerouting the audio). Text badges and status lines stay;
+  faces are `aria-hidden`.
 - **Cheap.** CSS keyframes carry the motion; small faces only blink and glance
   on timers. Large faces (empty chat, call) also follow
   the pointer and morph on animation frames. Faces pause while hidden or off
@@ -1368,10 +1357,33 @@ faster."
   fastest possible and ideally cheap, and for conversation describe that it
   should be model focused on phone calls, that is fast to respond." Settings →
   Models describes the primary and utility models that way, and its Calls section
-  names the **Conversation model** (GPT-Live or VoiceStudio's speech chain). A
-  bot's Memory model became its **Utility model**. `memoryModel` and
-  `--memory-model` keep working. Its default is Settings' utility model, then
-  the bot's own model.
+  GPT-Live, the conversation model, as made for phone calls. A bot's Memory
+  model became its **Utility model**. `memoryModel` and `--memory-model` keep
+  working. Its default is Settings' utility model, then the bot's own model.
+
+### VoiceStudio is gone: calls are GPT-Live only (2026-10-06)
+
+The owner dropped VoiceStudio on 2026-10-06, before it merged: "Lets remove
+VoiceStudio dependency, I don't need that feature, I only want gpt live for
+calls", then "delete everything related to VoiceStudio". This supersedes voice
+through VoiceStudio in [Bots are named chats](#bots-are-named-chats-not-an-agent-selector-2026-10-05)
+and everything built on it.
+
+- **What went.** The VoiceStudio connection (Settings → Integrations →
+  VoiceStudio, `/__hui/voice` and its routes, `voicestudio.json`), voice notes and
+  their `[voice] ` messages, Read aloud, calls through VoiceStudio's speech
+  chain with the choice of conversation model, and a bot's VoiceStudio voice
+  and speed. The CLI refuses `--voice` and `--voice-speed` and says what
+  replaced them.
+- **What stays.** Calls with GPT-Live: the header's Call whenever a ChatGPT
+  login is there, the call view and its bar, the bot's call voice (its own,
+  else Settings') and language, the call helper, hand-offs and call cards. The
+  faces listen and speak on calls.
+- **Stored data.** `settings.json` and `bots.json` written while VoiceStudio was
+  there keep loading: `calls.engine`, `voice.sendNotesImmediately` and a bot's
+  voice `profile` and `speed` are no longer read, and the next write leaves them
+  out. A leftover `voicestudio.json` is ignored. No release ever had VoiceStudio,
+  so no `hui doctor` check is needed.
 
 ### Bots are set up like Grok Bot (2026-10-06)
 
@@ -1395,7 +1407,7 @@ models "beneath the interface".
   its first conversation asks what to call it and renames it with
   `set_profile`. The New bot and Edit dialogs are gone. Everything starts on
   the defaults: the model and thinking level a new session gets, Settings'
-  utility model, GPT-Live's default call voice, Auto, a private folder and the
+  utility model, Settings' call voice, Auto, a private folder and the
   face its id picks. While workers exist, + is to become a menu of the machines
   a bot can run on (fixed at creation); the create action takes that choice.
 - **A Settings tab in the bot's panel** holds the rest, after Grok Bot's Bot
@@ -1407,10 +1419,10 @@ models "beneath the interface".
 - **The panel's tabs get a row of their own** under a header with the bot's name
   and Close, as the sidebar's Agents | Bots do, so the soul and tools tabs fit
   in 344 px beside Routines, Memory and Settings.
-- **Calls only.** The owner dropped VoiceStudio for calls (GPT-Live only), so
-  the tab has no VoiceStudio voice, speed or preview; its Calls section shows
-  while calls use GPT-Live and keeps that condition when GPT-Live becomes the
-  only engine.
+- **Calls only.** With VoiceStudio gone
+  ([above](#voicestudio-is-gone-calls-are-gpt-live-only-2026-10-06)), the
+  tab's Calls section is GPT-Live's call voice and the language, and it always
+  shows.
 
 ### New sessions run on Pi Durable
 

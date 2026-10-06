@@ -688,8 +688,8 @@ is kept in an append-only log, a cheap model compresses it into a tree of
 one-line summaries, and every turn starts fresh from a fixed-size view of the
 whole chat. `hui bot` can do everything the Bots tab can, through the same
 routes. Routines are Automation tasks aimed at a bot's chat; bots message each
-other; they listen and speak through VoiceStudio. Bots run on the local gateway
-only for now. It lands as stacked pull requests:
+other; you can call them, through GPT-Live. Bots run on the local gateway only
+for now. It lands as stacked pull requests:
 
 1. **OptChat memory for Pi Durable conversations** — done 2026-10-05. The engine
    (`server/optchat/`) and its Durable integration
@@ -786,30 +786,18 @@ only for now. It lands as stacked pull requests:
    `src/views/bot-soul.test.ts`, `src/views/chat/projection.test.ts`,
    `src/lib/bots.test.ts`, `src/lib/bot-roster.test.ts` and the Browser-tool
    journey in `e2e/bots.browser.md` (screens in PR #69).
-4. **Voice through VoiceStudio** (implemented 2026-10-05; live VoiceStudio not
-   verified, only a deterministic fake): the gateway-owned connection
-   (`voicestudio.json`, write-only key, discovery and model list checked before
-   saving, same-origin redirects only) and `/__hui/voice` routes that relay
-   transcriptions and stream speech without storing audio; `BotRecord.voice`
-   with its profile, speed and language (one of Whisper's codes, sent to
-   VoiceStudio's transcriptions and speech, none for Auto; `PATCH` key by key,
-   `hui bot add|edit --voice --voice-speed --language`; the picker leaves
-   VoiceStudio's OpenAI aliases out); Settings → Integrations → VoiceStudio;
-   in bot chats the composer's voice notes, Read
-   aloud on replies and Calls (browser voice-activity detection, `[voice] `
-   messages into the forever chat, replies spoken sentence by sentence,
-   barge-in, mute, minimize, hang up). Durable now streams text it sends whole,
-   so a short reply is spoken too. Every call turn is a full bot turn; a faster
-   voice front model is a later follow-up. Proof: `server/voice.test.ts`,
-   `server/voice-routes.test.ts`, `server/bot-routes.test.ts`,
-   `server/bots.test.ts`, `server/runtimes/durable.test.ts`,
-   `src/lib/voice*.test.ts`, `src/lib/bots.test.ts`, `cli/*.test.ts` (against
-   `e2e/voicestudio-fixture.mjs`) and the Browser-tool journey
-   `e2e/bots-voice.browser.md` (fake microphone in headless Brave).
+4. **Voice through VoiceStudio** — dropped on 2026-10-06 before it merged: the
+   owner removed VoiceStudio, so calls run on GPT-Live only (item 5) and voice
+   notes, Read aloud and VoiceStudio voices are gone. The call screen it built
+   (the call view, its minimized bar and the app's one call) moved to item 5,
+   with Durable streaming the text it sends whole to the live view.
 5. **Calls with GPT-Live** (implemented 2026-10-06; tested with real calls
-   through a ChatGPT login): Settings → Models → Calls (Conversation model:
-   GPT-Live or VoiceStudio, default voice, the ChatGPT login calls use) and a
-   per-bot call voice (`voice.live`, `--call-voice`). The gateway's broker
+   through a ChatGPT login): the bot header's Call, offered with a ChatGPT
+   login; the call view (the bot's face listening and speaking, a timer,
+   captions, Mute, Speaker, Hang up) and its minimized bar; Settings → Models →
+   Calls (the default voice, the ChatGPT login calls use) and a per-bot call
+   voice and language (`voice.live` and `voice.language`, `--call-voice` and
+   `--language`). The gateway's broker
    (`server/calls.ts`, `server/call-routes.ts`) sets each WebRTC call up over
    the ChatGPT login without the browser seeing a token, picking accounts as
    model turns do. The browser's `LiveCall` (`src/lib/live-call.ts`) carries
@@ -818,22 +806,27 @@ only for now. It lands as stacked pull requests:
    real work to the chat as `[call task]` messages, whose replies are spoken
    while the call lasts. Each call ends as one card with a summary and the whole
    transcript, which the bot's memory keeps. The bot's Memory model became its
-   Utility model, defaulting to Settings' utility model. Proof:
-   `server/call*.test.ts`, `server/calls.test.ts`, `server/bot-service.test.ts`,
-   `server/runtimes/durable-optchat.test.ts`, `src/lib/live-call.test.ts` and a
-   real call run (both calls of the e2e in the pull request).
+   Utility model, defaulting to Settings' utility model. Settings and `bots.json`
+   saved while VoiceStudio was there keep loading, and the next write leaves its
+   fields out. Proof: `server/call*.test.ts`, `server/calls.test.ts`,
+   `server/bot-service.test.ts`, `server/bot-routes.test.ts`, `server/bots.test.ts`,
+   `server/runtimes/durable-optchat.test.ts`, `server/runtimes/durable.test.ts`,
+   `src/lib/live-call.test.ts`, `src/lib/voice*.test.ts`, `src/lib/settings.test.ts`,
+   `src/lib/bots.test.ts`, `src/views/bots.test.ts`, `src/views/settings-calls.test.ts`,
+   `cli/*.test.ts` and a real call run (both calls of the e2e in the pull request).
 6. **Bot setup like Grok Bot** (2026-10-06; SPEC.md, "Bots are set up like
-   Grok Bot"): no form; + creates a bot named *New Bot* at once and opens its
-   chat (the New bot and Edit dialogs are gone); a Settings tab in the bot's
-   panel holds Profile (name, title and look, edited in place), Model, Calls
-   (while calls use GPT-Live) and Workspace, each change saved on its own
-   through the existing `PATCH`; the roster's Edit opens it, as does
+   Grok Bot"): no form; + creates a bot at once, without a name, and opens its
+   chat, where the bot (*New Bot* until then) asks what to call it; the New bot
+   and Edit dialogs are gone. A Settings tab in the bot's panel holds Profile
+   (name, title and look, edited in place), Model, Calls (call voice and
+   language) and Workspace, each change saved on its own
+   through the existing `PATCH`; Edit bot… in either ⋯ menu opens it, as does
    Ctrl+Shift+,; the panel's tabs moved to a row of their own under a header
    with the bot's name, with room for five. No API or CLI change. Proof:
-   `src/lib/bots.test.ts`,
-   `src/lib/bot-roster.test.ts`, `src/views/bots.test.ts` and the Browser
-   journey `e2e/bot-setup.browser.md` (built gateway, fixture provider,
-   1440×900, 1280×720 and 390×844, dark).
+   `src/lib/bots.test.ts`, `src/lib/bot-roster.test.ts`,
+   `src/views/bots.test.ts`, `server/bot-routes.test.ts` (a New Bot's
+   opener) and the Browser journey `e2e/bot-setup.browser.md` (built gateway,
+   fixture provider, 1440×900, 1280×720 and 390×844, dark).
 
 ## Recommended implementation order
 

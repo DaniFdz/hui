@@ -8,7 +8,7 @@
 import type { BotFaceShape } from "../../shared/bots.ts";
 import type { BotView } from "./bots.ts";
 import { botActivity } from "./bot-roster.ts";
-import type { CallState } from "./voice-call.ts";
+import type { CallView } from "./live-call.ts";
 import type { SessionStatus, TranscriptItem } from "./sessions-store.ts";
 
 /* ── states ───────────────────────────────────────────────────────────── */
@@ -36,7 +36,7 @@ export function isBotFaceState(value: unknown): value is BotFaceState {
 }
 
 /** Small for roster rows and the call bar, medium for the chat header, large
- * for the empty chat and the dialog's preview, extra large for the call. */
+ * for the empty chat, extra large for the call. */
 export const BOT_FACE_SIZES = ["sm", "md", "lg", "xl"] as const;
 export type BotFaceSize = (typeof BOT_FACE_SIZES)[number];
 
@@ -94,12 +94,11 @@ export function hasRunningTool(transcript: readonly TranscriptItem[]): boolean {
 }
 
 /** A call: the bot listens while the microphone is open and speaks while its voice plays. */
-export function callFaceState(call: Pick<CallState, "phase" | "micMuted" | "tool">, summarizing = false): BotFaceState {
+export function callFaceState(call: Pick<CallView, "phase" | "micMuted" | "tool">, summarizing = false): BotFaceState {
   switch (call.phase) {
     case "connecting": return "idle";
     case "listening": return call.micMuted ? "idle" : "listening";
     case "hearing": return "listening";
-    case "transcribing": return "thinking";
     case "thinking": return summarizing ? "memory" : call.tool ? "working" : "thinking";
     case "speaking": return "speaking";
     case "ended": return "offline";
@@ -280,7 +279,7 @@ export function faceInk(color: string): string {
 
 /**
  * The prototype's syllable rhythm: an audio-like level for a face that speaks
- * or listens without a measured one (the bot's voice could not be decoded).
+ * or listens without a measured one.
  * Quiet mode is softer and pauses more, like a room being listened to.
  */
 export class SyllableLevel {

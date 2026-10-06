@@ -53,11 +53,13 @@ test("CLI parses bot commands, accepting bot and bots, with their operands and o
   assert.deepEqual(add.operands, []);
   assert.equal(add.values["memory-model"], "openai/gpt-mini");
   assert.equal(add.values["soul-file"], "soul.md");
-  const voiced = parseCli(["bot", "add", "--name", "Ada", "--voice", "vp-aria", "--voice-speed", "1.25"]);
-  assert.deepEqual([voiced.values.voice, voiced.values["voice-speed"]], ["vp-aria", "1.25"]);
-  assert.equal(parseCli(["bot", "edit", "ada", "--voice-speed", ""]).values["voice-speed"], "", "\"\" clears the speed");
-  assert.equal(parseCli(["bot", "edit", "ada", "--voice", ""]).values.voice, "", "\"\" clears the voice");
-  for (const speed of ["3", "0.2", "fast"]) assert.throws(() => parseCli(["bot", "edit", "ada", "--voice-speed", speed]), /--voice-speed must be a number from 0.5 to 2/u, speed);
+  // VoiceStudio is gone: its flags are refused with what took their place, not as unknown options.
+  for (const args of [["bot", "add", "--name", "Ada", "--voice", "vp-aria"], ["bot", "edit", "ada", "--voice", ""], ["gateway", "start", "--voice", "x"]]) {
+    assert.throws(() => parseCli(args), /--voice is gone: HUI no longer uses VoiceStudio\. A bot speaks on calls with one of GPT-Live's voices: --call-voice <cove\|arbor\|breeze\|ember\|juniper\|maple\|sol\|spruce\|vale>\./u, args.join(" "));
+  }
+  for (const args of [["bot", "edit", "ada", "--voice-speed", "1.25"], ["bot", "add", "--name", "Ada", "--voice-speed", ""]]) {
+    assert.throws(() => parseCli(args), /--voice-speed is gone: HUI no longer uses VoiceStudio, and GPT-Live sets the pace of its own voices\./u, args.join(" "));
+  }
   for (const language of ["es", "ES", "haw", "yue", "jw"]) assert.equal(parseCli(["bot", "edit", "ada", "--language", language]).values.language, language, language);
   assert.equal(parseCli(["bot", "add", "--name", "Ada", "--language", "de"]).values.language, "de");
   assert.equal(parseCli(["bot", "edit", "ada", "--language", ""]).values.language, "", "\"\" goes back to Auto");
@@ -163,11 +165,11 @@ test("HELP lists every hui bot command", () => {
     "hui bot routine run <bot> <routine>",
     "hui bot routine remove <bot> <routine> [--json]",
     "On edit, --model \"\" and --thinking \"\" go back to the model and",
-    "[--voice <VoiceStudio voice id>] [--voice-speed <0.5-2>] [--language <code>]",
-    "[--call-voice <cove|arbor|breeze|ember|juniper|maple|sol|spruce|vale>] [--json]",
-    "--language takes a Whisper code",
+    "[--language <code>] [--call-voice <cove|arbor|breeze|ember|juniper|maple|sol|spruce|vale>] [--json]",
     "--call-voice is the bot's GPT-Live voice on calls",
+    "--language is the language it",
   ]) assert.ok(HELP.includes(line), line);
+  assert.doesNotMatch(HELP, /VoiceStudio|--voice/u, "VoiceStudio's flags are gone");
 });
 
 test("production binding is explicit and never a wildcard", () => {

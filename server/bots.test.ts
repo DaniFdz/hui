@@ -257,34 +257,25 @@ test("previews are one line of at most 200 characters", () => {
   assert.ok(long.endsWith("…"));
 });
 
-test("a bot's voice is a VoiceStudio voice id and a speed from 0.5 to 2, cleared key by key", () => {
-  assert.deepEqual(normalizeBotInput({ name: "Ada", voice: { profile: " vp-aria ", speed: 1.256 } }).voice, { profile: "vp-aria", speed: 1.26 });
-  assert.equal(normalizeBotInput({ name: "Ada", voice: { profile: "", speed: null } }).voice, undefined, "a new bot has nothing to clear");
+test("a bot's voice is its language and its call voice: nothing else, cleared key by key", () => {
+  assert.deepEqual(normalizeBotInput({ name: "Ada", voice: { language: "es", live: "sol" } }).voice, { language: "es", live: "sol" });
+  assert.equal(normalizeBotInput({ name: "Ada", voice: { language: "", live: "" } }).voice, undefined, "a new bot has nothing to clear");
   for (const [voice, message] of [
-    ["loud", /Voice must be an object/u],
-    [{ volume: 3 }, /Unknown voice field: volume/u],
-    [{ profile: "x".repeat(201) }, /voice id of at most 200/u],
-    [{ profile: "a\nb" }, /voice id/u],
-    [{ speed: 3 }, /from 0.5 to 2/u],
-    [{ speed: "1" }, /from 0.5 to 2/u],
+    ["loud", /^Voice must be an object with language and\/or live\.$/u],
+    [{ volume: 3 }, /^Unknown voice field: volume\.$/u],
+    // VoiceStudio's voice profile and speed went with it.
+    [{ profile: "vp-aria" }, /^Unknown voice field: profile\.$/u],
+    [{ speed: 1.25, language: "es" }, /^Unknown voice field: speed\.$/u],
   ] as const) {
     assert.throws(() => normalizeBotInput({ name: "Ada", voice }), (error: unknown) => error instanceof BotInputError && message.test(error.message), JSON.stringify(voice));
+    assert.throws(() => normalizeBotPatch({ voice }), (error: unknown) => error instanceof BotInputError && message.test(error.message), JSON.stringify(voice));
   }
-  assert.deepEqual(normalizeBotPatch({ voice: { profile: "" } }), { voice: { profile: "" } });
-  assert.deepEqual(normalizeBotPatch({ voice: { speed: null } }), { voice: { speed: null } });
   assert.deepEqual(normalizeBotPatch({ voice: null }), { voice: null });
-  const current = { profile: "vp-aria", speed: 1.25 };
-  assert.deepEqual(patchedVoice(current, { speed: 0.8 }), { profile: "vp-aria", speed: 0.8 });
-  assert.deepEqual(patchedVoice(current, { profile: "" }), { speed: 1.25 });
-  assert.deepEqual(patchedVoice(current, { speed: null }), { profile: "vp-aria" });
-  assert.equal(patchedVoice(current, { profile: "", speed: null }), undefined);
-  assert.equal(patchedVoice(current, null), undefined);
-  // A stored voice keeps what validates.
-  assert.deepEqual(parseBotRecord({ ...bot("a", "ada"), voice: { profile: "vp-dani", speed: 9 } })?.voice, { profile: "vp-dani" });
+  assert.equal(patchedVoice({ language: "es", live: "sol" }, null), undefined, "voice: null clears both");
   assert.equal(parseBotRecord({ ...bot("a", "ada"), voice: "x" })?.voice, undefined);
 });
 
-test("a bot's voice language is one of Whisper's codes, kept with the voice and cleared back to Auto with \"\"", () => {
+test("a bot's language is one of Whisper's codes, cleared back to Auto with \"\"", () => {
   assert.deepEqual(normalizeBotInput({ name: "Ada", voice: { language: " ES " } }).voice, { language: "es" });
   for (const language of ["haw", "yue", "jw", "en", "zh"]) assert.deepEqual(normalizeBotInput({ name: "Ada", voice: { language } }).voice, { language }, language);
   assert.equal(normalizeBotInput({ name: "Ada", voice: { language: "" } }).voice, undefined, "a new bot has no language to clear");
@@ -295,32 +286,44 @@ test("a bot's voice language is one of Whisper's codes, kept with the voice and 
   }
   assert.throws(() => normalizeBotPatch({ voice: { dialect: "es" } }), /Unknown voice field: dialect/u);
   assert.deepEqual(normalizeBotPatch({ voice: { language: "" } }), { voice: { language: "" } });
-  assert.deepEqual(normalizeBotPatch({ voice: { language: "DE", speed: null } }), { voice: { language: "de", speed: null } });
-  const current = { profile: "vp-aria", speed: 1.25, language: "es" as const };
-  assert.deepEqual(patchedVoice(current, { language: "haw" }), { profile: "vp-aria", speed: 1.25, language: "haw" });
-  assert.deepEqual(patchedVoice(current, { language: "" }), { profile: "vp-aria", speed: 1.25 }, "back to Auto");
-  assert.deepEqual(patchedVoice(current, { profile: "", speed: null }), { language: "es" }, "the language outlives the voice's other keys");
+  assert.deepEqual(normalizeBotPatch({ voice: { language: "DE" } }), { voice: { language: "de" } });
+  const current = { language: "es" as const, live: "vale" as const };
+  assert.deepEqual(patchedVoice(current, { language: "haw" }), { language: "haw", live: "vale" });
+  assert.deepEqual(patchedVoice(current, { language: "" }), { live: "vale" }, "back to Auto, the call voice stays");
   assert.deepEqual(patchedVoice(undefined, { language: "yue" }), { language: "yue" });
   assert.equal(patchedVoice({ language: "es" }, { language: "" }), undefined);
-  assert.equal(patchedVoice(current, null), undefined, "voice: null clears everything");
-  // bots.json keeps a valid code and drops anything else, without losing the rest of the voice.
-  assert.deepEqual(parseBotRecord({ ...bot("a", "ada"), voice: { profile: "vp-dani", language: "es" } })?.voice, { profile: "vp-dani", language: "es" });
+  // bots.json keeps a valid code and drops anything else, without losing the call voice.
   assert.deepEqual(parseBotRecord({ ...bot("a", "ada"), voice: { language: "yue" } })?.voice, { language: "yue" });
-  assert.deepEqual(parseBotRecord({ ...bot("a", "ada"), voice: { speed: 1.5, language: "klingon" } })?.voice, { speed: 1.5 });
+  assert.deepEqual(parseBotRecord({ ...bot("a", "ada"), voice: { live: "sol", language: "klingon" } })?.voice, { live: "sol" });
   assert.equal(parseBotRecord({ ...bot("a", "ada"), voice: { language: "jv" } })?.voice, undefined, "Javanese is stored as Whisper's jw");
 });
 
-
-test("a bot's call voice is one of GPT-Live's voices, kept beside its VoiceStudio voice and cleared back to the default with \"\"", () => {
+test("a bot's call voice is one of GPT-Live's voices, cleared back to the default with \"\"", () => {
   assert.deepEqual(normalizeBotInput({ name: "Ada", voice: { live: " Ember " } }).voice, { live: "ember" });
-  assert.deepEqual(normalizeBotInput({ name: "Ada", voice: { profile: "vp-aria", language: "es", live: "sol" } }).voice, { profile: "vp-aria", language: "es", live: "sol" });
   assert.equal(normalizeBotInput({ name: "Ada", voice: { live: "" } }).voice, undefined, "a new bot has no call voice to clear");
   for (const live of ["marin", "alloy", "Cove!", 3, null]) {
     assert.throws(() => normalizeBotPatch({ voice: { live } }), (error: unknown) => error instanceof BotInputError && /Call voice must be one of GPT-Live's voices: cove, arbor/u.test(error.message), String(live));
   }
   assert.deepEqual(normalizeBotPatch({ voice: { live: "" } }), { voice: { live: "" } });
-  assert.deepEqual(patchedVoice({ profile: "vp-aria", live: "vale" }, { live: "" }), { profile: "vp-aria" }, "the VoiceStudio voice outlives the call voice");
+  assert.deepEqual(patchedVoice({ language: "es", live: "vale" }, { live: "" }), { language: "es" }, "the language outlives the call voice");
   assert.deepEqual(patchedVoice({ language: "es" }, { live: "maple" }), { language: "es", live: "maple" });
-  assert.deepEqual(parseBotRecord({ ...bot("a", "ada"), voice: { live: "arbor", profile: "vp-dani" } })?.voice, { profile: "vp-dani", live: "arbor" });
-  assert.deepEqual(parseBotRecord({ ...bot("a", "ada"), voice: { live: "nova", speed: 1.5 } })?.voice, { speed: 1.5 }, "bots.json drops an unknown call voice and keeps the rest");
+  assert.deepEqual(parseBotRecord({ ...bot("a", "ada"), voice: { live: "nova", language: "es" } })?.voice, { language: "es" }, "bots.json drops an unknown call voice and keeps the rest");
+});
+
+test("bots.json written while HUI had VoiceStudio loads, and the next write leaves out the VoiceStudio voice", async (t) => {
+  const file = await tempFile(t);
+  const older = (id: string, handle: string, voice: unknown) => ({ ...bot(id, handle), voice });
+  await writeFile(file, JSON.stringify({ version: 1, bots: [
+    older("a", "ada", { profile: "vp-aria", speed: 1.25, language: "es", live: "sol" }),
+    older("b", "bob", { profile: "vp-dani", speed: 0.8 }),
+  ] }));
+  const registry = new BotRegistry(file);
+  const [ada, bob] = await registry.list();
+  assert.deepEqual(ada?.voice, { language: "es", live: "sol" }, "the language and call voice stay");
+  assert.equal(bob?.voice, undefined, "a VoiceStudio voice alone is no voice");
+  assert.ok((await readFile(file, "utf8")).includes("vp-aria"), "reading rewrites nothing");
+  await registry.update((bots) => ({ bots: bots.map((entry) => entry.id === "b" ? { ...entry, title: "Builder" } : entry), result: undefined }));
+  const written = JSON.parse(await readFile(file, "utf8")) as { bots: { id: string; voice?: unknown; title?: string }[] };
+  assert.deepEqual(written.bots.map(({ id, voice, title }) => [id, voice, title]), [["a", { language: "es", live: "sol" }, undefined], ["b", undefined, "Builder"]]);
+  assert.doesNotMatch(JSON.stringify(written), /profile|speed|vp-aria|vp-dani/u);
 });

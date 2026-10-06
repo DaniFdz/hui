@@ -3,7 +3,7 @@ import { test } from "node:test";
 
 import { CALL_LIMITS, type CallDelegationResult, type CallLine, type CallTaskResult } from "../../shared/calls.ts";
 import {
-  ActivityGate, CallTranscript, delegationAppends, GREETING_FALLBACK_MS, initialLiveCallState, LiveCall, livePhaseOf, MIC_GATE, parseLiveEvent, reduceLiveCall, sessionAppends, VOICE_GATE,
+  ActivityGate, CallTranscript, callStatusLabel, delegationAppends, GREETING_FALLBACK_MS, initialLiveCallState, LiveCall, livePhaseOf, MIC_GATE, parseLiveEvent, reduceLiveCall, sessionAppends, VOICE_GATE,
   type LiveCallPlatform, type LiveConnectionHandlers, type LiveEvent,
 } from "./live-call.ts";
 
@@ -94,6 +94,21 @@ test("the phase follows the audio: speaking while the bot's voice plays, hearing
   assert.deepEqual(reduceLiveCall(state, { type: "closed", reason: "expired" }, 30).notice, "The call reached GPT-Live's time limit.");
   assert.equal(reduceLiveCall(state, { type: "closed", reason: "connection_lost" }, 30).phase, "failed");
   assert.equal(reduceLiveCall(state, { type: "failed", message: "no" }, 30).error, "no");
+});
+
+test("the call's status line says what the call is doing", () => {
+  const base = initialLiveCallState(0);
+  assert.equal(callStatusLabel(base), "Connecting…");
+  assert.equal(callStatusLabel({ ...base, phase: "listening" }), "Listening");
+  assert.equal(callStatusLabel({ ...base, phase: "listening", micMuted: true }), "Microphone muted");
+  assert.equal(callStatusLabel({ ...base, phase: "hearing" }), "Hearing you…");
+  assert.equal(callStatusLabel({ ...base, phase: "thinking" }), "Thinking…");
+  assert.equal(callStatusLabel({ ...base, phase: "thinking", delegating: 1 }, false, "Juno"), "Asking Juno…");
+  assert.equal(callStatusLabel({ ...base, phase: "thinking", tool: "web_search" }), "Using web_search…");
+  assert.equal(callStatusLabel({ ...base, phase: "thinking", tool: "web_search" }, true), "Summarizing memory…");
+  assert.equal(callStatusLabel({ ...base, phase: "speaking" }), "Speaking");
+  assert.equal(callStatusLabel({ ...base, phase: "ended" }), "Call ended");
+  assert.equal(callStatusLabel({ ...base, phase: "failed" }), "Call failed");
 });
 
 test("the call's lines are written in the order the turns began, each once, with what was actually said", () => {
