@@ -133,6 +133,8 @@ hui bot add [--name <name>] [--title <text>] [--soul-file <path|->] [--cwd <dir>
             [--voice <VoiceStudio voice id>] [--voice-speed <0.5-2>] [--language <code>] [--json]
 hui bot edit <bot> [same flags as add but --soul-file] [--json]  # --model "" / --thinking "": back to the defaults; --voice "" / --voice-speed "": VoiceStudio's; --language "": Auto
 hui bot soul <bot> [--file <path|->] [--json]   # print SOUL.md, or replace it (empty: ask again)
+hui bot tools <bot> [--allow <a,b>] [--deny <a,b>] [--json]   # every tool is on until you turn it off
+hui bot skills <bot> [--allow <a,b>] [--deny <a,b>] [--json]
 hui bot remove <bot> [--json]          # archives: its chat and memory are kept
 hui bot restore <bot> [--json]
 hui bot delete <bot> [--yes] [--json]  # for good: its chat leaves HUI; routines, memory and folder go
@@ -146,8 +148,9 @@ hui bot routine run <bot> <routine>
 hui bot routine remove <bot> <routine> [--json]
 ```
 
-See [Bots](docs/guide.md#bots) for their soul, what they remember, how routines
-and bot-to-bot messages work, and the exit codes of `send --wait`.
+See [Bots](docs/guide.md#bots) for their soul, their tools and skills, what they
+remember, how routines and bot-to-bot messages work, and the exit codes of
+`send --wait`.
 
 On a headless host, use `hui ui --no-open` to print the URL without opening a
 browser. `hui browser` is an alias for `hui ui`. The development launcher is

@@ -220,14 +220,15 @@ bot or its routines). **Agents** is the usual sidebar; **Bots** shows only your 
 most recently active first, with their latest message, and **+** creates one,
 which greets you and asks what you expect from it (its chat opens on a small
 note, "Scout was created", where that first turn began).
-A bot's chat opens beside its **Routines | Memory | Soul** panel: Routines adds
+A bot's chat opens beside its **Routines | Memory | Soul | Tools** panel: Routines adds
 schedules (every few minutes, hours or days, daily, weekly or once, in your
 browser's time zone), runs one now and shows how the last runs went; Memory
 shows how much the bot remembers and what writing its summaries has cost, lets
 you open any summary line down to the original message, and **Open memory
 page** opens the whole memory in a new tab; Soul shows the bot's SOUL.md, with
 **Edit** to change it yourself (or, before the bot has written one, **Write it
-yourself**), and follows it when the bot rewrites it. A row's
+yourself**), and follows it when the bot rewrites it; Tools turns the bot's
+tools and skills on and off ([Tools and skills](#tools-and-skills)). A row's
 **⋯** menu (also in the bot's chat header) edits, hides, archives or deletes the
 bot; **Show archived** lists archived bots so you can restore them, or delete
 one with its trash icon. Deleting asks first, and takes the bot's chat,
@@ -315,6 +316,58 @@ much of a longer file and the bot is told to shorten it. Bots created before
 SOUL.md had their instructions turned into it once, the first time the gateway
 started with this version; a bot that had none starts its first conversation
 at its next turn.
+
+### Tools and skills
+
+A bot has every tool and skill a session in its directory has: reading,
+writing and editing files, the shell, HUI's tools (the shared terminal,
+subagents, the browser, presenting media…), its PI extensions' tools,
+messaging other bots, and the skills PI finds there. Everything is on until you
+turn something off, and whatever appears later (a new extension, a HUI update, a
+new skill) is on too. That is the trade-off of everything on by default: a bot
+you restricted by hand gains newly installed tools, so look at its Tools tab
+after installing one.
+
+The bot panel's **Tools** tab shows **Available tools**, grouped as Files,
+Shell, HUI, each extension by its source, and Bots, each with a switch and what
+it does, then its **Skills** (with a search once there are many). A change
+applies from the bot's next request. Some tools are labelled **Powerful**: they
+reach past whatever else is off. The shell, the shared terminal and watchers run
+commands; writing and editing files can change what other programs load; the
+browser opens HUI's own page and local files; spawning, messaging and steering
+sessions acts through a session that has every tool. They are on by default
+like the rest. Its own tools are always on and listed at the bottom: writing its
+SOUL.md, changing its name or title, asking for access, loading its skills, and
+its memory.
+
+```sh
+hui bot tools ada                      # what it has, grouped, on or off
+hui bot tools ada --deny bash,terminal # turn tools off
+hui bot tools ada --allow bash         # and back on
+hui bot skills ada --deny release-notes
+hui bot add --name Scout --deny-tools bash,write,edit --deny-skills release-notes
+```
+
+`--deny-tools` at creation knows the tools every chat has; an extension's tools
+can be turned off once the bot exists.
+
+When the bot needs something you turned off, it asks: a question appears in its
+chat (and at the top of its Tools tab, and in `hui bot chat`) naming what it
+wants, marked when it's powerful, and why, with **Allow** and **Deny**. Only you
+answer it: a request raised in a turn a routine or another bot started says so,
+and still waits for you. Allow turns the items back on from the bot's next step;
+Deny leaves them off and the bot carries on without them. It asks for one thing
+at a time and can't ask for tools it already has.
+
+A bot without the read tool and the shell still uses its skills, through a tool
+of its own that loads them. Turning off a skill removes it from what the bot is
+told and from its `/skill:` commands.
+
+**Tools are the boundary, not a sandbox.** With the shell or the read tool a bot
+can reach whatever your account can, the files of skills you turned off and
+HUI's own API included. Messaging other bots lets it ask a better-equipped bot
+to do something for it; turn **Message bots** off to prevent that. To really
+isolate a bot, run it on a worker in a container.
 
 ### Talking to a bot
 

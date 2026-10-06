@@ -1110,10 +1110,14 @@ type BotRecord = {
   voice?: { profile?: string; speed?: number; language?: string; live?: GptLiveVoice }; // VoiceStudio voice id (one line, ≤ 200), speed 0.5–2, language (one of Whisper's codes, below; GPT-Live calls speak it too) and GPT-Live call voice (below); absent keys: VoiceStudio's defaults, Auto for the language, Settings' call voice
   hidden?: boolean;
   archived?: boolean;
+  disabledTools?: string[];    // tools the operator turned off in its chat; absent: none (below)
+  disabledSkills?: BotSkillRef[]; // skills turned off; absent: none
   sessionId: string;           // HUI session record of the chat
   createdAt: string;
   updatedAt: string;
 };
+
+type BotSkillRef = { name: string; path: string }; // a skill's name and SKILL.md path, or a bundled skill's "hui:skill:<name>"
 
 type BotView = BotRecord & {
   status: SessionStatus;       // the chat's session status
@@ -1136,6 +1140,24 @@ type BotMemoryStatus = {
 type BotMemoryUsage = { calls: number; input: number; output: number; cacheRead: number; cacheWrite: number; cost: number }; // tokens; cost in USD as providers report it
 
 type BotSoul = { soul: string | null }; // GET/PUT /__hui/bots/:id/soul: SOUL.md's text, null while there is none
+
+type BotCatalog = {             // GET /__hui/bots/:id/catalog
+  tools: BotCatalogTool[];      // what the operator can turn off, in offer order
+  skills: (BotSkillRef & { description: string; source: string /* "HUI defaults" or the directory holding it */; enabled: boolean })[];
+  alwaysOn: { name: string; description: string }[]; // never offered: the bot's own tools and OptChat's memory
+  disabledTools: string[];
+  disabledSkills: BotSkillRef[];
+  live: boolean;                // false: its chat isn't running here, so tools lists only those every chat has
+  request?: { id: string; sessionId: string; title: string; message: string }; // an access request waiting in its chat
+};
+
+type BotCatalogTool = {
+  name: string; label: string; description: string /* one line */;
+  group: "files" | "shell" | "hui" | "extension" | "bots";
+  source: string;               // "Durable", "HUI", or an extension's source label
+  powerful: boolean;            // reaches past whatever else is off (below); on by default like every tool
+  enabled: boolean;
+};
 ```
 
 A bot's memory is [OptChat](optchat.md): its chat's conversation enables it in
@@ -1200,9 +1222,9 @@ read the chat's memory, 500 for storage failures; other methods answer 405.
 | Route | Success | Behavior |
 | --- | --- | --- |
 | `GET /__hui/bots[?archived=1]` | 200 `{ bots: BotView[] }` | Active bots, or with `archived=1` only archived ones, sorted by name |
-| `POST /__hui/bots` | 201 `{ bot }` | `BotInput`: the record fields, all optional (`{}` is enough), `handle` and `soul` (SOUL.md's text, ≤ 20,000 characters after trimming; given, the bot skips its first conversation and no kickoff runs). Without `name` the bot is `New Bot` (`NEW_BOT_NAME`), which its first conversation replaces (`set_profile`). Without `handle` one is derived from the name (`-2`, `-3`… on collision); an explicit handle that is taken is 409 |
+| `POST /__hui/bots` | 201 `{ bot }` | `BotInput`: the record fields, all optional (`{}` is enough), `disabledTools` and `disabledSkills` (below; tools checked against those every chat has, before an extension's, and skills against its directory's), `handle` and `soul` (SOUL.md's text, ≤ 20,000 characters after trimming; given, the bot skips its first conversation and no kickoff runs). Without `name` the bot is `New Bot` (`NEW_BOT_NAME`), which its first conversation replaces (`set_profile`). Without `handle` one is derived from the name (`-2`, `-3`… on collision); an explicit handle that is taken is 409 |
 | `GET /__hui/bots/:id` | 200 `{ bot }` | |
-| `PATCH /__hui/bots/:id` | 200 `{ bot }` | Only what changes; `""` clears `title`, `description`, `model`, `thinking` (back to the gateway defaults, above), `memoryModel` (also as `utilityModel`, the same field; giving both with different values is 400), `memoryThinking` (back to Settings' utility model, then the chat's model, and OptChat's default level); an avatar key `""` clears it (`emoji: ""` switches the bot to its face, `shape: ""` and `color: ""` go back to the ones its id picks), `avatar: null` clears all three (an unknown `shape` or a color that is not `#rrggbb` is 400); a voice `profile: ""`, `speed: null`, `language: ""` (back to Auto) or `live: ""` (back to Settings' call voice) clears that key, `voice: null` clears them all (other voice keys are 400, and so is a `language` that is not one of Whisper's codes, a name such as `Spanish` included, or a `live` that is not one of GPT-Live's voices). `soul` is refused (400): SOUL.md has its own route. A given handle replaces the old one (409 if taken); a new `name` without one re-derives the handle while it is still the automatic one, derived from the old name (kept unique), and a handle chosen before stays. `model`/`thinking` go through the live chat (`setModel`/`setThinking`); `name` and the memory fields reconfigure OptChat, `name` also the session title; `cwd` is accepted only while the chat is idle (409 otherwise) and boots its runtime again there; a turn that starts during that edit (a routine, say) makes it answer 409 after the conversation and the chat's session record already moved, with the bot record still naming the old directory, so repeat the edit once the bot is idle to finish it. Archived bots are 409 |
+| `PATCH /__hui/bots/:id` | 200 `{ bot }` | Only what changes; `""` clears `title`, `description`, `model`, `thinking` (back to the gateway defaults, above), `memoryModel` (also as `utilityModel`, the same field; giving both with different values is 400), `memoryThinking` (back to Settings' utility model, then the chat's model, and OptChat's default level); an avatar key `""` clears it (`emoji: ""` switches the bot to its face, `shape: ""` and `color: ""` go back to the ones its id picks), `avatar: null` clears all three (an unknown `shape` or a color that is not `#rrggbb` is 400); a voice `profile: ""`, `speed: null`, `language: ""` (back to Auto) or `live: ""` (back to Settings' call voice) clears that key, `voice: null` clears them all (other voice keys are 400, and so is a `language` that is not one of Whisper's codes, a name such as `Spanish` included, or a `live` that is not one of GPT-Live's voices). `disabledTools` and `disabledSkills` replace the whole list (`[]` turns everything back on), checked against the running chat's catalog (below); they apply from its next request. `soul` is refused (400): SOUL.md has its own route. A given handle replaces the old one (409 if taken); a new `name` without one re-derives the handle while it is still the automatic one, derived from the old name (kept unique), and a handle chosen before stays. `model`/`thinking` go through the live chat (`setModel`/`setThinking`); `name` and the memory fields reconfigure OptChat, `name` also the session title; `cwd` is accepted only while the chat is idle (409 otherwise) and boots its runtime again there; a turn that starts during that edit (a routine, say) makes it answer 409 after the conversation and the chat's session record already moved, with the bot record still naming the old directory, so repeat the edit once the bot is idle to finish it. Archived bots are 409 |
 | `DELETE /__hui/bots/:id` | 200 `{ bot }` | Archives, deleting nothing: marks the bot, disables every Automation task aimed at its chat, withdraws messages still in HUI's follow-up queue for it, stops a running turn and archives the chat's session record. Idempotent |
 | `DELETE /__hui/bots/:id?permanent=1` | 200 `{ ok: true }` | Deletes a bot for good, active or archived: withdraws messages still in HUI's follow-up queue for it and stops a running turn; its conversation stops being a bot's chat and its memory goes, in one commit (the `hui.bot` document cleared, OptChat turned off) and then OptChat's files; then every Automation task aimed at its chat, the chat's session record as `DELETE /__hui/sessions/:id` does (its runtime stops), its home folder `CONFIG_DIR/bots/<id>` with everything in it (SOUL.md and every file HUI or the bot put there; only `<BOTS_DIR>/<id>` itself, resolved, never following a link out), then the bot. A working directory the operator chose is never touched (when it lies inside the home folder, only SOUL.md goes). pi-durable cannot delete a conversation yet, so its raw log stays in the Durable store, where nothing reads it back. Each step can run again, so deleting again finishes an interrupted attempt; afterwards the bot is 404 |
 | `POST /__hui/bots/:id/restore` | 200 `{ bot }` | Unarchives the bot and its session record; routines stay disabled |
@@ -1210,6 +1232,7 @@ read the chat's memory, 500 for storage failures; other methods answer 405.
 | `POST /__hui/bots/:id/stop` | 200 `{ bot }` | Aborts the chat's running turn; an idle bot is unchanged; 409 while its chat starts |
 | `GET /__hui/bots/:id/memory` | 200 `{ status: BotMemoryStatus, view: string }` | The rendered current view (`<chat>`, one `id+n\|text` line per part, `</chat>`), read once the memory has caught up with the chat; the status counts the same messages |
 | `GET /__hui/bots/:id/memory/zoom?id=&n=` | 200 `{ text }` | OptChat's `zoom(id, n)` output: the two lines under line `id+n`, `n = 1` the whole message (`id+0\|kind: text`), or its own "No line id+n."; `id`/`n` must be whole numbers (400) |
+| `GET /__hui/bots/:id/catalog` | 200 `BotCatalog` | What the operator can turn off in the bot's chat and what is off, read from its `hui.bot` document; a roster copy that differs is repaired. It opens the chat (as a message would), so an extension's tools are listed; an archived bot's chat, or one that can't start, gets only the tools every chat has (`live: false`). An access request the chat waits on comes along as `request`. Archived bots too |
 | `GET /__hui/bots/:id/soul` | 200 `BotSoul` | SOUL.md's text, trimmed (at most 256 KiB is read), or `null` while the bot has none. Archived bots too |
 | `PUT /__hui/bots/:id/soul` | 200 `BotSoul` | `{ soul }`, nothing else: text of at most 20,000 characters after trimming (line ends become `\n`), written atomically (a temporary file and a rename, mode 0600) in the bot's home folder; `""` removes SOUL.md, which brings the first conversation back at the bot's next turn (no kickoff). Answers what was stored. The bot's `updatedAt` moves, so every screen reads it again. Archived bots are 409 |
 | `GET /__hui/bots/:id/memory/html` | 200 `text/html` | OptChat's self-contained browse page (the view, every message, each tree level; everything escaped). A link opens it, so like an attachment it takes `x-hui: 1` or a browser-attested `sec-fetch-site: same-origin` page load; any other request is 403 (cross-site, same-site, `none`, none at all). Served with `content-security-policy: default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'` (inline styles only, never framed), `nosniff`, `cache-control: no-store` and `cross-origin-resource-policy: same-origin` |
@@ -1326,6 +1349,90 @@ between finishes the rest, and a bot that fails is retried at the next start
 field through every write. No turn starts: a bot with neither has its first
 conversation at its next turn.
 
+### Tools and skills
+
+Every bot has every tool and skill a session in its directory has (the coding
+tools, HUI's tools, its PI extensions' tools, `message_bot`, and the skills PI
+finds there, Settings' choices applied) until the operator turns some off. What
+is off lives in the chat's `hui.bot` conversation document as `disabledTools`
+(tool names) and `disabledSkills` (skills by name and source: the SKILL.md path,
+or a bundled skill's stable `hui:skill:<name>` path, as Settings' disabled
+skills name them), so the host that runs the conversation (this gateway, or a
+worker host for a bot on a worker) reads and enforces the same lists. Both are
+optional fields of the document's version 1: absent means nothing is off, so a
+document from before them needs no upgrade, and an older HUI reads the ones this
+one writes and ignores the lists (a rollback keeps every bot's chat). `bots.json`
+keeps a copy in each record for the roster and the bots stream, which reads no
+Durable state; it follows grants made in the chat (`DurableHost.botAccessRecorded`),
+is repaired by every catalog read and checked against each chat's document at the
+gateway's start (diagnostic `bots_access_reconciled`).
+
+Off means removed **by name**, so whatever appears later (a new extension, a HUI
+update, a new skill) is on until the operator turns it off. That is the price of
+everything on by default: a bot restricted by hand gains newly installed tools.
+
+- **Tools.** `DurableSession.applyTools` offers a bot's chat what a session in
+  its directory is offered, minus what is off, extension tools included, as a
+  `tools: { remove }` selection; a change applies from the chat's next request.
+  Behind it, HUI's agent-tool bridge refuses a bot's call to a HUI tool that is
+  off, where the conversation runs (`DurableHost` checks the document), and HUI's
+  agent-tool handler checks again against the roster copy, reading the document
+  before it refuses so a copy that fell behind a grant never refuses what the
+  operator allowed.
+- **A bot's own tools** are always on and never offered: `write_soul`,
+  `set_profile`, `request_access` (offered while anything is off) and
+  `load_skill` (offered while it has a skill and neither `read` nor `bash`), plus
+  OptChat's `zoom` and `date`. Turning one off is a 400.
+- **Skills.** The prompt lists only the skills that are on: PI's own `skills`
+  section while the chat has `read` or `bash`, otherwise one of HUI's that loads
+  them with `load_skill`. `/skill:name` commands expand and list only those
+  skills; another skill's command is sent as typed. `load_skill({ name, path? })`
+  returns one of the bot's skills' SKILL.md, or a text file (≤ 256 KiB) inside
+  that skill's own directory by a relative path; links that lead out, skills
+  that are off and unknown names are refused, saying why.
+- **`bot_access`**, a prompt section between `bots` and `soul`, appears only
+  while something is off: it lists what is off (powerful tools marked) and how to
+  ask for it, and tells the bot not to work around a turned-off tool through
+  other tools, bots or sessions.
+
+**Asking for more.** `request_access({ tools?, skills?, reason })` asks the
+operator to turn back on tools or skills that are off. It raises a session
+question in the chat (the chat's question card, `hui bot chat`, `needs-input`
+from `hui bot send --wait`, and the Tools tab's `request` all show it):
+
+```text
+Allow access to bash (powerful) and the beta skill?
+<reason>
+
+Asked during the routine "Morning digest".
+```
+
+with the options `Allow` and `Deny`. The last line appears when a routine
+(`[routine: …]`), another bot (`[from @…]`) or HUI's kickoff started the turn,
+read from the run's input as `set_profile` reads it (`botTurnOrigin` in
+`shared/bots.ts`). Such a turn may ask, but only the operator answers: session
+questions are answered only through `POST /__hui/sessions/:id/question` (and the
+clients built on it), never by a message, a routine or another bot. `Allow`
+removes the items from the lists in one commit, offers the chat its tools again
+at once (and returns them as the tool round's `addTools`), so the very next
+request has them, and the roster follows. `Deny`, another typed answer or a
+dismissal returns a refusal the bot reads, and nothing changes. Names that
+aren't off are refused with the ones that are, without asking; what the bot
+already has is answered as such. One request per bot waits at a time: a second
+one meanwhile is refused. A request needs the chat open on its host; Stop
+dismisses it.
+
+**Escalation paths.** The catalog labels as `powerful` the tools that reach past
+whatever else is off: `bash`, `terminal` and `watcher` run commands; `write` and
+`edit` change files other programs load (PI extensions, shell startup files);
+`browser` drives HUI's own page and `file://` URLs; `sessions_spawn`,
+`sessions_send` and `subagents` act through another session, which has every
+tool. They are on by default like everything else. `message_bot` lets a bot ask
+a better-equipped bot to act for it; turning `message_bot` off prevents that.
+Tools are the boundary, not a sandbox: a bot with `bash` or `read` reaches
+whatever the user's account can, the files of turned-off skills and HUI's own
+API included. Real isolation means running the bot on a worker in a container.
+
 ### A forever chat
 
 Bot chats refuse what would reset, shorten, fork or delete them, with 409 and a
@@ -1362,7 +1469,7 @@ leaves them disabled.
 Every gateway's default Durable selection includes the `hui-bots` extension,
 whose prompt sections `bots` and `soul` (above) read the conversation's
 `hui.bot` document and render nothing without it. The tool `message_bot({ to, message })` (`to` ≤ 100,
-`message` ≤ 20,000 characters) lives in a second extension, `hui-bots-tools` (with `write_soul` and `set_profile`),
+`message` ≤ 20,000 characters) lives in a second extension, `hui-bots-tools` (with `write_soul`, `set_profile`, `request_access` and `load_skill`),
 installed but selected only by a bot's chat (`DurableSession.applyTools`), and
 refuses in any conversation without the document. Every other conversation's
 offered tools, system prompt and stored agent are unchanged. The section lists

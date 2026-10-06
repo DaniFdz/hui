@@ -822,6 +822,31 @@ only for now. It lands as stacked pull requests:
    `server/call*.test.ts`, `server/calls.test.ts`, `server/bot-service.test.ts`,
    `server/runtimes/durable-optchat.test.ts`, `src/lib/live-call.test.ts` and a
    real call run (both calls of the e2e in the pull request).
+6. **Tools and skills per bot** (implemented 2026-10-07; SPEC.md, "A bot has
+   every tool and skill until the operator turns some off"): every bot has
+   every tool and skill a session in its directory has until the operator
+   turns some off. `disabledTools` and `disabledSkills` live in the chat's
+   `hui.bot` document (optional fields of version 1, mirrored in `bots.json`),
+   so the host that runs the chat enforces them: its tool offer leaves them out,
+   extension tools included, and its HUI tool bridge refuses them, with a second
+   check in HUI's agent-tool handler. The prompt and `/skill:` list only the
+   skills that are on, and `load_skill` loads them for a bot without `read` or
+   `bash`. The bot asks for something that is off with `request_access`, a
+   session question with Allow and Deny only the operator answers, which says
+   when a routine or another bot started the turn. `POST`/`PATCH` take the lists,
+   `GET /__hui/bots/:id/catalog` lists what can be turned off (powerful tools
+   labelled) and a pending request; the panel's Tools tab and `hui bot tools` /
+   `hui bot skills` / `hui bot add --deny-tools --deny-skills` use them. Proof:
+   `server/runtimes/durable-bot-access.test.ts` (real requests: offers, the
+   bridge, prompts, `/skill:`, `load_skill`, requests allowed, denied, refused
+   and one at a time, the port, documents from before the lists),
+   `server/runtimes/question-box.test.ts`, `server/bot-service.test.ts`,
+   `server/bot-routes.test.ts` (a real gateway: what is off leaves the
+   provider's request, a granted tool is on the next one, a skill that is off
+   is not in the prompt, the roster follows), `server/bots.test.ts`,
+   `src/lib/bot-tools.test.ts`, `src/views/bot-tools.test.ts`,
+   `cli/*.test.ts` and an isolated gateway driven in a browser (screens in the
+   pull request).
 
 ## Recommended implementation order
 

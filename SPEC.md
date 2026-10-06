@@ -1148,6 +1148,12 @@ everything the Bots tab can, through the same routes.
   tab) before the reply to it.
 - **Routines** are Automation tasks aimed at a bot's chat, marked
   `[routine: <name>]`, queued behind a busy bot instead of skipped.
+- **Tools and skills.** A bot has every tool and skill a session in its
+  directory has, new ones included, until the operator turns some off in its
+  panel's Tools tab or with `hui bot tools` / `hui bot skills`. The host that
+  runs its chat enforces what is off; the bot asks for it back with
+  `request_access`, which only the operator answers. Tools are the boundary, not
+  a sandbox.
 - **Bots talk to bots** with a `message_bot` tool only bots' chats have,
   beside a byte-stable list of the other bots in their system prompt. A message
   arrives as `[from @handle] …`; chains stop after three hops and each bot sends
@@ -1191,7 +1197,7 @@ everything the Bots tab can, through the same routes.
   rewind are not offered. A new bot speaks first: its chat opens on a small
   centered note, *<name> was created*, where HUI started its first turn, then
   the bot's questions (an empty chat says *Say hi to <name>*). Opening it
-  marks it read. A **Routines | Memory | Soul** panel docks beside the chat (open or
+  marks it read. A **Routines | Memory | Soul | Tools** panel docks beside the chat (open or
   closed and the tab are remembered; on narrow screens it opens on request as a
   sheet over the chat). Routines lists the bot's Automation tasks with schedule,
   next run, an enable switch, Run now and Delete, adds routines every N
@@ -1210,6 +1216,12 @@ everything the Bots tab can, through the same routes.
   offers **Write it yourself**. While open it reads SOUL.md again when the bots
   stream says the bot or HUI may have written it (its soul flag, its
   `updatedAt`, or its latest message once a turn is over), with no timer.
+  Tools shows *Available tools*, one switch per tool with what it does, grouped
+  as Files, Shell, HUI, each extension by its source and Bots (powerful ones
+  labelled), the bot's skills with a search once there are eight or more, what
+  is always on, and an access request its chat waits on, with Allow and Deny;
+  each switch saves the whole list and waits for it, and the tab reads the
+  catalog again when the bots stream shows the bot changed.
 - **Voice** goes through [VoiceStudio](https://github.com/debpalash/VoiceStudio),
   a separate speech service the gateway only calls over HTTP. The connection is
   the gateway's (Settings → Integrations → VoiceStudio, verified before it is
@@ -1233,6 +1245,36 @@ everything the Bots tab can, through the same routes.
 The contract is [docs/api.md#bots](docs/api.md#bots).
 
 ## Decisions
+
+### A bot has every tool and skill until the operator turns some off (2026-10-06)
+
+Reviewing the Bots stack, the owner asked to choose which tools and skills a
+bot has, so it can use only those, and for the bot to extend them while it
+iterates. The first design gave each bot allow-lists: new bots would start with
+nothing but their own tools and ask for what they need. Later the same evening
+the owner chose the opposite default: an "Available tools" selector with
+everything active, powerful tools included. So every bot, new or existing, has
+every tool and skill a session in its directory has, and HUI stores only what
+the operator turned off. Tools and skills that appear later are on too; the
+trade-off, stated in the guide, is that a bot restricted by hand gains newly
+installed tools.
+
+The lists live in the chat's `hui.bot` conversation document, so whatever host
+runs the conversation (a worker host too) enforces them: its tool offer leaves
+out what is off, extension tools included, and its HUI tool bridge refuses a
+call to a tool that is off. The prompt lists only the skills that are on, and a
+bot with neither `read` nor `bash` loads them with `load_skill`. A bot's own
+tools (`write_soul`, `set_profile`, `request_access`, `load_skill`) and OptChat's
+memory tools can't be turned off. The bot asks for something that is off with
+`request_access`, a session question with Allow and Deny that only the operator
+answers; a routine's or another bot's turn may ask too, and the question says who
+started it. The bot panel gets a Tools tab after Soul, the CLI `hui bot tools`
+and `hui bot skills`.
+
+Tools are the boundary, not a sandbox: with `bash` or `read` a bot reaches
+whatever the user's account can, and `message_bot` lets it ask a better-equipped
+bot to act (turning `message_bot` off prevents that). Isolation means running the
+bot on a worker in a container.
 
 ### Bots write their own SOUL.md in a first conversation (2026-10-06)
 
