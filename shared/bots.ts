@@ -141,7 +141,7 @@ export function botKickoffText(name: string): string {
   return [
     BOT_KICKOFF_MARKER,
     `name: ${name.replace(/\s+/gu, " ").trim()}`,
-    "HUI just created you. This message is from HUI, not the operator, who has not written yet: start your first conversation now, as your soul section says.",
+    "HUI just created you. This note is from HUI, not the operator, who will read your chat when they open it. Write your opening message to them now (your greeting and first question, as your soul section says) and reply with that message only.",
   ].join("\n");
 }
 

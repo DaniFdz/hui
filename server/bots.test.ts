@@ -159,6 +159,7 @@ test("SOUL.md text is trimmed with Unix line ends, at most 20,000 characters; th
   assert.equal(kickoff.split("\n")[0], BOT_KICKOFF_MARKER);
   assert.equal(botKickoffName(kickoff), "Scout the Scout", "its name, on one line");
   assert.match(kickoff, /from HUI, not the operator/u);
+  assert.match(kickoff, /Write your opening message to them now \(your greeting and first question, as your soul section says\) and reply with that message only\./u, "it asks for the opener itself: a real model read \"the operator has not written yet\" as a reason to wait");
   assert.equal(botKickoffName(BOT_KICKOFF_MARKER), "");
   assert.equal(botKickoffName(`${BOT_KICKOFF_MARKER} by hand`), undefined, "only the marker line itself");
   assert.equal(botKickoffName("[routine: Standup] go"), undefined);

@@ -1296,7 +1296,7 @@ recoverable and a message arriving meanwhile queues behind it):
 ```text
 [HUI bot created]
 name: <bot name>
-HUI just created you. This message is from HUI, not the operator, who has not written yet: start your first conversation now, as your soul section says.
+HUI just created you. This note is from HUI, not the operator, who will read your chat when they open it. Write your opening message to them now (your greeting and first question, as your soul section says) and reply with that message only.
 ```
 Clients show a user message whose first line is exactly `[HUI bot created]`
 as a note (`<name> was created`), never as the operator's message; previews
