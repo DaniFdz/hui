@@ -68,6 +68,31 @@ credential or account is used.
 8. Light mode: the header and roster close-up keep the tag and the globe
    legible on the light tokens.
 
+## Soul on workers (2026-10-07, `0be94df`, after merging SOUL.md; no console errors)
+
+Same setup (the fixture provider's `models.json` base URL without `/v1`: its
+client adds that itself), desktop only, dark mode.
+
+1. Bots tab → **+** → *New bot on devbox*: *New Bot* opens with the note "New
+   Bot was created" and its opener, "Hi, I'm new here. What would you like me to
+   look after for you?", from the turn HUI started through its remote session.
+   The header reads "🌐 devbox · Idle"; the row previews the opener.
+2. "Call yourself Echo, please. E2E_SET_PROFILE": "set_profile answered: Saved:
+   you are Echo (@echo), Fixture tester." The header and row follow.
+3. "Keep my trail notes tidy and short. E2E_WRITE_SOUL": "I wrote my SOUL.md."
+   On disk, `<root>/remote/.local/share/hui-worker/bots/<id>/SOUL.md` (0600, in a
+   0700 home) holds "# Who I am / E2E_SOUL_TEXT: a terse fixture bot."; the
+   gateway's configuration has no `bots/` folder at all. The Soul tab shows it.
+4. ⋯ → Delete… while devbox is connected: the dialog names "its folder on
+   devbox"; after Delete the home (SOUL.md and a `notes.md` put there) and the
+   bot's OptChat memory are gone from the worker, and no clean-up was queued.
+5. A second bot on devbox, a file put in its home, then `POST
+   /__hui/workers/:id/disconnect`: the dialog adds "HUI is not connected to
+   devbox now, so those go there when it reconnects". Delete closed it in 232 ms
+   and the roster was empty; `~/.config/hui/bot-cleanup.json` held its worker,
+   id, reference and folder, and the home was still on devbox. `POST …/connect`:
+   the home and the memory went, and the clean-up file's list was empty.
+
 ## Not covered here
 
 A GPT-Live call with a bot on a worker (the call path itself runs in the
