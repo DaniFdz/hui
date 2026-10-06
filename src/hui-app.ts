@@ -527,6 +527,8 @@ export class HuiApp extends HuiElement {
   @state() private botDialogPending = false;
   @state() private botDialogError = "";
   @state() private botDraftModel = "";
+  /** The New bot dialog's Runs on: a remote worker's id, or "" for this machine. */
+  @state() private botDraftWorker = "";
   @state() private botDraftThinking = "";
   @state() private botDraftMemoryModel = "";
   /** The dialog's Look: a face (shape and color) or an emoji, edited live in its preview. */
@@ -3860,10 +3862,12 @@ export class HuiApp extends HuiElement {
     this.botDraftColor = BOT_FACE_COLORS[Math.floor(random / BOT_FACE_SHAPES.length) % BOT_FACE_COLORS.length]!.hex;
     this.botDraftEmoji = "";
     this.botDraftSeed = random;
+    this.botDraftWorker = "";
     ++this.directorySuggestionRequest;
     this.directorySuggestions = [];
-    // The model pickers read PI's catalog; New Session loads it the same way.
+    // The model pickers read PI's catalog; New Session loads it the same way, and its workers too.
     this.loadLaunchPreferences();
+    this.loadLaunchWorkers();
     this.openBotDialogVoice(undefined);
   };
 
@@ -3884,8 +3888,17 @@ export class HuiApp extends HuiElement {
     ++this.directorySuggestionRequest;
     this.directorySuggestions = [];
     this.loadLaunchPreferences();
+    this.loadLaunchWorkers();
     this.openBotDialogVoice(bot);
   };
+
+  /** The worker the open bot dialog's bot runs on: the one chosen for a new bot, the bot's own when edited. */
+  private botDialogWorker(): string | undefined {
+    const dialog = this.botDialog;
+    if (!dialog) return undefined;
+    if (dialog.mode === "edit") return dialog.bot.worker?.id;
+    return this.launchWorkers.some((worker) => worker.id === this.botDraftWorker) ? this.botDraftWorker : undefined;
+  }
 
   /** The dialog's voice section starts from the bot's voice and lists VoiceStudio's voices once the gateway says it is
    * connected; without VoiceStudio the section stays hidden and an edit leaves the voice alone. */
@@ -3991,7 +4004,9 @@ export class HuiApp extends HuiElement {
       ...(live ? { callVoice: this.botDraftCallVoice } : {}),
     };
     const look = { look: this.botDraftLook, shape: this.botDraftShape, color: this.botDraftColor, emoji: this.botDraftEmoji };
-    const draft = { ...values, ...look, model: this.botDraftModel, thinking: this.botDraftThinking, memoryModel: this.botDraftMemoryModel, ...voice };
+    // Where it runs is chosen once, at creation.
+    const worker = state.mode === "create" ? this.botDialogWorker() : undefined;
+    const draft = { ...values, ...look, model: this.botDraftModel, thinking: this.botDraftThinking, memoryModel: this.botDraftMemoryModel, ...voice, ...(worker ? { worker } : {}) };
     const patch = state.mode === "edit" ? botPatchFromDraft(state.bot, draft) : undefined;
     // Saving an untouched bot changes nothing, and the gateway refuses an empty change.
     if (patch && !Object.keys(patch).length) {
@@ -4335,7 +4350,10 @@ export class HuiApp extends HuiElement {
     const panelOpen = sheet ? this.botSheetOpen : this.botPanel.open;
     const panelId = `bot-panel-${bot.id.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
     const paneBot: PaneBot = {
-      bot: { id: bot.id, name: bot.name, ...(bot.title ? { title: bot.title } : {}), ...(bot.avatar ? { avatar: bot.avatar } : {}), ...(bot.memory ? { memory: bot.memory } : {}) },
+      bot: {
+        id: bot.id, name: bot.name, ...(bot.title ? { title: bot.title } : {}), ...(bot.avatar ? { avatar: bot.avatar } : {}),
+        ...(bot.memory ? { memory: bot.memory } : {}), ...(bot.worker ? { worker: bot.worker } : {}),
+      },
       panelOpen,
       panelId,
     };
@@ -4423,7 +4441,17 @@ export class HuiApp extends HuiElement {
       memoryModel: this.botDraftMemoryModel,
       ...(this.utilityModelName() ? { utilityDefault: this.utilityModelName()! } : {}),
       directorySuggestions: this.directorySuggestions,
-      onDirectoryInput: this.requestDirectorySuggestions,
+      // A bot on a worker works in a folder there: suggestions come from the worker, as on the New Session page.
+      onDirectoryInput: this.botDialogWorker() ? (input) => this.loadDirectorySuggestions(input, this.botDialogWorker()) : this.requestDirectorySuggestions,
+      ...(this.launchWorkers.length ? { machine: {
+        workers: this.launchWorkers,
+        worker: this.botDialogWorker() ?? "",
+        onWorker: (id: string) => {
+          this.botDraftWorker = id;
+          ++this.directorySuggestionRequest;
+          this.directorySuggestions = [];
+        },
+      } } : {}),
       onModel: (value) => { this.botDraftModel = value; },
       onThinking: (value) => { this.botDraftThinking = value; },
       onMemoryModel: (value) => { this.botDraftMemoryModel = value; },

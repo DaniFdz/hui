@@ -220,6 +220,17 @@ test("an edit sends only what changed, clears emptied fields and keeps an untouc
   assert.deepEqual(botPatchFromDraft(bot, { ...unchanged, name: "  " }), {}, "a blank name is never sent");
 });
 
+test("a bot on a worker: its view names the worker, a new one sends it, and an edit never does", () => {
+  const remote = parseBot({ ...RECORD, cwd: "/home/remote/.local/share/hui-worker/bots/b1", worker: { id: "w-1", name: "devbox" } }) as BotView;
+  assert.deepEqual(remote.worker, { id: "w-1", name: "devbox" });
+  assert.equal(parseBot({ ...RECORD, worker: { id: "w-1" } })?.worker, undefined, "a worker without its name is no worker to show");
+  assert.equal(parseBot({ ...RECORD, worker: "w-1" })?.worker, undefined);
+  assert.deepEqual(botInputFromDraft({ ...EMPTY_DRAFT, name: "Rover", worker: "w-1", cwd: " ~/src " }), { name: "Rover", cwd: "~/src", worker: "w-1" });
+  assert.deepEqual(botInputFromDraft({ ...EMPTY_DRAFT, name: "Rover", worker: "" }), { name: "Rover" }, "Local sends nothing");
+  const unchanged: BotDraft = { name: "Scout", title: "Research assistant", instructions: "Find things.", cwd: remote.cwd, emoji: "🔭", model: "anthropic/claude", thinking: "medium", memoryModel: "", worker: "w-2" };
+  assert.deepEqual(botPatchFromDraft(remote, unchanged), {}, "where a bot runs is never part of an edit");
+});
+
 test("the dialog's Look: a new bot keeps the face it showed, or its emoji, with that color", () => {
   const face: BotDraft = { ...EMPTY_DRAFT, name: "Scout", look: "face", shape: "heart", color: "#2FC49A", emoji: "🦊" };
   assert.deepEqual(botInputFromDraft(face), { name: "Scout", avatar: { color: "#2fc49a", shape: "heart" } }, "Face ignores a typed emoji");

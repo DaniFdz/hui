@@ -205,6 +205,16 @@
   font-size: 10px;
   line-height: 16px;
 }
+/* The worker a bot runs on, before its preview: an icon and the name, cut before it crowds the preview out. */
+.app-shell .bot-row__machine {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  max-width: 45%;
+  overflow: hidden;
+}
+.app-shell .bot-row__machine svg { flex: none; width: 10px; height: 10px; }
+.app-shell .bot-row__machine span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .app-shell .bot-row--hidden .bot-row__link { opacity: .72; }
 /* The row menu takes the trailing edge on hover, like a session's duration. */
 .app-shell .bot-row:is(:hover, :focus-within) .bot-row__text { padding-inline-end: 26px; }
@@ -337,6 +347,9 @@
   row-gap: 1px;
 }
 .transcript__head .chat-pane__crumbs.bot-chat-identity > .bot-avatar { grid-row: 1 / 3; }
+/* The worker it runs on, in the role line: as compact as the session header's "on devbox". */
+.bot-chat-identity__machine { display: inline-flex; align-items: center; gap: 3px; vertical-align: bottom; }
+.bot-chat-identity__machine svg { flex: none; width: 11px; height: 11px; }
 .bot-chat-empty { gap: 10px; }
 .bot-chat-empty .bot-avatar { margin-bottom: 4px; }
 /* The empty-state copy styles every span; the avatar keeps its own size. */
@@ -631,6 +644,18 @@
 .bot-dialog__row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; align-items: start; }
 .bot-dialog .input-dialog__field { min-width: 0; }
 .bot-dialog__instructions { min-height: 96px; resize: vertical; }
+/* Runs on, once the bot exists: the machine it stays on, read-only. */
+.field .bot-dialog__machine-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  color: var(--text);
+  font-size: calc(13px * var(--control-ui-text-scale));
+  font-weight: 500;
+}
+.field .bot-dialog__machine-value span { color: inherit; font-size: inherit; font-weight: inherit; }
+.bot-dialog__machine-value svg { flex: none; width: 14px; height: 14px; color: var(--muted); }
 @media (max-width: 520px) {
   .bot-dialog__row { grid-template-columns: minmax(0, 1fr); }
 }

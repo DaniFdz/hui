@@ -10,6 +10,7 @@ import { closeDropdownOnEscape, labelDropdown } from "../lib/web-awesome.ts";
 import { navigationPath } from "../lib/navigation.ts";
 import type { BotDraft, BotMemoryStatus, BotView } from "../lib/bots.ts";
 import { BOT_FACE_COLORS, BOT_FACE_SHAPES, BOT_FACE_SHAPE_LABELS, BOT_LIMITS, BOT_THINKING_LEVELS, botLook, type BotAvatar, type BotFaceShape } from "../../shared/bots.ts";
+import type { WorkerState } from "../../shared/workers.ts";
 import { facePath, rosterFaceState, type BotFaceSize, type BotFaceState } from "../lib/bot-face.ts";
 import "../components/bot-face.ts";
 import { VOICE_LIMITS, type VoiceProfile } from "../../shared/voice.ts";
@@ -139,6 +140,7 @@ function botRow(bot: BotView, props: BotRosterProps, drawer: RosterDrawer) {
           <time class="bot-row__time" datetime=${at ? new Date(at).toISOString() : nothing} title=${at ? new Date(at).toLocaleString() : nothing}>${compactRelativeTime(at, props.now)}</time>
         </span>
         <span class="bot-row__bottom">
+          ${bot.worker ? html`<span class="bot-row__tag bot-row__machine" title=${`Runs on ${bot.worker.name}`}>${icons.globe}<span>${bot.worker.name}</span></span>` : nothing}
           ${bot.hidden ? html`<span class="bot-row__tag">Hidden</span>` : nothing}
           <span class="bot-row__preview">${preview}</span>
           ${unread ? html`<span class="sidebar-session-unread-dot bot-row__unread" title="Unread"></span>` : nothing}
@@ -567,6 +569,16 @@ export type BotDialogProps = {
   voice?: BotDialogVoice;
   /** The call voice: present while calls use GPT-Live (Settings → Models → Calls). */
   call?: BotDialogCall;
+  /** Where the bot runs: present while a remote worker exists (Settings → Workers). */
+  machine?: BotDialogMachine;
+};
+
+/** Runs on: this machine or a remote worker, chosen when the bot is created; an edit only shows it. */
+export type BotDialogMachine = {
+  workers: readonly { id: string; name: string; state: WorkerState }[];
+  /** The chosen worker's id; "" runs the bot on this machine. */
+  worker: string;
+  onWorker: (id: string) => void;
 };
 
 /** A GPT-Live call voice, and the language (shared with VoiceStudio's section when both show). */
@@ -713,6 +725,43 @@ function modelOptions(models: readonly RuntimeModel[], empty: string, current: s
   return current && !options.some((option) => option.value === current) ? [...options, { value: current, label: current }] : options;
 }
 
+/** A worker's state beside its name, as the New Session page's picker shows it. */
+function workerStateLabel(state: WorkerState): string {
+  return state === "connected" ? "Remote worker" : `Remote worker · ${state === "error" ? "offline" : state}`;
+}
+
+/** Runs on: a picker while the bot is new, the machine it stays on while it is edited. Its chat and memory live in that
+ * machine's store, so it is chosen once. */
+function renderMachineField(props: BotDialogProps, editing: BotView | undefined) {
+  if (editing) {
+    if (!editing.worker && !props.machine) return nothing;
+    return html`<div class="field input-dialog__field bot-dialog__machine"><span>Runs on</span>
+      <span class="bot-dialog__machine-value" data-bot-machine>${editing.worker ? icons.globe : icons.terminal}<span>${editing.worker?.name ?? "Local"}</span></span>
+      <span class="bot-field__hint">A bot stays on the machine it was created on: its chat and memory live there.</span></div>`;
+  }
+  const machine = props.machine;
+  if (!machine) return nothing;
+  const options = [
+    { value: "", label: "Local", description: "This machine" },
+    ...machine.workers.map((worker) => ({ value: worker.id, label: worker.name, description: workerStateLabel(worker.state) })),
+  ];
+  return html`<div class="field input-dialog__field bot-dialog__machine"><span>Runs on</span>
+    ${renderPicker({ label: "Runs on", value: machine.worker, disabled: props.pending, options, onChange: machine.onWorker,
+      renderLeading: (option) => option.value ? icons.globe : icons.terminal })}
+    <span class="bot-field__hint">${machine.worker
+      ? "Its chat, memory and folder live on that worker, which HUI must be connected to. Terminals, the browser and watchers stay on this machine, so the bot can't use them there. It can't move later."
+      : "Its chat and memory live on this machine. It can't move later."}</span></div>`;
+}
+
+/** What the workspace field says: a folder on the machine the bot runs on. */
+function workspaceHint(props: BotDialogProps, editing: BotView | undefined): string {
+  const remote = editing ? editing.worker : props.machine?.workers.find((worker) => worker.id === props.machine?.worker);
+  if (editing) return remote ? `A folder on ${remote.name}. Can change only while the bot is idle.` : "Can change only while the bot is idle.";
+  return remote
+    ? `A folder on ${remote.name}: absolute or ~/…. Leave empty for a private folder HUI creates there.`
+    : "Leave empty for a private folder HUI creates for this bot.";
+}
+
 /** One Language field for VoiceStudio and GPT-Live calls, while either shows. */
 function languageField(props: BotDialogProps) {
   const owner = props.voice ?? props.call;
@@ -762,9 +811,10 @@ export function renderBotDialog(props: BotDialogProps) {
       ${props.voice ? renderVoiceField(props.voice, props.pending, !props.call) : nothing}
       ${props.call ? renderCallVoiceField(props.call, props.pending) : nothing}
       ${languageField(props)}
+      ${renderMachineField(props, editing)}
       <div class="field input-dialog__field"><label for="bot-dialog-cwd">Workspace directory</label>
         ${renderDirectoryPicker({ id: "bot-dialog-cwd", label: "Workspace directory", value: editing?.cwd ?? "", suggestions: props.directorySuggestions, onInput: props.onDirectoryInput, inputClass: "settings-input", externalLabel: true, placeholder: "Automatic" })}
-        <span class="bot-field__hint">${editing ? "Can change only while the bot is idle." : "Leave empty for a private folder HUI creates for this bot."}</span></div>
+        <span class="bot-field__hint">${workspaceHint(props, editing)}</span></div>
       ${props.error ? html`<p class="group-action-dialog__error bot-field__error" role="alert">${props.error}</p>` : nothing}
       <div class="exec-approval-actions">
         <button type="submit" class="btn primary" ?disabled=${props.pending}>${props.pending ? (editing ? "Saving…" : "Creating…") : editing ? "Save" : "Create bot"}</button>
@@ -781,7 +831,7 @@ export function renderBotArchiveDialog(bot: BotView, pending: boolean, error: st
     @cancel=${(event: Event) => { event.preventDefault(); if (!pending) onCancel(); }}>
     <form class="exec-approval-card" method="dialog" @submit=${(event: SubmitEvent) => { event.preventDefault(); onConfirm(); }}>
       <div class="exec-approval-title" id="bot-archive-title">Archive ${bot.name}?</div>
-      <div class="exec-approval-sub">${bot.name} leaves the roster and its routines are disabled. Its chat, memory and workspace stay on this machine, and it can be restored.</div>
+      <div class="exec-approval-sub">${bot.name} leaves the roster and its routines are disabled. Its chat, memory and workspace stay on ${bot.worker?.name ?? "this machine"}, and it can be restored.</div>
       ${error ? html`<p class="group-action-dialog__error" role="alert">${error}</p>` : nothing}
       <div class="exec-approval-actions">
         <button type="submit" class="btn danger" ?disabled=${pending}>${pending ? "Archiving…" : "Archive"}</button>
@@ -799,7 +849,9 @@ export function renderBotDeleteDialog(bot: BotView, pending: boolean, error: str
     @cancel=${(event: Event) => { event.preventDefault(); if (!pending) onCancel(); }}>
     <form class="exec-approval-card" method="dialog" @submit=${(event: SubmitEvent) => { event.preventDefault(); onConfirm(); }}>
       <div class="exec-approval-title" id="bot-delete-title">Delete ${bot.name}?</div>
-      <div class="exec-approval-sub">${bot.name} and its routines are deleted for good; it cannot be restored. Its chat stays in Pi's Durable store, which HUI no longer opens, and the files in its workspace stay on this machine.</div>
+      <div class="exec-approval-sub">${bot.name} and its routines are deleted for good; it cannot be restored. ${bot.worker
+        ? `Its chat stays in the Durable store on ${bot.worker.name}, which HUI no longer opens, and the files in its workspace stay there.`
+        : "Its chat stays in Pi's Durable store, which HUI no longer opens, and the files in its workspace stay on this machine."}</div>
       ${error ? html`<p class="group-action-dialog__error" role="alert">${error}</p>` : nothing}
       <div class="exec-approval-actions">
         <button type="submit" class="btn danger" ?disabled=${pending}>${pending ? "Deleting…" : "Delete"}</button>
