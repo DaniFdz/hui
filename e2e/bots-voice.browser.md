@@ -12,6 +12,11 @@ Durable and the browser's audio stack are real; the model provider
 deterministic fakes. No real VoiceStudio, microphone, operator transcript or
 account is involved.
 
+Since 2026-10-07 the bot dialog is gone: a bot's call voice and language are in
+its Settings tab, which offers no VoiceStudio voice
+([bot-setup.browser.md](bot-setup.browser.md)); steps 3 and 11 below describe
+the old dialog.
+
 ## Reproduce
 
 1. From the checkout, with `HTTP_PROXY`/`HTTPS_PROXY`/`NODE_USE_ENV_PROXY` unset:
