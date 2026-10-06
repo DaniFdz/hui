@@ -16,6 +16,7 @@ import {
   rosterBots,
   tabAfterKey,
   BOT_AVATAR_TONES,
+  BOT_PANEL_TABS,
   SIDEBAR_TABS,
 } from "./bot-roster.ts";
 import type { BotView } from "./bots.ts";
@@ -133,6 +134,10 @@ test("tab strips move with arrows, Home and End and ignore other keys", () => {
   assert.equal(tabAfterKey(SIDEBAR_TABS, "bots", "Home"), "sessions");
   assert.equal(tabAfterKey(SIDEBAR_TABS, "sessions", "End"), "bots");
   assert.equal(tabAfterKey(SIDEBAR_TABS, "sessions", "Enter"), undefined);
+  assert.deepEqual(BOT_PANEL_TABS, ["routines", "memory", "soul"], "the bot panel: Routines | Memory | Soul");
+  assert.equal(tabAfterKey(BOT_PANEL_TABS, "memory", "ArrowRight"), "soul");
+  assert.equal(tabAfterKey(BOT_PANEL_TABS, "soul", "ArrowRight"), "routines");
+  assert.equal(tabAfterKey(BOT_PANEL_TABS, "routines", "End"), "soul");
   assert.equal(normalizeSidebarTab("bots"), "bots");
   for (const value of [null, "Bots", "agents", 1]) assert.equal(normalizeSidebarTab(value), "sessions");
 });
@@ -140,5 +145,6 @@ test("tab strips move with arrows, Home and End and ignore other keys", () => {
 test("the side panel remembers open/closed and its tab, defaulting open on Routines", () => {
   assert.deepEqual(normalizeBotPanel(null), { open: true, tab: "routines" });
   assert.deepEqual(normalizeBotPanel({ open: false, tab: "memory" }), { open: false, tab: "memory" });
+  assert.deepEqual(normalizeBotPanel({ open: true, tab: "soul" }), { open: true, tab: "soul" }, "the Soul tab is remembered too");
   assert.deepEqual(normalizeBotPanel({ open: "no", tab: "settings" }), { open: true, tab: "routines" });
 });

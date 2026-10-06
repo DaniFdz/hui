@@ -48,8 +48,8 @@ the Memory tab only as the gateway's 503 text; this one supersedes it.
 3. The toolbar became the **Sessions | Bots** tablist; Bots → "No bots yet",
    the explanation and a New bot button.
 4. The toolbar's + opened **New bot**: its Model and Thinking pickers start on
-   *Gateway default*. Scout, 🔭, Research assistant and instructions were
-   typed, Model *HUI SDK Fixture* and Thinking *High* picked; Create bot closed
+   *Gateway default*. Scout, 🔭, Research assistant and instructions (a field
+   removed on 2026-10-06, below) were typed, Model *HUI SDK Fixture* and Thinking *High* picked; Create bot closed
    the dialog once the gateway answered and opened `/bots/<id>`: "Scout ·
    Research assistant · Idle", "Say hi to Scout" and the Routines panel.
 5. "Hi Scout, what can you do?" from the composer: "Fixture response." streamed
@@ -107,6 +107,31 @@ the Memory tab only as the gateway's 503 text; this one supersedes it.
     sheet docks on the right and its body scrolls. The document never got wider
     than the viewport.
 20. Browser page errors: none. Console errors: none.
+
+## Soul and the first conversation (2026-10-06)
+
+Instructions became SOUL.md plus a first conversation. To reproduce, after the
+steps above (any model; the fixture answers a kickoff with "Hi, I'm new here.
+What would you like me to look after for you?" and `E2E_WRITE_SOUL` with a
+`write_soul` call):
+
+1. **New bot**: no Instructions field; the subtitle says the bot starts by
+   asking what you expect from it. Create *Nova* without a model.
+2. Its chat opens on the note *Nova was created* (a centered divider, no user
+   bubble), then its opening question streams in by itself; the roster row
+   previews the question, never the kickoff.
+3. Panel → **Soul** (the third tab; arrow keys and End reach it, and it is
+   remembered): *Nova writes its soul in your first conversation* with
+   **Write it yourself**.
+4. Answer with `E2E_WRITE_SOUL …`: the reply says SOUL.md was written, and the
+   open Soul tab shows it as Markdown by itself, with **Edit**.
+5. **Edit**: a textarea with the count against 20,000 characters, Save and
+   Cancel; Escape cancels without closing a mobile sheet; a refusal (over the
+   limit) shows inline and keeps the text. Saving it empty brings the empty
+   state back.
+6. Dark and light themes, 1440×900 and 390×844 (the panel as a sheet).
+
+The run with real models on the preview, and its screenshots, are in PR #69.
 
 ## Evidence
 

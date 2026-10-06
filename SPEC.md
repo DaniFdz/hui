@@ -1166,8 +1166,9 @@ everything the Bots tab can, through the same routes.
   waiting for an answer, summarizing memory, failed), an unread dot (also on the
   Bots tab while Agents shows) and a warning while memory summaries keep
   failing. Search matches name, handle and title. The toolbar's + opens **New
-  bot** (name, emoji, title, instructions, model, thinking, memory model,
-  workspace; nothing changes until the gateway accepts it); *Gateway default*
+  bot** (name, emoji, title, model, thinking, memory model, workspace; no
+  instructions: the bot starts by asking what you expect from it; nothing
+  changes until the gateway accepts it); *Gateway default*
   leaves the model and thinking level to the gateway, and choosing it when
   editing clears the bot's own. A row's menu offers Edit, Hide/Unhide (*Show
   hidden* while any are hidden) and Archive, confirmed, with a Restore toast;
@@ -1178,8 +1179,10 @@ everything the Bots tab can, through the same routes.
   `/bots/<id>` as its one chat in the ordinary session pane, its header
   showing avatar, name, role and status;
   assistant turns carry the bot's name, `/clear`, `/compact`, Compact now and
-  rewind are not offered, and a new bot says *Say hi to <name>*. Opening it
-  marks it read. A **Routines | Memory** panel docks beside the chat (open or
+  rewind are not offered. A new bot speaks first: its chat opens on a small
+  centered note, *<name> was created*, where HUI started its first turn, then
+  the bot's questions (an empty chat says *Say hi to <name>*). Opening it
+  marks it read. A **Routines | Memory | Soul** panel docks beside the chat (open or
   closed and the tab are remembered; on narrow screens it opens on request as a
   sheet over the chat). Routines lists the bot's Automation tasks with schedule,
   next run, an enable switch, Run now and Delete, adds routines every N
@@ -1190,7 +1193,14 @@ everything the Bots tab can, through the same routes.
   and failures, and lists the view's `id+n|text` lines (a click opens a line
   into its halves, down to a message whole); while open it reads the memory
   again whenever the bots stream reports it changed, with no timer. *Open memory
-  page* is a plain link to OptChat's browse page, opened in a new tab.
+  page* is a plain link to OptChat's browse page, opened in a new tab. Soul
+  shows SOUL.md as Markdown, through the chat's renderer, with **Edit**: a
+  textarea with Save and Cancel (Escape), the count against 20,000 characters
+  and the gateway's refusal inline; saving it empty removes SOUL.md. Before the
+  bot has one it says *<name> writes its soul in your first conversation* and
+  offers **Write it yourself**. While open it reads SOUL.md again when the bots
+  stream says the bot or HUI may have written it (its soul flag, its
+  `updatedAt`, or its latest message once a turn is over), with no timer.
 
 The contract is [docs/api.md#bots](docs/api.md#bots).
 

@@ -340,7 +340,7 @@ export type HomeProps = {
   bot?: HomeBot;
 };
 
-/** The bot view's header: who the bot is and its Routines | Memory panel. */
+/** The bot view's header: who the bot is and its Routines | Memory | Soul panel. */
 export type HomeBot = {
   bot: Pick<BotView, "id" | "name" | "title" | "avatar" | "memory">;
   panelOpen: boolean;
@@ -1014,6 +1014,12 @@ function compactionRule(label: string, options: { metric?: string; glyph?: boole
   </div>`;
 }
 
+/** Where HUI started a new bot's first turn: a small centered note, never a bubble of the operator's. */
+function renderBotCreated(props: HomeProps, row: Extract<ChatProjectionRow, { kind: "botCreated" }>): TemplateResult {
+  const name = row.name || props.bot?.bot.name || "This bot";
+  return html`<div class="chat-notice chat-bot-created" data-chat-row-key=${row.id}>${compactionRule(`${name} was created`)}</div>`;
+}
+
 /** OpenClaw's completed compaction marker; the summary PI wrote stays readable. */
 function renderCompaction(row: Extract<ChatProjectionRow, { kind: "compaction" }>): TemplateResult {
   const metric = row.item.tokensBefore ? `from ${compactTokens(row.item.tokensBefore)} tokens` : "";
@@ -1031,6 +1037,7 @@ function renderTranscriptRows(props: HomeProps, rows: readonly ChatProjectionRow
   const browserPreview = props.browserPreview ? browserPreviewRow(rows) : undefined;
   return html`${rows.map((row, rowIndex) => {
     if (row.kind === "subagentEvent") return renderSubagentEvent(props, row);
+    if (row.kind === "botCreated") return renderBotCreated(props, row);
     if (row.kind === "compaction") return renderCompaction(row);
     if (row.kind === "activity") {
       const media = presentedMedia(row.items);
@@ -2129,7 +2136,7 @@ function renderHeader(props: HomeProps, session: SessionView) {
       <div class="chat-pane__header-trailing">
         <div class="chat-pane__actions chat-pane__header-actions">
           ${props.bot ? html`<button type="button" class="btn btn--ghost btn--icon chat-icon-btn bot-panel-toggle"
-            aria-label=${props.bot.panelOpen ? "Hide routines and memory" : "Show routines and memory"} title="Routines and memory"
+            aria-label=${props.bot.panelOpen ? "Hide routines, memory and soul" : "Show routines, memory and soul"} title="Routines, memory and soul"
             aria-expanded=${String(props.bot.panelOpen)} aria-controls=${props.bot.panelOpen ? props.bot.panelId : nothing}
             @click=${props.bot.onTogglePanel}>${icons.panelRightOpen}</button>` : nothing}
           ${props.onOpenBrowser ? html`<button type="button" class="btn btn--ghost btn--icon chat-icon-btn chat-open-browser" aria-label="Open browser panel" title="Open browser panel" @click=${props.onOpenBrowser}>${icons.globe}</button>` : nothing}

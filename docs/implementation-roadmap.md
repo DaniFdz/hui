@@ -770,6 +770,14 @@ for now. It lands as stacked pull requests:
    memory live in the panel with *Summarizing memory…*, zoom to a message, the
    memory page, Gateway default, hide, archive, Show archived and Restore, lists
    without the bot chat, desktop, mobile and landscape).
+   **After review (2026-10-06):** the dialog lost Instructions (New bot says
+   the bot starts by asking what you expect), the panel became Routines |
+   Memory | Soul (SOUL.md as Markdown with Edit, *Write it yourself* before the
+   bot wrote one, followed live from the bots stream), and HUI's kickoff of a
+   new bot shows as a note, *<name> was created*. Proof:
+   `src/views/bot-soul.test.ts`, `src/views/chat/projection.test.ts`,
+   `src/lib/bots.test.ts`, `src/lib/bot-roster.test.ts` and the Browser-tool
+   journey in `e2e/bots.browser.md` (screens in PR #69).
 4. Voice through VoiceStudio. Not started.
 
 ## Recommended implementation order

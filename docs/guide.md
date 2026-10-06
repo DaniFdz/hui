@@ -202,13 +202,17 @@ summarized, `hui bot chat` says "Summarizing memory…".
 Settings → Sessions → **Show the Bots tab** adds an **Agents | Bots** switch to
 the very top of the sidebar (it is off by default, and hiding it never stops a
 bot or its routines). **Agents** is the usual sidebar; **Bots** shows only your bots,
-most recently active first, with their latest message, and **+** creates one.
-A bot's chat opens beside its **Routines |
-Memory** panel: Routines adds schedules (every few minutes, hours or days,
-daily, weekly or once, in your browser's time zone), runs one now and shows how
-the last runs went; Memory shows how much the bot remembers and what writing
-its summaries has cost, lets you open any summary line down to the original
-message, and **Open memory page** opens the whole memory in a new tab. A row's
+most recently active first, with their latest message, and **+** creates one,
+which greets you and asks what you expect from it (its chat opens on a small
+note, "Scout was created", where that first turn began).
+A bot's chat opens beside its **Routines | Memory | Soul** panel: Routines adds
+schedules (every few minutes, hours or days, daily, weekly or once, in your
+browser's time zone), runs one now and shows how the last runs went; Memory
+shows how much the bot remembers and what writing its summaries has cost, lets
+you open any summary line down to the original message, and **Open memory
+page** opens the whole memory in a new tab; Soul shows the bot's SOUL.md, with
+**Edit** to change it yourself (or, before the bot has written one, **Write it
+yourself**), and follows it when the bot rewrites it. A row's
 **⋯** menu edits, hides or archives the bot; **Show archived** lists archived
 bots so you can restore them, or delete one for good with its trash icon after
 a confirmation. Bot chats never appear among your sessions.

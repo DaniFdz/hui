@@ -74,9 +74,12 @@ import {
   botPatchFromDraft,
   isNewBotsFrame,
   createBot,
+  botSoulKey,
   loadBotMemory,
+  loadBotSoul,
   loadBots,
   restoreBot,
+  saveBotSoul,
   subscribeBots,
   updateBot,
   upsertBot,
@@ -86,7 +89,7 @@ import {
 } from "./lib/bots.ts";
 import { archivedBotCount, hiddenBotCount, readBotPanel, readSidebarTab, writeBotPanel, writeSidebarTab, type BotPanelState, type BotPanelTab, type SidebarTab } from "./lib/bot-roster.ts";
 import { memoryStatusChanged, parseMemoryView, parseMemoryZoom, type MemoryLine } from "./lib/bot-memory.ts";
-import { renderBotArchiveDialog, renderBotDeleteDialog, renderBotDialog, renderBotPanel, renderBotPlaceholder, type BotFormValues, type BotMemoryState, type MemoryZoomState } from "./views/bots.ts";
+import { renderBotArchiveDialog, renderBotDeleteDialog, renderBotDialog, renderBotPanel, renderBotPlaceholder, type BotFormValues, type BotMemoryState, type BotSoulState, type MemoryZoomState } from "./views/bots.ts";
 import { checkUpdate, checkUpdateInBackground, installUpdate, loadUpdate } from "./lib/update-store.ts";
 import { availableUpdate, watchUpdateAvailability } from "./lib/update-notice.ts";
 import type { UpdateSnapshot } from "./lib/update-types.ts";
@@ -522,6 +525,14 @@ export class HuiApp extends HuiElement {
   private botMemoryInFlight = false;
   /** A change arrived while a read was on its way: read once more after it. */
   private botMemoryAgain = false;
+  /** The Soul tab: the active bot's SOUL.md as last read, and its editor (undefined while only shown). */
+  @state() private botSoul: BotSoulState & { botId: string } = { botId: "", loading: false, error: "" };
+  @state() private botSoulDraft: string | undefined;
+  @state() private botSoulSaving = false;
+  @state() private botSoulSaveError = "";
+  private botSoulRequest = 0;
+  /** `botSoulKey` of the bot when SOUL.md was last read: another key, once its turn is over, means read it again. */
+  private botSoulSeen = "";
   private botRosterTick = 0;
   /** Set on the bot route's embedded pane: header identity and panel state. */
   @property(paneBotProperty) paneBot: PaneBot | undefined;
@@ -851,10 +862,11 @@ export class HuiApp extends HuiElement {
         : candidate);
       // A turn started or settled: its latest message moved. The bot stream
       // pushes that itself; without it (an older gateway) read the list again,
-      // and the open Memory tab reads its memory again.
+      // and the open Memory and Soul tabs read again.
       if (bot.status !== status && !this.botsStreamLive) {
         void this.refreshBots();
         if (bot.id === this.activeBotId && this.botMemoryTabVisible()) void this.refreshBotMemory();
+        if (bot.id === this.activeBotId && this.botSoulTabVisible() && status !== "running" && status !== "waiting") void this.refreshBotSoul();
       }
     }
     if (!this.embeddedPane && this.selected?.id === id) {
@@ -1150,6 +1162,7 @@ export class HuiApp extends HuiElement {
       if (this.activeBotId !== target.id) {
         this.botSheetOpen = false;
         this.resetBotMemory(target.id);
+        this.resetBotSoul(target.id);
       }
       this.activeBotId = target.id;
       this.view = "bot";
@@ -3592,6 +3605,7 @@ export class HuiApp extends HuiElement {
           this.botsLoaded = true;
           this.botsError = "";
           this.followBotMemory();
+          this.followBotSoul();
         },
         onConnection: (state) => {
           this.botsStreamLive = state === "live";
@@ -3952,6 +3966,10 @@ export class HuiApp extends HuiElement {
     return this.botPanelVisible() && this.botPanel.tab === "memory";
   }
 
+  private botSoulTabVisible(): boolean {
+    return this.botPanelVisible() && this.botPanel.tab === "soul";
+  }
+
   /** The panel's visible tab decides what is read: Routines polls Automation
    * like its page; Memory reads once, then follows the bots stream. */
   private syncBotPanelData() {
@@ -3964,6 +3982,7 @@ export class HuiApp extends HuiElement {
       this.stopAutomationPolling();
     }
     if (this.botMemoryTabVisible()) void this.refreshBotMemory();
+    if (this.botSoulTabVisible()) void this.refreshBotSoul();
   }
 
   /** The open Memory tab stays live without a timer: the bots stream carries
@@ -4006,6 +4025,79 @@ export class HuiApp extends HuiElement {
     this.botPanel = { ...this.botPanel, tab };
     writeBotPanel(this.botPanel);
     this.syncBotPanelData();
+  };
+
+  /** The open Soul tab follows SOUL.md without a timer: a new `botSoulKey` on the bots stream, once the bot's turn is
+   * over, means the bot or HUI may have written it. */
+  private followBotSoul() {
+    if (!this.botSoulTabVisible()) return;
+    const bot = this.activeBot();
+    if (!bot || this.botSoul.botId !== bot.id || bot.status === "running" || bot.status === "waiting") return;
+    if (botSoulKey(bot) !== this.botSoulSeen) void this.refreshBotSoul();
+  }
+
+  private resetBotSoul(botId: string) {
+    this.botSoulRequest += 1;
+    this.botSoul = { botId, loading: false, error: "" };
+    this.botSoulDraft = undefined;
+    this.botSoulSaving = false;
+    this.botSoulSaveError = "";
+    this.botSoulSeen = "";
+  }
+
+  /** Reads SOUL.md; an open editor keeps its text, and a failed read keeps what was shown. */
+  private refreshBotSoul = async () => {
+    const bot = this.activeBot();
+    if (!bot) return;
+    if (this.botSoul.botId !== bot.id) this.resetBotSoul(bot.id);
+    const request = ++this.botSoulRequest;
+    this.botSoulSeen = botSoulKey(bot);
+    this.botSoul = { ...this.botSoul, loading: true };
+    try {
+      const soul = await loadBotSoul(bot.id);
+      if (request !== this.botSoulRequest) return;
+      this.botSoul = { botId: bot.id, loading: false, error: "", soul };
+    } catch (error) {
+      if (request !== this.botSoulRequest) return;
+      this.botSoul = { ...this.botSoul, loading: false, error: error instanceof Error ? error.message : "Could not read the bot's soul." };
+    }
+  };
+
+  /** Opens the editor on SOUL.md, or empty for Write it yourself. */
+  private editBotSoul = () => {
+    this.botSoulSaveError = "";
+    this.botSoulDraft = this.botSoul.soul ?? "";
+    void this.updateComplete.then(() => this.renderRoot.querySelector<HTMLTextAreaElement>(".bot-soul__textarea")?.focus());
+  };
+
+  private cancelBotSoulEdit = () => {
+    this.botSoulDraft = undefined;
+    this.botSoulSaveError = "";
+    void this.updateComplete.then(() => this.renderRoot.querySelector<HTMLElement>(".bot-soul__edit, .bot-soul__write")?.focus());
+  };
+
+  /** Nothing changes until the gateway stored it; a refusal stays in the editor with its text. */
+  private saveBotSoulDraft = () => {
+    const bot = this.activeBot();
+    const draft = this.botSoulDraft;
+    if (!bot || draft === undefined || this.botSoulSaving) return;
+    this.botSoulSaving = true;
+    this.botSoulSaveError = "";
+    void saveBotSoul(bot.id, draft)
+      .then((soul) => {
+        if (this.botSoul.botId !== bot.id) return;
+        // A read already on its way must not put back what this save replaced.
+        this.botSoulRequest += 1;
+        this.botSoul = { botId: bot.id, loading: false, error: "", soul };
+        this.botSoulDraft = undefined;
+        void this.updateComplete.then(() => this.renderRoot.querySelector<HTMLElement>(".bot-soul__edit, .bot-soul__write")?.focus());
+      })
+      .catch((error: unknown) => {
+        this.botSoulSaveError = error instanceof Error ? error.message : "Could not save the soul.";
+      })
+      .finally(() => {
+        this.botSoulSaving = false;
+      });
   };
 
   private resetBotMemory(botId: string) {
@@ -4149,6 +4241,17 @@ export class HuiApp extends HuiElement {
           onZoom: this.zoomBotMemoryLine,
           onRefresh: () => void this.refreshBotMemory(true),
           pageUrl: botMemoryPageUrl(bot.id),
+        },
+        soul: {
+          state: this.botSoul.botId === bot.id ? this.botSoul : { loading: true, error: "" },
+          draft: this.botSoul.botId === bot.id ? this.botSoulDraft : undefined,
+          saving: this.botSoulSaving,
+          saveError: this.botSoulSaveError,
+          onEdit: this.editBotSoul,
+          onDraft: (text) => { this.botSoulDraft = text; },
+          onSave: this.saveBotSoulDraft,
+          onCancel: this.cancelBotSoulEdit,
+          onRetry: () => void this.refreshBotSoul(),
         },
       }) : nothing}
     </div>`;

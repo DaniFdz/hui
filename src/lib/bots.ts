@@ -391,6 +391,37 @@ export async function deleteBot(id: string): Promise<void> {
   await fetchJson<unknown>(botUrl(id, "?permanent=1"), { method: "DELETE", signal: AbortSignal.timeout(30_000) });
 }
 
+/**
+ * What says the bot's SOUL.md may have changed, for the open Soul tab: its soul flag (the bot wrote it), its
+ * `updatedAt` (HUI wrote it) and its latest message (a turn settled, in which the bot may have rewritten it).
+ */
+export function botSoulKey(bot: Pick<BotView, "soul" | "updatedAt" | "lastMessage">): string {
+  return `${bot.soul ? "soul" : "none"}|${bot.updatedAt}|${bot.lastMessage?.at ?? ""}`;
+}
+
+/** SOUL.md's text from `GET`/`PUT …/soul`, or null while the bot has none (its first conversation). */
+export function parseBotSoul(body: unknown): string | null {
+  const soul = isRecord(body) ? body["soul"] : undefined;
+  if (soul === null) return null;
+  if (typeof soul !== "string") throw new Error("The bot's soul did not come back.");
+  return soul.trim() ? soul : null;
+}
+
+export async function loadBotSoul(id: string): Promise<string | null> {
+  return parseBotSoul(await fetchJson<unknown>(botUrl(id, "/soul"), { signal: AbortSignal.timeout(10_000) }));
+}
+
+/** Replaces the bot's SOUL.md; `""` removes it, so the bot asks what you expect again at its next turn. Resolves with
+ * what the gateway stored. */
+export async function saveBotSoul(id: string, soul: string): Promise<string | null> {
+  return parseBotSoul(await fetchJson<unknown>(botUrl(id, "/soul"), {
+    method: "PUT",
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ soul }),
+    signal: AbortSignal.timeout(30_000),
+  }));
+}
+
 /** 503: the gateway cannot read this chat's memory (no OptChat for it, or a
  * store another process owns). Unlike a failed read, asking again on every
  * change cannot fix that; Retry still asks. */

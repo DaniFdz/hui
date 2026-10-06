@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { applyBotsUpdate, botInputFromDraft, botMemoryPageUrl, BotMemoryUnavailableError, botPatchFromDraft, isBotSession, isNewBotsFrame, loadBotMemory, loadBots, parseBotsUpdate, subscribeBots, parseBot, parseBotList, parseBotMemory, parseBotMemoryStatus, upsertBot, withoutBotSessions, type BotDraft, type BotView } from "./bots.ts";
+import { applyBotsUpdate, botInputFromDraft, botMemoryPageUrl, BotMemoryUnavailableError, botPatchFromDraft, botSoulKey, isBotSession, isNewBotsFrame, loadBotMemory, loadBotSoul, loadBots, parseBotsUpdate, parseBotSoul, saveBotSoul, subscribeBots, parseBot, parseBotList, parseBotMemory, parseBotMemoryStatus, upsertBot, withoutBotSessions, type BotDraft, type BotView } from "./bots.ts";
 import type { SessionGroup, SessionView } from "./sessions-store.ts";
 
 const RECORD = {
@@ -190,6 +190,49 @@ test("reading the list asks for active and archived bots, as the stream lists bo
   } finally {
     globalThis.fetch = original;
   }
+});
+
+test("SOUL.md is read and replaced through the soul route; null while the bot has none", async () => {
+  assert.equal(parseBotSoul({ soul: "# Who I am\nScout." }), "# Who I am\nScout.");
+  assert.equal(parseBotSoul({ soul: null }), null);
+  assert.equal(parseBotSoul({ soul: "  \n" }), null, "blank is none");
+  assert.throws(() => parseBotSoul({}), /did not come back/u);
+  assert.throws(() => parseBotSoul({ soul: 3 }), /did not come back/u);
+  const original = globalThis.fetch;
+  const calls: Array<{ url: string; method: string; body: string; header: string | null }> = [];
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    calls.push({ url: String(input), method: init?.method ?? "GET", body: String(init?.body ?? ""), header: new Headers(init?.headers).get("x-hui") });
+    if (init?.method === "PUT") {
+      const soul = (JSON.parse(String(init.body)) as { soul: string }).soul.trim();
+      return soul.length > 20_000
+        ? new Response(JSON.stringify({ error: "SOUL.md must be at most 20000 characters (it has 20001)." }), { status: 400 })
+        : new Response(JSON.stringify({ soul: soul || null }), { status: 200 });
+    }
+    return new Response(JSON.stringify({ soul: null }), { status: 200 });
+  }) as typeof fetch;
+  try {
+    assert.equal(await loadBotSoul("b 1"), null);
+    assert.equal(await saveBotSoul("b 1", " # Who I am\n"), "# Who I am");
+    assert.equal(await saveBotSoul("b 1", ""), null, "an empty soul removes SOUL.md");
+    await assert.rejects(saveBotSoul("b 1", "s".repeat(20_001)), /at most 20000 characters/u, "the gateway's refusal, word for word");
+    assert.deepEqual(calls.map(({ url, method, header }) => [url, method, header]), [
+      ["/__hui/bots/b%201/soul", "GET", "1"], ["/__hui/bots/b%201/soul", "PUT", "1"], ["/__hui/bots/b%201/soul", "PUT", "1"], ["/__hui/bots/b%201/soul", "PUT", "1"],
+    ]);
+    assert.deepEqual(JSON.parse(calls[1]!.body), { soul: " # Who I am\n" });
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test("the Soul tab reads SOUL.md again when the bot wrote it, HUI did, or a turn settled", () => {
+  const bot = parseBot(RECORD) as BotView;
+  const key = botSoulKey(bot);
+  assert.equal(botSoulKey({ ...bot }), key, "the same bot: nothing to read");
+  assert.notEqual(botSoulKey({ ...bot, soul: false }), key, "the soul came or went");
+  assert.notEqual(botSoulKey({ ...bot, updatedAt: "2026-10-05T10:00:00.000Z" }), key, "HUI wrote it");
+  assert.notEqual(botSoulKey({ ...bot, lastMessage: { role: "assistant", text: "Saved.", at: "2026-10-05T10:00:00.000Z" } }), key, "a turn moved on");
+  const settledRead: BotView = { ...bot, status: "idle", unread: false };
+  assert.equal(botSoulKey(settledRead), key, "status and unread alone are not news");
 });
 
 const EMPTY_DRAFT: BotDraft = { name: "", title: "", cwd: "", emoji: "", model: "", thinking: "", memoryModel: "" };

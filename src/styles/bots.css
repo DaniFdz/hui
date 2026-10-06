@@ -1,5 +1,5 @@
 /* Bots tab (PR "Bots tab UI"): the sidebar's Agents | Bots switch, the
- * roster, the bot view with its Routines | Memory panel and the bot dialog.
+ * roster, the bot view with its Routines | Memory | Soul panel and the bot dialog.
  * Rows, menus, inputs and dialogs reuse the shell/session/settings classes;
  * only what bots add lives here, on the shared tokens. */
 
@@ -620,6 +620,38 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+
+/* ── Soul tab ── */
+.bot-soul__toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.bot-soul__file { color: var(--muted); font-family: var(--font-mono); font-size: 11px; font-weight: 600; }
+.bot-soul__toolbar .btn,
+.bot-soul__empty .btn { display: inline-flex; align-items: center; gap: 6px; }
+.bot-soul__toolbar svg,
+.bot-soul__empty svg { width: 13px; height: 13px; }
+/* SOUL.md through the chat's own markdown renderer, on a card like a routine's. */
+.bot-soul__body {
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+  border-radius: var(--radius-md);
+  background: var(--card);
+  font-size: var(--control-ui-text-sm);
+  overflow-wrap: anywhere;
+}
+.bot-soul__body > :first-child { margin-top: 0; }
+.bot-soul__body > :last-child { margin-bottom: 0; }
+.bot-soul__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 12px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md);
+}
+.bot-soul__empty-title { margin: 0; color: var(--text-strong); font-weight: 600; line-height: 1.4; }
+.bot-soul__editor { display: flex; flex-direction: column; gap: 8px; }
+.bot-field textarea.bot-soul__textarea { min-height: 280px; line-height: 1.5; }
+.bot-soul__actions { display: flex; justify-content: flex-end; gap: 6px; }
 
 /* ── New / Edit bot dialog ── */
 .bot-dialog__card { display: flex; flex-direction: column; gap: 12px; }
