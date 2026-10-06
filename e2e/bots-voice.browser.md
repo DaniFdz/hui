@@ -1,7 +1,8 @@
 # Bots' voice browser verification
 
 Journey for HUI-18's voice (VoiceStudio): Settings → Integrations →
-VoiceStudio, a bot's voice in its dialog, Read aloud, a voice note and a call.
+VoiceStudio, a bot's voice and language in its dialog, Read aloud, a voice note
+and a call.
 Driven with the Browser tool (OpenClaw's managed profile attached to an owned
 headless Brave on CDP port 18800) against `e2e/visual-verification.mjs launch …
 --voice-fixture`: HUI, the gateway's `/__hui/voice` and `/__hui/bots` routes, Pi
@@ -30,7 +31,8 @@ account is involved.
    `browserUrl` in a labeled tab at 1440×900.
 4. `POST <voiceUrl>/control/transcripts {"texts": [...]}` queues what the next
    recordings "said"; `GET <voiceUrl>/control/requests` lists what HUI asked
-   VoiceStudio for (fields, never audio).
+   VoiceStudio for (fields, never audio): `speech.language` and
+   `transcription.language` appear only when HUI sent a language.
 5. In code-mode Browser cells the snapshot text is not returned: act with
    Playwright role selectors (`role=button[name='Call Vox']`), read state with a
    bounded `evaluate`, and inspect screenshots with the image viewer.
@@ -45,14 +47,16 @@ account is involved.
    and *Send voice notes immediately* (off). The fixture saw discovery, then
    `/v1/models`.
 3. Bots → **New bot**: the dialog has a **Voice** section (picker, Preview,
-   Speed 1×). The picker lists *VoiceStudio default*, the fixture's voice
-   profiles (Aria, Bruno, Dani) and then OpenAI's names, with a search field.
-   Aria, then the speed slider to 1.3× (keyboard arrows step 0.05). **Preview**
+   Speed 1×) and **Language** (*Auto (detect)*). The picker lists *VoiceStudio
+   default* and the fixture's voice profiles (Aria, Bruno, Dani), four options:
+   none of the 13 OpenAI aliases the fixture lists like VoiceStudio (each plays
+   its default voice). Aria, then the speed slider to 1.3× (keyboard arrows
+   step 0.05). **Preview**
    turns into *Stop* (`aria-pressed=true`) while the shared player
    `#hui-voice-player` reports `data-state=playing`, then back to Preview with
    `data-clips` up by the two sentences spoken; the fixture saw two
    `/v1/audio/speech` requests with `voice: vp-aria`, `speed: 1.3`,
-   `response_format: mp3`, `stream_format: audio`.
+   `response_format: mp3`, `stream_format: audio` and no `language`.
 4. Name Vox, emoji 🎧 → **Create bot** opens `/bots/<id>`; `GET
    /__hui/bots` shows `voice: { profile: "vp-aria", speed: 1.3 }`. The header has
    **Call Vox**; the composer has **Record a voice note** beside Send.
@@ -81,8 +85,23 @@ account is involved.
     reply in the transcript.
 11. Edit Vox (row menu → Edit bot…): the dialog shows Aria and 1.3×; a new speed
     → Save → `GET /__hui/bots/vox` keeps `vp-aria` with the new speed.
-12. 390×844: the header keeps Call, the composer the microphone; the call view
-    and the minimized bar fit the width; the dialog's voice section fits and the
+12. Language: Edit Vox → **Language** *Auto (detect)* → its list opens with a
+    search field, *Auto (detect)* first, then the 100 languages by English name,
+    each with its code (Afrikaans `af`, Albanian `sq`…). Typing "spa" leaves
+    Spanish `es`, "yue" Cantonese; ArrowDown/Enter pick from the keyboard.
+    **Spanish** → the field reads Spanish → **Preview**: the fixture's speech
+    requests carry `language: "es"` with Aria and the dialog's speed → **Save**
+    → `GET /__hui/bots/vox` has `voice.language: "es"`.
+13. A voice note (transcript queued) → **Done**: the text in the composer; the
+    fixture's transcription has `language: "es"`.
+14. **Read aloud** on a reply: its speech request has `language: "es"`.
+15. **Call Vox**, one turn (transcript queued): the utterance's transcription
+    and the reply's speech both carry `language: "es"`; **Hang up**.
+16. Edit Vox → **Language** → *Auto (detect)* → **Save**: `GET` shows no
+    `voice.language`; the next Read aloud's speech request has no `language`.
+17. 390×844: the header keeps Call, the composer the microphone; the call view
+    and the minimized bar fit the width; the dialog's voice section and the
+    open Language list fit, keyboard-operable, and the
     card stays behind every field when it scrolls. 844×390 (a phone in
     landscape): the call view is compact (small avatar) and Mute, Speaker and
     Hang up stay at the bottom of the view, in reach, while the captions scroll

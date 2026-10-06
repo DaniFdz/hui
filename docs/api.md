@@ -1093,7 +1093,7 @@ type BotRecord = {
   memoryModel?: string;        // "provider/id" of OptChat's compactor; absent: the chat's own model
   memoryThinking?: string;
   avatar?: { emoji?: string /* one grapheme */; color?: string /* #rrggbb */ };
-  voice?: { profile?: string; speed?: number }; // VoiceStudio voice id (one line, ≤ 200) and speed 0.5–2; absent keys: VoiceStudio's defaults
+  voice?: { profile?: string; speed?: number; language?: string }; // VoiceStudio voice id (one line, ≤ 200), speed 0.5–2 and language (one of Whisper's codes, below); absent keys: VoiceStudio's defaults, Auto for the language
   hidden?: boolean;
   archived?: boolean;
   sessionId: string;           // HUI session record of the chat
@@ -1164,7 +1164,7 @@ read the chat's memory, 500 for storage failures; other methods answer 405.
 | `GET /__hui/bots[?archived=1]` | 200 `{ bots: BotView[] }` | Active bots, or with `archived=1` only archived ones, sorted by name |
 | `POST /__hui/bots` | 201 `{ bot }` | `BotInput`: `name` plus the optional record fields and `handle`. Without `handle` one is derived from the name (`-2`, `-3`… on collision); an explicit handle that is taken is 409 |
 | `GET /__hui/bots/:id` | 200 `{ bot }` | |
-| `PATCH /__hui/bots/:id` | 200 `{ bot }` | Only what changes; `""` clears `title`, `description`, `instructions`, `model`, `thinking` (back to the gateway defaults, above), `memoryModel`, `memoryThinking` (back to the chat's model and OptChat's default level); an avatar key `""` clears it, `avatar: null` clears both; a voice `profile: ""` or `speed: null` clears that key, `voice: null` clears both (other voice keys are 400). The handle changes only when given (409 if taken). `instructions` reconfigures the conversation; `model`/`thinking` go through the live chat (`setModel`/`setThinking`); `name` and the memory fields reconfigure OptChat, `name` also the session title; `cwd` is accepted only while the chat is idle (409 otherwise) and boots its runtime again there; a turn that starts during that edit (a routine, say) makes it answer 409 after the conversation and the chat's session record already moved, with the bot record still naming the old directory, so repeat the edit once the bot is idle to finish it. Archived bots are 409 |
+| `PATCH /__hui/bots/:id` | 200 `{ bot }` | Only what changes; `""` clears `title`, `description`, `instructions`, `model`, `thinking` (back to the gateway defaults, above), `memoryModel`, `memoryThinking` (back to the chat's model and OptChat's default level); an avatar key `""` clears it, `avatar: null` clears both; a voice `profile: ""`, `speed: null` or `language: ""` (back to Auto) clears that key, `voice: null` clears all three (other voice keys are 400, and so is a `language` that is not one of Whisper's codes, a name such as `Spanish` included). The handle changes only when given (409 if taken). `instructions` reconfigures the conversation; `model`/`thinking` go through the live chat (`setModel`/`setThinking`); `name` and the memory fields reconfigure OptChat, `name` also the session title; `cwd` is accepted only while the chat is idle (409 otherwise) and boots its runtime again there; a turn that starts during that edit (a routine, say) makes it answer 409 after the conversation and the chat's session record already moved, with the bot record still naming the old directory, so repeat the edit once the bot is idle to finish it. Archived bots are 409 |
 | `DELETE /__hui/bots/:id` | 200 `{ bot }` | Archives, deleting nothing: marks the bot, disables every Automation task aimed at its chat, withdraws messages still in HUI's follow-up queue for it, stops a running turn and archives the chat's session record. Idempotent |
 | `POST /__hui/bots/:id/restore` | 200 `{ bot }` | Unarchives the bot and its session record; routines stay disabled |
 | `POST /__hui/bots/:id/messages` | 202 or 200 | See below |
@@ -2615,14 +2615,29 @@ type VoiceConnection = {
 type VoiceProfile = { id: string; name: string; type?: string; language?: string; description?: string };
 ```
 
+A bot's `voice.language` (and a request's `language`) is one of the 100
+language codes of Whisper (`whisper/tokenizer.py`), `VOICE_LANGUAGES` in
+`shared/voice.ts`: ISO 639-1 codes plus `haw` (Hawaiian) and `yue` (Cantonese),
+accepted in any case and stored lowercase; anything else is 400 at every
+boundary (the routes, `bots.json` drops it, the CLI). It is what VoiceStudio
+listens for (`language` of `POST /v1/audio/transcriptions`, which Whisper-family
+recognizers use instead of detecting the language of each recording) and speaks
+in (`language` of `POST /v1/audio/speech`: the engine and VoiceStudio's text
+normalization of numbers, times and amounts). Absent is Auto: neither request
+carries a `language`. Nothing is translated; the bot's instructions decide the
+language it answers in. Javanese is Whisper's `jw`, which HUI stores and sends
+to transcriptions; VoiceStudio's speech knows it by its ISO code, so speech
+sends `jv`. An engine that lacks the language refuses (400), which HUI reports
+as a 502 in VoiceStudio's words and never retries.
+
 | Route | Result |
 | --- | --- |
 | `GET /__hui/voice` | `VoiceConnection`. Probes discovery (5 s) when the last probe is older than 30 seconds; concurrent reads share one probe |
 | `PUT /__hui/voice` `{ url, apiKey? }` | Verifies with discovery, then `GET /v1/models`, then stores. `url` is the service root: without a scheme it is `http://`, a trailing `/v1` (an OpenAI base URL) is dropped, a reverse-proxy path prefix stays; credentials, `?` and `#` are 400. An absent or empty `apiKey` keeps the stored one while the origin stays the same; `null` removes it. A key is accepted only for `https:`, loopback or a Tailscale address (`100.64.0.0/10`, `fd7a:115c:a1e0::/48`, `*.ts.net`), otherwise 400. Unknown fields are 400; VoiceStudio refusing or unreachable is 502 and nothing is stored |
 | `DELETE /__hui/voice` | Removes the connection and its key |
-| `GET /__hui/voice/voices` | `{ voices: VoiceProfile[] }` from `GET /v1/audio/voices` (VoiceStudio's `voice_id`s, at most 500, in its order: OpenAI aliases, then voice profiles) |
-| `POST /__hui/voice/transcriptions` | The recording with its own `audio/*` content type (`?language=` ISO 639-1, `?prompt=` up to 1,000 characters), or `multipart/form-data` with an `audio/*` `file` part and optional `language`/`prompt` fields. At most 25 MB (413, refused unread when `content-length` says so); not audio is 415, empty 400. Forwarded to `POST /v1/audio/transcriptions` (or the route the discovery document names) with `model: whisper-1` (VoiceStudio uses its active recognizer for any OpenAI model id) and `response_format: json` → `{ text }` |
-| `POST /__hui/voice/speech` `{ text, botId?, voice?, speed?, format? }` | `text` 1–4,000 characters (trimmed). `botId` (id or handle) applies the bot's `voice` profile and speed; `voice` (a voice id, or `""` for VoiceStudio's default) and `speed` (0.5–2) win over the bot's, as a voice preview needs; without either, `default` at 1×. `format` is `mp3` (default) or `opus`. Forwarded to `POST /v1/audio/speech` with `model: tts-1` and `stream_format: "audio"`; the answer relays VoiceStudio's bytes as they arrive with its `content-type` (`audio/mpeg`, `audio/ogg`), `cache-control: no-store`, `nosniff` and no length. An unknown bot is 404 |
+| `GET /__hui/voice/voices` | `{ voices: VoiceProfile[] }` from `GET /v1/audio/voices` (VoiceStudio's `voice_id`s, at most 500, in its order: OpenAI aliases (`type: "openai_alias"`, each its active engine's default voice), then voice profiles). The bot dialog's picker leaves the aliases out, except one a bot already uses |
+| `POST /__hui/voice/transcriptions` | The recording with its own `audio/*` content type (`?botId=`, `?language=`, `?prompt=` up to 1,000 characters), or `multipart/form-data` with an `audio/*` `file` part and optional `botId`/`language`/`prompt` fields (or those query parameters). `botId` (id or handle; unknown is 404, like speech) applies the bot's language; `language` (a code, or empty for Auto even when the bot has one) wins. At most 25 MB (413, refused unread when `content-length` says so); not audio is 415, empty 400. Forwarded to `POST /v1/audio/transcriptions` (or the route the discovery document names) with `model: whisper-1` (VoiceStudio uses its active recognizer for any OpenAI model id), `response_format: json` and `language` only when one applies → `{ text }` |
+| `POST /__hui/voice/speech` `{ text, botId?, voice?, speed?, language?, format? }` | `text` 1–4,000 characters (trimmed). `botId` (id or handle) applies the bot's `voice` profile, speed and language; `voice` (a voice id, or `""` for VoiceStudio's default), `speed` (0.5–2) and `language` (a code, or `""` for Auto) win over the bot's, so a voice preview speaks exactly its draft; without either, `default` at 1× in Auto. `format` is `mp3` (default) or `opus`. Forwarded to `POST /v1/audio/speech` with `model: tts-1`, `stream_format: "audio"` and `language` only when one applies (Javanese as `jv`); the answer relays VoiceStudio's bytes as they arrive with its `content-type` (`audio/mpeg`, `audio/ogg`), `cache-control: no-store`, `nosniff` and no length. An unknown bot is 404 |
 
 Errors use `{ error }`: 400 for input, 404 for an unknown bot, 409 while no
 connection is configured, 413/415 for recordings, 502 when VoiceStudio refuses

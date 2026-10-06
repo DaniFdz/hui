@@ -318,13 +318,25 @@ the browser and is sent only to that VoiceStudio, over HTTPS, to this machine or
 to a Tailscale address. **Disconnect** removes the address and the key.
 
 **A bot's voice.** While VoiceStudio is connected, the New bot and Edit dialogs
-have a **Voice** picker (VoiceStudio's default, your voice profiles, then
-OpenAI's voice names), a speed from 0.5× to 2× and **Preview**. From a terminal:
+have a **Voice** picker (VoiceStudio's default and your voice profiles; OpenAI's
+voice names are left out, as VoiceStudio plays its default voice for each of
+them), a speed from 0.5× to 2×, **Preview** and a **Language**. From a terminal:
 
 ```sh
-hui bot edit ada --voice vp-aria --voice-speed 1.2
-hui bot edit ada --voice "" --voice-speed ""   # back to VoiceStudio's defaults
+hui bot edit ada --voice vp-aria --voice-speed 1.2 --language es
+hui bot edit ada --voice "" --voice-speed "" --language ""   # back to VoiceStudio's defaults and Auto
 ```
+
+**Language.** *Auto (detect)* lets VoiceStudio's recognizer guess the language
+of each recording, which a short "sí" or "vale" can throw off. A bot's
+language (one of Whisper's, found by its name or code: `es`, `de`, `yue`…) is
+what VoiceStudio listens for in its voice notes and calls, and the language it
+speaks in when it reads aloud or answers a call, numbers, times and amounts
+included. It translates nothing: the bot answers in the language its
+instructions (or you) ask for, so give it both. A VoiceStudio engine that
+cannot speak the language refuses, and HUI shows VoiceStudio's message (choose
+another engine in VoiceStudio, or Auto). **Preview** speaks in the language
+chosen in the dialog.
 
 **Voice notes.** The microphone beside Send records a note: its time runs above
 the composer, **Cancel** throws it away and **Done** (or the button again) stops

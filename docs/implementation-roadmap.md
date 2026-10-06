@@ -757,8 +757,11 @@ only for now. It lands as stacked pull requests:
    (`voicestudio.json`, write-only key, discovery and model list checked before
    saving, same-origin redirects only) and `/__hui/voice` routes that relay
    transcriptions and stream speech without storing audio; `BotRecord.voice`
-   (`PATCH` key by key, `hui bot add|edit --voice --voice-speed`); Settings →
-   Integrations → VoiceStudio; in bot chats the composer's voice notes, Read
+   with its profile, speed and language (one of Whisper's codes, sent to
+   VoiceStudio's transcriptions and speech, none for Auto; `PATCH` key by key,
+   `hui bot add|edit --voice --voice-speed --language`; the picker leaves
+   VoiceStudio's OpenAI aliases out); Settings → Integrations → VoiceStudio;
+   in bot chats the composer's voice notes, Read
    aloud on replies and Calls (browser voice-activity detection, `[voice] `
    messages into the forever chat, replies spoken sentence by sentence,
    barge-in, mute, minimize, hang up). Durable now streams text it sends whole,

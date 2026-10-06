@@ -1181,8 +1181,10 @@ everything the Bots tab can, through the same routes.
   a separate speech service the gateway only calls over HTTP. The connection is
   the gateway's (Settings → Integrations → VoiceStudio, verified before it is
   saved, its key write-only), and bot chats offer voice only while it is
-  configured. A bot has a voice and a speed (its dialog, with a preview, or
-  `--voice`/`--voice-speed`). Its composer records **voice notes** that
+  configured. A bot has a voice, a speed and a language (its dialog, with a
+  preview, or `--voice`/`--voice-speed`/`--language`): one of Whisper's
+  languages that VoiceStudio listens for and speaks in, never a translation, or
+  Auto to let it detect the language. Its composer records **voice notes** that
   VoiceStudio writes into the composer, or sends at once marked `[voice] ` when
   Settings says so; **Read aloud** speaks a reply sentence by sentence, one at a
   time; the header's **Call** starts a hands-free call. There is no
