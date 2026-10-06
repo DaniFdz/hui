@@ -316,6 +316,7 @@ test("the first conversation: greet, ask what the operator expects a question or
     "save your soul with write_soul: Markdown, short, in your own voice", "\"Who I am\", \"What I look after\", \"How I work\", \"When I reach out\" and \"Boundaries\"",
     "Write down only what the operator told you or agreed to: ask about what is still open (often what you must not do) rather than guess",
     "Once you know enough, usually after a few exchanges (or as soon as the operator would rather not say more)",
+    "It is about you and your work, so how to change it goes in your reply, never in the file",
     "In the reply that saves it, say you saved your SOUL.md, sum it up in a few lines, and always end by telling them how to change it later", "in the Soul tab of your panel in HUI, or by just telling you",
   ]) assert.ok(named.includes(part), part);
   const nameless = firstConversationSection(file, undefined);
