@@ -30,6 +30,7 @@ import { workers } from "./workers.ts";
 import { createWorkerRoutes, WORKERS_ROUTE } from "./worker-routes.ts";
 import { BotInputError, BotRegistry, BotStoreError } from "./bots.ts";
 import { BotService } from "./bot-service.ts";
+import { remoteBots } from "./bot-remote.ts";
 import { BOT_MEMORY_PAGE, BOTS_EVENTS_ROUTE, BOTS_ROUTE, createBotRoutes } from "./bot-routes.ts";
 import { durableBotConversations } from "./bot-conversations.ts";
 import { CallBroker, providerCallAccounts } from "./calls.ts";
@@ -274,6 +275,8 @@ const bots = new BotService({
   removeSession: (id) => deleteSession(id),
   conversations: durableBotConversations(durableHost(), botMemory),
   memory: botMemory,
+  // A bot made on a worker keeps its conversation and memory in that worker's store, where its chat runs.
+  workers: remoteBots(workers),
   routines: {
     // A broken automation store is a storage failure (500), not the caller's.
     tasks: async () => (await automation.snapshot().catch(automationStoreFailure)).tasks,
@@ -302,8 +305,9 @@ const botRoutes = createBotRoutes({
 function automationStoreFailure(error: unknown): never {
   throw error instanceof AutomationStoreError ? new BotStoreError(error.message, { cause: error }) : error;
 }
-// A bot's chat lists the other bots in its `bots` prompt section.
+// A bot's chat lists the other bots in its `bots` prompt section; a worker's host asks for those of the bots there.
 durableHost().botSection = (botId) => bots.section(botId);
+workers.serve("bot.section", async (workerId, params) => ({ section: await bots.workerSection(workerId, String(params["botId"] ?? "")) ?? null }));
 /** The bot list every Bots screen shares, recomputed while one listens, like the session list. */
 const botList = createSessionListHub<BotView>(async () => [{ label: "bots", sessions: await bots.list({ archived: "all" }) }]);
 const subagents = new SubagentService(liveSessions);

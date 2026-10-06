@@ -12,6 +12,13 @@
  * while it works. A waiting caller resolves when the run that answers its
  * message settles, which for a follow-up is the run HUI starts once it drains
  * that message from its queue.
+ *
+ * A bot created on a remote worker keeps its conversation and memory in that
+ * worker's Durable store, where its chat runs as a remote session: the same two
+ * ports, reached through `BotWorkers` (`bot-remote.ts`), for each bot by its
+ * worker. Model checks and defaults stay with the gateway. A bot list never
+ * waits on a worker: its memory status comes from what the worker last
+ * reported, its newest message from the live chat or one read per connection.
  */
 import { randomUUID } from "node:crypto";
 import { mkdir, rmdir, stat } from "node:fs/promises";
@@ -25,7 +32,7 @@ import type { CallRecord } from "../shared/calls.ts";
 import type { AutomationTask } from "../src/lib/automation-types.ts";
 import { BotMemoryUnavailableError, type BotMemory, type BotMemorySettings } from "./bot-memory.ts";
 import {
-  BOTS_DIR, BotConflictError, BotInputError, BotNotFoundError, findBot, normalizeBotInput, normalizeBotPatch, patchedAvatar, patchedVoice, uniqueHandle,
+  BOTS_DIR, BotConflictError, BotInputError, BotNotFoundError, BotWorkerOfflineError, findBot, normalizeBotInput, normalizeBotPatch, patchedAvatar, patchedVoice, uniqueHandle,
   type BotRegistry,
 } from "./bots.ts";
 import { SessionBusyError, type LiveSessions } from "./live-sessions.ts";
@@ -75,6 +82,38 @@ export type BotConversations = {
   defaultThinking(cwd: string, model: string | undefined): Promise<string>;
 };
 
+/** What a bot's chat reads and writes in the store that holds it: the gateway's, or its worker's. */
+type BotPorts = { conversations: Pick<BotConversations, "configure" | "lastMessage" | "writeCallRecord">; memory: BotMemory };
+
+/**
+ * Remote workers' half of the bots that run on them (HUI-18): each worker's own Durable store holds their conversations
+ * and memories, reached through its host (`bot-remote.ts`), only over a live connection; nothing here connects one.
+ */
+export type BotWorkers = {
+  /** The worker an id or exact name names; rejects with `BotInputError` when none does or two share the name. */
+  find(target: string): Promise<{ id: string; name: string }>;
+  /** Its display name from the last read. */
+  nameOf(id: string): string | undefined;
+  conversations(id: string): RemoteBotConversations;
+  /** Its bots' memories; `status` answers from what the worker last reported, without asking it. */
+  memory(id: string): BotMemory;
+  /** Each (re)connection: what the worker's store may have changed meanwhile is read again. */
+  onConnected(listener: (id: string) => void): () => void;
+};
+
+/** A worker's bot conversations. Each fails at once, naming the worker, while HUI is not connected to it. */
+export type RemoteBotConversations = Pick<BotConversations, "configure" | "lastMessage" | "writeCallRecord"> & {
+  /**
+   * `BotConversations.create` on the worker, in one commit there: in `cwd` (absolute or `~/`, checked there) or a
+   * private folder the worker makes for the bot. Returns the conversation's reference and the absolute directory.
+   */
+  create(input: Omit<BotConversationInput, "cwd"> & { cwd?: string }): Promise<{ reference: string; cwd: string }>;
+  /** A directory on the worker, `~/` resolved there; refuses one that does not exist. */
+  directory(cwd: string): Promise<string>;
+  /** The private folder the worker made for `botId`, only while it is empty. */
+  removeFolder(botId: string): Promise<void>;
+};
+
 /** Automation tasks, which are a bot's routines when they target its chat. */
 export type BotRoutines = {
   tasks(): Promise<readonly AutomationTask[]>;
@@ -95,6 +134,8 @@ export type BotServiceDeps = {
   conversations: BotConversations;
   memory: BotMemory;
   routines: BotRoutines;
+  /** Bots on remote workers; absent, a bot can only run here. */
+  workers?: BotWorkers;
   botsDir?: string;
   now?: () => number;
   messagesPerHour?: number;
@@ -131,6 +172,8 @@ export class BotService {
   #sent = new Map<string, number[]>();
   /** Newest message per bot, from its live transcript or one store read while no session holds it. */
   #lastMessages = new Map<string, { reference: string | undefined; message: BotLastMessage | undefined }>();
+  /** Bots on a worker whose newest message is being read there, in the background. */
+  #reading = new Set<string>();
 
   constructor(deps: BotServiceDeps) {
     this.#deps = deps;
@@ -140,6 +183,10 @@ export class BotService {
     this.#now = deps.now ?? Date.now;
     this.#messagesPerHour = deps.messagesPerHour ?? MESSAGES_PER_HOUR;
     this.#readyTimeoutMs = deps.readyTimeoutMs ?? READY_TIMEOUT_MS;
+    // A worker's runs go on while HUI is away from it: its chats' newest messages are read again once it is back.
+    deps.workers?.onConnected((id) => {
+      for (const bot of this.#registry.cached) if (bot.worker === id) this.#lastMessages.delete(bot.id);
+    });
   }
 
   /** Active bots, or with `archived` only archived ones (`"all"`: both), sorted by name. */
@@ -175,40 +222,54 @@ export class BotService {
    * creating commit), registers its chat through New Session's path, then the
    * bot. A failed step undoes the earlier ones it can: the directory it made,
    * the session record. An empty conversation left behind is never addressed.
+   * On a worker, the conversation and its folder are made there, and its chat
+   * is a remote session; HUI must be connected to the worker.
    */
   async create(body: unknown): Promise<BotView> {
     const input = normalizeBotInput(body);
     if (input.handle && (await this.#registry.list()).some((bot) => bot.handle === input.handle)) {
       throw new BotConflictError(`@${input.handle} is already taken.`);
     }
+    const worker = input.worker ? await this.#remote().find(input.worker) : undefined;
+    if (worker && input.cwd !== undefined && !isRemoteDirectory(input.cwd)) throw new BotInputError("A directory on a worker must be absolute or start with ~/.");
     const id = randomUUID();
+    const conversation = {
+      botId: id,
+      ...(input.model ? { model: input.model } : {}),
+      ...(input.thinking ? { thinking: input.thinking } : {}),
+      ...(input.instructions ? { instructions: input.instructions } : {}),
+      memory: memorySettings(input.name, input.memoryModel, input.memoryThinking),
+    };
     let created: string | undefined;
     let cwd: string;
-    if (input.cwd) cwd = await existingDirectory(input.cwd);
-    else {
-      created = join(this.#botsDir, id);
-      await mkdir(created, { recursive: true, mode: 0o700 });
-      cwd = created;
-    }
-    // Only an empty directory this request made goes; a bot's files never do.
-    const undo = async () => { if (created) await rmdir(created).catch(() => {}); };
     let reference: string;
-    try {
-      reference = await this.#deps.conversations.create({
-        botId: id, cwd,
-        ...(input.model ? { model: input.model } : {}),
-        ...(input.thinking ? { thinking: input.thinking } : {}),
-        ...(input.instructions ? { instructions: input.instructions } : {}),
-        memory: memorySettings(input.name, input.memoryModel, input.memoryThinking),
-      });
-    } catch (error) {
-      await undo();
-      throw error;
+    let undo: () => Promise<void>;
+    if (worker) {
+      // In the worker's store, with the folder made there unless the bot names one.
+      const remote = this.#remote().conversations(worker.id);
+      ({ reference, cwd } = await remote.create({ ...conversation, ...(input.cwd ? { cwd: input.cwd } : {}) }));
+      undo = async () => { if (!input.cwd) await remote.removeFolder(id).catch(() => {}); };
+    } else {
+      if (input.cwd) cwd = await existingDirectory(input.cwd);
+      else {
+        created = join(this.#botsDir, id);
+        await mkdir(created, { recursive: true, mode: 0o700 });
+        cwd = created;
+      }
+      // Only an empty directory this request made goes; a bot's files never do.
+      undo = async () => { if (created) await rmdir(created).catch(() => {}); };
+      try {
+        reference = await this.#deps.conversations.create({ ...conversation, cwd });
+      } catch (error) {
+        await undo();
+        throw error;
+      }
     }
     let session: SessionRecord;
     try {
       session = await this.#deps.createSession({
         cwd, title: input.name, group: "", tool: "durable",
+        ...(worker ? { worker: worker.id } : {}),
         ...(input.model ? { model: input.model } : {}),
         ...(input.thinking ? { thinking: input.thinking } : {}),
       }, { id, piSessionFile: reference });
@@ -230,6 +291,7 @@ export class BotService {
           ...(input.description ? { description: input.description } : {}),
           ...(input.instructions ? { instructions: input.instructions } : {}),
           cwd,
+          ...(worker ? { worker: worker.id } : {}),
           ...(input.model ? { model: input.model } : {}),
           ...(input.thinking ? { thinking: input.thinking } : {}),
           ...(input.memoryModel ? { memoryModel: input.memoryModel } : {}),
@@ -268,7 +330,7 @@ export class BotService {
     if (patch.handle && patch.handle !== bot.handle && (await this.#registry.list()).some((other) => other.handle === patch.handle)) {
       throw new BotConflictError(`@${patch.handle} is already taken.`);
     }
-    const cwd = patch.cwd === undefined ? undefined : await existingDirectory(patch.cwd);
+    const cwd = patch.cwd === undefined ? undefined : await this.#directory(bot, patch.cwd);
     const moving = cwd !== undefined && cwd !== bot.cwd;
     if (moving && this.#sessions.status(bot.sessionId) !== "idle") {
       throw new BotConflictError(`@${bot.handle} is busy. Stop it or let it finish before moving its working directory.`);
@@ -290,15 +352,16 @@ export class BotService {
         await this.#sessions.setThinking(bot.sessionId, level);
       }
     }
+    const ports = this.#ports(bot);
     if (patch.instructions !== undefined || moving) {
-      await this.#deps.conversations.configure(reference, {
+      await ports.conversations.configure(reference, {
         ...(patch.instructions !== undefined ? { instructions: patch.instructions || null } : {}),
         ...(moving ? { cwd } : {}),
       });
     }
     const name = patch.name ?? bot.name;
     if (patch.name !== undefined || patch.memoryModel !== undefined || patch.memoryThinking !== undefined) {
-      await this.#deps.memory.configure(reference, memorySettings(
+      await ports.memory.configure(reference, memorySettings(
         name,
         patch.memoryModel === undefined ? bot.memoryModel : patch.memoryModel || undefined,
         patch.memoryThinking === undefined ? bot.memoryThinking : patch.memoryThinking || undefined,
@@ -393,7 +456,9 @@ export class BotService {
       await this.#deps.routines.remove(task);
     }
     if ((await this.#deps.readSessions()).some((record) => record.id === bot.sessionId)) await this.#deps.removeSession(bot.sessionId);
-    if (bot.cwd === join(this.#botsDir, bot.id)) await rmdir(bot.cwd).catch(() => {});
+    // On a worker, the folder it made for the bot goes the same way while HUI is connected to it; otherwise it stays.
+    if (bot.worker) await this.#deps.workers?.conversations(bot.worker).removeFolder(bot.id).catch(() => {});
+    else if (bot.cwd === join(this.#botsDir, bot.id)) await rmdir(bot.cwd).catch(() => {});
     await this.#registry.update((bots) => ({ bots: bots.filter((candidate) => candidate.id !== bot.id), result: undefined }));
   }
 
@@ -419,14 +484,14 @@ export class BotService {
     if (bot.archived) throw new BotConflictError(`@${bot.handle} is archived. Restore it before calling it.`);
     const record = (await this.#deps.readSessions()).find((candidate) => candidate.id === bot.sessionId);
     const reference = record?.piSessionFile;
-    const view = reference ? await this.#deps.memory.view(reference).catch(() => undefined) : undefined;
+    const view = reference ? await this.#ports(bot).memory.view(reference).catch(() => undefined) : undefined;
     return { bot, ...(view ? { view } : {}) };
   }
 
   /** A call's record into the bot's chat (one card) and so its memory (its transcript and summary). */
   async recordCall(target: string, record: CallRecord): Promise<void> {
-    const { reference } = await this.#memoryOf(target);
-    await this.#deps.conversations.writeCallRecord(reference, record);
+    const { bot, reference } = await this.#memoryOf(target);
+    await this.#ports(bot).conversations.writeCallRecord(reference, record);
   }
 
   /** Stops the bot's current turn; an idle bot has nothing to stop. */
@@ -440,20 +505,23 @@ export class BotService {
 
   async memory(target: string): Promise<{ status: BotMemoryStatus; view: string }> {
     const { bot, reference } = await this.#memoryOf(target);
+    const { memory } = this.#ports(bot);
     // The view first: reading it catches the memory up with the chat, so the status counts the messages it shows.
-    const view = await this.#deps.memory.view(reference);
-    const status = await this.#deps.memory.status(reference);
-    if (!status) throw new BotMemoryUnavailableError(`@${bot.handle}'s chat has no OptChat memory in this gateway.`);
+    const view = await memory.view(reference);
+    const status = await memory.status(reference);
+    if (!status) throw new BotMemoryUnavailableError(`@${bot.handle}'s chat has no OptChat memory ${bot.worker ? "on its worker" : "in this gateway"}.`);
     return { status: memoryStatus(status), view };
   }
 
   async zoom(target: string, id: number, n: number): Promise<string> {
     if (!Number.isSafeInteger(id) || id < 0 || !Number.isSafeInteger(n) || n < 1) throw new BotInputError("Zoom needs a message id (0 or more) and a span n (1 or more).");
-    return this.#deps.memory.zoom((await this.#memoryOf(target)).reference, id, n);
+    const { bot, reference } = await this.#memoryOf(target);
+    return this.#ports(bot).memory.zoom(reference, id, n);
   }
 
   async memoryHtml(target: string): Promise<string> {
-    return this.#deps.memory.html((await this.#memoryOf(target)).reference);
+    const { bot, reference } = await this.#memoryOf(target);
+    return this.#ports(bot).memory.html(reference);
   }
 
   /**
@@ -514,6 +582,13 @@ export class BotService {
     return self ? botsSection(self, bots.filter((bot) => bot.id !== self.id && !bot.archived)) : undefined;
   }
 
+  /** The section a worker's host asks for, for a bot whose chat runs on that worker only. */
+  async workerSection(workerId: string, botId: string): Promise<string | undefined> {
+    const bot = (await this.#registry.list()).find((candidate) => candidate.id === botId);
+    if (!bot || bot.worker !== workerId) throw new BotNotFoundError("That bot does not run on this worker.");
+    return this.section(bot.id);
+  }
+
   async #viewOf(bot: BotRecord): Promise<BotView> {
     const [records, tasks] = await Promise.all([this.#deps.readSessions(), this.#routineTasks()]);
     return this.#view(bot, records.find((record) => record.id === bot.sessionId), tasks);
@@ -521,10 +596,13 @@ export class BotService {
 
   async #view(bot: BotRecord, record: SessionRecord | undefined, tasks: readonly AutomationTask[]): Promise<BotView> {
     const reference = record?.piSessionFile;
-    const memory = reference ? await this.#deps.memory.status(reference).catch(() => undefined) : undefined;
+    // A worker's bot: what the worker last reported, never a request to it.
+    const memory = reference ? await Promise.resolve().then(() => this.#ports(bot).memory.status(reference)).catch(() => undefined) : undefined;
     const lastMessage = await this.#lastMessage(bot, record);
+    const { worker, ...stored } = bot;
     return {
-      ...bot,
+      ...stored,
+      ...(worker ? { worker: { id: worker, name: this.#deps.workers?.nameOf(worker) ?? "Remote worker" } } : {}),
       // The chat's own choice wins: its session controls may switch the model at any time.
       ...(record?.model ? { model: record.model } : {}),
       ...(record?.thinking ? { thinking: record.thinking } : {}),
@@ -554,11 +632,48 @@ export class BotService {
     const cached = this.#lastMessages.get(bot.id);
     if (cached && cached.reference === reference) return cached.message;
     if (!reference) return undefined;
+    if (bot.worker) {
+      // Never a request to the worker per list: one read per connection, in the background; a later list shows it.
+      this.#readRemoteLastMessage(bot, record, reference);
+      return undefined;
+    }
     // A chat nobody opened since the gateway started: read the store once, it does not change until opened.
     const stored = await this.#deps.conversations.lastMessage(reference).catch(() => undefined);
     const message = stored ? { role: stored.role, text: stored.text, at: stored.at ?? record.updatedAt } : undefined;
     this.#lastMessages.set(bot.id, { reference, message });
     return message;
+  }
+
+  /** The newest stored message of a worker's bot, read there once; an offline worker is asked again by a later list. */
+  #readRemoteLastMessage(bot: BotRecord, record: SessionRecord, reference: string): void {
+    const workers = this.#deps.workers;
+    if (!workers || !bot.worker || this.#reading.has(bot.id)) return;
+    this.#reading.add(bot.id);
+    void workers.conversations(bot.worker).lastMessage(reference).then((stored) => {
+      // A live chat may have answered meanwhile: its transcript is the newer record.
+      if (this.#lastMessages.get(bot.id)?.reference === reference) return;
+      const message = stored ? { role: stored.role, text: stored.text, at: stored.at ?? record.updatedAt } : undefined;
+      this.#lastMessages.set(bot.id, { reference, message });
+    }, () => {}).finally(() => this.#reading.delete(bot.id));
+  }
+
+  /** The ports of the store that holds the bot's chat: this gateway's, or its worker's. */
+  #ports(bot: BotRecord): BotPorts {
+    if (!bot.worker) return { conversations: this.#deps.conversations, memory: this.#deps.memory };
+    const workers = this.#remote();
+    return { conversations: workers.conversations(bot.worker), memory: workers.memory(bot.worker) };
+  }
+
+  #remote(): BotWorkers {
+    if (!this.#deps.workers) throw new BotConflictError("This gateway cannot run bots on remote workers.");
+    return this.#deps.workers;
+  }
+
+  /** A directory the operator named for the bot: on its worker (checked there) or on this machine. */
+  async #directory(bot: BotRecord, value: string): Promise<string> {
+    if (!bot.worker) return existingDirectory(value);
+    if (!isRemoteDirectory(value)) throw new BotInputError("A directory on a worker must be absolute or start with ~/.");
+    return this.#remote().conversations(bot.worker).directory(value);
   }
 
   async #sessionOf(bot: BotRecord): Promise<SessionRecord> {
@@ -580,11 +695,19 @@ export class BotService {
   /** Starts the chat's runtime if needed and waits until it takes input. */
   async #open(record: SessionRecord): Promise<void> {
     if (!this.#sessions.ensure(record)) throw new BotNotFoundError("This bot's chat no longer exists.");
-    await this.#ready(record.id);
+    await this.#ready(record.id, record.worker);
   }
 
-  /** Resolves once the chat is no longer booting: idle takes a prompt, busy a follow-up. */
-  #ready(id: string): Promise<void> {
+  /** Resolves once the chat is no longer booting: idle takes a prompt, busy a follow-up. A chat on a worker HUI cannot
+   * reach fails naming it, as its session does. */
+  #ready(id: string, worker?: string): Promise<void> {
+    const unreachable = (status: "reconnecting" | "disconnected"): Error => {
+      if (!worker) return new BotConflictError("The bot's chat is unreachable.");
+      const name = this.#deps.workers?.nameOf(worker) ?? "its worker";
+      return new BotWorkerOfflineError(status === "reconnecting"
+        ? `The bot's chat runs on ${name}, which HUI is reconnecting to. It keeps running there; try again once it is back.`
+        : `The bot's chat runs on ${name}, which HUI is disconnected from. Connect it in Settings → Workers to continue.`);
+    };
     return new Promise((resolve, reject) => {
       let done = false;
       const finish = (error?: Error) => {
@@ -597,7 +720,7 @@ export class BotService {
       };
       const inspect = (status: string) => {
         if (status === "error") finish(new BotConflictError("The bot's chat could not start. Open it to see why."));
-        else if (status === "reconnecting" || status === "disconnected") finish(new BotConflictError("The bot's chat is unreachable."));
+        else if (status === "reconnecting" || status === "disconnected") finish(unreachable(status));
         else if (status !== "starting") finish();
       };
       const timer = setTimeout(() => finish(new BotConflictError("The bot's chat did not start in time.")), this.#readyTimeoutMs);
@@ -852,6 +975,12 @@ function patched(bot: BotRecord, patch: BotPatch, cwd: string | undefined, updat
     else delete next.hidden;
   }
   return next;
+}
+
+/** A directory on a worker as the gateway can check it: absolute or `~/`; the worker checks that it exists. */
+function isRemoteDirectory(value: string): boolean {
+  const path = value.trim();
+  return path.startsWith("/") || path === "~" || path.startsWith("~/");
 }
 
 /** A directory the operator named: `~/` resolved, absolute and existing. */

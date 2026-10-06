@@ -61,8 +61,13 @@ export type BotRecord = {
   description?: string;
   /** Standing instructions (persona): the chat's Durable `instructions`. */
   instructions?: string;
-  /** Absolute working directory of its chat. */
+  /** Absolute working directory of its chat; on a worker, a directory there. */
   cwd: string;
+  /**
+   * The remote worker (Settings → Workers) its chat runs on, by id: its conversation and OptChat memory live in that
+   * worker's Durable store. Absent: this machine. Chosen at creation; a bot never moves.
+   */
+  worker?: string;
   /** `provider/id` of its chat. */
   model?: string;
   thinking?: string;
@@ -89,8 +94,10 @@ export type BotInput = {
   title?: string;
   description?: string;
   instructions?: string;
-  /** Absolute or `~/`; absent: a new directory of its own in HUI's configuration. */
+  /** Absolute or `~/`; absent: a new directory of its own in HUI's configuration (on a worker, in HUI's data directory there). */
   cwd?: string;
+  /** A remote worker's id or exact name: the bot runs there. Only at creation. */
+  worker?: string;
   model?: string;
   thinking?: string;
   memoryModel?: string;
@@ -111,7 +118,7 @@ export type BotInput = {
  * `profile: ""`, `speed: null`, `language: ""` (back to Auto) or `live: ""`
  * (back to Settings' call voice) clears that key and `voice: null` clears them all.
  */
-export type BotPatch = Partial<Omit<BotInput, "avatar" | "voice">> & { avatar?: BotAvatarPatch | null; voice?: BotVoicePatch | null };
+export type BotPatch = Partial<Omit<BotInput, "avatar" | "voice" | "worker">> & { avatar?: BotAvatarPatch | null; voice?: BotVoicePatch | null };
 
 /** A change to a bot's look: given keys replace, `""` clears one. */
 export type BotAvatarPatch = { emoji?: string; color?: string; shape?: BotFaceShape | "" };
@@ -145,7 +152,9 @@ export type BotMemoryStatus = {
 
 export type BotLastMessage = { role: "user" | "assistant"; text: string; at: string };
 
-export type BotView = BotRecord & {
+export type BotView = Omit<BotRecord, "worker"> & {
+  /** The remote worker its chat runs on, named as session views name it; absent: this machine. */
+  worker?: { id: string; name: string };
   status: BotSessionStatus;
   /** The newest message of its chat, one line of at most 200 characters. */
   lastMessage?: BotLastMessage;
@@ -261,6 +270,11 @@ export function handleFromName(name: string): string {
   const slug = name.normalize("NFKD").replace(/\p{M}+/gu, "").toLowerCase()
     .replace(/[^a-z0-9]+/gu, "-").replace(/^-+/u, "").slice(0, BOT_LIMITS.handle).replace(/-+$/u, "");
   return slug || "bot";
+}
+
+/** Where a bot works, as HUI shows it: `devbox:/srv/app` for a bot on a worker. */
+export function botDisplayCwd(bot: Pick<BotView, "cwd" | "worker">): string {
+  return bot.worker ? `${bot.worker.name}:${bot.cwd}` : bot.cwd;
 }
 
 /** One line: whitespace runs as single spaces, at most `max` characters (an ellipsis marks a cut). */

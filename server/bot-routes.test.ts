@@ -123,6 +123,7 @@ test("bots are created, read, edited, archived and restored through the guarded 
     [{ name: "Ada", nickname: "x" }, /Unknown bot field: nickname/u],
     [{ name: "Ada", model: "hui-e2e/missing" }, /Unknown model: hui-e2e\/missing/u],
     [{ name: "Ada", cwd: join(dir, "missing") }, /No such directory/u],
+    [{ name: "Ada", worker: "nowhere" }, /No worker named nowhere/u],
   ] as const) {
     const refused = await call("/__hui/bots", "POST", body);
     assert.equal(refused.status, 400, JSON.stringify(body));
@@ -152,6 +153,9 @@ test("bots are created, read, edited, archived and restored through the guarded 
 
   assert.equal(botOf(await call("/__hui/bots/ada", "PATCH", { title: "Lead" })).title, "Lead");
   assert.equal((await call("/__hui/bots/ada", "PATCH", {})).status, 400);
+  const moved = await call("/__hui/bots/ada", "PATCH", { worker: "devbox" });
+  assert.deepEqual([moved.status, moved.body["error"]], [400, "A bot stays on the machine it was created on."]);
+  assert.equal(botOf(await call("/__hui/bots/ada")).worker, undefined, "a bot made here runs here");
   // The look: a face's shape and color beside the emoji; "" clears one key (emoji: "" switches to the face), null all.
   assert.deepEqual(botOf(await call("/__hui/bots/bob", "PATCH", { avatar: { shape: "heart", color: "#2FC49A" } })).avatar, { emoji: "🐻", color: "#2fc49a", shape: "heart" });
   assert.deepEqual(botOf(await call("/__hui/bots/bob", "PATCH", { avatar: { emoji: "" } })).avatar, { color: "#2fc49a", shape: "heart" });
@@ -529,4 +533,12 @@ test("deleting a bot needs it archived, then its routines, its chat and the fold
   assert.equal(((await call("/__hui/automation")).body["tasks"] as Array<{ id: string }>).some((each) => each.id === task.id), false, "and its routine");
   await assert.rejects(stat(cleo.cwd), { code: "ENOENT" }, "the empty folder HUI made for it went");
   assert.equal((await call(`/__hui/bots/${cleo.id}?permanent=1`, "DELETE")).status, 404);
+});
+
+test("a bot whose worker is offline answers 503, like a memory HUI cannot read", async () => {
+  const { botErrorStatus } = await import("./bot-routes.ts");
+  const { BotWorkerOfflineError } = await import("./bots.ts");
+  const { BotMemoryUnavailableError } = await import("./bot-memory.ts");
+  assert.equal(botErrorStatus(new BotWorkerOfflineError("devbox, where this bot runs, is offline.")), 503);
+  assert.equal(botErrorStatus(new BotMemoryUnavailableError()), 503);
 });
