@@ -11,7 +11,8 @@
  * whose pending questions travel in its state. Credentials and HUI agent
  * tools are served by whichever gateway is connected; credentials are kept in
  * memory until they expire, and literal models.json header values until the
- * host stops, never on disk.
+ * host stops, never on disk. The one secret written here is the answer to a
+ * session's `secret_request`, in a private file its agent reads (SecretFiles).
  */
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
@@ -20,6 +21,7 @@ import { chmod, lstat, mkdir, readdir, readFile, realpath, rm, stat, unlink, wri
 import { hostname } from "node:os";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { registerAgentToolHandler, stopAgentToolBridge } from "../agent-tools-bridge.ts";
+import { SECRET_REQUEST_TIMEOUT_MS, SecretFiles, type SecretAnswer } from "../secret-requests.ts";
 import { DurableHost } from "../runtimes/durable-host.ts";
 import { durableConversationId, startDurable } from "../runtimes/durable.ts";
 import { piRuntime } from "../runtimes/pi.ts";
@@ -143,6 +145,7 @@ export class WorkerHost {
   #credentials = new Map<string, Cached>();
   #modifiers = new Map<string, (current: unknown) => Promise<unknown>>();
   #nextStep = 0;
+  #secretFiles = new SecretFiles();
 
   constructor(paths: WorkerPaths) {
     this.paths = paths;
@@ -151,7 +154,7 @@ export class WorkerHost {
     this.#durable = new DurableHost({
       dir: join(paths.stateDir, "durable"),
       agentDir: paths.agentDir,
-      invokeTool: ({ callerSessionId, action, params }) => this.#gatewayTool(callerSessionId, action, params),
+      invokeTool: ({ callerSessionId, action, params, signal }) => this.#gatewayTool(callerSessionId, action, params, signal),
       lookupCaller: async (conversationId) => this.#callers.get(String(conversationId)),
     });
   }
@@ -176,7 +179,8 @@ export class WorkerHost {
       if (info.uid !== process.getuid?.() || (info.mode & 0o077) !== 0) throw new Error(`Refusing to use ${socketDir}: it is not private to this user.`);
     }
     // HUI agent tools of a PI worker started here reach a connected gateway.
-    registerAgentToolHandler(({ callerSessionId, action, params }) => this.#gatewayTool(callerSessionId, action, params));
+    registerAgentToolHandler(({ callerSessionId, action, params, signal }) => this.#gatewayTool(callerSessionId, action, params, signal));
+    void this.#secretFiles.sweep();
     installBrokeredCredentials({ agentDir: this.paths.agentDir, providersDir: this.paths.providersDir, fallbackAuth: join(this.paths.fallbackAgentDir, "auth.json") });
     setCredentialTransport((op, store, providerId, modify) => this.#credential(op, store, providerId, modify as ((current: unknown) => Promise<unknown>) | undefined));
     await this.#pruneAttachments();
@@ -211,6 +215,7 @@ export class WorkerHost {
     for (const hosted of [...this.#sessions.values()]) this.#stop(hosted);
     for (const peer of this.#peers) peer.close("Remote worker host stopped.");
     stopAgentToolBridge();
+    this.#secretFiles.dispose();
     setCredentialTransport(undefined);
     // Running Durable work is recorded, not lost: it resumes on the next start.
     await this.#durable.close().catch(() => undefined);
@@ -471,10 +476,14 @@ export class WorkerHost {
   }
 
   /** HUI tools act on the gateway; without one they fail at once, never replayed. */
-  #gatewayTool(key: string, action: string, params: Record<string, unknown>): Promise<unknown> {
+  async #gatewayTool(key: string, action: string, params: Record<string, unknown>, signal?: AbortSignal): Promise<unknown> {
     const peer = this.#gateway(key);
-    if (!peer) return Promise.reject(new Error("HUI is not connected to this worker right now; its tools are unavailable until it reconnects."));
-    return peer.request("bridge", { key, action, params }, 170_000);
+    if (!peer) throw new Error("HUI is not connected to this worker right now; its tools are unavailable until it reconnects.");
+    if (action !== "secret_request") return peer.request("bridge", { key, action, params }, 170_000, signal);
+    // The operator answers on the gateway; the file belongs here, where the
+    // session's commands run, and only its path goes on to the agent.
+    const answer = await peer.request<SecretAnswer>("secret-request", { key, params }, SECRET_REQUEST_TIMEOUT_MS + 60_000, signal);
+    return this.#secretFiles.deliver(answer);
   }
 
   /** Gateway credentials, cached in memory until they expire so runs keep

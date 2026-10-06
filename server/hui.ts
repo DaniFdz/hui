@@ -125,7 +125,7 @@ import { GitHubPreviews, ghApi, previewPullRequestFetcher } from "./github-previ
 import { MAX_GITHUB_EMBEDS, parseGitHubUrl } from "../shared/github-links.ts";
 import { TaskSuggestionInputError, TaskSuggestionNotFoundError, TaskSuggestionStore } from "./task-suggestions.ts";
 import { WatcherConflictError, WatcherInputError, WatcherNotFoundError, WatcherService } from "./watchers.ts";
-import { SecretRequests } from "./secret-requests.ts";
+import { SecretFiles, SecretRequests } from "./secret-requests.ts";
 import {
   BacklogInputError,
   BacklogJiraFeed,
@@ -262,6 +262,7 @@ const macPower = process.platform === "darwin" ? new MacPower() : undefined;
 liveSessions.setTaskSuggestionProvider((id) => taskSuggestions.list(id));
 liveSessions.setWatcherProvider((id) => watchers.list(id));
 const secretRequests = new SecretRequests({ onChange: (id) => liveSessions.notifySnapshot(id) });
+const secretFiles = new SecretFiles();
 liveSessions.setSecretRequestProvider((id) => secretRequests.questions(id));
 // A stopped turn must not leave its pages running in the headless browser.
 liveSessions.setAbortListener((id) => managedBrowser.closeOwner(id));
@@ -275,8 +276,13 @@ registerAgentToolHandler(async (invocation) => {
     return setAgentStage(invocation.callerSessionId, invocation.params);
   }
   if (invocation.action === "secret_request") {
-    if (!(await readRegistry()).some(({ id }) => id === invocation.callerSessionId)) throw new Error("Conversation no longer exists.");
-    return secretRequests.request(invocation.callerSessionId, invocation.params, invocation.signal);
+    const caller = (await readRegistry()).find(({ id }) => id === invocation.callerSessionId);
+    if (!caller) throw new Error("Conversation no longer exists.");
+    // The answer itself only goes back over the connection to the caller's
+    // own worker, whose host writes the file where the session's commands run.
+    if (caller.worker !== invocation.fromWorker) throw new Error("A secret request must come from the machine its session runs on.");
+    const answer = await secretRequests.request(caller.id, invocation.params, invocation.signal);
+    return invocation.fromWorker ? answer : secretFiles.deliver(answer);
   }
   if (invocation.action === "watcher") {
     const caller = (await readRegistry()).find(({ id }) => id === invocation.callerSessionId);
@@ -3557,7 +3563,7 @@ export async function startBackend(): Promise<void> {
   await automation.start();
   initializeWatchers();
   initializeSubagents();
-  void secretRequests.sweep();
+  void secretFiles.sweep();
   await workers.list().catch(() => undefined);
   // Opening the Durable store resumes its interrupted runs, including those of
   // sessions no browser has reopened yet, once those sessions have loaded their
@@ -3607,6 +3613,7 @@ export function stopBackend(): void {
   subagents.dispose();
   watchers.dispose();
   secretRequests.dispose();
+  secretFiles.dispose();
   stopAgentToolBridge();
   // Closed first: remote sessions then keep running on their hosts instead of
   // receiving a kill from the disposal below.

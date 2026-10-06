@@ -10,7 +10,7 @@ import { normalizeSettings } from "../../src/lib/settings.ts";
 import type { DurableSession } from "./durable.ts";
 import type { AgentToolInvocation } from "../agent-tools-bridge.ts";
 import type { RuntimeEvent, TranscriptEntry } from "./types.ts";
-import { SecretRequests } from "../secret-requests.ts";
+import { SecretFiles, SecretRequests } from "../secret-requests.ts";
 
 // HUI's configuration directory (provider selections, credentials, the default
 // Durable store) is resolved at import time; never read the operator's own.
@@ -288,14 +288,15 @@ test("HUI tools reach the gateway handler as the bound session, never a model-ch
 test("secret_request keeps the value out of the store and the model, and Stop cancels a pending one", { timeout: 45_000 }, async (t) => {
   const f = await fixture(t);
   const changed: Array<() => void> = [];
-  const requests = new SecretRequests({ root: f.dir, onChange: () => { for (const wake of changed.splice(0)) wake(); } });
-  t.after(() => requests.dispose());
+  const requests = new SecretRequests({ onChange: () => { for (const wake of changed.splice(0)) wake(); } });
+  const files = new SecretFiles(f.dir);
+  t.after(() => { requests.dispose(); files.dispose(); });
   const pending = async (count: number) => {
     while (requests.questions("durable-secret").length !== count) await new Promise<void>((wake) => changed.push(wake));
     return requests.questions("durable-secret");
   };
   const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-secret" }, f.host({
-    invokeTool: async ({ callerSessionId, action, params, signal }) => action === "secret_request" ? requests.request(callerSessionId, params, signal) : { ok: true },
+    invokeTool: async ({ callerSessionId, action, params, signal }) => action === "secret_request" ? files.deliver(await requests.request(callerSessionId, params, signal)) : { ok: true },
   }));
   await session.prompt("E2E_SECRET_REQUEST");
   const [question] = await pending(1);

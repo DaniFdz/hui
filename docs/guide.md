@@ -215,7 +215,8 @@ request expires after 15 minutes.
   again).
 - Stopping the agent, or restarting HUI, cancels a request you have not
   answered.
-- Sessions on a remote worker cannot ask for secrets yet.
+- For a session on a remote worker you answer in the same card; the file is
+  written on the worker, where the agent's commands run.
 
 A widget is code the agent wrote, so HUI runs it in a sandbox: it cannot reach
 HUI or its API, read the conversation, your cookies or storage, change or

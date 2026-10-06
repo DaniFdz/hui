@@ -702,10 +702,17 @@ path, so the value never reaches the transcript, the model, PI's or Durable's
 stores or diagnostics. Cancel, Stop and a 15-minute expiry end it. The bridge
 now passes a tool call's abort to the gateway handler for PI children and
 Durable alike, and PI children reach it over `node:http`, whose replies may
-take longer than fetch's five minutes. Remote workers do
-not get it yet. Proof: `server/secret-requests.test.ts`,
+take longer than fetch's five minutes. Proof: `server/secret-requests.test.ts`,
 `server/agent-tools-bridge.test.ts`, `server/live-sessions.test.ts`,
 `server/runtimes/pi-sdk.test.ts`, `server/runtimes/durable.test.ts` and
+`e2e/secret-requests.browser.md`.
+
+Follow-up 2026-10-06: worker sessions get secret requests too. The card stays on
+the gateway; its answer goes back over the worker connection (`secret-request`)
+and the worker host writes the file there, with the same naming, lifetime and
+cleanup. Requests across the connection can now be cancelled (`cancel`), so a
+Stop on the worker closes the card. Proof: `server/worker/protocol.test.ts`,
+`server/worker/host.test.ts`, `server/workers.test.ts` and the worker section of
 `e2e/secret-requests.browser.md`.
 
 ## Recommended implementation order

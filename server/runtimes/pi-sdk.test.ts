@@ -13,7 +13,7 @@ import { shippedTools } from "./tool-catalog.ts";
 import { configuredResourceId } from "./resource-policy.ts";
 import { bundledSkills } from "../bundled-skills.ts";
 import { registerAgentToolHandler } from "../agent-tools-bridge.ts";
-import { SecretRequests } from "../secret-requests.ts";
+import { SecretFiles, SecretRequests } from "../secret-requests.ts";
 
 const configDir = await mkdtemp(join(tmpdir(), "hui-sdk-config-"));
 process.env["XDG_CONFIG_HOME"] = configDir;
@@ -443,15 +443,16 @@ test("SDK excludes disabled packages and direct extensions before their code loa
 test("SDK secret_request gives the agent a file the operator filled, never the value, and Stop cancels one", { timeout: 45_000 }, async (t) => {
   const f = await fixture(t);
   const changed: Array<() => void> = [];
-  const requests = new SecretRequests({ root: f.dir, onChange: () => { for (const wake of changed.splice(0)) wake(); } });
-  t.after(() => requests.dispose());
+  const requests = new SecretRequests({ onChange: () => { for (const wake of changed.splice(0)) wake(); } });
+  const files = new SecretFiles(f.dir);
+  t.after(() => { requests.dispose(); files.dispose(); });
   const pending = async (count: number) => {
     while (requests.questions("secret-sdk").length !== count) await new Promise<void>((wake) => changed.push(wake));
     return requests.questions("secret-sdk");
   };
   registerAgentToolHandler(async ({ callerSessionId, action, params, signal }) => {
     if (action !== "secret_request") throw new Error(`Unexpected HUI tool ${action}.`);
-    return requests.request(callerSessionId, params, signal);
+    return files.deliver(await requests.request(callerSessionId, params, signal));
   });
   const session = await f.start({ huiSessionId: "secret-sdk" });
   let settled = nextEvent(session, (event) => event.type === "settled");
