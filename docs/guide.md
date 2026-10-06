@@ -301,7 +301,7 @@ with `n` = 1. The page lists the view, every message and each level of the
 tree; a browser opens it from a link on HUI's own pages, such as the Bots tab
 (another site cannot load or frame it).
 
-### Archiving
+### Archiving and deleting
 
 `hui bot remove ada` archives the bot: its chat transcript and memory are kept,
 a running turn stops, messages still queued for it are withdrawn and its
@@ -309,6 +309,12 @@ routines are disabled. `hui bot list --archived` (or **Show archived** in the
 Bots tab) shows archived bots and `hui bot restore ada` (or their **Restore**)
 brings one back; its routines stay disabled until you turn them on again in
 Automations or its Routines panel.
+
+`hui bot delete ada` then deletes an archived bot for good: its routines and its
+chat's session record go, and HUI no longer lists or opens its conversation,
+which stays in the Pi Durable store like a deleted session's transcript. The
+files in its folder stay; a folder HUI made for it goes only when empty. An
+active bot is refused, so archiving always comes first.
 
 ### Privacy
 
