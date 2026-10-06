@@ -271,6 +271,8 @@ type PaneVoiceActions = { readAloud: (id: string, text: string) => void; stopRea
 type PaneCall = { botId: string; inCall: boolean };
 const paneVoiceProperty = { attribute: false, hasChanged: (value: unknown, old: unknown) => JSON.stringify(value) !== JSON.stringify(old) };
 /** The bot dialog's voice preview, read aloud like a message under this id. */
+/** What a bot the roster's + menu creates is called until it is renamed. */
+const NEW_BOT_NAME = "New bot";
 const BOT_VOICE_PREVIEW = "bot-voice-preview";
 const BOT_VOICE_PREVIEW_TEXT = "Hi! This is how I sound when I read my replies aloud and when we talk on a call.";
 
@@ -527,8 +529,8 @@ export class HuiApp extends HuiElement {
   @state() private botDialogPending = false;
   @state() private botDialogError = "";
   @state() private botDraftModel = "";
-  /** The New bot dialog's Runs on: a remote worker's id, or "" for this machine. */
-  @state() private botDraftWorker = "";
+  /** A bot the roster's + menu is creating, on Local or a worker. */
+  @state() private botCreating = false;
   @state() private botDraftThinking = "";
   @state() private botDraftMemoryModel = "";
   /** The dialog's Look: a face (shape and color) or an emoji, edited live in its preview. */
@@ -3752,6 +3754,8 @@ export class HuiApp extends HuiElement {
   private ensureBots() {
     if (this.botsStreamUnsupported) void this.refreshBots();
     else this.syncBotsStream();
+    // The roster's + offers the workers a new bot can run on.
+    this.loadLaunchWorkers();
   }
 
   /** Retry from an error state: restart a stopped stream or read the list. */
@@ -3818,6 +3822,9 @@ export class HuiApp extends HuiElement {
       search: this.botSearch,
       onSearch: (value) => { this.botSearch = value; },
       onNew: this.openNewBot,
+      workers: this.launchWorkers,
+      onCreate: this.createBotOn,
+      onWorkersMenu: () => this.loadLaunchWorkers(),
       unread: this.bots.some((bot) => bot.unread && !bot.archived && !bot.hidden),
       roster: {
         bots: this.bots,
@@ -3862,13 +3869,41 @@ export class HuiApp extends HuiElement {
     this.botDraftColor = BOT_FACE_COLORS[Math.floor(random / BOT_FACE_SHAPES.length) % BOT_FACE_COLORS.length]!.hex;
     this.botDraftEmoji = "";
     this.botDraftSeed = random;
-    this.botDraftWorker = "";
     ++this.directorySuggestionRequest;
     this.directorySuggestions = [];
-    // The model pickers read PI's catalog; New Session loads it the same way, and its workers too.
+    // The model pickers read PI's catalog; New Session loads it the same way.
     this.loadLaunchPreferences();
-    this.loadLaunchWorkers();
     this.openBotDialogVoice(undefined);
+  };
+
+  /**
+   * The roster's + menu: creates a bot at once on this machine or a worker, where it stays, and opens its chat. It
+   * starts as "New bot" with the face its id picks; Edit changes the rest. A refusal (a worker HUI is not connected to,
+   * say) shows in the roster.
+   */
+  private createBotOn = (worker: string | undefined) => {
+    this.botMenuFor = "";
+    if (this.botCreating) return;
+    this.botCreating = true;
+    const where = worker ? this.launchWorkers.find((candidate) => candidate.id === worker)?.name ?? "the worker" : "";
+    this.botNotice = worker ? `Creating a bot on ${where}…` : "Creating a bot…";
+    this.botNoticeFailed = false;
+    void createBot({ name: NEW_BOT_NAME, ...(worker ? { worker } : {}) })
+      .then((bot) => {
+        this.bots = upsertBot(this.bots, bot);
+        this.botNotice = "";
+        void this.refreshBots();
+        // The new chat is a new session; open the bot once the list has it.
+        void this.refreshSessions(true);
+        this.navigate({ kind: "bot", id: bot.id });
+      })
+      .catch((error: unknown) => {
+        this.botNotice = error instanceof Error ? error.message : "Could not create the bot.";
+        this.botNoticeFailed = true;
+      })
+      .finally(() => {
+        this.botCreating = false;
+      });
   };
 
   private openEditBot = (bot: BotView) => {
@@ -3892,12 +3927,10 @@ export class HuiApp extends HuiElement {
     this.openBotDialogVoice(bot);
   };
 
-  /** The worker the open bot dialog's bot runs on: the one chosen for a new bot, the bot's own when edited. */
+  /** The worker the bot being edited runs on: its folders are that worker's. */
   private botDialogWorker(): string | undefined {
     const dialog = this.botDialog;
-    if (!dialog) return undefined;
-    if (dialog.mode === "edit") return dialog.bot.worker?.id;
-    return this.launchWorkers.some((worker) => worker.id === this.botDraftWorker) ? this.botDraftWorker : undefined;
+    return dialog?.mode === "edit" ? dialog.bot.worker?.id : undefined;
   }
 
   /** The dialog's voice section starts from the bot's voice and lists VoiceStudio's voices once the gateway says it is
@@ -4004,9 +4037,7 @@ export class HuiApp extends HuiElement {
       ...(live ? { callVoice: this.botDraftCallVoice } : {}),
     };
     const look = { look: this.botDraftLook, shape: this.botDraftShape, color: this.botDraftColor, emoji: this.botDraftEmoji };
-    // Where it runs is chosen once, at creation.
-    const worker = state.mode === "create" ? this.botDialogWorker() : undefined;
-    const draft = { ...values, ...look, model: this.botDraftModel, thinking: this.botDraftThinking, memoryModel: this.botDraftMemoryModel, ...voice, ...(worker ? { worker } : {}) };
+    const draft = { ...values, ...look, model: this.botDraftModel, thinking: this.botDraftThinking, memoryModel: this.botDraftMemoryModel, ...voice };
     const patch = state.mode === "edit" ? botPatchFromDraft(state.bot, draft) : undefined;
     // Saving an untouched bot changes nothing, and the gateway refuses an empty change.
     if (patch && !Object.keys(patch).length) {
@@ -4443,15 +4474,7 @@ export class HuiApp extends HuiElement {
       directorySuggestions: this.directorySuggestions,
       // A bot on a worker works in a folder there: suggestions come from the worker, as on the New Session page.
       onDirectoryInput: this.botDialogWorker() ? (input) => this.loadDirectorySuggestions(input, this.botDialogWorker()) : this.requestDirectorySuggestions,
-      ...(this.launchWorkers.length ? { machine: {
-        workers: this.launchWorkers,
-        worker: this.botDialogWorker() ?? "",
-        onWorker: (id: string) => {
-          this.botDraftWorker = id;
-          ++this.directorySuggestionRequest;
-          this.directorySuggestions = [];
-        },
-      } } : {}),
+      workersExist: this.launchWorkers.length > 0,
       onModel: (value) => { this.botDraftModel = value; },
       onThinking: (value) => { this.botDraftThinking = value; },
       onMemoryModel: (value) => { this.botDraftMemoryModel = value; },

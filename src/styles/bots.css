@@ -656,9 +656,6 @@
 }
 .field .bot-dialog__machine-value span { color: inherit; font-size: inherit; font-weight: inherit; }
 .bot-dialog__machine-value svg { flex: none; width: 14px; height: 14px; color: var(--muted); }
-/* Runs on's picker: the machine's icon before its name, as the New Session page's worker picker shows it. */
-.bot-dialog__machine .picker-select__leading { color: var(--muted); }
-.bot-dialog__machine .picker-select__leading svg { width: 14px; height: 14px; }
 @media (max-width: 520px) {
   .bot-dialog__row { grid-template-columns: minmax(0, 1fr); }
 }

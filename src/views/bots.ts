@@ -244,6 +244,54 @@ export function renderBotRoster(props: BotRosterProps, drawer: RosterDrawer) {
     ${renderRosterToggles(props, drawer)}`;
 }
 
+/* ── new bot ──────────────────────────────────────────────────────────────── */
+
+/** A remote worker a new bot can be created on (Settings → Workers). */
+export type BotPlace = { id: string; name: string; state: WorkerState };
+
+export type NewBotButtonProps = {
+  /** None: + is the plain New bot it always was. */
+  workers: readonly BotPlace[];
+  /** + without workers. */
+  onNew: () => void;
+  /** A menu choice: creates the bot at once on the worker with this id, or on this machine (undefined). */
+  onCreate: (worker: string | undefined) => void;
+  /** The menu opens: a chance to read the workers' state again. */
+  onOpen?: () => void;
+  /** After a choice, as the roster's other actions close the mobile drawer. */
+  closeDrawer: (event: Event) => void;
+};
+
+/**
+ * The roster's +. While a remote worker exists it is a small menu, New bot on Local or on each worker, and a choice
+ * creates the bot there at once: a bot stays on the machine it is created on. Without workers it is plain New bot.
+ */
+export function renderNewBotButton(props: NewBotButtonProps) {
+  if (!props.workers.length) {
+    return html`<button type="button" aria-label="New bot" title="New bot" data-new-bot-trigger @click=${(event: Event) => {
+      props.onNew();
+      props.closeDrawer(event);
+    }}>${icons.plus}</button>`;
+  }
+  return html`<wa-dropdown class="session-menu new-bot-menu" placement="bottom-end" distance="4" @keydown=${closeDropdownOnEscape}
+    @wa-show=${(event: Event) => { labelDropdown(event); props.onOpen?.(); }}
+    @wa-select=${(event: CustomEvent<{ item: { value: string } }>) => {
+      const value = event.detail.item.value;
+      props.onCreate(value === NEW_BOT_LOCAL ? undefined : value);
+      props.closeDrawer(event);
+    }}>
+    <button slot="trigger" type="button" aria-label="New bot" title="New bot" data-new-bot-trigger>${icons.plus}</button>
+    <wa-dropdown-item value=${NEW_BOT_LOCAL} class="session-menu__item"><span slot="icon" class="session-menu__icon" aria-hidden="true">${icons.terminal}</span><span class="session-menu__text">New bot on Local</span></wa-dropdown-item>
+    <div class="session-menu__separator" role="separator"></div>
+    ${props.workers.map((worker) => html`<wa-dropdown-item value=${worker.id} class="session-menu__item"><span slot="icon" class="session-menu__icon" aria-hidden="true">${icons.globe}</span><span class="session-menu__text">New bot on ${worker.name}${worker.state === "connected"
+      ? nothing
+      : html` <span class="settings-row__muted">· ${worker.state === "error" ? "offline" : worker.state}</span>`}</span></wa-dropdown-item>`)}
+  </wa-dropdown>`;
+}
+
+/** The menu item for this machine; worker ids are UUIDs, so they never collide with it. */
+const NEW_BOT_LOCAL = "local";
+
 /* ── chat placeholder (no bot or no chat yet) ─────────────────────────────── */
 
 export type BotPlaceholderProps = {
@@ -569,16 +617,8 @@ export type BotDialogProps = {
   voice?: BotDialogVoice;
   /** The call voice: present while calls use GPT-Live (Settings → Models → Calls). */
   call?: BotDialogCall;
-  /** Where the bot runs: present while a remote worker exists (Settings → Workers). */
-  machine?: BotDialogMachine;
-};
-
-/** Runs on: this machine or a remote worker, chosen when the bot is created; an edit only shows it. */
-export type BotDialogMachine = {
-  workers: readonly { id: string; name: string; state: WorkerState }[];
-  /** The chosen worker's id; "" runs the bot on this machine. */
-  worker: string;
-  onWorker: (id: string) => void;
+  /** A remote worker exists (Settings → Workers): an edited bot shows the machine it runs on, even this one. */
+  workersExist?: boolean;
 };
 
 /** A GPT-Live call voice, and the language (shared with VoiceStudio's section when both show). */
@@ -725,47 +765,29 @@ function modelOptions(models: readonly RuntimeModel[], empty: string, current: s
   return current && !options.some((option) => option.value === current) ? [...options, { value: current, label: current }] : options;
 }
 
-/** A worker's state beside its name, as the New Session page's picker shows it. */
-function workerStateLabel(state: WorkerState): string {
-  return state === "connected" ? "Remote worker" : `Remote worker · ${state === "error" ? "offline" : state}`;
-}
-
 /** The machine a bot runs on, read-only: its worker, or this machine. */
 export function renderBotMachine(worker: BotView["worker"]) {
   return html`<span class="bot-dialog__machine-value" data-bot-machine>${worker ? icons.globe : icons.terminal}<span>${worker?.name ?? "Local"}</span></span>`;
 }
 
 /**
- * Runs on: a picker while the bot is new (only while a worker exists), and once it exists the machine it stays on,
- * read-only. Its chat and memory live in that machine's store, so it is chosen once.
+ * Runs on, for a bot that exists: the machine it stays on, read-only (its chat and memory live in that machine's
+ * store). Shown for a bot on a worker, and for one here while a worker exists. Where a bot runs is chosen when it is
+ * created, with the roster's + (`renderNewBotButton`).
  */
-export function renderRunsOnField(machine: BotDialogMachine | undefined, bot: Pick<BotView, "worker"> | undefined, pending: boolean) {
-  if (bot) {
-    if (!bot.worker && !machine) return nothing;
-    return html`<div class="field input-dialog__field bot-dialog__machine"><span>Runs on</span>
-      ${renderBotMachine(bot.worker)}
-      <span class="bot-field__hint">A bot stays on the machine it was created on: its chat and memory live there.</span></div>`;
-  }
-  if (!machine) return nothing;
-  const options = [
-    { value: "", label: "Local", description: "This machine" },
-    ...machine.workers.map((worker) => ({ value: worker.id, label: worker.name, description: workerStateLabel(worker.state) })),
-  ];
+export function renderBotMachineField(bot: Pick<BotView, "worker">, workersExist: boolean) {
+  if (!bot.worker && !workersExist) return nothing;
   return html`<div class="field input-dialog__field bot-dialog__machine"><span>Runs on</span>
-    ${renderPicker({ label: "Runs on", value: machine.worker, disabled: pending, options, onChange: machine.onWorker,
-      renderLeading: (option) => option.value ? icons.globe : icons.terminal })}
-    <span class="bot-field__hint">${machine.worker
-      ? "Its chat, memory and folder live on that worker, which HUI must be connected to. Terminals, the browser and watchers stay on this machine, so the bot can't use them there. It can't move later."
-      : "Its chat and memory live on this machine. It can't move later."}</span></div>`;
+    ${renderBotMachine(bot.worker)}
+    <span class="bot-field__hint">A bot stays on the machine it was created on: its chat and memory live there.${bot.worker
+      ? " Terminals, the browser and watchers stay on this machine, so it can't use them."
+      : ""}</span></div>`;
 }
 
 /** What the workspace field says: a folder on the machine the bot runs on. */
-function workspaceHint(machine: BotDialogMachine | undefined, editing: BotView | undefined): string {
-  const remote = editing ? editing.worker : machine?.workers.find((worker) => worker.id === machine.worker);
-  if (editing) return remote ? `A folder on ${remote.name}. Can change only while the bot is idle.` : "Can change only while the bot is idle.";
-  return remote
-    ? `A folder on ${remote.name}: absolute or ~/…. Leave empty for a private folder HUI creates there.`
-    : "Leave empty for a private folder HUI creates for this bot.";
+function workspaceHint(editing: BotView | undefined): string {
+  if (editing) return editing.worker ? `A folder on ${editing.worker.name}. Can change only while the bot is idle.` : "Can change only while the bot is idle.";
+  return "Leave empty for a private folder HUI creates for this bot.";
 }
 
 /** One Language field for VoiceStudio and GPT-Live calls, while either shows. */
@@ -797,7 +819,6 @@ export function renderBotDialog(props: BotDialogProps) {
       <label class="field input-dialog__field bot-dialog__name"><span>Name</span>
         <input class="settings-input" name="name" type="text" required maxlength=${BOT_LIMITS.name} autocomplete="off" placeholder="Scout" .value=${editing?.name ?? ""} ?disabled=${props.pending} /></label>
       ${renderLookField(props.look, props.pending)}
-      ${renderRunsOnField(props.machine, editing, props.pending)}
       <label class="field input-dialog__field"><span>Title</span>
         <input class="settings-input" name="title" type="text" maxlength=${BOT_LIMITS.title} autocomplete="off" placeholder="Research assistant" .value=${editing?.title ?? ""} ?disabled=${props.pending} /></label>
       <label class="field input-dialog__field"><span>Instructions</span>
@@ -818,9 +839,10 @@ export function renderBotDialog(props: BotDialogProps) {
       ${props.voice ? renderVoiceField(props.voice, props.pending, !props.call) : nothing}
       ${props.call ? renderCallVoiceField(props.call, props.pending) : nothing}
       ${languageField(props)}
+      ${editing ? renderBotMachineField(editing, Boolean(props.workersExist)) : nothing}
       <div class="field input-dialog__field"><label for="bot-dialog-cwd">Workspace directory</label>
         ${renderDirectoryPicker({ id: "bot-dialog-cwd", label: "Workspace directory", value: editing?.cwd ?? "", suggestions: props.directorySuggestions, onInput: props.onDirectoryInput, inputClass: "settings-input", externalLabel: true, placeholder: "Automatic" })}
-        <span class="bot-field__hint">${workspaceHint(props.machine, editing)}</span></div>
+        <span class="bot-field__hint">${workspaceHint(editing)}</span></div>
       ${props.error ? html`<p class="group-action-dialog__error bot-field__error" role="alert">${props.error}</p>` : nothing}
       <div class="exec-approval-actions">
         <button type="submit" class="btn primary" ?disabled=${props.pending}>${props.pending ? (editing ? "Saving…" : "Creating…") : editing ? "Save" : "Create bot"}</button>

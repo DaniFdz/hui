@@ -114,27 +114,41 @@ test("the dialog's Model and Thinking pickers line up although only Model has a 
   assert.match(read("./bots.ts"), /<div class="bot-dialog__row">\s*<div class="field input-dialog__field"><span>Model<\/span>/u);
 });
 
-test("the New bot dialog offers Runs on while a worker exists, an edit only shows the machine, and the workspace follows it", () => {
+test("while a worker exists the roster's + is a menu, New bot on Local or on each worker, and a choice creates the bot there at once", () => {
   const source = read("./bots.ts");
-  const machine = between(source, "export function renderBotMachine(", "/**\n * Runs on:");
-  assert.match(machine, /data-bot-machine>\$\{worker \? icons\.globe : icons\.terminal\}<span>\$\{worker\?\.name \?\? "Local"\}<\/span>/u, "a helper any view can show read-only");
-  const field = between(source, "export function renderRunsOnField(", "/** What the workspace field says");
-  assert.match(field, /renderRunsOnField\(machine: BotDialogMachine \| undefined, bot: Pick<BotView, "worker"> \| undefined, pending: boolean\)/u, "self-contained: only what it shows");
-  assert.match(field, /if \(bot\) \{\n\s+if \(!bot\.worker && !machine\) return nothing;/u, "an existing bot shows its machine, read-only");
-  assert.match(field, /\$\{renderBotMachine\(bot\.worker\)\}/u);
-  assert.match(field, /A bot stays on the machine it was created on: its chat and memory live there\./u);
-  assert.match(field, /if \(!machine\) return nothing;\n\s+const options = \[/u, "no picker without a worker");
-  assert.match(field, /\{ value: "", label: "Local", description: "This machine" \}/u);
-  assert.match(field, /renderPicker\(\{ label: "Runs on", value: machine\.worker, disabled: pending, options, onChange: machine\.onWorker,/u);
-  assert.match(field, /Terminals, the browser and watchers stay on this machine, so the bot can't use them there\./u, "the hint states the limits");
-  assert.match(between(source, "function workspaceHint(", "/** One Language field"), /A folder on \$\{remote\.name\}: absolute or ~\/…\. Leave empty for a private folder HUI creates there\./u);
-  assert.match(between(source, "export function renderBotDialog(", "/* ── archive confirmation"),
-    /\$\{renderLookField\(props\.look, props\.pending\)\}\n\s+\$\{renderRunsOnField\(props\.machine, editing, props\.pending\)\}/u, "Runs on comes right after Look");
+  const button = between(source, "export function renderNewBotButton(", "/** The menu item for this machine");
+  assert.match(button, /if \(!props\.workers\.length\) \{\n\s+return html`<button type="button" aria-label="New bot" title="New bot" data-new-bot-trigger @click=\$\{\(event: Event\) => \{\n\s+props\.onNew\(\);/u, "without workers, + is the plain New bot");
+  assert.match(button, /<wa-dropdown class="session-menu new-bot-menu" placement="bottom-end"/u);
+  assert.match(button, /<button slot="trigger" type="button" aria-label="New bot" title="New bot" data-new-bot-trigger>/u, "the same + opens the menu");
+  assert.match(button, /props\.onCreate\(value === NEW_BOT_LOCAL \? undefined : value\);/u, "a choice creates the bot there");
+  assert.match(button, /New bot on Local<\/span><\/wa-dropdown-item>/u);
+  assert.match(button, /New bot on \$\{worker\.name\}\$\{worker\.state === "connected"/u, "each worker, with its state while not connected");
+  assert.match(button, /props\.onOpen\?\.\(\);/u, "opening it reads the workers again");
+  const shell = read("./shell.ts");
+  assert.match(shell, /\$\{botsTab \? renderNewBotButton\(\{\n\s+workers: botsTab\.workers, onNew: botsTab\.onNew, onCreate: botsTab\.onCreate,/u);
   const app = read("../hui-app.ts");
-  assert.match(app, /\.\.\.\(this\.launchWorkers\.length \? \{ machine: \{/u, "only while a worker exists");
+  assert.match(app, /workers: this\.launchWorkers,\n\s+onCreate: this\.createBotOn,/u);
+  const create = between(app, "private createBotOn = ", "/** The worker the bot being edited runs on");
+  assert.match(create, /createBot\(\{ name: NEW_BOT_NAME, \.\.\.\(worker \? \{ worker \} : \{\}\) \}\)/u, "created at once, where it was chosen");
+  assert.match(create, /this\.navigate\(\{ kind: "bot", id: bot\.id \}\);/u, "and its chat opens");
+  assert.match(create, /this\.botNoticeFailed = true;/u, "a refusal (an offline worker) shows in the roster");
+});
+
+test("an existing bot shows the machine it runs on, read-only, beside its workspace, whose folders are that machine's", () => {
+  const source = read("./bots.ts");
+  assert.match(between(source, "export function renderBotMachine(", "/**\n * Runs on, for a bot that exists"),
+    /data-bot-machine>\$\{worker \? icons\.globe : icons\.terminal\}<span>\$\{worker\?\.name \?\? "Local"\}<\/span>/u, "a helper any view can show read-only");
+  const field = between(source, "export function renderBotMachineField(", "/** What the workspace field says");
+  assert.match(field, /if \(!bot\.worker && !workersExist\) return nothing;/u);
+  assert.match(field, /A bot stays on the machine it was created on: its chat and memory live there\./u);
+  assert.match(field, /Terminals, the browser and watchers stay on this machine, so it can't use them\./u, "a remote bot's limits");
+  assert.match(between(source, "function workspaceHint(", "/** One Language field"), /A folder on \$\{editing\.worker\.name\}\. Can change only while the bot is idle\./u);
+  const dialog = between(source, "export function renderBotDialog(", "/* ── archive confirmation");
+  assert.match(dialog, /\$\{editing \? renderBotMachineField\(editing, Boolean\(props\.workersExist\)\) : nothing\}\n\s+<div class="field input-dialog__field"><label for="bot-dialog-cwd">Workspace directory<\/label>/u);
+  assert.doesNotMatch(dialog, /renderPicker\(\{ label: "Runs on"/u, "a new bot's machine is chosen with +, not in the dialog");
+  const app = read("../hui-app.ts");
   assert.match(app, /onDirectoryInput: this\.botDialogWorker\(\) \? \(input\) => this\.loadDirectorySuggestions\(input, this\.botDialogWorker\(\)\) : this\.requestDirectorySuggestions/u,
     "a bot on a worker is offered its worker's folders, never this machine's");
-  assert.match(app, /const worker = state\.mode === "create" \? this\.botDialogWorker\(\) : undefined;/u, "only a new bot names its worker");
 });
 
 test("a bot on a worker shows the machine compactly in its roster row, its chat header and its confirmations", () => {
@@ -150,7 +164,6 @@ test("a bot on a worker shows the machine compactly in its roster row, its chat 
   assert.match(css, /\.bot-chat-identity__machine svg \{ flex: none; width: 11px; height: 11px; \}/u);
   assert.match(between(source, "export function renderBotArchiveDialog(", "/* ── delete confirmation"), /stay on \$\{bot\.worker\?\.name \?\? "this machine"\}/u);
   assert.match(between(source, "function renderMemoryTab(", "export function renderBotPanel("), /Summarizer since HUI started on \$\{props\.bot\.worker\.name\}/u, "a worker's compactor counts since its host opened the memory");
-  assert.match(css, /\.bot-dialog__machine \.picker-select__leading svg \{ width: 14px; height: 14px; \}/u, "Runs on's options show the machine's icon");
   assert.match(source.slice(source.indexOf("export function renderBotDeleteDialog(")), /Its chat stays in the Durable store on \$\{bot\.worker\.name\}, which HUI no longer opens, and the files in its workspace stay there\./u);
 });
 

@@ -22,7 +22,7 @@ import { jiraIssueAccessibleLabel, primaryJiraIssue } from "../../shared/jira.ts
 import { brandIcons } from "../lib/brand-icons.ts";
 import { worktreeProgressLabel } from "../lib/worktree-progress.ts";
 import type { JiraBadgeData } from "../components/jira-hovercard.ts";
-import { renderBotRoster, type BotRosterProps } from "./bots.ts";
+import { renderBotRoster, renderNewBotButton, type BotPlace, type BotRosterProps } from "./bots.ts";
 import { SIDEBAR_TABS, tabAfterKey, type SidebarTab } from "../lib/bot-roster.ts";
 
 // Node's focused view tests import this module without a CSS loader. The real
@@ -120,6 +120,10 @@ export type ShellBotsProps = {
   search: string;
   onSearch: (value: string) => void;
   onNew: () => void;
+  /** Remote workers: while there is one, + is a menu that creates a bot on Local or on a worker (`onCreate`). */
+  workers: readonly BotPlace[];
+  onCreate: (worker: string | undefined) => void;
+  onWorkersMenu?: () => void;
   /** An unread bot marks the Bots tab while Agents is shown. */
   unread: boolean;
   roster: BotRosterProps;
@@ -896,10 +900,11 @@ export function renderSidebar(props: ShellProps) {
           <div class="sidebar-recent-sessions__toolbar sidebar-session-toolbar">
             <span>${botsTab ? "Bots" : "Sessions"}</span>
             <span>
-              ${botsTab ? html`<button type="button" aria-label="New bot" title="New bot" data-new-bot-trigger @click=${(event: Event) => {
-                botsTab.onNew();
-                closeContainingDrawer(event);
-              }}>${icons.plus}</button>` : html`
+              ${botsTab ? renderNewBotButton({
+                workers: botsTab.workers, onNew: botsTab.onNew, onCreate: botsTab.onCreate,
+                ...(botsTab.onWorkersMenu ? { onOpen: botsTab.onWorkersMenu } : {}),
+                closeDrawer: (event) => closeContainingDrawer(event),
+              }) : html`
               ${renderSidebarSessionOptions(props.sessionOptions, props.onSessionOptions)}
               <button type="button" aria-label="New group" title="New group" data-new-group-trigger @click=${(event: Event) => {
                 props.onNewGroup();

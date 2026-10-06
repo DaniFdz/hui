@@ -29,10 +29,8 @@ export type BotDraft = {
   name: string;
   title: string;
   instructions: string;
-  /** Empty: a private folder the gateway creates for the bot (on its worker, a folder there). */
+  /** Empty: a private folder the gateway creates for the bot. On a worker's bot, a folder there. */
   cwd: string;
-  /** A remote worker's id: the new bot runs there. Only at creation; absent or "" runs it on the gateway's machine. */
-  worker?: string;
   emoji: string;
   /** The dialog's Look: "face" sends the shape and color and clears the emoji, "emoji" sends the emoji. Absent: the
    * emoji decides, as before faces. */
@@ -328,7 +326,6 @@ export function botInputFromDraft(draft: BotDraft): BotInput {
   return {
     name: draft.name.trim(),
     ...Object.fromEntries(Object.entries(entries).filter(([, value]) => value !== undefined)),
-    ...(draft.worker ? { worker: draft.worker } : {}),
     ...(avatar ? { avatar } : {}),
     ...(voice ? { voice } : {}),
   };
