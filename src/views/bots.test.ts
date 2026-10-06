@@ -84,3 +84,16 @@ test("faces are decorative, pause when unseen and keep still under reduced motio
   assert.match(reduced, /svg\[data-state="waiting"\] \.bot-face__tilt \{ transform: rotate\(8deg\); \}/u, "waiting keeps its tilt, still");
   for (const state of ["idle", "thinking", "working", "waiting", "memory", "error", "done", "offline"]) assert.match(styles, new RegExp(`svg\\[data-state="${state}"\\]`, "u"), state);
 });
+
+test("emoji tiles take a face's width in rows, so names line up whichever look a bot has", () => {
+  const css = readFileSync(new URL("../styles/bots.css", import.meta.url), "utf8");
+  const faceCss = readFileSync(new URL("../styles/bot-face.css", import.meta.url), "utf8");
+  const px = (pattern: RegExp, text: string) => Number(text.match(pattern)?.[1]);
+  const tile = px(/\.bot-avatar \{[^}]*?\n  width: (\d+)px;/u, css);
+  assert.equal(tile, 28);
+  for (const size of ["sm", "md"]) {
+    const face = px(new RegExp(String.raw`hui-bot-face\[size="${size}"\] \{ --bot-face-size: (\d+)px; \}`, "u"), faceCss);
+    const margin = px(new RegExp(String.raw`\.bot-avatar--${size}\.bot-avatar--emoji \{ margin-inline: (\d+)px; \}`, "u"), css);
+    assert.equal(tile + 2 * margin, face, size);
+  }
+});

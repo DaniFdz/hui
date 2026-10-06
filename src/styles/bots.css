@@ -103,6 +103,10 @@
 .bot-avatar--lg.bot-avatar--emoji { font-size: 28px; }
 .bot-avatar--xl { width: 72px; height: 72px; font-size: 30px; }
 .bot-avatar--xl.bot-avatar--emoji { font-size: 40px; }
+/* A face is wider than the tile (bot-face.css: sm 32px, md 36px); in rows the tile
+ * takes the same room, so names line up whichever look a bot has. */
+.bot-avatar--sm.bot-avatar--emoji { margin-inline: 2px; }
+.bot-avatar--md.bot-avatar--emoji { margin-inline: 4px; }
 /* A face brings its own size (src/styles/bot-face.css) and needs no tile. */
 .bot-avatar.bot-avatar--face { width: auto; height: auto; border-radius: 0; background: none; }
 .bot-avatar__glyph { line-height: 1; }
