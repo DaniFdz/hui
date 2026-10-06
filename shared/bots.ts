@@ -4,7 +4,7 @@
  * The chat itself is an ordinary Durable session (`BotRecord.sessionId`); the
  * session API drives it like any other.
  */
-import type { BotVoice } from "./voice.ts";
+import type { BotVoice, VoiceLanguage } from "./voice.ts";
 
 export type { BotVoice } from "./voice.ts";
 
@@ -48,7 +48,8 @@ export type BotRecord = {
   memoryModel?: string;
   memoryThinking?: string;
   avatar?: BotAvatar;
-  /** How it sounds through VoiceStudio (read-aloud, calls); absent keys use VoiceStudio's defaults. */
+  /** How it sounds through VoiceStudio (read-aloud, calls) and the language it hears and speaks in there;
+   * absent keys use VoiceStudio's defaults. */
   voice?: BotVoice;
   hidden?: boolean;
   /** Archived bots keep their chat and memory; their routines are disabled. */
@@ -83,12 +84,13 @@ export type BotInput = {
  * `memoryThinking` (a cleared `model` or `thinking` puts the chat back on what
  * a new chat gets: the gateway's default model and thinking level); an avatar
  * key set to `""` clears that key and `avatar: null` clears both. A voice
- * `profile: ""` or `speed: null` clears that key and `voice: null` clears both.
+ * `profile: ""`, `speed: null` or `language: ""` (back to Auto) clears that key
+ * and `voice: null` clears all three.
  */
 export type BotPatch = Partial<Omit<BotInput, "avatar" | "voice">> & { avatar?: BotAvatar | null; voice?: BotVoicePatch | null };
 
-/** A change to a bot's voice: given keys replace, `profile: ""` and `speed: null` clear one. */
-export type BotVoicePatch = { profile?: string; speed?: number | null };
+/** A change to a bot's voice: given keys replace, `profile: ""`, `speed: null` and `language: ""` clear one. */
+export type BotVoicePatch = { profile?: string; speed?: number | null; language?: VoiceLanguage | "" };
 
 /** A bot chat's session status, as `SessionView.status` reports it. */
 export type BotSessionStatus = "idle" | "running" | "waiting" | "starting" | "error" | "reconnecting" | "disconnected";

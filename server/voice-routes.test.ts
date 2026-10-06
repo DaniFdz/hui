@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { after, before, beforeEach, test } from "node:test";
+import type { BotVoice } from "../shared/voice.ts";
 import type { VoiceRouteRequest } from "./voice-routes.ts";
 
 // HUI's state lives in a temporary directory: set before any module reads CONFIG_DIR.
@@ -31,7 +32,7 @@ async function control<T = unknown>(path: string, body?: unknown): Promise<T> {
 }
 const fixtureRequests = () => control<FixtureRequest[]>("requests");
 
-const voices: Record<string, { profile?: string; speed?: number }> = { scout: { profile: "vp-bruno", speed: 1.25 }, plain: {} };
+const voices: Record<string, BotVoice> = { scout: { profile: "vp-bruno", speed: 1.25 }, plain: {}, lola: { profile: "vp-dani", language: "es" }, sari: { language: "jw" } };
 let stores = 0;
 function routes(timeouts?: { speech?: number; transcription?: number }) {
   const service = new VoiceService({ store: new VoiceConfigStore(join(dir, `voicestudio-${++stores}.json`)), ...(timeouts ? { timeouts } : {}) });
@@ -210,6 +211,59 @@ test("speaks with the bot's voice and speed unless the request names its own", a
   ]);
   const longest = await speak({ text: "é".repeat(4000) });
   assert.ok(longest.bytes.length > 0, "4,000 characters is the limit, not past it");
+});
+
+/** What VoiceStudio was asked for, per request: its language, or "(none)" when the field was not sent at all. */
+const sentLanguages = async (kind: "speech" | "transcription") => (await fixtureRequests()).flatMap((item) => {
+  const fields = item[kind];
+  return fields ? [Object.hasOwn(fields, "language") ? fields["language"] : "(none)"] : [];
+});
+const LANGUAGE_REFUSAL = "language is one of Whisper's language codes, such as en, es, fr, de or ja, or \"\" for Auto.";
+
+test("speaks in the bot's language unless the request names one, and sends none for Auto", async () => {
+  const voice = await connected();
+  const speak = async (json: Record<string, unknown>) => {
+    const result = await voice.handle(request("POST", "/__hui/voice/speech", { json }));
+    assert.ok(result && "audio" in result, JSON.stringify(result));
+    await readAudio(result.audio);
+  };
+  await speak({ text: "The bot's language.", botId: "lola" });
+  await speak({ text: "A code wins.", botId: "lola", language: "fr" });
+  await speak({ text: "Auto wins too.", botId: "lola", language: "" });
+  await speak({ text: "A bot in Auto.", botId: "scout" });
+  await speak({ text: "No bot." });
+  await speak({ text: "Javanese.", botId: "sari" });
+  await speak({ text: "A preview in Cantonese.", voice: "vp-aria", speed: 1, language: "YUE" });
+  assert.deepEqual(await sentLanguages("speech"), ["es", "fr", "(none)", "(none)", "(none)", "jv", "yue"]);
+  assert.equal((await fixtureRequests())[0]?.speech?.["voice"], "vp-dani", "with the bot's voice");
+  for (const language of ["spanish", "jv", "es-ES", "xx", 3, null]) {
+    assert.deepEqual(body(await voice.handle(request("POST", "/__hui/voice/speech", { json: { text: "Hi", language } }))), { status: 400, body: { error: LANGUAGE_REFUSAL } }, String(language));
+  }
+  assert.equal((await fixtureRequests()).length, 7, "a refused language never reaches VoiceStudio");
+  // An engine without the language refuses; its words reach the caller, asked once.
+  const refusal = "The KittenTTS engine doesn't support language='es'. Supported: 'en'. Pick one of those, leave language as 'Auto', or switch engine in Model Catalogue.";
+  await control("fail", { path: "/v1/audio/speech", status: 400, message: refusal, code: "invalid_value" });
+  assert.deepEqual(body(await voice.handle(request("POST", "/__hui/voice/speech", { json: { text: "Hola.", botId: "lola" } }))), { status: 502, body: { error: `VoiceStudio: ${refusal}` } });
+  assert.deepEqual((await fixtureRequests()).slice(7).map((item) => item.path), ["/v1/audio/speech"], "asked once, never retried");
+});
+
+test("transcribes in the bot's language unless the request names one, and sends none for Auto", async () => {
+  const voice = await connected();
+  const transcribe = async (query: string) => body(await voice.handle(request("POST", "/__hui/voice/transcriptions", { raw: recording, contentType: "audio/webm", query })));
+  for (const query of ["botId=lola", "botId=lola&language=fr", "botId=lola&language=", "botId=scout", "botId=sari", "language=de"]) {
+    assert.equal((await transcribe(query)).status, 200, query);
+  }
+  const form = new FormData();
+  form.append("file", new Blob([recording], { type: "audio/ogg" }), "note.ogg");
+  form.append("botId", "lola");
+  assert.equal(body(await voice.handle(request("POST", "/__hui/voice/transcriptions", await multipart(form)))).status, 200, "a form names the bot too");
+  // Whisper keeps its own jw for Javanese.
+  assert.deepEqual(await sentLanguages("transcription"), ["es", "fr", "(none)", "(none)", "jw", "de", "es"]);
+  assert.deepEqual(await transcribe("botId=ghost"), { status: 404, body: { error: 'No bot "ghost".' } });
+  assert.deepEqual(await transcribe("botId=..%2Fx"), { status: 400, body: { error: "botId is a bot's id or handle." } });
+  assert.deepEqual(await transcribe("botId=lola&language=spanish"), { status: 400, body: { error: LANGUAGE_REFUSAL } });
+  assert.deepEqual(await transcribe("language=jv"), { status: 400, body: { error: LANGUAGE_REFUSAL } });
+  assert.equal((await fixtureRequests()).length, 7, "nothing refused reached VoiceStudio");
 });
 
 test("refuses speech requests it cannot serve", async () => {

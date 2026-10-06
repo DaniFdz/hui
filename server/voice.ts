@@ -16,7 +16,7 @@ import { chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises"
 import { isIPv4, isIPv6 } from "node:net";
 import { dirname, join } from "node:path";
 
-import { VOICE_PROTOCOL, type SpeechFormat, type VoiceConnection, type VoiceProfile } from "../shared/voice.ts";
+import { speechLanguage, VOICE_PROTOCOL, type SpeechFormat, type VoiceConnection, type VoiceLanguage, type VoiceProfile } from "../shared/voice.ts";
 import { CONFIG_DIR } from "./paths.ts";
 
 export const VOICE_CONFIG_FILE = join(CONFIG_DIR, "voicestudio.json");
@@ -479,10 +479,13 @@ export class VoiceStudioClient {
   /**
    * `POST /v1/audio/speech` with `stream_format: "audio"`: the audio bytes as they
    * arrive, with VoiceStudio's content type. Until the first byte the speech
-   * timeout applies, then an idle timeout between chunks and a size cap.
+   * timeout applies, then an idle timeout between chunks and a size cap. A
+   * `language` (VoiceStudio's extension: its text normalization and the engine)
+   * is sent only when there is one, Javanese as `jv`; an engine that lacks it
+   * refuses, in VoiceStudio's words.
    */
   async speech(
-    request: { input: string; voice: string; speed: number; format: SpeechFormat },
+    request: { input: string; voice: string; speed: number; format: SpeechFormat; language?: VoiceLanguage | undefined },
     signal?: AbortSignal,
   ): Promise<{ contentType: string; audio: ReadableStream<Uint8Array> }> {
     const { response, deadline } = await this.#exchange("/v1/audio/speech", {
@@ -493,6 +496,7 @@ export class VoiceStudioClient {
         input: request.input,
         voice: request.voice,
         speed: request.speed,
+        ...(request.language ? { language: speechLanguage(request.language) } : {}),
         response_format: request.format,
         stream_format: "audio",
       }),
@@ -678,7 +682,7 @@ export class VoiceService {
   }
 
   async speech(
-    request: { input: string; voice: string; speed: number; format: SpeechFormat },
+    request: { input: string; voice: string; speed: number; format: SpeechFormat; language?: VoiceLanguage | undefined },
     signal?: AbortSignal,
   ): Promise<{ contentType: string; audio: ReadableStream<Uint8Array> }> {
     return this.#client(await this.#configured()).speech(request, signal);

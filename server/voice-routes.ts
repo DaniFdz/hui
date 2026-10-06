@@ -8,10 +8,16 @@
  *   PUT    /__hui/voice                 { url, apiKey? } verified, then stored
  *   DELETE /__hui/voice                 forget the connection and its key
  *   GET    /__hui/voice/voices          { voices } from VoiceStudio
- *   POST   /__hui/voice/transcriptions  raw audio (its content type) or multipart → { text }
- *   POST   /__hui/voice/speech          { text, botId?, voice?, speed?, format? } → audio bytes
+ *   POST   /__hui/voice/transcriptions  raw audio (its content type) or multipart, ?botId= ?language= ?prompt= → { text }
+ *   POST   /__hui/voice/speech          { text, botId?, voice?, speed?, language?, format? } → audio bytes
+ *
+ * A bot's language (`BotVoice.language`) is what VoiceStudio listens for and speaks in for it; a request's own
+ * `language` wins, and `""` asks for Auto (the recognizer detects it, speech gets none) even for a bot with one.
  */
-import { SPEECH_FORMATS, VOICE_LIMITS, voiceProfileId, voiceSpeed, type BotVoice, type SpeechFormat, type VoiceConnection, type VoiceProfile } from "../shared/voice.ts";
+import {
+  SPEECH_FORMATS, VOICE_LANGUAGE_EXAMPLES, VOICE_LIMITS, voiceLanguage, voiceProfileId, voiceSpeed,
+  type BotVoice, type SpeechFormat, type VoiceConnection, type VoiceLanguage, type VoiceProfile,
+} from "../shared/voice.ts";
 import { BotNotFoundError } from "./bots.ts";
 import { VoiceInputError, VoiceNotConfiguredError, VoiceRequestError } from "./voice.ts";
 
@@ -20,7 +26,6 @@ const ROUTE = /^\/__hui\/voice(?:\/(voices|transcriptions|speech))?$/u;
 const CONNECTION_BODY_BYTES = 16 * 1024;
 /** 4,000 characters of up to four bytes each, plus the other fields. */
 const SPEECH_BODY_BYTES = 64 * 1024;
-const LANGUAGE = /^[a-z]{2,3}$/u;
 const BOT_ID = /^[A-Za-z0-9_-]{1,100}$/u;
 
 /** The body is larger than the route accepts (413). */
@@ -56,13 +61,13 @@ export type VoiceRouteService = {
   connect(body: unknown): Promise<VoiceConnection>;
   disconnect(): Promise<VoiceConnection>;
   voices(): Promise<VoiceProfile[]>;
-  transcribe(audio: { data: Uint8Array<ArrayBuffer>; contentType: string; filename: string }, options: { language?: string | undefined; prompt?: string | undefined }, signal?: AbortSignal): Promise<string>;
-  speech(request: { input: string; voice: string; speed: number; format: SpeechFormat }, signal?: AbortSignal): Promise<{ contentType: string; audio: ReadableStream<Uint8Array> }>;
+  transcribe(audio: { data: Uint8Array<ArrayBuffer>; contentType: string; filename: string }, options: { language?: VoiceLanguage | undefined; prompt?: string | undefined }, signal?: AbortSignal): Promise<string>;
+  speech(request: { input: string; voice: string; speed: number; format: SpeechFormat; language?: VoiceLanguage }, signal?: AbortSignal): Promise<{ contentType: string; audio: ReadableStream<Uint8Array> }>;
 };
 
 type Deps = {
   service: VoiceRouteService;
-  /** A bot's voice by id or handle; rejects with `BotNotFoundError` for an unknown bot. */
+  /** A bot's voice (and language) by id or handle; rejects with `BotNotFoundError` for an unknown bot. */
   botVoice(botId: string): Promise<BotVoice | undefined>;
 };
 
@@ -93,34 +98,47 @@ export function audioFileName(type: string): string {
   return `recording.${extension ?? "audio"}`;
 }
 
-function transcriptionOptions(language: string | undefined, prompt: string | undefined): { language?: string; prompt?: string } {
-  const options: { language?: string; prompt?: string } = {};
-  if (language) {
-    const code = language.trim().toLowerCase();
-    if (!LANGUAGE.test(code)) throw new VoiceInputError("language is an ISO 639-1 code such as en or es.");
-    options.language = code;
-  }
-  if (prompt?.trim()) {
-    if (prompt.length > VOICE_LIMITS.prompt) throw new VoiceInputError(`prompt is at most ${VOICE_LIMITS.prompt} characters.`);
-    options.prompt = prompt.trim();
-  }
-  return options;
+/** One of Whisper's language codes, or `""`: Auto, even for a bot with a language. */
+function languageField(value: unknown): VoiceLanguage | "" {
+  if (value === "") return "";
+  const language = voiceLanguage(value);
+  if (!language) throw new VoiceInputError(`language is one of Whisper's language codes, such as ${VOICE_LANGUAGE_EXAMPLES}, or "" for Auto.`);
+  return language;
 }
 
-type SpeechInput = { text: string; botId?: string; voice?: string; speed?: number; format: SpeechFormat };
+function botIdField(value: unknown): string {
+  if (typeof value !== "string" || !BOT_ID.test(value)) throw new VoiceInputError("botId is a bot's id or handle.");
+  return value;
+}
+
+type TranscriptionInput = { language?: VoiceLanguage | ""; prompt?: string; botId?: string };
+
+/** A recording's fields, from the query or its form: `language`, `prompt` (vocabulary hints) and `botId`. */
+function transcriptionInput(field: (name: string) => string | undefined): TranscriptionInput {
+  const input: TranscriptionInput = {};
+  const language = field("language");
+  if (language !== undefined) input.language = languageField(language);
+  const prompt = field("prompt");
+  if (prompt?.trim()) {
+    if (prompt.length > VOICE_LIMITS.prompt) throw new VoiceInputError(`prompt is at most ${VOICE_LIMITS.prompt} characters.`);
+    input.prompt = prompt.trim();
+  }
+  const botId = field("botId");
+  if (botId !== undefined) input.botId = botIdField(botId);
+  return input;
+}
+
+type SpeechInput = { text: string; botId?: string; voice?: string; speed?: number; language?: VoiceLanguage | ""; format: SpeechFormat };
 
 function speechInput(body: unknown): SpeechInput {
   if (!isRecord(body)) throw new VoiceInputError("A speech request is an object with text.");
-  const unknown = Object.keys(body).filter((key) => !["text", "botId", "voice", "speed", "format"].includes(key));
+  const unknown = Object.keys(body).filter((key) => !["text", "botId", "voice", "speed", "language", "format"].includes(key));
   if (unknown.length) throw new VoiceInputError(`Unknown speech field: ${unknown.join(", ")}.`);
   const text = typeof body["text"] === "string" ? body["text"].trim() : "";
   if (!text) throw new VoiceInputError("text is required.");
   if ([...text].length > VOICE_LIMITS.speechText) throw new VoiceInputError(`text is at most ${VOICE_LIMITS.speechText.toLocaleString("en-US")} characters; speak longer messages in parts.`);
   const input: SpeechInput = { text, format: "mp3" };
-  if (body["botId"] !== undefined) {
-    if (typeof body["botId"] !== "string" || !BOT_ID.test(body["botId"])) throw new VoiceInputError("botId is a bot's id or handle.");
-    input.botId = body["botId"];
-  }
+  if (body["botId"] !== undefined) input.botId = botIdField(body["botId"]);
   if (body["voice"] !== undefined) {
     // "" asks for VoiceStudio's default voice even when the bot has one.
     const voice = body["voice"] === "" ? "" : voiceProfileId(body["voice"]);
@@ -132,6 +150,7 @@ function speechInput(body: unknown): SpeechInput {
     if (speed === undefined) throw new VoiceInputError(`speed is a number from ${VOICE_LIMITS.speedMin} to ${VOICE_LIMITS.speedMax}.`);
     input.speed = speed;
   }
+  if (body["language"] !== undefined) input.language = languageField(body["language"]);
   if (body["format"] !== undefined) {
     if (!SPEECH_FORMATS.includes(body["format"] as SpeechFormat)) throw new VoiceInputError(`format is one of ${SPEECH_FORMATS.join(", ")}.`);
     input.format = body["format"] as SpeechFormat;
@@ -157,10 +176,10 @@ export function createVoiceRoutes(deps: Deps) {
     const tooLarge = `A recording is at most ${VOICE_LIMITS.audioBytes / 1024 / 1024} MB.`;
     if (request.contentLength !== undefined && request.contentLength > VOICE_LIMITS.audioBytes) throw new VoiceTooLargeError(tooLarge);
     let audio: { data: Uint8Array<ArrayBuffer>; contentType: string; filename: string };
-    let options: { language?: string; prompt?: string };
+    let input: TranscriptionInput;
     if (type.startsWith("audio/")) {
       audio = { data: await request.body(VOICE_LIMITS.audioBytes), contentType: type, filename: audioFileName(type) };
-      options = transcriptionOptions(request.query.get("language") ?? undefined, request.query.get("prompt") ?? undefined);
+      input = transcriptionInput((name) => request.query.get(name) ?? undefined);
     } else if (type === "multipart/form-data") {
       const raw = await request.body(VOICE_LIMITS.audioBytes);
       let form: FormData;
@@ -174,25 +193,29 @@ export function createVoiceRoutes(deps: Deps) {
       const fileType = mediaType(file.type);
       if (!fileType.startsWith("audio/")) throw new VoiceMediaTypeError(`The file part is ${fileType || "untyped"}, not audio.`);
       audio = { data: new Uint8Array(await file.arrayBuffer()), contentType: fileType, filename: audioFileName(fileType) };
-      const field = (name: string) => {
+      input = transcriptionInput((name) => {
         const value = form.get(name) ?? request.query.get(name);
         return typeof value === "string" ? value : undefined;
-      };
-      options = transcriptionOptions(field("language"), field("prompt"));
+      });
     } else {
       throw new VoiceMediaTypeError("Send the recording as audio (audio/webm, audio/ogg, audio/wav, audio/mpeg, audio/mp4…) or as multipart/form-data with a file part.");
     }
     if (!audio.data.byteLength) throw new VoiceInputError("The recording is empty.");
-    return service.transcribe(audio, options, request.signal);
+    // The bot's language unless the request names one ("" for Auto); Whisper detects it when there is none.
+    const bot = input.botId ? await deps.botVoice(input.botId) : undefined;
+    const language = input.language !== undefined ? input.language : bot?.language;
+    return service.transcribe(audio, { ...(language ? { language } : {}), ...(input.prompt ? { prompt: input.prompt } : {}) }, request.signal);
   }
 
-  /** The bot's voice and speed unless the request names its own (a preview). */
+  /** The bot's voice, speed and language unless the request names its own (a preview speaks exactly its draft). */
   async function speech(request: VoiceRouteRequest): Promise<VoiceRouteResult> {
     const input = speechInput(await json(request, SPEECH_BODY_BYTES));
     const bot = input.botId ? await deps.botVoice(input.botId) : undefined;
     const voice = input.voice ?? bot?.profile ?? "";
     const speed = input.speed ?? bot?.speed ?? 1;
-    const { contentType, audio } = await service.speech({ input: input.text, voice: voice || "default", speed, format: input.format }, request.signal);
+    // "" is Auto even for a bot with a language: VoiceStudio hears of one only when there is a code.
+    const language = input.language !== undefined ? input.language : bot?.language;
+    const { contentType, audio } = await service.speech({ input: input.text, voice: voice || "default", speed, format: input.format, ...(language ? { language } : {}) }, request.signal);
     return { status: 200, contentType, audio };
   }
 

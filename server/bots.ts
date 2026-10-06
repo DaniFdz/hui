@@ -18,7 +18,7 @@ import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join } from "node:path";
 
 import { BOT_HANDLE, BOT_LIMITS, BOT_THINKING_LEVELS, type BotAvatar, type BotInput, type BotPatch, type BotRecord, type BotVoice, type BotVoicePatch } from "../shared/bots.ts";
-import { VOICE_LIMITS, voiceProfileId, voiceSpeed } from "../shared/voice.ts";
+import { VOICE_LANGUAGE_EXAMPLES, VOICE_LIMITS, voiceLanguage, voiceProfileId, voiceSpeed } from "../shared/voice.ts";
 import { CONFIG_DIR } from "./paths.ts";
 
 export const BOTS_FILE = join(CONFIG_DIR, "bots.json");
@@ -82,7 +82,8 @@ function storedVoice(raw: unknown): BotVoice | undefined {
   if (!isRecord(raw)) return undefined;
   const profile = voiceProfileId(raw["profile"]);
   const speed = voiceSpeed(raw["speed"]);
-  const voice = { ...(profile ? { profile } : {}), ...(speed !== undefined ? { speed } : {}) };
+  const language = voiceLanguage(raw["language"]);
+  const voice = { ...(profile ? { profile } : {}), ...(speed !== undefined ? { speed } : {}), ...(language ? { language } : {}) };
   return Object.keys(voice).length ? voice : undefined;
 }
 
@@ -326,10 +327,10 @@ function avatarField(raw: unknown): BotAvatar {
   return avatar;
 }
 
-/** `{ profile?, speed? }`; `profile: ""` and `speed: null` clear a key (kept so a patch can tell). */
+/** `{ profile?, speed?, language? }`; `profile: ""`, `speed: null` and `language: ""` clear a key (kept so a patch can tell). */
 function voiceField(raw: unknown): BotVoicePatch {
-  if (!isRecord(raw)) throw new BotInputError("Voice must be an object with profile and/or speed.");
-  const unknown = Object.keys(raw).filter((key) => key !== "profile" && key !== "speed");
+  if (!isRecord(raw)) throw new BotInputError("Voice must be an object with profile, speed and/or language.");
+  const unknown = Object.keys(raw).filter((key) => key !== "profile" && key !== "speed" && key !== "language");
   if (unknown.length) throw new BotInputError(`Unknown voice field: ${unknown.join(", ")}.`);
   const voice: BotVoicePatch = {};
   if ("profile" in raw) {
@@ -341,6 +342,12 @@ function voiceField(raw: unknown): BotVoicePatch {
     const speed = raw["speed"] === null ? null : voiceSpeed(raw["speed"]);
     if (speed === undefined) throw new BotInputError(`Voice speed must be a number from ${VOICE_LIMITS.speedMin} to ${VOICE_LIMITS.speedMax}.`);
     voice.speed = speed;
+  }
+  if ("language" in raw) {
+    // One of Whisper's codes: what VoiceStudio listens for and speaks in. "" goes back to Auto (detection).
+    const language = raw["language"] === "" ? "" : voiceLanguage(raw["language"]);
+    if (language === undefined) throw new BotInputError(`Voice language must be one of Whisper's language codes, such as ${VOICE_LANGUAGE_EXAMPLES}, or "" for Auto.`);
+    voice.language = language;
   }
   return voice;
 }
@@ -400,12 +407,13 @@ export function normalizeBotPatch(value: unknown): BotPatch {
   return patch;
 }
 
-/** The voice after a patch: given keys replace, `profile: ""` and `speed: null` clear one, `null` clears both. */
+/** The voice after a patch: given keys replace, `profile: ""`, `speed: null` and `language: ""` clear one, `null` clears all. */
 export function patchedVoice(current: BotVoice | undefined, patch: BotVoicePatch | null): BotVoice | undefined {
   if (patch === null) return undefined;
   const profile = patch.profile !== undefined ? patch.profile : current?.profile;
   const speed = patch.speed !== undefined ? patch.speed : current?.speed;
-  const voice = { ...(profile ? { profile } : {}), ...(typeof speed === "number" ? { speed } : {}) };
+  const language = patch.language !== undefined ? patch.language : current?.language;
+  const voice: BotVoice = { ...(profile ? { profile } : {}), ...(typeof speed === "number" ? { speed } : {}), ...(language ? { language } : {}) };
   return Object.keys(voice).length ? voice : undefined;
 }
 

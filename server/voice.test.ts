@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { after, beforeEach, test } from "node:test";
 
-import { VOICE_PROTOCOL } from "../shared/voice.ts";
+import { speechLanguage, VOICE_LANGUAGES, VOICE_PROTOCOL, voiceLanguage, voiceLanguageName } from "../shared/voice.ts";
 import {
   KEY_TRANSPORT_MESSAGE,
   keyTransportAllowed,
@@ -190,6 +190,36 @@ test("streams speech in the content type VoiceStudio sends", async () => {
   assert.equal(read.bytes.length, first?.speech?.["bytes"]);
   assert.equal(second?.speech?.["response_format"], "opus");
   await assert.rejects(client.speech({ input: "Hi", voice: "nobody", speed: 1, format: "mp3" }), /VoiceStudio: Voice 'nobody' was not found\./u);
+});
+
+test("a bot's language is one of Whisper's 100 codes, haw and yue included, and Javanese speaks as jv", () => {
+  const codes = Object.keys(VOICE_LANGUAGES);
+  assert.equal(codes.length, 100);
+  assert.equal(new Set(codes).size, 100);
+  assert.deepEqual(codes.slice(0, 4), ["en", "zh", "de", "es"], "Whisper's order");
+  assert.deepEqual(codes.filter((code) => code.length !== 2), ["haw", "yue"], "two ISO 639-3 codes, the rest ISO 639-1-shaped");
+  assert.equal(VOICE_LANGUAGES.jw, "javanese");
+  for (const [input, code] of [["es", "es"], [" ES ", "es"], ["haw", "haw"], ["YUE", "yue"], ["jw", "jw"]] as const) assert.equal(voiceLanguage(input), code, input);
+  // A regex for two or three letters would let these through; the list does not.
+  for (const input of ["jv", "xx", "zzz", "spanish", "es-ES", "auto", "", "constructor", "__proto__", 7, null, undefined, ["es"]]) {
+    assert.equal(voiceLanguage(input), undefined, String(input));
+  }
+  assert.equal(speechLanguage("jw"), "jv", "VoiceStudio knows Javanese as ISO's jv");
+  for (const code of codes) if (code !== "jw") assert.equal(speechLanguage(code as keyof typeof VOICE_LANGUAGES), code);
+  assert.equal(voiceLanguageName("es"), "Spanish");
+  assert.equal(voiceLanguageName("haw"), "Hawaiian");
+  assert.equal(voiceLanguageName("es", null), "Spanish", "Whisper's name when the platform has none");
+  assert.equal(voiceLanguageName("ht", { of: () => undefined }), "Haitian Creole");
+});
+
+test("asks VoiceStudio's speech for a language only when there is one, Javanese as jv", async () => {
+  const client = new VoiceStudioClient({ url: origin });
+  for (const language of ["es", "jw", undefined] as const) {
+    const spoken = await client.speech({ input: "Son las 10:30.", voice: "default", speed: 1, format: "mp3", language });
+    await readAll(spoken.audio);
+  }
+  const sent = (await fixtureRequests()).map((item) => item.speech && Object.hasOwn(item.speech, "language") ? item.speech["language"] : "(none)");
+  assert.deepEqual(sent, ["es", "jv", "(none)"]);
 });
 
 test("presents the API key as a bearer and explains VoiceStudio's refusals", async () => {

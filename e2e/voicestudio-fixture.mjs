@@ -6,7 +6,7 @@
  * frames, silent Ogg Opus), streamed in chunks for stream_format "audio". Shapes follow
  * VoiceStudio's docs (docs/agentic-voice.md, docs/speech-platform.md, docs/api-auth.md).
  * Control routes (never behind the key):
- *   GET  /control/requests     every API request (fields, sizes, auth), never audio bytes
+ *   GET  /control/requests     every API request (fields such as the language, sizes, auth), never audio bytes
  *   POST /control/transcripts  {"texts": [...]} queues the next transcriptions' text
  *   POST /control/key          {"key": "..." | null} requires a bearer key, or stops requiring one
  *   POST /control/speech       {"secondsPerCharacter"?, "minSeconds"?, "maxSeconds"?} clip length
@@ -234,7 +234,8 @@ async function synthesize(response, body, record, url) {
   const format = input.response_format ?? "mp3";
   const voice = typeof input.voice === "object" && input.voice ? input.voice.id : input.voice ?? "default";
   const speed = input.speed ?? 1;
-  record.speech = { model: input.model, voice, speed, response_format: format, stream_format: input.stream_format, input: input.input };
+  // `language` (VoiceStudio's extension) only when the request has one, as `/control/requests` shows it.
+  record.speech = { model: input.model, voice, speed, language: input.language, response_format: format, stream_format: input.stream_format, input: input.input };
   if (input.model !== undefined && !TTS_MODELS.includes(input.model)) return openAiError(response, 400, `The model '${input.model}' does not exist on this VoiceStudio server.`, { param: "model", code: "model_not_found" });
   if (typeof input.input !== "string" || !input.input || input.input.length > 4096) return openAiError(response, 400, "Invalid value for 'input': String should have at most 4096 characters", { param: "input", code: "invalid_value" });
   if (!KNOWN_VOICES.has(voice)) return openAiError(response, 400, `Voice '${voice}' was not found.`, { param: "voice", code: "voice_not_found" });

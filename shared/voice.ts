@@ -55,19 +55,56 @@ export type VoiceProfile = {
   description?: string;
 };
 
-/** A bot's voice: a VoiceStudio voice id and a speed; absent keys use VoiceStudio's defaults. */
-export type BotVoice = { profile?: string; speed?: number };
+/**
+ * The languages a bot can listen and speak in: Whisper's 100, with its names
+ * and in its order (openai/whisper, whisper/tokenizer.py `LANGUAGES`), which
+ * VoiceStudio's default recognizers (the Whisper family) take as `language`.
+ * The codes are ISO 639-1, except Hawaiian `haw` and Cantonese `yue` (ISO
+ * 639-3, VoiceStudio's ids too) and Javanese: Whisper alone says `jw` for
+ * ISO's `jv`, so speech sends `jv` (`speechLanguage`).
+ */
+export const VOICE_LANGUAGES = {
+  en: "english", zh: "chinese", de: "german", es: "spanish", ru: "russian", ko: "korean", fr: "french",
+  ja: "japanese", pt: "portuguese", tr: "turkish", pl: "polish", ca: "catalan", nl: "dutch", ar: "arabic",
+  sv: "swedish", it: "italian", id: "indonesian", hi: "hindi", fi: "finnish", vi: "vietnamese", he: "hebrew",
+  uk: "ukrainian", el: "greek", ms: "malay", cs: "czech", ro: "romanian", da: "danish", hu: "hungarian", ta: "tamil",
+  no: "norwegian", th: "thai", ur: "urdu", hr: "croatian", bg: "bulgarian", lt: "lithuanian", la: "latin",
+  mi: "maori", ml: "malayalam", cy: "welsh", sk: "slovak", te: "telugu", fa: "persian", lv: "latvian", bn: "bengali",
+  sr: "serbian", az: "azerbaijani", sl: "slovenian", kn: "kannada", et: "estonian", mk: "macedonian", br: "breton",
+  eu: "basque", is: "icelandic", hy: "armenian", ne: "nepali", mn: "mongolian", bs: "bosnian", kk: "kazakh",
+  sq: "albanian", sw: "swahili", gl: "galician", mr: "marathi", pa: "punjabi", si: "sinhala", km: "khmer",
+  sn: "shona", yo: "yoruba", so: "somali", af: "afrikaans", oc: "occitan", ka: "georgian", be: "belarusian",
+  tg: "tajik", sd: "sindhi", gu: "gujarati", am: "amharic", yi: "yiddish", lo: "lao", uz: "uzbek", fo: "faroese",
+  ht: "haitian creole", ps: "pashto", tk: "turkmen", nn: "nynorsk", mt: "maltese", sa: "sanskrit",
+  lb: "luxembourgish", my: "myanmar", bo: "tibetan", tl: "tagalog", mg: "malagasy", as: "assamese", tt: "tatar",
+  haw: "hawaiian", ln: "lingala", ha: "hausa", ba: "bashkir", jw: "javanese", su: "sundanese", yue: "cantonese",
+} as const;
+
+export type VoiceLanguage = keyof typeof VOICE_LANGUAGES;
+
+const LANGUAGE_CODES: ReadonlySet<string> = new Set(Object.keys(VOICE_LANGUAGES));
+
+/** Codes a refusal names as examples. */
+export const VOICE_LANGUAGE_EXAMPLES = "en, es, fr, de or ja";
+
+/** A bot's voice: a VoiceStudio voice id, a speed and the language it hears and speaks in; absent keys use
+ * VoiceStudio's defaults (for the language, Auto: the recognizer detects it). */
+export type BotVoice = { profile?: string; speed?: number; language?: VoiceLanguage };
 
 /** Audio formats `POST /__hui/voice/speech` asks VoiceStudio for. */
 export const SPEECH_FORMATS = ["mp3", "opus"] as const;
 export type SpeechFormat = (typeof SPEECH_FORMATS)[number];
 
-/** `POST /__hui/voice/speech`. `voice`/`speed` win over the bot's (a voice preview); absent, the bot's apply. */
+/**
+ * `POST /__hui/voice/speech`. `voice`, `speed` and `language` win over the bot's (a voice preview); absent, the
+ * bot's apply. `language: ""` asks for Auto even when the bot has a language.
+ */
 export type SpeechRequest = {
   text: string;
   botId?: string;
   voice?: string;
   speed?: number;
+  language?: VoiceLanguage | "";
   format?: SpeechFormat;
 };
 
@@ -83,4 +120,48 @@ export function voiceProfileId(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   const id = value.trim();
   return id && id.length <= VOICE_LIMITS.profile && !/\p{Cc}/u.test(id) ? id : undefined;
+}
+
+/** One of Whisper's language codes (trimmed, in any case); undefined for anything else, a name included. */
+export function voiceLanguage(value: unknown): VoiceLanguage | undefined {
+  if (typeof value !== "string") return undefined;
+  const code = value.trim().toLowerCase();
+  return LANGUAGE_CODES.has(code) ? code as VoiceLanguage : undefined;
+}
+
+/** The language VoiceStudio's speech is asked for: the code itself, but Javanese as ISO's `jv`, its id there. */
+export function speechLanguage(code: VoiceLanguage): string {
+  return code === "jw" ? "jv" : code;
+}
+
+/** Whisper's name for the language, capitalized: `Haitian Creole`. */
+export function whisperLanguageName(code: VoiceLanguage): string {
+  return VOICE_LANGUAGES[code].replace(/(^|\s)\p{Ll}/gu, (initial) => initial.toUpperCase());
+}
+
+/** What names languages: the platform's `Intl.DisplayNames`, or a stand-in under test. */
+export type LanguageNames = { of(code: string): string | undefined };
+
+let englishNames: LanguageNames | null | undefined;
+
+function platformNames(): LanguageNames | null {
+  if (englishNames === undefined) {
+    try {
+      englishNames = new Intl.DisplayNames(["en"], { type: "language", fallback: "none" });
+    } catch {
+      englishNames = null;
+    }
+  }
+  return englishNames;
+}
+
+/** The language's English name (HUI's UI language): the platform's, else Whisper's. */
+export function voiceLanguageName(code: VoiceLanguage, names: LanguageNames | null = platformNames()): string {
+  let name: string | undefined;
+  try {
+    name = names?.of(code);
+  } catch {
+    name = undefined;
+  }
+  return name || whisperLanguageName(code);
 }

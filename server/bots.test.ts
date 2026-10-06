@@ -193,3 +193,29 @@ test("a bot's voice is a VoiceStudio voice id and a speed from 0.5 to 2, cleared
   assert.deepEqual(parseBotRecord({ ...bot("a", "ada"), voice: { profile: "vp-dani", speed: 9 } })?.voice, { profile: "vp-dani" });
   assert.equal(parseBotRecord({ ...bot("a", "ada"), voice: "x" })?.voice, undefined);
 });
+
+test("a bot's voice language is one of Whisper's codes, kept with the voice and cleared back to Auto with \"\"", () => {
+  assert.deepEqual(normalizeBotInput({ name: "Ada", voice: { language: " ES " } }).voice, { language: "es" });
+  for (const language of ["haw", "yue", "jw", "en", "zh"]) assert.deepEqual(normalizeBotInput({ name: "Ada", voice: { language } }).voice, { language }, language);
+  assert.equal(normalizeBotInput({ name: "Ada", voice: { language: "" } }).voice, undefined, "a new bot has no language to clear");
+  for (const language of ["spanish", "es-ES", "jv", "xx", "auto", 7, null, "zz"]) {
+    assert.throws(() => normalizeBotInput({ name: "Ada", voice: { language } }), (error: unknown) => error instanceof BotInputError
+      && error.message === "Voice language must be one of Whisper's language codes, such as en, es, fr, de or ja, or \"\" for Auto.", String(language));
+    assert.throws(() => normalizeBotPatch({ voice: { language } }), BotInputError, String(language));
+  }
+  assert.throws(() => normalizeBotPatch({ voice: { dialect: "es" } }), /Unknown voice field: dialect/u);
+  assert.deepEqual(normalizeBotPatch({ voice: { language: "" } }), { voice: { language: "" } });
+  assert.deepEqual(normalizeBotPatch({ voice: { language: "DE", speed: null } }), { voice: { language: "de", speed: null } });
+  const current = { profile: "vp-aria", speed: 1.25, language: "es" as const };
+  assert.deepEqual(patchedVoice(current, { language: "haw" }), { profile: "vp-aria", speed: 1.25, language: "haw" });
+  assert.deepEqual(patchedVoice(current, { language: "" }), { profile: "vp-aria", speed: 1.25 }, "back to Auto");
+  assert.deepEqual(patchedVoice(current, { profile: "", speed: null }), { language: "es" }, "the language outlives the voice's other keys");
+  assert.deepEqual(patchedVoice(undefined, { language: "yue" }), { language: "yue" });
+  assert.equal(patchedVoice({ language: "es" }, { language: "" }), undefined);
+  assert.equal(patchedVoice(current, null), undefined, "voice: null clears everything");
+  // bots.json keeps a valid code and drops anything else, without losing the rest of the voice.
+  assert.deepEqual(parseBotRecord({ ...bot("a", "ada"), voice: { profile: "vp-dani", language: "es" } })?.voice, { profile: "vp-dani", language: "es" });
+  assert.deepEqual(parseBotRecord({ ...bot("a", "ada"), voice: { language: "yue" } })?.voice, { language: "yue" });
+  assert.deepEqual(parseBotRecord({ ...bot("a", "ada"), voice: { speed: 1.5, language: "klingon" } })?.voice, { speed: 1.5 });
+  assert.equal(parseBotRecord({ ...bot("a", "ada"), voice: { language: "jv" } })?.voice, undefined, "Javanese is stored as Whisper's jw");
+});

@@ -430,6 +430,31 @@ test("a bot's voice is kept with it, edited key by key and used when VoiceStudio
     ["Hello from Vox.", "vp-aria", 0.8],
     ["Default voice now.", "default", 0.8],
   ]);
+
+  // The language: stored and validated with the voice, then what VoiceStudio hears and speaks for the bot.
+  await fetch(`${voiceUrl}/control/reset`, { method: "POST", body: "{}" });
+  const lola = await call("/__hui/bots", "POST", { name: "Lola", voice: { profile: "vp-dani", language: "ES" } });
+  assert.equal(lola.status, 201);
+  assert.deepEqual(botOf(lola).voice, { profile: "vp-dani", language: "es" });
+  const refused = await call("/__hui/bots", "POST", { name: "Lola 2", voice: { language: "spanish" } });
+  assert.deepEqual([refused.status, refused.body["error"]], [400, "Voice language must be one of Whisper's language codes, such as en, es, fr, de or ja, or \"\" for Auto."]);
+  assert.equal((await call("/__hui/bots/lola", "PATCH", { voice: { language: "jv" } })).status, 400);
+  await speak({ text: "Hola, soy Lola.", botId: "lola" });
+  const heard = await fetch(`${origin}/__hui/voice/transcriptions?botId=lola`, { method: "POST", headers: { "x-hui": "1", "content-type": "audio/webm" }, body: new Uint8Array(4096).fill(3) });
+  assert.equal(heard.status, 200, await heard.clone().text());
+  const ghost = await fetch(`${origin}/__hui/voice/transcriptions?botId=nobody`, { method: "POST", headers: { "x-hui": "1", "content-type": "audio/webm" }, body: new Uint8Array(4096).fill(3) });
+  assert.equal(ghost.status, 404);
+  assert.deepEqual(botOf(await call("/__hui/bots/lola", "PATCH", { voice: { language: "" } })).voice, { profile: "vp-dani" }, "back to Auto");
+  assert.deepEqual(botOf(await call("/__hui/bots/lola")).voice, { profile: "vp-dani" }, "stored, not just echoed");
+  await speak({ text: "Auto now.", botId: "lola" });
+  assert.deepEqual(botOf(await call("/__hui/bots/lola", "PATCH", { voice: { language: "haw" } })).voice, { profile: "vp-dani", language: "haw" });
+  assert.equal(botOf(await call("/__hui/bots/lola", "PATCH", { voice: null })).voice, undefined, "voice: null clears the language too");
+  const requests = await (await fetch(`${voiceUrl}/control/requests`)).json() as { speech?: Record<string, unknown>; transcription?: Record<string, unknown> }[];
+  assert.deepEqual(requests.map((item) => item.speech ? ["speech", item.speech["input"], item.speech["language"] ?? "(none)"] : ["transcription", item.transcription?.["language"] ?? "(none)"]), [
+    ["speech", "Hola, soy Lola.", "es"],
+    ["transcription", "es"],
+    ["speech", "Auto now.", "(none)"],
+  ], "an unknown bot never reaches VoiceStudio");
   assert.equal((await call("/__hui/voice", "DELETE")).status, 200);
 });
 
