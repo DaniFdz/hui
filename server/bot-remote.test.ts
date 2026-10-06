@@ -57,7 +57,7 @@ test("a worker's bot ports refuse at once while HUI is not connected, naming the
   fake.state.connected = false;
   await assert.rejects(bots.conversations("w-1").create({ botId: "b", memory: { name: "B" } }),
     (error: unknown) => error instanceof BotWorkerOfflineError && error.message === "HUI is not connected to devbox. Connect it in Settings → Workers, then create the bot again.");
-  for (const call of [() => bots.memory("w-1").view("durable:1"), () => bots.conversations("w-1").lastMessage("durable:1"), () => bots.conversations("w-1").removeFolder("b")]) {
+  for (const call of [() => bots.memory("w-1").view("durable:1"), () => bots.conversations("w-1").lastMessage("durable:1"), () => bots.conversations("w-1").removeHome("b")]) {
     await assert.rejects(call(), (error: unknown) => error instanceof BotWorkerOfflineError && /^devbox, where this bot runs, is offline: HUI is not connected to it\./u.test(error.message));
   }
   assert.deepEqual(fake.requests, [], "nothing was sent, and nothing connected");
@@ -81,7 +81,7 @@ test("a worker's bot operations reach its host, and its answers are checked", as
   await conversations.configure("durable:7", { instructions: null });
   assert.deepEqual(await conversations.lastMessage("durable:7"), { role: "user", text: "hi", at: "2026-10-06T20:00:00.000Z" });
   await conversations.writeCallRecord("durable:7", { call: "c", startedAt: 1, endedAt: 2, lines: [] });
-  await conversations.removeFolder("b");
+  await conversations.removeHome("b");
   await bots.memory("w-1").configure("durable:7", { name: "B" });
   assert.equal(await bots.memory("w-1").zoom("durable:7", 1, 1), "1+0|user: hi");
   await assert.rejects(bots.memory("w-1").view("durable:7"), BotMemoryUnavailableError, "the worker's own refusal is the routes' 503");
@@ -91,7 +91,7 @@ test("a worker's bot operations reach its host, and its answers are checked", as
     ["bot.configure", { reference: "durable:7", instructions: null }],
     ["bot.last-message", { reference: "durable:7" }],
     ["bot.call-record", { reference: "durable:7", record: { call: "c", startedAt: 1, endedAt: 2, lines: [] } }],
-    ["bot.remove-folder", { botId: "b" }],
+    ["bot.remove-home", { botId: "b" }],
     ["bot.memory.configure", { reference: "durable:7", settings: { name: "B" } }],
     ["bot.memory.zoom", { reference: "durable:7", id: 1, n: 1 }],
     ["bot.memory.view", { reference: "durable:7" }],

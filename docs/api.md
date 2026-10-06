@@ -1009,7 +1009,7 @@ the transcript a frame with that `seq` left behind, `{entries,total}`),
 {botId,cwd?,model?,thinking?,instructions?,memory}` (`{reference,cwd}`),
 `bot.directory {cwd}`, `bot.configure {reference,instructions?,cwd?}`,
 `bot.last-message {reference}`, `bot.call-record {reference,record}`,
-`bot.remove-folder {botId}` (only the folder it made, only while empty),
+`bot.remove-home {botId}` (the bot's home, the private folder it made for it, only while empty),
 `bot.memory.configure|status|view|zoom|html {reference,…}` (a memory this store
 cannot read answers `{unavailable}`) and `bot.memory.watch {references}`, after
 which it pushes `bot.memory.status {reference,status}` frames to that gateway
@@ -1359,8 +1359,8 @@ busy when this gateway connected keeps serving its sessions) is refused with
 Routines, queued messages, steering, questions, Stop, archive and restore go
 through the session paths a remote session uses. Deleting removes the chat's
 session record, which stops its remote process when HUI is connected, and asks
-the host to remove the folder it made for the bot, only while empty; with the
-worker offline that folder stays there. The conversation and its memory stay in
+the host to remove the bot's home there (the private folder it made for it),
+only while empty; with the worker offline that folder stays there. The conversation and its memory stay in
 the worker's store. A call's helper reads the remote memory's view and the
 call's record is written to the remote conversation (`bot.call-record`);
 hand-offs are ordinary messages.

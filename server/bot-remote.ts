@@ -174,8 +174,8 @@ export function remoteBots(workers: BotWorkerLink): BotWorkers {
         async writeCallRecord(reference, record) {
           await request(id, "bot.call-record", { reference, record });
         },
-        async removeFolder(botId) {
-          await request(id, "bot.remove-folder", { botId });
+        async removeHome(botId) {
+          await request(id, "bot.remove-home", { botId });
         },
       };
     },

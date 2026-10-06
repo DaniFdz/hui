@@ -162,12 +162,12 @@ test("a bot's conversation and memory are made in the host's own store, in its o
 
     // The folder the host made goes only while empty: a bot's files never do.
     await writeFile(join(created.cwd, "notes.md"), "kept");
-    assert.deepEqual(await peer.request("bot.remove-folder", { botId: "bot-ada" }), { removed: false });
+    assert.deepEqual(await peer.request("bot.remove-home", { botId: "bot-ada" }), { removed: false });
     assert.equal(existsSync(join(created.cwd, "notes.md")), true);
     await peer.request("bot.create", { botId: "bot-empty", memory: { name: "Empty" } });
-    assert.deepEqual(await peer.request("bot.remove-folder", { botId: "bot-empty" }), { removed: true });
+    assert.deepEqual(await peer.request("bot.remove-home", { botId: "bot-empty" }), { removed: true });
     assert.equal(existsSync(join(host.paths.dataDir, "bots", "bot-empty")), false);
-    assert.deepEqual(await peer.request("bot.remove-folder", { botId: "bot-never" }), { removed: false });
+    assert.deepEqual(await peer.request("bot.remove-home", { botId: "bot-never" }), { removed: false });
 
     // Only this store's references.
     await assert.rejects(peer.request("bot.memory.view", { reference: "/tmp/session.jsonl" }), /conversation reference is required/u);

@@ -110,8 +110,8 @@ export type RemoteBotConversations = Pick<BotConversations, "configure" | "lastM
   create(input: Omit<BotConversationInput, "cwd"> & { cwd?: string }): Promise<{ reference: string; cwd: string }>;
   /** A directory on the worker, `~/` resolved there; refuses one that does not exist. */
   directory(cwd: string): Promise<string>;
-  /** The private folder the worker made for `botId`, only while it is empty. */
-  removeFolder(botId: string): Promise<void>;
+  /** The bot's home on the worker (the private folder made for it there), only while it is empty. */
+  removeHome(botId: string): Promise<void>;
 };
 
 /** Automation tasks, which are a bot's routines when they target its chat. */
@@ -248,7 +248,7 @@ export class BotService {
       // In the worker's store, with the folder made there unless the bot names one.
       const remote = this.#remote().conversations(worker.id);
       ({ reference, cwd } = await remote.create({ ...conversation, ...(input.cwd ? { cwd: input.cwd } : {}) }));
-      undo = async () => { if (!input.cwd) await remote.removeFolder(id).catch(() => {}); };
+      undo = async () => { if (!input.cwd) await remote.removeHome(id).catch(() => {}); };
     } else {
       if (input.cwd) cwd = await existingDirectory(input.cwd);
       else {
@@ -456,8 +456,8 @@ export class BotService {
       await this.#deps.routines.remove(task);
     }
     if ((await this.#deps.readSessions()).some((record) => record.id === bot.sessionId)) await this.#deps.removeSession(bot.sessionId);
-    // On a worker, the folder it made for the bot goes the same way while HUI is connected to it; otherwise it stays.
-    if (bot.worker) await this.#deps.workers?.conversations(bot.worker).removeFolder(bot.id).catch(() => {});
+    // On a worker, the bot's home there goes the same way while HUI is connected to it; otherwise it stays.
+    if (bot.worker) await this.#deps.workers?.conversations(bot.worker).removeHome(bot.id).catch(() => {});
     else if (bot.cwd === join(this.#botsDir, bot.id)) await rmdir(bot.cwd).catch(() => {});
     await this.#registry.update((bots) => ({ bots: bots.filter((candidate) => candidate.id !== bot.id), result: undefined }));
   }

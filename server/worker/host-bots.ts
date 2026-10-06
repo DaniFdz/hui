@@ -4,10 +4,11 @@
  * Durable store, so these reuse the gateway's adapters (`bot-conversations.ts`
  * and `bot-memory.ts`) against the host's DurableHost: a bot's conversation is
  * created here exactly as the gateway creates a local one, its persona, its
- * `hui.bot` document and OptChat in one commit. A bot without a directory gets
- * a private folder under HUI's data directory here, as the gateway makes one
- * under its configuration. The bot itself (its record, routines, roster) stays
- * with the gateway; nothing here knows other bots.
+ * `hui.bot` document and OptChat in one commit. A bot's home is HUI's private
+ * folder for it under the data directory here (`home(botId)`), as the gateway
+ * keeps one under its configuration; a bot without a directory works there.
+ * The bot itself (its record, routines, roster) stays with the gateway;
+ * nothing here knows other bots.
  */
 import { mkdir, rmdir, stat } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
@@ -35,7 +36,7 @@ export type HostBotsOptions = {
   durable: DurableHost;
   /** The remote user's home, for `~/` directories. */
   home: string;
-  /** Where private bot folders go: `<data dir>/bots/<bot id>`. */
+  /** Where bots' homes go: `<data dir>/bots/<bot id>`. */
   botsDir: string;
 };
 
@@ -86,6 +87,8 @@ function memorySettings(value: unknown): BotMemorySettings {
 export function hostBots(options: HostBotsOptions) {
   const memory = optChatBotMemory(options.durable);
   const conversations = durableBotConversations(options.durable, memory);
+  /** A bot's home on this worker: HUI's private folder for it. */
+  const home = (id: string) => join(options.botsDir, botId(id));
   /** Each gateway's watched memories, so their status reaches it as it changes. */
   const watches = new Map<Peer, Map<string, () => void>>();
 
@@ -132,7 +135,7 @@ export function hostBots(options: HostBotsOptions) {
         let cwd: string;
         if (params["cwd"] !== undefined) cwd = await directory(params["cwd"]);
         else {
-          created = join(options.botsDir, id);
+          created = home(id);
           await mkdir(created, { recursive: true, mode: 0o700 });
           cwd = created;
         }
@@ -171,9 +174,9 @@ export function hostBots(options: HostBotsOptions) {
         await conversations.writeCallRecord(reference(params["reference"]), record);
         return {};
       },
-      /** Only the folder this host made for the bot, and only while it is empty: the bot's files never go. */
-      "bot.remove-folder": async (params) => {
-        const removed = await rmdir(join(options.botsDir, botId(params["botId"]))).then(() => true, () => false);
+      /** The bot's home, only while it is empty: the bot's files never go. */
+      "bot.remove-home": async (params) => {
+        const removed = await rmdir(home(String(params["botId"] ?? ""))).then(() => true, () => false);
         return { removed };
       },
       "bot.memory.configure": async (params) => {
@@ -220,6 +223,7 @@ export function hostBots(options: HostBotsOptions) {
 
   return {
     handlers,
+    home,
     /** Ends every watch, as the host stops. */
     close(): void {
       for (const peer of [...watches.keys()]) detach(peer);

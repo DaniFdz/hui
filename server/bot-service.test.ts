@@ -220,7 +220,7 @@ async function harness(t: TestContext, options: { messagesPerHour?: number; memo
         return { role: "assistant" as const, text: "remote reply", at: "2026-10-06T21:00:00.000Z" };
       },
       writeCallRecord: async (reference, record) => { reachable(); remote.records.push([id, reference, record]); },
-      removeFolder: async (botId) => { reachable(); remote.removed.push(botId); },
+      removeHome: async (botId) => { reachable(); remote.removed.push(botId); },
     }),
     memory: () => ({
       enable: async () => {},
