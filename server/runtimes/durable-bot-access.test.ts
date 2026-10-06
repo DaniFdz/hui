@@ -477,16 +477,20 @@ test("a skill turned back on through request_access is in the next request's pro
   assert.deepEqual((await (await f.host.open()).snapshot(BotDoc, id, durableContext))?.disabledSkills, []);
 });
 
-test("a bot document from before the lists reads as nothing turned off", { timeout: 60_000 }, async (t) => {
+test("a bot document from before the lists reads as nothing turned off, and an older HUI still reads one with lists", { timeout: 60_000 }, async (t) => {
   const f = await fixture(t);
-  // The bot document as releases before the lists wrote it.
+  // The bot document as releases before the lists define it.
   const V1 = defineDoc<{ bot: string }>({ kind: "hui.bot", version: 1, scope: "conversation", history: "latest", fork: "current", initial: () => ({ bot: "" }) });
   const harness = await f.host.open();
   const created = await harness.createConversation({
     ownership: { kind: "ownerless" }, agent: { cwd: f.cwd },
     init: async (tx, conversationId) => { (await tx.doc(V1, conversationId)).bot = "bot-old"; },
   }, durableContext);
-  assert.deepEqual(await harness.snapshot(BotDoc, created.id, durableContext), { bot: "bot-old", disabledTools: [], disabledSkills: [] });
+  assert.deepEqual(await harness.snapshot(BotDoc, created.id, durableContext), { bot: "bot-old" });
+  assert.deepEqual(await f.host.botStateFor(created.id), { bot: "bot-old", disabledTools: [], disabledSkills: [] }, "absent lists: nothing off");
+  const { id: restricted } = await f.bot(off(["bash"], [await f.ref("beta")]), "restricted");
+  const old = await harness.snapshot(V1, restricted, durableContext);
+  assert.equal(old?.bot, "bot-restricted", "the same version: an older HUI reads it and ignores the lists, so a rollback keeps the chat");
   const plain = await startDurable({ cwd: f.cwd, huiSessionId: "plain" }, f.host);
   const session = await startDurable({ cwd: f.cwd, sessionFile: `durable:${created.id}`, huiSessionId: "old-chat" }, f.host);
   assert.deepEqual(names((await session.inspect()).tools), [...names((await plain.inspect()).tools), "message_bot", "write_soul", "set_profile"], "every tool, as before");

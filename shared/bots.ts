@@ -52,6 +52,16 @@ export type BotFaceColor = (typeof BOT_FACE_COLORS)[number];
 /** `color`: #rrggbb, lowercase. `shape` and `color` absent: the face derived from the bot's id. */
 export type BotAvatar = { emoji?: string; color?: string; shape?: BotFaceShape };
 
+/** A skill as a bot's lists name it: its name and source, as Settings' disabled skills do (its SKILL.md path, or a
+ * bundled skill's stable `hui:skill:` path). */
+export type BotSkillRef = { name: string; path: string };
+
+/** A skill in `POST` and `PATCH /__hui/bots`: its name, when no other skill of the bot's directory has it, or a ref. */
+export type BotSkillSelector = string | BotSkillRef;
+
+/** What the operator turned off in a bot's chat. */
+export type BotAccess = { disabledTools: string[]; disabledSkills: BotSkillRef[] };
+
 /** One bot as `bots.json` stores it. */
 export type BotRecord = {
   id: string;

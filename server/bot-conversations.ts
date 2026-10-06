@@ -88,6 +88,8 @@ export function durableBotConversations(host: DurableHost, memory: BotMemory, op
       await harness.commit(async (tx) => {
         const doc = await tx.doc(BotDoc, id);
         doc.bot = "";
+        delete doc.disabledTools;
+        delete doc.disabledSkills;
         await memory.disable(tx, id);
       }, durableContext);
       await memory.purge(reference);

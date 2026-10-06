@@ -150,7 +150,7 @@ test("a bot's conversation is created in one commit with bot document and memory
   const reference = await port.create({ botId: "bot-ada", cwd: f.cwd, memory: { name: "Ada", model: "hui-e2e/cheap" } });
   const id = durableConversationId(reference)!;
   const harness = await f.host.open();
-  assert.deepEqual(await harness.snapshot(BotDoc, id, durableContext), { bot: "bot-ada", disabledTools: [], disabledSkills: [] });
+  assert.deepEqual(await harness.snapshot(BotDoc, id, durableContext), { bot: "bot-ada" });
   assert.deepEqual(await harness.snapshot(MemoryMarker, id, durableContext), { name: "Ada", model: "hui-e2e/cheap" }, "memory is enabled in the creating commit");
   assert.equal((await (await harness.conversation(id, durableContext))!.agent(durableContext)).instructions, undefined, "no persona in the conversation: it is SOUL.md");
   const soulFile = join(f.homes, "bot-ada", "SOUL.md");
@@ -472,7 +472,7 @@ test("a deleted bot's conversation is forgotten: no bot document, OptChat off an
 
   await port.forget(reference);
   const harness = await f.host.open();
-  assert.deepEqual(await harness.snapshot(BotDoc, id, durableContext), { bot: "", disabledTools: [], disabledSkills: [] }, "no longer a bot's chat: no bots or soul section, no bot tools");
+  assert.deepEqual(await harness.snapshot(BotDoc, id, durableContext), { bot: "" }, "no longer a bot's chat: no bots or soul section, no bot tools");
   assert.equal((await harness.snapshot(OptChatDoc, id, durableContext))?.enabled, false);
   await assert.rejects(stat(files), { code: "ENOENT" }, "the memory's files are gone");
   assert.equal(await memory.status(reference), undefined, "nothing reads the memory back");

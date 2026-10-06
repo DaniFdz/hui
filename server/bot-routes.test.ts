@@ -541,7 +541,7 @@ test("deleting a bot, active or archived, removes its routines, its chat, its me
   await assert.rejects(stat(cleo.cwd), { code: "ENOENT" }, "its whole folder went: SOUL.md and its own files");
   const id = Number(reference.slice("durable:".length)) as never;
   const harness = await durableHost().open();
-  assert.deepEqual(await harness.snapshot(BotDoc, id, durableContext), { bot: "", disabledTools: [], disabledSkills: [] }, "its conversation is no bot's chat any more");
+  assert.deepEqual(await harness.snapshot(BotDoc, id, durableContext), { bot: "" }, "its conversation is no bot's chat any more");
   assert.equal((await harness.snapshot(OptChatDoc, id, durableContext))?.enabled, false, "and its memory is off");
   await assert.rejects(stat(join(dir, "config", "hui", "durable", "optchat", String(id))), { code: "ENOENT" }, "OptChat's files are gone");
   assert.equal((await call(`/__hui/bots/${cleo.id}?permanent=1`, "DELETE")).status, 404);

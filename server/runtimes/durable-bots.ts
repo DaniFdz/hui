@@ -28,34 +28,28 @@ import {
   type ConversationId, type DocumentReader, type Extension, type PromptSection, type ToolRegistration,
 } from "@earendil-works/pi-durable";
 import { Type } from "typebox";
-import { BOT_KICKOFF_MARKER, BOT_LIMITS, BOT_SOUL_FILE, NEW_BOT_NAME } from "../../shared/bots.ts";
+import { BOT_KICKOFF_MARKER, BOT_LIMITS, BOT_SOUL_FILE, NEW_BOT_NAME, type BotAccess, type BotSkillRef } from "../../shared/bots.ts";
 import type { CallRecord } from "../../shared/calls.ts";
 
-/** A skill as a bot's lists name it: by name and source, as Settings' disabled skills do (its SKILL.md path, or a
- * bundled skill's stable preference path). */
-export type BotSkillRef = { name: string; path: string };
+export type { BotAccess, BotSkillRef } from "../../shared/bots.ts";
 
-/** What the operator turned off in a bot's chat. Everything else a session in its directory gets is on, tools and
- * skills that appear later included. */
-export type BotAccess = { disabledTools: string[]; disabledSkills: BotSkillRef[] };
+/** A bot's chat, as its document says: the bot, and what the operator turned off in it. Everything else a session in
+ * its directory gets is on, tools and skills that appear later included. */
+export type BotState = BotAccess & { bot: string };
 
-/** The document of a bot's chat; every other conversation has none. */
-export type BotState = BotAccess & {
-  /** The bot whose chat this is; empty for every other conversation. */
-  bot: string;
-};
-
-/** The bot a conversation is the chat of, and what the operator turned off in it. A fork stays the bot's with its
- * lists: a rewind never undoes the operator's choices. */
-export const BotDoc = defineDoc<BotState>({
+/**
+ * The bot a conversation is the chat of (`bot` stays empty for every other conversation), and what the operator
+ * turned off in it. The lists are optional fields of version 1: absent means nothing is off, so documents from before
+ * them need no upgrade, and an older HUI still reads the ones this one writes. A fork stays the bot's with its lists:
+ * a rewind never undoes the operator's choices.
+ */
+export const BotDoc = defineDoc<{ bot: string; disabledTools?: string[]; disabledSkills?: BotSkillRef[] }>({
   kind: "hui.bot",
-  version: 2,
+  version: 1,
   scope: "conversation",
   history: "latest",
   fork: "current",
-  initial: () => ({ bot: "", disabledTools: [], disabledSkills: [] }),
-  // Version 1 had no lists: nothing is turned off, as before.
-  migrate: (value) => ({ bot: typeof value["bot"] === "string" ? value["bot"] : "", disabledTools: [], disabledSkills: [] }),
+  initial: () => ({ bot: "" }),
 });
 
 const isSkillRef = (value: unknown): value is BotSkillRef =>
