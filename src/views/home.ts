@@ -364,7 +364,7 @@ export type HomeVoice = {
   onStopReading: () => void;
 };
 
-/** The bot view's header: who the bot is and its Routines | Memory panel. */
+/** The bot view's header: who the bot is and its panel (Routines | Memory | Settings). */
 export type HomeBot = {
   bot: Pick<BotView, "id" | "name" | "title" | "avatar" | "memory">;
   panelOpen: boolean;
@@ -2181,7 +2181,7 @@ function renderHeader(props: HomeProps, session: SessionView) {
         <div class="chat-pane__actions chat-pane__header-actions">
           ${props.bot && props.call ? renderCallButton({ botName: props.bot.bot.name, inCall: props.call.inCall, onCall: props.call.onCall }) : nothing}
           ${props.bot ? html`<button type="button" class="btn btn--ghost btn--icon chat-icon-btn bot-panel-toggle"
-            aria-label=${props.bot.panelOpen ? "Hide routines and memory" : "Show routines and memory"} title="Routines and memory"
+            aria-label=${props.bot.panelOpen ? "Hide the bot panel" : "Show the bot panel"} title="Bot panel"
             aria-expanded=${String(props.bot.panelOpen)} aria-controls=${props.bot.panelOpen ? props.bot.panelId : nothing}
             @click=${props.bot.onTogglePanel}>${icons.panelRightOpen}</button>` : nothing}
           ${props.onOpenBrowser ? html`<button type="button" class="btn btn--ghost btn--icon chat-icon-btn chat-open-browser" aria-label="Open browser panel" title="Open browser panel" @click=${props.onOpenBrowser}>${icons.globe}</button>` : nothing}

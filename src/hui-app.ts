@@ -69,10 +69,11 @@ import {
   applyBotsUpdate,
   archiveBot,
   deleteBot,
-  botInputFromDraft,
+  botChangePatch,
   botMemoryPageUrl,
-  botPatchFromDraft,
+  botSettingChange,
   isNewBotsFrame,
+  NEW_BOT_NAME,
   createBot,
   loadBotMemory,
   loadBots,
@@ -83,10 +84,12 @@ import {
   withoutBotSessions,
   zoomBotMemory,
   type BotView,
+  type NewBotOptions,
 } from "./lib/bots.ts";
-import { archivedBotCount, hiddenBotCount, readBotPanel, readSidebarTab, writeBotPanel, writeSidebarTab, type BotPanelState, type BotPanelTab, type SidebarTab } from "./lib/bot-roster.ts";
+import { archivedBotCount, hiddenBotCount, isBotSettingsShortcut, readBotPanel, readSidebarTab, writeBotPanel, writeSidebarTab, type BotPanelState, type BotPanelTab, type SidebarTab } from "./lib/bot-roster.ts";
 import { memoryStatusChanged, parseMemoryView, parseMemoryZoom, type MemoryLine } from "./lib/bot-memory.ts";
-import { renderBotArchiveDialog, renderBotDeleteDialog, renderBotDialog, renderBotPanel, renderBotPlaceholder, type BotDialogCall, type BotDialogVoice, type BotFormValues, type BotMemoryState, type MemoryZoomState } from "./views/bots.ts";
+import { renderBotArchiveDialog, renderBotDeleteDialog, renderBotPanel, renderBotPlaceholder, type BotMemoryState, type MemoryZoomState } from "./views/bots.ts";
+import { NO_BOT_SETTINGS_SAVES, type BotSettingKey, type BotSettingsProps, type BotSettingsSaves, type BotSettingValue } from "./views/bot-settings.ts";
 import { checkUpdate, checkUpdateInBackground, installUpdate, loadUpdate } from "./lib/update-store.ts";
 import { availableUpdate, watchUpdateAvailability } from "./lib/update-notice.ts";
 import type { UpdateSnapshot } from "./lib/update-types.ts";
@@ -196,7 +199,7 @@ import type { BacklogCardAction, SessionCardAction } from "./views/kanban.ts";
 import type { BacklogStartTarget } from "./components/backlog-start-dialog.ts";
 import { addSuggestionToBacklog, backlogItemMarkdown, loadBacklog, removeBacklogItem, setBacklogItemGroup, type BacklogItem, type BacklogJiraState } from "./lib/backlog.ts";
 import { loadJiraConnection } from "./lib/jira.ts";
-import { loadVoiceConnection, loadVoices, microphoneErrorMessage, synthesizeSpeech, transcribeRecording, withTranscript } from "./lib/voice.ts";
+import { loadVoiceConnection, microphoneErrorMessage, synthesizeSpeech, transcribeRecording, withTranscript } from "./lib/voice.ts";
 import { microphoneContext, startVoiceNote, voicePlayer } from "./lib/voice-audio.ts";
 import { VoiceController } from "./lib/voice-controller.ts";
 import { VoiceNoteController } from "./lib/voice-notes.ts";
@@ -205,8 +208,7 @@ import { renderCallBar, renderCallView, type CallViewProps } from "./views/bot-v
 import { liveCallPlatform, loadCallsStatus } from "./lib/live-call-platform.ts";
 import type { CallsStatus } from "../shared/calls.ts";
 import { VOICE_CONNECTION_EVENT } from "./views/settings-voice.ts";
-import { VOICE_MESSAGE_PREFIX, voiceLanguage, type VoiceConnection, type VoiceProfile } from "../shared/voice.ts";
-import { BOT_FACE_COLORS, BOT_FACE_SHAPES, botLook, botSeed, type BotFaceShape } from "../shared/bots.ts";
+import { VOICE_MESSAGE_PREFIX, type VoiceConnection } from "../shared/voice.ts";
 import type { HomeVoice } from "./views/home.ts";
 import { localTimezone, type AutomationProps } from "./views/settings-automation.ts";
 import { loadWorkers, workerAction, type WorkerView } from "./lib/workers.ts";
@@ -270,9 +272,13 @@ type PaneVoiceActions = { readAloud: (id: string, text: string) => void; stopRea
 /** A bot pane's Call button: offered while calls can run (GPT-Live with a ChatGPT login, or VoiceStudio connected). */
 type PaneCall = { botId: string; inCall: boolean };
 const paneVoiceProperty = { attribute: false, hasChanged: (value: unknown, old: unknown) => JSON.stringify(value) !== JSON.stringify(old) };
-/** The bot dialog's voice preview, read aloud like a message under this id. */
-const BOT_VOICE_PREVIEW = "bot-voice-preview";
-const BOT_VOICE_PREVIEW_TEXT = "Hi! This is how I sound when I read my replies aloud and when we talk on a call.";
+
+/** A bot's Settings tab: a row's saves or refusals without that row's. */
+function withoutSetting<Value>(record: Partial<Record<BotSettingKey, Value>>, key: BotSettingKey): Partial<Record<BotSettingKey, Value>> {
+  const next = { ...record };
+  delete next[key];
+  return next;
+}
 
 /** The bot pane's header data, without its callback (passed separately as a
  * pane callback). Compared by value: the parent rebuilds it on every render. */
@@ -523,33 +529,15 @@ export class HuiApp extends HuiElement {
   @state() private botPanel: BotPanelState = readBotPanel();
   /** Narrow layouts open the panel as a sheet only on request; never remembered. */
   @state() private botSheetOpen = false;
-  @state() private botDialog: { mode: "create" } | { mode: "edit"; bot: BotView } | undefined;
-  @state() private botDialogPending = false;
-  @state() private botDialogError = "";
-  @state() private botDraftModel = "";
-  @state() private botDraftThinking = "";
-  @state() private botDraftMemoryModel = "";
-  /** The dialog's Look: a face (shape and color) or an emoji, edited live in its preview. */
-  @state() private botDraftLook: "face" | "emoji" = "face";
-  @state() private botDraftShape: BotFaceShape = "blob";
-  @state() private botDraftColor = "#3a7bfa";
-  @state() private botDraftEmoji = "";
-  private botDraftSeed = 0;
-  /** The dialog's voice (HUI-18): a VoiceStudio voice id ("" for its default), speed and language ("" for Auto),
-   * offered while it is connected. */
-  @state() private botDraftVoice = "";
-  @state() private botDraftVoiceSpeed = 1;
-  @state() private botDraftVoiceLanguage = "";
-  /** Its GPT-Live call voice ("" follows Settings), offered while calls use GPT-Live. */
-  @state() private botDraftCallVoice = "";
+  /** + is creating a bot; another press waits for it. */
+  @state() private botCreating = false;
+  /** The Settings tab's saves, per bot: each change is one PATCH, sent in order, and a newer change to the same row
+   * replaces a value still waiting. Kept per bot, so leaving a bot never drops a change on its way. */
+  @state() private botSettingsSaves: ReadonlyMap<string, BotSettingsSaves> = new Map();
+  private botSettingsQueue: Promise<void> = Promise.resolve();
   /** The ChatGPT login GPT-Live calls use (`/__hui/calls`): read while calls use GPT-Live. */
   @state() private callsStatus: CallsStatus | undefined;
   private callsStatusLoading: Promise<void> | undefined;
-  /** VoiceStudio's voices for the dialog's picker; undefined until the connection is known to be configured. */
-  @state() private botDialogVoices: { loading: boolean; error: string; voices: readonly VoiceProfile[] } | undefined;
-  /** The dialog asked for a preview, so a failed one is explained there. */
-  @state() private botVoicePreviewed = false;
-  private botDialogVoicesRequest = 0;
   @state() private botArchive: BotView | undefined;
   @state() private botArchivePending = false;
   @state() private botArchiveError = "";
@@ -686,6 +674,12 @@ export class HuiApp extends HuiElement {
     if (this.embeddedPane) return;
     if (event.key === "Escape") {
       this.handleGlobalEscape(event);
+      return;
+    }
+    if (isBotSettingsShortcut(event)) {
+      if (this.view !== "bot" || this.settingsOpen || this.commandPaletteOpen || document.querySelector("dialog[open]")) return;
+      event.preventDefault();
+      this.toggleBotSettings();
       return;
     }
     if (!isCommandPaletteShortcut(event)) return;
@@ -1088,11 +1082,6 @@ export class HuiApp extends HuiElement {
           : this.view === "bot" ? this.activeBot()?.name
             : undefined;
       if (!this.embeddedPane) document.title = documentTitle(activeSessionTitle);
-    }
-    const botDialog = this.botDialog ? this.renderRoot.querySelector?.(".bot-dialog") : null;
-    if (botDialog instanceof HTMLDialogElement && !botDialog.open) {
-      ensureModal(botDialog);
-      botDialog.querySelector<HTMLInputElement>('input[name="name"]')?.focus();
     }
     const botArchiveDialog = this.botArchive ? this.renderRoot.querySelector?.(".bot-archive-dialog") : null;
     if (botArchiveDialog instanceof HTMLDialogElement && !botArchiveDialog.open) {
@@ -3815,7 +3804,8 @@ export class HuiApp extends HuiElement {
       onTab: this.setSidebarTab,
       search: this.botSearch,
       onSearch: (value) => { this.botSearch = value; },
-      onNew: this.openNewBot,
+      onNew: this.createNewBot,
+      creating: this.botCreating,
       unread: this.bots.some((bot) => bot.unread && !bot.archived && !bot.hidden),
       roster: {
         bots: this.bots,
@@ -3831,7 +3821,8 @@ export class HuiApp extends HuiElement {
         pendingId: this.botPendingId,
         now: Date.now(),
         onSelect: this.selectBot,
-        onNew: this.openNewBot,
+        onNew: this.createNewBot,
+        creating: this.botCreating,
         onEdit: this.openEditBot,
         onSetHidden: this.setBotHidden,
         onArchive: this.requestArchiveBot,
@@ -3846,99 +3837,62 @@ export class HuiApp extends HuiElement {
     };
   }
 
-  private openNewBot = () => {
+  /**
+   * + (and the empty roster's New bot), as in Grok Bot: no form. A bot named "New Bot" is created at once, with
+   * everything on the defaults and the face its id picks, and its chat opens; the bot asks what to call it, and its
+   * Settings tab changes the rest. A refusal shows in the roster's notice. `runsOn` is the workers pull request's
+   * hook: it offers + as a menu (Local or a worker) while workers exist and sends the choice with the create.
+   */
+  private createNewBot = (_options: NewBotOptions = {}) => {
     this.botMenuFor = "";
-    this.botDialog = { mode: "create" };
-    this.botDialogError = "";
-    this.botDraftModel = "";
-    this.botDraftThinking = "";
-    this.botDraftMemoryModel = "";
-    // A new bot starts with a face picked at random; it keeps the one the dialog shows.
-    const random = Math.floor(Math.random() * 2 ** 32);
-    this.botDraftLook = "face";
-    this.botDraftShape = BOT_FACE_SHAPES[random % BOT_FACE_SHAPES.length]!;
-    this.botDraftColor = BOT_FACE_COLORS[Math.floor(random / BOT_FACE_SHAPES.length) % BOT_FACE_COLORS.length]!.hex;
-    this.botDraftEmoji = "";
-    this.botDraftSeed = random;
-    ++this.directorySuggestionRequest;
-    this.directorySuggestions = [];
-    // The model pickers read PI's catalog; New Session loads it the same way.
-    this.loadLaunchPreferences();
-    this.openBotDialogVoice(undefined);
+    if (this.botCreating) return;
+    this.botCreating = true;
+    void createBot({ name: NEW_BOT_NAME })
+      .then((bot) => {
+        this.bots = upsertBot(this.bots, bot);
+        this.botNotice = "";
+        this.botNoticeFailed = false;
+        void this.refreshBots();
+        // The new chat is a new session; open the bot once the list has it.
+        void this.refreshSessions(true);
+        this.navigate({ kind: "bot", id: bot.id });
+      })
+      .catch((error: unknown) => {
+        this.botNotice = error instanceof Error ? error.message : "Could not create a bot.";
+        this.botNoticeFailed = true;
+      })
+      .finally(() => {
+        this.botCreating = false;
+      });
   };
 
+  /** The roster's Edit: the bot's chat with its Settings tab, docked beside it on wide screens, as the sheet on
+   * narrow ones. */
   private openEditBot = (bot: BotView) => {
     this.botMenuFor = "";
-    this.botDialog = { mode: "edit", bot };
-    this.botDialogError = "";
-    this.botDraftModel = bot.model ?? "";
-    this.botDraftThinking = bot.thinking ?? "";
-    this.botDraftMemoryModel = bot.memoryModel ?? "";
-    // An emoji bot keeps its emoji until Face is chosen; the face starts as the bot shows it (its own or its id's).
-    const look = botLook(bot);
-    this.botDraftLook = look.kind;
-    this.botDraftShape = look.shape;
-    this.botDraftColor = look.color;
-    this.botDraftEmoji = look.emoji ?? "";
-    this.botDraftSeed = botSeed(bot.id);
-    ++this.directorySuggestionRequest;
-    this.directorySuggestions = [];
-    this.loadLaunchPreferences();
-    this.openBotDialogVoice(bot);
+    this.showBotSettings(bot.id);
   };
 
-  /** The dialog's voice section starts from the bot's voice and lists VoiceStudio's voices once the gateway says it is
-   * connected; without VoiceStudio the section stays hidden and an edit leaves the voice alone. */
-  private openBotDialogVoice(bot: BotView | undefined) {
-    this.botDraftVoice = bot?.voice?.profile ?? "";
-    this.botDraftVoiceSpeed = bot?.voice?.speed ?? 1;
-    this.botDraftVoiceLanguage = bot?.voice?.language ?? "";
-    this.botDraftCallVoice = bot?.voice?.live ?? "";
-    this.botVoicePreviewed = false;
-    this.botDialogVoices = undefined;
-    const request = ++this.botDialogVoicesRequest;
-    void this.voice.loadConnection().then(async () => {
-      if (request !== this.botDialogVoicesRequest || !this.voice.available) return;
-      this.botDialogVoices = { loading: true, error: "", voices: [] };
-      try {
-        const voices = await loadVoices();
-        if (request === this.botDialogVoicesRequest) this.botDialogVoices = { loading: false, error: "", voices };
-      } catch (error) {
-        if (request === this.botDialogVoicesRequest) {
-          this.botDialogVoices = { loading: false, error: error instanceof Error ? error.message : "VoiceStudio's voices could not be read.", voices: [] };
-        }
-      }
-    });
+  /** Opens a bot's Settings tab, on its chat (navigating there first) with the focus on the tab. */
+  private showBotSettings(botId: string) {
+    if (this.view !== "bot" || this.activeBotId !== botId || this.settingsOpen) this.navigate({ kind: "bot", id: botId });
+    // Without the Bots tab the bot route goes home instead.
+    if (this.view !== "bot" || this.activeBotId !== botId) return;
+    this.botPanel = { open: this.mobileNavLayout ? this.botPanel.open : true, tab: "settings" };
+    writeBotPanel(this.botPanel);
+    if (this.mobileNavLayout) this.botSheetOpen = true;
+    this.automationFormError = "";
+    this.automationActionError = "";
+    this.syncBotPanelData();
+    void this.updateComplete.then(() => this.renderRoot.querySelector<HTMLElement>('.bot-panel [role="tab"][aria-selected="true"]')?.focus());
   }
 
-  /** The voice section's props while it shows; the preview plays through the app's one read-aloud. */
-  private botDialogVoice(): BotDialogVoice | undefined {
-    const voices = this.botDialogVoices;
-    if (!voices || !this.voice.available) return undefined;
-    const reading = this.voice.readAloud;
-    const previewing = reading.id === BOT_VOICE_PREVIEW && reading.status !== "idle";
-    const previewError = this.botVoicePreviewed && reading.status === "idle" ? reading.error ?? "" : "";
-    return {
-      voices: voices.voices,
-      loading: voices.loading,
-      error: previewError || voices.error,
-      profile: this.botDraftVoice,
-      speed: this.botDraftVoiceSpeed,
-      language: this.botDraftVoiceLanguage,
-      previewing,
-      onProfile: (value) => { this.botDraftVoice = value; },
-      onSpeed: (value) => { this.botDraftVoiceSpeed = value; },
-      onLanguage: (value) => { this.botDraftVoiceLanguage = value; },
-      onPreview: () => {
-        if (previewing) {
-          this.voice.stopReading();
-          return;
-        }
-        this.botVoicePreviewed = true;
-        // Exactly the draft: its voice, speed and language, Auto ("") included.
-        this.voice.read(BOT_VOICE_PREVIEW, BOT_VOICE_PREVIEW_TEXT, { voice: this.botDraftVoice, speed: this.botDraftVoiceSpeed, language: voiceLanguage(this.botDraftVoiceLanguage) ?? "" });
-      },
-    };
+  /** Ctrl+Shift+, (⇧⌘,) on a bot's chat, as in Grok Bot: its Settings tab when that is not showing, closed when it is. */
+  private toggleBotSettings() {
+    const bot = this.activeBot();
+    if (!bot || bot.archived || !this.listedSession(bot.sessionId)) return;
+    if (this.botPanelVisible() && this.botPanel.tab === "settings") this.closeBotPanel();
+    else this.showBotSettings(bot.id);
   }
 
   /** Settings' utility model by its catalog name, the default of a bot's utility model. */
@@ -3948,81 +3902,57 @@ export class HuiApp extends HuiElement {
     return this.pi?.model.catalog.find((entry) => `${entry.provider}/${entry.id}` === ref)?.name ?? ref;
   }
 
-  /** The call voice and language while calls use GPT-Live; the language is the one VoiceStudio's section shows too. */
-  private botDialogCall(): BotDialogCall | undefined {
-    if (this.settings.calls.engine !== "gpt-live") return undefined;
-    return {
-      voice: this.botDraftCallVoice,
-      defaultVoice: this.settings.calls.voice,
-      language: this.botDraftVoiceLanguage,
-      onVoice: (value) => { this.botDraftCallVoice = value; },
-      onLanguage: (value) => { this.botDraftVoiceLanguage = value; },
-    };
+  /** The Calls section, while calls use GPT-Live. */
+  private botSettingsCall(): BotSettingsProps["call"] {
+    return this.settings.calls.engine === "gpt-live" ? { defaultVoice: this.settings.calls.voice } : undefined;
   }
 
-  private closeBotDialog = () => {
-    const dialog = this.renderRoot.querySelector?.(".bot-dialog");
-    if (dialog instanceof HTMLDialogElement) closeModal(dialog);
-    this.botDialog = undefined;
-    this.botDialogError = "";
-    ++this.botDialogVoicesRequest;
-    this.botDialogVoices = undefined;
-    if (this.voice.readAloud.id === BOT_VOICE_PREVIEW) this.voice.stopReading();
-  };
+  private botSettingsSavesOf(botId: string): BotSettingsSaves {
+    return this.botSettingsSaves.get(botId) ?? NO_BOT_SETTINGS_SAVES;
+  }
 
-  /** Nothing changes until the gateway confirms; a refusal stays in the dialog. */
-  private submitBotDialog = (values: BotFormValues) => {
-    const state = this.botDialog;
-    if (!state || this.botDialogPending) return;
-    if (!values.name) {
-      this.botDialogError = "Name the bot.";
+  private updateBotSettingsSaves(botId: string, update: (saves: BotSettingsSaves) => BotSettingsSaves) {
+    this.botSettingsSaves = new Map(this.botSettingsSaves).set(botId, update(this.botSettingsSavesOf(botId)));
+  }
+
+  /** A Settings tab change: shown at once as saving, then sent as its own PATCH after the ones before it. */
+  private changeBotSetting(botId: string, key: BotSettingKey, value: BotSettingValue) {
+    if (this.botSettingsSavesOf(botId).pending[key] === value) return;
+    this.updateBotSettingsSaves(botId, (saves) => ({ pending: { ...saves.pending, [key]: value }, errors: withoutSetting(saves.errors, key) }));
+    this.botSettingsQueue = this.botSettingsQueue.then(() => this.sendBotSetting(botId, key));
+  }
+
+  /** Sends the newest value a row waits on. The gateway's answer replaces the bot; a refusal stays on the row. A value
+   * already sent, or replaced by a newer change meanwhile, is not sent again. */
+  private async sendBotSetting(botId: string, key: BotSettingKey) {
+    const value = this.botSettingsSavesOf(botId).pending[key];
+    if (value === undefined) return;
+    const settle = (error?: string) => this.updateBotSettingsSaves(botId, (saves) => saves.pending[key] !== value ? saves : {
+      pending: withoutSetting(saves.pending, key),
+      errors: error ? { ...saves.errors, [key]: error } : withoutSetting(saves.errors, key),
+    });
+    const bot = this.bots.find((candidate) => candidate.id === botId);
+    if (!bot) {
+      settle("This bot is gone.");
       return;
     }
-    if (this.botDraftLook === "emoji" && !this.botDraftEmoji.trim()) {
-      this.botDialogError = "Type an emoji, or choose Face.";
+    const patch = botChangePatch(bot, botSettingChange(key, value));
+    if (!patch) {
+      settle();
       return;
     }
-    // Each part of the voice goes only while the dialog showed it; otherwise the bot keeps the one it has.
-    const studio = Boolean(this.botDialogVoice());
-    const live = Boolean(this.botDialogCall());
-    const voice = {
-      ...(studio ? { voice: this.botDraftVoice, voiceSpeed: this.botDraftVoiceSpeed } : {}),
-      ...(studio || live ? { voiceLanguage: this.botDraftVoiceLanguage } : {}),
-      ...(live ? { callVoice: this.botDraftCallVoice } : {}),
-    };
-    const look = { look: this.botDraftLook, shape: this.botDraftShape, color: this.botDraftColor, emoji: this.botDraftEmoji };
-    const draft = { ...values, ...look, model: this.botDraftModel, thinking: this.botDraftThinking, memoryModel: this.botDraftMemoryModel, ...voice };
-    const patch = state.mode === "edit" ? botPatchFromDraft(state.bot, draft) : undefined;
-    // Saving an untouched bot changes nothing, and the gateway refuses an empty change.
-    if (patch && !Object.keys(patch).length) {
-      this.closeBotDialog();
-      return;
+    try {
+      this.bots = upsertBot(this.bots, await updateBot(botId, patch));
+      settle();
+    } catch (error) {
+      settle(error instanceof Error ? error.message : "Could not save that change.");
     }
-    this.botDialogPending = true;
-    this.botDialogError = "";
-    const request = state.mode === "create"
-      ? createBot(botInputFromDraft(draft))
-      : updateBot(state.bot.id, patch ?? {});
-    void request
-      .then((bot) => {
-        this.closeBotDialog();
-        this.bots = upsertBot(this.bots, bot);
-        this.botNotice = state.mode === "create" ? "" : `Saved ${bot.name}.`;
-        this.botNoticeFailed = false;
-        void this.refreshBots();
-        if (state.mode === "create") {
-          // The new chat is a new session; open the bot once the list has it.
-          void this.refreshSessions(true);
-          this.navigate({ kind: "bot", id: bot.id });
-        }
-      })
-      .catch((error: unknown) => {
-        this.botDialogError = error instanceof Error ? error.message : state.mode === "create" ? "Could not create the bot." : "Could not save the bot.";
-      })
-      .finally(() => {
-        this.botDialogPending = false;
-      });
-  };
+  }
+
+  private dismissBotSetting(botId: string, key: BotSettingKey) {
+    if (!this.botSettingsSavesOf(botId).errors[key]) return;
+    this.updateBotSettingsSaves(botId, (saves) => ({ ...saves, errors: withoutSetting(saves.errors, key) }));
+  }
 
   private setBotHidden = (bot: BotView, hidden: boolean) => {
     this.botMenuFor = "";
@@ -4205,6 +4135,8 @@ export class HuiApp extends HuiElement {
       this.stopAutomationPolling();
     }
     if (this.botMemoryTabVisible()) void this.refreshBotMemory();
+    // The Settings tab's model pickers read PI's catalog, as New Session does.
+    if (visible && this.botPanel.tab === "settings") this.loadLaunchPreferences();
   }
 
   /** The open Memory tab stays live without a timer: the bots stream carries
@@ -4340,6 +4272,8 @@ export class HuiApp extends HuiElement {
       panelId,
     };
     const call = this.voice.call?.bot.id === bot.id ? this.voice.call : undefined;
+    const settingsCall = this.botSettingsCall();
+    const utilityDefault = this.utilityModelName();
     const paneVoice: PaneVoice | undefined = this.voice.available
       ? { botId: bot.id, readingId: this.voice.readAloud.id, readingStatus: this.voice.readAloud.status, readingError: this.voice.readAloud.error ?? "" }
       : undefined;
@@ -4403,47 +4337,22 @@ export class HuiApp extends HuiElement {
           onRefresh: () => void this.refreshBotMemory(true),
           pageUrl: botMemoryPageUrl(bot.id),
         },
+        settings: {
+          models: this.pi?.model.catalog ?? [],
+          ...(utilityDefault ? { utilityDefault } : {}),
+          saves: this.botSettingsSavesOf(bot.id),
+          onChange: (key, value) => this.changeBotSetting(bot.id, key, value),
+          onDismiss: (key) => this.dismissBotSetting(bot.id, key),
+          ...(settingsCall ? { call: settingsCall } : {}),
+          directory: { suggestions: this.directorySuggestions, onInput: (value) => this.loadDirectorySuggestions(value) },
+        },
       }) : nothing}
     </div>`;
   }
 
   private renderBotDialogs() {
     if (this.embeddedPane) return nothing;
-    const dialog = this.botDialog;
-    const voice = dialog ? this.botDialogVoice() : undefined;
-    const call = dialog ? this.botDialogCall() : undefined;
-    return html`${dialog ? renderBotDialog({
-      mode: dialog.mode,
-      ...(dialog.mode === "edit" ? { bot: dialog.bot } : {}),
-      pending: this.botDialogPending,
-      error: this.botDialogError,
-      models: this.pi?.model.catalog ?? [],
-      model: this.botDraftModel,
-      thinking: this.botDraftThinking,
-      memoryModel: this.botDraftMemoryModel,
-      ...(this.utilityModelName() ? { utilityDefault: this.utilityModelName()! } : {}),
-      directorySuggestions: this.directorySuggestions,
-      onDirectoryInput: this.requestDirectorySuggestions,
-      onModel: (value) => { this.botDraftModel = value; },
-      onThinking: (value) => { this.botDraftThinking = value; },
-      onMemoryModel: (value) => { this.botDraftMemoryModel = value; },
-      onSubmit: this.submitBotDialog,
-      onCancel: this.closeBotDialog,
-      look: {
-        kind: this.botDraftLook,
-        shape: this.botDraftShape,
-        color: this.botDraftColor,
-        emoji: this.botDraftEmoji,
-        seed: this.botDraftSeed,
-        onKind: (kind) => { this.botDraftLook = kind; this.botDialogError = ""; },
-        onShape: (shape) => { this.botDraftShape = shape; },
-        onColor: (color) => { this.botDraftColor = color; },
-        onEmoji: (emoji) => { this.botDraftEmoji = emoji; },
-      },
-      ...(voice ? { voice } : {}),
-      ...(call ? { call } : {}),
-    }) : nothing}
-    ${this.botArchive ? renderBotArchiveDialog(this.botArchive, this.botArchivePending, this.botArchiveError, this.confirmArchiveBot, this.closeBotArchive) : nothing}
+    return html`${this.botArchive ? renderBotArchiveDialog(this.botArchive, this.botArchivePending, this.botArchiveError, this.confirmArchiveBot, this.closeBotArchive) : nothing}
     ${this.botDelete ? renderBotDeleteDialog(this.botDelete, this.botDeletePending, this.botDeleteError, this.confirmDeleteBot, this.closeBotDelete) : nothing}`;
   }
 

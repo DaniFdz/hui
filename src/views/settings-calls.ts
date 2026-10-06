@@ -87,7 +87,7 @@ export class HuiCallSettings extends LitElement {
         </div>
         <div class="settings-row">
           <div class="settings-row__text"><span class="settings-row__title">Default GPT-Live voice</span>
-            <span class="settings-row__desc">For bots without a call voice of their own (set one in a bot's dialog).</span></div>
+            <span class="settings-row__desc">For bots without a call voice of their own (set one in a bot's Settings tab).</span></div>
           <div class="settings-row__control">${renderSettingsPicker("Default GPT-Live voice", calls.voice, options, (value) => this.#set({ voice: value as GptLiveVoice }))}</div>
         </div>
         <div class="settings-row">

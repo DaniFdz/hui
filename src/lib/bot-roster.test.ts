@@ -12,6 +12,7 @@ import {
   hiddenBotCount,
   normalizeBotPanel,
   normalizeSidebarTab,
+  BOT_PANEL_TABS,
   botSettingsShortcutLabel,
   isBotSettingsShortcut,
   rosterBots,
@@ -127,7 +128,15 @@ test("tab strips move with arrows, Home and End and ignore other keys", () => {
 test("the side panel remembers open/closed and its tab, defaulting open on Routines", () => {
   assert.deepEqual(normalizeBotPanel(null), { open: true, tab: "routines" });
   assert.deepEqual(normalizeBotPanel({ open: false, tab: "memory" }), { open: false, tab: "memory" });
-  assert.deepEqual(normalizeBotPanel({ open: "no", tab: "settings" }), { open: true, tab: "routines" });
+  assert.deepEqual(normalizeBotPanel({ open: false, tab: "settings" }), { open: false, tab: "settings" }, "Edit and the shortcut leave the panel on Settings");
+  assert.deepEqual(normalizeBotPanel({ open: "no", tab: "secrets" }), { open: true, tab: "routines" });
+});
+
+test("the panel's tabs end on Settings, and arrows wrap through all of them", () => {
+  assert.deepEqual(BOT_PANEL_TABS, ["routines", "memory", "settings"]);
+  assert.equal(tabAfterKey(BOT_PANEL_TABS, "memory", "ArrowRight"), "settings");
+  assert.equal(tabAfterKey(BOT_PANEL_TABS, "settings", "ArrowRight"), "routines");
+  assert.equal(tabAfterKey(BOT_PANEL_TABS, "routines", "End"), "settings");
 });
 
 test("Ctrl+Shift+, (⇧⌘, on Apple) toggles a bot's Settings, by the comma key's position", () => {
