@@ -9,6 +9,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { createInterface } from "node:readline";
 import type { BotMessageResult, BotQuestion, BotsUpdate, BotView } from "../shared/bots.ts";
+import { voiceLanguage, voiceLanguageName } from "../shared/voice.ts";
 import type { AutomationSchedule, AutomationTask } from "../src/lib/automation-types.ts";
 
 export type BotFlags = {
@@ -25,6 +26,7 @@ export type BotFlags = {
   emoji?: string;
   voice?: string;
   "voice-speed"?: string;
+  language?: string;
   wait?: boolean;
   timeout?: string;
   zoom?: string;
@@ -163,11 +165,12 @@ async function botBody(flags: BotFlags, io: BotIO): Promise<Record<string, unkno
   if (flags.thinking !== undefined) body["thinking"] = flags.thinking;
   if (flags["memory-model"] !== undefined) body["memoryModel"] = flags["memory-model"];
   if (flags.emoji !== undefined) body["avatar"] = { emoji: flags.emoji };
-  // A VoiceStudio voice and speed; "" clears either on edit (a speed as null, as the route takes it).
-  if (flags.voice !== undefined || flags["voice-speed"] !== undefined) {
+  // A VoiceStudio voice, speed and language; "" clears each on edit (a speed as null, as the route takes it).
+  if (flags.voice !== undefined || flags["voice-speed"] !== undefined || flags.language !== undefined) {
     body["voice"] = {
       ...(flags.voice !== undefined ? { profile: flags.voice } : {}),
       ...(flags["voice-speed"] !== undefined ? { speed: flags["voice-speed"] === "" ? null : Number(flags["voice-speed"]) } : {}),
+      ...(flags.language !== undefined ? { language: flags.language.trim().toLowerCase() } : {}),
     };
   }
   return body;
@@ -657,13 +660,22 @@ export function formatBots(list: readonly BotView[], archived = false): string {
   ].join("  ")).join("\n");
 }
 
+/** `es (Spanish)`; `auto` when VoiceStudio detects the language. */
+function formatLanguage(value: string | undefined): string {
+  const code = voiceLanguage(value);
+  return code ? `${code} (${voiceLanguageName(code)})` : "auto";
+}
+
 export function formatBot(bot: BotView): string {
   return [
     `${bot.avatar?.emoji ? `${bot.avatar.emoji} ` : ""}@${bot.handle} · ${bot.name}${bot.title ? ` (${bot.title})` : ""}${bot.archived ? " · archived" : ""}`,
     `status: ${bot.status}${bot.unread ? " · unread" : ""}`,
     `model: ${bot.model ?? "default"}${bot.thinking ? ` · thinking ${bot.thinking}` : ""}`,
     `memory: ${bot.memory ? formatMemory(bot.memory) : "unavailable"}${bot.memoryModel ? ` · compactor model ${bot.memoryModel}` : ""}`,
-    ...(bot.voice ? [`voice: ${bot.voice.profile ?? "VoiceStudio default"}${bot.voice.speed !== undefined ? ` · ${bot.voice.speed}×` : ""}`] : []),
+    ...(bot.voice?.profile !== undefined || bot.voice?.speed !== undefined
+      ? [`voice: ${bot.voice.profile ?? "VoiceStudio default"}${bot.voice.speed !== undefined ? ` · ${bot.voice.speed}×` : ""}`]
+      : []),
+    `language: ${formatLanguage(bot.voice?.language)}`,
     `routines: ${bot.routines}`,
     `cwd: ${bot.cwd}`,
     `chat session: ${bot.sessionId}`,

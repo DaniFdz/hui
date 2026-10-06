@@ -129,8 +129,8 @@ hui bot list [--archived] [--json]
 hui bot show <bot> [--json]
 hui bot add --name <name> [--title <text>] [--instructions <text> | --instructions-file <path>] [--cwd <dir>]
             [--model <provider/model>] [--thinking <level>] [--memory-model <provider/model>] [--emoji <e>]
-            [--voice <VoiceStudio voice id>] [--voice-speed <0.5-2>] [--json]
-hui bot edit <bot> [same flags as add] [--json]  # --model "" / --thinking "": back to the defaults; --voice "" / --voice-speed "": VoiceStudio's
+            [--voice <VoiceStudio voice id>] [--voice-speed <0.5-2>] [--language <code>] [--json]
+hui bot edit <bot> [same flags as add] [--json]  # --model "" / --thinking "": back to the defaults; --voice "" / --voice-speed "": VoiceStudio's; --language "": Auto
 hui bot remove <bot> [--json]          # archives: its chat and memory are kept
 hui bot restore <bot> [--json]
 hui bot chat <bot>                     # streamed plain text; works over SSH
