@@ -243,6 +243,15 @@ const server = createServer(async (request, response) => {
     text(response, "I wrote my SOUL.md. Change it in the Soul tab, or just tell me.");
     return finish(response);
   }
+  // A bot naming itself with set_profile, as the operator said.
+  if (source.includes("E2E_SET_PROFILE")) {
+    toolUse(response, "tool-e2e-set-profile", "set_profile", { name: "Echo", title: "Fixture tester" });
+    return finish(response, "tool_use");
+  }
+  if (latestToolResult?.id === "tool-e2e-set-profile") {
+    text(response, `set_profile answered: ${typeof latestToolResult.result === "string" ? latestToolResult.result : JSON.stringify(latestToolResult.result)}`);
+    return finish(response);
+  }
 
   if (source.includes("E2E_SHARED_TERMINAL")) {
     toolUse(response, "tool-terminal-list", "terminal", { action: "list" });

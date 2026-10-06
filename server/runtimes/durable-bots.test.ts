@@ -21,7 +21,7 @@ process.env["XDG_CONFIG_HOME"] = configDir;
 after(() => rm(configDir, { recursive: true, force: true }));
 const { DurableHost, durableContext } = await import("./durable-host.ts");
 const { startDurable, durableConversationId, durableReference } = await import("./durable.ts");
-const { BotDoc, MESSAGE_BOT_TOOL, WRITE_SOUL_TOOL, firstConversationSection, readSoulFile, soulSection, soulToolText } = await import("./durable-bots.ts");
+const { BotDoc, MESSAGE_BOT_TOOL, SET_PROFILE_TOOL, WRITE_SOUL_TOOL, firstConversationSection, readSoulFile, soulSection, soulToolText } = await import("./durable-bots.ts");
 const { OptChatDoc } = await import("./durable-optchat.ts");
 const { durableBotConversations } = await import("../bot-conversations.ts");
 const { BotMemoryUnavailableError, optChatBotMemory } = await import("../bot-memory.ts");
@@ -42,6 +42,8 @@ function fakeMemory(options: { failEnable?: boolean } = {}): BotMemory {
       marker.model = settings.model ?? "";
     },
     configure: async () => {},
+    disable: async () => {},
+    purge: async () => {},
     status: async () => undefined,
     view: async () => "",
     zoom: async () => "",
@@ -309,7 +311,6 @@ test("the first conversation: greet, ask what the operator expects a question or
     "The operator's request always comes first", "This is a ritual, not a gate",
     "what you should look after, how you should work and sound, how proactive to be and when to message them, and what you must not do",
     "Ask one or two questions at a time", "never a questionnaire",
-    "Your name and look are already set in HUI: never ask about them",
     "A message from a routine (\"[routine: …]\") or another bot (\"[from @…]\") is not the operator",
     "\"[HUI bot created]\" is HUI telling you that you were just created: open the conversation",
     "save your soul with write_soul: Markdown, short, in your own voice", "\"Who I am\", \"What I look after\", \"How I work\", \"When I reach out\" and \"Boundaries\"",
@@ -319,6 +320,11 @@ test("the first conversation: greet, ask what the operator expects a question or
   assert.match(nameless, /your first conversation with the operator, which starts now/u);
   assert.match(nameless, /greet the operator in a sentence/u);
   assert.doesNotMatch(nameless, /by name/u);
+  assert.doesNotMatch(named, /placeholder|set_profile|your look|name and look/u, "a named bot is not asked about its name, and nothing says where its look comes from");
+  const unnamed = firstConversationSection(file, "Alex", { unnamed: true });
+  assert.match(unnamed, /- You have no name yet: "New Bot" is only HUI's placeholder\. Otherwise greet Alex by name in a sentence and ask what they want to call you; once they say, save it with set_profile \(with your role as the title, if they give one\)\. Then ask what they expect from you\./u);
+  assert.ok(unnamed.indexOf("The operator's request always comes first") < unnamed.indexOf("You have no name yet"), "a real request still comes first");
+  assert.match(unnamed, /Ask one or two questions at a time/u);
 });
 
 test("SOUL.md is read trimmed, as none when missing or blank, and at most 256 KiB", async (t) => {
@@ -420,4 +426,53 @@ test("a bot without a model of its own starts on Settings' primary model, which 
   const onDefault = await port.create({ botId: "bot-default", cwd: f.cwd, memory: { name: "D" } });
   assert.deepEqual(await modelOf(onDefault), { provider: "hui-e2e", modelId: "fixture" });
   assert.equal(await durableBotConversations(f.host, fakeMemory()).defaultModel(f.cwd), "hui-e2e/fixture", "a port without Settings behaves as before");
+});
+
+
+test("set_profile asks HUI to rename the calling bot, only from a bot's chat", { timeout: 60_000 }, async (t) => {
+  const f = await fixture(t);
+  const reference = await durableBotConversations(f.host, fakeMemory()).create({ botId: "bot-new", cwd: f.cwd, memory: { name: "New Bot" } });
+  const harness = await f.host.open();
+  const tool = f.host.botTools.find((candidate) => candidate.name === SET_PROFILE_TOOL)!;
+  const api = { conversationId: durableConversationId(reference)!, snapshot: (doc: never, conversation: never, context: never) => harness.snapshot(doc, conversation, context) } as unknown as ToolExecutionApi;
+  // Its session binds the conversation to the HUI session the tool acts as.
+  const session = await startDurable({ cwd: f.cwd, sessionFile: reference, huiSessionId: "new-chat" }, f.host);
+  f.invocations.length = 0;
+  const saved = await tool.execute({ name: "Echo", title: "Researcher" } as never, api, BACKGROUND_CONTEXT);
+  assert.equal(saved.isError, undefined);
+  assert.deepEqual(f.invocations, [{ callerSessionId: "new-chat", action: SET_PROFILE_TOOL, params: { name: "Echo", title: "Researcher" } }], "HUI applies it as the chat's session");
+  assert.match(JSON.stringify((await tool.execute({} as never, api, BACKGROUND_CONTEXT)).content), /Give a name, a title or both/u);
+  const notABot = { conversationId: 7 as unknown as ConversationId, snapshot: async () => undefined } as unknown as ToolExecutionApi;
+  const refused = await tool.execute({ name: "X" } as never, notABot, BACKGROUND_CONTEXT);
+  assert.equal(refused.isError, true);
+  assert.match(JSON.stringify(refused.content), /only available in a bot's chat/u);
+  assert.equal(f.invocations.length, 1, "neither refusal reached HUI");
+  assert.equal((await session.inspect()).tools.find((candidate) => candidate.name === SET_PROFILE_TOOL)?.source, "HUI");
+});
+
+test("a deleted bot's conversation is forgotten: no bot document, OptChat off and its memory files gone", { timeout: 90_000 }, async (t) => {
+  const f = await fixture(t);
+  const memory = optChatBotMemory(f.host);
+  const port = durableBotConversations(f.host, memory);
+  const reference = await port.create({ botId: "bot-ada", cwd: f.cwd, memory: { name: "Ada", model: "hui-e2e/cheap" } });
+  const id = durableConversationId(reference)!;
+  const session = await startDurable({ cwd: f.cwd, sessionFile: reference, huiSessionId: "ada-chat" }, f.host);
+  await session.prompt("OPT_FORGET remember the green door");
+  await settledWith(session, answered("Fixture response"));
+  const files = join(f.dir, "store", "optchat", String(id));
+  const { stat } = await import("node:fs/promises");
+  assert.ok((await stat(files)).isDirectory(), "OptChat keeps its memory beside the store");
+  session.dispose();
+
+  await port.forget(reference);
+  const harness = await f.host.open();
+  assert.deepEqual(await harness.snapshot(BotDoc, id, durableContext), { bot: "" }, "no longer a bot's chat: no bots or soul section, no bot tools");
+  assert.equal((await harness.snapshot(OptChatDoc, id, durableContext))?.enabled, false);
+  await assert.rejects(stat(files), { code: "ENOENT" }, "the memory's files are gone");
+  assert.equal(await memory.status(reference), undefined, "nothing reads the memory back");
+  await assert.rejects(memory.view(reference), BotMemoryUnavailableError);
+  assert.ok(await harness.conversation(id, durableContext), "the raw conversation stays: pi-durable cannot delete one");
+  await port.forget(reference);
+  await port.forget("durable:999999");
+  await port.forget("not-durable");
 });

@@ -7,7 +7,7 @@ import { test, type TestContext } from "node:test";
 import { BOT_KICKOFF_MARKER, botKickoffName, botKickoffText, handleFromName, previewLine, type BotRecord } from "../shared/bots.ts";
 import {
   BotConflictError, BotInputError, BotNotFoundError, BotRegistry, BotStoreError,
-  findBot, isOneGrapheme, normalizeBotInput, normalizeBotPatch, normalizeSoul, parseBotRecord, patchedAvatar, uniqueHandle,
+  findBot, isDerivedHandle, isOneGrapheme, normalizeBotInput, normalizeBotPatch, normalizeSoul, parseBotRecord, patchedAvatar, uniqueHandle,
 } from "./bots.ts";
 
 async function tempFile(t: TestContext): Promise<string> {
@@ -40,6 +40,13 @@ test("handles derive from names as lowercase ASCII slugs and take -2, -3… on c
   assert.equal(uniqueHandle("ab-cd", new Set(["ab-cd"])), "ab-cd-2");
   assert.equal(uniqueHandle("events", new Set()), "events-2", "the list stream's path is no bot's handle");
   assert.equal(uniqueHandle(`${"a".repeat(29)}-bc`, new Set([`${"a".repeat(29)}-bc`])), `${"a".repeat(29)}-2`, "no dash before the suffix's own");
+  // Derived handles, which follow a renamed bot's name; anything else was chosen and stays.
+  assert.equal(isDerivedHandle("new-bot", "New Bot"), true);
+  assert.equal(isDerivedHandle("new-bot-3", "New Bot"), true);
+  assert.equal(isDerivedHandle("new-bot-1", "New Bot"), false, "uniqueHandle starts at -2");
+  assert.equal(isDerivedHandle("scout", "New Bot"), false);
+  assert.equal(isDerivedHandle(suffixed, full), true, "a suffix that cut a long slug");
+  assert.equal(isDerivedHandle("events-2", "events"), true);
 });
 
 test("input is validated at the boundary: limits, formats, unknown fields and one-grapheme emoji", () => {
@@ -56,9 +63,11 @@ test("input is validated at the boundary: limits, formats, unknown fields and on
     cwd: "~/work", model: "vercel-ai-gateway/anthropic/claude", thinking: "high", memoryModel: "openai/gpt-mini", memoryThinking: "low", hidden: true,
   });
   assert.deepEqual(normalizeBotInput({ name: "Ada", soul: "  \n " }), { name: "Ada" }, "a blank soul is none: the bot has its first conversation");
+  assert.deepEqual(normalizeBotInput({}), { name: "New Bot" }, "no name: New Bot, until its first conversation names it");
+  assert.deepEqual(normalizeBotInput({ title: "Scout" }), { name: "New Bot", title: "Scout" });
   const rejects: [unknown, RegExp][] = [
     [null, /must be an object/u],
-    [{}, /name is required/u],
+    [{ name: "" }, /Bot name must be 1-60/u],
     [{ name: "" }, /Bot name must be 1-60/u],
     [{ name: "x".repeat(61) }, /Bot name must be 1-60/u],
     [{ name: "two\nlines" }, /one line/u],

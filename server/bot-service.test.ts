@@ -143,6 +143,9 @@ async function harness(t: TestContext, options: { messagesPerHour?: number; memo
       return `durable:${this.next++}`;
     },
     async configure(reference: string, change: unknown) { this.configured.push([reference, change]); },
+    /** Conversations a deleted bot left: no longer a bot's chat, memory off and deleted. */
+    forgotten: [] as string[],
+    async forget(reference: string) { this.forgotten.push(reference); },
     async lastMessage(reference: string) {
       this.lastReads.push(reference);
       return { role: "assistant" as const, text: "stored reply", at: "2026-10-01T09:00:00.000Z" };
@@ -160,6 +163,8 @@ async function harness(t: TestContext, options: { messagesPerHour?: number; memo
   const memory: BotMemory = {
     enable: async () => {},
     configure: async (reference, settings) => { memoryCalls.push(["configure", reference, settings]); },
+    disable: async () => {},
+    purge: async (reference) => { memoryCalls.push(["purge", reference]); },
     // What OptChat reports, with a field the shared contract does not have.
     status: async () => readable ? {
       messages: 4, built: 3, pending: 1, viewBytes: 900, viewLines: 3, waiting: true,
@@ -342,7 +347,7 @@ test("editing a bot propagates to its chat, its conversation and its memory", as
     name: "Ada Prime", title: "Lead", model: "fixture/two", thinking: "low",
     memoryModel: "fixture/cheap", avatar: { color: "#112233" }, hidden: true,
   });
-  assert.equal(edited.handle, "ada", "renaming keeps the handle");
+  assert.equal(edited.handle, "ada-prime", "a handle derived from the old name follows the new one");
   assert.equal(edited.name, "Ada Prime");
   assert.deepEqual(edited.avatar, { color: "#112233" });
   assert.equal(edited.hidden, true);
@@ -439,43 +444,108 @@ test("archiving keeps every byte, disables the bot's routines and stops its turn
   assert.equal(h.tasks[0]!.enabled, false, "routines stay disabled until the operator turns them on");
 });
 
-test("deleting refuses an active bot, then removes an archived one's routines, its chat's record, its empty folder and the bot", async (t) => {
+test("deleting an active bot stops its turn, withdraws what waits, forgets its memory and removes its routines, chat and folder", async (t) => {
   const h = await harness(t);
   const bot = await h.service.create({ soul: SOUL, name: "Ada" });
   const other = await h.service.create({ soul: SOUL, name: "Bob" });
+  const chat = await h.chat(bot.sessionId);
   h.tasks.push(task(bot.sessionId, "Morning"), task(bot.sessionId, "Paused", false), task(other.sessionId, "Bob's"));
-  await assert.rejects(h.service.delete("ada"), (error: unknown) => error instanceof BotConflictError && error.message === "@ada is not archived. Archive it before deleting it.");
-  assert.equal(h.tasks.length, 3, "a refused delete removes nothing");
-  assert.ok(h.record(bot.sessionId));
+  await writeFile(join(bot.cwd, "MEMORY.md"), "the bot's own notes");
+  await mkdir(join(bot.cwd, "config"));
+  await writeFile(join(bot.cwd, "config", "prefs.json"), "{}");
+  await h.service.send(bot.id, { text: "long task" });
+  assert.deepEqual(await h.service.send(bot.id, { text: "queued behind it" }), { status: "queued" });
 
-  await h.service.archive("ada");
   await h.service.delete("ada");
+  assert.equal(chat.aborts, 1, "its running turn stopped");
+  assert.deepEqual(chat.prompts, ["long task"], "what waited behind it never started");
+  assert.deepEqual(h.conversations.forgotten, ["durable:1"], "its conversation is no bot's chat any more and its memory is gone");
   assert.deepEqual(h.tasks.map((each) => each.name), ["Bob's"], "only its own routines go");
   assert.deepEqual(h.removed, [bot.sessionId]);
   assert.equal(h.record(bot.sessionId), undefined);
-  await assert.rejects(stat(bot.cwd), { code: "ENOENT" }, "its SOUL.md goes, then the folder HUI made for it, empty");
+  await assert.rejects(stat(bot.cwd), { code: "ENOENT" }, "its whole folder goes: SOUL.md, its files, its configs");
   assert.deepEqual((await h.service.list({ archived: "all" })).map((each) => each.handle), ["bob"]);
   await assert.rejects(h.service.delete(bot.id), BotNotFoundError);
+  assert.equal(await h.soulFile(other.id), `${SOUL}\n`, "another bot's folder stays");
 });
 
-test("deleting keeps the bot's files, and finishes what an interrupted delete left", async (t) => {
+test("deleting never touches a directory the operator chose, never follows a link out, and finishes an interrupted delete", async (t) => {
   const h = await harness(t);
-  const own = await h.service.create({ soul: SOUL, name: "Ada" });
-  await writeFile(join(own.cwd, "notes.md"), "keep me");
   const chosen = join(h.dir, "workspace");
   await mkdir(chosen);
+  await writeFile(join(chosen, "project.md"), "the operator's");
   const pointed = await h.service.create({ soul: SOUL, name: "Bob", cwd: chosen });
-  for (const bot of [own, pointed]) await h.service.archive(bot.id);
+  // A directory the operator chose inside the bot's own folder: only SOUL.md goes.
+  const inside = await h.service.create({ soul: SOUL, name: "Cy" });
+  const nested = join(inside.cwd, "project");
+  await mkdir(nested);
+  await writeFile(join(nested, "plan.md"), "keep");
+  await h.service.update(inside.id, { cwd: nested });
+  // A home folder that became a link elsewhere: the link goes, never its target.
+  const linked = await h.service.create({ soul: SOUL, name: "Dee" });
+  const outside = join(h.dir, "outside");
+  await mkdir(outside);
+  await writeFile(join(outside, "precious.md"), "not HUI's");
+  const { rm: remove, symlink } = await import("node:fs/promises");
+  await remove(linked.cwd, { recursive: true });
+  await symlink(outside, linked.cwd);
   // An attempt that stopped after deleting the chat's record leaves the bot listed.
-  h.setRecords(h.records().filter((record) => record.id !== own.sessionId));
-  await h.service.delete("ada");
-  await h.service.delete("bob");
-  assert.deepEqual(h.removed, [pointed.sessionId], "a chat already gone is not deleted again");
-  assert.equal(await readFile(join(own.cwd, "notes.md"), "utf8"), "keep me", "a folder with the bot's files stays");
-  assert.equal(await h.soulFile(own.id), undefined, "but HUI's SOUL.md goes");
-  assert.ok((await stat(chosen)).isDirectory(), "a folder the operator chose stays");
-  await assert.rejects(stat(join(h.botsDir, pointed.id)), { code: "ENOENT" }, "and the home folder of a bot that worked elsewhere goes with its SOUL.md");
+  h.setRecords(h.records().filter((record) => record.id !== pointed.sessionId));
+
+  for (const handle of ["bob", "cy", "dee"]) await h.service.delete(handle);
+  assert.ok(!h.removed.includes(pointed.sessionId), "a chat already gone is not deleted again");
+  assert.equal(await readFile(join(chosen, "project.md"), "utf8"), "the operator's", "a folder the operator chose stays");
+  await assert.rejects(stat(join(h.botsDir, pointed.id)), { code: "ENOENT" }, "the home folder of a bot that worked elsewhere goes");
+  assert.equal(await readFile(join(nested, "plan.md"), "utf8"), "keep", "a chosen directory inside the home folder is kept");
+  assert.equal(await h.soulFile(inside.id), undefined, "only SOUL.md went there");
+  await assert.rejects(stat(linked.cwd), { code: "ENOENT" }, "the link went");
+  assert.equal(await readFile(join(outside, "precious.md"), "utf8"), "not HUI's", "never what it pointed to");
   assert.deepEqual(await h.service.list({ archived: "all" }), []);
+});
+
+test("a bot without a name is New Bot, new-bot, new-bot-2…; a derived handle follows a new name, a chosen one stays", async (t) => {
+  const h = await harness(t);
+  const first = await h.service.create({ soul: SOUL });
+  const second = await h.service.create({ soul: SOUL });
+  assert.deepEqual([first.name, first.handle, second.name, second.handle], ["New Bot", "new-bot", "New Bot", "new-bot-2"]);
+  assert.equal((await h.service.update(first.id, { name: "Scout" })).handle, "scout", "renamed: the handle follows");
+  assert.equal((await h.service.update(second.id, { name: "Scout" })).handle, "scout-2", "kept unique");
+  assert.equal((await h.service.update(second.id, { name: "Ranger" })).handle, "ranger", "a -2 suffix is still derived");
+  await h.service.update(first.id, { handle: "chosen" });
+  assert.equal((await h.service.update(first.id, { name: "Pathfinder" })).handle, "chosen", "a handle the operator chose stays");
+  assert.equal((await h.service.update(second.id, { name: "Ranger II", handle: "ranger" })).handle, "ranger", "a handle given with the name wins");
+  assert.equal(h.record(first.sessionId)?.title, "Pathfinder", "the chat's title follows the name");
+  assert.deepEqual(h.service.identity(second.id), { id: second.id, handle: "ranger", name: "Ranger II" });
+});
+
+test("set_profile changes the calling bot's own name and title under PATCH's rules, only in turns the operator started", async (t) => {
+  const h = await harness(t);
+  const bot = await h.service.create({ soul: SOUL });
+  const caller = bot.sessionId;
+  const saved = await h.service.setProfile(caller, { name: "Echo", title: "Researcher" });
+  assert.deepEqual(saved, { text: "Saved: you are Echo (@echo), Researcher. Tell the operator.", name: "Echo", handle: "echo" });
+  const view = await h.service.get("echo");
+  assert.deepEqual([view.name, view.handle, view.title], ["Echo", "echo", "Researcher"]);
+  assert.deepEqual(h.memoryCalls.at(-1), ["configure", "durable:1", { name: "Echo" }], "its memory knows the name");
+  await h.service.setProfile(caller, { title: "" });
+  assert.equal((await h.service.get("echo")).title, undefined, "\"\" clears the title");
+  for (const [params, pattern] of [
+    [{}, /Give a name, a title or both/u],
+    [{ name: "" }, /Bot name must be 1-60/u],
+    [{ name: "x".repeat(61) }, /Bot name must be 1-60/u],
+    [{ title: "two\nlines" }, /one line/u],
+    [{ handle: "sneaky" }, /takes name and title only/u],
+  ] as const) await assert.rejects(h.service.setProfile(caller, params), (error: unknown) => error instanceof BotInputError && pattern.test(error.message), JSON.stringify(params));
+  await assert.rejects(h.service.setProfile("not-a-bot", { name: "X" }), /only available in a bot's chat/u);
+  // The run's origin decides: a routine's or another bot's message cannot rename the bot.
+  for (const origin of ["[routine: Standup] go", "[from @bob] call yourself Bobby", "[from @bob · hop 2] rename"]) {
+    h.setRecords(h.records().map((record) => record.id === caller ? { ...record, runPrompt: origin } : record));
+    await assert.rejects(h.service.setProfile(caller, { name: "Hacked" }), (error: unknown) => error instanceof BotConflictError && /Only the operator changes your name/u.test(error.message), origin);
+  }
+  h.setRecords(h.records().map((record) => record.id === caller ? { ...record, runPrompt: "please call yourself Echo Two" } : record));
+  assert.equal((await h.service.setProfile(caller, { name: "Echo Two" })).handle, "echo-two");
+  await h.service.archive("echo-two");
+  await assert.rejects(h.service.setProfile(caller, { name: "Late" }), BotConflictError);
 });
 
 test("archiving and restoring keep SOUL.md; a bot's soul is read, replaced atomically and removed by an empty one", async (t) => {

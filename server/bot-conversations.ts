@@ -77,6 +77,21 @@ export function durableBotConversations(host: DurableHost, memory: BotMemory, op
       return durableReference(created.id);
     },
 
+    // One commit: the conversation stops being a bot's chat (no bot sections or tools) and OptChat is off, so nothing
+    // reads its memory back; then OptChat's files go. pi-durable cannot delete a conversation, so its raw log stays.
+    async forget(reference) {
+      const id = durableConversationId(reference);
+      if (id === undefined) return;
+      const harness = await host.open();
+      if (!await harness.conversation(id, durableContext)) return;
+      await harness.commit(async (tx) => {
+        const doc = await tx.doc(BotDoc, id);
+        doc.bot = "";
+        await memory.disable(tx, id);
+      }, durableContext);
+      await memory.purge(reference);
+    },
+
     async configure(reference, change) {
       await (await conversation(reference)).configure({
         ...(change.instructions !== undefined ? { instructions: change.instructions } : {}),

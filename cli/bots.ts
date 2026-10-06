@@ -8,12 +8,14 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { createInterface } from "node:readline";
-import { botKickoffName, type BotMessageResult, type BotQuestion, type BotSoul, type BotsUpdate, type BotView } from "../shared/bots.ts";
+import { botKickoffName, NEW_BOT_NAME, type BotMessageResult, type BotQuestion, type BotSoul, type BotsUpdate, type BotView } from "../shared/bots.ts";
 import type { AutomationSchedule, AutomationTask } from "../src/lib/automation-types.ts";
 
 export type BotFlags = {
   archived?: boolean;
   json?: boolean;
+  /** `delete` without asking. */
+  yes?: boolean;
   name?: string;
   title?: string;
   "soul-file"?: string;
@@ -44,6 +46,10 @@ export type BotIO = {
   lines(): AsyncIterable<string>;
   /** Ctrl+C during `chat`; returns an unsubscribe. */
   onInterrupt(listener: () => void): () => void;
+  /** A terminal on both ends, which can be asked to confirm. */
+  interactive: boolean;
+  /** One line typed in answer to `question`. */
+  ask(question: string): Promise<string>;
   /** Where relative `--cwd`, `--soul-file`, `--file` and `--html` paths resolve. */
   cwd: string;
   /** `--cron` without `--timezone`. */
@@ -66,6 +72,11 @@ export function terminalBotIO(): BotIO {
       process.on("SIGINT", listener);
       return () => { process.off("SIGINT", listener); };
     },
+    interactive: Boolean(process.stdin.isTTY && process.stdout.isTTY),
+    ask: (question) => new Promise((resolveAnswer) => {
+      const reader = createInterface({ input: process.stdin, output: process.stdout });
+      reader.question(question, (answer) => { reader.close(); resolveAnswer(answer); });
+    }),
     cwd: process.cwd(),
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
   };
@@ -193,7 +204,9 @@ export async function botCommand(base: string, action: string, operands: readonl
     const { bot } = await request<{ bot: BotView }>(base, "/__hui/bots", { method: "POST", body: await botBody(flags, io), timeoutMs: 60_000 });
     print(bot, bot.soul
       ? `Added @${bot.handle} (${bot.name}) with the soul you gave it. Talk to it with hui bot chat ${bot.handle}.`
-      : `Added @${bot.handle} (${bot.name}). It starts by asking what you expect from it: talk with hui bot chat ${bot.handle}.`);
+      : bot.name === NEW_BOT_NAME && flags.name === undefined
+        ? `Added @${bot.handle} (${bot.name}). It starts by asking what to call it and what you expect from it: talk with hui bot chat ${bot.handle}.`
+        : `Added @${bot.handle} (${bot.name}). It starts by asking what you expect from it: talk with hui bot chat ${bot.handle}.`);
     return 0;
   }
   const bot = await findBot(base, operands[0]!);
@@ -220,9 +233,16 @@ export async function botCommand(base: string, action: string, operands: readonl
       return 0;
     }
     case "delete": {
-      if (!bot.archived) throw new Error(`@${bot.handle} is not archived. Archive it first with hui bot remove ${bot.handle}.`);
-      await request<{ ok: true }>(base, `${path}?permanent=1`, { method: "DELETE" });
-      print({ id: bot.id, handle: bot.handle, deleted: true }, `Deleted @${bot.handle} for good. Its routines and chat are gone from HUI; the files in its folder stay.`);
+      // For good, active or archived: a terminal is asked first, anything else needs --yes.
+      if (!flags.yes) {
+        if (!io.interactive) throw new Error(`hui bot delete cannot ask here (no terminal): add --yes to delete @${bot.handle} for good.`);
+        if (!/^\s*(y|yes)\s*$/iu.test(await io.ask(`Delete @${bot.handle} for good? Its chat leaves HUI and its routines, memory and folder go. [y/N] `))) {
+          io.out("Nothing was deleted.\n");
+          return 1;
+        }
+      }
+      await request<{ ok: true }>(base, `${path}?permanent=1`, { method: "DELETE", timeoutMs: 60_000 });
+      print({ id: bot.id, handle: bot.handle, deleted: true }, `Deleted @${bot.handle} for good: its chat left HUI, and its routines, memory and folder are gone.`);
       return 0;
     }
     case "stop": {

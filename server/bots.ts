@@ -23,7 +23,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join } from "node:path";
 
-import { BOT_HANDLE, BOT_LIMITS, BOT_THINKING_LEVELS, type BotAvatar, type BotInput, type BotPatch, type BotRecord } from "../shared/bots.ts";
+import { BOT_HANDLE, BOT_LIMITS, BOT_THINKING_LEVELS, handleFromName, NEW_BOT_NAME, type BotAvatar, type BotInput, type BotPatch, type BotRecord } from "../shared/bots.ts";
 import { CONFIG_DIR } from "./paths.ts";
 
 export const BOTS_FILE = join(CONFIG_DIR, "bots.json");
@@ -268,6 +268,19 @@ export function uniqueHandle(base: string, taken: ReadonlySet<string>): string {
   }
 }
 
+/**
+ * Whether `handle` is the one `name` gives a bot automatically: its slug, or that slug with the `-2`, `-3`… suffix
+ * `uniqueHandle` adds. A renamed bot's handle follows the new name only while this holds; a chosen handle stays.
+ */
+export function isDerivedHandle(handle: string, name: string): boolean {
+  const base = handleFromName(name);
+  if (handle === base) return true;
+  const match = /^(.+)-([1-9]\d*)$/u.exec(handle);
+  if (!match || Number(match[2]) < 2) return false;
+  const tail = `-${match[2]}`;
+  return match[1] === base.slice(0, BOT_LIMITS.handle - tail.length).replace(/-+$/u, "");
+}
+
 /** A bot by id, handle (`@` optional, any case) or exact name; a name two bots share must be given as id or handle. */
 export function findBot(bots: readonly BotRecord[], target: string): BotRecord {
   const value = target.trim();
@@ -375,8 +388,8 @@ function cwdField(raw: unknown): string {
 /** Validates `POST /__hui/bots`. Optional text left empty is omitted. The directory is checked by the service. */
 export function normalizeBotInput(value: unknown): BotInput {
   const input = body(value, "A bot");
-  if (!("name" in input)) throw new BotInputError("A bot name is required.");
-  const { soul: rawSoul, ...fields } = input;
+  // Without a name the bot is "New Bot" until its first conversation names it (set_profile).
+  const { soul: rawSoul, ...fields } = "name" in input ? input : { ...input, name: NEW_BOT_NAME };
   const soul = rawSoul === undefined ? "" : normalizeSoul(rawSoul);
   // The patch rules, then empty optional text and avatar keys dropped: a new bot has nothing to clear.
   const patch = normalizeBotPatch(fields);

@@ -302,6 +302,8 @@ durableHost().botSection = (botId) => bots.section(botId);
 durableHost().botSouls = {
   home: (botId) => botHome(botId),
   operator: async () => operatorName((await readSettings()).profileName),
+  // From the last registry read: a bot still called "New Bot" asks for a name first.
+  name: (botId) => bots.identity(botId)?.name,
 };
 /** The bot list every Bots screen shares, recomputed while one listens, like the session list. */
 const botList = createSessionListHub<BotView>(async () => [{ label: "bots", sessions: await bots.list({ archived: "all" }) }]);
@@ -326,6 +328,7 @@ liveSessions.setAbortListener((id) => managedBrowser.closeOwner(id));
 registerAgentToolHandler(async (invocation) => {
   // A bot's chat only: the service refuses every other caller.
   if (invocation.action === "message_bot") return bots.messageBot(invocation.callerSessionId, invocation.params);
+  if (invocation.action === "set_profile") return bots.setProfile(invocation.callerSessionId, invocation.params);
   if (invocation.action === "suggest_task" || invocation.action === "dismiss_task") {
     const caller = (await readRegistry()).find(({ id }) => id === invocation.callerSessionId);
     if (!caller) throw new TaskSuggestionInputError("Conversation no longer exists.");
@@ -896,7 +899,7 @@ function foreverChatRefusal(handle: string | undefined, operation: "clear" | "co
     clear: `This is ${chat} forever chat: it cannot be cleared. Its memory keeps everything; archive the bot when you are done with it.`,
     compact: `This is ${chat} forever chat: its memory condenses it by itself, so it is not compacted by hand.`,
     rewind: `This is ${chat} forever chat: it cannot be rewound or forked.`,
-    delete: `This is ${chat} forever chat: archive the bot instead${handle ? ` (hui bot remove ${handle})` : ""}; its chat and memory are kept.`,
+    delete: `This is ${chat} forever chat: archive the bot instead${handle ? ` (hui bot remove ${handle})` : ""}, which keeps its chat and memory, or delete the bot${handle ? ` (hui bot delete ${handle})` : ""} with its chat, memory and folder.`,
   }[operation];
 }
 

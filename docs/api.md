@@ -1169,11 +1169,11 @@ read the chat's memory, 500 for storage failures; other methods answer 405.
 | Route | Success | Behavior |
 | --- | --- | --- |
 | `GET /__hui/bots[?archived=1]` | 200 `{ bots: BotView[] }` | Active bots, or with `archived=1` only archived ones, sorted by name |
-| `POST /__hui/bots` | 201 `{ bot }` | `BotInput`: `name` plus the optional record fields, `handle` and `soul` (SOUL.md's text, ≤ 20,000 characters after trimming; given, the bot skips its first conversation and no kickoff runs). Without `handle` one is derived from the name (`-2`, `-3`… on collision); an explicit handle that is taken is 409 |
+| `POST /__hui/bots` | 201 `{ bot }` | `BotInput`: the record fields, all optional (`{}` is enough), `handle` and `soul` (SOUL.md's text, ≤ 20,000 characters after trimming; given, the bot skips its first conversation and no kickoff runs). Without `name` the bot is `New Bot` (`NEW_BOT_NAME`), which its first conversation replaces (`set_profile`). Without `handle` one is derived from the name (`-2`, `-3`… on collision); an explicit handle that is taken is 409 |
 | `GET /__hui/bots/:id` | 200 `{ bot }` | |
-| `PATCH /__hui/bots/:id` | 200 `{ bot }` | Only what changes; `""` clears `title`, `description`, `model`, `thinking` (back to the gateway defaults, above), `memoryModel`, `memoryThinking` (back to the chat's model and OptChat's default level); an avatar key `""` clears it, `avatar: null` clears both. `soul` is refused (400): SOUL.md has its own route. The handle changes only when given (409 if taken). `model`/`thinking` go through the live chat (`setModel`/`setThinking`); `name` and the memory fields reconfigure OptChat, `name` also the session title; `cwd` is accepted only while the chat is idle (409 otherwise) and boots its runtime again there; a turn that starts during that edit (a routine, say) makes it answer 409 after the conversation and the chat's session record already moved, with the bot record still naming the old directory, so repeat the edit once the bot is idle to finish it. Archived bots are 409 |
+| `PATCH /__hui/bots/:id` | 200 `{ bot }` | Only what changes; `""` clears `title`, `description`, `model`, `thinking` (back to the gateway defaults, above), `memoryModel`, `memoryThinking` (back to the chat's model and OptChat's default level); an avatar key `""` clears it, `avatar: null` clears both. `soul` is refused (400): SOUL.md has its own route. A given handle replaces the old one (409 if taken); a new `name` without one re-derives the handle while it is still the automatic one, derived from the old name (kept unique), and a handle chosen before stays. `model`/`thinking` go through the live chat (`setModel`/`setThinking`); `name` and the memory fields reconfigure OptChat, `name` also the session title; `cwd` is accepted only while the chat is idle (409 otherwise) and boots its runtime again there; a turn that starts during that edit (a routine, say) makes it answer 409 after the conversation and the chat's session record already moved, with the bot record still naming the old directory, so repeat the edit once the bot is idle to finish it. Archived bots are 409 |
 | `DELETE /__hui/bots/:id` | 200 `{ bot }` | Archives, deleting nothing: marks the bot, disables every Automation task aimed at its chat, withdraws messages still in HUI's follow-up queue for it, stops a running turn and archives the chat's session record. Idempotent |
-| `DELETE /__hui/bots/:id?permanent=1` | 200 `{ ok: true }` | Deletes an archived bot for good; an active bot is 409 (archive it first). Removes every Automation task aimed at its chat, then the chat's session record as `DELETE /__hui/sessions/:id` does (its runtime stops; the conversation and its memory stay in the Durable store, which HUI no longer opens), then its SOUL.md (HUI's file) and its home folder if that left it empty, then the bot. The bot's other files never go, nor a directory the operator chose. Each step can run again, so deleting again finishes an interrupted attempt; afterwards the bot is 404 |
+| `DELETE /__hui/bots/:id?permanent=1` | 200 `{ ok: true }` | Deletes a bot for good, active or archived: withdraws messages still in HUI's follow-up queue for it and stops a running turn; its conversation stops being a bot's chat and its memory goes, in one commit (the `hui.bot` document cleared, OptChat turned off) and then OptChat's files; then every Automation task aimed at its chat, the chat's session record as `DELETE /__hui/sessions/:id` does (its runtime stops), its home folder `CONFIG_DIR/bots/<id>` with everything in it (SOUL.md and every file HUI or the bot put there; only `<BOTS_DIR>/<id>` itself, resolved, never following a link out), then the bot. A working directory the operator chose is never touched (when it lies inside the home folder, only SOUL.md goes). pi-durable cannot delete a conversation yet, so its raw log stays in the Durable store, where nothing reads it back. Each step can run again, so deleting again finishes an interrupted attempt; afterwards the bot is 404 |
 | `POST /__hui/bots/:id/restore` | 200 `{ bot }` | Unarchives the bot and its session record; routines stay disabled |
 | `POST /__hui/bots/:id/messages` | 202 or 200 | See below |
 | `POST /__hui/bots/:id/stop` | 200 `{ bot }` | Aborts the chat's running turn; an idle bot is unchanged; 409 while its chat starts |
@@ -1231,12 +1231,20 @@ the operator's request always comes first (a ritual, not a gate); otherwise the
 bot greets the operator, by Settings' profile name when it is set (not the
 default), and finds out over a few messages what to look after, how to work and
 sound, how proactive to be and when to message them, and its boundaries, one or
-two questions at a time, never a questionnaire. Its name and look are set in
-HUI, so it never asks about them. Messages from routines (`[routine: …]`) and
+two questions at a time, never a questionnaire. A bot still called `New Bot`
+first asks what the operator wants to call it and saves the answer with
+`set_profile` (the host's resolver gives the section the bot's name). Messages from routines (`[routine: …]`) and
 other bots (`[from @…]`) are not the operator. After a few exchanges it saves
 SOUL.md with `write_soul` (suggested sections: who I am, what I look after,
 how I work, when I reach out, boundaries), gives a short summary and says how
 to change it: the Soul tab of its panel, or telling it.
+
+`set_profile({ name?, title? })`, beside it, changes the calling bot's own name
+and title in HUI under `PATCH`'s rules (so a derived handle follows the name). It
+goes through HUI's agent-tool handler, as `message_bot` does, and is refused in a
+turn that a routine or another bot started (its run's originating input,
+`runPrompt`, starts with `[routine: ` or `[from @`): only the operator names a
+bot.
 
 `write_soul({ soul })` lives in `hui-bots-tools` beside `message_bot`, so only
 bots' chats are offered it. It replaces the whole SOUL.md: the text is trimmed
@@ -1283,8 +1291,8 @@ conversation at its next turn.
 
 Bot chats refuse what would reset, shorten, fork or delete them, with 409 and a
 message naming the bot: `POST /__hui/sessions/:id/clear`, `POST …/compact`,
-`POST …/rewind` and `DELETE /__hui/sessions/:id` (archive the bot instead; an
-archived bot can then be deleted with `DELETE /__hui/bots/:id?permanent=1`).
+`POST …/rewind` and `DELETE /__hui/sessions/:id` (archive the bot instead, or
+delete it with `DELETE /__hui/bots/:id?permanent=1`).
 Model and thinking changes stay allowed. The prompt route already refuses
 `/clear` and `/compact` text for every session.
 
@@ -1315,7 +1323,7 @@ leaves them disabled.
 Every gateway's default Durable selection includes the `hui-bots` extension,
 whose prompt sections `bots` and `soul` (above) read the conversation's
 `hui.bot` document and render nothing without it. The tool `message_bot({ to, message })` (`to` ≤ 100,
-`message` ≤ 20,000 characters) lives in a second extension, `hui-bots-tools` (with `write_soul`),
+`message` ≤ 20,000 characters) lives in a second extension, `hui-bots-tools` (with `write_soul` and `set_profile`),
 installed but selected only by a bot's chat (`DurableSession.applyTools`), and
 refuses in any conversation without the document. Every other conversation's
 offered tools, system prompt and stored agent are unchanged. The section lists
