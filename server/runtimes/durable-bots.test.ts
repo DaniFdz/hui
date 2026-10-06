@@ -316,7 +316,7 @@ test("the first conversation: greet, ask what the operator expects a question or
     "save your soul with write_soul: Markdown, short, in your own voice", "\"Who I am\", \"What I look after\", \"How I work\", \"When I reach out\" and \"Boundaries\"",
     "Write down only what the operator told you or agreed to: ask about what is still open (often what you must not do) rather than guess",
     "Once you know enough, usually after a few exchanges (or as soon as the operator would rather not say more)",
-    "In the same reply, tell the operator you saved it, give a short summary of it", "in the Soul tab of your panel in HUI, or by just telling you",
+    "In the reply that saves it, say you saved your SOUL.md, sum it up in a few lines, and always end by telling them how to change it later", "in the Soul tab of your panel in HUI, or by just telling you",
   ]) assert.ok(named.includes(part), part);
   const nameless = firstConversationSection(file, undefined);
   assert.match(nameless, /your first conversation with the operator, which starts now/u);
@@ -364,6 +364,7 @@ test("write_soul replaces a bot's whole SOUL.md atomically in its home folder, w
   const harness = await f.host.open();
   const tool = f.host.botTools.find((candidate) => candidate.name === WRITE_SOUL_TOOL)!;
   assert.ok(tool, "installed with the bot tools, selected by bots' chats only");
+  assert.match(String((tool as { description?: string }).description), /While you have none, save it when your first conversation says to, once you know enough; afterwards, whenever the operator asks you to change how you work\./u, "its timing defers to the first conversation (a real model saved right after the first answer while it said \"once the operator has told you\")");
   const api = { conversationId: id, snapshot: (doc: never, conversation: never, context: never) => harness.snapshot(doc, conversation, context) } as unknown as ToolExecutionApi;
   const run = (soul: string) => tool.execute({ soul } as never, api, BACKGROUND_CONTEXT);
   const text = (result: Awaited<ReturnType<typeof run>>) => JSON.stringify(result.content);
