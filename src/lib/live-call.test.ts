@@ -316,6 +316,51 @@ test("a task handed to the bot's chat is followed: its answer is spoken while th
   assert.equal(p.sent.at(-1)!["type"], "session.close");
 });
 
+test("a delegation while a turn runs: each answer goes to its own delegation, never to one asked meanwhile", async () => {
+  const p = platform();
+  const call = new LiveCall(p.live, { botName: "Juno" });
+  await call.start();
+  p.open();
+  p.message(EVENTS.started);
+  const withoutTurn = (id: string) => EVENTS.delegation.replace("item_D1", id).replace(',"user_bidi_turn_id":"turn_U1"', "");
+  p.message(withoutTurn("item_D1"));
+  await flush();
+  await flush();
+  p.delegations[0]!.result.resolve({ status: "handed-off", task: "task-1", speak: "Handed to Juno's chat: list the files." });
+  await flush();
+  // The bot's turn for task-1 is running when the next question comes, and that question is answered first.
+  p.message(withoutTurn("item_D2"));
+  await flush();
+  await flush();
+  p.delegations[1]!.result.resolve({ status: "answered", speak: "Teal." });
+  await flush();
+  assert.deepEqual(p.sent.at(-1), delegationAppends("item_D2", "speakable", "Teal.")[0]);
+  p.tasks[0]!.result.resolve({ status: "answered", speak: "Three files." });
+  await flush();
+  assert.deepEqual(p.sent.at(-1), delegationAppends("item_D1", "speakable", "Three files.")[0], "the task's reply answers its own delegation");
+  assert.equal(p.sent.filter((event) => event["delegation_item_id"] === "item_D2").length, 1, "and never the one asked meanwhile");
+  assert.deepEqual([call.state.delegating, call.state.tasks], [0, 0]);
+});
+
+test("the speaking phase follows the bot's audio, not GPT-Live's turn events", async () => {
+  const p = platform();
+  const call = new LiveCall(p.live, { botName: "Juno" });
+  await call.start();
+  p.open();
+  p.message('{"type":"turn.created","turn":{"id":"turn_A5","role":"assistant","transcript":" Sure, here"}}');
+  p.advance(100);
+  assert.equal(call.state.phase, "listening", "a reply GPT-Live has begun but not yet played");
+  p.setVoice(0.8);
+  p.advance(50);
+  assert.equal(call.state.phase, "speaking");
+  p.message('{"type":"turn.done","turn":{"id":"turn_A5","role":"assistant","transcript":" Sure, here it is."}}');
+  p.advance(50);
+  assert.equal(call.state.phase, "speaking", "still playing after its transcript ended");
+  p.setVoice(0);
+  p.advance(600);
+  assert.equal(call.state.phase, "listening");
+});
+
 test("without session.started, the greeting is asked for after a while", async () => {
   const p = platform();
   const call = new LiveCall(p.live, { botName: "Juno" });

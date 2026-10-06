@@ -651,7 +651,7 @@ test("a call's record goes to the bot's conversation as one write, its context c
   await assert.rejects(h.service.callContext(bot.id), BotConflictError);
 });
 
-test("a task handed off from a call answers with its own reply, even queued behind a running turn and beside a call's record", async (t) => {
+test("a delegation while a turn runs: a task handed off from a call queues behind the running turn and answers with its own reply, never that turn's, beside a call's record", async (t) => {
   const h = await harness(t);
   const bot = await h.service.create({ name: "Ada" });
   const chat = await h.chat(bot.sessionId);

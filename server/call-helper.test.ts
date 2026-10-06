@@ -127,6 +127,20 @@ test("real work goes to the bot's chat as a call task, followed by its id; the c
   assert.equal(busy.tasks.size, CALL_LIMITS.handoffs);
 });
 
+test("a delegation while a turn runs: the helper answers a new question at once, and the handed-off task still answers with its own reply", async () => {
+  const h = delegateHarness(async (_model, request) =>
+    request.prompt.endsWith("Which files are in your workspace?") ? "HANDOFF: list the files in the workspace folder" : "Dani's favourite colour is teal.");
+  const call = activeCall();
+  const handed = await h.delegate({ bot: bot(), call, request: "Which files are in your workspace?" });
+  assert.equal(handed.status, "handed-off");
+  // The task's turn runs in the bot's chat: a new question neither waits for it nor takes its reply.
+  assert.deepEqual(await h.delegate({ bot: bot(), call, request: "What's Dani's favourite colour?" }), { status: "answered", speak: "Dani's favourite colour is teal." });
+  assert.deepEqual(h.handed, [["b1", "[call task] list the files in the workspace folder"]], "one message in the chat: the task's");
+  h.finish({ status: "answered", reply: "Three files." });
+  assert.deepEqual(await call.tasks.get(handed.task!), { status: "answered", reply: "Three files." });
+  assert.deepEqual(call.lines.map((line) => line.role), ["handoff", "helper"]);
+});
+
 test("a slow helper offers a hand-off; a failing one says why; a hung-up call stops waiting", async () => {
   const slow = delegateHarness((_model, request) => new Promise((_, reject) => request.signal.addEventListener("abort", () => reject(new Error("aborted")), { once: true })), { budgetMs: 20 });
   const timedOut = await slow.delegate({ bot: bot(), call: activeCall(), request: "Summarize my year" });
