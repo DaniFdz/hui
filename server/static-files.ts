@@ -1,6 +1,7 @@
 import { readFile, realpath, stat } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { extname, isAbsolute, join, relative, sep } from "node:path";
+import { isAppRoutePath } from "../shared/app-routes.ts";
 
 const MIME: Record<string, string> = {
   ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
@@ -16,9 +17,9 @@ export async function serveStatic(root: string, request: IncomingMessage, respon
   if (path.includes("\\") || /[\p{Cc}]/u.test(path) || path.split("/").some((part) => part.startsWith("."))) {
     response.writeHead(404).end(); return;
   }
-  // Top-level page routes (`/skills`, `/kanban`, …) and session/Settings deep
-  // links load the app; anything with a dot is a file request.
-  const spa = path === "/" || /^\/[a-z][a-z0-9-]*$/u.test(path) || /^\/(?:sessions|settings)\/[^.]*$/u.test(path);
+  // Home, top-level pages (`/skills`, `/kanban`, …) and the app's deep links load
+  // the app (shared/app-routes.ts); anything else is a file request.
+  const spa = isAppRoutePath(path);
   try {
     const target = await realpath(join(root, spa ? "index.html" : path));
     const delta = relative(await realpath(root), target);

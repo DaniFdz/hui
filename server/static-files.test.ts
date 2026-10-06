@@ -19,12 +19,12 @@ test("static production server serves deep links/assets but not private files, s
   const address = server.address(); assert(address && typeof address !== "string");
   const base = `http://127.0.0.1:${address.port}`;
   t.after(async () => { await new Promise<void>((resolve) => { server.close(() => resolve()); server.closeAllConnections(); }); await rm(temporary, { recursive: true, force: true }); });
-  for (const path of ["/", "/settings/tools", "/sessions/fixture", "/skills", "/kanban", "/model-providers"]) {
+  for (const path of ["/", "/settings/tools", "/sessions/fixture", "/bots/4f0c2d9e-7a1b-4c3d-9e8f-0a1b2c3d4e5f", "/bots/scout", "/skills", "/kanban", "/model-providers"]) {
     const response = await fetch(base + path); assert.equal(response.status, 200); assert.match(await response.text(), /hui-app/u);
   }
   const script = await fetch(base + "/assets/app.js"); assert.match(script.headers.get("content-type")!, /javascript/u);
   assert.equal((await fetch(base + "/", { method: "HEAD" })).headers.get("x-content-type-options"), "nosniff");
-  for (const path of ["/.env", "/escape.txt", "/assets/missing.js", "/%2e%2e/secret.txt", "/build/cli/main.js", "/%5csecret.txt"]) assert.equal((await fetch(base + path)).status, 404, path);
+  for (const path of ["/.env", "/escape.txt", "/assets/missing.js", "/bots/missing.js", "/%2e%2e/secret.txt", "/build/cli/main.js", "/%5csecret.txt"]) assert.equal((await fetch(base + path)).status, 404, path);
   assert.equal((await fetch(base + "/%zz")).status, 400);
   assert.equal((await fetch(base + "/", { method: "POST" })).status, 405);
 });
