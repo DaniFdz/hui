@@ -1341,13 +1341,13 @@ export async function createSession(
   if (tool && !NEW_SESSION_TOOLS.has(tool)) {
     throw new Error(`Unsupported session tool: ${tool}`);
   }
-  const model = sessionText(body, "model", SESSION_TITLE_MAX, {
+  const requestedModel = sessionText(body, "model", SESSION_TITLE_MAX, {
     optional: true,
     allowEmpty: false,
   });
   // Only the first slash separates the provider; gateway model IDs may
   // themselves be namespaced, e.g. vercel-ai-gateway/anthropic/claude-opus.
-  if (model && !/^[^/\s]+\/\S+$/.test(model)) {
+  if (requestedModel && !/^[^/\s]+\/\S+$/.test(requestedModel)) {
     throw new Error("Session model must use provider/id format.");
   }
   const thinking = sessionText(body, "thinking", 16, {
@@ -1360,6 +1360,9 @@ export async function createSession(
   // A worker runs the same runtime a local session would.
   const runtimeTool = tool || defaultSessionTool();
   const settings = await readSettings();
+  // Sessions started without a choice (suggestions, backlog items) use the
+  // primary route rather than whatever PI currently treats as its default.
+  const model = requestedModel || settings.models.primary;
   const id = randomUUID();
   const now = new Date().toISOString();
   const recordNamed = (named: string): SessionRecord => ({

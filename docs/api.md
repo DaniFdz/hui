@@ -1237,7 +1237,8 @@ Session. `model` uses canonical `provider/id` form: the first slash separates th
 provider from the complete model ID, which may contain further slashes (for
 example, `vercel-ai-gateway/anthropic/claude-opus-5.5`). Neither part may be empty
 or contain whitespace. `thinking` accepts `off`,
-`minimal`, `low`, `medium`, `high`, or `xhigh`. Both are persisted before the
+`minimal`, `low`, `medium`, `high`, or `xhigh`. Without `model`, the session
+uses `settings.models.primary` when one is set, otherwise PI's default. Both are persisted before the
 runtime starts and are passed to PI on its first launch as well as later reopen.
 
 `worktree` is optional and defaults to false. `baseRef` optionally selects any
