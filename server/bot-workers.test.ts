@@ -334,10 +334,11 @@ test("a call's record joins the worker bot's chat and memory, which its helper r
     call: "call-1", bot: "Rover", startedAt: Date.parse("2026-10-06T20:00:00Z"), endedAt: Date.parse("2026-10-06T20:02:00Z"),
     summary: "Agreed to map the north ridge.", lines: [{ role: "user", text: "Map the north ridge tomorrow.", at: Date.parse("2026-10-06T20:00:10Z") }],
   });
+  // Settled: the compactor summarizes the call's entries beside the reads, so compare views once nothing is pending.
   const memory = await waitFor(async () => {
     const read = await memoryOf("rover");
-    return read.view.includes("Map the north ridge tomorrow.") ? read : undefined;
-  }, "the call to reach the memory");
+    return read.view.includes("Map the north ridge tomorrow.") && read.status.pending === 0 ? read : undefined;
+  }, "the call to reach the memory, summarized");
   assert.match(memory.view, /\[call\]/u);
   assert.equal(await ports.memory(workerId).view(reference), memory.view, "the call helper's view is the memory route's");
 });
