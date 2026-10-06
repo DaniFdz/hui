@@ -530,6 +530,14 @@ cheap, fast, tool-free route for generated session titles and `/btw`. Example:
 { "models": { "primary": "openai/gpt-6-astra", "fallback": "anthropic/claude-sonnet-4-6", "utility": "openai/gpt-5.6-luna" } }
 ```
 
+It also includes `calls: { engine, voice }` (Settings → Models → Calls, HUI-18):
+`engine` is `"gpt-live"` (calls with bots talk to GPT-Live through the ChatGPT
+login, [GPT-Live calls](#gpt-live-calls)) or `"voicestudio"` (the speech chain
+through [VoiceStudio](#voicestudio-bots-voice)); `voice` is the GPT-Live voice of
+a bot without one of its own. Anything else normalizes to the default,
+`{ "engine": "voicestudio", "voice": "cove" }`, so nothing changes until GPT-Live
+is chosen.
+
 ### `GET /__hui/health`
 
 Returns gateway uptime, `HTTP + SSE`, the fixed `Full Access` product mode and
@@ -697,7 +705,8 @@ type SubagentTaskView = SubagentRecord & {
 type TranscriptAttachment = { name: string; kind: "image" | "file"; mimeType?: string; url?: string };
 
 type TranscriptEntry =
-  | { kind: "message"; role: "user" | "assistant"; text: string; entryId?: string; attachments?: readonly TranscriptAttachment[] }
+  // `call`: said on a GPT-Live call with a bot, not typed (no turn ran for it; never an entryId).
+  | { kind: "message"; role: "user" | "assistant"; text: string; entryId?: string; attachments?: readonly TranscriptAttachment[]; call?: true }
   | { kind: "compaction"; summary: string; tokensBefore: number }
   | { kind: "thinking"; text: string }
   | { kind: "tool"; id: string; name: string; args?: unknown; output?: string; failed?: boolean }
@@ -750,6 +759,11 @@ type RuntimeEvent =
   | { type: "settled"; historyRefreshed?: boolean }
   | { type: "error"; message: string };
 ```
+
+The gateway also handles a runtime-only `{ type: "history" }`: entries written
+beside a run (a call's lines) changed a Durable chat's history. It never reaches a
+browser: an idle session answers it with a fresh `snapshot`; a busy one shows the
+lines when its turn settles.
 
 `status` is HUI's own, derived: `starting` while a runtime is booting (pi takes
 4.5–5.7s), `running` from prompt dispatch until the runtime settles, `error` if
@@ -1093,7 +1107,7 @@ type BotRecord = {
   memoryModel?: string;        // "provider/id" of OptChat's compactor; absent: the chat's own model
   memoryThinking?: string;
   avatar?: { emoji?: string /* one grapheme */; color?: string /* #rrggbb */; shape?: "blob" | "round" | "triangle" | "heart" | "cookie" }; // the look, below
-  voice?: { profile?: string; speed?: number; language?: string }; // VoiceStudio voice id (one line, ≤ 200), speed 0.5–2 and language (one of Whisper's codes, below); absent keys: VoiceStudio's defaults, Auto for the language
+  voice?: { profile?: string; speed?: number; language?: string; live?: GptLiveVoice }; // VoiceStudio voice id (one line, ≤ 200), speed 0.5–2, language (one of Whisper's codes, below; GPT-Live calls speak it too) and GPT-Live call voice (below); absent keys: VoiceStudio's defaults, Auto for the language, Settings' call voice
   hidden?: boolean;
   archived?: boolean;
   sessionId: string;           // HUI session record of the chat
@@ -1179,7 +1193,7 @@ read the chat's memory, 500 for storage failures; other methods answer 405.
 | `GET /__hui/bots[?archived=1]` | 200 `{ bots: BotView[] }` | Active bots, or with `archived=1` only archived ones, sorted by name |
 | `POST /__hui/bots` | 201 `{ bot }` | `BotInput`: `name` plus the optional record fields and `handle`. Without `handle` one is derived from the name (`-2`, `-3`… on collision); an explicit handle that is taken is 409 |
 | `GET /__hui/bots/:id` | 200 `{ bot }` | |
-| `PATCH /__hui/bots/:id` | 200 `{ bot }` | Only what changes; `""` clears `title`, `description`, `instructions`, `model`, `thinking` (back to the gateway defaults, above), `memoryModel`, `memoryThinking` (back to the chat's model and OptChat's default level); an avatar key `""` clears it (`emoji: ""` switches the bot to its face, `shape: ""` and `color: ""` go back to the ones its id picks), `avatar: null` clears all three (an unknown `shape` or a color that is not `#rrggbb` is 400); a voice `profile: ""`, `speed: null` or `language: ""` (back to Auto) clears that key, `voice: null` clears all three (other voice keys are 400, and so is a `language` that is not one of Whisper's codes, a name such as `Spanish` included). The handle changes only when given (409 if taken). `instructions` reconfigures the conversation; `model`/`thinking` go through the live chat (`setModel`/`setThinking`); `name` and the memory fields reconfigure OptChat, `name` also the session title; `cwd` is accepted only while the chat is idle (409 otherwise) and boots its runtime again there; a turn that starts during that edit (a routine, say) makes it answer 409 after the conversation and the chat's session record already moved, with the bot record still naming the old directory, so repeat the edit once the bot is idle to finish it. Archived bots are 409 |
+| `PATCH /__hui/bots/:id` | 200 `{ bot }` | Only what changes; `""` clears `title`, `description`, `instructions`, `model`, `thinking` (back to the gateway defaults, above), `memoryModel`, `memoryThinking` (back to the chat's model and OptChat's default level); an avatar key `""` clears it (`emoji: ""` switches the bot to its face, `shape: ""` and `color: ""` go back to the ones its id picks), `avatar: null` clears all three (an unknown `shape` or a color that is not `#rrggbb` is 400); a voice `profile: ""`, `speed: null`, `language: ""` (back to Auto) or `live: ""` (back to Settings' call voice) clears that key, `voice: null` clears them all (other voice keys are 400, and so is a `language` that is not one of Whisper's codes, a name such as `Spanish` included, or a `live` that is not one of GPT-Live's voices). The handle changes only when given (409 if taken). `instructions` reconfigures the conversation; `model`/`thinking` go through the live chat (`setModel`/`setThinking`); `name` and the memory fields reconfigure OptChat, `name` also the session title; `cwd` is accepted only while the chat is idle (409 otherwise) and boots its runtime again there; a turn that starts during that edit (a routine, say) makes it answer 409 after the conversation and the chat's session record already moved, with the bot record still naming the old directory, so repeat the edit once the bot is idle to finish it. Archived bots are 409 |
 | `DELETE /__hui/bots/:id` | 200 `{ bot }` | Archives, deleting nothing: marks the bot, disables every Automation task aimed at its chat, withdraws messages still in HUI's follow-up queue for it, stops a running turn and archives the chat's session record. Idempotent |
 | `POST /__hui/bots/:id/restore` | 200 `{ bot }` | Unarchives the bot and its session record; routines stay disabled |
 | `POST /__hui/bots/:id/messages` | 202 or 200 | See below |
@@ -2667,6 +2681,65 @@ The connection lives in `~/.config/hui/voicestudio.json` (mode 0600). The key
 travels only as `Authorization: Bearer <key>` to that origin: redirects are
 followed within it (GET, and 307/308 for a POST, at most three) and refused to
 any other origin. JSON answers are capped at 1 MiB and speech at 64 MiB.
+
+### GPT-Live calls
+
+With `settings.calls.engine: "gpt-live"` (HUI-18), a call with a bot is a
+full-duplex WebRTC session between the browser and GPT-Live
+(`gpt-live-1-codex`), over the ChatGPT login HUI keeps for the `openai-codex`
+provider. This is the route ChatGPT's own voice mode uses, not a public API: it may
+change. The gateway sets each call up and keeps the credential; the browser
+carries the audio and the call's data channel (`oai-events`) and never sees a
+token or an account id. Shared types are in `shared/calls.ts`:
+
+```ts
+type GptLiveVoice = "cove" | "arbor" | "breeze" | "ember" | "juniper" | "maple" | "sol" | "spruce" | "vale"; // cove: GPT-Live's default
+type CallsStatus = {
+  model: "gpt-live-1-codex";
+  voices: readonly GptLiveVoice[];
+  chatgpt: { signedIn: boolean; account?: { name: string; email?: string }; waitingUntil?: number }; // the account calls use now
+  active: number; limit: number;   // calls held now; at most 2
+};
+type CallStarted = { callId: string; answer: string; model: string; voice: GptLiveVoice; account: { name: string }; instructionsBytes: number; memoryBytes: number };
+type CallLine = { role: "user" | "assistant"; text: string };
+type CallDelegationResult = { status: "answered" | "failed" | "needs-input" | "timeout"; speak: string };
+```
+
+| Route | Behavior |
+|---|---|
+| `GET /__hui/calls` | `CallsStatus`. The account is the first signed-in ChatGPT account not waiting for its quota, the order model turns use; `waitingUntil` when every one waits |
+| `POST /__hui/bots/:id/calls` `{ sdp }` | 201 `CallStarted`. Refused with 409 unless `calls.engine` is `"gpt-live"`, and for an archived bot. The offer is at most 64 KB, a session description with audio and no video (400 otherwise). The gateway builds the session (below), posts `{ sdp, session }` to `https://chatgpt.com/backend-api/codex/realtime/calls?intent=quicksilver&architecture=avas` with `Authorization: Bearer <access>`, `chatgpt-account-id`, `OpenAI-Alpha: quicksilver=v2`, fresh `session-id`, `thread-id` and `x-session-id`, and `originator: pi` (30 s timeout, no redirects), and returns only the answer SDP and HUI's own call id. A 401, 403 or 429 hands the call to the next account; when every account refuses, or ChatGPT fails, the answer is 502 `{ error, upstreamStatus }` with a message written for the browser (401: sign in again; 403: not available on this account or plan, or the voice refused; 429: the voice limit reached). ChatGPT's own body goes only to diagnostics, redacted. No ChatGPT login, or every account waiting, is 409; a third concurrent call is 429 |
+| `POST /__hui/bots/:id/calls/:callId/lines` `{ lines: [{ role, text, at? }] }` | `{ written }`. What was said, in order: 1–40 lines of 1–4,000 characters; `at` (ms) is when it was said, the gateway's now when missing or implausible. Each line becomes a passive `hui.call` entry of the bot's conversation (Durable places it at once when the chat is idle, at the running turn's next boundary otherwise; no turn runs for it). The chat shows it as a `message` with `call: true`; OptChat logs it as `user: [call] …` or `talk: [call] …`. Accepted for ten minutes after a hang-up |
+| `POST /__hui/bots/:id/calls/:callId/delegations` `{ id, request }` | `CallDelegationResult` once the work ends. `id` is GPT-Live's delegation item, `request` its text (≤ 4,000 characters, one line). The request runs through one seam (`CallDelegate` in `server/call-routes.ts`); today it is a turn of the bot's own chat, `[call task] <request>`, delivered like any message (a prompt, or a follow-up behind a running turn) and answered by the run that answers it, with up to 600 s of wait. `speak` is that run's reply without markdown and at most 1,800 characters, or what to tell the user when it failed, needs an answer in the chat, or is still running. A client that leaves ends the wait, never the turn |
+| `POST /__hui/bots/:id/calls/:callId/heartbeat` | `{ ok: true }`. A call that sends nothing for 90 s is released (its slot frees; 404 afterwards) |
+| `DELETE /__hui/bots/:id/calls/:callId` | `{ ended }`: the slot frees. The browser closes its connection to ChatGPT itself, after `{ type: "session.close" }` on the data channel |
+
+From a terminal, `hui bot add|edit <bot> --call-voice <voice>` sets a bot's
+`voice.live` (`""` goes back to Settings' voice) and `hui bot show` prints it as
+`call voice: Ember` when the bot has one.
+
+**The session.** `{ model: "gpt-live-1-codex", instructions, audio: { output: { voice } }, delegation: { type: "client" } }`.
+`voice` is the bot's `voice.live`, else `calls.voice`, else `cove`. The instructions
+carry the bot's name, handle, title and description; that this is a live voice
+call and how to speak on one; the bot's language (`voice.language`; Auto: the
+language the user speaks); when to delegate (anything needing tools, current
+information, files, actions or memory beyond the instructions; small talk and what
+the context answers directly; never invent facts); the speakable/commentary
+contract; the bot's own instructions (at most 6 KB); and the newest end of its
+OptChat view (at most 8 KB of whole lines, without ids). Nothing secret.
+
+**The data channel.** The browser acts on `session.started`, `turn.created`,
+`turn.delta` and `turn.done` (`{ turn: { id, role, transcript } }`: captions,
+and each finished turn becomes a line), `delegation.created`
+(`{ item: { id, type: "delegation", target: "client", content: [{ type: "input_text", text }], user_bidi_turn_id } }`),
+`session.closed` and `error`. It sends `session.context.append`
+(`{ channel: "speakable", content: [{ type: "input_text", text }] }`: the greeting
+cue once connected), `delegation.context.append`
+(`{ delegation_item_id, channel: "speakable" | "commentary", content }`: a task's
+result, spoken in GPT-Live's own words, or silent progress such as the tool the
+bot uses, in pieces of at most 500 bytes) and `session.close`. A task's request
+waits (at most 2 s) for the end of the user's turn that asked for it, whose line is
+written first, so the chat reads in order.
 
 ## Constraints
 
