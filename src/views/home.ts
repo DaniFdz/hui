@@ -1981,10 +1981,12 @@ function renderQuestion(props: HomeProps) {
   return html`<div class="agent-chat__question-dock" aria-live="polite">
     <form class="session-question-card chat-question-panel" aria-labelledby=${titleId} @submit=${submit}
       @keydown=${(event: KeyboardEvent) => {
-        // Password managers close their menus with Escape; only Cancel ends a secret request.
-        if (event.key === "Escape" && !secret) {
+        if (event.key === "Escape") {
+          // Consumed either way, or the page's Escape would stop the run. Password
+          // managers close their menus over a secret's field with it, so only
+          // Cancel ends a secret request.
           event.preventDefault();
-          props.onAnswerQuestion({ cancelled: true });
+          if (!secret) props.onAnswerQuestion({ cancelled: true });
           return;
         }
         const target = event.target;
