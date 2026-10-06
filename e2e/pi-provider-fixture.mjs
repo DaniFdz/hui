@@ -220,6 +220,19 @@ const server = createServer(async (request, response) => {
   response.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-store", connection: "keep-alive" });
   messageStart(response);
 
+  // Tool calls a test chooses: E2E_CALL:<base64url JSON of { name, input }, or an array of them> calls them all in one
+  // response, and the next answer quotes every result.
+  const chosen = /E2E_CALL:([A-Za-z0-9_-]+)/u.exec(source)?.[1];
+  if (chosen) {
+    const calls = [JSON.parse(Buffer.from(chosen, "base64url").toString("utf8"))].flat();
+    calls.forEach((call, index) => toolUse(response, `tool-e2e-call-${index}`, call.name, call.input ?? {}, index));
+    return finish(response, "tool_use");
+  }
+  if (String(latestToolResult?.id ?? "").startsWith("tool-e2e-call-")) {
+    text(response, `tool answered: ${toolResultTexts([body.messages?.at(-1)]).join(" | ")}`);
+    return finish(response);
+  }
+
   // A bot messaging another bot through HUI's message_bot tool.
   if (source.includes("E2E_MESSAGE_BOT")) {
     toolUse(response, "tool-e2e-message-bot", "message_bot", { to: "@bob", message: "hello from the fixture" });
