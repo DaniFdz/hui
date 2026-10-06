@@ -26,7 +26,28 @@ export const BOT_THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "
 /** Lowercase ASCII letters, digits and inner dashes, 1–32 characters. */
 export const BOT_HANDLE = /^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$/u;
 
-export type BotAvatar = { emoji?: string; color?: string };
+/**
+ * A bot's face, after OpenAI's Dots: a plush shape in a color, with two dot
+ * eyes and no mouth. Stored in `avatar` beside the emoji, which still wins
+ * while set (a bot switches to its face when the emoji is cleared).
+ */
+export const BOT_FACE_SHAPES = ["blob", "round", "triangle", "heart", "cookie"] as const;
+export type BotFaceShape = (typeof BOT_FACE_SHAPES)[number];
+export const BOT_FACE_SHAPE_LABELS: Readonly<Record<BotFaceShape, string>> = { blob: "Blob", round: "Pebble", triangle: "Triangle", heart: "Heart", cookie: "Cookie" };
+
+/** The palette the Bots tab and `hui bot --color` name; the API takes any #rrggbb. */
+export const BOT_FACE_COLORS = [
+  { id: "blue", label: "Blue", hex: "#3a7bfa" },
+  { id: "yellow", label: "Yellow", hex: "#f5c21b" },
+  { id: "magenta", label: "Magenta", hex: "#d23ce0" },
+  { id: "mint", label: "Mint", hex: "#2fc49a" },
+  { id: "coral", label: "Coral", hex: "#ff6b4a" },
+  { id: "lilac", label: "Lilac", hex: "#9b7cf6" },
+] as const;
+export type BotFaceColor = (typeof BOT_FACE_COLORS)[number];
+
+/** `color`: #rrggbb, lowercase. `shape` and `color` absent: the face derived from the bot's id. */
+export type BotAvatar = { emoji?: string; color?: string; shape?: BotFaceShape };
 
 /** One bot as `bots.json` stores it. */
 export type BotRecord = {
@@ -83,11 +104,16 @@ export type BotInput = {
  * `description`, `instructions`, `model`, `thinking`, `memoryModel` and
  * `memoryThinking` (a cleared `model` or `thinking` puts the chat back on what
  * a new chat gets: the gateway's default model and thinking level); an avatar
- * key set to `""` clears that key and `avatar: null` clears both. A voice
+ * key set to `""` clears that key (`emoji: ""` switches the bot to its face,
+ * `shape: ""` and `color: ""` back to the ones its id picks) and
+ * `avatar: null` clears all three. A voice
  * `profile: ""`, `speed: null` or `language: ""` (back to Auto) clears that key
  * and `voice: null` clears all three.
  */
-export type BotPatch = Partial<Omit<BotInput, "avatar" | "voice">> & { avatar?: BotAvatar | null; voice?: BotVoicePatch | null };
+export type BotPatch = Partial<Omit<BotInput, "avatar" | "voice">> & { avatar?: BotAvatarPatch | null; voice?: BotVoicePatch | null };
+
+/** A change to a bot's look: given keys replace, `""` clears one. */
+export type BotAvatarPatch = { emoji?: string; color?: string; shape?: BotFaceShape | "" };
 
 /** A change to a bot's voice: given keys replace, `profile: ""`, `speed: null` and `language: ""` clear one. */
 export type BotVoicePatch = { profile?: string; speed?: number | null; language?: VoiceLanguage | "" };
@@ -157,6 +183,77 @@ export type BotMessageResult = BotDelivery | BotReply;
 
 /** A frame of `GET /__hui/bots/events`: `ids` (every bot, in list order) only when it changed. */
 export type BotsUpdate = { revision: number; ids?: string[]; upserts: BotView[] };
+
+/* ── look ─────────────────────────────────────────────────────────────── */
+
+export function isBotFaceShape(value: unknown): value is BotFaceShape {
+  return typeof value === "string" && (BOT_FACE_SHAPES as readonly string[]).includes(value);
+}
+
+/** A shape by its id or its label (`pebble` is `round`), any case; undefined for anything else. */
+export function botFaceShape(value: string): BotFaceShape | undefined {
+  const key = value.trim().toLowerCase();
+  return BOT_FACE_SHAPES.find((shape) => shape === key || BOT_FACE_SHAPE_LABELS[shape].toLowerCase() === key);
+}
+
+/** A palette color by its name (`mint`, any case) or hex; undefined for anything else. */
+export function botFaceColor(value: string): BotFaceColor | undefined {
+  const key = value.trim().toLowerCase();
+  return BOT_FACE_COLORS.find((color) => color.id === key || color.hex === key);
+}
+
+/** A 32-bit hash of a bot's id (FNV-1a with a final mix): stable across renames, reloads and machines. */
+export function botSeed(id: string): number {
+  let hash = 0x811c9dc5;
+  for (const character of id) hash = Math.imul(hash ^ character.codePointAt(0)!, 0x01000193);
+  hash ^= hash >>> 16;
+  hash = Math.imul(hash, 0x85ebca6b);
+  hash ^= hash >>> 13;
+  hash = Math.imul(hash, 0xc2b2ae35);
+  hash ^= hash >>> 16;
+  return hash >>> 0;
+}
+
+/** What a bot looks like everywhere (roster, chat, call, CLI). `emoji` while it has one, else its face. */
+export type BotLook = {
+  kind: "face" | "emoji";
+  emoji?: string;
+  shape: BotFaceShape;
+  /** #rrggbb: the face's body, the emoji's tile and the call's tint. */
+  color: string;
+  /** The shape or color comes from the id, not from the record. */
+  derived: { shape: boolean; color: boolean };
+  /** Seeds the plush texture, so the same bot has the same face everywhere. */
+  seed: number;
+};
+
+/** The face a bot gets without a stored shape or color: picked by its id, the same everywhere. */
+export function defaultBotLook(id: string): { shape: BotFaceShape; color: string } {
+  const seed = botSeed(id);
+  return {
+    shape: BOT_FACE_SHAPES[seed % BOT_FACE_SHAPES.length]!,
+    color: BOT_FACE_COLORS[Math.floor(seed / BOT_FACE_SHAPES.length) % BOT_FACE_COLORS.length]!.hex,
+  };
+}
+
+export function botLook(bot: { id: string; avatar?: BotAvatar | undefined }): BotLook {
+  const fallback = defaultBotLook(bot.id);
+  const shape = isBotFaceShape(bot.avatar?.shape) ? bot.avatar.shape : undefined;
+  const color = bot.avatar?.color && /^#[0-9a-f]{6}$/iu.test(bot.avatar.color) ? bot.avatar.color.toLowerCase() : undefined;
+  return {
+    kind: bot.avatar?.emoji ? "emoji" : "face",
+    ...(bot.avatar?.emoji ? { emoji: bot.avatar.emoji } : {}),
+    shape: shape ?? fallback.shape,
+    color: color ?? fallback.color,
+    derived: { shape: !shape, color: !color },
+    seed: botSeed(bot.id),
+  };
+}
+
+/** `Mint` for a palette color, the hex for any other. */
+export function botColorName(hex: string): string {
+  return botFaceColor(hex)?.label ?? hex;
+}
 
 /** The handle a name suggests: ASCII-folded and lowercase, every other run as one dash, at most 32 characters. */
 export function handleFromName(name: string): string {

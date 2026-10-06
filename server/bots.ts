@@ -17,7 +17,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join } from "node:path";
 
-import { BOT_HANDLE, BOT_LIMITS, BOT_THINKING_LEVELS, type BotAvatar, type BotInput, type BotPatch, type BotRecord, type BotVoice, type BotVoicePatch } from "../shared/bots.ts";
+import { BOT_FACE_SHAPES, BOT_HANDLE, BOT_LIMITS, BOT_THINKING_LEVELS, isBotFaceShape, type BotAvatar, type BotAvatarPatch, type BotInput, type BotPatch, type BotRecord, type BotVoice, type BotVoicePatch } from "../shared/bots.ts";
 import { VOICE_LANGUAGE_EXAMPLES, VOICE_LIMITS, voiceLanguage, voiceProfileId, voiceSpeed } from "../shared/voice.ts";
 import { CONFIG_DIR } from "./paths.ts";
 
@@ -74,7 +74,8 @@ function storedAvatar(raw: unknown): BotAvatar | undefined {
   if (!isRecord(raw)) return undefined;
   const emoji = str(raw["emoji"]);
   const color = str(raw["color"]);
-  const avatar = { ...(isOneGrapheme(emoji) ? { emoji } : {}), ...(COLOR.test(color) ? { color } : {}) };
+  const shape = raw["shape"];
+  const avatar = { ...(isOneGrapheme(emoji) ? { emoji } : {}), ...(COLOR.test(color) ? { color } : {}), ...(isBotFaceShape(shape) ? { shape } : {}) };
   return Object.keys(avatar).length ? avatar : undefined;
 }
 
@@ -309,12 +310,12 @@ function handleField(raw: unknown): string {
   return value;
 }
 
-/** `{ emoji?, color? }`; `""` clears a key (kept as `""` so a patch can tell). */
-function avatarField(raw: unknown): BotAvatar {
-  if (!isRecord(raw)) throw new BotInputError("Avatar must be an object with emoji and/or color.");
-  const unknown = Object.keys(raw).filter((key) => key !== "emoji" && key !== "color");
+/** `{ emoji?, color?, shape? }`; `""` clears a key (kept as `""` so a patch can tell). */
+function avatarField(raw: unknown): BotAvatarPatch {
+  if (!isRecord(raw)) throw new BotInputError("Avatar must be an object with emoji, color and/or shape.");
+  const unknown = Object.keys(raw).filter((key) => key !== "emoji" && key !== "color" && key !== "shape");
   if (unknown.length) throw new BotInputError(`Unknown avatar field: ${unknown.join(", ")}.`);
-  const avatar: BotAvatar = {};
+  const avatar: BotAvatarPatch = {};
   if ("emoji" in raw) {
     if (typeof raw["emoji"] !== "string" || (raw["emoji"] !== "" && !isOneGrapheme(raw["emoji"]))) throw new BotInputError("Avatar emoji must be one character.");
     avatar.emoji = raw["emoji"];
@@ -323,6 +324,11 @@ function avatarField(raw: unknown): BotAvatar {
     const color = typeof raw["color"] === "string" ? raw["color"].toLowerCase() : undefined;
     if (color === undefined || (color !== "" && !COLOR.test(color))) throw new BotInputError("Avatar color must be #rrggbb.");
     avatar.color = color;
+  }
+  if ("shape" in raw) {
+    const shape = raw["shape"];
+    if (shape !== "" && !isBotFaceShape(shape)) throw new BotInputError(`Avatar shape must be one of: ${BOT_FACE_SHAPES.join(", ")}.`);
+    avatar.shape = shape;
   }
   return avatar;
 }
@@ -417,10 +423,10 @@ export function patchedVoice(current: BotVoice | undefined, patch: BotVoicePatch
   return Object.keys(voice).length ? voice : undefined;
 }
 
-/** The avatar after a patch: given keys replace, `""` clears a key, `null` clears both. */
-export function patchedAvatar(current: BotAvatar | undefined, patch: BotAvatar | null): BotAvatar | undefined {
+/** The avatar after a patch: given keys replace, `""` clears a key, `null` clears all three. */
+export function patchedAvatar(current: BotAvatar | undefined, patch: BotAvatarPatch | null): BotAvatar | undefined {
   if (patch === null) return undefined;
   const next = { ...current, ...patch };
-  const avatar = { ...(next.emoji ? { emoji: next.emoji } : {}), ...(next.color ? { color: next.color } : {}) };
+  const avatar: BotAvatar = { ...(next.emoji ? { emoji: next.emoji } : {}), ...(next.color ? { color: next.color } : {}), ...(next.shape ? { shape: next.shape } : {}) };
   return Object.keys(avatar).length ? avatar : undefined;
 }

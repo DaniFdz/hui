@@ -152,6 +152,15 @@ test("bots are created, read, edited, archived and restored through the guarded 
 
   assert.equal(botOf(await call("/__hui/bots/ada", "PATCH", { title: "Lead" })).title, "Lead");
   assert.equal((await call("/__hui/bots/ada", "PATCH", {})).status, 400);
+  // The look: a face's shape and color beside the emoji; "" clears one key (emoji: "" switches to the face), null all.
+  assert.deepEqual(botOf(await call("/__hui/bots/bob", "PATCH", { avatar: { shape: "heart", color: "#2FC49A" } })).avatar, { emoji: "🐻", color: "#2fc49a", shape: "heart" });
+  assert.deepEqual(botOf(await call("/__hui/bots/bob", "PATCH", { avatar: { emoji: "" } })).avatar, { color: "#2fc49a", shape: "heart" });
+  assert.deepEqual(botOf(await call("/__hui/bots/bob")).avatar, { color: "#2fc49a", shape: "heart" }, "kept in bots.json");
+  assert.deepEqual(botOf(await call("/__hui/bots/bob", "PATCH", { avatar: { shape: "" } })).avatar, { color: "#2fc49a" });
+  const shapeRefused = await call("/__hui/bots/bob", "PATCH", { avatar: { shape: "star" } });
+  assert.equal(shapeRefused.status, 400);
+  assert.match(String(shapeRefused.body["error"]), /Avatar shape must be one of: blob, round, triangle, heart, cookie/u);
+  assert.equal(botOf(await call("/__hui/bots/bob", "PATCH", { avatar: null })).avatar, undefined);
   assert.equal((await call("/__hui/bots/ada", "PATCH", { handle: "bob" })).status, 409);
 
   // An empty memory: nothing to zoom into yet; the routes validate their input first.

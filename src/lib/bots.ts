@@ -7,7 +7,7 @@
  * Responses are normalized on the way in, like settings: a malformed or newer
  * record is skipped or narrowed rather than reaching the roster as `undefined`.
  */
-import type { BotAvatar, BotInput, BotMemoryStatus, BotMemoryUsage, BotPatch, BotSessionStatus, BotsUpdate, BotView, BotVoice } from "../../shared/bots.ts";
+import { botLook, isBotFaceShape, type BotAvatar, type BotAvatarPatch, type BotFaceShape, type BotInput, type BotMemoryStatus, type BotMemoryUsage, type BotPatch, type BotSessionStatus, type BotsUpdate, type BotView, type BotVoice } from "../../shared/bots.ts";
 import { voiceLanguage, voiceProfileId, voiceSpeed } from "../../shared/voice.ts";
 import { CLIENT_HEADERS, fetchJson } from "./settings-store.ts";
 import { decodeSseFrame, reconnectDelay, STATUS_STREAM_STALL_MS, type SessionGroup, type SessionView } from "./sessions-store.ts";
@@ -31,6 +31,12 @@ export type BotDraft = {
   /** Empty: a private folder the gateway creates for the bot. */
   cwd: string;
   emoji: string;
+  /** The dialog's Look: "face" sends the shape and color and clears the emoji, "emoji" sends the emoji. Absent: the
+   * emoji decides, as before faces. */
+  look?: "face" | "emoji";
+  shape?: BotFaceShape;
+  /** #rrggbb */
+  color?: string;
   model: string;
   thinking: string;
   memoryModel: string;
@@ -73,7 +79,8 @@ function parseAvatar(value: unknown): BotAvatar | undefined {
   const color = typeof value["color"] === "string" && /^#[0-9a-f]{6}$/iu.test(value["color"].trim())
     ? value["color"].trim().toLowerCase()
     : undefined;
-  return emoji || color ? { ...(emoji ? { emoji } : {}), ...(color ? { color } : {}) } : undefined;
+  const shape = isBotFaceShape(value["shape"]) ? value["shape"] : undefined;
+  return emoji || color || shape ? { ...(emoji ? { emoji } : {}), ...(color ? { color } : {}), ...(shape ? { shape } : {}) } : undefined;
 }
 
 /** The compactor's spend; a gateway that reports none spent nothing it can show. */
@@ -306,14 +313,29 @@ export function botInputFromDraft(draft: BotDraft): BotInput {
     thinking: optional(draft.thinking),
     memoryModel: optional(draft.memoryModel),
   };
-  const emoji = draft.emoji.trim();
+  const avatar = draftAvatar(draft);
   const voice = draftVoice(draft);
   return {
     name: draft.name.trim(),
     ...Object.fromEntries(Object.entries(entries).filter(([, value]) => value !== undefined)),
-    ...(emoji ? { avatar: { emoji } } : {}),
+    ...(avatar ? { avatar } : {}),
     ...(voice ? { voice } : {}),
   };
+}
+
+function draftLook(draft: BotDraft): "face" | "emoji" {
+  return draft.look ?? (draft.emoji.trim() ? "emoji" : "face");
+}
+
+/** A new bot keeps the look its dialog showed: the shape and color picked (or preselected), and the emoji in Emoji. */
+function draftAvatar(draft: BotDraft): BotAvatar | undefined {
+  const emoji = draft.emoji.trim();
+  const avatar: BotAvatar = {
+    ...(draftLook(draft) === "emoji" && emoji ? { emoji } : {}),
+    ...(draft.color && /^#[0-9a-f]{6}$/iu.test(draft.color) ? { color: draft.color.toLowerCase() } : {}),
+    ...(draft.shape && isBotFaceShape(draft.shape) ? { shape: draft.shape } : {}),
+  };
+  return Object.keys(avatar).length ? avatar : undefined;
 }
 
 /** The dialog's voice: a chosen voice id, a speed other than 1× and a language; nothing for VoiceStudio's defaults. */
@@ -329,7 +351,9 @@ function draftVoice(draft: BotDraft): BotVoice | undefined {
  * gateway's "only while idle" rule. An emptied field clears: title and
  * instructions go, the memory model goes back to the bot's own, and an empty
  * model or thinking level ("Gateway default") puts the chat back on what a new
- * chat gets. An avatar key set to "" clears that key. */
+ * chat gets. An avatar key set to "" clears that key: Face clears the emoji, and
+ * a shape or color is sent only when it differs from what the bot shows now
+ * (its own, or the one its id picks). */
 export function botPatchFromDraft(bot: BotView, draft: BotDraft): BotPatch {
   const patch: BotPatch = {};
   const name = draft.name.trim();
@@ -340,8 +364,8 @@ export function botPatchFromDraft(bot: BotView, draft: BotDraft): BotPatch {
   }
   const cwd = draft.cwd.trim();
   if (cwd && cwd !== bot.cwd) patch.cwd = cwd;
-  const emoji = draft.emoji.trim();
-  if (emoji !== (bot.avatar?.emoji ?? "")) patch.avatar = { emoji };
+  const avatar = avatarPatch(bot, draft);
+  if (avatar) patch.avatar = avatar;
   // The voice section shows only while VoiceStudio is connected; without it the voice is left as it is.
   if (draft.voice !== undefined) {
     const profile = draft.voice.trim();
@@ -356,6 +380,17 @@ export function botPatchFromDraft(bot: BotView, draft: BotDraft): BotPatch {
     if (Object.keys(voice).length) patch.voice = voice;
   }
   return patch;
+}
+
+function avatarPatch(bot: BotView, draft: BotDraft): BotAvatarPatch | undefined {
+  const patch: BotAvatarPatch = {};
+  const emoji = draftLook(draft) === "emoji" ? draft.emoji.trim() : "";
+  if (emoji !== (bot.avatar?.emoji ?? "")) patch.emoji = emoji;
+  const look = botLook(bot);
+  if (draft.shape && isBotFaceShape(draft.shape) && draft.shape !== look.shape) patch.shape = draft.shape;
+  const color = draft.color?.toLowerCase();
+  if (color && /^#[0-9a-f]{6}$/u.test(color) && color !== look.color) patch.color = color;
+  return Object.keys(patch).length ? patch : undefined;
 }
 
 /** Puts a confirmed bot record in place of its old copy, or adds it. */
