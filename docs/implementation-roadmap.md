@@ -774,6 +774,22 @@ only for now. It lands as stacked pull requests:
    `src/lib/voice*.test.ts`, `src/lib/bots.test.ts`, `cli/*.test.ts` (against
    `e2e/voicestudio-fixture.mjs`) and the Browser-tool journey
    `e2e/bots-voice.browser.md` (fake microphone in headless Brave).
+5. **Calls with GPT-Live** (implemented 2026-10-06; tested with real calls
+   through a ChatGPT login): Settings → Models → Calls (Conversation model:
+   GPT-Live or VoiceStudio, default voice, the ChatGPT login calls use) and a
+   per-bot call voice (`voice.live`, `--call-voice`). The gateway's broker
+   (`server/calls.ts`, `server/call-routes.ts`) sets each WebRTC call up over
+   the ChatGPT login without the browser seeing a token, picking accounts as
+   model turns do. The browser's `LiveCall` (`src/lib/live-call.ts`) carries
+   the audio and data channel. OpenDots-style: GPT-Live's one tool asks the bot's
+   call helper on its utility model (`server/call-helper.ts`). The helper hands
+   real work to the chat as `[call task]` messages, whose replies are spoken
+   while the call lasts. Each call ends as one card with a summary and the whole
+   transcript, which the bot's memory keeps. The bot's Memory model became its
+   Utility model, defaulting to Settings' utility model. Proof:
+   `server/call*.test.ts`, `server/calls.test.ts`, `server/bot-service.test.ts`,
+   `server/runtimes/durable-optchat.test.ts`, `src/lib/live-call.test.ts` and a
+   real call run (both calls of the e2e in the pull request).
 
 ## Recommended implementation order
 

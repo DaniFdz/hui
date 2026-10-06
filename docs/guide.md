@@ -180,6 +180,14 @@ provider quota windows and reset times. Unsupported quotas are labeled explicitl
 Reopen existing sessions after changing connections; new sessions use the updated
 configuration. HUI-managed connections require the default PI SDK backend.
 
+Settings → Models names three roles. The **primary model** does the real work:
+choose the smartest model you have, speed doesn't matter. The **utility model**
+does the quick work (session and branch names, Jira drafts, `/btw`, and for bots
+their memory summaries, quick answers on calls and call summaries): choose the
+fastest you have, ideally a cheap one. The **conversation model** (Settings →
+Models → Calls) talks on calls with bots and is made for phone calls: quick to
+respond.
+
 ## Bots
 
 A **bot** is a named, persistent agent: a role and standing instructions (its
@@ -188,6 +196,13 @@ Sessions stay what they were (coding work with worktrees, rewind and
 `/compact`); a bot is for the assistant you come back to every day. Its chat is
 an ordinary Pi Durable session on this gateway, so the chat view, streaming,
 steering, follow-ups, questions and model switching work as in any session.
+
+**Models.** A bot's **Model** does its real work: the smartest model you have.
+Its **Utility model** does its quick work (the memory's summaries, quick answers
+on calls, each call's summary): the fastest you have, ideally a cheap one. Without
+one of its own it uses Settings' utility model, then its own model. From a
+terminal: `hui bot edit ada --model openai-codex/gpt-6.1-sol --utility-model anthropic/claude-haiku-4-5`
+(`--memory-model` is the same flag; `""` goes back to the default).
 
 **Memory.** A bot's chat carries [OptChat](optchat.md) memory: every message is
 kept word for word and a cheap model condenses the chat into a tree of one-line
@@ -369,7 +384,9 @@ stop. One reading plays at a time.
 
 **Calls.** The phone button in a bot's header starts a call: a view over the
 chat with a timer, captions of what you said and of the bot's answer, and
-**Mute**, **Speaker** and **Hang up**. Speak, then pause: the browser notices
+**Mute**, **Speaker** and **Hang up**. Settings → Models → Calls chooses how
+calls run: this section is the *VoiceStudio (speech chain)* conversation model;
+[Calls with GPT-Live](#calls-with-gpt-live) is the other. Speak, then pause: the browser notices
 the end of what you said, VoiceStudio transcribes it and it goes into the bot's
 chat as an ordinary message marked `[voice] `, so the chat and the bot's memory
 keep the call. The answer is spoken sentence by sentence as it streams.
@@ -381,14 +398,53 @@ finishes in the chat.
 
 Every call turn is a whole bot turn: transcription, the bot's model with its
 memory, then speech. Expect a few seconds before the bot answers, more while its
-memory is being summarized (the call says *Summarizing memory…*). A faster voice
-model in front of the bot is a possible follow-up.
+memory is being summarized (the call says *Summarizing memory…*). For a
+conversation model in front of the bot, use GPT-Live (below).
 
 **Microphone.** Browsers give the microphone only to secure pages: open HUI on
 `https://` (Tailscale Serve) or on this machine's `localhost`. HUI's desktop
 app does not allow the microphone yet; Read aloud works there too. The
 microphone opens only when you press the microphone or Call, and closes when
 the note or the call ends.
+
+### Calls with GPT-Live
+
+With **Conversation model: GPT-Live (ChatGPT subscription)** in Settings →
+Models → Calls, a call talks to GPT-Live in real time through the ChatGPT login
+you added in Settings → Models; VoiceStudio is not needed. The section shows the
+account calls use (the first one not waiting for its quota, as model turns
+choose) and the **default voice**; each bot can pick its own **Call voice** in
+its dialog, or with `hui bot edit ada --call-voice ember` (`""` goes back to the
+default).
+
+The call works like [OpenDots](https://github.com/CopilotKit/OpenDots):
+
+- **GPT-Live talks.** It answers greetings, small talk and what the bot's
+  instructions and recent memory already say, about a second after you stop.
+- **Quick questions go to the bot's helper.** When GPT-Live needs to know
+  something, it asks the bot: a helper on the bot's utility model answers from
+  the bot's instructions, its memory and the call so far, in a few seconds. It
+  never waits for the bot's own turn. It has 25 seconds per question; past
+  them GPT-Live says it is taking long and offers to hand it off.
+- **Real work goes to the bot's chat.** What needs tools, files or current
+  information arrives in the chat as a message starting with `[call task]`,
+  done by the bot's own model and tools. GPT-Live tells you it is on it, and
+  reads you the result if it comes while the call is still up. Otherwise it
+  stays in the chat.
+- **One card per call.** Nothing lands in the chat line by line. When you hang
+  up, the utility model writes a summary in the bot's language: what was
+  discussed, what was decided, facts to remember and tasks handed off. The chat
+  gets one card with the call's duration, that summary and the whole
+  transcript (both sides and the helper's answers), expandable. The bot's
+  memory keeps both, so later turns and calls recall the call. A call whose
+  page vanishes is summarized after 90 seconds without news from it; if the
+  summary fails, the card keeps the transcript and says so.
+
+A call ends after 15 minutes. The helper answers six questions per call (then
+everything goes to the chat), a call hands off at most four tasks, and two calls
+can run at once on the gateway. The route is the one ChatGPT's own voice mode
+uses, not a public API: it may change, and calls count against your ChatGPT
+plan's voice usage.
 
 ### Archiving
 
@@ -405,9 +461,13 @@ Bots live in HUI's own files on this machine: `bots.json` (owner-only) in HUI's
 configuration directory, their chats in the Pi Durable store and their memory
 beside it. Nothing about a bot leaves the machine except the model requests its
 chat and its memory's compactor make to the providers you configured, and, with
-voice, recordings and text to speak sent to the VoiceStudio you connected. HUI
-stores no audio: what stays is the text of voice notes and calls in the bot's
-chat.
+voice, recordings and text to speak sent to the VoiceStudio you connected. A
+GPT-Live call sends your voice from the browser straight to OpenAI under your
+ChatGPT account, and the gateway sends the call's instructions (the bot's
+instructions and the newest part of its memory) when it starts the call; the
+helper and the summary use the bot's utility model like any other request. The
+ChatGPT credential stays in the gateway. HUI stores no audio: what stays is the
+text of voice notes and calls in the bot's chat.
 
 ## After an upgrade: `hui doctor`
 
