@@ -813,9 +813,9 @@ stacked pull requests:
    the remote store, a reply with the bots section, the utility-model compactor,
    `message_bot` both ways, a routine, a queued message, steering, a question,
    Stop, a call's record, archive, restore, delete and a disconnected worker),
-   `src/lib/bots.test.ts`, `src/views/bots.test.ts`, `cli/*.test.ts` and a
-   built gateway with a local worker driven through the browser (screenshots in
-   the pull request).
+   `src/lib/bots.test.ts`, `src/views/bots.test.ts`, `cli/*.test.ts` and the
+   browser journey `e2e/bots-workers.browser.md` (a built gateway with a local
+   worker, headless Chromium through CDP; screenshots in the pull request).
 
 ## Recommended implementation order
 
