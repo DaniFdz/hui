@@ -3,66 +3,55 @@
  * Rows, menus, inputs and dialogs reuse the shell/session/settings classes;
  * only what bots add lives here, on the shared tokens. */
 
-/* ── Agents | Bots switch: the top of the sidebar, under its header buttons.
- * The hidden search below it sits on -4px margins, hence the larger bottom margin. ── */
+/* ── Agents | Bots switch: the first thing in the sidebar, above even its
+ * header buttons, because each tab has a sidebar of its own. Full-width tabs
+ * over a divider, in sentence case, so it reads as that choice rather than as
+ * one more uppercase section label. ── */
 .app-shell .sidebar-switch {
   display: flex;
   flex: none;
-  align-items: center;
-  min-height: 28px;
-  margin-block-end: 12px;
-  padding: 0 10px 0 calc(var(--sidebar-inset) + var(--sidebar-lead) + var(--sidebar-row-gap));
-  color: var(--muted);
-  font-size: var(--control-ui-text-xs);
-  font-weight: 650;
-  letter-spacing: .08em;
-  text-transform: uppercase;
+  margin-block-end: 8px;
+  border-bottom: 1px solid var(--border);
 }
 .app-shell .sidebar-tabs {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
+  display: flex;
+  flex: 1;
   min-width: 0;
-  margin-inline-start: -6px;
 }
 .app-shell .sidebar-tabs__tab {
   position: relative;
   display: inline-flex;
+  flex: 1 1 0;
   align-items: center;
-  gap: 5px;
-  width: auto;
-  height: 24px;
-  padding: 0 6px;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+  height: 36px;
+  padding: 0 8px;
   border: 0;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
   background: transparent;
   color: var(--muted);
-  opacity: 1;
   font: inherit;
-  letter-spacing: inherit;
-  text-transform: inherit;
+  font-size: var(--control-ui-text-md);
+  font-weight: 600;
   cursor: var(--cursor-action, pointer);
 }
-.app-shell .sidebar-tabs__tab + .sidebar-tabs__tab::before {
-  position: absolute;
-  inset-block: 6px;
-  inset-inline-start: -3px;
-  border-inline-start: 1px solid var(--border);
-  content: "";
-  pointer-events: none;
-}
-.app-shell .sidebar-tabs__tab:hover {
-  background: color-mix(in srgb, var(--bg-hover) 78%, transparent);
-  color: var(--text);
+/* Only where a pointer hovers: a tap would leave the tint on a touch screen. */
+@media (hover: hover) {
+  .app-shell .sidebar-tabs__tab:hover {
+    background: color-mix(in srgb, var(--bg-hover) 78%, transparent);
+    color: var(--text);
+  }
 }
 .app-shell .sidebar-tabs__tab[aria-selected="true"] {
-  background: transparent;
   color: var(--text-strong);
 }
+/* The selected tab's underline sits on the divider. */
 .app-shell .sidebar-tabs__tab[aria-selected="true"]::after {
   position: absolute;
-  inset-inline: 6px;
-  bottom: 1px;
+  inset-inline: 12px;
+  bottom: -1px;
   height: 2px;
   border-radius: var(--radius-full);
   background: var(--accent);
@@ -71,6 +60,9 @@
 .app-shell .sidebar-tabs__tab:focus-visible {
   outline: none;
   box-shadow: var(--focus-ring);
+}
+@media (hover: none), (pointer: coarse) {
+  .app-shell .sidebar-tabs__tab { height: 44px; }
 }
 .app-shell .sidebar-tabs__dot {
   width: 6px;

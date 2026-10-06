@@ -134,25 +134,29 @@ outside the repository and are not committed.
 
 ## Agents | Bots at the top (2026-10-06)
 
-The owner asked for Hermes's layout: the switch moved from the sessions toolbar
-to the top of the sidebar, and its first tab is now Agents. Checked at
-`9492644` on the launcher with `--pi-sessions` (doctor before and after;
+The owner asked for Hermes's layout, then for the switch above everything
+else, because the two tabs give the sidebar different contents. At `9492644`
+it moved from the sessions toolbar to just under the header buttons and its
+first tab was renamed Agents; at `8d1a1b5` it became the first thing in the
+sidebar, a full-width tab bar over a divider, in sentence case. Checked at
+`8d1a1b5` on the launcher with `--pi-sessions` (doctor before and after;
 cleanup closed every port), with two bots created through `POST /__hui/bots`
-(Scout 🔭, Ledger) and one session started from Home's composer, driven in
-headless Chromium through CDP:
+(Scout 🔭, Ledger) and one session started from Home's composer, in headless
+Chromium through CDP: one browser with a fine, hovering pointer at 1440×900
+and a separate touch-like one at 390×844.
 
-1. Agents, the default: AGENTS | BOTS sits right under the header buttons, with
-   Agents selected; below it are the navigation (Contributions … Settings), the
-   SESSIONS toolbar with Filter & sort and New group, and the session list. The
-   header keeps New session and *Search sessions*.
-2. Bots: no navigation and no New session; a BOTS header with its **+** (New
-   bot) and the roster (Ledger, Scout). The header's search reads *Search
-   bots*. Everything under the switch is one tab panel, labelled by the
+1. Agents, the default: the tab bar is the sidebar's first element (two
+   119×36 px tabs at 14 px over the divider), then the header buttons (New
+   session, *Search sessions*, Collapse sidebar), the navigation, the SESSIONS
+   toolbar and the session list.
+2. Bots: no navigation and no New session; the header keeps *Search bots* and
+   Collapse sidebar, then a BOTS header with its **+** (New bot) and the
+   roster (Ledger, Scout). The lists are one tab panel, labelled by the
    selected tab.
-3. A bot's page keeps the Bots tab. ArrowLeft on the focused tab selects Agents
-   and moves focus to it; ArrowRight goes back to Bots.
-4. 390×844: the drawer shows the same two layouts, and the document stays 390 px
-   wide.
-5. With *Show the Bots tab* off, no switch renders and the sidebar is as before:
-   the navigation, then SESSIONS.
+3. A bot's page keeps the Bots tab. ArrowLeft on the focused tab selects
+   Agents and moves focus to it; ArrowRight goes back to Bots.
+4. 390×844: the drawer opens on the same tab bar with 44 px tabs; a tapped
+   tab keeps no hover tint; the document stays 390 px wide.
+5. With *Show the Bots tab* off, no tab bar renders and the sidebar starts
+   with its header buttons, as on `main`.
 6. Browser page errors: none. Console errors: none.

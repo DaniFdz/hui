@@ -199,8 +199,8 @@ summarized, `hui bot chat` says "Summarizing memory…".
 ### The Bots tab
 
 Settings → Sessions → **Show the Bots tab** adds an **Agents | Bots** switch to
-the top of the sidebar (it is off by default, and hiding it never stops a bot or
-its routines). **Agents** is the usual sidebar; **Bots** shows only your bots,
+the very top of the sidebar (it is off by default, and hiding it never stops a
+bot or its routines). **Agents** is the usual sidebar; **Bots** shows only your bots,
 most recently active first, with their latest message, and **+** creates one.
 A bot's chat opens beside its **Routines |
 Memory** panel: Routines adds schedules (every few minutes, hours or days,
