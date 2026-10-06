@@ -12,6 +12,8 @@ import {
   hiddenBotCount,
   normalizeBotPanel,
   normalizeSidebarTab,
+  botSettingsShortcutLabel,
+  isBotSettingsShortcut,
   rosterBots,
   tabAfterKey,
   SIDEBAR_TABS,
@@ -126,4 +128,20 @@ test("the side panel remembers open/closed and its tab, defaulting open on Routi
   assert.deepEqual(normalizeBotPanel(null), { open: true, tab: "routines" });
   assert.deepEqual(normalizeBotPanel({ open: false, tab: "memory" }), { open: false, tab: "memory" });
   assert.deepEqual(normalizeBotPanel({ open: "no", tab: "settings" }), { open: true, tab: "routines" });
+});
+
+test("Ctrl+Shift+, (⇧⌘, on Apple) toggles a bot's Settings, by the comma key's position", () => {
+  const key = (overrides: Partial<KeyboardEvent>) => ({ altKey: false, code: "Comma", ctrlKey: false, defaultPrevented: false, isComposing: false, key: "<", metaKey: false, shiftKey: true, ...overrides });
+  assert.equal(isBotSettingsShortcut(key({ ctrlKey: true }), false), true);
+  assert.equal(isBotSettingsShortcut(key({ ctrlKey: true, code: "KeyM", key: ";" }), false), false, "another key that types the same character");
+  assert.equal(isBotSettingsShortcut(key({ ctrlKey: true, code: "", key: "," }), false), true, "a comma without a key position");
+  assert.equal(isBotSettingsShortcut(key({ metaKey: true }), true), true);
+  assert.equal(isBotSettingsShortcut(key({ ctrlKey: true }), true), false, "Ctrl is not the Apple modifier");
+  assert.equal(isBotSettingsShortcut(key({ metaKey: true }), false), false);
+  assert.equal(isBotSettingsShortcut(key({ ctrlKey: true, shiftKey: false }), false), false, "Ctrl+, alone is not it");
+  assert.equal(isBotSettingsShortcut(key({ ctrlKey: true, altKey: true }), false), false);
+  assert.equal(isBotSettingsShortcut(key({ ctrlKey: true, isComposing: true }), false), false);
+  assert.equal(isBotSettingsShortcut(key({ ctrlKey: true, defaultPrevented: true }), false), false);
+  assert.equal(botSettingsShortcutLabel(false), "Ctrl+Shift+,");
+  assert.equal(botSettingsShortcutLabel(true), "⇧⌘,");
 });

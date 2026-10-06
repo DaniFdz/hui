@@ -23,8 +23,9 @@ const CREATE_BOT_TIMEOUT_MS = 60_000;
 
 export type BotMemory = { status: BotMemoryStatus; view: string };
 
-/** The New/Edit dialog as typed. Empty model fields mean the default: the
- * gateway's model, the default thinking level, the bot's own model for memory. */
+/** A bot's editable fields as the New bot and Edit profile dialogs and the
+ * Settings tab hold them. Empty model fields mean the default: the gateway's
+ * model, the default thinking level, Settings' utility model. */
 export type BotDraft = {
   name: string;
   title: string;
@@ -388,6 +389,74 @@ export function botPatchFromDraft(bot: BotView, draft: BotDraft): BotPatch {
   if (live !== undefined && live !== (bot.voice?.live ?? "")) voice.live = live;
   if (Object.keys(voice).length) patch.voice = voice;
   return patch;
+}
+
+/** The name + gives a new bot until it is told its own (the bot asks for it first). */
+export const NEW_BOT_NAME = "New Bot";
+
+/** How + creates a bot. `runsOn` is the hook for the machine it runs on, fixed at creation: the workers pull request
+ * offers + as a menu (Local or a worker) while workers exist and sends the choice. */
+export type NewBotOptions = { runsOn?: string };
+
+/** A control of a bot's Settings tab, by what it saves through `PATCH /__hui/bots/:id`: the look's shape, color and
+ * emoji are parts of `avatar`, a call's voice and language parts of `voice`. */
+export type BotSettingKey = "name" | "title" | "shape" | "color" | "emoji" | "model" | "thinking" | "memoryModel" | "callVoice" | "voiceLanguage" | "cwd";
+export type BotSettingValue = string;
+
+/** What a control shows for the bot as it is: "" for a default, the look as the bot shows it. */
+export function botSettingOf(bot: BotView, key: BotSettingKey): BotSettingValue {
+  switch (key) {
+    case "name": return bot.name;
+    case "title": return bot.title ?? "";
+    case "shape": return botLook(bot).shape;
+    case "color": return botLook(bot).color;
+    case "emoji": return bot.avatar?.emoji ?? "";
+    case "model": return bot.model ?? "";
+    case "thinking": return bot.thinking ?? "";
+    case "memoryModel": return bot.memoryModel ?? "";
+    case "callVoice": return bot.voice?.live ?? "";
+    case "voiceLanguage": return bot.voice?.language ?? "";
+    case "cwd": return bot.cwd;
+  }
+}
+
+/** A control's new value as the draft change `botChangePatch` turns into a PATCH. An emoji is the Emoji look; an
+ * empty one goes back to the face. */
+export function botSettingChange(key: BotSettingKey, value: BotSettingValue): Partial<BotDraft> {
+  if (key === "emoji") return value.trim() ? { look: "emoji", emoji: value } : { look: "face", emoji: "" };
+  return { [key]: value };
+}
+
+/** The draft that changes nothing: the bot as it is, its look as it shows and every voice key as stored. */
+export function botDraftOf(bot: BotView): BotDraft {
+  const look = botLook(bot);
+  return {
+    name: bot.name,
+    title: bot.title ?? "",
+    instructions: bot.instructions ?? "",
+    cwd: bot.cwd,
+    emoji: bot.avatar?.emoji ?? "",
+    look: look.kind,
+    shape: look.shape,
+    color: look.color,
+    model: bot.model ?? "",
+    thinking: bot.thinking ?? "",
+    memoryModel: bot.memoryModel ?? "",
+    voice: bot.voice?.profile ?? "",
+    voiceSpeed: bot.voice?.speed ?? 1,
+    voiceLanguage: bot.voice?.language ?? "",
+    callVoice: bot.voice?.live ?? "",
+  };
+}
+
+/** One change from the Settings tab or the Edit profile dialog as the PATCH
+ * that makes it: only what differs from the bot now, by the edit rules above
+ * (an empty model or thinking level goes back to the gateway's defaults, an
+ * empty utility model to Settings', and a blank name or workspace changes
+ * nothing). Undefined when there is nothing to send. */
+export function botChangePatch(bot: BotView, change: Partial<BotDraft>): BotPatch | undefined {
+  const patch = botPatchFromDraft(bot, { ...botDraftOf(bot), ...change });
+  return Object.keys(patch).length ? patch : undefined;
 }
 
 function avatarPatch(bot: BotView, draft: BotDraft): BotAvatarPatch | undefined {
