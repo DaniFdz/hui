@@ -177,7 +177,7 @@ function renderProfile(props: BotSettingsProps) {
         control: html`<input class="settings-input" id=${nameId} name="name" type="text" required maxlength=${BOT_LIMITS.name} autocomplete="off" .value=${bot.name}
           @keydown=${(event: KeyboardEvent) => onTextKeydown(event, "name", props)} @blur=${(event: FocusEvent) => onTextBlur(event, "name", props)} />` })}
       ${renderRow(props, { setting: "title", keys: ["title"], title: "Title", labelFor: titleId,
-        control: html`<input class="settings-input" id=${titleId} name="title" type="text" maxlength=${BOT_LIMITS.title} autocomplete="off" placeholder="Research assistant" .value=${bot.title ?? ""}
+        control: html`<input class="settings-input" id=${titleId} name="title" type="text" maxlength=${BOT_LIMITS.title} autocomplete="off" placeholder="Add a title" .value=${bot.title ?? ""}
           @keydown=${(event: KeyboardEvent) => onTextKeydown(event, "title", props)} @blur=${(event: FocusEvent) => onTextBlur(event, "title", props)} />` })}
       ${renderLook(props)}
     </div>
