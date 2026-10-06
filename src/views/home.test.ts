@@ -430,7 +430,8 @@ test("session actions live in the sidebar instead of the chat header", () => {
   assert.doesNotMatch(homeSource, /aria-label="Session actions"/);
   assert.match(shellSource, /<wa-dropdown-item value="rename"[\s\S]*?Rename/);
   assert.match(shellSource, /<wa-dropdown-item value="delete"[\s\S]*?Delete/);
-  assert.match(shellSource, /aria-label="New session"/);
+  // New sessions start from each group's +; the sidebar header has no New session button.
+  assert.match(shellSource, /aria-label=\$\{`New session in /);
 });
 
 test("the chat header exposes original same-session split controls and pane-local close", () => {

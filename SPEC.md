@@ -32,10 +32,14 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   remain absent; HUI never estimates per-fragment tokens or historical duration.
   Live timings survive browser reconnects, not a PI runtime/gateway restart.
 
-- Session search lives in the fixed sidebar header, including the mobile drawer.
-  Search expands directly below the header and filters the session list; it is
-  not duplicated in the Sessions toolbar or a bottom footer. Settings is the last
-  primary-navigation destination, not a header button.
+- Session search is the field directly below the sidebar header; it filters the
+  session list and is not duplicated in the Sessions toolbar or a bottom footer.
+  The mobile top bar's Search opens it, and Ctrl+K (⌘K) finds sessions in the
+  command palette. The header holds only the collapse toggle, at its top-left,
+  where the restore control appears while the sidebar is collapsed, so toggling
+  needs no mouse travel (the owner dropped the header's New session and Search
+  buttons on 2026-10-06; new sessions start from a group's +). Settings is the
+  last primary-navigation destination, not a header button.
 - Appearance includes the native OpenClaw Miami palette in light, dark and
   system modes. Theme, accent, interface-font and chat-prose-font preferences
   persist in HUI settings. The two font selectors expose OpenClaw's ten choices
@@ -1144,10 +1148,10 @@ everything the Bots tab can, through the same routes.
   status, its view, any line zoomed down to a message, and a browse page.
 - **The Bots tab** is opt-in: Settings → Sessions → *Show the Bots tab* (off by
   default, saved in HUI settings). Hiding it never stops bots or routines. On,
-  an **Agents | Bots** switch tops the sidebar, above even its header buttons
-  (arrow keys, Home/End; the browser remembers the tab): Agents is the sidebar
-  as before, and Bots shows only the roster, without the navigation or New
-  session. Bot chats never
+  an **Agents | Bots** switch fills the sidebar's top row after the collapse
+  toggle (arrow keys, Home/End; the browser remembers the tab): Agents is the
+  sidebar as before, and Bots shows only the roster, without the navigation.
+  Bot chats never
   appear in the Sessions list, its search, Kanban, the Sessions page, the
   command palette or session pickers; Automations labels their routines
   *Bot · name* and words
@@ -1219,7 +1223,10 @@ of the sidebar and its first tab is named **Agents**. Agents is the same session
 sidebar, not an Agents page or agent selector; Bots shows only the roster.
 Later that day he asked for it above everything else, the header buttons
 included, because the two tabs work differently: it is now a full-width tab bar
-over a divider, the first thing in the sidebar.
+over a divider in the sidebar's top row. He then dropped the header's New
+session and Search buttons, which he never used, and asked for the collapse
+toggle to stay put: it now starts that top row, and the restore control appears
+on the same spot while the sidebar is collapsed.
 
 ### New sessions run on Pi Durable
 

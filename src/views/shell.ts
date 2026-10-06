@@ -108,11 +108,11 @@ export type SessionCopyAction = "link" | "markdown" | "id" | "jira";
 export type SessionOpenAction = "tab" | "window" | "editor" | "jira";
 export type GroupDropTarget = { group: string; position: "before" | "after" };
 
-/** The Agents | Bots switch, the first thing in the sidebar, above even its
- * header buttons, because each tab has a sidebar of its own: Agents is the
+/** The Agents | Bots switch fills the sidebar's top row, right after the
+ * collapse toggle, because each tab has a sidebar of its own: Agents is the
  * sidebar as before, and Bots shows only the roster. Present only while
- * Settings → Sessions → Show the Bots tab is on; without it the sidebar renders
- * exactly as before. */
+ * Settings → Sessions → Show the Bots tab is on; without it the top row holds
+ * only the toggle. */
 export type ShellBotsProps = {
   tab: SidebarTab;
   onTab: (tab: SidebarTab) => void;
@@ -838,18 +838,9 @@ export function renderSidebar(props: ShellProps) {
       }}
     >
         <div class="sidebar-shell sidebar-drawer__body">
-          ${props.bots ? html`<div class="sidebar-switch">${renderSidebarTabs(props.bots)}</div>` : nothing}
           <div class="sidebar-brand">
-          <div class="sidebar-brand__utilities">
-            ${botsTab ? nothing : html`<button type="button" class="sidebar-brand__icon sidebar-brand__header-control sidebar-brand__new-thread" aria-label="New session" title="New session" @click=${(event: Event) => {
-              closeContainingDrawer(event);
-              openNewSession(props);
-            }}>${icons.plus}</button>`}
-            <button type="button" class="sidebar-brand__icon sidebar-brand__header-control sidebar-brand__search" aria-label=${searchLabel} title=${searchLabel} @click=${focusSessionSearch}>${icons.search}</button>
-          </div>
-          <div class="sidebar-brand__actions">
             <button type="button" class="sidebar-brand__icon sidebar-brand__header-control sidebar-brand__collapse" aria-label="Collapse sidebar" title="Collapse sidebar" aria-expanded="true" @click=${toggleDesktopSidebar}>${icons.panelLeftClose}</button>
-          </div>
+            ${props.bots ? html`<div class="sidebar-switch">${renderSidebarTabs(props.bots)}</div>` : nothing}
           </div>
 
           <label class="sidebar-search ${(botsTab ? botsTab.search.trim() : query) ? "sidebar-search--active" : ""}">
@@ -978,9 +969,10 @@ function toggleDesktopSidebar(event: Event) {
   shell.dataset["navCollapsed"] = String(collapsed);
   shell.querySelector<HTMLElement>(".sidebar-brand__collapse")
     ?.setAttribute("aria-expanded", String(!collapsed));
-  if (!collapsed) {
-    queueMicrotask(() => shell.querySelector<HTMLElement>(".sidebar-brand__collapse")?.focus());
-  }
+  // The collapse toggle and the restore control share one spot, so focus moves to
+  // whichever is now shown: a second click or Enter in place undoes the first.
+  const next = collapsed ? ".shell-chrome-controls" : ".sidebar-brand__collapse";
+  requestAnimationFrame(() => shell.querySelector<HTMLElement>(next)?.focus());
 }
 
 export function closeDrawerOnEscape(event: KeyboardEvent) {

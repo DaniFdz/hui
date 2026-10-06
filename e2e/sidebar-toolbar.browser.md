@@ -1,5 +1,11 @@
 # Browser journey: sidebar header utilities
 
+> Superseded on 2026-10-06: the owner dropped the header's New session and
+> Search sessions buttons. The header now holds only **Collapse sidebar**, at its
+> top-left, where **Expand sidebar** appears while the sidebar is collapsed. The
+> search field below the header remains; the mobile top bar's Search opens it.
+> See the latest section of e2e/bots.browser.md for that check.
+
 Verified on 2026-09-24 in the running HUI app through the Browser tool.
 
 ## Reproduce
