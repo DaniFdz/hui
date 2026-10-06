@@ -126,6 +126,25 @@
 :root[data-chat-message-width="comfortable"] .chat { --chat-thread-max-width: 48rem; }
 :root[data-chat-message-width="wide"] .chat { --chat-thread-max-width: 64rem; }
 
+/* Not a size container: Chrome lays a size container's whole subtree out again
+   whenever its column changes, so every keystroke and streamed token reflowed
+   the entire conversation. Only the position rail queried it; its controller
+   measures the thread instead (position-rail.ts). */
+.chat-thread { container-type: normal; }
+.chat-position-rail__marks {
+  --chat-position-marks-height: min(
+    var(--chat-position-rail-height),
+    max(
+      0px,
+      calc(
+        var(--chat-position-thread-height, 0px) + var(--chat-thread-padding-top) + var(--chat-thread-padding-bottom) -
+          var(--chat-transcript-composer-underlap, 0px) - var(--chat-position-rail-top) -
+          var(--chat-position-rail-clearance)
+      )
+    )
+  );
+}
+
 /* Native command options reuse the reference command sheet's geometry. */
 .slash-menu-item { width: 100%; border: 0; background: transparent; font: inherit; text-align: left; cursor: pointer; }
 .slash-menu-item--active { background: var(--bg-hover); }
