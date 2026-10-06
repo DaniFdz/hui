@@ -1,6 +1,6 @@
 /**
  * The Bots tab: the sidebar roster, a bot's side panel (Routines | Memory |
- * Soul), the New/Edit bot dialog and the archive confirmation. Rendering only; every
+ * Soul | Tools, the last in `bot-tools.ts`), the New/Edit bot dialog and the archive confirmation. Rendering only; every
  * read and write is a prop callback owned by `hui-app.ts`. The bot's chat is
  * the ordinary session pane (`renderHome`) with a bot header, not a fork.
  */
@@ -38,6 +38,7 @@ import { describeRoutineSchedule, formatTimestamp, runIsActive } from "./setting
 import { renderSettingsToggle } from "./settings-toggle.ts";
 import { renderPicker } from "./settings-picker.ts";
 import { renderDirectoryPicker } from "./directory-picker.ts";
+import { renderBotToolsTab, type BotToolsProps } from "./bot-tools.ts";
 
 // Node's focused view tests import this module without a CSS loader.
 if (typeof document !== "undefined") {
@@ -331,9 +332,11 @@ export type BotPanelProps = {
     onCancel: () => void;
     onRetry: () => void;
   };
+  /** The Tools tab's state and actions (`BotToolsController.props`). */
+  tools: Omit<BotToolsProps, "bot">;
 };
 
-const PANEL_TAB_LABELS: Record<BotPanelTab, string> = { routines: "Routines", memory: "Memory", soul: "Soul" };
+const PANEL_TAB_LABELS: Record<BotPanelTab, string> = { routines: "Routines", memory: "Memory", soul: "Soul", tools: "Tools" };
 
 function panelTabId(panelId: string, tab: BotPanelTab): string {
   return `${panelId}-tab-${tab}`;
@@ -594,8 +597,8 @@ function renderSoulTab(props: BotPanelProps) {
 
 export function renderBotPanel(props: BotPanelProps) {
   const tabpanel = `${props.id}-tabpanel`;
-  return html`${props.sheet ? html`<button type="button" class="bot-panel__backdrop" tabindex="-1" aria-label="Close routines, memory and soul" @click=${props.onClose}></button>` : nothing}
-    <aside class="bot-panel ${props.sheet ? "bot-panel--sheet" : ""}" id=${props.id} aria-label=${`${props.bot.name}: routines, memory and soul`}
+  return html`${props.sheet ? html`<button type="button" class="bot-panel__backdrop" tabindex="-1" aria-label="Close routines, memory, soul and tools" @click=${props.onClose}></button>` : nothing}
+    <aside class="bot-panel ${props.sheet ? "bot-panel--sheet" : ""}" id=${props.id} aria-label=${`${props.bot.name}: routines, memory, soul and tools`}
       @keydown=${(event: KeyboardEvent) => {
         if (event.key !== "Escape" || !props.sheet || event.defaultPrevented) return;
         event.preventDefault();
@@ -608,10 +611,10 @@ export function renderBotPanel(props: BotPanelProps) {
             aria-selected=${String(props.tab === tab)} aria-controls=${tabpanel} tabindex=${props.tab === tab ? "0" : "-1"}
             @click=${() => props.onTab(tab)} @keydown=${(event: KeyboardEvent) => onPanelTabKeydown(event, props)}>${PANEL_TAB_LABELS[tab]}${tab === "routines" && props.bot.routines ? html`<span class="bot-panel__count">${props.bot.routines}</span>` : nothing}</button>`)}
         </div>
-        <button type="button" class="btn btn--ghost btn--icon chat-icon-btn bot-panel__close" aria-label="Close routines, memory and soul" title="Close" @click=${props.onClose}>${icons.close}</button>
+        <button type="button" class="btn btn--ghost btn--icon chat-icon-btn bot-panel__close" aria-label="Close routines, memory, soul and tools" title="Close" @click=${props.onClose}>${icons.close}</button>
       </header>
       <div class="bot-panel__body" role="tabpanel" id=${tabpanel} aria-labelledby=${panelTabId(props.id, props.tab)} tabindex="0">
-        ${props.tab === "routines" ? renderRoutinesTab(props) : props.tab === "memory" ? renderMemoryTab(props) : renderSoulTab(props)}
+        ${props.tab === "routines" ? renderRoutinesTab(props) : props.tab === "memory" ? renderMemoryTab(props) : props.tab === "soul" ? renderSoulTab(props) : renderBotToolsTab({ bot: props.bot, ...props.tools })}
       </div>
     </aside>`;
 }

@@ -13,16 +13,16 @@ test("the New and Edit dialogs have no Instructions; New bot says the bot starts
   assert.doesNotMatch(read("../styles/bots.css"), /bot-dialog__instructions/u);
 });
 
-test("the bot panel is Routines | Memory | Soul, one tablist with the same keys and remembered tab", () => {
+test("the bot panel is Routines | Memory | Soul | Tools, one tablist with the same keys and remembered tab", () => {
   const source = read("./bots.ts");
-  assert.match(source, /const PANEL_TAB_LABELS: Record<BotPanelTab, string> = \{ routines: "Routines", memory: "Memory", soul: "Soul" \};/u);
+  assert.match(source, /const PANEL_TAB_LABELS: Record<BotPanelTab, string> = \{ routines: "Routines", memory: "Memory", soul: "Soul", tools: "Tools" \};/u);
   const panel = between(source, "export function renderBotPanel(", "/* ── New / Edit bot dialog");
   assert.match(panel, /\$\{BOT_PANEL_TABS\.map\(\(tab\) => html`<button type="button" role="tab"/u);
   assert.match(panel, /@keydown=\$\{\(event: KeyboardEvent\) => onPanelTabKeydown\(event, props\)\}/u);
-  assert.match(panel, /props\.tab === "routines" \? renderRoutinesTab\(props\) : props\.tab === "memory" \? renderMemoryTab\(props\) : renderSoulTab\(props\)/u);
-  assert.match(panel, /aria-label=\$\{`\$\{props\.bot\.name\}: routines, memory and soul`\}/u);
+  assert.match(panel, /props\.tab === "routines" \? renderRoutinesTab\(props\) : props\.tab === "memory" \? renderMemoryTab\(props\) : props\.tab === "soul" \? renderSoulTab\(props\) : renderBotToolsTab\(\{ bot: props\.bot, \.\.\.props\.tools \}\)/u);
+  assert.match(panel, /aria-label=\$\{`\$\{props\.bot\.name\}: routines, memory, soul and tools`\}/u);
   assert.match(read("../lib/bot-roster.ts"), /tab: BOT_PANEL_TABS\.find\(\(tab\) => tab === raw\["tab"\]\) \?\? "routines"/u, "the stored tab may be Soul");
-  assert.match(read("./home.ts"), /aria-label=\$\{props\.bot\.panelOpen \? "Hide routines, memory and soul" : "Show routines, memory and soul"\}/u);
+  assert.match(read("./home.ts"), /aria-label=\$\{props\.bot\.panelOpen \? "Hide routines, memory, soul and tools" : "Show routines, memory, soul and tools"\}/u);
 });
 
 test("Soul shows SOUL.md through the chat's markdown renderer, with Edit; without one, what the first conversation does", () => {

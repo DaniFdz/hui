@@ -1,0 +1,78 @@
+/* A bot's Tools tab: rows like Settings → Skills, sized for the bot panel. Theme tokens only, so dark and light alike. */
+.bot-tools { display: flex; flex-direction: column; gap: 12px; }
+.bot-tools__summary { margin: 0; color: var(--text); font-size: var(--control-ui-text-sm); line-height: 1.45; }
+.bot-tools__section { gap: 6px; }
+.bot-tools__group {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+  border-radius: var(--radius-md);
+  background: var(--card);
+}
+.bot-tools__group + .bot-tools__group { margin-top: 4px; }
+.bot-tools__group-title {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin: 0;
+  padding: 8px 12px 2px;
+  color: var(--text-strong);
+  font-size: var(--control-ui-text-xs);
+  font-weight: 650;
+}
+.bot-tools__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 12px;
+}
+.bot-tools__row + .bot-tools__row { border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent); }
+.bot-tools__text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.bot-tools__name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-strong);
+  font-size: var(--control-ui-text-sm);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.bot-tools__row--off .bot-tools__name { color: var(--muted); }
+.bot-tools__id { color: var(--muted); font-family: var(--font-mono); font-size: 11px; font-weight: 500; }
+.bot-tools__desc,
+.bot-tools__source { color: var(--muted); font-size: var(--control-ui-text-xs); line-height: 1.4; overflow-wrap: anywhere; }
+.bot-tools__group-title .bot-tools__source { font-weight: 500; }
+.bot-tools__powerful {
+  border-color: color-mix(in srgb, var(--warn) 55%, var(--border));
+  color: var(--warn);
+  font-size: 10px;
+}
+.bot-tools__search { width: 100%; }
+.bot-tools__request {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border));
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--accent) 8%, var(--card));
+}
+.bot-tools__request-title { margin: 0; color: var(--text-strong); font-weight: 600; line-height: 1.4; overflow-wrap: anywhere; }
+.bot-tools__request-reason { margin: 0; color: var(--text); font-size: var(--control-ui-text-sm); line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+.bot-tools__request-actions { display: flex; gap: 6px; }
+.bot-tools__always {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  color: var(--muted);
+  font-size: var(--control-ui-text-xs);
+  line-height: 1.4;
+  list-style: none;
+}
+@media (pointer: coarse) {
+  .bot-tools__row { min-height: 44px; }
+}
