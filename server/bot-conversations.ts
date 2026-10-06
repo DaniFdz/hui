@@ -22,7 +22,13 @@ import { restoreAttachmentNames } from "./runtimes/pi.ts";
 /** Entries a cold read looks back through for the newest message. */
 const LAST_MESSAGE_ENTRIES = 50;
 
-export function durableBotConversations(host: DurableHost, memory: BotMemory): BotConversations {
+export type BotConversationOptions = {
+  /** Settings' primary model (`settings.models.primary`), the one a session started without a choice uses; empty or
+   * undefined while none is set. */
+  primaryModel?: () => Promise<string | undefined>;
+};
+
+export function durableBotConversations(host: DurableHost, memory: BotMemory, options: BotConversationOptions = {}): BotConversations {
   const conversation = async (reference: string): Promise<Conversation> => {
     const id = durableConversationId(reference);
     const found = id === undefined ? undefined : await (await host.open()).conversation(id, durableContext);
@@ -35,6 +41,13 @@ export function durableBotConversations(host: DurableHost, memory: BotMemory): B
     const ref = modelRef(value);
     if (!ref || !host.models.getModel(ref.provider, ref.modelId)) throw new BotInputError(`Unknown model: ${value}`);
   };
+  /** A bot's chat without a model of its own starts on Settings' primary model, like a new session; PI's default (else
+   * the first available model) only while no primary is set. A primary this gateway cannot resolve is refused. */
+  const startingModel = async (cwd: string, requested: string | undefined) => {
+    const primary = requested ? undefined : (await options.primaryModel?.())?.trim();
+    if (primary) await checkModel(primary);
+    return initialModel(host, cwd, requested ?? (primary || undefined));
+  };
   return {
     checkModel,
 
@@ -43,7 +56,7 @@ export function durableBotConversations(host: DurableHost, memory: BotMemory): B
       if (input.model) await checkModel(input.model);
       else await host.refreshModels();
       if (input.memory.model) await checkModel(input.memory.model);
-      const model = await initialModel(host, input.cwd, input.model);
+      const model = await startingModel(input.cwd, input.model);
       const known = model ? host.models.getModel(model.provider, model.modelId) : undefined;
       const thinking = input.thinking ?? defaultThinking(host, input.cwd);
       // One commit: no prompt can reach the chat before its bot document (which brings its soul section) and its memory
@@ -71,11 +84,11 @@ export function durableBotConversations(host: DurableHost, memory: BotMemory): B
       }, durableContext);
     },
 
-    // As `startDurable` chooses them for a new conversation.
+    // What the dialog calls "Gateway default": Settings' primary model, as for a new session, else PI's default.
     async defaultModel(cwd) {
       await host.open();
       await host.refreshModels();
-      const model = await initialModel(host, cwd, undefined);
+      const model = await startingModel(cwd, undefined);
       return model ? `${model.provider}/${model.modelId}` : undefined;
     },
 

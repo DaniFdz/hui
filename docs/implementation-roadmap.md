@@ -742,6 +742,9 @@ for now. It lands as stacked pull requests:
    create, `GET`/`PUT /__hui/bots/:id/soul`, `BotView.soul` (cached per chat
    state), the `BotSouls` port, delete removing SOUL.md, a one-time migration
    of existing instructions, and `hui bot add --soul-file` / `hui bot soul`.
+   The bot saves SOUL.md with a bot-only `write_soul` tool (no file tools
+   needed), and a bot without its own model starts on Settings' primary model,
+   as new sessions do, instead of PI's catalog default.
    Proof: `server/bots.test.ts`, `server/bot-service.test.ts` (kickoff,
    soul routes, cache, migration, delete), `server/runtimes/durable-bots.test.ts`
    (the section in real requests, the first conversation's text, truncation, a

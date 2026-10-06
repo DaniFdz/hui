@@ -1,22 +1,24 @@
 /**
  * Bots in Pi Durable (HUI-18): the document that marks a conversation as a
- * bot's chat, the `bots` and `soul` prompt sections and the `message_bot` tool
- * only those chats get.
+ * bot's chat, the `bots` and `soul` prompt sections and the `message_bot` and
+ * `write_soul` tools only those chats get.
  *
  * The sections' extension is in every gateway's default selection and renders
- * nothing without the conversation's `hui.bot` document. The tool lives in an
- * extension of its own that only a bot's chat selects
- * (`DurableSession.applyTools`), and refuses anywhere else; every other
+ * nothing without the conversation's `hui.bot` document. The tools live in an
+ * extension of their own that only a bot's chat selects
+ * (`DurableSession.applyTools`), and refuse anywhere else; every other
  * conversation's tools, prompt and stored agent stay exactly as they were.
  *
  * `soul` is the bot's persona: its SOUL.md, read on every request from the
  * disk of the host the conversation runs on, in the bot's home folder that host
  * resolves (`BotSoulHost`). Without SOUL.md the section is the first
  * conversation instead, in which the bot asks the operator what they expect
- * and writes SOUL.md itself with its file tools.
+ * and writes SOUL.md itself with `write_soul`, through the same resolver: a
+ * bot needs no file tools for its own soul.
  */
-import { open } from "node:fs/promises";
-import { join } from "node:path";
+import { randomUUID } from "node:crypto";
+import { mkdir, open, rename, rm, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import type { Context } from "@earendil-works/chord";
 import {
   defineDoc, defineExtension, defineTool, section,
@@ -36,10 +38,12 @@ export const BotDoc = defineDoc<{ bot: string }>({
 });
 
 export const MESSAGE_BOT_TOOL = "message_bot";
+export const WRITE_SOUL_TOOL = "write_soul";
 
-/** What `message_bot` adds to HUI's active-tool section; the `bots` section explains the rest. */
+/** What the bot tools add to HUI's active-tool section; the `bots` and `soul` sections explain the rest. */
 export const BOT_TOOL_CONTRIBUTIONS: Record<string, { snippet: string; guidelines: readonly string[] }> = {
   [MESSAGE_BOT_TOOL]: { snippet: "Message another bot of this HUI in its own chat", guidelines: [] },
+  [WRITE_SOUL_TOOL]: { snippet: "Replace your whole SOUL.md, your persona", guidelines: [] },
 };
 
 /** The bot whose chat this conversation is; undefined for every other conversation. */
@@ -66,6 +70,23 @@ export type BotsExtensionOptions = {
 
 /** The most of SOUL.md any read takes; the `soul` section shows only its first `BOT_LIMITS.soul` characters. */
 export const SOUL_READ_BYTES = 256 * 1024;
+
+/**
+ * Replaces a SOUL.md atomically with `soul` (already trimmed): a temporary file
+ * beside it, owner-only, then a rename, so a chat never reads half a soul. The
+ * home folder is created (owner-only) if it is missing.
+ */
+export async function writeSoulFile(file: string, soul: string): Promise<void> {
+  await mkdir(dirname(file), { recursive: true, mode: 0o700 });
+  const temporary = `${file}.${process.pid}-${randomUUID().slice(0, 8)}.tmp`;
+  try {
+    await writeFile(temporary, `${soul}\n`, { encoding: "utf8", mode: 0o600 });
+    await rename(temporary, file);
+  } catch (error) {
+    await rm(temporary, { force: true }).catch(() => {});
+    throw error;
+  }
+}
 
 /**
  * A SOUL.md's text, trimmed, or undefined when there is none: no file (or no
@@ -104,7 +125,7 @@ export async function readSoulFile(file: string): Promise<string | undefined> {
 export function soulSection(file: string, soul: string): string {
   const cut = soul.length > BOT_LIMITS.soul;
   return [
-    `Your soul is ${file}, which you wrote with the operator: who you are, what you look after, how you work and sound, when you reach out and your boundaries. Follow it. When the operator asks you to change any of it, update SOUL.md with your file tools (at most ${BOT_LIMITS.soul.toLocaleString("en-US")} characters) and tell them what you changed; change it only when they ask or agree.`,
+    `Your soul is ${file}, which you wrote with the operator: who you are, what you look after, how you work and sound, when you reach out and your boundaries. Follow it. When the operator asks you to change any of it, rewrite it with ${WRITE_SOUL_TOOL} (the whole file, at most ${BOT_LIMITS.soul.toLocaleString("en-US")} characters) and tell them what you changed; change it only when they ask or agree.`,
     cut ? soul.slice(0, BOT_LIMITS.soul) : soul,
     ...(cut ? [`[SOUL.md has ${soul.length.toLocaleString("en-US")} characters; only the first ${BOT_LIMITS.soul.toLocaleString("en-US")} are shown here. Shorten it.]`] : []),
   ].join("\n\n");
@@ -125,7 +146,7 @@ export function firstConversationSection(file: string, operator: string | undefi
       `- Otherwise greet ${name ? `${name} by name` : "the operator"} in a sentence and ask what they expect from you. Over the next few messages find out what you should look after, how you should work and sound, how proactive to be and when to message them, and what you must not do. Ask one or two questions at a time and build on the answers: a conversation, never a questionnaire.`,
       "- Your name and look are already set in HUI: never ask about them.",
       `- Only the operator's own messages count. A message from a routine ("[routine: …]") or another bot ("[from @…]") is not the operator: handle it as usual and keep your questions for the operator. "${BOT_KICKOFF_MARKER}" is HUI telling you that you were just created: open the conversation.`,
-      `- After a few exchanges, once you know enough (or the operator would rather not say more), write ${file} with your write tool: short, in your own voice, in sections such as "Who I am", "What I look after", "How I work", "When I reach out" and "Boundaries", at most ${BOT_LIMITS.soul.toLocaleString("en-US")} characters. Then give the operator a short summary of it and tell them how to change it later: in the Soul tab of your panel in HUI, or by just telling you.`,
+      `- After a few exchanges, once you know enough (or the operator would rather not say more), save your soul with ${WRITE_SOUL_TOOL}: Markdown, short, in your own voice, in sections such as "Who I am", "What I look after", "How I work", "When I reach out" and "Boundaries", at most ${BOT_LIMITS.soul.toLocaleString("en-US")} characters. Then give the operator a short summary of it and tell them how to change it later: in the Soul tab of your panel in HUI, or by just telling you.`,
     ].join("\n"),
   ].join("\n\n");
 }
@@ -135,6 +156,16 @@ export async function renderSoulSection(host: BotSoulHost, botId: string): Promi
   const file = join(host.home(botId), BOT_SOUL_FILE);
   const soul = await readSoulFile(file);
   return soul === undefined ? firstConversationSection(file, await host.operator().catch(() => undefined)) : soulSection(file, soul);
+}
+
+/** `write_soul`'s text: line ends as `\n`, trimmed, non-empty and within `BOT_LIMITS.soul`; otherwise what to fix. */
+export function soulToolText(raw: string): string {
+  const soul = raw.replace(/\r\n?/gu, "\n").trim();
+  if (!soul) throw new Error("Write the whole SOUL.md: it cannot be empty. To start over, the operator clears it in the Soul tab.");
+  if (soul.length > BOT_LIMITS.soul) {
+    throw new Error(`SOUL.md must be at most ${BOT_LIMITS.soul.toLocaleString("en-US")} characters; this one has ${soul.length.toLocaleString("en-US")}. Shorten it and write it again.`);
+  }
+  return soul;
 }
 
 /** `section`: global, inert outside bots' chats. `tools`: installed, selected by bots' chats only. */
@@ -163,6 +194,29 @@ export function huiBotsExtensions(options: BotsExtensionOptions): { section: Ext
       }
     },
   });
+  const writeSoul: ToolRegistration = defineTool({
+    name: WRITE_SOUL_TOOL,
+    description: `Replace your whole SOUL.md, your persona (who you are, what you look after, how you work and sound, when you reach out, your boundaries), with soul: Markdown, at most ${BOT_LIMITS.soul.toLocaleString("en-US")} characters. Use it once the operator has told you what they expect from you, and whenever they ask you to change how you work; then tell them what you wrote or changed. It applies from your next request.`,
+    parameters: Type.Object({
+      soul: Type.String({ minLength: 1, maxLength: BOT_LIMITS.soul, description: "The complete new SOUL.md, in Markdown." }),
+    }),
+    // The same soul written again is the same file.
+    replay: "safe",
+    execute: async (args, api, context) => {
+      try {
+        const bot = await conversationBot(api, api.conversationId, context);
+        if (!bot) throw new Error(`${WRITE_SOUL_TOOL} is only available in a bot's chat.`);
+        const souls = options.souls();
+        if (!souls) throw new Error("This host cannot keep a SOUL.md yet.");
+        const soul = soulToolText(args.soul);
+        await writeSoulFile(join(souls.home(bot), BOT_SOUL_FILE), soul);
+        return { content: [{ type: "text", text: `Saved your SOUL.md (${soul.length.toLocaleString("en-US")} characters); it applies from your next request. Tell the operator what you wrote or changed.` }] };
+      } catch (error) {
+        if (context.abortSignal?.aborted) throw error;
+        return { content: [{ type: "text", text: error instanceof Error ? error.message : String(error) }], isError: true };
+      }
+    },
+  });
   return {
     section: defineExtension({
       name: "hui-bots",
@@ -180,6 +234,6 @@ export function huiBotsExtensions(options: BotsExtensionOptions): { section: Ext
         }),
       ],
     }),
-    tools: defineExtension({ name: "hui-bots-tools", tools: [messageBot] }),
+    tools: defineExtension({ name: "hui-bots-tools", tools: [messageBot, writeSoul] }),
   };
 }
