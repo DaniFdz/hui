@@ -3740,11 +3740,17 @@ export class HuiApp extends HuiElement {
       return;
     }
     const draft = { ...values, model: this.botDraftModel, thinking: this.botDraftThinking, memoryModel: this.botDraftMemoryModel };
+    const patch = state.mode === "edit" ? botPatchFromDraft(state.bot, draft) : undefined;
+    // Saving an untouched bot changes nothing, and the gateway refuses an empty change.
+    if (patch && !Object.keys(patch).length) {
+      this.closeBotDialog();
+      return;
+    }
     this.botDialogPending = true;
     this.botDialogError = "";
     const request = state.mode === "create"
       ? createBot(botInputFromDraft(draft))
-      : updateBot(state.bot.id, botPatchFromDraft(state.bot, draft));
+      : updateBot(state.bot.id, patch ?? {});
     void request
       .then((bot) => {
         this.closeBotDialog();
