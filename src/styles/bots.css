@@ -146,6 +146,14 @@
  * the archived rows do, rather than with the Agents tab's nav labels. */
 .app-shell .sidebar-sessions--bots { margin-top: 4px; }
 .app-shell .sidebar-sessions--bots > .sidebar-recent-sessions__toolbar { padding-inline-start: 14px; }
+/* The + menu (New bot on Local or a worker) sits in the toolbar: its items read as menu items, not as the toolbar's
+ * small caps, like the sessions' sort menu. */
+.app-shell .sidebar-recent-sessions__toolbar .new-bot-menu {
+  font-size: calc(13px * var(--control-ui-text-scale));
+  font-weight: 400;
+  letter-spacing: normal;
+  text-transform: none;
+}
 .app-shell .bot-roster__rows { gap: 2px; }
 .app-shell .session-row-wrap.bot-row { min-height: 48px; }
 .app-shell .bot-row .bot-row__link {

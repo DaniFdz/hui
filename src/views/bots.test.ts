@@ -124,6 +124,8 @@ test("while a worker exists the roster's + is a menu, New bot on Local or on eac
   assert.match(button, /New bot on Local<\/span><\/wa-dropdown-item>/u);
   assert.match(button, /New bot on \$\{worker\.name\}\$\{worker\.state === "connected"/u, "each worker, with its state while not connected");
   assert.match(button, /props\.onOpen\?\.\(\);/u, "opening it reads the workers again");
+  const css = readFileSync(new URL("../styles/bots.css", import.meta.url), "utf8");
+  assert.match(css, /\.sidebar-recent-sessions__toolbar \.new-bot-menu \{[^}]*text-transform: none;/u, "its items are not the toolbar's small caps");
   const shell = read("./shell.ts");
   assert.match(shell, /\$\{botsTab \? renderNewBotButton\(\{\n\s+workers: botsTab\.workers, onNew: botsTab\.onNew, onCreate: botsTab\.onCreate,/u);
   const app = read("../hui-app.ts");
