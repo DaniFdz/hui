@@ -372,13 +372,15 @@ test("write_soul replaces a bot's whole SOUL.md atomically in its home folder, w
 
   const saved = await run("\r\n# Who I am\r\nAda, terse.\n\n");
   assert.equal(saved.isError, undefined);
-  assert.match(text(saved), /Saved your SOUL\.md \(22 characters\); it applies from your next request\. Tell the operator what you wrote or changed\./u);
+  assert.match(text(saved), /Saved your SOUL\.md \(22 characters\); it applies from your next request\. This ends your first conversation: now tell the operator you saved your SOUL\.md, sum it up in a few lines, and end by telling them how to change it later: in the Soul tab of your panel in HUI, or by just telling you\./u, "the first save says what the reply owes the operator");
   assert.equal(await readFile(file, "utf8"), "# Who I am\nAda, terse.\n", "trimmed, Unix line ends, in the home folder it made");
   const { readdir, stat } = await import("node:fs/promises");
   assert.equal((await stat(file)).mode & 0o777, 0o600);
   assert.equal((await stat(join(f.homes, "bot-ada"))).mode & 0o777, 0o700);
   assert.deepEqual(await readdir(join(f.homes, "bot-ada")), ["SOUL.md"], "no temporary file is left");
-  assert.match(text(await run("# Who I am\nAda, thorough.")), /Saved your SOUL\.md/u);
+  const changed = text(await run("# Who I am\nAda, thorough."));
+  assert.match(changed, /Saved your SOUL\.md \(25 characters\); it applies from your next request\. Tell the operator what you changed\./u);
+  assert.doesNotMatch(changed, /first conversation/u, "a later save is a change");
   assert.equal(await readFile(file, "utf8"), "# Who I am\nAda, thorough.\n", "the whole file is replaced");
 
   for (const [soul, pattern] of [[" \n ", /cannot be empty/u], ["s".repeat(20_001), /at most 20,000 characters; this one has 20,001/u]] as const) {
