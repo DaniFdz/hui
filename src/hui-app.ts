@@ -3868,13 +3868,14 @@ export class HuiApp extends HuiElement {
       let removed = 0;
       const kept: string[] = [];
       for (const path of worktreesOnlyUsedBy(worktrees, deleted)) {
-        const result = await removeWorktrees([path], "single").then(({ results }) => results[0])
-          .catch((error: unknown) => ({ label: path, removed: false, error: error instanceof Error ? error.message : "" }));
+        const result = await removeWorktrees([path], "single").then(({ results }) => results[0]).catch(() => undefined);
         if (result?.removed) removed += 1;
-        else kept.push(`${result?.label ?? path}${result?.error ? ` (${result.error})` : ""}`);
+        else kept.push(result?.label ?? path);
       }
       if (withWorktrees) {
-        worktreeNote = ` Removed ${removed} worktree${removed === 1 ? "" : "s"}.${kept.length ? ` Kept: ${kept.join("; ")}.` : ""}`;
+        worktreeNote = ` Removed ${removed} worktree${removed === 1 ? "" : "s"}.${kept.length
+          ? ` Kept ${kept.join(", ")} (local changes or not created by HUI); review ${kept.length === 1 ? "it" : "them"} in Settings → Worktrees.`
+          : ""}`;
       }
     } catch (error) {
       failures.push(error instanceof Error ? error.message : "Could not read worktrees.");
