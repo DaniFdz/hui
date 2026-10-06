@@ -55,6 +55,36 @@ strings; no operator credential was used.
 - Browser console: no page errors. The only entries were the known
   development warnings (Lit dev mode and `change-in-update` scheduling).
 
+## Remote worker
+
+Verified against commit `a82e157` of `dani.fernandez/secret-request-remote-workers`
+with the default launcher and a worker on the same machine: a separate home
+(`/tmp/hui-remote-e2e/home`) reached through `env` with the launcher's HUI and
+PI directories unset, as `server/workers.test.ts` does. The checkout was
+pre-installed there as the worker release (the same steps as that test), so
+connecting needed no network. The worker was added through the gateway API
+(`POST /__hui/workers` and `…/connect`; typing into Settings → Workers was
+unreliable in HUI's managed browser at the time) and showed *connected*.
+
+1. On the new-session page, **Run on** listed *local-remote* under *Remote
+   workers*; with it chosen and `~/project` as the folder, `E2E_SECRET_REQUEST
+   on the worker` started a session whose header read *durable on
+   local-remote · Waiting for your answer*.
+2. The same Secret card appeared on the gateway. After Submit, the
+   `secret_request` row named `/tmp/hui-secret-<pid>-…/secret` with the
+   worker host's PID (not the gateway's), and the `bash` row on the worker
+   printed the typed value's length.
+3. The typed value was found nowhere under the fixture directory or the worker
+   home (its Durable store and WAL included); `Fixture API key` was in the
+   worker's Durable WAL and the provider log.
+4. Stop while the card was open closed it and left the session idle; Cancel
+   ended the request with the agent reporting the cancel. At 390×844 the card
+   fits as it does locally.
+5. A local session in the same gateway still got its file in a directory named
+   with the gateway's PID.
+6. Stopping the gateway and then the worker host (SIGTERM) removed both
+   delivered directories.
+
 ## Evidence
 
 Screenshots captured from the running instances (desktop 1440×900 pending,
@@ -72,4 +102,5 @@ request, not committed here.
   browser. A PI worker call that waits more than five minutes was checked by
   hand against a loopback server that replied after 310 s: the bridge client
   succeeded where `fetch` failed with `UND_ERR_HEADERS_TIMEOUT` after 301 s.
-- Sessions on remote workers are refused by the tool and were not exercised.
+- The worker ran on the same machine as the gateway, so this does not prove
+  an SSH transport or a Linux worker; the protocol is the same stdio stream.
