@@ -26,21 +26,34 @@ const { durableBotConversations } = await import("../bot-conversations.ts");
 const { bundledSkills } = await import("../bundled-skills.ts");
 type DurableHost = import("./durable-host.ts").DurableHost;
 type BotAccess = import("./durable-bots.ts").BotAccess;
+type BotSkillRef = import("./durable-bots.ts").BotSkillRef;
+
+const NONE: BotAccess = { disabledTools: [], disabledSkills: [] };
+const off = (disabledTools: string[], disabledSkills: BotSkillRef[] = []): BotAccess => ({ disabledTools, disabledSkills });
+const names = (tools: readonly { name: string }[]) => tools.map((tool) => tool.name);
 
 /* ── pure rules ──────────────────────────────────────────────────────── */
 
-test("a bot's chat is offered the tools on its list and the ones it always keeps, in offer order", () => {
+test("a bot's chat goes without what the operator turned off, and without its own tools while it has no use for them", () => {
   const offer = ["read", "write", "bash", "sessions_spawn", "fixture_echo", "zoom", "date", "message_bot", "request_access", "load_skill"].map((name) => ({ name }));
-  const lists: BotAccess = { tools: ["fixture_echo", "read", "gone"], skills: [] };
-  const always = access.alwaysKept(lists, ["zoom", "date"]);
-  assert.deepEqual(access.botToolSelection(offer, lists, always).map((tool) => tool.name), ["read", "fixture_echo", "zoom", "date", "request_access"],
-    "an extension's tool on the list stays; one that no longer exists is ignored; load_skill waits for a skill");
-  const withSkill: BotAccess = { tools: ["message_bot"], skills: [{ name: "alpha", path: "/skills/alpha/SKILL.md" }] };
-  assert.deepEqual(access.botToolSelection(offer, withSkill, access.alwaysKept(withSkill, [])).map((tool) => tool.name), ["message_bot", "request_access", "load_skill"]);
-  assert.equal(access.botMayCall(null, "terminal"), true, "lists not recorded yet: everything, as before");
-  assert.equal(access.botMayCall(lists, "read"), true);
-  assert.equal(access.botMayCall(lists, "terminal"), false);
-  assert.equal(access.botMayCall({ tools: [], skills: [] }, "request_access"), true, "its own tools need no list");
+  // Nothing off: nothing to ask for, and read loads its skills.
+  let plan = access.planBotTools(offer, NONE, { memory: ["zoom", "date"], skillsOn: 2, skillsOff: 0 });
+  assert.deepEqual(names(plan.removed), ["request_access", "load_skill"]);
+  assert.deepEqual(names(plan.listable), ["read", "write", "bash", "sessions_spawn", "fixture_echo", "message_bot"], "OptChat's memory and its own tools are not the operator's to turn off");
+  // An extension's tool, one that no longer exists, and a memory tool turned off.
+  plan = access.planBotTools(offer, off(["fixture_echo", "bash", "gone", "zoom", "request_access"]), { memory: ["zoom", "date"], skillsOn: 2, skillsOff: 0 });
+  assert.deepEqual(names(plan.removed), ["bash", "fixture_echo", "load_skill"], "request_access stays while something is off");
+  // Neither read nor bash: load_skill loads its skills.
+  plan = access.planBotTools(offer, off(["read", "bash"]), { memory: [], skillsOn: 1, skillsOff: 0 });
+  assert.deepEqual(names(plan.removed), ["read", "bash"]);
+  // No skill on: no load_skill. A skill turned off is something to ask for.
+  plan = access.planBotTools(offer, off(["read", "bash"]), { memory: [], skillsOn: 0, skillsOff: 1 });
+  assert.deepEqual(names(plan.removed), ["read", "bash", "load_skill"]);
+  plan = access.planBotTools(offer, NONE, { memory: [], skillsOn: 1, skillsOff: 1 });
+  assert.deepEqual(names(plan.removed), ["load_skill"]);
+  assert.equal(access.botMayCall(NONE, "terminal"), true);
+  assert.equal(access.botMayCall(off(["terminal"]), "terminal"), false);
+  assert.equal(access.botMayCall(off(["request_access", "load_skill"]), "request_access"), true, "its own tools can't be turned off");
 });
 
 test("skills are named by name and source, bundled ones by their stable preference path", () => {
@@ -54,8 +67,8 @@ test("skills are named by name and source, bundled ones by their stable preferen
     { name: bundled.name, filePath: bundled.path },
   ];
   assert.deepEqual(access.botSkills(skills, [{ name: "alpha", path: "/b/alpha/SKILL.md" }, { name: bundled.name, path: bundled.preferencePath }]),
-    [skills[1], skills[3]], "same name, other source: not on the list");
-  assert.deepEqual(access.botSkills(skills, [{ name: "renamed", path: "/a/beta/SKILL.md" }]), [], "the name is part of the identity");
+    [skills[0], skills[2]], "same name, other source: still on");
+  assert.deepEqual(access.botSkills(skills, [{ name: "renamed", path: "/a/beta/SKILL.md" }]), skills, "the name is part of the identity");
 });
 
 test("the catalog describes each tool: its group, its source and whether it is powerful", () => {
@@ -65,9 +78,9 @@ test("the catalog describes each tool: its group, its source and whether it is p
   assert.deepEqual(access.describeTool({ name: "read" }, { kind: "coding" }), {
     name: "read", label: "Read files", description: "Read files and images", group: "files", source: "Durable", powerful: false,
   });
-  const spawn = access.describeTool({ name: "sessions_spawn", description: "Start an isolated child session." }, { kind: "hui" });
-  assert.deepEqual({ ...spawn, description: undefined }, { name: "sessions_spawn", label: "Spawn subagent", description: undefined, group: "hui", source: "HUI", powerful: true });
-  assert.equal(spawn.description, "Spawn a subagent for independent background work");
+  const spawned = access.describeTool({ name: "sessions_spawn", description: "Start an isolated child session." }, { kind: "hui" });
+  assert.deepEqual({ ...spawned, description: undefined }, { name: "sessions_spawn", label: "Spawn subagent", description: undefined, group: "hui", source: "HUI", powerful: true });
+  assert.equal(spawned.description, "Spawn a subagent for independent background work");
   assert.equal(access.describeTool({ name: "suggest_task" }, { kind: "hui" }).powerful, false);
   assert.equal(access.describeTool({ name: "message_bot" }, { kind: "bot" }).group, "bots");
   assert.deepEqual(access.describeTool({ name: "fixture_echo", description: "Echoes text. More words." }, { kind: "extension", source: "user · fixture.js · fixture.js" }), {
@@ -76,7 +89,7 @@ test("the catalog describes each tool: its group, its source and whether it is p
   for (const name of ["write", "edit", "terminal", "watcher", "browser", "sessions_send", "subagents"]) assert.ok(access.POWERFUL_TOOLS.has(name), name);
 });
 
-test("a bot's skills section loads skills with load_skill; its access section says what it has and can ask for", () => {
+test("the access section names what is off and how to ask for it; a bot without file tools loads skills with load_skill", () => {
   const prompt = access.botSkillsPrompt([
     { name: "alpha", description: "Use <alpha> for A & B.", disableModelInvocation: false },
     { name: "hidden", description: "Only by command.", disableModelInvocation: true },
@@ -85,16 +98,51 @@ test("a bot's skills section loads skills with load_skill; its access section sa
   assert.match(prompt!, /<name>alpha<\/name>\n {4}<description>Use &lt;alpha&gt; for A &amp; B\.<\/description>/u);
   assert.doesNotMatch(prompt!, /hidden|read tool/u);
   assert.equal(access.botSkillsPrompt([]), undefined);
-  const offer = [access.describeTool({ name: "read" }, { kind: "coding" }), access.describeTool({ name: "bash" }, { kind: "coding" })];
-  const skills = [{ name: "alpha", filePath: "/s/alpha/SKILL.md", description: "Alpha work." }, { name: "beta", filePath: "/s/beta/SKILL.md", description: "Beta work." }];
-  const text = access.botAccessText({ tools: ["read"], skills: [{ name: "alpha", path: "/s/alpha/SKILL.md" }] }, ["read", "request_access", "load_skill"], offer, skills);
-  assert.match(text, /Your tools: read, request_access, load_skill\. Your skills: alpha\./u);
-  assert.match(text, /Tools you can ask for:\n- bash: Run shell commands \(powerful/u);
-  assert.match(text, /Skills you can ask for:\n- beta: Beta work\./u);
-  assert.doesNotMatch(text, /- read:|- alpha:/u);
-  assert.match(access.botAccessText({ tools: ["read", "bash"], skills: [] }, ["read", "bash"], offer, []), /There is nothing more to ask for\./u);
-  const question = access.accessQuestion([offer[1]!, offer[0]!], [{ name: "beta", path: "/s/beta/SKILL.md" }], "To run the checks.");
+  const bash = access.describeTool({ name: "bash" }, { kind: "coding" });
+  const text = access.botAccessText([bash], [{ name: "beta", description: "Beta work." }]);
+  assert.match(text!, /^The operator turned off some of your tools and skills in this chat:\nTools:\n- bash: Run shell commands \(powerful\)\nSkills:\n- beta: Beta work\.\nIf a job truly needs one of them, ask for it with request_access/u);
+  assert.doesNotMatch(access.botAccessText([], [{ name: "beta", description: "Beta work." }])!, /Tools:/u);
+  assert.equal(access.botAccessText([], []), undefined, "nothing off, no section");
+  const question = access.accessQuestion([bash, access.describeTool({ name: "read" }, { kind: "coding" })], [{ name: "beta", path: "/s/beta/SKILL.md" }], "To run the checks.");
   assert.deepEqual(question, { method: "select", title: "Allow access to bash (powerful), read and the beta skill?", message: "To run the checks.", options: ["Allow", "Deny"] });
+});
+
+test("request_access lets one request per bot wait for the operator; the next may ask once it is answered", async () => {
+  const asked: unknown[] = [];
+  let answer!: (response: { value: string }) => void;
+  let applied = 0;
+  const offer = [access.describeTool({ name: "write" }, { kind: "coding" }), access.describeTool({ name: "edit" }, { kind: "coding" })];
+  const chat = {
+    botOffer: () => offer,
+    availableSkills: async () => [],
+    ask: (question: unknown) => { asked.push(question); return new Promise<{ value: string }>((resolve) => { answer = resolve; }); },
+    applyTools: async () => { applied += 1; },
+  };
+  const tool = access.botAccessParts({ chat: () => chat, skills: async () => [], agentDir: "/nowhere" }).tools.find((each) => each.name === "request_access")!;
+  const state = { bot: "bot-a", disabledTools: ["write", "edit"], disabledSkills: [] as BotSkillRef[] };
+  const api = {
+    conversationId: 1 as unknown as ConversationId, callId: "call",
+    snapshot: async () => state,
+    agent: async () => ({ tools: [{ name: "read" }, { name: "request_access" }] }),
+    commit: async (change: (tx: unknown) => unknown) => change({ doc: async () => state }),
+  } as unknown as ToolExecutionApi;
+  const first = tool.execute({ tools: ["write"], reason: "First." } as never, api, BACKGROUND_CONTEXT);
+  while (!asked.length) await new Promise((resolve) => setImmediate(resolve));
+  const second = await tool.execute({ tools: ["edit"], reason: "Second." } as never, api, BACKGROUND_CONTEXT);
+  assert.equal(second.isError, true);
+  assert.match(JSON.stringify(second.content), /Another access request is already waiting for the operator/u);
+  assert.equal(asked.length, 1, "the second never reached the operator");
+  answer({ value: "Allow" });
+  const done = await first;
+  assert.deepEqual(done.control, { addTools: ["write"] });
+  assert.deepEqual(state.disabledTools, ["edit"], "turned back on");
+  assert.equal(applied, 1, "the chat's tools are offered again at once");
+  const again = tool.execute({ tools: ["edit"], reason: "Now." } as never, api, BACKGROUND_CONTEXT);
+  while (asked.length < 2) await new Promise((resolve) => setImmediate(resolve));
+  answer({ value: "Deny" });
+  assert.match(JSON.stringify((await again).content), /The operator denied the request/u);
+  assert.deepEqual(state.disabledTools, ["edit"]);
+  assert.equal(applied, 1);
 });
 
 /* ── a bot's chat in a real harness ──────────────────────────────────── */
@@ -109,6 +157,9 @@ function fakeMemory(): BotMemory {
 const EXTENSION = "export default function (pi) {\n"
   + "  pi.registerTool({ name: 'fixture_echo', label: 'Echo', description: 'Echoes text.', promptSnippet: 'Echo text back', parameters: { type: 'object', properties: { text: { type: 'string' } } }, async execute(_id, params) { return { content: [{ type: 'text', text: 'echo: ' + params.text }], details: {} }; } });\n"
   + "  pi.registerTool({ name: 'fixture_other', label: 'Other', description: 'Another extension tool.', parameters: { type: 'object', properties: {} }, async execute() { return { content: [{ type: 'text', text: 'other' }], details: {} }; } });\n"
+  + "}\n";
+const LATER = "export default function (pi) {\n"
+  + "  pi.registerTool({ name: 'fixture_later', label: 'Later', description: 'Installed after the bot was set up.', parameters: { type: 'object', properties: {} }, async execute() { return { content: [{ type: 'text', text: 'later' }], details: {} }; } });\n"
   + "}\n";
 
 async function fixture(t: TestContext) {
@@ -155,19 +206,21 @@ async function fixture(t: TestContext) {
   });
   hosts.push(host);
   const port = durableBotConversations(host, fakeMemory());
-  /** A bot's chat with these lists (`null`: not recorded, as before bots had them), open as a HUI session. */
-  const bot = async (lists: BotAccess | null, huiSessionId = "bot-chat") => {
+  /** A bot's chat with these lists, open as a HUI session. */
+  const bot = async (lists: BotAccess, huiSessionId = "bot-chat") => {
     const reference = await port.create({ botId: `bot-${huiSessionId}`, cwd, memory: { name: "Ada" } });
     const id = durableConversationId(reference)!;
-    await setAccess(host, id, lists);
+    await (await host.open()).commit(async (tx) => {
+      const doc = await tx.doc(BotDoc, id);
+      doc.disabledTools = [...lists.disabledTools];
+      doc.disabledSkills = lists.disabledSkills.map((ref) => ({ ...ref }));
+    }, durableContext);
     const session = await startDurable({ cwd, sessionFile: reference, huiSessionId }, host);
     return { id, reference, session };
   };
-  return { dir, agentDir, cwd, log, host, invocations, bot };
-}
-
-async function setAccess(host: DurableHost, id: ConversationId, lists: BotAccess | null): Promise<void> {
-  await (await host.open()).commit(async (tx) => { (await tx.doc(BotDoc, id)).access = lists; }, durableContext);
+  /** How a bot's lists name one of the directory's skills. */
+  const ref = async (name: string) => access.skillRef((await host.prompt.loader(cwd)).getSkills().skills.find((skill) => skill.name === name)!);
+  return { dir, agentDir, cwd, log, host, invocations, bot, ref };
 }
 
 type ProviderRequest = { system?: unknown; tools?: Array<{ name?: string }>; messages?: Array<{ role: string; content: unknown }> };
@@ -213,75 +266,75 @@ const lastReply = (session: DurableSession) => {
   const last = reply(session.transcript());
   return last?.kind === "message" ? last.text : "";
 };
+const replies = (session: DurableSession) => session.transcript().filter((entry) => entry.kind === "message" && entry.role === "assistant").length;
 
-test("a bot's chat is offered only the tools on its list, extension tools included; a session in its directory keeps them all", { timeout: 60_000 }, async (t) => {
+test("a bot has every tool and skill a session in its directory has until the operator turns some off, and its requests are unchanged", { timeout: 60_000 }, async (t) => {
   const f = await fixture(t);
-  const { id, session } = await f.bot({ tools: ["read", "fixture_echo"], skills: [] });
-  const harness = await f.host.open();
-  assert.deepEqual((await harness.snapshot(AgentDoc, id, durableContext))?.tools, ["read", "fixture_echo", "request_access"], "exactly these, in offer order");
-  assert.deepEqual((await session.inspect()).tools.map((tool) => tool.name), ["read", "fixture_echo", "request_access"]);
+  const plain = await startDurable({ cwd: f.cwd, huiSessionId: "plain" }, f.host);
+  const plainTools = names((await plain.inspect()).tools);
+  const { id, session } = await f.bot(NONE);
+  assert.deepEqual(names((await session.inspect()).tools), [...plainTools, "message_bot"], "every tool, and message_bot");
+  assert.deepEqual((await (await f.host.open()).snapshot(AgentDoc, id, durableContext))?.tools, { remove: ["request_access", "load_skill"] },
+    "its own tools wait until it has a use for them");
+  assert.deepEqual(names(session.botOffer()), [...plainTools, "message_bot"], "the operator can turn off any of them");
+  assert.equal(session.botOffer().find((tool) => tool.name === "fixture_other")?.group, "extension");
+  assert.deepEqual(plain.botOffer(), []);
   await session.prompt("plain turn");
   await settledWith(session, answered("Fixture response"));
   const [first] = await requests(f.log);
-  assert.deepEqual(toolNames(first), ["read", "fixture_echo", "request_access"], "the provider sees only the bot's tools");
+  assert.deepEqual(toolNames(first), [...plainTools, "message_bot"]);
   const system = JSON.stringify(first?.system);
-  assert.match(system, /<bot_access>/u);
-  assert.match(system, /Your tools: read, fixture_echo, request_access\. Your skills: none\./u);
-  assert.match(system, /- bash: Run shell commands \(powerful/u);
-  assert.match(system, /- fixture_other: Another extension tool/u, "an extension's tool can be asked for");
-  assert.match(system, /- alpha: Alpha procedures\./u);
-  const offer = session.botOffer().map((tool) => tool.name);
-  for (const name of ["read", "write", "edit", "bash", "terminal", "sessions_spawn", "fixture_echo", "fixture_other", "message_bot"]) assert.ok(offer.includes(name), name);
-  assert.ok(!offer.includes("request_access") && !offer.includes("load_skill"), "its own tools are not on offer: it always has them");
-  assert.equal(session.botOffer().find((tool) => tool.name === "fixture_other")?.group, "extension");
+  assert.match(system, /Use the read tool to load a skill's file/u, "PI's own skills section, every skill");
+  assert.match(system, /<name>alpha<\/name>[^]*<name>beta<\/name>/u);
+  assert.doesNotMatch(system, /<bot_access>|request_access|load_skill/u);
+});
 
+test("what the operator turns off leaves a bot's offer, extension tools included, and a tool installed later is on", { timeout: 60_000 }, async (t) => {
+  const f = await fixture(t);
+  const { id, session } = await f.bot(off(["bash", "fixture_other", "terminal"]));
+  const tools = names((await session.inspect()).tools);
+  for (const name of ["bash", "fixture_other", "terminal", "load_skill"]) assert.ok(!tools.includes(name), name);
+  for (const name of ["read", "write", "fixture_echo", "sessions_spawn", "message_bot", "request_access"]) assert.ok(tools.includes(name), name);
+  assert.deepEqual((await (await f.host.open()).snapshot(AgentDoc, id, durableContext))?.tools, { remove: ["bash", "terminal", "fixture_other", "load_skill"] }, "removed by name");
+  await session.prompt("plain turn");
+  await settledWith(session, answered("Fixture response"));
+  const [first] = await requests(f.log);
+  assert.deepEqual(toolNames(first), tools, "the provider sees exactly that offer");
+  assert.match(JSON.stringify(first?.system), /<bot_access>\\nThe operator turned off some of your tools and skills in this chat:\\nTools:\\n- bash: Run shell commands \(powerful\)\\n- terminal: Read and operate the user's shared terminal \(powerful\)\\n- fixture_other: Another extension tool\\nIf a job truly needs one of them, ask for it with request_access/u);
+
+  await writeFile(join(f.agentDir, "extensions", "later.js"), LATER);
+  await session.reload();
+  const reloaded = names((await session.inspect()).tools);
+  assert.ok(reloaded.includes("fixture_later"), "a tool installed later is on until the operator turns it off");
+  assert.ok(!reloaded.includes("bash") && !reloaded.includes("fixture_other"), "what was off stays off");
+  assert.ok(session.botOffer().some((tool) => tool.name === "fixture_later"));
   const plain = await startDurable({ cwd: f.cwd, huiSessionId: "plain" }, f.host);
-  const plainTools = (await plain.inspect()).tools.map((tool) => tool.name);
-  for (const name of ["bash", "write", "fixture_other", "terminal"]) assert.ok(plainTools.includes(name), name);
-  assert.ok(!plainTools.includes("request_access") && !plainTools.includes("message_bot"));
-  assert.deepEqual(plain.botOffer(), []);
+  assert.ok(names((await plain.inspect()).tools).includes("bash"), "a session in the same directory keeps it");
 });
 
-test("a bot whose lists are not recorded keeps every tool, without the tools only lists need, and a version 1 document reads as such", { timeout: 60_000 }, async (t) => {
+test("the HUI tool bridge refuses a bot's call to a HUI tool the operator turned off, whatever it was offered", { timeout: 60_000 }, async (t) => {
   const f = await fixture(t);
-  // The bot document as releases before the lists wrote it.
-  const V1 = defineDoc<{ bot: string }>({ kind: "hui.bot", version: 1, scope: "conversation", history: "latest", fork: "current", initial: () => ({ bot: "" }) });
-  const harness = await f.host.open();
-  const created = await harness.createConversation({
-    ownership: { kind: "ownerless" }, agent: { cwd: f.cwd },
-    init: async (tx, conversationId) => { (await tx.doc(V1, conversationId)).bot = "bot-old"; },
-  }, durableContext);
-  assert.deepEqual(await harness.snapshot(BotDoc, created.id, durableContext), { bot: "bot-old", access: null }, "version 1 reads without lists");
-  const session = await startDurable({ cwd: f.cwd, sessionFile: `durable:${created.id}`, huiSessionId: "old-chat" }, f.host);
-  const tools = (await session.inspect()).tools.map((tool) => tool.name);
-  for (const name of ["read", "write", "bash", "terminal", "fixture_other", "message_bot"]) assert.ok(tools.includes(name), name);
-  assert.ok(!tools.includes("request_access") && !tools.includes("load_skill"));
-  assert.doesNotMatch(JSON.stringify(await session.inspect()), /<bot_access>/u);
-});
-
-test("the HUI tool bridge refuses a bot's call to a HUI tool that isn't on its list, whatever it was offered", { timeout: 60_000 }, async (t) => {
-  const f = await fixture(t);
-  const { id } = await f.bot({ tools: ["sessions_list"], skills: [] });
+  const { id } = await f.bot(off(["sessions_history", "terminal", "message_bot"]));
   const harness = await f.host.open();
   const api = (callId: string) => ({
     conversationId: id, callId,
     snapshot: (doc: never, conversationId: ConversationId, context: never) => harness.snapshot(doc, conversationId, context),
   }) as unknown as ToolExecutionApi;
   const huiTool = (name: string) => f.host.huiTools.find((tool) => tool.name === name)!;
-  await assert.rejects(huiTool("sessions_history").execute({ sessionKey: "child" } as never, api("c1"), BACKGROUND_CONTEXT), /doesn't have the sessions_history tool\. Ask the operator for it with request_access/u);
-  await assert.rejects(huiTool("terminal").execute({ action: "list" } as never, api("c2"), BACKGROUND_CONTEXT), /doesn't have the terminal tool/u);
+  await assert.rejects(huiTool("sessions_history").execute({ sessionKey: "child" } as never, api("c1"), BACKGROUND_CONTEXT), /The operator turned off sessions_history in this bot's chat\. Ask for it with request_access/u);
+  await assert.rejects(huiTool("terminal").execute({ action: "list" } as never, api("c2"), BACKGROUND_CONTEXT), /turned off terminal/u);
   const messageBot = f.host.botTools.find((tool) => tool.name === "message_bot")!;
   const refused = await messageBot.execute({ to: "bob", message: "hi" } as never, api("c3"), BACKGROUND_CONTEXT);
   assert.equal(refused.isError, true);
-  assert.match(JSON.stringify(refused.content), /doesn't have the message_bot tool/u, "message_bot can be turned off too");
+  assert.match(JSON.stringify(refused.content), /turned off message_bot/u, "message_bot can be turned off too");
   assert.equal(f.invocations.length, 0, "nothing reached HUI");
   await huiTool("sessions_list").execute({} as never, api("c4"), BACKGROUND_CONTEXT);
-  assert.deepEqual(f.invocations.map((invocation) => invocation.action), ["sessions_list"], "a tool on the list reaches HUI");
+  assert.deepEqual(f.invocations.map((invocation) => invocation.action), ["sessions_list"], "a tool that is on reaches HUI");
 });
 
-test("request_access: Allow adds the tool to the lists and to the very next request", { timeout: 60_000 }, async (t) => {
+test("request_access: Allow turns the tool back on for the very next request", { timeout: 60_000 }, async (t) => {
   const f = await fixture(t);
-  const { id, session } = await f.bot({ tools: [], skills: [] });
+  const { id, session } = await f.bot(off(["bash"]));
   const asked = nextQuestion(session);
   await session.prompt(calls({ name: "request_access", input: { tools: ["bash"], reason: "To run the project's checks." } }));
   const question = await asked;
@@ -290,19 +343,17 @@ test("request_access: Allow adds the tool to the lists and to the very next requ
   await session.respondQuestion(question.id, { value: "Allow" });
   await settledWith(session, answered("tool answered: The operator allowed it: you now have bash, from your next step."));
   const harness = await f.host.open();
-  assert.deepEqual((await harness.snapshot(BotDoc, id, durableContext))?.access, { tools: ["bash"], skills: [] });
+  assert.deepEqual((await harness.snapshot(BotDoc, id, durableContext))?.disabledTools, []);
   const logged = await requests(f.log);
-  assert.deepEqual(toolNames(logged[0]), ["request_access"], "a new bot starts with nothing but its own tools");
-  assert.deepEqual(toolNames(logged[1]), ["request_access", "bash"], "the request after the answer offers it");
-  assert.match(JSON.stringify(logged[1]?.system), /Your tools: request_access, bash\./u);
-  assert.ok(((await harness.snapshot(AgentDoc, id, durableContext))?.tools as string[]).includes("bash"));
-  await session.applyTools();
-  assert.deepEqual((await session.inspect()).tools.map((tool) => tool.name), ["bash", "request_access"], "and it stays on a fresh selection");
+  assert.ok(!toolNames(logged[0]).includes("bash") && toolNames(logged[0]).includes("request_access"));
+  assert.ok(toolNames(logged[1]).includes("bash"), "the request after the answer offers it");
+  assert.ok(!toolNames(logged[1]).includes("request_access"), "with nothing left to ask for");
+  assert.doesNotMatch(JSON.stringify(logged[1]?.system), /<bot_access>/u);
 });
 
 test("request_access: Deny refuses and changes nothing; a typed answer reaches the bot", { timeout: 60_000 }, async (t) => {
   const f = await fixture(t);
-  const { id, session } = await f.bot({ tools: ["read"], skills: [] });
+  const { id, session } = await f.bot(off(["write"]));
   let asked = nextQuestion(session);
   await session.prompt(calls({ name: "request_access", input: { tools: ["write"], reason: "To save notes." } }));
   await session.respondQuestion((await asked).id, { value: "Deny" });
@@ -316,30 +367,24 @@ test("request_access: Deny refuses and changes nothing; a typed answer reaches t
   await session.cancelQuestion((await asked).id);
   await settledWith(session, answered("The operator dismissed the request without answering."));
   const harness = await f.host.open();
-  assert.deepEqual((await harness.snapshot(BotDoc, id, durableContext))?.access, { tools: ["read"], skills: [] });
+  assert.deepEqual((await harness.snapshot(BotDoc, id, durableContext))?.disabledTools, ["write"]);
   assert.ok((await requests(f.log)).every((request) => !toolNames(request).includes("write")), "never offered");
 });
 
-test("request_access refuses unknown names with the valid ones and asks nothing; one request waits at a time", { timeout: 60_000 }, async (t) => {
+test("request_access refuses unknown names with the ones that are off, and asks nothing for what the bot has", { timeout: 60_000 }, async (t) => {
   const f = await fixture(t);
-  const { id, session } = await f.bot({ tools: ["read"], skills: [] });
+  const { id, session } = await f.bot(off(["bash", "fixture_other", "write", "edit"], [await f.ref("beta")]));
   let questions = 0;
   session.subscribe((event) => { if (event.type === "question") questions += 1; });
   await session.prompt(calls({ name: "request_access", input: { tools: ["teleport", "read"], skills: ["gamma"], reason: "Because." } }));
   await settledWith(session, answered("tool answered:"));
-  const refusal = lastReply(session);
-  assert.match(refusal, /No tool named teleport\. You can ask for: write, edit, bash, /u);
-  assert.doesNotMatch(refusal, /ask for: read|, read,/u, "what it has is not offered again");
-  assert.match(refusal, /fixture_other/u);
-  assert.match(refusal, /No skill named gamma\. You can ask for: alpha, beta, create-verification-skill, git-selective-staging\./u, "HUI's bundled skills too");
+  assert.equal(lastReply(session), "tool answered: No tool named teleport. You can ask for: write, edit, bash, fixture_other. No skill named gamma. You can ask for: beta.");
+  await session.prompt(calls({ name: "request_access", input: { tools: ["read"], skills: ["alpha"], reason: "Again." } }));
+  await settledWith(session, answered("tool answered: You already have read and the alpha skill."));
   assert.equal(questions, 0);
 
-  await session.prompt(calls({ name: "request_access", input: { tools: ["read"], reason: "Again." } }));
-  await settledWith(session, answered("tool answered: You already have read."));
-  assert.equal(questions, 0);
-
-  // Two requests in one round: the operator never has two waiting. Durable runs the round's calls one after another
-  // here, so the second asks once the first is answered; were they to overlap, the second would be refused.
+  // Two requests in one round: the operator never has two waiting. Durable runs this round's calls one after the
+  // other, so the second asks once the first is answered; were they to overlap, the second would be refused.
   const answers = ["Allow", "Deny"];
   let most = 0;
   session.subscribe((event) => {
@@ -352,71 +397,34 @@ test("request_access refuses unknown names with the valid ones and asks nothing;
     { name: "request_access", input: { tools: ["write"], reason: "First." } },
     { name: "request_access", input: { tools: ["edit"], reason: "Second." } },
   ));
-  await settledWith(session, answered("tool answered:"));
+  await settledWith(session, (entries) => answered("tool answered:")(entries) && replies(session) >= 3);
   const both = lastReply(session);
   assert.match(both, /The operator allowed it: you now have (write|edit), from your next step\./u);
   assert.match(both, /The operator denied the request\.|Another access request is already waiting for the operator\./u);
   assert.equal(most, 1, "never more than one request waits for the operator");
-  const granted = (await (await f.host.open()).snapshot(BotDoc, id, durableContext))?.access?.tools;
-  assert.equal(granted?.length, 2);
-  assert.ok(granted?.[0] === "read" && ["write", "edit"].includes(granted[1]!));
+  const left = (await (await f.host.open()).snapshot(BotDoc, id, durableContext))?.disabledTools;
+  assert.ok(left?.length === 3 && left[0] === "bash" && left[1] === "fixture_other" && ["write", "edit"].includes(left[2]!), JSON.stringify(left));
 });
 
-test("request_access lets one request per bot wait for the operator; the next may ask once it is answered", async () => {
-  const asked: unknown[] = [];
-  let answer!: (response: { value: string }) => void;
-  const offer = [access.describeTool({ name: "write" }, { kind: "coding" }), access.describeTool({ name: "edit" }, { kind: "coding" })];
-  const chat = {
-    botOffer: () => offer,
-    availableSkills: async () => [],
-    ask: (question: unknown) => { asked.push(question); return new Promise<{ value: string }>((resolve) => { answer = resolve; }); },
-  };
-  const tool = access.botAccessParts({ chat: () => chat, skills: async () => [], agentDir: "/nowhere" }).tools.find((each) => each.name === "request_access")!;
-  const state = { bot: "bot-a", access: { tools: [] as string[], skills: [] } };
-  const api = {
-    conversationId: 1 as unknown as ConversationId, callId: "call",
-    snapshot: async () => state,
-    agent: async () => ({ tools: [{ name: "request_access" }] }),
-    commit: async (change: (tx: unknown) => unknown) => change({ doc: async () => state }),
-  } as unknown as ToolExecutionApi;
-  const first = tool.execute({ tools: ["write"], reason: "First." } as never, api, BACKGROUND_CONTEXT);
-  while (!asked.length) await new Promise((resolve) => setImmediate(resolve));
-  const second = await tool.execute({ tools: ["edit"], reason: "Second." } as never, api, BACKGROUND_CONTEXT);
-  assert.equal(second.isError, true);
-  assert.match(JSON.stringify(second.content), /Another access request is already waiting for the operator/u);
-  assert.equal(asked.length, 1, "the second never reached the operator");
-  answer({ value: "Allow" });
-  const done = await first;
-  assert.deepEqual(done.control, { addTools: ["write"] });
-  assert.deepEqual(state.access, { tools: ["write"], skills: [] });
-  const again = tool.execute({ tools: ["edit"], reason: "Now." } as never, api, BACKGROUND_CONTEXT);
-  while (asked.length < 2) await new Promise((resolve) => setImmediate(resolve));
-  answer({ value: "Deny" });
-  assert.match(JSON.stringify((await again).content), /The operator denied the request/u);
-  assert.deepEqual(state.access, { tools: ["write"], skills: [] });
-});
-
-test("a bot's prompt lists only its skills, through load_skill; /skill: offers only them; a session in its directory keeps all", { timeout: 60_000 }, async (t) => {
+test("a bot's prompt and /skill: offer only the skills that are on; a session in its directory keeps them all", { timeout: 60_000 }, async (t) => {
   const f = await fixture(t);
   const plain = await startDurable({ cwd: f.cwd, huiSessionId: "plain" }, f.host);
-  const alpha = (await plain.availableSkills()).find((skill) => skill.name === "alpha")!;
-  const { session } = await f.bot({ tools: [], skills: [access.skillRef(alpha)] });
-  assert.deepEqual((await session.inspect()).tools.map((tool) => tool.name), ["request_access", "load_skill"], "load_skill comes with its first skill");
+  const { session } = await f.bot(off([], [await f.ref("beta")]));
+  const tools = names((await session.inspect()).tools);
+  assert.ok(tools.includes("request_access") && !tools.includes("load_skill"), "a turned-off skill is something to ask for; read loads the rest");
   await session.prompt("plain turn");
   await settledWith(session, answered("Fixture response"));
   const system = JSON.stringify((await requests(f.log))[0]?.system);
-  assert.match(system, /<skills>\\nThe following skills provide specialized instructions for specific tasks\.\\nUse the load_skill tool/u);
+  assert.match(system, /Use the read tool to load a skill's file/u);
   assert.match(system, /<name>alpha<\/name>/u);
-  assert.doesNotMatch(system, /<name>beta<\/name>/u, "an unselected skill is not in the prompt");
-  assert.doesNotMatch(system, /Use the read tool/u);
-  assert.match(system, /Your skills: alpha\./u);
-  assert.match(system, /Skills you can ask for:\\n- beta: Beta procedures\./u);
+  assert.doesNotMatch(system, /<name>beta<\/name>/u, "a skill that is off is not in the prompt");
+  assert.match(system, /Skills:\\n- beta: Beta procedures\./u);
   const commands = (await session.listCommands()).filter((command) => command.source === "skill").map((command) => command.name);
-  assert.deepEqual(commands, ["skill:alpha"]);
+  assert.deepEqual(commands, ["skill:alpha", "skill:create-verification-skill", "skill:git-selective-staging"]);
   await session.prompt("/skill:beta please");
-  await settledWith(session, (entries) => entries.filter((entry) => entry.kind === "message" && entry.role === "assistant").length >= 2);
+  await settledWith(session, () => replies(session) >= 2);
   await session.prompt("/skill:alpha please");
-  await settledWith(session, (entries) => entries.filter((entry) => entry.kind === "message" && entry.role === "assistant").length >= 3);
+  await settledWith(session, () => replies(session) >= 3);
   const users = (await requests(f.log)).slice(1).map((request) => JSON.stringify(request.messages?.at(-1)));
   assert.match(users[0]!, /\/skill:beta please/u, "not one of its skills: sent as typed");
   assert.doesNotMatch(users[0]!, /SKILL_BODY_BETA/u);
@@ -426,33 +434,36 @@ test("a bot's prompt lists only its skills, through load_skill; /skill: offers o
   assert.deepEqual(plainCommands.sort(), ["skill:alpha", "skill:beta", "skill:create-verification-skill", "skill:git-selective-staging"]);
   await plain.prompt("plain session turn");
   await settledWith(plain, answered("Fixture response"));
-  const plainSystem = JSON.stringify((await requests(f.log)).at(-1)?.system);
-  assert.match(plainSystem, /Use the read tool to load a skill's file/u, "PI's own section, every skill");
-  assert.match(plainSystem, /<name>alpha<\/name>[^]*<name>beta<\/name>/u);
+  assert.match(JSON.stringify((await requests(f.log)).at(-1)?.system), /<name>alpha<\/name>[^]*<name>beta<\/name>/u);
 });
 
-test("load_skill returns one of the bot's skills or a file inside it, and refuses other skills and paths that leave it", { timeout: 60_000 }, async (t) => {
+test("a bot with neither read nor bash loads its skills with load_skill, which refuses skills that are off and paths that leave the skill", { timeout: 60_000 }, async (t) => {
   const f = await fixture(t);
-  const plain = await startDurable({ cwd: f.cwd, huiSessionId: "plain" }, f.host);
-  const alpha = (await plain.availableSkills()).find((skill) => skill.name === "alpha")!;
-  const { session } = await f.bot({ tools: [], skills: [access.skillRef(alpha)] });
+  const { session } = await f.bot(off(["read", "bash"], [await f.ref("beta")]));
+  assert.ok(names((await session.inspect()).tools).includes("load_skill"));
   await session.prompt(calls(
     { name: "load_skill", input: { name: "alpha" } },
     { name: "load_skill", input: { name: "alpha", path: "references/notes.md" } },
     { name: "load_skill", input: { name: "alpha", path: "../beta/SKILL.md" } },
     { name: "load_skill", input: { name: "beta" } },
+    { name: "load_skill", input: { name: "gamma" } },
   ));
   await settledWith(session, answered("tool answered:"));
-  const [skill, notes, escape, other] = lastReply(session).replace(/^tool answered: /u, "").split(" | ");
+  const system = JSON.stringify((await requests(f.log))[0]?.system);
+  assert.match(system, /<skills>\\nThe following skills provide specialized instructions for specific tasks\.\\nUse the load_skill tool/u);
+  assert.match(system, /<name>alpha<\/name>/u);
+  assert.doesNotMatch(system, /<name>beta<\/name>|Use the read tool/u);
+  const [skill, notes, escape, other, unknown] = lastReply(session).replace(/^tool answered: /u, "").split(" | ");
   assert.match(skill!, /^<skill name="alpha" location="[^"]+alpha\/SKILL\.md">\nReferences are relative to [^\n]+alpha\.\n\n# alpha\n\nSKILL_BODY_ALPHA\n<\/skill>$/u);
   assert.equal(notes, "NOTES_ALPHA\n");
-  assert.match(escape!, /\.\.\/beta\/SKILL\.md is not a file inside the alpha skill's directory\./u);
-  assert.match(other!, /You have no skill named "beta"\. Your skills: alpha\. Ask the operator for one with request_access\./u);
+  assert.equal(escape, "../beta/SKILL.md is not a file inside the alpha skill's directory.");
+  assert.equal(other, "The operator turned off the beta skill. Ask for it with request_access if the job needs it.");
+  assert.equal(unknown, "You have no skill named \"gamma\". Your skills: alpha, create-verification-skill, git-selective-staging.");
 });
 
-test("a skill granted through request_access is in the next request's prompt, with load_skill", { timeout: 60_000 }, async (t) => {
+test("a skill turned back on through request_access is in the next request's prompt", { timeout: 60_000 }, async (t) => {
   const f = await fixture(t);
-  const { id, session } = await f.bot({ tools: [], skills: [] });
+  const { id, session } = await f.bot(off(["read", "bash"], [await f.ref("beta")]));
   const asked = nextQuestion(session);
   await session.prompt(calls({ name: "request_access", input: { skills: ["beta"], reason: "For the beta procedures." } }));
   const question = await asked;
@@ -460,10 +471,23 @@ test("a skill granted through request_access is in the next request's prompt, wi
   await session.respondQuestion(question.id, { value: "Allow" });
   await settledWith(session, answered("you now have the beta skill, from your next step. Load a skill with load_skill."));
   const [first, second] = await requests(f.log);
-  assert.doesNotMatch(JSON.stringify(first?.system), /<skills>/u);
-  assert.deepEqual(toolNames(second), ["request_access", "load_skill"]);
+  assert.doesNotMatch(JSON.stringify(first?.system), /<name>beta<\/name>/u);
   assert.match(JSON.stringify(second?.system), /<skills>[^]*<name>beta<\/name>/u);
-  const lists = (await (await f.host.open()).snapshot(BotDoc, id, durableContext))?.access;
-  assert.deepEqual(lists?.skills.map((skill) => skill.name), ["beta"]);
-  assert.match(lists!.skills[0]!.path, /beta\/SKILL\.md$/u);
+  assert.ok(toolNames(second).includes("load_skill"));
+  assert.deepEqual((await (await f.host.open()).snapshot(BotDoc, id, durableContext))?.disabledSkills, []);
+});
+
+test("a bot document from before the lists reads as nothing turned off", { timeout: 60_000 }, async (t) => {
+  const f = await fixture(t);
+  // The bot document as releases before the lists wrote it.
+  const V1 = defineDoc<{ bot: string }>({ kind: "hui.bot", version: 1, scope: "conversation", history: "latest", fork: "current", initial: () => ({ bot: "" }) });
+  const harness = await f.host.open();
+  const created = await harness.createConversation({
+    ownership: { kind: "ownerless" }, agent: { cwd: f.cwd },
+    init: async (tx, conversationId) => { (await tx.doc(V1, conversationId)).bot = "bot-old"; },
+  }, durableContext);
+  assert.deepEqual(await harness.snapshot(BotDoc, created.id, durableContext), { bot: "bot-old", disabledTools: [], disabledSkills: [] });
+  const plain = await startDurable({ cwd: f.cwd, huiSessionId: "plain" }, f.host);
+  const session = await startDurable({ cwd: f.cwd, sessionFile: `durable:${created.id}`, huiSessionId: "old-chat" }, f.host);
+  assert.deepEqual(names((await session.inspect()).tools), [...names((await plain.inspect()).tools), "message_bot"], "every tool, as before");
 });

@@ -12,7 +12,7 @@ import { clampThinkingLevel, type ImageContent, type Message, type ModelThinking
 import {
   CompactionEntry, InboxDoc, ResetEntry, SystemEntry, watchEvents,
   type AgentEvent, type AgentState, type CompactionResult, type Conversation, type ConversationId, type Cursor,
-  type AgentChange, type EntryId, type EntryRecord, type Harness, type TaskId, type ToolRegistration,
+  type EntryId, type EntryRecord, type Harness, type TaskId, type ToolRegistration,
 } from "@earendil-works/pi-durable";
 // The estimators Durable's own compaction uses, so the meter matches its thresholds.
 import { calculateContextTokens, estimateMessageTokens } from "@earendil-works/pi-ai/utils/estimate";
@@ -21,10 +21,7 @@ import { resolveCommandReference } from "../../src/lib/command-references.ts";
 import type { RuntimeInspection } from "../../src/lib/tools-types.ts";
 import { durableContext as context, durableHost, type DurableHost } from "./durable-host.ts";
 import { CallEntry } from "./durable-bots.ts";
-import {
-  alwaysKept, BOT_OWN_TOOLS, botSkills, botToolSelection, describeTool, skillBlock,
-  type BotChat, type OfferedTool, type ToolOrigin,
-} from "./durable-bot-access.ts";
+import { botSkills, describeTool, planBotTools, skillBlock, type BotChat, type OfferedTool, type ToolOrigin } from "./durable-bot-access.ts";
 import { QuestionBox, type QuestionDraft } from "./question-box.ts";
 import { DurableExtensions, ExtensionMessageEntry, isCustomInput, type CustomMessage, type ExtensionSession } from "./durable-extensions.ts";
 import { filterConfiguredModels } from "./pi-models.ts";
@@ -206,7 +203,8 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
   #huiSessionId: string | undefined;
   /** What the session asks the operator itself: a bot's access requests. */
   #questions = new QuestionBox((question) => this.#emit({ type: "question", question }));
-  /** The tools a bot's list picks from, as the latest `applyTools` found them; empty for every other conversation. */
+  /** The tools the operator can turn off in a bot's chat, as the latest `applyTools` found them; empty for every other
+   * conversation. */
   #botOffer: readonly OfferedTool[] = [];
   readonly resumesInterruptedRuns = true;
 
@@ -252,8 +250,8 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
 
   /** Offers the conversation its extensions and the tools they keep active, OptChat's zoom and date when the
    * conversation has OptChat, `message_bot` and a bot's own tools when it is a bot's chat, and drops the browser when
-   * Settings turns it off. A bot's chat is offered only the tools on its list, beside OptChat's and its own
-   * (`durable-bot-access.ts`). Applies per conversation, at start and on every change. */
+   * Settings turns it off. A bot's chat goes without the tools the operator turned off, and without its own tools while
+   * it has no use for them (`durable-bot-access.ts`). Applies per conversation, at start and on every change. */
   async applyTools(): Promise<void> {
     const browserEnabled = (await this.#host.settings()).browser.enabled !== false;
     const inactive = new Map([...(browserEnabled ? [] : this.#host.toolsNamed(["browser"])), ...(this.#extensions?.inactiveTools() ?? [])].map((tool) => [tool.name, tool]));
@@ -263,7 +261,7 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
     const bot = await this.#host.botStateFor(this.#conversation.id);
     const botTools = bot ? await this.#host.botToolsFor(this.#conversation.id) : undefined;
     const added = [...(this.#extensions ? [this.#extensions.extension] : []), ...(optchat ? [optchat] : []), ...(botTools ? [botTools] : [])];
-    let tools: AgentChange["tools"] = inactive.size ? { remove: [...inactive.values()] } : null;
+    const remove = [...inactive.values()];
     this.#botOffer = [];
     if (bot) {
       // What a session here is offered, in Durable's order: the coding tools, HUI's, the extensions' and the added ones.
@@ -273,31 +271,26 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
         [this.#extensions?.extension.tools ?? [], (tool) => ({ kind: "extension", ...this.#extensions!.describe(tool.name) })],
         [optchat?.tools ?? [], () => ({ kind: "hui" })],
         [botTools?.tools ?? [], () => ({ kind: "bot" })],
-      ]).filter(({ tool }) => !inactive.has(tool.name));
-      const memory = (optchat?.tools ?? []).map((tool) => tool.name);
-      const listable = offered.filter(({ tool }) => !memory.includes(tool.name) && !BOT_OWN_TOOLS.includes(tool.name));
-      this.#botOffer = listable.map(({ tool, origin }) => describeTool(tool, origin));
-      if (bot.access) {
-        // An array offers exactly these: a tool installed later reaches the bot only through its list.
-        tools = botToolSelection(offered.map(({ tool }) => tool), bot.access, alwaysKept(bot.access, memory));
-      } else {
-        // Lists not recorded yet: every tool, as before bots had them, without the ones that only serve the lists.
-        const own = offered.filter(({ tool }) => BOT_OWN_TOOLS.includes(tool.name)).map(({ tool }) => tool);
-        if (own.length) tools = { remove: [...inactive.values(), ...own] };
-      }
+      ]).filter(({ name }) => !inactive.has(name));
+      const skills = await this.availableSkills();
+      const on = botSkills(skills, bot.disabledSkills).length;
+      const plan = planBotTools(offered, bot, { memory: (optchat?.tools ?? []).map((tool) => tool.name), skillsOn: on, skillsOff: skills.length - on });
+      this.#botOffer = plan.listable.map(({ tool, origin }) => describeTool(tool, origin));
+      // Removed by name, so a tool that appears later is on until the operator turns it off.
+      remove.push(...plan.removed.map(({ tool }) => tool));
     }
     await this.#conversation.configure({
       // A view with no HUI session (a probe) leaves the selection of the session that owns the conversation alone.
       ...(this.#huiSessionId === undefined ? {} : { extensions: added.length ? { add: added } : null }),
-      tools,
+      tools: remove.length ? { remove } : null,
     }, context);
   }
 
   /** Tools composed as Durable composes the selected extensions: by name, in order, a later one replacing an earlier
    * one of the same name in its place. Each keeps where it comes from. */
-  #composed(sources: readonly (readonly [readonly ToolRegistration[], (tool: ToolRegistration) => ToolOrigin])[]): { tool: ToolRegistration; origin: ToolOrigin }[] {
-    const composed = new Map<string, { tool: ToolRegistration; origin: ToolOrigin }>();
-    for (const [tools, origin] of sources) for (const tool of tools) composed.set(tool.name, { tool, origin: origin(tool) });
+  #composed(sources: readonly (readonly [readonly ToolRegistration[], (tool: ToolRegistration) => ToolOrigin])[]): { name: string; tool: ToolRegistration; origin: ToolOrigin }[] {
+    const composed = new Map<string, { name: string; tool: ToolRegistration; origin: ToolOrigin }>();
+    for (const [tools, origin] of sources) for (const tool of tools) composed.set(tool.name, { name: tool.name, tool, origin: origin(tool) });
     return [...composed.values()];
   }
 
@@ -314,11 +307,12 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
     return this.#questions.ask(question, signal);
   }
 
-  /** The skills this conversation may use: those of its directory, or for a bot's chat only the ones on its list. */
+  /** The skills this conversation may use: those of its directory, less the ones the operator turned off in a bot's
+   * chat. */
   async #skills(loader: { getSkills(): { skills: Skill[] } }): Promise<readonly Skill[]> {
     const all = loader.getSkills().skills;
-    const access = (await this.#host.botStateFor(this.#conversation.id))?.access;
-    return access ? botSkills(all, access.skills) : all;
+    const bot = await this.#host.botStateFor(this.#conversation.id);
+    return bot ? botSkills(all, bot.disabledSkills) : all;
   }
 
   /** Entries since the latest reset, oldest first: what the extensions' PI session view holds. */

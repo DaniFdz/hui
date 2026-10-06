@@ -1,8 +1,8 @@
 /**
  * Bots in Pi Durable (HUI-18): the document that marks a conversation as a
- * bot's chat and holds what it may use, the `bots` prompt section and the
- * `message_bot` tool only those chats get. A bot's own tools and its access
- * section live in `durable-bot-access.ts`.
+ * bot's chat and holds what the operator turned off in it, the `bots` prompt
+ * section and the `message_bot` tool only those chats get. A bot's own tools
+ * and its access section live in `durable-bot-access.ts`.
  *
  * The section's extension is in every gateway's default selection and renders
  * nothing without the conversation's `hui.bot` document. The tool lives in an
@@ -19,33 +19,35 @@ import { Type } from "typebox";
 import { BOT_LIMITS } from "../../shared/bots.ts";
 import type { CallRecord } from "../../shared/calls.ts";
 
-/** A skill as a bot's list names it: by name and source, as Settings' disabled skills do (its SKILL.md path, or a
+/** A skill as a bot's lists name it: by name and source, as Settings' disabled skills do (its SKILL.md path, or a
  * bundled skill's stable preference path). */
 export type BotSkillRef = { name: string; path: string };
 
-/** What a bot's chat may use beyond its own tools and OptChat's: tool names and skills. */
-export type BotAccess = { tools: string[]; skills: BotSkillRef[] };
+/** What the operator turned off in a bot's chat. Everything else a session in its directory gets is on, tools and
+ * skills that appear later included. */
+export type BotAccess = { disabledTools: string[]; disabledSkills: BotSkillRef[] };
 
 /** The document of a bot's chat; every other conversation has none. */
-export type BotState = {
+export type BotState = BotAccess & {
   /** The bot whose chat this is; empty for every other conversation. */
   bot: string;
-  /** Its tools and skills. `null` until recorded: such a chat keeps every tool and skill a session in its directory
-   * gets, which is what bots had before they had lists. */
-  access: BotAccess | null;
 };
 
-/** The bot a conversation is the chat of, and what that chat may use. A fork stays the bot's, with its lists. */
+/** The bot a conversation is the chat of, and what the operator turned off in it. A fork stays the bot's with its
+ * lists: a rewind never undoes the operator's choices. */
 export const BotDoc = defineDoc<BotState>({
   kind: "hui.bot",
   version: 2,
   scope: "conversation",
   history: "latest",
   fork: "current",
-  initial: () => ({ bot: "", access: null }),
-  // Version 1 had no lists: the chat had everything, and keeps it until they are recorded.
-  migrate: (value) => ({ bot: typeof value["bot"] === "string" ? value["bot"] : "", access: null }),
+  initial: () => ({ bot: "", disabledTools: [], disabledSkills: [] }),
+  // Version 1 had no lists: nothing is turned off, as before.
+  migrate: (value) => ({ bot: typeof value["bot"] === "string" ? value["bot"] : "", disabledTools: [], disabledSkills: [] }),
 });
+
+const isSkillRef = (value: unknown): value is BotSkillRef =>
+  typeof value === "object" && value !== null && typeof (value as BotSkillRef).name === "string" && typeof (value as BotSkillRef).path === "string";
 
 /**
  * The record of one GPT-Live call with the bot (HUI-18): its summary and its whole transcript (`CallRecord`), written
@@ -67,10 +69,15 @@ export async function conversationBot(reader: DocumentReader, conversationId: Co
   return (await reader.snapshot(BotDoc, conversationId, context))?.bot || undefined;
 }
 
-/** The bot document of a bot's chat; undefined for every other conversation. */
+/** The bot document of a bot's chat, as a copy; undefined for every other conversation. */
 export async function conversationBotState(reader: DocumentReader, conversationId: ConversationId, context: Context): Promise<BotState | undefined> {
   const doc = await reader.snapshot(BotDoc, conversationId, context);
-  return doc?.bot ? { bot: doc.bot, access: doc.access ?? null } : undefined;
+  if (!doc?.bot) return undefined;
+  return {
+    bot: doc.bot,
+    disabledTools: Array.isArray(doc.disabledTools) ? doc.disabledTools.filter((name): name is string => typeof name === "string") : [],
+    disabledSkills: Array.isArray(doc.disabledSkills) ? doc.disabledSkills.filter(isSkillRef).map(({ name, path }) => ({ name, path })) : [],
+  };
 }
 
 export type BotsExtensionOptions = {

@@ -183,7 +183,8 @@ export class DurableHost implements ExtensionHost {
   #bots: { section: Extension; tools: Extension };
   /** The `bots` section of a bot's chat; the gateway sets it, a worker host leaves it unset. */
   botSection: ((botId: string) => Promise<string | undefined>) | undefined;
-  /** Mirrors a bot's lists after a grant into the gateway's roster; a worker host leaves it unset. */
+  /** Mirrors a bot's lists into the gateway's roster after the operator allowed one of its requests; a worker host
+   * leaves it unset. */
   botAccessRecorded: ((botId: string, access: BotAccess) => Promise<void>) | undefined;
   /** Live sessions that answer for their conversation: a bot's own tools ask the operator through them. */
   #chats = new Set<BotChat & { conversation(): Conversation }>();
@@ -250,23 +251,25 @@ export class DurableHost implements ExtensionHost {
       skills: async (cwd) => (await this.prompt.loader(cwd)).getSkills().skills,
       agentDir: this.agentDir,
       recorded: async (botId, lists) => { await this.botAccessRecorded?.(botId, lists); },
-      report: (error) => recordDiagnosticEvent({
-        area: "runtime", level: "warning", action: "bot_access_mirror_failed",
-        summary: "A bot's granted tools were recorded in its chat but not in HUI's roster",
+      report: (step, error) => recordDiagnosticEvent({
+        area: "runtime", level: "warning", action: step === "roster" ? "bot_access_mirror_failed" : "bot_access_offer_failed",
+        summary: step === "roster"
+          ? "A bot's chat turned tools back on that HUI's roster does not show yet"
+          : "A bot's chat turned tools back on, but its tool offer was not refreshed",
         detail: error instanceof Error ? error.message : String(error),
       }),
     });
     this.#bots = huiBotsExtensions({ invoke, section: async (botId) => this.botSection?.(botId), tools: access.tools, sections: access.sections });
-    // A bot's chat lists only its own skills.
-    this.prompt.skillsFor = async (conversationId) => (await this.botStateFor(conversationId))?.access?.skills;
+    // A bot's chat lists only the skills the operator left on.
+    this.prompt.disabledSkillsFor = async (conversationId) => (await this.botStateFor(conversationId))?.disabledSkills;
   }
 
-  /** HUI's agent-tool handler, called as the HUI session bound to the conversation. A bot's chat may call only the HUI
-   * tools on its list, whatever it was offered: the bridge checks the bot's document itself. */
+  /** HUI's agent-tool handler, called as the HUI session bound to the conversation. A bot's chat may not call a HUI tool
+   * the operator turned off, whatever it was offered: the bridge checks the bot's document itself. */
   async #invokeAs(conversationId: ConversationId, action: string, params: Record<string, unknown>): Promise<unknown> {
     const bot = await this.botStateFor(conversationId);
-    if (bot && !botMayCall(bot.access, action)) {
-      throw new Error(`This bot doesn't have the ${action} tool. Ask the operator for it with request_access.`);
+    if (bot && !botMayCall(bot, action)) {
+      throw new Error(`The operator turned off ${action} in this bot's chat. Ask for it with request_access if the job needs it.`);
     }
     const callerSessionId = this.#callers.get(conversationId) ?? await this.#lookupCaller(conversationId);
     if (!callerSessionId) throw new Error("HUI agent tools are unavailable for this conversation.");

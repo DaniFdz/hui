@@ -1,21 +1,23 @@
 /**
- * What a bot's chat may use (HUI-18; SPEC decision of 2026-10-06): each bot
- * has a tool list and a skill list, kept in its conversation's `hui.bot`
- * document, and its chat gets only those, its own tools and OptChat's memory
- * tools. Everything here reads that document where the conversation runs, so a
- * worker host enforces the same lists as the gateway.
+ * What a bot's chat may use (HUI-18; SPEC decision of 2026-10-06): every tool
+ * and skill a session in its directory gets, except the ones the operator
+ * turned off for that bot. What is off lives in its conversation's `hui.bot`
+ * document, and everything here reads that document where the conversation
+ * runs, so a worker host enforces the same choices as the gateway. A tool or
+ * skill that appears later (a new extension, a HUI update, a new skill) is on
+ * until the operator turns it off.
  *
- * - `DurableSession.applyTools` offers a bot's chat exactly its tools
- *   (`botToolSelection`), extension tools included, and the HUI tool bridge
- *   (`DurableHost`) refuses a bot's call to a HUI tool that is not on its list.
- * - The prompt lists only its skills (`botSkillsPrompt`), `/skill:` offers only
- *   them, and `load_skill` returns one of them, so a bot without the read tool
- *   still loads its skills.
- * - `request_access` asks the operator through HUI's question flow; Allow adds
- *   the items to the lists and to the run's tools, for its next request.
+ * - `DurableSession.applyTools` leaves what is off out of a bot's offer
+ *   (`planBotTools`), extension tools included, and the HUI tool bridge
+ *   (`DurableHost`) refuses a bot's call to a HUI tool that is off.
+ * - Its prompt lists only the skills that are on, and `/skill:` offers only
+ *   them. A bot with neither read nor bash loads them with `load_skill`.
+ * - While something is off, `request_access` asks the operator for it through
+ *   HUI's question flow: Allow turns it back on from the run's next request.
  *
  * Tools are the boundary, nothing more: a bot with bash or read reaches what
- * the user's account can. Isolation is a worker in a container.
+ * the user's account can, the files of turned-off skills included. Isolation
+ * is a worker in a container.
  */
 import { readFileSync } from "node:fs";
 import { readFile, realpath, stat } from "node:fs/promises";
@@ -31,14 +33,17 @@ import type { RuntimeQuestionResponse } from "./types.ts";
 
 export const REQUEST_ACCESS_TOOL = "request_access";
 export const LOAD_SKILL_TOOL = "load_skill";
-/** A bot's own tools: its chat keeps them whatever its list says. `load_skill` joins once it has a skill. */
+/** A bot's own tools. The operator can't turn them off; its chat is offered each one while it has a use for it. */
 export const BOT_OWN_TOOLS: readonly string[] = [REQUEST_ACCESS_TOOL, LOAD_SKILL_TOOL];
+/** The file tools a model loads skills with (PI's skills section names one); a bot with neither gets `load_skill`. */
+const SKILL_READERS: readonly string[] = ["read", "bash"];
 
 /**
- * Tools that reach past a bot's selection: they run commands (`bash`, `terminal`, `watcher`), change files other
- * programs load, such as PI extensions or shell startup files (`write`, `edit`), drive HUI's own page and `file://`
- * URLs (`browser`), or act through another session, which has every tool (`sessions_spawn`, `sessions_send`,
- * `subagents`). New bots start without them and the catalog labels them.
+ * Tools that reach past whatever else the operator turned off: they run commands (`bash`, `terminal`, `watcher`),
+ * change files other programs load, such as PI extensions or shell startup files (`write`, `edit`), drive HUI's own
+ * page and `file://` URLs (`browser`), or act through another session, which has every tool (`sessions_spawn`,
+ * `sessions_send`, `subagents`). Like every tool they are on by default; the catalog labels them, so the operator sees
+ * what turning another tool off leaves open.
  */
 export const POWERFUL_TOOLS: ReadonlySet<string> = new Set([
   "write", "edit", "bash", "terminal", "watcher", "browser", "sessions_spawn", "sessions_send", "subagents",
@@ -46,7 +51,7 @@ export const POWERFUL_TOOLS: ReadonlySet<string> = new Set([
 
 /** What a bot's own tools add to HUI's active-tool section; the `bot_access` section explains the rest. */
 export const BOT_ACCESS_CONTRIBUTIONS: Readonly<Record<string, { snippet: string; guidelines: readonly string[] }>> = {
-  [REQUEST_ACCESS_TOOL]: { snippet: "Ask the operator for tools or skills you don't have yet", guidelines: [] },
+  [REQUEST_ACCESS_TOOL]: { snippet: "Ask the operator to turn back on a tool or skill they turned off", guidelines: [] },
   [LOAD_SKILL_TOOL]: { snippet: "Load one of your skills, or a file it refers to", guidelines: [] },
 };
 
@@ -62,7 +67,7 @@ const DENY = "Deny";
 /** How the Tools tab groups a tool: files, shell, HUI's own, an extension's (by source), or bots'. */
 export type BotToolGroup = "files" | "shell" | "hui" | "extension" | "bots";
 
-/** One tool a bot's chat could be given, as the catalog and the access section describe it. */
+/** One tool of a bot's chat the operator can turn off, as the catalog and the access section describe it. */
 export type OfferedTool = {
   name: string;
   label: string;
@@ -129,30 +134,49 @@ export function describeTool(tool: { readonly name: string; readonly description
   }
 }
 
+/** Where a tool probably comes from, by its name, for a description without a live session. */
+function originOf(name: string): ToolOrigin {
+  if (CODING_TOOLS[name]) return { kind: "coding" };
+  if (BOT_TOOLS[name]) return { kind: "bot" };
+  return huiTool(name) ? { kind: "hui" } : { kind: "extension", source: "extension" };
+}
+
 /* ── tools ───────────────────────────────────────────────────────────── */
 
-/** What a bot's chat keeps whatever its list says: OptChat's memory tools, `request_access`, and `load_skill` once it
- * has a skill. */
-export function alwaysKept(access: BotAccess, memoryTools: readonly string[]): Set<string> {
-  return new Set([...memoryTools, REQUEST_ACCESS_TOOL, ...(access.skills.length ? [LOAD_SKILL_TOOL] : [])]);
+/** How a bot's chat is offered tools. */
+export type BotToolPlan<T> = {
+  /** The tools the operator can turn off, in offer order: all but OptChat's memory tools and the bot's own. */
+  listable: T[];
+  /** The tools of the offer its chat goes without: those turned off, and its own ones it has no use for. */
+  removed: T[];
+};
+
+/**
+ * A bot's chat gets what a session in its directory is offered (`offer`, in offer order), less what the operator
+ * turned off. OptChat's memory tools and its own tools can't be turned off; it is offered `request_access` while
+ * something is off, and `load_skill` while it has a skill and neither read nor bash.
+ */
+export function planBotTools<T extends { readonly name: string }>(
+  offer: readonly T[], access: BotAccess, context: { memory: readonly string[]; skillsOn: number; skillsOff: number },
+): BotToolPlan<T> {
+  const listable = offer.filter((tool) => !context.memory.includes(tool.name) && !BOT_OWN_TOOLS.includes(tool.name));
+  const off = new Set(listable.filter((tool) => access.disabledTools.includes(tool.name)).map((tool) => tool.name));
+  const kept = (name: string) => offer.some((tool) => tool.name === name) && !off.has(name);
+  const unused = new Set([
+    ...(off.size || context.skillsOff ? [] : [REQUEST_ACCESS_TOOL]),
+    ...(context.skillsOn && !SKILL_READERS.some(kept) ? [] : [LOAD_SKILL_TOOL]),
+  ]);
+  return { listable, removed: offer.filter((tool) => off.has(tool.name) || unused.has(tool.name)) };
 }
 
-/** A bot's chat is offered, in offer order, the tools on its list and the ones it always keeps; nothing else, so a
- * tool installed later is never offered to it by itself. */
-export function botToolSelection<T extends { readonly name: string }>(offer: readonly T[], access: BotAccess, always: ReadonlySet<string>): T[] {
-  const listed = new Set(access.tools);
-  return offer.filter((tool) => always.has(tool.name) || listed.has(tool.name));
-}
-
-/** Whether a bot's chat may call the HUI tool `name`: the bridge's own check, apart from what the chat is offered. A
- * chat whose lists are not recorded yet keeps every tool. */
-export function botMayCall(access: BotAccess | null, name: string): boolean {
-  return access === null || access.tools.includes(name) || BOT_OWN_TOOLS.includes(name);
+/** Whether a bot's chat may call the HUI tool `name`: the bridge's own check, apart from what the chat is offered. */
+export function botMayCall(access: BotAccess, name: string): boolean {
+  return BOT_OWN_TOOLS.includes(name) || !access.disabledTools.includes(name);
 }
 
 /* ── skills ──────────────────────────────────────────────────────────── */
 
-/** How a bot's list names a skill: its name and SKILL.md path, or a bundled skill's stable preference path, which
+/** How a bot's lists name a skill: its name and SKILL.md path, or a bundled skill's stable preference path, which
  * survives upgrades and checkout moves (as Settings' disabled skills do). */
 export function skillRef(skill: { readonly name: string; readonly filePath: string }): BotSkillRef {
   const bundled = bundledSkills.find((each) => each.path === skill.filePath);
@@ -163,9 +187,9 @@ export function hasSkill(refs: readonly BotSkillRef[], ref: BotSkillRef): boolea
   return refs.some((each) => each.name === ref.name && each.path === ref.path);
 }
 
-/** The skills of `skills` a bot's list names. */
-export function botSkills<T extends { readonly name: string; readonly filePath: string }>(skills: readonly T[], refs: readonly BotSkillRef[]): T[] {
-  return skills.filter((skill) => hasSkill(refs, skillRef(skill)));
+/** The skills of `skills` a bot's chat has: all but the ones the operator turned off. */
+export function botSkills<T extends { readonly name: string; readonly filePath: string }>(skills: readonly T[], disabled: readonly BotSkillRef[]): T[] {
+  return skills.filter((skill) => !hasSkill(disabled, skillRef(skill)));
 }
 
 /** A skill's instructions as the model reads them, from `/skill:name` or `load_skill`: SKILL.md without its front
@@ -177,8 +201,8 @@ export function skillBlock(skill: Pick<Skill, "name" | "filePath" | "baseDir">):
 
 const escapeXml = (text: string) => text.replace(/&/gu, "&amp;").replace(/</gu, "&lt;").replace(/>/gu, "&gt;").replace(/"/gu, "&quot;").replace(/'/gu, "&apos;");
 
-/** A bot's `skills` prompt section: PI's own, told to load each skill with `load_skill`, which every bot with a skill
- * has; PI's names the read tool, which a bot may lack. Skills that disable model invocation stay out, as in PI. */
+/** The `skills` prompt section of a bot with neither read nor bash: PI's own, told to load each skill with
+ * `load_skill`. Skills that disable model invocation stay out, as in PI. */
 export function botSkillsPrompt(skills: readonly Pick<Skill, "name" | "description" | "disableModelInvocation">[]): string | undefined {
   const visible = skills.filter((skill) => !skill.disableModelInvocation);
   if (!visible.length) return undefined;
@@ -203,45 +227,43 @@ const oneLine = (text: string, max: number) => {
   return line.length <= max ? line : `${line.slice(0, max - 1).trimEnd()}…`;
 };
 
-/**
- * The `bot_access` section of a bot's chat: what it has, how to ask for more, and what it can ask for. Byte-stable
- * while its lists, its offer and its directory's skills are unchanged.
- */
-export function botAccessText(access: BotAccess, offered: readonly string[], offer: readonly OfferedTool[], skills: readonly Pick<Skill, "name" | "filePath" | "description">[]): string {
-  const mine = botSkills(skills, access.skills).map((skill) => skill.name);
-  const tools = offer.filter((tool) => !offered.includes(tool.name) && !access.tools.includes(tool.name));
-  const askable = skills.filter((skill) => !hasSkill(access.skills, skillRef(skill)));
+/** The `bot_access` section of a bot's chat: what the operator turned off and how to ask for it back. Undefined while
+ * nothing is off, so a bot nobody restricted reads the prompt it always did. */
+export function botAccessText(tools: readonly Pick<OfferedTool, "name" | "description" | "powerful">[], skills: readonly Pick<Skill, "name" | "description">[]): string | undefined {
+  if (!tools.length && !skills.length) return undefined;
   return [
-    `The operator chooses which tools and skills you have. Your tools: ${offered.length ? offered.join(", ") : "none"}. Your skills: ${mine.length ? mine.join(", ") : "none"}.`,
-    "When a job needs a tool or skill you don't have, ask for it with request_access: name exactly what you need and say why. The operator answers Allow or Deny in this chat, and what they allow is yours from your next step. Ask only for what the job needs, one request at a time.",
-    ...(tools.length ? ["Tools you can ask for:", ...tools.map((tool) => `- ${tool.name}: ${tool.description}${tool.powerful ? " (powerful: it reaches beyond your other tools)" : ""}`)] : []),
-    ...(askable.length ? ["Skills you can ask for:", ...askable.map((skill) => `- ${skill.name}: ${oneLine(skill.description, ACCESS_DESCRIPTION_CHARS)}`)] : []),
-    ...(!tools.length && !askable.length ? ["There is nothing more to ask for."] : []),
+    "The operator turned off some of your tools and skills in this chat:",
+    ...(tools.length ? ["Tools:", ...tools.map((tool) => `- ${tool.name}: ${tool.description}${tool.powerful ? " (powerful)" : ""}`)] : []),
+    ...(skills.length ? ["Skills:", ...skills.map((skill) => `- ${skill.name}: ${oneLine(skill.description, ACCESS_DESCRIPTION_CHARS)}`)] : []),
+    "If a job truly needs one of them, ask for it with request_access: name exactly what you need and say why. The operator answers Allow or Deny in this chat, and what they allow is yours from your next step. Ask for one thing at a time, and don't work around a turned-off tool through other tools, bots or sessions.",
   ].join("\n");
 }
 
 /* ── the bot's own tools ─────────────────────────────────────────────── */
 
-/** The live chat of a bot's conversation, which a tool asks through. */
+/** The live chat of a bot's conversation, which its own tools ask through. */
 export interface BotChat {
-  /** The tools a session in this chat's directory gets now, before the bot's list, without the ones it always keeps. */
+  /** The tools the operator can turn off in this chat, as the latest tool offer found them. */
   botOffer(): readonly OfferedTool[];
   /** Skills a session in this chat's directory gets, Settings' choices applied. */
   availableSkills(): Promise<readonly Skill[]>;
   /** Asks the operator in this chat; undefined once dismissed, or when `signal` aborts first. */
   ask(question: QuestionDraft, signal?: AbortSignal): Promise<RuntimeQuestionResponse | undefined>;
+  /** Offers the conversation its tools again, after its lists changed. */
+  applyTools(): Promise<void>;
 }
 
 export type BotAccessDeps = {
   /** The live session of a conversation; undefined while none has it open. */
   chat(conversationId: ConversationId): BotChat | undefined;
-  /** Skills of a directory, for `load_skill` without a live session. */
+  /** Skills of a directory, for prompts and `load_skill` without a live session. */
   skills(cwd: string): Promise<readonly Skill[]>;
   /** Where a conversation without a directory runs. */
   agentDir: string;
-  /** After a grant: the gateway mirrors the lists into its roster. Failures are reported, never the model's. */
+  /** After the operator allowed a request: the gateway mirrors the lists into its roster. */
   recorded?(botId: string, access: BotAccess): Promise<void>;
-  report?(error: unknown): void;
+  /** A step after a grant failed: mirroring it (`roster`) or offering the tools again (`offer`). Never the model's. */
+  report?(step: "roster" | "offer", error: unknown): void;
 };
 
 type Result = ToolExecutionResult;
@@ -263,7 +285,7 @@ export function botAccessParts(deps: BotAccessDeps): { tools: ToolRegistration[]
 
   const requestAccess = defineTool({
     name: REQUEST_ACCESS_TOOL,
-    description: "Ask the operator for tools or skills you don't have yet. They answer Allow or Deny in your chat; what they allow is yours from your next step. Name exactly what the current job needs and say why. Unknown names are refused with the ones you can ask for.",
+    description: "Ask the operator to turn back on tools or skills they turned off in your chat. They answer Allow or Deny there; what they allow is yours from your next step. Name exactly what the current job needs and say why. Names that aren't turned off are refused with the ones that are.",
     parameters: Type.Object({
       tools: Type.Optional(Type.Array(Type.String({ minLength: 1, maxLength: 100 }), { maxItems: 20, description: "Tool names, as your bot_access section lists them." })),
       skills: Type.Optional(Type.Array(Type.String({ minLength: 1, maxLength: 200 }), { maxItems: 20, description: "Skill names, as your bot_access section lists them." })),
@@ -274,27 +296,26 @@ export function botAccessParts(deps: BotAccessDeps): { tools: ToolRegistration[]
     execute: async (args, api, context) => {
       const state = await conversationBotState(api, api.conversationId, context);
       if (!state) return text("request_access is only available in a bot's chat.", true);
-      if (!state.access) return text("You already have every tool and skill a session in your directory gets. There is nothing to ask for.");
       const chat = deps.chat(api.conversationId);
       if (!chat) return text("Your chat isn't open in HUI, so the operator can't be asked now. Try again in a later turn.", true);
       const wanted = { tools: unique(args.tools), skills: unique(args.skills) };
       if (!wanted.tools.length && !wanted.skills.length) return text("Name at least one tool or skill to ask for.", true);
-      const access = state.access;
       const current = new Set((await api.agent(context)).tools.map((tool) => tool.name));
-      const offer = new Map(chat.botOffer().map((tool) => [tool.name, tool]));
+      const offer = chat.botOffer();
       const available = await chat.availableSkills();
-      const unknownTools = wanted.tools.filter((name) => !offer.has(name) && !current.has(name));
+      const offTools = offer.filter((tool) => state.disabledTools.includes(tool.name));
+      const offSkills = available.filter((skill) => hasSkill(state.disabledSkills, skillRef(skill)));
+      const unknownTools = wanted.tools.filter((name) => !current.has(name) && !offer.some((tool) => tool.name === name));
       const unknownSkills = wanted.skills.filter((name) => !available.some((skill) => skill.name === name));
       if (unknownTools.length || unknownSkills.length) {
-        const askableTools = [...offer.keys()].filter((name) => !current.has(name) && !access.tools.includes(name));
-        const askableSkills = available.filter((skill) => !hasSkill(access.skills, skillRef(skill))).map((skill) => skill.name);
+        const askable = (names: readonly string[], kind: string) => (names.length ? names.join(", ") : `nothing, no ${kind} is turned off`);
         return text([
-          ...(unknownTools.length ? [`No tool named ${listed(unknownTools)}. You can ask for: ${askableTools.length ? askableTools.join(", ") : "no other tools"}.`] : []),
-          ...(unknownSkills.length ? [`No skill named ${listed(unknownSkills)}. You can ask for: ${askableSkills.length ? askableSkills.join(", ") : "no other skills"}.`] : []),
+          ...(unknownTools.length ? [`No tool named ${listed(unknownTools)}. You can ask for: ${askable(offTools.map((tool) => tool.name), "tool")}.`] : []),
+          ...(unknownSkills.length ? [`No skill named ${listed(unknownSkills)}. You can ask for: ${askable(offSkills.map((skill) => skill.name), "skill")}.`] : []),
         ].join(" "), true);
       }
-      const tools = wanted.tools.filter((name) => !current.has(name) && !access.tools.includes(name)).map((name) => offer.get(name)!);
-      const skills = wanted.skills.map((name) => skillRef(available.find((skill) => skill.name === name)!)).filter((ref) => !hasSkill(access.skills, ref));
+      const tools = offTools.filter((tool) => wanted.tools.includes(tool.name));
+      const skills = offSkills.filter((skill) => wanted.skills.includes(skill.name)).map(skillRef);
       if (!tools.length && !skills.length) return text(`You already have ${listed([...wanted.tools, ...wanted.skills.map((name) => `the ${name} skill`)])}.`);
       if (pending.has(state.bot)) return text("Another access request is already waiting for the operator. Wait for its answer before asking again.", true);
       pending.add(state.bot);
@@ -313,20 +334,20 @@ export function botAccessParts(deps: BotAccessDeps): { tools: ToolRegistration[]
       }
       const granted = await api.commit(async (tx) => {
         const doc = await tx.doc(BotDoc, api.conversationId);
-        const before = doc.access ?? { tools: [], skills: [] };
-        const next: BotAccess = {
-          tools: [...before.tools, ...tools.map((tool) => tool.name).filter((name) => !before.tools.includes(name))],
-          skills: [...before.skills, ...skills.filter((ref) => !hasSkill(before.skills, ref))],
-        };
-        doc.access = next;
-        return JSON.parse(JSON.stringify(next)) as BotAccess;
+        const names = new Set(tools.map((tool) => tool.name));
+        doc.disabledTools = (Array.isArray(doc.disabledTools) ? doc.disabledTools : []).filter((name) => !names.has(name));
+        doc.disabledSkills = (Array.isArray(doc.disabledSkills) ? doc.disabledSkills : []).filter((ref) => !hasSkill(skills, ref));
+        return JSON.parse(JSON.stringify({ disabledTools: doc.disabledTools, disabledSkills: doc.disabledSkills })) as BotAccess;
       }, context);
-      await deps.recorded?.(state.bot, granted).catch((error: unknown) => deps.report?.(error));
+      await deps.recorded?.(state.bot, granted).catch((error: unknown) => deps.report?.("roster", error));
+      // Offered again at once: request_access goes once nothing is off, load_skill comes with a first skill.
+      await chat.applyTools().catch((error: unknown) => deps.report?.("offer", error));
+      const loader = skills.length > 0 && !SKILL_READERS.some((name) => current.has(name));
       const names = [...tools.map((tool) => tool.name), ...skills.map((skill) => `the ${skill.name} skill`)];
       return {
-        content: [{ type: "text", text: `The operator allowed it: you now have ${listed(names)}, from your next step.${skills.length ? " Load a skill with load_skill." : ""}` }],
-        // Durable adds them to this run's tools at once, so the very next request offers them.
-        control: { addTools: [...tools.map((tool) => tool.name), ...(skills.length ? [LOAD_SKILL_TOOL] : [])] },
+        content: [{ type: "text", text: `The operator allowed it: you now have ${listed(names)}, from your next step.${loader ? " Load a skill with load_skill." : ""}` }],
+        // Should offering them again have failed, Durable still adds them to this run's tools when the round ends.
+        control: { addTools: [...tools.map((tool) => tool.name), ...(loader ? [LOAD_SKILL_TOOL] : [])] },
       };
     },
   });
@@ -344,10 +365,14 @@ export function botAccessParts(deps: BotAccessDeps): { tools: ToolRegistration[]
       if (!state) return text("load_skill is only available in a bot's chat.", true);
       const chat = deps.chat(api.conversationId);
       const available = chat ? await chat.availableSkills() : await deps.skills((await api.agent(context)).cwd ?? deps.agentDir);
-      const mine = state.access ? botSkills(available, state.access.skills) : [...available];
-      const skill = mine.find((candidate) => candidate.name === args.name.trim());
+      const name = args.name.trim();
+      const mine = botSkills(available, state.disabledSkills);
+      const skill = mine.find((candidate) => candidate.name === name);
       if (!skill) {
-        return text(`You have no skill named "${args.name}". ${mine.length ? `Your skills: ${mine.map((each) => each.name).join(", ")}.` : "You have no skills yet."} Ask the operator for one with request_access.`, true);
+        if (available.some((candidate) => candidate.name === name)) {
+          return text(`The operator turned off the ${name} skill. Ask for it with request_access if the job needs it.`, true);
+        }
+        return text(`You have no skill named "${name}". ${mine.length ? `Your skills: ${mine.map((each) => each.name).join(", ")}.` : "You have no skills."}`, true);
       }
       if (!args.path) return text(skillBlock(skill));
       const file = await skillFile(skill, args.path);
@@ -357,11 +382,16 @@ export function botAccessParts(deps: BotAccessDeps): { tools: ToolRegistration[]
 
   const accessSection = section("bot_access", async (input, context) => {
     const state = await conversationBotState(input.read, input.conversationId, context);
-    if (!state?.access) return undefined;
-    const chat = deps.chat(input.conversationId);
+    if (!state || (!state.disabledTools.length && !state.disabledSkills.length)) return undefined;
+    const offered = new Set(input.agent.tools.map((tool) => tool.name));
+    // The live chat's offer, or what the request's extensions compose.
+    const live = deps.chat(input.conversationId)?.botOffer();
+    const candidates = live ?? input.agent.extensions.flatMap((extension) => extension.tools ?? [])
+      .filter((tool) => !BOT_OWN_TOOLS.includes(tool.name)).map((tool) => describeTool(tool, originOf(tool.name)));
+    const tools = candidates.filter((tool) => state.disabledTools.includes(tool.name) && !offered.has(tool.name));
     const cwd = input.env?.cwd ?? input.agent.cwd ?? deps.agentDir;
-    const skills = await (chat ? chat.availableSkills() : deps.skills(cwd)).catch(() => []);
-    return botAccessText(state.access, input.agent.tools.map((tool) => tool.name), chat?.botOffer() ?? [], skills);
+    const skills = (await deps.skills(cwd).catch(() => [])).filter((skill) => hasSkill(state.disabledSkills, skillRef(skill)));
+    return botAccessText(tools, skills);
   });
 
   return { tools: [requestAccess, loadSkill], sections: [accessSection] };
