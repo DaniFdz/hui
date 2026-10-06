@@ -676,6 +676,20 @@ and dismiss controls. The registry survives gateway
 restarts. Proof: `server/watchers.test.ts`, `server/watcher-routes.test.ts`,
 `src/views/chat/watcher-activity.test.ts` and `e2e/watchers.browser.md`.
 
+### HUI-19 — Agent widgets
+
+Done 2026-10-06. Agents and bots show interactive HTML/SVG widgets inline in the
+chat through the HUI `show_widget` tool, ported from OpenClaw's: the gateway
+validates the fragment (256 KiB, no full documents, every inline classic and
+module script parsed with line:column errors), the call itself is the only
+record, and the chat renders it as a titled card in a two-frame opaque-origin
+sandbox (`/__hui/widget-sandbox`, a strict CSP with no connections) on HUI's live
+theme, with fitted height, full screen, error notices and click-only links.
+`sendPrompt` is a follow-up. Proof: `server/runtimes/widget-code.test.ts`,
+`server/widget-sandbox.test.ts`, `src/lib/widgets.test.ts`,
+`src/components/widget-card.test.ts`, `src/views/chat/projection.test.ts`,
+`server/runtimes/pi-sdk.test.ts` and `e2e/widgets.browser.md`.
+
 ## Recommended implementation order
 
 `HUI-01 → HUI-02 → HUI-03 → HUI-04 → HUI-05 → HUI-06`, then run HUI-07,

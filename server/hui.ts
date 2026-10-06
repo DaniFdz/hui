@@ -117,6 +117,8 @@ import {
 import { sessionTreeIds } from "../src/lib/session-tree.ts";
 import { SubagentService } from "./subagents.ts";
 import { presentMediaForSession, servePresentedMedia } from "./presented-media.ts";
+import { serveWidgetSandbox } from "./widget-sandbox.ts";
+import { WIDGET_SANDBOX_PATH } from "../shared/widgets.ts";
 import { GitHubCli, GitHubCliError } from "./github.ts";
 import { FIRST_YEAR as GITHUB_FIRST_YEAR, GitHubContributionsReader, latestYear } from "./github-contributions.ts";
 import { GitHubPreviews, ghApi, previewPullRequestFetcher } from "./github-previews.ts";
@@ -2026,6 +2028,12 @@ async function handleRequest(
   response: ServerResponse,
 ): Promise<void> {
   const path = new URL(request.url ?? "/", "http://localhost").pathname;
+  // An iframe navigation cannot send x-hui. The page is static and holds no
+  // data; its own policy keeps it opaque and embeddable only by HUI.
+  if (path === WIDGET_SANDBOX_PATH) {
+    serveWidgetSandbox(request, response);
+    return;
+  }
   const presentedMedia = path.match(PRESENTED_MEDIA_ROUTE);
   // Native img/audio/video elements cannot set x-hui. Their opaque random id is
   // the read capability, and CORP prevents embedding it from another origin.
