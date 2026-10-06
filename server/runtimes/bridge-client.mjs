@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
+import { request } from "node:http";
 
 /**
  * In-process runtimes run these tools inside the gateway and supply the
@@ -11,6 +12,8 @@ export const directHuiBridge = new AsyncLocalStorage();
  * PI-side client of HUI's private agent bridge (server/agent-tools-bridge.ts).
  * The URL, bearer token and caller identity come from the environment HUI
  * gives each PI child; tool parameters can never choose another caller.
+ * Plain node:http, not fetch: fetch gives up on a reply after five minutes,
+ * and `secret_request` waits for the operator longer than that.
  */
 export async function invokeHuiBridge(action, params, { timeoutMs = 160_000, signal } = {}) {
   const direct = directHuiBridge.getStore();
@@ -22,18 +25,26 @@ export async function invokeHuiBridge(action, params, { timeoutMs = 160_000, sig
     throw new Error("HUI agent tools are unavailable in this runtime.");
   }
   const timeout = AbortSignal.timeout(timeoutMs);
-  const response = await fetch(`${bridgeUrl}/invoke`, {
-    method: "POST",
-    headers: {
-      authorization: `Bearer ${bridgeToken}`,
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({ callerSessionId, action, params }),
-    signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+  const reply = await new Promise((resolve, reject) => {
+    const call = request(`${bridgeUrl}/invoke`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${bridgeToken}`,
+        "content-type": "application/json",
+      },
+      signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+    }, (response) => {
+      const chunks = [];
+      response.on("data", (chunk) => chunks.push(chunk));
+      response.on("end", () => resolve({ status: response.statusCode, text: Buffer.concat(chunks).toString("utf8") }));
+      response.on("error", reject);
+    });
+    call.on("error", reject);
+    call.end(JSON.stringify({ callerSessionId, action, params }));
   });
-  const body = await response.json();
-  if (!response.ok || body?.ok !== true) {
-    throw new Error(body?.error || `HUI agent tool failed with HTTP ${response.status}.`);
+  const body = JSON.parse(reply.text);
+  if (reply.status !== 200 || body?.ok !== true) {
+    throw new Error(body?.error || `HUI agent tool failed with HTTP ${reply.status}.`);
   }
   return body.result;
 }

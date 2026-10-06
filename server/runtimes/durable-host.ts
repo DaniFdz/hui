@@ -216,11 +216,11 @@ export class DurableHost implements ExtensionHost {
     this.#invokeTool = options.invokeTool ?? invokeAgentTool;
     this.#lookupCaller = options.lookupCaller ?? registryCaller;
     this.#tools = huiDurableTools({
-      invoke: async (conversationId, action, params) => {
+      invoke: async (conversationId, action, params, signal) => {
         const callerSessionId = this.#callers.get(conversationId) ?? await this.#lookupCaller(conversationId);
         if (!callerSessionId) throw new Error("HUI agent tools are unavailable for this conversation.");
         this.#callers.set(conversationId, callerSessionId);
-        return this.#invokeTool({ callerSessionId, action, params });
+        return this.#invokeTool({ callerSessionId, action, params, ...(signal ? { signal } : {}) });
       },
     });
   }
