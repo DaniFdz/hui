@@ -193,6 +193,24 @@ test("a bot made on the worker keeps its conversation and memory there, answers 
   assert.equal(view.lastMessage?.text, "Fixture response.");
 });
 
+test("a bot on the worker without a utility model of its own summarizes with the Settings' one, mirrored there", { timeout: 180_000 }, async () => {
+  // Settings' utility model reaches the worker with the mirrored settings.
+  await writeFile(join(root, "gateway", "config", "hui", "settings.json"), JSON.stringify({ models: { utility: "fx/utility" } }));
+  await workers.sync(workerId);
+  const sparrow = botOf(await call("/__hui/bots", "POST", { name: "Sparrow", worker: "devbox" }));
+  assert.equal(sparrow.memoryModel, undefined, "no utility model of its own");
+  const text = `OPT_SPARROW ${"the south valley floods every spring ".repeat(20).trim()}`;
+  assert.deepEqual((await call("/__hui/bots/sparrow/messages", "POST", { text, wait: true, timeoutSeconds: 120 })).body, { status: "answered", reply: "Fixture response." });
+  await waitFor(async () => {
+    const memory = await memoryOf("sparrow");
+    return memory.status.messages === 2 && memory.status.pending === 0 ? memory : undefined;
+  }, "the worker's memory to summarize the message");
+  const compactor = (await providerRequests()).filter((request) => isCompactor(request) && JSON.stringify(request.messages).includes("OPT_SPARROW"));
+  assert.ok(compactor.length > 0, "the compactor summarized it on the worker");
+  assert.deepEqual([...new Set(compactor.map((request) => request.model))], ["utility"], "Settings' utility model, not the chat's own");
+  assert.equal((await chatRequest("OPT_SPARROW"))?.model, "fixture", "the chat itself stays on its model");
+});
+
 test("message_bot crosses both ways between a bot here and the bot on the worker", { timeout: 180_000 }, async () => {
   const home = botOf(await call("/__hui/bots", "POST", { name: "Home" }));
   assert.equal(home.worker, undefined);
