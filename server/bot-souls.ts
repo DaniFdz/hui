@@ -3,22 +3,22 @@
  * keeps for every bot, `BOTS_DIR/<id>` (owner-only; also the working directory
  * of a bot created without one). A bot with a working directory of its own
  * still has this folder, so SOUL.md never lands in a directory the operator
- * chose. The bot writes SOUL.md itself in its first conversation, with its file
- * tools; the operator replaces it through `PUT /__hui/bots/:id/soul`. Its chat
- * reads it on every request (`renderSoulSection` in `runtimes/durable-bots.ts`).
+ * chose. The bot writes SOUL.md itself in its first conversation, with its
+ * `write_soul` tool; the operator replaces it through `PUT /__hui/bots/:id/soul`.
+ * Its chat reads it on every request (`renderSoulSection` in
+ * `runtimes/durable-bots.ts`); both writers go through `writeSoulFile`.
  *
  * This is the local implementation of the `BotSouls` port: a bot running
  * elsewhere routes the same calls to the host that runs its chat.
  */
-import { randomUUID } from "node:crypto";
-import { mkdir, rename, rm, rmdir, writeFile } from "node:fs/promises";
+import { mkdir, rm, rmdir } from "node:fs/promises";
 import { join } from "node:path";
 
 import { BOT_SOUL_FILE } from "../shared/bots.ts";
 import { DEFAULT_SETTINGS } from "../src/lib/settings.ts";
 import type { BotSouls } from "./bot-service.ts";
 import { BOTS_DIR } from "./bots.ts";
-import { readSoulFile } from "./runtimes/durable-bots.ts";
+import { readSoulFile, writeSoulFile } from "./runtimes/durable-bots.ts";
 
 /** Settings' profile name for a bot's first conversation: undefined while it is empty or still the default. */
 export function operatorName(profileName: string): string | undefined {
@@ -46,21 +46,8 @@ export function localBotSouls(botsDir: string = BOTS_DIR): BotSouls {
     },
 
     async write(botId, soul) {
-      const target = file(botId);
-      if (!soul) {
-        await rm(target, { force: true });
-        return;
-      }
-      await mkdir(home(botId), { recursive: true, mode: 0o700 });
-      // A temporary file and a rename: the chat never reads half a soul.
-      const temporary = `${target}.${process.pid}-${randomUUID().slice(0, 8)}.tmp`;
-      try {
-        await writeFile(temporary, `${soul}\n`, { encoding: "utf8", mode: 0o600 });
-        await rename(temporary, target);
-      } catch (error) {
-        await rm(temporary, { force: true }).catch(() => {});
-        throw error;
-      }
+      if (soul) await writeSoulFile(file(botId), soul);
+      else await rm(file(botId), { force: true });
     },
 
     async remove(botId) {

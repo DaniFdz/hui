@@ -455,7 +455,11 @@ async function chatRequests(): Promise<Array<{ model?: string; system?: unknown;
   return (await providerRequests()).filter((request) => !JSON.stringify(request.system).includes("You write the memory of"));
 }
 
-test("a bot without a soul speaks first, writes SOUL.md itself with its file tools, and every request carries it", { timeout: 120_000 }, async () => {
+test("a bot without a soul speaks first on the primary model, writes SOUL.md itself with write_soul, and every request carries it", { timeout: 120_000 }, async (t) => {
+  // Settings' primary model, which a bot without a model of its own starts on, as a new session does.
+  const settingsFile = join(dir, "config", "hui", "settings.json");
+  await writeFile(settingsFile, JSON.stringify({ models: { primary: "hui-e2e/other" } }));
+  t.after(() => rm(settingsFile, { force: true }));
   const created = await call("/__hui/bots", "POST", { name: "Nova" });
   assert.equal(created.status, 201);
   const nova = botOf(created);
@@ -470,13 +474,14 @@ test("a bot without a soul speaks first, writes SOUL.md itself with its file too
   assert.equal(users[0]?.kind === "message" ? botKickoffName(users[0].text) : undefined, "Nova");
   const first = (await chatRequests()).find((request) => JSON.stringify(request.messages).includes("[HUI bot created]"));
   assert.ok(first, "the kickoff reached the model");
+  assert.equal(first.model, "other", "on Settings' primary model, not PI's default");
   const firstSystem = JSON.stringify(first.system);
   assert.ok(firstSystem.includes(JSON.stringify(`<soul>\nYou have no soul yet: ${soulPath} does not exist.`).slice(1, -1)), "the first conversation, with where to write SOUL.md");
   assert.match(firstSystem, /greet the operator in a sentence and ask what they expect from you/u, "Settings has no profile name here");
   assert.equal(botOf(await call(`/__hui/bots/${nova.id}`)).lastMessage?.text, "Hi, I'm new here. What would you like me to look after for you?", "the list previews the opener, not the kickoff");
   assert.deepEqual((await call(`/__hui/bots/${nova.id}/soul`)).body, { soul: null });
 
-  // The operator answers; the bot writes SOUL.md with its write tool, and the next request carries it.
+  // The operator answers; the bot saves SOUL.md with write_soul, and the next request carries it.
   const wrote = await call(`/__hui/bots/${nova.id}/messages`, "POST", { text: "E2E_WRITE_SOUL keep my notes tidy", wait: true, timeoutSeconds: 60 });
   assert.deepEqual(wrote.body, { status: "answered", reply: "I wrote my SOUL.md. Change it in the Soul tab, or just tell me." });
   assert.equal(await readFile(soulPath, "utf8"), "# Who I am\nE2E_SOUL_TEXT: a terse fixture bot.\n");

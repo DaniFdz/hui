@@ -234,10 +234,9 @@ const server = createServer(async (request, response) => {
     text(response, "Hi, I'm new here. What would you like me to look after for you?");
     return finish(response);
   }
-  // A bot writing its own SOUL.md with the write tool, at the path its soul section names.
+  // A bot saving its own SOUL.md with its write_soul tool.
   if (source.includes("E2E_WRITE_SOUL")) {
-    const path = /(\/\S+\/SOUL\.md)/u.exec(flattenedText(body.system))?.[1] ?? "SOUL.md";
-    toolUse(response, "tool-e2e-write-soul", "write", { path, content: "# Who I am\nE2E_SOUL_TEXT: a terse fixture bot.\n" });
+    toolUse(response, "tool-e2e-write-soul", "write_soul", { soul: "# Who I am\nE2E_SOUL_TEXT: a terse fixture bot.\n" });
     return finish(response, "tool_use");
   }
   if (latestToolResult?.id === "tool-e2e-write-soul") {

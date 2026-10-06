@@ -21,7 +21,7 @@ process.env["XDG_CONFIG_HOME"] = configDir;
 after(() => rm(configDir, { recursive: true, force: true }));
 const { DurableHost, durableContext } = await import("./durable-host.ts");
 const { startDurable, durableConversationId, durableReference } = await import("./durable.ts");
-const { BotDoc, MESSAGE_BOT_TOOL, firstConversationSection, readSoulFile, soulSection } = await import("./durable-bots.ts");
+const { BotDoc, MESSAGE_BOT_TOOL, WRITE_SOUL_TOOL, firstConversationSection, readSoulFile, soulSection, soulToolText } = await import("./durable-bots.ts");
 const { OptChatDoc } = await import("./durable-optchat.ts");
 const { durableBotConversations } = await import("../bot-conversations.ts");
 const { BotMemoryUnavailableError, optChatBotMemory } = await import("../bot-memory.ts");
@@ -131,7 +131,7 @@ test("a plain conversation is offered no message_bot and no bots section; its re
   await settledWith(session, answered("Fixture response"));
   const [request] = await requests(f.log);
   assert.ok(request?.tools?.some((tool) => tool.name === "bash"), "the ordinary tools are offered");
-  assert.ok(!request?.tools?.some((tool) => tool.name === MESSAGE_BOT_TOOL));
+  assert.ok(!request?.tools?.some((tool) => tool.name === MESSAGE_BOT_TOOL || tool.name === WRITE_SOUL_TOOL));
   assert.doesNotMatch(JSON.stringify(request?.system), /<bots>|Roster for|message_bot|<soul>|SOUL\.md/u);
   assert.ok(!(await session.inspect()).tools.some((tool) => tool.name === MESSAGE_BOT_TOOL));
   const harness = await f.host.open();
@@ -159,6 +159,7 @@ test("a bot's conversation is created in one commit with bot document and memory
   assert.deepEqual((await harness.snapshot(AgentDoc, id, durableContext))?.extensions, { add: ["hui-bots-tools"] }, "only a bot's chat selects message_bot");
   const inspection = await session.inspect();
   assert.equal(inspection.tools.find((tool) => tool.name === MESSAGE_BOT_TOOL)?.source, "HUI");
+  assert.equal(inspection.tools.find((tool) => tool.name === WRITE_SOUL_TOOL)?.source, "HUI", "write_soul beside it");
   await session.prompt("E2E_MESSAGE_BOT tell bob hello");
   await settledWith(session, answered("message_bot answered: Queued for @bob."));
   assert.deepEqual(f.invocations, [{ callerSessionId: "ada-chat", action: MESSAGE_BOT_TOOL, params: { to: "@bob", message: "hello from the fixture" } }]);
@@ -169,6 +170,8 @@ test("a bot's conversation is created in one commit with bot document and memory
   assert.ok(system.indexOf("<bots>") < system.indexOf("<soul>"), "the soul last, where a persona goes");
   assert.ok(first?.tools?.some((tool) => tool.name === MESSAGE_BOT_TOOL));
   assert.match(JSON.stringify(first?.system), /- message_bot: Message another bot of this HUI in its own chat/u, "listed with HUI's active tools");
+  assert.match(JSON.stringify(first?.system), /- write_soul: Replace your whole SOUL\.md, your persona/u);
+  assert.ok(first?.tools?.some((tool) => tool.name === WRITE_SOUL_TOOL));
 
   // The bot (or the operator) rewrites SOUL.md: the next request carries the new one. Without it, the first conversation.
   await writeFile(soulFile, "# Who I am\nYou are Ada. Be thorough.\n");
@@ -288,7 +291,7 @@ test("the soul section: SOUL.md after its path and the rule to change it only wh
   const section = soulSection(file, "# Who I am\nAda.");
   assert.equal(section, soulSection(file, "# Who I am\nAda."), "byte-stable while the file is");
   assert.ok(section.startsWith(`Your soul is ${file}, which you wrote with the operator`));
-  assert.match(section, /When the operator asks you to change any of it, update SOUL\.md with your file tools \(at most 20,000 characters\) and tell them what you changed/u);
+  assert.match(section, /When the operator asks you to change any of it, rewrite it with write_soul \(the whole file, at most 20,000 characters\) and tell them what you changed/u);
   assert.ok(section.endsWith("\n\n# Who I am\nAda."));
   const long = soulSection(file, "x".repeat(20_005));
   assert.ok(long.includes(`\n\n${"x".repeat(20_000)}\n\n[SOUL.md has 20,005 characters; only the first 20,000 are shown here. Shorten it.]`));
@@ -309,7 +312,7 @@ test("the first conversation: greet, ask what the operator expects a question or
     "Your name and look are already set in HUI: never ask about them",
     "A message from a routine (\"[routine: …]\") or another bot (\"[from @…]\") is not the operator",
     "\"[HUI bot created]\" is HUI telling you that you were just created: open the conversation",
-    `write ${file} with your write tool`, "\"Who I am\", \"What I look after\", \"How I work\", \"When I reach out\" and \"Boundaries\"",
+    "save your soul with write_soul: Markdown, short, in your own voice", "\"Who I am\", \"What I look after\", \"How I work\", \"When I reach out\" and \"Boundaries\"",
     "a short summary of it", "in the Soul tab of your panel in HUI, or by just telling you",
   ]) assert.ok(named.includes(part), part);
   const nameless = firstConversationSection(file, undefined);
@@ -341,5 +344,80 @@ test("a host with no SOUL.md resolver (a worker, until it has one) leaves the so
   await settledWith(session, answered("Fixture response"));
   const system = JSON.stringify((await requests(f.log)).at(-1)?.system);
   assert.match(system, /<bots>/u);
-  assert.doesNotMatch(system, /<soul>|SOUL\.md/u);
+  assert.doesNotMatch(system, /<soul>|You have no soul yet|Your soul is/u, "no soul section (write_soul refuses there until the host has a resolver)");
+});
+
+
+test("write_soul replaces a bot's whole SOUL.md atomically in its home folder, within the limit, and only in a bot's chat", { timeout: 90_000 }, async (t) => {
+  const f = await fixture(t);
+  const port = durableBotConversations(f.host, fakeMemory());
+  const reference = await port.create({ botId: "bot-ada", cwd: f.cwd, memory: { name: "Ada" } });
+  const id = durableConversationId(reference)!;
+  const harness = await f.host.open();
+  const tool = f.host.botTools.find((candidate) => candidate.name === WRITE_SOUL_TOOL)!;
+  assert.ok(tool, "installed with the bot tools, selected by bots' chats only");
+  const api = { conversationId: id, snapshot: (doc: never, conversation: never, context: never) => harness.snapshot(doc, conversation, context) } as unknown as ToolExecutionApi;
+  const run = (soul: string) => tool.execute({ soul } as never, api, BACKGROUND_CONTEXT);
+  const text = (result: Awaited<ReturnType<typeof run>>) => JSON.stringify(result.content);
+  const file = join(f.homes, "bot-ada", "SOUL.md");
+
+  const saved = await run("\r\n# Who I am\r\nAda, terse.\n\n");
+  assert.equal(saved.isError, undefined);
+  assert.match(text(saved), /Saved your SOUL\.md \(22 characters\); it applies from your next request\. Tell the operator what you wrote or changed\./u);
+  assert.equal(await readFile(file, "utf8"), "# Who I am\nAda, terse.\n", "trimmed, Unix line ends, in the home folder it made");
+  const { readdir, stat } = await import("node:fs/promises");
+  assert.equal((await stat(file)).mode & 0o777, 0o600);
+  assert.equal((await stat(join(f.homes, "bot-ada"))).mode & 0o777, 0o700);
+  assert.deepEqual(await readdir(join(f.homes, "bot-ada")), ["SOUL.md"], "no temporary file is left");
+  assert.match(text(await run("# Who I am\nAda, thorough.")), /Saved your SOUL\.md/u);
+  assert.equal(await readFile(file, "utf8"), "# Who I am\nAda, thorough.\n", "the whole file is replaced");
+
+  for (const [soul, pattern] of [[" \n ", /cannot be empty/u], ["s".repeat(20_001), /at most 20,000 characters; this one has 20,001/u]] as const) {
+    const refused = await run(soul);
+    assert.equal(refused.isError, true);
+    assert.match(text(refused), pattern);
+  }
+  assert.equal(await readFile(file, "utf8"), "# Who I am\nAda, thorough.\n", "a refusal changes nothing");
+  const notABot = { conversationId: 7 as unknown as ConversationId, snapshot: async () => undefined } as unknown as ToolExecutionApi;
+  assert.match(JSON.stringify((await tool.execute({ soul: "x" } as never, notABot, BACKGROUND_CONTEXT)).content), /only available in a bot's chat/u);
+  const souls = f.host.botSouls;
+  f.host.botSouls = undefined;
+  assert.match(text(await run("x")), /This host cannot keep a SOUL\.md yet/u);
+  f.host.botSouls = souls;
+  assert.equal(soulToolText("  a\r\nb "), "a\nb");
+
+  // In a turn: the model calls it, and the very next request carries the new soul.
+  const session = await startDurable({ cwd: f.cwd, sessionFile: reference, huiSessionId: "ada-chat" }, f.host);
+  await session.prompt("E2E_WRITE_SOUL be terse");
+  await settledWith(session, answered("I wrote my SOUL.md"));
+  assert.equal(await readFile(file, "utf8"), "# Who I am\nE2E_SOUL_TEXT: a terse fixture bot.\n");
+  const last = JSON.stringify((await requests(f.log)).at(-1)?.system);
+  assert.match(last, /E2E_SOUL_TEXT: a terse fixture bot\./u, "the request after the tool result already has it");
+});
+
+test("a bot without a model of its own starts on Settings' primary model, which defaultModel reports; PI's default only without one", { timeout: 90_000 }, async (t) => {
+  const f = await fixture(t);
+  let primary: string | undefined = "hui-e2e/cheap";
+  const port = durableBotConversations(f.host, fakeMemory(), { primaryModel: async () => primary });
+  const harness = await f.host.open();
+  const modelOf = async (reference: string) => (await (await harness.conversation(durableConversationId(reference)!, durableContext))!.agent(durableContext)).model;
+
+  const onPrimary = await port.create({ botId: "bot-primary", cwd: f.cwd, memory: { name: "P" } });
+  assert.deepEqual(await modelOf(onPrimary), { provider: "hui-e2e", modelId: "cheap" }, "as a new session starts, not on PI's default");
+  assert.equal(await port.defaultModel(f.cwd), "hui-e2e/cheap", "what Gateway default means, and what a cleared model goes back to");
+  const chosen = await port.create({ botId: "bot-chosen", cwd: f.cwd, model: "hui-e2e/fixture", memory: { name: "C" } });
+  assert.deepEqual(await modelOf(chosen), { provider: "hui-e2e", modelId: "fixture" }, "a bot's own model wins");
+  const session = await startDurable({ cwd: f.cwd, sessionFile: onPrimary, huiSessionId: "primary-chat" }, f.host);
+  await session.prompt("PRIMARY_TURN hello");
+  await settledWith(session, answered("Fixture response"));
+  assert.equal((await requests(f.log)).findLast((request) => JSON.stringify(request.messages).includes("PRIMARY_TURN"))?.model, "cheap", "its turns go to the primary model");
+
+  primary = "nowhere/model";
+  await assert.rejects(port.create({ botId: "bot-stale", cwd: f.cwd, memory: { name: "S" } }), (error: unknown) => error instanceof BotInputError && /Unknown model: nowhere\/model/u.test(error.message));
+  await assert.rejects(port.defaultModel(f.cwd), /Unknown model: nowhere\/model/u);
+  primary = "";
+  assert.equal(await port.defaultModel(f.cwd), "hui-e2e/fixture", "no primary: PI's default");
+  const onDefault = await port.create({ botId: "bot-default", cwd: f.cwd, memory: { name: "D" } });
+  assert.deepEqual(await modelOf(onDefault), { provider: "hui-e2e", modelId: "fixture" });
+  assert.equal(await durableBotConversations(f.host, fakeMemory()).defaultModel(f.cwd), "hui-e2e/fixture", "a port without Settings behaves as before");
 });

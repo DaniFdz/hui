@@ -1132,18 +1132,21 @@ memory to read.
 `model` and `thinking` in a view are the chat's own (its session record), which
 the session's model controls may change at any time; `PATCH` sets both, and
 `""` clears them: the live chat switches (`setModel`/`setThinking`) to what a
-new chat in the bot's directory gets — PI's default model there, else the first
-available one, and PI's default thinking level fitted to that model, else
-`off` — and neither the bot nor its chat's session record keeps a choice, so
-views omit them, as for a bot created without one.
+new bot's chat in its directory gets — Settings' primary model
+(`settings.models.primary`, as for a session started without a choice; a
+primary this gateway cannot resolve is a 400), else PI's default model there,
+else the first available one, and PI's default thinking level fitted to that
+model, else `off` — and neither the bot nor its chat's session record keeps a
+choice, so views omit them, as for a bot created without one.
 `lastMessage` comes from the live transcript, or from one read of the Durable
 store for a chat nothing has opened since the gateway started.
 
 **Creation** first makes the bot's home folder, `CONFIG_DIR/bots/<id>` (mode
 0700), for every bot, and writes `soul` there as SOUL.md when it is given.
 Without `cwd` the home folder is also its working directory. Then the Durable
-conversation, in one commit: its agent (`cwd`, model, thinking clamped to the
-model; no instructions), a `hui.bot` conversation document naming the bot, and
+conversation, in one commit: its agent (`cwd`; the bot's model, else Settings'
+primary model, else PI's default, as above; thinking clamped to the model; no
+instructions), a `hui.bot` conversation document naming the bot, and
 OptChat through the `BotMemory` port (`server/bot-memory.ts`; name = bot name,
 model and thinking = `memoryModel`/`memoryThinking`). No prompt can reach the
 chat before these exist. Then the session record (with `bot` and
@@ -1214,8 +1217,8 @@ never in a working directory the operator chose. The gateway's `hui-bots`
 extension renders it as the prompt section `soul`, the last section, after
 `bots`, where a persona goes (OptChat's prompt points to the user's
 instructions at its end): the file's absolute path; that the bot follows it
-and, when the operator asks for a change, updates it with its file tools (at
-most 20,000 characters) and says what it changed; then the file. It is read
+and, when the operator asks for a change, rewrites it with `write_soul` (the
+whole file, at most 20,000 characters) and says what it changed; then the file. It is read
 from disk on every request of the host that runs the conversation, through
 the resolver that host sets (`DurableHost.botSouls`: the gateway's resolves
 each bot's home folder; a host without one leaves the section out), so it is
@@ -1230,10 +1233,20 @@ default), and finds out over a few messages what to look after, how to work and
 sound, how proactive to be and when to message them, and its boundaries, one or
 two questions at a time, never a questionnaire. Its name and look are set in
 HUI, so it never asks about them. Messages from routines (`[routine: …]`) and
-other bots (`[from @…]`) are not the operator. After a few exchanges it writes
-SOUL.md with its write tool (suggested sections: who I am, what I look after,
+other bots (`[from @…]`) are not the operator. After a few exchanges it saves
+SOUL.md with `write_soul` (suggested sections: who I am, what I look after,
 how I work, when I reach out, boundaries), gives a short summary and says how
 to change it: the Soul tab of its panel, or telling it.
+
+`write_soul({ soul })` lives in `hui-bots-tools` beside `message_bot`, so only
+bots' chats are offered it. It replaces the whole SOUL.md: the text is trimmed
+(line ends become `\n`), must not be empty and holds at most 20,000
+characters; it is written atomically (a temporary file and a rename, mode
+0600) in the bot's home folder through the same host resolver as the section,
+so a bot needs no file tools for its own soul and the next request already
+carries it. Its replay is safe (the same soul written again is the same file).
+Refusals (empty, too long, not a bot's chat, a host without a resolver) are
+tool errors the model reads.
 
 The **kickoff**: right after a create without `soul`, the gateway delivers one
 message to the new chat, as a prompt (like a routine's, so the run is
@@ -1302,13 +1315,13 @@ leaves them disabled.
 Every gateway's default Durable selection includes the `hui-bots` extension,
 whose prompt sections `bots` and `soul` (above) read the conversation's
 `hui.bot` document and render nothing without it. The tool `message_bot({ to, message })` (`to` ≤ 100,
-`message` ≤ 20,000 characters) lives in a second extension, `hui-bots-tools`,
+`message` ≤ 20,000 characters) lives in a second extension, `hui-bots-tools` (with `write_soul`),
 installed but selected only by a bot's chat (`DurableSession.applyTools`), and
 refuses in any conversation without the document. Every other conversation's
 offered tools, system prompt and stored agent are unchanged. The section lists
 the bot itself and the other non-archived bots (handle, name, title, ordered by
 handle) and how to use the tool; it is byte-identical while that roster is
-unchanged.
+unchanged. The same extension carries `write_soul` (above).
 
 `message_bot` reaches HUI's agent-tool handler as the calling chat's session,
 which must be a non-archived bot's chat. Targets resolve by handle (`@`

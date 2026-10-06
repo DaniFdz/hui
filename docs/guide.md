@@ -228,8 +228,10 @@ hui bot show ada
 The handle (`@ada`) comes from the name: lowercase letters, digits and dashes,
 with `-2`, `-3`… when another bot has it. Renaming keeps the handle. Every bot
 gets a private home folder in HUI's configuration directory, where its SOUL.md
-lives; without `--cwd` that folder is also its working directory. A model
-change goes through the chat like the model picker, and a new working directory
+lives; without `--cwd` that folder is also its working directory. Without
+`--model` a bot runs on Settings' primary model, as a new session does (PI's
+default only while none is set). A model change goes through the chat like the
+model picker, and a new working directory
 is accepted only while the bot is idle (its chat starts again there; should a
 routine start a turn meanwhile, the edit is refused halfway: repeat it once the
 bot is idle).
@@ -250,7 +252,8 @@ form for it. A new bot speaks first: as soon as it is created, HUI starts its
 first turn, and its opening message is waiting when you open its chat (the chat
 shows a small note, "Ada was created", where that turn began). It asks what you
 expect from it, one or two questions at a time, and after a few answers it
-writes SOUL.md itself, sums it up and tells you how to change it. If your first
+writes SOUL.md itself (with a tool of its own, so it needs no file access),
+sums it up and tells you how to change it. If your first
 message asks for real work, it does the work first. Its name and look come from
 the New bot dialog, so it never asks about them. Messages from routines and
 other bots don't count as you.

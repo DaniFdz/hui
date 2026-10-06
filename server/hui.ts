@@ -264,7 +264,8 @@ const bots = new BotService({
   updateSessions: updateRegistry,
   createSession: (body, bot) => createSession(body, liveSessions, updateRegistry, undefined, { bot }),
   removeSession: (id) => deleteSession(id),
-  conversations: durableBotConversations(durableHost(), botMemory),
+  // A bot without a model of its own starts on Settings' primary model, as a new session does.
+  conversations: durableBotConversations(durableHost(), botMemory, { primaryModel: async () => (await readSettings()).models.primary || undefined }),
   memory: botMemory,
   souls: localBotSouls(),
   routines: {

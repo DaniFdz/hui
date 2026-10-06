@@ -1130,8 +1130,10 @@ everything the Bots tab can, through the same routes.
   folder, read on every request. A new bot speaks first: HUI starts its first
   turn, in which it asks the operator what they expect, a question or two at a
   time (their real request always comes first), and then writes SOUL.md itself
-  with its file tools. It changes SOUL.md when the operator asks, and says so;
-  the operator can also edit it in the Soul tab or with `hui bot soul`.
+  with its `write_soul` tool, which only bots' chats have (no file tools
+  needed). It changes SOUL.md when the operator asks, and says so; the operator
+  can also edit it in the Soul tab or with `hui bot soul`. A bot without a
+  model of its own runs on Settings' primary model, like a new session.
 - **Forever.** Clearing, compacting, rewinding or deleting a bot's chat is
   refused; archiving the bot deletes nothing, disables its routines and stops a
   running turn, and restoring it brings it back with its routines still off.
@@ -1216,8 +1218,9 @@ HUI keeps for every bot (never a directory the operator chose), rendered as the
 last prompt section on every request and bounded at 20,000 characters. Without
 it, that section is the first conversation: short and conversational, never a
 questionnaire, and a ritual rather than a gate, since the operator's request
-always comes first. The bot writes the file itself with its file tools,
-mentions any change it makes, and the operator can edit or clear it (clearing
+always comes first. The bot writes the file itself with a `write_soul` tool of
+its own (bots may have no file tools), mentions any change it makes, and the
+operator can edit or clear it (clearing
 brings the first conversation back). Right after a create without a soul HUI
 starts the bot's first turn with a kickoff message that clients show as a note,
 so the bot's opener is waiting when the operator opens the chat. Name and look
