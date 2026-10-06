@@ -104,3 +104,12 @@ test("session paths truncate from the start with a full-path tooltip and copy bu
   const css = readFileSync(new URL("../styles/openclaw-workspaces.css", import.meta.url), "utf8");
   assert.match(css, /:is\(\.worktrees-table, \.sessions-table\) \.worktree-path__text \{\s*direction: rtl;/u);
 });
+
+test("bulk delete removes only worktrees no surviving session uses", async () => {
+  const { worktreesOnlyUsedBy } = await import("../lib/worktrees.ts");
+  const row = (path: string, ids: string[]) => ({ path, sessions: ids.map((id) => ({ id, title: id, archived: true })) }) as never;
+  assert.deepEqual(
+    worktreesOnlyUsedBy([row("/wt/a", ["a", "a-child"]), row("/wt/shared", ["a", "other"]), row("/wt/none", [])], new Set(["a", "a-child"])),
+    ["/wt/a"],
+  );
+});
