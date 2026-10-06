@@ -1112,9 +1112,9 @@ leaves worker records unchanged.
 
 ## Bots
 
-A **bot** is a named, persistent agent: a role and standing instructions, its
-own model, a working directory and **one chat that never ends**, whose memory is
-OptChat (HUI-18). Sessions keep everything they have (worktrees, rewind,
+A **bot** is a named, persistent agent: a role, a persona it writes itself
+(SOUL.md), its own model, a working directory and **one chat that never ends**,
+whose memory is OptChat (HUI-18). Sessions keep everything they have (worktrees, rewind,
 `/compact`); bots are for assistants the operator returns to every day. The
 sidebar splits into **Agents | Bots**, and the `hui bot` CLI can do
 everything the Bots tab can, through the same routes.
@@ -1124,10 +1124,21 @@ everything the Bots tab can, through the same routes.
   steering, follow-ups, questions and model switching are the session's own.
   Its record names the bot; the bot registry (`bots.json`) holds the rest.
   Remote workers do not run bots.
-- **Before the first word.** The persona becomes the conversation's standing
-  instructions, and OptChat is switched on, in the commit that creates the
-  conversation.
-- **Forever.** Clearing, compacting, rewinding or deleting a bot's chat is
+- **Before the first word.** OptChat is switched on, and the conversation
+  marked as the bot's, in the commit that creates it.
+- **A soul, not instructions.** A bot's persona is the SOUL.md in its home
+  folder, read on every request. A new bot speaks first: HUI starts its first
+  turn, in which it asks the operator what they expect, a question or two at a
+  time (their real request always comes first), and then writes SOUL.md itself
+  with its `write_soul` tool, which only bots' chats have (no file tools
+  needed). It changes SOUL.md when the operator asks, and says so; the operator
+  can also edit it in the Soul tab or with `hui bot soul`. A bot without a
+  model of its own runs on Settings' primary model, like a new session.
+- **Named by talking.** A bot created without a name is *New Bot*; its first
+  conversation asks what to call it, and it renames itself with a bot-only
+  `set_profile` tool (only in turns the operator started). A handle derived
+  from the old name follows the new one; a chosen handle stays.
+- **Forever, until deleted.** Clearing, compacting, rewinding or deleting a bot's chat is
   refused; archiving the bot deletes nothing, disables its routines and stops a
   running turn, and restoring it brings it back with its routines still off.
 - **Messages.** A message to a bot is a prompt when it is idle and a follow-up
@@ -1161,20 +1172,26 @@ everything the Bots tab can, through the same routes.
   waiting for an answer, summarizing memory, failed), an unread dot (also on the
   Bots tab while Agents shows) and a warning while memory summaries keep
   failing. Search matches name, handle and title. The toolbar's + opens **New
-  bot** (name, look, title, instructions, model, thinking, memory model,
-  workspace; nothing changes until the gateway accepts it); *Gateway default*
+  bot** (name, look, title, model, thinking, memory model, workspace; no
+  instructions: the bot starts by asking what you expect from it; nothing
+  changes until the gateway accepts it); *Gateway default*
   leaves the model and thinking level to the gateway, and choosing it when
   editing clears the bot's own. A row's menu offers Edit, Hide/Unhide (*Show
-  hidden* while any are hidden) and Archive, confirmed, with a Restore toast;
-  *Show archived* (while any are archived) lists archived bots with Restore
-  and Delete (an icon that shows on the row under the pointer or keyboard, and
-  always on touch screens; a confirmation says what goes and what stays), and
-  an archived bot's chat opens again only once restored. A bot opens at
-  `/bots/<id>` as its one chat in the ordinary session pane, its header
-  showing face, name, role and status;
+  hidden* while any are hidden), Archive, confirmed, with a Restore toast, and
+  Delete…; *Show archived* (while any are archived) lists archived bots with
+  Restore and Delete (an icon that shows on the row under the pointer or
+  keyboard, and always on touch screens). Delete, from either, asks first in
+  a dialog that says what goes (its chat leaves HUI; its routines, memory and
+  folder go) and what stays (a workspace the operator chose); deleting the
+  open bot returns home. An archived bot's chat opens again only once
+  restored. A bot opens at `/bots/<id>` as its one chat in the ordinary
+  session pane, its header showing face, name, role and status and a ⋯ menu
+  with Edit bot…, Archive… and Delete…;
   assistant turns carry the bot's name, `/clear`, `/compact`, Compact now and
-  rewind are not offered, and a new bot says *Say hi to <name>*. Opening it
-  marks it read. A **Routines | Memory** panel docks beside the chat (open or
+  rewind are not offered. A new bot speaks first: its chat opens on a small
+  centered note, *<name> was created*, where HUI started its first turn, then
+  the bot's questions (an empty chat says *Say hi to <name>*). Opening it
+  marks it read. A **Routines | Memory | Soul** panel docks beside the chat (open or
   closed and the tab are remembered; on narrow screens it opens on request as a
   sheet over the chat). Routines lists the bot's Automation tasks with schedule,
   next run, an enable switch, Run now and Delete, adds routines every N
@@ -1185,7 +1202,14 @@ everything the Bots tab can, through the same routes.
   and failures, and lists the view's `id+n|text` lines (a click opens a line
   into its halves, down to a message whole); while open it reads the memory
   again whenever the bots stream reports it changed, with no timer. *Open memory
-  page* is a plain link to OptChat's browse page, opened in a new tab.
+  page* is a plain link to OptChat's browse page, opened in a new tab. Soul
+  shows SOUL.md as Markdown, through the chat's renderer, with **Edit**: a
+  textarea with Save and Cancel (Escape), the count against 20,000 characters
+  and the gateway's refusal inline; saving it empty removes SOUL.md. Before the
+  bot has one it says *<name> writes its soul in your first conversation* and
+  offers **Write it yourself**. While open it reads SOUL.md again when the bots
+  stream says the bot or HUI may have written it (its soul flag, its
+  `updatedAt`, or its latest message once a turn is over), with no timer.
 - **Voice** goes through [VoiceStudio](https://github.com/debpalash/VoiceStudio),
   a separate speech service the gateway only calls over HTTP. The connection is
   the gateway's (Settings → Integrations → VoiceStudio, verified before it is
@@ -1210,14 +1234,45 @@ The contract is [docs/api.md#bots](docs/api.md#bots).
 
 ## Decisions
 
+### Bots write their own SOUL.md in a first conversation (2026-10-06)
+
+Reviewing the Bots stack, the owner asked for bots to have a SOUL.md "like
+OpenClaw", and for the first conversation to be proactive: the bot asks what he
+expects from it, instead of an Instructions field. OpenClaw's `SOUL.md` and
+`BOOTSTRAP.md` are the model. A bot's persona is its SOUL.md, in a home folder
+HUI keeps for every bot (never a directory the operator chose), rendered as the
+last prompt section on every request and bounded at 20,000 characters. Without
+it, that section is the first conversation: short and conversational, never a
+questionnaire, and a ritual rather than a gate, since the operator's request
+always comes first. The bot writes the file itself with a `write_soul` tool of
+its own (bots may have no file tools), mentions any change it makes, and the
+operator can edit or clear it (clearing
+brings the first conversation back). Right after a create without a soul HUI
+starts the bot's first turn with a kickoff message that clients show as a note,
+so the bot's opener is waiting when the operator opens the chat. Name and look
+stay in the dialog, so the bot never asks for them. The `instructions` field
+and Durable instructions are gone; the gateway turns existing instructions into
+SOUL.md once.
+
+Later that day the owner chose Grok-style creation, with no New bot dialog: a
+bot created without a name is *New Bot*, asks what to call it in its first
+conversation and renames itself with `set_profile` (the no-dialog flow and a
+bot Settings tab follow on top of the calls branch). He also asked that
+deleting a bot delete its folder ("so SOUL, MEMORY, configs...") and work from
+the ⋯ menu on active bots too: delete now stops its turn, clears what HUI owns
+of its conversation (the bot document and OptChat, whose files go) and removes
+its routines, its chat's session record and its whole home folder, never a
+workspace the operator chose. pi-durable cannot delete a conversation, so the
+raw log stays in the store, unread.
+
 ### Bots are named chats, not an agent selector (2026-10-05)
 
 The owner approved GrokBot/Hermes-style bots on 2026-10-05: a **Sessions | Bots**
 sidebar split, bots as named Durable conversations with OptChat memory, `hui bot`
 CLI parity with the Bots tab, routines through Automation and voice through
 VoiceStudio later. This satisfies the rule against new Agents or Approvals
-surfaces without a product decision: a bot is a chat with a name and standing
-instructions, not an Agents page or a global agent identity, and it adds no
+surfaces without a product decision: a bot is a chat with a name and a persona,
+not an Agents page or a global agent identity, and it adds no
 approval layer. Bots run with the same Full Access as every session, on this
 gateway only (remote workers are a later follow-up).
 

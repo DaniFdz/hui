@@ -4,14 +4,14 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test, type TestContext } from "node:test";
-import type { BotMessageResult, BotView } from "../shared/bots.ts";
+import { botKickoffText, type BotMessageResult, type BotView } from "../shared/bots.ts";
 import type { AutomationTask } from "../src/lib/automation-types.ts";
 import { botCommand, findBot, formatBot, formatBots, formatLook, lookColor, parseDuration, parseZoom, questionAnswer, routineSchedule, type BotIO } from "./bots.ts";
 
 function view(id: string, handle: string, extra: Partial<BotView> = {}): BotView {
   return {
     id, handle, name: handle[0]!.toUpperCase() + handle.slice(1), cwd: `/home/me/bots/${id}`, sessionId: `s-${handle}`,
-    createdAt: "2026-10-05T10:00:00.000Z", updatedAt: "2026-10-05T10:00:00.000Z", status: "idle", unread: false, routines: 0, ...extra,
+    createdAt: "2026-10-05T10:00:00.000Z", updatedAt: "2026-10-05T10:00:00.000Z", status: "idle", soul: false, unread: false, routines: 0, ...extra,
   };
 }
 
@@ -20,9 +20,11 @@ type Call = { method: string; path: string; body?: Record<string, unknown> };
 /** A stand-in gateway: the bot, Automation and session routes over in-memory state, recording each request. */
 async function fakeGateway(t: TestContext) {
   const bots: BotView[] = [
-    view("id-ada", "ada", { title: "Researcher", routines: 1, memory: { messages: 2, built: 3, pending: 0, viewBytes: 300, viewLines: 2, usage: { calls: 1, input: 1, output: 1, cacheRead: 0, cacheWrite: 0, cost: 0 } } }),
+    view("id-ada", "ada", { title: "Researcher", routines: 1, soul: true, memory: { messages: 2, built: 3, pending: 0, viewBytes: 300, viewLines: 2, usage: { calls: 1, input: 1, output: 1, cacheRead: 0, cacheWrite: 0, cost: 0 } } }),
     view("id-bob", "bob"), view("id-old", "old", { archived: true }),
   ];
+  /** SOUL.md per bot id, as the soul route reads and writes it. */
+  const souls = new Map<string, string>([["id-ada", "# Who I am\nAda, a researcher."]]);
   const tasks: AutomationTask[] = [{
     id: "task-1", name: "Morning", description: "", sessionId: "s-ada", prompt: "check", schedule: { kind: "every", everyMs: 86_400_000 },
     enabled: true, timeoutSeconds: 900, createdAt: "", updatedAt: "", nextRunAt: "2026-10-06T07:00:00.000Z",
@@ -57,8 +59,8 @@ async function fakeGateway(t: TestContext) {
     if (path === "/__hui/bots/events") return stream("bots");
     if (path === "/__hui/bots" && request.method === "GET") return reply(200, { bots: bots.filter((bot) => Boolean(bot.archived) === (url.searchParams.get("archived") === "1")) });
     if (path === "/__hui/bots" && request.method === "POST") {
-      if (!body?.["name"]) return reply(400, { error: "A bot name is required." });
-      const created = view("id-new", String(body["name"]).toLowerCase(), { ...(body["avatar"] ? { avatar: body["avatar"] as BotView["avatar"] } : {}) });
+      const name = typeof body?.["name"] === "string" ? body["name"] : "New Bot";
+      const created = view("id-new", name.toLowerCase().replace(/\s+/gu, "-"), { name, soul: Boolean(body?.["soul"]), ...(body?.["avatar"] ? { avatar: body["avatar"] as BotView["avatar"] } : {}) });
       bots.push(created);
       return reply(201, { bot: created });
     }
@@ -83,6 +85,14 @@ async function fakeGateway(t: TestContext) {
         return reply(200, { status: { messages: 12, built: 11, pending: 1, viewBytes: 4096, viewLines: 9, waiting: true, usage }, view: "<chat>\n0+8|user: plans\n</chat>" });
       }
       if (action === "memory/zoom") return reply(200, { text: `${url.searchParams.get("id")}+0|user: the plan` });
+      if (action === "soul" && request.method === "GET") return reply(200, { soul: souls.get(bot.id) ?? null });
+      if (action === "soul" && request.method === "PUT") {
+        const soul = String(body?.["soul"] ?? "").trim();
+        if (soul) souls.set(bot.id, soul);
+        else souls.delete(bot.id);
+        bots[index] = { ...bot, soul: Boolean(soul) };
+        return reply(200, { soul: soul || null });
+      }
       if (action === "memory/html") { response.writeHead(200, { "content-type": "text/html" }); response.end("<!doctype html><title>memory</title>"); return; }
       return reply(405, { error: "method not allowed" });
     }
@@ -119,7 +129,7 @@ async function fakeGateway(t: TestContext) {
   });
   const address = server.address() as { port: number };
   return {
-    base: `http://127.0.0.1:${address.port}/`, bots, tasks, calls, replies, unseenPrompts,
+    base: `http://127.0.0.1:${address.port}/`, bots, tasks, calls, replies, unseenPrompts, souls,
     /** Resolves once the CLI holds the `session` or `bots` stream open. */
     connected: (key: string) => streams.has(key) ? Promise.resolve() : new Promise<void>((resolve) => waiting.set(key, resolve)),
     push: (key: string, event: string, data: unknown) => { streams.get(key)!.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`); },
@@ -147,9 +157,10 @@ async function fakeGateway(t: TestContext) {
 }
 
 /** A scripted terminal: lines the test types, Ctrl+C it presses, and everything written. */
-function terminal(stdin = "") {
+function terminal(stdin = "", answers: string[] = [], interactive = false) {
   let out = "";
   let err = "";
+  const asked: string[] = [];
   const watchers = new Set<() => void>();
   const queued: string[] = [];
   let ended = false;
@@ -170,11 +181,14 @@ function terminal(stdin = "") {
       }),
     }),
     onInterrupt: (listener) => { interrupt = listener; return () => { interrupt = undefined; }; },
+    interactive,
+    ask: async (question) => { asked.push(question); return answers.shift() ?? ""; },
     cwd: "/home/me/work",
     timezone: "Europe/Madrid",
   };
   return {
     io,
+    asked,
     get out() { return out; },
     get err() { return err; },
     type: (line: string) => { queued.push(line); wake?.(); },
@@ -215,21 +229,31 @@ test("list, show, add, edit, remove, restore and stop talk to the bot routes and
   const shown = terminal();
   await botCommand(gateway.base, "show", ["ada"], {}, shown.io);
   assert.match(shown.out, /^@ada · Ada \(Researcher\)\nstatus: idle\nlook: face · Cookie \(from its id\) · Yellow \(from its id\)\nmodel: default\nmemory: 2 messages · 3 summaries built · 0 pending · view 300 B in 2 lines · compactor 1 call, 1 token in, 1 out\nlanguage: auto\nroutines: 1\n/u);
+  assert.match(shown.out, /\nsoul: SOUL\.md \(hui bot soul ada\)\n$/u);
   const unread = terminal();
   await botCommand(gateway.base, "show", ["bob"], {}, unread.io);
   assert.match(unread.out, /\nmemory: unavailable\n/u, "a memory the gateway cannot read");
+  assert.match(unread.out, /\nsoul: none yet: it writes SOUL\.md in its first conversation\n$/u);
 
-  await writeFile(join(dir, "persona.md"), "You are Nova.\nBe kind.\n");
+  await writeFile(join(dir, "soul.md"), "# Who I am\nNova, kind.\n");
   const added = terminal();
   added.io.cwd = dir;
-  assert.equal(await botCommand(gateway.base, "add", [], { name: "Nova", "instructions-file": "persona.md", cwd: "sub/dir", emoji: "🦊", "memory-model": "openai/mini" }, added.io), 0);
+  assert.equal(await botCommand(gateway.base, "add", [], { name: "Nova", "soul-file": "soul.md", cwd: "sub/dir", emoji: "🦊", "memory-model": "openai/mini" }, added.io), 0);
   assert.deepEqual(gateway.calls.at(-1), { method: "POST", path: "/__hui/bots", body: {
-    name: "Nova", instructions: "You are Nova.\nBe kind.\n", cwd: join(dir, "sub/dir"), memoryModel: "openai/mini", avatar: { emoji: "🦊" },
+    name: "Nova", soul: "# Who I am\nNova, kind.\n", cwd: join(dir, "sub/dir"), memoryModel: "openai/mini", avatar: { emoji: "🦊" },
   } });
-  assert.equal(added.out, "Added @nova (Nova). Talk to it with hui bot chat nova.\n");
-  await botCommand(gateway.base, "add", [], { name: "Home", cwd: "~/bots/home" }, terminal().io);
+  assert.equal(added.out, "Added @nova (Nova) with the soul you gave it. Talk to it with hui bot chat nova.\n");
+  const fresh = terminal();
+  await botCommand(gateway.base, "add", [], { name: "Home", cwd: "~/bots/home" }, fresh.io);
   assert.equal(gateway.calls.at(-1)?.body?.["cwd"], "~/bots/home", "~ is left for the gateway to resolve");
-  await assert.rejects(botCommand(gateway.base, "add", [], {}, terminal().io), /A bot name is required\./u);
+  assert.equal(fresh.out, "Added @home (Home). It starts by asking what you expect from it: talk with hui bot chat home.\n");
+  const piped = terminal("# Who I am\nPiped.\n");
+  await botCommand(gateway.base, "add", [], { name: "Piped", "soul-file": "-" }, piped.io);
+  assert.equal(gateway.calls.at(-1)?.body?.["soul"], "# Who I am\nPiped.\n", "- reads the soul from stdin");
+  const unnamed = terminal();
+  await botCommand(gateway.base, "add", [], {}, unnamed.io);
+  assert.deepEqual(gateway.calls.at(-1)?.body, {}, "no name: the gateway names it New Bot");
+  assert.equal(unnamed.out, "Added @new-bot (New Bot). It starts by asking what to call it and what you expect from it: talk with hui bot chat new-bot.\n");
 
   await botCommand(gateway.base, "edit", ["ada"], { title: "Lead", thinking: "high" }, terminal().io);
   assert.deepEqual(gateway.calls.at(-1), { method: "PATCH", path: "/__hui/bots/id-ada", body: { title: "Lead", thinking: "high" } }, "only the given fields");
@@ -280,15 +304,53 @@ test("show names the look: the face's shape and color, or the emoji, and what th
   assert.equal(lookColor(""), "");
 });
 
-test("delete removes an archived bot for good, and refuses an active one before asking the gateway", async (t) => {
+test("delete removes any bot for good once confirmed: a terminal is asked, anything else needs --yes", async (t) => {
   const gateway = await fakeGateway(t);
-  await assert.rejects(botCommand(gateway.base, "delete", ["ada"], {}, terminal().io), /@ada is not archived\. Archive it first with hui bot remove ada\./u);
+  await assert.rejects(botCommand(gateway.base, "delete", ["ada"], {}, terminal().io), /hui bot delete cannot ask here \(no terminal\): add --yes to delete @ada for good\./u);
+  const declined = terminal("", ["n"], true);
+  assert.equal(await botCommand(gateway.base, "delete", ["ada"], {}, declined.io), 1);
+  assert.deepEqual(declined.asked, ["Delete @ada for good? Its chat leaves HUI and its routines, memory and folder go. [y/N] "]);
+  assert.equal(declined.out, "Nothing was deleted.\n");
   assert.equal(gateway.calls.some((call) => call.method === "DELETE"), false, "nothing reached the gateway");
-  const deleted = terminal();
-  assert.equal(await botCommand(gateway.base, "delete", ["old"], {}, deleted.io), 0);
-  assert.deepEqual(gateway.calls.at(-1), { method: "DELETE", path: "/__hui/bots/id-old?permanent=1" });
-  assert.equal(deleted.out, "Deleted @old for good. Its routines and chat are gone from HUI; the files in its folder stay.\n");
-  assert.deepEqual(gateway.bots.map((bot) => bot.handle), ["ada", "bob"]);
+
+  const confirmed = terminal("", ["y"], true);
+  assert.equal(await botCommand(gateway.base, "delete", ["ada"], {}, confirmed.io), 0, "an active bot too");
+  assert.deepEqual(gateway.calls.at(-1), { method: "DELETE", path: "/__hui/bots/id-ada?permanent=1" });
+  assert.equal(confirmed.out, "Deleted @ada for good: its chat left HUI, and its routines, memory and folder are gone.\n");
+  const scripted = terminal();
+  assert.equal(await botCommand(gateway.base, "delete", ["old"], { yes: true, json: true }, scripted.io), 0);
+  assert.deepEqual(JSON.parse(scripted.out), { id: "id-old", handle: "old", deleted: true });
+  assert.deepEqual(scripted.asked, [], "--yes never asks");
+  assert.deepEqual(gateway.bots.map((bot) => bot.handle), ["bob"]);
+});
+
+test("soul prints SOUL.md or says the bot has none yet, and --file replaces it from a file or stdin; empty removes it", async (t) => {
+  const gateway = await fakeGateway(t);
+  const dir = await mkdtemp(join(tmpdir(), "hui-cli-soul-"));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const shown = terminal();
+  assert.equal(await botCommand(gateway.base, "soul", ["ada"], {}, shown.io), 0);
+  assert.equal(shown.out, "# Who I am\nAda, a researcher.\n");
+  const none = terminal();
+  await botCommand(gateway.base, "soul", ["bob"], {}, none.io);
+  assert.equal(none.out, "@bob has no SOUL.md yet: it writes one in its first conversation with you (hui bot chat bob).\n");
+  const json = terminal();
+  await botCommand(gateway.base, "soul", ["bob"], { json: true }, json.io);
+  assert.deepEqual(JSON.parse(json.out), { soul: null });
+
+  await writeFile(join(dir, "bob.md"), "# Who I am\nBob, a builder.\n");
+  const replaced = terminal();
+  replaced.io.cwd = dir;
+  await botCommand(gateway.base, "soul", ["bob"], { file: "bob.md" }, replaced.io);
+  assert.deepEqual(gateway.calls.at(-1), { method: "PUT", path: "/__hui/bots/id-bob/soul", body: { soul: "# Who I am\nBob, a builder.\n" } });
+  assert.equal(replaced.out, "Replaced @bob's SOUL.md (26 characters); its next turn follows it.\n");
+  const piped = terminal("# Who I am\nBob, piped.");
+  await botCommand(gateway.base, "soul", ["bob"], { file: "-", json: true }, piped.io);
+  assert.deepEqual(JSON.parse(piped.out), { soul: "# Who I am\nBob, piped." });
+  const cleared = terminal("");
+  await botCommand(gateway.base, "soul", ["bob"], { file: "-" }, cleared.io);
+  assert.deepEqual(gateway.calls.at(-1)?.body, { soul: "" });
+  assert.equal(cleared.out, "Removed @bob's SOUL.md. It asks what you expect from it again in its next turn (hui bot chat bob).\n");
 });
 
 test("send reads - from stdin and exits 0 when answered, 1 on failure or timeout and 2 while the bot asks", async (t) => {
@@ -531,9 +593,18 @@ test("chat prints what the bot gets from elsewhere as > lines before the reply, 
   gateway.push("session", "status", { status: "running" });
   gateway.settle([...transcript, user("from the tab\nsecond line"), reply("Seen it.")]);
   await term.until(/> from the tab\n> second line\n@ada: Seen it\.\n$/u);
+
+  // HUI's kickoff of a new bot is a note, never the operator's words.
+  const settled = [...transcript, user("from the tab\nsecond line"), reply("Seen it.")];
+  gateway.push("session", "status", { status: "running" });
+  gateway.push("session", "snapshot", { status: "running", questions: [], transcript: [...settled, user(botKickoffText("Ada"))] });
+  await term.until(/· Ada was created\n$/u);
+  gateway.settle([...settled, user(botKickoffText("Ada")), reply("What should I look after?")]);
+  await term.until(/· Ada was created\n@ada: What should I look after\?\n$/u);
   term.end();
   assert.equal(await done, 0);
   assert.doesNotMatch(term.out, /> thanks|> and one more/u, "lines typed here are never printed again");
+  assert.doesNotMatch(term.out, /HUI bot created/u);
   assert.equal(term.out.split("> [routine: Morning]").length, 2, "an announced message is not printed again at the settle");
 });
 
@@ -555,7 +626,7 @@ test("chat ends cleanly when stdin closes, and reports a runtime that exits", as
 });
 
 test("show names a bot's VoiceStudio voice, speed and language, auto when it has none", () => {
-  const base: BotView = { id: "id-vox", handle: "vox", name: "Vox", cwd: "/tmp", sessionId: "s", createdAt: "2026-10-05T10:00:00.000Z", updatedAt: "2026-10-05T10:00:00.000Z", status: "idle", unread: false, routines: 0 };
+  const base: BotView = { id: "id-vox", handle: "vox", name: "Vox", cwd: "/tmp", sessionId: "s", createdAt: "2026-10-05T10:00:00.000Z", updatedAt: "2026-10-05T10:00:00.000Z", status: "idle", soul: false, unread: false, routines: 0 };
   assert.match(formatBot({ ...base, voice: { profile: "vp-aria", speed: 1.25 } }), /\nvoice: vp-aria · 1\.25×\nlanguage: auto\n/u);
   assert.match(formatBot({ ...base, voice: { speed: 0.8 } }), /\nvoice: VoiceStudio default · 0\.8×\n/u);
   assert.doesNotMatch(formatBot(base), /voice:/u);

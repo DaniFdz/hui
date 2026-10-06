@@ -1,13 +1,15 @@
 /**
  * The Durable side of bots' chats (HUI-18): creating a bot's conversation in
  * one commit with its agent, its `hui.bot` document and OptChat; changing its
- * instructions or directory; the model and thinking level a new chat would get;
- * and reading its newest message while no session has it loaded. The gateway
- * is the store's only writer, so these run in it.
+ * directory (or clearing the instructions a bot had before SOUL.md); the model
+ * and thinking level a new chat would get; and reading its newest message while
+ * no session has it loaded. The gateway is the store's only writer, so these
+ * run in it. A bot's persona is not in its conversation: it is the SOUL.md the
+ * `soul` section reads on every request.
  */
 import { clampThinkingLevel, type Message, type ModelThinkingLevel } from "@earendil-works/pi-ai";
 import { ResetEntry, SystemEntry, type Conversation, type EntryRecord } from "@earendil-works/pi-durable";
-import { previewLine } from "../shared/bots.ts";
+import { botKickoffName, previewLine } from "../shared/bots.ts";
 import type { BotMemory } from "./bot-memory.ts";
 import type { BotConversations, BotStoredMessage } from "./bot-service.ts";
 import { BotInputError, BotNotFoundError } from "./bots.ts";
@@ -20,7 +22,13 @@ import { restoreAttachmentNames } from "./runtimes/pi.ts";
 /** Entries a cold read looks back through for the newest message. */
 const LAST_MESSAGE_ENTRIES = 50;
 
-export function durableBotConversations(host: DurableHost, memory: BotMemory): BotConversations {
+export type BotConversationOptions = {
+  /** Settings' primary model (`settings.models.primary`), the one a session started without a choice uses; empty or
+   * undefined while none is set. */
+  primaryModel?: () => Promise<string | undefined>;
+};
+
+export function durableBotConversations(host: DurableHost, memory: BotMemory, options: BotConversationOptions = {}): BotConversations {
   const conversation = async (reference: string): Promise<Conversation> => {
     const id = durableConversationId(reference);
     const found = id === undefined ? undefined : await (await host.open()).conversation(id, durableContext);
@@ -33,6 +41,13 @@ export function durableBotConversations(host: DurableHost, memory: BotMemory): B
     const ref = modelRef(value);
     if (!ref || !host.models.getModel(ref.provider, ref.modelId)) throw new BotInputError(`Unknown model: ${value}`);
   };
+  /** A bot's chat without a model of its own starts on Settings' primary model, like a new session; PI's default (else
+   * the first available model) only while no primary is set. A primary this gateway cannot resolve is refused. */
+  const startingModel = async (cwd: string, requested: string | undefined) => {
+    const primary = requested ? undefined : (await options.primaryModel?.())?.trim();
+    if (primary) await checkModel(primary);
+    return initialModel(host, cwd, requested ?? (primary || undefined));
+  };
   return {
     checkModel,
 
@@ -41,17 +56,17 @@ export function durableBotConversations(host: DurableHost, memory: BotMemory): B
       if (input.model) await checkModel(input.model);
       else await host.refreshModels();
       if (input.memory.model) await checkModel(input.memory.model);
-      const model = await initialModel(host, input.cwd, input.model);
+      const model = await startingModel(input.cwd, input.model);
       const known = model ? host.models.getModel(model.provider, model.modelId) : undefined;
       const thinking = input.thinking ?? defaultThinking(host, input.cwd);
-      // One commit: no prompt can reach the chat before its persona, its bot document and its memory are in place.
+      // One commit: no prompt can reach the chat before its bot document (which brings its soul section) and its memory
+      // are in place.
       const created = await harness.createConversation({
         ownership: { kind: "ownerless" },
         agent: {
           cwd: input.cwd,
           ...(model ? { model } : {}),
           ...(thinking && known ? { thinkingLevel: clampThinkingLevel(known, thinking as ModelThinkingLevel) } : {}),
-          ...(input.instructions ? { instructions: input.instructions } : {}),
         },
         init: async (tx, conversationId) => {
           const doc = await tx.doc(BotDoc, conversationId);
@@ -62,6 +77,21 @@ export function durableBotConversations(host: DurableHost, memory: BotMemory): B
       return durableReference(created.id);
     },
 
+    // One commit: the conversation stops being a bot's chat (no bot sections or tools) and OptChat is off, so nothing
+    // reads its memory back; then OptChat's files go. pi-durable cannot delete a conversation, so its raw log stays.
+    async forget(reference) {
+      const id = durableConversationId(reference);
+      if (id === undefined) return;
+      const harness = await host.open();
+      if (!await harness.conversation(id, durableContext)) return;
+      await harness.commit(async (tx) => {
+        const doc = await tx.doc(BotDoc, id);
+        doc.bot = "";
+        await memory.disable(tx, id);
+      }, durableContext);
+      await memory.purge(reference);
+    },
+
     async configure(reference, change) {
       await (await conversation(reference)).configure({
         ...(change.instructions !== undefined ? { instructions: change.instructions } : {}),
@@ -69,11 +99,11 @@ export function durableBotConversations(host: DurableHost, memory: BotMemory): B
       }, durableContext);
     },
 
-    // As `startDurable` chooses them for a new conversation.
+    // What the dialog calls "Gateway default": Settings' primary model, as for a new session, else PI's default.
     async defaultModel(cwd) {
       await host.open();
       await host.refreshModels();
-      const model = await initialModel(host, cwd, undefined);
+      const model = await startingModel(cwd, undefined);
       return model ? `${model.provider}/${model.modelId}` : undefined;
     },
 
@@ -105,6 +135,8 @@ function shownMessage(entry: EntryRecord): BotStoredMessage | undefined {
   for (const message of [...entry.model ?? []].reverse() as Message[]) {
     if ((message.role !== "user" && message.role !== "assistant") || isCustomInput(message)) continue;
     const raw = textOf(message);
+    // HUI's kickoff is a note in the chat, not a message.
+    if (message.role === "user" && botKickoffName(raw) !== undefined) continue;
     const text = previewLine(message.role === "user" ? restoreAttachmentNames(raw).text : raw);
     if (!text) continue;
     const timestamp = (message as { timestamp?: unknown }).timestamp;

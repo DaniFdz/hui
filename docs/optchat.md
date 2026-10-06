@@ -199,7 +199,9 @@ grow), for example `jq -r '"\(.i) \(.kind): \(.text)"' main/*.jsonl`.
   VIEW_DOC, then the user's AGENTS.md; HUI renders its own sections (preamble,
   context files, skills, HUI's sections) first and OptChat's section after them.
   MASTER is kept verbatim, so it still speaks of instructions "at the end of this
-  prompt"; the bots' own base prompt is for a later change.
+  prompt"; for a bot, the end of the prompt is its `soul` section (its SOUL.md,
+  or its first conversation; see [api.md](api.md#soul-and-the-first-conversation)).
+  The bots' own base prompt is for a later change.
 - **The lock is the store's.** The spec holds a Unix socket per chat directory;
   here the gateway's Durable store lock covers every memory.
 - **Usage is per process.** The compactor's spend is in the status since the
