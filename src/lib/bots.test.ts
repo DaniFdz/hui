@@ -258,3 +258,21 @@ test("the dialog's voice goes with a new bot and an edit sends only the voice ke
   assert.deepEqual(botPatchFromDraft(bot, withoutVoice), {}, "a dialog without VoiceStudio leaves the voice alone");
   assert.deepEqual(parseBot({ ...RECORD, voice: { profile: "vp-dani", speed: 7 } })?.voice, { profile: "vp-dani" });
 });
+
+test("the dialog's language goes with a new bot, an edit sends it only when it changed and Auto clears it", () => {
+  assert.deepEqual(botInputFromDraft({ ...EMPTY_DRAFT, name: "Vox", voice: "", voiceSpeed: 1, voiceLanguage: "es" }).voice, { language: "es" });
+  assert.equal(botInputFromDraft({ ...EMPTY_DRAFT, name: "Vox", voice: "", voiceSpeed: 1, voiceLanguage: "" }).voice, undefined, "Auto is no language at all");
+  assert.equal(botInputFromDraft({ ...EMPTY_DRAFT, name: "Vox", voice: "", voiceSpeed: 1, voiceLanguage: "klingon" }).voice, undefined, "only Whisper's codes");
+  assert.deepEqual(botInputFromDraft({ ...EMPTY_DRAFT, name: "Vox", voice: "vp-aria", voiceSpeed: 1.3, voiceLanguage: "yue" }).voice, { profile: "vp-aria", speed: 1.3, language: "yue" });
+  const bot = { ...(parseBot(RECORD) as BotView), voice: { profile: "vp-aria", language: "es" as const } };
+  const unchanged: BotDraft = { name: "Scout", title: "Research assistant", instructions: "Find things.", cwd: bot.cwd, emoji: "🔭", model: "anthropic/claude", thinking: "medium", memoryModel: "", voice: "vp-aria", voiceSpeed: 1, voiceLanguage: "es" };
+  assert.deepEqual(botPatchFromDraft(bot, unchanged), {});
+  assert.deepEqual(botPatchFromDraft(bot, { ...unchanged, voiceLanguage: "haw" }), { voice: { language: "haw" } });
+  assert.deepEqual(botPatchFromDraft(bot, { ...unchanged, voiceLanguage: "" }), { voice: { language: "" } }, "back to Auto");
+  assert.deepEqual(botPatchFromDraft(bot, { ...unchanged, voice: "", voiceLanguage: "" }), { voice: { profile: "", language: "" } });
+  const { voiceLanguage: _language, ...withoutLanguage } = unchanged;
+  assert.deepEqual(botPatchFromDraft(bot, withoutLanguage), {}, "a draft without a language leaves it alone");
+  assert.deepEqual(parseBot({ ...RECORD, voice: { language: "ES" } })?.voice, { language: "es" });
+  assert.equal(parseBot({ ...RECORD, voice: { language: "spanish" } })?.voice, undefined, "a language that is not a code is dropped");
+  assert.deepEqual(parseBot({ ...RECORD, voice: { speed: 1.2, language: "jv" } })?.voice, { speed: 1.2 }, "Whisper calls Javanese jw");
+});

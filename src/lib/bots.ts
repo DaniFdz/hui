@@ -8,7 +8,7 @@
  * record is skipped or narrowed rather than reaching the roster as `undefined`.
  */
 import type { BotAvatar, BotInput, BotMemoryStatus, BotMemoryUsage, BotPatch, BotSessionStatus, BotsUpdate, BotView, BotVoice } from "../../shared/bots.ts";
-import { voiceProfileId, voiceSpeed } from "../../shared/voice.ts";
+import { voiceLanguage, voiceProfileId, voiceSpeed } from "../../shared/voice.ts";
 import { CLIENT_HEADERS, fetchJson } from "./settings-store.ts";
 import { decodeSseFrame, reconnectDelay, STATUS_STREAM_STALL_MS, type SessionGroup, type SessionView } from "./sessions-store.ts";
 import { trackedFetch } from "./ui-errors.ts";
@@ -34,9 +34,11 @@ export type BotDraft = {
   model: string;
   thinking: string;
   memoryModel: string;
-  /** A VoiceStudio voice id ("" for VoiceStudio's default) and speed; absent while VoiceStudio is not connected. */
+  /** A VoiceStudio voice id ("" for VoiceStudio's default), speed and language code ("" for Auto); absent while
+   * VoiceStudio is not connected. */
   voice?: string;
   voiceSpeed?: number;
+  voiceLanguage?: string;
 };
 
 /** OptChat's view budget: the memory panel reports sizes against it. */
@@ -91,7 +93,9 @@ function parseVoice(value: unknown): BotVoice | undefined {
   if (!isRecord(value)) return undefined;
   const profile = voiceProfileId(value["profile"]);
   const speed = voiceSpeed(value["speed"]);
-  return profile || speed !== undefined ? { ...(profile ? { profile } : {}), ...(speed !== undefined ? { speed } : {}) } : undefined;
+  const language = voiceLanguage(value["language"]);
+  const voice: BotVoice = { ...(profile ? { profile } : {}), ...(speed !== undefined ? { speed } : {}), ...(language ? { language } : {}) };
+  return Object.keys(voice).length ? voice : undefined;
 }
 
 export function parseBotMemoryStatus(value: unknown): BotMemoryStatus | undefined {
@@ -312,11 +316,13 @@ export function botInputFromDraft(draft: BotDraft): BotInput {
   };
 }
 
-/** The dialog's voice: a chosen voice id and a speed other than 1×; nothing when both are VoiceStudio's defaults. */
+/** The dialog's voice: a chosen voice id, a speed other than 1× and a language; nothing for VoiceStudio's defaults. */
 function draftVoice(draft: BotDraft): BotVoice | undefined {
   const profile = draft.voice?.trim() ?? "";
   const speed = draft.voiceSpeed !== undefined && draft.voiceSpeed !== 1 ? voiceSpeed(draft.voiceSpeed) : undefined;
-  return profile || speed !== undefined ? { ...(profile ? { profile } : {}), ...(speed !== undefined ? { speed } : {}) } : undefined;
+  const language = voiceLanguage(draft.voiceLanguage);
+  const voice: BotVoice = { ...(profile ? { profile } : {}), ...(speed !== undefined ? { speed } : {}), ...(language ? { language } : {}) };
+  return Object.keys(voice).length ? voice : undefined;
 }
 
 /** Edit payload: only what changed, so an untouched workspace never trips the
@@ -340,9 +346,12 @@ export function botPatchFromDraft(bot: BotView, draft: BotDraft): BotPatch {
   if (draft.voice !== undefined) {
     const profile = draft.voice.trim();
     const speed = draft.voiceSpeed ?? 1;
+    // Auto ("") clears the language; a draft without one leaves it alone.
+    const language = draft.voiceLanguage === undefined ? undefined : voiceLanguage(draft.voiceLanguage) ?? "";
     const voice: NonNullable<BotPatch["voice"]> = {
       ...(profile !== (bot.voice?.profile ?? "") ? { profile } : {}),
       ...(speed !== (bot.voice?.speed ?? 1) ? { speed: speed === 1 ? null : speed } : {}),
+      ...(language !== undefined && language !== (bot.voice?.language ?? "") ? { language } : {}),
     };
     if (Object.keys(voice).length) patch.voice = voice;
   }

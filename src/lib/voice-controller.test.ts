@@ -9,7 +9,7 @@ function harness(options: { microphone?: () => Promise<never> } = {}) {
   let ticks: (() => void) | undefined;
   let connectionReads = 0;
   const released = { microphone: 0, watch: 0 };
-  const synthesized: { text: string; botId?: string; voice?: string; speed?: number }[] = [];
+  const synthesized: { text: string; botId?: string; voice?: string; speed?: number; language?: string }[] = [];
   const platform = (): CallPlatform => ({
     openMicrophone: options.microphone ?? (async () => ({ sampleRate: 16_000, setEnabled: () => undefined, close: () => { released.microphone += 1; } })),
     transcribe: async () => "",
@@ -52,9 +52,15 @@ test("reading aloud uses the bot's voice, a preview its own, and stops for a cal
   voice.read("m1", "Hello there.", { botId: "scout" });
   await settle();
   assert.deepEqual(voice.readAloud, { id: "m1", status: "playing" });
-  voice.read("preview", "This is how I sound.", { voice: "vp-aria", speed: 1.25 });
+  voice.read("preview", "This is how I sound.", { voice: "vp-aria", speed: 1.25, language: "es" });
   await settle();
-  assert.deepEqual(synthesized, [{ botId: "scout", text: "Hello there." }, { voice: "vp-aria", speed: 1.25, text: "This is how I sound." }]);
+  voice.read("preview", "And in Auto.", { voice: "", speed: 1, language: "" });
+  await settle();
+  assert.deepEqual(synthesized, [
+    { botId: "scout", text: "Hello there." },
+    { voice: "vp-aria", speed: 1.25, language: "es", text: "This is how I sound." },
+    { voice: "", speed: 1, language: "", text: "And in Auto." },
+  ], "a preview names its draft's voice, speed and language, Auto included");
   assert.equal(voice.startCall(scout), true);
   assert.equal(voice.readAloud.status, "idle", "a call stops the reading");
   voice.read("m2", "Not now.", { botId: "scout" });

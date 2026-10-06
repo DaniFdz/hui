@@ -4,7 +4,7 @@
  * and speech through `/__hui/voice`, and holds the small rules the views
  * share (what a microphone error means, how a voice is named).
  */
-import type { SpeechRequest, VoiceConnection, VoiceProfile } from "../../shared/voice.ts";
+import { VOICE_LANGUAGES, voiceLanguageName, whisperLanguageName, type LanguageNames, type SpeechRequest, type VoiceConnection, type VoiceLanguage, type VoiceProfile } from "../../shared/voice.ts";
 import { CLIENT_HEADERS, fetchJson } from "./settings-store.ts";
 import { trackedFetch } from "./ui-errors.ts";
 
@@ -39,9 +39,15 @@ async function failure(response: Response, fallback: string): Promise<Error> {
   return new Error(typeof detail?.error === "string" ? detail.error : `${fallback} (HTTP ${response.status}).`);
 }
 
-/** A recording, as the browser made it, to text. Nothing is kept: the gateway relays it to VoiceStudio. */
-export async function transcribeRecording(audio: Blob, options: { language?: string; signal?: AbortSignal } = {}): Promise<string> {
-  const query = options.language ? `?language=${encodeURIComponent(options.language)}` : "";
+/**
+ * A recording, as the browser made it, to text. Nothing is kept: the gateway relays it to VoiceStudio. With
+ * `botId` VoiceStudio listens for that bot's language; `language` names one itself (`""` for Auto).
+ */
+export async function transcribeRecording(audio: Blob, options: { botId?: string; language?: VoiceLanguage | ""; signal?: AbortSignal } = {}): Promise<string> {
+  const params = new URLSearchParams();
+  if (options.botId) params.set("botId", options.botId);
+  if (options.language !== undefined) params.set("language", options.language);
+  const query = params.toString() ? `?${params}` : "";
   const response = await trackedFetch(`${VOICE_URL}/transcriptions${query}`, {
     method: "POST",
     headers: { ...CLIENT_HEADERS, "content-type": audio.type || "audio/webm" },
@@ -115,6 +121,20 @@ export function voiceOptions(voices: readonly VoiceProfile[], current: string): 
   return [...options, alias
     ? { value: current, label: alias.name, description: "OpenAI alias: plays VoiceStudio's default voice" }
     : { value: current, label: current, description: "Not listed by VoiceStudio now" }];
+}
+
+/**
+ * The Language picker: Auto (VoiceStudio's recognizer detects the language) first, then Whisper's languages by
+ * their English name, each with its code, and Whisper's own name where the browser calls it something else
+ * (Bangla for Bengali), so a search finds a language by either name or by its code.
+ */
+export function languageOptions(names?: LanguageNames | null): { value: string; label: string; description?: string }[] {
+  const languages = (Object.entries(VOICE_LANGUAGES) as [VoiceLanguage, string][]).map(([code, whisper]) => {
+    const label = voiceLanguageName(code, names);
+    const alias = label.toLocaleLowerCase("en") === whisper ? "" : ` · ${whisperLanguageName(code)}`;
+    return { value: code, label, description: `${code}${alias}` };
+  });
+  return [{ value: "", label: "Auto (detect)" }, ...languages.sort((a, b) => a.label.localeCompare(b.label, "en"))];
 }
 
 /**

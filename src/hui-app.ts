@@ -202,7 +202,7 @@ import { VoiceNoteController } from "./lib/voice-notes.ts";
 import { botCallPlatform } from "./lib/voice-session.ts";
 import { renderCallBar, renderCallView, type CallViewProps } from "./views/bot-voice.ts";
 import { VOICE_CONNECTION_EVENT } from "./views/settings-voice.ts";
-import { VOICE_MESSAGE_PREFIX, type VoiceConnection, type VoiceProfile } from "../shared/voice.ts";
+import { VOICE_MESSAGE_PREFIX, voiceLanguage, type VoiceConnection, type VoiceProfile } from "../shared/voice.ts";
 import type { HomeVoice } from "./views/home.ts";
 import { localTimezone, type AutomationProps } from "./views/settings-automation.ts";
 import { loadWorkers, workerAction, type WorkerView } from "./lib/workers.ts";
@@ -523,9 +523,11 @@ export class HuiApp extends HuiElement {
   @state() private botDraftModel = "";
   @state() private botDraftThinking = "";
   @state() private botDraftMemoryModel = "";
-  /** The dialog's voice (HUI-18): a VoiceStudio voice id ("" for its default) and speed, offered while it is connected. */
+  /** The dialog's voice (HUI-18): a VoiceStudio voice id ("" for its default), speed and language ("" for Auto),
+   * offered while it is connected. */
   @state() private botDraftVoice = "";
   @state() private botDraftVoiceSpeed = 1;
+  @state() private botDraftVoiceLanguage = "";
   /** VoiceStudio's voices for the dialog's picker; undefined until the connection is known to be configured. */
   @state() private botDialogVoices: { loading: boolean; error: string; voices: readonly VoiceProfile[] } | undefined;
   /** The dialog asked for a preview, so a failed one is explained there. */
@@ -582,10 +584,10 @@ export class HuiApp extends HuiElement {
   /** Set on the bot route's pane while VoiceStudio is connected: voice notes and Read aloud. */
   @property(paneVoiceProperty) paneVoice: PaneVoice | undefined;
   @property(paneCallback) onPaneVoice: PaneVoiceActions | undefined;
-  /** The pane's voice note; the microphone is held only while it records. */
+  /** The pane's voice note; the microphone is held only while it records. VoiceStudio listens for its bot's language. */
   private readonly voiceNotes = new VoiceNoteController(this, {
     start: (options) => startVoiceNote(options),
-    transcribe: (audio) => transcribeRecording(audio),
+    transcribe: (audio) => transcribeRecording(audio, this.paneVoice ? { botId: this.paneVoice.botId } : {}),
     deliver: (text) => this.deliverVoiceNote(text),
     microphoneError: (error) => microphoneErrorMessage(error, microphoneContext()),
     now: () => Date.now(),
@@ -3830,6 +3832,7 @@ export class HuiApp extends HuiElement {
   private openBotDialogVoice(bot: BotView | undefined) {
     this.botDraftVoice = bot?.voice?.profile ?? "";
     this.botDraftVoiceSpeed = bot?.voice?.speed ?? 1;
+    this.botDraftVoiceLanguage = bot?.voice?.language ?? "";
     this.botVoicePreviewed = false;
     this.botDialogVoices = undefined;
     const request = ++this.botDialogVoicesRequest;
@@ -3860,16 +3863,19 @@ export class HuiApp extends HuiElement {
       error: previewError || voices.error,
       profile: this.botDraftVoice,
       speed: this.botDraftVoiceSpeed,
+      language: this.botDraftVoiceLanguage,
       previewing,
       onProfile: (value) => { this.botDraftVoice = value; },
       onSpeed: (value) => { this.botDraftVoiceSpeed = value; },
+      onLanguage: (value) => { this.botDraftVoiceLanguage = value; },
       onPreview: () => {
         if (previewing) {
           this.voice.stopReading();
           return;
         }
         this.botVoicePreviewed = true;
-        this.voice.read(BOT_VOICE_PREVIEW, BOT_VOICE_PREVIEW_TEXT, { voice: this.botDraftVoice, speed: this.botDraftVoiceSpeed });
+        // Exactly the draft: its voice, speed and language, Auto ("") included.
+        this.voice.read(BOT_VOICE_PREVIEW, BOT_VOICE_PREVIEW_TEXT, { voice: this.botDraftVoice, speed: this.botDraftVoiceSpeed, language: voiceLanguage(this.botDraftVoiceLanguage) ?? "" });
       },
     };
   }
@@ -3893,7 +3899,7 @@ export class HuiApp extends HuiElement {
       return;
     }
     // The voice goes only while the dialog showed it; otherwise the bot keeps the one it has.
-    const voice = this.botDialogVoice() ? { voice: this.botDraftVoice, voiceSpeed: this.botDraftVoiceSpeed } : {};
+    const voice = this.botDialogVoice() ? { voice: this.botDraftVoice, voiceSpeed: this.botDraftVoiceSpeed, voiceLanguage: this.botDraftVoiceLanguage } : {};
     const draft = { ...values, model: this.botDraftModel, thinking: this.botDraftThinking, memoryModel: this.botDraftMemoryModel, ...voice };
     this.botDialogPending = true;
     this.botDialogError = "";

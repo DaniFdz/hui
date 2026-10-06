@@ -11,7 +11,7 @@ import { navigationPath } from "../lib/navigation.ts";
 import type { BotDraft, BotMemoryStatus, BotView } from "../lib/bots.ts";
 import { BOT_LIMITS, BOT_THINKING_LEVELS } from "../../shared/bots.ts";
 import { VOICE_LIMITS, type VoiceProfile } from "../../shared/voice.ts";
-import { speedLabel, voiceOptions } from "../lib/voice.ts";
+import { languageOptions, speedLabel, voiceOptions } from "../lib/voice.ts";
 import type { RuntimeModel } from "../lib/sessions-store.ts";
 import type { AutomationRun, AutomationSnapshot, AutomationTask, AutomationTaskInput } from "../lib/automation-types.ts";
 import {
@@ -549,15 +549,22 @@ export type BotDialogVoice = {
   error: string;
   profile: string;
   speed: number;
+  /** One of Whisper's language codes, or "" for Auto (VoiceStudio detects it). */
+  language: string;
   /** A preview of the chosen voice is loading or playing. */
   previewing: boolean;
   onProfile: (value: string) => void;
   onSpeed: (value: number) => void;
-  /** Plays a sentence in the chosen voice and speed, or stops it. */
+  onLanguage: (value: string) => void;
+  /** Plays a sentence in the chosen voice, speed and language, or stops it. */
   onPreview: () => void;
 };
 
+/** Every language's English name and code, read once: they never change while HUI runs. */
+let languageChoices: ReturnType<typeof languageOptions> | undefined;
+
 function renderVoiceField(voice: BotDialogVoice, pending: boolean) {
+  languageChoices ??= languageOptions();
   return html`<div class="field input-dialog__field bot-dialog__voice"><span>Voice</span>
     <div class="bot-dialog__voice-row">
       ${renderPicker({ label: "Voice", value: voice.profile, disabled: pending, searchable: true, searchPlaceholder: "Search voices",
@@ -571,6 +578,11 @@ function renderVoiceField(voice: BotDialogVoice, pending: boolean) {
         @input=${(event: Event) => voice.onSpeed(Number((event.target as HTMLInputElement).value))} />
       <output>${speedLabel(voice.speed)}</output></label>
     <span class="bot-field__hint" role=${voice.error ? "alert" : nothing}>${voice.error || (voice.loading ? "Reading VoiceStudio's voices…" : "How the bot sounds when it reads aloud and on calls, through your VoiceStudio.")}</span>
+  </div>
+  <div class="field input-dialog__field bot-dialog__language"><span>Language</span>
+    ${renderPicker({ label: "Language", value: voice.language, disabled: pending, searchable: true, searchPlaceholder: "Search languages",
+      options: languageChoices, onChange: voice.onLanguage })}
+    <span class="bot-field__hint">What VoiceStudio listens for in voice notes and calls and speaks in. Auto detects it each time. Nothing is translated: the bot answers in the language its instructions ask for.</span>
   </div>`;
 }
 

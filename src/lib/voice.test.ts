@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
-import { formatCallTime, microphoneErrorMessage, sendBotMessage, speedLabel, synthesizeSpeech, transcribeRecording, voiceConnectionSummary, voiceOptions, voiceStatusChip, withTranscript } from "./voice.ts";
+import { pickerRows } from "./picker-options.ts";
+import { formatCallTime, languageOptions, microphoneErrorMessage, sendBotMessage, speedLabel, synthesizeSpeech, transcribeRecording, voiceConnectionSummary, voiceOptions, voiceStatusChip, withTranscript } from "./voice.ts";
 
 const realFetch = globalThis.fetch;
 afterEach(() => { globalThis.fetch = realFetch; });
@@ -46,6 +47,42 @@ test("the voice picker lists VoiceStudio's default, then cloned voices and engin
   assert.deepEqual(voiceOptions([], "alloy").at(-1), { value: "alloy", label: "alloy", description: "Not listed by VoiceStudio now" }, "an alias VoiceStudio does not list is just unlisted");
 });
 
+test("the language picker offers Auto, then Whisper's 100 languages by English name with their codes", () => {
+  const options = languageOptions();
+  assert.equal(options.length, 101);
+  assert.deepEqual(options[0], { value: "", label: "Auto (detect)" });
+  const labels = options.slice(1).map((option) => option.label);
+  assert.deepEqual(labels, [...labels].sort((a, b) => a.localeCompare(b, "en")), "sorted by name");
+  const byCode = new Map(options.map((option) => [option.value, option]));
+  assert.deepEqual(byCode.get("es"), { value: "es", label: "Spanish", description: "es" });
+  assert.deepEqual(byCode.get("haw"), { value: "haw", label: "Hawaiian", description: "haw" });
+  assert.deepEqual(byCode.get("yue"), { value: "yue", label: "Cantonese", description: "yue" });
+  assert.equal(byCode.get("jw")?.label, "Javanese", "Whisper's jw is Javanese");
+  assert.equal(byCode.has("jv"), false, "ISO's jv is not a code HUI stores");
+  // Where the browser names a language otherwise, Whisper's name stays searchable.
+  assert.deepEqual(byCode.get("bn"), { value: "bn", label: "Bangla", description: "bn · Bengali" });
+  const search = (query: string) => pickerRows(options, query).map((option) => option.value);
+  assert.deepEqual(search("spanish"), ["es"], "by name");
+  assert.ok(search("es").includes("es"), "by code");
+  assert.deepEqual(search("bengali"), ["bn"]);
+  assert.deepEqual(search("haw"), ["haw"]);
+  assert.deepEqual(search("canto"), ["yue"]);
+  assert.deepEqual(search("auto"), [""]);
+});
+
+test("a language the browser cannot name keeps Whisper's name", () => {
+  const names = { of: (code: string) => ({ es: "Spanish", ht: "Haitian Creole", my: "Burmese" } as Record<string, string>)[code] };
+  const byCode = new Map(languageOptions(names).map((option) => [option.value, option]));
+  assert.deepEqual(byCode.get("es"), { value: "es", label: "Spanish", description: "es" });
+  assert.deepEqual(byCode.get("ht"), { value: "ht", label: "Haitian Creole", description: "ht" }, "the same name in another case is no alias");
+  assert.deepEqual(byCode.get("my"), { value: "my", label: "Burmese", description: "my · Myanmar" });
+  assert.deepEqual(byCode.get("jw"), { value: "jw", label: "Javanese", description: "jw" });
+  assert.deepEqual(byCode.get("de"), { value: "de", label: "German", description: "de" });
+  const failing = new Map(languageOptions({ of: () => { throw new RangeError("no names"); } }).map((option) => [option.value, option]));
+  assert.equal(failing.get("yue")?.label, "Cantonese", "a platform that throws still names it");
+  assert.equal(languageOptions(null).length, 101, "no platform names at all");
+});
+
 test("microphone failures say what to do", () => {
   const secure = { secure: true, desktop: false };
   assert.match(microphoneErrorMessage(new DOMException("denied", "NotAllowedError"), secure), /denied\. Allow it for this site/u);
@@ -61,6 +98,12 @@ test("a recording goes to the gateway as raw audio with the local-client header"
   const recording = new Blob([new Uint8Array(64)], { type: "audio/webm" });
   assert.equal(await transcribeRecording(recording, { language: "es" }), "Hola");
   assert.equal(calls[0]!.url, "/__hui/voice/transcriptions?language=es");
+  await transcribeRecording(recording, { botId: "vox" });
+  assert.equal(calls[1]!.url, "/__hui/voice/transcriptions?botId=vox", "the gateway reads the bot's language");
+  await transcribeRecording(recording, { botId: "vox", language: "" });
+  assert.equal(calls[2]!.url, "/__hui/voice/transcriptions?botId=vox&language=", "\"\" asks for Auto over the bot's");
+  await transcribeRecording(recording);
+  assert.equal(calls[3]!.url, "/__hui/voice/transcriptions");
   assert.equal(calls[0]!.init.method, "POST");
   assert.deepEqual(calls[0]!.init.headers, { "x-hui": "1", "content-type": "audio/webm" });
   assert.equal(calls[0]!.init.body, recording);

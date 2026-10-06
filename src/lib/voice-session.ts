@@ -18,6 +18,7 @@ export function callMessages(transcript: readonly TranscriptEntry[]): CallMessag
   return transcript.flatMap((entry) => entry.kind === "message" && !entry.pending && !entry.failed ? [{ role: entry.role, text: entry.text }] : []);
 }
 
+/** A call hears and speaks in the bot's language: both requests name the bot, and the gateway reads its voice. */
 export function botCallPlatform(bot: { id: string; sessionId: string }): CallPlatform {
   return {
     openMicrophone: async (onFrame) => {
@@ -27,7 +28,7 @@ export function botCallPlatform(bot: { id: string; sessionId: string }): CallPla
         throw new Error(microphoneErrorMessage(error, microphoneContext()));
       }
     },
-    transcribe: (audio, sampleRate) => transcribeRecording(utteranceWav(audio, sampleRate)),
+    transcribe: (audio, sampleRate) => transcribeRecording(utteranceWav(audio, sampleRate), { botId: bot.id }),
     send: async (text, mode) => {
       if (mode === "steer") {
         try {
