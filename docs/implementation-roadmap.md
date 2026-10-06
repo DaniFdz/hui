@@ -687,8 +687,9 @@ is kept in an append-only log, a cheap model compresses it into a tree of
 one-line summaries, and every turn starts fresh from a fixed-size view of the
 whole chat. `hui bot` can do everything the Bots tab can, through the same
 routes. Routines are Automation tasks aimed at a bot's chat; bots message each
-other; they listen and speak through VoiceStudio. Bots run on the local gateway
-only for now. It lands as stacked pull requests:
+other; they listen and speak through VoiceStudio. A bot runs on the local
+gateway or, chosen when it is created, on a remote worker (item 6). It lands as
+stacked pull requests:
 
 1. **OptChat memory for Pi Durable conversations** — done 2026-10-05. The engine
    (`server/optchat/`) and its Durable integration
@@ -790,6 +791,31 @@ only for now. It lands as stacked pull requests:
    `server/call*.test.ts`, `server/calls.test.ts`, `server/bot-service.test.ts`,
    `server/runtimes/durable-optchat.test.ts`, `src/lib/live-call.test.ts` and a
    real call run (both calls of the e2e in the pull request).
+6. **Bots on remote workers** (implemented 2026-10-06; the owner's request, SPEC.md
+   "Bots run on remote workers"): `BotInput.worker` (an id or name, at creation
+   only; a `PATCH` naming one is 400), views name the worker, and the bot's
+   conversation, folder and OptChat memory are created in the worker's Durable
+   store by its host (`server/worker/host-bots.ts`, reusing `bot-conversations.ts`
+   and `bot-memory.ts` against the host's own `DurableHost`). `BotService`
+   picks the gateway's ports or the worker's (`server/bot-remote.ts`) per bot;
+   lists read a remote memory's last reported status and never wait on a
+   worker; an offline worker fails creates, memory reads and messages with a
+   503 that names it, and a host from before bots is told apart (409). The
+   worker's host asks the gateway for its bots' `bots` section, so
+   `message_bot` crosses both ways. The New bot dialog's **Runs on** (while a
+   worker exists), the machine beside a remote bot in its row and header, and
+   `hui bot add --worker`. A remote session's limits apply: no terminal,
+   browser or watcher tools, no worktrees. Proof: `server/worker/host.test.ts`
+   (the host's bot operations on a real host), `server/bot-remote.test.ts`,
+   `server/bot-service.test.ts` (fake remote ports: routing, offline paths, a
+   list that never waits), `server/bots.test.ts`, `server/bot-routes.test.ts`,
+   `server/bot-workers.test.ts` (a real local worker with the fixture provider:
+   the remote store, a reply with the bots section, the utility-model compactor,
+   `message_bot` both ways, a routine, a queued message, steering, a question,
+   Stop, a call's record, archive, restore, delete and a disconnected worker),
+   `src/lib/bots.test.ts`, `src/views/bots.test.ts`, `cli/*.test.ts` and a
+   built gateway with a local worker driven through the browser (screenshots in
+   the pull request).
 
 ## Recommended implementation order
 

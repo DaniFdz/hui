@@ -1123,7 +1123,8 @@ everything the Bots tab can, through the same routes.
   gateway, created through New Session's path, so the chat view, streaming,
   steering, follow-ups, questions and model switching are the session's own.
   Its record names the bot; the bot registry (`bots.json`) holds the rest.
-  Remote workers do not run bots.
+  Chosen when it is created, a bot can run on a remote worker instead, whose
+  Durable store then keeps its conversation and memory (decision below).
 - **Before the first word.** The persona becomes the conversation's standing
   instructions, and OptChat is switched on, in the commit that creates the
   conversation.
@@ -1162,7 +1163,8 @@ everything the Bots tab can, through the same routes.
   Bots tab while Agents shows) and a warning while memory summaries keep
   failing. Search matches name, handle and title. The toolbar's + opens **New
   bot** (name, look, title, instructions, model, thinking, memory model,
-  workspace; nothing changes until the gateway accepts it); *Gateway default*
+  where it runs while a worker exists, workspace; nothing changes until the
+  gateway accepts it); *Gateway default*
   leaves the model and thinking level to the gateway, and choosing it when
   editing clears the bot's own. A row's menu offers Edit, Hide/Unhide (*Show
   hidden* while any are hidden) and Archive, confirmed, with a Restore toast;
@@ -1171,7 +1173,7 @@ everything the Bots tab can, through the same routes.
   always on touch screens; a confirmation says what goes and what stays), and
   an archived bot's chat opens again only once restored. A bot opens at
   `/bots/<id>` as its one chat in the ordinary session pane, its header
-  showing face, name, role and status;
+  showing face, name, role, the worker it runs on (if any) and status;
   assistant turns carry the bot's name, `/clear`, `/compact`, Compact now and
   rewind are not offered, and a new bot says *Say hi to <name>*. Opening it
   marks it read. A **Routines | Memory** panel docks beside the chat (open or
@@ -1306,6 +1308,35 @@ faster."
   bot's Memory model became its **Utility model**. `memoryModel` and
   `--memory-model` keep working. Its default is Settings' utility model, then
   the bot's own model.
+
+### Bots run on remote workers (2026-10-06)
+
+The owner asked: "We should allow running bots in workers". A bot can be created
+on a remote worker (Settings → Workers) instead of this machine; its chat is a
+session on that worker, as any remote session's.
+
+- **Its store is the worker's.** The bot's conversation and OptChat memory are
+  created in the worker's Durable store, in the same one commit as a local
+  bot's (persona, `hui.bot` document, OptChat): the worker's host runs the
+  gateway's own adapters against its store, not a copy of them. Without a
+  folder the worker makes a private one for the bot under HUI's data directory
+  there. The registry, routines, the roster and message limits stay with the
+  gateway, which also checks models and picks defaults.
+- **Chosen once.** The worker is set at creation, by id or name (the New bot
+  dialog's **Runs on**, `hui bot add --worker`); an edit naming one is
+  refused: "A bot stays on the machine it was created on." Moving a bot between
+  machines is out of scope. Creating one needs a live connection to the worker.
+- **One roster.** A bot on a worker gets the same `bots` prompt section from
+  the gateway, and `message_bot` crosses between machines both ways through
+  the agent-tool bridge. With no gateway attached the section is left out.
+- **Never waiting on a worker.** Lists show a remote bot's memory from what the
+  worker last reported and its newest message from the live chat or one read
+  per connection, so an offline worker never slows or fails the roster. Offline,
+  a bot shows its session's state; its memory and messages fail with a reason
+  naming the worker; a worker host from before bots is told apart.
+- **A remote session's limits.** The terminal, the managed browser and
+  watchers act on the gateway's machine, so a bot on a worker has none of them,
+  and no worktrees.
 
 ### New sessions run on Pi Durable
 

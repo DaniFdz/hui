@@ -194,8 +194,9 @@ A **bot** is a named, persistent agent: a role and standing instructions (its
 persona), its own model, a working directory, and **one chat that never ends**.
 Sessions stay what they were (coding work with worktrees, rewind and
 `/compact`); a bot is for the assistant you come back to every day. Its chat is
-an ordinary Pi Durable session on this gateway, so the chat view, streaming,
-steering, follow-ups, questions and model switching work as in any session.
+an ordinary Pi Durable session on this gateway, or on a remote worker if you
+[create it there](#bots-on-a-worker), so the chat view, streaming, steering,
+follow-ups, questions and model switching work as in any session.
 
 **Models.** A bot's **Model** does its real work: the smartest model you have.
 Its **Utility model** does its quick work (the memory's summaries, quick answers
@@ -270,6 +271,43 @@ chat's own model.
 
 A bot's chat refuses what would end or fork it: `/clear`, `/compact`, rewind
 and deleting the session all answer with an explanation instead.
+
+### Bots on a worker
+
+A bot can live on a remote worker (Settings → Workers) instead of this
+machine: its chat runs there, and its conversation, memory and folder are kept
+there, so it works next to that machine's files, and a turn it started keeps
+going while HUI is away from it. Choose **Runs on** in the New bot dialog (it appears once you
+have a worker), or:
+
+```sh
+hui bot add --name Rover --worker devbox                  # a private folder on devbox
+hui bot add --name Rover --worker devbox --cwd ~/src/app  # a folder there: absolute or ~/
+```
+
+HUI must be connected to the worker when you create the bot. Where a bot runs
+is chosen once: it never moves, and an edit shows the machine without offering
+to change it. Its folder is a folder on the worker (the dialog suggests that
+worker's folders), shown as `devbox:/path`; without one the worker makes a
+private folder under its HUI data directory. The roster and the bot's chat show
+the worker beside its name, `hui bot list` marks it `on devbox` and `hui bot show`
+names it.
+
+Everything else works as for a bot here: messages, routines, Stop, its Memory
+panel, calls, archiving and deleting, and messages between bots in both
+directions (a bot on a worker sees every bot in its list). Its memory's
+summaries are written on the worker with its utility model.
+
+**When the worker is offline**, the bot shows it (reconnecting, or
+disconnected), its row keeps its latest message, its Memory panel says the
+worker is offline, and messages to it fail with that reason until HUI is
+connected again. Deleting a bot while its worker is offline leaves its empty
+folder on the worker; otherwise HUI removes it when empty, as here.
+
+**Limits.** A bot on a worker has the limits of any session on a worker: the
+terminal, the managed browser and watchers act on this machine, so it can't use
+them, and it can't use worktrees. A worker can't be removed while bots run on
+it; delete them first.
 
 ### Talking to a bot
 

@@ -1003,7 +1003,17 @@ a `followUp` that arrives once the run has settled starts the next run, as a
 `prompt`), `session.transcript {key,seq,offset}` (one page of at most 8 MB of
 the transcript a frame with that `seq` left behind, `{entries,total}`),
 `session.dispose {key}`, `forget {keys}`,
-`put-file`, `get-file` and `sync-plan`/`sync-put`/`sync-commit`. `state` is the runtime's
+`put-file`, `get-file` and `sync-plan`/`sync-put`/`sync-commit`. A host whose
+`hello` lists the `bots` feature also answers the bot operations of
+[bots on a worker](#bots-on-a-worker), against its own store: `bot.create
+{botId,cwd?,model?,thinking?,instructions?,memory}` (`{reference,cwd}`),
+`bot.directory {cwd}`, `bot.configure {reference,instructions?,cwd?}`,
+`bot.last-message {reference}`, `bot.call-record {reference,record}`,
+`bot.remove-folder {botId}` (only the folder it made, only while empty),
+`bot.memory.configure|status|view|zoom|html {reference,…}` (a memory this store
+cannot read answers `{unavailable}`) and `bot.memory.watch {references}`, after
+which it pushes `bot.memory.status {reference,status}` frames to that gateway
+as each memory changes, starting with the current status. `state` is the runtime's
 synchronous view (`sessionId`, `sessionFile`, `isStreaming`,
 `resumesInterruptedRuns`, `model`, `usage`, `thinking`, `queue` and
 `questions`). Every reply and every `session.event {key,event,state,seq}`
@@ -1028,7 +1038,9 @@ restarted host resumes call HUI tools as that session. Host requests: `credentia
 `hui:<providers-relative path>`), the nested `credential-step` that runs an
 OAuth refresh callback on the remote while the gateway holds its lock, and
 `bridge` (a HUI agent tool call; the gateway refuses callers whose session is
-not on that worker, and refuses `terminal`, `browser` and `watcher`). With no
+not on that worker, and refuses `terminal`, `browser` and `watcher`) and
+`bot.section {botId}` (`{ section: string | null }`, the `bots` prompt section of
+a bot whose chat runs on that worker; any other bot is refused). With no
 gateway connected a `bridge` call fails at once, and one in flight fails when
 the connection drops. `read` and `list` answers are cached in host memory
 until the credential's `expires` (API keys: while the host runs) and served
@@ -1091,8 +1103,9 @@ an ordinary local Durable session (`tool: "durable"`, `group: ""`, title = the
 bot's name) registered through `createSession`, New Session's path; its record
 carries `bot`. The bot routes below never duplicate the session API: the chat's
 transcript, live stream, prompt, steer, follow-up and question routes are the
-session routes on `bot.sessionId`. Bots run on this gateway only. Shared types
-are in `shared/bots.ts`:
+session routes on `bot.sessionId`. A bot runs on this gateway or, chosen when it
+is created, on a remote worker ([below](#bots-on-a-worker)). Shared types are in
+`shared/bots.ts`:
 
 ```ts
 type BotRecord = {
@@ -1102,7 +1115,8 @@ type BotRecord = {
   title?: string;              // role, ≤ 80, one line
   description?: string;        // ≤ 500
   instructions?: string;       // persona, ≤ 20,000: the chat's Durable instructions
-  cwd: string;                 // absolute existing directory
+  cwd: string;                 // absolute existing directory (on a worker, a directory there)
+  worker?: string;             // the remote worker (Settings → Workers) the chat runs on, by id; set at creation, never changed
   model?: string;              // "provider/id" of the chat
   thinking?: string;
   memoryModel?: string;        // "provider/id" of the bot's utility model (memory summaries, call helper, call summaries); `utilityModel` in a patch; absent: Settings' utility model, then the chat's own model
@@ -1116,7 +1130,8 @@ type BotRecord = {
   updatedAt: string;
 };
 
-type BotView = BotRecord & {
+type BotView = Omit<BotRecord, "worker"> & {
+  worker?: { id: string; name: string }; // as SessionView names it
   status: SessionStatus;       // the chat's session status
   lastMessage?: { role: "user" | "assistant"; text: string /* one line, ≤ 200 */; at: string };
   unread: boolean;             // the chat's session record is unread
@@ -1187,14 +1202,15 @@ accepts a same-origin page load, below). `:id` is a bot's id or handle. Bodies a
 unknown fields are refused. Errors use the common `{ "error" }` shape: 400 for
 input (including an unknown model or a missing directory), 404 for an unknown
 bot, 409 when the bot's state refuses the request, 503 when the gateway cannot
-read the chat's memory, 500 for storage failures; other methods answer 405.
+read the chat's memory or the bot's worker is offline, 500 for storage
+failures; other methods answer 405.
 
 | Route | Success | Behavior |
 | --- | --- | --- |
 | `GET /__hui/bots[?archived=1]` | 200 `{ bots: BotView[] }` | Active bots, or with `archived=1` only archived ones, sorted by name |
-| `POST /__hui/bots` | 201 `{ bot }` | `BotInput`: `name` plus the optional record fields and `handle`. Without `handle` one is derived from the name (`-2`, `-3`… on collision); an explicit handle that is taken is 409 |
+| `POST /__hui/bots` | 201 `{ bot }` | `BotInput`: `name` plus the optional record fields, `handle` and `worker` (a worker's id or name: [the bot runs there](#bots-on-a-worker)). Without `handle` one is derived from the name (`-2`, `-3`… on collision); an explicit handle that is taken is 409 |
 | `GET /__hui/bots/:id` | 200 `{ bot }` | |
-| `PATCH /__hui/bots/:id` | 200 `{ bot }` | Only what changes; `""` clears `title`, `description`, `instructions`, `model`, `thinking` (back to the gateway defaults, above), `memoryModel` (also as `utilityModel`, the same field; giving both with different values is 400), `memoryThinking` (back to Settings' utility model, then the chat's model, and OptChat's default level); an avatar key `""` clears it (`emoji: ""` switches the bot to its face, `shape: ""` and `color: ""` go back to the ones its id picks), `avatar: null` clears all three (an unknown `shape` or a color that is not `#rrggbb` is 400); a voice `profile: ""`, `speed: null`, `language: ""` (back to Auto) or `live: ""` (back to Settings' call voice) clears that key, `voice: null` clears them all (other voice keys are 400, and so is a `language` that is not one of Whisper's codes, a name such as `Spanish` included, or a `live` that is not one of GPT-Live's voices). The handle changes only when given (409 if taken). `instructions` reconfigures the conversation; `model`/`thinking` go through the live chat (`setModel`/`setThinking`); `name` and the memory fields reconfigure OptChat, `name` also the session title; `cwd` is accepted only while the chat is idle (409 otherwise) and boots its runtime again there; a turn that starts during that edit (a routine, say) makes it answer 409 after the conversation and the chat's session record already moved, with the bot record still naming the old directory, so repeat the edit once the bot is idle to finish it. Archived bots are 409 |
+| `PATCH /__hui/bots/:id` | 200 `{ bot }` | Only what changes (`worker` is 400: a bot stays on the machine it was created on); `""` clears `title`, `description`, `instructions`, `model`, `thinking` (back to the gateway defaults, above), `memoryModel` (also as `utilityModel`, the same field; giving both with different values is 400), `memoryThinking` (back to Settings' utility model, then the chat's model, and OptChat's default level); an avatar key `""` clears it (`emoji: ""` switches the bot to its face, `shape: ""` and `color: ""` go back to the ones its id picks), `avatar: null` clears all three (an unknown `shape` or a color that is not `#rrggbb` is 400); a voice `profile: ""`, `speed: null`, `language: ""` (back to Auto) or `live: ""` (back to Settings' call voice) clears that key, `voice: null` clears them all (other voice keys are 400, and so is a `language` that is not one of Whisper's codes, a name such as `Spanish` included, or a `live` that is not one of GPT-Live's voices). The handle changes only when given (409 if taken). `instructions` reconfigures the conversation; `model`/`thinking` go through the live chat (`setModel`/`setThinking`); `name` and the memory fields reconfigure OptChat, `name` also the session title; `cwd` is accepted only while the chat is idle (409 otherwise) and boots its runtime again there; a turn that starts during that edit (a routine, say) makes it answer 409 after the conversation and the chat's session record already moved, with the bot record still naming the old directory, so repeat the edit once the bot is idle to finish it. Archived bots are 409 |
 | `DELETE /__hui/bots/:id` | 200 `{ bot }` | Archives, deleting nothing: marks the bot, disables every Automation task aimed at its chat, withdraws messages still in HUI's follow-up queue for it, stops a running turn and archives the chat's session record. Idempotent |
 | `DELETE /__hui/bots/:id?permanent=1` | 200 `{ ok: true }` | Deletes an archived bot for good; an active bot is 409 (archive it first). Removes every Automation task aimed at its chat, then the chat's session record as `DELETE /__hui/sessions/:id` does (its runtime stops; the conversation and its memory stay in the Durable store, which HUI no longer opens), then the bot. A directory HUI made for the bot goes only while empty: the bot's files never do. Each step can run again, so deleting again finishes an interrupted attempt; afterwards the bot is 404 |
 | `POST /__hui/bots/:id/restore` | 200 `{ bot }` | Unarchives the bot and its session record; routines stay disabled |
@@ -1288,6 +1304,71 @@ sender's current run started from `[from @x] …` (hop 1) or `[from @x · hop N]
 originating input is the session's recovery journal (`runPrompt`). Each bot may
 send 30 bot messages per hour (gateway memory, a backstop). Refusals are tool
 errors the model reads.
+
+### Bots on a worker
+
+A bot can run on a remote worker (Settings → Workers) instead of this machine:
+`POST /__hui/bots` takes `worker`, a worker's id or exact name (as `hui workers`
+names them; an unknown or shared name is 400). It is chosen once: a `PATCH`
+naming `worker` is 400, "A bot stays on the machine it was created on.", since
+the bot's conversation and memory live in that machine's store. The record
+keeps the worker's id; views carry `worker: { id, name }` like session views,
+and HUI shows its folder as `<worker>:<path>` (`botDisplayCwd`).
+
+Creating one needs a live connection to the worker (503 naming it otherwise:
+"HUI is not connected to <worker>. Connect it in Settings → Workers, then
+create the bot again."). The gateway asks the worker's host to create the
+conversation there (`bot.create`), in the same one commit a local bot gets: the
+host runs `bot-conversations.ts` and `bot-memory.ts` against its own
+`DurableHost`. Without `cwd` the host makes a private folder for the bot,
+`<worker data dir>/bots/<id>` (mode 0700; usually
+`~/.local/share/hui-worker/bots/<id>`); a given `cwd` must be absolute or `~/`
+(400 here otherwise) and exist there (400 with the host's message). The
+gateway then registers the chat through `createSession` with that `worker`, so
+the chat is an ordinary remote Durable session (`durable:N` names a
+conversation in the worker's store). The model and its defaults are still
+checked and chosen here; a `PATCH` of `cwd` is checked on the worker and the
+conversation is reconfigured there, as are the instructions and the memory's
+settings.
+
+The host's `bots` prompt section comes from this gateway: the host asks it
+(`bot.section`), which answers only for a bot that runs on that worker, so a
+bot on a worker knows the whole roster and `message_bot` crosses both ways
+(its tool call reaches the gateway through the agent-tool bridge, as any HUI
+tool of a remote session). With no gateway attached the section is left out,
+as `message_bot` could not deliver anything then either. OptChat's compactor
+runs on the worker with the bot's utility model, else the utility model of the
+Settings the gateway mirrors there, else the chat's own model, as locally.
+
+A bot list never waits on a worker: a remote bot's `memory` is the status the
+worker last reported for it (the gateway watches each listed memory through
+`bot.memory.watch`, and the host pushes `bot.memory.status` frames as it
+changes; `bot.memory.view` replies with the status it counts), and its
+`lastMessage` comes from the live chat or one background read per connection
+(`bot.last-message`), so the first list after a connect may lack it. While the
+worker is offline the view keeps the chat's session status (`reconnecting` or
+`disconnected`), the newest message HUI saw and no `memory`. The memory routes
+answer 503 then, naming the worker ("<worker>, where this bot runs, is offline:
+HUI is not connected to it. …"), and so do messages, once the chat's session
+is unreachable ("The bot's chat runs on <worker>, which HUI is disconnected
+from. …"); the session routes answer 409 as for any remote session. A worker
+whose host predates bots (its `hello` lists no `bots` feature: a host that was
+busy when this gateway connected keeps serving its sessions) is refused with
+409 naming it until it is reconnected idle.
+
+Routines, queued messages, steering, questions, Stop, archive and restore go
+through the session paths a remote session uses. Deleting removes the chat's
+session record, which stops its remote process when HUI is connected, and asks
+the host to remove the folder it made for the bot, only while empty; with the
+worker offline that folder stays there. The conversation and its memory stay in
+the worker's store. A call's helper reads the remote memory's view and the
+call's record is written to the remote conversation (`bot.call-record`);
+hand-offs are ordinary messages.
+
+A bot on a worker has a remote session's limits: the `terminal`, `browser`
+and `watcher` tools act on the gateway's machine, so the bridge refuses them,
+and it cannot use worktrees. A worker with bots cannot be removed while their
+chats' session records exist (409, as for any session on it).
 
 ## Routes
 
