@@ -12,9 +12,8 @@ import type { BotDraft, BotMemoryStatus, BotView } from "../lib/bots.ts";
 import { BOT_FACE_COLORS, BOT_FACE_SHAPES, BOT_FACE_SHAPE_LABELS, BOT_LIMITS, BOT_THINKING_LEVELS, botLook, type BotAvatar, type BotFaceShape } from "../../shared/bots.ts";
 import { facePath, rosterFaceState, type BotFaceSize, type BotFaceState } from "../lib/bot-face.ts";
 import "../components/bot-face.ts";
-import { VOICE_LIMITS, type VoiceProfile } from "../../shared/voice.ts";
 import { GPT_LIVE_VOICES, gptLiveVoiceLabel, type GptLiveVoice } from "../../shared/calls.ts";
-import { languageOptions, speedLabel, voiceOptions } from "../lib/voice.ts";
+import { languageOptions } from "../lib/voice.ts";
 import type { RuntimeModel } from "../lib/sessions-store.ts";
 import type { AutomationRun, AutomationSnapshot, AutomationTask, AutomationTaskInput } from "../lib/automation-types.ts";
 import {
@@ -645,13 +644,11 @@ export type BotDialogProps = {
   onCancel: () => void;
   /** The Look: a face (shape and color) or an emoji. */
   look: BotDialogLook;
-  /** The voice section: present while VoiceStudio is connected (HUI-18). */
-  voice?: BotDialogVoice;
-  /** The call voice: present while calls use GPT-Live (Settings → Models → Calls). */
-  call?: BotDialogCall;
+  /** How the bot sounds on calls (HUI-18): its GPT-Live voice and its language. */
+  call: BotDialogCall;
 };
 
-/** A GPT-Live call voice, and the language (shared with VoiceStudio's section when both show). */
+/** A GPT-Live call voice, and the language the bot speaks on calls. */
 export type BotDialogCall = {
   /** "" follows Settings' default. */
   voice: string;
@@ -716,23 +713,6 @@ function renderLookField(look: BotDialogLook, pending: boolean) {
   </fieldset>`;
 }
 
-export type BotDialogVoice = {
-  voices: readonly VoiceProfile[];
-  loading: boolean;
-  error: string;
-  profile: string;
-  speed: number;
-  /** One of Whisper's language codes, or "" for Auto (VoiceStudio detects it). */
-  language: string;
-  /** A preview of the chosen voice is loading or playing. */
-  previewing: boolean;
-  onProfile: (value: string) => void;
-  onSpeed: (value: number) => void;
-  onLanguage: (value: string) => void;
-  /** Plays a sentence in the chosen voice, speed and language, or stops it. */
-  onPreview: () => void;
-};
-
 /** Every language's English name and code, read once: they never change while HUI runs. */
 let languageChoices: ReturnType<typeof languageOptions> | undefined;
 
@@ -741,45 +721,16 @@ function renderCallVoiceField(call: BotDialogCall, pending: boolean) {
   const options = [{ value: "", label: "Default (" + gptLiveVoiceLabel(call.defaultVoice) + ")" }, ...GPT_LIVE_VOICES.map((voice) => ({ value: voice, label: gptLiveVoiceLabel(voice) }))];
   return html`<div class="field input-dialog__field bot-dialog__call-voice"><span>Call voice</span>
     ${renderPicker({ label: "Call voice", value: call.voice, disabled: pending, options, onChange: call.onVoice })}
-    <span class="bot-field__hint">How the bot sounds on calls. GPT-Live speaks with its own voices, so calls can't use a VoiceStudio voice. Default follows Settings → Models → Calls.</span>
+    <span class="bot-field__hint">How the bot sounds on calls. Default follows Settings → Models → Calls.</span>
   </div>`;
 }
 
-/** The language, for VoiceStudio and for GPT-Live calls. */
-function renderLanguageField(value: string, onLanguage: (value: string) => void, pending: boolean, studio: boolean, live: boolean) {
+/** The language the bot speaks on calls. */
+function renderLanguageField(call: BotDialogCall, pending: boolean) {
   languageChoices ??= languageOptions();
-  const hint = studio && live
-    ? "What VoiceStudio listens for and speaks in, and the language the bot speaks on calls. Auto detects it each time."
-    : live
-      ? "The language the bot speaks on calls. Auto answers in the language you speak."
-      : "What VoiceStudio listens for in voice notes and calls and speaks in. Auto detects it each time. Nothing is translated: the bot answers in the language its soul (or you) asks for.";
   return html`<div class="field input-dialog__field bot-dialog__language"><span>Language</span>
-    ${renderPicker({ label: "Language", value, disabled: pending, searchable: true, searchPlaceholder: "Search languages", options: languageChoices, onChange: onLanguage })}
-    <span class="bot-field__hint">${hint}</span>
-  </div>`;
-}
-
-/** VoiceStudio's voice: Read aloud's, and calls' too while they run on VoiceStudio.
- * While GPT-Live runs them, the Call voice speaks on calls, so beside it this one
- * is named for what it still does. */
-function renderVoiceField(voice: BotDialogVoice, pending: boolean, calls: boolean) {
-  const label = calls ? "Voice" : "Read-aloud voice";
-  const hint = calls
-    ? "How the bot sounds when it reads aloud and on calls, through your VoiceStudio."
-    : "How the bot sounds when it reads its replies aloud, through your VoiceStudio. Calls use the Call voice below.";
-  return html`<div class="field input-dialog__field bot-dialog__voice"><span>${label}</span>
-    <div class="bot-dialog__voice-row">
-      ${renderPicker({ label, value: voice.profile, disabled: pending, searchable: true, searchPlaceholder: "Search voices",
-        options: voiceOptions(voice.voices, voice.profile), onChange: voice.onProfile })}
-      <button type="button" class="btn btn--sm bot-dialog__preview" aria-pressed=${String(voice.previewing)} ?disabled=${pending}
-        @click=${voice.onPreview}>${voice.previewing ? "Stop" : "Preview"}</button>
-    </div>
-    <label class="bot-dialog__speed"><span>Speed</span>
-      <input type="range" min=${String(VOICE_LIMITS.speedMin)} max=${String(VOICE_LIMITS.speedMax)} step="0.05" .value=${String(voice.speed)}
-        aria-valuetext=${speedLabel(voice.speed)} ?disabled=${pending}
-        @input=${(event: Event) => voice.onSpeed(Number((event.target as HTMLInputElement).value))} />
-      <output>${speedLabel(voice.speed)}</output></label>
-    <span class="bot-field__hint" role=${voice.error ? "alert" : nothing}>${voice.error || (voice.loading ? "Reading VoiceStudio's voices…" : hint)}</span>
+    ${renderPicker({ label: "Language", value: call.language, disabled: pending, searchable: true, searchPlaceholder: "Search languages", options: languageChoices, onChange: call.onLanguage })}
+    <span class="bot-field__hint">The language the bot speaks on calls. Auto answers in the language you speak.</span>
   </div>`;
 }
 
@@ -793,12 +744,6 @@ function modelOptions(models: readonly RuntimeModel[], empty: string, current: s
   const options = [{ value: "", label: empty }, ...models.map((model) => ({ value: `${model.provider}/${model.id}`, label: model.name, description: model.provider }))];
   // A model no longer in the catalog still shows what the bot runs on.
   return current && !options.some((option) => option.value === current) ? [...options, { value: current, label: current }] : options;
-}
-
-/** One Language field for VoiceStudio and GPT-Live calls, while either shows. */
-function languageField(props: BotDialogProps) {
-  const owner = props.voice ?? props.call;
-  return owner ? renderLanguageField(owner.language, owner.onLanguage, props.pending, Boolean(props.voice), Boolean(props.call)) : nothing;
 }
 
 export function renderBotDialog(props: BotDialogProps) {
@@ -838,9 +783,8 @@ export function renderBotDialog(props: BotDialogProps) {
         ${renderPicker({ label: "Utility model", value: props.memoryModel, disabled: props.pending, searchable: true, searchPlaceholder: "Search models",
           options: modelOptions(props.models, props.utilityDefault ? `Default (${props.utilityDefault})` : "Default (same as the bot)", props.memoryModel), onChange: props.onMemoryModel })}
         <span class="bot-field__hint">The fastest model you have, ideally a cheap one. It writes the memory's summaries, answers quick questions on calls and writes each call's summary.</span></div>
-      ${props.voice ? renderVoiceField(props.voice, props.pending, !props.call) : nothing}
-      ${props.call ? renderCallVoiceField(props.call, props.pending) : nothing}
-      ${languageField(props)}
+      ${renderCallVoiceField(props.call, props.pending)}
+      ${renderLanguageField(props.call, props.pending)}
       <div class="field input-dialog__field"><label for="bot-dialog-cwd">Workspace directory</label>
         ${renderDirectoryPicker({ id: "bot-dialog-cwd", label: "Workspace directory", value: editing?.cwd ?? "", suggestions: props.directorySuggestions, onInput: props.onDirectoryInput, inputClass: "settings-input", externalLabel: true, placeholder: "Automatic" })}
         <span class="bot-field__hint">${editing ? "Can change only while the bot is idle." : "Leave empty for a private folder HUI creates for this bot."}</span></div>

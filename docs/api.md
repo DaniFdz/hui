@@ -530,13 +530,11 @@ cheap, fast, tool-free route for generated session titles and `/btw`. Example:
 { "models": { "primary": "openai/gpt-6-astra", "fallback": "anthropic/claude-sonnet-4-6", "utility": "openai/gpt-5.6-luna" } }
 ```
 
-It also includes `calls: { engine, voice }` (Settings → Models → Calls, HUI-18):
-`engine` is `"gpt-live"` (calls with bots talk to GPT-Live through the ChatGPT
-login, [GPT-Live calls](#gpt-live-calls)) or `"voicestudio"` (the speech chain
-through [VoiceStudio](#voicestudio-bots-voice)); `voice` is the GPT-Live voice of
-a bot without one of its own. Anything else normalizes to the default,
-`{ "engine": "voicestudio", "voice": "cove" }`, so nothing changes until GPT-Live
-is chosen.
+It also includes `calls: { voice }` (Settings → Models → Calls, HUI-18): the GPT-Live
+voice of a bot without one of its own ([GPT-Live calls](#gpt-live-calls)).
+Anything else normalizes to the default, `{ "voice": "cove" }`. A file saved while
+HUI also had VoiceStudio may hold `calls.engine` and `voice.sendNotesImmediately`:
+neither is read, and the next `PUT` leaves them out.
 
 ### `GET /__hui/health`
 
@@ -1107,7 +1105,7 @@ type BotRecord = {
   memoryModel?: string;        // "provider/id" of the bot's utility model (memory summaries, call helper, call summaries); `utilityModel` in a patch; absent: Settings' utility model, then the chat's own model
   memoryThinking?: string;
   avatar?: { emoji?: string /* one grapheme */; color?: string /* #rrggbb */; shape?: "blob" | "round" | "triangle" | "heart" | "cookie" }; // the look, below
-  voice?: { profile?: string; speed?: number; language?: string; live?: GptLiveVoice }; // VoiceStudio voice id (one line, ≤ 200), speed 0.5–2, language (one of Whisper's codes, below; GPT-Live calls speak it too) and GPT-Live call voice (below); absent keys: VoiceStudio's defaults, Auto for the language, Settings' call voice
+  voice?: { language?: string; live?: GptLiveVoice }; // on calls: the language it speaks (one of Whisper's codes, below; absent: Auto) and its GPT-Live voice (absent: Settings' call voice)
   hidden?: boolean;
   archived?: boolean;
   disabledTools?: string[];    // tools the operator turned off in its chat; absent: none (below)
@@ -1224,7 +1222,7 @@ read the chat's memory, 500 for storage failures; other methods answer 405.
 | `GET /__hui/bots[?archived=1]` | 200 `{ bots: BotView[] }` | Active bots, or with `archived=1` only archived ones, sorted by name |
 | `POST /__hui/bots` | 201 `{ bot }` | `BotInput`: the record fields, all optional (`{}` is enough), `disabledTools` and `disabledSkills` (below; tools checked against those every chat has, before an extension's, and skills against its directory's), `handle` and `soul` (SOUL.md's text, ≤ 20,000 characters after trimming; given, the bot skips its first conversation and no kickoff runs). Without `name` the bot is `New Bot` (`NEW_BOT_NAME`), which its first conversation replaces (`set_profile`). Without `handle` one is derived from the name (`-2`, `-3`… on collision); an explicit handle that is taken is 409 |
 | `GET /__hui/bots/:id` | 200 `{ bot }` | |
-| `PATCH /__hui/bots/:id` | 200 `{ bot }` | Only what changes; `""` clears `title`, `description`, `model`, `thinking` (back to the gateway defaults, above), `memoryModel` (also as `utilityModel`, the same field; giving both with different values is 400), `memoryThinking` (back to Settings' utility model, then the chat's model, and OptChat's default level); an avatar key `""` clears it (`emoji: ""` switches the bot to its face, `shape: ""` and `color: ""` go back to the ones its id picks), `avatar: null` clears all three (an unknown `shape` or a color that is not `#rrggbb` is 400); a voice `profile: ""`, `speed: null`, `language: ""` (back to Auto) or `live: ""` (back to Settings' call voice) clears that key, `voice: null` clears them all (other voice keys are 400, and so is a `language` that is not one of Whisper's codes, a name such as `Spanish` included, or a `live` that is not one of GPT-Live's voices). `disabledTools` and `disabledSkills` replace the whole list (`[]` turns everything back on), checked against the running chat's catalog (below); they apply from its next request. `soul` is refused (400): SOUL.md has its own route. A given handle replaces the old one (409 if taken); a new `name` without one re-derives the handle while it is still the automatic one, derived from the old name (kept unique), and a handle chosen before stays. `model`/`thinking` go through the live chat (`setModel`/`setThinking`); `name` and the memory fields reconfigure OptChat, `name` also the session title; `cwd` is accepted only while the chat is idle (409 otherwise) and boots its runtime again there; a turn that starts during that edit (a routine, say) makes it answer 409 after the conversation and the chat's session record already moved, with the bot record still naming the old directory, so repeat the edit once the bot is idle to finish it. Archived bots are 409 |
+| `PATCH /__hui/bots/:id` | 200 `{ bot }` | Only what changes; `""` clears `title`, `description`, `model`, `thinking` (back to the gateway defaults, above), `memoryModel` (also as `utilityModel`, the same field; giving both with different values is 400), `memoryThinking` (back to Settings' utility model, then the chat's model, and OptChat's default level); an avatar key `""` clears it (`emoji: ""` switches the bot to its face, `shape: ""` and `color: ""` go back to the ones its id picks), `avatar: null` clears all three (an unknown `shape` or a color that is not `#rrggbb` is 400); a voice `language: ""` (back to Auto) or `live: ""` (back to Settings' call voice) clears that key, `voice: null` clears both (other voice keys are 400, VoiceStudio's old `profile` and `speed` included, and so is a `language` that is not one of Whisper's codes, a name such as `Spanish` included, or a `live` that is not one of GPT-Live's voices). `disabledTools` and `disabledSkills` replace the whole list (`[]` turns everything back on), checked against the running chat's catalog (below); they apply from its next request. `soul` is refused (400): SOUL.md has its own route. A given handle replaces the old one (409 if taken); a new `name` without one re-derives the handle while it is still the automatic one, derived from the old name (kept unique), and a handle chosen before stays. `model`/`thinking` go through the live chat (`setModel`/`setThinking`); `name` and the memory fields reconfigure OptChat, `name` also the session title; `cwd` is accepted only while the chat is idle (409 otherwise) and boots its runtime again there; a turn that starts during that edit (a routine, say) makes it answer 409 after the conversation and the chat's session record already moved, with the bot record still naming the old directory, so repeat the edit once the bot is idle to finish it. Archived bots are 409 |
 | `DELETE /__hui/bots/:id` | 200 `{ bot }` | Archives, deleting nothing: marks the bot, disables every Automation task aimed at its chat, withdraws messages still in HUI's follow-up queue for it, stops a running turn and archives the chat's session record. Idempotent |
 | `DELETE /__hui/bots/:id?permanent=1` | 200 `{ ok: true }` | Deletes a bot for good, active or archived: withdraws messages still in HUI's follow-up queue for it and stops a running turn; its conversation stops being a bot's chat and its memory goes, in one commit (the `hui.bot` document cleared, OptChat turned off) and then OptChat's files; then every Automation task aimed at its chat, the chat's session record as `DELETE /__hui/sessions/:id` does (its runtime stops), its home folder `CONFIG_DIR/bots/<id>` with everything in it (SOUL.md and every file HUI or the bot put there; only `<BOTS_DIR>/<id>` itself, resolved, never following a link out), then the bot. A working directory the operator chose is never touched (when it lies inside the home folder, only SOUL.md goes). pi-durable cannot delete a conversation yet, so its raw log stays in the Durable store, where nothing reads it back. Each step can run again, so deleting again finishes an interrupted attempt; afterwards the bot is 404 |
 | `POST /__hui/bots/:id/restore` | 200 `{ bot }` | Unarchives the bot and its session record; routines stay disabled |
@@ -2236,9 +2234,7 @@ catalogue, a `fontTerminal` local family name (1–128 characters, default
 OpenClaw-compatible HUI chat preferences (`messageWidth`,
 `collapseTaskProgress`, `sendShortcut` and `githubEmbeds`),
 [`power`](#macos-power), the Git workspace `branchPrefix` (`feature/` by default),
-`voice.sendNotesImmediately` (default `false`: a bot chat's voice note waits in
-the composer; see [VoiceStudio](#voicestudio-bots-voice)), Profile presentation
-fields and reversible Labs flags. These values affect HUI
+Profile presentation fields and reversible Labs flags. These values affect HUI
 only. They never change PI configuration, provider identity, runtime permissions
 or transcripts.
 
@@ -2824,73 +2820,9 @@ it) is the opt-out, exposed as Settings → Appearance → Chat → *GitHub link
 previews*. When off, no preview is requested or rendered; PR badges keep using
 the lookup.
 
-### VoiceStudio: bots' voice
-
-Bots listen and speak through [VoiceStudio](https://github.com/debpalash/VoiceStudio)
-(HUI-18), a separate speech service, often on a GPU machine reached over
-Tailscale, that HUI only calls over HTTP: its discovery document
-`GET /.well-known/voicestudio-speech` (protocol `voicestudio.speech.v1`) and its
-OpenAI-compatible audio routes. HUI stores no audio: a recording streams to
-VoiceStudio and only its text comes back; speech streams back as VoiceStudio
-sends it. Shared types are in `shared/voice.ts`:
-
-```ts
-type VoiceConnection = {
-  configured: boolean;
-  url: string;                       // the service root; "" when not configured
-  keySet: boolean;                   // never the key itself
-  reachable?: boolean;               // the latest discovery probe (at most 30 s old) answered
-  protocol?: string;                 // "voicestudio.speech.v1"
-  service?: string; version?: string;
-  features?: Record<string, boolean>;  // the discovery document's switches
-  error?: string;                    // why the latest probe failed
-  checkedAt?: string;
-};
-type VoiceProfile = { id: string; name: string; type?: string; language?: string; description?: string };
-```
-
-A bot's `voice.language` (and a request's `language`) is one of the 100
-language codes of Whisper (`whisper/tokenizer.py`), `VOICE_LANGUAGES` in
-`shared/voice.ts`: ISO 639-1 codes plus `haw` (Hawaiian) and `yue` (Cantonese),
-accepted in any case and stored lowercase; anything else is 400 at every
-boundary (the routes, `bots.json` drops it, the CLI). It is what VoiceStudio
-listens for (`language` of `POST /v1/audio/transcriptions`, which Whisper-family
-recognizers use instead of detecting the language of each recording) and speaks
-in (`language` of `POST /v1/audio/speech`: the engine and VoiceStudio's text
-normalization of numbers, times and amounts). Absent is Auto: neither request
-carries a `language`. Nothing is translated; the bot's SOUL.md (or the operator) decides
-the language it answers in. Javanese is Whisper's `jw`, which HUI stores and sends
-to transcriptions; VoiceStudio's speech knows it by its ISO code, so speech
-sends `jv`. An engine that lacks the language refuses (400), which HUI reports
-as a 502 in VoiceStudio's words and never retries.
-
-| Route | Result |
-| --- | --- |
-| `GET /__hui/voice` | `VoiceConnection`. Probes discovery (5 s) when the last probe is older than 30 seconds; concurrent reads share one probe |
-| `PUT /__hui/voice` `{ url, apiKey? }` | Verifies with discovery, then `GET /v1/models`, then stores. `url` is the service root: without a scheme it is `http://`, a trailing `/v1` (an OpenAI base URL) is dropped, a reverse-proxy path prefix stays; credentials, `?` and `#` are 400. An absent or empty `apiKey` keeps the stored one while the origin stays the same; `null` removes it. A key is accepted only for `https:`, loopback or a Tailscale address (`100.64.0.0/10`, `fd7a:115c:a1e0::/48`, `*.ts.net`), otherwise 400. Unknown fields are 400; VoiceStudio refusing or unreachable is 502 and nothing is stored |
-| `DELETE /__hui/voice` | Removes the connection and its key |
-| `GET /__hui/voice/voices` | `{ voices: VoiceProfile[] }` from `GET /v1/audio/voices` (VoiceStudio's `voice_id`s, at most 500, in its order: OpenAI aliases (`type: "openai_alias"`, each its active engine's default voice), then voice profiles). The bot dialog's picker leaves the aliases out, except one a bot already uses |
-| `POST /__hui/voice/transcriptions` | The recording with its own `audio/*` content type (`?botId=`, `?language=`, `?prompt=` up to 1,000 characters), or `multipart/form-data` with an `audio/*` `file` part and optional `botId`/`language`/`prompt` fields (or those query parameters). `botId` (id or handle; unknown is 404, like speech) applies the bot's language; `language` (a code, or empty for Auto even when the bot has one) wins. At most 25 MB (413, refused unread when `content-length` says so); not audio is 415, empty 400. Forwarded to `POST /v1/audio/transcriptions` (or the route the discovery document names) with `model: whisper-1` (VoiceStudio uses its active recognizer for any OpenAI model id), `response_format: json` and `language` only when one applies → `{ text }` |
-| `POST /__hui/voice/speech` `{ text, botId?, voice?, speed?, language?, format? }` | `text` 1–4,000 characters (trimmed). `botId` (id or handle) applies the bot's `voice` profile, speed and language; `voice` (a voice id, or `""` for VoiceStudio's default), `speed` (0.5–2) and `language` (a code, or `""` for Auto) win over the bot's, so a voice preview speaks exactly its draft; without either, `default` at 1× in Auto. `format` is `mp3` (default) or `opus`. Forwarded to `POST /v1/audio/speech` with `model: tts-1`, `stream_format: "audio"` and `language` only when one applies (Javanese as `jv`); the answer relays VoiceStudio's bytes as they arrive with its `content-type` (`audio/mpeg`, `audio/ogg`), `cache-control: no-store`, `nosniff` and no length. An unknown bot is 404 |
-
-Errors use `{ error }`: 400 for input, 404 for an unknown bot, 409 while no
-connection is configured, 413/415 for recordings, 502 when VoiceStudio refuses
-(its OpenAI-shaped `error.message`; for 401, whether the key is missing or
-rejected), fails or cannot be reached, 504 when it does not answer in time
-(discovery 5 s for the status and 10 s to verify, 120 s per transcription, 120 s
-until speech starts and 30 s between its chunks); other methods are 405. A client
-that leaves (a stopped read-aloud, a call hung up) aborts what VoiceStudio was
-asked for it.
-
-The connection lives in `~/.config/hui/voicestudio.json` (mode 0600). The key
-travels only as `Authorization: Bearer <key>` to that origin: redirects are
-followed within it (GET, and 307/308 for a POST, at most three) and refused to
-any other origin. JSON answers are capped at 1 MiB and speech at 64 MiB.
-
 ### GPT-Live calls
 
-With `settings.calls.engine: "gpt-live"` (HUI-18), a call with a bot is a
-full-duplex WebRTC session between the browser and GPT-Live
+A call with a bot (HUI-18) is a full-duplex WebRTC session between the browser and GPT-Live
 (`gpt-live-1-codex`), over the ChatGPT login HUI keeps for the `openai-codex`
 provider. This is the route ChatGPT's own voice mode uses, not a public API: it may
 change. The gateway sets each call up and keeps the credential; the browser
@@ -2915,6 +2847,14 @@ type CallDelegationResult = { status: "answered" | "handed-off" | "failed" | "ti
 type CallTaskResult = { status: "answered" | "failed" | "needs-input" | "timeout"; speak: string };
 ```
 
+A bot's `voice.language` is one of the 100 language codes of Whisper
+(`whisper/tokenizer.py`), `VOICE_LANGUAGES` in `shared/voice.ts`: ISO 639-1 codes plus
+`haw` (Hawaiian), `yue` (Cantonese) and Javanese as Whisper's `jw`, accepted in any
+case and stored lowercase; anything else is 400 at every boundary (the routes,
+`bots.json` drops it, the CLI). The call's instructions ask GPT-Live to speak it,
+and the helper and the call's summary write in it. Absent is Auto: GPT-Live
+answers in the language the user speaks. Nothing is translated.
+
 Calls follow OpenDots (CopilotKit/OpenDots, MIT): GPT-Live is the conversation
 model and has one tool, which asks the bot. A **call helper** answers it on the
 bot's utility model; work that needs tools goes to the bot's own chat; and the
@@ -2923,7 +2863,7 @@ call ends as **one record** in the chat.
 | Route | Behavior |
 |---|---|
 | `GET /__hui/calls` | `CallsStatus`. The account is the first signed-in ChatGPT account not waiting for its quota, the order model turns use; `waitingUntil` when every one waits |
-| `POST /__hui/bots/:id/calls` `{ sdp }` | 201 `CallStarted`. Refused with 409 unless `calls.engine` is `"gpt-live"`, and for an archived bot. The offer is at most 64 KB, a session description with audio and no video (400 otherwise). The gateway builds the session (below), posts `{ sdp, session }` to `https://chatgpt.com/backend-api/codex/realtime/calls?intent=quicksilver&architecture=avas` with `Authorization: Bearer <access>`, `chatgpt-account-id`, `OpenAI-Alpha: quicksilver=v2`, fresh `session-id`, `thread-id` and `x-session-id`, and `originator: pi` (30 s timeout, no redirects), and returns only the answer SDP and HUI's own call id. A 401, 403 or 429 hands the call to the next account; when every account refuses, or ChatGPT fails, the answer is 502 `{ error, upstreamStatus }` with a message written for the browser (401: sign in again; 403: not available on this account or plan, or the voice refused; 429: the voice limit reached). ChatGPT's own body goes only to diagnostics, redacted. No ChatGPT login, or every account waiting, is 409; a third concurrent call is 429 |
+| `POST /__hui/bots/:id/calls` `{ sdp }` | 201 `CallStarted`. Refused with 409 for an archived bot. The offer is at most 64 KB, a session description with audio and no video (400 otherwise). The gateway builds the session (below), posts `{ sdp, session }` to `https://chatgpt.com/backend-api/codex/realtime/calls?intent=quicksilver&architecture=avas` with `Authorization: Bearer <access>`, `chatgpt-account-id`, `OpenAI-Alpha: quicksilver=v2`, fresh `session-id`, `thread-id` and `x-session-id`, and `originator: pi` (30 s timeout, no redirects), and returns only the answer SDP and HUI's own call id. A 401, 403 or 429 hands the call to the next account; when every account refuses, or ChatGPT fails, the answer is 502 `{ error, upstreamStatus }` with a message written for the browser (401: sign in again; 403: not available on this account or plan, or the voice refused; 429: the voice limit reached). ChatGPT's own body goes only to diagnostics, redacted. No ChatGPT login, or every account waiting, is 409; a third concurrent call is 429 |
 | `POST /__hui/bots/:id/calls/:callId/lines` `{ lines: [{ role, text, at? }] }` | `{ kept }`. What was said, in order: 1–40 lines of 1–4,000 characters; `at` (ms) is when it was said, the gateway's now when missing or implausible. The lines stay with the call in the gateway (its newest 400) until it ends; nothing reaches the chat per line |
 | `POST /__hui/bots/:id/calls/:callId/delegations` `{ id, request }` | `CallDelegationResult`. `id` is GPT-Live's delegation item, `request` its text (≤ 4,000 characters, one line). The request goes through one seam (`CallDelegate` in `server/call-routes.ts`, implemented in `server/call-helper.ts`): the bot's **call helper**, one completion on the bot's utility model at low thinking (below), from the bot's SOUL.md (or a note that it has none yet), its OptChat view (its newest 16 KB), the call so far and the request. It never waits for or queues behind the bot's own turn. `answered`: `speak` is its answer (≤ 1,800 characters). When the request needs tools, files, current information or an action, the helper hands it off: `[call task] <task>` goes to the bot's chat as any message (a prompt, or a follow-up behind a running turn) on the bot's own model, and the result is `handed-off` with the task's id. The helper has 25 s per question (`timeout` past it: GPT-Live says it is taking long and offers to hand it off) and answers 6 questions per call; past them every request is handed off, and a call hands off at most 4 tasks (`limit`). `failed` says why no model answered. A client that leaves ends the wait |
 | `POST /__hui/bots/:id/calls/:callId/tasks/:task` | `CallTaskResult` once the handed-off task's own run ends (never the reply of a turn it queued behind): its reply without markdown and at most 1,800 characters, or what to tell the user when it failed, needs an answer in the chat or is still running after 600 s. The browser gives it to GPT-Live as the delegation's speakable answer if the call is still up; either way the reply stays in the chat. 404 once the call ended |

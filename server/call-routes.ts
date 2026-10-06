@@ -118,7 +118,6 @@ export function createCallRoutes(deps: CallRouteDeps) {
   async function start(id: string, request: CallRouteRequest): Promise<CallRouteResult> {
     const body = fields(await json(request, OFFER_BODY_BYTES), ["sdp"], "A call");
     const settings = await deps.settings();
-    if (settings.calls.engine !== "gpt-live") throw new BotConflictError("Calls use VoiceStudio. Choose GPT-Live in Settings → Models → Calls.");
     const sdp = checkOffer(body["sdp"]);
     const { bot, view, soul } = await bots.callContext(id);
     const timeZone = deps.timeZone?.();

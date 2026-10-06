@@ -1,26 +1,6 @@
-/* Talking to bots (HUI-18): the VoiceStudio settings section, the composer's
- * voice notes, read-aloud, and the call view with its minimized bar. Built on
- * the shared tokens and the settings/chat classes; only what voice adds is here. */
-
-/* ── Settings → Integrations → VoiceStudio ── */
-.voice-settings__form { display: grid; gap: 12px; width: 100%; }
-.voice-settings__steps { margin: 0; padding-left: 20px; color: var(--text); font-size: 13px; line-height: 1.6; }
-.voice-settings__steps a { display: inline-flex; align-items: center; gap: 4px; }
-.voice-settings__steps a svg { width: 12px; height: 12px; }
-.voice-settings__actions { display: flex; flex-wrap: wrap; gap: 8px; }
-.voice-settings__notice { margin: 0 0 12px; color: var(--ok); font-size: 13px; }
-.voice-settings__error { margin: 0 0 12px; color: var(--danger); font-size: 13px; overflow-wrap: anywhere; }
-.voice-settings__address { overflow-wrap: anywhere; }
-.voice-settings__status { overflow-wrap: anywhere; }
-.voice-settings__status[data-reachable="false"] { color: var(--danger); }
-
-/* ── the bot dialog: voice, preview and speed ── */
-.bot-dialog__voice-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.bot-dialog__voice-row > hui-select-picker { flex: 1 1 auto; min-width: 0; }
-.bot-dialog__preview { flex: 0 0 auto; min-width: 76px; }
-.bot-dialog__speed { display: grid; grid-template-columns: auto minmax(0, 1fr) 3.5em; align-items: center; gap: 10px; }
-.field .bot-dialog__speed input[type="range"] { width: 100%; height: auto; margin: 0; padding: 0; border: 0; background: transparent; box-shadow: none; accent-color: var(--accent); }
-.bot-dialog__speed output { color: var(--text); font-size: 13px; font-variant-numeric: tabular-nums; text-align: end; }
+/* Calls with bots (HUI-18): the call cards in the chat, the bot header's Call,
+ * and the call view with its minimized bar. Built on the shared tokens and the
+ * chat classes; only what calls add is here. */
 
 /* ── a GPT-Live call's record, in the chat: one card ── */
 .chat-call-card {
@@ -49,68 +29,8 @@
 .chat-call-card__asked { color: var(--muted); font-size: var(--font-size-xs, 12px); font-style: italic; }
 .chat-call-card__line[data-role="handoff"] .chat-call-card__text { color: var(--accent); }
 
-/* ── composer: the voice-note microphone and its status ── */
-.agent-chat__input .chat-voice-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: var(--chat-composer-control-size, 32px);
-  width: var(--chat-composer-control-size, 32px);
-  height: var(--chat-composer-control-size, 32px);
-  padding: 0;
-  border: none;
-  border-radius: var(--radius-full);
-  background: transparent;
-  color: var(--chat-composer-secondary, var(--muted));
-  flex-shrink: 0;
-  cursor: var(--cursor-action, pointer);
-  transition: color var(--duration-fast) var(--ease-out), background-color var(--duration-fast) var(--ease-out);
-}
-.agent-chat__input .chat-voice-btn svg { width: 16px; height: 16px; }
-.agent-chat__input .chat-voice-btn .btn__spinner { width: 14px; height: 14px; }
-@media (hover: hover) and (pointer: fine) {
-  .agent-chat__input .chat-voice-btn:hover:not(:disabled) { color: var(--text-strong, var(--text)); background: var(--chat-composer-hover, var(--bg-hover)); }
-}
-.agent-chat__input .chat-voice-btn:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
-.agent-chat__input .chat-voice-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.agent-chat__input .chat-voice-btn--recording,
-.agent-chat__input .chat-voice-btn--recording:hover:not(:disabled) {
-  background: var(--danger);
-  color: var(--destructive-foreground, #fff);
-  animation: voice-recording-pulse 1.6s ease-in-out infinite;
-}
-.agent-chat__input .chat-voice-btn--recording svg { width: 12px; height: 12px; fill: currentColor; }
-@keyframes voice-recording-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--danger) 45%, transparent); }
-  50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--danger) 0%, transparent); }
-}
-.chat-voice-note {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 36px;
-  margin: 0 0 6px;
-  padding: 4px 6px 4px 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  background: var(--card, var(--panel));
-  color: var(--text);
-  font-size: var(--text-sm, 13px);
-}
-.chat-voice-note--error { border-color: color-mix(in srgb, var(--danger) 45%, var(--border)); color: var(--danger); }
-.chat-voice-note__label { min-width: 0; flex: 1 1 auto; overflow-wrap: anywhere; }
-.chat-voice-note__time { font-variant-numeric: tabular-nums; color: var(--muted); }
-.chat-voice-note__actions { display: inline-flex; gap: 6px; }
-.chat-voice-note__dot { width: 8px; height: 8px; flex: 0 0 8px; border-radius: 50%; background: var(--muted); }
-.chat-voice-note__dot--live { background: var(--danger); animation: voice-dot 1.2s ease-in-out infinite; }
-.chat-voice-note .btn__spinner { width: 14px; height: 14px; }
-@keyframes voice-dot { 50% { opacity: 0.35; } }
-
-/* ── read aloud (an assistant message's footer action) ── */
-.chat-copy-btn.chat-read-aloud[aria-pressed="true"] { color: var(--accent); }
-.chat-copy-btn.chat-read-aloud[data-status="loading"] svg { animation: voice-dot 1s ease-in-out infinite; }
-
 /* ── bot header: Call ── */
+@keyframes voice-dot { 50% { opacity: 0.35; } }
 /* Above the theme's ghost-icon color (:root[data-theme-mode] .btn--icon). */
 :root .chat-icon-btn.bot-call-toggle--active { color: var(--ok); }
 .bot-call-toggle--active svg { animation: voice-dot 1.6s ease-in-out infinite; }
@@ -316,6 +236,5 @@
   .bot-call__control svg { padding: 12px; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .bot-call__orb, .chat-voice-note__dot--live, .bot-call-bar__pulse, .bot-call-toggle--active svg,
-  .agent-chat__input .chat-voice-btn--recording, .chat-copy-btn.chat-read-aloud[data-status="loading"] svg { animation: none; }
+  .bot-call__orb, .bot-call-bar__pulse, .bot-call-toggle--active svg { animation: none; }
 }

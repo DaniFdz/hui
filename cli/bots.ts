@@ -33,8 +33,6 @@ export type BotFlags = {
   emoji?: string;
   shape?: string;
   color?: string;
-  voice?: string;
-  "voice-speed"?: string;
   language?: string;
   "call-voice"?: string;
   wait?: boolean;
@@ -205,12 +203,9 @@ async function botBody(flags: BotFlags, io: BotIO): Promise<Record<string, unkno
   // Off from its first turn; the gateway checks the names.
   if (flags["deny-tools"] !== undefined) body["disabledTools"] = names(flags["deny-tools"]);
   if (flags["deny-skills"] !== undefined) body["disabledSkills"] = names(flags["deny-skills"]);
-  // A VoiceStudio voice, speed and language, and a GPT-Live call voice; "" clears each on edit (a speed as null, as the
-  // route takes it).
-  if (flags.voice !== undefined || flags["voice-speed"] !== undefined || flags.language !== undefined || flags["call-voice"] !== undefined) {
+  // The language it speaks on calls and its GPT-Live call voice; "" clears each on edit.
+  if (flags.language !== undefined || flags["call-voice"] !== undefined) {
     body["voice"] = {
-      ...(flags.voice !== undefined ? { profile: flags.voice } : {}),
-      ...(flags["voice-speed"] !== undefined ? { speed: flags["voice-speed"] === "" ? null : Number(flags["voice-speed"]) } : {}),
       ...(flags.language !== undefined ? { language: flags.language.trim().toLowerCase() } : {}),
       ...(flags["call-voice"] !== undefined ? { live: flags["call-voice"].trim().toLowerCase() } : {}),
     };
@@ -844,7 +839,7 @@ export function formatBots(list: readonly BotView[], archived = false): string {
   ].join("  ")).join("\n");
 }
 
-/** `es (Spanish)`; `auto` when VoiceStudio detects the language. */
+/** `es (Spanish)`; `auto` when the bot answers in the language it hears. */
 function formatLanguage(value: string | undefined): string {
   const code = voiceLanguage(value);
   return code ? `${code} (${voiceLanguageName(code)})` : "auto";
@@ -858,9 +853,6 @@ export function formatBot(bot: BotView): string {
     `model: ${bot.model ?? "default"}${bot.thinking ? ` · thinking ${bot.thinking}` : ""}`,
     `memory: ${bot.memory ? formatMemory(bot.memory) : "unavailable"}`,
     `utility model: ${bot.memoryModel ?? "default (Settings' utility model, else its model)"}`,
-    ...(bot.voice?.profile !== undefined || bot.voice?.speed !== undefined
-      ? [`voice: ${bot.voice.profile ?? "VoiceStudio default"}${bot.voice.speed !== undefined ? ` · ${bot.voice.speed}×` : ""}`]
-      : []),
     `language: ${formatLanguage(bot.voice?.language)}`,
     ...(bot.voice?.live ? [`call voice: ${gptLiveVoiceLabel(bot.voice.live)}`] : []),
     `routines: ${bot.routines}`,

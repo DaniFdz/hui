@@ -1,13 +1,8 @@
 import { LitElement, html, nothing } from "lit";
-import { GPT_LIVE_VOICES, gptLiveVoiceLabel, type CallEngine, type CallsStatus, type GptLiveVoice } from "../../shared/calls.ts";
+import { GPT_LIVE_VOICES, gptLiveVoiceLabel, type CallsStatus, type GptLiveVoice } from "../../shared/calls.ts";
 import type { Settings } from "../lib/settings.ts";
 import { loadCallsStatus } from "../lib/live-call-platform.ts";
 import { renderSettingsPicker } from "./settings-picker.ts";
-
-const ENGINES: readonly { value: CallEngine; label: string }[] = [
-  { value: "gpt-live", label: "GPT-Live (ChatGPT subscription)" },
-  { value: "voicestudio", label: "VoiceStudio (speech chain)" },
-];
 
 /** "Signed in as Account 2 (dani@example.com)", or why calls cannot use ChatGPT now. */
 export function chatGptLoginSummary(status: CallsStatus["chatgpt"] | undefined, now = Date.now()): string {
@@ -18,12 +13,12 @@ export function chatGptLoginSummary(status: CallsStatus["chatgpt"] | undefined, 
 }
 
 /**
- * Settings → Models → Calls (HUI-18): how calls with bots run, GPT-Live's default voice, and which ChatGPT login
- * calls use. The page passes the setting in and saves it; the login status comes from `/__hui/calls` and never
- * carries a token.
+ * Settings → Models → Calls (HUI-18): calls with bots run on GPT-Live; this sets its default voice and says which
+ * ChatGPT login calls use. The page passes the setting in and saves it; the login status comes from `/__hui/calls` and
+ * never carries a token.
  */
 export class HuiCallSettings extends LitElement {
-  #calls: Settings["calls"] = { engine: "voicestudio", voice: "cove" };
+  #calls: Settings["calls"] = { voice: "cove" };
   #status: CallsStatus | undefined;
   #error = "";
   #request = 0;
@@ -69,22 +64,14 @@ export class HuiCallSettings extends LitElement {
 
   override render() {
     const calls = this.#calls;
-    const live = calls.engine === "gpt-live";
     const chatgpt = this.#status?.chatgpt;
     const options = GPT_LIVE_VOICES.map((voice) => ({ value: voice, label: `${gptLiveVoiceLabel(voice)}${voice === "cove" ? " (GPT-Live's default)" : ""}` }));
     return html`<section class="settings-section hui-call-settings">
       <div class="settings-section__header"><div class="settings-section__copy">
         <h2 class="settings-section__heading">Calls</h2>
-        <p class="settings-section__desc">How calls with bots run. GPT-Live talks in real time through your ChatGPT subscription; the bot's utility model answers its quick questions and real work goes to the bot's chat. VoiceStudio is the speech chain through your own VoiceStudio.</p>
+        <p class="settings-section__desc">Calls with bots talk in real time through GPT-Live, made for phone calls and quick to respond, over your ChatGPT subscription. The bot's utility model answers its quick questions and real work goes to the bot's chat. GPT-Live's audio goes to OpenAI under your ChatGPT account; each call ends as one card in the bot's chat.</p>
       </div></div>
       <div class="settings-group">
-        <div class="settings-row">
-          <div class="settings-row__text"><span class="settings-row__title">Conversation model</span>
-            <span class="settings-row__desc">Made for phone calls: quick to respond. ${live
-              ? "GPT-Live's audio goes to OpenAI under your ChatGPT account; each call ends as one card in the bot's chat."
-              : "Your VoiceStudio transcribes and speaks; every sentence is a turn of the bot."}</span></div>
-          <div class="settings-row__control">${renderSettingsPicker("Conversation model", calls.engine, ENGINES, (value) => this.#set({ engine: value as CallEngine }))}</div>
-        </div>
         <div class="settings-row">
           <div class="settings-row__text"><span class="settings-row__title">Default GPT-Live voice</span>
             <span class="settings-row__desc">For bots without a call voice of their own (set one in a bot's dialog).</span></div>

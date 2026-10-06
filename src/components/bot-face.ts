@@ -6,7 +6,7 @@
  *
  * CSS keyframes carry the motion (src/styles/bot-face.css). This element adds
  * blinks and glances on light timers and, on large faces only, pointer gaze,
- * the blob's slow morph and the call's audio level on animation frames. It
+ * the blob's slow morph and an audio level on animation frames. It
  * pauses while the page is hidden, the face is off screen or disconnected,
  * and under prefers-reduced-motion it keeps one still expression per state.
  *
@@ -114,7 +114,7 @@ export class HuiBotFace extends HuiElement {
   declare size: BotFaceSize;
   /** Seeds the plush texture and the blob's wobble; the bot's id gives the same face everywhere. */
   declare seed: number;
-  /** The call's audio level, 0–1, read every frame while the face speaks or listens (large faces only); not
+  /** An audio level, 0–1, read every frame while the face speaks or listens (large faces only); not
    * reactive, so a new source costs no render. Undefined, or a source that answers undefined: the prototype's
    * syllable rhythm stands in. */
   level: (() => number | undefined) | undefined;

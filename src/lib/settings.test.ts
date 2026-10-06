@@ -163,22 +163,20 @@ test("normalizes a safe worktree branch prefix", () => {
   }
 });
 
-test("voice notes wait in the composer unless sending them at once is switched on", () => {
-  assert.deepEqual(DEFAULT_SETTINGS.voice, { sendNotesImmediately: false });
-  for (const voice of [undefined, null, "yes", [], { sendNotesImmediately: "true" }, { sendNotesImmediately: 1 }]) {
-    assert.deepEqual(normalizeSettings({ voice }).voice, { sendNotesImmediately: false }, JSON.stringify(voice));
-  }
-  assert.deepEqual(normalizeSettings({ voice: { sendNotesImmediately: true, url: "never here" } }).voice, { sendNotesImmediately: true });
+test("settings saved while HUI had VoiceStudio load, and the next save leaves its fields out", () => {
+  const older = normalizeSettings({ profileName: "Dani", voice: { sendNotesImmediately: true }, calls: { engine: "voicestudio", voice: "sol" } });
+  assert.equal("voice" in older, false, "the voice-notes switch is gone");
+  assert.deepEqual(older.calls, { voice: "sol" }, "the engine is gone; the default call voice stays");
+  assert.equal(older.profileName, "Dani");
+  assert.doesNotMatch(JSON.stringify(older), /sendNotesImmediately|engine|voicestudio/u, "what the gateway writes back");
 });
 
-
-test("calls stay on VoiceStudio until GPT-Live is chosen, with Cove unless a known voice is", () => {
-  assert.deepEqual(DEFAULT_SETTINGS.calls, { engine: "voicestudio", voice: "cove" });
-  assert.deepEqual(normalizeSettings({}).calls, { engine: "voicestudio", voice: "cove" }, "nothing changes for an existing file");
-  assert.deepEqual(normalizeSettings({ calls: { engine: "gpt-live", voice: "Juniper" } }).calls, { engine: "gpt-live", voice: "juniper" });
-  assert.deepEqual(normalizeSettings({ calls: { engine: "voicestudio", voice: "sol" } }).calls, { engine: "voicestudio", voice: "sol" });
-  for (const calls of [{ engine: "openai", voice: "alloy" }, { engine: true }, "gpt-live", null, [], { voice: 3 }]) {
-    assert.deepEqual(normalizeSettings({ calls }).calls, { engine: "voicestudio", voice: "cove" }, JSON.stringify(calls));
+test("calls take Cove unless a known GPT-Live voice is saved", () => {
+  assert.deepEqual(DEFAULT_SETTINGS.calls, { voice: "cove" });
+  assert.deepEqual(normalizeSettings({}).calls, { voice: "cove" });
+  assert.deepEqual(normalizeSettings({ calls: { voice: "Juniper" } }).calls, { voice: "juniper" });
+  for (const calls of [{ voice: "alloy" }, "gpt-live", null, [], { voice: 3 }]) {
+    assert.deepEqual(normalizeSettings({ calls }).calls, { voice: "cove" }, JSON.stringify(calls));
   }
-  assert.deepEqual(normalizeCalls({ engine: "gpt-live", voice: "marin" }), { engine: "gpt-live", voice: "cove" }, "a public-API voice is not one of the route's");
+  assert.deepEqual(normalizeCalls({ voice: "marin" }), { voice: "cove" }, "a public-API voice is not one of the route's");
 });
