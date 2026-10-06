@@ -1286,7 +1286,11 @@ bots' chats are offered it. It replaces the whole SOUL.md: the text is trimmed
 characters; it is written atomically (a temporary file and a rename, mode
 0600) in the bot's home folder through the same host resolver as the section,
 so a bot needs no file tools for its own soul and the next request already
-carries it. Its replay is safe (the same soul written again is the same file).
+carries it. Its result says what the bot's reply owes the operator: after the
+first save (there was no SOUL.md), that this ends the first conversation, so the
+reply says the soul was saved, sums it up and says how to change it; after a
+later one, to say what changed. Its replay is safe (the same soul written again
+is the same file).
 Refusals (empty, too long, not a bot's chat, a host without a resolver) are
 tool errors the model reads.
 
