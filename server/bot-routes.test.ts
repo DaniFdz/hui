@@ -489,3 +489,20 @@ test("hui bot chat shows what the bot gets from elsewhere before its reply, and 
   assert.doesNotMatch(term.out, /> hello from the terminal/u, "a line typed here is on screen already");
   await settledWith(bob.sessionId, says("user", "[routine: Ping] ping"));
 });
+
+
+test("call routes take the x-hui guard like every other route, and say what calls need here", { timeout: 60_000 }, async () => {
+  const offer = "v=0\r\no=- 1 2 IN IP4 127.0.0.1\r\ns=-\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111\r\n";
+  for (const [path, method] of [["/__hui/calls", "GET"], ["/__hui/bots/mem/calls", "POST"], ["/__hui/bots/mem/calls/0f8fad5b-d9cb-469f-a165-70867728950e/lines", "POST"], ["/__hui/bots/mem/calls/0f8fad5b-d9cb-469f-a165-70867728950e", "DELETE"]] as const) {
+    const refused = await call(path, method, method === "POST" ? { sdp: offer } : undefined, false);
+    assert.equal(refused.status, 403, path);
+    assert.deepEqual(refused.body, { error: "missing x-hui header" }, path);
+  }
+  const status = await call("/__hui/calls");
+  assert.equal(status.status, 200);
+  assert.deepEqual(status.body["chatgpt"], { signedIn: false }, "this gateway has no ChatGPT login");
+  const voicestudio = await call("/__hui/bots/mem/calls", "POST", { sdp: offer });
+  assert.equal(voicestudio.status, 409, "calls stay on VoiceStudio until Settings says GPT-Live");
+  assert.match(String(voicestudio.body["error"]), /Choose GPT-Live in Settings → Models → Calls/u);
+  assert.equal((await call("/__hui/bots/mem/calls/0f8fad5b-d9cb-469f-a165-70867728950e/heartbeat", "POST")).status, 404, "no such call");
+});

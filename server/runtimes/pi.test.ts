@@ -809,3 +809,17 @@ test("disabled skills cannot resolve dollar references", async (t) => {
   await session.prompt("$review args");
   assert.equal(message, "$review args");
 });
+
+
+test("a call's lines show as spoken messages, without an entry id to rewind to", () => {
+  assert.deepEqual(transcriptFrom([
+    { role: "user", content: "typed", entryId: "4", timestamp: 1 },
+    { role: "call", speaker: "user", text: " Remember teal. ", timestamp: 1_791_295_200_000 },
+    { role: "call", speaker: "assistant", text: "Teal it is.", timestamp: 1_791_295_203_000 },
+    { role: "call", speaker: "user", text: "   ", timestamp: 3 },
+  ]), [
+    { kind: "message", role: "user", text: "typed", entryId: "4", metrics: { timestamp: 1 } },
+    { kind: "message", role: "user", text: "Remember teal.", call: true, metrics: { timestamp: 1_791_295_200_000 } },
+    { kind: "message", role: "assistant", text: "Teal it is.", call: true, metrics: { timestamp: 1_791_295_203_000 } },
+  ]);
+});

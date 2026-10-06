@@ -21,6 +21,7 @@ import { SettingsManager } from "@earendil-works/pi-coding-agent";
 import { resolveCommandReference } from "../../src/lib/command-references.ts";
 import type { RuntimeInspection } from "../../src/lib/tools-types.ts";
 import { durableContext as context, durableHost, type DurableHost } from "./durable-host.ts";
+import { CallEntry } from "./durable-bots.ts";
 import { DurableExtensions, ExtensionMessageEntry, isCustomInput, type CustomMessage, type ExtensionSession } from "./durable-extensions.ts";
 import { filterConfiguredModels } from "./pi-models.ts";
 import {
@@ -335,9 +336,11 @@ export class DurableSession implements RuntimeSession, ExtensionSession {
     this.#ids.add(entry.id);
     let index = this.#history.length;
     while (index > 0 && this.#history[index - 1]!.entry.id > entry.id) index--;
-    // An extension's custom message is context only; PI sessions do not show it either.
+    // An extension's custom message is context only; PI sessions do not show it either. A call's line shows as what
+    // was said, without an entry id: no turn ran for it, so nothing rewinds to it.
     const shown = SystemEntry.is(entry) || ExtensionMessageEntry.is(entry) || isCustomInput(entry.model?.[0]) ? []
       : CompactionEntry.is(entry) ? [{ role: "compaction", summary: compactionSummary(entry), tokensBefore: this.#contextTokens(index) }]
+      : CallEntry.is(entry) ? [{ role: "call", speaker: entry.data.role, text: entry.data.text, timestamp: entry.data.at }]
       : (entry.model ?? []).map((message) => ({ ...message, entryId: String(entry.id) }));
     this.#history.splice(index, 0, { entry, shown });
     this.#changed();
@@ -449,6 +452,8 @@ export class DurableSession implements RuntimeSession, ExtensionSession {
       case "entry_appended":
         if (event.type === "message_end") this.#streamedText.clear();
         this.#add(event.entry);
+        // A call's line, written while no run streams: the chat shows it now rather than at the next settle.
+        if (event.type === "entry_appended" && CallEntry.is(event.entry) && !this.#streaming) this.#emit({ type: "history" });
         return;
       case "tool_execution_start":
         this.#toolOutput.set(event.toolCallId, "");

@@ -64,6 +64,11 @@ test("CLI parses bot commands, accepting bot and bots, with their operands and o
     assert.throws(() => parseCli(["bot", "edit", "ada", "--language", language]), /--language must be one of Whisper's language codes, such as en, es, fr, de or ja \(not a name like Spanish\); "" goes back to Auto\./u, language);
   }
   assert.throws(() => parseCli(["bot", "list", "--language", "es"]), /--language is not valid for bot list/u);
+  for (const voice of ["cove", "Ember", "vale", ""]) assert.equal(parseCli(["bot", "edit", "ada", "--call-voice", voice]).values["call-voice"], voice, voice);
+  assert.equal(parseCli(["bot", "add", "--name", "Ada", "--call-voice", "sol"]).values["call-voice"], "sol");
+  for (const voice of ["marin", "alloy", "x"]) {
+    assert.throws(() => parseCli(["bot", "edit", "ada", "--call-voice", voice]), /--call-voice must be one of GPT-Live's voices: cove, arbor, breeze, ember, juniper, maple, sol, spruce, vale; "" goes back to Settings' default\./u, voice);
+  }
   const look = parseCli(["bot", "add", "--name", "Ada", "--shape", "heart", "--color", "mint"]);
   assert.deepEqual([look.values.shape, look.values.color], ["heart", "mint"]);
   for (const shape of ["blob", "round", "Pebble", "TRIANGLE", "heart", "cookie", ""]) assert.equal(parseCli(["bot", "edit", "ada", "--shape", shape]).values.shape, shape, shape);
@@ -139,8 +144,10 @@ test("HELP lists every hui bot command", () => {
     "hui bot routine run <bot> <routine>",
     "hui bot routine remove <bot> <routine> [--json]",
     "On edit, --model \"\" and --thinking \"\" go back to the model and",
-    "[--voice <VoiceStudio voice id>] [--voice-speed <0.5-2>] [--language <code>] [--json]",
+    "[--voice <VoiceStudio voice id>] [--voice-speed <0.5-2>] [--language <code>]",
+    "[--call-voice <cove|arbor|breeze|ember|juniper|maple|sol|spruce|vale>] [--json]",
     "--language takes a Whisper code",
+    "--call-voice is the bot's GPT-Live voice on calls",
   ]) assert.ok(HELP.includes(line), line);
 });
 

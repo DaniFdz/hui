@@ -27,6 +27,8 @@ import { OptChatMemory, OPTCHAT_DEFAULTS, type OptChatStatus } from "../optchat/
 import { masterPrompt, viewDoc } from "../optchat/prompts.ts";
 import { LineFile, readLines, syncDirectory, type Kind } from "../optchat/store.ts";
 import { recordDiagnosticEvent } from "../observability.ts";
+import { CALL_LINE_PREFIX } from "../../shared/calls.ts";
+import { CallEntry } from "./durable-bots.ts";
 
 /** A conversation's OptChat choice. `name` is the agent's display name in the prompts; `model` ("provider/id") and
  * `thinking` pick the compactor's model, by default the conversation's own model at medium thinking. */
@@ -164,10 +166,16 @@ const contentText = (content: string | readonly { type: string; text?: string }[
 
 /**
  * The log lines of one entry: a user message, an answer's text (talk) and each of its tool calls (tool: name and JSON
- * input), a tool result (echo, `error: ` when it failed). Thoughts are never logged, nor answers Durable keeps out of
- * the context (error, aborted, deferred), nor system, reset and compaction entries.
+ * input), a tool result (echo, `error: ` when it failed), a line said on a call (`hui.call`: user or talk, marked
+ * `[call] `). Thoughts are never logged, nor answers Durable keeps out of the context (error, aborted, deferred), nor
+ * system, reset and compaction entries.
  */
 export function projectEntry(entry: EntryRecord): ProjectedLine[] {
+  // A line said on a call with the bot: the operator's words or the voice model's, marked as spoken.
+  if (CallEntry.is(entry)) {
+    const text = entry.data.text.trim();
+    return text ? [{ kind: entry.data.role === "assistant" ? "talk" : "user", text: `${CALL_LINE_PREFIX}${text}` }] : [];
+  }
   const message = entry.model?.[0];
   if (!message) return [];
   if (UserEntry.is(entry) && message.role === "user") return [{ kind: "user", text: contentText(message.content) }];

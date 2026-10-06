@@ -248,3 +248,18 @@ test("a bot's voice language is one of Whisper's codes, kept with the voice and 
   assert.deepEqual(parseBotRecord({ ...bot("a", "ada"), voice: { speed: 1.5, language: "klingon" } })?.voice, { speed: 1.5 });
   assert.equal(parseBotRecord({ ...bot("a", "ada"), voice: { language: "jv" } })?.voice, undefined, "Javanese is stored as Whisper's jw");
 });
+
+
+test("a bot's call voice is one of GPT-Live's voices, kept beside its VoiceStudio voice and cleared back to the default with \"\"", () => {
+  assert.deepEqual(normalizeBotInput({ name: "Ada", voice: { live: " Ember " } }).voice, { live: "ember" });
+  assert.deepEqual(normalizeBotInput({ name: "Ada", voice: { profile: "vp-aria", language: "es", live: "sol" } }).voice, { profile: "vp-aria", language: "es", live: "sol" });
+  assert.equal(normalizeBotInput({ name: "Ada", voice: { live: "" } }).voice, undefined, "a new bot has no call voice to clear");
+  for (const live of ["marin", "alloy", "Cove!", 3, null]) {
+    assert.throws(() => normalizeBotPatch({ voice: { live } }), (error: unknown) => error instanceof BotInputError && /Call voice must be one of GPT-Live's voices: cove, arbor/u.test(error.message), String(live));
+  }
+  assert.deepEqual(normalizeBotPatch({ voice: { live: "" } }), { voice: { live: "" } });
+  assert.deepEqual(patchedVoice({ profile: "vp-aria", live: "vale" }, { live: "" }), { profile: "vp-aria" }, "the VoiceStudio voice outlives the call voice");
+  assert.deepEqual(patchedVoice({ language: "es" }, { live: "maple" }), { language: "es", live: "maple" });
+  assert.deepEqual(parseBotRecord({ ...bot("a", "ada"), voice: { live: "arbor", profile: "vp-dani" } })?.voice, { profile: "vp-dani", live: "arbor" });
+  assert.deepEqual(parseBotRecord({ ...bot("a", "ada"), voice: { live: "nova", speed: 1.5 } })?.voice, { speed: 1.5 }, "bots.json drops an unknown call voice and keeps the rest");
+});

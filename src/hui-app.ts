@@ -85,7 +85,7 @@ import {
 } from "./lib/bots.ts";
 import { archivedBotCount, hiddenBotCount, readBotPanel, readSidebarTab, writeBotPanel, writeSidebarTab, type BotPanelState, type BotPanelTab, type SidebarTab } from "./lib/bot-roster.ts";
 import { memoryStatusChanged, parseMemoryView, parseMemoryZoom, type MemoryLine } from "./lib/bot-memory.ts";
-import { renderBotArchiveDialog, renderBotDialog, renderBotPanel, renderBotPlaceholder, type BotDialogVoice, type BotFormValues, type BotMemoryState, type MemoryZoomState } from "./views/bots.ts";
+import { renderBotArchiveDialog, renderBotDialog, renderBotPanel, renderBotPlaceholder, type BotDialogCall, type BotDialogVoice, type BotFormValues, type BotMemoryState, type MemoryZoomState } from "./views/bots.ts";
 import { checkUpdate, checkUpdateInBackground, installUpdate, loadUpdate } from "./lib/update-store.ts";
 import { availableUpdate, watchUpdateAvailability } from "./lib/update-notice.ts";
 import type { UpdateSnapshot } from "./lib/update-types.ts";
@@ -201,6 +201,8 @@ import { VoiceController } from "./lib/voice-controller.ts";
 import { VoiceNoteController } from "./lib/voice-notes.ts";
 import { botCallPlatform } from "./lib/voice-session.ts";
 import { renderCallBar, renderCallView, type CallViewProps } from "./views/bot-voice.ts";
+import { liveCallPlatform, loadCallsStatus } from "./lib/live-call-platform.ts";
+import type { CallsStatus } from "../shared/calls.ts";
 import { VOICE_CONNECTION_EVENT } from "./views/settings-voice.ts";
 import { VOICE_MESSAGE_PREFIX, voiceLanguage, type VoiceConnection, type VoiceProfile } from "../shared/voice.ts";
 import { BOT_FACE_COLORS, BOT_FACE_SHAPES, botLook, botSeed, type BotFaceShape } from "../shared/bots.ts";
@@ -262,8 +264,10 @@ function readCollapsed(): Set<string> {
 const paneCallback = { attribute: false, hasChanged: (value: unknown, old: unknown) => !value !== !old };
 
 /** A bot pane's voice (HUI-18): what the app, which owns playback and calls, tells it. Compared by value. */
-type PaneVoice = { botId: string; readingId: string; readingStatus: "idle" | "loading" | "playing"; readingError: string; inCall: boolean };
-type PaneVoiceActions = { readAloud: (id: string, text: string) => void; stopReading: () => void; call: () => void };
+type PaneVoice = { botId: string; readingId: string; readingStatus: "idle" | "loading" | "playing"; readingError: string };
+type PaneVoiceActions = { readAloud: (id: string, text: string) => void; stopReading: () => void };
+/** A bot pane's Call button: offered while calls can run (GPT-Live with a ChatGPT login, or VoiceStudio connected). */
+type PaneCall = { botId: string; inCall: boolean };
 const paneVoiceProperty = { attribute: false, hasChanged: (value: unknown, old: unknown) => JSON.stringify(value) !== JSON.stringify(old) };
 /** The bot dialog's voice preview, read aloud like a message under this id. */
 const BOT_VOICE_PREVIEW = "bot-voice-preview";
@@ -535,6 +539,11 @@ export class HuiApp extends HuiElement {
   @state() private botDraftVoice = "";
   @state() private botDraftVoiceSpeed = 1;
   @state() private botDraftVoiceLanguage = "";
+  /** Its GPT-Live call voice ("" follows Settings), offered while calls use GPT-Live. */
+  @state() private botDraftCallVoice = "";
+  /** The ChatGPT login GPT-Live calls use (`/__hui/calls`): read while calls use GPT-Live. */
+  @state() private callsStatus: CallsStatus | undefined;
+  private callsStatusLoading: Promise<void> | undefined;
   /** VoiceStudio's voices for the dialog's picker; undefined until the connection is known to be configured. */
   @state() private botDialogVoices: { loading: boolean; error: string; voices: readonly VoiceProfile[] } | undefined;
   /** The dialog asked for a preview, so a failed one is explained there. */
@@ -591,6 +600,9 @@ export class HuiApp extends HuiElement {
   /** Set on the bot route's pane while VoiceStudio is connected: voice notes and Read aloud. */
   @property(paneVoiceProperty) paneVoice: PaneVoice | undefined;
   @property(paneCallback) onPaneVoice: PaneVoiceActions | undefined;
+  /** Set on the bot route's pane while the bot can be called. */
+  @property(paneVoiceProperty) paneCall: PaneCall | undefined;
+  @property(paneCallback) onPaneCall: (() => void) | undefined;
   /** The pane's voice note; the microphone is held only while it records. VoiceStudio listens for its bot's language. */
   private readonly voiceNotes = new VoiceNoteController(this, {
     start: (options) => startVoiceNote(options),
@@ -608,6 +620,7 @@ export class HuiApp extends HuiElement {
     play: (audio, signal) => voicePlayer().play(audio, signal),
     voiceLevel: () => voicePlayer().level(),
     platform: botCallPlatform,
+    livePlatform: liveCallPlatform,
     now: () => Date.now(),
     setInterval: (callback, ms) => { const timer = window.setInterval(callback, ms); return () => window.clearInterval(timer); },
   });
@@ -1053,8 +1066,9 @@ export class HuiApp extends HuiElement {
       textarea.setSelectionRange(this.draft.length, this.draft.length);
       this.setCommandQuery(slashCommandQuery(this.draft, this.draft.length));
     }
-    // A bot's chat offers voice once the gateway says VoiceStudio is connected.
+    // A bot's chat offers voice once the gateway says VoiceStudio is connected, and GPT-Live calls once it says ChatGPT is.
     if (!this.embeddedPane && this.view === "bot" && !this.voice.connection && !this.voice.connectionError) void this.voice.loadConnection();
+    if (!this.embeddedPane && this.view === "bot" && this.settings.calls.engine === "gpt-live" && !this.callsStatus) void this.loadCallsStatus();
     if (this.embeddedPane && changed.has("paneVoice")) {
       const error = this.paneVoice?.readingError ?? "";
       if (error && error !== this.lastReadingError) {
@@ -2365,8 +2379,21 @@ export class HuiApp extends HuiElement {
       onDismissNote: () => notes.dismiss(),
       onReadAloud: (id, text) => actions.readAloud(id, text),
       onStopReading: () => actions.stopReading(),
-      call: { inCall: pane.inCall, onCall: () => actions.call() },
     };
+  }
+
+  /** The ChatGPT login GPT-Live calls use; a read under way is shared. A failed read leaves Call hidden. */
+  private loadCallsStatus(): Promise<void> {
+    this.callsStatusLoading ??= loadCallsStatus().then(
+      (status) => { this.callsStatus = status; },
+      () => { this.callsStatus = undefined; },
+    ).finally(() => { this.callsStatusLoading = undefined; });
+    return this.callsStatusLoading;
+  }
+
+  /** Call shows with GPT-Live and a ChatGPT login, or with VoiceStudio connected. */
+  private callsAvailable(): boolean {
+    return this.settings.calls.engine === "gpt-live" ? this.callsStatus?.chatgpt.signedIn === true : this.voice.available;
   }
 
   private isUpdateSession(session: SessionView | undefined): boolean {
@@ -3855,6 +3882,7 @@ export class HuiApp extends HuiElement {
     this.botDraftVoice = bot?.voice?.profile ?? "";
     this.botDraftVoiceSpeed = bot?.voice?.speed ?? 1;
     this.botDraftVoiceLanguage = bot?.voice?.language ?? "";
+    this.botDraftCallVoice = bot?.voice?.live ?? "";
     this.botVoicePreviewed = false;
     this.botDialogVoices = undefined;
     const request = ++this.botDialogVoicesRequest;
@@ -3902,6 +3930,18 @@ export class HuiApp extends HuiElement {
     };
   }
 
+  /** The call voice and language while calls use GPT-Live; the language is the one VoiceStudio's section shows too. */
+  private botDialogCall(): BotDialogCall | undefined {
+    if (this.settings.calls.engine !== "gpt-live") return undefined;
+    return {
+      voice: this.botDraftCallVoice,
+      defaultVoice: this.settings.calls.voice,
+      language: this.botDraftVoiceLanguage,
+      onVoice: (value) => { this.botDraftCallVoice = value; },
+      onLanguage: (value) => { this.botDraftVoiceLanguage = value; },
+    };
+  }
+
   private closeBotDialog = () => {
     const dialog = this.renderRoot.querySelector?.(".bot-dialog");
     if (dialog instanceof HTMLDialogElement) closeModal(dialog);
@@ -3924,8 +3964,14 @@ export class HuiApp extends HuiElement {
       this.botDialogError = "Type an emoji, or choose Face.";
       return;
     }
-    // The voice goes only while the dialog showed it; otherwise the bot keeps the one it has.
-    const voice = this.botDialogVoice() ? { voice: this.botDraftVoice, voiceSpeed: this.botDraftVoiceSpeed, voiceLanguage: this.botDraftVoiceLanguage } : {};
+    // Each part of the voice goes only while the dialog showed it; otherwise the bot keeps the one it has.
+    const studio = Boolean(this.botDialogVoice());
+    const live = Boolean(this.botDialogCall());
+    const voice = {
+      ...(studio ? { voice: this.botDraftVoice, voiceSpeed: this.botDraftVoiceSpeed } : {}),
+      ...(studio || live ? { voiceLanguage: this.botDraftVoiceLanguage } : {}),
+      ...(live ? { callVoice: this.botDraftCallVoice } : {}),
+    };
     const look = { look: this.botDraftLook, shape: this.botDraftShape, color: this.botDraftColor, emoji: this.botDraftEmoji };
     const draft = { ...values, ...look, model: this.botDraftModel, thinking: this.botDraftThinking, memoryModel: this.botDraftMemoryModel, ...voice };
     const patch = state.mode === "edit" ? botPatchFromDraft(state.bot, draft) : undefined;
@@ -4236,8 +4282,10 @@ export class HuiApp extends HuiElement {
     };
     const call = this.voice.call?.bot.id === bot.id ? this.voice.call : undefined;
     const paneVoice: PaneVoice | undefined = this.voice.available
-      ? { botId: bot.id, readingId: this.voice.readAloud.id, readingStatus: this.voice.readAloud.status, readingError: this.voice.readAloud.error ?? "", inCall: Boolean(call) }
+      ? { botId: bot.id, readingId: this.voice.readAloud.id, readingStatus: this.voice.readAloud.status, readingError: this.voice.readAloud.error ?? "" }
       : undefined;
+    // A call under way stays reachable even if what offers calls changed meanwhile.
+    const paneCall: PaneCall | undefined = call || this.callsAvailable() ? { botId: bot.id, inCall: Boolean(call) } : undefined;
     return html`<div class="bot-workspace ${panelOpen && !sheet ? "bot-workspace--panel" : ""}" data-bot-id=${bot.id}>
       <div class="bot-workspace__chat">
         ${call?.minimized ? renderCallBar({ ...this.callViewProps(bot, call), floating: false }) : nothing}
@@ -4263,6 +4311,8 @@ export class HuiApp extends HuiElement {
           .onPaneDraftChange=${(sessionId: string, hasDraft: boolean) => this.markSessionDraft(sessionId, hasDraft)}
           .paneVoice=${paneVoice}
           .onPaneVoice=${paneVoice ? this.paneVoiceActions(bot) : undefined}
+          .paneCall=${paneCall}
+          .onPaneCall=${paneCall ? this.paneCallAction(bot) : undefined}
         ></hui-app>`)}
         ${call && !call.minimized ? renderCallView(this.callViewProps(bot, call)) : nothing}
       </div>
@@ -4302,6 +4352,7 @@ export class HuiApp extends HuiElement {
     if (this.embeddedPane) return nothing;
     const dialog = this.botDialog;
     const voice = dialog ? this.botDialogVoice() : undefined;
+    const call = dialog ? this.botDialogCall() : undefined;
     return html`${dialog ? renderBotDialog({
       mode: dialog.mode,
       ...(dialog.mode === "edit" ? { bot: dialog.bot } : {}),
@@ -4330,6 +4381,7 @@ export class HuiApp extends HuiElement {
         onEmoji: (emoji) => { this.botDraftEmoji = emoji; },
       },
       ...(voice ? { voice } : {}),
+      ...(call ? { call } : {}),
     }) : nothing}
     ${this.botArchive ? renderBotArchiveDialog(this.botArchive, this.botArchivePending, this.botArchiveError, this.confirmArchiveBot, this.closeBotArchive) : nothing}`;
   }
@@ -4342,16 +4394,21 @@ export class HuiApp extends HuiElement {
     return {
       readAloud: (id, text) => this.voice.read(id, text, { botId }),
       stopReading: () => this.voice.stopReading(),
-      call: () => {
-        const current = this.bots.find((candidate) => candidate.id === botId);
-        if (current) this.openCall(current);
-      },
     };
   }
 
-  /** Calls a bot (or returns to its call) and shows its view. One call at a time. */
+  /** Captures only the bot's id, like the voice actions. */
+  private paneCallAction(bot: BotView): () => void {
+    const botId = bot.id;
+    return () => {
+      const current = this.bots.find((candidate) => candidate.id === botId);
+      if (current) this.openCall(current);
+    };
+  }
+
+  /** Calls a bot (or returns to its call) and shows its view. One call at a time, on the engine Settings chose. */
   private openCall = (bot: BotView) => {
-    if (!this.voice.startCall({ id: bot.id, sessionId: bot.sessionId, name: bot.name })) {
+    if (!this.voice.startCall({ id: bot.id, sessionId: bot.sessionId, name: bot.name }, this.settings.calls.engine)) {
       this.botNotice = `Hang up the call with ${this.voice.call?.bot.name ?? "the other bot"} first.`;
       this.botNoticeFailed = true;
       return;
@@ -5101,6 +5158,7 @@ export class HuiApp extends HuiElement {
       connection: this.connection,
       copiedId: this.copiedId,
       ...(this.paneVoice && this.onPaneVoice ? { voice: this.homeVoice(this.paneVoice, this.onPaneVoice) } : {}),
+      ...(this.paneCall && this.onPaneCall ? { call: { inCall: this.paneCall.inCall, onCall: this.onPaneCall } } : {}),
       expandedActivityIds: this.expandedActivityIds,
       showScrollToBottom: this.showScrollToBottom,
       models: this.models,
@@ -5492,6 +5550,7 @@ export class HuiApp extends HuiElement {
           onChangeChat: (chat) => void this.save({ chat }),
           onChangeBrowser: (browser) => this.save({ browser }),
           onChangeVoice: (voice) => void this.save({ voice }),
+          onChangeCalls: (calls) => void this.save({ calls }).then(() => { if (calls.engine === "gpt-live") void this.loadCallsStatus(); }),
           onChangePower: (power) => void this.save({ power }).then(() => this.refreshPower()),
           onChangeBots: (bots) => void this.save({ bots }).then(() => this.syncBotsStream()),
           onSetLidAwake: this.setLidAwakeFromUi,

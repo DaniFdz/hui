@@ -11,7 +11,7 @@
  */
 import type { Context } from "@earendil-works/chord";
 import {
-  defineDoc, defineExtension, defineTool, section,
+  defineDoc, defineEntry, defineExtension, defineTool, section,
   type ConversationId, type DocumentReader, type Extension, type ToolRegistration,
 } from "@earendil-works/pi-durable";
 import { Type } from "typebox";
@@ -26,6 +26,13 @@ export const BotDoc = defineDoc<{ bot: string }>({
   fork: "current",
   initial: () => ({ bot: "" }),
 });
+
+/**
+ * One line said on a GPT-Live call with the bot (HUI-18): what the operator said (`user`) or what the voice model said
+ * (`assistant`), written as a passive entry so no model turn runs for it. It carries no model messages: the chat shows
+ * it, OptChat logs it (`[call] `), and Durable places it at a running turn's next boundary. `at` is when it was said.
+ */
+export const CallEntry = defineEntry<{ call: string; role: "user" | "assistant"; text: string; at: number }>("hui.call");
 
 export const MESSAGE_BOT_TOOL = "message_bot";
 

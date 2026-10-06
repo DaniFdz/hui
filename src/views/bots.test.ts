@@ -59,7 +59,7 @@ test("a call shows the bot's face listening to the microphone and speaking with 
   const view = between(source, "export function renderCallView(", "/** The minimized call");
   assert.match(view, /style=\$\{`--bot-color: \$\{look\.color\}`\} data-face-stage/u);
   assert.match(view, /renderBotAvatar\(bot, "xl", \{ state: callFaceState\(state, props\.summarizing\), \.\.\.\(props\.level \? \{ level: props\.level \} : \{\}\) \}\)/u);
-  assert.match(view, /<p class="bot-call__status" role="status" aria-live="polite">\$\{callStatusLabel\(state, props\.summarizing\)\}<\/p>/u, "the status stays in text");
+  assert.match(view, /<p class="bot-call__status" role="status" aria-live="polite">\$\{callStatusLabel\(state, props\.summarizing, bot\.name\)\}<\/p>/u, "the status stays in text");
   const bar = between(source, "export function renderCallBar(", "\n}\n");
   assert.match(bar, /renderBotAvatar\(bot, "sm", \{ state: callFaceState\(state, props\.summarizing\) \}\)/u);
   assert.match(bar, /class="bot-call-bar__pulse"/u, "the bar keeps its live dot");

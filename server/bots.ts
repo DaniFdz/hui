@@ -18,6 +18,7 @@ import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join } from "node:path";
 
 import { BOT_FACE_SHAPES, BOT_HANDLE, BOT_LIMITS, BOT_THINKING_LEVELS, isBotFaceShape, type BotAvatar, type BotAvatarPatch, type BotInput, type BotPatch, type BotRecord, type BotVoice, type BotVoicePatch } from "../shared/bots.ts";
+import { GPT_LIVE_VOICES, gptLiveVoice } from "../shared/calls.ts";
 import { VOICE_LANGUAGE_EXAMPLES, VOICE_LIMITS, voiceLanguage, voiceProfileId, voiceSpeed } from "../shared/voice.ts";
 import { CONFIG_DIR } from "./paths.ts";
 
@@ -84,7 +85,8 @@ function storedVoice(raw: unknown): BotVoice | undefined {
   const profile = voiceProfileId(raw["profile"]);
   const speed = voiceSpeed(raw["speed"]);
   const language = voiceLanguage(raw["language"]);
-  const voice = { ...(profile ? { profile } : {}), ...(speed !== undefined ? { speed } : {}), ...(language ? { language } : {}) };
+  const live = gptLiveVoice(raw["live"]);
+  const voice = { ...(profile ? { profile } : {}), ...(speed !== undefined ? { speed } : {}), ...(language ? { language } : {}), ...(live ? { live } : {}) };
   return Object.keys(voice).length ? voice : undefined;
 }
 
@@ -333,10 +335,11 @@ function avatarField(raw: unknown): BotAvatarPatch {
   return avatar;
 }
 
-/** `{ profile?, speed?, language? }`; `profile: ""`, `speed: null` and `language: ""` clear a key (kept so a patch can tell). */
+/** `{ profile?, speed?, language?, live? }`; `profile: ""`, `speed: null`, `language: ""` and `live: ""` clear a key (kept so a
+ * patch can tell). */
 function voiceField(raw: unknown): BotVoicePatch {
-  if (!isRecord(raw)) throw new BotInputError("Voice must be an object with profile, speed and/or language.");
-  const unknown = Object.keys(raw).filter((key) => key !== "profile" && key !== "speed" && key !== "language");
+  if (!isRecord(raw)) throw new BotInputError("Voice must be an object with profile, speed, language and/or live.");
+  const unknown = Object.keys(raw).filter((key) => key !== "profile" && key !== "speed" && key !== "language" && key !== "live");
   if (unknown.length) throw new BotInputError(`Unknown voice field: ${unknown.join(", ")}.`);
   const voice: BotVoicePatch = {};
   if ("profile" in raw) {
@@ -354,6 +357,12 @@ function voiceField(raw: unknown): BotVoicePatch {
     const language = raw["language"] === "" ? "" : voiceLanguage(raw["language"]);
     if (language === undefined) throw new BotInputError(`Voice language must be one of Whisper's language codes, such as ${VOICE_LANGUAGE_EXAMPLES}, or "" for Auto.`);
     voice.language = language;
+  }
+  if ("live" in raw) {
+    // A GPT-Live voice for calls; "" goes back to the one Settings → Models → Calls chose.
+    const live = raw["live"] === "" ? "" : gptLiveVoice(raw["live"]);
+    if (live === undefined) throw new BotInputError(`Call voice must be one of GPT-Live's voices: ${GPT_LIVE_VOICES.join(", ")}, or "" for the default.`);
+    voice.live = live;
   }
   return voice;
 }
@@ -413,13 +422,17 @@ export function normalizeBotPatch(value: unknown): BotPatch {
   return patch;
 }
 
-/** The voice after a patch: given keys replace, `profile: ""`, `speed: null` and `language: ""` clear one, `null` clears all. */
+/** The voice after a patch: given keys replace, `profile: ""`, `speed: null`, `language: ""` and `live: ""` clear one, `null`
+ * clears all. */
 export function patchedVoice(current: BotVoice | undefined, patch: BotVoicePatch | null): BotVoice | undefined {
   if (patch === null) return undefined;
   const profile = patch.profile !== undefined ? patch.profile : current?.profile;
   const speed = patch.speed !== undefined ? patch.speed : current?.speed;
   const language = patch.language !== undefined ? patch.language : current?.language;
-  const voice: BotVoice = { ...(profile ? { profile } : {}), ...(typeof speed === "number" ? { speed } : {}), ...(language ? { language } : {}) };
+  const live = patch.live !== undefined ? patch.live : current?.live;
+  const voice: BotVoice = {
+    ...(profile ? { profile } : {}), ...(typeof speed === "number" ? { speed } : {}), ...(language ? { language } : {}), ...(live ? { live } : {}),
+  };
   return Object.keys(voice).length ? voice : undefined;
 }
 

@@ -169,6 +169,8 @@ export type TranscriptEntry = { metrics?: TranscriptMetrics } & (
       attachments?: readonly (string | TranscriptAttachment)[];
       pending?: boolean;
       failed?: boolean;
+      /** Said on a GPT-Live call with a bot, not typed; no turn ran for it. */
+      call?: true;
     }
   | { kind: "compaction"; id?: string; summary: string; tokensBefore: number }
   | { kind: "thinking"; id?: string; text: string }
@@ -236,7 +238,7 @@ export type RuntimeEvent =
  * additions that keep their place in the conversation.
  */
 export type TranscriptItem = { metrics?: TranscriptMetrics } & (
-  | { kind: "message"; id: string; entryId?: string; role: "user" | "assistant"; text: string; attachments?: readonly (string | TranscriptAttachment)[]; pending?: boolean; failed?: boolean }
+  | { kind: "message"; id: string; entryId?: string; role: "user" | "assistant"; text: string; attachments?: readonly (string | TranscriptAttachment)[]; pending?: boolean; failed?: boolean; call?: true }
   | { kind: "compaction"; id: string; summary: string; tokensBefore: number }
   | { kind: "thinking"; id: string; text: string }
   | { kind: "tool"; id: string; name: string; args?: unknown; output?: string; details?: unknown; failed?: boolean; status?: "running" | "succeeded" | "failed" }

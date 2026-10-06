@@ -11,7 +11,7 @@ import { previewLine } from "../shared/bots.ts";
 import type { BotMemory } from "./bot-memory.ts";
 import type { BotConversations, BotStoredMessage } from "./bot-service.ts";
 import { BotInputError, BotNotFoundError } from "./bots.ts";
-import { BotDoc } from "./runtimes/durable-bots.ts";
+import { BotDoc, CallEntry } from "./runtimes/durable-bots.ts";
 import { ExtensionMessageEntry, isCustomInput } from "./runtimes/durable-extensions.ts";
 import { durableContext, type DurableHost } from "./runtimes/durable-host.ts";
 import { defaultThinking, durableConversationId, durableReference, initialModel, modelRef, textOf } from "./runtimes/durable.ts";
@@ -86,6 +86,16 @@ export function durableBotConversations(host: DurableHost, memory: BotMemory): B
       return requested && known ? clampThinkingLevel(known, requested as ModelThinkingLevel) : "off";
     },
 
+    // Passive writes, one per line in the order they were said: Durable appends them at once while the chat is idle
+    // and at the running turn's next boundary otherwise. Admitted once the store schedules work, as extensions' writes.
+    async appendCall(reference, call, lines) {
+      const found = await conversation(reference);
+      await host.resumed;
+      for (const line of lines) {
+        await found.submit({ type: "write", entry: { kind: CallEntry.kind, data: { call, role: line.role, text: line.text, at: line.at } } }, durableContext);
+      }
+    },
+
     async lastMessage(reference) {
       const page = await (await conversation(reference)).entries({}, LAST_MESSAGE_ENTRIES, undefined, durableContext);
       // Newest first; a reset starts a new context the transcript shows from.
@@ -101,6 +111,11 @@ export function durableBotConversations(host: DurableHost, memory: BotMemory): B
 
 /** The newest user or assistant text an entry shows in the transcript, as the transcript projects it. */
 function shownMessage(entry: EntryRecord): BotStoredMessage | undefined {
+  if (CallEntry.is(entry)) {
+    const text = previewLine(entry.data.text);
+    if (!text) return undefined;
+    return { role: entry.data.role === "assistant" ? "assistant" : "user", text, ...(Number.isFinite(entry.data.at) ? { at: new Date(entry.data.at).toISOString() } : {}) };
+  }
   if (SystemEntry.is(entry) || ExtensionMessageEntry.is(entry)) return undefined;
   for (const message of [...entry.model ?? []].reverse() as Message[]) {
     if ((message.role !== "user" && message.role !== "assistant") || isCustomInput(message)) continue;

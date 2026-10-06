@@ -11,6 +11,7 @@ import { updateRelease } from "./update.ts";
 import { checkNightly, checkRelease } from "./releases.ts";
 import { BOT_FACE_COLORS, BOT_FACE_SHAPES, BOT_THINKING_LEVELS, botFaceColor, botFaceShape } from "../shared/bots.ts";
 import { VOICE_LANGUAGE_EXAMPLES, voiceLanguage, voiceSpeed } from "../shared/voice.ts";
+import { GPT_LIVE_VOICES, gptLiveVoice } from "../shared/calls.ts";
 
 export const HELP = `Usage:
   hui gateway start [--host <IP|tailnet>] [--port <number>] [--allow-host <name>] [--json]
@@ -36,7 +37,8 @@ export const HELP = `Usage:
   hui bot add --name <name> [--title <text>] [--instructions <text> | --instructions-file <path>] [--cwd <dir>]
               [--model <provider/model>] [--thinking <level>] [--memory-model <provider/model>] [--emoji <e>]
               [--shape <blob|round|triangle|heart|cookie>] [--color <name|#rrggbb>]
-              [--voice <VoiceStudio voice id>] [--voice-speed <0.5-2>] [--language <code>] [--json]
+              [--voice <VoiceStudio voice id>] [--voice-speed <0.5-2>] [--language <code>]
+              [--call-voice <cove|arbor|breeze|ember|juniper|maple|sol|spruce|vale>] [--json]
   hui bot edit <bot> [same flags as add] [--json]
   hui bot remove <bot> [--json]
   hui bot restore <bot> [--json]
@@ -81,6 +83,8 @@ to that one.
 and what it listens for and speaks in there: --language takes a Whisper code
 (en, es, fr, de, ja, zh, haw, yue…) and nothing is translated; on edit "" goes
 back to VoiceStudio's default voice, speed and Auto (the language detected).
+--call-voice is the bot's GPT-Live voice on calls (Settings → Models → Calls);
+"" goes back to the default voice Settings chose. --language applies to calls too.
 Remove archives: the chat transcript and memory are kept and its routines are
 disabled. Chat streams the replies as plain text and sends what you
 type (steering a turn that runs); messages from elsewhere (routines, other
@@ -102,7 +106,7 @@ export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {
     name: { type: "string" }, command: { type: "string" }, "extra-path": { type: "string", multiple: true },
     archived: { type: "boolean" }, title: { type: "string" }, instructions: { type: "string" }, "instructions-file": { type: "string" },
     cwd: { type: "string" }, model: { type: "string" }, thinking: { type: "string" }, "memory-model": { type: "string" },
-    emoji: { type: "string" }, shape: { type: "string" }, color: { type: "string" }, voice: { type: "string" }, "voice-speed": { type: "string" }, language: { type: "string" }, wait: { type: "boolean" }, timeout: { type: "string" }, zoom: { type: "string" }, html: { type: "string" },
+    emoji: { type: "string" }, shape: { type: "string" }, color: { type: "string" }, voice: { type: "string" }, "voice-speed": { type: "string" }, language: { type: "string" }, "call-voice": { type: "string" }, wait: { type: "boolean" }, timeout: { type: "string" }, zoom: { type: "string" }, html: { type: "string" },
     prompt: { type: "string" }, at: { type: "string" }, every: { type: "string" }, cron: { type: "string" }, timezone: { type: "string" },
   } });
   if (values.help || !args.length) return { command: "help", values };
@@ -149,7 +153,7 @@ export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {
 }
 
 /** The flags `bot add` and `bot edit` share. */
-const BOT_FIELDS = ["name", "title", "instructions", "instructions-file", "cwd", "model", "thinking", "memory-model", "emoji", "shape", "color", "voice", "voice-speed", "language"];
+const BOT_FIELDS = ["name", "title", "instructions", "instructions-file", "cwd", "model", "thinking", "memory-model", "emoji", "shape", "color", "voice", "voice-speed", "language", "call-voice"];
 /** Operands each bot command takes, in order. */
 const BOT_OPERANDS: Record<string, readonly string[]> = {
   "bot list": [], "bot add": [], "bot show": ["bot"], "bot edit": ["bot"], "bot remove": ["bot"], "bot restore": ["bot"],
@@ -184,6 +188,9 @@ function checkBotCommand(command: string, operands: readonly string[], values: R
   if (given("voice-speed") && !cleared("voice-speed") && voiceSpeed(Number(values["voice-speed"])) === undefined) throw new Error("--voice-speed must be a number from 0.5 to 2.");
   if (given("language") && !cleared("language") && !voiceLanguage(values["language"])) {
     throw new Error(`--language must be one of Whisper's language codes, such as ${VOICE_LANGUAGE_EXAMPLES} (not a name like Spanish); "" goes back to Auto.`);
+  }
+  if (given("call-voice") && !cleared("call-voice") && !gptLiveVoice(values["call-voice"])) {
+    throw new Error(`--call-voice must be one of GPT-Live's voices: ${GPT_LIVE_VOICES.join(", ")}; "" goes back to Settings' default.`);
   }
   if (given("timeout") && (!values["wait"] || !/^\d+$/u.test(String(values["timeout"])) || Number(values["timeout"]) < 1 || Number(values["timeout"]) > 3600)) {
     throw new Error("--timeout needs --wait and 1-3600 seconds.");

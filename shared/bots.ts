@@ -4,6 +4,7 @@
  * The chat itself is an ordinary Durable session (`BotRecord.sessionId`); the
  * session API drives it like any other.
  */
+import type { GptLiveVoice } from "./calls.ts";
 import type { BotVoice, VoiceLanguage } from "./voice.ts";
 
 export type { BotVoice } from "./voice.ts";
@@ -70,7 +71,7 @@ export type BotRecord = {
   memoryThinking?: string;
   avatar?: BotAvatar;
   /** How it sounds through VoiceStudio (read-aloud, calls) and the language it hears and speaks in there;
-   * absent keys use VoiceStudio's defaults. */
+   * absent keys use VoiceStudio's defaults. `voice.live` is its GPT-Live call voice (absent: Settings' choice). */
   voice?: BotVoice;
   hidden?: boolean;
   /** Archived bots keep their chat and memory; their routines are disabled. */
@@ -107,16 +108,16 @@ export type BotInput = {
  * key set to `""` clears that key (`emoji: ""` switches the bot to its face,
  * `shape: ""` and `color: ""` back to the ones its id picks) and
  * `avatar: null` clears all three. A voice
- * `profile: ""`, `speed: null` or `language: ""` (back to Auto) clears that key
- * and `voice: null` clears all three.
+ * `profile: ""`, `speed: null`, `language: ""` (back to Auto) or `live: ""`
+ * (back to Settings' call voice) clears that key and `voice: null` clears them all.
  */
 export type BotPatch = Partial<Omit<BotInput, "avatar" | "voice">> & { avatar?: BotAvatarPatch | null; voice?: BotVoicePatch | null };
 
 /** A change to a bot's look: given keys replace, `""` clears one. */
 export type BotAvatarPatch = { emoji?: string; color?: string; shape?: BotFaceShape | "" };
 
-/** A change to a bot's voice: given keys replace, `profile: ""`, `speed: null` and `language: ""` clear one. */
-export type BotVoicePatch = { profile?: string; speed?: number | null; language?: VoiceLanguage | "" };
+/** A change to a bot's voice: given keys replace, `profile: ""`, `speed: null`, `language: ""` and `live: ""` clear one. */
+export type BotVoicePatch = { profile?: string; speed?: number | null; language?: VoiceLanguage | ""; live?: GptLiveVoice | "" };
 
 /** A bot chat's session status, as `SessionView.status` reports it. */
 export type BotSessionStatus = "idle" | "running" | "waiting" | "starting" | "error" | "reconnecting" | "disconnected";

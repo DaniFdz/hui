@@ -54,6 +54,7 @@ import { toggleNavigationDrawer } from "./shell.ts";
 import { renderBotAvatar } from "./bots.ts";
 import { chatFaceState, hasRunningTool, type BotFaceState } from "../lib/bot-face.ts";
 import { renderCallButton, renderVoiceNoteButton, renderVoiceNoteStatus, voiceIcons } from "./bot-voice.ts";
+import { renderCallLineMark } from "./chat-call.ts";
 import type { VoiceNoteState } from "../lib/voice.ts";
 import type { BotView } from "../lib/bots.ts";
 import { slashCommandQuery } from "../lib/slash-commands.ts";
@@ -343,6 +344,8 @@ export type HomeProps = {
   bot?: HomeBot;
   /** Talking to the bot: present on a bot's chat while VoiceStudio is connected. */
   voice?: HomeVoice;
+  /** The bot header's Call button: present while the bot can be called; starts a call or returns to the one under way. */
+  call?: { inCall: boolean; onCall: () => void };
 };
 
 /** A bot chat's voice controls (HUI-18): the composer's voice notes and Read aloud on its replies. */
@@ -359,8 +362,6 @@ export type HomeVoice = {
   onDismissNote: () => void;
   onReadAloud: (id: string, text: string) => void;
   onStopReading: () => void;
-  /** The bot header's Call button: starts a call, or returns to the one under way. */
-  call: { inCall: boolean; onCall: () => void };
 };
 
 /** The bot view's header: who the bot is and its Routines | Memory panel. */
@@ -904,6 +905,7 @@ function renderMessage(props: HomeProps, item: ChatMessage): TemplateResult {
           ${item.attachments.map((attachment) => renderMessageAttachment(attachment))}
         </div>`
       : nothing}
+    ${renderCallLineMark(item)}
     ${item.role === "user" ? renderUserText(props, item) : html`<div class="chat-text">${renderMarkdown(item.text)}</div>`}
     ${item.pending || item.failed || !props.chatPreferences.githubEmbeds ? nothing : html`<hui-github-embeds .text=${item.text}></hui-github-embeds>`}
     ${renderMetrics(item)}
@@ -2177,7 +2179,7 @@ function renderHeader(props: HomeProps, session: SessionView) {
       </div>
       <div class="chat-pane__header-trailing">
         <div class="chat-pane__actions chat-pane__header-actions">
-          ${props.bot && props.voice ? renderCallButton({ botName: props.bot.bot.name, inCall: props.voice.call.inCall, onCall: props.voice.call.onCall }) : nothing}
+          ${props.bot && props.call ? renderCallButton({ botName: props.bot.bot.name, inCall: props.call.inCall, onCall: props.call.onCall }) : nothing}
           ${props.bot ? html`<button type="button" class="btn btn--ghost btn--icon chat-icon-btn bot-panel-toggle"
             aria-label=${props.bot.panelOpen ? "Hide routines and memory" : "Show routines and memory"} title="Routines and memory"
             aria-expanded=${String(props.bot.panelOpen)} aria-controls=${props.bot.panelOpen ? props.bot.panelId : nothing}

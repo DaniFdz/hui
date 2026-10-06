@@ -10,6 +10,7 @@ import { resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { BOT_FACE_SHAPE_LABELS, botColorName, botFaceColor, botFaceShape, botLook, type BotMessageResult, type BotQuestion, type BotsUpdate, type BotView } from "../shared/bots.ts";
 import { voiceLanguage, voiceLanguageName } from "../shared/voice.ts";
+import { gptLiveVoiceLabel } from "../shared/calls.ts";
 import type { AutomationSchedule, AutomationTask } from "../src/lib/automation-types.ts";
 
 export type BotFlags = {
@@ -29,6 +30,7 @@ export type BotFlags = {
   voice?: string;
   "voice-speed"?: string;
   language?: string;
+  "call-voice"?: string;
   wait?: boolean;
   timeout?: string;
   zoom?: string;
@@ -174,12 +176,14 @@ async function botBody(flags: BotFlags, io: BotIO): Promise<Record<string, unkno
       ...(flags.color !== undefined ? { color: lookColor(flags.color) } : {}),
     };
   }
-  // A VoiceStudio voice, speed and language; "" clears each on edit (a speed as null, as the route takes it).
-  if (flags.voice !== undefined || flags["voice-speed"] !== undefined || flags.language !== undefined) {
+  // A VoiceStudio voice, speed and language, and a GPT-Live call voice; "" clears each on edit (a speed as null, as the
+  // route takes it).
+  if (flags.voice !== undefined || flags["voice-speed"] !== undefined || flags.language !== undefined || flags["call-voice"] !== undefined) {
     body["voice"] = {
       ...(flags.voice !== undefined ? { profile: flags.voice } : {}),
       ...(flags["voice-speed"] !== undefined ? { speed: flags["voice-speed"] === "" ? null : Number(flags["voice-speed"]) } : {}),
       ...(flags.language !== undefined ? { language: flags.language.trim().toLowerCase() } : {}),
+      ...(flags["call-voice"] !== undefined ? { live: flags["call-voice"].trim().toLowerCase() } : {}),
     };
   }
   return body;
@@ -702,6 +706,7 @@ export function formatBot(bot: BotView): string {
       ? [`voice: ${bot.voice.profile ?? "VoiceStudio default"}${bot.voice.speed !== undefined ? ` · ${bot.voice.speed}×` : ""}`]
       : []),
     `language: ${formatLanguage(bot.voice?.language)}`,
+    ...(bot.voice?.live ? [`call voice: ${gptLiveVoiceLabel(bot.voice.live)}`] : []),
     `routines: ${bot.routines}`,
     `cwd: ${bot.cwd}`,
     `chat session: ${bot.sessionId}`,

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import type { LiveCallPlatform } from "./live-call.ts";
 import type { CallPlatform } from "./voice-call.ts";
 import { VoiceController, type VoiceControllerDeps } from "./voice-controller.ts";
 
@@ -111,4 +112,53 @@ test("a failed call stays on screen with its reason until it is closed", async (
   assert.deepEqual([voice.call?.state.phase, voice.call?.state.error], ["failed", "Microphone access was denied."]);
   voice.closeCall();
   assert.equal(voice.call, undefined);
+});
+
+
+test("Settings' engine picks the call: GPT-Live runs on its own platform and measures the bot's voice itself", async () => {
+  const { voice } = harness();
+  const opened: string[] = [];
+  let sent: object[] = [];
+  let open: (() => void) | undefined;
+  const live = (bot: { id: string }): LiveCallPlatform => ({
+    openMicrophone: async () => { opened.push(bot.id); return { setEnabled: () => undefined, level: () => 0.3, close: () => undefined }; },
+    connect: async (_microphone, handlers) => {
+      open = handlers.onOpen;
+      return { callId: "c1", voice: "maple", send: (event) => { sent.push(event); return true; }, level: () => 0.9, setSpeakerMuted: () => undefined, close: () => undefined };
+    },
+    delegate: async () => ({ status: "answered", speak: "ok" }),
+    writeLines: async () => undefined,
+    heartbeat: async () => undefined,
+    end: async () => undefined,
+    setTimer: () => () => undefined,
+    setInterval: () => () => undefined,
+    now: () => 5_000,
+  });
+  const controller = new VoiceController({ requestUpdate: () => undefined }, {
+    loadConnection: async () => ({ configured: false, url: "", keySet: false }),
+    synthesize: async () => new Blob([]),
+    play: async () => undefined,
+    voiceLevel: () => 0.1,
+    platform: () => { throw new Error("VoiceStudio's chain is not used"); },
+    livePlatform: live,
+    now: () => 5_000,
+    setInterval: () => () => undefined,
+  });
+  assert.equal(controller.available, false, "VoiceStudio is not connected");
+  assert.equal(controller.startCall(scout, "gpt-live"), true);
+  await settle();
+  open?.();
+  assert.deepEqual(opened, ["bot-scout"]);
+  assert.equal(controller.call?.engine, "gpt-live");
+  assert.equal(controller.call?.state.phase, "listening");
+  assert.equal((controller.call?.state as { voice?: string }).voice, "maple");
+  assert.equal(controller.voiceLevel(), 0.9, "the remote stream's level, not VoiceStudio's player");
+  assert.equal(controller.micLevel(), 0.3);
+  assert.equal(sent.length, 1, "the greeting cue");
+  controller.hangUp();
+  assert.equal(controller.call, undefined);
+  sent = [];
+  assert.throws(() => voice.startCall(ledger, "gpt-live"), /GPT-Live calls need their platform/u);
+  voice.dispose();
+  controller.dispose();
 });

@@ -97,6 +97,9 @@ export type RuntimeEvent =
   /** The agent stopped entirely. Distinct from `turn_end`: a turn can end while
    * the agent is still working, and the prompt guard follows this one. */
   | { type: "settled"; historyRefreshed?: boolean }
+  /** Entries written outside a run (a call's lines) changed the history. Never sent to a browser: an idle session
+   * answers it with a fresh snapshot, a busy one shows them when its turn settles. */
+  | { type: "history" }
   /** `output` holds the last lines the runtime process wrote to stderr before
    * it failed. It feeds diagnostics only and is never sent to a browser. */
   | { type: "error"; message: string; output?: string };
@@ -256,6 +259,9 @@ export type TranscriptEntry = { metrics?: TranscriptMetrics } & (
       entryId?: string;
       /** Files or images the user attached to that turn. */
       attachments?: readonly TranscriptAttachment[];
+      /** Said on a GPT-Live call with a bot, not typed: what the operator said or what the voice model said. No turn
+       * ran for it, so it is never a run's input or reply. */
+      call?: true;
     }
   /** Where PI summarized everything before its kept window. */
   | { kind: "compaction"; summary: string; tokensBefore: number }

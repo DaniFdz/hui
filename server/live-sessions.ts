@@ -1299,6 +1299,15 @@ export class LiveSessions {
     if (live.closed || live.runtime !== runtime) {
       return;
     }
+    if (event.type === "history") {
+      // A call's lines written beside the conversation: an idle chat shows them now; a turn's settle does otherwise,
+      // since replacing the projection mid-turn would drop what it streamed.
+      if (!live.promptPending && !runtime.isStreaming && !live.turnStarted) {
+        live.transcript = [...runtime.transcript()];
+        this.#broadcast(live, { kind: "snapshot", snapshot: this.snapshot(live.record.id) });
+      }
+      return;
+    }
     let refreshed = false;
     if (event.type === "compaction_start") {
       live.compaction = {

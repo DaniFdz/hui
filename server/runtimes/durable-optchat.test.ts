@@ -25,6 +25,8 @@ const {
   configureOptChat, enableOptChat, freshTurn, freshTurnRequest, markCache, OPTCHAT_EXTENSION, OPTCHAT_TOOLS_EXTENSION, OptChatDoc, projectEntry, viewCuts,
 } = await import("./durable-optchat.ts");
 const { readObservability } = await import("../observability.ts");
+const { durableBotConversations } = await import("../bot-conversations.ts");
+const { optChatBotMemory } = await import("../bot-memory.ts");
 type DurableHost = import("./durable-host.ts").DurableHost;
 
 // ── Pure parts ───────────────────────────────────────────────────────────────
@@ -55,6 +57,11 @@ test("Durable entries project to log lines: words, replies, calls and results, n
     assert.deepEqual(projectEntry(entry(kind, [{ role: "user", content: "x", timestamp: 1 }])), [], kind);
   }
   assert.deepEqual(projectEntry(entry("pi.reset")), [], "model-less");
+  // A line said on a call: the operator's words as user, the voice model's as talk, marked as spoken.
+  const said = (role: string, text: string) => ({ id: 8, conversationId: 1, kind: "hui.call", data: { call: "c1", role, text, at: 5 } }) as unknown as EntryRecord;
+  assert.deepEqual(projectEntry(said("user", " Remember teal. ")), [{ kind: "user", text: "[call] Remember teal." }]);
+  assert.deepEqual(projectEntry(said("assistant", "Teal it is.")), [{ kind: "talk", text: "[call] Teal it is." }]);
+  assert.deepEqual(projectEntry(said("user", "  ")), [], "nothing said, nothing logged");
 });
 
 const system = (sections: Record<string, string>): Message => ({ role: "system", content: "", sections, timestamp: 1 }) as Message;
@@ -478,4 +485,29 @@ test("a turn waits while the view has a line to summarize, says so, and goes on 
   assert.deepEqual(await turnRequests(f.log, "OPT_STOPPED"), [], "the stopped turn sent nothing");
   assert.equal(answers(session.transcript()), 3, "its message stays in the log, unanswered");
   await f.control("/control/release-replay", "POST");
+});
+
+
+test("a call's lines land in the chat as spoken messages and in OptChat's view, and the next turn sees them", { timeout: 60_000 }, async (t) => {
+  const f = await fixture(t);
+  const host = f.host();
+  const { session, id } = await botSession(f, host, "bot-call");
+  const conversations = durableBotConversations(host, optChatBotMemory(host));
+  const refreshed = nextEvent(session, (event) => event.type === "history");
+  await conversations.appendCall(durableReference(id), "call-1", [
+    { role: "user", text: "Remember that my sister's birthday is March 3.", at: Date.parse("2026-10-06T14:00:00Z") },
+    { role: "assistant", text: "Got it: March 3.", at: Date.parse("2026-10-06T14:00:03Z") },
+  ]);
+  await refreshed;
+  const shown = await transcriptWhere(session, (entries) => entries.filter((entry) => entry.kind === "message" && entry.call).length === 2);
+  assert.deepEqual(shown.map((entry) => entry.kind === "message" ? [entry.role, entry.text, entry.call, entry.entryId, entry.metrics?.timestamp] : entry.kind), [
+    ["user", "Remember that my sister's birthday is March 3.", true, undefined, Date.parse("2026-10-06T14:00:00Z")],
+    ["assistant", "Got it: March 3.", true, undefined, Date.parse("2026-10-06T14:00:03Z")],
+  ], "said, not typed: no entry id to rewind to");
+  await statusWhere(host, id, (status) => status.messages === 2 && status.pending === 0);
+  assert.equal(await host.optchat.view(id), "<chat>\n0+1|user: [call] Remember that my sister's birthday is March 3.\n1+1|talk: [call] Got it: March 3.\n</chat>");
+  await turns(session, ["OPT_AFTER_CALL when is it?"]);
+  const [turn] = await turnRequests(f.log, "OPT_AFTER_CALL when is it?");
+  assert.match(viewOf(turn!).view, /user: \[call\] Remember that my sister's birthday is March 3\./u, "the bot's next turn starts from a view holding the call");
+  assert.equal(session.transcript().filter((entry) => entry.kind === "message" && !entry.call).length, 2, "no turn ran for the call's lines");
 });

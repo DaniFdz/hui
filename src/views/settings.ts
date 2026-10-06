@@ -18,6 +18,7 @@ import "./settings-tools.ts";
 import "./settings-browser.ts";
 import "./settings-jira.ts";
 import "./settings-voice.ts";
+import "./settings-calls.ts";
 import "./settings-github.ts";
 import "./settings-providers.ts";
 import "./settings-workers.ts";
@@ -113,6 +114,7 @@ export type SettingsProps = AutomationProps & {
   /** Resolves once the settings write lands, so the Browser section can re-read status. */
   onChangeBrowser: (next: Settings["browser"]) => Promise<unknown> | void;
   onChangeModels: (next: Settings["models"]) => void;
+  onChangeCalls: (next: Settings["calls"]) => void;
   onChangeVoice: (next: Settings["voice"]) => void;
   onChangePower: (next: Settings["power"]) => void;
   onChangeBots: (next: Settings["bots"]) => void;
@@ -659,10 +661,15 @@ function renderToolsPage(props: SettingsProps) {
     <hui-tools-settings .sessions=${props.sessions.filter((session) => !session.bot)}></hui-tools-settings>`;
 }
 
+/** Settings → Models → Calls: GPT-Live through the ChatGPT login above, or VoiceStudio (HUI-18). */
+function renderCallsSection(props: SettingsProps) {
+  return html`<hui-call-settings .calls=${props.settings.calls} .onChange=${props.onChangeCalls}></hui-call-settings>`;
+}
+
 function renderModelsPage(props: SettingsProps) {
   const pi = props.pi;
   if (!pi) {
-    return html`<hui-provider-settings @providers-changed=${props.onRetryPi}></hui-provider-settings>${renderPiMissing(props)}`;
+    return html`<hui-provider-settings @providers-changed=${props.onRetryPi}></hui-provider-settings>${renderCallsSection(props)}${renderPiMissing(props)}`;
   }
   const model = pi.model;
   const modelOptions = [
@@ -700,6 +707,7 @@ function renderModelsPage(props: SettingsProps) {
         )}
       `,
     )}
+    ${renderCallsSection(props)}
     ${renderSection(
       "PI defaults",
       "Read-only fallbacks used when HUI has no primary route.",

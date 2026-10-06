@@ -15,6 +15,7 @@
  * `reduceCall` is the pure state machine; `VoiceCall` wires it to injected
  * capabilities (microphone, VoiceStudio, the chat), so both run under test.
  */
+import type { CallEngine } from "../../shared/calls.ts";
 import { VOICE_MESSAGE_PREFIX } from "../../shared/voice.ts";
 import type { RuntimeEvent } from "./sessions-store.ts";
 import { VoiceActivityDetector, type VadOptions } from "./voice-activity.ts";
@@ -52,6 +53,14 @@ export type CallState = {
   notice?: string;
   /** Why the call could not go on. */
   error?: string;
+};
+
+/** What the call view, its bar and the bot's face read of a call, whichever engine runs it (live-call.ts for GPT-Live). */
+export type CallView = Pick<CallState, "phase" | "startedAt" | "endedAt" | "micMuted" | "speakerMuted" | "you" | "bot" | "notice" | "error" | "tool"> & {
+  /** Absent: VoiceStudio's chain. */
+  engine?: CallEngine;
+  /** GPT-Live tasks the bot is working on. */
+  delegating?: number;
 };
 
 export type CallDelivery = "sent" | "queued" | "steered";
@@ -235,14 +244,18 @@ export function reduceCall(state: CallState, event: CallEvent, now: number): { s
   return { state: next, effects };
 }
 
-/** What the call view says it is doing. "Summarizing memory…" while the bot's turn waits on its memory. */
-export function callStatusLabel(state: CallState, summarizing = false): string {
+/** What the call view says it is doing. "Summarizing memory…" while the bot's turn waits on its memory; "Asking <bot>…"
+ * while a GPT-Live call waits on a task it handed to the bot. */
+export function callStatusLabel(state: CallView, summarizing = false, botName = ""): string {
   switch (state.phase) {
-    case "connecting": return "Waiting for the microphone…";
+    case "connecting": return state.engine === "gpt-live" ? "Connecting…" : "Waiting for the microphone…";
     case "listening": return state.micMuted ? "Microphone muted" : "Listening";
     case "hearing": return "Hearing you…";
     case "transcribing": return "Transcribing…";
-    case "thinking": return summarizing ? "Summarizing memory…" : state.tool ? `Using ${state.tool}…` : "Thinking…";
+    case "thinking":
+      if (summarizing) return "Summarizing memory…";
+      if (state.tool) return `Using ${state.tool}…`;
+      return state.delegating ? `Asking ${botName || "the bot"}…` : "Thinking…";
     case "speaking": return "Speaking";
     case "ended": return "Call ended";
     case "failed": return "Call failed";

@@ -7,7 +7,8 @@
 import { html, nothing, svg, type SVGTemplateResult, type TemplateResult } from "lit";
 import { icons } from "../lib/icons.ts";
 import type { BotView } from "../lib/bots.ts";
-import { callStatusLabel, type CallState } from "../lib/voice-call.ts";
+import { callStatusLabel, type CallView } from "../lib/voice-call.ts";
+import { gptLiveVoiceLabel, isGptLiveVoice } from "../../shared/calls.ts";
 import { formatCallTime, type VoiceNoteState } from "../lib/voice.ts";
 import { renderBotAvatar } from "./bots.ts";
 import { callFaceState } from "../lib/bot-face.ts";
@@ -80,7 +81,7 @@ export function renderCallButton(options: { botName: string; inCall: boolean; on
 
 export type CallViewProps = {
   bot: Pick<BotView, "id" | "name" | "title" | "avatar">;
-  state: CallState;
+  state: CallView & { voice?: string };
   now: number;
   /** The bot's turn waits on its memory ("Summarizing memory…"). */
   summarizing: boolean;
@@ -97,11 +98,20 @@ export type CallViewProps = {
 
 const elapsed = (props: CallViewProps) => formatCallTime((props.state.endedAt ?? props.now) - props.state.startedAt);
 
+/** Where a call's audio goes, as the call view says it. */
+function privacyLine(props: CallViewProps): string {
+  const { state, bot } = props;
+  if (state.engine !== "gpt-live") return `Audio goes only to your VoiceStudio. What is said stays in ${bot.name}'s chat.`;
+  const voice = state.voice && isGptLiveVoice(state.voice) ? ` · voice ${gptLiveVoiceLabel(state.voice)}` : "";
+  return `GPT-Live through your ChatGPT account${voice}. Audio goes to OpenAI; what is said lands in ${bot.name}'s chat. HUI stores no audio.`;
+}
+
 export function renderCallView(props: CallViewProps) {
   const { state, bot } = props;
   const failed = state.phase === "failed";
   const time = elapsed(props);
   const look = botLook(bot);
+  const live = state.engine === "gpt-live";
   // The call takes the bot's color, as Dots' call screen does; a face's eyes follow the pointer anywhere in it.
   return html`<section class="bot-call" data-phase=${state.phase} role="region" aria-label=${`Call with ${bot.name}`} style=${`--bot-color: ${look.color}`} data-face-stage
     @keydown=${(event: KeyboardEvent) => {
@@ -117,11 +127,11 @@ export function renderCallView(props: CallViewProps) {
     <div class="bot-call__stage">
       <div class="bot-call__orb ${look.kind === "face" ? "bot-call__orb--face" : ""}" data-phase=${state.phase}>${renderBotAvatar(bot, "xl", { state: callFaceState(state, props.summarizing), ...(props.level ? { level: props.level } : {}) })}</div>
       <h2 class="bot-call__name">${bot.name}</h2>
-      <p class="bot-call__status" role="status" aria-live="polite">${callStatusLabel(state, props.summarizing)}</p>
+      <p class="bot-call__status" role="status" aria-live="polite">${callStatusLabel(state, props.summarizing, bot.name)}</p>
     </div>
     <div class="bot-call__captions">
       <div class="bot-call__caption bot-call__caption--you"><span class="bot-call__speaker">You</span>
-        <p class="bot-call__line" data-empty=${String(!state.you)}>${state.you || "Speak when you're ready; pause when you're done."}</p></div>
+        <p class="bot-call__line" data-empty=${String(!state.you)}>${state.you || (live ? "Talk whenever you like; you can interrupt." : "Speak when you're ready; pause when you're done.")}</p></div>
       <div class="bot-call__caption bot-call__caption--bot" aria-live="polite"><span class="bot-call__speaker">${bot.name}</span>
         <p class="bot-call__line" data-empty=${String(!state.bot)}>${state.bot || "…"}</p></div>
     </div>
@@ -135,7 +145,7 @@ export function renderCallView(props: CallViewProps) {
           ${state.speakerMuted ? voiceIcons.volumeOff : voiceIcons.volume}<span>${state.speakerMuted ? "Speaker off" : "Speaker"}</span></button>
         <button type="button" class="bot-call__control bot-call__control--hangup" aria-label="Hang up" @click=${props.onHangUp}>${voiceIcons.phoneOff}<span>Hang up</span></button>`}
     </div>
-    <p class="bot-call__privacy">Audio goes only to your VoiceStudio. What is said stays in ${bot.name}'s chat.</p>
+    <p class="bot-call__privacy">${privacyLine(props)}</p>
   </section>`;
 }
 
@@ -147,7 +157,7 @@ export function renderCallBar(props: CallViewProps & { floating: boolean }) {
       ${renderBotAvatar(bot, "sm", { state: callFaceState(state, props.summarizing) })}
       <span class="bot-call-bar__pulse" aria-hidden="true"></span>
       <span class="bot-call-bar__name">${bot.name}</span>
-      <span class="bot-call-bar__status">${callStatusLabel(state, props.summarizing)}</span>
+      <span class="bot-call-bar__status">${callStatusLabel(state, props.summarizing, bot.name)}</span>
       <time class="bot-call-bar__time">${elapsed(props)}</time>
     </button>
     <button type="button" class="bot-call-bar__button" aria-pressed=${String(state.micMuted)} aria-label="Mute microphone" title=${state.micMuted ? "Unmute" : "Mute"} @click=${props.onToggleMic}>

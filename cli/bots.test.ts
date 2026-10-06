@@ -553,3 +553,17 @@ test("show names a bot's VoiceStudio voice, speed and language, auto when it has
   assert.doesNotMatch(spanish, /voice:/u, "a language alone keeps VoiceStudio's default voice");
   assert.match(formatBot({ ...base, voice: { language: "haw" } }), /\nlanguage: haw \(Hawaiian\)\n/u);
 });
+
+
+test("--call-voice sets the bot's GPT-Live voice, \"\" goes back to Settings' default, and show names it", async (t) => {
+  const gateway = await fakeGateway(t);
+  await botCommand(gateway.base, "edit", ["ada"], { "call-voice": " Ember " }, terminal().io);
+  assert.deepEqual(gateway.calls.at(-1)?.body, { voice: { live: "ember" } });
+  await botCommand(gateway.base, "edit", ["ada"], { "call-voice": "", language: "es" }, terminal().io);
+  assert.deepEqual(gateway.calls.at(-1)?.body, { voice: { language: "es", live: "" } });
+  await botCommand(gateway.base, "add", [], { name: "Lola", "call-voice": "sol" }, terminal().io);
+  assert.deepEqual(gateway.calls.at(-1)?.body, { name: "Lola", voice: { live: "sol" } });
+  const base: BotView = { id: "id-vox", handle: "vox", name: "Vox", cwd: "/tmp", sessionId: "s", createdAt: "2026-10-05T10:00:00.000Z", updatedAt: "2026-10-05T10:00:00.000Z", status: "idle", unread: false, routines: 0 };
+  assert.match(formatBot({ ...base, voice: { language: "es", live: "juniper" } }), /\nlanguage: es \(Spanish\)\ncall voice: Juniper\nroutines: /u);
+  assert.doesNotMatch(formatBot(base), /call voice:/u, "without one it follows Settings");
+});

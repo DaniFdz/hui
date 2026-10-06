@@ -4,6 +4,7 @@
  * service HUI only calls over HTTP. Shared by the gateway, the CLI and the
  * browser; the gateway owns the connection and its key.
  */
+import type { GptLiveVoice } from "./calls.ts";
 
 /** Limits the gateway enforces at its boundary; the browser mirrors them. */
 export const VOICE_LIMITS = {
@@ -88,8 +89,9 @@ const LANGUAGE_CODES: ReadonlySet<string> = new Set(Object.keys(VOICE_LANGUAGES)
 export const VOICE_LANGUAGE_EXAMPLES = "en, es, fr, de or ja";
 
 /** A bot's voice: a VoiceStudio voice id, a speed and the language it hears and speaks in; absent keys use
- * VoiceStudio's defaults (for the language, Auto: the recognizer detects it). */
-export type BotVoice = { profile?: string; speed?: number; language?: VoiceLanguage };
+ * VoiceStudio's defaults (for the language, Auto: the recognizer detects it). `live` is its GPT-Live call voice;
+ * absent, calls use the one Settings → Models → Calls chose. The language applies to GPT-Live calls too. */
+export type BotVoice = { profile?: string; speed?: number; language?: VoiceLanguage; live?: GptLiveVoice };
 
 /** Audio formats `POST /__hui/voice/speech` asks VoiceStudio for. */
 export const SPEECH_FORMATS = ["mp3", "opus"] as const;

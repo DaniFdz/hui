@@ -32,6 +32,8 @@ import { BotInputError, BotRegistry, BotStoreError } from "./bots.ts";
 import { BotService } from "./bot-service.ts";
 import { BOT_MEMORY_PAGE, BOTS_EVENTS_ROUTE, BOTS_ROUTE, createBotRoutes } from "./bot-routes.ts";
 import { durableBotConversations } from "./bot-conversations.ts";
+import { CallBroker, providerCallAccounts } from "./calls.ts";
+import { CALLS_ROUTE, createCallRoutes } from "./call-routes.ts";
 import { optChatBotMemory } from "./bot-memory.ts";
 import type { BotsUpdate, BotView } from "../shared/bots.ts";
 import { progressCardFromTranscript, type ProgressCard } from "../shared/progress-card.ts";
@@ -416,6 +418,22 @@ const voiceRoutes = createVoiceRoutes({
   service: new VoiceService(),
   botVoice: async (id) => (await bots.resolve(id)).voice,
 });
+
+/** GPT-Live calls with bots over the ChatGPT login (HUI-18): the credential stays here, audio goes browser ↔ ChatGPT. */
+const callRoutes = createCallRoutes({
+  broker: new CallBroker({
+    accounts: providerCallAccounts(providerService.accounts),
+    report: ({ status, detail }) => recordDiagnosticEvent({
+      area: "runtime", level: "warning", action: "call_refused", summary: `ChatGPT refused a GPT-Live call (${status})`, ...(detail ? { detail } : {}),
+    }),
+  }),
+  bots,
+  // Delegated tasks run as turns of the bot's own chat, with its model, tools and memory.
+  delegate: (bot, request, signal) => bots.callTask(bot.id, request, signal),
+  settings: () => readSettings(),
+  timeZone: () => Intl.DateTimeFormat().resolvedOptions().timeZone,
+});
+const BOT_CALLS = /^\/__hui\/bots\/[^/]+\/calls(?:\/|$)/u;
 
 const SETTINGS_FILE = join(CONFIG_DIR, "settings.json");
 const BUILTIN_THEME_DIR = fileURLToPath(new URL("../themes/", import.meta.url));
@@ -2179,6 +2197,16 @@ export function streamBots(response: ServerResponse, list: Pick<typeof botList, 
   });
 }
 
+/** `/__hui/calls` and `/__hui/bots/:id/calls…` (`call-routes.ts`). */
+async function serveCallRoute(request: Connect.IncomingMessage, response: ServerResponse, path: string): Promise<void> {
+  // A browser that leaves abandons a call being set up, and ends a task's wait (never the bot's turn).
+  const gone = new AbortController();
+  response.once("close", () => gone.abort());
+  const result = await callRoutes.handle({ method: request.method ?? "GET", path, body: (maxBytes) => readBody(request, maxBytes), signal: gone.signal });
+  if (!result) sendJson(response, 404, { error: `unknown route: ${path}` });
+  else sendJson(response, result.status, result.body);
+}
+
 /** `/__hui/bots` and everything under it but the events stream (`bot-routes.ts`). */
 async function serveBotRoute(request: Connect.IncomingMessage, response: ServerResponse, path: string): Promise<void> {
   // A client that leaves ends its wait for a reply, never the bot's turn.
@@ -2516,6 +2544,11 @@ async function handleRequest(
   if (path === BOTS_EVENTS_ROUTE) {
     if (request.method === "GET") streamBots(response);
     else sendJson(response, 405, { error: "method not allowed" });
+    return;
+  }
+
+  if (path === CALLS_ROUTE || BOT_CALLS.test(path)) {
+    await serveCallRoute(request, response, path);
     return;
   }
 

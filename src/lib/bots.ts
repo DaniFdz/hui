@@ -8,6 +8,7 @@
  * record is skipped or narrowed rather than reaching the roster as `undefined`.
  */
 import { botLook, isBotFaceShape, type BotAvatar, type BotAvatarPatch, type BotFaceShape, type BotInput, type BotMemoryStatus, type BotMemoryUsage, type BotPatch, type BotSessionStatus, type BotsUpdate, type BotView, type BotVoice } from "../../shared/bots.ts";
+import { gptLiveVoice } from "../../shared/calls.ts";
 import { voiceLanguage, voiceProfileId, voiceSpeed } from "../../shared/voice.ts";
 import { CLIENT_HEADERS, fetchJson } from "./settings-store.ts";
 import { decodeSseFrame, reconnectDelay, STATUS_STREAM_STALL_MS, type SessionGroup, type SessionView } from "./sessions-store.ts";
@@ -40,11 +41,13 @@ export type BotDraft = {
   model: string;
   thinking: string;
   memoryModel: string;
-  /** A VoiceStudio voice id ("" for VoiceStudio's default), speed and language code ("" for Auto); absent while
-   * VoiceStudio is not connected. */
+  /** A VoiceStudio voice id ("" for VoiceStudio's default) and speed; absent while VoiceStudio is not connected. */
   voice?: string;
   voiceSpeed?: number;
+  /** A language code ("" for Auto); absent while neither VoiceStudio nor GPT-Live calls are on. */
   voiceLanguage?: string;
+  /** A GPT-Live call voice ("" for Settings' default); absent while calls do not use GPT-Live. */
+  callVoice?: string;
 };
 
 /** OptChat's view budget: the memory panel reports sizes against it. */
@@ -101,7 +104,8 @@ function parseVoice(value: unknown): BotVoice | undefined {
   const profile = voiceProfileId(value["profile"]);
   const speed = voiceSpeed(value["speed"]);
   const language = voiceLanguage(value["language"]);
-  const voice: BotVoice = { ...(profile ? { profile } : {}), ...(speed !== undefined ? { speed } : {}), ...(language ? { language } : {}) };
+  const live = gptLiveVoice(value["live"]);
+  const voice: BotVoice = { ...(profile ? { profile } : {}), ...(speed !== undefined ? { speed } : {}), ...(language ? { language } : {}), ...(live ? { live } : {}) };
   return Object.keys(voice).length ? voice : undefined;
 }
 
@@ -338,12 +342,13 @@ function draftAvatar(draft: BotDraft): BotAvatar | undefined {
   return Object.keys(avatar).length ? avatar : undefined;
 }
 
-/** The dialog's voice: a chosen voice id, a speed other than 1× and a language; nothing for VoiceStudio's defaults. */
+/** The dialog's voice: a chosen voice id, a speed other than 1×, a language and a call voice; nothing for the defaults. */
 function draftVoice(draft: BotDraft): BotVoice | undefined {
   const profile = draft.voice?.trim() ?? "";
   const speed = draft.voiceSpeed !== undefined && draft.voiceSpeed !== 1 ? voiceSpeed(draft.voiceSpeed) : undefined;
   const language = voiceLanguage(draft.voiceLanguage);
-  const voice: BotVoice = { ...(profile ? { profile } : {}), ...(speed !== undefined ? { speed } : {}), ...(language ? { language } : {}) };
+  const live = gptLiveVoice(draft.callVoice);
+  const voice: BotVoice = { ...(profile ? { profile } : {}), ...(speed !== undefined ? { speed } : {}), ...(language ? { language } : {}), ...(live ? { live } : {}) };
   return Object.keys(voice).length ? voice : undefined;
 }
 
@@ -366,19 +371,22 @@ export function botPatchFromDraft(bot: BotView, draft: BotDraft): BotPatch {
   if (cwd && cwd !== bot.cwd) patch.cwd = cwd;
   const avatar = avatarPatch(bot, draft);
   if (avatar) patch.avatar = avatar;
-  // The voice section shows only while VoiceStudio is connected; without it the voice is left as it is.
+  // Each part of the voice changes only while the dialog showed it: VoiceStudio's voice and speed while it is
+  // connected, the language while VoiceStudio or GPT-Live calls are on, the call voice while calls use GPT-Live.
+  const voice: NonNullable<BotPatch["voice"]> = {};
   if (draft.voice !== undefined) {
     const profile = draft.voice.trim();
     const speed = draft.voiceSpeed ?? 1;
-    // Auto ("") clears the language; a draft without one leaves it alone.
-    const language = draft.voiceLanguage === undefined ? undefined : voiceLanguage(draft.voiceLanguage) ?? "";
-    const voice: NonNullable<BotPatch["voice"]> = {
-      ...(profile !== (bot.voice?.profile ?? "") ? { profile } : {}),
-      ...(speed !== (bot.voice?.speed ?? 1) ? { speed: speed === 1 ? null : speed } : {}),
-      ...(language !== undefined && language !== (bot.voice?.language ?? "") ? { language } : {}),
-    };
-    if (Object.keys(voice).length) patch.voice = voice;
+    if (profile !== (bot.voice?.profile ?? "")) voice.profile = profile;
+    if (speed !== (bot.voice?.speed ?? 1)) voice.speed = speed === 1 ? null : speed;
   }
+  // Auto ("") clears the language; a draft without one leaves it alone.
+  const language = draft.voiceLanguage === undefined ? undefined : voiceLanguage(draft.voiceLanguage) ?? "";
+  if (language !== undefined && language !== (bot.voice?.language ?? "")) voice.language = language;
+  // "Default" ("") follows Settings → Models → Calls.
+  const live = draft.callVoice === undefined ? undefined : gptLiveVoice(draft.callVoice) ?? "";
+  if (live !== undefined && live !== (bot.voice?.live ?? "")) voice.live = live;
+  if (Object.keys(voice).length) patch.voice = voice;
   return patch;
 }
 

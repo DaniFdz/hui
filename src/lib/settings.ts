@@ -1,3 +1,4 @@
+import { DEFAULT_GPT_LIVE_VOICE, gptLiveVoice, type CallEngine, type GptLiveVoice } from "../../shared/calls.ts";
 import { normalizeAppearance, DEFAULT_APPEARANCE, type Appearance } from "./appearance.ts";
 import { DEFAULT_TERMINAL_FONT, normalizeTerminalFont } from "./terminal-font.ts";
 import { normalizeThemeMode, type ThemeMode } from "./theme.ts";
@@ -44,6 +45,10 @@ export type Settings = {
     fallback: string;
     utility: string;
   };
+  /** Settings → Models → Calls: how calls with bots run. `gpt-live` talks to GPT-Live over the ChatGPT login saved in
+   * Settings → Models; `voicestudio` is the speech chain through VoiceStudio. `voice` is the GPT-Live voice of a bot
+   * that has none of its own. */
+  calls: { engine: CallEngine; voice: GptLiveVoice };
   /** PI skills hidden from HUI-owned runtimes without changing PI's installation. */
   disabledSkills: readonly { name: string; path: string }[];
   /** PI packages/extensions excluded before HUI's SDK worker discovers resources. */
@@ -88,6 +93,7 @@ export const DEFAULT_SETTINGS: Settings = {
   power: { keepAwake: true },
   voice: { sendNotesImmediately: false },
   models: { primary: "", fallback: "", utility: "" },
+  calls: { engine: "voicestudio", voice: DEFAULT_GPT_LIVE_VOICE },
   disabledSkills: [],
   disabledPlugins: [],
   labs: { denseObservability: false, detailedDebug: false },
@@ -115,11 +121,18 @@ export function normalizeSettings(raw: unknown): Settings {
     power: normalizePower(source["power"]),
     voice: { sendNotesImmediately: isRecord(source["voice"]) && source["voice"]["sendNotesImmediately"] === true },
     models: normalizeModels(source["models"]),
+    calls: normalizeCalls(source["calls"]),
     disabledSkills: normalizeDisabledSkills(source["disabledSkills"]),
     disabledPlugins: normalizeDisabledPlugins(source["disabledPlugins"]),
     labs: normalizeLabs(source["labs"]),
     bots: normalizeBots(source["bots"]),
   };
+}
+
+/** Opt-in: calls stay on VoiceStudio until GPT-Live is chosen explicitly; an unknown voice is GPT-Live's default. */
+export function normalizeCalls(value: unknown): Settings["calls"] {
+  const source = isRecord(value) ? value : {};
+  return { engine: source["engine"] === "gpt-live" ? "gpt-live" : "voicestudio", voice: gptLiveVoice(source["voice"]) ?? DEFAULT_GPT_LIVE_VOICE };
 }
 
 /** Opt-in: only an explicit true shows the Bots tab. */

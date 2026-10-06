@@ -308,3 +308,21 @@ test("the dialog's language goes with a new bot, an edit sends it only when it c
   assert.equal(parseBot({ ...RECORD, voice: { language: "spanish" } })?.voice, undefined, "a language that is not a code is dropped");
   assert.deepEqual(parseBot({ ...RECORD, voice: { speed: 1.2, language: "jv" } })?.voice, { speed: 1.2 }, "Whisper calls Javanese jw");
 });
+
+
+test("the dialog's call voice goes with a new bot, and an edit sends it (with the language) without VoiceStudio", () => {
+  assert.deepEqual(botInputFromDraft({ ...EMPTY_DRAFT, name: "Vox", callVoice: "ember", voiceLanguage: "es" }).voice, { language: "es", live: "ember" });
+  assert.equal(botInputFromDraft({ ...EMPTY_DRAFT, name: "Vox", callVoice: "" }).voice, undefined, "Default is no call voice of its own");
+  assert.equal(botInputFromDraft({ ...EMPTY_DRAFT, name: "Vox", callVoice: "marin" }).voice, undefined, "only GPT-Live's ChatGPT voices");
+  const bot = { ...(parseBot(RECORD) as BotView), voice: { profile: "vp-aria", live: "sol" as const } };
+  // GPT-Live calls without VoiceStudio: the dialog shows the call voice and the language, not VoiceStudio's voice.
+  const unchanged: BotDraft = { name: "Scout", title: "Research assistant", instructions: "Find things.", cwd: bot.cwd, emoji: "🔭", model: "anthropic/claude", thinking: "medium", memoryModel: "", callVoice: "sol", voiceLanguage: "" };
+  assert.deepEqual(botPatchFromDraft(bot, unchanged), {});
+  assert.deepEqual(botPatchFromDraft(bot, { ...unchanged, callVoice: "vale" }), { voice: { live: "vale" } }, "VoiceStudio's voice is left alone");
+  assert.deepEqual(botPatchFromDraft(bot, { ...unchanged, callVoice: "" }), { voice: { live: "" } }, "back to Settings' voice");
+  assert.deepEqual(botPatchFromDraft(bot, { ...unchanged, voiceLanguage: "fr" }), { voice: { language: "fr" } }, "the language applies to calls too");
+  const { callVoice: _call, ...withoutCalls } = unchanged;
+  assert.deepEqual(botPatchFromDraft(bot, { ...withoutCalls, callVoice: undefined }), {}, "a dialog without GPT-Live leaves the call voice alone");
+  assert.deepEqual(parseBot({ ...RECORD, voice: { live: "juniper", profile: "vp-dani" } })?.voice, { profile: "vp-dani", live: "juniper" });
+  assert.equal(parseBot({ ...RECORD, voice: { live: "nova" } })?.voice, undefined);
+});

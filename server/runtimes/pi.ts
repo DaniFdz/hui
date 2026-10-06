@@ -339,6 +339,13 @@ export function transcriptFrom(messages: readonly unknown[], timings = new Runti
       entries.push({ kind: "compaction", summary: typeof raw["summary"] === "string" ? raw["summary"] : "", tokensBefore: finiteNumber(raw["tokensBefore"]) });
       continue;
     }
+    // A line said on a call with a bot (Durable's `hui.call` entry): shown as what was said, marked as spoken.
+    if ((role as string) === "call") {
+      const text = typeof raw["text"] === "string" ? raw["text"].trim() : "";
+      const metrics = sanitizeMetrics({ timestamp: raw["timestamp"] });
+      if (text) entries.push({ kind: "message", role: raw["speaker"] === "assistant" ? "assistant" : "user", text, call: true, ...(Object.keys(metrics).length ? { metrics } : {}) });
+      continue;
+    }
     if (role === "toolResult") {
       const id = typeof raw["toolCallId"] === "string" ? raw["toolCallId"] : "";
       const name = typeof raw["toolName"] === "string" ? raw["toolName"] : "tool";

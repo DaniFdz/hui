@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { DEFAULT_SETTINGS, normalizeBranchPrefix, normalizeSettings } from "./settings.ts";
+import { DEFAULT_SETTINGS, normalizeBranchPrefix, normalizeCalls, normalizeSettings } from "./settings.ts";
 
 test("round-trips a complete file", () => {
   assert.deepEqual(
@@ -169,4 +169,16 @@ test("voice notes wait in the composer unless sending them at once is switched o
     assert.deepEqual(normalizeSettings({ voice }).voice, { sendNotesImmediately: false }, JSON.stringify(voice));
   }
   assert.deepEqual(normalizeSettings({ voice: { sendNotesImmediately: true, url: "never here" } }).voice, { sendNotesImmediately: true });
+});
+
+
+test("calls stay on VoiceStudio until GPT-Live is chosen, with Cove unless a known voice is", () => {
+  assert.deepEqual(DEFAULT_SETTINGS.calls, { engine: "voicestudio", voice: "cove" });
+  assert.deepEqual(normalizeSettings({}).calls, { engine: "voicestudio", voice: "cove" }, "nothing changes for an existing file");
+  assert.deepEqual(normalizeSettings({ calls: { engine: "gpt-live", voice: "Juniper" } }).calls, { engine: "gpt-live", voice: "juniper" });
+  assert.deepEqual(normalizeSettings({ calls: { engine: "voicestudio", voice: "sol" } }).calls, { engine: "voicestudio", voice: "sol" });
+  for (const calls of [{ engine: "openai", voice: "alloy" }, { engine: true }, "gpt-live", null, [], { voice: 3 }]) {
+    assert.deepEqual(normalizeSettings({ calls }).calls, { engine: "voicestudio", voice: "cove" }, JSON.stringify(calls));
+  }
+  assert.deepEqual(normalizeCalls({ engine: "gpt-live", voice: "marin" }), { engine: "gpt-live", voice: "cove" }, "a public-API voice is not one of the route's");
 });

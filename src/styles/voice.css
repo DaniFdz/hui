@@ -22,6 +22,19 @@
 .field .bot-dialog__speed input[type="range"] { width: 100%; height: auto; margin: 0; padding: 0; border: 0; background: transparent; box-shadow: none; accent-color: var(--accent); }
 .bot-dialog__speed output { color: var(--text); font-size: 13px; font-variant-numeric: tabular-nums; text-align: end; }
 
+/* ── a line said on a GPT-Live call, in the chat ── */
+.chat-bubble__call {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 4px;
+  color: var(--muted);
+  font-size: var(--font-size-xs, 12px);
+  line-height: 1.2;
+}
+.chat-bubble__call svg { width: 12px; height: 12px; flex: 0 0 auto; }
+.chat-group.user .chat-bubble__call { justify-content: flex-end; }
+
 /* ── composer: the voice-note microphone and its status ── */
 .agent-chat__input .chat-voice-btn {
   display: inline-flex;
