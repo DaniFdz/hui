@@ -1,17 +1,18 @@
 # Bots on a worker browser verification
 
-Journey for bots on remote workers (part 7 of the bots stack): the New bot
-dialog's **Runs on**, a bot on a worker answering in its chat, the machine in
-its header and roster row, its Memory panel read from the worker, the Edit
-dialog's read-only machine, and an offline worker, in dark mode at 1440×900
-(fine pointer) and 390×844 (touch), plus a light-mode close-up. Run against a
-gateway built from the branch (`node bin/hui.mjs gateway run`) in a temporary
-HOME and XDG directories, with a local worker: its connect command is `env
-HOME=<temp>/remote SHELL=/bin/sh`, so the "remote" is a separate home on the
-same machine, with the built worker release pre-installed (no network). HUI,
-the worker host, Pi Durable and OptChat are real; the model provider
-(`e2e/pi-provider-fixture.mjs`) is the deterministic fake. Driven through CDP in
-headless Chromium. No operator transcript, credential or account is used.
+Journey for bots on remote workers (part 7 of the bots stack): the roster's
+**+** menu that creates a bot on Local or on a worker, a bot on a worker
+answering in its chat, the machine in its header and roster row, its Memory
+panel read from the worker, the read-only machine in Edit, and an offline
+worker, in dark mode at 1440×900 (fine pointer) and 390×844 (touch), plus a
+light-mode close-up. Run against a gateway built from the branch (`node
+bin/hui.mjs gateway run`) in a temporary HOME and XDG directories, with a local
+worker: its connect command is `env HOME=<temp>/remote SHELL=/bin/sh`, so the
+"remote" is a separate home on the same machine, with the built worker release
+pre-installed (no network). HUI, the worker host, Pi Durable and OptChat are
+real; the model provider (`e2e/pi-provider-fixture.mjs`) is the deterministic
+fake. Driven through CDP in headless Chromium. No operator transcript,
+credential or account is used.
 
 ## Reproduce
 
@@ -36,37 +37,35 @@ headless Chromium. No operator transcript, credential or account is used.
    `Emulation.setEmulatedMedia` `prefers-color-scheme: dark` (light for the one
    close-up).
 
-## Observed (2026-10-06, `15273b2`; no console errors)
+## Observed (2026-10-06, `c93b9fa`; no console errors)
 
-1. Bots tab → **+**: the dialog reads Name, Look, **Runs on**, Title… Runs on
-   offers *Local · This machine* and *devbox · Remote worker*, each with its
-   icon (a terminal, a globe). Choosing devbox changes its hint (its chat,
-   memory and folder live on that worker; terminals, the browser and watchers
-   stay on this machine; it can't move later) and the workspace hint ("A folder
-   on devbox: absolute or ~/…. Leave empty for a private folder HUI creates
-   there.").
-2. **Create bot** opens Rover's chat. A typed message gets "Fixture response."
-   from the chat running on the worker. The header reads "Field explorer · 🌐
-   devbox · Idle"; Rover's roster row shows a 🌐 devbox tag before its preview;
-   Ledger, local, has none.
-3. Memory tab: 2 messages, 2 lines, the view's lines from the worker's memory,
+1. Bots tab → **+** opens a menu: *New bot on Local* (a terminal icon) and *New
+   bot on devbox* (a globe), in the menu's own type, not the toolbar's small caps.
+2. *New bot on devbox* creates the bot at once and opens its chat: *New bot*,
+   "Say hi to New bot", its header "🌐 devbox · Idle", its roster row "🌐 devbox ·
+   No messages yet".
+3. Edit bot…: renamed to Rover with a title and instructions; beside the
+   workspace, **Runs on** shows 🌐 devbox read-only ("A bot stays on the machine
+   it was created on…", and the tools it can't use there); the workspace is the
+   bot's folder on devbox and its hint says so. Save: "Saved Rover."
+4. A typed message gets "Fixture response." from the chat running on the
+   worker. The header reads "Field explorer · 🌐 devbox · Idle"; Rover's row
+   shows the devbox tag before its preview; Ledger, local, has none.
+5. Memory tab: 2 messages, 2 lines, the view's lines from the worker's memory,
    and "Summarizer since HUI started on devbox".
-4. Edit bot…: Runs on shows 🌐 devbox, read-only, with "A bot stays on the
-   machine it was created on", right after Look; the workspace is the folder on
-   devbox.
-5. Phone: the drawer's roster shows the devbox tag; the dialog's Runs on, its
-   options and hints fit 390 px; the chat header and the Memory sheet as on
-   desktop.
-6. `POST /__hui/workers/:id/disconnect`: the chat shows "Disconnected from
-   devbox" (header, banner with Reconnect, composer), the face goes offline,
-   and Refresh in the Memory panel says "devbox, where this bot runs, is
-   offline: HUI is not connected to it. Connect it in Settings → Workers, then
-   try again." Through the API: the memory route and a message answer 503 with
-   those reasons, a create on devbox answers 503 ("HUI is not connected to
-   devbox. …"), and `GET /__hui/bots` answers in under 2 ms with Rover
-   *disconnected*, no memory and its newest message. Reconnect brings it back
-   (memory 200).
-7. Light mode: the header and roster close-up keep the tag and the globe
+6. Phone: the drawer's + menu, the roster row with the tag, the chat header and
+   the Memory sheet as on desktop.
+7. `POST /__hui/workers/:id/disconnect`: the chat shows "Disconnected from
+   devbox" (header, banner with Reconnect, composer) and the face goes offline;
+   Refresh in the Memory panel says "devbox, where this bot runs, is offline:
+   HUI is not connected to it. Connect it in Settings → Workers, then try
+   again."; the + menu lists "New bot on devbox · disconnected", and choosing it
+   shows "HUI is not connected to devbox. Connect it in Settings → Workers, then
+   create the bot again." in the roster. Through the API: the memory route and a
+   message answer 503 with those reasons, and `GET /__hui/bots` answers in about
+   1 ms with the bot *disconnected*, no memory and its newest message.
+   Reconnect brings it back (memory 200).
+8. Light mode: the header and roster close-up keep the tag and the globe
    legible on the light tokens.
 
 ## Not covered here
