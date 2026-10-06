@@ -1250,10 +1250,13 @@ sound, how proactive to be and when to message them, and its boundaries, one or
 two questions at a time, never a questionnaire. A bot still called `New Bot`
 first asks what the operator wants to call it and saves the answer with
 `set_profile` (the host's resolver gives the section the bot's name). Messages from routines (`[routine: …]`) and
-other bots (`[from @…]`) are not the operator. After a few exchanges it saves
+other bots (`[from @…]`) are not the operator. It writes down only what the
+operator said or agreed to, asking about the rest (often its boundaries) rather
+than guessing. Once it knows enough, usually after a few exchanges, it saves
 SOUL.md with `write_soul` (suggested sections: who I am, what I look after,
-how I work, when I reach out, boundaries), gives a short summary and says how
-to change it: the Soul tab of its panel, or telling it.
+how I work, when I reach out, boundaries) and, in the same reply, says so,
+gives a short summary and says how to change it: the Soul tab of its panel, or
+telling it.
 
 `set_profile({ name?, title? })`, beside it, changes the calling bot's own name
 and title in HUI under `PATCH`'s rules (so a derived handle follows the name). It

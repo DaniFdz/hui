@@ -314,7 +314,9 @@ test("the first conversation: greet, ask what the operator expects a question or
     "A message from a routine (\"[routine: …]\") or another bot (\"[from @…]\") is not the operator",
     "\"[HUI bot created]\" is HUI telling you that you were just created: open the conversation",
     "save your soul with write_soul: Markdown, short, in your own voice", "\"Who I am\", \"What I look after\", \"How I work\", \"When I reach out\" and \"Boundaries\"",
-    "a short summary of it", "in the Soul tab of your panel in HUI, or by just telling you",
+    "Write down only what the operator told you or agreed to: ask about what is still open (often what you must not do) rather than guess",
+    "Once you know enough, usually after a few exchanges (or as soon as the operator would rather not say more)",
+    "In the same reply, tell the operator you saved it, give a short summary of it", "in the Soul tab of your panel in HUI, or by just telling you",
   ]) assert.ok(named.includes(part), part);
   const nameless = firstConversationSection(file, undefined);
   assert.match(nameless, /your first conversation with the operator, which starts now/u);
