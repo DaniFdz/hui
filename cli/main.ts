@@ -35,11 +35,11 @@ export const HELP = `Usage:
   hui bot list [--archived] [--json]
   hui bot show <bot> [--json]
   hui bot add --name <name> [--title <text>] [--instructions <text> | --instructions-file <path>] [--cwd <dir>]
-              [--model <provider/model>] [--thinking <level>] [--utility-model <provider/model>] [--emoji <e>]
+              [--worker <name|id>] [--model <provider/model>] [--thinking <level>] [--utility-model <provider/model>] [--emoji <e>]
               [--shape <blob|round|triangle|heart|cookie>] [--color <name|#rrggbb>]
               [--voice <VoiceStudio voice id>] [--voice-speed <0.5-2>] [--language <code>]
               [--call-voice <cove|arbor|breeze|ember|juniper|maple|sol|spruce|vale>] [--json]
-  hui bot edit <bot> [same flags as add] [--json]
+  hui bot edit <bot> [same flags as add except --worker] [--json]
   hui bot remove <bot> [--json]
   hui bot restore <bot> [--json]
   hui bot delete <bot> [--json]
@@ -73,7 +73,11 @@ on edit replaces the list. Edit changes only the fields given; a new command
 applies the next time the worker connects.
 Bots are named agents with one forever chat each, managed through the running
 gateway like the Bots tab; "bots" works as "bot". <bot> is an id, a handle or
-an exact name. On edit, --model "" and --thinking "" go back to the model and
+an exact name. --worker runs a new bot on a remote worker of Settings → Workers,
+by name or id, which HUI must be connected to: its chat, memory and folder live
+there, --cwd is then a folder there (absolute or ~/), and it never moves. Bots
+on a worker can't use terminals, the browser or watchers, which stay on this
+machine. On edit, --model "" and --thinking "" go back to the model and
 thinking level a new chat gets. --model is the bot's main model (the smartest you
 have; speed does not matter); --utility-model the fastest, ideally cheap, for its
 memory summaries, quick answers on calls and call summaries (--memory-model is
@@ -111,7 +115,7 @@ export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {
     check: { type: "boolean" }, fix: { type: "boolean" }, nightly: { type: "boolean" },
     name: { type: "string" }, command: { type: "string" }, "extra-path": { type: "string", multiple: true },
     archived: { type: "boolean" }, title: { type: "string" }, instructions: { type: "string" }, "instructions-file": { type: "string" },
-    cwd: { type: "string" }, model: { type: "string" }, thinking: { type: "string" }, "memory-model": { type: "string" }, "utility-model": { type: "string" },
+    cwd: { type: "string" }, worker: { type: "string" }, model: { type: "string" }, thinking: { type: "string" }, "memory-model": { type: "string" }, "utility-model": { type: "string" },
     emoji: { type: "string" }, shape: { type: "string" }, color: { type: "string" }, voice: { type: "string" }, "voice-speed": { type: "string" }, language: { type: "string" }, "call-voice": { type: "string" }, wait: { type: "boolean" }, timeout: { type: "string" }, zoom: { type: "string" }, html: { type: "string" },
     prompt: { type: "string" }, at: { type: "string" }, every: { type: "string" }, cron: { type: "string" }, timezone: { type: "string" },
   } });
@@ -133,12 +137,14 @@ export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {
     update: ["from", "sha256", "rollback", "check", "json", "nightly"], desktop: [], "install-app": [],
     doctor: ["fix", "json"], "workers list": ["json"], "workers add": ["name", "command", "extra-path", "json"],
     "workers edit": ["name", "command", "extra-path", "json"], "workers remove": ["json"],
-    "bot list": ["archived", "json"], "bot show": ["json"], "bot add": [...BOT_FIELDS, "json"], "bot edit": [...BOT_FIELDS, "json"],
+    "bot list": ["archived", "json"], "bot show": ["json"], "bot add": [...BOT_FIELDS, "worker", "json"], "bot edit": [...BOT_FIELDS, "json"],
     "bot remove": ["json"], "bot restore": ["json"], "bot delete": ["json"], "bot chat": [], "bot send": ["wait", "timeout", "json"], "bot stop": ["json"],
     "bot memory": ["zoom", "html", "json"], "bot routine list": ["json"],
     "bot routine add": ["name", "prompt", "at", "every", "cron", "timezone", "json"], "bot routine run": [], "bot routine remove": ["json"],
   };
   if (!command || !allowed[command] || extra.length || first !== "gateway" && first !== "workers" && !bots && second) throw new Error("Unknown command. Run hui --help.");
+  // Where a bot runs is chosen once; an edit cannot move it.
+  if (command === "bot edit" && values.worker !== undefined) throw new Error("A bot stays on the machine it was created on: --worker only applies to bot add.");
   for (const flag of Object.keys(values)) if (!allowed[command]!.includes(flag)) throw new Error(`--${flag} is not valid for ${command}.`);
   if (bots) checkBotCommand(command, operands, values);
   if (["gateway start", "gateway run", "gateway restart"].includes(command)) {
@@ -177,6 +183,9 @@ function checkBotCommand(command: string, operands: readonly string[], values: R
   }
   const given = (flag: string) => values[flag] !== undefined;
   if (command === "bot add" && !values["name"]) throw new Error("bot add needs --name.");
+  if (given("worker") && !String(values["worker"]).trim()) throw new Error("--worker needs a worker's name or id: see hui workers list.");
+  // A folder on a worker is never relative to where this command runs.
+  if (given("worker") && given("cwd") && !/^(?:\/|~(?:\/|$))/u.test(String(values["cwd"]).trim())) throw new Error("With --worker, --cwd is a folder on the worker: absolute or ~/….");
   if (command === "bot edit" && !BOT_FIELDS.some(given)) throw new Error(`bot edit needs at least one of ${BOT_FIELDS.map((flag) => `--${flag}`).join(", ")}.`);
   if (given("instructions") && given("instructions-file")) throw new Error("Use either --instructions or --instructions-file.");
   // `""` clears a choice: the gateway's default for the chat, the chat's own model for the memory, VoiceStudio's

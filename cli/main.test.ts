@@ -79,6 +79,14 @@ test("CLI parses bot commands, accepting bot and bots, with their operands and o
   assert.throws(() => parseCli(["bot", "show", "ada", "--shape", "heart"]), /--shape is not valid for bot show/u);
   const edit = parseCli(["bot", "edit", "@ada", "--instructions", "Be brief."]);
   assert.deepEqual([edit.command, edit.operands, edit.values.instructions], ["bot edit", ["@ada"], "Be brief."]);
+  // A bot on a worker: chosen once, at creation, with a folder there.
+  const remote = parseCli(["bot", "add", "--name", "Rover", "--worker", "devbox", "--cwd", "~/src"]);
+  assert.deepEqual([remote.values.worker, remote.values.cwd], ["devbox", "~/src"]);
+  assert.equal(parseCli(["bot", "add", "--name", "Rover", "--worker", "devbox", "--cwd", "/srv/rover"]).values.cwd, "/srv/rover");
+  assert.throws(() => parseCli(["bot", "edit", "rover", "--worker", "devbox"]), /^Error: A bot stays on the machine it was created on: --worker only applies to bot add.$/u);
+  assert.throws(() => parseCli(["bot", "add", "--name", "Rover", "--worker", " "]), /--worker needs a worker's name or id/u);
+  assert.throws(() => parseCli(["bot", "add", "--name", "Rover", "--worker", "devbox", "--cwd", "src"]), /With --worker, --cwd is a folder on the worker: absolute or ~\/…\./u);
+  assert.throws(() => parseCli(["bot", "show", "rover", "--worker", "devbox"]), /--worker is not valid for bot show/u);
   const cleared = parseCli(["bot", "edit", "ada", "--model", "", "--thinking", "", "--memory-model", ""]);
   assert.deepEqual([cleared.values.model, cleared.values.thinking, cleared.values["memory-model"]], ["", "", ""], "an empty value clears the choice");
   assert.equal(parseCli(["bot", "edit", "ada", "--utility-model", "anthropic/claude-haiku"]).values["utility-model"], "anthropic/claude-haiku");
@@ -135,7 +143,8 @@ test("HELP lists every hui bot command", () => {
     "hui bot list [--archived] [--json]",
     "hui bot show <bot> [--json]",
     "hui bot add --name <name> [--title <text>] [--instructions <text> | --instructions-file <path>] [--cwd <dir>]",
-    "hui bot edit <bot> [same flags as add] [--json]",
+    "hui bot edit <bot> [same flags as add except --worker] [--json]",
+    "[--worker <name|id>] [--model <provider/model>]",
     "hui bot remove <bot> [--json]",
     "hui bot restore <bot> [--json]",
     "hui bot delete <bot> [--json]",
