@@ -23,8 +23,10 @@ import { mkdir, realpath, rmdir, stat } from "node:fs/promises";
 import { isAbsolute, join, relative } from "node:path";
 
 import {
-  BOT_LIMITS, botKickoffName, botKickoffText, botTurnOrigin, handleFromName, previewLine,
-  type BotLastMessage, type BotMemoryStatus, type BotMessageResult, type BotPatch, type BotQuestion, type BotRecord, type BotReply, type BotView,
+  BOT_LIMITS, botKickoffName, botKickoffText, botTurnOrigin, handleFromName, isBotAccessQuestion, previewLine,
+  type BotAccessRequest, type BotCatalog, type BotSkillRef, type BotSkillSelector,
+  type BotAccess, type BotCatalogSkill, type BotCatalogTool, type BotLastMessage, type BotMemoryStatus, type BotMessageResult, type BotPatch,
+  type BotQuestion, type BotRecord, type BotReply, type BotView,
 } from "../shared/bots.ts";
 import type { CallRecord } from "../shared/calls.ts";
 import type { AutomationTask } from "../src/lib/automation-types.ts";
@@ -62,6 +64,21 @@ export type BotConversationInput = {
   model?: string;
   thinking?: string;
   memory: BotMemorySettings;
+  /** What is off from its first turn; absent: nothing. */
+  access?: BotAccess;
+};
+
+/** What the operator can turn off in a bot's chat. */
+export type BotOffer = {
+  /** In offer order: with a session following the chat here, its own offer, extension tools included; otherwise the
+   * tools every chat has. */
+  tools: Omit<BotCatalogTool, "enabled">[];
+  /** Its directory's skills, Settings' choices applied. */
+  skills: Omit<BotCatalogSkill, "enabled">[];
+  /** Never offered: its own tools and OptChat's memory. */
+  alwaysOn: { name: string; description: string }[];
+  /** A session follows the chat here. */
+  live: boolean;
 };
 
 /** The Durable side of bots' chats. */
@@ -74,6 +91,13 @@ export type BotConversations = {
   /** For a deleted bot: the conversation stops being a bot's chat and its memory is turned off and deleted, so nothing
    * reads either back. The raw conversation stays in the store, which cannot delete one. Nothing to clear is fine. */
   forget(reference: string): Promise<void>;
+  /** What the operator turned off in the chat, from its `hui.bot` document: the lists the host that runs it enforces. */
+  access(reference: string): Promise<BotAccess>;
+  /** Replaces those lists in one commit. A session following the chat is offered its tools again at once, so they apply
+   * from its next request. */
+  setAccess(reference: string, access: BotAccess): Promise<void>;
+  /** What the operator can turn off in the chat (`reference`; undefined before it exists) whose directory is `cwd`. */
+  offer(reference: string | undefined, cwd: string): Promise<BotOffer>;
   lastMessage(reference: string): Promise<BotStoredMessage | undefined>;
   /** A call's record, as one passive entry: no turn runs for it. Safe while a turn runs. */
   writeCallRecord(reference: string, record: CallRecord): Promise<void>;
@@ -231,7 +255,13 @@ export class BotService {
       if (created) await rmdir(created).catch(() => {});
     };
     let reference: string;
+    let access: BotAccess | undefined;
     try {
+      // Off from its first turn: the tools every chat has (its chat isn't running yet, so not its extensions') and the
+      // skills of its directory.
+      if (input.disabledTools || input.disabledSkills) {
+        access = resolveAccess(await this.#deps.conversations.offer(undefined, cwd), NOTHING_OFF, input);
+      }
       // Every bot has its home folder, whatever its working directory: SOUL.md lives there.
       await this.#deps.souls.prepare(id);
       if (input.soul) await this.#deps.souls.write(id, input.soul);
@@ -240,6 +270,7 @@ export class BotService {
         ...(input.model ? { model: input.model } : {}),
         ...(input.thinking ? { thinking: input.thinking } : {}),
         memory: memorySettings(input.name, input.memoryModel, input.memoryThinking),
+        ...(access ? { access } : {}),
       });
     } catch (error) {
       await undo();
@@ -276,6 +307,7 @@ export class BotService {
           ...(input.avatar ? { avatar: input.avatar } : {}),
           ...(input.voice ? { voice: input.voice } : {}),
           ...(input.hidden ? { hidden: true } : {}),
+          ...mirrored(access ?? NOTHING_OFF),
           sessionId: session.id,
           createdAt: now,
           updatedAt: now,
@@ -327,6 +359,15 @@ export class BotService {
       throw new BotConflictError(`@${bot.handle} is busy. Stop it or let it finish before moving its working directory.`);
     }
     if (patch.memoryModel) await this.#deps.conversations.checkModel(patch.memoryModel);
+    // What is off, against what its running chat offers (extension tools included); written where the chat runs, so it
+    // applies from its next request.
+    let access: BotAccess | undefined;
+    if (patch.disabledTools !== undefined || patch.disabledSkills !== undefined) {
+      await this.#open(record);
+      const current = await this.#deps.conversations.access(reference);
+      access = resolveAccess(await this.#deps.conversations.offer(reference, bot.cwd), current, patch);
+      await this.#deps.conversations.setAccess(reference, access);
+    }
     if (patch.model !== undefined || patch.thinking !== undefined) {
       await this.#open(record);
       // Cleared: what a new chat in the bot's directory would start on now.
@@ -377,10 +418,97 @@ export class BotService {
       // A handle derived from the old name follows the new one, kept unique; a handle the operator chose stays.
       const renamed = patch.handle === undefined && patch.name !== undefined && patch.name !== current.name && isDerivedHandle(current.handle, current.name);
       const handle = renamed ? uniqueHandle(handleFromName(patch.name!), new Set(bots.filter((other) => other.id !== bot.id).map((other) => other.handle))) : patch.handle;
-      const next = patched(current, { ...patch, ...(handle !== undefined ? { handle } : {}) }, cwd, now);
+      const next = withAccess(patched(current, { ...patch, ...(handle !== undefined ? { handle } : {}) }, cwd, now), access);
       return { bots: bots.map((candidate) => candidate.id === bot.id ? next : candidate), result: next };
     });
     return this.#viewOf(updated);
+  }
+
+  /**
+   * What the operator can turn off in the bot's chat and what is off (`GET /__hui/bots/:id/catalog`), from its
+   * `hui.bot` document; a roster copy that differs is repaired. Opening the chat lists its extensions' tools; an
+   * archived bot's chat, or one that can't start, gets only the tools every chat has (`live: false`). Its pending
+   * access request comes along, so the Tools tab can answer it too.
+   */
+  async catalog(target: string): Promise<BotCatalog> {
+    const bot = await this.resolve(target);
+    const record = await this.#sessionOf(bot);
+    const reference = this.#reference(bot, record);
+    if (!bot.archived) await this.#open(record).catch(() => undefined);
+    const [access, offer] = await Promise.all([this.#deps.conversations.access(reference), this.#deps.conversations.offer(reference, bot.cwd)]);
+    await this.#mirror(bot.id, access);
+    const request = this.#accessRequest(bot);
+    return {
+      tools: offer.tools.map((tool) => ({ ...tool, enabled: !access.disabledTools.includes(tool.name) })),
+      skills: offer.skills.map((skill) => ({ ...skill, enabled: !access.disabledSkills.some((ref) => sameSkill(ref, skill)) })),
+      alwaysOn: offer.alwaysOn,
+      disabledTools: access.disabledTools,
+      disabledSkills: access.disabledSkills,
+      live: offer.live,
+      ...(request ? { request } : {}),
+    };
+  }
+
+  /** The access request the bot's chat is waiting on, if any. */
+  #accessRequest(bot: BotRecord): BotAccessRequest | undefined {
+    const question = this.#sessions.snapshot(bot.sessionId).questions.find(isBotAccessQuestion);
+    return question ? { id: question.id, sessionId: bot.sessionId, title: question.title, message: "message" in question ? question.message ?? "" : "" } : undefined;
+  }
+
+  /** The bot's chat recorded new lists by itself (the operator allowed a request there): the roster follows. */
+  async accessRecorded(botId: string, access: BotAccess): Promise<void> {
+    await this.#mirror(botId, access);
+  }
+
+  /** The roster's copy of a bot's lists becomes `access` when it differs; `updatedAt` moves so every screen reads it. */
+  async #mirror(botId: string, access: BotAccess): Promise<void> {
+    const current = (await this.#registry.list()).find((bot) => bot.id === botId);
+    if (!current || sameAccess(current, access)) return;
+    const now = new Date(this.#now()).toISOString();
+    await this.#registry.update((bots) => ({
+      bots: bots.map((bot) => bot.id === botId ? withAccess({ ...bot, updatedAt: now }, access) : bot),
+      result: undefined,
+    }));
+  }
+
+  /**
+   * At the gateway's start: every bot's roster copy of its lists is checked against its chat's document, which may
+   * have changed while the roster could not follow (a grant on a host that does not report to this gateway, or an
+   * older HUI that dropped the copy). Returns how many it repaired; a bot that fails is reported and left as it was.
+   */
+  async reconcileAccess(): Promise<number> {
+    let repaired = 0;
+    const records = await this.#deps.readSessions();
+    for (const bot of await this.#registry.list()) {
+      const reference = records.find((record) => record.id === bot.sessionId)?.piSessionFile;
+      if (!reference) continue;
+      try {
+        const access = await this.#deps.conversations.access(reference);
+        if (sameAccess(bot, access)) continue;
+        await this.#mirror(bot.id, access);
+        repaired += 1;
+      } catch (error) {
+        this.#report("warning", "bot_access_reconcile_failed", `@${bot.handle}'s tools and skills could not be read from its chat`, error);
+      }
+    }
+    return repaired;
+  }
+
+  /**
+   * The gateway's own check of a bot's HUI tool call, behind the one where its chat runs: a tool the operator turned off
+   * is refused. The roster's copy decides quickly; a refusal reads the chat's document first, so a copy that fell
+   * behind a grant never refuses what the operator allowed.
+   */
+  async checkToolAllowed(callerSessionId: string, action: string): Promise<void> {
+    const bot = this.#registry.cached.find((candidate) => candidate.sessionId === callerSessionId);
+    if (!bot?.disabledTools?.includes(action)) return;
+    const reference = (await this.#deps.readSessions()).find((record) => record.id === callerSessionId)?.piSessionFile;
+    const access = reference ? await this.#deps.conversations.access(reference) : undefined;
+    if (access && !access.disabledTools.includes(action)) {
+      await this.#mirror(bot.id, access);
+      return;
+    }
+    throw new BotConflictError(`The operator turned off ${action} in this bot's chat. Ask for it with request_access if the job needs it.`);
   }
 
   /**
@@ -1001,6 +1129,73 @@ function botQuestion(question: RuntimeQuestion): BotQuestion {
     ...(question.method === "input" && question.placeholder ? { placeholder: question.placeholder } : {}),
     ...(question.method === "editor" && question.prefill ? { prefill: question.prefill } : {}),
   };
+}
+
+/** Nothing turned off: a new bot, and every bot from before the lists. */
+const NOTHING_OFF: BotAccess = { disabledTools: [], disabledSkills: [] };
+
+const sameSkill = (a: BotSkillRef, b: BotSkillRef) => a.name === b.name && a.path === b.path;
+
+/** The roster's copy of the lists, as a record stores it: only the lists that name something. */
+function mirrored(access: BotAccess): Pick<BotRecord, "disabledTools" | "disabledSkills"> {
+  return {
+    ...(access.disabledTools.length ? { disabledTools: [...access.disabledTools] } : {}),
+    ...(access.disabledSkills.length ? { disabledSkills: access.disabledSkills.map(({ name, path }) => ({ name, path })) } : {}),
+  };
+}
+
+/** The record with the roster's copy of `access`; undefined leaves it as it is. */
+function withAccess(bot: BotRecord, access: BotAccess | undefined): BotRecord {
+  if (!access) return bot;
+  const { disabledTools: _tools, disabledSkills: _skills, ...rest } = bot;
+  return { ...rest, ...mirrored(access) };
+}
+
+function sameAccess(bot: Pick<BotRecord, "disabledTools" | "disabledSkills">, access: BotAccess): boolean {
+  const tools = bot.disabledTools ?? [];
+  const skills = bot.disabledSkills ?? [];
+  return tools.length === access.disabledTools.length && tools.every((name, index) => name === access.disabledTools[index])
+    && skills.length === access.disabledSkills.length && skills.every((ref, index) => sameSkill(ref, access.disabledSkills[index]!));
+}
+
+/**
+ * The lists a create or a patch asks for, checked against what the operator can turn off: every tool one the chat is
+ * offered and every skill one of its directory's, named alone when no other skill shares its name. What is off already
+ * may stay off when it is no longer offered (an extension removed meanwhile). A bot's own tools are never turned off.
+ * A list left out stays as it is.
+ */
+export function resolveAccess(offer: BotOffer, current: BotAccess, wanted: { disabledTools?: readonly string[]; disabledSkills?: readonly BotSkillSelector[] }): BotAccess {
+  let disabledTools = current.disabledTools;
+  if (wanted.disabledTools) {
+    const own = wanted.disabledTools.filter((name) => offer.alwaysOn.some((tool) => tool.name === name));
+    if (own.length) throw new BotInputError(`${own.join(", ")} can't be turned off: ${own.length === 1 ? "it is" : "they are"} one of a bot's own tools.`);
+    const unknown = wanted.disabledTools.filter((name) => !offer.tools.some((tool) => tool.name === name) && !current.disabledTools.includes(name));
+    if (unknown.length) {
+      throw new BotInputError(`Unknown tool${unknown.length === 1 ? "" : "s"}: ${unknown.join(", ")}. Tools you can turn off: ${offer.tools.map((tool) => tool.name).join(", ")}${offer.live ? "" : ". An extension's tools can be turned off once the bot's chat runs"}.`);
+    }
+    disabledTools = [...new Set(wanted.disabledTools)];
+  }
+  let disabledSkills = current.disabledSkills;
+  if (wanted.disabledSkills) {
+    const refs: BotSkillRef[] = [];
+    for (const selector of wanted.disabledSkills) {
+      let ref: BotSkillRef | undefined;
+      if (typeof selector === "string") {
+        const named = offer.skills.filter((skill) => skill.name === selector);
+        if (named.length > 1) throw new BotInputError(`Several skills are named ${selector}: give { name, path } with one of these paths: ${named.map((skill) => skill.path).join(", ")}.`);
+        ref = named[0] ?? current.disabledSkills.find((skill) => skill.name === selector);
+      } else {
+        ref = offer.skills.find((skill) => sameSkill(skill, selector)) ?? current.disabledSkills.find((skill) => sameSkill(skill, selector));
+      }
+      if (!ref) {
+        const name = typeof selector === "string" ? selector : `${selector.name} (${selector.path})`;
+        throw new BotInputError(`Unknown skill: ${name}. Skills of its directory: ${offer.skills.length ? offer.skills.map((skill) => skill.name).join(", ") : "none"}.`);
+      }
+      if (!refs.some((each) => sameSkill(each, ref))) refs.push({ name: ref.name, path: ref.path });
+    }
+    disabledSkills = refs;
+  }
+  return { disabledTools: [...disabledTools], disabledSkills: disabledSkills.map(({ name, path }) => ({ name, path })) };
 }
 
 function patched(bot: BotRecord, patch: BotPatch, cwd: string | undefined, updatedAt: string): BotRecord {

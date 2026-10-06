@@ -21,13 +21,13 @@
  */
 import { readFileSync } from "node:fs";
 import { readFile, realpath, stat } from "node:fs/promises";
-import { resolve, sep } from "node:path";
+import { dirname, resolve, sep } from "node:path";
 import { defineTool, section, type ConversationId, type PromptSection, type ToolExecutionResult, type ToolRegistration } from "@earendil-works/pi-durable";
 import type { Skill } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { BOT_ACCESS_ANSWERS, botTurnOrigin } from "../../shared/bots.ts";
+import { BOT_ACCESS_ANSWERS, botTurnOrigin, type BotAccess, type BotCatalogSkill, type BotCatalogTool, type BotSkillRef, type BotToolGroup } from "../../shared/bots.ts";
 import { bundledSkills } from "../bundled-skills.ts";
-import { BotDoc, conversationBotState, MESSAGE_BOT_TOOL, SET_PROFILE_TOOL, WRITE_SOUL_TOOL, type BotAccess, type BotSkillRef } from "./durable-bots.ts";
+import { BotDoc, conversationBotState, MESSAGE_BOT_TOOL, SET_PROFILE_TOOL, WRITE_SOUL_TOOL } from "./durable-bots.ts";
 import { huiToolDefinitions } from "./hui-tools.ts";
 import type { QuestionDraft } from "./question-box.ts";
 import type { RuntimeQuestionResponse } from "./types.ts";
@@ -54,6 +54,16 @@ export const POWERFUL_TOOLS: ReadonlySet<string> = new Set([
   "write", "edit", "bash", "terminal", "watcher", "browser", "sessions_spawn", "sessions_send", "subagents",
 ]);
 
+/** What the catalog shows as always on: a bot's own tools and OptChat's memory tools, which every bot's chat has. */
+export const BOT_ALWAYS_ON: readonly { name: string; description: string }[] = [
+  { name: WRITE_SOUL_TOOL, description: "Rewrite its SOUL.md when you ask" },
+  { name: SET_PROFILE_TOOL, description: "Change its name or title when you ask" },
+  { name: REQUEST_ACCESS_TOOL, description: "Ask you to turn something back on, while anything is off" },
+  { name: LOAD_SKILL_TOOL, description: "Load its skills when it has neither read nor bash" },
+  { name: "zoom", description: "Open older lines of its memory" },
+  { name: "date", description: "Tell when a line of its memory was said" },
+];
+
 /** What a bot's own tools add to HUI's active-tool section; the `bot_access` section explains the rest. */
 export const BOT_ACCESS_CONTRIBUTIONS: Readonly<Record<string, { snippet: string; guidelines: readonly string[] }>> = {
   [REQUEST_ACCESS_TOOL]: { snippet: "Ask the operator to turn back on a tool or skill they turned off", guidelines: [] },
@@ -68,20 +78,9 @@ const [ALLOW, DENY] = BOT_ACCESS_ANSWERS;
 
 /* ── catalog ─────────────────────────────────────────────────────────── */
 
-/** How the Tools tab groups a tool: files, shell, HUI's own, an extension's (by source), or bots'. */
-export type BotToolGroup = "files" | "shell" | "hui" | "extension" | "bots";
-
 /** One tool of a bot's chat the operator can turn off, as the catalog and the access section describe it. */
-export type OfferedTool = {
-  name: string;
-  label: string;
-  /** One line. */
-  description: string;
-  group: BotToolGroup;
-  /** Where it comes from: `Durable` (the coding tools), `HUI`, or an extension's source label. */
-  source: string;
-  powerful: boolean;
-};
+export type OfferedTool = Omit<BotCatalogTool, "enabled">;
+export type OfferedSkill = Omit<BotCatalogSkill, "enabled">;
 
 /** Where a tool in a chat's offer comes from. */
 export type ToolOrigin =
@@ -136,6 +135,23 @@ export function describeTool(tool: { readonly name: string; readonly description
         group: "extension", source: origin.source, powerful,
       };
   }
+}
+
+/** The tools every bot's chat has, before extensions, that the operator can turn off: the coding tools, HUI's and
+ * `message_bot`. What a chat that isn't running here can be checked against. */
+export function builtinOffer(coding: readonly ToolRegistration[], hui: readonly ToolRegistration[], bots: readonly ToolRegistration[]): OfferedTool[] {
+  return [
+    ...coding.map((tool) => describeTool(tool, { kind: "coding" })),
+    ...hui.map((tool) => describeTool(tool, { kind: "hui" })),
+    ...bots.filter((tool) => !BOT_OWN_TOOLS.includes(tool.name)).map((tool) => describeTool(tool, { kind: "bot" })),
+  ];
+}
+
+/** A skill as the catalog shows it: by the name and path a bot's lists use, with where it comes from. */
+export function offeredSkill(skill: Pick<Skill, "name" | "description" | "filePath" | "baseDir">): OfferedSkill {
+  const ref = skillRef(skill);
+  const bundled = ref.path !== skill.filePath;
+  return { ...ref, description: skill.description, source: bundled ? "HUI defaults" : dirname(skill.baseDir) };
 }
 
 /** Where a tool probably comes from, by its name, for a description without a live session. */

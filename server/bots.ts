@@ -23,7 +23,10 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join } from "node:path";
 
-import { BOT_FACE_SHAPES, BOT_HANDLE, BOT_LIMITS, BOT_THINKING_LEVELS, handleFromName, isBotFaceShape, NEW_BOT_NAME, type BotAvatar, type BotAvatarPatch, type BotInput, type BotPatch, type BotRecord, type BotVoice, type BotVoicePatch } from "../shared/bots.ts";
+import {
+  BOT_FACE_SHAPES, BOT_HANDLE, BOT_LIMITS, BOT_THINKING_LEVELS, handleFromName, isBotFaceShape, NEW_BOT_NAME,
+  type BotAvatar, type BotAvatarPatch, type BotInput, type BotPatch, type BotRecord, type BotSkillRef, type BotSkillSelector, type BotVoice, type BotVoicePatch,
+} from "../shared/bots.ts";
 import { GPT_LIVE_VOICES, gptLiveVoice } from "../shared/calls.ts";
 import { VOICE_LANGUAGE_EXAMPLES, VOICE_LIMITS, voiceLanguage, voiceProfileId, voiceSpeed } from "../shared/voice.ts";
 import { CONFIG_DIR } from "./paths.ts";
@@ -60,6 +63,10 @@ const MODEL = /^[^/\s]+\/\S+$/u;
 const COLOR = /^#[0-9a-f]{6}$/u;
 const CONTROL = /\p{Cc}/u;
 const LEVELS: ReadonlySet<string> = new Set(BOT_THINKING_LEVELS);
+/** A tool's name: what PI and Durable accept, without spaces or control characters. */
+const TOOL_NAME = /^[^\s\p{Cc}]{1,100}$/u;
+/** Most tools or skills one list may name. */
+const MAX_LISTED = 500;
 const GRAPHEMES = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -96,6 +103,21 @@ function storedVoice(raw: unknown): BotVoice | undefined {
   return Object.keys(voice).length ? voice : undefined;
 }
 
+/** A stored list of tool names: the valid, distinct ones. */
+function storedTools(raw: unknown): string[] {
+  return Array.isArray(raw) ? [...new Set(raw.filter((name): name is string => typeof name === "string" && TOOL_NAME.test(name)))] : [];
+}
+
+/** A stored list of skills: the valid, distinct ones. */
+function storedSkills(raw: unknown): BotSkillRef[] {
+  const refs: BotSkillRef[] = [];
+  for (const item of Array.isArray(raw) ? raw : []) {
+    if (!isRecord(item) || typeof item["name"] !== "string" || typeof item["path"] !== "string" || !item["name"].trim() || !item["path"].trim()) continue;
+    if (!refs.some((ref) => ref.name === item["name"] && ref.path === item["path"])) refs.push({ name: item["name"], path: item["path"] });
+  }
+  return refs;
+}
+
 /**
  * A stored record, or undefined when a required field is missing or invalid.
  * Optional fields that do not validate are dropped, so a bad color never hides
@@ -126,6 +148,8 @@ export function parseBotRecord(raw: unknown): BotRecord | undefined {
   const memoryThinking = level("memoryThinking");
   const avatar = storedAvatar(raw["avatar"]);
   const voice = storedVoice(raw["voice"]);
+  const disabledTools = storedTools(raw["disabledTools"]);
+  const disabledSkills = storedSkills(raw["disabledSkills"]);
   return {
     id, handle, name,
     ...(title ? { title } : {}),
@@ -139,6 +163,8 @@ export function parseBotRecord(raw: unknown): BotRecord | undefined {
     ...(voice ? { voice } : {}),
     ...(raw["hidden"] === true ? { hidden: true } : {}),
     ...(raw["archived"] === true ? { archived: true } : {}),
+    ...(disabledTools.length ? { disabledTools } : {}),
+    ...(disabledSkills.length ? { disabledSkills } : {}),
     sessionId, createdAt, updatedAt,
   };
 }
@@ -312,6 +338,7 @@ export function findBot(bots: readonly BotRecord[], target: string): BotRecord {
 
 const INPUT_KEYS = new Set([
   "name", "handle", "title", "description", "soul", "cwd", "model", "thinking", "memoryModel", "utilityModel", "memoryThinking", "avatar", "voice", "hidden",
+  "disabledTools", "disabledSkills",
 ]);
 const LABELS: Record<string, string> = {
   name: "Bot name", handle: "Bot handle", title: "Bot title", description: "Bot description", soul: "SOUL.md",
@@ -431,6 +458,28 @@ function voiceField(raw: unknown): BotVoicePatch {
   return voice;
 }
 
+/** `disabledTools`: distinct tool names. Whether the bot's chat has them is the service's check. */
+function toolsField(raw: unknown): string[] {
+  if (!Array.isArray(raw) || raw.length > MAX_LISTED) throw new BotInputError(`disabledTools must be a list of at most ${MAX_LISTED} tool names.`);
+  const names = raw.map((name) => (typeof name === "string" ? name.trim() : ""));
+  const bad = names.find((name) => !TOOL_NAME.test(name));
+  if (bad !== undefined) throw new BotInputError(`disabledTools must name tools: ${JSON.stringify(bad)} is not a tool name.`);
+  return [...new Set(names)];
+}
+
+/** `disabledSkills`: skill names, or `{ name, path }` where a name alone is ambiguous. */
+function skillsField(raw: unknown): BotSkillSelector[] {
+  if (!Array.isArray(raw) || raw.length > MAX_LISTED) throw new BotInputError(`disabledSkills must be a list of at most ${MAX_LISTED} skills.`);
+  return raw.map((item) => {
+    if (typeof item === "string" && item.trim() && item.length <= 200 && !CONTROL.test(item)) return item.trim();
+    if (isRecord(item) && Object.keys(item).every((key) => key === "name" || key === "path")
+      && typeof item["name"] === "string" && item["name"].trim() && typeof item["path"] === "string" && item["path"].trim()) {
+      return { name: item["name"].trim(), path: item["path"].trim() };
+    }
+    throw new BotInputError("disabledSkills must name skills: a skill's name, or { name, path }.");
+  });
+}
+
 function cwdField(raw: unknown): string {
   const value = textField(raw, "cwd", 4_096, { required: true });
   if (value.includes("\0")) throw new BotInputError("Working directory must be a path.");
@@ -460,6 +509,8 @@ export function normalizeBotInput(value: unknown): BotInput {
   const voice = patch.voice ? patchedVoice(undefined, patch.voice) : undefined;
   if (voice) result.voice = voice;
   if (patch.hidden) result.hidden = true;
+  if (patch.disabledTools?.length) result.disabledTools = patch.disabledTools;
+  if (patch.disabledSkills?.length) result.disabledSkills = patch.disabledSkills;
   return result;
 }
 
@@ -491,6 +542,9 @@ export function normalizeBotPatch(value: unknown): BotPatch {
     if (typeof input["hidden"] !== "boolean") throw new BotInputError("Hidden must be a boolean.");
     patch.hidden = input["hidden"];
   }
+  // Whole lists: [] turns everything back on.
+  if ("disabledTools" in input) patch.disabledTools = toolsField(input["disabledTools"]);
+  if ("disabledSkills" in input) patch.disabledSkills = skillsField(input["disabledSkills"]);
   return patch;
 }
 

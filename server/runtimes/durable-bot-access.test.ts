@@ -498,6 +498,44 @@ test("a skill turned back on through request_access is in the next request's pro
   assert.deepEqual((await (await f.host.open()).snapshot(BotDoc, id, durableContext))?.disabledSkills, []);
 });
 
+test("the conversations port writes the lists in the creating commit, reads and replaces them, and lists what can be turned off", { timeout: 60_000 }, async (t) => {
+  const f = await fixture(t);
+  const port = durableBotConversations(f.host, fakeMemory());
+  const beta = await f.ref("beta");
+  const builtin = await port.offer(undefined, f.cwd);
+  assert.equal(builtin.live, false);
+  assert.ok(builtin.tools.some((tool) => tool.name === "bash") && builtin.tools.some((tool) => tool.name === "message_bot"));
+  assert.ok(!builtin.tools.some((tool) => tool.name === "fixture_echo"), "no chat runs yet: no extension's tools");
+  assert.ok(!builtin.tools.some((tool) => ["write_soul", "set_profile", "request_access", "load_skill"].includes(tool.name)), "a bot's own tools are never offered");
+  assert.deepEqual(builtin.alwaysOn.map((tool) => tool.name), ["write_soul", "set_profile", "request_access", "load_skill", "zoom", "date"]);
+  const bundled = builtin.skills.find((skill) => skill.name === "create-verification-skill");
+  assert.equal(bundled?.source, "HUI defaults");
+  assert.equal(bundled?.path, "hui:skill:create-verification-skill", "a bundled skill by its stable path");
+  assert.deepEqual(builtin.skills.find((skill) => skill.name === "beta"), { ...beta, description: "Beta procedures.", source: join(f.agentDir, "skills") });
+
+  const reference = await port.create({ botId: "bot-port", cwd: f.cwd, memory: { name: "Port" }, access: off(["bash"], [beta]) });
+  const id = durableConversationId(reference)!;
+  const harness = await f.host.open();
+  assert.deepEqual(await harness.snapshot(BotDoc, id, durableContext), { bot: "bot-port", disabledTools: ["bash"], disabledSkills: [beta] }, "in the creating commit");
+  assert.deepEqual(await port.access(reference), off(["bash"], [beta]));
+  const session = await startDurable({ cwd: f.cwd, sessionFile: reference, huiSessionId: "port-chat" }, f.host);
+  assert.ok(!names((await session.inspect()).tools).includes("bash"), "the first turn already goes without it");
+  const live = await port.offer(reference, f.cwd);
+  assert.equal(live.live, true);
+  assert.ok(live.tools.some((tool) => tool.name === "fixture_echo" && tool.group === "extension"), "a running chat lists its extensions' tools");
+
+  await port.setAccess(reference, off(["fixture_echo"]));
+  assert.deepEqual(await harness.snapshot(BotDoc, id, durableContext), { bot: "bot-port", disabledTools: ["fixture_echo"] }, "an empty list leaves the document");
+  const tools = names((await session.inspect()).tools);
+  assert.ok(tools.includes("bash") && !tools.includes("fixture_echo"), "the running chat is offered its tools again at once");
+  await port.setAccess(reference, NONE);
+  assert.deepEqual(await harness.snapshot(BotDoc, id, durableContext), { bot: "bot-port" });
+  await port.setAccess(reference, off(["bash"]));
+  await port.forget(reference);
+  assert.deepEqual(await harness.snapshot(BotDoc, id, durableContext), { bot: "" }, "a forgotten chat keeps no lists");
+  await assert.rejects(port.setAccess(reference, off(["bash"])), /no bot's chat/u);
+});
+
 test("a bot document from before the lists reads as nothing turned off, and an older HUI still reads one with lists", { timeout: 60_000 }, async (t) => {
   const f = await fixture(t);
   // The bot document as releases before the lists define it.

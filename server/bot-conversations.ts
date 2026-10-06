@@ -1,9 +1,10 @@
 /**
  * The Durable side of bots' chats (HUI-18): creating a bot's conversation in
  * one commit with its agent, its `hui.bot` document and OptChat; changing its
- * directory (or clearing the instructions a bot had before SOUL.md); the model
- * and thinking level a new chat would get; and reading its newest message while
- * no session has it loaded. The gateway is the store's only writer, so these
+ * directory (or clearing the instructions a bot had before SOUL.md); what the
+ * operator turned off in it and what they can turn off; the model and thinking
+ * level a new chat would get; and reading its newest message while no session
+ * has it loaded. The gateway is the store's only writer, so these
  * run in it. A bot's persona is not in its conversation: it is the SOUL.md the
  * `soul` section reads on every request.
  */
@@ -14,7 +15,8 @@ import { callMinutes, parseCallRecord } from "../shared/calls.ts";
 import type { BotMemory } from "./bot-memory.ts";
 import type { BotConversations, BotStoredMessage } from "./bot-service.ts";
 import { BotInputError, BotNotFoundError } from "./bots.ts";
-import { BotDoc, CallEntry } from "./runtimes/durable-bots.ts";
+import { BotDoc, CallEntry, conversationBotState } from "./runtimes/durable-bots.ts";
+import { BOT_ALWAYS_ON, offeredSkill } from "./runtimes/durable-bot-access.ts";
 import { ExtensionMessageEntry, isCustomInput } from "./runtimes/durable-extensions.ts";
 import { durableContext, type DurableHost } from "./runtimes/durable-host.ts";
 import { defaultThinking, durableConversationId, durableReference, initialModel, modelRef, textOf } from "./runtimes/durable.ts";
@@ -72,6 +74,9 @@ export function durableBotConversations(host: DurableHost, memory: BotMemory, op
         init: async (tx, conversationId) => {
           const doc = await tx.doc(BotDoc, conversationId);
           doc.bot = input.botId;
+          // Off from the first turn: the kickoff runs with the lists already in place.
+          if (input.access?.disabledTools.length) doc.disabledTools = [...input.access.disabledTools];
+          if (input.access?.disabledSkills.length) doc.disabledSkills = input.access.disabledSkills.map(({ name, path }) => ({ name, path }));
           await memory.enable(tx, conversationId, input.memory);
         },
       }, durableContext);
@@ -93,6 +98,39 @@ export function durableBotConversations(host: DurableHost, memory: BotMemory, op
         await memory.disable(tx, id);
       }, durableContext);
       await memory.purge(reference);
+    },
+
+    async access(reference) {
+      const found = await conversation(reference);
+      const state = await conversationBotState(await host.open(), found.id, durableContext);
+      return { disabledTools: state?.disabledTools ?? [], disabledSkills: state?.disabledSkills ?? [] };
+    },
+
+    // The document is the truth wherever the chat runs; the live view, if any, offers its tools again from it.
+    async setAccess(reference, access) {
+      const found = await conversation(reference);
+      await (await host.open()).commit(async (tx) => {
+        const doc = await tx.doc(BotDoc, found.id);
+        if (!doc.bot) throw new BotNotFoundError("This conversation is no bot's chat.");
+        if (access.disabledTools.length) doc.disabledTools = [...access.disabledTools];
+        else delete doc.disabledTools;
+        if (access.disabledSkills.length) doc.disabledSkills = access.disabledSkills.map(({ name, path }) => ({ name, path }));
+        else delete doc.disabledSkills;
+      }, durableContext);
+      await host.chatFor(found.id)?.applyTools();
+    },
+
+    async offer(reference, cwd) {
+      await host.open();
+      const id = reference === undefined ? undefined : durableConversationId(reference);
+      const chat = id === undefined ? undefined : host.chatFor(id);
+      const skills = chat ? await chat.availableSkills() : (await host.prompt.loader(cwd)).getSkills().skills;
+      return {
+        tools: chat ? [...chat.botOffer()] : host.builtinBotOffer(),
+        skills: skills.map(offeredSkill),
+        alwaysOn: [...BOT_ALWAYS_ON],
+        live: Boolean(chat),
+      };
     },
 
     async configure(reference, change) {

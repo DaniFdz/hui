@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { after, before, test } from "node:test";
-import { botKickoffName, type BotMemoryStatus, type BotsUpdate, type BotView } from "../shared/bots.ts";
+import { botKickoffName, type BotCatalog, type BotMemoryStatus, type BotQuestion, type BotsUpdate, type BotView } from "../shared/bots.ts";
 import type { BotIO } from "../cli/bots.ts";
 import type { TranscriptEntry } from "./runtimes/types.ts";
 
@@ -653,4 +653,80 @@ test("a bot created without a name is New Bot, asks what to call it, and names i
   assert.match(next, /You are @echo \(Echo\)/u);
   assert.doesNotMatch(next, /You have no name yet/u);
   await call(`/__hui/bots/${fresh.id}?permanent=1`, "DELETE");
+});
+
+/** The prompt that makes the fixture provider call these tools in one response. */
+const toolCalls = (...each: { name: string; input: Record<string, unknown> }[]) => `E2E_CALL:${Buffer.from(JSON.stringify(each)).toString("base64url")}`;
+const offered = (request: object | undefined) => (((request as { tools?: unknown } | undefined)?.tools ?? []) as Array<{ name?: string }>).map((tool) => tool.name);
+
+test("a bot's tools and skills through the routes: what is off leaves its requests, a granted tool is on the next one, the roster follows", { timeout: 120_000 }, async () => {
+  for (const [name, description] of [["tools-alpha", "Alpha procedures."], ["tools-beta", "Beta procedures."]] as const) {
+    await mkdir(join(agentDir, "skills", name), { recursive: true });
+    await writeFile(join(agentDir, "skills", name, "SKILL.md"), `---\nname: ${name}\ndescription: ${description}\n---\n\n# ${name}\n`);
+  }
+  const refused = await call("/__hui/bots", "POST", { name: "Refused", soul: "x", disabledTools: ["teleport"] });
+  assert.equal(refused.status, 400);
+  assert.match(String(refused.body["error"]), /^Unknown tool: teleport\. Tools you can turn off: read, write, edit, bash, .*message_bot\. An extension's tools can be turned off once the bot's chat runs\.$/u);
+  const created = await call("/__hui/bots", "POST", { name: "Tooly", soul: "# Who I am\nTOOLY_SOUL.", disabledTools: ["bash"], disabledSkills: ["tools-beta"] });
+  assert.equal(created.status, 201);
+  const tooly = botOf(created);
+  const betaPath = join(agentDir, "skills", "tools-beta", "SKILL.md");
+  assert.deepEqual([tooly.disabledTools, tooly.disabledSkills], [["bash"], [{ name: "tools-beta", path: betaPath }]]);
+
+  const catalog = (await call(`/__hui/bots/${tooly.id}/catalog`)).body as unknown as BotCatalog;
+  assert.equal(catalog.live, true, "reading the catalog opens the chat, so its extensions' tools are listed");
+  assert.deepEqual(catalog.tools.filter((tool) => !tool.enabled).map((tool) => tool.name), ["bash"]);
+  assert.equal(catalog.tools.find((tool) => tool.name === "bash")?.powerful, true);
+  assert.deepEqual(catalog.skills.filter((skill) => skill.name.startsWith("tools-")).map((skill) => [skill.name, skill.enabled]), [["tools-alpha", true], ["tools-beta", false]]);
+  assert.ok(!catalog.tools.some((tool) => ["write_soul", "set_profile", "request_access"].includes(tool.name)), "a bot's own tools are never offered");
+  assert.equal((await call(`/__hui/bots/${tooly.id}/catalog`, "POST", {})).status, 405);
+  assert.equal((await call("/__hui/bots/nobody/catalog")).status, 404);
+
+  // Its requests go without what is off.
+  await call("/__hui/bots/tooly/messages", "POST", { text: "TOOLY_FIRST hello", wait: true, timeoutSeconds: 60 });
+  const first = (await chatRequests()).findLast((request) => JSON.stringify(request.messages).includes("TOOLY_FIRST"));
+  assert.ok(first);
+  assert.ok(!offered(first).includes("bash") && offered(first).includes("read") && offered(first).includes("request_access"));
+  const system = JSON.stringify(first.system);
+  assert.match(system, /<name>tools-alpha<\/name>/u);
+  assert.doesNotMatch(system, /<name>tools-beta<\/name>/u, "a skill that is off is not in the prompt");
+  assert.match(system, /<bot_access>\\nThe operator turned off some of your tools and skills in this chat:\\nTools:\\n- bash: Run shell commands \(powerful\)\\nSkills:\\n- tools-beta: Beta procedures\./u);
+
+  // It asks; only the operator answers, here through the session question route the chat uses.
+  const asked = await call("/__hui/bots/tooly/messages", "POST", { text: toolCalls({ name: "request_access", input: { tools: ["bash"], reason: "To run the checks." } }), wait: true, timeoutSeconds: 60 });
+  assert.equal(asked.body["status"], "needs-input");
+  const [question] = asked.body["questions"] as BotQuestion[];
+  assert.deepEqual({ ...question, id: undefined }, { id: undefined, method: "select", title: "Allow access to bash (powerful)?", message: "To run the checks.", options: ["Allow", "Deny"] });
+  const pending = (await call(`/__hui/bots/${tooly.id}/catalog`)).body as unknown as BotCatalog;
+  assert.deepEqual(pending.request, { id: question!.id, sessionId: tooly.sessionId, title: "Allow access to bash (powerful)?", message: "To run the checks." });
+  assert.equal(botOf(await call("/__hui/bots/tooly")).status, "waiting");
+  assert.equal((await call(`/__hui/sessions/${tooly.sessionId}/question`, "POST", { id: question!.id, value: "Allow" })).status, 200);
+  await settledWith(tooly.sessionId, says("assistant", "you now have bash, from your next step"));
+  const after = (await chatRequests()).at(-1);
+  assert.ok(offered(after).includes("bash"), "the request after the answer offers it");
+  assert.ok(offered(after).includes("request_access"), "a skill is still off, so it can still ask");
+  const view = botOf(await call("/__hui/bots/tooly"));
+  assert.equal("disabledTools" in view, false, "the roster followed the grant");
+  assert.deepEqual(view.disabledSkills, [{ name: "tools-beta", path: betaPath }]);
+  const stored = JSON.parse(await readFile(join(dir, "config", "hui", "bots.json"), "utf8")) as { bots: Array<{ id: string; disabledTools?: string[] }> };
+  assert.equal(stored.bots.find((bot) => bot.id === tooly.id)?.disabledTools, undefined, "and so did bots.json");
+
+  // The operator turns a tool off again, and back on; each applies from the next request.
+  const patched = await call("/__hui/bots/tooly", "PATCH", { disabledTools: ["sessions_spawn"], disabledSkills: [] });
+  assert.equal(patched.status, 200);
+  assert.deepEqual([botOf(patched).disabledTools, "disabledSkills" in botOf(patched)], [["sessions_spawn"], false]);
+  await call("/__hui/bots/tooly/messages", "POST", { text: "TOOLY_AFTER_PATCH", wait: true, timeoutSeconds: 60 });
+  const later = (await chatRequests()).findLast((request) => JSON.stringify(request.messages).includes("TOOLY_AFTER_PATCH"));
+  assert.ok(!offered(later).includes("sessions_spawn") && offered(later).includes("bash"));
+  assert.match(JSON.stringify(later?.system), /<name>tools-beta<\/name>/u, "the skill is back");
+  for (const [body, pattern] of [
+    [{ disabledTools: ["write_soul"] }, /write_soul can't be turned off/u],
+    [{ disabledTools: ["nope"] }, /^Unknown tool: nope\. Tools you can turn off: /u],
+    [{ disabledSkills: ["tools-gamma"] }, /^Unknown skill: tools-gamma\./u],
+  ] as const) {
+    const rejected = await call("/__hui/bots/tooly", "PATCH", body);
+    assert.equal(rejected.status, 400, JSON.stringify(body));
+    assert.match(String(rejected.body["error"]), pattern);
+  }
+  await call(`/__hui/bots/${tooly.id}?permanent=1`, "DELETE");
 });

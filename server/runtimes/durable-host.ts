@@ -29,7 +29,7 @@ import { huiDurableTools, type DurableToolInvoker } from "./durable-tools.ts";
 import type { Contribution, DurableExtensions, ExtensionHost } from "./durable-extensions.ts";
 import { OptChatManager, type OptChatTuning } from "./durable-optchat.ts";
 import { conversationBot, conversationBotState, huiBotsExtensions, type BotAccess, type BotSoulHost, type BotState } from "./durable-bots.ts";
-import { botAccessParts, botMayCall, type BotChat } from "./durable-bot-access.ts";
+import { botAccessParts, botMayCall, builtinOffer, type BotChat, type OfferedTool } from "./durable-bot-access.ts";
 import { invokeAgentTool } from "../agent-tools-bridge.ts";
 
 /** Durable APIs take a cancellation context; HUI's own calls are not scoped. */
@@ -308,6 +308,12 @@ export class DurableHost implements ExtensionHost {
   /** A live session answers for its conversation while it is open. */
   trackChat(chat: BotChat & { conversation(): Conversation }): void { this.#chats.add(chat); }
   untrackChat(chat: BotChat & { conversation(): Conversation }): void { this.#chats.delete(chat); }
+
+  /** The tools every bot's chat has before extensions that the operator can turn off: what a chat that isn't running
+   * here is checked against. */
+  builtinBotOffer(): OfferedTool[] {
+    return builtinOffer(this.codingTools, this.huiTools, this.botTools);
+  }
 
   /** The live session following the conversation now; a rewind moves a session to its fork. */
   chatFor(conversationId: ConversationId): BotChat | undefined {

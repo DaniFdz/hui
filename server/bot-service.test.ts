@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test, type TestContext } from "node:test";
 
-import { BOT_KICKOFF_MARKER, botKickoffName, type BotMemoryStatus } from "../shared/bots.ts";
+import { BOT_KICKOFF_MARKER, botKickoffName, type BotAccess, type BotMemoryStatus } from "../shared/bots.ts";
 import type { CallRecord } from "../shared/calls.ts";
 import type { AutomationTask } from "../src/lib/automation-types.ts";
 import { DEFAULT_SETTINGS } from "../src/lib/settings.ts";
@@ -21,6 +21,7 @@ const { BotMemoryUnavailableError } = await import("./bot-memory.ts");
 const { localBotSouls } = await import("./bot-souls.ts");
 type SessionRecord = import("./sessions.ts").SessionRecord;
 type BotConversationInput = import("./bot-service.ts").BotConversationInput;
+type BotOffer = import("./bot-service.ts").BotOffer;
 
 /** A Durable-like chat runtime driven by the test: it records prompts and settles when told. */
 class FakeChat implements RuntimeSession {
@@ -141,7 +142,9 @@ async function harness(t: TestContext, options: { messagesPerHour?: number; memo
     async create(input: BotConversationInput) {
       if (this.failCreate) throw this.failCreate;
       this.created.push(input);
-      return `durable:${this.next++}`;
+      const reference = `durable:${this.next++}`;
+      if (input.access) this.lists.set(reference, structuredClone(input.access));
+      return reference;
     },
     async configure(reference: string, change: unknown) { this.configured.push([reference, change]); },
     /** Conversations a deleted bot left: no longer a bot's chat, memory off and deleted. */
@@ -159,6 +162,31 @@ async function harness(t: TestContext, options: { messagesPerHour?: number; memo
     defaults: [] as string[][],
     async defaultModel(cwd: string) { this.defaults.push([cwd]); return "fixture/default"; },
     async defaultThinking(cwd: string, model: string | undefined) { this.defaults.push([cwd, String(model)]); return model === "fixture/default" ? "low" : "minimal"; },
+    /** Each chat's hui.bot lists, by reference; absent: nothing off. */
+    lists: new Map<string, BotAccess>(),
+    /** Whether a session follows the chats: their offer then includes an extension's tool. */
+    live: true,
+    offers: [] as Array<[string | undefined, string]>,
+    async access(reference: string) {
+      const lists = this.lists.get(reference);
+      return { disabledTools: [...lists?.disabledTools ?? []], disabledSkills: [...lists?.disabledSkills ?? []] };
+    },
+    async setAccess(reference: string, access: BotAccess) { this.lists.set(reference, structuredClone(access)); },
+    async offer(reference: string | undefined, cwd: string): Promise<BotOffer> {
+      this.offers.push([reference, cwd]);
+      const live = reference !== undefined && this.live;
+      const tool = (name: string, group: BotOffer["tools"][number]["group"], powerful = false) => ({ name, label: name, description: `the ${name} tool`, group, source: group === "extension" ? "user · fixture.js" : "HUI", powerful });
+      return {
+        tools: [tool("read", "files"), tool("write", "files", true), tool("bash", "shell", true), tool("sessions_spawn", "hui", true), tool("message_bot", "bots"), ...(live ? [tool("fixture_echo", "extension")] : [])],
+        skills: [
+          { name: "alpha", path: "/skills/alpha/SKILL.md", description: "Alpha.", source: "/skills" },
+          { name: "beta", path: "/skills/beta/SKILL.md", description: "Beta.", source: "/skills" },
+          { name: "beta", path: `${cwd}/.pi/skills/beta/SKILL.md`, description: "Project beta.", source: `${cwd}/.pi/skills` },
+        ],
+        alwaysOn: ["write_soul", "set_profile", "request_access", "load_skill", "zoom", "date"].map((name) => ({ name, description: name })),
+        live,
+      };
+    },
   };
   const memoryCalls: Array<[string, ...unknown[]]> = [];
   // A memory the gateway cannot read (no OptChat for the chat) answers nothing and refuses every read.
@@ -550,6 +578,104 @@ test("set_profile changes the calling bot's own name and title under PATCH's rul
   assert.equal((await h.service.setProfile(caller, { name: "Echo Two" })).handle, "echo-two");
   await h.service.archive("echo-two");
   await assert.rejects(h.service.setProfile(caller, { name: "Late" }), BotConflictError);
+});
+
+test("a bot has every tool and skill until the operator turns some off: lists are checked against its offer, written to its chat and mirrored", async (t) => {
+  const h = await harness(t);
+  const plain = await h.service.create({ soul: SOUL, name: "Plain" });
+  assert.equal("disabledTools" in plain || "disabledSkills" in plain, false, "nothing off: a new bot has every tool and skill");
+  assert.equal(h.conversations.created[0]!.access, undefined);
+
+  // At creation: the tools every chat has (its chat doesn't run yet, so no extension's) and its directory's skills.
+  const alpha = { name: "alpha", path: "/skills/alpha/SKILL.md" };
+  const made = await h.service.create({ soul: SOUL, name: "Made", disabledTools: ["bash", "write", "bash"], disabledSkills: ["alpha"] });
+  assert.deepEqual(h.conversations.created[1]!.access, { disabledTools: ["bash", "write"], disabledSkills: [alpha] }, "in the conversation's creating commit");
+  assert.deepEqual([made.disabledTools, made.disabledSkills], [["bash", "write"], [alpha]], "and the roster's copy");
+  assert.deepEqual(h.conversations.offers.at(-1), [undefined, made.cwd]);
+  for (const [body, pattern] of [
+    [{ disabledTools: ["fixture_echo"] }, /^Unknown tool: fixture_echo\. Tools you can turn off: read, write, bash, sessions_spawn, message_bot\. An extension's tools can be turned off once the bot's chat runs\.$/u],
+    [{ disabledTools: ["write_soul", "zoom"] }, /^write_soul, zoom can't be turned off: they are one of a bot's own tools\.$/u],
+    [{ disabledSkills: ["beta"] }, /^Several skills are named beta: give \{ name, path \} with one of these paths: \/skills\/beta\/SKILL\.md, /u],
+    [{ disabledSkills: ["gamma"] }, /^Unknown skill: gamma\. Skills of its directory: alpha, beta, beta\.$/u],
+    [{ disabledSkills: [{ name: "alpha", path: "/elsewhere/SKILL.md" }] }, /^Unknown skill: alpha \(\/elsewhere\/SKILL\.md\)/u],
+    [{ disabledTools: "bash" }, /disabledTools must be a list/u],
+    [{ disabledTools: ["two words"] }, /"two words" is not a tool name/u],
+    [{ disabledSkills: [{ name: "alpha" }] }, /disabledSkills must name skills/u],
+  ] as const) {
+    await assert.rejects(h.service.create({ soul: SOUL, name: "Refused", ...body }), (error: unknown) => error instanceof BotInputError && pattern.test(error.message), JSON.stringify(body));
+  }
+  assert.equal((await h.service.list()).length, 2, "a refused list creates nothing");
+
+  // Later: against its running chat's offer, an extension's tools included; written to its chat, then the roster.
+  const projectBeta = { name: "beta", path: `${plain.cwd}/.pi/skills/beta/SKILL.md` };
+  let view = await h.service.update("plain", { disabledTools: ["fixture_echo", "bash"], disabledSkills: [projectBeta] });
+  assert.deepEqual(h.conversations.lists.get("durable:1"), { disabledTools: ["fixture_echo", "bash"], disabledSkills: [projectBeta] });
+  assert.deepEqual([view.disabledTools, view.disabledSkills], [["fixture_echo", "bash"], [projectBeta]]);
+  // A list left out stays as it is; [] turns everything back on.
+  view = await h.service.update("plain", { disabledSkills: [] });
+  assert.deepEqual([view.disabledTools, "disabledSkills" in view], [["fixture_echo", "bash"], false]);
+  // What is off already may stay off once it isn't offered (the extension went away); nothing new can be named.
+  h.conversations.live = false;
+  view = await h.service.update("plain", { disabledTools: ["fixture_echo"] });
+  assert.deepEqual(view.disabledTools, ["fixture_echo"]);
+  await assert.rejects(h.service.update("plain", { disabledTools: ["fixture_other"] }), /Unknown tool: fixture_other/u);
+  view = await h.service.update("plain", { disabledTools: [] });
+  assert.equal("disabledTools" in view, false);
+  assert.deepEqual(h.conversations.lists.get("durable:1"), { disabledTools: [], disabledSkills: [] });
+  await h.service.archive("plain");
+  await assert.rejects(h.service.update("plain", { disabledTools: ["bash"] }), BotConflictError);
+});
+
+test("a bot's catalog lists what can be turned off and what is, its pending access request, and repairs the roster's copy", async (t) => {
+  const h = await harness(t);
+  const bot = await h.service.create({ soul: SOUL, name: "Cat", disabledTools: ["bash"] });
+  let catalog = await h.service.catalog("cat");
+  assert.deepEqual(catalog.tools.map((tool) => [tool.name, tool.enabled]), [["read", true], ["write", true], ["bash", false], ["sessions_spawn", true], ["message_bot", true], ["fixture_echo", true]]);
+  assert.deepEqual(catalog.skills.map((skill) => [skill.name, skill.enabled]), [["alpha", true], ["beta", true], ["beta", true]]);
+  assert.deepEqual([catalog.disabledTools, catalog.disabledSkills, catalog.live, catalog.request], [["bash"], [], true, undefined]);
+  assert.deepEqual(catalog.alwaysOn.map((tool) => tool.name), ["write_soul", "set_profile", "request_access", "load_skill", "zoom", "date"]);
+
+  // The bot asks in its chat: the catalog carries the request, which the Tools tab answers like the chat does.
+  const chat = await h.chat(bot.sessionId);
+  chat.ask({ id: "q-1", method: "select", title: "Pick a colour", options: ["red", "blue"] });
+  chat.ask({ id: "q-2", method: "select", title: "Allow access to bash (powerful)?", message: "To run the checks.", options: ["Allow", "Deny"] });
+  catalog = await h.service.catalog("cat");
+  assert.deepEqual(catalog.request, { id: "q-2", sessionId: bot.sessionId, title: "Allow access to bash (powerful)?", message: "To run the checks." });
+
+  // The chat's document is the truth: a grant there (or anything the roster missed) is copied back.
+  h.conversations.lists.set("durable:1", { disabledTools: [], disabledSkills: [{ name: "alpha", path: "/skills/alpha/SKILL.md" }] });
+  h.advance(1_000);
+  catalog = await h.service.catalog("cat");
+  let view = await h.service.get("cat");
+  assert.deepEqual([catalog.disabledTools, "disabledTools" in view, view.disabledSkills], [[], false, [{ name: "alpha", path: "/skills/alpha/SKILL.md" }]]);
+  assert.notEqual(view.updatedAt, bot.updatedAt, "every screen reads it again");
+  await h.service.accessRecorded(bot.id, { disabledTools: ["read"], disabledSkills: [] });
+  view = await h.service.get("cat");
+  assert.deepEqual([view.disabledTools, "disabledSkills" in view], [["read"], false]);
+
+  // At the gateway's start: copies that fell behind are repaired, once.
+  h.conversations.lists.set("durable:1", { disabledTools: ["write"], disabledSkills: [] });
+  assert.equal(await h.service.reconcileAccess(), 1);
+  assert.deepEqual((await h.service.get("cat")).disabledTools, ["write"]);
+  assert.equal(await h.service.reconcileAccess(), 0);
+
+  // An archived bot's lists can still be read; they change once it is restored.
+  await h.service.archive("cat");
+  assert.deepEqual((await h.service.catalog("cat")).disabledTools, ["write"]);
+});
+
+test("HUI's own check refuses a bot's call to a tool the operator turned off, and never refuses what a grant turned back on", async (t) => {
+  const h = await harness(t);
+  const bot = await h.service.create({ soul: SOUL, name: "Gate", disabledTools: ["sessions_spawn"] });
+  await h.service.list();
+  await assert.rejects(h.service.checkToolAllowed(bot.sessionId, "sessions_spawn"),
+    (error: unknown) => error instanceof BotConflictError && /^The operator turned off sessions_spawn in this bot's chat\. Ask for it with request_access/u.test(error.message));
+  await h.service.checkToolAllowed(bot.sessionId, "sessions_list");
+  await h.service.checkToolAllowed("not-a-bot", "sessions_spawn");
+  // The roster's copy fell behind a grant made where the chat runs: the document decides, and the copy follows.
+  h.conversations.lists.set("durable:1", { disabledTools: [], disabledSkills: [] });
+  await h.service.checkToolAllowed(bot.sessionId, "sessions_spawn");
+  assert.equal("disabledTools" in await h.service.get("gate"), false);
 });
 
 test("archiving and restoring keep SOUL.md; a bot's soul is read, replaced atomically and removed by an empty one", async (t) => {
