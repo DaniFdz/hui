@@ -218,8 +218,14 @@ export function huiBotsExtensions(options: BotsExtensionOptions): { section: Ext
         const souls = options.souls();
         if (!souls) throw new Error("This host cannot keep a SOUL.md yet.");
         const soul = soulToolText(args.soul);
-        await writeSoulFile(join(souls.home(bot), BOT_SOUL_FILE), soul);
-        return { content: [{ type: "text", text: `Saved your SOUL.md (${soul.length.toLocaleString("en-US")} characters); it applies from your next request. Tell the operator what you wrote or changed.` }] };
+        const file = join(souls.home(bot), BOT_SOUL_FILE);
+        // The first save ends the first conversation: the result says what the reply owes the operator, where models follow it best.
+        const first = (await readSoulFile(file)) === undefined;
+        await writeSoulFile(file, soul);
+        const saved = `Saved your SOUL.md (${soul.length.toLocaleString("en-US")} characters); it applies from your next request.`;
+        return { content: [{ type: "text", text: first
+          ? `${saved} This ends your first conversation: now tell the operator you saved your SOUL.md, sum it up in a few lines, and end by telling them how to change it later: in the Soul tab of your panel in HUI, or by just telling you.`
+          : `${saved} Tell the operator what you changed.` }] };
       } catch (error) {
         if (context.abortSignal?.aborted) throw error;
         return { content: [{ type: "text", text: error instanceof Error ? error.message : String(error) }], isError: true };
