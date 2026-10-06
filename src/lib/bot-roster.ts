@@ -40,8 +40,8 @@ export function tabAfterKey<Tab extends string>(tabs: readonly Tab[], current: T
 
 /* ── side panel ───────────────────────────────────────────────────────────── */
 
-export type BotPanelTab = "routines" | "memory";
-export const BOT_PANEL_TABS: readonly BotPanelTab[] = ["routines", "memory"];
+export type BotPanelTab = "routines" | "memory" | "soul";
+export const BOT_PANEL_TABS: readonly BotPanelTab[] = ["routines", "memory", "soul"];
 export type BotPanelState = { open: boolean; tab: BotPanelTab };
 export const BOT_PANEL_KEY = "hui.bot-panel";
 export const DEFAULT_BOT_PANEL: Readonly<BotPanelState> = { open: true, tab: "routines" };
@@ -50,7 +50,7 @@ export function normalizeBotPanel(value: unknown): BotPanelState {
   const raw = value && typeof value === "object" ? value as Record<string, unknown> : {};
   return {
     open: raw["open"] !== false,
-    tab: raw["tab"] === "memory" ? "memory" : "routines",
+    tab: BOT_PANEL_TABS.find((tab) => tab === raw["tab"]) ?? "routines",
   };
 }
 
