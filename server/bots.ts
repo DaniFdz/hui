@@ -19,7 +19,7 @@ import { dirname, isAbsolute, join } from "node:path";
 
 import { BOT_FACE_SHAPES, BOT_HANDLE, BOT_LIMITS, BOT_THINKING_LEVELS, isBotFaceShape, type BotAvatar, type BotAvatarPatch, type BotInput, type BotPatch, type BotRecord, type BotVoice, type BotVoicePatch } from "../shared/bots.ts";
 import { GPT_LIVE_VOICES, gptLiveVoice } from "../shared/calls.ts";
-import { VOICE_LANGUAGE_EXAMPLES, VOICE_LIMITS, voiceLanguage, voiceProfileId, voiceSpeed } from "../shared/voice.ts";
+import { VOICE_LANGUAGE_EXAMPLES, voiceLanguage } from "../shared/voice.ts";
 import { CONFIG_DIR } from "./paths.ts";
 
 export const BOTS_FILE = join(CONFIG_DIR, "bots.json");
@@ -80,13 +80,13 @@ function storedAvatar(raw: unknown): BotAvatar | undefined {
   return Object.keys(avatar).length ? avatar : undefined;
 }
 
+/** The language and GPT-Live voice of a stored voice. A record written while HUI still had VoiceStudio may also carry
+ * its voice `profile` and `speed`: they are not read, so the next write leaves them out. */
 function storedVoice(raw: unknown): BotVoice | undefined {
   if (!isRecord(raw)) return undefined;
-  const profile = voiceProfileId(raw["profile"]);
-  const speed = voiceSpeed(raw["speed"]);
   const language = voiceLanguage(raw["language"]);
   const live = gptLiveVoice(raw["live"]);
-  const voice = { ...(profile ? { profile } : {}), ...(speed !== undefined ? { speed } : {}), ...(language ? { language } : {}), ...(live ? { live } : {}) };
+  const voice = { ...(language ? { language } : {}), ...(live ? { live } : {}) };
   return Object.keys(voice).length ? voice : undefined;
 }
 
@@ -335,25 +335,14 @@ function avatarField(raw: unknown): BotAvatarPatch {
   return avatar;
 }
 
-/** `{ profile?, speed?, language?, live? }`; `profile: ""`, `speed: null`, `language: ""` and `live: ""` clear a key (kept so a
- * patch can tell). */
+/** `{ language?, live? }`; `language: ""` and `live: ""` clear a key (kept so a patch can tell). */
 function voiceField(raw: unknown): BotVoicePatch {
-  if (!isRecord(raw)) throw new BotInputError("Voice must be an object with profile, speed, language and/or live.");
-  const unknown = Object.keys(raw).filter((key) => key !== "profile" && key !== "speed" && key !== "language" && key !== "live");
+  if (!isRecord(raw)) throw new BotInputError("Voice must be an object with language and/or live.");
+  const unknown = Object.keys(raw).filter((key) => key !== "language" && key !== "live");
   if (unknown.length) throw new BotInputError(`Unknown voice field: ${unknown.join(", ")}.`);
   const voice: BotVoicePatch = {};
-  if ("profile" in raw) {
-    const profile = raw["profile"] === "" ? "" : voiceProfileId(raw["profile"]);
-    if (profile === undefined) throw new BotInputError(`Voice profile must be a VoiceStudio voice id of at most ${VOICE_LIMITS.profile} characters.`);
-    voice.profile = profile;
-  }
-  if ("speed" in raw) {
-    const speed = raw["speed"] === null ? null : voiceSpeed(raw["speed"]);
-    if (speed === undefined) throw new BotInputError(`Voice speed must be a number from ${VOICE_LIMITS.speedMin} to ${VOICE_LIMITS.speedMax}.`);
-    voice.speed = speed;
-  }
   if ("language" in raw) {
-    // One of Whisper's codes: what VoiceStudio listens for and speaks in. "" goes back to Auto (detection).
+    // One of Whisper's codes: the language the bot speaks on calls. "" goes back to Auto (the language the user speaks).
     const language = raw["language"] === "" ? "" : voiceLanguage(raw["language"]);
     if (language === undefined) throw new BotInputError(`Voice language must be one of Whisper's language codes, such as ${VOICE_LANGUAGE_EXAMPLES}, or "" for Auto.`);
     voice.language = language;
@@ -428,17 +417,12 @@ export function normalizeBotPatch(value: unknown): BotPatch {
   return patch;
 }
 
-/** The voice after a patch: given keys replace, `profile: ""`, `speed: null`, `language: ""` and `live: ""` clear one, `null`
- * clears all. */
+/** The voice after a patch: given keys replace, `language: ""` and `live: ""` clear one, `null` clears both. */
 export function patchedVoice(current: BotVoice | undefined, patch: BotVoicePatch | null): BotVoice | undefined {
   if (patch === null) return undefined;
-  const profile = patch.profile !== undefined ? patch.profile : current?.profile;
-  const speed = patch.speed !== undefined ? patch.speed : current?.speed;
   const language = patch.language !== undefined ? patch.language : current?.language;
   const live = patch.live !== undefined ? patch.live : current?.live;
-  const voice: BotVoice = {
-    ...(profile ? { profile } : {}), ...(typeof speed === "number" ? { speed } : {}), ...(language ? { language } : {}), ...(live ? { live } : {}),
-  };
+  const voice: BotVoice = { ...(language ? { language } : {}), ...(live ? { live } : {}) };
   return Object.keys(voice).length ? voice : undefined;
 }
 

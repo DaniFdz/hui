@@ -687,8 +687,8 @@ is kept in an append-only log, a cheap model compresses it into a tree of
 one-line summaries, and every turn starts fresh from a fixed-size view of the
 whole chat. `hui bot` can do everything the Bots tab can, through the same
 routes. Routines are Automation tasks aimed at a bot's chat; bots message each
-other; they listen and speak through VoiceStudio. Bots run on the local gateway
-only for now. It lands as stacked pull requests:
+other; you can call them, through GPT-Live. Bots run on the local gateway only
+for now. It lands as stacked pull requests:
 
 1. **OptChat memory for Pi Durable conversations** — done 2026-10-05. The engine
    (`server/optchat/`) and its Durable integration
@@ -754,30 +754,18 @@ only for now. It lands as stacked pull requests:
    memory live in the panel with *Summarizing memory…*, zoom to a message, the
    memory page, Gateway default, hide, archive, Show archived and Restore, lists
    without the bot chat, desktop, mobile and landscape).
-4. **Voice through VoiceStudio** (implemented 2026-10-05; live VoiceStudio not
-   verified, only a deterministic fake): the gateway-owned connection
-   (`voicestudio.json`, write-only key, discovery and model list checked before
-   saving, same-origin redirects only) and `/__hui/voice` routes that relay
-   transcriptions and stream speech without storing audio; `BotRecord.voice`
-   with its profile, speed and language (one of Whisper's codes, sent to
-   VoiceStudio's transcriptions and speech, none for Auto; `PATCH` key by key,
-   `hui bot add|edit --voice --voice-speed --language`; the picker leaves
-   VoiceStudio's OpenAI aliases out); Settings → Integrations → VoiceStudio;
-   in bot chats the composer's voice notes, Read
-   aloud on replies and Calls (browser voice-activity detection, `[voice] `
-   messages into the forever chat, replies spoken sentence by sentence,
-   barge-in, mute, minimize, hang up). Durable now streams text it sends whole,
-   so a short reply is spoken too. Every call turn is a full bot turn; a faster
-   voice front model is a later follow-up. Proof: `server/voice.test.ts`,
-   `server/voice-routes.test.ts`, `server/bot-routes.test.ts`,
-   `server/bots.test.ts`, `server/runtimes/durable.test.ts`,
-   `src/lib/voice*.test.ts`, `src/lib/bots.test.ts`, `cli/*.test.ts` (against
-   `e2e/voicestudio-fixture.mjs`) and the Browser-tool journey
-   `e2e/bots-voice.browser.md` (fake microphone in headless Brave).
+4. **Voice through VoiceStudio** — dropped on 2026-10-06 before it merged: the
+   owner removed VoiceStudio, so calls run on GPT-Live only (item 5) and voice
+   notes, Read aloud and VoiceStudio voices are gone. The call screen it built
+   (the call view, its minimized bar and the app's one call) moved to item 5,
+   with Durable streaming the text it sends whole to the live view.
 5. **Calls with GPT-Live** (implemented 2026-10-06; tested with real calls
-   through a ChatGPT login): Settings → Models → Calls (Conversation model:
-   GPT-Live or VoiceStudio, default voice, the ChatGPT login calls use) and a
-   per-bot call voice (`voice.live`, `--call-voice`). The gateway's broker
+   through a ChatGPT login): the bot header's Call, offered with a ChatGPT
+   login; the call view (the bot's face listening and speaking, a timer,
+   captions, Mute, Speaker, Hang up) and its minimized bar; Settings → Models →
+   Calls (the default voice, the ChatGPT login calls use) and a per-bot call
+   voice and language (`voice.live` and `voice.language`, `--call-voice` and
+   `--language`). The gateway's broker
    (`server/calls.ts`, `server/call-routes.ts`) sets each WebRTC call up over
    the ChatGPT login without the browser seeing a token, picking accounts as
    model turns do. The browser's `LiveCall` (`src/lib/live-call.ts`) carries
@@ -786,10 +774,14 @@ only for now. It lands as stacked pull requests:
    real work to the chat as `[call task]` messages, whose replies are spoken
    while the call lasts. Each call ends as one card with a summary and the whole
    transcript, which the bot's memory keeps. The bot's Memory model became its
-   Utility model, defaulting to Settings' utility model. Proof:
-   `server/call*.test.ts`, `server/calls.test.ts`, `server/bot-service.test.ts`,
-   `server/runtimes/durable-optchat.test.ts`, `src/lib/live-call.test.ts` and a
-   real call run (both calls of the e2e in the pull request).
+   Utility model, defaulting to Settings' utility model. Settings and `bots.json`
+   saved while VoiceStudio was there keep loading, and the next write leaves its
+   fields out. Proof: `server/call*.test.ts`, `server/calls.test.ts`,
+   `server/bot-service.test.ts`, `server/bot-routes.test.ts`, `server/bots.test.ts`,
+   `server/runtimes/durable-optchat.test.ts`, `server/runtimes/durable.test.ts`,
+   `src/lib/live-call.test.ts`, `src/lib/voice*.test.ts`, `src/lib/settings.test.ts`,
+   `src/lib/bots.test.ts`, `src/views/bots.test.ts`, `src/views/settings-calls.test.ts`,
+   `cli/*.test.ts` and a real call run (both calls of the e2e in the pull request).
 
 ## Recommended implementation order
 

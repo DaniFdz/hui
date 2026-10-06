@@ -10,9 +10,8 @@ import type { LiveCallPlatform, LiveConnection, LiveMicrophone } from "./live-ca
 import { subscribeSession } from "./sessions-store.ts";
 import { CLIENT_HEADERS, fetchJson } from "./settings-store.ts";
 import { trackedFetch } from "./ui-errors.ts";
-import { microphoneContext } from "./voice-audio.ts";
 import { frameLevel } from "./voice-level.ts";
-import { microphoneErrorMessage } from "./voice.ts";
+import { microphoneContext, microphoneErrorMessage } from "./voice.ts";
 
 const JSON_HEADERS = { "content-type": "application/json" } as const;
 const callsUrl = (botId: string, callId?: string, action?: string) =>

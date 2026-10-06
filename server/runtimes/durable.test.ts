@@ -184,7 +184,7 @@ test("the live view streams an answer Durable sends whole, exactly once", { time
   const settled = nextEvent(session, (event) => event.type === "settled");
   await session.prompt("hello there");
   await settled;
-  // The fixture's short reply reaches Durable's stream as one partial; a call speaks from these events.
+  // The fixture's short reply reaches Durable's stream as one partial; the live view shows it from these events.
   assert.equal(streamed.join(""), "Fixture response.");
   await transcriptWhere(session, answered("Fixture response."));
 });

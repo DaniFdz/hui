@@ -1,15 +1,13 @@
 /**
- * Talking to bots (HUI-18), rendering only: the composer's voice-note controls,
- * the read-aloud and call buttons, the call view and its minimized bar. State
- * and actions come from props owned by `hui-app.ts` (src/lib/voice*.ts holds
- * the logic).
+ * Calls with bots (HUI-18), rendering only: the bot header's Call button, the
+ * call view and its minimized bar. State and actions come from props owned by
+ * `hui-app.ts` (src/lib/live-call.ts and voice-controller.ts hold the logic).
  */
 import { html, nothing, svg, type SVGTemplateResult, type TemplateResult } from "lit";
-import { icons } from "../lib/icons.ts";
 import type { BotView } from "../lib/bots.ts";
-import { callStatusLabel, type CallView } from "../lib/voice-call.ts";
+import { callStatusLabel, type CallView } from "../lib/live-call.ts";
 import { gptLiveVoiceLabel, isGptLiveVoice } from "../../shared/calls.ts";
-import { formatCallTime, type VoiceNoteState } from "../lib/voice.ts";
+import { formatCallTime } from "../lib/voice.ts";
 import { renderBotAvatar } from "./bots.ts";
 import { callFaceState } from "../lib/bot-face.ts";
 import { botLook } from "../../shared/bots.ts";
@@ -34,41 +32,6 @@ export const voiceIcons = {
   minimize: lucide(svg`<path d="M4 14h6v6" /><path d="M20 10h-6V4" /><path d="m14 10 7-7" /><path d="m3 21 7-7" />`),
 };
 
-/* ── composer: voice notes ── */
-
-/** The microphone button beside Send; it becomes Stop while a note records. */
-export function renderVoiceNoteButton(note: VoiceNoteState, disabled: boolean, actions: { onStart: () => void; onStop: () => void }) {
-  if (note.status === "recording" || note.status === "starting") {
-    return html`<button type="button" class="chat-voice-btn chat-voice-btn--recording" aria-label="Stop and transcribe the voice note" title="Stop and transcribe"
-      ?disabled=${note.status === "starting"} @click=${actions.onStop}>${icons.stop}</button>`;
-  }
-  if (note.status === "transcribing") {
-    return html`<button type="button" class="chat-voice-btn" aria-label="Transcribing the voice note" disabled><span class="btn__spinner"></span></button>`;
-  }
-  return html`<button type="button" class="chat-voice-btn" aria-label="Record a voice note" title="Voice note" ?disabled=${disabled} @click=${actions.onStart}>${voiceIcons.mic}</button>`;
-}
-
-/** The note's state above the composer: recording time and Cancel, transcribing, or why it failed. */
-export function renderVoiceNoteStatus(note: VoiceNoteState, now: number, actions: { onStop: () => void; onCancel: () => void; onDismiss: () => void }) {
-  switch (note.status) {
-    case "starting":
-      return html`<div class="chat-voice-note" role="status"><span class="chat-voice-note__dot"></span><span class="chat-voice-note__label">Waiting for the microphone…</span>
-        <button type="button" class="btn btn--sm btn--ghost" @click=${actions.onCancel}>Cancel</button></div>`;
-    case "recording":
-      return html`<div class="chat-voice-note" role="status"><span class="chat-voice-note__dot chat-voice-note__dot--live" aria-hidden="true"></span>
-        <span class="chat-voice-note__label">Recording a voice note</span><time class="chat-voice-note__time">${formatCallTime(now - note.startedAt)}</time>
-        <span class="chat-voice-note__actions"><button type="button" class="btn btn--sm btn--ghost" @click=${actions.onCancel}>Cancel</button>
-        <button type="button" class="btn btn--sm primary" @click=${actions.onStop}>Done</button></span></div>`;
-    case "transcribing":
-      return html`<div class="chat-voice-note" role="status"><span class="btn__spinner" aria-hidden="true"></span><span class="chat-voice-note__label">Transcribing with VoiceStudio…</span></div>`;
-    case "error":
-      return html`<div class="chat-voice-note chat-voice-note--error" role="alert"><span class="chat-voice-note__label">${note.message}</span>
-        <button type="button" class="btn btn--sm btn--ghost" @click=${actions.onDismiss}>Dismiss</button></div>`;
-    default:
-      return nothing;
-  }
-}
-
 /* ── bot header ── */
 
 export function renderCallButton(options: { botName: string; inCall: boolean; onCall: () => void }) {
@@ -81,7 +44,7 @@ export function renderCallButton(options: { botName: string; inCall: boolean; on
 
 export type CallViewProps = {
   bot: Pick<BotView, "id" | "name" | "title" | "avatar">;
-  state: CallView & { voice?: string };
+  state: CallView;
   now: number;
   /** The bot's turn waits on its memory ("Summarizing memory…"). */
   summarizing: boolean;
@@ -101,7 +64,6 @@ const elapsed = (props: CallViewProps) => formatCallTime((props.state.endedAt ??
 /** Where a call's audio goes, as the call view says it. */
 function privacyLine(props: CallViewProps): string {
   const { state, bot } = props;
-  if (state.engine !== "gpt-live") return `Audio goes only to your VoiceStudio. What is said stays in ${bot.name}'s chat.`;
   const voice = state.voice && isGptLiveVoice(state.voice) ? ` · voice ${gptLiveVoiceLabel(state.voice)}` : "";
   return `GPT-Live through your ChatGPT account${voice}. Audio goes to OpenAI; ${bot.name}'s chat keeps the call's summary and transcript. HUI stores no audio.`;
 }
@@ -111,7 +73,6 @@ export function renderCallView(props: CallViewProps) {
   const failed = state.phase === "failed";
   const time = elapsed(props);
   const look = botLook(bot);
-  const live = state.engine === "gpt-live";
   // The call takes the bot's color, as Dots' call screen does; a face's eyes follow the pointer anywhere in it.
   return html`<section class="bot-call" data-phase=${state.phase} role="region" aria-label=${`Call with ${bot.name}`} style=${`--bot-color: ${look.color}`} data-face-stage
     @keydown=${(event: KeyboardEvent) => {
@@ -131,7 +92,7 @@ export function renderCallView(props: CallViewProps) {
     </div>
     <div class="bot-call__captions">
       <div class="bot-call__caption bot-call__caption--you"><span class="bot-call__speaker">You</span>
-        <p class="bot-call__line" data-empty=${String(!state.you)}>${state.you || (live ? "Talk whenever you like; you can interrupt." : "Speak when you're ready; pause when you're done.")}</p></div>
+        <p class="bot-call__line" data-empty=${String(!state.you)}>${state.you || "Talk whenever you like; you can interrupt."}</p></div>
       <div class="bot-call__caption bot-call__caption--bot" aria-live="polite"><span class="bot-call__speaker">${bot.name}</span>
         <p class="bot-call__line" data-empty=${String(!state.bot)}>${state.bot || "…"}</p></div>
     </div>

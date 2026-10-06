@@ -10,7 +10,7 @@ import { LOG_FILE, withLifecycleLock } from "./state.ts";
 import { updateRelease } from "./update.ts";
 import { checkNightly, checkRelease } from "./releases.ts";
 import { BOT_FACE_COLORS, BOT_FACE_SHAPES, BOT_THINKING_LEVELS, botFaceColor, botFaceShape } from "../shared/bots.ts";
-import { VOICE_LANGUAGE_EXAMPLES, voiceLanguage, voiceSpeed } from "../shared/voice.ts";
+import { VOICE_LANGUAGE_EXAMPLES, voiceLanguage } from "../shared/voice.ts";
 import { GPT_LIVE_VOICES, gptLiveVoice } from "../shared/calls.ts";
 
 export const HELP = `Usage:
@@ -37,8 +37,7 @@ export const HELP = `Usage:
   hui bot add --name <name> [--title <text>] [--instructions <text> | --instructions-file <path>] [--cwd <dir>]
               [--model <provider/model>] [--thinking <level>] [--utility-model <provider/model>] [--emoji <e>]
               [--shape <blob|round|triangle|heart|cookie>] [--color <name|#rrggbb>]
-              [--voice <VoiceStudio voice id>] [--voice-speed <0.5-2>] [--language <code>]
-              [--call-voice <cove|arbor|breeze|ember|juniper|maple|sol|spruce|vale>] [--json]
+              [--language <code>] [--call-voice <cove|arbor|breeze|ember|juniper|maple|sol|spruce|vale>] [--json]
   hui bot edit <bot> [same flags as add] [--json]
   hui bot remove <bot> [--json]
   hui bot restore <bot> [--json]
@@ -83,12 +82,10 @@ it to its face. --shape is blob, round (or pebble), triangle, heart or cookie;
 --color one of blue, yellow, magenta, mint, coral, lilac or any #rrggbb. Without
 them a bot's face is picked by its id, the same everywhere; on edit "" goes back
 to that one.
---voice, --voice-speed and --language are how the bot sounds through VoiceStudio
-and what it listens for and speaks in there: --language takes a Whisper code
-(en, es, fr, de, ja, zh, haw, yue…) and nothing is translated; on edit "" goes
-back to VoiceStudio's default voice, speed and Auto (the language detected).
 --call-voice is the bot's GPT-Live voice on calls (Settings → Models → Calls);
-"" goes back to the default voice Settings chose. --language applies to calls too.
+"" goes back to the default voice Settings chose. --language is the language it
+speaks on calls, a Whisper code (en, es, fr, de, ja, zh, haw, yue…); nothing is
+translated, and "" goes back to Auto (it answers in the language you speak).
 Remove archives: the chat transcript and memory are kept and its routines are
 disabled. Delete then removes an archived bot for good: its routines and chat
 go from HUI, the files in its folder stay. Chat streams the replies as plain
@@ -117,6 +114,9 @@ export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {
   } });
   if (values.help || !args.length) return { command: "help", values };
   if (values.version) return { command: "version", values };
+  // VoiceStudio is gone (2026-10-06): its flags say what took their place instead of failing as unknown options.
+  if (values.voice !== undefined) throw new Error(`--voice is gone: HUI no longer uses VoiceStudio. A bot speaks on calls with one of GPT-Live's voices: --call-voice <${GPT_LIVE_VOICES.join("|")}>.`);
+  if (values["voice-speed"] !== undefined) throw new Error("--voice-speed is gone: HUI no longer uses VoiceStudio, and GPT-Live sets the pace of its own voices.");
   const [first, second, ...extra] = positionals;
   const bots = first === "bot" || first === "bots";
   const routine = bots && (second === "routine" || second === "routines");
@@ -159,7 +159,7 @@ export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {
 }
 
 /** The flags `bot add` and `bot edit` share. */
-const BOT_FIELDS = ["name", "title", "instructions", "instructions-file", "cwd", "model", "thinking", "memory-model", "utility-model", "emoji", "shape", "color", "voice", "voice-speed", "language", "call-voice"];
+const BOT_FIELDS = ["name", "title", "instructions", "instructions-file", "cwd", "model", "thinking", "memory-model", "utility-model", "emoji", "shape", "color", "language", "call-voice"];
 /** Operands each bot command takes, in order. */
 const BOT_OPERANDS: Record<string, readonly string[]> = {
   "bot list": [], "bot add": [], "bot show": ["bot"], "bot edit": ["bot"], "bot remove": ["bot"], "bot restore": ["bot"], "bot delete": ["bot"],
@@ -179,8 +179,8 @@ function checkBotCommand(command: string, operands: readonly string[], values: R
   if (command === "bot add" && !values["name"]) throw new Error("bot add needs --name.");
   if (command === "bot edit" && !BOT_FIELDS.some(given)) throw new Error(`bot edit needs at least one of ${BOT_FIELDS.map((flag) => `--${flag}`).join(", ")}.`);
   if (given("instructions") && given("instructions-file")) throw new Error("Use either --instructions or --instructions-file.");
-  // `""` clears a choice: the gateway's default for the chat, the chat's own model for the memory, VoiceStudio's
-  // speed, Auto for the language.
+  // `""` clears a choice: the gateway's default for the chat, Settings' utility model, Auto for the language,
+  // Settings' call voice.
   const cleared = (flag: string) => values[flag] === "";
   if (given("thinking") && !cleared("thinking") && !(BOT_THINKING_LEVELS as readonly string[]).includes(String(values["thinking"]))) throw new Error(`--thinking must be one of: ${BOT_THINKING_LEVELS.join(", ")}.`);
   for (const flag of ["model", "memory-model", "utility-model"]) if (given(flag) && !cleared(flag) && !MODEL_REF.test(String(values[flag]))) throw new Error(`--${flag} must be provider/model.`);
@@ -191,8 +191,6 @@ function checkBotCommand(command: string, operands: readonly string[], values: R
   if (given("color") && !cleared("color") && !botFaceColor(String(values["color"])) && !/^#[0-9a-f]{6}$/iu.test(String(values["color"]).trim())) {
     throw new Error(`--color must be one of ${BOT_FACE_COLORS.map((color) => color.id).join(", ")} or #rrggbb; "" goes back to the one its id picks.`);
   }
-  // Otherwise the same 0.5-2 the gateway accepts.
-  if (given("voice-speed") && !cleared("voice-speed") && voiceSpeed(Number(values["voice-speed"])) === undefined) throw new Error("--voice-speed must be a number from 0.5 to 2.");
   if (given("language") && !cleared("language") && !voiceLanguage(values["language"])) {
     throw new Error(`--language must be one of Whisper's language codes, such as ${VOICE_LANGUAGE_EXAMPLES} (not a name like Spanish); "" goes back to Auto.`);
   }

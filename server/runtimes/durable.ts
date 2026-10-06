@@ -186,7 +186,7 @@ export class DurableSession implements RuntimeSession, ExtensionSession {
   #queue: RuntimeQueue = { steering: [], followUp: [] };
   #toolOutput = new Map<string, string>();
   /** Text each block of the in-flight answer has streamed, per content index: Durable sends a first partial, a
-   * short answer or a replaced block whole, and the live view (and a call's voice) gets what it adds. */
+   * short answer or a replaced block whole, and the live view gets what it adds. */
   #streamedText = new Map<number, string>();
   /** A run is going: from the submit of its input to its end. */
   #streaming = false;
