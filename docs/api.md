@@ -1145,7 +1145,7 @@ type BotMemoryStatus = {
   viewBytes: number; viewLines: number; // the current view
   waiting?: boolean;           // a turn waits for the compactor ("Summarizing memory…")
   failing?: { node: string; error: string; since: string }; // a node OptChat keeps retrying
-  usage: BotMemoryUsage;       // the compactor's spend since the gateway opened this memory; not persisted
+  usage: BotMemoryUsage;       // the compactor's spend since the gateway (on a worker, its host) opened this memory; not persisted
 };
 
 type BotMemoryUsage = { calls: number; input: number; output: number; cacheRead: number; cacheWrite: number; cost: number }; // tokens; cost in USD as providers report it

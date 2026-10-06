@@ -146,6 +146,8 @@ test("a bot on a worker shows the machine compactly in its roster row, its chat 
   assert.match(css, /\.app-shell \.bot-row__machine \{[^}]*max-width: 45%;/u, "a long name never crowds the preview out");
   assert.match(css, /\.bot-chat-identity__machine svg \{ flex: none; width: 11px; height: 11px; \}/u);
   assert.match(between(source, "export function renderBotArchiveDialog(", "/* ── delete confirmation"), /stay on \$\{bot\.worker\?\.name \?\? "this machine"\}/u);
+  assert.match(between(source, "function renderMemoryTab(", "export function renderBotPanel("), /Summarizer since HUI started on \$\{props\.bot\.worker\.name\}/u, "a worker's compactor counts since its host opened the memory");
+  assert.match(css, /\.bot-dialog__machine \.picker-select__leading svg \{ width: 14px; height: 14px; \}/u, "Runs on's options show the machine's icon");
   assert.match(source.slice(source.indexOf("export function renderBotDeleteDialog(")), /Its chat stays in the Durable store on \$\{bot\.worker\.name\}, which HUI no longer opens, and the files in its workspace stay there\./u);
 });
 

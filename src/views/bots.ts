@@ -501,7 +501,7 @@ function renderMemoryTab(props: BotPanelProps) {
       <div><dt>View</dt><dd>${memoryBudgetLabel(status.viewBytes)}</dd></div>
       <div><dt>Lines</dt><dd>${status.viewLines.toLocaleString()}</dd></div>
       <div><dt>Pending summaries</dt><dd>${status.pending.toLocaleString()}</dd></div>
-      <div class="bot-memory__usage"><dt>Summarizer since the gateway started</dt><dd title=${memoryUsageDetail(status.usage)}>${memoryUsageLabel(status.usage)}</dd></div>
+      <div class="bot-memory__usage"><dt>${props.bot.worker ? `Summarizer since HUI started on ${props.bot.worker.name}` : "Summarizer since the gateway started"}</dt><dd title=${memoryUsageDetail(status.usage)}>${memoryUsageLabel(status.usage)}</dd></div>
     </dl>
     ${status.waiting ? html`<p class="bot-memory__notice" role="status">Summarizing memory…</p>` : nothing}
     ${status.failing ? html`<p class="bot-memory__notice bot-memory__notice--failing" role="alert">Summaries are failing${status.failing.node ? ` at ${status.failing.node}` : ""}: ${status.failing.error}. HUI keeps retrying.</p>` : nothing}
