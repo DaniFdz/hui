@@ -160,3 +160,37 @@ and a separate touch-like one at 390×844.
 5. With *Show the Bots tab* off, no tab bar renders and the sidebar starts
    with its header buttons, as on `main`.
 6. Browser page errors: none. Console errors: none.
+
+## The collapse toggle in one place (2026-10-06)
+
+The owner reported that the restore control sat on top of a bot's avatar and
+that toggling the sidebar meant moving the mouse a long way. He also asked to
+drop the header's New session and Search buttons, which he never uses.
+
+Measured first on the preview at `d344ad4` (headless Chromium through CDP, fine
+pointer, 1440×900). The collapse toggle sat at (217, 54) and the restore control
+at (10, 10), a 207 px left and 44 px up move. On a bot page the restore control
+covered the bot's 28 px avatar: the bot chat runs in an embedded pane app, so
+the session header's collapsed padding never reached it.
+
+Checked at `4480d18` on the launcher with `--pi-sessions` (doctor before and after;
+cleanup closed every port), with two bots created through `POST /__hui/bots`
+(Ledger, and Scout 🔭) and one session started from Home's composer:
+
+1. The sidebar's top row is Collapse sidebar, then the Agents | Bots tabs: one
+   48 px row whose labels share the chat header's centre line. The header has
+   no other control.
+2. Every route was checked: Home, the session, both bots, Contributions,
+   Automations, Kanban, Plugins and Skills. On each, the toggle and the restore
+   control both sit at (10, 10), 28×28, so there is no mouse travel. Nothing
+   visible lies under the restore control, it is the topmost element at its
+   centre, and a second click on the same spot re-expands the sidebar.
+3. Focus moves to Expand sidebar on collapse and back to Collapse sidebar on
+   expand.
+4. With the Bots tab off the top row holds only Collapse sidebar, at the same
+   spot, with the same results on every route.
+5. 390×844, in a separate touch-like browser: the drawer opens on the tab bar,
+   without the toggle. With the Bots tab off it starts with the navigation at
+   the drawer's top padding (fixed in `4da7cb3` and checked on a fresh launcher
+   at that commit). The document stays 390 px wide.
+6. Browser page errors: none. Console errors: none.
