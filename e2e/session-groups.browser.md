@@ -71,7 +71,9 @@ for inspection. No operator registry or transcripts are modified.
    receives **Fixture response.** The sidebar count becomes 1. Read-only fixture
    inspection confirms raw group `Research Lab` and unchanged registry version 2.
 6. Click **Search sessions** and enter `other`: only OTHER and its three rows
-   remain. Clearing search restores the custom groups and rows.
+   remain. Clearing search restores the custom groups and rows. (Since
+   2026-10-06 the desktop header has no Search button: use the mobile top bar's
+   Search, or Tab to the field below the header.)
 7. On iPhone 13 emulation (390×664 CSS px, DPR 3), open navigation and the menu.
    **End** scrolls the last option, Never, into view; Enter applies it. Escape
    closes the menu, returns focus to Filter & sort and leaves the drawer modal.

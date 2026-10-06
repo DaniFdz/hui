@@ -14,10 +14,17 @@
   --shell-nav-expanded-width: 258px;
   --shell-nav-width: var(--shell-nav-expanded-width);
   /* The floating restore control mirrors the in-sidebar collapse control:
-     same 28px hit target and 16px glyph, so toggling feels symmetric. */
+     same 28px hit target and 16px glyph, so toggling feels symmetric. It also
+     takes the toggle's place: the toggle starts the sidebar's top row, one row
+     tall below the sidebar's top padding, and the restore control is placed
+     from the same numbers, so collapsing and expanding need no mouse travel.
+     The row is one chat header tall (48px) from the very top, so its labels
+     and divider line up with the header beside it. */
   --shell-chrome-control-size: 28px;
   --shell-chrome-controls-inset: 10px;
   --shell-chrome-safe-area-left: 12px;
+  --shell-sidebar-pad-top: 0px;
+  --shell-sidebar-top-row-height: 48px;
   --shell-topbar-height: 0px;
   --shell-sidebar-footer-height: 53px;
   --shell-focus-duration: 200ms;
@@ -196,31 +203,22 @@
   flex-direction: column;
   min-width: 0;
   min-height: 0;
-  padding: 9px var(--sidebar-pad-x) var(--sidebar-pad-bottom);
+  padding: var(--shell-sidebar-pad-top) var(--sidebar-pad-x) var(--sidebar-pad-bottom);
   border: 0;
   background: transparent;
 }
 
+/* The sidebar's top row: the collapse toggle, its only header control, then the
+   Agents | Bots tabs while the Bots tab is on (bots.css). */
 .app-shell .sidebar-brand {
   --shell-chrome-control-size: 28px;
   display: flex;
   flex: none;
   align-items: center;
-  gap: 2px;
-  min-height: 34px;
-  padding: 0 2px 10px 0;
-}
-
-.app-shell .sidebar-brand__utilities,
-.app-shell .sidebar-brand__actions {
-  display: flex;
-  flex: none;
-  align-items: center;
-  gap: 0;
-}
-
-.app-shell .sidebar-brand__actions {
-  margin-inline-start: auto;
+  gap: 4px;
+  min-height: var(--shell-sidebar-top-row-height);
+  margin-block-end: 12px;
+  padding: 0;
 }
 
 .app-shell .sidebar-brand__icon {
@@ -256,7 +254,6 @@
 }
 
 .app-shell .sidebar-brand__icon:hover svg { opacity: 1; }
-.app-shell .sidebar-brand__new-thread svg { width: 20px; height: 20px; }
 
 .app-shell .sidebar-brand__icon:focus-visible {
   outline: none;
@@ -999,7 +996,7 @@
 .app-shell .shell-chrome-controls {
   position: fixed;
   z-index: 45;
-  top: var(--shell-chrome-controls-inset);
+  top: calc(var(--shell-sidebar-pad-top) + (var(--shell-sidebar-top-row-height) - var(--shell-chrome-control-size)) / 2);
   left: var(--shell-chrome-controls-inset);
   display: none;
   align-items: center;
@@ -1204,6 +1201,12 @@
 
   .app-shell .sidebar-brand__collapse,
   .app-shell .shell-chrome-controls {
+    display: none;
+  }
+
+  /* Without the Agents | Bots tabs the top row holds only the collapse toggle,
+     which the drawer does not use. */
+  .app-shell .sidebar-brand:not(:has(> .sidebar-switch)) {
     display: none;
   }
 

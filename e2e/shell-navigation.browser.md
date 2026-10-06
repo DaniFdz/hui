@@ -1,5 +1,11 @@
 # Browser journey: shell navigation and responsive drawers
 
+> Changed on 2026-10-06: the sidebar header no longer has New session or Search
+> sessions (the owner's call). It holds only **Collapse sidebar**, first in the
+> top row, where **Expand sidebar** appears while the sidebar is collapsed, so
+> step 1's header assertion is now that single control. New sessions start from
+> a group's **New session in …**, and Ctrl+K finds sessions.
+
 This journey proves HUI-02 against the rendered application. It exercises only
 navigation and read-only pages; it does not create, mutate, or delete PI data.
 
