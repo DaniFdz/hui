@@ -177,6 +177,26 @@ test("stored records keep what validates: a bad optional field is dropped, a bad
   }
 });
 
+test("a bot's disabled tools and skills: whole lists of names, skills by name or { name, path }, stored when they name something", () => {
+  assert.deepEqual(normalizeBotPatch({ disabledTools: [" bash ", "bash", "fixture_echo"] }), { disabledTools: ["bash", "fixture_echo"] }, "trimmed and distinct");
+  assert.deepEqual(normalizeBotPatch({ disabledTools: [], disabledSkills: [] }), { disabledTools: [], disabledSkills: [] }, "[] turns everything back on");
+  assert.deepEqual(normalizeBotPatch({ disabledSkills: ["alpha", { name: "beta", path: "/s/beta/SKILL.md" }] }), { disabledSkills: ["alpha", { name: "beta", path: "/s/beta/SKILL.md" }] });
+  assert.deepEqual(normalizeBotInput({ name: "Ada", disabledTools: ["bash"], disabledSkills: [] }), { name: "Ada", disabledTools: ["bash"] }, "a new bot keeps only lists that name something");
+  for (const [body, pattern] of [
+    [{ disabledTools: "bash" }, /disabledTools must be a list of at most 500 tool names/u],
+    [{ disabledTools: [7] }, /disabledTools must name tools: "" is not a tool name/u],
+    [{ disabledTools: ["two words"] }, /"two words" is not a tool name/u],
+    [{ disabledTools: Array.from({ length: 501 }, (_, index) => `t${index}`) }, /at most 500/u],
+    [{ disabledSkills: [{ name: "a" }] }, /a skill's name, or \{ name, path \}/u],
+    [{ disabledSkills: [{ name: "a", path: "/p", extra: 1 }] }, /a skill's name, or \{ name, path \}/u],
+    [{ disabledSkills: [""] }, /a skill's name, or \{ name, path \}/u],
+  ] as const) assert.throws(() => normalizeBotPatch(body), (error: unknown) => error instanceof BotInputError && pattern.test(error.message), JSON.stringify(body).slice(0, 80));
+  const stored = parseBotRecord({ ...bot("b1", "ada"), disabledTools: ["bash", "bash", "two words", 3], disabledSkills: [{ name: "beta", path: "/s/beta/SKILL.md" }, { name: "x" }, { name: "beta", path: "/s/beta/SKILL.md" }] });
+  assert.deepEqual([stored?.disabledTools, stored?.disabledSkills], [["bash"], [{ name: "beta", path: "/s/beta/SKILL.md" }]], "what validates, once");
+  const plain = parseBotRecord({ ...bot("b2", "bob"), disabledTools: [], disabledSkills: "nope" });
+  assert.equal(plain && ("disabledTools" in plain || "disabledSkills" in plain), false, "nothing off: no lists");
+});
+
 test("the registry skips and keeps invalid records, refuses broken or newer files and writes atomically owner-only", async (t) => {
   const file = await tempFile(t);
   const reported: number[] = [];
