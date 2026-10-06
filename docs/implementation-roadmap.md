@@ -819,7 +819,8 @@ for now. It lands as stacked pull requests:
    chat, where the bot (*New Bot* until then) asks what to call it; the New bot
    and Edit dialogs are gone. A Settings tab in the bot's panel holds Profile
    (name, title and look, edited in place), Model, Calls (call voice and
-   language) and Workspace, each change saved on its own
+   language; its head says when calls need a ChatGPT login) and Workspace,
+   each change saved on its own
    through the existing `PATCH`; Edit bot… in either ⋯ menu opens it, as does
    Ctrl+Shift+,; the panel's tabs moved to a row of their own under a header
    with the bot's name, with room for five. No API or CLI change. Proof:

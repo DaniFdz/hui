@@ -1215,10 +1215,11 @@ everything the Bots tab can, through the same routes.
   handle, title, and the look, a row that opens into Face or Emoji),
   Model (model, thinking and utility model; *Gateway default* leaves the model
   and thinking level to the gateway, and choosing it clears the bot's own),
-  Calls (call voice and language) and Workspace (the directory, locked while
-  the bot works). Each change is its own `PATCH`, sent in order, with the
-  row's pending state and refusal inline and no Save button; typed text saves
-  on Enter or blur. Ctrl+Shift+, (⇧⌘,) shows or hides it on a bot's chat.
+  Calls (call voice and language; without a ChatGPT login its head says calls
+  need one) and Workspace (the directory, locked while the bot works). Each
+  change is its own `PATCH`, sent in order, with the row's pending state and
+  refusal inline and no Save button; typed text saves on Enter or blur.
+  Ctrl+Shift+, (⇧⌘,) shows or hides it on a bot's chat.
 - **Calls** talk through GPT-Live (see the decisions below): the header's
   **Call** shows whenever HUI has a ChatGPT login. A bot has a call voice, its
   own or Settings → Models → Calls' default, and a language it speaks on calls
@@ -1422,7 +1423,8 @@ models "beneath the interface".
 - **Calls only.** With VoiceStudio gone
   ([above](#voicestudio-is-gone-calls-are-gpt-live-only-2026-10-06)), the
   tab's Calls section is GPT-Live's call voice and the language, and it always
-  shows.
+  shows. Without a ChatGPT login its head says calls need one, so the missing
+  Call button has a reason; the voice and language still save.
 
 ### New sessions run on Pi Durable
 

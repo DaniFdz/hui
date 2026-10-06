@@ -3841,9 +3841,10 @@ export class HuiApp extends HuiElement {
     return this.pi?.model.catalog.find((entry) => `${entry.provider}/${entry.id}` === ref)?.name ?? ref;
   }
 
-  /** The Calls section: GPT-Live's default voice, which a bot's "Default" follows. */
+  /** The Calls section: GPT-Live's default voice, which a bot's "Default" follows, and whether a ChatGPT login lets
+   * calls run. That is left out until the gateway has said, so a signed-in operator never sees the hint flash. */
   private botSettingsCall(): BotSettingsProps["call"] {
-    return { defaultVoice: this.settings.calls.voice };
+    return { defaultVoice: this.settings.calls.voice, ...(this.callsStatus ? { ready: callsReady(this.callsStatus) } : {}) };
   }
 
   private botSettingsSavesOf(botId: string): BotSettingsSaves {

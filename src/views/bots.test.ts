@@ -143,7 +143,8 @@ test("the Settings tab: Profile, Model, Calls and Workspace, each change saved o
   assert.match(models, /modelOptions\(props\.models, "Gateway default", model\)/u, "Gateway default clears the model");
   const calls = between(source, "/** The call voice:", "/** The text controls");
   assert.doesNotMatch(between(source, "function renderCalls(", "/** The text controls"), /return nothing/u, "Calls always show: calls run on GPT-Live");
-  assert.match(calls, /sectionHead\(props, "calls", "Calls"\)/u);
+  assert.match(calls, /sectionHead\(props, "calls", "Calls", props\.call\.ready === false \? "Needs a ChatGPT login" : undefined\)/u,
+    "without a ChatGPT login the head says what calls need, and nothing while the gateway has not said");
   assert.match(calls, /renderCallVoiceRow\(props, props\.call\)\}[\s\S]*renderLanguageRow\(props\)/u, "the call voice, then the language");
   assert.match(calls, /How it sounds on calls\. Default follows Settings → Models → Calls\./u);
   assert.doesNotMatch(source, /VoiceStudio|Read-aloud|Preview|voiceSpeed/u, "nothing of VoiceStudio");
@@ -158,7 +159,9 @@ test("the Settings tab: Profile, Model, Calls and Workspace, each change saved o
   const app = read("../hui-app.ts");
   assert.match(app, /this\.botSettingsQueue = this\.botSettingsQueue\.then\(\(\) => this\.sendBotSetting\(botId, key\)\);/u, "one PATCH per change, in order");
   assert.match(between(app, "private async sendBotSetting(", "private dismissBotSetting("), /updateBot\(botId, patch\)/u, "through PATCH /__hui/bots/:id");
-  assert.match(between(app, "private botSettingsCall(", "private botSettingsSavesOf("), /return \{ defaultVoice: this\.settings\.calls\.voice \};/u, "Settings' voice, whatever settings.json held");
+  assert.match(between(app, "private botSettingsCall(", "private botSettingsSavesOf("),
+    /return \{ defaultVoice: this\.settings\.calls\.voice, \.\.\.\(this\.callsStatus \? \{ ready: callsReady\(this\.callsStatus\) \} : \{\}\) \};/u,
+    "Settings' voice, and whether calls can run once the gateway has said (callsReady, as Call uses)");
   assert.match(app, /\n\s+call: settingsCall,\n/u, "the tab always gets its Calls section");
 });
 

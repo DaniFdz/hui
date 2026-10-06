@@ -26,8 +26,9 @@ export type BotSettingsSaves = {
 
 export const NO_BOT_SETTINGS_SAVES: BotSettingsSaves = { pending: {}, errors: {} };
 
-/** The Calls section: GPT-Live's default voice, which a bot's "Default" follows. */
-export type BotSettingsCall = { defaultVoice: GptLiveVoice };
+/** The Calls section: GPT-Live's default voice, which a bot's "Default" follows, and whether a ChatGPT login lets calls
+ * run (absent until the gateway has said). */
+export type BotSettingsCall = { defaultVoice: GptLiveVoice; ready?: boolean };
 
 export type BotSettingsProps = {
   bot: BotView;
@@ -224,10 +225,11 @@ function renderLanguageRow(props: BotSettingsProps) {
       onChange: (next) => props.onChange("voiceLanguage", next) }) });
 }
 
-/** Calls, on GPT-Live, the only engine: always shown. */
+/** Calls, on GPT-Live, the only engine: always shown. Without a ChatGPT login the voice and language still save, and
+ * the section's head says what calls need (as Model's says when its changes apply), so the missing Call has a reason. */
 function renderCalls(props: BotSettingsProps) {
   return html`<section class="bot-settings__section" aria-labelledby=${`${props.id}-settings-calls`}>
-    ${sectionHead(props, "calls", "Calls")}
+    ${sectionHead(props, "calls", "Calls", props.call.ready === false ? "Needs a ChatGPT login" : undefined)}
     <div class="settings-group bot-settings__group">
       ${renderCallVoiceRow(props, props.call)}
       ${renderLanguageRow(props)}

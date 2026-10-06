@@ -272,7 +272,8 @@ it on a bot's chat. It has:
   choice. A change applies from the bot's next turn.
 - **Calls**: the bot's **Call voice** (*Default* follows Settings → Models →
   Calls) and the **Language** it speaks on calls
-  ([Calls with GPT-Live](#calls-with-gpt-live)).
+  ([Calls with GPT-Live](#calls-with-gpt-live)). Until HUI has a ChatGPT login,
+  the section says *Needs a ChatGPT login*; both still save.
 - **Workspace**: the bot's **Directory**, which can change only while the bot
   is idle (the field is locked while it works).
 
