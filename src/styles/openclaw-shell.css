@@ -1205,9 +1205,14 @@
   }
 
   /* Without the Agents | Bots tabs the top row holds only the collapse toggle,
-     which the drawer does not use. */
+     which the drawer does not use. The hidden search field below it would then
+     pull the navigation up into the drawer's top padding. */
   .app-shell .sidebar-brand:not(:has(> .sidebar-switch)) {
     display: none;
+  }
+
+  .app-shell .sidebar-brand:not(:has(> .sidebar-switch)) + .sidebar-search {
+    margin-top: 0;
   }
 
   .app-shell .nav-item {
