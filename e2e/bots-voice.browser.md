@@ -88,10 +88,15 @@ account is involved.
 12. Language: Edit Vox → **Language** *Auto (detect)* → its list opens with a
     search field, *Auto (detect)* first, then the 100 languages by English name,
     each with its code (Afrikaans `af`, Albanian `sq`…). Typing "spa" leaves
-    Spanish `es`, "yue" Cantonese; ArrowDown/Enter pick from the keyboard.
-    **Spanish** → the field reads Spanish → **Preview**: the fixture's speech
-    requests carry `language: "es"` with Aria and the dialog's speed → **Save**
-    → `GET /__hui/bots/vox` has `voice.language: "es"`.
+    Spanish `es`, "yue" Cantonese; typed on the closed field, the letters open
+    the search, and ArrowDown/Enter pick from the keyboard. **Spanish** → the
+    field reads Spanish → **Preview**: the fixture's speech requests carry
+    `language: "es"` with Aria and the dialog's speed → **Save** →
+    `GET /__hui/bots/vox` has `voice.language: "es"`. Edit Vox again with an
+    engine's refusal injected (`POST <voiceUrl>/control/fail` for
+    `/v1/audio/speech`, status 400, "The KittenTTS engine doesn't support
+    language='es'…", `times: 2`): **Preview** shows VoiceStudio's words under
+    the voice, as an alert; **Cancel** keeps the bot as saved.
 13. A voice note (transcript queued) → **Done**: the text in the composer; the
     fixture's transcription has `language: "es"`.
 14. **Read aloud** on a reply: its speech request has `language: "es"`.
@@ -100,9 +105,9 @@ account is involved.
 16. Edit Vox → **Language** → *Auto (detect)* → **Save**: `GET` shows no
     `voice.language`; the next Read aloud's speech request has no `language`.
 17. 390×844: the header keeps Call, the composer the microphone; the call view
-    and the minimized bar fit the width; the dialog's voice section and the
-    open Language list fit, keyboard-operable, and the
-    card stays behind every field when it scrolls. 844×390 (a phone in
+    and the minimized bar fit the width; the dialog's voice section and its open
+    Language list fit and work from the keyboard (Escape closes only the list),
+    and the card stays behind every field when it scrolls. 844×390 (a phone in
     landscape): the call view is compact (small avatar) and Mute, Speaker and
     Hang up stay at the bottom of the view, in reach, while the captions scroll
     under them. The document never gets wider than the viewport. Browser page
@@ -132,6 +137,21 @@ dialog card at both sizes. No page or console errors. The first evidence run, at
 view scrolled and its controls, Hang up included, sat below the fold; the
 controls are now sticky and the view compact on short screens. The PR's
 evidence run is recorded with the PR, outside the repository.
+
+## Observed during development (2026-10-06)
+
+The language steps on `feat/bots-voice` at `946b2ca` (the language commits on
+`4148f59`), desktop and 390×844: the voice picker listed *VoiceStudio default*,
+Aria, Bruno and Dani, four options (a picker searches from nine), and steps
+12–16 behaved as described. The fixture recorded no `language` for the first
+Preview, then `es` for the Spanish Preview's two sentences, the voice note's
+`recording.webm`, Read aloud, and the call's `audio/wav` utterance and its
+reply; none for the Read aloud after going back to Auto, with `GET` showing
+`{ profile: "vp-aria", speed: 1.3 }`. Typing "yue" on the closed field
+opened its search with Cantonese alone; at 390×844 the open list (search
+focused) stayed inside the dialog. The injected refusal showed under the voice
+and in the chat's notice behind the dialog. No page or console errors; no
+defects found.
 
 ## Limits and gaps
 
