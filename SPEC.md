@@ -876,6 +876,37 @@ instead of silently missing. HUI does not install a launchd agent: a watcher
 runs until its command ends or the machine restarts, and *Restart* brings it
 back afterwards.
 
+## Secret requests
+
+An agent that needs a secret from the operator (an API key, a token, a
+password, a one-time code such as an OAuth `code#state`) asks for it with
+HUI's `secret_request` tool instead of asking for it in the chat or a shared
+terminal. The call names the secret (`label`) and says why it is needed
+(`reason`); both stay in the conversation, so they must not hold the secret.
+The call waits for the operator.
+
+The open conversation shows the request in the question dock above the
+composer, in OpenClaw's question card: *Secret*, the label, the reason, a line
+saying the value stays out of the conversation, a masked field and *Cancel* /
+*Submit*. Escape does not cancel it: password managers close their menus over
+the field with Escape. Meanwhile the session reads *Waiting*, like a session
+with a question. Submitting sends the value to the gateway only. The gateway
+writes it, exactly as typed, to a private temporary file (owner-only, in its
+own owner-only directory under the system temporary directory) and gives the
+agent that file's path. The agent's guidance is to use it in its next command
+without printing it (on stdin or in an environment variable, not as a
+command-line argument) and to delete it; HUI deletes it after ten minutes, or
+when the gateway stops. After a crash, the next gateway start removes it.
+
+The value never enters the transcript, a tool result, PI's or Durable's stores,
+HUI's registry or its diagnostics: the tool call records the label, the reason,
+the outcome and the file path, nothing else. *Cancel*, Stop, a gateway stop or
+fifteen minutes without an answer end the request: the card closes, no file is
+written and the agent learns the request was cancelled or expired. Pending
+requests live in gateway memory and do not survive a restart. Sessions on a
+remote worker cannot request secrets yet, because the file would not be on the
+machine where their commands run.
+
 ## Kanban
 
 **Kanban** sits directly below Automations in the sidebar (`/kanban`). It has
@@ -1129,9 +1160,9 @@ leaves worker records unchanged.
   through the gateway; presented media is copied back from the remote. With no
   gateway connected (or when it leaves mid-call) a HUI tool call fails at once
   with a message saying HUI is not connected; it is never replayed.
-  Not yet available remotely: terminals, watchers, the managed browser, New
-  worktree and branch checkouts, and multi-account quota rotation (the default
-  account is used). Usage totals skip remote transcripts.
+  Not yet available remotely: terminals, watchers, the managed browser, secret
+  requests, New worktree and branch checkouts, and multi-account quota rotation
+  (the default account is used). Usage totals skip remote transcripts.
 
 ## Decisions
 

@@ -713,7 +713,10 @@ type RuntimeQuestion =
   | { id: string; method: "select"; title: string; options: readonly string[] }
   | { id: string; method: "confirm"; title: string; message: string }
   | { id: string; method: "input"; title: string; placeholder?: string }
-  | { id: string; method: "editor"; title: string; prefill?: string };
+  | { id: string; method: "editor"; title: string; prefill?: string }
+  // HUI's own `secret_request` prompt, never a runtime's: title is the label,
+  // message the reason. See Secret requests.
+  | { id: string; method: "secret"; title: string; message: string };
 type SessionSnapshot = {
   transcript: readonly TranscriptEntry[];
   status: SessionStatus;
@@ -854,7 +857,9 @@ The tools do not use `/__hui/` browser routes. Each PI child inherits an
 immutable HUI session id plus a process-local random bearer token for a private
 HTTP listener bound to `127.0.0.1`. Calls are authorized to the caller's root
 tree before registry or transcript data is returned. The token, PI file paths
-and unrelated session metadata never enter tool output.
+and unrelated session metadata never enter tool output. A PI child cancels a
+call (Stop) by dropping its connection; the handler sees that as the call's
+abort signal, as it sees a Durable tool call's own.
 
 `sessions_spawn` allows at most eight active descendants per root. A child has
 its own PI process/session file and receives `[Subagent Task]` as its first user
@@ -1584,7 +1589,10 @@ Answers or cancels a pending PI extension-UI request:
 ```
 
 A question is claimed before awaiting PI, so concurrent double-submit cannot
-answer it twice; a rejected runtime response restores it.
+answer it twice; a rejected runtime response restores it. A `secret` question
+is answered here too, but its `value` (non-empty, kept exactly as typed) goes
+to the gateway's [secret request](#secret-requests), never to the runtime; an
+empty value is a 400 that leaves the request pending.
 
 ### `PATCH /__hui/sessions/:id`
 
@@ -2201,6 +2209,29 @@ logPath, state, pid, exitCode?, startedAt, endedAt?, lastLine }`; `state` is
 `~/.config/hui/watchers/`. State is derived on read and on the gateway's poll,
 which re-emits the session snapshot when a watcher's state or latest log line
 changes.
+
+### Secret requests
+
+A regular PI session asks the operator for a secret with the HUI
+`secret_request` tool, so the value never enters the conversation:
+
+| Tool | Contract |
+|---|---|
+| `secret_request { label ≤120, reason ≤500 }` | Both are trimmed, required and shown to the operator; they stay in the transcript. Waits until the operator answers or cancels, the call is aborted (Stop, a PI child that went away, a gateway stop) or 15 minutes pass. Returns `{ status: "provided", label, path, expiresAt }` or `{ status: "cancelled" \| "expired", label }`; the tool text names the file and its expiry, never the value. Not available to sessions on a remote worker |
+
+A pending request is gateway memory, scoped to its session. It joins the
+session snapshot's `questions` as `{ id, method: "secret", title: label,
+message: reason }` after the runtime's questions and makes the session report
+`waiting`; its start and end re-emit the snapshot and status. It is answered or
+cancelled through [`POST /__hui/sessions/:id/question`](#post-__huisessionsidquestion).
+A provided value is written exactly as typed to `secret` in a fresh
+`hui-secret-<gateway pid>-*` directory under the system temporary directory
+(`0700`, file `0600`); that path is the result. The gateway deletes the
+directory 10 minutes later, or when it stops; a gateway start removes those of
+gateways that are no longer running. Nothing else persists the value: not the
+transcript, a tool result, PI's or Durable's stores, the registry or
+diagnostics. The question route answers a malformed body with a fixed 400, so
+not even a JSON parse error quotes it into a diagnostic.
 
 ### Kanban backlog
 

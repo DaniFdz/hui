@@ -12,6 +12,8 @@ import type { RuntimeEvent } from "./types.ts";
 import { shippedTools } from "./tool-catalog.ts";
 import { configuredResourceId } from "./resource-policy.ts";
 import { bundledSkills } from "../bundled-skills.ts";
+import { registerAgentToolHandler } from "../agent-tools-bridge.ts";
+import { SecretRequests } from "../secret-requests.ts";
 
 const configDir = await mkdtemp(join(tmpdir(), "hui-sdk-config-"));
 process.env["XDG_CONFIG_HOME"] = configDir;
@@ -77,7 +79,7 @@ test("SDK owns schemas and prompt, executes tools, preserves history, models, th
   const session = await f.start();
   const initial = await session.inspect!();
   assert.deepEqual(initial.tools.map((tool) => tool.name).sort(), shippedTools().map((tool) => tool.name).sort());
-  assert.equal(initial.tools.filter((tool) => tool.active).length, 18);
+  assert.equal(initial.tools.filter((tool) => tool.active).length, 19);
   assert.equal(initial.tools.find((tool) => tool.name === "terminal")?.source, "HUI");
   assert.equal(initial.tools.find((tool) => tool.name === "browser")?.source, "HUI");
   assert.equal(initial.tools.find((tool) => tool.name === "progress_card")?.source, "HUI");
@@ -436,6 +438,42 @@ test("SDK excludes disabled packages and direct extensions before their code loa
   await assert.rejects(readFile(directMarker, "utf8"), { code: "ENOENT" });
   assert.equal(await readFile(join(f.agentDir, "settings.json"), "utf8"), piSettings);
   await assert.rejects(f.start({ backend: "cli", noSession: true }), /requires the PI SDK backend/u);
+});
+
+test("SDK secret_request gives the agent a file the operator filled, never the value, and Stop cancels one", { timeout: 45_000 }, async (t) => {
+  const f = await fixture(t);
+  const changed: Array<() => void> = [];
+  const requests = new SecretRequests({ root: f.dir, onChange: () => { for (const wake of changed.splice(0)) wake(); } });
+  t.after(() => requests.dispose());
+  const pending = async (count: number) => {
+    while (requests.questions("secret-sdk").length !== count) await new Promise<void>((wake) => changed.push(wake));
+    return requests.questions("secret-sdk");
+  };
+  registerAgentToolHandler(async ({ callerSessionId, action, params, signal }) => {
+    if (action !== "secret_request") throw new Error(`Unexpected HUI tool ${action}.`);
+    return requests.request(callerSessionId, params, signal);
+  });
+  const session = await f.start({ huiSessionId: "secret-sdk" });
+  let settled = nextEvent(session, (event) => event.type === "settled");
+  await session.prompt("E2E_SECRET_REQUEST");
+  const [question] = await pending(1);
+  assert.equal(question?.title, "Fixture API key");
+  requests.answer("secret-sdk", question!.id, { value: "sk-fixture-0123456789" });
+  await settled;
+  const history = JSON.stringify(session.transcript());
+  assert.match(history, /Secret length: 21/u, "the agent's next command read the file");
+  assert.match(history, /used the secret in a command without seeing it/u);
+  const stored = await readFile(session.sessionFile!, "utf8");
+  assert.match(stored, /Fixture API key/u, "the transcript keeps the request itself");
+  for (const text of [history, stored, await readFile(f.log, "utf8")]) {
+    assert(!text.includes("sk-fixture"), "neither the transcript nor the model ever holds the value");
+  }
+
+  settled = nextEvent(session, (event) => event.type === "settled");
+  await session.prompt("E2E_SECRET_REQUEST again");
+  await pending(1);
+  await session.abort(); await settled;
+  await pending(0);
 });
 
 test("SDK abort and steer/follow-up settle without losing queue messages", { timeout: 45_000 }, async (t) => {
