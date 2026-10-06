@@ -9,6 +9,7 @@
  *   GET    /__hui/bots/:id                   { bot }
  *   PATCH  /__hui/bots/:id                   edit ({ bot })
  *   DELETE /__hui/bots/:id                   archive ({ bot }); nothing is deleted
+ *   DELETE /__hui/bots/:id?permanent=1       delete an archived bot for good ({ ok: true }); 409 while active
  *   POST   /__hui/bots/:id/restore           { bot }
  *   POST   /__hui/bots/:id/messages          prompt or follow-up; 202 { status } or, with wait, 200 { status, reply?, … }
  *   POST   /__hui/bots/:id/stop              stop the current turn ({ bot })
@@ -130,7 +131,15 @@ export function createBotRoutes(deps: Deps) {
       if (!action) {
         if (method === "GET") return { status: 200, body: { bot: await service.get(id) } };
         if (method === "PATCH") return { status: 200, body: { bot: await service.update(id, await json(request, BOT_BODY_BYTES)) } };
-        if (method === "DELETE") return { status: 200, body: { bot: await service.archive(id) } };
+        if (method === "DELETE") {
+          // Without permanent=1 a DELETE archives, the step that can be undone.
+          const permanent = request.query.get("permanent");
+          if (permanent === "1" || permanent === "true") {
+            await service.delete(id);
+            return { status: 200, body: { ok: true } };
+          }
+          return { status: 200, body: { bot: await service.archive(id) } };
+        }
         return notAllowed;
       }
       if (action === "restore" || action === "stop" || action === "messages") {
