@@ -4,10 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test, type TestContext } from "node:test";
 
-import { handleFromName, previewLine, type BotRecord } from "../shared/bots.ts";
+import { BOT_KICKOFF_MARKER, botKickoffName, botKickoffText, handleFromName, previewLine, type BotRecord } from "../shared/bots.ts";
 import {
   BotConflictError, BotInputError, BotNotFoundError, BotRegistry, BotStoreError,
-  findBot, isOneGrapheme, normalizeBotInput, normalizeBotPatch, parseBotRecord, patchedAvatar, uniqueHandle,
+  findBot, isOneGrapheme, normalizeBotInput, normalizeBotPatch, normalizeSoul, parseBotRecord, patchedAvatar, uniqueHandle,
 } from "./bots.ts";
 
 async function tempFile(t: TestContext): Promise<string> {
@@ -48,13 +48,14 @@ test("input is validated at the boundary: limits, formats, unknown fields and on
   });
   assert.deepEqual(normalizeBotInput({ name: "Ada", model: "", thinking: "" }), { name: "Ada" }, "an empty model or level is the default a new chat gets anyway");
   const full = normalizeBotInput({
-    name: "Ada", handle: "@ada", title: "Researcher", description: "Reads papers", instructions: "  Be brief.\n  ",
+    name: "Ada", handle: "@ada", title: "Researcher", description: "Reads papers", soul: "  # Who I am\r\nBrief.\n  ",
     cwd: "~/work", model: "vercel-ai-gateway/anthropic/claude", thinking: "high", memoryModel: "openai/gpt-mini", memoryThinking: "low", hidden: true,
   });
   assert.deepEqual(full, {
-    name: "Ada", handle: "ada", title: "Researcher", description: "Reads papers", instructions: "Be brief.",
+    name: "Ada", handle: "ada", title: "Researcher", description: "Reads papers", soul: "# Who I am\nBrief.",
     cwd: "~/work", model: "vercel-ai-gateway/anthropic/claude", thinking: "high", memoryModel: "openai/gpt-mini", memoryThinking: "low", hidden: true,
   });
+  assert.deepEqual(normalizeBotInput({ name: "Ada", soul: "  \n " }), { name: "Ada" }, "a blank soul is none: the bot has its first conversation");
   const rejects: [unknown, RegExp][] = [
     [null, /must be an object/u],
     [{}, /name is required/u],
@@ -68,7 +69,9 @@ test("input is validated at the boundary: limits, formats, unknown fields and on
     [{ name: "Ada", handle: "events" }, /@events is reserved/u],
     [{ name: "Ada", title: "t".repeat(81) }, /Bot title must be at most 80/u],
     [{ name: "Ada", description: "d".repeat(501) }, /at most 500/u],
-    [{ name: "Ada", instructions: "i".repeat(20_001) }, /at most 20000/u],
+    [{ name: "Ada", soul: "s".repeat(20_001) }, /SOUL\.md must be at most 20000 characters \(it has 20001\)/u],
+    [{ name: "Ada", soul: 7 }, /SOUL\.md must be text/u],
+    [{ name: "Ada", instructions: "Be brief." }, /no instructions any more: a bot's persona is its SOUL\.md/u],
     [{ name: "Ada", model: "gpt" }, /provider\/id/u],
     [{ name: "Ada", thinking: "max" }, /Thinking level must be one of/u],
     [{ name: "Ada", memoryModel: "bad model" }, /provider\/id/u],
@@ -89,7 +92,9 @@ test("input is validated at the boundary: limits, formats, unknown fields and on
 
 test("a patch carries only what changes and may clear optional text and avatar keys", () => {
   assert.throws(() => normalizeBotPatch({}), /Nothing to change/u);
-  assert.deepEqual(normalizeBotPatch({ title: "", instructions: "", memoryModel: "", memoryThinking: "" }), { title: "", instructions: "", memoryModel: "", memoryThinking: "" });
+  assert.deepEqual(normalizeBotPatch({ title: "", memoryModel: "", memoryThinking: "" }), { title: "", memoryModel: "", memoryThinking: "" });
+  assert.throws(() => normalizeBotPatch({ soul: "x" }), /PUT \/__hui\/bots\/:id\/soul/u, "SOUL.md has its own route");
+  assert.throws(() => normalizeBotPatch({ instructions: "" }), /no instructions any more/u);
   assert.deepEqual(normalizeBotPatch({ avatar: null, hidden: false }), { avatar: null, hidden: false });
   assert.deepEqual(normalizeBotPatch({ model: "", thinking: "" }), { model: "", thinking: "" }, "the chat goes back to the gateway's defaults");
   assert.throws(() => normalizeBotPatch({ model: "gpt" }), /provider\/id/u);
@@ -103,10 +108,27 @@ test("a patch carries only what changes and may clear optional text and avatar k
   assert.equal(patchedAvatar({ emoji: "🦊" }, { emoji: "" }), undefined);
 });
 
+test("SOUL.md text is trimmed with Unix line ends, at most 20,000 characters; the kickoff message is recognized by its first line", () => {
+  assert.equal(normalizeSoul("\r\n# Soul\r\nline\rnext \n"), "# Soul\nline\nnext");
+  assert.equal(normalizeSoul("   "), "", "blank is none");
+  assert.equal(normalizeSoul("s".repeat(20_000)).length, 20_000);
+  assert.throws(() => normalizeSoul("s".repeat(20_001)), BotInputError);
+  assert.throws(() => normalizeSoul(null), /must be text/u);
+  assert.throws(() => normalizeSoul("a\0b"), /must be text/u);
+  const kickoff = botKickoffText("Scout  the\nScout");
+  assert.equal(kickoff.split("\n")[0], BOT_KICKOFF_MARKER);
+  assert.equal(botKickoffName(kickoff), "Scout the Scout", "its name, on one line");
+  assert.match(kickoff, /from HUI, not the operator/u);
+  assert.equal(botKickoffName(BOT_KICKOFF_MARKER), "");
+  assert.equal(botKickoffName(`${BOT_KICKOFF_MARKER} by hand`), undefined, "only the marker line itself");
+  assert.equal(botKickoffName("[routine: Standup] go"), undefined);
+});
+
 test("stored records keep what validates: a bad optional field is dropped, a bad required one skips the record", () => {
   assert.deepEqual(parseBotRecord({ ...bot("a", "ada"), avatar: { emoji: "🦊", color: "teal" }, thinking: "max", title: "", hidden: "yes" }), {
     ...bot("a", "ada"), avatar: { emoji: "🦊" },
   });
+  assert.deepEqual(parseBotRecord({ ...bot("a", "ada"), instructions: "Old persona." }), bot("a", "ada"), "a record's persona is SOUL.md now, never instructions");
   for (const broken of [{ ...bot("a", "ada"), handle: "Ada" }, { ...bot("a", "ada"), cwd: "relative" }, { ...bot("a", "ada"), sessionId: "" }, { ...bot("a", "ada"), name: "" }, "ada", null]) {
     assert.equal(parseBotRecord(broken), undefined, JSON.stringify(broken));
   }
@@ -140,6 +162,31 @@ test("the registry skips and keeps invalid records, refuses broken or newer file
   await writeFile(file, JSON.stringify({ version: 2, bots: [] }));
   await assert.rejects(registry.list(), /newer HUI/u);
   assert.equal(JSON.parse(await readFile(file, "utf8")).version, 2);
+});
+
+test("instructions from before SOUL.md stay in the file through every write until forgotten, one bot at a time", async (t) => {
+  const file = await tempFile(t);
+  const registry = new BotRegistry(file);
+  await writeFile(file, JSON.stringify({ version: 1, bots: [
+    { ...bot("a", "ada"), instructions: "You are Ada." }, { ...bot("b", "bob"), instructions: "  " }, bot("c", "cy"),
+  ] }));
+  assert.deepEqual([...await registry.legacyInstructions()], [["a", "You are Ada."]], "blank instructions are none");
+  assert.equal((await registry.list())[0]!.id, "a");
+  assert.equal("instructions" in (await registry.list())[0]!, false, "the record itself carries none");
+  // Another bot's edit, before the migration: the field survives.
+  await registry.update((bots) => ({ bots: bots.map((each) => each.id === "c" ? { ...each, title: "Edited" } : each), result: undefined }));
+  const stored = () => readFile(file, "utf8").then((text) => (JSON.parse(text) as { bots: Array<Record<string, unknown>> }).bots);
+  assert.equal((await stored())[0]!["instructions"], "You are Ada.");
+  assert.equal((await stored())[2]!["title"], "Edited");
+  await registry.forgetInstructions("a");
+  assert.equal("instructions" in (await stored())[0]!, false, "dropped once SOUL.md has them");
+  assert.deepEqual([...await registry.legacyInstructions()], []);
+  await registry.forgetInstructions("a");
+  assert.equal((await stored()).length, 3, "forgetting again changes nothing");
+  // A deleted bot's legacy field goes with it.
+  await writeFile(file, JSON.stringify({ version: 1, bots: [{ ...bot("a", "ada"), instructions: "You are Ada." }] }));
+  await registry.update(() => ({ bots: [], result: undefined }));
+  assert.deepEqual(await stored(), []);
 });
 
 test("registry updates are serialized: concurrent writers never lose each other's bots", async (t) => {

@@ -1108,9 +1108,9 @@ leaves worker records unchanged.
 
 ## Bots
 
-A **bot** is a named, persistent agent: a role and standing instructions, its
-own model, a working directory and **one chat that never ends**, whose memory is
-OptChat (HUI-18). Sessions keep everything they have (worktrees, rewind,
+A **bot** is a named, persistent agent: a role, a persona it writes itself
+(SOUL.md), its own model, a working directory and **one chat that never ends**,
+whose memory is OptChat (HUI-18). Sessions keep everything they have (worktrees, rewind,
 `/compact`); bots are for assistants the operator returns to every day. The
 sidebar splits into **Sessions | Bots**; the Bots tab is the UI follow-up, and
 the `hui bot` CLI can do everything it can, through the same routes.
@@ -1120,9 +1120,14 @@ the `hui bot` CLI can do everything it can, through the same routes.
   steering, follow-ups, questions and model switching are the session's own.
   Its record names the bot; the bot registry (`bots.json`) holds the rest.
   Remote workers do not run bots.
-- **Before the first word.** The persona becomes the conversation's standing
-  instructions, and OptChat is switched on, in the commit that creates the
-  conversation.
+- **Before the first word.** OptChat is switched on, and the conversation
+  marked as the bot's, in the commit that creates it.
+- **A soul, not instructions.** A bot's persona is the SOUL.md in its home
+  folder, read on every request. A new bot speaks first: HUI starts its first
+  turn, in which it asks the operator what they expect, a question or two at a
+  time (their real request always comes first), and then writes SOUL.md itself
+  with its file tools. It changes SOUL.md when the operator asks, and says so;
+  the operator can also edit it in the Soul tab or with `hui bot soul`.
 - **Forever.** Clearing, compacting, rewinding or deleting a bot's chat is
   refused; archiving the bot deletes nothing, disables its routines and stops a
   running turn, and restoring it brings it back with its routines still off.
@@ -1147,14 +1152,33 @@ The contract is [docs/api.md#bots](docs/api.md#bots).
 
 ## Decisions
 
+### Bots write their own SOUL.md in a first conversation (2026-10-06)
+
+Reviewing the Bots stack, the owner asked for bots to have a SOUL.md "like
+OpenClaw", and for the first conversation to be proactive: the bot asks what he
+expects from it, instead of an Instructions field. OpenClaw's `SOUL.md` and
+`BOOTSTRAP.md` are the model. A bot's persona is its SOUL.md, in a home folder
+HUI keeps for every bot (never a directory the operator chose), rendered as the
+last prompt section on every request and bounded at 20,000 characters. Without
+it, that section is the first conversation: short and conversational, never a
+questionnaire, and a ritual rather than a gate, since the operator's request
+always comes first. The bot writes the file itself with its file tools,
+mentions any change it makes, and the operator can edit or clear it (clearing
+brings the first conversation back). Right after a create without a soul HUI
+starts the bot's first turn with a kickoff message that clients show as a note,
+so the bot's opener is waiting when the operator opens the chat. Name and look
+stay in the dialog, so the bot never asks for them. The `instructions` field
+and Durable instructions are gone; the gateway turns existing instructions into
+SOUL.md once.
+
 ### Bots are named chats, not an agent selector (2026-10-05)
 
 The owner approved GrokBot/Hermes-style bots on 2026-10-05: a **Sessions | Bots**
 sidebar split, bots as named Durable conversations with OptChat memory, `hui bot`
 CLI parity with the Bots tab, routines through Automation and voice through
 VoiceStudio later. This satisfies the rule against new Agents or Approvals
-surfaces without a product decision: a bot is a chat with a name and standing
-instructions, not an Agents page or a global agent identity, and it adds no
+surfaces without a product decision: a bot is a chat with a name and a persona,
+not an Agents page or a global agent identity, and it adds no
 approval layer. Bots run with the same Full Access as every session, on this
 gateway only (remote workers are a later follow-up).
 

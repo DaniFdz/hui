@@ -12,6 +12,12 @@
  * skipped, reported once and written back untouched, so a hand edit never
  * takes the gateway down or loses data. A file that is not JSON or comes from
  * a newer HUI is refused and never overwritten.
+ *
+ * A bot's persona is not here: it is SOUL.md in its home folder
+ * (`bot-souls.ts`). Records from before SOUL.md may still carry
+ * `instructions`: the registry keeps that field in the file, untouched by every
+ * write, until `BotService.migrate` has turned it into SOUL.md and
+ * `forgetInstructions` drops it.
  */
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
@@ -101,7 +107,6 @@ export function parseBotRecord(raw: unknown): BotRecord | undefined {
   const level = (key: string): string | undefined => LEVELS.has(str(raw[key])) ? str(raw[key]) : undefined;
   const title = text("title", BOT_LIMITS.title);
   const description = text("description", BOT_LIMITS.description);
-  const instructions = text("instructions", BOT_LIMITS.instructions);
   const chatModel = model("model");
   const thinking = level("thinking");
   const memoryModel = model("memoryModel");
@@ -111,7 +116,6 @@ export function parseBotRecord(raw: unknown): BotRecord | undefined {
     id, handle, name,
     ...(title ? { title } : {}),
     ...(description ? { description } : {}),
-    ...(instructions ? { instructions } : {}),
     cwd,
     ...(chatModel ? { model: chatModel } : {}),
     ...(thinking ? { thinking } : {}),
@@ -124,7 +128,14 @@ export function parseBotRecord(raw: unknown): BotRecord | undefined {
   };
 }
 
-type BotsFile = { bots: BotRecord[]; invalid: unknown[] };
+/** The `instructions` a record from before SOUL.md still carries, or undefined. */
+function legacyInstructions(raw: unknown): string | undefined {
+  const value = isRecord(raw) ? raw["instructions"] : undefined;
+  return typeof value === "string" && value.trim() ? value : undefined;
+}
+
+/** `legacy`: bot id → the `instructions` its record still carries, written back with it until forgotten. */
+type BotsFile = { bots: BotRecord[]; invalid: unknown[]; legacy: Map<string, string> };
 
 export class BotRegistry {
   readonly file: string;
@@ -151,7 +162,7 @@ export class BotRegistry {
     } catch (error) {
       if (isRecord(error) && error["code"] === "ENOENT") {
         this.#cache = [];
-        return { bots: [], invalid: [] };
+        return { bots: [], invalid: [], legacy: new Map() };
       }
       throw new BotStoreError("HUI's bot registry could not be read.", { cause: error });
     }
@@ -167,6 +178,7 @@ export class BotRegistry {
     }
     const bots: BotRecord[] = [];
     const invalid: unknown[] = [];
+    const legacy = new Map<string, string>();
     const ids = new Set<string>();
     const handles = new Set<string>();
     const sessions = new Set<string>();
@@ -181,40 +193,62 @@ export class BotRegistry {
       handles.add(bot.handle);
       sessions.add(bot.sessionId);
       bots.push(bot);
+      const instructions = legacyInstructions(raw);
+      if (instructions !== undefined) legacy.set(bot.id, instructions);
     }
     if (invalid.length !== this.#reported) {
       this.#reported = invalid.length;
       if (invalid.length) this.#onInvalid(invalid.length);
     }
     this.#cache = bots;
-    return { bots, invalid };
+    return { bots, invalid, legacy };
   }
 
   async list(): Promise<BotRecord[]> {
     return [...(await this.#read()).bots];
   }
 
+  /** Bot id → the `instructions` its record still carries from before SOUL.md (`BotService.migrate`). */
+  async legacyInstructions(): Promise<Map<string, string>> {
+    return new Map((await this.#read()).legacy);
+  }
+
+  /** Drops a record's legacy `instructions` once they live on as its SOUL.md; nothing else changes. */
+  forgetInstructions(id: string): Promise<void> {
+    return this.#serialized(async () => {
+      const current = await this.#read();
+      if (!current.legacy.delete(id)) return;
+      await this.#write(current.bots, current.invalid, current.legacy);
+    });
+  }
+
   /** Serialized read/modify/write. `mutate` returns the next list and a result; a failed write changes nothing. */
   update<T>(mutate: (bots: readonly BotRecord[]) => { bots: readonly BotRecord[]; result: T }): Promise<T> {
-    const operation = this.#mutation.then(async () => {
+    return this.#serialized(async () => {
       const current = await this.#read();
       const { bots, result } = mutate(current.bots);
-      await this.#write(bots, current.invalid);
+      await this.#write(bots, current.invalid, current.legacy);
       this.#cache = [...bots];
       return result;
     });
+  }
+
+  #serialized<T>(work: () => Promise<T>): Promise<T> {
+    const operation = this.#mutation.then(work);
     // A failed mutation must not poison the queue for later requests.
     this.#mutation = operation.then(() => undefined, () => undefined);
     return operation;
   }
 
-  async #write(bots: readonly BotRecord[], invalid: readonly unknown[]): Promise<void> {
+  /** Legacy `instructions` go back on their records (a deleted bot's go with it). */
+  async #write(bots: readonly BotRecord[], invalid: readonly unknown[], legacy: ReadonlyMap<string, string>): Promise<void> {
     // A unique name: a slower writer must not clobber another's temporary file.
     const temporary = `${this.file}.${process.pid}-${randomUUID().slice(0, 8)}.tmp`;
     try {
       await mkdir(dirname(this.file), { recursive: true, mode: 0o700 });
       // Personas can be private: owner-only, like the Durable store.
-      await writeFile(temporary, `${JSON.stringify({ version: BOTS_VERSION, bots: [...bots, ...invalid] }, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+      const records = bots.map((bot) => legacy.has(bot.id) ? { ...bot, instructions: legacy.get(bot.id) } : bot);
+      await writeFile(temporary, `${JSON.stringify({ version: BOTS_VERSION, bots: [...records, ...invalid] }, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
       await rename(temporary, this.file);
     } catch (error) {
       await rm(temporary, { force: true }).catch(() => {});
@@ -249,17 +283,34 @@ export function findBot(bots: readonly BotRecord[], target: string): BotRecord {
 }
 
 const INPUT_KEYS = new Set([
-  "name", "handle", "title", "description", "instructions", "cwd", "model", "thinking", "memoryModel", "memoryThinking", "avatar", "hidden",
+  "name", "handle", "title", "description", "soul", "cwd", "model", "thinking", "memoryModel", "memoryThinking", "avatar", "hidden",
 ]);
 const LABELS: Record<string, string> = {
-  name: "Bot name", handle: "Bot handle", title: "Bot title", description: "Bot description", instructions: "Bot instructions",
+  name: "Bot name", handle: "Bot handle", title: "Bot title", description: "Bot description", soul: "SOUL.md",
   cwd: "Working directory", model: "Bot model", thinking: "Thinking level", memoryModel: "Memory model", memoryThinking: "Memory thinking level",
 };
 
 function body(value: unknown, what: string): Record<string, unknown> {
   if (!isRecord(value)) throw new BotInputError(`${what} must be an object.`);
+  // A client from before SOUL.md: say where the persona went instead of only refusing the field.
+  if ("instructions" in value) {
+    throw new BotInputError("Bots have no instructions any more: a bot's persona is its SOUL.md, which it writes in its first conversation. Send soul when creating it, or PUT /__hui/bots/:id/soul.");
+  }
   const unknown = Object.keys(value).filter((key) => !INPUT_KEYS.has(key));
   if (unknown.length) throw new BotInputError(`Unknown bot field${unknown.length === 1 ? "" : "s"}: ${unknown.join(", ")}.`);
+  return value;
+}
+
+/**
+ * SOUL.md as `POST /__hui/bots` or `PUT /__hui/bots/:id/soul` gives it: text of
+ * at most 20,000 characters, trimmed. `""` means none: the bot has (again) its
+ * first conversation.
+ */
+export function normalizeSoul(raw: unknown): string {
+  if (typeof raw !== "string") throw new BotInputError("SOUL.md must be text.");
+  const value = raw.replace(/\r\n?/gu, "\n").trim();
+  if (value.length > BOT_LIMITS.soul) throw new BotInputError(`SOUL.md must be at most ${BOT_LIMITS.soul} characters (it has ${value.length}).`);
+  if (value.includes("\0")) throw new BotInputError("SOUL.md must be text.");
   return value;
 }
 
@@ -325,13 +376,15 @@ function cwdField(raw: unknown): string {
 export function normalizeBotInput(value: unknown): BotInput {
   const input = body(value, "A bot");
   if (!("name" in input)) throw new BotInputError("A bot name is required.");
+  const { soul: rawSoul, ...fields } = input;
+  const soul = rawSoul === undefined ? "" : normalizeSoul(rawSoul);
   // The patch rules, then empty optional text and avatar keys dropped: a new bot has nothing to clear.
-  const patch = normalizeBotPatch(input);
+  const patch = normalizeBotPatch(fields);
   const result: BotInput = { name: patch.name! };
   if (patch.handle) result.handle = patch.handle;
   if (patch.title) result.title = patch.title;
   if (patch.description) result.description = patch.description;
-  if (patch.instructions) result.instructions = patch.instructions;
+  if (soul) result.soul = soul;
   if (patch.cwd) result.cwd = patch.cwd;
   if (patch.model) result.model = patch.model;
   if (patch.thinking) result.thinking = patch.thinking;
@@ -347,12 +400,12 @@ export function normalizeBotInput(value: unknown): BotInput {
 export function normalizeBotPatch(value: unknown): BotPatch {
   const input = body(value, "A bot change");
   if (!Object.keys(input).length) throw new BotInputError("Nothing to change.");
+  if ("soul" in input) throw new BotInputError("Change a bot's SOUL.md with PUT /__hui/bots/:id/soul.");
   const patch: BotPatch = {};
   if ("name" in input) patch.name = textField(input["name"], "name", BOT_LIMITS.name, { line: true, required: true });
   if ("handle" in input) patch.handle = handleField(input["handle"]);
   if ("title" in input) patch.title = textField(input["title"], "title", BOT_LIMITS.title, { line: true });
   if ("description" in input) patch.description = textField(input["description"], "description", BOT_LIMITS.description);
-  if ("instructions" in input) patch.instructions = textField(input["instructions"], "instructions", BOT_LIMITS.instructions);
   if ("cwd" in input) patch.cwd = cwdField(input["cwd"]);
   // `""` puts the chat back on the model or thinking level a new chat gets, and the memory on the chat's own model.
   if ("model" in input) patch.model = modelField(input["model"], "model");

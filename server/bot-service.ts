@@ -3,10 +3,15 @@
  *
  * A bot's chat is an ordinary Durable session registered through New
  * Session's code path, and its record carries `bot`; the bot registry
- * (`bots.ts`) owns the rest. Durable and OptChat arrive through two injected
- * ports, so the lifecycle is tested without a harness: `BotConversations` (the
- * conversation, its instructions and directory; `bot-conversations.ts`) and
- * `BotMemory` (OptChat; `bot-memory.ts`).
+ * (`bots.ts`) owns the rest. Durable, OptChat and SOUL.md arrive through
+ * injected ports, so the lifecycle is tested without a harness and a bot that
+ * runs elsewhere can route them: `BotConversations` (the conversation and its
+ * directory; `bot-conversations.ts`), `BotMemory` (OptChat; `bot-memory.ts`)
+ * and `BotSouls` (SOUL.md in the bot's home folder; `bot-souls.ts`).
+ *
+ * A bot's persona is its SOUL.md. A bot created without one speaks first: HUI
+ * starts its first turn with a kickoff message, and the chat's `soul` section
+ * has it ask the operator what they expect and write SOUL.md itself.
  *
  * Delivery follows the composer: a prompt while the chat is idle, a follow-up
  * while it works. A waiting caller resolves when the run that answers its
@@ -18,13 +23,13 @@ import { mkdir, rmdir, stat } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 
 import {
-  BOT_LIMITS, handleFromName, previewLine,
+  BOT_LIMITS, botKickoffName, botKickoffText, handleFromName, previewLine,
   type BotLastMessage, type BotMemoryStatus, type BotMessageResult, type BotPatch, type BotQuestion, type BotRecord, type BotReply, type BotView,
 } from "../shared/bots.ts";
 import type { AutomationTask } from "../src/lib/automation-types.ts";
 import { BotMemoryUnavailableError, type BotMemory, type BotMemorySettings } from "./bot-memory.ts";
 import {
-  BOTS_DIR, BotConflictError, BotInputError, BotNotFoundError, findBot, normalizeBotInput, normalizeBotPatch, patchedAvatar, uniqueHandle,
+  BOTS_DIR, BotConflictError, BotInputError, BotNotFoundError, findBot, normalizeBotInput, normalizeBotPatch, normalizeSoul, patchedAvatar, uniqueHandle,
   type BotRegistry,
 } from "./bots.ts";
 import { SessionBusyError, type LiveSessions } from "./live-sessions.ts";
@@ -38,6 +43,8 @@ const HOUR_MS = 3_600_000;
 /** Bot-to-bot messages a chain may cross before HUI stops it. */
 export const MAX_BOT_HOPS = 3;
 const READY_TIMEOUT_MS = 60_000;
+/** How often the bot list looks at SOUL.md again by itself, for a hand edit; HUI's own writes and a settled turn count at once. */
+const SOUL_RECHECK_MS = 10_000;
 const HOP = /^\[from @[a-z0-9-]+(?: · hop ([1-9]\d*))?\] /u;
 
 export type BotSessions = Pick<
@@ -53,16 +60,16 @@ export type BotConversationInput = {
   cwd: string;
   model?: string;
   thinking?: string;
-  instructions?: string;
   memory: BotMemorySettings;
 };
 
 /** The Durable side of bots' chats. */
 export type BotConversations = {
-  /** One commit: the conversation, its agent (cwd, model, thinking, instructions), its bot document and OptChat. Returns its resume reference. */
+  /** One commit: the conversation, its agent (cwd, model, thinking), its bot document and OptChat. Returns its resume reference. */
   create(input: BotConversationInput): Promise<string>;
-  /** Takes effect at the conversation's next request. `instructions: null` clears them. */
-  configure(reference: string, change: { instructions?: string | null; cwd?: string }): Promise<void>;
+  /** Takes effect at the conversation's next request. `instructions: null` clears the Durable instructions a bot had
+   * before SOUL.md (`BotService.migrate`); bots never set them. */
+  configure(reference: string, change: { instructions?: null; cwd?: string }): Promise<void>;
   lastMessage(reference: string): Promise<BotStoredMessage | undefined>;
   /** Rejects a `provider/id` this gateway cannot resolve. */
   checkModel(model: string): Promise<void>;
@@ -70,6 +77,23 @@ export type BotConversations = {
   defaultModel(cwd: string): Promise<string | undefined>;
   /** The thinking level a new chat in `cwd` starts at on `model`: PI's default fitted to the model, else `off`. */
   defaultThinking(cwd: string, model: string | undefined): Promise<string>;
+};
+
+/**
+ * SOUL.md, each bot's persona, in its home folder on the host that runs its chat (`bot-souls.ts` on this gateway).
+ * Every bot has that folder, whatever its working directory.
+ */
+export type BotSouls = {
+  /** Creates the bot's home folder (owner-only) if it is missing. */
+  prepare(botId: string): Promise<void>;
+  /** SOUL.md's text, trimmed; undefined while there is none (no file, or only whitespace). */
+  read(botId: string): Promise<string | undefined>;
+  /** Whether `read` would find a soul. The bot list asks again only when a bot's chat changes state. */
+  exists(botId: string): Promise<boolean>;
+  /** Replaces SOUL.md atomically; undefined removes it, which brings the first conversation back. */
+  write(botId: string, soul: string | undefined): Promise<void>;
+  /** For a deleted bot: removes SOUL.md, then the home folder if that leaves it empty. Its other files stay. */
+  remove(botId: string): Promise<void>;
 };
 
 /** Automation tasks, which are a bot's routines when they target its chat. */
@@ -91,6 +115,7 @@ export type BotServiceDeps = {
   removeSession(id: string): Promise<void>;
   conversations: BotConversations;
   memory: BotMemory;
+  souls: BotSouls;
   routines: BotRoutines;
   botsDir?: string;
   now?: () => number;
@@ -128,6 +153,9 @@ export class BotService {
   #sent = new Map<string, number[]>();
   /** Newest message per bot, from its live transcript or one store read while no session holds it. */
   #lastMessages = new Map<string, { reference: string | undefined; message: BotLastMessage | undefined }>();
+  /** Whether each bot has a soul, and the chat state it was read in: the bot list asks every second, and only a turn
+   * (the bot writing SOUL.md), HUI's own write or a hand edit (`SOUL_RECHECK_MS`) can change it. */
+  #souls = new Map<string, { key: string; soul: boolean }>();
 
   constructor(deps: BotServiceDeps) {
     this.#deps = deps;
@@ -168,10 +196,13 @@ export class BotService {
   }
 
   /**
-   * Creates the bot's conversation (persona, bot document and memory in its
-   * creating commit), registers its chat through New Session's path, then the
-   * bot. A failed step undoes the earlier ones it can: the directory it made,
-   * the session record. An empty conversation left behind is never addressed.
+   * Makes the bot's home folder (and SOUL.md when `soul` is given), creates its
+   * conversation (bot document and memory in its creating commit), registers
+   * its chat through New Session's path, then the bot. A failed step undoes the
+   * earlier ones it can: SOUL.md, the folders it made while empty, the session
+   * record. An empty conversation left behind is never addressed. Without a
+   * soul, the bot's first turn starts once it exists, in the background: it
+   * speaks first.
    */
   async create(body: unknown): Promise<BotView> {
     const input = normalizeBotInput(body);
@@ -187,15 +218,20 @@ export class BotService {
       await mkdir(created, { recursive: true, mode: 0o700 });
       cwd = created;
     }
-    // Only an empty directory this request made goes; a bot's files never do.
-    const undo = async () => { if (created) await rmdir(created).catch(() => {}); };
+    // SOUL.md goes, then only empty folders this request made; a bot's files never do.
+    const undo = async () => {
+      await this.#deps.souls.remove(id).catch(() => {});
+      if (created) await rmdir(created).catch(() => {});
+    };
     let reference: string;
     try {
+      // Every bot has its home folder, whatever its working directory: SOUL.md lives there.
+      await this.#deps.souls.prepare(id);
+      if (input.soul) await this.#deps.souls.write(id, input.soul);
       reference = await this.#deps.conversations.create({
         botId: id, cwd,
         ...(input.model ? { model: input.model } : {}),
         ...(input.thinking ? { thinking: input.thinking } : {}),
-        ...(input.instructions ? { instructions: input.instructions } : {}),
         memory: memorySettings(input.name, input.memoryModel, input.memoryThinking),
       });
     } catch (error) {
@@ -225,7 +261,6 @@ export class BotService {
           name: input.name,
           ...(input.title ? { title: input.title } : {}),
           ...(input.description ? { description: input.description } : {}),
-          ...(input.instructions ? { instructions: input.instructions } : {}),
           cwd,
           ...(input.model ? { model: input.model } : {}),
           ...(input.thinking ? { thinking: input.thinking } : {}),
@@ -239,6 +274,7 @@ export class BotService {
         };
         return { bots: [...bots, record], result: record };
       });
+      if (!input.soul) this.#kickoff(bot);
       return await this.#viewOf(bot);
     } catch (error) {
       await this.#deps.removeSession(session.id).catch((cleanup: unknown) => this.#report("error", "bot_create_rollback_failed", "A bot's chat could not be removed after a failed create", cleanup));
@@ -248,12 +284,25 @@ export class BotService {
   }
 
   /**
-   * Applies a patch: model and thinking through the live chat, instructions and
-   * directory on its conversation, name and compactor model on its memory,
-   * name and directory on its session record, then the bot. The directory
-   * changes only while the chat is idle; its runtime boots again there. A
-   * cleared model or thinking level (`""`) puts the chat back on what a new
-   * chat gets, and leaves the bot and its chat's record without a choice.
+   * The first turn of a bot created without a soul, started by HUI so the bot
+   * speaks first: a kickoff message (`botKickoffText`) the chat shows as a note.
+   * The create does not wait for it. A run that fails shows in the chat like any
+   * run's error; a chat that cannot start is reported.
+   */
+  #kickoff(bot: BotRecord): void {
+    void (async () => {
+      await this.#deliver(await this.#sessionOf(bot), botKickoffText(bot.name), undefined);
+    })().catch((error: unknown) => this.#report("warning", "bot_kickoff_failed", `@${bot.handle}'s first turn did not start`, error));
+  }
+
+  /**
+   * Applies a patch: model and thinking through the live chat, the directory on
+   * its conversation, name and compactor model on its memory, name and
+   * directory on its session record, then the bot. The directory changes only
+   * while the chat is idle; its runtime boots again there. A cleared model or
+   * thinking level (`""`) puts the chat back on what a new chat gets, and
+   * leaves the bot and its chat's record without a choice. SOUL.md is
+   * `setSoul`'s.
    */
   async update(target: string, body: unknown): Promise<BotView> {
     const patch = normalizeBotPatch(body);
@@ -286,12 +335,7 @@ export class BotService {
         await this.#sessions.setThinking(bot.sessionId, level);
       }
     }
-    if (patch.instructions !== undefined || moving) {
-      await this.#deps.conversations.configure(reference, {
-        ...(patch.instructions !== undefined ? { instructions: patch.instructions || null } : {}),
-        ...(moving ? { cwd } : {}),
-      });
-    }
+    if (moving) await this.#deps.conversations.configure(reference, { cwd });
     const name = patch.name ?? bot.name;
     if (patch.name !== undefined || patch.memoryModel !== undefined || patch.memoryThinking !== undefined) {
       await this.#deps.memory.configure(reference, memorySettings(
@@ -376,11 +420,12 @@ export class BotService {
   /**
    * Deletes an archived bot for good. Archiving stays the step that can be
    * undone, so an active bot is refused. Removes every Automation task aimed at
-   * its chat, deletes the chat's session record (its runtime stops), then the
-   * bot. As with a deleted session, its conversation and memory stay in the
-   * Durable store, which HUI no longer opens. A folder HUI made for the bot goes
-   * only while empty: the bot's files never do. Each step can run again, so
-   * deleting again finishes what an interrupted attempt left.
+   * its chat, deletes the chat's session record (its runtime stops), its
+   * SOUL.md (HUI's file) and then its home folder if that left it empty, then
+   * the bot. As with a deleted session, its conversation and memory stay in the
+   * Durable store, which HUI no longer opens; the bot's other files never go.
+   * Each step can run again, so deleting again finishes what an interrupted
+   * attempt left.
    */
   async delete(target: string): Promise<void> {
     const bot = await this.resolve(target);
@@ -389,8 +434,69 @@ export class BotService {
       await this.#deps.routines.remove(task);
     }
     if ((await this.#deps.readSessions()).some((record) => record.id === bot.sessionId)) await this.#deps.removeSession(bot.sessionId);
-    if (bot.cwd === join(this.#botsDir, bot.id)) await rmdir(bot.cwd).catch(() => {});
+    await this.#deps.souls.remove(bot.id);
     await this.#registry.update((bots) => ({ bots: bots.filter((candidate) => candidate.id !== bot.id), result: undefined }));
+    this.#souls.delete(bot.id);
+  }
+
+  /** SOUL.md's text; null while the bot has none (before or during its first conversation). */
+  async soul(target: string): Promise<string | null> {
+    const bot = await this.resolve(target);
+    return (await this.#deps.souls.read(bot.id)) ?? null;
+  }
+
+  /**
+   * Replaces SOUL.md atomically with `raw` (`normalizeSoul`); `""` removes it,
+   * which brings the first conversation back at the bot's next turn. The chat
+   * reads it from its next request; the bot's `updatedAt` moves, so every
+   * screen reads it again. An archived bot is refused, as for edits.
+   */
+  async setSoul(target: string, raw: unknown): Promise<string | null> {
+    const soul = normalizeSoul(raw);
+    const bot = await this.resolve(target);
+    if (bot.archived) throw new BotConflictError(`@${bot.handle} is archived. Restore it before changing its soul.`);
+    await this.#deps.souls.write(bot.id, soul || undefined);
+    this.#souls.delete(bot.id);
+    const now = new Date(this.#now()).toISOString();
+    await this.#registry.update((bots) => ({ bots: bots.map((each) => each.id === bot.id ? { ...each, updatedAt: now } : each), result: undefined }));
+    return soul || null;
+  }
+
+  /**
+   * Bots from before SOUL.md, once, at the gateway's start: every bot gets its
+   * home folder; a bot whose record still carries `instructions` gets them as
+   * its SOUL.md (only while it has none), then its conversation's Durable
+   * instructions are cleared, then the field leaves bots.json. In that order, so
+   * a restart in between finishes the rest; a bot that fails stays as it was
+   * and is tried again at the next start. Nothing starts a turn: a bot without
+   * either has its first conversation at its next turn.
+   */
+  async migrate(): Promise<{ souls: number; cleared: number }> {
+    const bots = await this.#registry.list();
+    for (const bot of bots) {
+      await this.#deps.souls.prepare(bot.id).catch((error: unknown) => this.#report("warning", "bot_home_failed", `@${bot.handle}'s home folder could not be created`, error));
+    }
+    const result = { souls: 0, cleared: 0 };
+    for (const [id, instructions] of await this.#registry.legacyInstructions()) {
+      const bot = bots.find((candidate) => candidate.id === id);
+      if (!bot) continue;
+      try {
+        if (!await this.#deps.souls.exists(id)) {
+          await this.#deps.souls.write(id, instructions.replace(/\r\n?/gu, "\n").trim());
+          result.souls += 1;
+        }
+        const reference = (await this.#deps.readSessions()).find((record) => record.id === bot.sessionId)?.piSessionFile;
+        if (reference) {
+          await this.#deps.conversations.configure(reference, { instructions: null });
+          result.cleared += 1;
+        }
+        await this.#registry.forgetInstructions(id);
+        this.#souls.delete(id);
+      } catch (error) {
+        this.#report("warning", "bot_soul_migration_failed", `@${bot.handle}'s instructions could not become its SOUL.md yet; HUI tries again at its next start`, error);
+      }
+    }
+    return result;
   }
 
   /**
@@ -500,17 +606,30 @@ export class BotService {
     const reference = record?.piSessionFile;
     const memory = reference ? await this.#deps.memory.status(reference).catch(() => undefined) : undefined;
     const lastMessage = await this.#lastMessage(bot, record);
+    const soul = await this.#hasSoul(bot, record);
     return {
       ...bot,
       // The chat's own choice wins: its session controls may switch the model at any time.
       ...(record?.model ? { model: record.model } : {}),
       ...(record?.thinking ? { thinking: record.thinking } : {}),
       status: this.#sessions.status(bot.sessionId),
+      soul,
       ...(lastMessage ? { lastMessage } : {}),
       unread: record?.unread === true,
       ...(memory ? { memory: memoryStatus(memory) } : {}),
       routines: tasks.filter((task) => task.sessionId === bot.sessionId).length,
     };
+  }
+
+  /** Read again only when the chat's state or record changed since, or `SOUL_RECHECK_MS` passed; an unreadable folder
+   * keeps the last answer. */
+  async #hasSoul(bot: BotRecord, record: SessionRecord | undefined): Promise<boolean> {
+    const key = `${this.#sessions.status(bot.sessionId)}|${record?.updatedAt ?? ""}|${Math.floor(this.#now() / SOUL_RECHECK_MS)}`;
+    const cached = this.#souls.get(bot.id);
+    if (cached?.key === key) return cached.soul;
+    const soul = await this.#deps.souls.exists(bot.id).catch(() => cached?.soul ?? false);
+    this.#souls.set(bot.id, { key, soul });
+    return soul;
   }
 
   /** A broken automation store reports no routines rather than hiding every bot. */
@@ -729,11 +848,12 @@ export function botsSection(self: BotRecord, others: readonly BotRecord[]): stri
   ].join("\n\n");
 }
 
-/** The newest message a transcript shows, as a one-line preview. */
+/** The newest message a transcript shows, as a one-line preview; HUI's kickoff is a note, not a message. */
 export function lastTranscriptMessage(transcript: readonly TranscriptEntry[], fallbackAt: string): BotLastMessage | undefined {
   for (let index = transcript.length - 1; index >= 0; index -= 1) {
     const entry = transcript[index]!;
     if (entry.kind !== "message" || !entry.text.trim()) continue;
+    if (entry.role === "user" && botKickoffName(entry.text) !== undefined) continue;
     const timestamp = entry.metrics?.timestamp;
     return { role: entry.role, text: previewLine(entry.text), at: timestamp === undefined ? fallbackAt : new Date(timestamp).toISOString() };
   }
@@ -791,7 +911,7 @@ function patched(bot: BotRecord, patch: BotPatch, cwd: string | undefined, updat
   const next: BotRecord = { ...bot, updatedAt };
   if (patch.name !== undefined) next.name = patch.name;
   if (patch.handle !== undefined) next.handle = patch.handle;
-  for (const key of ["title", "description", "instructions", "model", "thinking", "memoryModel", "memoryThinking"] as const) {
+  for (const key of ["title", "description", "model", "thinking", "memoryModel", "memoryThinking"] as const) {
     const value = patch[key];
     if (value === undefined) continue;
     if (value) next[key] = value;

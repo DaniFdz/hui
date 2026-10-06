@@ -30,6 +30,7 @@ import { BotService } from "./bot-service.ts";
 import { BOT_MEMORY_PAGE, BOTS_EVENTS_ROUTE, BOTS_ROUTE, createBotRoutes } from "./bot-routes.ts";
 import { durableBotConversations } from "./bot-conversations.ts";
 import { optChatBotMemory } from "./bot-memory.ts";
+import { botHome, localBotSouls, operatorName } from "./bot-souls.ts";
 import type { BotsUpdate, BotView } from "../shared/bots.ts";
 import { progressCardFromTranscript, type ProgressCard } from "../shared/progress-card.ts";
 import type { SessionPullRequest } from "../shared/pull-requests.ts";
@@ -265,6 +266,7 @@ const bots = new BotService({
   removeSession: (id) => deleteSession(id),
   conversations: durableBotConversations(durableHost(), botMemory),
   memory: botMemory,
+  souls: localBotSouls(),
   routines: {
     // A broken automation store is a storage failure (500), not the caller's.
     tasks: async () => (await automation.snapshot().catch(automationStoreFailure)).tasks,
@@ -293,8 +295,13 @@ const botRoutes = createBotRoutes({
 function automationStoreFailure(error: unknown): never {
   throw error instanceof AutomationStoreError ? new BotStoreError(error.message, { cause: error }) : error;
 }
-// A bot's chat lists the other bots in its `bots` prompt section.
+// A bot's chat lists the other bots in its `bots` prompt section, and reads its SOUL.md (or has its first
+// conversation) in its `soul` section, from its home folder in HUI's configuration.
 durableHost().botSection = (botId) => bots.section(botId);
+durableHost().botSouls = {
+  home: (botId) => botHome(botId),
+  operator: async () => operatorName((await readSettings()).profileName),
+};
 /** The bot list every Bots screen shares, recomputed while one listens, like the session list. */
 const botList = createSessionListHub<BotView>(async () => [{ label: "bots", sessions: await bots.list({ archived: "all" }) }]);
 const subagents = new SubagentService(liveSessions);
@@ -3706,6 +3713,19 @@ export async function startBackend(): Promise<void> {
   await automation.start();
   // Session views name bots' chats from this list; a broken bots.json is reported by the bot routes.
   await botRegistry.list().catch(() => undefined);
+  // Bots from before SOUL.md: their instructions become SOUL.md once (bots.json keeps them until then).
+  void bots.migrate().then((moved) => {
+    if (moved.souls || moved.cleared) {
+      recordDiagnosticEvent({
+        area: "session", level: "info", action: "bots_souls_migrated",
+        summary: `${moved.souls} bot${moved.souls === 1 ? "" : "s"} got their instructions as SOUL.md; ${moved.cleared} conversation${moved.cleared === 1 ? "" : "s"} no longer carry instructions`,
+      });
+    }
+  }, (error: unknown) => recordDiagnosticEvent({
+    area: "session", level: "warning", action: "bots_souls_migration_failed",
+    summary: "Bots' instructions could not become SOUL.md; HUI tries again at its next start",
+    detail: error instanceof Error ? error.message : String(error),
+  }));
   initializeWatchers();
   initializeSubagents();
   await workers.list().catch(() => undefined);
