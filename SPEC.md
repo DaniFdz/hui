@@ -1152,12 +1152,12 @@ everything the Bots tab can, through the same routes.
   command palette or session pickers; Automations labels their routines
   *Bot · name* and words
   their schedules as the bot's panel does (*Daily at 08:00*). The roster
-  lists bots by latest activity: an emoji or initial on a color stable per bot,
-  the name, the latest message or role, a short time, an activity badge (active,
+  lists bots by latest activity: the bot's animated face (or its emoji), the
+  name, the latest message or role, a short time, an activity badge (active,
   waiting for an answer, summarizing memory, failed), an unread dot (also on the
   Bots tab while Agents shows) and a warning while memory summaries keep
   failing. Search matches name, handle and title. The toolbar's + opens **New
-  bot** (name, emoji, title, instructions, model, thinking, memory model,
+  bot** (name, look, title, instructions, model, thinking, memory model,
   workspace; nothing changes until the gateway accepts it); *Gateway default*
   leaves the model and thinking level to the gateway, and choosing it when
   editing clears the bot's own. A row's menu offers Edit, Hide/Unhide (*Show
@@ -1165,7 +1165,7 @@ everything the Bots tab can, through the same routes.
   *Show archived* (while any are archived) lists archived bots with Restore,
   and an archived bot's chat opens again only once restored. A bot opens at
   `/bots/<id>` as its one chat in the ordinary session pane, its header
-  showing avatar, name, role and status;
+  showing face, name, role and status;
   assistant turns carry the bot's name, `/clear`, `/compact`, Compact now and
   rewind are not offered, and a new bot says *Say hi to <name>*. Opening it
   marks it read. A **Routines | Memory** panel docks beside the chat (open or
@@ -1195,8 +1195,9 @@ everything the Bots tab can, through the same routes.
   detection cuts what is said, VoiceStudio transcribes it, it reaches the chat
   as an ordinary `[voice] ` message, and the reply is spoken as it streams;
   speaking over the bot stops its voice and steers a turn that still runs. The
-  call view shows a timer, both sides' captions, mute and hang up, and minimizes
-  to a bar; hanging up deletes nothing. The microphone opens only on a click and
+  call view takes the bot's color and shows its face listening to the
+  microphone and speaking with its voice, a timer, both sides' captions, mute
+  and hang up, and minimizes to a bar; hanging up deletes nothing. The microphone opens only on a click and
   closes with the note or call; HUI stores no audio, only the chat's text.
 
 The contract is [docs/api.md#bots](docs/api.md#bots).
@@ -1220,6 +1221,39 @@ sidebar, not an Agents page or agent selector; Bots shows only the roster.
 Later that day he asked for it above everything else, the header buttons
 included, because the two tabs work differently: it is now a full-width tab bar
 over a divider, the first thing in the sidebar.
+
+### Bots have animated faces (2026-10-06)
+
+The owner asked for faces "like OpenAI Dots" instead of letter and emoji
+avatars and approved the prototype (`bot-face-prototype.html`, outside the
+repository) with "Okay, implement this"; the prototype is the spec. Each bot
+gets a plush SVG shape (Blob, Pebble, Triangle, Heart, Cookie) in one of six
+colors, with two dot eyes and no mouth, drawn by `<hui-bot-face>` with no new
+dependency. Expressions come from the eyes (blinks, glances, squints, closed
+arcs) and the body (breathing, sway, squash and stretch, hops), for ten
+states: idle, thinking, working (a tool runs), speaking, listening, waiting (a
+question), memory (summarizing), error, done (a hop when a turn ends) and
+offline (unreachable or archived).
+
+- **Look on the record, defaults from the id.** `avatar` gains `shape` beside
+  `emoji` and `color` (no format change: absent keys stay absent). A bot without
+  them gets the face its id picks, the same everywhere; a new bot from the Bots
+  tab keeps the face its dialog showed. The emoji stays an alternative: a bot
+  with one shows it until someone switches it to its face (clearing the emoji),
+  and its tile takes the bot's color. The CLI has `--shape`, `--color` and
+  `--emoji ""`, and `hui bot show` prints the look.
+- **Real states only.** Roster rows follow the bot's status (a running turn is
+  thinking); its open chat adds a running tool, a pending question, memory
+  waits and a failed turn; a call listens with the microphone's level (from the
+  frames voice-activity detection already reads) and speaks with the voice's
+  (an envelope of each clip read at its playback position, without rerouting
+  the audio). Text badges and status lines stay; faces are `aria-hidden`.
+- **Cheap.** CSS keyframes carry the motion; small faces only blink and glance
+  on timers. Large faces (empty chat, call, the dialog's preview) also follow
+  the pointer and morph on animation frames. Faces pause while hidden or off
+  screen, and prefers-reduced-motion leaves a still expression per state.
+- **Later, if wanted:** accessories (Dots' glasses, hats), more shapes, a custom
+  color picker, and sprite-sheet pets.
 
 ### New sessions run on Pi Durable
 
