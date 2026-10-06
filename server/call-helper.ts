@@ -143,16 +143,17 @@ export function createCallDelegate(deps: CallDelegateDeps) {
   const now = () => (deps.now ?? Date.now)();
   const handOff = (bot: BotRecord, call: ActiveCall, task: string): CallDelegationResult => {
     if (call.tasks.size >= CALL_LIMITS.handoffs) {
-      return { status: "limit", speak: `This call already gave ${bot.name} ${CALL_LIMITS.handoffs} tasks. Tell the user to ask for more in ${bot.name}'s chat.` };
+      return { status: "limit", speak: `This call already gave ${bot.name} ${CALL_LIMITS.handoffs} tasks, so ask for more in ${bot.name}'s chat.` };
     }
     const id = randomUUID();
     const reply = deps.handOff(bot.id, `${CALL_TASK_PREFIX}${task}`);
     reply.catch(() => {});
     call.tasks.set(id, reply);
     call.lines.push({ role: "handoff", text: task, at: now() });
+    // GPT-Live hears this on the commentary channel: the task's result is the delegation's speakable answer, later.
     return {
       status: "handed-off", task: id,
-      speak: boundText(`${bot.name} is on it: ${task}. Tell the user it is being done in ${bot.name}'s chat and that you will tell them the result if it comes in while you are still talking.`, CALL_LIMITS.result),
+      speak: boundText(`Handed to ${bot.name}'s chat: ${task}. It is being done there now; its result comes on the speakable channel when it is ready. Until then, tell the user ${bot.name} is on it.`, CALL_LIMITS.result),
     };
   };
   return async (input: { bot: BotRecord; call: ActiveCall; request: string }, signal?: AbortSignal): Promise<CallDelegationResult> => {
@@ -173,9 +174,9 @@ export function createCallDelegate(deps: CallDelegateDeps) {
       const message = error instanceof Error ? error.message : String(error);
       deps.report?.("A call's helper did not answer", message);
       if (error instanceof CallHelperError && error.aborted) {
-        return { status: "timeout", speak: `${bot.name} is taking long to answer that. Tell the user, and offer to hand it to ${bot.name} to do in its chat.` };
+        return { status: "timeout", speak: `That is taking ${bot.name} a while to answer. I can hand it to ${bot.name}'s chat to work on, if you like.` };
       }
-      return { status: "failed", speak: boundText(`${bot.name} could not answer quickly (${message}). Offer to hand it to ${bot.name}'s chat instead.`, CALL_LIMITS.result) };
+      return { status: "failed", speak: boundText(`${bot.name} could not answer that quickly (${message}). I can hand it to ${bot.name}'s chat instead, if you like.`, CALL_LIMITS.result) };
     }
   };
 }

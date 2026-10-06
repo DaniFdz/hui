@@ -130,3 +130,12 @@ test("normalizer accepts legacy and discriminated durable transcripts", () => {
   ]);
   assert.deepEqual(items.map((item) => item.kind), ["message", "error", "tool"]);
 });
+
+test("a call's record survives normalization as one call item; a malformed one is dropped", () => {
+  const record = { call: "c1", bot: "Juno", startedAt: 1, endedAt: 61_000, summary: "**Discussed**: teal.", lines: [{ role: "user", text: "Hi", at: 2 }] };
+  const items = normalizeTranscript([{ kind: "message", role: "user", text: "typed" }, { kind: "call", ...record }, { kind: "call", call: "broken" }] as never);
+  assert.deepEqual(items.map((item) => item.kind), ["message", "call"]);
+  const call = items[1] as { kind: "call"; summary?: string; lines: unknown[] };
+  assert.equal(call.summary, "**Discussed**: teal.");
+  assert.deepEqual(call.lines, record.lines);
+});

@@ -103,7 +103,7 @@ function privacyLine(props: CallViewProps): string {
   const { state, bot } = props;
   if (state.engine !== "gpt-live") return `Audio goes only to your VoiceStudio. What is said stays in ${bot.name}'s chat.`;
   const voice = state.voice && isGptLiveVoice(state.voice) ? ` · voice ${gptLiveVoiceLabel(state.voice)}` : "";
-  return `GPT-Live through your ChatGPT account${voice}. Audio goes to OpenAI; what is said lands in ${bot.name}'s chat. HUI stores no audio.`;
+  return `GPT-Live through your ChatGPT account${voice}. Audio goes to OpenAI; ${bot.name}'s chat keeps the call's summary and transcript. HUI stores no audio.`;
 }
 
 export function renderCallView(props: CallViewProps) {

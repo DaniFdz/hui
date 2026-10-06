@@ -291,15 +291,15 @@ test("a task handed to the bot's chat is followed: its answer is spoken while th
   p.message(EVENTS.userDone);
   await flush();
   await flush();
-  p.delegations[0]!.result.resolve({ status: "handed-off", task: "task-1", speak: "Juno is on it: check the files." });
+  p.delegations[0]!.result.resolve({ status: "handed-off", task: "task-1", speak: "Handed to Juno's chat: check the files." });
   await flush();
-  assert.deepEqual(p.sent.at(-1), delegationAppends("item_D1", "speakable", "Juno is on it: check the files.")[0], "GPT-Live says it is on it");
+  assert.deepEqual(p.sent.at(-1), delegationAppends("item_D1", "commentary", "Handed to Juno's chat: check the files.")[0], "silent background for GPT-Live");
   assert.deepEqual(p.tasks.map((task) => task.task), ["task-1"]);
   assert.deepEqual([call.state.delegating, call.state.tasks], [0, 1], "the question is answered; the task goes on");
   assert.match(call.state.notice ?? "", /Juno is working on it in the chat/u);
   p.tasks[0]!.result.resolve({ status: "answered", speak: "Three files: a, b and c." });
   await flush();
-  assert.deepEqual(p.sent.at(-1), sessionAppends("speakable", "An update from Juno on the task it was handed: Three files: a, b and c.")[0]);
+  assert.deepEqual(p.sent.at(-1), delegationAppends("item_D1", "speakable", "Three files: a, b and c.")[0], "the task's result is the delegation's answer");
   assert.equal(call.state.tasks, 0);
 
   // A second task still running at the hang-up: the wait ends, the task goes on in the chat.
@@ -312,7 +312,8 @@ test("a task handed to the bot's chat is followed: its answer is spoken while th
   call.hangUp();
   await flush();
   assert.equal(p.tasks[1]!.signal.aborted, true);
-  assert.equal(p.sent.filter((event) => event["type"] === "session.context.append").length, p.sent.slice(0, before).filter((event) => event["type"] === "session.context.append").length, "nothing more is said");
+  assert.equal(p.sent.length, before + 1, "only the session's close goes out");
+  assert.equal(p.sent.at(-1)!["type"], "session.close");
 });
 
 test("without session.started, the greeting is asked for after a while", async () => {

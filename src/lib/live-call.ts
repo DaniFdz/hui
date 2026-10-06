@@ -595,8 +595,9 @@ export class LiveCall {
         return;
       }
       const result = await this.#platform.delegate(connection.callId, event.id, request, this.#abort.signal);
-      this.#send(delegationAppends(event.id, "speakable", result.speak));
-      if (result.task) void this.#followTask(result.task);
+      // A hand-off is silent background: the task's own result is this delegation's spoken answer, once it comes.
+      this.#send(delegationAppends(event.id, result.status === "handed-off" ? "commentary" : "speakable", result.speak));
+      if (result.task) void this.#followTask(event.id, result.task);
     } catch (error) {
       // Hung up: the task goes on in the bot's chat, and its reply lands there.
       if (this.#abort.signal.aborted) return;
@@ -611,7 +612,7 @@ export class LiveCall {
 
   /** A task handed to the bot's chat: its result is spoken if it comes while the call goes on; otherwise it stays in the
    * chat. */
-  async #followTask(task: string): Promise<void> {
+  async #followTask(delegation: string, task: string): Promise<void> {
     const connection = this.#connection;
     if (!connection) return;
     this.#dispatch({ type: "task", running: true });
@@ -619,7 +620,7 @@ export class LiveCall {
     try {
       const result = await this.#platform.waitTask(connection.callId, task, this.#abort.signal);
       if (this.#ended) return;
-      this.#send(sessionAppends("speakable", boundText(`An update from ${this.#options.botName} on the task it was handed: ${result.speak}`, CALL_LIMITS.result)));
+      this.#send(delegationAppends(delegation, "speakable", result.speak));
       this.#dispatch({ type: "notice", message: `${this.#options.botName} finished the task; its answer is in the chat too.` });
     } catch (error) {
       if (this.#abort.signal.aborted) return;

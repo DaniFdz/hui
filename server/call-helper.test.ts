@@ -105,7 +105,7 @@ test("real work goes to the bot's chat as a call task, followed by its id; the c
   const call = activeCall();
   const result = await h.delegate({ bot: bot(), call, request: "Which files are in your workspace?" });
   assert.equal(result.status, "handed-off");
-  assert.match(result.speak, /^Juno is on it: list the files in the workspace folder\. Tell the user/u);
+  assert.match(result.speak, /^Handed to Juno's chat: list the files in the workspace folder\. It is being done there now; its result comes on the speakable channel/u);
   assert.deepEqual(h.handed, [["b1", "[call task] list the files in the workspace folder"]]);
   assert.equal(call.tasks.size, 1);
   assert(call.tasks.has(result.task!));
@@ -131,13 +131,13 @@ test("a slow helper offers a hand-off; a failing one says why; a hung-up call st
   const slow = delegateHarness((_model, request) => new Promise((_, reject) => request.signal.addEventListener("abort", () => reject(new Error("aborted")), { once: true })), { budgetMs: 20 });
   const timedOut = await slow.delegate({ bot: bot(), call: activeCall(), request: "Summarize my year" });
   assert.equal(timedOut.status, "timeout");
-  assert.match(timedOut.speak, /Juno is taking long to answer that\. Tell the user, and offer to hand it to Juno to do in its chat\./u);
+  assert.match(timedOut.speak, /^That is taking Juno a while to answer\. I can hand it to Juno's chat to work on, if you like\.$/u);
   assert.deepEqual(slow.reports, ["A call's helper did not answer"]);
 
   const failing = delegateHarness(async () => { throw new Error("401 sign in again"); });
   const failed = await failing.delegate({ bot: bot({ model: "openai-codex/gpt-6.1-sol" }), call: activeCall(), request: "Hi?" });
   assert.equal(failed.status, "failed");
-  assert.match(failed.speak, /^Juno could not answer quickly \(401 sign in again\)\. Offer to hand it to Juno's chat instead\.$/u);
+  assert.match(failed.speak, /^Juno could not answer that quickly \(401 sign in again\)\. I can hand it to Juno's chat instead, if you like\.$/u);
 
   const gone = new AbortController();
   const hanging = delegateHarness((_model, request) => new Promise((_, reject) => request.signal.addEventListener("abort", () => reject(new Error("aborted")), { once: true })));
