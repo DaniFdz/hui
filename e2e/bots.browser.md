@@ -130,6 +130,10 @@ What would you like me to look after for you?" and `E2E_WRITE_SOUL` with a
    limit) shows inline and keeps the text. Saving it empty brings the empty
    state back.
 6. Dark and light themes, 1440×900 and 390×844 (the panel as a sheet).
+7. **Delete…** from a roster row's ⋯ menu, or from the chat header's ⋯ menu,
+   on an active bot: the confirmation says its chat leaves HUI and its
+   routines, memory and folder go; Delete returns home and the bot is gone
+   from the roster, its folder too.
 
 The run with real models on the preview, and its screenshots, are in PR #69.
 

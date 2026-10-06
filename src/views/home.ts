@@ -31,6 +31,7 @@ import { composerEnterMode } from "../lib/composer-state.ts";
 import { compactionBlocks, noteAnnouncement, type NoteLevel } from "../lib/session-ui-state.ts";
 import { adjustTextareaHeight as syncComposerTextarea } from "../lib/composer-textarea.ts";
 import { icons } from "../lib/icons.ts";
+import { closeDropdownOnEscape, labelDropdown } from "../lib/web-awesome.ts";
 import type { SplitDirection } from "../lib/session-multiplexer.ts";
 import { renderMarkdown } from "../lib/markdown.ts";
 import "../components/github-embeds.ts";
@@ -340,12 +341,17 @@ export type HomeProps = {
   bot?: HomeBot;
 };
 
-/** The bot view's header: who the bot is and its Routines | Memory | Soul panel. */
+/** What the bot header's ⋯ menu asks the app to do. */
+export type BotHeaderAction = "edit" | "archive" | "delete";
+
+/** The bot view's header: who the bot is, its Routines | Memory | Soul panel and its ⋯ menu. */
 export type HomeBot = {
   bot: Pick<BotView, "id" | "name" | "title" | "avatar" | "memory">;
   panelOpen: boolean;
   panelId: string;
   onTogglePanel: () => void;
+  /** The ⋯ menu: Edit bot…, Archive…, Delete…; without it the header has none. */
+  onAction?: (action: BotHeaderAction) => void;
 };
 
 function sessionControlId(props: HomeProps, suffix: string): string {
@@ -1012,6 +1018,24 @@ function compactionRule(label: string, options: { metric?: string; glyph?: boole
     </span>
     <span class="chat-divider__line"></span>
   </div>`;
+}
+
+/** The bot header's ⋯ menu, like a roster row's: Edit bot…, Archive…, Delete… (both confirmed in a dialog). */
+function renderBotHeaderMenu(bot: HomeBot): TemplateResult {
+  return html`<wa-dropdown class="session-menu bot-header-menu" placement="bottom-end" distance="4"
+    @keydown=${closeDropdownOnEscape}
+    @wa-show=${labelDropdown}
+    @wa-select=${(event: CustomEvent<{ item: { value: string } }>) => {
+      (event.currentTarget as HTMLElement).querySelector<HTMLElement>('[slot="trigger"]')?.focus();
+      const action = event.detail.item.value;
+      if (action === "edit" || action === "archive" || action === "delete") bot.onAction?.(action);
+    }}>
+    <button slot="trigger" type="button" class="btn btn--ghost btn--icon chat-icon-btn bot-header-menu__trigger" aria-label=${`Actions for ${bot.bot.name}`} title="More">${icons.moreHorizontal}</button>
+    <wa-dropdown-item value="edit" class="session-menu__item"><span slot="icon" class="session-menu__icon" aria-hidden="true">${icons.edit}</span><span class="session-menu__text">Edit bot…</span></wa-dropdown-item>
+    <div class="session-menu__separator" role="separator"></div>
+    <wa-dropdown-item value="archive" variant="danger" class="session-menu__item session-menu__item--destructive"><span slot="icon" class="session-menu__icon" aria-hidden="true">${icons.box}</span><span class="session-menu__text">Archive…</span></wa-dropdown-item>
+    <wa-dropdown-item value="delete" variant="danger" class="session-menu__item session-menu__item--destructive"><span slot="icon" class="session-menu__icon" aria-hidden="true">${icons.trash}</span><span class="session-menu__text">Delete…</span></wa-dropdown-item>
+  </wa-dropdown>`;
 }
 
 /** Where HUI started a new bot's first turn: a small centered note, never a bubble of the operator's. */
@@ -2139,6 +2163,7 @@ function renderHeader(props: HomeProps, session: SessionView) {
             aria-label=${props.bot.panelOpen ? "Hide routines, memory and soul" : "Show routines, memory and soul"} title="Routines, memory and soul"
             aria-expanded=${String(props.bot.panelOpen)} aria-controls=${props.bot.panelOpen ? props.bot.panelId : nothing}
             @click=${props.bot.onTogglePanel}>${icons.panelRightOpen}</button>` : nothing}
+          ${props.bot?.onAction ? renderBotHeaderMenu(props.bot) : nothing}
           ${props.onOpenBrowser ? html`<button type="button" class="btn btn--ghost btn--icon chat-icon-btn chat-open-browser" aria-label="Open browser panel" title="Open browser panel" @click=${props.onOpenBrowser}>${icons.globe}</button>` : nothing}
           ${props.onOpenTerminal && !session.worker ? html`<button type="button" class="btn btn--ghost btn--icon chat-icon-btn" aria-label="Open terminal" title="Open terminal" ?disabled=${props.terminalOpening} @click=${props.onOpenTerminal}>${icons.squareTerminal}</button>` : nothing}
           <button type="button" class="btn btn--ghost btn--sm session-history-action" ?disabled=${props.opening || props.streaming || props.continuing || props.transcript.length === 0} @click=${props.onContinue} aria-label="Continue without a prompt">

@@ -1177,13 +1177,16 @@ everything the Bots tab can, through the same routes.
   changes until the gateway accepts it); *Gateway default*
   leaves the model and thinking level to the gateway, and choosing it when
   editing clears the bot's own. A row's menu offers Edit, Hide/Unhide (*Show
-  hidden* while any are hidden) and Archive, confirmed, with a Restore toast;
-  *Show archived* (while any are archived) lists archived bots with Restore
-  and Delete (an icon that shows on the row under the pointer or keyboard, and
-  always on touch screens; a confirmation says what goes and what stays), and
-  an archived bot's chat opens again only once restored. A bot opens at
-  `/bots/<id>` as its one chat in the ordinary session pane, its header
-  showing avatar, name, role and status;
+  hidden* while any are hidden), Archive, confirmed, with a Restore toast, and
+  Delete…; *Show archived* (while any are archived) lists archived bots with
+  Restore and Delete (an icon that shows on the row under the pointer or
+  keyboard, and always on touch screens). Delete, from either, asks first in
+  a dialog that says what goes (its chat leaves HUI; its routines, memory and
+  folder go) and what stays (a workspace the operator chose); deleting the
+  open bot returns home. An archived bot's chat opens again only once
+  restored. A bot opens at `/bots/<id>` as its one chat in the ordinary
+  session pane, its header showing avatar, name, role and status and a ⋯ menu
+  with Edit bot…, Archive… and Delete…;
   assistant turns carry the bot's name, `/clear`, `/compact`, Compact now and
   rewind are not offered. A new bot speaks first: its chat opens on a small
   centered note, *<name> was created*, where HUI started its first turn, then

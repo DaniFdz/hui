@@ -213,9 +213,10 @@ you open any summary line down to the original message, and **Open memory
 page** opens the whole memory in a new tab; Soul shows the bot's SOUL.md, with
 **Edit** to change it yourself (or, before the bot has written one, **Write it
 yourself**), and follows it when the bot rewrites it. A row's
-**⋯** menu edits, hides or archives the bot; **Show archived** lists archived
-bots so you can restore them, or delete one for good with its trash icon after
-a confirmation. Bot chats never appear among your sessions.
+**⋯** menu (also in the bot's chat header) edits, hides, archives or deletes the
+bot; **Show archived** lists archived bots so you can restore them, or delete
+one with its trash icon. Deleting asks first, and takes the bot's chat,
+routines, memory and folder. Bot chats never appear among your sessions.
 
 ### Creating and editing
 

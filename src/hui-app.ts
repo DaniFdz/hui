@@ -185,7 +185,7 @@ import {
 } from "./lib/control-surfaces.ts";
 import type { PowerStatus } from "../shared/power.ts";
 import { downloadDiagnostics, loadObservability, type ObservabilitySnapshot } from "./lib/observability.ts";
-import { renderHome, renderNewSession, type HomeBot, type HomeProps } from "./views/home.ts";
+import { renderHome, renderNewSession, type BotHeaderAction, type HomeBot, type HomeProps } from "./views/home.ts";
 import { DEFAULT_SESSIONS_PAGE_FILTERS, renderSessionsPage, type SessionsPageFilters, type SessionsPageState } from "./views/sessions.ts";
 import type { WorktreeFilter } from "./views/worktrees.ts";
 import "./views/contributions.ts";
@@ -257,7 +257,7 @@ const paneCallback = { attribute: false, hasChanged: (value: unknown, old: unkno
 
 /** The bot pane's header data, without its callback (passed separately as a
  * pane callback). Compared by value: the parent rebuilds it on every render. */
-type PaneBot = Omit<HomeBot, "onTogglePanel">;
+type PaneBot = Omit<HomeBot, "onTogglePanel" | "onAction">;
 const paneBotProperty = { attribute: false, hasChanged: (value: unknown, old: unknown) => JSON.stringify(value) !== JSON.stringify(old) };
 
 @customElement("hui-app")
@@ -537,6 +537,8 @@ export class HuiApp extends HuiElement {
   /** Set on the bot route's embedded pane: header identity and panel state. */
   @property(paneBotProperty) paneBot: PaneBot | undefined;
   @property(paneCallback) onPaneBotPanel: (() => void) | undefined;
+  /** The bot header's ⋯ menu, handled by the app that owns the bot dialogs. */
+  @property(paneCallback) onPaneBotAction: ((action: BotHeaderAction) => void) | undefined;
   /** Browser-owned presentation state; each pane still owns its own runtime state. */
   @state() private sessionLayout: SessionLayout | undefined;
   @property({ type: Boolean, attribute: "embedded-pane" }) embeddedPane = false;
@@ -3855,7 +3857,7 @@ export class HuiApp extends HuiElement {
       });
   };
 
-  /** Delete from Show archived asks first: deleting cannot be undone. */
+  /** Delete (the ⋯ menus, or Show archived's trash icon) asks first: deleting cannot be undone. */
   private requestDeleteBot = (bot: BotView) => {
     if (this.botPendingId) return;
     this.botDelete = bot;
@@ -3884,6 +3886,8 @@ export class HuiApp extends HuiElement {
         if (this.botArchiveToast?.bot.id === bot.id) this.dismissBotArchiveToast();
         this.botNotice = `Deleted ${bot.name}.`;
         this.botNoticeFailed = false;
+        // Its chat is gone: the open bot view goes with it, as after archiving.
+        if (this.view === "bot" && this.activeBotId === bot.id) this.navigate({ kind: "home" }, true);
         void this.refreshBots();
         void this.refreshSessions(true);
       })
@@ -4204,6 +4208,11 @@ export class HuiApp extends HuiElement {
           .paneMobileNav=${this.mobileNavLayout}
           .paneBot=${paneBot}
           .onPaneBotPanel=${this.toggleBotPanel}
+          .onPaneBotAction=${(action: BotHeaderAction) => {
+            if (action === "edit") this.openEditBot(bot);
+            else if (action === "archive") this.requestArchiveBot(bot);
+            else this.requestDeleteBot(bot);
+          }}
           .onPaneNavigate=${(id: string) => {
             const target = this.listedSession(id);
             if (target && id !== bot.sessionId) this.selectSession(target);
@@ -4949,7 +4958,11 @@ export class HuiApp extends HuiElement {
       mobileNavLayout: this.embeddedPane ? this.paneMobileNav && this.paneActive : this.mobileNavLayout,
       controlScope: this.embeddedPane ? this.paneId : undefined,
       groups: this.listedGroups,
-      ...(this.paneBot && this.onPaneBotPanel ? { bot: { ...this.paneBot, onTogglePanel: () => this.onPaneBotPanel?.() } } : {}),
+      ...(this.paneBot && this.onPaneBotPanel ? { bot: {
+        ...this.paneBot,
+        onTogglePanel: () => this.onPaneBotPanel?.(),
+        ...(this.onPaneBotAction ? { onAction: (action: BotHeaderAction) => this.onPaneBotAction?.(action) } : {}),
+      } } : {}),
       transcript: this.transcript,
       subagents: this.subagents,
       opening: this.opening,

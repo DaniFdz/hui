@@ -83,7 +83,7 @@ export type BotRosterProps = {
   onToggleShowHidden: () => void;
   onToggleShowArchived: () => void;
   onRestore: (bot: BotView) => void;
-  /** Asks before deleting an archived bot for good. */
+  /** Asks before deleting a bot for good, active or archived. */
   onDelete: (bot: BotView) => void;
   onRetry: () => void;
   onToggleMenu: (id: string) => void;
@@ -142,6 +142,7 @@ function botRow(bot: BotView, props: BotRosterProps, drawer: RosterDrawer) {
             if (action === "edit") { drawer.dialog(event); props.onEdit(bot); }
             if (action === "hide") props.onSetHidden(bot, !bot.hidden);
             if (action === "archive") { drawer.dialog(event); props.onArchive(bot); }
+            if (action === "delete") { drawer.dialog(event); props.onDelete(bot); }
           }}>
           <button slot="trigger" type="button" class="session-action session-row__menu-btn" aria-label=${`Actions for ${bot.name}`} ?disabled=${props.pendingId === bot.id}>
             <span class="session-row__more-icon" aria-hidden="true">${icons.moreHorizontal}</span>
@@ -150,6 +151,7 @@ function botRow(bot: BotView, props: BotRosterProps, drawer: RosterDrawer) {
           <wa-dropdown-item value="hide" class="session-menu__item"><span slot="icon" class="session-menu__icon" aria-hidden="true">${icons.eye}</span><span class="session-menu__text">${bot.hidden ? "Unhide" : "Hide"}</span></wa-dropdown-item>
           <div class="session-menu__separator" role="separator"></div>
           <wa-dropdown-item value="archive" variant="danger" class="session-menu__item session-menu__item--destructive"><span slot="icon" class="session-menu__icon" aria-hidden="true">${icons.box}</span><span class="session-menu__text">Archive…</span></wa-dropdown-item>
+          <wa-dropdown-item value="delete" variant="danger" class="session-menu__item session-menu__item--destructive"><span slot="icon" class="session-menu__icon" aria-hidden="true">${icons.trash}</span><span class="session-menu__text">Delete…</span></wa-dropdown-item>
         </wa-dropdown>
       </span>
     </span>
@@ -709,7 +711,7 @@ export function renderBotDeleteDialog(bot: BotView, pending: boolean, error: str
     @cancel=${(event: Event) => { event.preventDefault(); if (!pending) onCancel(); }}>
     <form class="exec-approval-card" method="dialog" @submit=${(event: SubmitEvent) => { event.preventDefault(); onConfirm(); }}>
       <div class="exec-approval-title" id="bot-delete-title">Delete ${bot.name}?</div>
-      <div class="exec-approval-sub">${bot.name} and its routines are deleted for good; it cannot be restored. Its chat stays in Pi's Durable store, which HUI no longer opens, and the files in its workspace stay on this machine.</div>
+      <div class="exec-approval-sub">${bot.name} is deleted for good: its chat leaves HUI, and its routines, its memory and its folder (SOUL.md and every file in it) go. A workspace you chose for it stays. This cannot be undone.</div>
       ${error ? html`<p class="group-action-dialog__error" role="alert">${error}</p>` : nothing}
       <div class="exec-approval-actions">
         <button type="submit" class="btn danger" ?disabled=${pending}>${pending ? "Deleting…" : "Delete"}</button>
