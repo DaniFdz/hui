@@ -1163,8 +1163,9 @@ everything the Bots tab can, through the same routes.
   Bots tab while Agents shows) and a warning while memory summaries keep
   failing. Search matches name, handle and title. The toolbar's + opens **New
   bot** (name, look, title, instructions, model, thinking, memory model,
-  where it runs while a worker exists, workspace; nothing changes until the
-  gateway accepts it); *Gateway default*
+  workspace; nothing changes until the gateway accepts it), and while a remote
+  worker exists it is a menu, *New bot on Local* or on each worker, whose choice
+  creates the bot there at once and opens its chat; *Gateway default*
   leaves the model and thinking level to the gateway, and choosing it when
   editing clears the bot's own. A row's menu offers Edit, Hide/Unhide (*Show
   hidden* while any are hidden) and Archive, confirmed, with a Restore toast;
@@ -1322,10 +1323,13 @@ session on that worker, as any remote session's.
   folder the worker makes a private one for the bot under HUI's data directory
   there. The registry, routines, the roster and message limits stay with the
   gateway, which also checks models and picks defaults.
-- **Chosen once.** The worker is set at creation, by id or name (the New bot
-  dialog's **Runs on**, `hui bot add --worker`); an edit naming one is
-  refused: "A bot stays on the machine it was created on." Moving a bot between
-  machines is out of scope. Creating one needs a live connection to the worker.
+- **Chosen once.** The worker is set at creation, by id or name; an edit naming
+  one is refused: "A bot stays on the machine it was created on." Moving a bot
+  between machines is out of scope. Creating one needs a live connection to the
+  worker. The owner chose Grok-style creation the same day: while a worker
+  exists, the roster's **+** is a small menu, *New bot on Local* or on each
+  worker, whose choice creates the bot there at once and opens its chat
+  (`hui bot add --worker` from a terminal); the machine then shows read-only.
 - **One roster.** A bot on a worker gets the same `bots` prompt section from
   the gateway, and `message_bot` crosses between machines both ways through
   the agent-tool bridge. With no gateway attached the section is left out.

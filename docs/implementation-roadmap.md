@@ -802,9 +802,10 @@ stacked pull requests:
    worker; an offline worker fails creates, memory reads and messages with a
    503 that names it, and a host from before bots is told apart (409). The
    worker's host asks the gateway for its bots' `bots` section, so
-   `message_bot` crosses both ways. The New bot dialog's **Runs on** (while a
-   worker exists), the machine beside a remote bot in its row and header, and
-   `hui bot add --worker`. A remote session's limits apply: no terminal,
+   `message_bot` crosses both ways. While a worker exists the roster's + is a
+   menu, *New bot on Local* or on each worker, that creates the bot there at once;
+   the machine shows beside a remote bot in its row and header, read-only in Edit;
+   and `hui bot add --worker`. A remote session's limits apply: no terminal,
    browser or watcher tools, no worktrees. Proof: `server/worker/host.test.ts`
    (the host's bot operations on a real host), `server/bot-remote.test.ts`,
    `server/bot-service.test.ts` (fake remote ports: routing, offline paths, a

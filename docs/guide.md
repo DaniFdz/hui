@@ -277,8 +277,10 @@ and deleting the session all answer with an explanation instead.
 A bot can live on a remote worker (Settings → Workers) instead of this
 machine: its chat runs there, and its conversation, memory and folder are kept
 there, so it works next to that machine's files, and a turn it started keeps
-going while HUI is away from it. Choose **Runs on** in the New bot dialog (it appears once you
-have a worker), or:
+going while HUI is away from it. Once you have a worker, the roster's **+** is a
+small menu, **New bot on Local** or **New bot on devbox**: a choice creates the bot
+there at once, as *New bot*, and opens its chat (Edit renames it and changes the
+rest). From a terminal:
 
 ```sh
 hui bot add --name Rover --worker devbox                  # a private folder on devbox
@@ -286,9 +288,9 @@ hui bot add --name Rover --worker devbox --cwd ~/src/app  # a folder there: abso
 ```
 
 HUI must be connected to the worker when you create the bot. Where a bot runs
-is chosen once: it never moves, and an edit shows the machine without offering
-to change it. Its folder is a folder on the worker (the dialog suggests that
-worker's folders), shown as `devbox:/path`; without one the worker makes a
+is chosen once: it never moves, and Edit shows the machine without offering to
+change it. Its folder is a folder on the worker (Edit suggests that worker's
+folders), shown as `devbox:/path`; without one the worker makes a
 private folder under its HUI data directory. The roster and the bot's chat show
 the worker beside its name, `hui bot list` marks it `on devbox` and `hui bot show`
 names it.
