@@ -97,3 +97,9 @@ test("emoji tiles take a face's width in rows, so names line up whichever look a
     assert.equal(tile + 2 * margin, face, size);
   }
 });
+
+test("the dialog's Model and Thinking pickers line up although only Model has a hint", () => {
+  const css = readFileSync(new URL("../styles/bots.css", import.meta.url), "utf8");
+  assert.match(css, /\.bot-dialog__row \{[^}]*\balign-items: start;/u, "each field keeps its own height instead of stretching to the row");
+  assert.match(read("./bots.ts"), /<div class="bot-dialog__row">\s*<div class="field input-dialog__field"><span>Model<\/span>/u);
+});
