@@ -91,11 +91,18 @@ export function speedLabel(speed: number): string {
   return `${Number(speed.toFixed(2))}×`;
 }
 
-/** Picker options: VoiceStudio's default, the voice profiles (clones) first, then OpenAI's aliases. A saved
- * voice VoiceStudio no longer lists still shows what the bot uses. */
+/** VoiceStudio's names for OpenAI's voices (`alloy`, `nova`…), which all play its active engine's default voice. */
+const OPENAI_ALIAS = "openai_alias";
+
+/**
+ * Picker options: VoiceStudio's default, the voice profiles (clones) first, then any engine's own voices.
+ * OpenAI's aliases are left out: each plays VoiceStudio's default voice again. A bot that already uses one, or a
+ * voice VoiceStudio no longer lists, still shows what it uses.
+ */
 export function voiceOptions(voices: readonly VoiceProfile[], current: string): { value: string; label: string; description?: string }[] {
-  const describe = (voice: VoiceProfile) => [voice.type === "profile" ? "Voice profile" : voice.type === "openai_alias" ? "OpenAI alias" : voice.type, voice.language].filter(Boolean).join(" · ");
-  const ordered = [...voices.filter((voice) => voice.type === "profile"), ...voices.filter((voice) => voice.type !== "profile")];
+  const describe = (voice: VoiceProfile) => [voice.type === "profile" ? "Voice profile" : voice.type, voice.language].filter(Boolean).join(" · ");
+  const listed = voices.filter((voice) => voice.type !== OPENAI_ALIAS);
+  const ordered = [...listed.filter((voice) => voice.type === "profile"), ...listed.filter((voice) => voice.type !== "profile")];
   const options = [
     { value: "", label: "VoiceStudio default" },
     ...ordered.map((voice) => {
@@ -103,7 +110,11 @@ export function voiceOptions(voices: readonly VoiceProfile[], current: string): 
       return { value: voice.id, label: voice.name, ...(description ? { description } : {}) };
     }),
   ];
-  return current && !options.some((option) => option.value === current) ? [...options, { value: current, label: current, description: "Not listed by VoiceStudio now" }] : options;
+  if (!current || options.some((option) => option.value === current)) return options;
+  const alias = voices.find((voice) => voice.id === current && voice.type === OPENAI_ALIAS);
+  return [...options, alias
+    ? { value: current, label: alias.name, description: "OpenAI alias: plays VoiceStudio's default voice" }
+    : { value: current, label: current, description: "Not listed by VoiceStudio now" }];
 }
 
 /**

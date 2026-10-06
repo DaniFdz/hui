@@ -25,19 +25,25 @@ test("call times read like a phone's", () => {
   assert.equal(speedLabel(0.5), "0.5×");
 });
 
-test("the voice picker lists VoiceStudio's default, then cloned voices, then aliases", () => {
+test("the voice picker lists VoiceStudio's default, then cloned voices and engine voices, never OpenAI's aliases", () => {
+  const alias = (id: string) => ({ id, name: id[0]!.toUpperCase() + id.slice(1), type: "openai_alias", description: `OpenAI '${id}' voice — maps to the active VoiceStudio engine's default voice.` });
   const voices = [
-    { id: "alloy", name: "Alloy", type: "openai_alias" },
+    alias("alloy"),
+    alias("nova"),
     { id: "vp-dani", name: "Dani (own voice)", type: "profile", language: "es" },
     { id: "preset-1", name: "Narrator", type: "kittentts" },
   ];
-  assert.deepEqual(voiceOptions(voices, ""), [
+  const listed = [
     { value: "", label: "VoiceStudio default" },
     { value: "vp-dani", label: "Dani (own voice)", description: "Voice profile · es" },
-    { value: "alloy", label: "Alloy", description: "OpenAI alias" },
     { value: "preset-1", label: "Narrator", description: "kittentts" },
-  ]);
+  ];
+  assert.deepEqual(voiceOptions(voices, ""), listed, "each alias only plays VoiceStudio's default voice again");
+  assert.deepEqual(voiceOptions(voices, "vp-dani"), listed);
+  assert.deepEqual(voiceOptions(voices, "nova"), [...listed, { value: "nova", label: "Nova", description: "OpenAI alias: plays VoiceStudio's default voice" }],
+    "a bot that already uses an alias keeps it, described for what it plays");
   assert.deepEqual(voiceOptions([], "vp-gone").at(-1), { value: "vp-gone", label: "vp-gone", description: "Not listed by VoiceStudio now" }, "a saved voice still shows");
+  assert.deepEqual(voiceOptions([], "alloy").at(-1), { value: "alloy", label: "alloy", description: "Not listed by VoiceStudio now" }, "an alias VoiceStudio does not list is just unlisted");
 });
 
 test("microphone failures say what to do", () => {
