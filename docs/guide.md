@@ -217,13 +217,14 @@ Settings → Sessions → **Show the Bots tab** adds an **Agents | Bots** switch
 the very top of the sidebar (it is off by default, and hiding it never stops a
 bot or its routines). **Agents** is the usual sidebar; **Bots** shows only your bots,
 most recently active first, with their latest message, and **+** creates one.
-A bot's chat opens beside its **Routines |
-Memory** panel: Routines adds schedules (every few minutes, hours or days,
-daily, weekly or once, in your browser's time zone), runs one now and shows how
-the last runs went; Memory shows how much the bot remembers and what writing
-its summaries has cost, lets you open any summary line down to the original
-message, and **Open memory page** opens the whole memory in a new tab. A row's
-**⋯** menu edits, hides or archives the bot; **Show archived** lists archived
+A bot's chat opens beside its **Routines | Memory | Settings** panel: Routines
+adds schedules (every few minutes, hours or days, daily, weekly or once, in
+your browser's time zone), runs one now and shows how the last runs went;
+Memory shows how much the bot remembers and what writing its summaries has
+cost, lets you open any summary line down to the original message, and **Open
+memory page** opens the whole memory in a new tab; Settings is everything you
+can change about the bot ([below](#creating-and-editing)). A row's **⋯** menu
+opens its Settings (**Edit bot**), hides or archives the bot; **Show archived** lists archived
 bots so you can restore them, or delete one for good with its trash icon after
 a confirmation. Bot chats never appear among your sessions.
 
@@ -236,12 +237,39 @@ failure and does a little hop when a turn ends. On a call it fills the screen
 in the bot's color, puffs up as it listens to your voice and stretches with its
 own. The large faces (an empty chat, a call) look at your pointer. With
 *reduce motion* on in your system settings the faces keep still and change only
-their expression. The bot dialog's **Look** chooses **Face** (shape and color,
-with a live preview) or **Emoji**; a bot that already had an emoji keeps it
-until you choose Face. Bots you never styled get a face picked by their id, the
-same on every screen.
+their expression. The **Look** in a bot's Settings tab chooses **Face** (shape and
+color) or **Emoji**; a bot that already had an emoji keeps it until you choose
+Face. Bots you never styled, new ones included, get a face picked by their id,
+the same on every screen.
 
 ### Creating and editing
+
+Setting a bot up works like [Grok Bot](https://docs.x.ai/grok-bot/bots): there
+is no form. The **+** above the roster (or **New bot** in an empty roster)
+creates a bot named *New Bot* at once and opens its chat. Everything starts on
+the defaults: the gateway's model and thinking level, Settings' utility model,
+GPT-Live's default call voice, *Auto* for the language, a private folder of its
+own and the face its id picks. Tell it what to call itself, or change it in its
+Settings.
+
+**Settings** is the panel's last tab. **Edit bot** in a row's **⋯** menu opens
+the bot's chat on it (the docked panel, or the sheet on a phone), and
+**Ctrl+Shift+,** (**⇧⌘,** on a Mac) shows or hides it on a bot's chat. It has:
+
+- **Profile**: the **Name** (its handle under it), the **Title** and the
+  **Look**, whose **Change** opens Face (shape and color) or Emoji.
+- **Model**: the **Model**, **Thinking** and **Utility model** (below).
+  *Gateway default* (and *Default* for the utility model) clears the bot's own
+  choice. A change applies from the bot's next turn.
+- **Calls**, while calls run on GPT-Live: the bot's **Call voice** (*Default*
+  follows Settings → Models → Calls) and the **Language** it speaks on calls.
+- **Workspace**: the bot's **Directory**, which can change only while the bot
+  is idle (the field is locked while it works).
+
+Every change saves on its own as you make it; there is no Save button. A row
+says *Saving…* while the gateway takes the change and shows the reason if it
+refuses one. Typed text (the name, title, emoji or directory) saves on Enter or
+when you leave the field, and Escape takes it back.
 
 ```sh
 hui bot add --name Ada --title Researcher --instructions-file ada.md --model openai/gpt-5.6
@@ -265,8 +293,8 @@ back to the one the bot's id picks. `hui bot show` prints the look.
 `--memory-model` picks the model that writes the memory's summaries. An empty
 value clears a choice: `hui bot edit ada --model "" --thinking ""` puts the chat
 back on the model and thinking level a new chat gets (*Gateway default* in the
-Bots tab's dialog), and `--memory-model ""` hands the summaries back to the
-chat's own model.
+bot's Settings tab), and `--memory-model ""` puts the utility model back on its
+default (Settings' utility model, then the chat's own model).
 
 A bot's chat refuses what would end or fork it: `/clear`, `/compact`, rewind
 and deleting the session all answer with an explanation instead.
@@ -352,13 +380,11 @@ document and model list before it saves anything. The key stays in
 the browser and is sent only to that VoiceStudio, over HTTPS, to this machine or
 to a Tailscale address. **Disconnect** removes the address and the key.
 
-**A bot's voice.** While VoiceStudio is connected, the New bot and Edit dialogs
-have a **Voice** picker (VoiceStudio's default and your voice profiles; OpenAI's
-voice names are left out, as VoiceStudio plays its default voice for each of
-them), a speed from 0.5× to 2×, **Preview** and a **Language**. While calls run
-on GPT-Live ([below](#calls-with-gpt-live)), that picker is named **Read-aloud
-voice**: GPT-Live speaks with its own voices, so calls use the bot's **Call
-voice** instead. From a terminal:
+**A bot's voice.** A bot's VoiceStudio voice (one of your voice profiles, or
+VoiceStudio's default), its speed from 0.5× to 2× and its language are set
+from a terminal; the Bots tab no longer has a VoiceStudio voice picker. Calls
+run on GPT-Live ([below](#calls-with-gpt-live)), whose voice and language are
+in the bot's Settings tab:
 
 ```sh
 hui bot edit ada --voice vp-aria --voice-speed 1.2 --language es
@@ -373,8 +399,7 @@ speaks in when it reads aloud or answers a call, numbers, times and amounts
 included. It translates nothing: the bot answers in the language its
 instructions (or you) ask for, so give it both. A VoiceStudio engine that
 cannot speak the language refuses, and HUI shows VoiceStudio's message (choose
-another engine in VoiceStudio, or Auto). **Preview** speaks in the language
-chosen in the dialog.
+another engine in VoiceStudio, or Auto).
 
 **Voice notes.** The microphone beside Send records a note: its time runs above
 the composer, **Cancel** throws it away and **Done** (or the button again) stops
@@ -419,7 +444,7 @@ you added in Settings → Models; VoiceStudio is not needed. The section shows t
 account calls use (the first one not waiting for its quota, as model turns
 choose) and the **default voice**; each bot can pick its own **Call voice**, one
 of GPT-Live's own voices (a VoiceStudio voice only reads replies aloud), in its
-dialog, or with `hui bot edit ada --call-voice ember` (`""` goes back to the
+Settings tab, or with `hui bot edit ada --call-voice ember` (`""` goes back to the
 default).
 
 The call works like [OpenDots](https://github.com/CopilotKit/OpenDots):

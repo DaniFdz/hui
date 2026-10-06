@@ -790,6 +790,18 @@ only for now. It lands as stacked pull requests:
    `server/call*.test.ts`, `server/calls.test.ts`, `server/bot-service.test.ts`,
    `server/runtimes/durable-optchat.test.ts`, `src/lib/live-call.test.ts` and a
    real call run (both calls of the e2e in the pull request).
+6. **Bot setup like Grok Bot** (2026-10-06; SPEC.md, "Bots are set up like
+   Grok Bot"): no form; + creates a bot named *New Bot* at once and opens its
+   chat (the New bot and Edit dialogs are gone); a Settings tab in the bot's
+   panel holds Profile (name, title and look, edited in place), Model, Calls
+   (while calls use GPT-Live) and Workspace, each change saved on its own
+   through the existing `PATCH`; the roster's Edit opens it, as does
+   Ctrl+Shift+,; the panel's tabs moved to a row of their own under a header
+   with the bot's name, with room for five. No API or CLI change. Proof:
+   `src/lib/bots.test.ts`,
+   `src/lib/bot-roster.test.ts`, `src/views/bots.test.ts` and the Browser
+   journey `e2e/bot-setup.browser.md` (built gateway, fixture provider,
+   1440×900, 1280×720 and 390×844, dark).
 
 ## Recommended implementation order
 

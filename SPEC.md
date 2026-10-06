@@ -1160,11 +1160,11 @@ everything the Bots tab can, through the same routes.
   name, the latest message or role, a short time, an activity badge (active,
   waiting for an answer, summarizing memory, failed), an unread dot (also on the
   Bots tab while Agents shows) and a warning while memory summaries keep
-  failing. Search matches name, handle and title. The toolbar's + opens **New
-  bot** (name, look, title, instructions, model, thinking, memory model,
-  workspace; nothing changes until the gateway accepts it); *Gateway default*
-  leaves the model and thinking level to the gateway, and choosing it when
-  editing clears the bot's own. A row's menu offers Edit, Hide/Unhide (*Show
+  failing. Search matches name, handle and title. The toolbar's + (and an
+  empty roster's New bot) creates a bot named *New Bot* at once, with no form,
+  and opens its chat once the gateway has created it; everything else starts on
+  the defaults, a refusal shows in the roster's notice. A row's menu offers
+  Edit (the bot's chat on its Settings tab), Hide/Unhide (*Show
   hidden* while any are hidden) and Archive, confirmed, with a Restore toast;
   *Show archived* (while any are archived) lists archived bots with Restore
   and Delete (an icon that shows on the row under the pointer or keyboard, and
@@ -1174,9 +1174,10 @@ everything the Bots tab can, through the same routes.
   showing face, name, role and status;
   assistant turns carry the bot's name, `/clear`, `/compact`, Compact now and
   rewind are not offered, and a new bot says *Say hi to <name>*. Opening it
-  marks it read. A **Routines | Memory** panel docks beside the chat (open or
-  closed and the tab are remembered; on narrow screens it opens on request as a
-  sheet over the chat). Routines lists the bot's Automation tasks with schedule,
+  marks it read. A **Routines | Memory | Settings** panel docks beside the chat
+  (open or closed and the tab are remembered; on narrow screens it opens on
+  request as a sheet over the chat); its header names the bot beside Close and
+  its tabs fill a row of their own under it. Routines lists the bot's Automation tasks with schedule,
   next run, an enable switch, Run now and Delete, adds routines every N
   minutes/hours/days, daily, weekly or once in the browser's time zone, and shows
   the latest runs. Memory shows messages, the view against its 128 KB budget,
@@ -1186,12 +1187,22 @@ everything the Bots tab can, through the same routes.
   into its halves, down to a message whole); while open it reads the memory
   again whenever the bots stream reports it changed, with no timer. *Open memory
   page* is a plain link to OptChat's browse page, opened in a new tab.
+  Settings holds the rest of the bot as compact rows: Profile (name with its
+  handle, title, and the look, a row that opens into Face or Emoji),
+  Model (model, thinking and utility model; *Gateway default* leaves the model
+  and thinking level to the gateway, and choosing it clears the bot's own),
+  Calls while calls use GPT-Live (call voice and language) and Workspace (the
+  directory, locked while the bot works). Each change is its own `PATCH`, sent
+  in order, with the row's pending state and refusal inline and no Save button;
+  typed text saves on Enter or blur. Ctrl+Shift+, (⇧⌘,) shows or hides it on a
+  bot's chat.
 - **Voice** goes through [VoiceStudio](https://github.com/debpalash/VoiceStudio),
   a separate speech service the gateway only calls over HTTP. The connection is
   the gateway's (Settings → Integrations → VoiceStudio, verified before it is
   saved, its key write-only), and bot chats offer voice only while it is
-  configured. A bot has a voice, a speed and a language (its dialog, with a
-  preview, or `--voice`/`--voice-speed`/`--language`): one of Whisper's
+  configured. A bot has a voice, a speed and a language (`--voice`/
+  `--voice-speed`/`--language`; its Settings tab holds the call voice and
+  language): one of Whisper's
   languages that VoiceStudio listens for and speaks in, never a translation, or
   Auto to let it detect the language. Its composer records **voice notes** that
   VoiceStudio writes into the composer, or sends at once marked `[voice] ` when
@@ -1246,8 +1257,8 @@ offline (unreachable or archived).
 
 - **Look on the record, defaults from the id.** `avatar` gains `shape` beside
   `emoji` and `color` (no format change: absent keys stay absent). A bot without
-  them gets the face its id picks, the same everywhere; a new bot from the Bots
-  tab keeps the face its dialog showed. The emoji stays an alternative: a bot
+  them gets the face its id picks, the same everywhere, a new bot included. The
+  emoji stays an alternative: a bot
   with one shows it until someone switches it to its face (clearing the emoji),
   and its tile takes the bot's color. The CLI has `--shape`, `--color` and
   `--emoji ""`, and `hui bot show` prints the look.
@@ -1306,6 +1317,43 @@ faster."
   bot's Memory model became its **Utility model**. `memoryModel` and
   `--memory-model` keep working. Its default is Settings' utility model, then
   the bot's own model.
+
+### Bots are set up like Grok Bot (2026-10-06)
+
+The owner, reviewing the bots stack: "the modal to configure the model looks
+really bad, needing to scroll in a PC is not the best experience tbh, how does
+grok bot do this?" The bot dialog held every field (name, look, title,
+instructions, model and thinking, utility model, voices, language, workspace)
+and was 1,516 px tall at 1440×900. Grok Bot
+([bots](https://docs.x.ai/grok-bot/bots),
+[overview](https://docs.x.ai/grok-bot/overview),
+[chat and collaboration](https://docs.x.ai/grok-bot/chat-and-collaboration),
+[design](https://x.ai/news/designing-grok-bot)) creates a bot from its name and
+opens it ("Setup is a message, not a workflow builder"), edits name, label,
+description and avatar in Edit Profile, and keeps per-bot settings in a Bot
+settings panel toggled with Ctrl/Cmd+Shift+, beside the conversation, with
+models "beneath the interface".
+
+- **No form.** The owner chose Grok Bot's way outright: + creates a bot named
+  *New Bot* at once and opens its chat, and the bot asks what to call it. The
+  New bot and Edit dialogs are gone. Everything starts on the defaults: the
+  gateway's model and thinking level, Settings' utility model, GPT-Live's
+  default call voice, Auto, a private folder and the face its id picks. While
+  workers exist, + is to become a menu of the machines a bot can run on (fixed
+  at creation); the create action takes that choice.
+- **A Settings tab in the bot's panel** holds the rest, after Grok Bot's Bot
+  settings: Profile (name, title and look, edited in place), Model, Calls and
+  Workspace, as Settings-page rows. Every change saves on its own through the
+  existing `PATCH /__hui/bots/:id`; the API and CLI do not change. The roster's
+  Edit opens it, and so does Ctrl+Shift+,. It fits a 1440×900 screen with its
+  look editor closed.
+- **The panel's tabs get a row of their own** under a header with the bot's name
+  and Close, as the sidebar's Agents | Bots do, so the soul and tools tabs fit
+  in 344 px beside Routines, Memory and Settings.
+- **Calls only.** The owner dropped VoiceStudio for calls (GPT-Live only), so
+  the tab has no VoiceStudio voice, speed or preview; its Calls section shows
+  while calls use GPT-Live and keeps that condition when GPT-Live becomes the
+  only engine.
 
 ### New sessions run on Pi Durable
 
