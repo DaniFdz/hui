@@ -11,7 +11,9 @@
  * whose pending questions travel in its state. Credentials and HUI agent
  * tools are served by whichever gateway is connected; credentials are kept in
  * memory until they expire, and literal models.json header values until the
- * host stops, never on disk.
+ * host stops, never on disk. A bot whose chat runs here keeps its conversation
+ * and memory in this host's store (`host-bots.ts`); its `bots` prompt section
+ * comes from the connected gateway, which owns the roster.
  */
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
@@ -27,6 +29,7 @@ import type { RuntimeModel, RuntimeQueue, RuntimeQuestion, RuntimeSession, Runti
 import { installBrokeredCredentials, OfflineError, setCredentialTransport, setSecretEnv } from "./credentials.ts";
 import { completeWorkingDirectories, resolveWorkingDirectory } from "../working-directories.ts";
 import { attachPeer, isRecord, PROTOCOL_VERSION, type Peer } from "./protocol.ts";
+import { BOTS_FEATURE, hostBots } from "./host-bots.ts";
 import { PACKAGE_ROOT } from "./release.ts";
 import { applySync, planSync, putSyncFiles, writeAtomic, type SyncCommit } from "./sync-apply.ts";
 import type { WorkerPaths } from "./paths.ts";
@@ -46,6 +49,8 @@ const TRANSCRIPT_PAGE_BYTES = 8 * 1024 * 1024;
 export type HostInfo = {
   version: number;
   release: string;
+  /** What this host offers beyond sessions (`bots`); absent from an older host. */
+  features?: string[];
   pid: number;
   hostname: string;
   platform: string;
@@ -143,6 +148,7 @@ export class WorkerHost {
   #credentials = new Map<string, Cached>();
   #modifiers = new Map<string, (current: unknown) => Promise<unknown>>();
   #nextStep = 0;
+  #bots: ReturnType<typeof hostBots>;
 
   constructor(paths: WorkerPaths) {
     this.paths = paths;
@@ -154,11 +160,14 @@ export class WorkerHost {
       invokeTool: ({ callerSessionId, action, params }) => this.#gatewayTool(callerSessionId, action, params),
       lookupCaller: async (conversationId) => this.#callers.get(String(conversationId)),
     });
+    // A bot's chat here lists the other bots as the gateway that owns them says.
+    this.#durable.botSection = (botId) => this.#botSection(botId);
+    this.#bots = hostBots({ durable: this.#durable, home: paths.home, botsDir: join(paths.dataDir, "bots") });
   }
 
   info(): HostInfo {
     return {
-      version: PROTOCOL_VERSION, release: this.#release, pid: process.pid, hostname: hostname(),
+      version: PROTOCOL_VERSION, release: this.#release, features: [BOTS_FEATURE], pid: process.pid, hostname: hostname(),
       platform: process.platform, arch: process.arch, node: process.version, home: this.paths.home,
       dataDir: this.paths.dataDir, mirrorDir: this.paths.mirrorDir, agentDir: this.paths.agentDir,
       providersDir: this.paths.providersDir, releaseDir: this.releaseDir,
@@ -209,6 +218,7 @@ export class WorkerHost {
   async close(): Promise<void> {
     clearInterval(this.#timer);
     for (const hosted of [...this.#sessions.values()]) this.#stop(hosted);
+    this.#bots.close();
     for (const peer of this.#peers) peer.close("Remote worker host stopped.");
     stopAgentToolBridge();
     setCredentialTransport(undefined);
@@ -245,6 +255,8 @@ export class WorkerHost {
       return { ok: true };
     });
     peer.handle("directories", async (params) => ({ directories: await completeWorkingDirectories(String(params["q"] ?? "~/")) }));
+    // Bots whose chats run here: their conversations and memories in this host's store.
+    for (const [op, handler] of Object.entries(this.#bots.handlers(peer))) peer.handle(op, handler);
     peer.handle("put-file", (params) => this.#putFile(params));
     peer.handle("get-file", (params) => this.#getFile(params));
     peer.handle("sync-plan", (params) => planSync(this.paths, params["entries"]));
@@ -467,6 +479,17 @@ export class WorkerHost {
     const own = key ? this.#sessions.get(key)?.peer : undefined;
     if (own && !own.closed) return own;
     for (const peer of this.#peers) if (!peer.closed) return peer;
+    return undefined;
+  }
+
+  /** A bot chat's `bots` section, from a connected gateway (the one that owns the bot answers); with none attached the
+   * section is left out, as message_bot cannot reach another bot then either. */
+  async #botSection(botId: string): Promise<string | undefined> {
+    for (const peer of [...this.#peers]) {
+      if (peer.closed) continue;
+      const reply = await peer.request<{ section?: unknown }>("bot.section", { botId }, 30_000).catch(() => undefined);
+      if (typeof reply?.section === "string") return reply.section;
+    }
     return undefined;
   }
 
