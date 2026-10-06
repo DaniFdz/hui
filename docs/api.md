@@ -1099,7 +1099,10 @@ the gateway's own worker code, then `npm install --omit=dev`), and finally
 `{"t":"ready"}` once it reaches the host's Unix socket; earlier output is shell
 noise and ignored. From then on both sides exchange `\n`-delimited JSON frames:
 `{t:"req",id,op,p}` / `{t:"res",id,ok,result|error}` requests in either
-direction, plus pushed `session.event` and `session.exit` frames.
+direction, plus pushed `session.event` and `session.exit` frames. A requester
+that gives up on a request (its caller aborted, or it timed out) sends
+`{t:"cancel",id}`, which aborts the handler's signal; a closed connection
+aborts them all. Peers that predate it ignore the frame.
 Gateway requests: `hello` (the host's protocol version and release; a
 mismatch replaces an idle host), `shutdown` (only when idle and no other
 gateway is connected; running Durable work does not count, it resumes in the
@@ -1136,9 +1139,15 @@ restarted host resumes call HUI tools as that session. Host requests: `credentia
 `hui:<providers-relative path>`), the nested `credential-step` that runs an
 OAuth refresh callback on the remote while the gateway holds its lock, and
 `bridge` (a HUI agent tool call; the gateway refuses callers whose session is
-not on that worker, and refuses `terminal`, `browser` and `watcher`). With no
-gateway connected a `bridge` call fails at once, and one in flight fails when
-the connection drops. `read` and `list` answers are cached in host memory
+not on that worker, and refuses `terminal`, `browser` and `watcher`, and
+`secret_request` from a host that predates `secret-request`) and
+`secret-request {key,params}`, whose answer `{status:"provided",label,value}`
+(or `cancelled`/`expired`) only the host sees: it writes the value to its own
+private file and gives the agent the path. The gateway answers it only for a
+session on that worker, and a secret request from anywhere else for a worker's
+session is refused. A Stop on the worker cancels the request and closes the
+card. With no gateway connected either call fails at
+once, and one in flight fails when the connection drops. `read` and `list` answers are cached in host memory
 until the credential's `expires` (API keys: while the host runs) and served
 while no gateway is connected; nothing is written to disk. Without a cached
 answer the remote's own PI login is used (its `auth.json` only if it already
@@ -2217,7 +2226,7 @@ A regular PI session asks the operator for a secret with the HUI
 
 | Tool | Contract |
 |---|---|
-| `secret_request { label ≤120, reason ≤500 }` | Both are trimmed, required and shown to the operator; they stay in the transcript. Waits until the operator answers or cancels, the call is aborted (Stop, a PI child that went away, a gateway stop) or 15 minutes pass. Returns `{ status: "provided", label, path, expiresAt }` or `{ status: "cancelled" \| "expired", label }`; the tool text names the file and its expiry, never the value. Not available to sessions on a remote worker |
+| `secret_request { label ≤120, reason ≤500 }` | Both are trimmed, required and shown to the operator; they stay in the transcript. Waits until the operator answers or cancels, the call is aborted (Stop, a PI child that went away, a gateway stop) or 15 minutes pass; a lost worker connection fails the call. Returns `{ status: "provided", label, path, expiresAt }` or `{ status: "cancelled" \| "expired", label }`; the tool text names the file and its expiry, never the value. On a remote worker the file is written there |
 
 A pending request is gateway memory, scoped to its session. It joins the
 session snapshot's `questions` as `{ id, method: "secret", title: label,
@@ -2225,11 +2234,14 @@ message: reason }` after the runtime's questions and makes the session report
 `waiting`; its start and end re-emit the snapshot and status. It is answered or
 cancelled through [`POST /__hui/sessions/:id/question`](#post-__huisessionsidquestion).
 A provided value is written exactly as typed to `secret` in a fresh
-`hui-secret-<gateway pid>-*` directory under the system temporary directory
-(`0700`, file `0600`); that path is the result. The gateway deletes the
-directory 10 minutes later, or when it stops; a gateway start removes those of
-gateways that are no longer running. Nothing else persists the value: not the
-transcript, a tool result, PI's or Durable's stores, the registry or
+`hui-secret-<pid>-*` directory under the system temporary directory (`0700`,
+file `0600`) by the process where the session's commands run: the gateway, or
+for a worker session the worker host (see [Transport and
+protocol](#transport-and-protocol)). That path is the result. The process
+deletes the directory 10 minutes later, or when it stops (a worker host also
+stops when HUI upgrades it); a start removes those of processes that are no
+longer running. Nothing else persists the value: not
+the transcript, a tool result, PI's or Durable's stores, the registry or
 diagnostics. The question route answers a malformed body with a fixed 400, so
 not even a JSON parse error quotes it into a diagnostic.
 

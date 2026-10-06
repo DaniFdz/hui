@@ -896,19 +896,22 @@ the field with Escape. Meanwhile the session reads *Waiting*, like a session
 with a question. Submitting sends the value to the gateway only. The gateway
 writes it, exactly as typed, to a private temporary file (owner-only, in its
 own owner-only directory under the system temporary directory) and gives the
-agent that file's path. The agent's guidance is to use it in its next command
+agent that file's path; for a session on a remote worker the gateway passes it
+over the worker connection and the worker writes the file there, where the
+session's commands run. The agent's guidance is to use it in its next command
 without printing it (on stdin or in an environment variable, not as a
 command-line argument) and to delete it; HUI deletes it after ten minutes, or
-when the gateway stops. After a crash, the next gateway start removes it.
+when the gateway or the worker host stops (HUI upgrading the host stops it
+too). After a crash, the next start removes it.
 
 The value never enters the transcript, a tool result, PI's or Durable's stores,
 HUI's registry or its diagnostics: the tool call records the label, the reason,
 the outcome and the file path, nothing else. *Cancel*, Stop, a gateway stop or
 fifteen minutes without an answer end the request: the card closes, no file is
-written and the agent learns the request was cancelled or expired. Pending
-requests live in gateway memory and do not survive a restart. Sessions on a
-remote worker cannot request secrets yet, because the file would not be on the
-machine where their commands run.
+written and the agent learns the request was cancelled or expired. When a
+worker's connection drops, the card closes too and the call fails, as other
+HUI tools do there. Pending requests live in gateway memory and do not survive
+a restart.
 
 ## Kanban
 
@@ -1163,8 +1166,9 @@ leaves worker records unchanged.
   through the gateway; presented media is copied back from the remote. With no
   gateway connected (or when it leaves mid-call) a HUI tool call fails at once
   with a message saying HUI is not connected; it is never replayed.
-  Not yet available remotely: terminals, watchers, the managed browser, secret
-  requests, New worktree and branch checkouts, and multi-account quota rotation
+  Secret requests are answered on the gateway and their file is written on
+  the worker. Not yet available remotely: terminals, watchers, the managed
+  browser, New worktree and branch checkouts, and multi-account quota rotation
   (the default account is used). Usage totals skip remote transcripts.
 
 ## Decisions

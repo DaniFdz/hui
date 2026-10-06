@@ -1,13 +1,15 @@
 /**
  * Secrets an agent asks the operator for with the `secret_request` tool.
  *
- * The value never enters a transcript, a tool result or a HUI store: the
- * operator types it into a masked question card, the gateway writes it to a
- * private temporary file (0600 in its own 0700 directory) and the agent only
- * learns that file's path. The file is deleted after `SECRET_FILE_TTL_MS` or
- * when the gateway stops, and its directory names the gateway's PID so the
- * next gateway can remove what a crashed one left. Pending requests are
- * gateway memory, like suggestion cards: a restart drops them.
+ * The value never enters a transcript, a tool result or a HUI store. The
+ * operator types it into a masked question card on the gateway
+ * (`SecretRequests`, gateway memory like suggestion cards: a restart drops
+ * them). `SecretFiles` then writes it to a private temporary file (0600 in its
+ * own 0700 directory) on the machine where the session's commands run, the
+ * gateway's or a remote worker's, and the agent only learns that file's path.
+ * The file is deleted after `SECRET_FILE_TTL_MS` or when its process stops, and
+ * its directory names that process's PID, so the next start can remove what a
+ * crashed one left.
  */
 import { randomUUID } from "node:crypto";
 import { rmSync } from "node:fs";
@@ -23,12 +25,17 @@ export const SECRET_FILE_TTL_MS = 10 * 60_000;
 /** A pending request as the session's question list carries it. */
 export type SecretQuestion = { id: string; method: "secret"; title: string; message: string };
 
-type SecretRequestResult =
+/** The operator's answer; only `SecretFiles.deliver` may hand it on. */
+export type SecretAnswer =
+  | { status: "provided"; label: string; value: string }
+  | { status: "cancelled" | "expired"; label: string };
+
+/** The tool result: where the secret is, never what it is. */
+type SecretDelivery =
   | { status: "provided"; label: string; path: string; expiresAt: string }
   | { status: "cancelled" | "expired"; label: string };
 
-type Outcome = { value: string } | { status: "cancelled" | "expired" };
-type Pending = { sessionId: string; question: SecretQuestion; settle(outcome: Outcome): void };
+type Pending = { sessionId: string; question: SecretQuestion; settle(answer: SecretAnswer): void };
 
 /** Whether a process exists; one owned by another user does too. */
 function running(pid: number): boolean {
@@ -50,14 +57,10 @@ function field(params: Record<string, unknown>, key: string, maximum: number): s
 
 export class SecretRequests {
   #pending = new Map<string, Pending>();
-  /** Removers for delivered files that still exist. */
-  #files = new Set<() => void>();
   #onChange: (sessionId: string) => void;
-  #root: string;
 
-  constructor(options: { onChange?: (sessionId: string) => void; root?: string } = {}) {
+  constructor(options: { onChange?: (sessionId: string) => void } = {}) {
     this.#onChange = options.onChange ?? (() => {});
-    this.#root = options.root ?? tmpdir();
   }
 
   questions(sessionId: string): SecretQuestion[] {
@@ -66,28 +69,26 @@ export class SecretRequests {
 
   /** The tool call: waits until the operator answers or cancels, `signal`
    * aborts (Stop, or the caller went away) or the request expires. */
-  async request(sessionId: string, params: Record<string, unknown>, signal?: AbortSignal): Promise<SecretRequestResult> {
+  async request(sessionId: string, params: Record<string, unknown>, signal?: AbortSignal): Promise<SecretAnswer> {
     const label = field(params, "label", 120);
     const reason = field(params, "reason", 500);
     if (signal?.aborted) return { status: "cancelled", label };
     const id = randomUUID();
-    const outcome = await new Promise<Outcome>((resolve) => {
-      const settle = (next: Outcome) => {
+    return new Promise<SecretAnswer>((resolve) => {
+      const settle = (answer: SecretAnswer) => {
         if (!this.#pending.delete(id)) return;
         clearTimeout(timer);
         signal?.removeEventListener("abort", cancel);
         this.#onChange(sessionId);
-        resolve(next);
+        resolve(answer);
       };
-      const cancel = () => settle({ status: "cancelled" });
-      const timer = setTimeout(() => settle({ status: "expired" }), SECRET_REQUEST_TIMEOUT_MS);
+      const cancel = () => settle({ status: "cancelled", label });
+      const timer = setTimeout(() => settle({ status: "expired", label }), SECRET_REQUEST_TIMEOUT_MS);
       timer.unref();
       signal?.addEventListener("abort", cancel, { once: true });
       this.#pending.set(id, { sessionId, question: { id, method: "secret", title: label, message: reason }, settle });
       this.#onChange(sessionId);
     });
-    if (!("value" in outcome)) return { status: outcome.status, label };
-    return { status: "provided", label, ...(await this.#deliver(outcome.value)) };
   }
 
   /** Settles one of the session's pending requests from the question route.
@@ -95,17 +96,35 @@ export class SecretRequests {
   answer(sessionId: string, id: string, answer: Record<string, unknown>): boolean {
     const pending = this.#pending.get(id);
     if (pending?.sessionId !== sessionId) return false;
+    const label = pending.question.title;
     if (answer["cancelled"] === true) {
-      pending.settle({ status: "cancelled" });
+      pending.settle({ status: "cancelled", label });
       return true;
     }
     const value = answer["value"];
     if (typeof value !== "string" || !value) throw new Error("Enter the secret, or cancel the request.");
-    pending.settle({ value });
+    pending.settle({ status: "provided", label, value });
     return true;
   }
 
-  async #deliver(value: string): Promise<{ path: string; expiresAt: string }> {
+  /** Gateway stop: pending requests end cancelled. */
+  dispose(): void {
+    for (const { question, settle } of [...this.#pending.values()]) settle({ status: "cancelled", label: question.title });
+  }
+}
+
+export class SecretFiles {
+  /** Removers for delivered files that still exist. */
+  #files = new Set<() => void>();
+  #root: string;
+
+  constructor(root = tmpdir()) {
+    this.#root = root;
+  }
+
+  /** A provided answer becomes a file here; the result names it, never the value. */
+  async deliver(answer: SecretAnswer): Promise<SecretDelivery> {
+    if (answer.status !== "provided") return { status: answer.status, label: answer.label };
     const dir = await mkdtemp(join(this.#root, `hui-secret-${process.pid}-`));
     const remove = () => {
       clearTimeout(timer);
@@ -117,15 +136,15 @@ export class SecretRequests {
     this.#files.add(remove);
     const path = join(dir, "secret");
     try {
-      await writeFile(path, value, { mode: 0o600, flag: "wx" });
+      await writeFile(path, answer.value, { mode: 0o600, flag: "wx" });
     } catch {
       remove();
       throw new Error("HUI could not hand the secret to the agent; ask for it again.");
     }
-    return { path, expiresAt: new Date(Date.now() + SECRET_FILE_TTL_MS).toISOString() };
+    return { status: "provided", label: answer.label, path, expiresAt: new Date(Date.now() + SECRET_FILE_TTL_MS).toISOString() };
   }
 
-  /** Gateway start: a gateway that crashed left its files without a timer. */
+  /** Process start: one that crashed left its files without a timer. */
   async sweep(): Promise<void> {
     for (const name of await readdir(this.#root).catch(() => [])) {
       const pid = Number(/^hui-secret-(\d+)-/u.exec(name)?.[1]);
@@ -133,9 +152,8 @@ export class SecretRequests {
     }
   }
 
-  /** Gateway stop: pending requests end cancelled and delivered files go. */
+  /** Process stop: delivered files go. */
   dispose(): void {
-    for (const { settle } of [...this.#pending.values()]) settle({ status: "cancelled" });
     for (const remove of [...this.#files]) remove();
   }
 }
