@@ -1,5 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { request } from "node:http";
+import { text } from "node:stream/consumers";
 
 /**
  * In-process runtimes run these tools inside the gateway and supply the
@@ -25,7 +26,7 @@ export async function invokeHuiBridge(action, params, { timeoutMs = 160_000, sig
     throw new Error("HUI agent tools are unavailable in this runtime.");
   }
   const timeout = AbortSignal.timeout(timeoutMs);
-  const reply = await new Promise((resolve, reject) => {
+  const response = await new Promise((resolve, reject) => {
     const call = request(`${bridgeUrl}/invoke`, {
       method: "POST",
       headers: {
@@ -33,18 +34,13 @@ export async function invokeHuiBridge(action, params, { timeoutMs = 160_000, sig
         "content-type": "application/json",
       },
       signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
-    }, (response) => {
-      const chunks = [];
-      response.on("data", (chunk) => chunks.push(chunk));
-      response.on("end", () => resolve({ status: response.statusCode, text: Buffer.concat(chunks).toString("utf8") }));
-      response.on("error", reject);
-    });
+    }, resolve);
     call.on("error", reject);
     call.end(JSON.stringify({ callerSessionId, action, params }));
   });
-  const body = JSON.parse(reply.text);
-  if (reply.status !== 200 || body?.ok !== true) {
-    throw new Error(body?.error || `HUI agent tool failed with HTTP ${reply.status}.`);
+  const body = JSON.parse(await text(response));
+  if (response.statusCode !== 200 || body?.ok !== true) {
+    throw new Error(body?.error || `HUI agent tool failed with HTTP ${response.statusCode}.`);
   }
   return body.result;
 }
