@@ -2,7 +2,7 @@
 /** Deterministic Anthropic-compatible provider for Browser E2E.
  * It is not a PI replacement: the real `pi --mode rpc` process talks to this
  * local provider, executes its real read tool and persists its real JSONL. */
-import { appendFile } from "node:fs/promises";
+import { appendFile, readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 
 let port = Number(process.env.HUI_E2E_PROVIDER_PORT ?? 43127);
@@ -86,6 +86,21 @@ const BROWSER_FIXTURE_PAGE = `<!doctype html>
   </script>
 </body>
 </html>`;
+/** A small built-in widget for show_widget checks. */
+const COUNTER_WIDGET = `<div id="counter" class="row">
+<style>#counter{gap:12px}#counter output{min-width:3ch;font:600 22px/1 var(--font-mono);color:var(--text-strong)}</style>
+<button type="button" class="primary" id="counter-add">Add one</button>
+<output id="counter-value" aria-live="polite">0</output>
+<span class="muted">Clicks stay inside the sandbox.</span>
+<script>
+let count = 0;
+document.getElementById("counter-add").addEventListener("click", () => {
+  count += 1;
+  document.getElementById("counter-value").textContent = String(count);
+});
+</script>
+</div>`;
+const optionalFile = (path) => readFile(path, "utf8").catch(() => undefined);
 const toolResultFrom = (message) => {
   const blocks = Array.isArray(message?.content) ? message.content : [];
   const block = blocks.find((item) => item?.type === "tool_result");
@@ -265,6 +280,35 @@ const server = createServer(async (request, response) => {
 
   if (latestToolResult?.id === "tool-e2e-present-media") {
     text(response, "The image, video, audio and download are attached above using HUI's media contract.");
+    return finish(response);
+  }
+
+  // show_widget. E2E_SHOW_WIDGET shows `widget.html` from the workspace, titled
+  // by `widget-title.txt`, or the built-in counter; E2E_WIDGET_PROBE shows the
+  // committed sandbox probe; E2E_WIDGET_SYNTAX first sends a script with a
+  // syntax error, then the fixed counter once HUI rejects it. Session-naming
+  // requests quote the prompt and are left to their own branches below.
+  const naming = source.includes("Generate a concise session title") || source.includes("Name this coding-agent session");
+  if (!naming && source.includes("E2E_WIDGET_PROBE")) {
+    toolUse(response, "tool-e2e-widget", "show_widget", { title: "Sandbox probe", widget_code: await readFile(new URL("./widget-probe.html", import.meta.url), "utf8") });
+    return finish(response, "tool_use");
+  }
+  if (!naming && source.includes("E2E_WIDGET_SYNTAX")) {
+    toolUse(response, "tool-e2e-widget-broken", "show_widget", { title: "Counter", widget_code: COUNTER_WIDGET.replace("count += 1;", "count += ;") });
+    return finish(response, "tool_use");
+  }
+  if (latestToolResult?.id === "tool-e2e-widget-broken") {
+    toolUse(response, "tool-e2e-widget", "show_widget", { title: "Counter", widget_code: COUNTER_WIDGET });
+    return finish(response, "tool_use");
+  }
+  if (!naming && source.includes("E2E_SHOW_WIDGET")) {
+    const code = await optionalFile(`${workspace}/widget.html`);
+    const title = (await optionalFile(`${workspace}/widget-title.txt`))?.trim() || (code ? "Fixture widget" : "Counter");
+    toolUse(response, "tool-e2e-widget", "show_widget", { title, widget_code: code ?? COUNTER_WIDGET });
+    return finish(response, "tool_use");
+  }
+  if (latestToolResult?.id === "tool-e2e-widget") {
+    text(response, "The widget is shown above. It runs in HUI's sandbox, so I cannot see what you do in it.");
     return finish(response);
   }
 

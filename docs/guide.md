@@ -180,6 +180,32 @@ provider quota windows and reset times. Unsupported quotas are labeled explicitl
 Reopen existing sessions after changing connections; new sessions use the updated
 configuration. HUI-managed connections require the default PI SDK backend.
 
+## Interactive widgets in the chat
+
+Agents and bots can show a small interactive HTML or SVG widget right in the
+transcript: a mockup to click through, a simulation, an explorable diagram or a
+dashboard of numbers they gathered. Ask for one ("show me this as an interactive
+widget") or let the agent decide; it calls the `show_widget` tool and the
+bundled `visualize` skill tells it when a widget beats plain text.
+
+- The widget appears as a card with its title. It follows HUI's theme, light or
+  dark, as you switch, and the card grows to fit it.
+- **Open full screen** (the arrow in the card's corner) gives it the whole
+  window without restarting it; Escape or the same control brings it back.
+- Links inside a widget open in a new tab when you click them.
+- If the widget hits an error, or tries to load something it may not, the card
+  shows a notice under it. The agent does not see your clicks or those notices;
+  tell it what went wrong.
+- Widgets are part of the conversation: they are back after a reload or a
+  gateway restart, and go away when you delete the session.
+
+A widget is code the agent wrote, so HUI runs it in a sandbox: it cannot reach
+HUI or its API, read the conversation, your cookies or storage, change or
+navigate the HUI page, open pop-ups or fetch anything from the network. It may
+load scripts, styles and fonts from a few public CDNs (cdnjs, jsDelivr, esm.sh,
+unpkg, Google and Bunny fonts), which then see your IP address.
+[docs/api.md](api.md#agent-widgets) has the full contract.
+
 ## After an upgrade: `hui doctor`
 
 `hui doctor` reports state that an upgraded HUI needs changed, and

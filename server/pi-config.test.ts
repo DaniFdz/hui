@@ -41,7 +41,7 @@ test("reads pi's skills, with their frontmatter", async () => {
   const snapshot = await readPiConfigAt(dir);
   assert.deepEqual(
     snapshot.skills.map((skill) => skill.name),
-    ["alpha", "beta", "create-verification-skill", "git-selective-staging"],
+    ["alpha", "beta", "create-verification-skill", "git-selective-staging", "visualize"],
   );
   assert.equal(snapshot.skills[0]?.description, "Does the alpha thing.");
   await rm(dir, { recursive: true, force: true });
@@ -67,7 +67,7 @@ test("reports shipped definitions separately from configured sources", async () 
   assert.deepEqual(builtin, ["read", "bash", "edit", "write", "grep", "find", "ls", "powershell"]);
   assert.deepEqual(
     snapshot.tools.filter((tool) => tool.kind === "hui").map((t) => t.name),
-    ["progress_card", "terminal", "sessions_spawn", "present_media", "sessions_list", "sessions_history", "sessions_send", "suggest_task", "dismiss_task", "set_stage", "subagents", "watcher", "browser"],
+    ["progress_card", "terminal", "sessions_spawn", "present_media", "sessions_list", "sessions_history", "sessions_send", "suggest_task", "dismiss_task", "set_stage", "subagents", "watcher", "show_widget", "browser"],
   );
   assert.deepEqual(snapshot.settings.extensions, ["team-tools.ts"]);
   assert.deepEqual(snapshot.settings.packages, ["@acme/pi-pack", "other"]);
@@ -110,10 +110,11 @@ test("a fresh install includes HUI defaults without changing PI configuration", 
   const dir = await mkdtemp(join(tmpdir(), "hui-pi-empty-"));
   const snapshot = await readPiConfigAt(dir);
   assert.equal(snapshot.settings.exists, false);
-  assert.deepEqual(snapshot.skills.map((skill) => skill.name), ["create-verification-skill", "git-selective-staging"]);
+  assert.deepEqual(snapshot.skills.map((skill) => skill.name), ["create-verification-skill", "git-selective-staging", "visualize"]);
+  const tags: Record<string, string[]> = { "create-verification-skill": ["good practices"], "git-selective-staging": ["good practices"], visualize: ["presentation"] };
   for (const skill of snapshot.skills) {
     assert.equal(skill.origin, "hui");
-    assert.deepEqual(skill.tags, ["good practices"]);
+    assert.deepEqual(skill.tags, tags[skill.name]);
     assert.equal(skill.preferencePath, `hui:skill:${skill.name}`);
   }
   assert.deepEqual(snapshot.settings.skillRoots, []);

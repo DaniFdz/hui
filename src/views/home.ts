@@ -35,10 +35,12 @@ import type { SplitDirection } from "../lib/session-multiplexer.ts";
 import { renderMarkdown } from "../lib/markdown.ts";
 import "../components/github-embeds.ts";
 import "../components/browser-preview.ts";
+import "../components/widget-card.ts";
 import { handleCodeBlockDisclosure, markdownBlocks } from "../lib/markdown-blocks.ts";
 import { openMessageContextMenu } from "../lib/message-context-menu.ts";
 import { progressCardFromTranscript } from "../lib/progress-card.ts";
 import { mediaSizeLabel, presentedMediaFromDetails, type PresentedMediaItem } from "../lib/presented-media.ts";
+import { widgetView, type WidgetView } from "../lib/widgets.ts";
 import type { RunErrorNotice } from "../lib/run-error.ts";
 import { renderProviderBrandIcon } from "../lib/provider-icons.ts";
 import { parseSlackLink } from "../lib/slack-link.ts";
@@ -950,6 +952,26 @@ function presentedMedia(items: readonly ChatActivity[]): PresentedMediaItem[] {
     : [];
 }
 
+/** A show_widget call that is running or accepted. A rejected one stays an
+ * ordinary failed tool row, where its error is readable. */
+function widgetActivity(items: readonly ChatActivity[]): WidgetView | undefined {
+  const item = items.length === 1 ? items[0] : undefined;
+  const view = item?.kind === "tool" ? widgetView(item) : undefined;
+  return view?.state === "failed" ? undefined : view;
+}
+
+function renderWidgetRow(id: string, widget: WidgetView): TemplateResult {
+  return html`<div class="chat-group assistant chat-group--with-footer chat-group--widget" data-chat-row-key=${id}>
+    <div class="chat-group-messages"><hui-widget-card
+      .widgetTitle=${widget.title}
+      .code=${widget.state === "ready" ? widget.code : ""}
+      .pending=${widget.state === "pending"}
+      .unavailable=${widget.state === "unavailable"}
+    ></hui-widget-card></div>
+    <div class="chat-group-footer"><div class="chat-group-footer__meta"><span class="chat-sender-name">pi</span></div></div>
+  </div>`;
+}
+
 function renderSubagentEvent(props: HomeProps, row: Extract<ChatProjectionRow, { kind: "subagentEvent" }>): TemplateResult {
   const failed = row.items.filter((item) => item.status !== "completed").length;
   const label = row.items.length === 1 ? `Subagent finished: ${row.items[0]!.title}` : `${row.items.length} subagents finished`;
@@ -1030,6 +1052,8 @@ function renderTranscriptRows(props: HomeProps, rows: readonly ChatProjectionRow
           <div class="chat-group-footer"><div class="chat-group-footer__meta"><span class="chat-sender-name">pi</span></div></div>
         </div>`;
       }
+      const widget = widgetActivity(row.items);
+      if (widget) return renderWidgetRow(row.id, widget);
       const expansionId = `${props.session?.id ?? "session"}:${row.id}`;
       return html`<div class="chat-group tool chat-group--activity chat-group--with-footer" data-chat-row-key=${row.id}>
         <div class="chat-group-messages">

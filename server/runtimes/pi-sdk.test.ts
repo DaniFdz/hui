@@ -77,10 +77,11 @@ test("SDK owns schemas and prompt, executes tools, preserves history, models, th
   const session = await f.start();
   const initial = await session.inspect!();
   assert.deepEqual(initial.tools.map((tool) => tool.name).sort(), shippedTools().map((tool) => tool.name).sort());
-  assert.equal(initial.tools.filter((tool) => tool.active).length, 17);
+  assert.equal(initial.tools.filter((tool) => tool.active).length, 18);
   assert.equal(initial.tools.find((tool) => tool.name === "terminal")?.source, "HUI");
   assert.equal(initial.tools.find((tool) => tool.name === "browser")?.source, "HUI");
   assert.equal(initial.tools.find((tool) => tool.name === "progress_card")?.source, "HUI");
+  assert.equal(initial.tools.find((tool) => tool.name === "show_widget")?.source, "HUI");
   assert.equal(initial.diagnostics.length, 0);
   assert.match(initial.prompt, /coding assistant in HUI/u);
   const events: RuntimeEvent[] = [];
@@ -93,6 +94,8 @@ test("SDK owns schemas and prompt, executes tools, preserves history, models, th
   assert.match(JSON.stringify(requests[0].system), /coding assistant in HUI/u);
   assert.match(JSON.stringify(requests[0].system), /progress_card/u);
   assert.match(JSON.stringify(requests[0].system), /present_media/u);
+  assert.match(JSON.stringify(requests[0].system), /show_widget: Show an interactive HTML\/SVG widget inline in the HUI chat/u);
+  assert.match(JSON.stringify(requests[0].system), /widget_code is an HTML or SVG fragment/u);
   assert.match(JSON.stringify(requests[0].system), /Active callable tools for this turn/u);
   assert.match(JSON.stringify(requests[0].system), /PI provides their full schemas separately/u);
   assert.match(JSON.stringify(requests[0].system), /browser codec support/u);
