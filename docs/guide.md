@@ -209,7 +209,8 @@ the last runs went; Memory shows how much the bot remembers and what writing
 its summaries has cost, lets you open any summary line down to the original
 message, and **Open memory page** opens the whole memory in a new tab. A row's
 **⋯** menu edits, hides or archives the bot; **Show archived** lists archived
-bots so you can restore them. Bot chats never appear among your sessions.
+bots so you can restore them, or delete one for good with its trash icon after
+a confirmation. Bot chats never appear among your sessions.
 
 **Faces.** Every bot has an animated face, after OpenAI's Dots: a plush shape
 (Blob, Pebble, Triangle, Heart or Cookie) in one of six colors, with two dot
@@ -390,7 +391,7 @@ app does not allow the microphone yet; Read aloud works there too. The
 microphone opens only when you press the microphone or Call, and closes when
 the note or the call ends.
 
-### Archiving
+### Archiving and deleting
 
 `hui bot remove ada` archives the bot: its chat transcript and memory are kept,
 a running turn stops, messages still queued for it are withdrawn and its
@@ -398,6 +399,13 @@ routines are disabled. `hui bot list --archived` (or **Show archived** in the
 Bots tab) shows archived bots and `hui bot restore ada` (or their **Restore**)
 brings one back; its routines stay disabled until you turn them on again in
 Automations or its Routines panel.
+
+`hui bot delete ada` (or an archived bot's trash icon in the Bots tab) then
+deletes an archived bot for good: its routines and its
+chat's session record go, and HUI no longer lists or opens its conversation,
+which stays in the Pi Durable store like a deleted session's transcript. The
+files in its folder stay; a folder HUI made for it goes only when empty. An
+active bot is refused, so archiving always comes first.
 
 ### Privacy
 

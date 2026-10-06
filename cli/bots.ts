@@ -250,6 +250,12 @@ export async function botCommand(base: string, action: string, operands: readonl
       print(view, `Restored @${view.handle}. Its routines stay disabled until you turn them on in Automations.`);
       return 0;
     }
+    case "delete": {
+      if (!bot.archived) throw new Error(`@${bot.handle} is not archived. Archive it first with hui bot remove ${bot.handle}.`);
+      await request<{ ok: true }>(base, `${path}?permanent=1`, { method: "DELETE" });
+      print({ id: bot.id, handle: bot.handle, deleted: true }, `Deleted @${bot.handle} for good. Its routines and chat are gone from HUI; the files in its folder stay.`);
+      return 0;
+    }
     case "stop": {
       const busy = SESSION_STATUSES_BUSY.has(bot.status);
       const { bot: view } = await request<{ bot: BotView }>(base, `${path}/stop`, { method: "POST", body: {}, timeoutMs: 60_000 });

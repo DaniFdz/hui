@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { mkdtemp, mkdir, rm, stat } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test, type TestContext } from "node:test";
@@ -203,6 +203,9 @@ async function harness(t: TestContext, options: { messagesPerHour?: number; memo
       disable: async (task) => {
         const index = tasks.findIndex((each) => each.id === task.id);
         tasks[index] = { ...task, enabled: false, nextRunAt: null };
+      },
+      remove: async (task) => {
+        tasks.splice(tasks.findIndex((each) => each.id === task.id), 1);
       },
     },
     botsDir,
@@ -416,6 +419,43 @@ test("archiving keeps every byte, disables the bot's routines and stops its turn
   assert.equal(restored.archived, undefined);
   assert.equal(h.record(bot.sessionId)?.archived, undefined);
   assert.equal(h.tasks[0]!.enabled, false, "routines stay disabled until the operator turns them on");
+});
+
+test("deleting refuses an active bot, then removes an archived one's routines, its chat's record, its empty folder and the bot", async (t) => {
+  const h = await harness(t);
+  const bot = await h.service.create({ name: "Ada" });
+  const other = await h.service.create({ name: "Bob" });
+  h.tasks.push(task(bot.sessionId, "Morning"), task(bot.sessionId, "Paused", false), task(other.sessionId, "Bob's"));
+  await assert.rejects(h.service.delete("ada"), (error: unknown) => error instanceof BotConflictError && error.message === "@ada is not archived. Archive it before deleting it.");
+  assert.equal(h.tasks.length, 3, "a refused delete removes nothing");
+  assert.ok(h.record(bot.sessionId));
+
+  await h.service.archive("ada");
+  await h.service.delete("ada");
+  assert.deepEqual(h.tasks.map((each) => each.name), ["Bob's"], "only its own routines go");
+  assert.deepEqual(h.removed, [bot.sessionId]);
+  assert.equal(h.record(bot.sessionId), undefined);
+  await assert.rejects(stat(bot.cwd), { code: "ENOENT" }, "the empty folder HUI made for it goes");
+  assert.deepEqual((await h.service.list({ archived: "all" })).map((each) => each.handle), ["bob"]);
+  await assert.rejects(h.service.delete(bot.id), BotNotFoundError);
+});
+
+test("deleting keeps the bot's files, and finishes what an interrupted delete left", async (t) => {
+  const h = await harness(t);
+  const own = await h.service.create({ name: "Ada" });
+  await writeFile(join(own.cwd, "notes.md"), "keep me");
+  const chosen = join(h.dir, "workspace");
+  await mkdir(chosen);
+  const pointed = await h.service.create({ name: "Bob", cwd: chosen });
+  for (const bot of [own, pointed]) await h.service.archive(bot.id);
+  // An attempt that stopped after deleting the chat's record leaves the bot listed.
+  h.setRecords(h.records().filter((record) => record.id !== own.sessionId));
+  await h.service.delete("ada");
+  await h.service.delete("bob");
+  assert.deepEqual(h.removed, [pointed.sessionId], "a chat already gone is not deleted again");
+  assert.equal(await readFile(join(own.cwd, "notes.md"), "utf8"), "keep me", "a folder with the bot's files stays");
+  assert.ok((await stat(chosen)).isDirectory(), "a folder the operator chose stays");
+  assert.deepEqual(await h.service.list({ archived: "all" }), []);
 });
 
 test("messages prompt an idle bot, queue behind a busy one, and a wait reports the run that answers them", async (t) => {

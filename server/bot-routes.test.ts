@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { createServer } from "node:http";
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -488,4 +488,28 @@ test("hui bot chat shows what the bot gets from elsewhere before its reply, and 
   assert.equal(await chat, 0);
   assert.doesNotMatch(term.out, /> hello from the terminal/u, "a line typed here is on screen already");
   await settledWith(bob.sessionId, says("user", "[routine: Ping] ping"));
+});
+
+test("deleting a bot needs it archived, then its routines, its chat and the folder HUI made for it go", { timeout: 120_000 }, async () => {
+  const cleo = botOf(await call("/__hui/bots", "POST", { name: "Cleo" }));
+  const created = await call("/__hui/automation/tasks", "POST", {
+    name: "Evening", sessionId: cleo.sessionId, prompt: "wrap up", schedule: { kind: "every", everyMs: 3_600_000 },
+  });
+  assert.equal(created.status, 201);
+  const task = created.body["task"] as { id: string };
+  const refused = await call("/__hui/bots/cleo?permanent=1", "DELETE");
+  assert.equal(refused.status, 409);
+  assert.match(String(refused.body["error"]), /@cleo is not archived\. Archive it before deleting it\./u);
+  assert.equal(botOf(await call("/__hui/bots/cleo")).archived, undefined, "a refused delete leaves the bot as it was");
+
+  assert.equal(botOf(await call("/__hui/bots/cleo", "DELETE")).archived, true, "without permanent=1 a DELETE archives");
+  const deleted = await call(`/__hui/bots/${cleo.id}?permanent=1`, "DELETE");
+  assert.equal(deleted.status, 200);
+  assert.deepEqual(deleted.body, { ok: true });
+  assert.equal((await call(`/__hui/bots/${cleo.id}`)).status, 404);
+  assert.equal(((await call("/__hui/bots?archived=1")).body["bots"] as BotView[]).some((bot) => bot.id === cleo.id), false);
+  assert.equal((await readRegistry()).some((record) => record.id === cleo.sessionId), false, "its chat's session record is gone");
+  assert.equal(((await call("/__hui/automation")).body["tasks"] as Array<{ id: string }>).some((each) => each.id === task.id), false, "and its routine");
+  await assert.rejects(stat(cleo.cwd), { code: "ENOENT" }, "the empty folder HUI made for it went");
+  assert.equal((await call(`/__hui/bots/${cleo.id}?permanent=1`, "DELETE")).status, 404);
 });

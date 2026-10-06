@@ -68,6 +68,7 @@ import { botChatCommandRefusal, completeCommandReference, composerCommands, filt
 import {
   applyBotsUpdate,
   archiveBot,
+  deleteBot,
   botInputFromDraft,
   botMemoryPageUrl,
   botPatchFromDraft,
@@ -85,7 +86,7 @@ import {
 } from "./lib/bots.ts";
 import { archivedBotCount, hiddenBotCount, readBotPanel, readSidebarTab, writeBotPanel, writeSidebarTab, type BotPanelState, type BotPanelTab, type SidebarTab } from "./lib/bot-roster.ts";
 import { memoryStatusChanged, parseMemoryView, parseMemoryZoom, type MemoryLine } from "./lib/bot-memory.ts";
-import { renderBotArchiveDialog, renderBotDialog, renderBotPanel, renderBotPlaceholder, type BotDialogVoice, type BotFormValues, type BotMemoryState, type MemoryZoomState } from "./views/bots.ts";
+import { renderBotArchiveDialog, renderBotDeleteDialog, renderBotDialog, renderBotPanel, renderBotPlaceholder, type BotDialogVoice, type BotFormValues, type BotMemoryState, type MemoryZoomState } from "./views/bots.ts";
 import { checkUpdate, checkUpdateInBackground, installUpdate, loadUpdate } from "./lib/update-store.ts";
 import { availableUpdate, watchUpdateAvailability } from "./lib/update-notice.ts";
 import type { UpdateSnapshot } from "./lib/update-types.ts";
@@ -543,6 +544,10 @@ export class HuiApp extends HuiElement {
   @state() private botArchive: BotView | undefined;
   @state() private botArchivePending = false;
   @state() private botArchiveError = "";
+  /** The archived bot whose Delete asks for confirmation. */
+  @state() private botDelete: BotView | undefined;
+  @state() private botDeletePending = false;
+  @state() private botDeleteError = "";
   @state() private botArchiveToast: { bot: BotView; restoring: boolean; error?: string } | undefined;
   private botArchiveToastTimer: ReturnType<typeof setTimeout> | undefined;
   @state() private botMemory: BotMemoryState & { botId: string } = { botId: "", loading: false, error: "" };
@@ -1079,6 +1084,11 @@ export class HuiApp extends HuiElement {
     if (botArchiveDialog instanceof HTMLDialogElement && !botArchiveDialog.open) {
       ensureModal(botArchiveDialog);
       botArchiveDialog.querySelector<HTMLButtonElement>(".bot-archive-cancel")?.focus();
+    }
+    const botDeleteDialog = this.botDelete ? this.renderRoot.querySelector?.(".bot-delete-dialog") : null;
+    if (botDeleteDialog instanceof HTMLDialogElement && !botDeleteDialog.open) {
+      ensureModal(botDeleteDialog);
+      botDeleteDialog.querySelector<HTMLButtonElement>(".bot-delete-cancel")?.focus();
     }
     // A selector that matches nothing walks the whole open transcript, and
     // this runs on every keystroke: query a dialog only while its state shows it.
@@ -3801,6 +3811,7 @@ export class HuiApp extends HuiElement {
         onToggleShowHidden: () => { this.showHiddenBots = !this.showHiddenBots; },
         onToggleShowArchived: () => { this.showArchivedBots = !this.showArchivedBots; },
         onRestore: this.restoreBotFromRoster,
+        onDelete: this.requestDeleteBot,
         onRetry: this.retryBots,
         onToggleMenu: (id) => { this.botMenuFor = this.botMenuFor === id ? "" : id; },
         onCloseMenu: () => { this.botMenuFor = ""; },
@@ -4015,6 +4026,47 @@ export class HuiApp extends HuiElement {
       })
       .finally(() => {
         this.botArchivePending = false;
+      });
+  };
+
+  /** Delete from Show archived asks first: deleting cannot be undone. */
+  private requestDeleteBot = (bot: BotView) => {
+    if (this.botPendingId) return;
+    this.botDelete = bot;
+    this.botDeleteError = "";
+  };
+
+  private closeBotDelete = () => {
+    const dialog = this.renderRoot.querySelector?.(".bot-delete-dialog");
+    if (dialog instanceof HTMLDialogElement) closeModal(dialog);
+    this.botDelete = undefined;
+    this.botDeleteError = "";
+  };
+
+  /** The row stays until the gateway confirms; a failure stays in the dialog. */
+  private confirmDeleteBot = () => {
+    const bot = this.botDelete;
+    if (!bot || this.botDeletePending) return;
+    this.botDeletePending = true;
+    this.botDeleteError = "";
+    this.botPendingId = bot.id;
+    void deleteBot(bot.id)
+      .then(() => {
+        this.closeBotDelete();
+        this.bots = this.bots.filter((each) => each.id !== bot.id);
+        if (!archivedBotCount(this.bots)) this.showArchivedBots = false;
+        if (this.botArchiveToast?.bot.id === bot.id) this.dismissBotArchiveToast();
+        this.botNotice = `Deleted ${bot.name}.`;
+        this.botNoticeFailed = false;
+        void this.refreshBots();
+        void this.refreshSessions(true);
+      })
+      .catch((error: unknown) => {
+        this.botDeleteError = error instanceof Error ? error.message : "Could not delete that bot.";
+      })
+      .finally(() => {
+        this.botDeletePending = false;
+        this.botPendingId = "";
       });
   };
 
@@ -4331,7 +4383,8 @@ export class HuiApp extends HuiElement {
       },
       ...(voice ? { voice } : {}),
     }) : nothing}
-    ${this.botArchive ? renderBotArchiveDialog(this.botArchive, this.botArchivePending, this.botArchiveError, this.confirmArchiveBot, this.closeBotArchive) : nothing}`;
+    ${this.botArchive ? renderBotArchiveDialog(this.botArchive, this.botArchivePending, this.botArchiveError, this.confirmArchiveBot, this.closeBotArchive) : nothing}
+    ${this.botDelete ? renderBotDeleteDialog(this.botDelete, this.botDeletePending, this.botDeleteError, this.confirmDeleteBot, this.closeBotDelete) : nothing}`;
   }
 
   /* ── voice (HUI-18): read-aloud and calls with bots ─────────────────────── */

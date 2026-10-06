@@ -477,6 +477,14 @@ test("the Bots tab's Agents | Bots switch tops the sidebar, and Bots shows only 
   assert.match(rule(".app-shell .sidebar-tabs__tab"), /flex:\s*1 1 0/u);
   assert.match(rule(".app-shell .sidebar-tabs__tab"), /height:\s*var\(--shell-sidebar-top-row-height\)/u);
   assert.doesNotMatch(rule(".app-shell .sidebar-switch") + rule(".app-shell .sidebar-tabs__tab"), /text-transform:\s*uppercase/u);
+  // Flat tabs: no rounded top, and a hovered tab only brightens its label, so nothing reads as a raised tab.
+  assert.match(rule(".app-shell .sidebar-tabs__tab"), /border-radius:\s*0;/u);
+  assert.doesNotMatch(rule(".app-shell .sidebar-tabs__tab:hover"), /background/u);
+  assert.match(rule(".app-shell .sidebar-brand:has(> .sidebar-switch)"), /margin-block-end:\s*8px/u);
+  // The Bots list starts under the tab row, its header aligned with the avatars.
+  assert.match(sidebar, /class=\$\{botsTab \? "sidebar-sessions sidebar-sessions--bots" : "sidebar-sessions"\}/u);
+  assert.match(rule(".app-shell .sidebar-sessions--bots"), /margin-top:\s*4px/u);
+  assert.match(rule(".app-shell .sidebar-sessions--bots > .sidebar-recent-sessions__toolbar"), /padding-inline-start:\s*14px/u);
   assert.doesNotMatch(css, /sidebar-recent-sessions__toolbar \.sidebar-tabs__tab/u, "the tabs no longer sit in the sessions toolbar");
   // The drawer hides the toggle, so the top row shows there only with the switch in it.
   const shellCss = readFileSync(new URL("../styles/openclaw-shell.css", import.meta.url), "utf8");
