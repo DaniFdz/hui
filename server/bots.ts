@@ -264,11 +264,11 @@ export function findBot(bots: readonly BotRecord[], target: string): BotRecord {
 }
 
 const INPUT_KEYS = new Set([
-  "name", "handle", "title", "description", "instructions", "cwd", "model", "thinking", "memoryModel", "memoryThinking", "avatar", "voice", "hidden",
+  "name", "handle", "title", "description", "instructions", "cwd", "model", "thinking", "memoryModel", "utilityModel", "memoryThinking", "avatar", "voice", "hidden",
 ]);
 const LABELS: Record<string, string> = {
   name: "Bot name", handle: "Bot handle", title: "Bot title", description: "Bot description", instructions: "Bot instructions",
-  cwd: "Working directory", model: "Bot model", thinking: "Thinking level", memoryModel: "Memory model", memoryThinking: "Memory thinking level",
+  cwd: "Working directory", model: "Bot model", thinking: "Thinking level", memoryModel: "Utility model", utilityModel: "Utility model", memoryThinking: "Memory thinking level",
 };
 
 function body(value: unknown, what: string): Record<string, unknown> {
@@ -411,7 +411,13 @@ export function normalizeBotPatch(value: unknown): BotPatch {
   // `""` puts the chat back on the model or thinking level a new chat gets, and the memory on the chat's own model.
   if ("model" in input) patch.model = modelField(input["model"], "model");
   if ("thinking" in input) patch.thinking = levelField(input["thinking"], "thinking");
-  if ("memoryModel" in input) patch.memoryModel = modelField(input["memoryModel"], "memoryModel");
+  // The bot's utility model (memory summaries, quick answers on calls, call summaries) is stored as `memoryModel`, its
+  // name before calls; `utilityModel` is the same field.
+  if ("utilityModel" in input) {
+    const utility = modelField(input["utilityModel"], "utilityModel");
+    if ("memoryModel" in input && modelField(input["memoryModel"], "memoryModel") !== utility) throw new BotInputError("Give the utility model once: utilityModel and memoryModel are the same field.");
+    patch.memoryModel = utility;
+  } else if ("memoryModel" in input) patch.memoryModel = modelField(input["memoryModel"], "memoryModel");
   if ("memoryThinking" in input) patch.memoryThinking = levelField(input["memoryThinking"], "memoryThinking");
   if ("avatar" in input) patch.avatar = input["avatar"] === null ? null : avatarField(input["avatar"]);
   if ("voice" in input) patch.voice = input["voice"] === null ? null : voiceField(input["voice"]);

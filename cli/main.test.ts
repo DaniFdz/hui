@@ -81,6 +81,9 @@ test("CLI parses bot commands, accepting bot and bots, with their operands and o
   assert.deepEqual([edit.command, edit.operands, edit.values.instructions], ["bot edit", ["@ada"], "Be brief."]);
   const cleared = parseCli(["bot", "edit", "ada", "--model", "", "--thinking", "", "--memory-model", ""]);
   assert.deepEqual([cleared.values.model, cleared.values.thinking, cleared.values["memory-model"]], ["", "", ""], "an empty value clears the choice");
+  assert.equal(parseCli(["bot", "edit", "ada", "--utility-model", "anthropic/claude-haiku"]).values["utility-model"], "anthropic/claude-haiku");
+  assert.throws(() => parseCli(["bot", "edit", "ada", "--utility-model", "a/b", "--memory-model", "a/b"]), /either --utility-model or --memory-model/u);
+  assert.throws(() => parseCli(["bot", "edit", "ada", "--utility-model", "nope"]), /--utility-model must be provider\/model/u);
   assert.deepEqual(parseCli(["bot", "send", "ada", "-", "--wait", "--timeout", "90"]).operands, ["ada", "-"]);
   assert.equal(parseCli(["bot", "send", "ada", "hello there"]).operands?.[1], "hello there");
   assert.equal(parseCli(["bot", "chat", "Ada Lovelace"]).operands?.[0], "Ada Lovelace");

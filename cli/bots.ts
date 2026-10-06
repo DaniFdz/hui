@@ -24,6 +24,7 @@ export type BotFlags = {
   model?: string;
   thinking?: string;
   "memory-model"?: string;
+  "utility-model"?: string;
   emoji?: string;
   shape?: string;
   color?: string;
@@ -168,6 +169,7 @@ async function botBody(flags: BotFlags, io: BotIO): Promise<Record<string, unkno
   if (flags.model !== undefined) body["model"] = flags.model;
   if (flags.thinking !== undefined) body["thinking"] = flags.thinking;
   if (flags["memory-model"] !== undefined) body["memoryModel"] = flags["memory-model"];
+  if (flags["utility-model"] !== undefined) body["memoryModel"] = flags["utility-model"];
   // The look: an emoji, or (with --emoji "") the face, its shape and color; "" clears each.
   if (flags.emoji !== undefined || flags.shape !== undefined || flags.color !== undefined) {
     body["avatar"] = {
@@ -701,7 +703,8 @@ export function formatBot(bot: BotView): string {
     `status: ${bot.status}${bot.unread ? " · unread" : ""}`,
     `look: ${formatLook(bot)}`,
     `model: ${bot.model ?? "default"}${bot.thinking ? ` · thinking ${bot.thinking}` : ""}`,
-    `memory: ${bot.memory ? formatMemory(bot.memory) : "unavailable"}${bot.memoryModel ? ` · compactor model ${bot.memoryModel}` : ""}`,
+    `memory: ${bot.memory ? formatMemory(bot.memory) : "unavailable"}`,
+    `utility model: ${bot.memoryModel ?? "default (Settings' utility model, else its model)"}`,
     ...(bot.voice?.profile !== undefined || bot.voice?.speed !== undefined
       ? [`voice: ${bot.voice.profile ?? "VoiceStudio default"}${bot.voice.speed !== undefined ? ` · ${bot.voice.speed}×` : ""}`]
       : []),

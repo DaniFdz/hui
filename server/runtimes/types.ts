@@ -1,4 +1,5 @@
 import type { TranscriptMetrics } from "./transcript-metrics.ts";
+import type { CallRecord } from "../../shared/calls.ts";
 /**
  * The contract every tool adapter implements.
  *
@@ -259,10 +260,9 @@ export type TranscriptEntry = { metrics?: TranscriptMetrics } & (
       entryId?: string;
       /** Files or images the user attached to that turn. */
       attachments?: readonly TranscriptAttachment[];
-      /** Said on a GPT-Live call with a bot, not typed: what the operator said or what the voice model said. No turn
-       * ran for it, so it is never a run's input or reply. */
-      call?: true;
     }
+  /** The record of a GPT-Live call with a bot: one card with its summary and transcript. No turn ran for it. */
+  | ({ kind: "call" } & CallRecord)
   /** Where PI summarized everything before its kept window. */
   | { kind: "compaction"; summary: string; tokensBefore: number }
   | { kind: "thinking"; text: string }

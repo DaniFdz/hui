@@ -336,11 +336,11 @@ export class DurableSession implements RuntimeSession, ExtensionSession {
     this.#ids.add(entry.id);
     let index = this.#history.length;
     while (index > 0 && this.#history[index - 1]!.entry.id > entry.id) index--;
-    // An extension's custom message is context only; PI sessions do not show it either. A call's line shows as what
-    // was said, without an entry id: no turn ran for it, so nothing rewinds to it.
+    // An extension's custom message is context only; PI sessions do not show it either. A call's record shows as one
+    // card, without an entry id: no turn ran for it, so nothing rewinds to it.
     const shown = SystemEntry.is(entry) || ExtensionMessageEntry.is(entry) || isCustomInput(entry.model?.[0]) ? []
       : CompactionEntry.is(entry) ? [{ role: "compaction", summary: compactionSummary(entry), tokensBefore: this.#contextTokens(index) }]
-      : CallEntry.is(entry) ? [{ role: "call", speaker: entry.data.role, text: entry.data.text, timestamp: entry.data.at }]
+      : CallEntry.is(entry) ? [{ role: "call", record: entry.data }]
       : (entry.model ?? []).map((message) => ({ ...message, entryId: String(entry.id) }));
     this.#history.splice(index, 0, { entry, shown });
     this.#changed();
@@ -452,7 +452,7 @@ export class DurableSession implements RuntimeSession, ExtensionSession {
       case "entry_appended":
         if (event.type === "message_end") this.#streamedText.clear();
         this.#add(event.entry);
-        // A call's line, written while no run streams: the chat shows it now rather than at the next settle.
+        // A call's record, written while no run streams: the chat shows it now rather than at the next settle.
         if (event.type === "entry_appended" && CallEntry.is(event.entry) && !this.#streaming) this.#emit({ type: "history" });
         return;
       case "tool_execution_start":

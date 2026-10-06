@@ -4,9 +4,9 @@ import type { Settings } from "../lib/settings.ts";
 import { loadCallsStatus } from "../lib/live-call-platform.ts";
 import { renderSettingsPicker } from "./settings-picker.ts";
 
-const ENGINES: readonly { id: CallEngine; label: string }[] = [
-  { id: "gpt-live", label: "GPT-Live" },
-  { id: "voicestudio", label: "VoiceStudio" },
+const ENGINES: readonly { value: CallEngine; label: string }[] = [
+  { value: "gpt-live", label: "GPT-Live (ChatGPT subscription)" },
+  { value: "voicestudio", label: "VoiceStudio (speech chain)" },
 ];
 
 /** "Signed in as Account 2 (dani@example.com)", or why calls cannot use ChatGPT now. */
@@ -75,18 +75,15 @@ export class HuiCallSettings extends LitElement {
     return html`<section class="settings-section hui-call-settings">
       <div class="settings-section__header"><div class="settings-section__copy">
         <h2 class="settings-section__heading">Calls</h2>
-        <p class="settings-section__desc">How calls with bots run. GPT-Live talks in real time through your ChatGPT subscription and hands anything that needs tools or memory to the bot itself; VoiceStudio is the speech chain through your own VoiceStudio.</p>
+        <p class="settings-section__desc">How calls with bots run. GPT-Live talks in real time through your ChatGPT subscription; the bot's utility model answers its quick questions and real work goes to the bot's chat. VoiceStudio is the speech chain through your own VoiceStudio.</p>
       </div></div>
       <div class="settings-group">
         <div class="settings-row">
-          <div class="settings-row__text"><span class="settings-row__title">Calls use</span>
-            <span class="settings-row__desc">${live
-              ? "GPT-Live (ChatGPT subscription): audio goes to OpenAI under your ChatGPT account; what is said lands in the bot's chat."
-              : "VoiceStudio (speech chain): your VoiceStudio transcribes and speaks; every sentence is a turn of the bot."}</span></div>
-          <div class="settings-row__control"><div class="settings-segmented" role="group" aria-label="Calls use">
-            ${ENGINES.map((engine) => html`<button type="button" class="settings-segmented__btn ${calls.engine === engine.id ? "settings-segmented__btn--active" : ""}"
-              aria-pressed=${String(calls.engine === engine.id)} @click=${() => this.#set({ engine: engine.id })}>${engine.label}</button>`)}
-          </div></div>
+          <div class="settings-row__text"><span class="settings-row__title">Conversation model</span>
+            <span class="settings-row__desc">Made for phone calls: quick to respond. ${live
+              ? "GPT-Live's audio goes to OpenAI under your ChatGPT account; each call ends as one card in the bot's chat."
+              : "Your VoiceStudio transcribes and speaks; every sentence is a turn of the bot."}</span></div>
+          <div class="settings-row__control">${renderSettingsPicker("Conversation model", calls.engine, ENGINES, (value) => this.#set({ engine: value as CallEngine }))}</div>
         </div>
         <div class="settings-row">
           <div class="settings-row__text"><span class="settings-row__title">Default GPT-Live voice</span>

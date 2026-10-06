@@ -22,18 +22,32 @@
 .field .bot-dialog__speed input[type="range"] { width: 100%; height: auto; margin: 0; padding: 0; border: 0; background: transparent; box-shadow: none; accent-color: var(--accent); }
 .bot-dialog__speed output { color: var(--text); font-size: 13px; font-variant-numeric: tabular-nums; text-align: end; }
 
-/* ── a line said on a GPT-Live call, in the chat ── */
-.chat-bubble__call {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  margin-bottom: 4px;
-  color: var(--muted);
-  font-size: var(--font-size-xs, 12px);
-  line-height: 1.2;
+/* ── a GPT-Live call's record, in the chat: one card ── */
+.chat-call-card {
+  display: grid;
+  gap: 8px;
+  margin: 8px 0;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg, 12px);
+  background: var(--card, var(--bg-elevated));
+  min-width: 0;
 }
-.chat-bubble__call svg { width: 12px; height: 12px; flex: 0 0 auto; }
-.chat-group.user .chat-bubble__call { justify-content: flex-end; }
+.chat-call-card__header { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.chat-call-card__icon { display: inline-flex; color: var(--accent); }
+.chat-call-card__icon svg { width: 16px; height: 16px; }
+.chat-call-card__title { font-weight: 600; color: var(--text-strong); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-call-card__meta { margin-left: auto; flex: 0 0 auto; color: var(--muted); font-size: var(--font-size-xs, 12px); font-variant-numeric: tabular-nums; }
+.chat-call-card__summary { font-size: 14px; }
+.chat-call-card__summary > :first-child { margin-top: 0; }
+.chat-call-card__summary > :last-child { margin-bottom: 0; }
+.chat-call-card__unavailable { margin: 0; color: var(--muted); font-size: 13px; }
+.chat-call-card__transcript > summary { cursor: var(--cursor-action, pointer); color: var(--muted); font-size: 13px; }
+.chat-call-card__lines { display: grid; gap: 6px; margin: 8px 0 0; padding: 0; list-style: none; }
+.chat-call-card__line { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; font-size: 13px; line-height: 1.45; overflow-wrap: anywhere; }
+.chat-call-card__speaker { color: var(--muted); font-size: var(--font-size-xs, 12px); font-weight: 600; }
+.chat-call-card__asked { color: var(--muted); font-size: var(--font-size-xs, 12px); font-style: italic; }
+.chat-call-card__line[data-role="handoff"] .chat-call-card__text { color: var(--accent); }
 
 /* ── composer: the voice-note microphone and its status ── */
 .agent-chat__input .chat-voice-btn {

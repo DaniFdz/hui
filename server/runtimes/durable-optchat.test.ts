@@ -11,6 +11,7 @@ import type { Message, Models, UserMessage } from "@earendil-works/pi-ai";
 import { AgentDoc, createRegistry, Harness, UserEntry, type ConversationId, type EntryRecord } from "@earendil-works/pi-durable";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import type { OptChatStatus } from "../optchat/memory.ts";
+import type { CallRecord } from "../../shared/calls.ts";
 import type { OptChatTuning } from "./durable-optchat.ts";
 import type { DurableSession } from "./durable.ts";
 import type { RuntimeEvent, TranscriptEntry } from "./types.ts";
@@ -57,11 +58,19 @@ test("Durable entries project to log lines: words, replies, calls and results, n
     assert.deepEqual(projectEntry(entry(kind, [{ role: "user", content: "x", timestamp: 1 }])), [], kind);
   }
   assert.deepEqual(projectEntry(entry("pi.reset")), [], "model-less");
-  // A line said on a call: the operator's words as user, the voice model's as talk, marked as spoken.
-  const said = (role: string, text: string) => ({ id: 8, conversationId: 1, kind: "hui.call", data: { call: "c1", role, text, at: 5 } }) as unknown as EntryRecord;
-  assert.deepEqual(projectEntry(said("user", " Remember teal. ")), [{ kind: "user", text: "[call] Remember teal." }]);
-  assert.deepEqual(projectEntry(said("assistant", "Teal it is.")), [{ kind: "talk", text: "[call] Teal it is." }]);
-  assert.deepEqual(projectEntry(said("user", "  ")), [], "nothing said, nothing logged");
+  // A call's record: its transcript (both sides and the helper's answers) as user, its summary as talk, marked [call].
+  const start = Date.parse("2026-10-06T14:00:00Z");
+  const call = (data: Record<string, unknown>) => ({ id: 8, conversationId: 1, kind: "hui.call", data: { call: "c1", bot: "Juno", startedAt: start, endedAt: start + 120_000, ...data } }) as unknown as EntryRecord;
+  const lines = [
+    { role: "user", text: "Remember teal.", at: start + 1 },
+    { role: "helper", request: "What colour?", text: "Teal.", at: start + 2 },
+    { role: "assistant", text: "Teal it is.", at: start + 3 },
+  ];
+  assert.deepEqual(projectEntry(call({ lines, summary: "**To remember**: teal." })), [
+    { kind: "user", text: "[call] A voice call with Juno (2026-10-06 14:00 UTC, about 2 min). Transcript:\nUser: Remember teal.\nJuno's helper (asked \"What colour?\"): Teal.\nJuno: Teal it is." },
+    { kind: "talk", text: "[call] Juno's summary of that call: **To remember**: teal." },
+  ]);
+  assert.deepEqual(projectEntry(call({ lines, summaryUnavailable: true })).map((line) => line.kind), ["user"], "without a summary, the transcript alone");
 });
 
 const system = (sections: Record<string, string>): Message => ({ role: "system", content: "", sections, timestamp: 1 }) as Message;
@@ -488,26 +497,31 @@ test("a turn waits while the view has a line to summarize, says so, and goes on 
 });
 
 
-test("a call's lines land in the chat as spoken messages and in OptChat's view, and the next turn sees them", { timeout: 60_000 }, async (t) => {
+test("a call's record lands in the chat as one card and in OptChat's view, and the next turn sees it", { timeout: 60_000 }, async (t) => {
   const f = await fixture(t);
   const host = f.host();
   const { session, id } = await botSession(f, host, "bot-call");
   const conversations = durableBotConversations(host, optChatBotMemory(host));
   const refreshed = nextEvent(session, (event) => event.type === "history");
-  await conversations.appendCall(durableReference(id), "call-1", [
-    { role: "user", text: "Remember that my sister's birthday is March 3.", at: Date.parse("2026-10-06T14:00:00Z") },
-    { role: "assistant", text: "Got it: March 3.", at: Date.parse("2026-10-06T14:00:03Z") },
-  ]);
+  const start = Date.parse("2026-10-06T14:00:00Z");
+  const record: CallRecord = {
+    call: "call-1", bot: "Ada", startedAt: start, endedAt: start + 60_000, summary: "**To remember**: the sister's birthday is March 3.",
+    lines: [
+      { role: "user", text: "Remember that my sister's birthday is March 3.", at: start + 1_000 },
+      { role: "assistant", text: "Got it: March 3.", at: start + 3_000 },
+    ],
+  };
+  await conversations.writeCallRecord(durableReference(id), record);
   await refreshed;
-  const shown = await transcriptWhere(session, (entries) => entries.filter((entry) => entry.kind === "message" && entry.call).length === 2);
-  assert.deepEqual(shown.map((entry) => entry.kind === "message" ? [entry.role, entry.text, entry.call, entry.entryId, entry.metrics?.timestamp] : entry.kind), [
-    ["user", "Remember that my sister's birthday is March 3.", true, undefined, Date.parse("2026-10-06T14:00:00Z")],
-    ["assistant", "Got it: March 3.", true, undefined, Date.parse("2026-10-06T14:00:03Z")],
-  ], "said, not typed: no entry id to rewind to");
+  const shown = await transcriptWhere(session, (entries) => entries.some((entry) => entry.kind === "call"));
+  assert.deepEqual(shown.filter((entry) => entry.kind === "call"), [{ kind: "call", ...record }], "one card with the summary and the whole transcript");
   await statusWhere(host, id, (status) => status.messages === 2 && status.pending === 0);
-  assert.equal(await host.optchat.view(id), "<chat>\n0+1|user: [call] Remember that my sister's birthday is March 3.\n1+1|talk: [call] Got it: March 3.\n</chat>");
+  const view = await host.optchat.view(id);
+  assert.match(view ?? "", /0\+1\|user: \[call\] A voice call with Ada \(2026-10-06 14:00 UTC, about 1 min\)\. Transcript:/u);
+  assert.match(view ?? "", /User: Remember that my sister's birthday is March 3\./u);
+  assert.match(view ?? "", /1\+1\|talk: \[call\] Ada's summary of that call: \*\*To remember\*\*: the sister's birthday is March 3\./u);
   await turns(session, ["OPT_AFTER_CALL when is it?"]);
   const [turn] = await turnRequests(f.log, "OPT_AFTER_CALL when is it?");
-  assert.match(viewOf(turn!).view, /user: \[call\] Remember that my sister's birthday is March 3\./u, "the bot's next turn starts from a view holding the call");
-  assert.equal(session.transcript().filter((entry) => entry.kind === "message" && !entry.call).length, 2, "no turn ran for the call's lines");
+  assert.match(viewOf(turn!).view, /User: Remember that my sister's birthday is March 3\./u, "the bot's next turn starts from a view holding the call");
+  assert.equal(session.transcript().filter((entry) => entry.kind === "message").length, 2, "no turn ran for the call");
 });

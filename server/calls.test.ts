@@ -5,8 +5,8 @@ import type { BotRecord } from "../shared/bots.ts";
 import { CALL_LIMITS, chunkUtf8, GPT_LIVE_MODEL } from "../shared/calls.ts";
 import {
   boundBytes, buildCallInstructions, buildCallSession, callHeaders, callRequestIds, CallBroker, CallInputError, CallLimitError, CallNotFoundError,
-  CallUnavailableError, CallUpstreamError, chatGptStatus, checkOffer, checkRequest, createUpstreamCall, delegationResult, describeCallFailure,
-  GPT_LIVE_CALL_URL, memorySlice, redact, sessionVoice, speakable, upstreamCallId, type CallAccount, type CallAccounts,
+  CallUnavailableError, CallUpstreamError, chatGptStatus, checkOffer, checkRequest, createUpstreamCall, describeCallFailure,
+  GPT_LIVE_CALL_URL, memorySlice, redact, sessionVoice, speakable, taskResult, upstreamCallId, type ActiveCall, type CallAccount, type CallAccounts,
 } from "./calls.ts";
 
 const TOKEN = "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ0ZXN0In0.c2lnbmF0dXJl";
@@ -205,7 +205,7 @@ test("a refused account hands the call to the next one; no login or every accoun
     (error: unknown) => error instanceof CallUnavailableError && /waiting for its quota until/u.test(error.message));
 });
 
-test("the gateway holds at most two calls, releases quiet ones, and keeps a hung-up call for its last lines", async () => {
+test("the gateway holds at most two calls, ends quiet ones, and records each call once when it ends", async () => {
   let now = 1_000_000;
   let release: (() => void) | undefined;
   const { store } = accounts([{ id: "default", name: "Main" }], { default: { access: "t", accountId: "c" } });
@@ -213,7 +213,8 @@ test("the gateway holds at most two calls, releases quiet ones, and keeps a hung
     if (release === undefined) await new Promise<void>((resolve) => { release = resolve; });
     return new Response(ANSWER, { status: 201, headers: { location: "/v1/realtime/calls/rtc_2" } });
   }) as unknown as typeof fetch;
-  const broker = new CallBroker({ accounts: store, fetch: fetcher, now: () => now, idleMs: 90_000 });
+  const ended: { call: ActiveCall; at: number }[] = [];
+  const broker = new CallBroker({ accounts: store, fetch: fetcher, now: () => now, idleMs: 90_000, onEnd: (call, at) => ended.push({ call, at }) });
   const session = buildCallSession("x", "cove");
   const first = broker.start({ botId: "b1", sdp: OFFER, session });
   await new Promise((resolve) => setImmediate(resolve));
@@ -226,31 +227,44 @@ test("the gateway holds at most two calls, releases quiet ones, and keeps a hung
 
   assert.throws(() => broker.touch("b2", one.id), CallNotFoundError, "another bot's call");
   now += 60_000;
-  broker.touch("b1", one.id);
+  broker.addLines("b1", one.id, [{ role: "user", text: "Hi", at: now }, { role: "assistant", text: "Hello!", at: now + 1 }]);
   now += 60_000;
-  assert.throws(() => broker.touch("b2", two.id), CallNotFoundError, "quiet for 120 s: released");
+  assert.throws(() => broker.touch("b2", two.id), CallNotFoundError, "quiet for 120 s: the browser vanished, so the call ended");
   assert.equal(broker.active, 1);
-  broker.touch("b2", two.id, { ended: true });
+  assert.deepEqual(ended.map((entry) => [entry.call.id, entry.at]), [[two.id, now]], "and it was recorded");
   assert.equal(broker.end("b1", one.id), true);
   assert.equal(broker.end("b1", one.id), false);
   assert.equal(broker.active, 0);
-  assert.throws(() => broker.touch("b1", one.id), CallNotFoundError, "no task or heartbeat after the hang-up");
-  assert.equal(broker.touch("b1", one.id, { ended: true }).id, one.id, "its last lines are still written");
-  now += 11 * 60_000;
-  assert.throws(() => broker.touch("b1", one.id, { ended: true }), CallNotFoundError);
+  assert.deepEqual(ended.map((entry) => entry.call.id), [two.id, one.id], "each call is recorded once");
+  assert.deepEqual(ended[1]!.call.lines.map((line) => line.text), ["Hi", "Hello!"], "with what was said on it");
+  assert.throws(() => broker.touch("b1", one.id), CallNotFoundError, "no line, task or heartbeat after the hang-up");
+
+  const many = await broker.start({ botId: "b1", sdp: OFFER, session });
+  broker.addLines("b1", many.id, Array.from({ length: CALL_LIMITS.recordLines + 5 }, (_, index) => ({ role: "user" as const, text: `line ${index}`, at: now })));
+  const kept = broker.touch("b1", many.id).lines;
+  assert.equal(kept.length, CALL_LIMITS.recordLines);
+  assert.equal(kept[0]!.text, "line 5", "a long call keeps its newest lines");
+  for (let minute = 0; minute <= CALL_LIMITS.maxMinutes; minute++) {
+    now += 60_000;
+    broker.touch("b1", many.id);
+  }
+  now += 1;
+  broker.sweep();
+  assert.equal(broker.active, 0, "a call past its time limit ends, even one still heard from");
+  assert.equal(ended.at(-1)!.call.id, many.id);
 });
 
-test("a delegation's result is what GPT-Live says: the reply without markdown, bounded, or why there is none", () => {
-  assert.deepEqual(delegationResult({ status: "answered", reply: "**Pancho**. See [the vet](https://vet.example/x) and `notes.md`." }, "Juno"),
+test("a handed-off task's result is what GPT-Live says: the reply without markdown, bounded, or why there is none", () => {
+  assert.deepEqual(taskResult({ status: "answered", reply: "**Pancho**. See [the vet](https://vet.example/x) and `notes.md`." }, "Juno"),
     { status: "answered", speak: "Pancho. See the vet and notes.md." });
-  const long = delegationResult({ status: "answered", reply: "word ".repeat(1_000) }, "Juno");
+  const long = taskResult({ status: "answered", reply: "word ".repeat(1_000) }, "Juno");
   assert(long.speak.length <= CALL_LIMITS.result && long.speak.endsWith("…"));
   assert.equal(speakable("- one\n- two\n```js\nx()\n```"), "one\ntwo\n (code in the chat)");
-  assert.deepEqual(delegationResult({ status: "answered" }, "Juno"), { status: "answered", speak: "Juno finished, without a written answer." });
-  assert.match(delegationResult({ status: "needs-input", questions: [{ id: "q", method: "confirm", title: "Deploy", message: "Ship it?" }] }, "Juno").speak,
+  assert.deepEqual(taskResult({ status: "answered" }, "Juno"), { status: "answered", speak: "Juno finished, without a written answer." });
+  assert.match(taskResult({ status: "needs-input", questions: [{ id: "q", method: "confirm", title: "Deploy", message: "Ship it?" }] }, "Juno").speak,
     /Juno needs an answer in its chat before it can go on\. It asks: Deploy — Ship it\? Tell the user to answer it in the chat\./u);
-  assert.match(delegationResult({ status: "timeout" }, "Juno").speak, /still working on it.*Juno's chat/u);
-  assert.match(delegationResult({ status: "failed", error: "provider exploded" }, "Juno").speak, /^Juno's task did not complete: provider exploded\. Tell the user, and offer to try again\.$/u);
+  assert.match(taskResult({ status: "timeout" }, "Juno").speak, /still working on it.*Juno's chat/u);
+  assert.match(taskResult({ status: "failed", error: "provider exploded" }, "Juno").speak, /^Juno's task did not complete: provider exploded\. Tell the user, and offer to try again\.$/u);
 });
 
 test("appends stay within 500 bytes without splitting characters, and byte bounds cut whole characters", () => {

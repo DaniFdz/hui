@@ -7,24 +7,25 @@
  *
  *   GET    /__hui/calls                                  CallsStatus: the ChatGPT login and the account calls use
  *   POST   /__hui/bots/:id/calls                         { sdp } → 201 CallStarted
- *   POST   /__hui/bots/:id/calls/:callId/lines           { lines: [{ role, text, at? }] } → { written }
- *   POST   /__hui/bots/:id/calls/:callId/delegations     { id, request } → CallDelegationResult (when the turn ends)
- *   POST   /__hui/bots/:id/calls/:callId/heartbeat       { ok: true }; a call quiet for 90 s is released
- *   DELETE /__hui/bots/:id/calls/:callId                 { ended }
+ *   POST   /__hui/bots/:id/calls/:callId/lines           { lines: [{ role, text, at? }] } → { kept }: into the call's record
+ *   POST   /__hui/bots/:id/calls/:callId/delegations     { id, request } → CallDelegationResult (the helper's answer or a hand-off)
+ *   POST   /__hui/bots/:id/calls/:callId/tasks/:task     CallTaskResult, once the task handed to the bot's chat ends
+ *   POST   /__hui/bots/:id/calls/:callId/heartbeat       { ok: true }; a call quiet for 90 s ends and is recorded
+ *   DELETE /__hui/bots/:id/calls/:callId                 { ended }; the call's record goes to the bot's chat
  */
-import { CALL_LIMITS, GPT_LIVE_MODEL, GPT_LIVE_VOICES, type CallLine, type CallsStatus, type CallStarted } from "../shared/calls.ts";
+import { CALL_LIMITS, GPT_LIVE_MODEL, GPT_LIVE_VOICES, type CallDelegationResult, type CallRecordLine, type CallsStatus, type CallStarted } from "../shared/calls.ts";
 import type { Settings } from "../src/lib/settings.ts";
 import { BotMemoryUnavailableError } from "./bot-memory.ts";
-import type { BotReply } from "../shared/bots.ts";
+import type { BotRecord } from "../shared/bots.ts";
 import type { BotService } from "./bot-service.ts";
 import { BotConflictError, BotInputError, BotNotFoundError } from "./bots.ts";
 import {
   buildCallInstructions, buildCallSession, CallInputError, CallLimitError, CallNotFoundError, CallUnavailableError, CallUpstreamError,
-  checkOffer, checkRequest, delegationResult, sessionVoice, type CallBroker,
+  checkOffer, checkRequest, sessionVoice, taskResult, type ActiveCall, type CallBroker,
 } from "./calls.ts";
 
 export const CALLS_ROUTE = "/__hui/calls";
-const BOT_CALL_ROUTE = /^\/__hui\/bots\/([A-Za-z0-9_-]{1,100})\/calls(?:\/([A-Za-z0-9-]{1,64})(?:\/(lines|delegations|heartbeat))?)?$/u;
+const BOT_CALL_ROUTE = /^\/__hui\/bots\/([A-Za-z0-9_-]{1,100})\/calls(?:\/([A-Za-z0-9-]{1,64})(?:\/(lines|delegations|heartbeat|tasks\/[A-Za-z0-9-]{1,64}))?)?$/u;
 /** The offer and its JSON. */
 const OFFER_BODY_BYTES = CALL_LIMITS.sdp + 4 * 1024;
 /** Forty lines of 4,000 characters, up to four bytes each, and their JSON. */
@@ -44,15 +45,15 @@ export type CallRouteRequest = {
 };
 
 /**
- * The one seam where a task GPT-Live delegates is run: for a bot and the request GPT-Live wrote, it resolves with how
- * the work ended and its reply text. Today that is a turn of the bot's own chat (`BotService.callTask`); the target
- * and its model can change here without touching the call.
+ * The one seam where a question GPT-Live delegates is answered: for a bot, its call and the request GPT-Live wrote, it
+ * resolves with what to tell GPT-Live. Today it is the bot's quick helper on its utility model, which hands real work
+ * to the bot's chat (`call-helper.ts`); the target and its model change here without touching the call.
  */
-export type CallDelegate = (bot: { id: string; name: string }, request: string, signal?: AbortSignal) => Promise<BotReply>;
+export type CallDelegate = (input: { bot: BotRecord; call: ActiveCall; request: string }, signal?: AbortSignal) => Promise<CallDelegationResult>;
 
 export type CallRouteDeps = {
   broker: CallBroker;
-  bots: Pick<BotService, "callContext" | "callLines" | "resolve">;
+  bots: Pick<BotService, "callContext" | "resolve">;
   delegate: CallDelegate;
   settings(): Promise<Settings>;
   /** The gateway's time zone, for the date a call's instructions give. */
@@ -83,7 +84,7 @@ function fields(body: unknown, allowed: readonly string[], what: string): Record
 }
 
 /** Lines in the order they were said; `at` (ms) falls back to now when it is missing or implausible. */
-export function checkLines(raw: unknown, now: number): (CallLine & { at: number })[] {
+export function checkLines(raw: unknown, now: number): CallRecordLine[] {
   if (!Array.isArray(raw) || !raw.length) throw new CallInputError("lines must be a non-empty list.");
   if (raw.length > CALL_LIMITS.lines) throw new CallInputError(`At most ${CALL_LIMITS.lines} lines per request.`);
   return raw.map((item) => {
@@ -153,18 +154,30 @@ export function createCallRoutes(deps: CallRouteDeps) {
       if (action === "lines") {
         const body = fields(await json(request, LINES_BODY_BYTES), ["lines"], "A transcript");
         const lines = checkLines(body["lines"], now());
-        // A call that just hung up still writes what was said last.
-        broker.touch(bot.id, callId, { ended: true });
-        await bots.callLines(bot.id, callId, lines);
-        return { status: 200, body: { written: lines.length } };
+        broker.addLines(bot.id, callId, lines);
+        return { status: 200, body: { kept: lines.length } };
+      }
+      if (action.startsWith("tasks/")) {
+        const call = broker.touch(bot.id, callId);
+        const task = call.tasks.get(action.slice("tasks/".length));
+        if (!task) throw new CallNotFoundError("No such task on this call.");
+        const gone = new Promise<never>((_, reject) => {
+          request.signal?.addEventListener("abort", () => reject(new DOMException("The wait was cancelled.", "AbortError")), { once: true });
+        });
+        gone.catch(() => {});
+        const reply = await Promise.race([task, gone]).catch((error: unknown) => {
+          if (error instanceof DOMException && error.name === "AbortError") throw error;
+          return { status: "failed" as const, error: error instanceof Error ? error.message : "The task failed." };
+        });
+        return { status: 200, body: taskResult(reply, bot.name) };
       }
       const body = fields(await json(request, DELEGATION_BODY_BYTES), ["id", "request"], "A delegation");
       if (typeof body["id"] !== "string" || !DELEGATION_ID.test(body["id"])) throw new CallInputError("A delegation needs its id.");
       const text = checkRequest(body["request"]);
-      broker.touch(bot.id, callId);
-      const reply = await deps.delegate(bot, text, request.signal);
-      return { status: 200, body: delegationResult(reply, bot.name) };
+      const call = broker.touch(bot.id, callId);
+      return { status: 200, body: await deps.delegate({ bot, call, request: text }, request.signal) };
     } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return { status: 499, body: { error: "The client went away." } };
       const status = callErrorStatus(error);
       // Only messages written for the browser leave the gateway; anything else stays in diagnostics.
       const message = status === 500 ? "The call request failed. Check the gateway's diagnostics." : error instanceof Error ? error.message : "The call request failed.";

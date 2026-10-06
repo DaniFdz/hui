@@ -2,11 +2,11 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import type { BotRecord, BotReply } from "../shared/bots.ts";
-import { CALL_LIMITS } from "../shared/calls.ts";
+import { CALL_LIMITS, type CallDelegationResult } from "../shared/calls.ts";
 import { DEFAULT_SETTINGS, type Settings } from "../src/lib/settings.ts";
 import { BotConflictError, BotNotFoundError } from "./bots.ts";
 import { checkLines, createCallRoutes, type CallRouteRequest } from "./call-routes.ts";
-import { CallBroker, type CallAccounts } from "./calls.ts";
+import { CallBroker, type ActiveCall, type CallAccounts } from "./calls.ts";
 
 const TOKEN = "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJyb3V0ZXMifQ.c2lnbmF0dXJl";
 const ACCOUNT_ID = "acct-routes-1";
@@ -27,10 +27,11 @@ function fixture(options: { engine?: Settings["calls"]["engine"]; voice?: Settin
     const status = options.upstream ?? 201;
     return new Response(status === 201 ? ANSWER : JSON.stringify({ error: `no for ${ACCOUNT_ID}` }), { status, headers: { location: "/v1/realtime/calls/rtc_routes" } });
   }) as unknown as typeof fetch;
-  const broker = new CallBroker({ accounts, fetch: fetcher });
-  const written: Array<[string, string, unknown]> = [];
-  const tasks: Array<[string, string]> = [];
-  let reply: BotReply = { status: "answered", reply: "Pancho." };
+  const ended: ActiveCall[] = [];
+  const broker = new CallBroker({ accounts, fetch: fetcher, onEnd: (call) => ended.push(call) });
+  const tasks: Array<[string, string, number]> = [];
+  let reply: CallDelegationResult = { status: "answered", speak: "Pancho." };
+  let handedOff: Promise<BotReply> | undefined;
   const bots = {
     resolve: async (target: string) => {
       if (target !== bot.id && target !== bot.handle) throw new BotNotFoundError(`No bot named ${target}.`);
@@ -41,9 +42,13 @@ function fixture(options: { engine?: Settings["calls"]["engine"]; voice?: Settin
       if (bot.archived) throw new BotConflictError("archived");
       return { bot, view: "<chat>\n0+1|user: My dog is Pancho.\n</chat>" };
     },
-    callLines: async (id: string, call: string, lines: unknown) => { written.push([id, call, lines]); },
   };
-  const delegate = async (target: { id: string; name: string }, request: string) => { tasks.push([target.id, request]); return reply; };
+  // The seam: the routes hand it the bot, its call (its record so far) and the request.
+  const delegate = async (input: { bot: BotRecord; call: ActiveCall; request: string }) => {
+    tasks.push([input.bot.id, input.request, input.call.lines.length]);
+    if (handedOff) input.call.tasks.set("task-1", handedOff);
+    return reply;
+  };
   const settings: Settings = { ...DEFAULT_SETTINGS, profileName: "Dani", calls: { engine: options.engine ?? "gpt-live", voice: options.voice ?? "vale" } };
   const routes = createCallRoutes({ broker, bots: bots as never, delegate, settings: async () => settings, timeZone: () => "Europe/Madrid" });
   const call = (method: string, path: string, body?: unknown, raw?: string) => routes.handle({
@@ -54,7 +59,10 @@ function fixture(options: { engine?: Settings["calls"]["engine"]; voice?: Settin
       return JSON.parse(text || "null");
     },
   } satisfies CallRouteRequest);
-  return { call, broker, sessions, written, tasks, setReply: (next: BotReply) => { reply = next; } };
+  return {
+    call, broker, sessions, tasks, ended,
+    setReply: (next: CallDelegationResult, task?: Promise<BotReply>) => { reply = next; handedOff = task; },
+  };
 }
 
 test("GET /__hui/calls says whether ChatGPT is signed in and which account calls use, never a token", async () => {
@@ -126,16 +134,24 @@ test("a call holds at most two slots; its lines, tasks, heartbeats and hang-up n
   assert.match(String((third?.body as { error: string }).error), /already running/u);
 
   const lines = [{ role: "user", text: "Hi Juno", at: Date.now() }, { role: "assistant", text: "Hey Dani!" }];
-  const written = await f.call("POST", `/__hui/bots/juno/calls/${one}/lines`, { lines });
-  assert.deepEqual(written, { status: 200, body: { written: 2 } });
-  assert.equal(f.written[0]![0], "b1");
-  assert.equal(f.written[0]![1], one);
-  assert.deepEqual((f.written[0]![2] as { role: string; text: string }[]).map((line) => [line.role, line.text]), [["user", "Hi Juno"], ["assistant", "Hey Dani!"]]);
+  const kept = await f.call("POST", `/__hui/bots/juno/calls/${one}/lines`, { lines });
+  assert.deepEqual(kept, { status: 200, body: { kept: 2 } }, "lines stay with the call, not in the chat, until it ends");
 
   assert.deepEqual(await f.call("POST", `/__hui/bots/juno/calls/${one}/delegations`, { id: "item_EVzd", request: "What's my dog called" }), { status: 200, body: { status: "answered", speak: "Pancho." } });
-  assert.deepEqual(f.tasks, [["b1", "What's my dog called"]]);
-  f.setReply({ status: "failed", error: "provider exploded" });
-  assert.match(String(((await f.call("POST", `/__hui/bots/juno/calls/${one}/delegations`, { id: "item_2", request: "Again" }))?.body as { speak: string }).speak), /did not complete: provider exploded/u);
+  assert.deepEqual(f.tasks, [["b1", "What's my dog called", 2]], "the seam sees the call so far");
+
+  let finish!: (reply: BotReply) => void;
+  f.setReply({ status: "handed-off", task: "task-1", speak: "Juno is on it." }, new Promise<BotReply>((resolve) => { finish = resolve; }));
+  assert.equal(((await f.call("POST", `/__hui/bots/juno/calls/${one}/delegations`, { id: "item_2", request: "List my files" }))?.body as { status: string }).status, "handed-off");
+  const waiting = f.call("POST", `/__hui/bots/juno/calls/${one}/tasks/task-1`);
+  finish({ status: "answered", reply: "**Three** files." });
+  assert.deepEqual(await waiting, { status: 200, body: { status: "answered", speak: "Three files." } }, "the task's own reply, speakable");
+  assert.equal((await f.call("POST", `/__hui/bots/juno/calls/${one}/tasks/nope`))?.status, 404);
+  const failing = Promise.reject(new Error("runtime exited"));
+  failing.catch(() => {});
+  f.setReply({ status: "answered", speak: "x" }, failing);
+  await f.call("POST", `/__hui/bots/juno/calls/${one}/delegations`, { id: "item_3", request: "Again" });
+  assert.match(String(((await f.call("POST", `/__hui/bots/juno/calls/${one}/tasks/task-1`))?.body as { speak: string }).speak), /did not complete: runtime exited/u);
   for (const body of [{ id: "", request: "x" }, { id: "has space", request: "x" }, { id: "ok", request: "" }, { id: "ok" }, { id: "ok", request: "x", more: 1 }]) {
     assert.equal((await f.call("POST", `/__hui/bots/juno/calls/${one}/delegations`, body))?.status, 400, JSON.stringify(body));
   }
@@ -145,8 +161,9 @@ test("a call holds at most two slots; its lines, tasks, heartbeats and hang-up n
 
   assert.deepEqual(await f.call("DELETE", `/__hui/bots/juno/calls/${one}`), { status: 200, body: { ended: true } });
   assert.deepEqual(await f.call("DELETE", `/__hui/bots/juno/calls/${one}`), { status: 200, body: { ended: false } });
-  assert.equal((await f.call("POST", `/__hui/bots/juno/calls/${one}/lines`, { lines: [{ role: "assistant", text: "Bye!" }] }))?.status, 200, "the last lines after the hang-up");
-  assert.equal((await f.call("POST", `/__hui/bots/juno/calls/${one}/delegations`, { id: "late", request: "x" }))?.status, 404, "no task after it");
+  assert.deepEqual(f.ended.map((call) => [call.id, call.lines.map((line) => line.text)]), [[one, ["Hi Juno", "Hey Dani!"]]], "the hang-up hands its record over once");
+  assert.equal((await f.call("POST", `/__hui/bots/juno/calls/${one}/lines`, { lines: [{ role: "assistant", text: "Bye!" }] }))?.status, 404, "the browser writes its last lines before hanging up");
+  assert.equal((await f.call("POST", `/__hui/bots/juno/calls/${one}/delegations`, { id: "late", request: "x" }))?.status, 404, "no question after it");
   assert.equal((await f.call("POST", "/__hui/bots/juno/calls", { sdp: OFFER }))?.status, 201, "the slot is free again");
   void two;
 });

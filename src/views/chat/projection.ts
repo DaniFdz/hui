@@ -3,13 +3,16 @@ import { parseSubagentCompletionEvent, type SubagentCompletionItem } from "../..
 
 export type ChatMessage = Extract<TranscriptItem, { kind: "message" }>;
 export type ChatCompaction = Extract<TranscriptItem, { kind: "compaction" }>;
-export type ChatActivity = Exclude<TranscriptItem, { kind: "message" | "compaction" }> | ChatMessage;
+export type ChatCall = Extract<TranscriptItem, { kind: "call" }>;
+export type ChatActivity = Exclude<TranscriptItem, { kind: "message" | "compaction" | "call" }> | ChatMessage;
 
 export type ChatProjectionRow =
   | { kind: "messages"; id: string; role: ChatMessage["role"]; messages: readonly ChatMessage[] }
   | { kind: "activity"; id: string; items: readonly ChatActivity[] }
   /** Where PI summarized the history above; it stays visible and rewindable. */
   | { kind: "compaction"; id: string; item: ChatCompaction }
+  /** A GPT-Live call with a bot: one card (chat-call.ts). */
+  | { kind: "call"; id: string; item: ChatCall }
   /** A HUI-injected subagent completion: a system event, never a user turn. */
   | { kind: "subagentEvent"; id: string; items: readonly SubagentCompletionItem[] };
 
@@ -99,6 +102,11 @@ export function projectChatTranscript(
     if (item.kind === "compaction") {
       flushCompletedAssistantTurn();
       rows.push({ kind: "compaction", id: item.id, item });
+      continue;
+    }
+    if (item.kind === "call") {
+      flushCompletedAssistantTurn();
+      rows.push({ kind: "call", id: item.id, item });
       continue;
     }
     assistantTurn.push(item);

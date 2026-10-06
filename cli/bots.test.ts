@@ -213,7 +213,7 @@ test("list, show, add, edit, remove, restore and stop talk to the bot routes and
 
   const shown = terminal();
   await botCommand(gateway.base, "show", ["ada"], {}, shown.io);
-  assert.match(shown.out, /^@ada · Ada \(Researcher\)\nstatus: idle\nlook: face · Cookie \(from its id\) · Yellow \(from its id\)\nmodel: default\nmemory: 2 messages · 3 summaries built · 0 pending · view 300 B in 2 lines · compactor 1 call, 1 token in, 1 out\nlanguage: auto\nroutines: 1\n/u);
+  assert.match(shown.out, /^@ada · Ada \(Researcher\)\nstatus: idle\nlook: face · Cookie \(from its id\) · Yellow \(from its id\)\nmodel: default\nmemory: 2 messages · 3 summaries built · 0 pending · view 300 B in 2 lines · compactor 1 call, 1 token in, 1 out\nutility model: default \(Settings' utility model, else its model\)\nlanguage: auto\nroutines: 1\n/u);
   const unread = terminal();
   await botCommand(gateway.base, "show", ["bob"], {}, unread.io);
   assert.match(unread.out, /\nmemory: unavailable\n/u, "a memory the gateway cannot read");
@@ -234,6 +234,8 @@ test("list, show, add, edit, remove, restore and stop talk to the bot routes and
   assert.deepEqual(gateway.calls.at(-1), { method: "PATCH", path: "/__hui/bots/id-ada", body: { title: "Lead", thinking: "high" } }, "only the given fields");
   await botCommand(gateway.base, "edit", ["ada"], { model: "", thinking: "", "memory-model": "" }, terminal().io);
   assert.deepEqual(gateway.calls.at(-1)?.body, { model: "", thinking: "", memoryModel: "" }, "empty values clear, back to the defaults");
+  await botCommand(gateway.base, "edit", ["ada"], { "utility-model": "anthropic/claude-haiku" }, terminal().io);
+  assert.deepEqual(gateway.calls.at(-1)?.body, { memoryModel: "anthropic/claude-haiku" }, "--utility-model is the stored memoryModel");
   await botCommand(gateway.base, "edit", ["ada"], { voice: "vp-aria", "voice-speed": "1.25" }, terminal().io);
   assert.deepEqual(gateway.calls.at(-1)?.body, { voice: { profile: "vp-aria", speed: 1.25 } });
   await botCommand(gateway.base, "edit", ["ada"], { "voice-speed": "" }, terminal().io);

@@ -21,7 +21,7 @@ import {
   BOT_LIMITS, handleFromName, previewLine,
   type BotLastMessage, type BotMemoryStatus, type BotMessageResult, type BotPatch, type BotQuestion, type BotRecord, type BotReply, type BotView,
 } from "../shared/bots.ts";
-import { CALL_LIMITS, CALL_TASK_PREFIX, type CallLine } from "../shared/calls.ts";
+import type { CallRecord } from "../shared/calls.ts";
 import type { AutomationTask } from "../src/lib/automation-types.ts";
 import { BotMemoryUnavailableError, type BotMemory, type BotMemorySettings } from "./bot-memory.ts";
 import {
@@ -65,8 +65,8 @@ export type BotConversations = {
   /** Takes effect at the conversation's next request. `instructions: null` clears them. */
   configure(reference: string, change: { instructions?: string | null; cwd?: string }): Promise<void>;
   lastMessage(reference: string): Promise<BotStoredMessage | undefined>;
-  /** Lines said on call `call`, in order, as passive entries: no turn runs for them. Safe while a turn runs. */
-  appendCall(reference: string, call: string, lines: readonly (CallLine & { at: number })[]): Promise<void>;
+  /** A call's record, as one passive entry: no turn runs for it. Safe while a turn runs. */
+  writeCallRecord(reference: string, record: CallRecord): Promise<void>;
   /** Rejects a `provider/id` this gateway cannot resolve. */
   checkModel(model: string): Promise<void>;
   /** The model a new chat in `cwd` starts on (PI's default there, else the first available), as `provider/id`. */
@@ -401,21 +401,10 @@ export class BotService {
     return { bot, ...(view ? { view } : {}) };
   }
 
-  /** A call's lines into the bot's chat, in the order they were said; its memory logs them as `[call]` lines. */
-  async callLines(target: string, call: string, lines: readonly (CallLine & { at: number })[]): Promise<void> {
-    if (!lines.length) return;
-    const { bot, reference } = await this.#memoryOf(target);
-    if (bot.archived) throw new BotConflictError(`@${bot.handle} is archived.`);
-    await this.#deps.conversations.appendCall(reference, call, lines);
-  }
-
-  /**
-   * A task a call delegates: one turn of the bot's chat with its own model, tools and memory, delivered as any message
-   * (a prompt, or a follow-up behind a running turn) and answered by the run that answers it. Hanging up ends the
-   * wait, never the turn: its reply still lands in the chat.
-   */
-  callTask(target: string, request: string, signal?: AbortSignal): Promise<BotReply> {
-    return this.send(target, { text: `${CALL_TASK_PREFIX}${request}` }, { timeoutMs: CALL_LIMITS.taskSeconds * 1000, ...(signal ? { signal } : {}) }) as Promise<BotReply>;
+  /** A call's record into the bot's chat (one card) and so its memory (its transcript and summary). */
+  async recordCall(target: string, record: CallRecord): Promise<void> {
+    const { reference } = await this.#memoryOf(target);
+    await this.#deps.conversations.writeCallRecord(reference, record);
   }
 
   /** Stops the bot's current turn; an idle bot has nothing to stop. */
@@ -609,7 +598,9 @@ export class BotService {
     await this.#open(record);
     if (wait?.signal?.aborted) throw new DOMException("The wait was cancelled.", "AbortError");
     const files = attachments?.length ? attachments : undefined;
-    const watch = wait ? this.#watchRun(record.id, wait) : undefined;
+    // The run that answers this message is the one that settles with it in the transcript: a follow-up waits behind
+    // the running turn, whose settle is not its answer, however the queue reports it.
+    const watch = wait ? this.#watchRun(record.id, wait, { text, before: this.#asked(record.id, text) }) : undefined;
     try {
       if (this.#sessions.status(record.id) === "idle") {
         watch?.prompted();
@@ -631,7 +622,13 @@ export class BotService {
     }
   }
 
-  #watchRun(id: string, options: WaitOptions): RunWatch {
+  /** How many times the transcript shows `text` as a message of the user. */
+  #asked(id: string, text: string): number {
+    const wanted = text.trim();
+    return this.#sessions.transcript(id).filter((entry) => entry.kind === "message" && entry.role === "user" && entry.text.trim() === wanted).length;
+  }
+
+  #watchRun(id: string, options: WaitOptions, sent: { text: string; before: number }): RunWatch {
     // pending: not submitted yet; queued: our follow-up waits in HUI's queue; running: the run that answers it.
     let phase: "pending" | "queued" | "running" = "pending";
     let item: string | undefined;
@@ -673,11 +670,12 @@ export class BotService {
           // Drained into a prompt, or back in the queue after that prompt failed to start.
           if (phase === "queued" && !listed(event.queue.items)) phase = "running";
           else if (phase === "running" && listed(event.queue.items)) phase = "queued";
-        } else if (event.type === "settled" && phase === "running") {
-          finish(this.#outcome(id));
+        } else if (event.type === "settled" && phase !== "pending" && this.#asked(id, sent.text) > sent.before) {
+          finish(this.#outcome(id, sent));
         }
       } else if (message.kind === "status") {
-        if (message.status === "waiting" && phase === "running" && options.stopAtQuestion) finish(this.#needsInput(id));
+        // A question while our message's run is the one running (the transcript may only show the message at settle).
+        if (message.status === "waiting" && options.stopAtQuestion && (phase === "running" || (phase !== "pending" && this.#asked(id, sent.text) > sent.before))) finish(this.#needsInput(id));
         else if (message.status === "error") finish({ status: "failed", error: "The bot's chat runtime failed." });
       } else if (message.kind === "closed") {
         finish({ status: "failed", error: "The bot's chat runtime exited." });
@@ -700,14 +698,19 @@ export class BotService {
     };
   }
 
-  /** How the answering run ended, from the transcript it settled with. A call's lines, written beside the run, are
-   * neither its input nor its reply. */
-  #outcome(id: string): BotReply {
-    const transcript = this.#sessions.transcript(id).filter((entry) => !(entry.kind === "message" && entry.call));
-    const last = transcript.at(-1);
+  /** How the answering run ended, from the transcript it settled with: what follows the message, up to the next one of
+   * the user's (a steer in the same run included). A call's record, written beside the run, is never its reply. */
+  #outcome(id: string, message: { text: string; before: number }): BotReply {
+    const transcript = this.#sessions.transcript(id).filter((entry) => entry.kind !== "call");
+    const wanted = message.text.trim();
+    let seen = 0;
+    const asked = transcript.findIndex((entry) => entry.kind === "message" && entry.role === "user" && entry.text.trim() === wanted && ++seen > message.before);
+    const after = transcript.slice(asked + 1);
+    const next = after.findIndex((entry) => entry.kind === "message" && entry.role === "user" && entry.text.trim() === wanted);
+    const run = next === -1 ? after : after.slice(0, next);
+    const last = run.at(-1);
     if (last?.kind === "error") return { status: "failed", error: last.message };
-    const lastUser = transcript.findLastIndex((entry) => entry.kind === "message" && entry.role === "user");
-    const reply = transcript.slice(lastUser + 1).findLast((entry) => entry.kind === "message" && entry.role === "assistant" && entry.text.trim());
+    const reply = run.findLast((entry) => entry.kind === "message" && entry.role === "assistant" && entry.text.trim());
     return reply?.kind === "message" ? { status: "answered", reply: reply.text.trim() } : { status: "answered" };
   }
 
@@ -739,7 +742,7 @@ export function botsSection(self: BotRecord, others: readonly BotRecord[]): stri
     `You are @${self.handle} (${self.name}), one of the bots of this HUI. Each bot works in a chat of its own.`,
     roster.length ? `The other bots:\n${roster.join("\n")}` : "There are no other bots yet.",
     `message_bot({ to: "@handle", message }) puts a message in another bot's chat, where it reads "[from @${self.handle}] …" and that bot answers in its own chat; nothing comes back to you by itself. A message from a bot starts with "[from @handle]" or "[from @handle · hop N]": answer it with message_bot only when there is something new to say. HUI stops a chain of bot messages after ${MAX_BOT_HOPS} hops.`,
-    `The user can call you by voice. A voice model speaks for you on the call and hands you what needs your tools, files or memory as a message starting with "${CALL_TASK_PREFIX.trim()}": do the task and answer briefly in plain sentences, which the voice model says aloud in its own words. Lines marked "[call]" in your memory were spoken on such calls.`,
+    `The user can call you by voice. A voice model talks for you and your utility model answers its quick questions from your memory; work that needs your tools arrives here as a message starting with "[call task]": do it and answer briefly in plain sentences, which the call reads out if it is still going. After each call your chat and memory get its record, marked "[call]": a summary and the whole transcript.`,
   ].join("\n\n");
 }
 

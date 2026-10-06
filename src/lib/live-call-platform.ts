@@ -5,7 +5,7 @@
  * levels from analysers (for activity and the bot's face), and the gateway's
  * call routes. No dependencies; `LiveCall` (live-call.ts) holds the logic.
  */
-import type { CallDelegationResult, CallLine, CallStarted, CallsStatus } from "../../shared/calls.ts";
+import type { CallDelegationResult, CallLine, CallStarted, CallsStatus, CallTaskResult } from "../../shared/calls.ts";
 import type { LiveCallPlatform, LiveConnection, LiveMicrophone } from "./live-call.ts";
 import { subscribeSession } from "./sessions-store.ts";
 import { CLIENT_HEADERS, fetchJson } from "./settings-store.ts";
@@ -133,6 +133,10 @@ export function liveCallPlatform(bot: { id: string; sessionId: string }): LiveCa
 
     async delegate(callId, id, request, signal): Promise<CallDelegationResult> {
       return fetchJson<CallDelegationResult>(callsUrl(bot.id, callId, "delegations"), { method: "POST", headers: JSON_HEADERS, body: JSON.stringify({ id, request }), signal });
+    },
+
+    async waitTask(callId, task, signal): Promise<CallTaskResult> {
+      return fetchJson<CallTaskResult>(callsUrl(bot.id, callId, `tasks/${encodeURIComponent(task)}`), { method: "POST", signal });
     },
 
     async writeLines(callId, lines: readonly (CallLine & { at: number })[]) {

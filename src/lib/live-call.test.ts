@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import type { CallDelegationResult, CallLine } from "../../shared/calls.ts";
+import { CALL_LIMITS, type CallDelegationResult, type CallLine, type CallTaskResult } from "../../shared/calls.ts";
 import {
   ActivityGate, CallTranscript, delegationAppends, initialLiveCallState, LiveCall, livePhaseOf, MIC_GATE, parseLiveEvent, reduceLiveCall, sessionAppends, VOICE_GATE,
   type LiveCallPlatform, type LiveConnectionHandlers, type LiveEvent,
@@ -142,6 +142,7 @@ function platform(options: { connect?: () => Promise<void>; micError?: Error } =
   const sent: Record<string, unknown>[] = [];
   const lines: (CallLine & { at: number })[][] = [];
   const delegations: { id: string; request: string; signal: AbortSignal; result: Deferred<CallDelegationResult> }[] = [];
+  const tasks: { task: string; signal: AbortSignal; result: Deferred<CallTaskResult> }[] = [];
   let handlers: LiveConnectionHandlers | undefined;
   let micLevel = 0;
   let voiceLevel = 0;
@@ -172,6 +173,13 @@ function platform(options: { connect?: () => Promise<void>; micError?: Error } =
       signal.addEventListener("abort", () => result.reject(new DOMException("aborted", "AbortError")), { once: true });
       return result.promise;
     },
+    waitTask: (_callId, task, signal) => {
+      const result = deferred<CallTaskResult>();
+      tasks.push({ task, signal, result });
+      log.push(`task ${task}`);
+      signal.addEventListener("abort", () => result.reject(new DOMException("aborted", "AbortError")), { once: true });
+      return result.promise;
+    },
     writeLines: async (_callId, batch) => { lines.push([...batch]); log.push(`lines ${batch.map((line) => line.role).join(",")}`); },
     heartbeat: async () => { if (heartbeatError) throw heartbeatError; log.push("heartbeat"); },
     end: async (_callId, leaving) => { log.push(leaving ? "end leaving" : "end"); },
@@ -192,7 +200,7 @@ function platform(options: { connect?: () => Promise<void>; micError?: Error } =
     now = until;
   };
   return {
-    live, log, sent, lines, delegations, advance,
+    live, log, sent, lines, delegations, tasks, advance,
     message: (raw: string) => handlers!.onMessage(raw),
     open: () => handlers!.onOpen(),
     lose: (why: string) => handlers!.onLost(why),
@@ -266,6 +274,55 @@ test("a delegated task waits for the request's own line, then runs, then its res
   assert.deepEqual(p.sent.at(-1), delegationAppends("item_D1", "speakable", "Dani's dog is called Pancho.")[0]);
   assert.equal(call.state.delegating, 0);
   assert.equal(call.state.phase, "listening");
+});
+
+test("a task handed to the bot's chat is followed: its answer is spoken while the call is up, and hanging up lets it go", async () => {
+  const p = platform();
+  const call = new LiveCall(p.live, { botName: "Juno" });
+  await call.start();
+  p.open();
+  p.message(EVENTS.userCreated);
+  p.message(EVENTS.userDelta);
+  p.message(EVENTS.delegation);
+  await flush();
+  p.message(EVENTS.userDone);
+  await flush();
+  await flush();
+  p.delegations[0]!.result.resolve({ status: "handed-off", task: "task-1", speak: "Juno is on it: check the files." });
+  await flush();
+  assert.deepEqual(p.sent.at(-1), delegationAppends("item_D1", "speakable", "Juno is on it: check the files.")[0], "GPT-Live says it is on it");
+  assert.deepEqual(p.tasks.map((task) => task.task), ["task-1"]);
+  assert.deepEqual([call.state.delegating, call.state.tasks], [0, 1], "the question is answered; the task goes on");
+  assert.match(call.state.notice ?? "", /Juno is working on it in the chat/u);
+  p.tasks[0]!.result.resolve({ status: "answered", speak: "Three files: a, b and c." });
+  await flush();
+  assert.deepEqual(p.sent.at(-1), sessionAppends("speakable", "An update from Juno on the task it was handed: Three files: a, b and c.")[0]);
+  assert.equal(call.state.tasks, 0);
+
+  // A second task still running at the hang-up: the wait ends, the task goes on in the chat.
+  p.message(EVENTS.delegation.replace("item_D1", "item_D2").replace(',"user_bidi_turn_id":"turn_U1"', ""));
+  await flush();
+  await flush();
+  p.delegations[1]!.result.resolve({ status: "handed-off", task: "task-2", speak: "On it." });
+  await flush();
+  const before = p.sent.length;
+  call.hangUp();
+  await flush();
+  assert.equal(p.tasks[1]!.signal.aborted, true);
+  assert.equal(p.sent.filter((event) => event["type"] === "session.context.append").length, p.sent.slice(0, before).filter((event) => event["type"] === "session.context.append").length, "nothing more is said");
+});
+
+test("a call ends by itself after its time limit", async () => {
+  const p = platform();
+  const call = new LiveCall(p.live, { botName: "Juno" });
+  await call.start();
+  p.open();
+  p.advance(CALL_LIMITS.maxMinutes * 60_000 - 1);
+  assert.equal(call.state.phase === "ended" || call.state.phase === "failed", false);
+  p.advance(1);
+  await flush();
+  assert.equal(call.state.phase, "ended");
+  assert(p.log.includes("end"), "the gateway is told");
 });
 
 test("a request whose turn never finishes goes after two seconds with what was heard; a failed task is still answered", async () => {

@@ -127,6 +127,7 @@ test("Settings' engine picks the call: GPT-Live runs on its own platform and mea
       return { callId: "c1", voice: "maple", send: (event) => { sent.push(event); return true; }, level: () => 0.9, setSpeakerMuted: () => undefined, close: () => undefined };
     },
     delegate: async () => ({ status: "answered", speak: "ok" }),
+    waitTask: async () => ({ status: "answered", speak: "done" }),
     writeLines: async () => undefined,
     heartbeat: async () => undefined,
     end: async () => undefined,

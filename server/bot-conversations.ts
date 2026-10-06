@@ -8,6 +8,7 @@
 import { clampThinkingLevel, type Message, type ModelThinkingLevel } from "@earendil-works/pi-ai";
 import { ResetEntry, SystemEntry, type Conversation, type EntryRecord } from "@earendil-works/pi-durable";
 import { previewLine } from "../shared/bots.ts";
+import { callMinutes, parseCallRecord } from "../shared/calls.ts";
 import type { BotMemory } from "./bot-memory.ts";
 import type { BotConversations, BotStoredMessage } from "./bot-service.ts";
 import { BotInputError, BotNotFoundError } from "./bots.ts";
@@ -86,14 +87,12 @@ export function durableBotConversations(host: DurableHost, memory: BotMemory): B
       return requested && known ? clampThinkingLevel(known, requested as ModelThinkingLevel) : "off";
     },
 
-    // Passive writes, one per line in the order they were said: Durable appends them at once while the chat is idle
-    // and at the running turn's next boundary otherwise. Admitted once the store schedules work, as extensions' writes.
-    async appendCall(reference, call, lines) {
+    // One passive write: Durable appends it at once while the chat is idle and at the running turn's next boundary
+    // otherwise. Admitted once the store schedules work, as extensions' writes are.
+    async writeCallRecord(reference, record) {
       const found = await conversation(reference);
       await host.resumed;
-      for (const line of lines) {
-        await found.submit({ type: "write", entry: { kind: CallEntry.kind, data: { call, role: line.role, text: line.text, at: line.at } } }, durableContext);
-      }
+      await found.submit({ type: "write", entry: { kind: CallEntry.kind, data: JSON.parse(JSON.stringify(record)) } }, durableContext);
     },
 
     async lastMessage(reference) {
@@ -112,9 +111,10 @@ export function durableBotConversations(host: DurableHost, memory: BotMemory): B
 /** The newest user or assistant text an entry shows in the transcript, as the transcript projects it. */
 function shownMessage(entry: EntryRecord): BotStoredMessage | undefined {
   if (CallEntry.is(entry)) {
-    const text = previewLine(entry.data.text);
-    if (!text) return undefined;
-    return { role: entry.data.role === "assistant" ? "assistant" : "user", text, ...(Number.isFinite(entry.data.at) ? { at: new Date(entry.data.at).toISOString() } : {}) };
+    const record = parseCallRecord(entry.data);
+    if (!record) return undefined;
+    const text = previewLine(`📞 Call · ${callMinutes(record)} min${record.summary ? ` · ${record.summary.replace(/[*#_]/gu, "")}` : ""}`);
+    return { role: "assistant", text, ...(Number.isFinite(record.endedAt) ? { at: new Date(record.endedAt).toISOString() } : {}) };
   }
   if (SystemEntry.is(entry) || ExtensionMessageEntry.is(entry)) return undefined;
   for (const message of [...entry.model ?? []].reverse() as Message[]) {

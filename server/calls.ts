@@ -15,7 +15,7 @@
 import { randomUUID } from "node:crypto";
 import {
   boundText, CALL_LIMITS, callVoice, GPT_LIVE_MODEL, gptLiveVoice,
-  type CallDelegationResult, type CallsStatus, type GptLiveVoice,
+  type CallRecordLine, type CallsStatus, type CallTaskResult, type GptLiveVoice,
 } from "../shared/calls.ts";
 import { readStoredCredential } from "@earendil-works/pi-coding-agent";
 import type { BotRecord, BotReply } from "../shared/bots.ts";
@@ -345,6 +345,12 @@ export type ActiveCall = {
   readonly account: string;
   readonly providerCallId: string;
   seenAt: number;
+  /** What was said, the helper's answers and the hand-offs, in order: the call's record. */
+  readonly lines: CallRecordLine[];
+  /** Questions the helper answered. */
+  questions: number;
+  /** Tasks handed to the bot's chat, by id: the run answering each. */
+  readonly tasks: Map<string, Promise<BotReply>>;
 };
 
 export type CallBrokerDeps = {
@@ -355,19 +361,22 @@ export type CallBrokerDeps = {
   idleMs?: number;
   /** A refused call's redacted upstream detail, for diagnostics only. */
   report?: (event: { status: number; detail: string }) => void;
+  /** Once per call, when it hangs up, goes quiet or reaches its time limit: the record is written from here. */
+  onEnd?: (call: ActiveCall, endedAt: number) => void;
 };
 
 /**
- * The calls this gateway holds: at most `limit` at once, each released when it hangs up or goes quiet for
- * `idleMs`. Starting one tries the signed-in ChatGPT accounts in priority order, skipping those waiting for their
- * quota, and moves to the next on a refusal (401, 403, 429), as model turns do on quota.
+ * The calls this gateway holds: at most `limit` at once, each released when it hangs up, goes quiet for `idleMs`
+ * (the browser vanished) or passes `CALL_LIMITS.maxMinutes`. Starting one tries the signed-in ChatGPT accounts in
+ * priority order, skipping those waiting for their quota, and moves to the next on a refusal (401, 403, 429), as
+ * model turns do on quota. Each call keeps its record (what was said, the helper's answers, the hand-offs) until it
+ * ends; `onEnd` then writes it.
  */
 export class CallBroker {
   readonly #deps: CallBrokerDeps;
   readonly #calls = new Map<string, ActiveCall>();
-  /** Calls hung up lately, by when they ended: their last lines may still arrive. They hold no slot. */
-  readonly #ended = new Map<string, { call: ActiveCall; at: number }>();
   #starting = 0;
+  #timer: ReturnType<typeof setInterval> | undefined;
 
   constructor(deps: CallBrokerDeps) {
     this.#deps = deps;
@@ -378,7 +387,7 @@ export class CallBroker {
 
   /** Calls held now, those being set up included. */
   get active(): number {
-    this.#sweep();
+    this.sweep();
     return this.#calls.size + this.#starting;
   }
 
@@ -412,8 +421,12 @@ export class CallBroker {
             report: (detail, status) => this.#deps.report?.({ status, detail }),
           });
           const now = this.#now();
-          const call: ActiveCall = { id: randomUUID(), botId: input.botId, startedAt: now, seenAt: now, account: account.id, providerCallId: upstream.providerCallId };
+          const call: ActiveCall = {
+            id: randomUUID(), botId: input.botId, startedAt: now, seenAt: now, account: account.id, providerCallId: upstream.providerCallId,
+            lines: [], questions: 0, tasks: new Map(),
+          };
           this.#calls.set(call.id, call);
+          this.#watch();
           return { ...call, answer: upstream.answer, accountName: account.name };
         } catch (error) {
           if (!(error instanceof CallUpstreamError) || ![401, 403, 429].includes(error.status)) throw error;
@@ -426,15 +439,20 @@ export class CallBroker {
     }
   }
 
-  /**
-   * The call, now seen again; refuses another bot's call and one already released. With `ended`, a call hung up in the
-   * last ten minutes still answers (what was said last is written after the hang-up).
-   */
-  touch(botId: string, callId: string, options: { ended?: boolean } = {}): ActiveCall {
-    this.#sweep();
-    const call = this.#calls.get(callId) ?? (options.ended ? this.#ended.get(callId)?.call : undefined);
+  /** The call, now seen again; refuses another bot's call and one already ended. */
+  touch(botId: string, callId: string): ActiveCall {
+    this.sweep();
+    const call = this.#calls.get(callId);
     if (!call || call.botId !== botId) throw new CallNotFoundError("This call has ended. Start a new one.");
     call.seenAt = this.#now();
+    return call;
+  }
+
+  /** Lines said on the call, in order, into its record (the oldest go past `CALL_LIMITS.recordLines`). */
+  addLines(botId: string, callId: string, lines: readonly CallRecordLine[]): ActiveCall {
+    const call = this.touch(botId, callId);
+    call.lines.push(...lines);
+    if (call.lines.length > CALL_LIMITS.recordLines) call.lines.splice(0, call.lines.length - CALL_LIMITS.recordLines);
     return call;
   }
 
@@ -442,20 +460,33 @@ export class CallBroker {
   end(botId: string, callId: string): boolean {
     const call = this.#calls.get(callId);
     if (!call || call.botId !== botId) return false;
-    this.#calls.delete(callId);
-    this.#ended.set(callId, { call, at: this.#now() });
+    this.#close(call);
     return true;
   }
 
-  #sweep(): void {
+  /** Ends the calls that went quiet or ran past their time; each is recorded once. */
+  sweep(): void {
     const idle = this.#deps.idleMs ?? CALL_LIMITS.idleMs;
     const now = this.#now();
-    for (const [id, call] of this.#calls) {
-      if (now - call.seenAt <= idle) continue;
-      this.#calls.delete(id);
-      this.#ended.set(id, { call, at: now });
+    for (const call of [...this.#calls.values()]) {
+      if (now - call.seenAt > idle || now - call.startedAt > (CALL_LIMITS.maxMinutes + 1) * 60_000) this.#close(call);
     }
-    for (const [id, ended] of this.#ended) if (now - ended.at > 10 * 60_000) this.#ended.delete(id);
+  }
+
+  #close(call: ActiveCall): void {
+    if (!this.#calls.delete(call.id)) return;
+    if (!this.#calls.size && this.#timer) {
+      clearInterval(this.#timer);
+      this.#timer = undefined;
+    }
+    try { this.#deps.onEnd?.(call, this.#now()); } catch { /* the record's own failure is reported where it is written */ }
+  }
+
+  /** A call whose browser vanished is still ended and recorded, without anyone asking. */
+  #watch(): void {
+    if (this.#timer) return;
+    this.#timer = setInterval(() => this.sweep(), 15_000);
+    this.#timer.unref?.();
   }
 }
 
@@ -482,8 +513,8 @@ export function speakable(text: string): string {
     .trim();
 }
 
-/** What the call is told when the bot's turn for a delegation ends, as GPT-Live's speakable context. */
-export function delegationResult(reply: BotReply, botName: string): CallDelegationResult {
+/** What the call is told when a task handed to the bot's chat ends, as GPT-Live's speakable context. */
+export function taskResult(reply: BotReply, botName: string): CallTaskResult {
   switch (reply.status) {
     case "answered": {
       const text = reply.reply ? speakable(reply.reply) : "";

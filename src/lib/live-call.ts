@@ -18,7 +18,7 @@
  * capabilities (the microphone, the WebRTC connection, the gateway), so both
  * run under test.
  */
-import { boundText, CALL_LIMITS, chunkUtf8, type CallDelegationResult, type CallLine, type GptLiveVoice } from "../../shared/calls.ts";
+import { boundText, CALL_LIMITS, chunkUtf8, type CallDelegationResult, type CallLine, type CallTaskResult, type GptLiveVoice } from "../../shared/calls.ts";
 import type { CallPhase } from "./voice-call.ts";
 
 /* ── what the data channel says ───────────────────────────────────────── */
@@ -164,8 +164,10 @@ export type LiveCallState = {
   userTurn: boolean;
   /** The bot's voice is playing. */
   botAudio: boolean;
-  /** Tasks GPT-Live delegated that the bot is working on. */
+  /** Questions GPT-Live delegated that the bot's helper is answering. */
   delegating: number;
+  /** Tasks handed to the bot's chat that the call still follows. */
+  tasks: number;
   /** A tool the bot's task uses. */
   tool?: string;
   /** Captions: the user's current or last turn, and the bot's. */
@@ -186,6 +188,7 @@ export type LiveCallEvent =
   | { type: "mic-activity"; active: boolean }
   | { type: "bot-audio"; active: boolean }
   | { type: "delegation"; running: boolean }
+  | { type: "task"; running: boolean }
   | { type: "tool"; name?: string }
   | { type: "notice"; message?: string }
   | { type: "mute-mic"; muted: boolean }
@@ -195,7 +198,7 @@ export type LiveCallEvent =
 export function initialLiveCallState(now: number): LiveCallState {
   return {
     engine: "gpt-live", phase: "connecting", startedAt: now, connected: false, micMuted: false, speakerMuted: false,
-    micActive: false, userTurn: false, botAudio: false, delegating: 0, you: "", bot: "",
+    micActive: false, userTurn: false, botAudio: false, delegating: 0, tasks: 0, you: "", bot: "",
   };
 }
 
@@ -252,6 +255,9 @@ export function reduceLiveCall(state: LiveCallState, event: LiveCallEvent, now: 
     case "delegation":
       next.delegating = Math.max(0, next.delegating + (event.running ? 1 : -1));
       if (!next.delegating) delete next.tool;
+      break;
+    case "task":
+      next.tasks = Math.max(0, next.tasks + (event.running ? 1 : -1));
       break;
     case "tool":
       if (event.name && next.delegating) next.tool = event.name;
@@ -367,8 +373,10 @@ export type LiveCallPlatform = {
   openMicrophone(): Promise<LiveMicrophone>;
   /** The peer connection with the microphone and the data channel; the gateway exchanges its offer with ChatGPT. */
   connect(microphone: LiveMicrophone, handlers: LiveConnectionHandlers): Promise<LiveConnection>;
-  /** Runs a delegated task as a turn of the bot and resolves with what to tell GPT-Live. */
+  /** Asks the bot's helper (or hands the request to the bot's chat) and resolves with what to tell GPT-Live. */
   delegate(callId: string, id: string, request: string, signal: AbortSignal): Promise<CallDelegationResult>;
+  /** Resolves once a task handed to the bot's chat ends, with what to tell GPT-Live. */
+  waitTask(callId: string, task: string, signal: AbortSignal): Promise<CallTaskResult>;
   writeLines(callId: string, lines: readonly (CallLine & { at: number })[]): Promise<void>;
   heartbeat(callId: string): Promise<void>;
   /** Hangs up in the gateway; `leaving` when the page goes away (the request must outlive it). */
@@ -485,6 +493,11 @@ export class LiveCall {
       });
     }, this.#options.heartbeatMs ?? 30_000));
     if (this.#platform.watchTools) this.#stops.push(this.#platform.watchTools((name) => this.#onTool(name)));
+    // OpenDots' rule: a call ends after its time limit.
+    this.#stops.push(this.#platform.setTimer(() => {
+      this.#dispatch({ type: "notice", message: `Calls end after ${CALL_LIMITS.maxMinutes} minutes.` });
+      this.hangUp();
+    }, CALL_LIMITS.maxMinutes * 60_000));
   }
 
   setMicMuted(muted: boolean): void {
@@ -572,6 +585,7 @@ export class LiveCall {
       }
       const result = await this.#platform.delegate(connection.callId, event.id, request, this.#abort.signal);
       this.#send(delegationAppends(event.id, "speakable", result.speak));
+      if (result.task) void this.#followTask(result.task);
     } catch (error) {
       // Hung up: the task goes on in the bot's chat, and its reply lands there.
       if (this.#abort.signal.aborted) return;
@@ -581,6 +595,26 @@ export class LiveCall {
     } finally {
       if (this.#activeDelegation === event.id) this.#activeDelegation = undefined;
       this.#dispatch({ type: "delegation", running: false });
+    }
+  }
+
+  /** A task handed to the bot's chat: its result is spoken if it comes while the call goes on; otherwise it stays in the
+   * chat. */
+  async #followTask(task: string): Promise<void> {
+    const connection = this.#connection;
+    if (!connection) return;
+    this.#dispatch({ type: "task", running: true });
+    this.#dispatch({ type: "notice", message: `${this.#options.botName} is working on it in the chat.` });
+    try {
+      const result = await this.#platform.waitTask(connection.callId, task, this.#abort.signal);
+      if (this.#ended) return;
+      this.#send(sessionAppends("speakable", boundText(`An update from ${this.#options.botName} on the task it was handed: ${result.speak}`, CALL_LIMITS.result)));
+      this.#dispatch({ type: "notice", message: `${this.#options.botName} finished the task; its answer is in the chat too.` });
+    } catch (error) {
+      if (this.#abort.signal.aborted) return;
+      this.#dispatch({ type: "notice", message: `The task's answer will be in ${this.#options.botName}'s chat (${message(error, "the gateway did not answer")}).` });
+    } finally {
+      this.#dispatch({ type: "task", running: false });
     }
   }
 

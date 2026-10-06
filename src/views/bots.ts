@@ -547,6 +547,8 @@ export type BotDialogProps = {
   model: string;
   thinking: string;
   memoryModel: string;
+  /** The name of Settings' utility model, the bot's utility model while it has none of its own. */
+  utilityDefault?: string;
   directorySuggestions: readonly string[];
   onDirectoryInput: (value: string) => void;
   onModel: (value: string) => void;
@@ -735,15 +737,16 @@ export function renderBotDialog(props: BotDialogProps) {
       <div class="bot-dialog__row">
         <div class="field input-dialog__field"><span>Model</span>
           ${renderPicker({ label: "Model", value: props.model, disabled: props.pending, searchable: true, searchPlaceholder: "Search models",
-            options: modelOptions(props.models, "Gateway default", props.model), onChange: props.onModel })}</div>
+            options: modelOptions(props.models, "Gateway default", props.model), onChange: props.onModel })}
+          <span class="bot-field__hint">The smartest model you have. Speed doesn't matter.</span></div>
         <div class="field input-dialog__field"><span>Thinking</span>
           ${renderPicker({ label: "Thinking", value: props.thinking, disabled: props.pending,
             options: THINKING_CHOICES.map(([value, label]) => ({ value, label })), onChange: props.onThinking })}</div>
       </div>
-      <div class="field input-dialog__field"><span>Memory model</span>
-        ${renderPicker({ label: "Memory model", value: props.memoryModel, disabled: props.pending, searchable: true, searchPlaceholder: "Search models",
-          options: modelOptions(props.models, "Same as bot", props.memoryModel), onChange: props.onMemoryModel })}
-        <span class="bot-field__hint">Writes the summaries that let the chat go on forever. A fast, cheap model is enough.</span></div>
+      <div class="field input-dialog__field bot-dialog__utility"><span>Utility model</span>
+        ${renderPicker({ label: "Utility model", value: props.memoryModel, disabled: props.pending, searchable: true, searchPlaceholder: "Search models",
+          options: modelOptions(props.models, props.utilityDefault ? `Default (${props.utilityDefault})` : "Default (same as the bot)", props.memoryModel), onChange: props.onMemoryModel })}
+        <span class="bot-field__hint">The fastest model you have, ideally a cheap one. It writes the memory's summaries, answers quick questions on calls and writes each call's summary.</span></div>
       ${props.voice ? renderVoiceField(props.voice, props.pending) : nothing}
       ${props.call ? renderCallVoiceField(props.call, props.pending) : nothing}
       ${languageField(props)}

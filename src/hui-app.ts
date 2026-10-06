@@ -3930,6 +3930,13 @@ export class HuiApp extends HuiElement {
     };
   }
 
+  /** Settings' utility model by its catalog name, the default of a bot's utility model. */
+  private utilityModelName(): string | undefined {
+    const ref = this.settings.models.utility;
+    if (!ref) return undefined;
+    return this.pi?.model.catalog.find((entry) => `${entry.provider}/${entry.id}` === ref)?.name ?? ref;
+  }
+
   /** The call voice and language while calls use GPT-Live; the language is the one VoiceStudio's section shows too. */
   private botDialogCall(): BotDialogCall | undefined {
     if (this.settings.calls.engine !== "gpt-live") return undefined;
@@ -4362,6 +4369,7 @@ export class HuiApp extends HuiElement {
       model: this.botDraftModel,
       thinking: this.botDraftThinking,
       memoryModel: this.botDraftMemoryModel,
+      ...(this.utilityModelName() ? { utilityDefault: this.utilityModelName()! } : {}),
       directorySuggestions: this.directorySuggestions,
       onDirectoryInput: this.requestDirectorySuggestions,
       onModel: (value) => { this.botDraftModel = value; },

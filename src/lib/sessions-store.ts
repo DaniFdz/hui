@@ -1,4 +1,5 @@
 import type { TranscriptMetrics } from "../../server/runtimes/transcript-metrics.ts";
+import { callMinutes, callTranscriptText, type CallRecord } from "../../shared/calls.ts";
 /**
  * Client half of the session API. HUI owns the registry; the contract is fixed
  * in `docs/api.md`.
@@ -169,9 +170,9 @@ export type TranscriptEntry = { metrics?: TranscriptMetrics } & (
       attachments?: readonly (string | TranscriptAttachment)[];
       pending?: boolean;
       failed?: boolean;
-      /** Said on a GPT-Live call with a bot, not typed; no turn ran for it. */
-      call?: true;
     }
+  /** The record of a GPT-Live call with a bot: one card with its summary and transcript. */
+  | ({ kind: "call"; id?: string } & CallRecord)
   | { kind: "compaction"; id?: string; summary: string; tokensBefore: number }
   | { kind: "thinking"; id?: string; text: string }
   | {
@@ -238,7 +239,8 @@ export type RuntimeEvent =
  * additions that keep their place in the conversation.
  */
 export type TranscriptItem = { metrics?: TranscriptMetrics } & (
-  | { kind: "message"; id: string; entryId?: string; role: "user" | "assistant"; text: string; attachments?: readonly (string | TranscriptAttachment)[]; pending?: boolean; failed?: boolean; call?: true }
+  | { kind: "message"; id: string; entryId?: string; role: "user" | "assistant"; text: string; attachments?: readonly (string | TranscriptAttachment)[]; pending?: boolean; failed?: boolean }
+  | ({ kind: "call"; id: string } & CallRecord)
   | { kind: "compaction"; id: string; summary: string; tokensBefore: number }
   | { kind: "thinking"; id: string; text: string }
   | { kind: "tool"; id: string; name: string; args?: unknown; output?: string; details?: unknown; failed?: boolean; status?: "running" | "succeeded" | "failed" }
@@ -303,6 +305,7 @@ export function transcriptAsMarkdown(items: readonly TranscriptItem[]): string {
     if (item.kind === "thinking") return `### Thinking\n\n${item.text}`;
     if (item.kind === "error") return `### Error\n\n${item.text}`;
     if (item.kind === "compaction") return `### Context compacted\n\n${item.summary}`;
+    if (item.kind === "call") return `### Call · ${callMinutes(item)} min\n\n${item.summary ?? "Summary unavailable."}\n\n${callTranscriptText(item.lines, item.bot ?? "Bot", "You")}`;
     const details = item.output || (item.args === undefined ? "" : JSON.stringify(item.args, null, 2));
     return `### Tool: ${item.name}${details ? `\n\n\`\`\`\n${details}\n\`\`\`` : ""}`;
   }).join("\n\n").trim();

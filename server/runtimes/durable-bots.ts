@@ -16,6 +16,7 @@ import {
 } from "@earendil-works/pi-durable";
 import { Type } from "typebox";
 import { BOT_LIMITS } from "../../shared/bots.ts";
+import type { CallRecord } from "../../shared/calls.ts";
 
 /** The bot a conversation is the chat of; `bot` stays empty for every other conversation. A fork stays the bot's. */
 export const BotDoc = defineDoc<{ bot: string }>({
@@ -28,11 +29,12 @@ export const BotDoc = defineDoc<{ bot: string }>({
 });
 
 /**
- * One line said on a GPT-Live call with the bot (HUI-18): what the operator said (`user`) or what the voice model said
- * (`assistant`), written as a passive entry so no model turn runs for it. It carries no model messages: the chat shows
- * it, OptChat logs it (`[call] `), and Durable places it at a running turn's next boundary. `at` is when it was said.
+ * The record of one GPT-Live call with the bot (HUI-18): its summary and its whole transcript (`CallRecord`), written
+ * once at hang-up as a passive entry, so no model turn runs for it. It carries no model messages: the chat shows it
+ * as one card, OptChat logs it (its transcript and summary, marked `[call]`), and Durable places it at a running
+ * turn's next boundary.
  */
-export const CallEntry = defineEntry<{ call: string; role: "user" | "assistant"; text: string; at: number }>("hui.call");
+export const CallEntry = defineEntry<CallRecord>("hui.call");
 
 export const MESSAGE_BOT_TOOL = "message_bot";
 

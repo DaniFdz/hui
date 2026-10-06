@@ -90,6 +90,10 @@ test("input is validated at the boundary: limits, formats, unknown fields and on
 test("a patch carries only what changes and may clear optional text and avatar keys", () => {
   assert.throws(() => normalizeBotPatch({}), /Nothing to change/u);
   assert.deepEqual(normalizeBotPatch({ title: "", instructions: "", memoryModel: "", memoryThinking: "" }), { title: "", instructions: "", memoryModel: "", memoryThinking: "" });
+  // The utility model is stored as memoryModel, its name before calls; both names keep working.
+  assert.deepEqual(normalizeBotPatch({ utilityModel: "anthropic/claude-haiku" }), { memoryModel: "anthropic/claude-haiku" });
+  assert.deepEqual(normalizeBotPatch({ utilityModel: "a/b", memoryModel: "a/b" }), { memoryModel: "a/b" });
+  assert.throws(() => normalizeBotPatch({ utilityModel: "a/b", memoryModel: "c/d" }), /Give the utility model once/u);
   assert.deepEqual(normalizeBotPatch({ avatar: null, hidden: false }), { avatar: null, hidden: false });
   assert.deepEqual(normalizeBotPatch({ model: "", thinking: "" }), { model: "", thinking: "" }, "the chat goes back to the gateway's defaults");
   assert.throws(() => normalizeBotPatch({ model: "gpt" }), /provider\/id/u);

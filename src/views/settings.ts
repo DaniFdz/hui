@@ -682,8 +682,8 @@ function renderModelsPage(props: SettingsProps) {
     });
   return html`
     <p class="settings-page__intro">
-      Connect providers and choose models without changing PI's configuration. Primary handles normal turns,
-      fallback recovers a turn when the primary provider fails, and utility handles short internal work.
+      Connect providers and choose models without changing PI's configuration. Three roles: the primary model does
+      the real work, the utility model the quick work, and the conversation model (Calls, below) talks on calls.
     </p>
     <hui-provider-settings @providers-changed=${props.onRetryPi}></hui-provider-settings>
     ${renderSection(
@@ -692,7 +692,7 @@ function renderModelsPage(props: SettingsProps) {
       html`
         ${renderRow(
           "Primary model",
-          "The normal session model. Example: OpenAI Astra for coding and longer tasks.",
+          "The smartest model you have. Speed doesn't matter: it does the real work of new sessions and bots.",
           routePicker("Primary model", "primary"),
         )}
         ${renderRow(
@@ -702,7 +702,7 @@ function renderModelsPage(props: SettingsProps) {
         )}
         ${renderRow(
           "Utility model",
-          "Choose a cheap, fast model for short session names and /btw side questions. Examples: GPT-5.6 Luna or Claude Haiku.",
+          "The fastest model you have, ideally a cheap one. It names sessions and branches, drafts Jira items and answers /btw; for bots without their own, it writes memory summaries, answers quick questions on calls and writes call summaries.",
           routePicker("Utility model", "utility"),
         )}
       `,

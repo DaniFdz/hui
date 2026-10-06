@@ -1,5 +1,6 @@
 import { piEnvironment } from "./pi-environment.ts";
 import { RuntimeTimings, sanitizeMetrics } from "./transcript-metrics.ts";
+import { parseCallRecord } from "../../shared/calls.ts";
 /**
  * PI adapter. The HUI-owned SDK worker and opt-in CLI fallback share PI's RPC
  * transport. Both live outside the gateway; only the SDK exposes inspection.
@@ -339,11 +340,10 @@ export function transcriptFrom(messages: readonly unknown[], timings = new Runti
       entries.push({ kind: "compaction", summary: typeof raw["summary"] === "string" ? raw["summary"] : "", tokensBefore: finiteNumber(raw["tokensBefore"]) });
       continue;
     }
-    // A line said on a call with a bot (Durable's `hui.call` entry): shown as what was said, marked as spoken.
+    // The record of a call with a bot (Durable's `hui.call` entry): one card, its summary and transcript.
     if ((role as string) === "call") {
-      const text = typeof raw["text"] === "string" ? raw["text"].trim() : "";
-      const metrics = sanitizeMetrics({ timestamp: raw["timestamp"] });
-      if (text) entries.push({ kind: "message", role: raw["speaker"] === "assistant" ? "assistant" : "user", text, call: true, ...(Object.keys(metrics).length ? { metrics } : {}) });
+      const record = parseCallRecord(raw["record"]);
+      if (record) entries.push({ kind: "call", ...record });
       continue;
     }
     if (role === "toolResult") {

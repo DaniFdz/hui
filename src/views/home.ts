@@ -54,7 +54,7 @@ import { toggleNavigationDrawer } from "./shell.ts";
 import { renderBotAvatar } from "./bots.ts";
 import { chatFaceState, hasRunningTool, type BotFaceState } from "../lib/bot-face.ts";
 import { renderCallButton, renderVoiceNoteButton, renderVoiceNoteStatus, voiceIcons } from "./bot-voice.ts";
-import { renderCallLineMark } from "./chat-call.ts";
+import { renderCallCard } from "./chat-call.ts";
 import type { VoiceNoteState } from "../lib/voice.ts";
 import type { BotView } from "../lib/bots.ts";
 import { slashCommandQuery } from "../lib/slash-commands.ts";
@@ -905,7 +905,6 @@ function renderMessage(props: HomeProps, item: ChatMessage): TemplateResult {
           ${item.attachments.map((attachment) => renderMessageAttachment(attachment))}
         </div>`
       : nothing}
-    ${renderCallLineMark(item)}
     ${item.role === "user" ? renderUserText(props, item) : html`<div class="chat-text">${renderMarkdown(item.text)}</div>`}
     ${item.pending || item.failed || !props.chatPreferences.githubEmbeds ? nothing : html`<hui-github-embeds .text=${item.text}></hui-github-embeds>`}
     ${renderMetrics(item)}
@@ -1068,6 +1067,7 @@ function renderTranscriptRows(props: HomeProps, rows: readonly ChatProjectionRow
   return html`${rows.map((row, rowIndex) => {
     if (row.kind === "subagentEvent") return renderSubagentEvent(props, row);
     if (row.kind === "compaction") return renderCompaction(row);
+    if (row.kind === "call") return renderCallCard(row.item);
     if (row.kind === "activity") {
       const media = presentedMedia(row.items);
       if (media.length) {

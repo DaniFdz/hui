@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { test, type TestContext } from "node:test";
 
 import type { BotMemoryStatus } from "../shared/bots.ts";
+import type { CallRecord } from "../shared/calls.ts";
 import type { AutomationTask } from "../src/lib/automation-types.ts";
 import { DEFAULT_SETTINGS } from "../src/lib/settings.ts";
 import type { BotMemory } from "./bot-memory.ts";
@@ -139,9 +140,9 @@ async function harness(t: TestContext, options: { messagesPerHour?: number; memo
       return `durable:${this.next++}`;
     },
     async configure(reference: string, change: unknown) { this.configured.push([reference, change]); },
-    /** Call lines written, in order: [reference, call, lines]. */
-    calls: [] as Array<[string, string, readonly { role: string; text: string; at: number }[]]>,
-    async appendCall(reference: string, call: string, lines: readonly { role: "user" | "assistant"; text: string; at: number }[]) { this.calls.push([reference, call, lines]); },
+    /** Call records written, in order: [reference, record]. */
+    records: [] as Array<[string, CallRecord]>,
+    async writeCallRecord(reference: string, record: CallRecord) { this.records.push([reference, record]); },
     async lastMessage(reference: string) {
       this.lastReads.push(reference);
       return { role: "assistant" as const, text: "stored reply", at: "2026-10-01T09:00:00.000Z" };
@@ -630,13 +631,15 @@ test("memory reads go through BotMemory, and a chat whose memory cannot be read 
 });
 
 
-test("a call's lines go to the bot's conversation in order, its context carries the memory, and an archived bot takes no call", async (t) => {
+test("a call's record goes to the bot's conversation as one write, its context carries the memory, and an archived bot takes no call", async (t) => {
   const h = await harness(t);
   const bot = await h.service.create({ name: "Ada", instructions: "Be brief." });
-  const lines = [{ role: "user" as const, text: "Remember my sister's birthday is March 3.", at: 1 }, { role: "assistant" as const, text: "Got it, March 3.", at: 2 }];
-  await h.service.callLines(bot.id, "call-1", lines);
-  await h.service.callLines(bot.id, "call-1", []);
-  assert.deepEqual(h.conversations.calls, [["durable:1", "call-1", lines]], "one write, nothing for an empty batch");
+  const record: CallRecord = {
+    call: "call-1", bot: "Ada", startedAt: 1, endedAt: 60_001, summary: "**To remember**: the sister's birthday is March 3.",
+    lines: [{ role: "user", text: "Remember my sister's birthday is March 3.", at: 1 }, { role: "assistant", text: "Got it, March 3.", at: 2 }],
+  };
+  await h.service.recordCall(bot.handle, record);
+  assert.deepEqual(h.conversations.records, [["durable:1", record]]);
   const context = await h.service.callContext(bot.handle);
   assert.equal(context.bot.id, bot.id);
   assert.equal(context.bot.instructions, "Be brief.");
@@ -646,31 +649,31 @@ test("a call's lines go to the bot's conversation in order, its context carries 
   assert.equal((await plain.service.callContext(other.id)).view, undefined, "a call goes on without a memory it cannot read");
   await h.service.archive(bot.id);
   await assert.rejects(h.service.callContext(bot.id), BotConflictError);
-  await assert.rejects(h.service.callLines(bot.id, "call-1", lines), BotConflictError);
 });
 
-test("a call task is a marked turn that answers with its own reply, even queued behind a running turn and beside call lines", async (t) => {
+test("a task handed off from a call answers with its own reply, even queued behind a running turn and beside a call's record", async (t) => {
   const h = await harness(t);
   const bot = await h.service.create({ name: "Ada" });
   const chat = await h.chat(bot.sessionId);
+  const task = (text: string, signal?: AbortSignal) =>
+    h.service.send(bot.id, { text: `[call task] ${text}` }, { timeoutMs: 600_000, ...(signal ? { signal } : {}) });
+  const record = { kind: "call" as const, call: "c0", bot: "Ada", startedAt: 1, endedAt: 2, summary: "A record.", lines: [{ role: "assistant" as const, text: "Bye!", at: 2 }] };
 
   // Idle: a prompt marked as a call task, answered by the run it starts.
   let prompted = chat.nextPrompt();
-  const first = h.service.callTask(bot.id, "What's my dog called?");
+  const first = task("What's my dog called?");
   assert.equal(await prompted, "[call task] What's my dog called?");
-  // A line said on the call lands while the turn runs: neither the turn's input nor its reply.
-  chat.history.push({ kind: "message", role: "user", text: "Are you there?", call: true });
+  // An earlier call's record lands while the turn runs: neither the turn's input nor its reply.
   chat.answer("Pancho.");
-  chat.history.push({ kind: "message", role: "assistant", text: "Still here.", call: true });
+  chat.history.push(record);
   assert.deepEqual(await first, { status: "answered", reply: "Pancho." });
 
   // Busy with a typed message: the task queues as a follow-up and waits for its own run, not the one before it.
   await h.service.send(bot.id, { text: "typed while the call runs" });
-  const second = h.service.callTask(bot.id, "Check the calendar for tomorrow");
-  const third = h.service.callTask(bot.id, "And the weather");
+  const second = task("Check the calendar for tomorrow");
+  const third = task("And the weather");
   await queueHolds(h, bot.sessionId, 2);
   prompted = chat.nextPrompt();
-  chat.history.push({ kind: "message", role: "user", text: "Thanks!", call: true });
   chat.answer("typed reply");
   assert.equal(await prompted, "[call task] Check the calendar for tomorrow");
   prompted = chat.nextPrompt();
@@ -683,7 +686,7 @@ test("a call task is a marked turn that answers with its own reply, even queued 
   // Hanging up ends the wait, never the turn.
   prompted = chat.nextPrompt();
   const gone = new AbortController();
-  const fourth = h.service.callTask(bot.id, "Write the report", gone.signal);
+  const fourth = task("Write the report", gone.signal);
   await prompted;
   gone.abort();
   await assert.rejects(fourth, (error: unknown) => error instanceof DOMException && error.name === "AbortError");
@@ -696,5 +699,5 @@ test("the bots section tells the bot how calls reach it", async (t) => {
   const ada = await h.service.create({ name: "Ada" });
   const section = await h.service.section(ada.id);
   assert.match(section!, /"\[call task\]"/u);
-  assert.match(section!, /Lines marked "\[call\]" in your memory were spoken on such calls\./u);
+  assert.match(section!, /After each call your chat and memory get its record, marked "\[call\]": a summary and the whole transcript\./u);
 });
