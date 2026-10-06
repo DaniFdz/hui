@@ -1144,9 +1144,10 @@ everything the Bots tab can, through the same routes.
   status, its view, any line zoomed down to a message, and a browse page.
 - **The Bots tab** is opt-in: Settings → Sessions → *Show the Bots tab* (off by
   default, saved in HUI settings). Hiding it never stops bots or routines. On,
-  an **Agents | Bots** switch heads the sidebar (arrow keys, Home/End; the
-  browser remembers the tab): Agents is the sidebar as before, and Bots shows
-  only the roster, without the navigation or New session. Bot chats never
+  an **Agents | Bots** switch tops the sidebar, above even its header buttons
+  (arrow keys, Home/End; the browser remembers the tab): Agents is the sidebar
+  as before, and Bots shows only the roster, without the navigation or New
+  session. Bot chats never
   appear in the Sessions list, its search, Kanban, the Sessions page, the
   command palette or session pickers; Automations labels their routines
   *Bot · name* and words
@@ -1198,6 +1199,9 @@ gateway only (remote workers are a later follow-up).
 On 2026-10-06 the owner asked for Hermes's layout: the switch moved to the top
 of the sidebar and its first tab is named **Agents**. Agents is the same session
 sidebar, not an Agents page or agent selector; Bots shows only the roster.
+Later that day he asked for it above everything else, the header buttons
+included, because the two tabs work differently: it is now a full-width tab bar
+over a divider, the first thing in the sidebar.
 
 ### New sessions run on Pi Durable
 

@@ -427,7 +427,7 @@ test("the shell retains reference chrome geometry with header utilities", () => 
   assert.doesNotMatch(source, /sidebar-identity-card/);
 });
 
-test("the Bots tab's Agents | Bots switch heads the sidebar, and Bots shows only the roster", () => {
+test("the Bots tab's Agents | Bots switch tops the sidebar, and Bots shows only the roster", () => {
   const source = readFileSync(new URL("./shell.ts", import.meta.url), "utf8");
   const css = readFileSync(new URL("../styles/bots.css", import.meta.url), "utf8");
   const tabs = source.slice(source.indexOf("function renderSidebarTabs"), source.indexOf("export function renderSidebar("));
@@ -439,18 +439,27 @@ test("the Bots tab's Agents | Bots switch heads the sidebar, and Bots shows only
     assert.notEqual(index, -1, marker);
     return index;
   };
-  // The header buttons, then the switch, then the search and what the selected tab shows.
-  assert.ok(at('<div class="sidebar-brand">') < at("renderSidebarTabs(props.bots)"));
-  assert.ok(at("renderSidebarTabs(props.bots)") < at('<label class="sidebar-search'));
+  // The switch comes first, above even the header buttons: each tab has a sidebar of its own.
+  const head = sidebar.slice(at('<div class="sidebar-shell sidebar-drawer__body">'), at('<div class="sidebar-brand">'));
+  assert.match(head, /^<div class="sidebar-shell sidebar-drawer__body">\s*\$\{props\.bots \? html.<div class="sidebar-switch">\$\{renderSidebarTabs\(props\.bots\)\}<\/div>. : nothing\}\s*$/u);
+  assert.ok(at('<div class="sidebar-brand">') < at('<label class="sidebar-search'));
   assert.ok(at('<label class="sidebar-search') < at('<nav class="sidebar-nav"'));
   assert.equal(sidebar.split("renderSidebarTabs(").length, 2, "one switch, not one per list");
   // Bots: no primary navigation and no New session, and the toolbar names the roster.
   assert.match(sidebar, /\$\{botsTab \? nothing : html`<nav class="sidebar-nav"/u);
   assert.match(sidebar, /\$\{botsTab \? nothing : html`<button type="button" class="[^"]*sidebar-brand__new-thread" aria-label="New session"/u);
   assert.match(sidebar, /<span>\$\{botsTab \? "Bots" : "Sessions"\}<\/span>/u);
-  // Everything under the switch is its tab panel, labelled by the selected tab.
+  // The lists under the header are its tab panel, labelled by the selected tab.
   assert.match(sidebar, /role=\$\{props\.bots \? "tabpanel" : nothing\}\s*aria-labelledby=\$\{props\.bots \? `sidebar-tab-\$\{props\.bots\.tab\}` : nothing\}/u);
-  assert.match(css, /\.app-shell \.sidebar-switch \{/u);
+  // A full-width tab bar over a divider, unlike the uppercase section labels below it.
+  const rule = (selector: string) => {
+    const start = css.indexOf(`${selector} {`);
+    assert.notEqual(start, -1, selector);
+    return css.slice(start, css.indexOf("}", start));
+  };
+  assert.match(rule(".app-shell .sidebar-switch"), /border-bottom:\s*1px solid var\(--border\)/u);
+  assert.match(rule(".app-shell .sidebar-tabs__tab"), /flex:\s*1 1 0/u);
+  assert.doesNotMatch(rule(".app-shell .sidebar-switch") + rule(".app-shell .sidebar-tabs__tab"), /text-transform:\s*uppercase/u);
   assert.doesNotMatch(css, /sidebar-recent-sessions__toolbar \.sidebar-tabs__tab/u, "the tabs no longer sit in the sessions toolbar");
 });
 

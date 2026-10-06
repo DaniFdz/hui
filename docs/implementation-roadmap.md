@@ -733,9 +733,9 @@ for now. It lands as stacked pull requests:
    `server/live-sessions.test.ts`, `cli/main.test.ts` and `cli/bots.test.ts`
    (a fake gateway and a scripted terminal).
 3. **Bots tab** (UI; done 2026-10-05): Settings → Sessions → *Show the Bots
-   tab* (off by default); the Agents | Bots switch at the top of the sidebar
-   (renamed from Sessions | Bots and moved there on 2026-10-06; Bots shows only
-   the roster); bot chats filtered from
+   tab* (off by default); the Agents | Bots switch at the very top of the
+   sidebar (renamed from Sessions | Bots and moved there, above the header
+   buttons, on 2026-10-06; Bots shows only the roster); bot chats filtered from
    every session list and picker; the roster (activity order, search, unread,
    badges, New bot, Edit, Hide/Unhide, Archive with Restore, *Show archived*
    with Restore) fed by `/__hui/bots/events`; the dialog's *Gateway default*

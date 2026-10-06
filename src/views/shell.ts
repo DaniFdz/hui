@@ -108,9 +108,11 @@ export type SessionCopyAction = "link" | "markdown" | "id" | "jira";
 export type SessionOpenAction = "tab" | "window" | "editor" | "jira";
 export type GroupDropTarget = { group: string; position: "before" | "after" };
 
-/** The Agents | Bots switch at the top of the sidebar. Present only while
+/** The Agents | Bots switch, the first thing in the sidebar, above even its
+ * header buttons, because each tab has a sidebar of its own: Agents is the
+ * sidebar as before, and Bots shows only the roster. Present only while
  * Settings → Sessions → Show the Bots tab is on; without it the sidebar renders
- * exactly as before. Agents is that sidebar; Bots shows only the roster. */
+ * exactly as before. */
 export type ShellBotsProps = {
   tab: SidebarTab;
   onTab: (tab: SidebarTab) => void;
@@ -836,6 +838,7 @@ export function renderSidebar(props: ShellProps) {
       }}
     >
         <div class="sidebar-shell sidebar-drawer__body">
+          ${props.bots ? html`<div class="sidebar-switch">${renderSidebarTabs(props.bots)}</div>` : nothing}
           <div class="sidebar-brand">
           <div class="sidebar-brand__utilities">
             ${botsTab ? nothing : html`<button type="button" class="sidebar-brand__icon sidebar-brand__header-control sidebar-brand__new-thread" aria-label="New session" title="New session" @click=${(event: Event) => {
@@ -848,8 +851,6 @@ export function renderSidebar(props: ShellProps) {
             <button type="button" class="sidebar-brand__icon sidebar-brand__header-control sidebar-brand__collapse" aria-label="Collapse sidebar" title="Collapse sidebar" aria-expanded="true" @click=${toggleDesktopSidebar}>${icons.panelLeftClose}</button>
           </div>
           </div>
-
-          ${props.bots ? html`<div class="sidebar-switch">${renderSidebarTabs(props.bots)}</div>` : nothing}
 
           <label class="sidebar-search ${(botsTab ? botsTab.search.trim() : query) ? "sidebar-search--active" : ""}">
             <span class="sidebar-search__icon" aria-hidden="true">${icons.search}</span>
