@@ -184,9 +184,8 @@ Settings → Models names three roles. The **primary model** does the real work:
 choose the smartest model you have, speed doesn't matter. The **utility model**
 does the quick work (session and branch names, Jira drafts, `/btw`, and for bots
 their memory summaries, quick answers on calls and call summaries): choose the
-fastest you have, ideally a cheap one. The **conversation model** (Settings →
-Models → Calls) talks on calls with bots and is made for phone calls: quick to
-respond.
+fastest you have, ideally a cheap one. **GPT-Live** (Settings → Models → Calls)
+talks on calls with bots: it is made for phone calls and quick to respond.
 
 ## Bots
 
@@ -424,92 +423,30 @@ with `n` = 1. The page lists the view, every message and each level of the
 tree; a browser opens it from a link on HUI's own pages, such as the Bots tab
 (another site cannot load or frame it).
 
-### Voice
-
-Bots can listen and speak through [VoiceStudio](https://github.com/debpalash/VoiceStudio),
-a separate speech service that HUI only calls over HTTP; HUI neither ships nor
-installs it.
-
-**Connecting it.** Run VoiceStudio on this machine (it listens on
-`http://127.0.0.1:3900`) or on a GPU box. For a box on your tailnet, start it
-with an API key (`OMNIVOICE_API_KEY`) and serve it over HTTPS with Tailscale
-Serve (`https://<box>.<tailnet>.ts.net`), or use its Tailscale address. In
-Settings → Integrations → **VoiceStudio**, enter that address (and the key for a
-remote box) and press **Test & save**: the gateway reads VoiceStudio's discovery
-document and model list before it saves anything. The key stays in
-`voicestudio.json` (owner-only) in HUI's configuration directory, never reaches
-the browser and is sent only to that VoiceStudio, over HTTPS, to this machine or
-to a Tailscale address. **Disconnect** removes the address and the key.
-
-**A bot's voice.** While VoiceStudio is connected, the New bot and Edit dialogs
-have a **Voice** picker (VoiceStudio's default and your voice profiles; OpenAI's
-voice names are left out, as VoiceStudio plays its default voice for each of
-them), a speed from 0.5× to 2×, **Preview** and a **Language**. While calls run
-on GPT-Live ([below](#calls-with-gpt-live)), that picker is named **Read-aloud
-voice**: GPT-Live speaks with its own voices, so calls use the bot's **Call
-voice** instead. From a terminal:
-
-```sh
-hui bot edit ada --voice vp-aria --voice-speed 1.2 --language es
-hui bot edit ada --voice "" --voice-speed "" --language ""   # back to VoiceStudio's defaults and Auto
-```
-
-**Language.** *Auto (detect)* lets VoiceStudio's recognizer guess the language
-of each recording, which a short "sí" or "vale" can throw off. A bot's
-language (one of Whisper's, found by its name or code: `es`, `de`, `yue`…) is
-what VoiceStudio listens for in its voice notes and calls, and the language it
-speaks in when it reads aloud or answers a call, numbers, times and amounts
-included. It translates nothing: the bot answers in the language its
-soul (or you) asks for, so give it both. A VoiceStudio engine that
-cannot speak the language refuses, and HUI shows VoiceStudio's message (choose
-another engine in VoiceStudio, or Auto). **Preview** speaks in the language
-chosen in the dialog.
-
-**Voice notes.** The microphone beside Send records a note: its time runs above
-the composer, **Cancel** throws it away and **Done** (or the button again) stops
-it. VoiceStudio writes it down and the text waits in the composer for you to
-check and send. Settings → Integrations → VoiceStudio → *Send voice notes
-immediately* sends it at once instead, marked `[voice]`.
-
-**Read aloud.** The speaker button under a bot's reply reads it in the bot's
-voice, sentence by sentence (code and tables are skipped); press it again to
-stop. One reading plays at a time.
-
-**Calls.** The phone button in a bot's header starts a call: a view over the
-chat with a timer, captions of what you said and of the bot's answer, and
-**Mute**, **Speaker** and **Hang up**. Settings → Models → Calls chooses how
-calls run: this section is the *VoiceStudio (speech chain)* conversation model;
-[Calls with GPT-Live](#calls-with-gpt-live) is the other. Speak, then pause: the browser notices
-the end of what you said, VoiceStudio transcribes it and it goes into the bot's
-chat as an ordinary message marked `[voice] `, so the chat and the bot's memory
-keep the call. The answer is spoken sentence by sentence as it streams.
-Speaking while the bot talks stops its voice and, while its turn still runs,
-steers it with what you said. **Minimize** leaves a bar above the chat, or at
-the top of any other page, with Mute and Hang up; it brings the call back. One
-call runs at a time, and hanging up deletes nothing: a turn still running
-finishes in the chat.
-
-Every call turn is a whole bot turn: transcription, the bot's model with its
-memory, then speech. Expect a few seconds before the bot answers, more while its
-memory is being summarized (the call says *Summarizing memory…*). For a
-conversation model in front of the bot, use GPT-Live (below).
-
-**Microphone.** Browsers give the microphone only to secure pages: open HUI on
-`https://` (Tailscale Serve) or on this machine's `localhost`. HUI's desktop
-app does not allow the microphone yet; Read aloud works there too. The
-microphone opens only when you press the microphone or Call, and closes when
-the note or the call ends.
-
 ### Calls with GPT-Live
 
-With **Conversation model: GPT-Live (ChatGPT subscription)** in Settings →
-Models → Calls, a call talks to GPT-Live in real time through the ChatGPT login
-you added in Settings → Models; VoiceStudio is not needed. The section shows the
-account calls use (the first one not waiting for its quota, as model turns
-choose) and the **default voice**; each bot can pick its own **Call voice**, one
-of GPT-Live's own voices (a VoiceStudio voice only reads replies aloud), in its
-dialog, or with `hui bot edit ada --call-voice ember` (`""` goes back to the
-default).
+The phone button in a bot's header calls the bot. Calls talk to GPT-Live in
+real time through the ChatGPT login you added in Settings → Models, so the
+button shows once there is one. The call opens over the chat with the bot's
+face in its color, a timer, captions of what you said and of the bot's answer,
+and **Mute**, **Speaker** and **Hang up**. **Minimize** leaves a bar above the
+chat, or at the top of any other page, with Mute and Hang up; it brings the call
+back. One call runs at a time.
+
+Settings → Models → **Calls** shows the account calls use (the first one not
+waiting for its quota, as model turns choose) and the **default voice**. Each bot
+can have its own **Call voice**, one of GPT-Live's voices, and a **Language**,
+in its dialog or from a terminal:
+
+```sh
+hui bot edit ada --call-voice ember --language es
+hui bot edit ada --call-voice "" --language ""   # back to Settings' voice and Auto
+```
+
+**Language.** *Auto (detect)* lets GPT-Live answer in the language you speak. A
+bot's language (one of Whisper's, found by its name or code: `es`, `de`, `yue`…)
+is the one it speaks on calls; its helper and the call's summary use it too.
+Nothing is translated.
 
 The call works like [OpenDots](https://github.com/CopilotKit/OpenDots):
 
@@ -542,6 +479,11 @@ can run at once on the gateway. The route is the one ChatGPT's own voice mode
 uses, not a public API: it may change, and calls count against your ChatGPT
 plan's voice usage.
 
+**Microphone.** Browsers give the microphone only to secure pages: open HUI on
+`https://` (Tailscale Serve) or on this machine's `localhost`. HUI's desktop
+app does not allow the microphone yet. The microphone opens only when you press
+Call, and closes when the call ends.
+
 ### Archiving and deleting
 
 `hui bot remove ada` archives the bot: its chat transcript and memory are kept,
@@ -566,14 +508,13 @@ Bots live in HUI's own files on this machine: `bots.json` (owner-only) in HUI's
 configuration directory, each bot's SOUL.md in its home folder beside it
 (owner-only), their chats in the Pi Durable store and their memory beside it.
 Nothing about a bot leaves the machine except the model requests its chat and
-its memory's compactor make to the providers you configured, and, with voice,
-recordings and text to speak sent to the VoiceStudio you connected. A
+its memory's compactor make to the providers you configured. A
 GPT-Live call sends your voice from the browser straight to OpenAI under your
 ChatGPT account, and the gateway sends the call's instructions (the bot's
 SOUL.md and the newest part of its memory) when it starts the call; the
 helper and the summary use the bot's utility model like any other request. The
-ChatGPT credential stays in the gateway. HUI stores no audio: what stays is the
-text of voice notes and calls in the bot's chat.
+ChatGPT credential stays in the gateway. HUI stores no audio: what stays is each
+call's card (its summary and transcript) in the bot's chat.
 
 ## After an upgrade: `hui doctor`
 

@@ -19,10 +19,6 @@ export const GPT_LIVE_VOICES = ["cove", "arbor", "breeze", "ember", "juniper", "
 export type GptLiveVoice = (typeof GPT_LIVE_VOICES)[number];
 export const DEFAULT_GPT_LIVE_VOICE: GptLiveVoice = "cove";
 
-/** How calls with bots run: GPT-Live through the ChatGPT subscription, or VoiceStudio's speech chain. */
-export const CALL_ENGINES = ["voicestudio", "gpt-live"] as const;
-export type CallEngine = (typeof CALL_ENGINES)[number];
-
 /** Limits the gateway enforces at its boundary; the browser mirrors them. */
 export const CALL_LIMITS = {
   /** Bytes of the browser's SDP offer; an audio offer with its data channel is about 2 KB. */
@@ -103,6 +99,12 @@ export type CallsStatus = {
   active: number;
   limit: number;
 };
+
+/** Calls are offered whenever GPT-Live can run: with a ChatGPT login (an account waiting for its quota still counts, and
+ * the call says why it cannot start). */
+export function callsReady(status: Pick<CallsStatus, "chatgpt"> | undefined): boolean {
+  return status?.chatgpt.signedIn === true;
+}
 
 /** `POST /__hui/bots/:id/calls`: the browser's offer. */
 export type CallStartRequest = { sdp: string };

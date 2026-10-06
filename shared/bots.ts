@@ -76,8 +76,8 @@ export type BotRecord = {
   memoryModel?: string;
   memoryThinking?: string;
   avatar?: BotAvatar;
-  /** How it sounds through VoiceStudio (read-aloud, calls) and the language it hears and speaks in there;
-   * absent keys use VoiceStudio's defaults. `voice.live` is its GPT-Live call voice (absent: Settings' choice). */
+  /** Its voice on calls: `voice.live` is its GPT-Live voice (absent: Settings' choice) and `voice.language` the
+   * language it speaks there (absent: Auto). */
   voice?: BotVoice;
   hidden?: boolean;
   /** Archived bots keep their chat and memory; their routines are disabled. */
@@ -119,17 +119,17 @@ export type BotInput = {
  * gets: the gateway's default model and thinking level); an avatar key set to
  * `""` clears that key (`emoji: ""` switches the bot to its face, `shape: ""`
  * and `color: ""` back to the ones its id picks) and `avatar: null` clears all
- * three. A voice `profile: ""`, `speed: null`, `language: ""` (back to Auto) or
- * `live: ""` (back to Settings' call voice) clears that key and `voice: null`
- * clears them all. SOUL.md changes through `PUT /__hui/bots/:id/soul` instead.
+ * three. A voice `language: ""` (back to Auto) or `live: ""` (back to Settings'
+ * call voice) clears that key and `voice: null` clears both. SOUL.md changes
+ * through `PUT /__hui/bots/:id/soul` instead.
  */
 export type BotPatch = Partial<Omit<BotInput, "avatar" | "voice" | "soul" | "worker">> & { avatar?: BotAvatarPatch | null; voice?: BotVoicePatch | null };
 
 /** A change to a bot's look: given keys replace, `""` clears one. */
 export type BotAvatarPatch = { emoji?: string; color?: string; shape?: BotFaceShape | "" };
 
-/** A change to a bot's voice: given keys replace, `profile: ""`, `speed: null`, `language: ""` and `live: ""` clear one. */
-export type BotVoicePatch = { profile?: string; speed?: number | null; language?: VoiceLanguage | ""; live?: GptLiveVoice | "" };
+/** A change to a bot's voice on calls: given keys replace, `language: ""` and `live: ""` clear one. */
+export type BotVoicePatch = { language?: VoiceLanguage | ""; live?: GptLiveVoice | "" };
 
 /** `GET` and `PUT /__hui/bots/:id/soul`: SOUL.md's text, `null` while the bot has none (its first conversation). */
 export type BotSoul = { soul: string | null };

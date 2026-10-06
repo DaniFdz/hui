@@ -1,4 +1,4 @@
-import { DEFAULT_GPT_LIVE_VOICE, gptLiveVoice, type CallEngine, type GptLiveVoice } from "../../shared/calls.ts";
+import { DEFAULT_GPT_LIVE_VOICE, gptLiveVoice, type GptLiveVoice } from "../../shared/calls.ts";
 import { normalizeAppearance, DEFAULT_APPEARANCE, type Appearance } from "./appearance.ts";
 import { DEFAULT_TERMINAL_FONT, normalizeTerminalFont } from "./terminal-font.ts";
 import { normalizeThemeMode, type ThemeMode } from "./theme.ts";
@@ -35,20 +35,15 @@ export type Settings = {
     /** Prevent idle sleep while the gateway runs, like `caffeinate -i`. */
     keepAwake: boolean;
   };
-  /** Settings → Integrations → VoiceStudio. A bot chat's voice note lands in the
-   * composer for review unless this sends it at once (marked `[voice] `). The
-   * connection itself is the gateway's (`/__hui/voice`). */
-  voice: { sendNotesImmediately: boolean };
   /** HUI-owned model routing. Empty values inherit PI's configured default. */
   models: {
     primary: string;
     fallback: string;
     utility: string;
   };
-  /** Settings → Models → Calls: how calls with bots run. `gpt-live` talks to GPT-Live over the ChatGPT login saved in
-   * Settings → Models; `voicestudio` is the speech chain through VoiceStudio. `voice` is the GPT-Live voice of a bot
-   * that has none of its own. */
-  calls: { engine: CallEngine; voice: GptLiveVoice };
+  /** Settings → Models → Calls: calls with bots talk through GPT-Live over the ChatGPT login saved in Settings → Models.
+   * `voice` is the GPT-Live voice of a bot that has none of its own. */
+  calls: { voice: GptLiveVoice };
   /** PI skills hidden from HUI-owned runtimes without changing PI's installation. */
   disabledSkills: readonly { name: string; path: string }[];
   /** PI packages/extensions excluded before HUI's SDK worker discovers resources. */
@@ -91,9 +86,8 @@ export const DEFAULT_SETTINGS: Settings = {
   branchPrefix: DEFAULT_BRANCH_PREFIX,
   browser: DEFAULT_BROWSER_SETTINGS,
   power: { keepAwake: true },
-  voice: { sendNotesImmediately: false },
   models: { primary: "", fallback: "", utility: "" },
-  calls: { engine: "voicestudio", voice: DEFAULT_GPT_LIVE_VOICE },
+  calls: { voice: DEFAULT_GPT_LIVE_VOICE },
   disabledSkills: [],
   disabledPlugins: [],
   labs: { denseObservability: false, detailedDebug: false },
@@ -119,7 +113,7 @@ export function normalizeSettings(raw: unknown): Settings {
     branchPrefix: normalizeBranchPrefix(source["branchPrefix"]),
     browser: normalizeBrowserSettings(source["browser"]),
     power: normalizePower(source["power"]),
-    voice: { sendNotesImmediately: isRecord(source["voice"]) && source["voice"]["sendNotesImmediately"] === true },
+    // VoiceStudio's `voice` (its voice-notes switch) is not read either: the next save leaves it out.
     models: normalizeModels(source["models"]),
     calls: normalizeCalls(source["calls"]),
     disabledSkills: normalizeDisabledSkills(source["disabledSkills"]),
@@ -129,10 +123,11 @@ export function normalizeSettings(raw: unknown): Settings {
   };
 }
 
-/** Opt-in: calls stay on VoiceStudio until GPT-Live is chosen explicitly; an unknown voice is GPT-Live's default. */
+/** An unknown voice is GPT-Live's default. A file saved while VoiceStudio could run calls also holds an `engine` here:
+ * it is not read, so the next save leaves it out. */
 export function normalizeCalls(value: unknown): Settings["calls"] {
   const source = isRecord(value) ? value : {};
-  return { engine: source["engine"] === "gpt-live" ? "gpt-live" : "voicestudio", voice: gptLiveVoice(source["voice"]) ?? DEFAULT_GPT_LIVE_VOICE };
+  return { voice: gptLiveVoice(source["voice"]) ?? DEFAULT_GPT_LIVE_VOICE };
 }
 
 /** Opt-in: only an explicit true shows the Bots tab. */

@@ -129,9 +129,9 @@ same command). `<bot>` is an id, a handle or an exact name:
 hui bot list [--archived] [--json]
 hui bot show <bot> [--json]
 hui bot add [--name <name>] [--title <text>] [--soul-file <path|->] [--cwd <dir>]
-            [--model <provider/model>] [--thinking <level>] [--memory-model <provider/model>] [--emoji <e>]
-            [--voice <VoiceStudio voice id>] [--voice-speed <0.5-2>] [--language <code>] [--json]
-hui bot edit <bot> [same flags as add but --soul-file] [--json]  # --model "" / --thinking "": back to the defaults; --voice "" / --voice-speed "": VoiceStudio's; --language "": Auto
+            [--model <provider/model>] [--thinking <level>] [--utility-model <provider/model>] [--emoji <e>]
+            [--shape <shape>] [--color <name|#rrggbb>] [--language <code>] [--call-voice <voice>] [--json]
+hui bot edit <bot> [same flags as add but --soul-file] [--json]  # --model "" / --thinking "": back to the defaults; --language "": Auto; --call-voice "": Settings' voice
 hui bot soul <bot> [--file <path|->] [--json]   # print SOUL.md, or replace it (empty: ask again)
 hui bot remove <bot> [--json]          # archives: its chat and memory are kept
 hui bot restore <bot> [--json]
@@ -147,7 +147,8 @@ hui bot routine remove <bot> <routine> [--json]
 ```
 
 See [Bots](docs/guide.md#bots) for their soul, what they remember, how routines
-and bot-to-bot messages work, and the exit codes of `send --wait`.
+and bot-to-bot messages work, calls with GPT-Live, and the exit codes of
+`send --wait`.
 
 On a headless host, use `hui ui --no-open` to print the URL without opening a
 browser. `hui browser` is an alias for `hui ui`. The development launcher is

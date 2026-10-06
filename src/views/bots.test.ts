@@ -65,7 +65,7 @@ test("a call shows the bot's face listening to the microphone and speaking with 
   assert.match(bar, /class="bot-call-bar__pulse"/u, "the bar keeps its live dot");
   const app = read("../hui-app.ts");
   assert.match(app, /this\.voice\.call\?\.state\.phase === "speaking" \? this\.voice\.voiceLevel\(\) : this\.voice\.micLevel\(\)/u);
-  assert.match(app, /voiceLevel: \(\) => voicePlayer\(\)\.level\(\)/u);
+  assert.match(read("../lib/voice-controller.ts"), /return this\.call \? this\.#session\?\.voiceLevel : 0;/u, "the bot's voice is GPT-Live's stream, as it plays");
 });
 
 test("faces are decorative, pause when unseen and keep still under reduced motion", () => {
@@ -98,14 +98,31 @@ test("emoji tiles take a face's width in rows, so names line up whichever look a
   }
 });
 
-test("with GPT-Live calls, VoiceStudio's picker is the read-aloud voice and the call voice says why", () => {
+test("the dialog shows the bot's Call voice and Language, and no VoiceStudio voice, speed or preview", () => {
   const source = read("./bots.ts");
-  assert.match(source, /\$\{props\.voice \? renderVoiceField\(props\.voice, props\.pending, !props\.call\) : nothing\}/u, "calls use VoiceStudio's voice only while GPT-Live does not run them");
-  const voice = between(source, "function renderVoiceField(", "const THINKING_LABELS");
-  assert.match(voice, /const label = calls \? "Voice" : "Read-aloud voice";/u);
-  assert.match(voice, /Calls use the Call voice below\./u);
-  assert.match(voice, /renderPicker\(\{ label, value: voice\.profile/u, "the picker's accessible name follows the label");
-  assert.match(between(source, "function renderCallVoiceField(", "function renderLanguageField("), /GPT-Live speaks with its own voices, so calls can't use a VoiceStudio voice\./u);
+  const dialog = between(source, "export function renderBotDialog(", "/* ── archive confirmation");
+  assert.match(dialog, /\$\{renderCallVoiceField\(props\.call, props\.pending\)\}\s*\$\{renderLanguageField\(props\.call, props\.pending\)\}/u, "always, whatever else the gateway has");
+  const call = between(source, "function renderCallVoiceField(", "function renderLanguageField(");
+  assert.match(call, /<span>Call voice<\/span>/u);
+  assert.match(call, /Default \(" \+ gptLiveVoiceLabel\(call\.defaultVoice\) \+ "\)"/u, "Default names Settings' voice");
+  assert.match(call, /How the bot sounds on calls\. Default follows Settings → Models → Calls\./u);
+  const language = between(source, "function renderLanguageField(", "const THINKING_LABELS");
+  assert.match(language, /<span>Language<\/span>/u);
+  assert.match(language, /The language the bot speaks on calls\. Auto answers in the language you speak\./u);
+  assert.doesNotMatch(source, /VoiceStudio|renderVoiceField|BotDialogVoice|Read-aloud voice|bot-dialog__speed|bot-dialog__preview/u);
+  const app = read("../hui-app.ts");
+  assert.match(between(app, "private botDialogCall(", "private closeBotDialog"), /voice: this\.botDraftCallVoice,\s*defaultVoice: this\.settings\.calls\.voice,\s*language: this\.botDraftVoiceLanguage,/u);
+  assert.match(app, /const voice = \{ voiceLanguage: this\.botDraftVoiceLanguage, callVoice: this\.botDraftCallVoice \};/u, "a save sends both, and an edit only what changed");
+});
+
+test("a bot chat offers a call whenever GPT-Live can run, and nothing of VoiceStudio", () => {
+  const app = read("../hui-app.ts");
+  assert.match(between(app, "private callsAvailable(", "private isUpdateSession("), /return callsReady\(this\.callsStatus\);/u);
+  assert.match(app, /if \(!this\.embeddedPane && this\.view === "bot" && !this\.callsStatus\) void this\.loadCallsStatus\(\);/u, "read on every bot page, whatever settings.json holds");
+  assert.doesNotMatch(app, /VoiceStudio|voiceNotes|readAloud|paneVoice|VOICE_CONNECTION_EVENT|calls\.engine/u);
+  const home = read("./home.ts");
+  assert.match(home, /renderCallButton\(\{ botName: props\.bot\.bot\.name, inCall: props\.call\.inCall, onCall: props\.call\.onCall \}\)/u, "the phone button");
+  assert.doesNotMatch(home, /renderVoiceNoteButton|renderVoiceNoteStatus|renderReadAloud|chat-read-aloud|chat-voice-btn/u, "no microphone in the composer, no Read aloud under replies");
 });
 
 test("the dialog's Model and Thinking pickers line up although only Model has a hint", () => {

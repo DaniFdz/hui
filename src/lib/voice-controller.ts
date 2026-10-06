@@ -1,26 +1,20 @@
 /**
- * The app's voice (HUI-18): whether VoiceStudio is connected, the one
- * read-aloud and the one call, run by GPT-Live (live-call.ts) or by
- * VoiceStudio's speech chain (voice-call.ts) as Settings → Models → Calls
- * says. The top-level app owns it and renders slices of it; a call outlives
- * navigating away from its bot (its bar stays in sight). Browser capabilities
- * are injected, so the rules run under test.
+ * The app's calls with bots (HUI-18): the one call, run by GPT-Live
+ * (live-call.ts). The top-level app owns it and renders slices of it; a call
+ * outlives navigating away from its bot (its bar stays in sight). Browser
+ * capabilities are injected, so the rules run under test.
  */
-import type { CallEngine } from "../../shared/calls.ts";
-import type { SpeechRequest, VoiceConnection } from "../../shared/voice.ts";
-import { LiveCall, type LiveCallPlatform } from "./live-call.ts";
-import { VoiceCall, type CallPlatform, type CallView } from "./voice-call.ts";
-import { ReadAloud, type ReadAloudState } from "./voice-reader.ts";
+import { LiveCall, type CallView, type LiveCallPlatform } from "./live-call.ts";
 
 export type CallBot = { id: string; sessionId: string; name: string };
-export type ActiveCall = { bot: CallBot; state: CallView; minimized: boolean; engine: CallEngine };
+export type ActiveCall = { bot: CallBot; state: CallView; minimized: boolean };
 
-/** What a call engine offers the controller. */
+/** What a call offers the controller. */
 export type CallSession = {
   readonly state: CallView;
   /** The microphone's level (0–1), read every frame by the bot's face. */
   readonly micLevel: number;
-  /** The bot's voice's level, when the engine measures it itself (GPT-Live). */
+  /** The bot's voice's level (0–1) as it plays; undefined while unmeasured. */
   readonly voiceLevel?: number;
   onChange(listener: (state: CallView) => void): () => void;
   start(): Promise<void>;
@@ -31,30 +25,18 @@ export type CallSession = {
 };
 
 export type VoiceControllerDeps = {
-  loadConnection(): Promise<VoiceConnection>;
-  synthesize(request: SpeechRequest, signal: AbortSignal): Promise<Blob>;
-  play(audio: Blob, signal: AbortSignal): Promise<void>;
-  /** The bot's voice's level where it plays now (0–1), undefined while unmeasured; the face of a speaking bot follows it. */
-  voiceLevel?(): number | undefined;
-  platform(bot: CallBot): CallPlatform;
   /** A GPT-Live call's capabilities (live-call-platform.ts). */
-  livePlatform?(bot: CallBot): LiveCallPlatform;
+  platform(bot: CallBot): LiveCallPlatform;
   now(): number;
   setInterval(callback: () => void, ms: number): () => void;
 };
 
 export class VoiceController {
-  connection: VoiceConnection | undefined;
-  connectionError = "";
-  readAloud: ReadAloudState = { id: "", status: "idle" };
   call: ActiveCall | undefined;
   /** Ticks every second during a call, for its timer. */
   now: number;
   readonly #host: { requestUpdate(): void };
   readonly #deps: VoiceControllerDeps;
-  readonly #reader: ReadAloud;
-  #request: Omit<SpeechRequest, "text"> = {};
-  #loading: Promise<void> | undefined;
   #session: CallSession | undefined;
   #stopTicking: (() => void) | undefined;
 
@@ -62,61 +44,6 @@ export class VoiceController {
     this.#host = host;
     this.#deps = deps;
     this.now = deps.now();
-    this.#reader = new ReadAloud({
-      synthesize: (text, signal) => deps.synthesize({ ...this.#request, text }, signal),
-      play: (audio, signal) => deps.play(audio, signal),
-      onChange: (state) => {
-        this.readAloud = state;
-        host.requestUpdate();
-      },
-    });
-  }
-
-  /** VoiceStudio is connected: bot chats offer voice notes, Read aloud and Call. */
-  get available(): boolean {
-    return this.connection?.configured === true;
-  }
-
-  /** Reads the connection once (again with `force`); a read under way is shared. */
-  loadConnection(force = false): Promise<void> {
-    if (this.#loading) return this.#loading;
-    if (this.connection && !force) return Promise.resolve();
-    this.#loading = this.#deps.loadConnection().then(
-      (connection) => {
-        this.connection = connection;
-        this.connectionError = "";
-      },
-      (error: unknown) => {
-        this.connectionError = error instanceof Error ? error.message : "The VoiceStudio connection could not be read.";
-      },
-    ).finally(() => {
-      this.#loading = undefined;
-      this.#host.requestUpdate();
-    });
-    return this.#loading;
-  }
-
-  /** What Settings just saved or removed. */
-  setConnection(connection: VoiceConnection): void {
-    this.connection = connection;
-    this.connectionError = "";
-    if (!connection.configured) this.#reader.stop();
-    this.#host.requestUpdate();
-  }
-
-  /** Reads a bot's message, or a voice preview, aloud: one at a time, and not over a call. */
-  read(id: string, text: string, request: Omit<SpeechRequest, "text">): void {
-    if (this.call) {
-      this.readAloud = { id: "", status: "idle", error: "Hang up the call to hear messages read aloud." };
-      this.#host.requestUpdate();
-      return;
-    }
-    this.#request = request;
-    this.#reader.read(id, text);
-  }
-
-  stopReading(): void {
-    this.#reader.stop();
   }
 
   /** The call's microphone level (0–1): what the bot's face hears while it listens. Read every frame, never rendered. */
@@ -126,26 +53,20 @@ export class VoiceController {
 
   /** The bot's voice's level (0–1) while it speaks in the call; undefined while unmeasured. */
   voiceLevel(): number | undefined {
-    if (!this.call) return 0;
-    return this.call.engine === "gpt-live" ? this.#session?.voiceLevel : this.#deps.voiceLevel?.();
+    return this.call ? this.#session?.voiceLevel : 0;
   }
 
   /** Calls a bot, or brings its call back. Another bot's call must be hung up first (false). */
-  startCall(bot: CallBot, engine: CallEngine = "voicestudio"): boolean {
+  startCall(bot: CallBot): boolean {
     if (this.call) {
       if (this.call.bot.id !== bot.id) return false;
       this.call = { ...this.call, minimized: false };
       this.#host.requestUpdate();
       return true;
     }
-    const livePlatform = this.#deps.livePlatform;
-    if (engine === "gpt-live" && !livePlatform) throw new Error("GPT-Live calls need their platform.");
-    this.#reader.stop();
-    const session: CallSession = engine === "gpt-live" && livePlatform
-      ? new LiveCall(livePlatform(bot), { botName: bot.name })
-      : new VoiceCall(this.#deps.platform(bot));
+    const session: CallSession = new LiveCall(this.#deps.platform(bot), { botName: bot.name });
     this.#session = session;
-    this.call = { bot, state: session.state, minimized: false, engine };
+    this.call = { bot, state: session.state, minimized: false };
     session.onChange((state) => {
       if (this.#session !== session || !this.call) return;
       // Hanging up returns to the chat at once; a failure stays on screen until it is read.
@@ -198,7 +119,6 @@ export class VoiceController {
   dispose(): void {
     this.#session?.hangUp(true);
     this.#endCall();
-    this.#reader.stop();
   }
 
   #endCall(): void {

@@ -263,14 +263,10 @@ test("list, show, add, edit, remove, restore and stop talk to the bot routes and
   assert.deepEqual(gateway.calls.at(-1)?.body, { model: "", thinking: "", memoryModel: "" }, "empty values clear, back to the defaults");
   await botCommand(gateway.base, "edit", ["ada"], { "utility-model": "anthropic/claude-haiku" }, terminal().io);
   assert.deepEqual(gateway.calls.at(-1)?.body, { memoryModel: "anthropic/claude-haiku" }, "--utility-model is the stored memoryModel");
-  await botCommand(gateway.base, "edit", ["ada"], { voice: "vp-aria", "voice-speed": "1.25" }, terminal().io);
-  assert.deepEqual(gateway.calls.at(-1)?.body, { voice: { profile: "vp-aria", speed: 1.25 } });
-  await botCommand(gateway.base, "edit", ["ada"], { "voice-speed": "" }, terminal().io);
-  assert.deepEqual(gateway.calls.at(-1)?.body, { voice: { speed: null } }, "an empty speed clears it");
   await botCommand(gateway.base, "edit", ["ada"], { language: " ES " }, terminal().io);
   assert.deepEqual(gateway.calls.at(-1)?.body, { voice: { language: "es" } }, "a language goes as its code");
-  await botCommand(gateway.base, "edit", ["ada"], { voice: "vp-aria", language: "" }, terminal().io);
-  assert.deepEqual(gateway.calls.at(-1)?.body, { voice: { profile: "vp-aria", language: "" } }, "an empty language goes back to Auto");
+  await botCommand(gateway.base, "edit", ["ada"], { language: "" }, terminal().io);
+  assert.deepEqual(gateway.calls.at(-1)?.body, { voice: { language: "" } }, "an empty language goes back to Auto");
   // The look: an emoji, or the face's shape and color (palette names or #rrggbb); "" clears each, --emoji "" shows the face.
   await botCommand(gateway.base, "edit", ["ada"], { shape: "Pebble", color: "Mint" }, terminal().io);
   assert.deepEqual(gateway.calls.at(-1)?.body, { avatar: { shape: "round", color: "#2fc49a" } }, "a label and a palette name go as the id and hex");
@@ -638,15 +634,12 @@ test("chat ends cleanly when stdin closes, and reports a runtime that exits", as
   assert.match(crashed.out, /@bob's chat runtime exited\./u);
 });
 
-test("show names a bot's VoiceStudio voice, speed and language, auto when it has none", () => {
+test("show names a bot's language, auto when it has none", () => {
   const base: BotView = { id: "id-vox", handle: "vox", name: "Vox", cwd: "/tmp", sessionId: "s", createdAt: "2026-10-05T10:00:00.000Z", updatedAt: "2026-10-05T10:00:00.000Z", status: "idle", soul: false, unread: false, routines: 0 };
-  assert.match(formatBot({ ...base, voice: { profile: "vp-aria", speed: 1.25 } }), /\nvoice: vp-aria · 1\.25×\nlanguage: auto\n/u);
-  assert.match(formatBot({ ...base, voice: { speed: 0.8 } }), /\nvoice: VoiceStudio default · 0\.8×\n/u);
-  assert.doesNotMatch(formatBot(base), /voice:/u);
   assert.match(formatBot(base), /\nlanguage: auto\n/u);
   const spanish = formatBot({ ...base, voice: { language: "es" } });
   assert.match(spanish, /\nlanguage: es \(Spanish\)\n/u);
-  assert.doesNotMatch(spanish, /voice:/u, "a language alone keeps VoiceStudio's default voice");
+  assert.doesNotMatch(spanish, /\nvoice:/u, "no VoiceStudio voice line");
   assert.match(formatBot({ ...base, voice: { language: "haw" } }), /\nlanguage: haw \(Hawaiian\)\n/u);
 });
 

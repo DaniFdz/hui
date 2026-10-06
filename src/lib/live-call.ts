@@ -19,7 +19,29 @@
  * run under test.
  */
 import { boundText, CALL_LIMITS, chunkUtf8, type CallDelegationResult, type CallLine, type CallTaskResult, type GptLiveVoice } from "../../shared/calls.ts";
-import type { CallPhase } from "./voice-call.ts";
+
+/* ── what the call view reads ─────────────────────────────────────────── */
+
+export type CallPhase = "connecting" | "listening" | "hearing" | "thinking" | "speaking" | "ended" | "failed";
+
+/** What the call view, its minimized bar and the bot's face read of a call. */
+export type CallView = Pick<LiveCallState, "phase" | "startedAt" | "endedAt" | "micMuted" | "speakerMuted" | "you" | "bot" | "voice" | "tool" | "delegating" | "notice" | "error">;
+
+/** The call's status line, in its view and its bar. */
+export function callStatusLabel(state: Pick<CallView, "phase" | "micMuted" | "tool" | "delegating">, summarizing = false, botName = ""): string {
+  switch (state.phase) {
+    case "connecting": return "Connecting…";
+    case "listening": return state.micMuted ? "Microphone muted" : "Listening";
+    case "hearing": return "Hearing you…";
+    case "thinking":
+      if (summarizing) return "Summarizing memory…";
+      if (state.tool) return `Using ${state.tool}…`;
+      return state.delegating ? `Asking ${botName || "the bot"}…` : "Thinking…";
+    case "speaking": return "Speaking";
+    case "ended": return "Call ended";
+    case "failed": return "Call failed";
+  }
+}
 
 /* ── what the data channel says ───────────────────────────────────────── */
 
@@ -152,7 +174,6 @@ export const MIC_GATE = { on: 0.55, off: 0.4, holdMs: 700 } as const;
 /* ── the state machine ────────────────────────────────────────────────── */
 
 export type LiveCallState = {
-  engine: "gpt-live";
   phase: CallPhase;
   startedAt: number;
   endedAt?: number;
@@ -199,7 +220,7 @@ export type LiveCallEvent =
 
 export function initialLiveCallState(now: number): LiveCallState {
   return {
-    engine: "gpt-live", phase: "connecting", startedAt: now, connected: false, micMuted: false, speakerMuted: false,
+    phase: "connecting", startedAt: now, connected: false, micMuted: false, speakerMuted: false,
     micActive: false, userTurn: false, botAudio: false, delegating: 0, tasks: 0, you: "", bot: "",
   };
 }
