@@ -28,7 +28,8 @@ import { DurablePrompt, type PromptSettings } from "./durable-prompt.ts";
 import { huiDurableTools, type DurableToolInvoker } from "./durable-tools.ts";
 import type { Contribution, DurableExtensions, ExtensionHost } from "./durable-extensions.ts";
 import { OptChatManager, type OptChatTuning } from "./durable-optchat.ts";
-import { conversationBot, huiBotsExtensions } from "./durable-bots.ts";
+import { conversationBot, conversationBotState, huiBotsExtensions, type BotAccess, type BotState } from "./durable-bots.ts";
+import { botAccessParts, botMayCall, type BotChat } from "./durable-bot-access.ts";
 import { invokeAgentTool } from "../agent-tools-bridge.ts";
 
 /** Durable APIs take a cancellation context; HUI's own calls are not scoped. */
@@ -177,10 +178,15 @@ export class DurableHost implements ExtensionHost {
   #invokeTool: DurableToolInvoker;
   #lookupCaller: (conversationId: ConversationId) => Promise<string | undefined>;
   #tools: Extension;
-  /** The `bots` section (inert outside bots' chats) and `message_bot`, selected by bots' chats only (`durable-bots.ts`). */
+  /** The `bots` and `bot_access` sections (inert outside bots' chats), and the tools only bots' chats select:
+   * `message_bot` and their own (`durable-bots.ts`, `durable-bot-access.ts`). */
   #bots: { section: Extension; tools: Extension };
   /** The `bots` section of a bot's chat; the gateway sets it, a worker host leaves it unset. */
   botSection: ((botId: string) => Promise<string | undefined>) | undefined;
+  /** Mirrors a bot's lists after a grant into the gateway's roster; a worker host leaves it unset. */
+  botAccessRecorded: ((botId: string, access: BotAccess) => Promise<void>) | undefined;
+  /** Live sessions that answer for their conversation: a bot's own tools ask the operator through them. */
+  #chats = new Set<BotChat & { conversation(): Conversation }>();
   #models = new CurrentModels((options) => this.#requestEnv(options), (options) => this.#requestCallbacks(options));
   #registry: Registry = createRegistry();
   /** Each live session's PI extensions, by HUI session. */
@@ -239,11 +245,29 @@ export class DurableHost implements ExtensionHost {
     this.#lookupCaller = options.lookupCaller ?? registryCaller;
     const invoke = (conversationId: ConversationId, action: string, params: Record<string, unknown>) => this.#invokeAs(conversationId, action, params);
     this.#tools = huiDurableTools({ invoke });
-    this.#bots = huiBotsExtensions({ invoke, section: async (botId) => this.botSection?.(botId) });
+    const access = botAccessParts({
+      chat: (conversationId) => this.chatFor(conversationId),
+      skills: async (cwd) => (await this.prompt.loader(cwd)).getSkills().skills,
+      agentDir: this.agentDir,
+      recorded: async (botId, lists) => { await this.botAccessRecorded?.(botId, lists); },
+      report: (error) => recordDiagnosticEvent({
+        area: "runtime", level: "warning", action: "bot_access_mirror_failed",
+        summary: "A bot's granted tools were recorded in its chat but not in HUI's roster",
+        detail: error instanceof Error ? error.message : String(error),
+      }),
+    });
+    this.#bots = huiBotsExtensions({ invoke, section: async (botId) => this.botSection?.(botId), tools: access.tools, sections: access.sections });
+    // A bot's chat lists only its own skills.
+    this.prompt.skillsFor = async (conversationId) => (await this.botStateFor(conversationId))?.access?.skills;
   }
 
-  /** HUI's agent-tool handler, called as the HUI session bound to the conversation. */
+  /** HUI's agent-tool handler, called as the HUI session bound to the conversation. A bot's chat may call only the HUI
+   * tools on its list, whatever it was offered: the bridge checks the bot's document itself. */
   async #invokeAs(conversationId: ConversationId, action: string, params: Record<string, unknown>): Promise<unknown> {
+    const bot = await this.botStateFor(conversationId);
+    if (bot && !botMayCall(bot.access, action)) {
+      throw new Error(`This bot doesn't have the ${action} tool. Ask the operator for it with request_access.`);
+    }
     const callerSessionId = this.#callers.get(conversationId) ?? await this.#lookupCaller(conversationId);
     if (!callerSessionId) throw new Error("HUI agent tools are unavailable for this conversation.");
     this.#callers.set(conversationId, callerSessionId);
@@ -258,10 +282,27 @@ export class DurableHost implements ExtensionHost {
   /** Tools only bots' chats are offered. */
   get botTools(): readonly ToolRegistration[] { return this.#bots.tools.tools ?? []; }
 
-  /** The extension carrying `message_bot` when the conversation is a bot's chat; its session selects it. */
+  /** The extension carrying `message_bot` and a bot's own tools when the conversation is a bot's chat; its session
+   * selects it. */
   async botToolsFor(conversationId: ConversationId): Promise<Extension | undefined> {
     const harness = this.#harness;
     return harness && await conversationBot(harness, conversationId, durableContext) ? this.#bots.tools : undefined;
+  }
+
+  /** The bot document of a bot's chat; undefined for every other conversation, or before the store opens. */
+  async botStateFor(conversationId: ConversationId): Promise<BotState | undefined> {
+    const harness = this.#harness;
+    return harness ? conversationBotState(harness, conversationId, durableContext) : undefined;
+  }
+
+  /** A live session answers for its conversation while it is open. */
+  trackChat(chat: BotChat & { conversation(): Conversation }): void { this.#chats.add(chat); }
+  untrackChat(chat: BotChat & { conversation(): Conversation }): void { this.#chats.delete(chat); }
+
+  /** The live session following the conversation now; a rewind moves a session to its fork. */
+  chatFor(conversationId: ConversationId): BotChat | undefined {
+    for (const chat of this.#chats) if (chat.conversation().id === conversationId) return chat;
+    return undefined;
   }
 
   /** HUI tool registrations by name, for per-conversation tool selection. */

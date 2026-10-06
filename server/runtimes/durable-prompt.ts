@@ -4,7 +4,9 @@
  * APPEND_SYSTEM, AGENTS.md context files, skills and the working directory,
  * plus HUI's presentation and active-tool sections. This loader runs with no
  * extensions; a session's PI extensions (`durable-extensions.ts`) add their
- * tools' snippets and may change the prompt of a run, as in PI.
+ * tools' snippets and may change the prompt of a run, as in PI. Skills load per
+ * directory; a bot's chat lists only the ones on its list
+ * (`durable-bot-access.ts`), so two chats in one directory can differ.
  */
 import { DefaultResourceLoader, type BuildSystemPromptOptions } from "@earendil-works/pi-coding-agent";
 import { defineExtension, section, type ConversationId, type PromptInput } from "@earendil-works/pi-durable";
@@ -14,7 +16,8 @@ import { createPolicySettingsManager } from "./resource-policy.ts";
 import { HUI_DEFAULT_PROMPT } from "./hui-prompt.ts";
 import { HUI_PRESENTATION_PROMPT } from "./hui-presentation.ts";
 import { huiToolDefinitions } from "./hui-tools.ts";
-import { BOT_TOOL_CONTRIBUTIONS } from "./durable-bots.ts";
+import { BOT_TOOL_CONTRIBUTIONS, type BotSkillRef } from "./durable-bots.ts";
+import { BOT_ACCESS_CONTRIBUTIONS, botSkills, botSkillsPrompt } from "./durable-bot-access.ts";
 import type { Contribution, RunPrompt } from "./durable-extensions.ts";
 
 export type PromptSettings = Pick<Settings, "disabledSkills" | "browser" | "disabledPlugins">;
@@ -33,6 +36,7 @@ const PI_TOOL_CONTRIBUTIONS: Record<string, Contribution> = {
 };
 const HUI_TOOL_CONTRIBUTIONS: Record<string, Contribution> = {
   ...BOT_TOOL_CONTRIBUTIONS,
+  ...BOT_ACCESS_CONTRIBUTIONS,
   ...Object.fromEntries(huiToolDefinitions().map((tool) => [
     tool.name, { snippet: tool.promptSnippet ?? "", guidelines: tool.promptGuidelines ?? [] },
   ])),
@@ -73,6 +77,9 @@ export class DurablePrompt {
   #last = new Map<ConversationId, string>();
   /** A conversation's extension additions; the Durable host answers for live sessions. */
   extras: (conversationId: ConversationId) => PromptExtras | undefined = () => undefined;
+  /** The skills a conversation may use; undefined: every skill of its directory. The Durable host answers for bots'
+   * chats. */
+  skillsFor: (conversationId: ConversationId) => Promise<readonly BotSkillRef[] | undefined> = async () => undefined;
   readonly extension;
 
   constructor(agentDir: string, readSettings: () => Promise<PromptSettings>) {
@@ -144,9 +151,11 @@ export class DurablePrompt {
     return sections;
   }
 
-  /** PI's builder input for a request offering these tools. */
-  async options(cwd: string, selectedTools: readonly string[], extra: Record<string, Contribution> = {}): Promise<BuildSystemPromptOptions> {
+  /** PI's builder input for a request offering these tools. With `skills` (a bot's list), only those skills, in a
+   * `skills` section of HUI's that loads them with `load_skill`: PI's names the read tool, which a bot may not have. */
+  async options(cwd: string, selectedTools: readonly string[], extra: Record<string, Contribution> = {}, skills?: readonly BotSkillRef[]): Promise<BuildSystemPromptOptions> {
     const loader = await this.loader(cwd);
+    const own = skills && botSkillsPrompt(botSkills(loader.getSkills().skills, skills));
     const contributions = { ...PI_TOOL_CONTRIBUTIONS, ...extra, ...HUI_TOOL_CONTRIBUTIONS };
     const toolSnippets: Record<string, string> = {};
     const toolGuidelines: Record<string, string[]> = {};
@@ -162,10 +171,10 @@ export class DurablePrompt {
       ...(custom ? { customPrompt: custom } : {}),
       selectedTools: [...selectedTools], toolSnippets, toolGuidelines,
       ...(append ? { appendSystemPrompt: append } : {}),
-      sections: huiToolSections(selectedTools, contributions),
+      sections: { ...huiToolSections(selectedTools, contributions), ...(own ? { skills: own } : {}) },
       cwd,
       contextFiles: loader.getAgentsFiles().agentsFiles,
-      skills: loader.getSkills().skills,
+      skills: skills ? [] : loader.getSkills().skills,
     };
   }
 
@@ -174,14 +183,17 @@ export class DurablePrompt {
     const run = extras?.run;
     // A prompt an extension forced replaces the whole prompt for its run, as in PI.
     if (run?.forced !== undefined) return { preamble: run.forced };
-    const base = await this.options(cwd, selectedTools, extras?.contributions);
+    const skills = conversationId === undefined ? undefined : await this.skillsFor(conversationId);
+    const base = await this.options(cwd, selectedTools, extras?.contributions, skills);
     const sections = buildSystemPromptSections(run?.options ? {
       ...run.options,
-      // The run keeps the sections its extensions edited; the tool loadout stays the request's own.
+      // The run keeps the sections its extensions edited; the tool loadout stays the request's own, and so do a bot's
+      // skills.
       selectedTools: base.selectedTools!,
       toolSnippets: { ...base.toolSnippets, ...run.options.toolSnippets },
       toolGuidelines: { ...base.toolGuidelines, ...run.options.toolGuidelines },
       sections: { ...run.options.sections, ...base.sections },
+      ...(skills ? { skills: [] } : {}),
     } : base);
     const added = Object.entries(sections).filter(([key]) => !KNOWN_SECTIONS.has(key)).map(([, text]) => text);
     return added.length ? { ...sections, extension_sections: added.join("\n\n") } : sections;
