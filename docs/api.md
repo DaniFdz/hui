@@ -1272,11 +1272,13 @@ While it is off, bots are dormant and nothing about them is deleted:
   start and at each worker connection; none of them starts a turn.
 
 Session views keep naming a bot's chat (`bot`), so the browser keeps it out of
-every session list whatever the flag says. The browser shows nothing of bots
+every session list whatever the flag says, and `GET /__hui/session-activity`
+leaves bots' chats out while it is off. The browser shows nothing of bots
 while it is off: no Agents | Bots switch, `/bots` and `/bots/:id` land on the
 home page (a remembered Bots tab shows Agents until the switch is back), no bot
 unread marks, no Settings → Sessions → Bots or Settings → Models → Calls, and no
-routines or their runs in Automations.
+routines or their runs in Automations (whose next wake then counts only the
+tasks it lists).
 
 ### Routes
 

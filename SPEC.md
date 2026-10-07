@@ -1271,7 +1271,8 @@ features"), off by default; a settings file from before it has bots off, so
 - **Off means dormant everywhere, and nothing is deleted.** The browser shows
   nothing of them: no Agents | Bots switch, `/bots` addresses land home (a
   remembered Bots tab shows Agents meanwhile), no unread marks, no Sessions →
-  Bots or Models → Calls settings, no routines in Automations. The gateway
+  Bots or Models → Calls settings, no routines in Automations and no bot chats
+  in the calendar. The gateway
   refuses every bot route and call and the session routes of a bot's chat, and
   starts none of their turns: messages, routines, `message_bot`, calls'
   hand-offs and a new bot's first turn are refused, and a chat that starts a

@@ -594,6 +594,10 @@ test("bots are a Labs preview: off, their routes, calls and chats refuse naming 
   assert.equal(page.status, 409);
   assert.deepEqual(await page.json(), { error: BOTS_OFF_MESSAGE });
   // Ordinary routes still work, and the chat stays out of nothing it was out of before: it is still marked as a bot's.
+  // The calendar leaves its activity out while bots are off.
+  const window = `from=${Date.now() - 3_600_000}&to=${Date.now() + 60_000}`;
+  const calendar = async () => ((await call(`/__hui/session-activity?${window}`)).body["sessions"] as Array<{ id: string }>).map((each) => each.id);
+  assert.equal((await calendar()).includes(kim.sessionId), false, "Kim's chat is not in the calendar");
   assert.equal((await call("/__hui/sessions")).status, 200);
   const listed = ((await call("/__hui/sessions")).body["groups"] as Array<{ sessions: Array<{ id: string; bot?: unknown }> }>).flatMap((group) => group.sessions);
   assert.deepEqual(listed.find((session) => session.id === kim.sessionId)?.bot, { id: kim.id, handle: "kim", name: "Kim" });
@@ -617,6 +621,7 @@ test("bots are a Labs preview: off, their routes, calls and chats refuse naming 
   assert.equal(((await call("/__hui/bots/kim/memory")).body["status"] as BotMemoryStatus).messages, 2, "and its memory");
   assert.deepEqual((await call("/__hui/bots/kim/soul")).body, { soul: "You are Kim." });
   assert.equal((await call(`/__hui/sessions/${kim.sessionId}/open`, "POST", {})).status, 200);
+  assert.equal((await calendar()).includes(kim.sessionId), true, "and its activity is back in the calendar");
   const ran = await call(`/__hui/automation/tasks/${routine.id}/run`, "POST", {});
   assert.deepEqual((await settledRun((ran.body["run"] as { id: string }).id)).status, "completed", "the routine runs again");
   await settledWith(kim.sessionId, says("user", "[routine: Tick] tick"));

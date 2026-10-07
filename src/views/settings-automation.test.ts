@@ -42,13 +42,22 @@ function run(status: AutomationRun["status"]): AutomationRun {
 test("while bots are off, Automations leaves their routines and those routines' runs out; on, it lists them again", () => {
   const routine = { ...run("skipped"), id: "run-bot", taskId: "task-bot", sessionId: "bot-chat" };
   const snapshot = {
-    tasks: [{ id: "task-1", sessionId: "session-1" }, { id: "task-bot", sessionId: "bot-chat" }] as AutomationSnapshot["tasks"],
+    scheduler: { enabled: true as const, activeRuns: 0, nextWakeAt: "2026-10-07T09:00:00.000Z" },
+    tasks: [
+      { id: "task-1", sessionId: "session-1", enabled: true, nextRunAt: "2026-10-07T12:00:00.000Z" },
+      { id: "task-off", sessionId: "session-1", enabled: false, nextRunAt: null },
+      { id: "task-bot", sessionId: "bot-chat", enabled: true, nextRunAt: "2026-10-07T09:00:00.000Z" },
+    ] as AutomationSnapshot["tasks"],
     runs: [run("completed"), routine],
   };
   const sessions = [{ id: "session-1" }, { id: "bot-chat", bot: { id: "b1", handle: "kim", name: "Kim" } }];
   const off = listedAutomation(snapshot, sessions, false);
-  assert.deepEqual([off.tasks.map((task) => task.id), off.runs.map((each) => each.id)], [["task-1"], ["run-1"]]);
-  for (const bots of [true, undefined]) assert.deepEqual(listedAutomation(snapshot, sessions, bots), snapshot);
+  assert.deepEqual([off.tasks.map((task) => task.id), off.runs.map((each) => each.id)], [["task-1", "task-off"], ["run-1"]]);
+  assert.equal(off.nextWakeAt, "2026-10-07T12:00:00.000Z", "the next wake a listed task needs, not the hidden routine's");
+  assert.equal(listedAutomation({ ...snapshot, tasks: snapshot.tasks.slice(1) }, sessions, false).nextWakeAt, null);
+  for (const bots of [true, undefined]) {
+    assert.deepEqual(listedAutomation(snapshot, sessions, bots), { tasks: snapshot.tasks, runs: snapshot.runs, nextWakeAt: snapshot.scheduler.nextWakeAt });
+  }
 });
 
 test("automation distinguishes loading, failure and ready states", () => {

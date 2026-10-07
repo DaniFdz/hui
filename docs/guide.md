@@ -198,8 +198,8 @@ While bots are off they are dormant everywhere, and nothing is deleted:
 
 - The sidebar has no Agents | Bots switch, a bot's address (`/bots/…`) opens
   the home page, and Settings hides Sessions → Bots and Models → Calls.
-  Automations leaves the bots' routines out. Bot chats never show among your
-  sessions, on or off.
+  Automations leaves the bots' routines out, and the Contributions calendar
+  their chats. Bot chats never show among your sessions, on or off.
 - The gateway refuses every bot route and call, and the session routes of a
   bot's chat, with `Bots are off on this gateway: they are a preview. Turn them
   on in Settings → Labs → Bots.` That is also what every `hui bot` command

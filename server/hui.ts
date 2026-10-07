@@ -2915,7 +2915,10 @@ async function handleRequest(
       return;
     }
     try {
-      sendJson(response, 200, await readSessionActivity(await readRegistry(), range.from, range.to));
+      // Bots off: their chats' activity stays out of the calendar too (a record whose bot is gone is a session).
+      const records = await readRegistry();
+      const listed = await botsOn() ? records : records.filter((record) => !record.bot || !bots.identity(record.bot));
+      sendJson(response, 200, await readSessionActivity(listed, range.from, range.to));
     } catch (error) {
       sendJson(response, 500, { error: error instanceof Error ? error.message : "Session activity could not be read." });
     }
