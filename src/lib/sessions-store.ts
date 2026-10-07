@@ -657,6 +657,24 @@ export async function abortSession(id: string): Promise<void> {
 /** A PI entry id, or a user message not yet shown with one, counted from the end. */
 export type RewindTarget = string | { userFromEnd: number };
 
+/** Copies the history up to `entryId` (the latest settled point when absent) into a new session and returns it,
+ * optionally in a new worktree on a new branch. The source session is left as it is. */
+export async function forkSession(
+  id: string,
+  entryId?: string,
+  options: { worktree?: boolean; branchName?: string } = {},
+): Promise<SessionView> {
+  const body = await fetchJson<{ session?: SessionView }>(`${SESSIONS_URL}/${encodeURIComponent(id)}/fork`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ ...(entryId === undefined ? {} : { entryId }), ...options }),
+    // Creating a worktree runs Git first, like New Session's.
+    signal: AbortSignal.timeout(CREATE_SESSION_TIMEOUT_MS),
+  });
+  if (!body.session) throw new Error("The fork was created but could not be read back.");
+  return body.session;
+}
+
 export async function rewindSession(id: string, target: RewindTarget, excludeUserMessage = false): Promise<void> {
   await fetchJson<{ ok?: boolean }>(`${SESSIONS_URL}/${encodeURIComponent(id)}/rewind`, {
     method: "POST",

@@ -13,6 +13,9 @@ process.env["XDG_CONFIG_HOME"] = await mkdtemp(join(tmpdir(), "hui-sse-"));
 const {
   createSession,
   deleteSession,
+  forkFromSession,
+  forkRequest,
+  forkSession,
   readAttachments,
   recoverInterruptedSessions,
   reopenDurableSessions,
@@ -443,6 +446,88 @@ test("a session started without a model uses the primary route, not PI's default
   } finally {
     await rm(settingsFile, { force: true });
   }
+});
+
+test("a fork registers its conversation copy as a session of its own, without the source's organizer marks", async () => {
+  let stored: SessionRecord[] = [];
+  const registry = async (mutate: (records: readonly SessionRecord[]) => readonly SessionRecord[]) => {
+    stored = [...mutate(stored)];
+    return stored;
+  };
+  const started: SessionRecord[] = [];
+  const sessions = { accept: () => undefined, ensure: (started_: SessionRecord) => { started.push(started_); return true; } };
+  const source: SessionRecord = {
+    ...record(), id: "fork-source", title: "Plan the API", group: "backend", tool: "durable", piSessionFile: "durable:1",
+    model: "x/chosen", thinking: "high", pinned: true, unread: true, icon: "🚀", stage: "testing", stageSource: "operator",
+    jiraIssues: [{ key: "HUI-1", url: "https://example.atlassian.net/browse/HUI-1" }],
+  };
+
+  const forked = await forkSession(source, "durable:2", sessions, registry);
+  assert.notEqual(forked.id, source.id);
+  assert.deepEqual(
+    { title: forked.title, group: forked.group, cwd: forked.cwd, tool: forked.tool, model: forked.model, thinking: forked.thinking, piSessionFile: forked.piSessionFile },
+    { title: "Plan the API (fork)", group: "backend", cwd: source.cwd, tool: "durable", model: "x/chosen", thinking: "high", piSessionFile: "durable:2" },
+  );
+  for (const mark of ["pinned", "unread", "icon", "stage", "stageSource", "jiraIssues", "bot", "parentId"] as const) {
+    assert.equal(forked[mark], undefined, mark);
+  }
+  assert.deepEqual(stored.map((session) => session.id), [forked.id], "registered before its runtime starts");
+  assert.deepEqual(started.map((session) => session.piSessionFile), ["durable:2"], "the runtime resumes the copy");
+
+  const long = await forkSession({ ...source, title: "x".repeat(200) }, "durable:3", sessions, registry);
+  assert.equal(long.title.length, 200);
+  assert.match(long.title, / \(fork\)$/u);
+});
+
+test("a fork into a new worktree branches from the source checkout and moves the copy there", async () => {
+  const repository = await gitRepository();
+  const worktreesRoot = await mkdtemp(join(tmpdir(), "hui-fork-worktrees-"));
+  let stored: SessionRecord[] = [];
+  const registry = async (mutate: (records: readonly SessionRecord[]) => readonly SessionRecord[]) => {
+    stored = [...mutate(stored)];
+    return stored;
+  };
+  const sessions = { accept: () => undefined, ensure: () => true };
+  const source: SessionRecord = { ...record(), id: "fork-worktree-source", title: "Plan the API", cwd: repository, tool: "durable", piSessionFile: "durable:1" };
+  try {
+    const asked: (string | undefined)[][] = [];
+    const forked = await forkFromSession(source, { entryId: "e4", worktree: true, branchName: "try-graphql" },
+      async (entryId, options) => { asked.push([entryId, options?.cwd]); return "durable:2"; }, sessions, registry, worktreesRoot);
+    assert.notEqual(forked.cwd, repository);
+    assert.ok(forked.cwd.startsWith(worktreesRoot), forked.cwd);
+    assert.deepEqual(asked, [["e4", forked.cwd]], "the copy is moved into the worktree it works in");
+    assert.equal(forked.piSessionFile, "durable:2");
+    assert.match((await runGit(forked.cwd, ["branch", "--show-current"])).stdout.trim(), /try-graphql$/u);
+    assert.equal((await runGit(repository, ["branch", "--show-current"])).stdout.trim(), "main", "the source checkout stays on its branch");
+
+    // Without a name the branch is the title's, marked as a fork.
+    const named = await forkFromSession(source, { worktree: true }, async () => "durable:3", sessions, registry, worktreesRoot);
+    assert.match((await runGit(named.cwd, ["branch", "--show-current"])).stdout.trim(), /plan-api-fork$/u);
+
+    // A fork that fails after the worktree exists takes it away again.
+    const before = (await runGit(repository, ["worktree", "list"])).stdout;
+    await assert.rejects(forkFromSession(source, { worktree: true, branchName: "doomed" },
+      async () => { throw new Error("copy failed"); }, sessions, registry, worktreesRoot), /copy failed/u);
+    assert.equal((await runGit(repository, ["worktree", "list"])).stdout, before);
+    assert.doesNotMatch((await runGit(repository, ["branch", "--list"])).stdout, /doomed/u);
+
+    // Without a worktree the copy stays in the source's directory and is not moved.
+    const plain = await forkFromSession(source, {}, async (_entryId, options) => { assert.equal(options, undefined); return "durable:4"; }, sessions, registry);
+    assert.equal(plain.cwd, repository);
+
+    await assert.rejects(forkFromSession({ ...source, worker: "devbox" }, { worktree: true }, async () => "durable:5", sessions, registry), /remote workers/u);
+  } finally {
+    await rm(repository, { recursive: true, force: true });
+    await rm(worktreesRoot, { recursive: true, force: true });
+  }
+});
+
+test("fork requests are validated before anything is copied", () => {
+  assert.deepEqual(forkRequest({}), {});
+  assert.deepEqual(forkRequest({ entryId: " e4 ", worktree: true, branchName: "try-it" }), { entryId: "e4", worktree: true, branchName: "try-it" });
+  assert.throws(() => forkRequest({ entryId: "" }), /history entry/u);
+  assert.throws(() => forkRequest({ worktree: "yes" }), /true or false/u);
+  assert.throws(() => forkRequest({ branchName: "try-it" }), /requires a new worktree/u);
 });
 
 test("a generated title is published but never replaces an operator rename", async () => {
