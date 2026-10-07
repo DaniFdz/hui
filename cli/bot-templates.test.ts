@@ -48,12 +48,14 @@ type Call = { method: string; path: string; body?: Record<string, unknown> };
 /** A gateway answering the import routes from `replies`, recording each call. */
 async function fakeGateway(t: TestContext, replies: Record<string, (call: Call) => { status?: number; body: unknown; raw?: Buffer; headers?: Record<string, string> }>) {
   const calls: Call[] = [];
+  // A Map, so a request's method and path only ever select one of the replies given.
+  const routes = new Map(Object.entries(replies));
   const server = createServer(async (request, response) => {
     let text = "";
     for await (const chunk of request) text += chunk as string;
     const call: Call = { method: request.method ?? "GET", path: request.url ?? "/", ...(text ? { body: JSON.parse(text) as Record<string, unknown> } : {}) };
     calls.push(call);
-    const reply = replies[`${call.method} ${call.path.split("?")[0]}`]?.(call) ?? { status: 404, body: { error: "unknown" } };
+    const reply = routes.get(`${call.method} ${call.path.split("?")[0]}`)?.(call) ?? { status: 404, body: { error: "unknown" } };
     response.writeHead(reply.status ?? 200, { "content-type": reply.raw ? "application/zip" : "application/json", ...reply.headers });
     response.end(reply.raw ?? JSON.stringify(reply.body));
   });
