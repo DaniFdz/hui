@@ -3775,7 +3775,8 @@ export class HuiApp extends HuiElement {
     this.botMenuFor = "";
     this.botSheetOpen = false;
     if (!botsEnabled(this.settings) && this.voice.call) this.voice.hangUp();
-    if (this.view === "bot") this.navigate({ kind: "home" }, true);
+    // A bot's page goes home, and with bots off so does a bot's chat open as a session (its tab hidden before).
+    if (this.view === "bot" || (!botsEnabled(this.settings) && this.view === "home" && this.selected?.bot)) this.navigate({ kind: "home" }, true);
   }
 
   /** Without the Agents | Bots switch (bots off, or their tab hidden) the sidebar is the one it was before bots, and a

@@ -115,7 +115,7 @@ test("with Settings → Labs → Bots off the sidebar has no Agents | Bots switc
   const follow = between(app, "private followBotsSetting(", "private shellBotsProps(");
   assert.match(follow, /this\.syncBotsStream\(\);\n\s+if \(botsTabShown\(this\.settings\)\) return;/u);
   assert.match(follow, /if \(!botsEnabled\(this\.settings\) && this\.voice\.call\) this\.voice\.hangUp\(\);/u, "a call ends with bots");
-  assert.match(follow, /if \(this\.view === "bot"\) this\.navigate\(\{ kind: "home" \}, true\);/u, "a bot's page goes home");
+  assert.match(follow, /if \(this\.view === "bot" \|\| \(!botsEnabled\(this\.settings\) && this\.view === "home" && this\.selected\?\.bot\)\) this\.navigate\(\{ kind: "home" \}, true\);/u, "a bot's page goes home, and so does its chat open as a session");
   assert.match(app, /if \(state === "off"\) \{\n\s+this\.botsStreamStop = undefined;\n\s+void refreshSettings\(\)\.then\(\(settings\) => \{ if \(settings\) this\.settings = settings; \}\);/u);
   // Bot-only settings go too: Sessions → Bots, Models → Calls, and Automations' routines.
   const settings = read("./settings.ts");
