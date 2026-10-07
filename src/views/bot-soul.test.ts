@@ -10,7 +10,7 @@ test("nothing asks for Instructions: no New or Edit dialog is left, and + create
     assert.doesNotMatch(read(file), /Instructions|instructions/u, `${file}: the persona is the SOUL.md the bot writes`);
   }
   assert.doesNotMatch(read("./bots.ts"), /renderBotDialog\b|BotFormValues/u, "the New and Edit dialogs are gone");
-  assert.match(read("../hui-app.ts"), /void createBot\(\{\}\)/u, "no name: the bot is New Bot and asks what to call it");
+  assert.match(read("../hui-app.ts"), /void createBot\(worker \? \{ worker \} : \{\}\)/u, "no name: the bot is New Bot and asks what to call it, here or on the worker chosen");
   assert.doesNotMatch(read("../styles/bots.css"), /bot-dialog__instructions/u);
 });
 

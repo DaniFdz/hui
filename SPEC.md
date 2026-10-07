@@ -1123,7 +1123,9 @@ everything the Bots tab can, through the same routes.
   gateway, created through New Session's path, so the chat view, streaming,
   steering, follow-ups, questions and model switching are the session's own.
   Its record names the bot; the bot registry (`bots.json`) holds the rest.
-  Remote workers do not run bots.
+  Chosen when it is created, a bot can run on a remote worker instead, whose
+  Durable store then keeps its conversation and memory, and its HUI data
+  directory its home folder with SOUL.md (decision below).
 - **Before the first word.** OptChat is switched on, and the conversation
   marked as the bot's, in the commit that creates it.
 - **A soul, not instructions.** A bot's persona is the SOUL.md in its home
@@ -1175,7 +1177,9 @@ everything the Bots tab can, through the same routes.
   empty roster's New bot) creates a bot at once, with no form and no name: the
   gateway calls it *New Bot* until its first conversation asks for one, its
   chat opens once the gateway has created it, everything else starts on the
-  defaults, and a refusal shows in the roster's notice. A row's menu offers
+  defaults, and a refusal shows in the roster's notice. While a remote worker
+  exists the toolbar's + is a menu, *New bot on Local* or on each worker, and
+  the bot is created on the machine chosen. A row's menu offers
   Edit (the bot's chat on its Settings tab), Hide/Unhide (*Show hidden* while
   any are hidden), Archive, confirmed, with a Restore toast, and Delete…;
   *Show archived* (while any are archived) lists archived bots with Restore and
@@ -1185,8 +1189,8 @@ everything the Bots tab can, through the same routes.
   what stays (a workspace the operator chose); deleting the open bot returns
   home. An archived bot's chat opens again only once restored. A bot opens at
   `/bots/<id>` as its one chat in the ordinary session pane, its header
-  showing face, name, role and status and a ⋯ menu with Edit bot…, Archive…
-  and Delete…;
+  showing face, name, role, the worker it runs on (if any) and status and a ⋯
+  menu with Edit bot…, Archive… and Delete…;
   assistant turns carry the bot's name, `/clear`, `/compact`, Compact now and
   rewind are not offered. A new bot speaks first: its chat opens on a small
   centered note, *<name> was created*, where HUI started its first turn, then
@@ -1216,9 +1220,11 @@ everything the Bots tab can, through the same routes.
   Model (model, thinking and utility model; *Gateway default* leaves the model
   and thinking level to the gateway, and choosing it clears the bot's own),
   Calls (call voice and language; without a ChatGPT login its head says calls
-  need one) and Workspace (the directory, locked while the bot works). Each
-  change is its own `PATCH`, sent in order, with the row's pending state and
-  refusal inline and no Save button; typed text saves on Enter or blur.
+  need one) and Workspace (the directory, locked while the bot works, with
+  folder suggestions from the machine it runs on, and, while a worker exists,
+  Runs on, that machine read-only). Each change is its own `PATCH`, sent in
+  order, with the row's pending state and refusal inline and no Save button;
+  typed text saves on Enter or blur.
   Ctrl+Shift+, (⇧⌘,) shows or hides it on a bot's chat.
 - **Calls** talk through GPT-Live (see the decisions below): the header's
   **Call** shows whenever HUI has a ChatGPT login. A bot has a call voice, its
@@ -1386,6 +1392,53 @@ and everything built on it.
   out. A leftover `voicestudio.json` is ignored. No release ever had VoiceStudio,
   so no `hui doctor` check is needed.
 
+### Bots run on remote workers (2026-10-06)
+
+The owner asked: "We should allow running bots in workers". A bot can be created
+on a remote worker (Settings → Workers) instead of this machine; its chat is a
+session on that worker, as any remote session's.
+
+- **Its store is the worker's.** The bot's conversation and OptChat memory are
+  created in the worker's Durable store, in the same one commit as a local
+  bot's (`hui.bot` document, OptChat): the worker's host runs the gateway's
+  own adapters against its store, not a copy of them. Its home folder, HUI's
+  private folder for it, is under HUI's data directory there, and works as its
+  folder unless it names one. The registry, routines, the roster and message
+  limits stay with the gateway, which also checks models and picks defaults.
+- **Its soul is the worker's too** (2026-10-07, merging SOUL.md): SOUL.md is in
+  that home on the worker, never in a folder chosen for the bot. The host's
+  `soul` section and `write_soul` use the gateway's own resolver there (the
+  operator's name from the mirrored Settings, the bot's name from the gateway),
+  so a new bot's first turn, started through its remote session, and its
+  first conversation run there; the Soul tab and calls read SOUL.md through the
+  host; `set_profile` reaches the gateway as the bot's session, whose record
+  holds the turn's origin. The migration from instructions skips bots on
+  workers, which never had any.
+- **Deleting leaves nothing there.** The host forgets the conversation and
+  removes the home with everything in it, under the same guard as the
+  gateway's (never through a link, only the bots directory's folder for that
+  id). With the worker offline the bot still goes at once: those steps wait
+  in a small file on the gateway's machine, run at the worker's next
+  connection, and are dropped if the worker is removed.
+- **Chosen once.** The worker is set at creation, by id or name; an edit naming
+  one is refused: "A bot stays on the machine it was created on." Moving a bot
+  between machines is out of scope. Creating one needs a live connection to the
+  worker. The owner chose Grok-style creation the same day: while a worker
+  exists, the roster's **+** is a small menu, *New bot on Local* or on each
+  worker, whose choice creates the bot there at once and opens its chat
+  (`hui bot add --worker` from a terminal); the machine then shows read-only.
+- **One roster.** A bot on a worker gets the same `bots` prompt section from
+  the gateway, and `message_bot` crosses between machines both ways through
+  the agent-tool bridge. With no gateway attached the section is left out.
+- **Never waiting on a worker.** Lists show a remote bot's memory from what the
+  worker last reported and its newest message from the live chat or one read
+  per connection, so an offline worker never slows or fails the roster. Offline,
+  a bot shows its session's state; its memory and messages fail with a reason
+  naming the worker; a worker host from before bots is told apart.
+- **A remote session's limits.** The terminal, the managed browser and
+  watchers act on the gateway's machine, so a bot on a worker has none of them,
+  and no worktrees.
+
 ### Bots are set up like Grok Bot (2026-10-06)
 
 The owner, reviewing the bots stack: "the modal to configure the model looks
@@ -1409,11 +1462,13 @@ models "beneath the interface".
   `set_profile`. The New bot and Edit dialogs are gone. Everything starts on
   the defaults: the model and thinking level a new session gets, Settings'
   utility model, Settings' call voice, Auto, a private folder and the
-  face its id picks. While workers exist, + is to become a menu of the machines
-  a bot can run on (fixed at creation); the create action takes that choice.
+  face its id picks. While a remote worker exists, + is the workers' menu (*New
+  bot on Local* or on each worker, [above](#bots-run-on-remote-workers-2026-10-06)),
+  and the bot is created where it is chosen, still without a name.
 - **A Settings tab in the bot's panel** holds the rest, after Grok Bot's Bot
   settings: Profile (name, title and look, edited in place), Model, Calls and
-  Workspace, as Settings-page rows. Every change saves on its own through the
+  Workspace (the machine it runs on, read-only while a worker exists, and its
+  directory, whose suggestions come from that machine), as Settings-page rows. Every change saves on its own through the
   existing `PATCH /__hui/bots/:id`; the API and CLI do not change. Edit bot…
   in the bot's ⋯ menus opens it, and so does Ctrl+Shift+,. It fits a 1440×900
   screen with its look editor closed.

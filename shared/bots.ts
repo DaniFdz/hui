@@ -61,8 +61,14 @@ export type BotRecord = {
   /** Its role, one line. */
   title?: string;
   description?: string;
-  /** Absolute working directory of its chat. Its persona is not here: it is SOUL.md in the bot's home folder. */
+  /** Absolute working directory of its chat; on a worker, a directory there. Its persona is not here: it is SOUL.md in
+   * the bot's home folder, on the machine its chat runs on. */
   cwd: string;
+  /**
+   * The remote worker (Settings → Workers) its chat runs on, by id: its conversation and OptChat memory live in that
+   * worker's Durable store. Absent: this machine. Chosen at creation; a bot never moves.
+   */
+  worker?: string;
   /** `provider/id` of its chat. */
   model?: string;
   thinking?: string;
@@ -93,8 +99,10 @@ export type BotInput = {
   description?: string;
   /** SOUL.md for the new bot, at most 20,000 characters: it starts with this persona and skips the first conversation. */
   soul?: string;
-  /** Absolute or `~/`; absent: a new directory of its own in HUI's configuration. */
+  /** Absolute or `~/`; absent: a new directory of its own in HUI's configuration (on a worker, in HUI's data directory there). */
   cwd?: string;
+  /** A remote worker's id or exact name: the bot runs there. Only at creation. */
+  worker?: string;
   model?: string;
   thinking?: string;
   memoryModel?: string;
@@ -115,7 +123,7 @@ export type BotInput = {
  * call voice) clears that key and `voice: null` clears both. SOUL.md changes
  * through `PUT /__hui/bots/:id/soul` instead.
  */
-export type BotPatch = Partial<Omit<BotInput, "avatar" | "voice" | "soul">> & { avatar?: BotAvatarPatch | null; voice?: BotVoicePatch | null };
+export type BotPatch = Partial<Omit<BotInput, "avatar" | "voice" | "soul" | "worker">> & { avatar?: BotAvatarPatch | null; voice?: BotVoicePatch | null };
 
 /** A change to a bot's look: given keys replace, `""` clears one. */
 export type BotAvatarPatch = { emoji?: string; color?: string; shape?: BotFaceShape | "" };
@@ -177,7 +185,9 @@ export type BotMemoryStatus = {
 
 export type BotLastMessage = { role: "user" | "assistant"; text: string; at: string };
 
-export type BotView = BotRecord & {
+export type BotView = Omit<BotRecord, "worker"> & {
+  /** The remote worker its chat runs on, named as session views name it; absent: this machine. */
+  worker?: { id: string; name: string };
   status: BotSessionStatus;
   /** SOUL.md exists in its home folder; false while the bot has its first conversation. */
   soul: boolean;
@@ -295,6 +305,11 @@ export function handleFromName(name: string): string {
   const slug = name.normalize("NFKD").replace(/\p{M}+/gu, "").toLowerCase()
     .replace(/[^a-z0-9]+/gu, "-").replace(/^-+/u, "").slice(0, BOT_LIMITS.handle).replace(/-+$/u, "");
   return slug || "bot";
+}
+
+/** Where a bot works, as HUI shows it: `devbox:/srv/app` for a bot on a worker. */
+export function botDisplayCwd(bot: Pick<BotView, "cwd" | "worker">): string {
+  return bot.worker ? `${bot.worker.name}:${bot.cwd}` : bot.cwd;
 }
 
 /** One line: whitespace runs as single spaces, at most `max` characters (an ellipsis marks a cut). */

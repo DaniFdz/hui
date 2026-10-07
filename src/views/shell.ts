@@ -22,8 +22,7 @@ import { jiraIssueAccessibleLabel, primaryJiraIssue } from "../../shared/jira.ts
 import { brandIcons } from "../lib/brand-icons.ts";
 import { worktreeProgressLabel } from "../lib/worktree-progress.ts";
 import type { JiraBadgeData } from "../components/jira-hovercard.ts";
-import { renderBotRoster, type BotRosterProps } from "./bots.ts";
-import type { NewBotOptions } from "../lib/bots.ts";
+import { renderBotRoster, renderNewBotButton, type BotPlace, type BotRosterProps } from "./bots.ts";
 import { SIDEBAR_TABS, tabAfterKey, type SidebarTab } from "../lib/bot-roster.ts";
 
 // Node's focused view tests import this module without a CSS loader. The real
@@ -120,9 +119,12 @@ export type ShellBotsProps = {
   /** The roster has its own query, so switching tabs keeps each search. */
   search: string;
   onSearch: (value: string) => void;
-  /** + creates a bot at once (Grok Bot's way: no form) and opens its chat. The workers pull request turns + into a
-   * menu (Local or a worker) while workers exist and passes the choice as `runsOn`. */
-  onNew: (options?: NewBotOptions) => void;
+  /** + creates a bot at once (Grok Bot's way: no form) and opens its chat. */
+  onNew: () => void;
+  /** Remote workers: while there is one, + is a menu that creates a bot on Local or on a worker (`onCreate`). */
+  workers: readonly BotPlace[];
+  onCreate: (worker: string | undefined) => void;
+  onWorkersMenu?: () => void;
   /** A bot is being created; + waits for it. */
   creating: boolean;
   /** An unread bot marks the Bots tab while Agents is shown. */
@@ -901,10 +903,11 @@ export function renderSidebar(props: ShellProps) {
           <div class="sidebar-recent-sessions__toolbar sidebar-session-toolbar">
             <span>${botsTab ? "Bots" : "Sessions"}</span>
             <span>
-              ${botsTab ? html`<button type="button" aria-label="New bot" title="New bot" data-new-bot-trigger ?disabled=${botsTab.creating} aria-busy=${botsTab.creating ? "true" : "false"} @click=${(event: Event) => {
-                botsTab.onNew();
-                closeContainingDrawer(event);
-              }}>${icons.plus}</button>` : html`
+              ${botsTab ? renderNewBotButton({
+                workers: botsTab.workers, onNew: botsTab.onNew, onCreate: botsTab.onCreate, creating: botsTab.creating,
+                ...(botsTab.onWorkersMenu ? { onOpen: botsTab.onWorkersMenu } : {}),
+                closeDrawer: (event) => closeContainingDrawer(event),
+              }) : html`
               ${renderSidebarSessionOptions(props.sessionOptions, props.onSessionOptions)}
               <button type="button" aria-label="New group" title="New group" data-new-group-trigger @click=${(event: Event) => {
                 props.onNewGroup();

@@ -29,7 +29,7 @@ export type BotMemory = { status: BotMemoryStatus; view: string };
 export type BotDraft = {
   name: string;
   title: string;
-  /** Empty: a private folder the gateway creates for the bot. */
+  /** Empty: a private folder the gateway creates for the bot. On a worker's bot, a folder there. */
   cwd: string;
   emoji: string;
   /** The look: "face" sends the shape and color and clears the emoji, "emoji" sends the emoji. Absent: the emoji
@@ -142,6 +142,9 @@ export function parseBot(value: unknown): BotView | undefined {
   const voice = parseVoice(value["voice"]);
   const lastMessage = parseLastMessage(value["lastMessage"]);
   const memory = parseBotMemoryStatus(value["memory"]);
+  const worker = isRecord(value["worker"]) && text(value["worker"]["id"], 200) && text(value["worker"]["name"], 200)
+    ? { id: text(value["worker"]["id"], 200), name: text(value["worker"]["name"], 200) }
+    : undefined;
   const optional: Partial<Record<"title" | "description" | "model" | "thinking" | "memoryModel" | "memoryThinking", string>> = {};
   for (const [key, maximum] of [["title", 200], ["description", 2_000], ["model", 200], ["thinking", 40], ["memoryModel", 200], ["memoryThinking", 40]] as const) {
     const entry = optionalText(value[key], maximum);
@@ -153,6 +156,7 @@ export function parseBot(value: unknown): BotView | undefined {
     name,
     ...optional,
     cwd: text(value["cwd"], 4_096),
+    ...(worker ? { worker } : {}),
     ...(avatar ? { avatar } : {}),
     ...(voice ? { voice } : {}),
     ...(value["hidden"] === true ? { hidden: true } : {}),
@@ -376,10 +380,6 @@ export function botPatchFromDraft(bot: BotView, draft: BotDraft): BotPatch {
   return patch;
 }
 
-/** How + creates a bot. `runsOn` is the hook for the machine it runs on, fixed at creation: the workers pull request
- * offers + as a menu (Local or a worker) while workers exist and sends the choice. */
-export type NewBotOptions = { runsOn?: string };
-
 /** A control of a bot's Settings tab, by what it saves through `PATCH /__hui/bots/:id`: the look's shape, color and
  * emoji are parts of `avatar`, a call's voice and language parts of `voice`. */
 export type BotSettingKey = "name" | "title" | "shape" | "color" | "emoji" | "model" | "thinking" | "memoryModel" | "callVoice" | "voiceLanguage" | "cwd";
@@ -489,7 +489,7 @@ export async function loadBots(): Promise<BotView[]> {
 }
 
 /** `POST /__hui/bots`'s body. Without `name` the gateway creates "New Bot" (`NEW_BOT_NAME`), which asks what to call it
- * in its first conversation: what + sends. */
+ * in its first conversation: what + sends, with `worker` for a bot created on a remote worker. */
 export type NewBotInput = Omit<BotInput, "name"> & { name?: string };
 
 /** Resolves only once the gateway created the bot, its chat and its memory. */

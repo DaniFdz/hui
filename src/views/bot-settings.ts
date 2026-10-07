@@ -7,6 +7,7 @@
  * Rendering only.
  */
 import { html, nothing, type TemplateResult } from "lit";
+import { icons } from "../lib/icons.ts";
 import { botSettingOf, type BotSettingKey, type BotSettingValue, type BotView } from "../lib/bots.ts";
 import type { RuntimeModel } from "../lib/sessions-store.ts";
 import { BOT_FACE_COLORS, BOT_FACE_SHAPES, BOT_FACE_SHAPE_LABELS, BOT_LIMITS, BOT_THINKING_LEVELS, botColorName, isBotFaceShape, type BotAvatar, type BotFaceShape } from "../../shared/bots.ts";
@@ -45,6 +46,9 @@ export type BotSettingsProps = {
   onDismiss: (key: BotSettingKey) => void;
   /** The Calls section, always shown: calls run on GPT-Live. */
   call: BotSettingsCall;
+  /** A remote worker exists (Settings → Workers): Workspace shows the machine the bot runs on, even this one. */
+  workersExist?: boolean;
+  /** Folder suggestions from the machine the bot runs on: a bot on a worker is never offered this machine's. */
   directory: { suggestions: readonly string[]; onInput: (value: string) => void };
 };
 
@@ -291,14 +295,39 @@ function onDirectoryFocusOut(event: FocusEvent, props: BotSettingsProps) {
   if (input && !input.disabled) commitText(input, "cwd", props, false);
 }
 
+/** The machine a bot runs on, read-only: its worker, or this machine. */
+export function renderBotMachine(worker: BotView["worker"]) {
+  return html`<span class="bot-machine" data-bot-machine>${worker ? icons.globe : icons.terminal}<span>${worker?.name ?? "Local"}</span></span>`;
+}
+
+/**
+ * Runs on: the machine the bot stays on, read-only (its chat and memory live in that machine's store). Shown for a bot
+ * on a worker, and for one here while a worker exists; where a bot runs is chosen when it is created, with the roster's
+ * + (`renderNewBotButton`). A bot here needs no more than the machine's name, so the tab still fits a 1440×900 screen;
+ * a bot on a worker says why it stays there and what it can't use.
+ */
+export function renderBotMachineField(props: BotSettingsProps) {
+  const { worker } = props.bot;
+  if (!worker && !props.workersExist) return nothing;
+  return renderRow(props, { setting: "machine", title: "Runs on", control: renderBotMachine(worker),
+    ...(worker ? { desc: "A bot stays on the machine it was created on: its chat and memory live there. Terminals, the browser and watchers stay on this machine, so it can't use them." } : {}) });
+}
+
+/** What the directory row says: a folder on the machine the bot runs on, which can move only while it is idle. */
+function directoryHint(bot: BotView): string {
+  if (botIsBusy(bot)) return "It is working. The directory can change once it is idle.";
+  return bot.worker ? `A folder on ${bot.worker.name}. Can change only while it is idle.` : "Where it works. Can change only while it is idle.";
+}
+
 function renderWorkspace(props: BotSettingsProps) {
   const busy = botIsBusy(props.bot);
   const inputId = `${props.id}-settings-cwd`;
   return html`<section class="bot-settings__section" aria-labelledby=${`${props.id}-settings-workspace`}>
     ${sectionHead(props, "workspace", "Workspace")}
     <div class="settings-group bot-settings__group">
+      ${renderBotMachineField(props)}
       ${renderRow(props, { setting: "workspace", keys: ["cwd"], stacked: true, title: "Directory", labelFor: inputId,
-        desc: busy ? "It is working. The directory can change once it is idle." : "Where it works. Can change only while it is idle.",
+        desc: directoryHint(props.bot),
         control: html`<div class="bot-settings__directory" @keydown=${{ handleEvent: (event: KeyboardEvent) => onTextKeydown(event, "cwd", props), capture: true }}
           @focusout=${(event: FocusEvent) => onDirectoryFocusOut(event, props)}>
           ${renderDirectoryPicker({ id: inputId, label: "Directory", value: props.bot.cwd, suggestions: props.directory.suggestions, onInput: props.directory.onInput,

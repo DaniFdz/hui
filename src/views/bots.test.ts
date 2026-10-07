@@ -97,18 +97,20 @@ test("emoji tiles take a face's width in rows, so names line up whichever look a
   }
 });
 
-test("+ creates a bot named New Bot at once and opens its chat, as in Grok Bot; no dialog is left", () => {
+test("+ creates a bot at once, without a name, and opens its chat, as in Grok Bot; no dialog is left", () => {
   const app = read("../hui-app.ts");
   const create = between(app, "private createNewBot = ", "/** The roster's Edit");
   assert.match(create, /if \(this\.botCreating\) return;/u, "one at a time");
-  assert.match(create, /void createBot\(\{\}\)/u, "no name (the gateway calls it New Bot and its first turn asks for one), everything else on the defaults");
+  assert.match(create, /void createBot\(worker \? \{ worker \} : \{\}\)/u, "no name (the gateway calls it New Bot and its first turn asks for one), on the machine chosen, everything else on the defaults");
   assert.match(create, /this\.navigate\(\{ kind: "bot", id: bot\.id \}\);/u, "its chat opens");
-  assert.match(create, /this\.botNotice = error instanceof Error \? error\.message : "Could not create a bot\.";\n\s+this\.botNoticeFailed = true;/u, "a refusal shows in the roster");
-  assert.match(create, /_options: NewBotOptions = \{\}/u, "the hook for the workers pull request's runsOn");
-  assert.match(app, /onNew: this\.createNewBot,\n\s+creating: this\.botCreating,/u);
-  const shell = read("./shell.ts");
-  assert.match(shell, /data-new-bot-trigger \?disabled=\$\{botsTab\.creating\}/u, "+ waits for the bot it is creating");
+  assert.match(create, /this\.botNotice = error instanceof Error \? error\.message : "Could not create a bot\.";\n\s+this\.botNoticeFailed = true;/u, "a refusal (an offline worker, say) shows in the roster");
+  assert.match(create, /this\.botNotice = `Creating a bot on \$\{this\.launchWorkers\.find\(\(candidate\) => candidate\.id === worker\)\?\.name \?\? "the worker"\}…`;/u, "a worker can take a moment: the roster says where");
+  assert.match(app, /onNew: \(\) => this\.createNewBot\(\),\n\s+workers: this\.launchWorkers,\n\s+onCreate: \(worker\) => this\.createNewBot\(worker\),\n\s+onWorkersMenu: \(\) => this\.loadLaunchWorkers\(\),\n\s+creating: this\.botCreating,/u, "+ and its menu create the same way");
+  assert.doesNotMatch(app, /\bNEW_BOT_NAME\b|createBotOn/u, "one way to create a bot, without a name");
   const source = read("./bots.ts");
+  const button = between(source, "export function renderNewBotButton(", "/** The menu item for this machine");
+  assert.equal(button.match(/data-new-bot-trigger \?disabled=\$\{busy\} aria-busy=\$\{busy \? "true" : "false"\}/gu)?.length, 2, "+ waits for the bot it is creating, plain or as the menu's trigger");
+  assert.match(read("./shell.ts"), /onCreate: botsTab\.onCreate, creating: botsTab\.creating,/u);
   assert.match(source, /props\.creating \? "Creating…" : "New bot"/u, "and so does the empty roster's New bot");
   for (const file of [source, app]) assert.doesNotMatch(file, /renderBotDialog\b|bot-dialog|botDialog|botDraft/u, "the New bot and Edit dialogs are gone");
   assert.match(read("../lib/bots.ts"), /export type NewBotInput = Omit<BotInput, "name"> & \{ name\?: string \};/u, "the create body may leave the name out");
@@ -202,8 +204,68 @@ test("the panel's tabs take their own row under the header and keep their keys; 
 test("the Settings tab uses no fixed heights that could clip it", () => {
   const css = readFileSync(new URL("../styles/bots.css", import.meta.url), "utf8");
   const tab = css.slice(css.indexOf("/* ── Settings tab"), css.indexOf("/* The Look:"));
-  assert.doesNotMatch(tab, /(^|[\s;{])(max-)?height: \d/mu, "no fixed or maximum height");
+  // An icon's size is no container's height.
+  assert.doesNotMatch(tab.replace(/[^{}]*\bsvg \{[^}]*\}/gu, ""), /(^|[\s;{])(max-)?height: \d/mu, "no fixed or maximum height");
   assert.match(tab, /\.bot-settings \.settings-row\.bot-setting \{[^}]*min-height: 0;/u, "compact rows");
   assert.match(tab, /\.bot-settings \.bot-setting--stacked \.settings-row__control \{ display: grid; grid-template-columns: minmax\(0, 1fr\);/u, "a stacked control takes the row's width");
   assert.doesNotMatch(css, /\.bot-dialog/u, "no dialog styles are left");
+});
+
+test("while a worker exists the roster's + is a menu, New bot on Local or on each worker, and a choice creates the bot there at once", () => {
+  const source = read("./bots.ts");
+  const button = between(source, "export function renderNewBotButton(", "/** The menu item for this machine");
+  assert.match(button, /if \(!props\.workers\.length\) \{\n\s+return html`<button type="button" aria-label="New bot" title="New bot" data-new-bot-trigger [^\n]*@click=\$\{\(event: Event\) => \{\n\s+props\.onNew\(\);/u, "without workers, + is the plain New bot");
+  assert.match(button, /<wa-dropdown class="session-menu new-bot-menu" placement="bottom-end"/u);
+  assert.match(button, /<button slot="trigger" type="button" aria-label="New bot" title="New bot" data-new-bot-trigger /u, "the same + opens the menu");
+  assert.match(button, /props\.onCreate\(value === NEW_BOT_LOCAL \? undefined : value\);/u, "a choice creates the bot there");
+  assert.match(button, /New bot on Local<\/span><\/wa-dropdown-item>/u);
+  assert.match(button, /New bot on \$\{worker\.name\}\$\{worker\.state === "connected"/u, "each worker, with its state while not connected");
+  assert.match(button, /props\.onOpen\?\.\(\);/u, "opening it reads the workers again");
+  const css = readFileSync(new URL("../styles/bots.css", import.meta.url), "utf8");
+  assert.match(css, /\.sidebar-recent-sessions__toolbar \.new-bot-menu \{[^}]*text-transform: none;/u, "its items are not the toolbar's small caps");
+  const shell = read("./shell.ts");
+  assert.match(shell, /\$\{botsTab \? renderNewBotButton\(\{\n\s+workers: botsTab\.workers, onNew: botsTab\.onNew, onCreate: botsTab\.onCreate,/u);
+  const app = read("../hui-app.ts");
+  assert.match(app, /workers: this\.launchWorkers,\n\s+onCreate: \(worker\) => this\.createNewBot\(worker\),/u);
+  const create = between(app, "private createNewBot = ", "/** The roster's Edit");
+  assert.match(create, /createBot\(worker \? \{ worker \} : \{\}\)/u, "created at once, where it was chosen, without a name: its first conversation asks for one");
+  assert.match(create, /this\.navigate\(\{ kind: "bot", id: bot\.id \}\);/u, "and its chat opens");
+  assert.match(create, /this\.botNoticeFailed = true;/u, "a refusal (an offline worker) shows in the roster");
+});
+
+test("Settings → Workspace shows the machine a bot runs on, read-only, and offers only that machine's folders", () => {
+  const source = read("./bot-settings.ts");
+  assert.match(between(source, "export function renderBotMachine(", "/**\n * Runs on:"),
+    /data-bot-machine>\$\{worker \? icons\.globe : icons\.terminal\}<span>\$\{worker\?\.name \?\? "Local"\}<\/span>/u, "a helper any view can show read-only");
+  const field = between(source, "export function renderBotMachineField(", "/** What the directory row says");
+  assert.match(field, /if \(!worker && !props\.workersExist\) return nothing;/u, "for a bot on a worker, and for one here while a worker exists");
+  assert.match(field, /title: "Runs on", control: renderBotMachine\(worker\)/u, "read-only: nothing to change it with");
+  assert.match(field, /A bot stays on the machine it was created on: its chat and memory live there\. Terminals, the browser and watchers stay on this machine, so it can't use them\./u, "a remote bot's limits");
+  assert.match(between(source, "function directoryHint(", "function renderWorkspace("), /A folder on \$\{bot\.worker\.name\}\. Can change only while it is idle\./u);
+  const workspace = between(source, "function renderWorkspace(", "export function renderBotSettings(");
+  assert.match(workspace, /\$\{renderBotMachineField\(props\)\}\n\s+\$\{renderRow\(props, \{ setting: "workspace"/u, "Runs on, then the directory");
+  assert.doesNotMatch(source, /renderPicker\(\{ label: "Runs on"/u, "a bot's machine is chosen with +, never changed");
+  const app = read("../hui-app.ts");
+  assert.match(app, /suggestions: this\.directorySuggestionsFrom === \(bot\.worker\?\.id \?\? ""\) \? this\.directorySuggestions : \[\],\n\s+onInput: \(value\) => this\.loadDirectorySuggestions\(value, bot\.worker\?\.id\),/u,
+    "a bot on a worker is offered its worker's folders, never this machine's");
+  assert.match(between(app, "private loadDirectorySuggestions(", "private requestDirectorySuggestions"), /this\.directorySuggestionsFrom = worker \?\? "";\n\s+this\.directorySuggestions = directories;/u, "each answer says which machine it came from");
+  assert.match(app, /workersExist: this\.launchWorkers\.length > 0,/u);
+});
+
+test("a bot on a worker shows the machine compactly in its roster row, its chat header and its confirmations", () => {
+  const source = read("./bots.ts");
+  assert.match(between(source, "function botRow(", "function archivedRow("),
+    /\$\{bot\.worker \? html`<span class="bot-row__tag bot-row__machine" title=\$\{`Runs on \$\{bot\.worker\.name\}`\}>\$\{icons\.globe\}<span>\$\{bot\.worker\.name\}<\/span><\/span>` : nothing\}/u);
+  assert.match(read("../lib/bot-roster.ts"), /\.\.\.\(bot\.worker \? \[`on \$\{bot\.worker\.name\}`\] : \[\]\)/u, "the row's accessible name says where it runs");
+  const identity = between(read("./home.ts"), "function renderBotIdentity(", "function renderHeader(");
+  assert.match(identity, /<span class="bot-chat-identity__machine" title=\$\{`Runs on \$\{worker\.name\}`\}><span class="sr-only">on <\/span>\$\{icons\.globe\}<span>\$\{worker\.name\}<\/span><\/span> · /u);
+  assert.match(identity, /title=\$\{worker \? `\$\{worker\.name\}:\$\{session\.cwd\}` : session\.cwd\}/u, "its folder reads devbox:/path");
+  const css = readFileSync(new URL("../styles/bots.css", import.meta.url), "utf8");
+  assert.match(css, /\.app-shell \.bot-row__machine \{[^}]*max-width: 45%;/u, "a long name never crowds the preview out");
+  assert.match(css, /\.bot-chat-identity__machine svg \{ flex: none; width: 11px; height: 11px; \}/u);
+  assert.match(between(source, "export function renderBotArchiveDialog(", "/* ── delete confirmation"), /stay on \$\{bot\.worker\?\.name \?\? "this machine"\}/u);
+  assert.match(between(source, "function renderMemoryTab(", "export function renderBotPanel("), /Summarizer since HUI started on \$\{props\.bot\.worker\.name\}/u, "a worker's compactor counts since its host opened the memory");
+  const deleting = source.slice(source.indexOf("export function renderBotDeleteDialog("));
+  assert.match(deleting, /its memory and its folder\$\{bot\.worker \? ` on \$\{bot\.worker\.name\}` : ""\} \(SOUL\.md and every file in it\) go/u, "its folder on the worker");
+  assert.match(deleting, /bot\.status === "disconnected" \? `; HUI is not connected to \$\{bot\.worker\.name\} now, so those go there when it reconnects` : ""/u, "and when they go while the worker is offline");
 });

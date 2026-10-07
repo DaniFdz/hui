@@ -25,8 +25,9 @@ import { fileURLToPath } from "node:url";
 import type { Connect, Plugin } from "vite";
 import { workers } from "./workers.ts";
 import { createWorkerRoutes, WORKERS_ROUTE } from "./worker-routes.ts";
-import { BotInputError, BotRegistry, BotStoreError } from "./bots.ts";
+import { BOT_CLEANUP_FILE, BotInputError, BotRegistry, BotStoreError } from "./bots.ts";
 import { BotService } from "./bot-service.ts";
+import { remoteBots } from "./bot-remote.ts";
 import { BOT_MEMORY_PAGE, BOTS_EVENTS_ROUTE, BOTS_ROUTE, createBotRoutes } from "./bot-routes.ts";
 import { durableBotConversations } from "./bot-conversations.ts";
 import { CallBroker, providerCallAccounts } from "./calls.ts";
@@ -271,6 +272,14 @@ const bots = new BotService({
   // A bot without a model of its own starts on Settings' primary model, as a new session does.
   conversations: durableBotConversations(durableHost(), botMemory, { primaryModel: async () => (await readSettings()).models.primary || undefined }),
   memory: botMemory,
+  // A bot made on a worker keeps its conversation, memory and SOUL.md there, where its chat runs; what deleting one
+  // leaves there while it is offline waits in BOT_CLEANUP_FILE for its next connection.
+  workers: remoteBots(workers, {
+    cleanupFile: BOT_CLEANUP_FILE,
+    report: (action, summary, error) => recordDiagnosticEvent({
+      area: "session", level: "warning", action, summary, detail: error instanceof Error ? error.message : String(error),
+    }),
+  }),
   souls: localBotSouls(),
   routines: {
     // A broken automation store is a storage failure (500), not the caller's.
@@ -300,9 +309,15 @@ const botRoutes = createBotRoutes({
 function automationStoreFailure(error: unknown): never {
   throw error instanceof AutomationStoreError ? new BotStoreError(error.message, { cause: error }) : error;
 }
-// A bot's chat lists the other bots in its `bots` prompt section, and reads its SOUL.md (or has its first
-// conversation) in its `soul` section, from its home folder in HUI's configuration.
+// A bot's chat lists the other bots in its `bots` prompt section (a worker's host asks for those of the bots there, and
+// learns each bot's name with it), and reads its SOUL.md (or has its first conversation) in its `soul` section, from
+// its home folder in HUI's configuration; a worker's host reads the home folders it keeps itself.
 durableHost().botSection = (botId) => bots.section(botId);
+workers.serve("bot.section", async (workerId, params) => {
+  const botId = String(params["botId"] ?? "");
+  const section = await bots.workerSection(workerId, botId);
+  return { section: section ?? null, name: bots.identity(botId)?.name ?? null };
+});
 durableHost().botSouls = {
   home: (botId) => botHome(botId),
   operator: async () => soulOperatorName((await readSettings()).profileName),

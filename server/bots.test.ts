@@ -148,6 +148,18 @@ test("a bot's look: a face shape from the five and any #rrggbb color, an emoji b
   assert.equal(patchedAvatar({ shape: "heart" }, { shape: "" }), undefined, "nothing left: the avatar goes");
 });
 
+test("a bot chooses its worker at creation, by id or name, and a change never moves it", () => {
+  assert.deepEqual(normalizeBotInput({ name: "Rover", worker: " devbox " }), { name: "Rover", worker: "devbox" });
+  assert.deepEqual(normalizeBotInput({ name: "Rover", worker: "" }), { name: "Rover" }, "an empty worker is this machine");
+  assert.throws(() => normalizeBotInput({ name: "Rover", worker: 7 }), /Worker must be text/u);
+  assert.throws(() => normalizeBotInput({ name: "Rover", worker: "x".repeat(101) }), /Worker must be at most 100/u);
+  for (const patch of [{ worker: "devbox" }, { worker: "" }, { title: "Scout", worker: "devbox" }]) {
+    assert.throws(() => normalizeBotPatch(patch), (error: unknown) => error instanceof BotInputError && error.message === "A bot stays on the machine it was created on.", JSON.stringify(patch));
+  }
+  assert.deepEqual(parseBotRecord({ ...bot("a", "ada"), worker: "0f8e9c1a-4b2d-4c6e-8f00-1234567890ab" }), { ...bot("a", "ada"), worker: "0f8e9c1a-4b2d-4c6e-8f00-1234567890ab" });
+  assert.deepEqual(parseBotRecord({ ...bot("a", "ada"), worker: "../elsewhere" }), bot("a", "ada"), "a worker that is no id is dropped, not the bot");
+});
+
 test("SOUL.md text is trimmed with Unix line ends, at most 20,000 characters; the kickoff message is recognized by its first line", () => {
   assert.equal(normalizeSoul("\r\n# Soul\r\nline\rnext \n"), "# Soul\nline\nnext");
   assert.equal(normalizeSoul("   "), "", "blank is none");

@@ -86,7 +86,6 @@ import {
   withoutBotSessions,
   zoomBotMemory,
   type BotView,
-  type NewBotOptions,
 } from "./lib/bots.ts";
 import { archivedBotCount, hiddenBotCount, isBotSettingsShortcut, readBotPanel, readSidebarTab, writeBotPanel, writeSidebarTab, type BotPanelState, type BotPanelTab, type SidebarTab } from "./lib/bot-roster.ts";
 import { memoryStatusChanged, parseMemoryView, parseMemoryZoom, type MemoryLine } from "./lib/bot-memory.ts";
@@ -402,6 +401,9 @@ export class HuiApp extends HuiElement {
   @state() private launchModel = "";
   @state() private launchThinking = "";
   @state() private directorySuggestions: readonly string[] = [];
+  /** The machine `directorySuggestions` came from: "" for this one, else a worker's id. A bot's Settings tab shows only
+   * its own machine's, so a bot on a worker is never offered this machine's folders. */
+  private directorySuggestionsFrom = "";
   private directorySuggestionRequest = 0;
   private gitCheckoutRequest = 0;
   private inspectedCheckoutDirectory = "";
@@ -3482,7 +3484,9 @@ export class HuiApp extends HuiElement {
   private loadDirectorySuggestions(input: string, worker?: string) {
     const marker = ++this.directorySuggestionRequest;
     void loadWorkingDirectorySuggestions(input, worker).then((directories) => {
-      if (marker === this.directorySuggestionRequest) this.directorySuggestions = directories;
+      if (marker !== this.directorySuggestionRequest) return;
+      this.directorySuggestionsFrom = worker ?? "";
+      this.directorySuggestions = directories;
     }).catch(() => {
       if (marker === this.directorySuggestionRequest) this.directorySuggestions = [];
     });
@@ -3677,6 +3681,8 @@ export class HuiApp extends HuiElement {
   private ensureBots() {
     if (this.botsStreamUnsupported) void this.refreshBots();
     else this.syncBotsStream();
+    // The roster's + offers the workers a new bot can run on.
+    this.loadLaunchWorkers();
   }
 
   /** Retry from an error state: restart a stopped stream or read the list. */
@@ -3742,7 +3748,10 @@ export class HuiApp extends HuiElement {
       onTab: this.setSidebarTab,
       search: this.botSearch,
       onSearch: (value) => { this.botSearch = value; },
-      onNew: this.createNewBot,
+      onNew: () => this.createNewBot(),
+      workers: this.launchWorkers,
+      onCreate: (worker) => this.createNewBot(worker),
+      onWorkersMenu: () => this.loadLaunchWorkers(),
       creating: this.botCreating,
       unread: this.bots.some((bot) => bot.unread && !bot.archived && !bot.hidden),
       roster: {
@@ -3759,7 +3768,7 @@ export class HuiApp extends HuiElement {
         pendingId: this.botPendingId,
         now: Date.now(),
         onSelect: this.selectBot,
-        onNew: this.createNewBot,
+        onNew: () => this.createNewBot(),
         creating: this.botCreating,
         onEdit: this.openEditBot,
         onSetHidden: this.setBotHidden,
@@ -3776,17 +3785,22 @@ export class HuiApp extends HuiElement {
   }
 
   /**
-   * + (and the empty roster's New bot), as in Grok Bot: no form. The bot is created at once without a name, so the
-   * gateway calls it "New Bot", with everything on the defaults and the face its id picks, and its chat opens; its
-   * first turn has already started, asking what to call it, and its Settings tab changes the rest. A refusal shows in
-   * the roster's notice. `runsOn` is the workers pull request's hook: it offers + as a menu (Local or a worker) while
-   * workers exist and sends the choice with the create.
+   * + (and the empty roster's New bot), as in Grok Bot: no form. The bot is created at once, on this machine or, from
+   * +'s menu while a remote worker exists, on the worker chosen, where it stays. It has no name, so the gateway calls it
+   * "New Bot", and everything else starts on the defaults with the face its id picks; its chat opens, where its first
+   * turn has already started asking what to call it, and its Settings tab changes the rest. A refusal (a worker HUI is
+   * not connected to, say) shows in the roster's notice.
    */
-  private createNewBot = (_options: NewBotOptions = {}) => {
+  private createNewBot = (worker?: string) => {
     this.botMenuFor = "";
     if (this.botCreating) return;
     this.botCreating = true;
-    void createBot({})
+    // A worker can take a moment: the roster says where the bot is being made.
+    if (worker) {
+      this.botNotice = `Creating a bot on ${this.launchWorkers.find((candidate) => candidate.id === worker)?.name ?? "the worker"}…`;
+      this.botNoticeFailed = false;
+    }
+    void createBot(worker ? { worker } : {})
       .then((bot) => {
         this.bots = upsertBot(this.bots, bot);
         this.botNotice = "";
@@ -4287,7 +4301,10 @@ export class HuiApp extends HuiElement {
     const panelOpen = sheet ? this.botSheetOpen : this.botPanel.open;
     const panelId = `bot-panel-${bot.id.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
     const paneBot: PaneBot = {
-      bot: { id: bot.id, name: bot.name, ...(bot.title ? { title: bot.title } : {}), ...(bot.avatar ? { avatar: bot.avatar } : {}), ...(bot.memory ? { memory: bot.memory } : {}) },
+      bot: {
+        id: bot.id, name: bot.name, ...(bot.title ? { title: bot.title } : {}), ...(bot.avatar ? { avatar: bot.avatar } : {}),
+        ...(bot.memory ? { memory: bot.memory } : {}), ...(bot.worker ? { worker: bot.worker } : {}),
+      },
       panelOpen,
       panelId,
     };
@@ -4375,7 +4392,12 @@ export class HuiApp extends HuiElement {
           onChange: (key, value) => this.changeBotSetting(bot.id, key, value),
           onDismiss: (key) => this.dismissBotSetting(bot.id, key),
           call: settingsCall,
-          directory: { suggestions: this.directorySuggestions, onInput: (value) => this.loadDirectorySuggestions(value) },
+          workersExist: this.launchWorkers.length > 0,
+          // A bot on a worker works in a folder there: its folders come from that worker, never from this machine.
+          directory: {
+            suggestions: this.directorySuggestionsFrom === (bot.worker?.id ?? "") ? this.directorySuggestions : [],
+            onInput: (value) => this.loadDirectorySuggestions(value, bot.worker?.id),
+          },
         },
       }) : nothing}
     </div>`;
