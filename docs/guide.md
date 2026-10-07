@@ -445,6 +445,13 @@ what is left on the worker (its memory and home folder) on this machine and
 removes them the next time it connects to the worker; removing the worker first
 drops the note.
 
+Its **Tools** tab shows what a session on that worker has: its extensions' tools,
+and its skills where the worker keeps them, your skills by their mirrored copies
+there (`~/.local/share/hui-worker/mirror/agent/skills`). What you turn off is
+kept and enforced on the worker; when the bot asks for something back, you
+answer here, and its Tools tab and roster row follow. While the worker is offline
+its Tools tab says so, like its Memory and Soul.
+
 **Limits.** A bot on a worker has the limits of any session on a worker: the
 terminal, the managed browser and watchers act on this machine, so it can't use
 them, and it can't use worktrees. A worker can't be removed while bots run on

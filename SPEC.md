@@ -1153,9 +1153,9 @@ everything the Bots tab can, through the same routes.
 - **Tools and skills.** A bot has every tool and skill a session in its
   directory has, new ones included, until the operator turns some off in its
   panel's Tools tab or with `hui bot tools` / `hui bot skills`. The host that
-  runs its chat enforces what is off; the bot asks for it back with
-  `request_access`, which only the operator answers. Tools are the boundary, not
-  a sandbox.
+  runs its chat enforces what is off (a worker's host for a bot on a worker); the
+  bot asks for it back with `request_access`, which only the operator answers.
+  Tools are the boundary, not a sandbox.
 - **Bots talk to bots** with a `message_bot` tool only bots' chats have,
   beside a byte-stable list of the other bots in their system prompt. A message
   arrives as `[from @handle] …`; chains stop after three hops and each bot sends
@@ -1275,8 +1275,11 @@ tools (`write_soul`, `set_profile`, `request_access`, `load_skill`) and OptChat'
 memory tools can't be turned off. The bot asks for something that is off with
 `request_access`, a session question with Allow and Deny that only the operator
 answers; a routine's or another bot's turn may ask too, and the question says who
-started it. The bot panel gets a Tools tab after Soul, the CLI `hui bot tools`
-and `hui bot skills`.
+started it. The bot panel gets a Tools tab between Soul and Settings, and the CLI
+`hui bot tools` and `hui bot skills`. A bot on a worker keeps its lists in its
+document there, which that worker's host enforces; the gateway reads and writes
+them through the host, asks it what can be turned off (skills by their mirrored
+paths there), and hears of the grants made there.
 
 Tools are the boundary, not a sandbox: with `bash` or `read` a bot reaches
 whatever the user's account can, and `message_bot` lets it ask a better-equipped

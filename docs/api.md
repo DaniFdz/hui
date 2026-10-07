@@ -1241,9 +1241,9 @@ failures; other methods answer 405.
 | Route | Success | Behavior |
 | --- | --- | --- |
 | `GET /__hui/bots[?archived=1]` | 200 `{ bots: BotView[] }` | Active bots, or with `archived=1` only archived ones, sorted by name |
-| `POST /__hui/bots` | 201 `{ bot }` | `BotInput`: the record fields, all optional (`{}` is enough), `handle`, `disabledTools` and `disabledSkills` (below; tools checked against those every chat has, before an extension's, and skills against its directory's), `worker` (a worker's id or name: [the bot runs there](#bots-on-a-worker), with its home folder and SOUL.md) and `soul` (SOUL.md's text, ≤ 20,000 characters after trimming; given, the bot skips its first conversation and no kickoff runs). Without `name` the bot is `New Bot` (`NEW_BOT_NAME`), which its first conversation replaces (`set_profile`). Without `handle` one is derived from the name (`-2`, `-3`… on collision); an explicit handle that is taken is 409 |
+| `POST /__hui/bots` | 201 `{ bot }` | `BotInput`: the record fields, all optional (`{}` is enough), `handle`, `disabledTools` and `disabledSkills` (below; tools checked against those every chat has, before an extension's, and skills against its directory's, on the machine it runs on), `worker` (a worker's id or name: [the bot runs there](#bots-on-a-worker), with its home folder and SOUL.md) and `soul` (SOUL.md's text, ≤ 20,000 characters after trimming; given, the bot skips its first conversation and no kickoff runs). Without `name` the bot is `New Bot` (`NEW_BOT_NAME`), which its first conversation replaces (`set_profile`). Without `handle` one is derived from the name (`-2`, `-3`… on collision); an explicit handle that is taken is 409 |
 | `GET /__hui/bots/:id` | 200 `{ bot }` | |
-| `PATCH /__hui/bots/:id` | 200 `{ bot }` | Only what changes (`worker` is 400: a bot stays on the machine it was created on); `""` clears `title`, `description`, `model`, `thinking` (back to the gateway defaults, above), `memoryModel` (also as `utilityModel`, the same field; giving both with different values is 400), `memoryThinking` (back to Settings' utility model, then the chat's model, and OptChat's default level); an avatar key `""` clears it (`emoji: ""` switches the bot to its face, `shape: ""` and `color: ""` go back to the ones its id picks), `avatar: null` clears all three (an unknown `shape` or a color that is not `#rrggbb` is 400); a voice `language: ""` (back to Auto) or `live: ""` (back to Settings' call voice) clears that key, `voice: null` clears both (other voice keys are 400, VoiceStudio's old `profile` and `speed` included, and so is a `language` that is not one of Whisper's codes, a name such as `Spanish` included, or a `live` that is not one of GPT-Live's voices). `disabledTools` and `disabledSkills` replace the whole list (`[]` turns everything back on), checked against the running chat's catalog (below); they apply from its next request. `soul` is refused (400): SOUL.md has its own route. A given handle replaces the old one (409 if taken); a new `name` without one re-derives the handle while it is still the automatic one, derived from the old name (kept unique), and a handle chosen before stays. `model`/`thinking` go through the live chat (`setModel`/`setThinking`); `name` and the memory fields reconfigure OptChat, `name` also the session title; `cwd` is accepted only while the chat is idle (409 otherwise) and boots its runtime again there; a turn that starts during that edit (a routine, say) makes it answer 409 after the conversation and the chat's session record already moved, with the bot record still naming the old directory, so repeat the edit once the bot is idle to finish it. Archived bots are 409 |
+| `PATCH /__hui/bots/:id` | 200 `{ bot }` | Only what changes (`worker` is 400: a bot stays on the machine it was created on); `""` clears `title`, `description`, `model`, `thinking` (back to the gateway defaults, above), `memoryModel` (also as `utilityModel`, the same field; giving both with different values is 400), `memoryThinking` (back to Settings' utility model, then the chat's model, and OptChat's default level); an avatar key `""` clears it (`emoji: ""` switches the bot to its face, `shape: ""` and `color: ""` go back to the ones its id picks), `avatar: null` clears all three (an unknown `shape` or a color that is not `#rrggbb` is 400); a voice `language: ""` (back to Auto) or `live: ""` (back to Settings' call voice) clears that key, `voice: null` clears both (other voice keys are 400, VoiceStudio's old `profile` and `speed` included, and so is a `language` that is not one of Whisper's codes, a name such as `Spanish` included, or a `live` that is not one of GPT-Live's voices). `disabledTools` and `disabledSkills` replace the whole list (`[]` turns everything back on), checked against the running chat's catalog (below; on its worker for a bot there); they apply from its next request. `soul` is refused (400): SOUL.md has its own route. A given handle replaces the old one (409 if taken); a new `name` without one re-derives the handle while it is still the automatic one, derived from the old name (kept unique), and a handle chosen before stays. `model`/`thinking` go through the live chat (`setModel`/`setThinking`); `name` and the memory fields reconfigure OptChat, `name` also the session title; `cwd` is accepted only while the chat is idle (409 otherwise) and boots its runtime again there; a turn that starts during that edit (a routine, say) makes it answer 409 after the conversation and the chat's session record already moved, with the bot record still naming the old directory, so repeat the edit once the bot is idle to finish it. Archived bots are 409 |
 | `DELETE /__hui/bots/:id` | 200 `{ bot }` | Archives, deleting nothing: marks the bot, disables every Automation task aimed at its chat, withdraws messages still in HUI's follow-up queue for it, stops a running turn and archives the chat's session record. Idempotent |
 | `DELETE /__hui/bots/:id?permanent=1` | 200 `{ ok: true }`, plus `queued: true` for a bot whose worker is offline ([then](#bots-on-a-worker) its memory and home there go at the worker's next connection) | Deletes a bot for good, active or archived: withdraws messages still in HUI's follow-up queue for it and stops a running turn; its conversation stops being a bot's chat and its memory goes, in one commit (the `hui.bot` document cleared, OptChat turned off) and then OptChat's files; then every Automation task aimed at its chat, the chat's session record as `DELETE /__hui/sessions/:id` does (its runtime stops), its home folder `CONFIG_DIR/bots/<id>` with everything in it (SOUL.md and every file HUI or the bot put there; only `<BOTS_DIR>/<id>` itself, resolved, never following a link out), then the bot. A working directory the operator chose is never touched (when it lies inside the home folder, only SOUL.md goes). pi-durable cannot delete a conversation yet, so its raw log stays in the Durable store, where nothing reads it back. Each step can run again, so deleting again finishes an interrupted attempt; afterwards the bot is 404 |
 | `POST /__hui/bots/:id/restore` | 200 `{ bot }` | Unarchives the bot and its session record; routines stay disabled |
@@ -1382,9 +1382,11 @@ optional fields of the document's version 1: absent means nothing is off, so a
 document from before them needs no upgrade, and an older HUI reads the ones this
 one writes and ignores the lists (a rollback keeps every bot's chat). `bots.json`
 keeps a copy in each record for the roster and the bots stream, which reads no
-Durable state; it follows grants made in the chat (`DurableHost.botAccessRecorded`),
-is repaired by every catalog read and checked against each chat's document at the
-gateway's start (diagnostic `bots_access_reconciled`).
+Durable state; it follows grants made in the chat (`DurableHost.botAccessRecorded`;
+a worker's host reports them, [below](#bots-on-a-worker)), is repaired by every
+catalog read, and is checked against each chat's document: this gateway's bots at
+its start, a worker's bots at each connection to it (diagnostic
+`bots_access_reconciled`).
 
 Off means removed **by name**, so whatever appears later (a new extension, a HUI
 update, a new skill) is on until the operator turns it off. That is the price of
@@ -1590,6 +1592,30 @@ connected, a refusal fails the delete, which can run again. The raw
 conversation stays in the worker's store, which cannot delete one. A call's helper reads the remote memory's view and the
 call's record is written to the remote conversation (`bot.call-record`);
 hand-offs are ordinary messages.
+
+What the operator turned off in its chat ([Tools and skills](#tools-and-skills))
+is in its `hui.bot` document on the worker, and the worker's host enforces it from
+that document alone, as this gateway does for its own bots: its tool offer leaves
+out what is off, its HUI tool bridge refuses those tools, and its prompt lists only
+the skills that are on, which `load_skill` reads there; `request_access` raises its
+question there, which comes here like any of a remote session's. The gateway
+reaches the lists through the host: `bot.access.read` and `bot.access.write` for
+the catalog, a `PATCH` and its own check of the bot's HUI tool calls (which come
+back through the worker's bridge), and `bot.offer` for what can be turned off: a
+session's offer there, extension tools included, and the skills the host's loader
+finds in the chat's directory there, Settings' disabled skills applied as the
+gateway mirrors them. The gateway's own skills are there at their mirrored paths
+(`~/.local/share/hui-worker/mirror/agent/skills/…`), which the catalog shows and
+the lists store; a skill given as `{ name, path }` by this gateway's own path is
+matched by its mirrored path too, as remote sessions' Settings name skills
+(`WorkerService.skillPath`). A create with lists asks `bot.offer` (for the folder
+asked for, or the bot's home there) before `bot.create` writes them in its
+creating commit. When the operator allows a request there, the host sends every
+connected gateway a `bot.access` frame with the new lists, and the one whose bot it
+is updates `bots.json`. While the worker is offline the catalog and a `PATCH` of
+the lists answer 503 naming it, and the gateway's own check refuses what the
+roster says is off; a host whose `hello` lists no `bot-access` feature is refused
+with 409 naming it.
 
 A bot on a worker has a remote session's limits: the `terminal`, `browser`
 and `watcher` tools act on the gateway's machine, so the bridge refuses them,

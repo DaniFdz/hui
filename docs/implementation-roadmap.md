@@ -875,8 +875,14 @@ requests:
    session question with Allow and Deny only the operator answers, which says
    when a routine or another bot started the turn. `POST`/`PATCH` take the lists,
    `GET /__hui/bots/:id/catalog` lists what can be turned off (powerful tools
-   labelled) and a pending request; the panel's Tools tab and `hui bot tools` /
-   `hui bot skills` / `hui bot add --deny-tools --deny-skills` use them. Proof:
+   labelled) and a pending request; the panel's Tools tab (between Soul and
+   Settings) and `hui bot tools` / `hui bot skills` / `hui bot add --deny-tools
+   --deny-skills` use them. A bot on a worker (item 6) keeps its lists in its
+   document there, which the worker's host enforces; the gateway reaches them
+   through new host operations (`bot.access.read`, `bot.access.write`,
+   `bot.offer`: the catalog and creation's check computed there, skills by their
+   mirrored paths), a grant there comes back in a `bot.access` frame, and each
+   connection reconciles that worker's bots; offline, 503 naming it. Proof:
    `server/runtimes/durable-bot-access.test.ts` (real requests: offers, the
    bridge, prompts, `/skill:`, `load_skill`, requests allowed, denied, refused
    and one at a time, the port, documents from before the lists),
@@ -885,8 +891,13 @@ requests:
    provider's request, a granted tool is on the next one, a skill that is off
    is not in the prompt, the roster follows), `server/bots.test.ts`,
    `src/lib/bot-tools.test.ts`, `src/views/bot-tools.test.ts`,
-   `cli/*.test.ts` and an isolated gateway driven in a browser (screens in the
-   pull request).
+   `cli/*.test.ts`, for workers `server/worker/host.test.ts` (the host's list
+   operations and offer), `server/bot-remote.test.ts`, `server/bot-service.test.ts`
+   and `server/bot-workers.test.ts` (a real local worker: created with lists,
+   its catalog with a mirrored skill, what is off gone from its requests, a
+   request allowed here and its grant reaching the roster, a skill named by the
+   gateway's path, offline answers), and an isolated gateway driven in a browser
+   (screens in the pull request).
 
 ## Recommended implementation order
 
