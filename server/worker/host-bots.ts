@@ -15,7 +15,8 @@
  * here, and this host enforces it from that document alone (its tool offer, its
  * HUI tool bridge, its prompt's skills). A gateway reads and writes those lists
  * (`bot.access.*`) and what can be turned off (`bot.offer`: skills by the paths
- * this host's loader finds them at, the mirrored ones included).
+ * this host's loader finds them at, the mirrored ones included), and hears of a
+ * grant made here in a `bot.access` frame.
  */
 import { realpath, stat } from "node:fs/promises";
 import { isAbsolute, join, relative } from "node:path";
@@ -36,6 +37,8 @@ export const BOTS_FEATURE = "bots";
 export const BOT_MEMORY_STATUS_FRAME = "bot.memory.status";
 /** What `hello` lists when the host keeps bots' tool and skill lists (`bot.access.*`, `bot.offer`) and reports grants. */
 export const BOT_ACCESS_FEATURE = "bot-access";
+/** The frame a bot's lists arrive in after the operator allowed one of its requests here: `{ botId, access }`. */
+export const BOT_ACCESS_FRAME = "bot.access";
 
 const ID = /^[A-Za-z0-9_-]{1,100}$/u;
 const MODEL = /^[^/\s]+\/\S+$/u;

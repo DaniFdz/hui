@@ -242,6 +242,8 @@ async function harness(t: TestContext, options: { messagesPerHour?: number; memo
     lists: new Map<string, BotAccess>(),
     /** Offers asked of the worker: [reference, cwd, botId]. */
     offers: [] as Array<[string | undefined, string | undefined, string | undefined]>,
+    /** Who hears of grants the worker reports. */
+    granted: new Set<(id: string, botId: string, access: BotAccess) => void>(),
   };
   const offline = () => new BotWorkerOfflineError("devbox, where this bot runs, is offline: HUI is not connected to it. Connect it in Settings → Workers, then try again.");
   const reachable = () => { if (!remote.online) throw offline(); };
@@ -317,8 +319,11 @@ async function harness(t: TestContext, options: { messagesPerHour?: number; memo
     onConnected: (listener) => { remote.connected.add(listener); return () => remote.connected.delete(listener); },
     // The gateway's own skills live under /skills; devbox mirrors them under its data directory.
     skillPath: (_id, path) => remote.online && path.startsWith("/skills/") ? `/home/remote/.local/share/hui-worker/mirror/agent${path}` : undefined,
+    onAccessRecorded: (listener) => { remote.granted.add(listener); return () => remote.granted.delete(listener); },
   };
   const souls = localBotSouls(botsDir);
+  /** What the service reported, as the gateway's diagnostics get it. */
+  const reports: Array<{ level: string; action: string; summary: string; detail?: string }> = [];
   /** `exists` calls, to see the bot list's cache at work. */
   const soulChecks: string[] = [];
   const tasks: AutomationTask[] = [];
@@ -368,10 +373,11 @@ async function harness(t: TestContext, options: { messagesPerHour?: number; memo
     },
     botsDir,
     now: () => clock,
+    report: (event) => { reports.push(event); },
     ...(options.messagesPerHour ? { messagesPerHour: options.messagesPerHour } : {}),
   });
   return {
-    dir, botsDir, sessions, service, registry, conversations, memoryCalls, tasks, created, removed, chats, histories, remote, soulChecks,
+    dir, botsDir, sessions, service, registry, conversations, memoryCalls, tasks, created, removed, chats, histories, remote, soulChecks, reports,
     /** The bot's SOUL.md on disk, or undefined. */
     soulFile: (botId: string) => readFile(join(botsDir, botId, "SOUL.md"), "utf8").catch(() => undefined),
     records: () => records,
@@ -1285,6 +1291,30 @@ test("a bot on a worker keeps its lists there: created with them, listed and che
   await assert.rejects(h.service.update(rover.id, { disabledTools: [] }), BotWorkerOfflineError);
   await assert.rejects(h.service.checkToolAllowed(rover.sessionId, "remote_echo"), BotConflictError, "off in the roster's copy, and its document can't say otherwise");
   await assert.rejects(h.service.create({ name: "Late", worker: "devbox", disabledTools: ["bash"] }), BotWorkerOfflineError);
+});
+
+test("a grant made on a worker reaches the roster, for a bot that runs there only, and each connection to the worker checks its bots' lists there", async (t) => {
+  const h = await harness(t);
+  const alpha = { name: "alpha", path: REMOTE_ALPHA };
+  const rover = await h.service.create({ name: "Rover", worker: "devbox", soul: "# Who I am\nRover.", disabledTools: ["bash", "read"] });
+  const reference = h.record(rover.sessionId)!.piSessionFile!;
+  for (const listener of h.remote.granted) listener("w-2", rover.id, { disabledTools: [], disabledSkills: [] });
+  for (const listener of h.remote.granted) listener("w-1", "someone-else", { disabledTools: [], disabledSkills: [] });
+  for (const listener of h.remote.granted) listener("w-1", rover.id, { disabledTools: ["read"], disabledSkills: [alpha] });
+  await waitFor(async () => (await h.service.get(rover.id)).disabledTools?.join() === "read" || undefined, "the reported grant");
+  assert.deepEqual((await h.service.get(rover.id)).disabledSkills, [alpha]);
+  // A grant the roster missed (the connection dropped as the operator answered): the next connection copies it.
+  h.remote.lists.set(reference, { disabledTools: [], disabledSkills: [] });
+  for (const listener of h.remote.connected) listener("w-1");
+  await waitFor(async () => "disabledTools" in await h.service.get(rover.id) ? undefined : true, "the reconnect's check");
+  assert.equal("disabledSkills" in await h.service.get(rover.id), false);
+  await waitFor(() => h.reports.find((event) => event.action === "bots_access_reconciled"), "the reconnect's report");
+  assert.deepEqual(h.reports.map(({ level, action, summary }) => [level, action, summary]), [["info", "bots_access_reconciled", "1 bot's tool and skill lists on devbox were copied again from their chats"]]);
+  // A worker gone again meanwhile leaves the copy for the next connection, with no warning.
+  h.remote.online = false;
+  for (const listener of h.remote.connected) listener("w-1");
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(h.reports.length, 1);
 });
 
 test("a bot created on a worker gets its conversation, memory and folder there, and its chat is a session on that worker", async (t) => {

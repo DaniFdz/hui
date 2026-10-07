@@ -31,7 +31,7 @@ import type { RuntimeModel, RuntimeQueue, RuntimeQuestion, RuntimeSession, Runti
 import { installBrokeredCredentials, OfflineError, setCredentialTransport, setSecretEnv } from "./credentials.ts";
 import { completeWorkingDirectories, resolveWorkingDirectory } from "../working-directories.ts";
 import { attachPeer, isRecord, PROTOCOL_VERSION, type Peer } from "./protocol.ts";
-import { BOT_ACCESS_FEATURE, BOTS_FEATURE, hostBots } from "./host-bots.ts";
+import { BOT_ACCESS_FEATURE, BOT_ACCESS_FRAME, BOTS_FEATURE, hostBots } from "./host-bots.ts";
 import { PACKAGE_ROOT } from "./release.ts";
 import { applySync, planSync, putSyncFiles, writeAtomic, type SyncCommit } from "./sync-apply.ts";
 import type { WorkerPaths } from "./paths.ts";
@@ -177,6 +177,11 @@ export class WorkerHost {
       home: (botId) => this.#bots.home(botId),
       operator: async () => operatorName((await readHuiSettings()).profileName),
       name: (botId) => this.#bots.nameOf(botId),
+    };
+    // The operator allowed a bot's request here: its lists are already in its document, which this host enforces; every
+    // connected gateway hears of them, and the one whose bot it is updates its roster.
+    this.#durable.botAccessRecorded = async (botId, access) => {
+      for (const peer of [...this.#peers]) if (!peer.closed) peer.send({ t: BOT_ACCESS_FRAME, botId, access });
     };
   }
 

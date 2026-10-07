@@ -150,6 +150,9 @@ export type BotWorkers = {
   /** How the connected worker names a skill this gateway has at `path` (its mirrored path there, or a bundled skill's
    * stable preference), as remote sessions' Settings name it; undefined while HUI is not connected to it. */
   skillPath(id: string, path: string): string | undefined;
+  /** A bot's chat on a worker turned tools or skills back on by itself (the operator allowed its request there): the
+   * lists its document holds now, as that worker reports them. */
+  onAccessRecorded(listener: (id: string, botId: string, access: BotAccess) => void): () => void;
 };
 
 /** A worker's bot conversations. Each fails at once, naming the worker, while HUI is not connected to it. */
@@ -215,7 +218,7 @@ export type BotServiceDeps = {
   now?: () => number;
   messagesPerHour?: number;
   readyTimeoutMs?: number;
-  report?: (event: { level: "warning" | "error"; action: string; summary: string; detail?: string }) => void;
+  report?: (event: { level: "info" | "warning" | "error"; action: string; summary: string; detail?: string }) => void;
 };
 
 type WaitOptions = {
@@ -262,9 +265,19 @@ export class BotService {
     this.#now = deps.now ?? Date.now;
     this.#messagesPerHour = deps.messagesPerHour ?? MESSAGES_PER_HOUR;
     this.#readyTimeoutMs = deps.readyTimeoutMs ?? READY_TIMEOUT_MS;
-    // A worker's runs go on while HUI is away from it: its chats' newest messages are read again once it is back.
+    // A worker's runs go on while HUI is away from it: its chats' newest messages are read again once it is back, and
+    // its bots' tool and skill lists checked against their documents there.
     deps.workers?.onConnected((id) => {
       for (const bot of this.#registry.cached) if (bot.worker === id) this.#lastMessages.delete(bot.id);
+      void this.#reconcileWorker(id).catch((error: unknown) => this.#report("warning", "bot_access_reconcile_failed", "Bots' tool and skill lists on a worker could not be checked against their chats", error));
+    });
+    // The operator allowed a request in a bot's chat on a worker: the roster follows that worker's report, for a bot
+    // that runs there only.
+    deps.workers?.onAccessRecorded((id, botId, access) => {
+      void (async () => {
+        if ((await this.#registry.list()).find((bot) => bot.id === botId)?.worker !== id) return;
+        await this.#mirror(botId, access);
+      })().catch((error: unknown) => this.#report("warning", "bot_access_mirror_failed", "A bot's chat on a worker turned tools back on that HUI's roster does not show yet", error));
     });
   }
 
@@ -573,21 +586,36 @@ export class BotService {
    * At the gateway's start: every bot's roster copy of its lists is checked against its chat's document, which may
    * have changed while the roster could not follow (a grant on a host that does not report to this gateway, or an
    * older HUI that dropped the copy). Returns how many it repaired; a bot that fails is reported and left as it was.
-   * Bots on workers are left out: their conversations are in their workers' stores, which a catalog read reaches.
+   * Bots on workers are checked each time HUI connects to their worker instead (`#reconcileWorker`).
    */
-  async reconcileAccess(): Promise<number> {
+  reconcileAccess(): Promise<number> {
+    return this.#reconcile((bot) => !bot.worker);
+  }
+
+  /** At each connection to a worker: its bots' roster copies against their documents there, which a grant may have
+   * changed while HUI could not hear of it (the connection dropped as the operator allowed a request). */
+  async #reconcileWorker(id: string): Promise<void> {
+    const repaired = await this.#reconcile((bot) => bot.worker === id, (error) => error instanceof BotWorkerOfflineError || error instanceof BotConflictError);
+    if (repaired) {
+      this.#report("info", "bots_access_reconciled", `${repaired} bot${repaired === 1 ? "'s" : "s'"} tool and skill lists on ${this.#deps.workers?.nameOf(id) ?? "a worker"} were copied again from their chats`);
+    }
+  }
+
+  /** Each chosen bot's roster copy against its chat's document; a bot that fails is reported (unless `quiet` says it
+   * can wait: a worker gone again, or a host from before the lists) and left as it was. */
+  async #reconcile(chosen: (bot: BotRecord) => boolean, quiet: (error: unknown) => boolean = () => false): Promise<number> {
     let repaired = 0;
     const records = await this.#deps.readSessions();
-    for (const bot of (await this.#registry.list()).filter((each) => !each.worker)) {
+    for (const bot of (await this.#registry.list()).filter(chosen)) {
       const reference = records.find((record) => record.id === bot.sessionId)?.piSessionFile;
       if (!reference) continue;
       try {
-        const access = await this.#deps.conversations.access(reference);
+        const access = await this.#ports(bot).conversations.access(reference);
         if (sameAccess(bot, access)) continue;
         await this.#mirror(bot.id, access);
         repaired += 1;
       } catch (error) {
-        this.#report("warning", "bot_access_reconcile_failed", `@${bot.handle}'s tools and skills could not be read from its chat`, error);
+        if (!quiet(error)) this.#report("warning", "bot_access_reconcile_failed", `@${bot.handle}'s tools and skills could not be read from its chat`, error);
       }
     }
     return repaired;
@@ -1233,8 +1261,8 @@ export class BotService {
     return { status: "needs-input", questions: this.#sessions.snapshot(id).questions.map(botQuestion) };
   }
 
-  #report(level: "warning" | "error", action: string, summary: string, error: unknown): void {
-    this.#deps.report?.({ level, action, summary, detail: error instanceof Error ? error.message : String(error) });
+  #report(level: "info" | "warning" | "error", action: string, summary: string, error?: unknown): void {
+    this.#deps.report?.({ level, action, summary, ...(error === undefined ? {} : { detail: error instanceof Error ? error.message : String(error) }) });
   }
 }
 

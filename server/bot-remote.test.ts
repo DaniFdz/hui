@@ -180,6 +180,18 @@ test("a worker names this gateway's skills as remote sessions' Settings do: by t
   assert.equal(bots.skillPath("w-1", "/skills/alpha/SKILL.md"), undefined);
 });
 
+test("grants a worker reports reach the listeners with the worker that sent them; anything malformed is dropped", () => {
+  const fake = link();
+  const { bots } = portsOf(fake);
+  const heard: unknown[] = [];
+  bots.onAccessRecorded((...entry) => { heard.push(entry); });
+  fake.frame({ t: "bot.access", botId: "b", access: { disabledTools: ["bash", "two words"], disabledSkills: [{ name: "x" }] } });
+  fake.frame({ t: "bot.access", botId: "../b", access: { disabledTools: [] } });
+  fake.frame({ t: "bot.access", botId: "b" });
+  fake.frame({ t: "bot.memory.status", botId: "b", access: { disabledTools: ["read"] } });
+  assert.deepEqual(heard, [["w-1", "b", { disabledTools: ["bash"], disabledSkills: [] }]]);
+});
+
 test("memory status comes from what the worker reports: the first ask watches it, one request for a whole list, and a lost connection forgets it", async () => {
   const fake = link();
   const { bots } = portsOf(fake);

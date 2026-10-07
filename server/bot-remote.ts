@@ -13,16 +13,17 @@
  * the worker's next connection, or is dropped with the worker.
  *
  * What the operator turned off in such a bot's chat is in its document there,
- * which the worker's host enforces; these ports read and write it, and ask the
- * host what can be turned off (skills by the paths it finds them at).
+ * which the worker's host enforces; these ports read and write it, ask the host
+ * what can be turned off (skills by the paths it finds them at), and pass on the
+ * grants it reports (`onAccessRecorded`).
  */
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import type { BotMemoryStatus, BotToolGroup } from "../shared/bots.ts";
+import type { BotAccess, BotMemoryStatus, BotToolGroup } from "../shared/bots.ts";
 import { BotMemoryUnavailableError, type BotMemory } from "./bot-memory.ts";
 import type { BotOffer, BotSouls, BotStoredMessage, BotWorkers, RemoteBotConversations } from "./bot-service.ts";
 import { BotConflictError, BotInputError, BotWorkerOfflineError, storedAccess } from "./bots.ts";
-import { BOT_ACCESS_FEATURE, BOT_MEMORY_STATUS_FRAME, BOTS_FEATURE } from "./worker/host-bots.ts";
+import { BOT_ACCESS_FEATURE, BOT_ACCESS_FRAME, BOT_MEMORY_STATUS_FRAME, BOTS_FEATURE } from "./worker/host-bots.ts";
 import { WorkerOfflineError, type WorkerService } from "./workers.ts";
 
 /** What these ports need of the worker service. */
@@ -218,6 +219,13 @@ export function remoteBots(workers: BotWorkerLink, options: RemoteBotsOptions): 
     const status = reportedStatus(frame["status"]);
     if (status) report(id, frame["reference"], status);
   });
+  /** Who hears of grants made in bots' chats on workers; the service checks that the bot runs there. */
+  const accessListeners = new Set<(id: string, botId: string, access: BotAccess) => void>();
+  workers.onHostFrame((id, frame) => {
+    if (frame.t !== BOT_ACCESS_FRAME || typeof frame["botId"] !== "string" || !CLEANUP_ID.test(frame["botId"]) || !isRecord(frame["access"])) return;
+    const access = storedAccess(frame["access"]);
+    for (const listener of [...accessListeners]) listener(id, frame["botId"], access);
+  });
   // An offline worker reports nothing: its bots show no memory until it is back.
   workers.onClosed((id) => reports.delete(id));
   workers.onConnected((id) => { for (const reference of listeners.get(id)?.keys() ?? []) watch(id, reference); });
@@ -340,6 +348,11 @@ export function remoteBots(workers: BotWorkerLink, options: RemoteBotsOptions): 
     },
 
     skillPath: (id, path) => workers.skillPath(id, path),
+
+    onAccessRecorded(listener) {
+      accessListeners.add(listener);
+      return () => accessListeners.delete(listener);
+    },
 
     souls(id): BotSouls {
       const read = async (botId: string) => {
