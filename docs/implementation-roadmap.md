@@ -882,7 +882,10 @@ requests:
    through new host operations (`bot.access.read`, `bot.access.write`,
    `bot.offer`: the catalog and creation's check computed there, skills by their
    mirrored paths), a grant there comes back in a `bot.access` frame, and each
-   connection reconciles that worker's bots; offline, 503 naming it. Proof:
+   connection reconciles that worker's bots; offline, 503 naming it. Its chat
+   there isn't offered `terminal`, `browser` or `watcher`, which the gateway's
+   bridge refuses for any remote session (one list, `GATEWAY_ONLY_TOOLS`), so the
+   catalog leaves them out and a list can't name them. Proof:
    `server/runtimes/durable-bot-access.test.ts` (real requests: offers, the
    bridge, prompts, `/skill:`, `load_skill`, requests allowed, denied, refused
    and one at a time, the port, documents from before the lists),
@@ -892,11 +895,15 @@ requests:
    is not in the prompt, the roster follows), `server/bots.test.ts`,
    `src/lib/bot-tools.test.ts`, `src/views/bot-tools.test.ts`,
    `cli/*.test.ts`, for workers `server/worker/host.test.ts` (the host's list
-   operations and offer), `server/bot-remote.test.ts`, `server/bot-service.test.ts`
-   and `server/bot-workers.test.ts` (a real local worker: created with lists,
-   its catalog with a mirrored skill, what is off gone from its requests, a
-   request allowed here and its grant reaching the roster, a skill named by the
-   gateway's path, offline answers), and an isolated gateway driven in a browser
+   operations and offer), `server/bot-remote.test.ts`, `server/bot-service.test.ts`,
+   `server/runtimes/durable-bot-access.test.ts` (a host with `gatewayOnlyTools`: a
+   bot's chat never offered them nor able to ask for them, an ordinary session
+   keeping them), `server/workers.test.ts` (the bridge still refuses them) and
+   `server/bot-workers.test.ts` (a real local worker: created with lists,
+   its catalog with a mirrored skill and without the gateway's own tools, what is
+   off gone from its requests, a request allowed here and its grant reaching the
+   roster, a skill named by the gateway's path, lists naming the gateway's own
+   tools refused, offline answers), and an isolated gateway driven in a browser
    (screens in the pull request).
 
 ## Recommended implementation order

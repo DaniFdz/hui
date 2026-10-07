@@ -1279,7 +1279,10 @@ started it. The bot panel gets a Tools tab between Soul and Settings, and the CL
 `hui bot tools` and `hui bot skills`. A bot on a worker keeps its lists in its
 document there, which that worker's host enforces; the gateway reads and writes
 them through the host, asks it what can be turned off (skills by their mirrored
-paths there), and hears of the grants made there.
+paths there), and hears of the grants made there. Its chat there isn't offered the
+tools that stay on the gateway's machine (the terminal, the browser, watchers),
+which the gateway refuses for every remote session from the same list, so its Tools
+tab leaves them out rather than showing switches that could do nothing.
 
 Tools are the boundary, not a sandbox: with `bash` or `read` a bot reaches
 whatever the user's account can, and `message_bot` lets it ask a better-equipped

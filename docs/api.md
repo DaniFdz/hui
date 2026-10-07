@@ -1040,7 +1040,8 @@ restarted host resumes call HUI tools as that session. Host requests: `credentia
 `hui:<providers-relative path>`), the nested `credential-step` that runs an
 OAuth refresh callback on the remote while the gateway holds its lock, and
 `bridge` (a HUI agent tool call; the gateway refuses callers whose session is
-not on that worker, and refuses `terminal`, `browser` and `watcher`) and
+not on that worker, and refuses `terminal`, `browser` and `watcher`, the
+`GATEWAY_ONLY_TOOLS` of `server/worker/gateway-tools.ts`) and
 `bot.section {botId}` (`{ section: string | null }`, the `bots` prompt section of
 a bot whose chat runs on that worker; any other bot is refused). With no
 gateway connected a `bridge` call fails at once, and one in flight fails when
@@ -1617,9 +1618,19 @@ the lists answer 503 naming it, and the gateway's own check refuses what the
 roster says is off; a host whose `hello` lists no `bot-access` feature is refused
 with 409 naming it.
 
+A bot's chat on a worker is never offered the tools that act on the gateway's
+machine, `terminal`, `browser` and `watcher`: the same `GATEWAY_ONLY_TOOLS` the
+bridge refuses, which the worker's host gives its `DurableHost`
+(`gatewayOnlyTools`). They are left out of its requests and of `bot.offer`, live or
+not, so the catalog doesn't list them and they never count as off;
+`request_access` can't ask for them, whatever an older list holds; and a list
+naming them is 400, e.g. *terminal stays on this machine, so a bot on devbox
+can't use it and there is nothing to turn off: leave it out.* Ordinary sessions
+on a worker are still offered them, and the bridge refuses their calls.
+
 A bot on a worker has a remote session's limits: the `terminal`, `browser`
-and `watcher` tools act on the gateway's machine, so the bridge refuses them,
-and it cannot use worktrees. A worker with bots cannot be removed while their
+and `watcher` tools act on the gateway's machine, so its chat isn't offered them
+(above), and it cannot use worktrees. A worker with bots cannot be removed while their
 chats' session records exist (409, as for any session on it).
 
 ## Routes
