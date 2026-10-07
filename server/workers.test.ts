@@ -34,6 +34,7 @@ const { workerRelease } = await import("./worker/release.ts");
 const { registerAgentToolHandler } = await import("./agent-tools-bridge.ts");
 const { GATEWAY_ONLY_TOOLS } = await import("./worker/gateway-tools.ts");
 const { readRegistry, writeRegistry } = await import("./sessions.ts");
+const { SecretRequests } = await import("./secret-requests.ts");
 const durable = remoteRuntime("durable");
 const control = (path: string, init?: RequestInit) => fetch(`${baseUrl.replace(/\/v1$/u, "")}/control/${path}`, init);
 type Session = Awaited<ReturnType<typeof piRuntime.start>>;
@@ -530,6 +531,41 @@ test("the gateway refuses a worker session's calls to the tools that stay on its
     const answer = lastAnswer(session) ?? "";
     for (const name of ["terminal", "watcher"]) assert.ok(answer.includes(`The ${name} tool is not available to sessions on a remote worker yet.`), answer);
     assert.deepEqual(calls, [], "refused at the bridge");
+  } finally {
+    session.dispose();
+  }
+});
+
+test("a worker session's secret request is answered on the gateway and read from a private file on the worker", async () => {
+  const key = "remote-durable-secret";
+  const value = "worker-only-SECRET-61";
+  await registerRemote(key);
+  const requests = new SecretRequests();
+  const carriers: (string | undefined)[] = [];
+  // As the gateway answers a worker's session: the answer goes back, the host writes the file.
+  registerAgentToolHandler(async ({ callerSessionId, action, params, signal, fromWorker }) => {
+    if (action !== "secret_request") return { ok: true };
+    carriers.push(fromWorker);
+    return requests.request(callerSessionId, params, signal);
+  });
+  const session = await durable.start({ cwd: project, worker: workerId, huiSessionId: key });
+  try {
+    const done = settled(session);
+    await session.prompt("E2E_SECRET_REQUEST please");
+    const question = await waitFor(() => requests.questions(key)[0], "the secret card on the gateway");
+    requests.answer(key, question.id, { value });
+    await done;
+    assert.deepEqual(carriers, [workerId], "the request came over this worker's connection");
+    assert.match(JSON.stringify(session.transcript()), new RegExp(`Secret length: ${value.length}`, "u"), "the agent's command on the worker read the file");
+    assert.equal(lastAnswer(session), "I used the secret in a command without seeing it, then deleted its file.");
+    assert.ok(!JSON.stringify(session.transcript()).includes(value));
+    assert.ok(!(await readFile(join(root, "provider.jsonl"), "utf8")).includes(value), "the model never sees it");
+    for (const file of await remoteFiles()) assert.ok(!(await readFile(file, "utf8")).includes(value), `${file} holds the secret`);
+
+    await session.prompt("E2E_SECRET_REQUEST again");
+    await waitFor(() => requests.questions(key)[0], "a second card");
+    await session.abort!();
+    await waitFor(() => requests.questions(key).length === 0 || undefined, "Stop on the worker to cancel the card");
   } finally {
     session.dispose();
   }

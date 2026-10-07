@@ -493,7 +493,7 @@ test("a bot's prompt and /skill: offer only the skills that are on; a session in
   assert.doesNotMatch(system, /<name>beta<\/name>/u, "a skill that is off is not in the prompt");
   assert.match(system, /Skills:\\n- beta: Beta procedures\./u);
   const commands = (await session.listCommands()).filter((command) => command.source === "skill").map((command) => command.name);
-  assert.deepEqual(commands, ["skill:alpha", "skill:create-verification-skill", "skill:git-selective-staging"]);
+  assert.deepEqual(commands, ["skill:alpha", "skill:create-verification-skill", "skill:git-selective-staging", "skill:visualize"]);
   await session.prompt("/skill:beta please");
   await settledWith(session, () => replies(session) >= 2);
   await session.prompt("/skill:alpha please");
@@ -504,7 +504,7 @@ test("a bot's prompt and /skill: offer only the skills that are on; a session in
   assert.match(users[1]!, /<skill name=\\"alpha\\"[^]*SKILL_BODY_ALPHA[^]*please/u);
 
   const plainCommands = (await plain.listCommands()).filter((command) => command.source === "skill").map((command) => command.name);
-  assert.deepEqual(plainCommands.sort(), ["skill:alpha", "skill:beta", "skill:create-verification-skill", "skill:git-selective-staging"]);
+  assert.deepEqual(plainCommands.sort(), ["skill:alpha", "skill:beta", "skill:create-verification-skill", "skill:git-selective-staging", "skill:visualize"]);
   await plain.prompt("plain session turn");
   await settledWith(plain, answered("Fixture response"));
   assert.match(JSON.stringify((await requests(f.log)).at(-1)?.system), /<name>alpha<\/name>[^]*<name>beta<\/name>/u);
@@ -531,7 +531,7 @@ test("a bot with neither read nor bash loads its skills with load_skill, which r
   assert.equal(notes, "NOTES_ALPHA\n");
   assert.equal(escape, "../beta/SKILL.md is not a file inside the alpha skill's directory.");
   assert.equal(other, "The operator turned off the beta skill. Ask for it with request_access if the job needs it.");
-  assert.equal(unknown, "You have no skill named \"gamma\". Your skills: alpha, create-verification-skill, git-selective-staging.");
+  assert.equal(unknown, "You have no skill named \"gamma\". Your skills: alpha, create-verification-skill, git-selective-staging, visualize.");
 });
 
 test("a skill turned back on through request_access is in the next request's prompt", { timeout: 60_000 }, async (t) => {

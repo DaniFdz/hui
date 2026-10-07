@@ -327,6 +327,26 @@ test("a routine, a queued message, steering, a question and Stop all reach the b
   await waitFor(() => liveSessions.status(rover.sessionId) === "idle" || undefined, "the turn to stop");
 });
 
+test("a bot on the worker asks for a secret as a worker session does: its chat shows the card here, the worker writes the file", { timeout: 180_000 }, async () => {
+  const rover = botOf(await call("/__hui/bots/rover"));
+  const value = "rover-only-SECRET-73";
+  const asked = await call("/__hui/bots/rover/messages", "POST", { text: "E2E_SECRET_REQUEST for the ridge", wait: true, timeoutSeconds: 120 });
+  assert.equal(asked.body["status"], "needs-input", JSON.stringify(asked.body));
+  const [question] = asked.body["questions"] as Array<{ id: string; method: string; title: string }>;
+  assert.deepEqual([question?.method, question?.title], ["secret", "Fixture API key"]);
+  // Its chat waits on the card as a session's does: the same question, here on the gateway.
+  assert.equal(liveSessions.status(rover.sessionId), "waiting");
+  assert.deepEqual(liveSessions.snapshot(rover.sessionId).questions.map((entry) => entry.id), [question!.id]);
+  assert.equal((await call(`/__hui/sessions/${rover.sessionId}/question`, "POST", { id: question!.id, value })).status, 200);
+  const entries = await settledWith(rover.sessionId, says("assistant", "I used the secret in a command without seeing it"), "the turn that used the secret");
+  const transcript = JSON.stringify(entries);
+  assert.match(transcript, new RegExp(`Secret length: ${value.length}`, "u"), "its command on the worker read the file");
+  const pid = Number(/hui-secret-(\d+)-/u.exec(transcript)?.[1]);
+  assert.ok(pid && pid !== process.pid, "the worker host wrote the file, not this gateway");
+  assert.ok(!transcript.includes(value), "the value never enters the chat");
+  assert.ok(!(await readFile(log, "utf8")).includes(value), "nor reaches the model");
+});
+
 test("a call's record joins the worker bot's chat and memory, which its helper reads", { timeout: 120_000 }, async () => {
   const rover = botOf(await call("/__hui/bots/rover"));
   const reference = (await readRegistry()).find((entry) => entry.id === rover.sessionId)!.piSessionFile!;
