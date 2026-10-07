@@ -4,7 +4,7 @@ import { test } from "node:test";
 import type { BotRecord, BotReply } from "../shared/bots.ts";
 import { CALL_LIMITS, callRecordLines, parseCallRecord, type CallRecordLine } from "../shared/calls.ts";
 import {
-  buildCallRecord, complete, createCallDelegate, CallHelperError, helperPrompt, operatorName, parseHelperReply, summaryPrompt, utilityCandidates,
+  buildCallRecord, complete, createCallDelegate, CallHelperError, deadline, helperPrompt, operatorName, parseHelperReply, summaryPrompt, utilityCandidates,
   type CallCompletion,
 } from "./call-helper.ts";
 import type { ActiveCall } from "./calls.ts";
@@ -74,7 +74,27 @@ test("each model is tried in turn; a spent budget is a timeout, and no model is 
   await assert.rejects(complete(["a/down"], { system: "s", prompt: "p", signal }, completion), (error: unknown) => error instanceof CallHelperError && !error.aborted && /429/u.test(error.message));
   await assert.rejects(complete([], { system: "s", prompt: "p", signal }, completion), /No utility model/u);
   const slow: CallCompletion = (_model, request) => new Promise((_, reject) => request.signal.addEventListener("abort", () => reject(new Error("aborted")), { once: true }));
-  await assert.rejects(complete(["a/slow", "a/up"], { system: "s", prompt: "p", signal: AbortSignal.timeout(20) }, slow), (error: unknown) => error instanceof CallHelperError && error.aborted);
+  const budget = deadline(20);
+  try {
+    await assert.rejects(complete(["a/slow", "a/up"], { system: "s", prompt: "p", signal: budget.signal }, slow), (error: unknown) => error instanceof CallHelperError && error.aborted);
+  } finally {
+    budget.clear();
+  }
+});
+
+test("a budget holds the process open until it runs out or is cleared, and runs out as a timeout", async () => {
+  // `AbortSignal.timeout`'s timer is unreferenced: on Node 22, a helper waiting on it alone saw the test runner cancel
+  // the wait once nothing else held the event loop.
+  const timers = () => process.getActiveResourcesInfo().filter((type) => type === "Timeout").length;
+  const before = timers();
+  const pending = deadline(60_000);
+  assert.equal(timers(), before + 1, "a running budget holds the event loop");
+  pending.clear();
+  assert.equal(timers(), before, "a cleared one lets it go");
+  assert.equal(pending.signal.aborted, false);
+  const spent = deadline(5);
+  await new Promise((resolve) => spent.signal.addEventListener("abort", resolve, { once: true }));
+  assert.equal(spent.signal.reason instanceof DOMException && spent.signal.reason.name, "TimeoutError");
 });
 
 function delegateHarness(completion: CallCompletion, options: { budgetMs?: number } = {}) {
