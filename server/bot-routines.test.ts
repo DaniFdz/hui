@@ -15,13 +15,16 @@ function bot(id: string, handle: string, extra: Partial<BotRecord> = {}): BotRec
   return { id, handle, name: handle, cwd: "/tmp", sessionId: `s-${handle}`, createdAt: "", updatedAt: "", ...extra };
 }
 
-/** Resolves once `check` holds, as the scheduler's writes land. */
+/**
+ * Resolves once `check` holds, as the scheduler's writes land. Limited in time rather than attempts, so a busy machine
+ * where the writes land slowly can't fail it early.
+ */
 async function eventually(check: () => Promise<boolean>, label: string): Promise<void> {
-  for (let attempt = 0; attempt < 2_000; attempt += 1) {
-    if (await check()) return;
-    await new Promise<void>((resolve) => setImmediate(resolve));
+  const deadline = Date.now() + 10_000;
+  while (!(await check())) {
+    if (Date.now() > deadline) assert.fail(label);
+    await new Promise<void>((resolve) => setTimeout(resolve, 5));
   }
-  assert.fail(label);
 }
 
 /** A real scheduler on a temporary file, whose runs wait until the test lets them go, and two bots. */

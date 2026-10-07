@@ -162,13 +162,17 @@ function manualClock(start: number) {
   };
 }
 
-/** Resolves once `check` holds, as the service's writes land; never on a timer. */
+/**
+ * Resolves once `check` holds, as the service's writes land. The scheduler itself never waits on a real timer (it
+ * runs on `manualClock`); only this wait has a real limit, in time rather than attempts, so a busy machine where the
+ * writes land slowly can't fail it early.
+ */
 async function eventually(check: () => Promise<boolean>, label: string): Promise<void> {
-  for (let attempt = 0; attempt < 2_000; attempt += 1) {
-    if (await check()) return;
-    await new Promise<void>((resolve) => setImmediate(resolve));
+  const deadline = Date.now() + 10_000;
+  while (!(await check())) {
+    if (Date.now() > deadline) assert.fail(label);
+    await new Promise<void>((resolve) => setTimeout(resolve, 5));
   }
-  assert.fail(label);
 }
 
 const T0 = Date.parse("2030-01-01T09:00:00.000Z");
