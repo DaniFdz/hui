@@ -236,7 +236,7 @@ test("a temporary task ends at its until: HUI deletes it then, paused or not, an
   await service.create({ name: "Paused", sessionId: "s-1", prompt: "Later.", schedule: { kind: "every", everyMs: MINUTE }, enabled: false, until });
   await waitFor("the first run is planned", async () => time.nextWake() === T0 + MINUTE);
   time.advanceTo(T0 + MINUTE);
-  await waitFor("first run", async () => (await service.snapshot()).runs.filter((run) => run.status === "completed").length === 1);
+  await runEnds(service, "completed");
   await waitFor("the second run is planned", async () => time.nextWake() === T0 + 2 * MINUTE);
   // The second run is still going when the end comes.
   hold = new Promise<void>((resolve) => { release = resolve; });
@@ -265,15 +265,18 @@ test("a task with runs runs that many times, then goes; a skipped run gives its 
   const task = await service.create({ name: "Twice", sessionId: "s-1", prompt: "Go.", schedule: { kind: "every", everyMs: MINUTE }, runs: 2 });
   await waitFor("first time planned", async () => time.nextWake() === T0 + MINUTE);
   time.advanceTo(T0 + MINUTE);
-  await waitFor("skipped", async () => (await service.snapshot()).runs[0]?.status === "skipped");
+  // Each run is awaited until it lets go of the task too (runEnds): until then the scheduler and a run by hand find
+  // the task still running.
+  await runEnds(service, "skipped");
   assert.equal((await taskNamed(service, "Twice"))?.runsLeft, 2, "a skipped run never reached its target and gives its run back");
   await waitFor("next time planned", async () => time.nextWake() === T0 + 2 * MINUTE);
   time.advanceTo(T0 + 2 * MINUTE);
-  await waitFor("scheduled run", async () => (await service.snapshot()).runs[0]?.status === "completed");
+  await runEnds(service, "completed");
   assert.equal((await taskNamed(service, "Twice"))?.runsLeft, 1);
   // A run by hand counts too; it is the last, so the task goes once it ends.
   await service.run(task.id);
-  await waitFor("gone after its last run", async () => (await service.snapshot()).tasks.length === 0);
+  await runEnds(service, "completed");
+  assert.equal((await service.snapshot()).tasks.length, 0, "gone after its last run");
   const runs = (await service.snapshot()).runs;
   assert.deepEqual(runs.map((run) => [run.source, run.status]).toReversed(), [["scheduled", "skipped"], ["scheduled", "completed"], ["manual", "completed"]]);
   await assert.rejects(service.run(task.id), /Unknown automation task/u);
@@ -316,7 +319,7 @@ test("a task whose run is going is deleted only when asked to leave the run be, 
   await service.remove(task.id, { whileRunning: true });
   assert.equal((await service.snapshot()).tasks.length, 0);
   release();
-  await waitFor("the run finished", async () => (await service.snapshot()).runs[0]?.status === "completed");
+  await runEnds(service, "completed");
   assert.equal(service.activeRun(task.id), undefined);
   service.dispose();
 });
