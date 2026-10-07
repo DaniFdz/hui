@@ -1,12 +1,13 @@
 /**
  * Grok Bot marketplace pages (`https://x.ai/bot/marketplace/bots/<slug>`). The page is a Next.js app: the bot arrives in
  * the React Server Components payload it pushes in `self.__next_f.push([1, "…"])` chunks, as an object with its name,
- * author, description and instructions, its memories (`{ name, description }`), skills (`{ name, description, content }`),
- * routines and integrations (`{ name, description }`). Long texts may sit in rows of their own that the object names
- * (`"$1f"`); they are resolved. x.ai can change that page at any time, so this is best effort: a page where no bot is
- * found is a clear error that suggests pasting the instructions instead.
+ * creator, description and instructions, its memories (`{ name, description }`), skills (`{ name, description, content }`),
+ * routines (`{ name, summary }`) and integrations (`{ name, description }`), and a color and shape. Long texts may sit in
+ * rows of their own that the object names (`"$1f"`); they are resolved. Many marketplace bots leave their instructions
+ * empty and keep their job in their memories; that is still a bot. x.ai can change that page at any time, so this is
+ * best effort: a page where no bot is found is a clear error that suggests pasting the instructions instead.
  */
-import { BOT_LIMITS } from "../../shared/bots.ts";
+import { BOT_FACE_COLORS, BOT_LIMITS, type BotFaceShape } from "../../shared/bots.ts";
 import type { BotTemplate, BotTemplateRoutine } from "../../shared/bot-templates.ts";
 import { blankTemplate, displayName, isRecord, oneEmoji, oneLine, str, templateSkill, TemplateFormatError } from "./common.ts";
 
@@ -177,6 +178,10 @@ function scanForBot(payload: string): Record<string, unknown> | undefined {
 
 const list = (value: unknown): unknown[] => Array.isArray(value) ? value : [];
 
+/** Grok Bot's colors and shapes as a HUI face's, where one is close. */
+const COLORS: Readonly<Record<string, string>> = { blue: "blue", sky: "blue", yellow: "yellow", amber: "yellow", pink: "magenta", magenta: "magenta", green: "mint", mint: "mint", teal: "mint", orange: "coral", red: "coral", coral: "coral", purple: "lilac", violet: "lilac", lilac: "lilac" };
+const SHAPES: Readonly<Record<string, BotFaceShape>> = { cloud: "blob", blob: "blob", circle: "round", round: "round", heart: "heart", triangle: "triangle", cookie: "cookie" };
+
 /** A routine's schedule as text, whatever shape the page gives it. */
 function scheduleText(routine: Record<string, unknown>): string | undefined {
   for (const key of ["schedule", "cron", "cronExpression", "frequency", "recurrence", "interval", "when"]) {
@@ -199,11 +204,14 @@ export function grokTemplate(bot: Record<string, unknown>, origin?: string): Bot
   const slug = origin ? /\/bots\/([^/?#]+)/u.exec(origin)?.[1] : undefined;
   const name = str(bot["name"]) || str(bot["title"]) || str(bot["displayName"]) || (slug ? displayName(slug) : "Grok Bot");
   const template = blankTemplate("grok", oneLine(name, BOT_LIMITS.name), origin);
-  const author = bot["author"] ?? bot["creator"] ?? bot["owner"];
+  const author = bot["author"] ?? bot["creatorName"] ?? bot["creator"] ?? bot["owner"];
   const authorName = typeof author === "string" ? author.trim() : isRecord(author) ? str(author["name"]) || str(author["displayName"]) || str(author["username"]) || str(author["handle"]) : "";
   if (authorName) template.author = authorName;
-  const description = str(bot["description"]) || str(bot["tagline"]) || str(bot["shortDescription"]);
+  const description = str(bot["description"]) || str(bot["summary"]) || str(bot["tagline"]) || str(bot["shortDescription"]);
   if (description) template.description = description;
+  const color = BOT_FACE_COLORS.find((entry) => entry.id === COLORS[str(bot["color"]).toLowerCase()])?.hex;
+  const shape = SHAPES[str(bot["shape"]).toLowerCase()];
+  if (color || shape) template.avatar = { ...(shape ? { shape } : {}), ...(color ? { color } : {}) };
   template.soul = str(bot["instructions"]);
   const emoji = oneEmoji(bot["emoji"]) ?? oneEmoji(bot["icon"]);
   if (emoji) template.emoji = emoji;
@@ -227,14 +235,14 @@ export function grokTemplate(bot: Record<string, unknown>, origin?: string): Bot
   }
   for (const routine of list(bot["routines"])) {
     if (!isRecord(routine)) continue;
-    const prompt = str(routine["prompt"]) || str(routine["instructions"]) || str(routine["content"]) || str(routine["task"]) || str(routine["description"]);
+    const prompt = str(routine["prompt"]) || str(routine["instructions"]) || str(routine["content"]) || str(routine["task"]) || str(routine["description"]) || str(routine["summary"]);
     const routineName = str(routine["name"]) || str(routine["title"]) || oneLine(prompt, 60) || "Routine";
     if (!prompt) {
       template.dropped.push(`Routine ${routineName}: it has no prompt.`);
       continue;
     }
     const schedule = scheduleText(routine);
-    const description = str(routine["description"]);
+    const description = str(routine["description"]) || str(routine["summary"]);
     const entry: BotTemplateRoutine = { name: routineName, prompt, ...(schedule ? { schedule } : {}), ...(description && description !== prompt ? { description } : {}) };
     template.routines.push(entry);
   }
@@ -258,7 +266,9 @@ export function parseGrokBotPage(html: string, origin?: string): BotTemplate {
   const rows = flightRows(payload);
   const found = findBot(rows) ?? scanForBot(payload);
   const bot = found ? resolved(found, rows) : undefined;
-  if (!isRecord(bot) || !str(bot["instructions"])) {
+  // Instructions may be empty (the job then lives in its memories); a bot with nothing at all is no bot.
+  const content = isRecord(bot) && (str(bot["instructions"]) || list(bot["memories"]).length || list(bot["skills"]).length || str(bot["description"]));
+  if (!isRecord(bot) || !content) {
     throw new TemplateFormatError(`HUI could not find the bot's instructions on this Grok Bot page: x.ai may have changed it. ${GROK_PASTE_HINT}`);
   }
   return grokTemplate(bot, origin);

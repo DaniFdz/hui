@@ -323,7 +323,14 @@ export class BotTemplateService {
 
     // SOUL.md: the persona, then what it already knows.
     const source = `${BOT_TEMPLATE_FORMATS[template.format]}${template.origin ? ` (${oneLine(template.origin, 120)})` : ""}`;
-    const composed = composeSoul(template.soul, template.memories, source);
+    // A template whose job lives in its memories (many Grok marketplace bots leave their instructions empty) keeps them:
+    // its description stands in as the persona they follow.
+    let persona = template.soul;
+    if (!persona.trim() && template.memories.length) {
+      persona = template.description?.trim() || `You are ${name}${template.title ? `, ${template.title}` : ""}.`;
+      notes.push("It has no instructions of its own: its description stands in as its persona, followed by what it already knows.");
+    }
+    const composed = composeSoul(persona, template.memories, source);
     if (composed.cut) notes.push(`Its persona has ${template.soul.length.toLocaleString("en-US")} characters; SOUL.md keeps the first ${BOT_LIMITS.soul.toLocaleString("en-US")}.`);
     const left = template.memories.length - composed.included;
     if (left) dropped.push(composed.soul ? `${plural(left, "memory", "memories")} that didn't fit in SOUL.md's ${BOT_LIMITS.soul.toLocaleString("en-US")} characters.` : `${plural(left, "memory", "memories")}: without a persona the bot writes its own soul in its first conversation.`);

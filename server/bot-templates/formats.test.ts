@@ -76,6 +76,24 @@ test("a payload whose rows don't parse is still searched for the bot's object; a
   assert.equal(rows.json.get("b"), "{\"k\":1}", "the row after a text row starts right where its bytes end");
 });
 
+test("a marketplace bot that keeps its job in its memories: its creator, empty instructions, a memory in a text row, a routine's summary, its color and shape", () => {
+  const job = "JOB\nOwns: the weekly plan.\nNever books anything.";
+  const bytes = Buffer.from(job, "utf8").length.toString(16);
+  const bot = {
+    id: "planner", name: "Weekly Planner", creatorName: "Sample Creator", description: "Plans the week", instructions: "", color: "blue", shape: "cloud", imageUrl: "https://example.com/p.jpg",
+    memories: [{ id: "memory-0", name: "memory 1", description: "$a" }], skills: [], routines: [{ id: "routine-0", name: "Sunday plan", summary: "Disabled by default. Draft next week's plan." }],
+    integrations: [{ id: "integration-0", name: "Google Calendar", description: "" }],
+  };
+  const page = nextPage(`9:["$","main",null,{"children":[["$","script",null,{"type":"application/ld+json"}],{"bot":${JSON.stringify(bot)}}]}]\na:T${bytes},${job}`);
+  const template = parseGrokBotPage(page, "https://x.ai/bot/marketplace/bots/planner");
+  assert.deepEqual([template.name, template.author, template.description, template.soul], ["Weekly Planner", "Sample Creator", "Plans the week", ""]);
+  assert.deepEqual(template.memories, [{ name: "memory 1", text: job }]);
+  assert.deepEqual(template.routines, [{ name: "Sunday plan", prompt: "Disabled by default. Draft next week's plan." }]);
+  assert.deepEqual(template.avatar, { shape: "blob", color: BOT_FACE_COLORS.find((color) => color.id === "blue")!.hex });
+  assert.match(template.dropped.join("\n"), /Its picture/u);
+  assert.deepEqual(template.integrations, [{ name: "Google Calendar" }]);
+});
+
 test("only marketplace links on x.ai over https are fetched", () => {
   assert.equal(grokBotUrl("https://x.ai/bot/marketplace/bots/trip-planner"), "https://x.ai/bot/marketplace/bots/trip-planner");
   assert.equal(grokBotUrl(" https://www.x.ai/bot/marketplace/bots/trip_planner/?ref=share "), "https://x.ai/bot/marketplace/bots/trip_planner");

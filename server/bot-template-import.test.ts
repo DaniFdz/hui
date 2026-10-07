@@ -112,6 +112,12 @@ test("the plan: a unique handle, a skill renamed away from its directory's, the 
   assert.ok(planned instanceof Error, "a template is not a source: the preview reads sources only");
 });
 
+test("a template whose job is in its memories keeps them: its description stands in as the persona", async () => {
+  const { service, created } = harness();
+  await service.create({ template: { format: "grok", name: "Weekly Planner", description: "Plans the week", soul: "", memories: [{ name: "memory 1", text: "Owns the weekly plan." }], skills: [], routines: [], integrations: [], dropped: [], notes: [] } });
+  assert.match(String(created[0]!["soul"]), /^Plans the week\n\n## What you already know\n[\s\S]*- \*\*memory 1:\*\* Owns the weekly plan\.$/u);
+});
+
 test("a failure after the bot exists deletes it again, so half an import never stays", async () => {
   const { service, calls } = harness({ failRoutine: true });
   await assert.rejects(service.create({ template: GROK_LIKE }), /the automation store is broken/u);
