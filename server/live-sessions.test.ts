@@ -28,7 +28,7 @@ process.env["XDG_CONFIG_HOME"] = await mkdtemp(join(tmpdir(), "hui-live-"));
 
 const { LiveSessions, SessionBusyError } = await import("./live-sessions.ts");
 const { deleteSession } = await import("./hui.ts");
-const { readRegistry, SessionRegistryError } = await import("./sessions.ts");
+const { readRegistry, SessionRegistryError, updateRegistry } = await import("./sessions.ts");
 const { readObservability } = await import("./observability.ts");
 const { workers } = await import("./workers.ts");
 type SessionRecord = import("./sessions.ts").SessionRecord;
@@ -299,6 +299,40 @@ function waitForStored(
   return waitFor(label, async () => done(await stored(id)), {
     state: async () => ({ registry: await stored(id), manager: managerView(manager, id) }),
   });
+}
+
+/**
+ * The real registry, whose writes can be acknowledged late: each one is in the
+ * file, but its caller hears back only when the test says so, as on a busy
+ * machine. Later writes go on meanwhile, in order.
+ */
+function lateRegistry() {
+  let holding = false;
+  const waiting: Array<() => void> = [];
+  const update: typeof updateRegistry = async (mutate) => {
+    const sessions = await updateRegistry(mutate);
+    if (holding) await new Promise<void>((resolve) => waiting.push(resolve));
+    return sessions;
+  };
+  // What a caller does once it hears back is promise callbacks, all run before the next macrotask.
+  const resumed = () => new Promise((resolve) => setImmediate(resolve));
+  return {
+    update,
+    /** Holds back the acknowledgement of every write from now on. */
+    hold: () => { holding = true; },
+    /** Writes in the file whose callers have not heard back yet. */
+    get waiting(): number { return waiting.length; },
+    /** Acknowledges the oldest write held back; resolves once its caller has resumed. */
+    async acknowledgeOldest(): Promise<void> {
+      waiting.shift()?.();
+      await resumed();
+    },
+    async acknowledgeAll(): Promise<void> {
+      holding = false;
+      for (const resolve of waiting.splice(0)) resolve();
+      await resumed();
+    },
+  };
 }
 
 test("tool inspection never boots cold sessions and marks unsupported runtimes honestly", async () => {
@@ -672,6 +706,67 @@ test("settled background activity becomes unread and a reader clears it", async 
   started[0]?.emit({ type: "settled" });
   assert.equal((await readRegistry()).find((session) => session.id === "unread")?.unread, undefined);
   reader.unsubscribe();
+});
+
+test("opening a session whose unread mark is still being saved clears the mark", async () => {
+  const registry = lateRegistry();
+  const started: FakeSession[] = [];
+  const updates: SessionStatusUpdate[] = [];
+  const manager = new LiveSessions(factory(started), registry.update);
+  manager.watchStatuses((update) => updates.push(update));
+  manager.ensure(recordFor("unread-late"));
+  await waitForBoot(manager, "unread-late");
+  await manager.prompt("unread-late", "finish in background");
+
+  // Settling unwatched queues two writes: the cleared run marker, then the
+  // unread mark. Both reach the file before the manager hears back from either.
+  registry.hold();
+  started[0]!.emit({ type: "settled" });
+  await waitForStored(manager, "unread-late", "the unread mark in the file", (record) => record?.unread === true && registry.waiting === 2);
+  // The run marker's write read the registry before the mark was in it.
+  await registry.acknowledgeOldest();
+  assert.equal(managerView(manager, "unread-late")?.unread, true, "an older write landing does not take the mark back");
+
+  const reader = manager.watch("unread-late", () => {}, { reader: true });
+  assert.equal(updates.at(-1)?.unread, false, "opening it clears the mark at once");
+  await registry.acknowledgeAll();
+  await waitForStored(manager, "unread-late", "the reader's read to be saved", (record) => !record?.unread);
+  assert.equal(managerView(manager, "unread-late")?.unread, undefined);
+  reader.unsubscribe();
+  manager.disposeAll();
+});
+
+test("a turn that settles unwatched while a read is still being saved is marked unread", async () => {
+  const registry = lateRegistry();
+  const started: FakeSession[] = [];
+  const updates: SessionStatusUpdate[] = [];
+  const manager = new LiveSessions(factory(started), registry.update);
+  manager.watchStatuses((update) => updates.push(update));
+  manager.ensure(recordFor("unread-missed"));
+  await waitForBoot(manager, "unread-missed");
+  await manager.prompt("unread-missed", "first run");
+  started[0]!.emit({ type: "settled" });
+  await waitForStored(manager, "unread-missed", "the first run's unread mark", (record) => record?.unread === true);
+  // Every write queued so far has landed and been acknowledged.
+  await updateRegistry((sessions) => sessions);
+
+  // A write that reads the registry while the mark is still in it, then a reader's read behind it.
+  registry.hold();
+  const thinking = manager.setThinking("unread-missed", "high");
+  await waitForStored(manager, "unread-missed", "the thinking level in the file", (record) => record?.thinking === "high" && registry.waiting === 1);
+  const reader = manager.watch("unread-missed", () => {}, { reader: true });
+  await waitForStored(manager, "unread-missed", "the read in the file", (record) => !record?.unread && registry.waiting === 2);
+  await registry.acknowledgeOldest();
+  assert.equal(managerView(manager, "unread-missed")?.unread, undefined, "an older write landing does not bring the mark back");
+
+  // The reader leaves and another turn finishes unwatched.
+  reader.unsubscribe();
+  started[0]!.emit({ type: "settled" });
+  await waitFor("the new unread mark to be announced", () => updates.at(-1)?.unread === true, { state: () => updates.slice(-3) });
+  await registry.acknowledgeAll();
+  await thinking;
+  await waitForStored(manager, "unread-missed", "the new unread mark to be saved", (record) => record?.unread === true);
+  manager.disposeAll();
 });
 
 test("a primary failure before output retries once on the configured fallback", async () => {

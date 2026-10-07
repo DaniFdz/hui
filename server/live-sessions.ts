@@ -132,6 +132,12 @@ function failureDetail(error: unknown): string {
 
 type Live = {
   record: SessionRecord;
+  /** Changes already made to `record` whose registry writes are still queued.
+   * A write that lands before them read the registry without them, so the
+   * record it hands back keeps them: an unread mark set or cleared here must
+   * not flicker back while its write waits, or a read or a settle that checks
+   * it would skip its own write. */
+  unsaved: Set<Partial<SessionRecord>>;
   status: SessionStatus;
   /** Set before invoking `runtime.prompt`, closing the gap before the runtime
    * reports `agent_start` or flips its own streaming flag. */
@@ -293,7 +299,7 @@ export class LiveSessions {
       // on the same live session, not a replacement that silently strands SSE.
       existing.closed = false;
       existing.promptPending = false;
-      existing.record = record;
+      existing.record = this.#withUnsaved(existing, record);
       existing.bootStartedAt = Date.now();
       existing.bootDurationMs = undefined;
       existing.reattaching = unreachable;
@@ -303,6 +309,7 @@ export class LiveSessions {
     }
     const live: Live = {
       record,
+      unsaved: new Set(),
       status: "starting",
       promptPending: false,
       submissions: 0,
@@ -622,13 +629,12 @@ export class LiveSessions {
     const live = this.#live.get(id);
     if (!live) throw new Error(`Unknown live session: ${id}`);
     if (live.record.unread !== true) return live.record;
-    const previous = live.record;
     live.record = { ...live.record, unread: undefined };
     this.#publishStatus(live, this.#reported(live), true, false);
     try {
-      await this.#save(live, { unread: undefined });
+      await this.#save(live, { unread: undefined }, true);
     } catch (error) {
-      live.record = previous;
+      live.record = { ...live.record, unread: true };
       this.#publishStatus(live, this.#reported(live), true, true);
       throw error;
     }
@@ -1086,7 +1092,7 @@ export class LiveSessions {
     live.unsubscribeExit = undefined;
     live.runtime?.dispose();
     live.runtime = undefined;
-    live.record = record;
+    live.record = this.#withUnsaved(live, record);
     live.bootStartedAt = Date.now();
     live.bootDurationMs = undefined;
     this.#setStatus(live, "starting");
@@ -1592,12 +1598,12 @@ export class LiveSessions {
 
   #setUnread(live: Live, unread: boolean): void {
     if ((live.record.unread === true) === unread) return;
-    const previous = live.record;
+    const previous = live.record.unread;
     live.record = { ...live.record, unread: unread ? true : undefined };
     this.#publishStatus(live, this.#reported(live));
-    void this.#save(live, { unread: unread ? true : undefined }).catch((error) => {
-      live.record = previous;
-      this.#publishStatus(live, this.#reported(live), true, previous.unread === true);
+    void this.#save(live, { unread: unread ? true : undefined }, true).catch((error) => {
+      live.record = { ...live.record, unread: previous };
+      this.#publishStatus(live, this.#reported(live), true, previous === true);
       this.#broadcast(live, {
         kind: "event",
         event: {
@@ -1619,7 +1625,7 @@ export class LiveSessions {
     const runPrompt = live.record.runPrompt;
     const runRecoveryAttempts = live.record.runRecoveryAttempts;
     live.record = { ...live.record, runStartedAt: undefined, runPrompt: undefined, runRecoveryAttempts: undefined };
-    void this.#save(live, { runStartedAt: undefined, runPrompt: undefined, runRecoveryAttempts: undefined }).catch((error) => {
+    void this.#save(live, { runStartedAt: undefined, runPrompt: undefined, runRecoveryAttempts: undefined }, true).catch((error) => {
       live.record = { ...live.record, runStartedAt, runPrompt, runRecoveryAttempts };
       this.#broadcast(live, {
         kind: "event",
@@ -1677,30 +1683,43 @@ export class LiveSessions {
   }
 
   /** Patches the newest record through the registry's serialized mutation
-   * queue, preserving metadata written by overlapping HTTP requests. */
-  async #save(live: Live, patch: Partial<SessionRecord>): Promise<void> {
+   * queue, preserving metadata written by overlapping HTTP requests. An
+   * `optimistic` patch is in `live.record` already and stays there while its
+   * write waits behind others (see `Live.unsaved`). */
+  async #save(live: Live, patch: Partial<SessionRecord>, optimistic = false): Promise<void> {
     let saved: SessionRecord | undefined;
-    await this.#updateRegistry((sessions) => {
-      const next = sessions.map((record) => {
-        if (record.id !== live.record.id) {
-          return record;
+    if (optimistic) live.unsaved.add(patch);
+    try {
+      await this.#updateRegistry((sessions) => {
+        const next = sessions.map((record) => {
+          if (record.id !== live.record.id) {
+            return record;
+          }
+          saved = { ...record, ...patch };
+          return saved;
+        });
+        // `ensure` is public and useful in isolated runtime tests, so it may be
+        // given a record not written by the HTTP layer. A closed boot is the one
+        // case where appending would resurrect a deliberately deleted row.
+        if (!saved && !live.closed && !this.#isDeleted(live.record.id)) {
+          saved = { ...live.record, ...patch };
+          next.push(saved);
         }
-        saved = { ...record, ...patch };
-        return saved;
+        return next;
       });
-      // `ensure` is public and useful in isolated runtime tests, so it may be
-      // given a record not written by the HTTP layer. A closed boot is the one
-      // case where appending would resurrect a deliberately deleted row.
-      if (!saved && !live.closed && !this.#isDeleted(live.record.id)) {
-        saved = { ...live.record, ...patch };
-        next.push(saved);
-      }
-      return next;
-    });
+    } finally {
+      // Not `.finally()` on the promise: that would resume callers a tick later.
+      live.unsaved.delete(patch);
+    }
     // If the row was deleted while pi booted, do not recreate it.
     if (saved) {
-      live.record = saved;
+      live.record = this.#withUnsaved(live, saved);
     }
+  }
+
+  /** `record` with this process's changes whose writes are still queued. */
+  #withUnsaved(live: Live, record: SessionRecord): SessionRecord {
+    return live.unsaved.size ? Object.assign({ ...record }, ...live.unsaved) : record;
   }
 
   #isDeleted(id: string): boolean {
