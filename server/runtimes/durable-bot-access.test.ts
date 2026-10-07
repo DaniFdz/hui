@@ -312,17 +312,17 @@ test("a bot has every tool and skill a session in its directory has until the op
   const plain = await startDurable({ cwd: f.cwd, huiSessionId: "plain" }, f.host);
   const plainTools = names((await plain.inspect()).tools);
   const { id, session } = await f.bot(NONE);
-  assert.deepEqual(names((await session.inspect()).tools), [...plainTools, "message_bot", "write_soul", "set_profile"], "every tool, message_bot and its soul and profile tools");
+  assert.deepEqual(names((await session.inspect()).tools), [...plainTools, "message_bot", "write_soul", "set_profile", "routines"], "every tool, message_bot, its soul and profile tools and its routines");
   assert.deepEqual((await (await f.host.open()).snapshot(AgentDoc, id, durableContext))?.tools, { remove: ["request_access", "load_skill"] },
     "its own tools wait until it has a use for them");
-  assert.deepEqual(names(session.botOffer()), [...plainTools, "message_bot"], "the operator can turn off any of them but its essentials");
+  assert.deepEqual(names(session.botOffer()), [...plainTools, "message_bot", "routines"], "the operator can turn off any of them but its essentials");
   assert.ok(plainTools.includes("secret_request"), "secret_request among them, on like every HUI tool");
   assert.equal(session.botOffer().find((tool) => tool.name === "fixture_other")?.group, "extension");
   assert.deepEqual(plain.botOffer(), []);
   await session.prompt("plain turn");
   await settledWith(session, answered("Fixture response"));
   const [first] = await requests(f.log);
-  assert.deepEqual(toolNames(first), [...plainTools, "message_bot", "write_soul", "set_profile"]);
+  assert.deepEqual(toolNames(first), [...plainTools, "message_bot", "write_soul", "set_profile", "routines"]);
   const system = JSON.stringify(first?.system);
   assert.match(system, /Use the read tool to load a skill's file/u, "PI's own skills section, every skill");
   assert.match(system, /<name>alpha<\/name>[^]*<name>beta<\/name>/u);
@@ -614,5 +614,5 @@ test("a bot document from before the lists reads as nothing turned off, and an o
   assert.equal(old?.bot, "bot-restricted", "the same version: an older HUI reads it and ignores the lists, so a rollback keeps the chat");
   const plain = await startDurable({ cwd: f.cwd, huiSessionId: "plain" }, f.host);
   const session = await startDurable({ cwd: f.cwd, sessionFile: `durable:${created.id}`, huiSessionId: "old-chat" }, f.host);
-  assert.deepEqual(names((await session.inspect()).tools), [...names((await plain.inspect()).tools), "message_bot", "write_soul", "set_profile"], "every tool, as before");
+  assert.deepEqual(names((await session.inspect()).tools), [...names((await plain.inspect()).tools), "message_bot", "write_soul", "set_profile", "routines"], "every tool, as before");
 });

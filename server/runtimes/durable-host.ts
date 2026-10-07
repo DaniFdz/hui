@@ -30,6 +30,7 @@ import type { Contribution, DurableExtensions, ExtensionHost } from "./durable-e
 import { OptChatManager, type OptChatTuning } from "./durable-optchat.ts";
 import { conversationBot, conversationBotState, huiBotsExtensions, type BotAccess, type BotSoulHost, type BotState } from "./durable-bots.ts";
 import { botAccessParts, botMayCall, builtinOffer, type BotChat, type OfferedTool } from "./durable-bot-access.ts";
+import { botRoutinesTool } from "./durable-bot-routines.ts";
 import { invokeAgentTool } from "../agent-tools-bridge.ts";
 
 /** Durable APIs take a cancellation context; HUI's own calls are not scoped. */
@@ -188,8 +189,8 @@ export class DurableHost implements ExtensionHost {
   #lookupCaller: (conversationId: ConversationId) => Promise<string | undefined>;
   #tools: Extension;
   /** The `bots`, `bot_access` and `soul` sections (inert outside bots' chats), and the tools only bots' chats select:
-   * `message_bot`, `write_soul`, `set_profile`, `request_access` and `load_skill` (`durable-bots.ts`,
-   * `durable-bot-access.ts`). */
+   * `message_bot`, `write_soul`, `set_profile`, `request_access`, `load_skill` and `routines` (`durable-bots.ts`,
+   * `durable-bot-access.ts`, `durable-bot-routines.ts`). */
   #bots: { section: Extension; tools: Extension };
   /** The `bots` section of a bot's chat; the gateway sets it, a worker host leaves it unset. */
   botSection: ((botId: string) => Promise<string | undefined>) | undefined;
@@ -277,7 +278,7 @@ export class DurableHost implements ExtensionHost {
     });
     this.#bots = huiBotsExtensions({
       invoke, section: async (botId) => this.botSection?.(botId), souls: () => this.botSouls,
-      tools: access.tools, sections: access.sections,
+      tools: [...access.tools, botRoutinesTool({ invoke })], sections: access.sections,
     });
     // A bot's chat lists only the skills the operator left on.
     this.prompt.disabledSkillsFor = async (conversationId) => (await this.botStateFor(conversationId))?.disabledSkills;

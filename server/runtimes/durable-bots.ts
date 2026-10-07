@@ -107,7 +107,8 @@ export type BotsExtensionOptions = {
   section(botId: string): Promise<string | undefined>;
   /** This host's SOUL.md resolver; undefined (a host that has none yet) leaves the `soul` section out. */
   souls(): BotSoulHost | undefined;
-  /** More tools only bots' chats get, after `set_profile`: `request_access` and `load_skill` (`durable-bot-access.ts`). */
+  /** More tools only bots' chats get, after `set_profile`: `request_access` and `load_skill` (`durable-bot-access.ts`) and
+   * `routines` (`durable-bot-routines.ts`). */
   tools?: readonly ToolRegistration[];
   /** More sections, inert outside bots' chats, between `bots` and `soul` (`bot_access`). */
   sections?: readonly PromptSection[];
