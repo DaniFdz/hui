@@ -29,6 +29,9 @@ import { BOT_CLEANUP_FILE, BotInputError, BotRegistry, BotsOffError, BotStoreErr
 import { BotService } from "./bot-service.ts";
 import { remoteBots } from "./bot-remote.ts";
 import { BOT_MEMORY_PAGE, BOTS_EVENTS_ROUTE, BOTS_ROUTE, createBotRoutes } from "./bot-routes.ts";
+import { BOT_TRIGGERS_ROUTE } from "./bot-trigger-routes.ts";
+import { createGatewayTriggers } from "./bot-triggers-gateway.ts";
+import { isHookPath } from "./bot-triggers-webhook.ts";
 import { durableBotConversations } from "./bot-conversations.ts";
 import { CallBroker, providerCallAccounts } from "./calls.ts";
 import { CALLS_ROUTE, createCallRoutes } from "./call-routes.ts";
@@ -368,6 +371,7 @@ registerAgentToolHandler(async (invocation) => {
   // A bot's chat only: the service refuses every other caller.
   if (invocation.action === "message_bot") return bots.messageBot(invocation.callerSessionId, invocation.params);
   if (invocation.action === "set_profile") return bots.setProfile(invocation.callerSessionId, invocation.params);
+  if (invocation.action === "triggers") return triggers.service.tool(invocation.callerSessionId, invocation.params);
   if (invocation.action === "suggest_task" || invocation.action === "dismiss_task") {
     const caller = (await readRegistry()).find(({ id }) => id === invocation.callerSessionId);
     if (!caller) throw new TaskSuggestionInputError("Conversation no longer exists.");
@@ -569,6 +573,13 @@ async function writeSettings(raw: unknown): Promise<Settings> {
   await managedBrowser.applySettings(settings.browser);
   macPower?.setKeepAwake(settings.power.keepAwake);
   if (botsWereOn && !botsEnabled(settings)) quietBots();
+  // Triggers' pollers stop while bots are off and resume from their cursors once they are on again.
+  if (botsWereOn !== botsEnabled(settings)) {
+    void triggers.service.setActive(botsEnabled(settings)).catch((error: unknown) => recordDiagnosticEvent({
+      area: "session", level: "warning", action: "triggers_toggle_failed", summary: "Triggers could not follow bots being turned on or off",
+      detail: error instanceof Error ? error.message : String(error),
+    }));
+  }
   return settings;
 }
 
@@ -1127,6 +1138,16 @@ export function sessionMutationErrorStatus(error: unknown): 400 | 500 {
  * `gh`; HUI never sees the token. `HUI_GITHUB_CLI` points E2E at a fake executable. */
 const GH_COMMAND = process.env["HUI_GITHUB_CLI"] || "gh";
 const githubCli = new GitHubCli({ command: GH_COMMAND });
+/** Bots' triggers (HUI-18): GitHub pollers through the same `gh`, the sessions bots start, and webhook calls. */
+const triggers = createGatewayTriggers({
+  send: (botId, message) => bots.send(botId, message),
+  listBots: () => botRegistry.list(),
+  readSessions: readRegistry,
+  sessions: liveSessions,
+  active: botsOn,
+  ghCommand: GH_COMMAND,
+  report: (event) => recordDiagnosticEvent({ area: "session", ...event }),
+});
 const githubPreviews = new GitHubPreviews(ghApi(GH_COMMAND));
 const githubContributions = new GitHubContributionsReader(GH_COMMAND);
 const pullRequestStatuses = new PullRequestStatuses(previewPullRequestFetcher(githubPreviews));
@@ -2335,6 +2356,13 @@ async function serveBotRoute(request: Connect.IncomingMessage, response: ServerR
   else sendJson(response, result.status, result.body);
 }
 
+/** `/__hui/bots/:id/triggers…` (`bot-trigger-routes.ts`). */
+async function serveTriggerRoute(request: Connect.IncomingMessage, response: ServerResponse, path: string): Promise<void> {
+  const result = await triggers.routes.handle({ method: request.method ?? "GET", path, body: (maxBytes) => readBody(request, maxBytes) });
+  if (!result) sendJson(response, 404, { error: `unknown route: ${path}` });
+  else sendJson(response, result.status, result.body);
+}
+
 async function handleRequest(
   request: Connect.IncomingMessage,
   response: ServerResponse,
@@ -2406,6 +2434,13 @@ async function handleRequest(
     }
     if (await refusedWhileBotsOff(response)) return;
     await serveBotRoute(request, response, path);
+    return;
+  }
+
+  // A webhook trigger's caller is another program: its token is the credential, not x-hui (`bot-triggers-webhook.ts`).
+  if (isHookPath(path)) {
+    const result = await triggers.hook(request, path);
+    sendJson(response, result.status, result.body);
     return;
   }
 
@@ -2672,7 +2707,7 @@ async function handleRequest(
   }
 
   if (path === BOTS_ROUTE || path.startsWith(`${BOTS_ROUTE}/`)) {
-    if (!await refusedWhileBotsOff(response)) await serveBotRoute(request, response, path);
+    if (!await refusedWhileBotsOff(response)) await (BOT_TRIGGERS_ROUTE.test(path) ? serveTriggerRoute(request, response, path) : serveBotRoute(request, response, path));
     return;
   }
 
@@ -3946,6 +3981,11 @@ export async function startBackend(): Promise<void> {
   }));
   initializeWatchers();
   initializeSubagents();
+  // Triggers: what waited for a cooldown across the restart, the session watch and, while bots are on, the pollers.
+  void triggers.start().catch((error: unknown) => recordDiagnosticEvent({
+    area: "session", level: "warning", action: "triggers_start_failed", summary: "Bots' triggers did not start",
+    detail: error instanceof Error ? error.message : String(error),
+  }));
   void secretFiles.sweep();
   await workers.list().catch(() => undefined);
   // Opening the Durable store resumes its interrupted runs, including those of
@@ -3992,6 +4032,7 @@ export function stopBackend(): void {
   managedBrowser.dispose();
   terminals.dispose();
   githubCli.dispose();
+  triggers.stop();
   automation.dispose();
   subagents.dispose();
   watchers.dispose();

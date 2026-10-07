@@ -326,13 +326,15 @@ export function isBotAccessQuestion(question: { method: string; title?: string; 
     && question.options?.length === 2 && question.options[0] === BOT_ACCESS_ANSWERS[0] && question.options[1] === BOT_ACCESS_ANSWERS[1];
 }
 
-/** Who started a bot's turn, by the message that started it: a routine (`[routine: name] …`), another bot
- * (`[from @handle] …`), HUI's kickoff of a new bot, or else the operator. */
-export type BotTurnOrigin = { kind: "operator" } | { kind: "kickoff" } | { kind: "routine"; name: string } | { kind: "bot"; handle: string };
+/** Who started a bot's turn, by the message that started it: a routine (`[routine: name] …`), a trigger
+ * (`[trigger: name · …] …`), another bot (`[from @handle] …`), HUI's kickoff of a new bot, or else the operator. */
+export type BotTurnOrigin = { kind: "operator" } | { kind: "kickoff" } | { kind: "routine"; name: string } | { kind: "trigger"; name: string } | { kind: "bot"; handle: string };
 
 export function botTurnOrigin(text: string | undefined): BotTurnOrigin {
   if (!text) return { kind: "operator" };
   if (text.startsWith("[routine: ")) return { kind: "routine", name: /^\[routine: (.*?)\] /u.exec(text)?.[1] ?? "" };
+  // A trigger's name holds no `[`, `]` or `·`: it ends at the summary's ` · ` or at the bracket.
+  if (text.startsWith("[trigger: ")) return { kind: "trigger", name: /^\[trigger: ([^\]·\n]*?)(?: · |\])/u.exec(text)?.[1] ?? "" };
   const bot = /^\[from @([a-z0-9-]+)(?: · hop [1-9]\d*)?\] /u.exec(text);
   if (bot) return { kind: "bot", handle: bot[1]! };
   return botKickoffName(text) === undefined ? { kind: "operator" } : { kind: "kickoff" };

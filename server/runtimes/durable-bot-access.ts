@@ -29,6 +29,7 @@ import { Type } from "typebox";
 import { BOT_ACCESS_ANSWERS, botTurnOrigin, type BotAccess, type BotCatalogSkill, type BotCatalogTool, type BotSkillRef, type BotToolGroup } from "../../shared/bots.ts";
 import { bundledSkills } from "../bundled-skills.ts";
 import { BotDoc, conversationBotState, MESSAGE_BOT_TOOL, SET_PROFILE_TOOL, WRITE_SOUL_TOOL } from "./durable-bots.ts";
+import { TRIGGERS_TOOL, TRIGGERS_TOOL_INFO } from "./durable-bot-triggers.ts";
 import { huiToolDefinitions } from "./hui-tools.ts";
 import type { QuestionDraft } from "./question-box.ts";
 import type { RuntimeQuestionResponse } from "./types.ts";
@@ -97,6 +98,7 @@ const CODING_TOOLS: Readonly<Record<string, { group: BotToolGroup; label: string
 };
 const BOT_TOOLS: Readonly<Record<string, { label: string; description: string }>> = {
   [MESSAGE_BOT_TOOL]: { label: "Message bots", description: "Message another bot of this HUI, which answers in its own chat" },
+  [TRIGGERS_TOOL]: TRIGGERS_TOOL_INFO,
 };
 
 function firstSentence(text: string): string {
@@ -307,6 +309,7 @@ export function turnNote(input: string | undefined): string | undefined {
   const origin = botTurnOrigin(input);
   switch (origin.kind) {
     case "routine": return `Asked during the routine "${origin.name}".`;
+    case "trigger": return `Asked while handling the trigger "${origin.name}".`;
     case "bot": return `Asked while handling a message from @${origin.handle}.`;
     case "kickoff": return "Asked in its first turn, before you wrote.";
     case "operator": return undefined;

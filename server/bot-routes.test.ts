@@ -768,7 +768,7 @@ test("a bot's tools and skills through the routes: what is off leaves its reques
   }
   const refused = await call("/__hui/bots", "POST", { name: "Refused", soul: "x", disabledTools: ["teleport"] });
   assert.equal(refused.status, 400);
-  assert.match(String(refused.body["error"]), /^Unknown tool: teleport\. Tools you can turn off: read, write, edit, bash, .*message_bot\. An extension's tools can be turned off once the bot's chat runs\.$/u);
+  assert.match(String(refused.body["error"]), /^Unknown tool: teleport\. Tools you can turn off: read, write, edit, bash, .*message_bot, triggers\. An extension's tools can be turned off once the bot's chat runs\.$/u);
   const created = await call("/__hui/bots", "POST", { name: "Tooly", soul: "# Who I am\nTOOLY_SOUL.", disabledTools: ["bash"], disabledSkills: ["tools-beta"] });
   assert.equal(created.status, 201);
   const tooly = botOf(created);

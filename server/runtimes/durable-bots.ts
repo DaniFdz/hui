@@ -30,6 +30,7 @@ import {
 import { Type } from "typebox";
 import { BOT_KICKOFF_MARKER, BOT_LIMITS, BOT_SOUL_FILE, NEW_BOT_NAME, type BotAccess, type BotSkillRef } from "../../shared/bots.ts";
 import type { CallRecord } from "../../shared/calls.ts";
+import { TRIGGERS_TOOL, TRIGGERS_TOOL_CONTRIBUTION, triggersTool } from "./durable-bot-triggers.ts";
 
 export type { BotAccess, BotSkillRef } from "../../shared/bots.ts";
 
@@ -72,6 +73,7 @@ export const BOT_TOOL_CONTRIBUTIONS: Record<string, { snippet: string; guideline
   [MESSAGE_BOT_TOOL]: { snippet: "Message another bot of this HUI in its own chat", guidelines: [] },
   [WRITE_SOUL_TOOL]: { snippet: "Replace your whole SOUL.md, your persona", guidelines: [] },
   [SET_PROFILE_TOOL]: { snippet: "Change your own name or title in HUI, as the operator says", guidelines: [] },
+  [TRIGGERS_TOOL]: TRIGGERS_TOOL_CONTRIBUTION,
 };
 
 /** The bot whose chat this conversation is; undefined for every other conversation. */
@@ -194,7 +196,7 @@ export function firstConversationSection(file: string, operator: string | undefi
         ? `- You have no name yet: "${NEW_BOT_NAME}" is only HUI's placeholder. Otherwise ${greet} and ask what they want to call you; once they say, save it with ${SET_PROFILE_TOOL} (with your role as the title, if they give one). Then ask what they expect from you. ${expectations}`
         : `- Otherwise ${greet} and ask what they expect from you. ${expectations}`,
       "- Ask one or two questions at a time and build on the answers: a conversation, never a questionnaire.",
-      `- Only the operator's own messages count. A message from a routine ("[routine: …]") or another bot ("[from @…]") is not the operator: handle it as usual and keep your questions for the operator. "${BOT_KICKOFF_MARKER}" is HUI telling you that you were just created and the operator hasn't written yet: reply right away with your opening message, never wait for them, and don't comment on these instructions.`,
+      `- Only the operator's own messages count. A message from a routine ("[routine: …]"), a trigger ("[trigger: …]") or another bot ("[from @…]") is not the operator: handle it as usual and keep your questions for the operator. "${BOT_KICKOFF_MARKER}" is HUI telling you that you were just created and the operator hasn't written yet: reply right away with your opening message, never wait for them, and don't comment on these instructions.`,
       `- Write down only what the operator told you or agreed to: ask about what is still open (often what you must not do) rather than guess. Once you know enough, usually after a few exchanges (or as soon as the operator would rather not say more), save your soul with ${WRITE_SOUL_TOOL}: Markdown, short, in your own voice, about you and your work only, in sections such as "Who I am", "What I look after", "How I work", "When I reach out" and "Boundaries", at most ${BOT_LIMITS.soul.toLocaleString("en-US")} characters. Its result tells you how to close your first conversation, in that same reply.`,
     ].join("\n"),
   ].join("\n\n");
@@ -316,6 +318,9 @@ export function huiBotsExtensions(options: BotsExtensionOptions): { section: Ext
         }),
       ],
     }),
-    tools: defineExtension({ name: "hui-bots-tools", tools: [messageBot, writeSoul, setProfile, ...options.tools ?? []] }),
+    tools: defineExtension({
+      name: "hui-bots-tools",
+      tools: [messageBot, writeSoul, setProfile, triggersTool({ invoke: options.invoke, isBot: async (reader, id, context) => Boolean(await conversationBot(reader, id, context)) }), ...options.tools ?? []],
+    }),
   };
 }

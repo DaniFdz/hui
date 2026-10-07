@@ -662,8 +662,8 @@ export class BotService {
 
   /**
    * `set_profile` from the bot whose chat `callerSessionId` is: its own name and/or title, under `PATCH`'s rules
-   * (`update`, so a derived handle follows the name). Only the operator decides them: a turn that a routine or another
-   * bot started is refused, as its run's originating input (`runPrompt`) shows.
+   * (`update`, so a derived handle follows the name). Only the operator decides them: a turn that a routine, a trigger
+   * or another bot started is refused, as its run's originating input (`runPrompt`) shows.
    */
   async setProfile(callerSessionId: string, params: Record<string, unknown>): Promise<{ text: string; name: string; handle: string }> {
     await this.#assertActive();
@@ -671,8 +671,8 @@ export class BotService {
     if (!bot) throw new BotInputError("set_profile is only available in a bot's chat.");
     if (bot.archived) throw new BotConflictError("An archived bot cannot change its profile.");
     const origin = botTurnOrigin((await this.#deps.readSessions()).find((record) => record.id === callerSessionId)?.runPrompt);
-    if (origin.kind === "routine" || origin.kind === "bot") {
-      throw new BotConflictError("Only the operator changes your name or title, and this turn was started by a routine or another bot. Ask the operator instead.");
+    if (origin.kind === "routine" || origin.kind === "trigger" || origin.kind === "bot") {
+      throw new BotConflictError("Only the operator changes your name or title, and this turn was started by a routine, a trigger or another bot. Ask the operator instead.");
     }
     const unknown = Object.keys(params).filter((key) => key !== "name" && key !== "title");
     if (unknown.length) throw new BotInputError(`set_profile takes name and title only, not ${unknown.join(", ")}.`);

@@ -115,7 +115,7 @@ const SESSION_STATUSES_BUSY = new Set(["running", "waiting"]);
 const DEFAULT_WAIT_SECONDS = 300;
 
 /** One `/__hui/` request; a refusal throws its message (a few, such as a disallowed Host, are plain text). */
-async function request<T>(base: string, path: string, options: { method?: string; body?: unknown; timeoutMs?: number; html?: boolean } = {}): Promise<T> {
+export async function request<T>(base: string, path: string, options: { method?: string; body?: unknown; timeoutMs?: number; html?: boolean } = {}): Promise<T> {
   const response = await fetch(new URL(path, base), {
     method: options.method ?? "GET",
     headers: { "x-hui": "1", ...(options.body === undefined ? {} : { "content-type": "application/json" }) },
