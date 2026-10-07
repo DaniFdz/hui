@@ -178,6 +178,14 @@ test("a bot's conversation and memory are made in the host's own store, in its o
     await peer.request("bot.home.prepare", { botId: "bot-prepared" });
     assert.equal((await stat(join(host.paths.dataDir, "bots", "bot-prepared"))).mode & 0o777, 0o700);
 
+    // A bot's own skills (an import's) go into its home there, by skill names only.
+    assert.ok(gateway.hello.features?.includes("bot-skills"), "hello says the host keeps bots' own skills");
+    const skill = "---\nname: weather\ndescription: W\n---\n\nGo.\n";
+    await peer.request("bot.skills.write", { botId: "bot-placed", skills: [{ name: "weather", text: skill }] });
+    assert.equal(await readFile(join(placedHome, "skills", "weather", "SKILL.md"), "utf8"), skill);
+    assert.deepEqual(await peer.request("bot.skills.read", { botId: "bot-placed" }), { skills: [{ name: "weather", text: skill }] });
+    await assert.rejects(peer.request("bot.skills.write", { botId: "bot-placed", skills: [{ name: "../escape", text: "x" }] }), /a skill's name and its SKILL\.md/u);
+
     // A deleted bot's home goes with everything in it, as the gateway removes its own; the directory it worked in stays.
     await writeFile(join(created.cwd, "notes.md"), "the bot's own file");
     await peer.request("bot.remove-home", { botId: "bot-ada", cwd: join(root, "bot-work") });

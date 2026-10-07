@@ -22,6 +22,9 @@ import { durableContext, type DurableHost } from "./runtimes/durable-host.ts";
 import { defaultThinking, durableConversationId, durableReference, initialModel, modelRef, textOf } from "./runtimes/durable.ts";
 import { restoreAttachmentNames } from "./runtimes/pi.ts";
 
+/** Where the Tools tab says a bot's own skills (`skills/` in its home folder) come from. */
+export const BOT_OWN_SKILLS_SOURCE = "Its own skills";
+
 /** Entries a cold read looks back through for the newest message. */
 const LAST_MESSAGE_ENTRIES = 50;
 
@@ -124,10 +127,12 @@ export function durableBotConversations(host: DurableHost, memory: BotMemory, op
       await host.open();
       const id = reference === undefined ? undefined : durableConversationId(reference);
       const chat = id === undefined ? undefined : host.chatFor(id);
-      const skills = chat ? await chat.availableSkills() : (await host.prompt.loader(cwd)).getSkills().skills;
+      // A bot's own skills come with its directory's, labelled as its own; before its conversation exists it has none.
+      const own = id === undefined ? [] : await host.skillDirsFor(id);
+      const skills = chat ? await chat.availableSkills() : (await host.prompt.loader(cwd, own)).getSkills().skills;
       return {
         tools: chat ? [...chat.botOffer()] : host.builtinBotOffer(),
-        skills: skills.map(offeredSkill),
+        skills: skills.map((skill) => own.some((dir) => skill.filePath.startsWith(`${dir}/`)) ? { ...offeredSkill(skill), source: BOT_OWN_SKILLS_SOURCE } : offeredSkill(skill)),
         alwaysOn: [...BOT_ALWAYS_ON],
         live: Boolean(chat),
       };

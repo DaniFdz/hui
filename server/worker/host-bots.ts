@@ -24,6 +24,7 @@ import { BOT_LIMITS, BOT_THINKING_LEVELS, type BotMemoryStatus } from "../../sha
 import { parseCallRecord } from "../../shared/calls.ts";
 import { durableBotConversations } from "../bot-conversations.ts";
 import { BotMemoryUnavailableError, optChatBotMemory, type BotMemorySettings } from "../bot-memory.ts";
+import { BOT_SKILL_NAME, localBotSkills, type BotOwnSkill } from "../bot-skills.ts";
 import { localBotSouls } from "../bot-souls.ts";
 import { accessField, normalizeSoul } from "../bots.ts";
 import type { DurableHost } from "../runtimes/durable-host.ts";
@@ -39,6 +40,8 @@ export const BOT_MEMORY_STATUS_FRAME = "bot.memory.status";
 export const BOT_ACCESS_FEATURE = "bot-access";
 /** The frame a bot's lists arrive in after the operator allowed one of its requests here: `{ botId, access }`. */
 export const BOT_ACCESS_FRAME = "bot.access";
+/** What `hello` lists when the host keeps a bot's own skills in its home (`bot.skills.*`, `bot-skills.ts`): an imported bot's. */
+export const BOT_SKILLS_FEATURE = "bot-skills";
 
 const ID = /^[A-Za-z0-9_-]{1,100}$/u;
 const MODEL = /^[^/\s]+\/\S+$/u;
@@ -99,6 +102,17 @@ function memorySettings(value: unknown): BotMemorySettings {
   return { name, ...(model ? { model } : {}), ...(thinking ? { thinking } : {}) };
 }
 
+/** A bot's own skills as `bot.skills.write` takes them: at most 200, each a skill's name and a SKILL.md of at most 256 KB. */
+function skillFiles(value: unknown): BotOwnSkill[] {
+  if (!Array.isArray(value) || value.length > 200) throw new Error("A bot's skills must be a list of at most 200.");
+  return value.map((skill) => {
+    if (!isRecord(skill) || typeof skill["name"] !== "string" || !BOT_SKILL_NAME.test(skill["name"]) || typeof skill["text"] !== "string" || skill["text"].length > 256 * 1024) {
+      throw new Error("Each of a bot's skills needs a skill's name and its SKILL.md.");
+    }
+    return { name: skill["name"], text: skill["text"] };
+  });
+}
+
 /** The bots a gateway runs on this host: request handlers for each connected gateway, and the memories it watches. */
 export function hostBots(options: HostBotsOptions) {
   const memory = optChatBotMemory(options.durable);
@@ -108,6 +122,8 @@ export function hostBots(options: HostBotsOptions) {
   /** SOUL.md in those homes, with the gateway's guard: a deleted bot's home goes only when it really is that folder of
    * this bots directory, and a link in its place is removed, never followed. */
   const souls = localBotSouls(options.botsDir);
+  /** Each bot's own skills, in its home here: what an import brought. */
+  const ownSkills = localBotSkills(options.botsDir);
   /** Each bot's name as its gateway last gave it (the create, then every `bots` section): a bot still called "New Bot"
    * asks for a real one in its first conversation. */
   const names = new Map<string, string>();
@@ -221,6 +237,12 @@ export function hostBots(options: HostBotsOptions) {
         return {};
       },
       "bot.soul.read": async (params) => ({ soul: (await souls.read(botId(params["botId"]))) ?? null }),
+      /** Writes a bot's own skills into its home here (an import's), each `{ name, text }`: its folder's name and SKILL.md. */
+      "bot.skills.write": async (params) => {
+        await ownSkills.write(botId(params["botId"]), skillFiles(params["skills"]));
+        return {};
+      },
+      "bot.skills.read": async (params) => ({ skills: await ownSkills.read(botId(params["botId"])) }),
       /** Replaces SOUL.md atomically; none (or empty) removes it, which brings the first conversation back. */
       "bot.soul.write": async (params) => {
         const id = botId(params["botId"]);

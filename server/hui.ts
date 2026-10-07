@@ -25,13 +25,17 @@ import { fileURLToPath } from "node:url";
 import type { Connect, Plugin } from "vite";
 import { workers } from "./workers.ts";
 import { createWorkerRoutes, WORKERS_ROUTE } from "./worker-routes.ts";
-import { BOT_CLEANUP_FILE, BotInputError, BotRegistry, BotsOffError, BotStoreError } from "./bots.ts";
+import { BOT_CLEANUP_FILE, BOTS_DIR, BotInputError, BotRegistry, BotsOffError, BotStoreError } from "./bots.ts";
 import { BotService } from "./bot-service.ts";
 import { remoteBots } from "./bot-remote.ts";
-import { BOT_MEMORY_PAGE, BOTS_EVENTS_ROUTE, BOTS_ROUTE, createBotRoutes } from "./bot-routes.ts";
+import { BOT_MEMORY_PAGE, BOTS_EVENTS_ROUTE, BOTS_ROUTE, createBotRoutes, type BotRouteRequest } from "./bot-routes.ts";
 import { BOT_TRIGGERS_ROUTE } from "./bot-trigger-routes.ts";
 import { createGatewayTriggers } from "./bot-triggers-gateway.ts";
 import { isHookPath } from "./bot-triggers-webhook.ts";
+import { BotTemplateService } from "./bot-template-import.ts";
+import { createBotTemplateRoutes, sendDownload } from "./bot-template-routes.ts";
+import { fetchGrokBotPage } from "./bot-templates/fetch.ts";
+import { localBotSkills } from "./bot-skills.ts";
 import { durableBotConversations } from "./bot-conversations.ts";
 import { CallBroker, providerCallAccounts } from "./calls.ts";
 import { CALLS_ROUTE, createCallRoutes } from "./call-routes.ts";
@@ -270,6 +274,15 @@ const botRegistry = new BotRegistry(undefined, (count) => recordDiagnosticEvent(
   area: "session", level: "warning", action: "bots_invalid_records",
   summary: `bots.json holds ${count} invalid bot record${count === 1 ? "" : "s"}; HUI keeps them in the file but does not show them.`,
 }));
+/** The Durable side of bots' chats here, and their remote workers' half: the bot service's, and what a bot import
+ * checks a new bot against. */
+const botConversations = durableBotConversations(durableHost(), botMemory, { primaryModel: async () => (await readSettings()).models.primary || undefined });
+const botWorkers = remoteBots(workers, {
+  cleanupFile: BOT_CLEANUP_FILE,
+  report: (action, summary, error) => recordDiagnosticEvent({
+    area: "session", level: "warning", action, summary, detail: error instanceof Error ? error.message : String(error),
+  }),
+});
 const bots = new BotService({
   registry: botRegistry,
   sessions: liveSessions,
@@ -278,16 +291,11 @@ const bots = new BotService({
   createSession: (body, bot) => createSession(body, liveSessions, updateRegistry, undefined, { bot }),
   removeSession: (id) => deleteSession(id),
   // A bot without a model of its own starts on Settings' primary model, as a new session does.
-  conversations: durableBotConversations(durableHost(), botMemory, { primaryModel: async () => (await readSettings()).models.primary || undefined }),
+  conversations: botConversations,
   memory: botMemory,
   // A bot made on a worker keeps its conversation, memory and SOUL.md there, where its chat runs; what deleting one
   // leaves there while it is offline waits in BOT_CLEANUP_FILE for its next connection.
-  workers: remoteBots(workers, {
-    cleanupFile: BOT_CLEANUP_FILE,
-    report: (action, summary, error) => recordDiagnosticEvent({
-      area: "session", level: "warning", action, summary, detail: error instanceof Error ? error.message : String(error),
-    }),
-  }),
+  workers: botWorkers,
   souls: localBotSouls(),
   routines: {
     // A broken automation store is a storage failure (500), not the caller's.
@@ -323,6 +331,30 @@ const botRoutes = createBotRoutes({
       throw error instanceof AttachmentInputError ? new BotInputError(error.message) : error;
     }
   },
+});
+/** Bots imported from other platforms' templates, and exported (`bot-template-import.ts`): under `/__hui/bots`, so Labs →
+ * Bots gates them too. */
+const localSkills = localBotSkills();
+const botTemplateRoutes = createBotTemplateRoutes({
+  service: new BotTemplateService({
+    bots,
+    // What a new bot would be offered: the tools every chat has and the skills of a new home folder, here or there.
+    offer: (worker) => worker ? botWorkers.conversations(worker).offer(undefined, undefined, randomUUID()) : botConversations.offer(undefined, BOTS_DIR),
+    models: async () => {
+      const host = durableHost();
+      await host.open();
+      await host.refreshModels();
+      return (await host.models.getAvailable()).map((model) => ({ provider: model.provider, id: model.id }));
+    },
+    routines: { tasks: async () => (await automation.snapshot()).tasks, create: (input) => automation.create(input) },
+    skills: (worker) => worker ? (botWorkers.keepsSkills(worker) ? botWorkers.skills(worker) : undefined) : localSkills,
+    findWorker: (target) => botWorkers.find(target),
+    operator: async () => soulOperatorName((await readSettings()).profileName),
+    timezone: () => Intl.DateTimeFormat().resolvedOptions().timeZone,
+    fetchPage: (url) => fetchGrokBotPage(url),
+    skillsWritten: (cwd) => durableHost().prompt.reload(cwd),
+    report: (event) => recordDiagnosticEvent({ area: "session", ...event }),
+  }),
 });
 function automationStoreFailure(error: unknown): never {
   throw error instanceof AutomationStoreError ? new BotStoreError(error.message, { cause: error }) : error;
@@ -2440,14 +2472,17 @@ async function serveBotRoute(request: Connect.IncomingMessage, response: ServerR
   // A client that leaves ends its wait for a reply, never the bot's turn.
   const gone = new AbortController();
   response.once("close", () => gone.abort());
-  const result = await botRoutes.handle({
+  const routed: BotRouteRequest = {
     method: request.method ?? "GET",
     path,
     query: new URL(request.url ?? "/", "http://localhost").searchParams,
     body: (maxBytes) => readBody(request, maxBytes),
     signal: gone.signal,
-  });
+  };
+  // Importing and exporting first: `import` is a reserved handle, and `export` no bot route's action.
+  const result = await botTemplateRoutes.handle(routed) ?? await botRoutes.handle(routed);
   if (!result) sendJson(response, 404, { error: `unknown route: ${path}` });
+  else if ("file" in result) sendDownload(response, result.status, result.file);
   else if ("html" in result) sendHtml(response, result.status, result.html);
   else sendJson(response, result.status, result.body);
 }

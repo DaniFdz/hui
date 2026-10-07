@@ -44,6 +44,8 @@ export const HELP = `Usage:
               [--language <code>] [--call-voice <cove|arbor|breeze|ember|juniper|maple|sol|spruce|vale>]
               [--deny-tools <a,b>] [--deny-skills <a,b>] [--json]
   hui bot edit <bot> [same flags as add but --soul-file, --worker and --deny-*] [--json]
+  hui bot import <file|folder|url|-> [--worker <name|id>] [--agent <name>] [--yes] [--json]
+  hui bot export <bot> [--out <file>] [--memory] [--yes] [--json]
   hui bot soul <bot> [--file <path|->] [--json]
   hui bot tools <bot> [--allow <a,b>] [--deny <a,b>] [--json]
   hui bot skills <bot> [--allow <a,b>] [--deny <a,b>] [--json]
@@ -126,6 +128,17 @@ to that one.
 "" goes back to the default voice Settings chose. --language is the language it
 speaks on calls, a Whisper code (en, es, fr, de, ja, zh, haw, yue…); nothing is
 translated, and "" goes back to Auto (it answers in the language you speak).
+Import makes a bot from another platform's template: a Grok Bot marketplace link,
+an OpenClaw workspace (folder or zip), a Claude Code subagent (.md), a Letta
+agent file (.af), a character card (JSON or PNG), a CrewAI agents.yaml, a HUI
+export, or a persona as text (- reads stdin). It prints everything the bot would
+get first (imported text is untrusted) and asks before creating it; --yes skips
+that. --agent picks one agent of a file that holds several. An import turns
+nothing on beyond a new bot's defaults: its routines start disabled and a
+subagent's tools list only turns tools off. Export saves the bot as
+<handle>.hui-bot.zip (profile, SOUL.md, its own skills, routines and what you
+turned off; --memory adds its memory), which import reads back; it never
+replaces a file without --yes.
 Remove archives: the chat transcript and memory are kept and its routines are
 disabled. Delete removes a bot for good, active or archived: its turn stops, its
 chat leaves HUI, and its routines, memory and folder (SOUL.md and every file in
@@ -180,6 +193,7 @@ export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {
     github: { type: "string" }, webhook: { type: "boolean" }, on: { type: "string" }, author: { type: "string" },
     label: { type: "string" }, base: { type: "string" }, pr: { type: "string" }, draft: { type: "boolean" }, ready: { type: "boolean" },
     match: { type: "string" }, cooldown: { type: "string" },
+    agent: { type: "string" }, out: { type: "string" }, memory: { type: "boolean" },
   } as const;
   // --session names a session to hui schedule but is a flag to hui bot trigger add (--session --on finished): a first
   // read that never throws finds the command, and only a bot trigger command reads --session as a flag. Its type is
@@ -215,6 +229,7 @@ export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {
     "workers edit": ["name", "command", "extra-path", "json"], "workers remove": ["json"],
     "bot list": ["archived", "json"], "bot show": ["json"], "bot add": [...BOT_FIELDS, "soul-file", "worker", "deny-tools", "deny-skills", "json"], "bot edit": [...BOT_FIELDS, "json"],
     "bot soul": ["file", "json"], "bot tools": ["allow", "deny", "json"], "bot skills": ["allow", "deny", "json"],
+    "bot import": ["worker", "agent", "yes", "json"], "bot export": ["out", "memory", "yes", "json"],
     "bot remove": ["json"], "bot restore": ["json"], "bot delete": ["yes", "json"], "bot chat": [], "bot send": ["wait", "timeout", "json"], "bot stop": ["json"],
     "bot memory": ["zoom", "html", "json"], "bot routine list": ["json"],
     "bot routine add": ["name", "prompt", "at", "every", "cron", "timezone", "json"], "bot routine run": [], "bot routine remove": ["json"],
@@ -287,6 +302,7 @@ const BOT_FIELDS = ["name", "title", "cwd", "model", "thinking", "memory-model",
 /** Operands each bot command takes, in order. */
 const BOT_OPERANDS: Record<string, readonly string[]> = {
   "bot list": [], "bot add": [], "bot show": ["bot"], "bot edit": ["bot"], "bot soul": ["bot"], "bot tools": ["bot"], "bot skills": ["bot"],
+  "bot import": ["source"], "bot export": ["bot"],
   "bot remove": ["bot"], "bot restore": ["bot"], "bot delete": ["bot"],
   "bot chat": ["bot"], "bot send": ["bot", "message"], "bot stop": ["bot"], "bot memory": ["bot"],
   "bot routine list": ["bot"], "bot routine add": ["bot"], "bot routine run": ["bot", "routine"], "bot routine remove": ["bot", "routine"],
@@ -333,6 +349,8 @@ function checkBotCommand(command: string, operands: readonly string[], values: R
   const both = listed("allow").filter((name) => listed("deny").includes(name));
   if (both.length) throw new Error(`${both.join(", ")} can't be both allowed and denied.`);
   if (given("zoom") && given("html")) throw new Error("Use either --zoom or --html.");
+  if (given("agent") && !String(values["agent"]).trim()) throw new Error("--agent needs an agent's name, as hui bot import lists them.");
+  if (given("out") && !String(values["out"]).trim()) throw new Error("--out needs a file name.");
   if (given("zoom") && !/^\d{1,15}\+\d{1,15}$/u.test(String(values["zoom"]))) throw new Error("--zoom takes a view line's id+n, such as 2184+8.");
   if (command === "bot trigger add") checkTriggerAdd(values);
   if (command === "bot routine add") {

@@ -124,6 +124,8 @@ export type ShellBotsProps = {
   /** Remote workers: while there is one, + is a menu that creates a bot on Local or on a worker (`onCreate`). */
   workers: readonly BotPlace[];
   onCreate: (worker: string | undefined) => void;
+  /** +'s Import bot…: one from another platform's template, or a HUI export. */
+  onImport: () => void;
   onWorkersMenu?: () => void;
   /** A bot is being created; + waits for it. */
   creating: boolean;
@@ -904,7 +906,7 @@ export function renderSidebar(props: ShellProps) {
             <span>${botsTab ? "Bots" : "Sessions"}</span>
             <span>
               ${botsTab ? renderNewBotButton({
-                workers: botsTab.workers, onNew: botsTab.onNew, onCreate: botsTab.onCreate, creating: botsTab.creating,
+                workers: botsTab.workers, onNew: botsTab.onNew, onCreate: botsTab.onCreate, onImport: botsTab.onImport, creating: botsTab.creating,
                 ...(botsTab.onWorkersMenu ? { onOpen: botsTab.onWorkersMenu } : {}),
                 closeDrawer: (event) => closeContainingDrawer(event),
               }) : html`

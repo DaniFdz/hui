@@ -294,8 +294,9 @@ export interface BotChat {
 export type BotAccessDeps = {
   /** The live session of a conversation; undefined while none has it open. */
   chat(conversationId: ConversationId): BotChat | undefined;
-  /** Skills of a directory, for prompts and `load_skill` without a live session. */
-  skills(cwd: string): Promise<readonly Skill[]>;
+  /** Skills of a directory (and of the bot whose chat `conversationId` is, its own), for prompts and `load_skill` without a
+   * live session. */
+  skills(cwd: string, conversationId?: ConversationId): Promise<readonly Skill[]>;
   /** Where a conversation without a directory runs. */
   agentDir: string;
   /** HUI tools a bot's chat here is never offered, since they act on another machine (a worker host's
@@ -424,7 +425,7 @@ export function botAccessParts(deps: BotAccessDeps): { tools: ToolRegistration[]
       const state = await conversationBotState(api, api.conversationId, context);
       if (!state) return text("load_skill is only available in a bot's chat.", true);
       const chat = deps.chat(api.conversationId);
-      const available = chat ? await chat.availableSkills() : await deps.skills((await api.agent(context)).cwd ?? deps.agentDir);
+      const available = chat ? await chat.availableSkills() : await deps.skills((await api.agent(context)).cwd ?? deps.agentDir, api.conversationId);
       const name = args.name.trim();
       const mine = botSkills(available, state.disabledSkills);
       const skill = mine.find((candidate) => candidate.name === name);
@@ -450,7 +451,7 @@ export function botAccessParts(deps: BotAccessDeps): { tools: ToolRegistration[]
       .filter((tool) => !BOT_OWN_TOOLS.includes(tool.name) && !deps.gatewayOnly?.includes(tool.name)).map((tool) => describeTool(tool, originOf(tool.name)));
     const tools = candidates.filter((tool) => state.disabledTools.includes(tool.name) && !offered.has(tool.name));
     const cwd = input.env?.cwd ?? input.agent.cwd ?? deps.agentDir;
-    const skills = (await deps.skills(cwd).catch(() => [])).filter((skill) => hasSkill(state.disabledSkills, skillRef(skill)));
+    const skills = (await deps.skills(cwd, input.conversationId).catch(() => [])).filter((skill) => hasSkill(state.disabledSkills, skillRef(skill)));
     return botAccessText(tools, skills);
   });
 

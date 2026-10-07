@@ -599,7 +599,10 @@ test("bots are a Labs preview: off, their routes, calls and chats refuse naming 
     ["/__hui/bots/kim", "PATCH", { title: "Boss" }], ["/__hui/bots/kim", "DELETE"], ["/__hui/bots/kim/restore", "POST", {}],
     ["/__hui/bots/kim/messages", "POST", { text: "hello?" }], ["/__hui/bots/kim/stop", "POST", {}], ["/__hui/bots/kim/memory", "GET"],
     ["/__hui/bots/kim/memory/zoom?id=0&n=1", "GET"], ["/__hui/bots/kim/soul", "GET"], ["/__hui/bots/kim/soul", "PUT", { soul: "x" }],
-    ["/__hui/bots/kim/catalog", "GET"], ["/__hui/bots/events", "GET"], ["/__hui/calls", "GET"], ["/__hui/bots/kim/calls", "POST", { sdp: offer }],
+    ["/__hui/bots/kim/catalog", "GET"], ["/__hui/bots/events", "GET"],
+    // Importing and exporting are bots too.
+    ["/__hui/bots/import/preview", "POST", { source: { kind: "text", text: "You are Lee." } }],
+    ["/__hui/bots/import", "POST", { template: { format: "text", name: "Lee", soul: "You are Lee." } }], ["/__hui/bots/kim/export", "GET"], ["/__hui/calls", "GET"], ["/__hui/bots/kim/calls", "POST", { sdp: offer }],
     ["/__hui/bots/kim/calls/0f8fad5b-d9cb-469f-a165-70867728950e/heartbeat", "POST"],
     // Its chat is a session, and no session route reaches it: opening or prompting it would resume it.
     [`/__hui/sessions/${kim.sessionId}/open`, "POST", {}], [`/__hui/sessions/${kim.sessionId}/prompt`, "POST", { text: "hello?" }],

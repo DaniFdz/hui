@@ -106,6 +106,10 @@ export type BotRosterProps = {
   onRestore: (bot: BotView) => void;
   /** Asks before deleting a bot for good, active or archived. */
   onDelete: (bot: BotView) => void;
+  /** Export…: the bot as a file HUI imports again. */
+  onExport: (bot: BotView) => void;
+  /** Import bot…, from the empty roster as from +. */
+  onImport: () => void;
   onRetry: () => void;
   onToggleMenu: (id: string) => void;
   onCloseMenu: () => void;
@@ -163,6 +167,7 @@ function botRow(bot: BotView, props: BotRosterProps, drawer: RosterDrawer) {
             const action = event.detail.item.value;
             if (action === "edit") { drawer.dialog(event); props.onEdit(bot); }
             if (action === "hide") props.onSetHidden(bot, !bot.hidden);
+            if (action === "export") { drawer.dialog(event); props.onExport(bot); }
             if (action === "archive") { drawer.dialog(event); props.onArchive(bot); }
             if (action === "delete") { drawer.dialog(event); props.onDelete(bot); }
           }}>
@@ -171,6 +176,7 @@ function botRow(bot: BotView, props: BotRosterProps, drawer: RosterDrawer) {
           </button>
           <wa-dropdown-item value="edit" class="session-menu__item"><span slot="icon" class="session-menu__icon" aria-hidden="true">${icons.edit}</span><span class="session-menu__text">Edit bot…</span></wa-dropdown-item>
           <wa-dropdown-item value="hide" class="session-menu__item"><span slot="icon" class="session-menu__icon" aria-hidden="true">${icons.eye}</span><span class="session-menu__text">${bot.hidden ? "Unhide" : "Hide"}</span></wa-dropdown-item>
+          <wa-dropdown-item value="export" class="session-menu__item"><span slot="icon" class="session-menu__icon" aria-hidden="true">${icons.download}</span><span class="session-menu__text">Export…</span></wa-dropdown-item>
           <div class="session-menu__separator" role="separator"></div>
           <wa-dropdown-item value="archive" variant="danger" class="session-menu__item session-menu__item--destructive"><span slot="icon" class="session-menu__icon" aria-hidden="true">${icons.box}</span><span class="session-menu__text">Archive…</span></wa-dropdown-item>
           <wa-dropdown-item value="delete" variant="danger" class="session-menu__item session-menu__item--destructive"><span slot="icon" class="session-menu__icon" aria-hidden="true">${icons.trash}</span><span class="session-menu__text">Delete…</span></wa-dropdown-item>
@@ -235,8 +241,11 @@ export function renderBotRoster(props: BotRosterProps, drawer: RosterDrawer) {
       <p class="sidebar-list__note">${archived
         ? `${archived === 1 ? "One archived bot keeps its chat and memory" : `${archived} archived bots keep their chats and memory`}; Show archived lists ${archived === 1 ? "it" : "them"} to restore or delete.`
         : "A bot is a named agent with one permanent chat, its own model and a memory that summarizes older messages by itself. Routines can message it on a schedule."}</p>
-      <button type="button" class="btn btn--sm bot-roster__new" ?disabled=${props.creating} aria-busy=${props.creating ? "true" : "false"}
-        @click=${(event: Event) => { drawer.navigate(event); props.onNew(); }}>${icons.plus}<span>${props.creating ? "Creating…" : "New bot"}</span></button>
+      <div class="bot-roster__empty-actions">
+        <button type="button" class="btn btn--sm bot-roster__new" ?disabled=${props.creating} aria-busy=${props.creating ? "true" : "false"}
+          @click=${(event: Event) => { drawer.navigate(event); props.onNew(); }}>${icons.plus}<span>${props.creating ? "Creating…" : "New bot"}</span></button>
+        <button type="button" class="btn btn--sm bot-roster__import" @click=${(event: Event) => { drawer.dialog(event); props.onImport(); }}>${icons.fileText}<span>Import bot…</span></button>
+      </div>
     </div>
     ${renderRosterToggles(props, drawer)}`;
   }
@@ -257,12 +266,14 @@ export function renderBotRoster(props: BotRosterProps, drawer: RosterDrawer) {
 export type BotPlace = { id: string; name: string; state: WorkerState };
 
 export type NewBotButtonProps = {
-  /** None: + is the plain New bot it always was. */
+  /** None: the menu's New bot creates it on this machine. */
   workers: readonly BotPlace[];
-  /** + without workers. */
+  /** New bot, without workers. */
   onNew: () => void;
   /** A menu choice: creates the bot at once on the worker with this id, or on this machine (undefined). */
   onCreate: (worker: string | undefined) => void;
+  /** Import bot…: one from another platform's template, or a HUI export. */
+  onImport: () => void;
   /** The menu opens: a chance to read the workers' state again. */
   onOpen?: () => void;
   /** After a choice, as the roster's other actions close the mobile drawer. */
@@ -272,35 +283,34 @@ export type NewBotButtonProps = {
 };
 
 /**
- * The roster's +. While a remote worker exists it is a small menu, New bot on Local or on each worker, and a choice
- * creates the bot there at once: a bot stays on the machine it is created on. Without workers it is plain New bot.
+ * The roster's +, a small menu: New bot, then Import bot…. While a remote worker exists New bot is New bot on Local or on
+ * each worker, and a choice creates the bot there at once: a bot stays on the machine it is created on.
  */
 export function renderNewBotButton(props: NewBotButtonProps) {
   const busy = Boolean(props.creating);
-  if (!props.workers.length) {
-    return html`<button type="button" aria-label="New bot" title="New bot" data-new-bot-trigger ?disabled=${busy} aria-busy=${busy ? "true" : "false"} @click=${(event: Event) => {
-      props.onNew();
-      props.closeDrawer(event);
-    }}>${icons.plus}</button>`;
-  }
   return html`<wa-dropdown class="session-menu new-bot-menu" placement="bottom-end" distance="4" @keydown=${closeDropdownOnEscape}
     @wa-show=${(event: Event) => { labelDropdown(event); props.onOpen?.(); }}
     @wa-select=${(event: CustomEvent<{ item: { value: string } }>) => {
       const value = event.detail.item.value;
-      props.onCreate(value === NEW_BOT_LOCAL ? undefined : value);
+      if (value === IMPORT_BOT) props.onImport();
+      else if (!props.workers.length) props.onNew();
+      else props.onCreate(value === NEW_BOT_LOCAL ? undefined : value);
       props.closeDrawer(event);
     }}>
     <button slot="trigger" type="button" aria-label="New bot" title="New bot" data-new-bot-trigger ?disabled=${busy} aria-busy=${busy ? "true" : "false"}>${icons.plus}</button>
-    <wa-dropdown-item value=${NEW_BOT_LOCAL} class="session-menu__item"><span slot="icon" class="session-menu__icon" aria-hidden="true">${icons.terminal}</span><span class="session-menu__text">New bot on Local</span></wa-dropdown-item>
-    <div class="session-menu__separator" role="separator"></div>
+    ${props.workers.length ? html`<wa-dropdown-item value=${NEW_BOT_LOCAL} class="session-menu__item"><span slot="icon" class="session-menu__icon" aria-hidden="true">${icons.terminal}</span><span class="session-menu__text">New bot on Local</span></wa-dropdown-item>
     ${props.workers.map((worker) => html`<wa-dropdown-item value=${worker.id} class="session-menu__item"><span slot="icon" class="session-menu__icon" aria-hidden="true">${icons.globe}</span><span class="session-menu__text">New bot on ${worker.name}${worker.state === "connected"
       ? nothing
-      : html` <span class="settings-row__muted">· ${worker.state === "error" ? "offline" : worker.state}</span>`}</span></wa-dropdown-item>`)}
+      : html` <span class="settings-row__muted">· ${worker.state === "error" ? "offline" : worker.state}</span>`}</span></wa-dropdown-item>`)}`
+      : html`<wa-dropdown-item value=${NEW_BOT_LOCAL} class="session-menu__item"><span slot="icon" class="session-menu__icon" aria-hidden="true">${icons.plus}</span><span class="session-menu__text">New bot</span></wa-dropdown-item>`}
+    <div class="session-menu__separator" role="separator"></div>
+    <wa-dropdown-item value=${IMPORT_BOT} class="session-menu__item"><span slot="icon" class="session-menu__icon" aria-hidden="true">${icons.fileText}</span><span class="session-menu__text">Import bot…</span></wa-dropdown-item>
   </wa-dropdown>`;
 }
 
-/** The menu item for this machine; worker ids are UUIDs, so they never collide with it. */
+/** The menu item for this machine, and Import bot…; worker ids are UUIDs, so they never collide with either. */
 const NEW_BOT_LOCAL = "local";
+const IMPORT_BOT = "import";
 
 /* ── chat placeholder (no bot or no chat yet) ─────────────────────────────── */
 

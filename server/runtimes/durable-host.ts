@@ -10,7 +10,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { closeSync, openSync, readFileSync, unlinkSync, writeSync } from "node:fs";
-import { mkdir } from "node:fs/promises";
+import { mkdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { Models } from "@earendil-works/pi-ai";
@@ -31,6 +31,7 @@ import { OptChatManager, type OptChatTuning } from "./durable-optchat.ts";
 import { conversationBot, conversationBotState, huiBotsExtensions, type BotAccess, type BotSoulHost, type BotState } from "./durable-bots.ts";
 import { botAccessParts, botMayCall, builtinOffer, type BotChat, type OfferedTool } from "./durable-bot-access.ts";
 import { botRoutinesTool } from "./durable-bot-routines.ts";
+import { botSkillsDir } from "../bot-skills.ts";
 import { invokeAgentTool } from "../agent-tools-bridge.ts";
 
 /** Durable APIs take a cancellation context; HUI's own calls are not scoped. */
@@ -264,7 +265,7 @@ export class DurableHost implements ExtensionHost {
     this.#tools = huiDurableTools({ invoke });
     const access = botAccessParts({
       chat: (conversationId) => this.chatFor(conversationId),
-      skills: async (cwd) => (await this.prompt.loader(cwd)).getSkills().skills,
+      skills: async (cwd, conversationId) => (await this.prompt.loader(cwd, conversationId === undefined ? [] : await this.skillDirsFor(conversationId))).getSkills().skills,
       agentDir: this.agentDir,
       gatewayOnly: this.gatewayOnlyTools,
       recorded: async (botId, lists) => { await this.botAccessRecorded?.(botId, lists); },
@@ -281,8 +282,9 @@ export class DurableHost implements ExtensionHost {
       invoke, section: async (botId) => this.botSection?.(botId), souls: () => this.botSouls,
       tools: [...access.tools, botRoutinesTool({ invoke })], sections: access.sections,
     });
-    // A bot's chat lists only the skills the operator left on.
+    // A bot's chat lists only the skills the operator left on, its own among them.
     this.prompt.disabledSkillsFor = async (conversationId) => (await this.botStateFor(conversationId))?.disabledSkills;
+    this.prompt.skillDirsFor = (conversationId) => this.skillDirsFor(conversationId);
   }
 
   /** HUI's agent-tool handler, called as the HUI session bound to the conversation. A bot's chat may not call a HUI tool
@@ -322,6 +324,15 @@ export class DurableHost implements ExtensionHost {
   async botStateFor(conversationId: ConversationId): Promise<BotState | undefined> {
     const harness = this.#harness;
     return harness ? conversationBotState(harness, conversationId, durableContext) : undefined;
+  }
+
+  /** A bot's own skill folder (`skills/` in its home on this host, `bot-skills.ts`), which only its chat loads, once it exists
+   * (PI's loader warns about a missing one); none for every other conversation, or on a host that keeps no bots' homes. */
+  async skillDirsFor(conversationId: ConversationId): Promise<readonly string[]> {
+    const bot = await this.botStateFor(conversationId);
+    const home = bot ? this.botSouls?.home(bot.bot) : undefined;
+    const dir = home ? botSkillsDir(home) : undefined;
+    return dir && await stat(dir).then((info) => info.isDirectory(), () => false) ? [dir] : [];
   }
 
   /** A live session answers for its conversation while it is open. */

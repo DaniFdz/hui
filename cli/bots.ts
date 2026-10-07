@@ -52,6 +52,11 @@ export type BotFlags = {
   /** `add`: tools and skills off from its first turn. */
   "deny-tools"?: string;
   "deny-skills"?: string;
+  /** `import`: which agent of a file that holds several. */
+  agent?: string;
+  /** `export`: where to save the zip, and whether it carries the bot's memory. */
+  out?: string;
+  memory?: boolean;
 };
 
 /** The terminal, injectable so `chat` and `send` run against scripted input in tests. */
@@ -251,6 +256,8 @@ export async function botCommand(base: string, action: string, operands: readonl
         : `Added @${bot.handle} (${bot.name})${where}. It starts by asking what you expect from it: talk with hui bot chat ${bot.handle}.`);
     return 0;
   }
+  // A template from another platform, or a HUI export: its operand is the source, not a bot.
+  if (action === "import") return (await import("./bot-templates.ts")).importCommand(base, operands[0]!, flags, io);
   const bot = await findBot(base, operands[0]!);
   const path = `/__hui/bots/${encodeURIComponent(bot.id)}`;
   switch (action) {
@@ -297,6 +304,7 @@ export async function botCommand(base: string, action: string, operands: readonl
       return 0;
     }
     case "send": return send(base, bot, operands[1]!, flags, io);
+    case "export": return (await import("./bot-templates.ts")).exportCommand(base, bot, flags, io);
     case "soul": return soul(base, bot, flags, io);
     case "tools": return tools(base, bot, flags, io);
     case "skills": return skills(base, bot, flags, io);
@@ -849,3 +857,6 @@ export function formatBot(bot: BotView): string {
     `soul: ${bot.soul ? `SOUL.md (hui bot soul ${bot.handle})` : "none yet: it writes SOUL.md in its first conversation"}`,
   ].join("\n");
 }
+
+/** A schedule as `hui schedule` prints it (`schedules.ts`), for `hui bot import`'s preview of a template's routines. */
+export { scheduleText as formatSchedule } from "./schedules.ts";

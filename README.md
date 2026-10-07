@@ -153,6 +153,8 @@ hui bot add [--name <name>] [--title <text>] [--soul-file <path|->] [--cwd <dir>
             [--model <provider/model>] [--thinking <level>] [--utility-model <provider/model>] [--emoji <e>]
             [--shape <shape>] [--color <name|#rrggbb>] [--language <code>] [--call-voice <voice>] [--json]
 hui bot edit <bot> [same flags as add but --soul-file] [--json]  # --model "" / --thinking "": back to the defaults; --language "": Auto; --call-voice "": Settings' voice
+hui bot import <file|folder|url|-> [--worker <name|id>] [--agent <name>] [--yes] [--json]  # another platform's template
+hui bot export <bot> [--out <file>] [--memory] [--yes] [--json]   # <handle>.hui-bot.zip, which import reads back
 hui bot soul <bot> [--file <path|->] [--json]   # print SOUL.md, or replace it (empty: ask again)
 hui bot tools <bot> [--allow <a,b>] [--deny <a,b>] [--json]   # every tool is on until you turn it off
 hui bot skills <bot> [--allow <a,b>] [--deny <a,b>] [--json]
@@ -170,8 +172,10 @@ hui bot routine remove <bot> <routine> [--json]
 ```
 
 See [Bots](docs/guide.md#bots) for their soul, their tools and skills, what they
-remember, how routines and bot-to-bot messages work, calls with GPT-Live, and the
-exit codes of `send --wait`.
+remember, how routines and bot-to-bot messages work, calls with GPT-Live,
+[importing and exporting](docs/guide.md#importing-and-exporting) bots (Grok Bot,
+OpenClaw, Claude Code, Letta, character cards, CrewAI), and the exit codes of
+`send --wait`.
 
 On a headless host, use `hui ui --no-open` to print the URL without opening a
 browser. `hui browser` is an alias for `hui ui`. The development launcher is

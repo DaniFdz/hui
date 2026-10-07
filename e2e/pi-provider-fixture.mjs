@@ -268,6 +268,14 @@ const server = createServer(async (request, response) => {
     text(response, `message_bot answered: ${typeof latestToolResult.result === "string" ? latestToolResult.result : JSON.stringify(latestToolResult.result)}`);
     return finish(response);
   }
+  // An imported bot's first turn, which HUI starts to send its template's opener: the opener, as written.
+  if (source.includes("[HUI bot created]") && source.includes("Your template opens with the message below")) {
+    const opener = "and reply with that message only.";
+    const blocks = Array.isArray(body.messages?.at(-1)?.content) ? body.messages.at(-1).content : [];
+    const said = blocks.filter((block) => block?.type === "text").map((block) => block.text).join("\n");
+    text(response, said.slice(said.lastIndexOf(opener) + opener.length).trim());
+    return finish(response);
+  }
   // A new bot's first turn, which HUI starts: the first conversation's opening question. A bot still called
   // "New Bot", whose soul section says it has no name yet, asks what to call it first, as its prompt tells it to.
   if (source.includes("[HUI bot created]")) {

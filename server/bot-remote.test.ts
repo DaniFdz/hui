@@ -173,6 +173,22 @@ test("a worker bot's lists and what can be turned off go through its host, which
   assert.equal(fake.requests.length, sent, "nothing was sent");
 });
 
+test("a worker bot's own skills (an import's) are written and read through its host, which a host from before them refuses", async () => {
+  const fake = link();
+  fake.state.features = ["bots", "bot-access", "bot-skills"];
+  const { bots } = portsOf(fake);
+  assert.equal(bots.keepsSkills("w-1"), true);
+  fake.state.replies.set("bot.skills.read", () => ({ skills: [{ name: "weather", text: "W" }, { name: 3 }, "x"] }));
+  await bots.skills("w-1").write("b", [{ name: "weather", text: "W" }]);
+  assert.deepEqual(await bots.skills("w-1").read("b"), [{ name: "weather", text: "W" }], "what does not validate is dropped");
+  assert.deepEqual(fake.requests.map(({ op, params }) => [op, params]), [["bot.skills.write", { botId: "b", skills: [{ name: "weather", text: "W" }] }], ["bot.skills.read", { botId: "b" }]]);
+  fake.state.features = ["bots", "bot-access"];
+  assert.equal(bots.keepsSkills("w-1"), false);
+  await assert.rejects(bots.skills("w-1").write("b", []), (error: unknown) => error instanceof BotConflictError && /^devbox runs an older HUI worker that cannot keep a bot's own skills\./u.test(error.message));
+  fake.state.connected = false;
+  assert.equal(bots.keepsSkills("w-1"), false, "offline: nothing to write to");
+});
+
 test("a worker names this gateway's skills as remote sessions' Settings do: by their mirrored paths there, only while connected", () => {
   const fake = link();
   const { bots } = portsOf(fake);
