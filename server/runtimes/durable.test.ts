@@ -11,6 +11,7 @@ import type { DurableSession } from "./durable.ts";
 import type { AgentToolInvocation } from "../agent-tools-bridge.ts";
 import type { RuntimeEvent, TranscriptEntry } from "./types.ts";
 import { SecretFiles, SecretRequests } from "../secret-requests.ts";
+import { completeLines } from "../test-support/json-lines.ts";
 
 // HUI's configuration directory (provider selections, credentials, the default
 // Durable store) is resolved at import time; never read the operator's own.
@@ -132,7 +133,7 @@ function userEntryId(session: DurableSession, prefix: string): string {
 
 type ProviderRequest = { system?: unknown; messages?: unknown };
 async function providerRequests(log: string): Promise<ProviderRequest[]> {
-  return (await readFile(log, "utf8")).trim().split("\n").map((line) => JSON.parse(line) as ProviderRequest);
+  return completeLines(await readFile(log, "utf8")).map((line) => JSON.parse(line) as ProviderRequest);
 }
 const summarizing = (request: ProviderRequest) => JSON.stringify(request.system ?? "").includes("context summarization assistant");
 /** The messages of the newest model request that was not a summary. */
@@ -210,7 +211,7 @@ test("Durable runs a real tool turn and reopens the conversation from its store"
   assert.deepEqual(shape, ["user", "tool", "assistant"]);
   const read = live.find((entry) => entry.kind === "tool");
   assert(read?.kind === "tool" && read.name === "read" && read.failed === false, JSON.stringify(read));
-  const requests = (await readFile(f.log, "utf8")).trim().split("\n").map((line) => JSON.parse(line) as { system?: unknown });
+  const requests = completeLines(await readFile(f.log, "utf8")).map((line) => JSON.parse(line) as { system?: unknown });
   const system = JSON.stringify(requests[0]!.system);
   assert.match(system, /You are the coding assistant in HUI/u, "HUI's default preamble");
   assert.match(system, /hui_tools/u, "HUI's active-tool section");
@@ -781,7 +782,7 @@ export default function (pi) {
 
 async function extensionLog(log: string): Promise<Record<string, unknown>[]> {
   const text = await readFile(log, "utf8").catch(() => "");
-  return text.trim().split("\n").filter(Boolean).map((line) => JSON.parse(line) as Record<string, unknown>);
+  return completeLines(text).map((line) => JSON.parse(line) as Record<string, unknown>);
 }
 
 const logged = async (log: string, event: string) => (await extensionLog(log)).filter((entry) => entry["event"] === event);

@@ -14,6 +14,7 @@ import type { BotMemory } from "../bot-memory.ts";
 import type { DurableSession } from "./durable.ts";
 import type { RuntimeEvent, RuntimeQuestion, TranscriptEntry } from "./types.ts";
 import { GATEWAY_ONLY_TOOLS } from "../worker/gateway-tools.ts";
+import { completeLines } from "../test-support/json-lines.ts";
 import { waitFor } from "../test-support/wait-for.ts";
 
 // HUI's configuration directory is resolved at import time; never the operator's own.
@@ -266,7 +267,7 @@ async function fixture(t: TestContext, hostOptions: { gatewayOnlyTools?: readonl
 type ProviderRequest = { system?: unknown; tools?: Array<{ name?: string }>; messages?: Array<{ role: string; content: unknown }> };
 async function requests(log: string): Promise<ProviderRequest[]> {
   const text = await readFile(log, "utf8").catch(() => "");
-  return text.trim().split("\n").filter(Boolean).map((line) => JSON.parse(line) as ProviderRequest);
+  return completeLines(text).map((line) => JSON.parse(line) as ProviderRequest);
 }
 const toolNames = (request: ProviderRequest | undefined) => (request?.tools ?? []).map((tool) => tool.name);
 

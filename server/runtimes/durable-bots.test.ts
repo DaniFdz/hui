@@ -14,6 +14,7 @@ import type { BotMemoryStatus } from "../../shared/bots.ts";
 import type { BotMemory } from "../bot-memory.ts";
 import type { DurableSession } from "./durable.ts";
 import type { TranscriptEntry } from "./types.ts";
+import { completeLines } from "../test-support/json-lines.ts";
 
 // HUI's configuration directory is resolved at import time; never the operator's own.
 const configDir = await mkdtemp(join(tmpdir(), "hui-durable-bots-config-"));
@@ -100,7 +101,7 @@ async function fixture(t: TestContext) {
 
 type ProviderRequest = { model?: string; system?: unknown; tools?: Array<{ name?: string }>; messages?: Array<{ role: string; content: string | Array<{ type: string; text?: string }> }> };
 async function requests(log: string): Promise<ProviderRequest[]> {
-  return (await readFile(log, "utf8")).trim().split("\n").map((line) => JSON.parse(line) as ProviderRequest);
+  return completeLines(await readFile(log, "utf8")).map((line) => JSON.parse(line) as ProviderRequest);
 }
 
 /** Resolves once the session settles with a transcript `predicate` accepts. */

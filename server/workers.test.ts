@@ -13,6 +13,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { after, before, test } from "node:test";
 import { fileURLToPath } from "node:url";
+import { completeLines } from "./test-support/json-lines.ts";
 
 const repo = fileURLToPath(new URL("../", import.meta.url));
 const root = await mkdtemp(join(tmpdir(), "hui-workers-"));
@@ -716,7 +717,7 @@ test("a key and header written literally in the gateway's models.json reach the 
   await waitFor(async () => (await log()).includes("literal key without the gateway") || undefined, "the follow-up to reach the provider");
   const second = await reattach(key, first.sessionFile!, (session) => session.transcript().some((entry) => entry.kind === "message" && entry.text === "literal key without the gateway") && lastAnswer(session) === "Fixture response.", "the follow-up to run");
   try {
-    const requests = (await log()).trim().split("\n").map((line) => JSON.parse(line) as { messages: unknown; header?: string });
+    const requests = completeLines(await log()).map((line) => JSON.parse(line) as { messages: unknown; header?: string });
     for (const prompt of ["literal key with the gateway", "literal key without the gateway"]) {
       const request = requests.find((entry) => JSON.stringify(entry.messages).includes(prompt));
       assert.equal(request?.header, HEADER_SECRET, `the request for "${prompt}" carried the literal header`);
@@ -731,7 +732,7 @@ test("a key and header written literally in the gateway's models.json reach the 
 
 test("a literal header of a provider whose key resolves on the remote reaches the worker from memory, with the gateway or without it", async () => {
   const log = () => readFile(join(root, "provider.jsonl"), "utf8");
-  const headerOf = async (prompt: string) => (await log()).trim().split("\n").map((line) => JSON.parse(line) as { messages: unknown; header?: string })
+  const headerOf = async (prompt: string) => completeLines(await log()).map((line) => JSON.parse(line) as { messages: unknown; header?: string })
     .find((entry) => JSON.stringify(entry.messages).includes(prompt))?.header;
   // A PI worker gets the values from the host when it starts.
   const pi = await piRuntime.start({ cwd: project, worker: workerId, huiSessionId: "remote-header-pi", model: "fx-remote-key/fixture" });

@@ -28,5 +28,7 @@ reads, long-lived session lifecycle, and runtime adapters.
 - State a test cannot await is polled with `waitFor` (`test-support/wait-for.ts`):
   a wall-clock deadline, setTimeout between reads, and the awaited state in its
   failure. Never re-poll with setImmediate or an iteration count.
+- A JSON-lines log another process may still be appending to is parsed through
+  `completeLines` (`test-support/json-lines.ts`), never up to a half-written line.
 - Run the focused test file, then `npm test` and `npm run typecheck`. Changes to
   routes or runtime behavior also require Browser-tool E2E proof of the consuming flow.

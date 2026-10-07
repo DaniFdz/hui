@@ -10,6 +10,7 @@ import { after, before, test } from "node:test";
 import { botKickoffName, BOTS_OFF_MESSAGE, BOTS_OFF_ROUTINE_MESSAGE, type BotCatalog, type BotMemoryStatus, type BotQuestion, type BotsUpdate, type BotView } from "../shared/bots.ts";
 import type { BotIO } from "../cli/bots.ts";
 import type { TranscriptEntry } from "./runtimes/types.ts";
+import { completeLines } from "./test-support/json-lines.ts";
 
 // One isolated gateway: HUI's directory, PI's agent directory and a deterministic provider, all temporary.
 const dir = await mkdtemp(join(tmpdir(), "hui-bot-routes-"));
@@ -117,7 +118,7 @@ function settledWith(id: string, predicate: (entries: TranscriptEntry[]) => bool
 
 /** Every request the provider received, compactor calls included. */
 async function providerRequests(): Promise<Array<{ model?: string; system?: unknown; messages?: unknown }>> {
-  return (await readFile(log, "utf8")).trim().split("\n").map((line) => JSON.parse(line) as { model?: string; system?: unknown; messages?: unknown });
+  return completeLines(await readFile(log, "utf8")).map((line) => JSON.parse(line) as { model?: string; system?: unknown; messages?: unknown });
 }
 
 const says = (role: "user" | "assistant", text: string) => (entries: TranscriptEntry[]) =>

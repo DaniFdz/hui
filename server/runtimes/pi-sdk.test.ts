@@ -14,6 +14,7 @@ import { configuredResourceId } from "./resource-policy.ts";
 import { bundledSkills } from "../bundled-skills.ts";
 import { registerAgentToolHandler } from "../agent-tools-bridge.ts";
 import { SecretFiles, SecretRequests } from "../secret-requests.ts";
+import { completeLines } from "../test-support/json-lines.ts";
 
 const configDir = await mkdtemp(join(tmpdir(), "hui-sdk-config-"));
 process.env["XDG_CONFIG_HOME"] = configDir;
@@ -92,7 +93,7 @@ test("SDK owns schemas and prompt, executes tools, preserves history, models, th
   await session.prompt("E2E_RICH"); await settled;
   assert(events.some((event) => event.type === "thinking"));
   assert(events.some((event) => event.type === "tool_end" && event.name === "read" && event.output?.includes("SDK fixture content")));
-  const requests = (await readFile(f.log, "utf8")).trim().split("\n").map((line) => JSON.parse(line));
+  const requests = completeLines(await readFile(f.log, "utf8")).map((line) => JSON.parse(line));
   assert.match(JSON.stringify(requests[0].system), /coding assistant in HUI/u);
   assert.match(JSON.stringify(requests[0].system), /progress_card/u);
   assert.match(JSON.stringify(requests[0].system), /present_media/u);
@@ -186,12 +187,12 @@ test("SDK continues an aborted reply that followed a persisted prompt or tool ch
   await writeFile(sessionFile, `${(await readFile(sessionFile, "utf8")).trimEnd()}\n${lines.join("\n")}\n`);
 
   const resumed = await f.start({ sessionFile });
-  const before = (await readFile(f.log, "utf8")).trim().split("\n").length;
+  const before = completeLines(await readFile(f.log, "utf8")).length;
   settled = nextEvent(resumed, (event) => event.type === "settled");
   await resumed.continueRun!();
   await settled;
   assert(resumed.transcript().some((entry) => entry.kind === "message" && entry.role === "assistant" && entry.text.includes("Tool complete")), JSON.stringify(resumed.transcript()));
-  const requests = (await readFile(f.log, "utf8")).trim().split("\n").slice(before).map((line) => JSON.parse(line));
+  const requests = completeLines(await readFile(f.log, "utf8")).slice(before).map((line) => JSON.parse(line));
   assert.equal(requests.length, 1, "continuing sends exactly one request and no synthetic user prompt");
   assert(JSON.stringify(requests[0]).includes("CONTINUE_SECTION_FIXTURE"), "the persisted loadout change still applies to the continued request");
   assert(!JSON.stringify(requests[0]).includes("Request was aborted"));
@@ -232,7 +233,7 @@ test("SDK inspects late tools, overrides and load failures; SYSTEM and APPEND co
   assert.deepEqual(updated.tools.filter((tool) => tool.active).map((tool) => tool.name).sort(), ["late_tool", "read"]);
   settled = nextEvent(session, (event) => event.type === "settled");
   await session.prompt("E2E_RICH"); await settled;
-  const request = JSON.parse((await readFile(f.log, "utf8")).split("\n")[0]!);
+  const request = JSON.parse(completeLines(await readFile(f.log, "utf8"))[0]!);
   assert.deepEqual(request.tools.map((tool: { name: string }) => tool.name).sort(), ["late_tool", "read"]);
   assert.match(JSON.stringify(request.system), /Fixture guidance/u);
   assert.doesNotMatch(JSON.stringify(request.system), /Maintain the current task progress/u);
@@ -284,7 +285,7 @@ for (const backend of ["sdk", "cli"] as const) {
     assert((await enabled.listCommands()).some((command) => command.name === `skill:${bundled.name}`));
     let settled = nextEvent(enabled, (event) => event.type === "settled");
     await enabled.prompt("Default discovery fixture"); await settled;
-    let requests = (await readFile(f.log, "utf8")).trim().split("\n").map((line) => JSON.parse(line));
+    let requests = completeLines(await readFile(f.log, "utf8")).map((line) => JSON.parse(line));
     assert(JSON.stringify(requests.at(-1).system).includes(bundled.path));
 
     await writeFile(settingsPath, JSON.stringify({ disabledSkills: [{ name: bundled.name, path: bundled.preferencePath }] }));
@@ -294,7 +295,7 @@ for (const backend of ["sdk", "cli"] as const) {
     assert((await enabled.listCommands()).some((command) => command.name === `skill:${bundled.name}`));
     settled = nextEvent(disabled, (event) => event.type === "settled");
     await disabled.prompt("Disabled discovery fixture"); await settled;
-    requests = (await readFile(f.log, "utf8")).trim().split("\n").map((line) => JSON.parse(line));
+    requests = completeLines(await readFile(f.log, "utf8")).map((line) => JSON.parse(line));
     assert(!JSON.stringify(requests.at(-1).system).includes(bundled.path));
 
     const overrideDir = join(f.cwd, ".agents", "skills", bundled.name);
@@ -310,7 +311,7 @@ for (const backend of ["sdk", "cli"] as const) {
     assert.equal((await restored.listCommands()).filter((command) => command.name === `skill:${bundled.name}`).length, 1);
     settled = nextEvent(restored, (event) => event.type === "settled");
     await restored.prompt("Override discovery fixture"); await settled;
-    requests = (await readFile(f.log, "utf8")).trim().split("\n").map((line) => JSON.parse(line));
+    requests = completeLines(await readFile(f.log, "utf8")).map((line) => JSON.parse(line));
     assert(JSON.stringify(requests.at(-1).system).includes(overridePath));
     assert(!JSON.stringify(requests.at(-1).system).includes(bundled.path));
     assert.equal(await readFile(overridePath, "utf8"), override);
@@ -325,7 +326,7 @@ test("SDK registers the browser tool only while Settings leave it on", { timeout
   const settingsPath = join(configDir, "hui", "settings.json");
   await mkdir(join(configDir, "hui"), { recursive: true });
   t.after(() => writeFile(settingsPath, "{}"));
-  const lastRequest = async () => JSON.parse((await readFile(f.log, "utf8")).trim().split("\n").at(-1)!) as { system: unknown; tools?: Array<{ name: string }> };
+  const lastRequest = async () => JSON.parse(completeLines(await readFile(f.log, "utf8")).at(-1)!) as { system: unknown; tools?: Array<{ name: string }> };
   const turn = async (session: PiSession) => {
     const settled = nextEvent(session, (event) => event.type === "settled");
     await session.prompt("Browser registration fixture"); await settled;
@@ -374,7 +375,7 @@ test("SDK honors HUI skill disable controls without changing PI files", { timeou
   await assert.rejects(readFile(f.log, "utf8"), { code: "ENOENT" });
   const settled = nextEvent(session, (event) => event.type === "settled");
   await session.prompt("Skill filtering fixture"); await settled;
-  const request = JSON.parse((await readFile(f.log, "utf8")).split("\n")[0]!);
+  const request = JSON.parse(completeLines(await readFile(f.log, "utf8"))[0]!);
   assert.match(JSON.stringify(request.system), /enabled-fixture/u);
   assert.doesNotMatch(JSON.stringify(request.system), /disabled-fixture/u);
   for (const skill of skills) assert.equal(await readFile(skill.path, "utf8"), skill.body);
@@ -545,7 +546,7 @@ test("SDK compaction persists through resume and a crashing extension only exits
   await session.prompt("/fixture-compact");
   assert.deepEqual(await notice, { type: "notice", message: "Compaction complete", level: "info" });
   const file = session.sessionFile!;
-  assert((await readFile(file, "utf8")).split("\n").some((line) => line && JSON.parse(line).type === "compaction"));
+  assert(completeLines(await readFile(file, "utf8")).some((line) => JSON.parse(line).type === "compaction"));
   session.dispose();
   const resumed = await f.start({ sessionFile: file });
   const settled = nextEvent(resumed, (event) => event.type === "settled");
@@ -570,7 +571,7 @@ function entryId(session: PiSession, text: string): string {
 
 /** The provider request that carried `marker`, as searchable text. */
 async function requestWith(log: string, marker: string): Promise<string> {
-  const request = (await readFile(log, "utf8")).trim().split("\n").findLast((line) => line.includes(marker));
+  const request = completeLines(await readFile(log, "utf8")).findLast((line) => line.includes(marker));
   assert(request, marker);
   return request;
 }
