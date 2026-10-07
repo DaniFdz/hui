@@ -1,3 +1,8 @@
+/**
+ * Serves the built web app from the package's dist directory: app routes get an uncached index.html and every
+ * other path the matching file. Only GET and HEAD are served, and dot segments, backslashes, control
+ * characters or paths resolving outside the root are 404s.
+ */
 import { readFile, realpath, stat } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { extname, isAbsolute, join, relative, sep } from "node:path";

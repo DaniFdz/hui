@@ -1,3 +1,6 @@
+/** Where an installed HUI lives and which release it runs. The installation root stays as installed; updates are staged
+ * in a per-installation XDG data directory and selected by a validated `current.json` pointer. It also refuses
+ * updates for source checkouts and Nix- or Homebrew-managed installs, which have their own update paths. */
 import { createHash } from "node:crypto";
 import { access, readFile, realpath } from "node:fs/promises";
 import { homedir } from "node:os";

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { botRoutineRuns, botRoutines, routineCadenceSummary, routineSchedule, RoutineFormError } from "./bot-routines.ts";
+import { botRoutineRuns, botRoutines, routineCadenceSummary, routineEndLabel, routineFacts, routineSchedule, RoutineFormError } from "./bot-routines.ts";
 import type { AutomationRun, AutomationSnapshot, AutomationTask } from "./automation-types.ts";
 
 const TZ = "Europe/Madrid";
@@ -67,4 +67,19 @@ test("a bot's routines and runs are the Automation tasks that target its chat", 
   assert.deepEqual(botRoutineRuns(snapshot, "bot", 1).map(({ id }) => id), ["r3"]);
   assert.deepEqual(botRoutines(undefined, "bot"), []);
   assert.deepEqual(botRoutineRuns(undefined, "bot"), []);
+});
+
+test("a routine shows who made it when a bot did, and a temporary routine's end and runs left", () => {
+  const now = Date.parse("2026-10-07T10:00:00.000Z");
+  assert.deepEqual(routineFacts({}, { now }), [], "an operator's routine without limits shows nothing more");
+  assert.deepEqual(routineFacts({ createdBy: { kind: "operator" } }, { now }), []);
+  const temporary = { createdBy: { kind: "bot" as const, botId: "bot-ada", handle: "ada" }, until: "2026-10-07T16:00:00.000Z", runsLeft: 3 };
+  assert.deepEqual(routineFacts(temporary, { now, timeZone: TZ }), ["made by @ada", "until 18:00", "3 runs left"]);
+  assert.deepEqual(routineFacts(temporary, { now, timeZone: TZ, handle: (id) => (id === "bot-ada" ? "ada-lovelace" : undefined) }), ["made by @ada-lovelace", "until 18:00", "3 runs left"], "by its handle now");
+  assert.deepEqual(routineFacts({ runsLeft: 1 }, { now }), ["1 run left"]);
+  assert.deepEqual(routineFacts({ runsLeft: 0 }, { now }), ["last run"], "its last run is going");
+  assert.equal(routineEndLabel("2026-10-08T16:00:00.000Z", now, TZ), "8 Oct, 18:00", "another day names it");
+  assert.equal(routineEndLabel("2026-10-07T21:59:00.000Z", now, TZ), "23:59");
+  assert.equal(routineEndLabel("2026-10-07T22:00:00.000Z", now, TZ), "8 Oct, 00:00", "midnight in the time zone is tomorrow");
+  assert.equal(routineEndLabel("not a date", now, TZ), "not a date");
 });

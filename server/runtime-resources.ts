@@ -1,3 +1,8 @@
+/**
+ * Memory readings for runtime processes: the resident size of each runtime root plus all of its descendants,
+ * from one `ps` call cached for a few seconds. Best effort and POSIX-only; Windows and failed reads report
+ * nothing.
+ */
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 

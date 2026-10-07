@@ -1,8 +1,3 @@
-import type { TranscriptEntry } from "./runtimes/types.ts";
-import { interruptedRunOriginal } from "./interrupted-run.ts";
-import { CONTINUE_PROMPT, SUBAGENT_COMPLETION_MARKER } from "../src/lib/subagent-completion.ts";
-import { CONTINUE_AFTER_ERROR_PROMPT } from "../src/lib/run-error.ts";
-
 /**
  * A goal-anchored summary of a session for utility drafting (Jira work items).
  * A plain tail slice of the transcript drops the operator's original request
@@ -18,6 +13,11 @@ import { CONTINUE_AFTER_ERROR_PROMPT } from "../src/lib/run-error.ts";
  * subagent completion events) are PI user messages but not operator intent;
  * they are dropped, and an interruption prompt contributes its wrapped request.
  */
+import type { TranscriptEntry } from "./runtimes/types.ts";
+import { interruptedRunOriginal } from "./interrupted-run.ts";
+import { CONTINUE_PROMPT, SUBAGENT_COMPLETION_MARKER } from "../src/lib/subagent-completion.ts";
+import { CONTINUE_AFTER_ERROR_PROMPT } from "../src/lib/run-error.ts";
+
 export type SessionDigest = { text: string; goal: string };
 
 const GOAL_MAX = 4_000;

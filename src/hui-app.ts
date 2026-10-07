@@ -1,3 +1,9 @@
+/**
+ * The root application element, also reused as the embedded chat pane inside splits and bot views. As the shell it
+ * holds the browser-side state (route, session list, layout, drafts, bots, settings and the polls that refresh them)
+ * and passes it to the view render functions as props. Durable state lives behind the gateway's `/__hui/` routes;
+ * this element mirrors it and sends requests, it never reads files or runs processes.
+ */
 import { renderPicker } from "./views/settings-picker.ts";
 import { groupCheckoutDefaults } from "./lib/group-session-defaults.ts";
 import { renderDirectoryPicker } from "./views/directory-picker.ts";
@@ -200,6 +206,7 @@ import { readKanbanOptions, writeKanbanOptions, type KanbanMove, type KanbanOpti
 import { DEFAULT_SESSION_STAGE, SESSION_STAGE_LABELS, type SessionStage } from "../shared/session-stages.ts";
 import type { BacklogCardAction, SessionCardAction } from "./views/kanban.ts";
 import type { BacklogStartTarget } from "./components/backlog-start-dialog.ts";
+import type { ForkTarget } from "./components/fork-dialog.ts";
 import { addSuggestionToBacklog, backlogItemMarkdown, loadBacklog, removeBacklogItem, setBacklogItemGroup, type BacklogItem, type BacklogJiraState } from "./lib/backlog.ts";
 import { loadJiraConnection } from "./lib/jira.ts";
 import { VoiceController } from "./lib/voice-controller.ts";
@@ -362,6 +369,8 @@ export class HuiApp extends HuiElement {
   @state() private stopping = false;
   @state() private continuing = false;
   @state() private rewindPending = false;
+  /** The Fork from here dialog: the session and reply it forks from. While it is open, the chat's fork buttons rest. */
+  @state() private forkTarget: ForkTarget | undefined;
   @state() private sideChat: HomeProps["sideChat"];
   /** The composer's live text, deliberately not reactive: a keystroke only
    * changes what its own textarea already shows, so typing must not re-render
@@ -3062,6 +3071,30 @@ export class HuiApp extends HuiElement {
       });
   };
 
+  /** Asks where the fork works (same checkout or a new worktree); the dialog copies the history and `forked` opens
+   * the copy. The source session is left running or idle as it was. */
+  private forkFromMessage = (entryId: string) => {
+    const session = this.selected;
+    if (!session || this.opening || this.forkTarget) return;
+    void import("./components/fork-dialog.ts").then(() => { this.forkTarget = { session, entryId }; });
+  };
+
+  private forked = async (forked: SessionView) => {
+    this.forkTarget = undefined;
+    await this.refreshSessions();
+    this.selectSession(this.groups.flatMap((group) => group.sessions).find((candidate) => candidate.id === forked.id) ?? forked);
+  };
+
+  private renderForkDialog() {
+    if (!this.forkTarget) return null;
+    return html`<hui-fork-dialog
+      .target=${this.forkTarget}
+      .branchPrefix=${this.settings.branchPrefix}
+      .onClose=${() => { this.forkTarget = undefined; }}
+      .onForked=${this.forked}
+    ></hui-fork-dialog>`;
+  }
+
   private continueRun = () => {
     const session = this.selected;
     if (!session || this.streaming || this.opening || this.continuing) return;
@@ -5322,6 +5355,7 @@ export class HuiApp extends HuiElement {
       stopping: this.stopping,
       continuing: this.continuing,
       rewindPending: this.rewindPending,
+      forkPending: Boolean(this.forkTarget),
       draft: this.draft,
       chatPreferences: this.settings.chat,
       queue: this.queue,
@@ -5456,6 +5490,7 @@ export class HuiApp extends HuiElement {
       onAbort: this.abort,
       onContinue: this.continueRun,
       onRewind: this.rewindToMessage,
+      onFork: this.forkFromMessage,
       onCompact: () => this.compactNow(),
       onCancelCompaction: () => this.cancelCompactionNow(),
       onAddAttachments: this.addAttachments,
@@ -5665,7 +5700,7 @@ export class HuiApp extends HuiElement {
 
   private renderWorkspace() {
     if (this.embeddedPane) {
-      return html`<div class="hui-embedded-session">${this.selected ? renderHome(this.homeProps()) : html`<p role="status">Opening session…</p>`}${this.renderJiraCreateDialog()}</div>`;
+      return html`<div class="hui-embedded-session">${this.selected ? renderHome(this.homeProps()) : html`<p role="status">Opening session…</p>`}${this.renderJiraCreateDialog()}${this.renderForkDialog()}</div>`;
     }
 
     if (this.settingsOpen) {
@@ -5855,6 +5890,7 @@ export class HuiApp extends HuiElement {
       ${this.renderJiraLinkDialog()}
       ${this.renderBacklogStartDialog()}
       ${this.renderBacklogRemoveDialog()}
+      ${this.renderForkDialog()}
       ${this.renderBotDialogs()}
       ${this.renderFloatingCallBar()}
       ${this.commandPalette()}

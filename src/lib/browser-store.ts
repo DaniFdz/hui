@@ -1,3 +1,8 @@
+/**
+ * Browser client for HUI's managed, agent-only browser: its status, start and stop, tab previews and the
+ * live-view socket for a conversation's tabs. The gateway owns the browser process; this module only crosses
+ * `/__hui/` routes to reach it.
+ */
 import { normalizeBrowserStatus, type BrowserStatus } from "../../shared/browser.ts";
 import { fetchJson } from "./settings-store.ts";
 

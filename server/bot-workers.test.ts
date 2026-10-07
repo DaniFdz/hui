@@ -289,6 +289,20 @@ test("message_bot crosses both ways between a bot here and the bot on the worker
   assert.match(systemOf(await chatRequest("[from @home] hello from the fixture")), /- @home: Home/u, "its roster on the worker lists the bot here");
 });
 
+test("a bot on the worker schedules its own temporary routine: its routines tool crosses to this gateway as the bot's session, and that routine's turn there removes it", { timeout: 180_000 }, async () => {
+  const rover = botOf(await call("/__hui/bots/rover"));
+  const added = await call("/__hui/bots/rover/messages", "POST", { text: "E2E_ROUTINE_ADD watch PR #82", wait: true, timeoutSeconds: 120 });
+  assert.match(String(added.body["reply"]), /^routines answered: Added the routine "Watch #82" \(id [\w-]+\): every 5m, first run \S+; until \S+, 3 runs left, then HUI deletes it\./u, JSON.stringify(added.body));
+  const tasks = async () => (await call("/__hui/automation")).body["tasks"] as Array<{ id: string; name: string; sessionId: string; createdBy?: unknown; runsLeft?: number }>;
+  const watch = (await tasks()).find((task) => task.name === "Watch #82")!;
+  assert.deepEqual([watch.sessionId, watch.createdBy, watch.runsLeft], [rover.sessionId, { kind: "bot", botId: rover.id, handle: "rover" }, 3], "on this gateway's scheduler, made by the bot on the worker");
+  assert.equal((await call(`/__hui/automation/tasks/${watch.id}/run`, "POST", {})).status, 202);
+  // The routine's turn runs on the worker; this gateway's record of it says a routine started it, so it may remove itself.
+  await settledWith(rover.sessionId, says("assistant", "routines answered: Removed the routine \"Watch #82\": this turn is its last."), "the routine's turn on the worker to remove it");
+  assert.equal((await tasks()).some((task) => task.id === watch.id), false);
+  assert.equal(botOf(await call("/__hui/bots/rover")).routines, 0);
+});
+
 test("a bot made on the worker without a soul speaks first there, writes SOUL.md in its home there, names itself only when the operator says, and its delete takes that home", { timeout: 240_000 }, async () => {
   // Grok-style: no name, no soul. HUI starts its first turn through the remote session, like any message.
   const created = await call("/__hui/bots", "POST", { worker: "devbox" });

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
 import type { WorkerView } from "../shared/workers.ts";
+import { waitFor } from "./test-support/wait-for.ts";
 
 // Paths are resolved at import time: never the operator's own configuration.
 const config = await mkdtemp(join(tmpdir(), "hui-bot-remote-"));
@@ -256,15 +257,8 @@ test("clean-ups for a worker that no longer exists are dropped when the gateway 
     { worker: "w-1", botId: "a", cwd: "/srv/a", at: "" }, { worker: "gone", botId: "b", cwd: "/srv/b", at: "" }, { worker: "w-1", botId: "../x", cwd: "/srv/x" },
   ] }));
   remoteBots(fake.workers, { cleanupFile });
-  await waitFor(async () => JSON.parse(await readFile(cleanupFile, "utf8")).cleanups.length === 1 || undefined, "the unknown worker's clean-up to go");
+  await waitFor("the unknown worker's clean-up to go", async () => JSON.parse(await readFile(cleanupFile, "utf8")).cleanups.length === 1, {
+    state: async () => JSON.parse(await readFile(cleanupFile, "utf8")),
+  });
   assert.deepEqual(JSON.parse(await readFile(cleanupFile, "utf8")).cleanups.map((entry: { botId: string }) => entry.botId), ["a"], "an invalid entry goes too");
 });
-
-async function waitFor<T>(check: () => Promise<T | undefined>, label: string): Promise<T> {
-  for (let attempt = 0; attempt < 200; attempt += 1) {
-    const value = await check();
-    if (value !== undefined) return value;
-    await tick();
-  }
-  throw new Error(`Timed out waiting for ${label}`);
-}

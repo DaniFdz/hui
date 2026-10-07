@@ -1,12 +1,13 @@
+/**
+ * HUI-owned presentation tool, modeled on OpenClaw's show_widget. The validated call stays in the conversation's
+ * transcript (its arguments and this result); the chat renders it in a sandboxed frame (shared/widgets.ts,
+ * server/widget-sandbox.ts). Nothing else is stored.
+ */
 import { Type } from "typebox";
 import { validateWidget, WIDGET_CODE_MAX_BYTES, WIDGET_TITLE_MAX_LENGTH } from "./widget-code.mjs";
 
 const kib = (bytes) => Math.max(1, Math.round(bytes / 1024));
 
-/** HUI-owned presentation tool, modeled on OpenClaw's show_widget. The
- * validated call stays in the conversation's transcript (its arguments and
- * this result); the chat renders it in a sandboxed frame (shared/widgets.ts,
- * server/widget-sandbox.ts). Nothing else is stored. */
 export default function showWidgetExtension(pi) {
   pi.registerTool({
     name: "show_widget",

@@ -29,6 +29,7 @@ import { Type } from "typebox";
 import { BOT_ACCESS_ANSWERS, botTurnOrigin, type BotAccess, type BotCatalogSkill, type BotCatalogTool, type BotSkillRef, type BotToolGroup, type BotTurnOrigin } from "../../shared/bots.ts";
 import { bundledSkills } from "../bundled-skills.ts";
 import { BotDoc, conversationBotState, MESSAGE_BOT_TOOL, SET_PROFILE_TOOL, WRITE_SOUL_TOOL } from "./durable-bots.ts";
+import { ROUTINES_TOOL } from "./durable-bot-routines.ts";
 import { TRIGGERS_TOOL, TRIGGERS_TOOL_INFO } from "./durable-bot-triggers.ts";
 import { huiToolDefinitions } from "./hui-tools.ts";
 import type { QuestionDraft } from "./question-box.ts";
@@ -98,6 +99,7 @@ const CODING_TOOLS: Readonly<Record<string, { group: BotToolGroup; label: string
 };
 const BOT_TOOLS: Readonly<Record<string, { label: string; description: string }>> = {
   [MESSAGE_BOT_TOOL]: { label: "Message bots", description: "Message another bot of this HUI, which answers in its own chat" },
+  [ROUTINES_TOOL]: { label: "Manage its own routines", description: "List, add, change and remove its own routines, temporary ones included" },
   [TRIGGERS_TOOL]: TRIGGERS_TOOL_INFO,
 };
 

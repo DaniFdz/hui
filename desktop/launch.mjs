@@ -1,3 +1,5 @@
+/** `hui desktop`: opens the desktop window detached from the terminal. On macOS a registered HUI.app is preferred;
+ * otherwise Electron is started directly on the window shell with the installation's launch configuration. */
 import { spawn } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';

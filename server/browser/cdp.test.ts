@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { PassThrough } from "node:stream";
 import { CdpConnection, CdpError, type CdpEvent } from "./cdp.ts";
+import { waitFor } from "../test-support/wait-for.ts";
 
 /** A fake browser end of the pipe: reads commands and writes raw frames. */
 function fixture() {
@@ -19,10 +20,10 @@ function fixture() {
       end = buffered.indexOf("\0");
     }
   });
-  const next = () => new Promise<(typeof commands)[number]>((resolve) => {
-    const poll = () => (commands.length ? resolve(commands.shift()!) : setImmediate(poll));
-    poll();
-  });
+  const next = async (): Promise<(typeof commands)[number]> => {
+    await waitFor("the next command to the browser", () => commands.length > 0, { state: () => ({ buffered }) });
+    return commands.shift()!;
+  };
   return { connection, fromBrowser, next, frame: (value: unknown) => `${JSON.stringify(value)}\0` };
 }
 

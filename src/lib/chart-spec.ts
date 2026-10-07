@@ -1,3 +1,7 @@
+/**
+ * Guards chart specifications from Markdown fences before they reach the chart renderer. A spec must be a
+ * bounded JSON object carrying inline data only, so a chart in a transcript can never load an external URL.
+ */
 const CHART_MAX_SOURCE_CHARS = 100_000;
 const CHART_MAX_DEPTH = 32;
 

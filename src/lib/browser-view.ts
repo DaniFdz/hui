@@ -1,3 +1,8 @@
+/**
+ * Pure presentation rules for the browser live view and the chat's browser preview: fitting a frame, placing
+ * the agent's pointer, tab options and the status and placeholder text. No sockets or DOM; the controller and
+ * views supply the state.
+ */
 import type { BrowserViewState } from "../../shared/browser.ts";
 import type { PickerOption } from "../views/settings-picker.ts";
 

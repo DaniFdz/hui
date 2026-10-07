@@ -52,7 +52,7 @@ class RemoteRuntimeSession implements RuntimeSession, RemoteSessionSink {
     // Only what the remote runtime offers is exposed, so the gateway never
     // shows a control that would fail.
     const self = this as unknown as Record<string, unknown>;
-    for (const name of ["steer", "followUp", "abort", "setModel", "setThinking", "respondQuestion", "cancelQuestion", "compact", "cancelCompaction", "rewind", "continueRun", "listModels", "listCommands", "inspect", "attachmentImage", "clear", "reload"]) {
+    for (const name of ["steer", "followUp", "abort", "setModel", "setThinking", "respondQuestion", "cancelQuestion", "compact", "cancelCompaction", "rewind", "fork", "continueRun", "listModels", "listCommands", "inspect", "attachmentImage", "clear", "reload"]) {
       if (!started.methods.includes(name)) self[name] = undefined;
     }
     this.#attached();
@@ -161,6 +161,10 @@ class RemoteRuntimeSession implements RuntimeSession, RemoteSessionSink {
   async compact(instructions?: string): Promise<void> { await this.#call("compact", ...(instructions === undefined ? [] : [instructions])); }
   async cancelCompaction(): Promise<void> { await this.#call("cancelCompaction"); }
   async rewind(target: unknown, options?: unknown): Promise<void> { await this.#call("rewind", target, ...(options === undefined ? [] : [options])); }
+  /** The fork lives in the worker's store, so the reference only resumes there. */
+  async fork(entryId?: string, options?: { cwd?: string }): Promise<string> {
+    return await this.#call<string>("fork", entryId, ...(options === undefined ? [] : [options]));
+  }
   async continueRun(): Promise<void> { await this.#call("continueRun"); }
   onExit(listener: (unreachable?: RuntimeUnreachableError) => void): () => void {
     this.#exitListeners.add(listener);

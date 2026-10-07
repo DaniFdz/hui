@@ -1,3 +1,7 @@
+/**
+ * The gateway's end of the SDK worker's private IPC channel: inspection, abort, rewind, continue and reload
+ * requests, each matched to its reply by ID. A turn's prompts and events travel over PI's RPC stream, not here.
+ */
 import type { ChildProcess } from "node:child_process";
 import type { RuntimeInspection } from "../../src/lib/tools-types.ts";
 import type { RuntimeRewindTarget } from "./types.ts";

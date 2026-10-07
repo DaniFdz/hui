@@ -1,3 +1,7 @@
+/**
+ * Copying text and images from the UI. It prefers the async Clipboard API and keeps an `execCommand`
+ * selection fallback, because HUI is often opened over plain HTTP on a LAN, where that API is unavailable.
+ */
 export interface ClipboardWriter {
   writeText(text: string): Promise<void>;
 }

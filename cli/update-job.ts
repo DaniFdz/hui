@@ -1,3 +1,5 @@
+/** Receipt for a browser-started update. Operational only, not session or PI state: the detached worker writes it and
+ * it survives the gateway replacement, so the reconnecting browser can distinguish failure from success. */
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { updateDirectory } from "./installation.ts";
@@ -6,8 +8,6 @@ import type { UpdateJob } from "../src/lib/update-types.ts";
 
 export const updateJobFile = (installationRoot: string) => join(updateDirectory(installationRoot), "job.json");
 
-/** Operational receipt only, not session or PI state. Survives the gateway
- * replacement so the reconnecting browser can distinguish failure/success. */
 export async function readUpdateJob(installationRoot: string): Promise<UpdateJob | null> {
   let job: UpdateJob;
   try { job = JSON.parse(await readFile(updateJobFile(installationRoot), "utf8")) as UpdateJob; }

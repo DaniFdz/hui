@@ -1,3 +1,7 @@
+/**
+ * Drag-and-drop payloads and split-ratio arithmetic for session panes: the custom data types for dragged
+ * sessions and panes, and the clamped ratio a pointer or arrow key produces.
+ */
 export const HUI_SESSION_DRAG_TYPE = "application/x-hui-session-id";
 export const HUI_PANE_DRAG_TYPE = "application/x-hui-pane-id";
 export const MIN_SESSION_PANE_RATIO = 0.15;

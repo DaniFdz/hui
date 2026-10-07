@@ -1,6 +1,3 @@
-import type { IncomingMessage, ServerResponse } from "node:http";
-import { WIDGET_SANDBOX_METHOD_PREFIX, widgetContentSecurityPolicy } from "../shared/widgets.ts";
-
 /**
  * The trusted outer page of HUI's two-frame widget sandbox, after OpenClaw's
  * MCP App sandbox host (2026.9.6, MIT) and the MCP Apps sandbox-proxy messages.
@@ -20,6 +17,9 @@ import { WIDGET_SANDBOX_METHOD_PREFIX, widgetContentSecurityPolicy } from "../sh
  *   `ui/notifications/sandbox-` methods coming from the widget, and forwards a
  *   link request only while the widget holds focus right after a user gesture.
  */
+import type { IncomingMessage, ServerResponse } from "node:http";
+import { WIDGET_SANDBOX_METHOD_PREFIX, widgetContentSecurityPolicy } from "../shared/widgets.ts";
+
 const PROXY_SCRIPT = `(() => {
   "use strict";
   if (window.top === window) return;

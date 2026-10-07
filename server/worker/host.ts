@@ -82,7 +82,7 @@ export type RemoteLaunch = Record<string, unknown> & {
 
 /** The runtime methods a gateway may call; anything else is refused. */
 const CALLS = new Set(["prompt", "steer", "followUp", "abort", "setModel", "setThinking", "respondQuestion", "cancelQuestion",
-  "clear", "reload", "compact", "cancelCompaction", "rewind", "continueRun", "listModels", "listCommands", "inspect", "attachmentImage"]);
+  "clear", "reload", "compact", "cancelCompaction", "rewind", "fork", "continueRun", "listModels", "listCommands", "inspect", "attachmentImage"]);
 /** PI calls that start a run, recorded before they reach the runtime. */
 const RUN_CALLS = new Set(["prompt", "continueRun"]);
 /** Calls after which the gateway re-reads the whole transcript. */

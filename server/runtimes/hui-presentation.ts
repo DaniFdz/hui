@@ -1,3 +1,7 @@
+/**
+ * The declarative response formats HUI's chat renders — diagrams, charts, math, callouts and link embeds — and
+ * the prompt section that tells the model about them. The renderers themselves live in the browser.
+ */
 export interface HuiPresentationCapability {
   id: "alerts" | "math" | "mermaid" | "slack-link" | "vega-lite" | "x-post";
   guidance: string;

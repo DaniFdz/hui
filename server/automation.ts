@@ -1,8 +1,15 @@
+/**
+ * HUI's scheduled prompts: the task and run registry in one JSON file, the at/every/cron schedule rules, and
+ * the in-process timer that fires due tasks. Sending a prompt to its session is the injected executor's job;
+ * this module only decides when a task runs and records how each run ended. Runs a previous gateway left
+ * queued or running are marked failed on start.
+ */
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
 import type {
+  AutomationCreator,
   AutomationRun,
   AutomationSchedule,
   AutomationSnapshot,
@@ -14,6 +21,8 @@ const STORE_VERSION = 1;
 const MAX_RUNS = 500;
 const MIN_INTERVAL_MS = 60_000;
 const MAX_TIMEOUT_SECONDS = 86_400;
+/** The most runs a temporary task may be given. */
+export const MAX_TASK_RUNS = 1_000;
 
 type AutomationFile = {
   version: number;
@@ -66,6 +75,22 @@ function isSchedule(value: unknown): value is AutomationSchedule {
   );
 }
 
+function parseCreator(value: unknown): AutomationCreator | undefined {
+  if (!isRecord(value)) return undefined;
+  if (value["kind"] === "operator") return { kind: "operator" };
+  const botId = string(value["botId"]);
+  return value["kind"] === "bot" && botId ? { kind: "bot", botId, handle: string(value["handle"]) } : undefined;
+}
+
+/** A task's optional fields (who made it, its limits), as stored: a value that is not one of them is left out, so a
+ * task written before them, or edited by hand, still loads. */
+function parseTaskExtras(value: Record<string, unknown>): Pick<AutomationTask, "createdBy" | "until" | "runsLeft"> {
+  const createdBy = parseCreator(value["createdBy"]);
+  const until = typeof value["until"] === "string" && Number.isFinite(Date.parse(value["until"])) ? value["until"] : undefined;
+  const runsLeft = Number.isSafeInteger(value["runsLeft"]) && (value["runsLeft"] as number) >= 0 ? value["runsLeft"] as number : undefined;
+  return { ...(createdBy ? { createdBy } : {}), ...(until ? { until } : {}), ...(runsLeft !== undefined ? { runsLeft } : {}) };
+}
+
 function parseTask(value: unknown): AutomationTask | undefined {
   if (!isRecord(value) || !isSchedule(value["schedule"])) return undefined;
   const id = string(value["id"]);
@@ -97,6 +122,7 @@ function parseTask(value: unknown): AutomationTask | undefined {
     createdAt,
     updatedAt,
     nextRunAt: value["nextRunAt"],
+    ...parseTaskExtras(value),
   };
 }
 
@@ -276,6 +302,32 @@ export function nextScheduleAt(schedule: AutomationSchedule, afterMs: number): n
   return nextCronAt(schedule.expression, schedule.timezone, afterMs);
 }
 
+/** A task's next time after `afterMs` before its end (`until`); null once it has none. */
+export function nextRunWithin(schedule: AutomationSchedule, afterMs: number, until: string | undefined): number | null {
+  const next = nextScheduleAt(schedule, afterMs);
+  return next === null || until === undefined || next < Date.parse(until) ? next : null;
+}
+
+/**
+ * A temporary task HUI deletes now: its end (`until`) has come, whether a run of it is still going (`active`) or not,
+ * or its last run is over. Deleting it is the one write that also turns it off: it never runs again.
+ */
+export function taskExpired(task: Pick<AutomationTask, "until" | "runsLeft">, nowMs: number, active: boolean): boolean {
+  if (task.until !== undefined && Date.parse(task.until) <= nowMs) return true;
+  return task.runsLeft === 0 && !active;
+}
+
+/** A new end must be in the future and after the task's next run (`next`, null when it has none), or it never runs. */
+function checkUntil(until: string | undefined, next: number | null, nowMs: number): void {
+  if (until === undefined) return;
+  const end = Date.parse(until);
+  if (end <= nowMs) throw new AutomationInputError("Until must be in the future.");
+  if (next !== null && next >= end) throw new AutomationInputError("Until must come after the task's next run, or it would never run.");
+}
+
+const iso = (timestamp: number) => new Date(timestamp).toISOString();
+const isoOrNull = (timestamp: number | null) => (timestamp === null ? null : iso(timestamp));
+
 function text(value: unknown, label: string, maximum: number, required = true): string {
   if (typeof value !== "string") throw new AutomationInputError(`${label} must be text.`);
   const trimmed = value.trim();
@@ -283,6 +335,23 @@ function text(value: unknown, label: string, maximum: number, required = true): 
     throw new AutomationInputError(`${label} must be ${required ? `1-${maximum}` : `at most ${maximum}`} characters.`);
   }
   return trimmed;
+}
+
+/** `until`: absent stays absent (on update, the task keeps its own), `null` clears it, else an ISO date and time. */
+function untilInput(value: unknown): string | null | undefined {
+  if (value === undefined || value === null) return value;
+  const timestamp = typeof value === "string" ? Date.parse(value) : Number.NaN;
+  if (!Number.isFinite(timestamp)) throw new AutomationInputError("Until must be a valid date and time.");
+  return iso(timestamp);
+}
+
+/** `runs`: absent stays absent (on update, the runs left stay), `null` clears the limit, else 1 to `MAX_TASK_RUNS`. */
+function runsInput(value: unknown): number | null | undefined {
+  if (value === undefined || value === null) return value;
+  if (!Number.isInteger(value) || (value as number) < 1 || (value as number) > MAX_TASK_RUNS) {
+    throw new AutomationInputError(`Runs must be a whole number from 1 to ${MAX_TASK_RUNS}.`);
+  }
+  return value as number;
 }
 
 export function normalizeTaskInput(value: unknown): AutomationTaskInput {
@@ -302,6 +371,8 @@ export function normalizeTaskInput(value: unknown): AutomationTaskInput {
     schedule: normalizeSchedule(value["schedule"]),
     enabled: value["enabled"] !== false,
     timeoutSeconds: timeoutSeconds as number,
+    ...(value["until"] !== undefined ? { until: untilInput(value["until"]) } : {}),
+    ...(value["runs"] !== undefined ? { runs: runsInput(value["runs"]) } : {}),
   };
 }
 
@@ -370,7 +441,8 @@ export class AutomationService {
   async start(): Promise<void> {
     if (this.#started) return;
     this.#started = true;
-    const now = new Date(this.#clock.now()).toISOString();
+    const nowMs = this.#clock.now();
+    const now = iso(nowMs);
     await this.#update((file) => ({
       ...file,
       runs: file.runs.map((run) =>
@@ -378,6 +450,8 @@ export class AutomationService {
           ? { ...run, status: "failed", finishedAt: now, error: "HUI restarted before this run finished." }
           : run,
       ),
+      // A temporary task whose end came, or whose last run was cut short, while HUI was down goes now: nothing runs.
+      tasks: file.tasks.filter((task) => !taskExpired(task, nowMs, false)),
     }));
     await this.#wake();
   }
@@ -396,25 +470,37 @@ export class AutomationService {
     };
   }
 
-  async create(value: unknown): Promise<AutomationTask> {
-    const input = normalizeTaskInput(value);
+  /**
+   * `createdBy`: who makes it; the operator unless a bot's `routines` tool says otherwise. A body never names its
+   * maker, so no client of the routes can pass a task off as a bot's.
+   */
+  async create(value: unknown, options: { createdBy?: AutomationCreator } = {}): Promise<AutomationTask> {
+    const { until: untilInput, runs, ...input } = normalizeTaskInput(value);
     const nowMs = this.#clock.now();
     if (input.schedule.kind === "at" && Date.parse(input.schedule.at) <= nowMs) {
       throw new AutomationInputError("Run at must be in the future.");
     }
-    const now = new Date(nowMs).toISOString();
+    const until = untilInput ?? undefined;
+    const first = nextScheduleAt(input.schedule, nowMs);
+    checkUntil(until, first, nowMs);
+    const now = iso(nowMs);
     const task: AutomationTask = {
       id: randomUUID(), ...input, description: input.description ?? "", enabled: input.enabled !== false,
       timeoutSeconds: input.timeoutSeconds ?? 900, createdAt: now, updatedAt: now,
-      nextRunAt: input.enabled === false ? null : new Date(nextScheduleAt(input.schedule, nowMs) as number).toISOString(),
+      nextRunAt: input.enabled === false ? null : isoOrNull(first),
+      createdBy: options.createdBy ?? { kind: "operator" },
+      ...(until ? { until } : {}),
+      ...(typeof runs === "number" ? { runsLeft: runs } : {}),
     };
     await this.#update((file) => ({ ...file, tasks: [...file.tasks, task] }));
     this.#reschedule();
     return task;
   }
 
+  /** Replaces what the task does and when. Who made it stays; `until` and `runs` change only when given (`null`
+   * clears them), so a client from before them keeps a task's limits. */
   async update(id: string, value: unknown): Promise<AutomationTask> {
-    const input = normalizeTaskInput(value);
+    const { until: untilInput, runs, ...input } = normalizeTaskInput(value);
     const nowMs = this.#clock.now();
     if (input.schedule.kind === "at" && input.enabled !== false && Date.parse(input.schedule.at) <= nowMs) {
       throw new AutomationInputError("Run at must be in the future.");
@@ -423,10 +509,18 @@ export class AutomationService {
     await this.#update((file) => {
       const current = file.tasks.find((task) => task.id === id);
       if (!current) throw new AutomationNotFoundError(`Unknown automation task: ${id}`);
+      const enabled = input.enabled !== false;
+      const until = untilInput === undefined ? current.until : untilInput ?? undefined;
+      const runsLeft = runs === undefined ? current.runsLeft : runs ?? undefined;
+      if (untilInput) checkUntil(until, enabled ? nextScheduleAt(input.schedule, nowMs) : null, nowMs);
+      const { until: _until, runsLeft: _runsLeft, ...kept } = current;
       updated = {
-        ...current, ...input, description: input.description ?? "", enabled: input.enabled !== false,
-        timeoutSeconds: input.timeoutSeconds ?? 900, updatedAt: new Date(nowMs).toISOString(),
-        nextRunAt: input.enabled === false ? null : new Date(nextScheduleAt(input.schedule, nowMs) as number).toISOString(),
+        ...kept, ...input, description: input.description ?? "", enabled,
+        timeoutSeconds: input.timeoutSeconds ?? 900, updatedAt: iso(nowMs),
+        // A task with no runs left (its last run going) is not planned again.
+        nextRunAt: !enabled || runsLeft === 0 ? null : isoOrNull(nextRunWithin(input.schedule, nowMs, until)),
+        ...(until ? { until } : {}),
+        ...(runsLeft !== undefined ? { runsLeft } : {}),
       };
       return { ...file, tasks: file.tasks.map((task) => task.id === id ? updated! : task) };
     });
@@ -434,8 +528,17 @@ export class AutomationService {
     return updated!;
   }
 
-  async remove(id: string): Promise<void> {
-    if (this.#active.has(id)) throw new AutomationConflictError("Stop the active run before deleting this task.");
+  /** The run of the task going now, if any. */
+  activeRun(id: string): string | undefined {
+    return this.#active.get(id)?.runId;
+  }
+
+  /**
+   * Deletes a task. A task with a run going is refused unless `whileRunning`: then the task goes and its run finishes
+   * on its own, as when a bot removes a routine from that routine's own turn.
+   */
+  async remove(id: string, options: { whileRunning?: boolean } = {}): Promise<void> {
+    if (this.#active.has(id) && !options.whileRunning) throw new AutomationConflictError("Stop the active run before deleting this task.");
     await this.#update((file) => {
       if (!file.tasks.some((task) => task.id === id)) throw new AutomationNotFoundError(`Unknown automation task: ${id}`);
       return { ...file, tasks: file.tasks.filter((task) => task.id !== id) };
@@ -449,13 +552,19 @@ export class AutomationService {
     let run: AutomationRun | undefined;
     let task: AutomationTask | undefined;
     await this.#update((file) => {
-      task = file.tasks.find((item) => item.id === id);
-      if (!task) throw new AutomationNotFoundError(`Unknown automation task: ${id}`);
+      const found = file.tasks.find((item) => item.id === id);
+      if (!found) throw new AutomationNotFoundError(`Unknown automation task: ${id}`);
+      const nowMs = this.#clock.now();
+      if (found.runsLeft === 0) throw new AutomationConflictError("This task has no runs left.");
+      if (found.until !== undefined && Date.parse(found.until) <= nowMs) throw new AutomationConflictError("This task has ended.");
+      // A temporary task's run counts as it starts (a skipped one gives it back); after its last, nothing is planned.
+      task = found.runsLeft === undefined ? found
+        : { ...found, runsLeft: found.runsLeft - 1, ...(found.runsLeft === 1 ? { nextRunAt: null } : {}) };
       run = {
-        id: randomUUID(), taskId: task.id, taskName: task.name, sessionId: task.sessionId,
-        source, status: "queued", createdAt: new Date(this.#clock.now()).toISOString(),
+        id: randomUUID(), taskId: found.id, taskName: found.name, sessionId: found.sessionId,
+        source, status: "queued", createdAt: iso(nowMs),
       };
-      return { ...file, runs: [run, ...file.runs] };
+      return { ...file, tasks: file.tasks.map((item) => item.id === id ? task! : item), runs: [run, ...file.runs] };
     });
     void this.#executeRun(task!, run!);
     return run!;
@@ -480,10 +589,11 @@ export class AutomationService {
       timer = setTimeout(() => abort.abort(), task.timeoutSeconds * 1000);
       timer.unref();
       const result = await this.#execute(task, abort.signal);
-      await this.#finish(run.id, abort.signal.aborted ? "cancelled" : "completed", result.summary);
+      await this.#finish(task.id, run.id, abort.signal.aborted ? "cancelled" : "completed", result.summary);
     } catch (error) {
       const cancelled = abort.signal.aborted;
       await this.#finish(
+        task.id,
         run.id,
         cancelled ? "cancelled" : error instanceof AutomationConflictError ? "skipped" : "failed",
         undefined,
@@ -495,19 +605,38 @@ export class AutomationService {
     }
   }
 
+  /** Records how a run ended. A skipped run gives a temporary task its run back; a temporary task whose last run this
+   * was, or whose end came meanwhile, goes. */
   async #finish(
+    taskId: string,
     runId: string,
     status: AutomationRun["status"],
     summary?: string,
     error?: string,
   ): Promise<void> {
-    const finishedAt = new Date(this.#clock.now()).toISOString();
-    await this.#update((file) => ({
-      ...file,
-      runs: file.runs.map((run) => run.id === runId
+    const nowMs = this.#clock.now();
+    const finishedAt = iso(nowMs);
+    let changed = false;
+    await this.#update((file) => {
+      const runs = file.runs.map((run) => run.id === runId
         ? { ...run, status, finishedAt, ...(summary ? { summary } : {}), ...(error ? { error } : {}) }
-        : run),
-    }));
+        : run);
+      const current = file.tasks.find((task) => task.id === taskId);
+      if (!current) return { ...file, runs };
+      const task = status === "skipped" && current.runsLeft !== undefined
+        ? {
+          ...current, runsLeft: current.runsLeft + 1,
+          nextRunAt: current.nextRunAt ?? (current.enabled ? isoOrNull(nextRunWithin(current.schedule, nowMs, current.until)) : null),
+        }
+        : current;
+      const expired = taskExpired(task, nowMs, false);
+      changed = expired || task !== current;
+      return {
+        ...file, runs,
+        tasks: expired ? file.tasks.filter((item) => item.id !== taskId) : file.tasks.map((item) => item.id === taskId ? task : item),
+      };
+    });
+    if (changed) this.#reschedule();
   }
 
   async #wake(): Promise<void> {
@@ -515,18 +644,19 @@ export class AutomationService {
     const nowMs = this.#clock.now();
     let due: AutomationTask[] = [];
     await this.#update((file) => {
-      due = file.tasks.filter((task) => task.enabled && task.nextRunAt !== null && Date.parse(task.nextRunAt) <= nowMs);
-      if (!due.length) return file;
+      // Temporary tasks whose end came go first (a run still going finishes on its own), as do any whose last run is over.
+      const tasks = file.tasks.filter((task) => !taskExpired(task, nowMs, this.#active.has(task.id)));
+      due = tasks.filter((task) => task.enabled && task.nextRunAt !== null && Date.parse(task.nextRunAt) <= nowMs);
+      if (!due.length && tasks.length === file.tasks.length) return file;
       return {
         ...file,
-        tasks: file.tasks.map((task) => {
+        tasks: tasks.map((task) => {
           if (!due.some((item) => item.id === task.id)) return task;
-          const next = nextScheduleAt(task.schedule, nowMs);
           return {
             ...task,
             enabled: task.schedule.kind === "at" ? false : task.enabled,
-            nextRunAt: next === null ? null : new Date(next).toISOString(),
-            updatedAt: new Date(nowMs).toISOString(),
+            nextRunAt: isoOrNull(nextRunWithin(task.schedule, nowMs, task.until)),
+            updatedAt: iso(nowMs),
           };
         }),
       };
@@ -546,9 +676,12 @@ export class AutomationService {
     this.#timer = undefined;
     if (!this.#started) return;
     void this.#read().then((file) => {
+      // The next run, or the next end of a temporary task, paused ones included.
       const next = file.tasks
-        .filter((task) => task.enabled && task.nextRunAt)
-        .map((task) => Date.parse(task.nextRunAt as string))
+        .flatMap((task) => [
+          ...(task.enabled && task.nextRunAt ? [Date.parse(task.nextRunAt)] : []),
+          ...(task.until !== undefined ? [Date.parse(task.until)] : []),
+        ])
         .filter(Number.isFinite)
         .toSorted((a, b) => a - b)[0];
       if (next === undefined) return;

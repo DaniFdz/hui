@@ -1,3 +1,7 @@
+/**
+ * Opening and closing native `<dialog>` elements as modals around Lit's rendering, so the top layer and
+ * the page's inert state are always restored.
+ */
 export type ModalDialog = Pick<HTMLDialogElement, "open" | "showModal" | "close">;
 
 /** Promote a rendered dialog into the browser's top layer exactly once. */

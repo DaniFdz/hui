@@ -93,8 +93,9 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   custom values use the same bounded session-icon metadata contract.
   Project grouping remains a read-only projection and never becomes a drop target.
 - OpenClaw's **Assign to** is absent because PI has no multi-user ownership
-  model. **Fork conversation** is absent until PI exposes a transcript-branching
-  RPC; HUI never copies or rewrites PI's JSONL to imitate a fork.
+  model. **Fork conversation** is absent from the row menu: a Pi Durable session
+  forks from a reply in its transcript instead (below). A session still on PI
+  never forks; HUI never copies or rewrites PI's JSONL to imitate a fork.
 - In custom-group mode, custom groups are reordered by dragging a group header
   above or below another group, or with the group menu's keyboard-accessible
   **Move group up** / **Move group down** actions. The order persists in the HUI
@@ -296,7 +297,19 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   context meter's Compact now start one. Continue invokes PI's native
   prompt-free continuation primitive; only when the branch already ends with a
   completed assistant response does HUI send an explicit continuation prompt.
-  Reply and fork remain absent rather than simulated.
+  A finished reply in a Durable session offers **Fork from here**, which first
+  asks where the fork works. In a Git checkout the dialog offers **New worktree**
+  (the default: a separate checkout on a new branch from the checkout's HEAD,
+  suffix `<title>-fork` unless typed; uncommitted changes stay behind) or
+  **Same checkout** (both sessions edit the same files). Outside Git, or on a
+  remote worker, it forks into the same folder. Durable then copies the history
+  up to that reply into a new conversation, which opens at once as a new session
+  in the same group, titled `<title> (fork)`, on the source's model and
+  reasoning. The source keeps its history and any run in flight. The copy starts
+  unpinned and read, without an icon, Jira links, a Kanban stage or OptChat. A
+  failure keeps the dialog open with its reason and removes a worktree it had
+  made. A reply followed by its tool calls, a bot's chat and sessions still on
+  PI offer no fork.
 - Markdown code fences retain the reference's reveal and word-wrap controls;
   copying remains a confirmed clipboard operation with a retryable failure. All
   HUI copy actions prefer the Clipboard API and fall back to a temporary native
@@ -1219,7 +1232,10 @@ everything the Bots tab can, through the same routes.
   on a bot's chat sees a message another one sent (a routine, a bot, the Bots
   tab) before the reply to it.
 - **Routines** are Automation tasks aimed at a bot's chat, marked
-  `[routine: <name>]`, queued behind a busy bot instead of skipped.
+  `[routine: <name>]`, queued behind a busy bot instead of skipped. A bot
+  schedules its own with a `routines` tool, temporary ones included, which end
+  by themselves at a time or after a number of runs; `hui schedule` manages
+  every scheduled task from a terminal (decision below).
 - **Tools and skills.** A bot has every tool and skill a session in its
   directory has, new ones included, until the operator turns some off in its
   panel's Tools tab or with `hui bot tools` / `hui bot skills`. The host that
@@ -1256,7 +1272,8 @@ everything the Bots tab can, through the same routes.
   appear in the Sessions list, its search, Kanban, the Sessions page, the
   command palette or session pickers; Automations labels their routines
   *Bot · name* and words
-  their schedules as the bot's panel does (*Daily at 08:00*). The roster
+  their schedules as the bot's panel does (*Daily at 08:00*), and shows who
+  made a task when a bot did and a temporary one's limits. The roster
   lists bots by latest activity: the bot's animated face (or its emoji), the
   name, the latest message or role, a short time, an activity badge (active,
   waiting for an answer, summarizing memory, failed), an unread dot (also on the
@@ -1287,7 +1304,8 @@ everything the Bots tab can, through the same routes.
   the chat (open or closed and the tab are remembered; on narrow screens it
   opens on request as a sheet over the chat); its header names the bot beside
   Close and its tabs fill a row of their own under it. Routines lists the bot's Automation tasks with schedule,
-  next run, an enable switch, Run now and Delete, adds routines every N
+  next run, who made one when the bot did and a temporary one's limits (*made by
+  @ada*, *until 18:00*, *3 runs left*), an enable switch, Run now and Delete, adds routines every N
   minutes/hours/days, daily, weekly or once in the browser's time zone, and shows
   the latest runs; under them, Triggers lists the bot's triggers (source, what
   they watch, last fired, cooldown, events waiting, an enable switch, Test,
@@ -1338,6 +1356,48 @@ everything the Bots tab can, through the same routes.
 The contract is [docs/api.md#bots](docs/api.md#bots).
 
 ## Decisions
+
+### Schedules are a CLI, and bots schedule their own routines (2026-10-07)
+
+With the Bots stack on `main` behind Labs, the owner asked: "Schedules should be a
+cli as well, and can be attached to bots, so they can create them themselves."
+Schedules are HUI's Automation tasks, so nothing new schedules anything: the
+scheduler gains a terminal and bots gain a tool over the same tasks.
+
+- **`hui schedule`** (alias `schedules`) lists, shows, adds, edits, pauses,
+  resumes, runs and removes every task through the Automation routes, attached
+  to a session (`--session`, by id or exact title) or a bot (`--bot`, which aims
+  it at the bot's chat: one of its routines). Edit changes only the flags given,
+  and `--bot`/`--session` moves a task. `hui bot routine …` runs on the same
+  code. While bots are off, anything that names a bot, its chat or one of its
+  routines prints the gateway's refusal and `list` leaves bots' routines out;
+  sessions' schedules work regardless.
+- **A bot's `routines` tool** lists, adds, changes and removes the routines of
+  its own chat, beside `write_soul`, `set_profile` and `request_access` in the
+  bot tools' extension. It is a normal switch in the Tools tab, *Manage its own
+  routines*, on by default and not powerful: unlike a bot's own tools the
+  operator can turn it off, and it schedules nothing but prompts to the bot
+  itself.
+- **Temporary routines** end by themselves: `until` (an end time) and/or `runs`
+  (a run count), after either of which HUI deletes the routine. That is the
+  "every 5 minutes until #82 is green" pattern; the bot can also remove the
+  routine itself, from that routine's own turn too, which then finishes. Every
+  run HUI starts counts, by hand or scheduled, except a skipped one, and a run
+  still going at the end finishes on its own. The operator can make temporary
+  schedules too (`--until`, `--runs`).
+- **Guardrails**, at the gateway, for bots on workers too: only its own chat's
+  tasks (another bot's or session's are never seen or touched); at most 20
+  enabled routines per bot's chat once it adds or resumes one, and Automation's
+  one-minute minimum; and adding or changing one is refused in a turn another
+  bot started (`[from @…]`), read from the run's originating input as
+  `set_profile` reads it, while the operator's turns, its routines' turns and
+  HUI's kickoff may. Listing and removing work in any turn, since they never make
+  more work. Changing is refused with adding because a change can make a routine
+  more frequent or longer-lived; the operator's own routes have no cap.
+- **Who made it** (the operator or a bot, by id and handle) and the limits are
+  optional fields of the task, so the store keeps its version and tasks from
+  before load unchanged; a route body never names a maker. The bot's Routines
+  tab and Automations show *made by @bot*, *until 18:00* and *3 runs left*.
 
 ### Triggers wake bots on GitHub, session and webhook events (2026-10-07)
 

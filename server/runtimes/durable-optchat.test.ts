@@ -15,6 +15,7 @@ import type { CallRecord } from "../../shared/calls.ts";
 import type { OptChatTuning } from "./durable-optchat.ts";
 import type { DurableSession } from "./durable.ts";
 import type { RuntimeEvent, TranscriptEntry } from "./types.ts";
+import { completeLines } from "../test-support/json-lines.ts";
 
 // HUI's configuration directory is resolved at import time; never read the operator's own.
 const configDir = await mkdtemp(join(tmpdir(), "hui-optchat-config-"));
@@ -262,7 +263,7 @@ async function turns(session: DurableSession, prompts: readonly string[]): Promi
 type Block = { type: string; text?: string; cache_control?: unknown; signature?: string; name?: string };
 type ProviderRequest = { system?: Block[]; tools?: Block[]; messages: { role: string; content: string | Block[] }[] };
 async function providerRequests(log: string): Promise<ProviderRequest[]> {
-  return (await readFile(log, "utf8")).trim().split("\n").filter(Boolean).map((line) => JSON.parse(line) as ProviderRequest);
+  return completeLines(await readFile(log, "utf8")).map((line) => JSON.parse(line) as ProviderRequest);
 }
 const compacting = (request: ProviderRequest) => JSON.stringify(request.system ?? "").includes("You write the memory of");
 const summarizing = (request: ProviderRequest) => JSON.stringify(request.system ?? "").includes("context summarization assistant");
