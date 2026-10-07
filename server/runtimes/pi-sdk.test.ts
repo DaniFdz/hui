@@ -12,6 +12,8 @@ import type { RuntimeEvent } from "./types.ts";
 import { shippedTools } from "./tool-catalog.ts";
 import { configuredResourceId } from "./resource-policy.ts";
 import { bundledSkills } from "../bundled-skills.ts";
+import { registerAgentToolHandler } from "../agent-tools-bridge.ts";
+import { SecretFiles, SecretRequests } from "../secret-requests.ts";
 
 const configDir = await mkdtemp(join(tmpdir(), "hui-sdk-config-"));
 process.env["XDG_CONFIG_HOME"] = configDir;
@@ -77,10 +79,11 @@ test("SDK owns schemas and prompt, executes tools, preserves history, models, th
   const session = await f.start();
   const initial = await session.inspect!();
   assert.deepEqual(initial.tools.map((tool) => tool.name).sort(), shippedTools().map((tool) => tool.name).sort());
-  assert.equal(initial.tools.filter((tool) => tool.active).length, 17);
+  assert.equal(initial.tools.filter((tool) => tool.active).length, 19);
   assert.equal(initial.tools.find((tool) => tool.name === "terminal")?.source, "HUI");
   assert.equal(initial.tools.find((tool) => tool.name === "browser")?.source, "HUI");
   assert.equal(initial.tools.find((tool) => tool.name === "progress_card")?.source, "HUI");
+  assert.equal(initial.tools.find((tool) => tool.name === "show_widget")?.source, "HUI");
   assert.equal(initial.diagnostics.length, 0);
   assert.match(initial.prompt, /coding assistant in HUI/u);
   const events: RuntimeEvent[] = [];
@@ -93,6 +96,8 @@ test("SDK owns schemas and prompt, executes tools, preserves history, models, th
   assert.match(JSON.stringify(requests[0].system), /coding assistant in HUI/u);
   assert.match(JSON.stringify(requests[0].system), /progress_card/u);
   assert.match(JSON.stringify(requests[0].system), /present_media/u);
+  assert.match(JSON.stringify(requests[0].system), /show_widget: Show an interactive HTML\/SVG widget inline in the HUI chat/u);
+  assert.match(JSON.stringify(requests[0].system), /widget_code is an HTML or SVG fragment/u);
   assert.match(JSON.stringify(requests[0].system), /Active callable tools for this turn/u);
   assert.match(JSON.stringify(requests[0].system), /PI provides their full schemas separately/u);
   assert.match(JSON.stringify(requests[0].system), /browser codec support/u);
@@ -433,6 +438,43 @@ test("SDK excludes disabled packages and direct extensions before their code loa
   await assert.rejects(readFile(directMarker, "utf8"), { code: "ENOENT" });
   assert.equal(await readFile(join(f.agentDir, "settings.json"), "utf8"), piSettings);
   await assert.rejects(f.start({ backend: "cli", noSession: true }), /requires the PI SDK backend/u);
+});
+
+test("SDK secret_request gives the agent a file the operator filled, never the value, and Stop cancels one", { timeout: 45_000 }, async (t) => {
+  const f = await fixture(t);
+  const changed: Array<() => void> = [];
+  const requests = new SecretRequests({ onChange: () => { for (const wake of changed.splice(0)) wake(); } });
+  const files = new SecretFiles(f.dir);
+  t.after(() => { requests.dispose(); files.dispose(); });
+  const pending = async (count: number) => {
+    while (requests.questions("secret-sdk").length !== count) await new Promise<void>((wake) => changed.push(wake));
+    return requests.questions("secret-sdk");
+  };
+  registerAgentToolHandler(async ({ callerSessionId, action, params, signal }) => {
+    if (action !== "secret_request") throw new Error(`Unexpected HUI tool ${action}.`);
+    return files.deliver(await requests.request(callerSessionId, params, signal));
+  });
+  const session = await f.start({ huiSessionId: "secret-sdk" });
+  let settled = nextEvent(session, (event) => event.type === "settled");
+  await session.prompt("E2E_SECRET_REQUEST");
+  const [question] = await pending(1);
+  assert.equal(question?.title, "Fixture API key");
+  requests.answer("secret-sdk", question!.id, { value: "sk-fixture-0123456789" });
+  await settled;
+  const history = JSON.stringify(session.transcript());
+  assert.match(history, /Secret length: 21/u, "the agent's next command read the file");
+  assert.match(history, /used the secret in a command without seeing it/u);
+  const stored = await readFile(session.sessionFile!, "utf8");
+  assert.match(stored, /Fixture API key/u, "the transcript keeps the request itself");
+  for (const text of [history, stored, await readFile(f.log, "utf8")]) {
+    assert(!text.includes("sk-fixture"), "neither the transcript nor the model ever holds the value");
+  }
+
+  settled = nextEvent(session, (event) => event.type === "settled");
+  await session.prompt("E2E_SECRET_REQUEST again");
+  await pending(1);
+  await session.abort(); await settled;
+  await pending(0);
 });
 
 test("SDK abort and steer/follow-up settle without losing queue messages", { timeout: 45_000 }, async (t) => {

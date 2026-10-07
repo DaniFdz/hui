@@ -130,12 +130,15 @@ import {
 import { sessionTreeIds } from "../src/lib/session-tree.ts";
 import { SubagentService } from "./subagents.ts";
 import { presentMediaForSession, servePresentedMedia } from "./presented-media.ts";
+import { serveWidgetSandbox } from "./widget-sandbox.ts";
+import { WIDGET_SANDBOX_PATH } from "../shared/widgets.ts";
 import { GitHubCli, GitHubCliError } from "./github.ts";
 import { FIRST_YEAR as GITHUB_FIRST_YEAR, GitHubContributionsReader, latestYear } from "./github-contributions.ts";
 import { GitHubPreviews, ghApi, previewPullRequestFetcher } from "./github-previews.ts";
 import { MAX_GITHUB_EMBEDS, parseGitHubUrl } from "../shared/github-links.ts";
 import { TaskSuggestionInputError, TaskSuggestionNotFoundError, TaskSuggestionStore } from "./task-suggestions.ts";
 import { WatcherConflictError, WatcherInputError, WatcherNotFoundError, WatcherService } from "./watchers.ts";
+import { SecretFiles, SecretRequests } from "./secret-requests.ts";
 import {
   BacklogInputError,
   BacklogJiraFeed,
@@ -354,6 +357,9 @@ const managedBrowser = new ManagedBrowser({
 const macPower = process.platform === "darwin" ? new MacPower() : undefined;
 liveSessions.setTaskSuggestionProvider((id) => taskSuggestions.list(id));
 liveSessions.setWatcherProvider((id) => watchers.list(id));
+const secretRequests = new SecretRequests({ onChange: (id) => liveSessions.notifySnapshot(id) });
+const secretFiles = new SecretFiles();
+liveSessions.setSecretRequestProvider((id) => secretRequests.questions(id));
 // A stopped turn must not leave its pages running in the headless browser.
 liveSessions.setAbortListener((id) => managedBrowser.closeOwner(id));
 registerAgentToolHandler(async (invocation) => {
@@ -369,6 +375,15 @@ registerAgentToolHandler(async (invocation) => {
   }
   if (invocation.action === "set_stage") {
     return setAgentStage(invocation.callerSessionId, invocation.params);
+  }
+  if (invocation.action === "secret_request") {
+    const caller = (await readRegistry()).find(({ id }) => id === invocation.callerSessionId);
+    if (!caller) throw new Error("Conversation no longer exists.");
+    // The answer itself only goes back over the connection to the caller's
+    // own worker, whose host writes the file where the session's commands run.
+    if (caller.worker !== invocation.fromWorker) throw new Error("A secret request must come from the machine its session runs on.");
+    const answer = await secretRequests.request(caller.id, invocation.params, invocation.signal);
+    return invocation.fromWorker ? answer : secretFiles.deliver(answer);
   }
   if (invocation.action === "watcher") {
     const caller = (await readRegistry()).find(({ id }) => id === invocation.callerSessionId);
@@ -1567,13 +1582,13 @@ export async function createSession(
   if (tool && !NEW_SESSION_TOOLS.has(tool)) {
     throw new Error(`Unsupported session tool: ${tool}`);
   }
-  const model = sessionText(body, "model", SESSION_TITLE_MAX, {
+  const requestedModel = sessionText(body, "model", SESSION_TITLE_MAX, {
     optional: true,
     allowEmpty: false,
   });
   // Only the first slash separates the provider; gateway model IDs may
   // themselves be namespaced, e.g. vercel-ai-gateway/anthropic/claude-opus.
-  if (model && !/^[^/\s]+\/\S+$/.test(model)) {
+  if (requestedModel && !/^[^/\s]+\/\S+$/.test(requestedModel)) {
     throw new Error("Session model must use provider/id format.");
   }
   const thinking = sessionText(body, "thinking", 16, {
@@ -1586,6 +1601,9 @@ export async function createSession(
   // A worker runs the same runtime a local session would.
   const runtimeTool = tool || defaultSessionTool();
   const settings = await readSettings();
+  // Sessions started without a choice (suggestions, backlog items) use the
+  // primary route rather than whatever PI currently treats as its default.
+  const model = requestedModel || settings.models.primary;
   const id = randomUUID();
   const now = new Date().toISOString();
   const recordNamed = (named: string): SessionRecord => ({
@@ -2322,6 +2340,12 @@ async function handleRequest(
   response: ServerResponse,
 ): Promise<void> {
   const path = new URL(request.url ?? "/", "http://localhost").pathname;
+  // An iframe navigation cannot send x-hui. The page is static and holds no
+  // data; its own policy keeps it opaque and embeddable only by HUI.
+  if (path === WIDGET_SANDBOX_PATH) {
+    serveWidgetSandbox(request, response);
+    return;
+  }
   const presentedMedia = path.match(PRESENTED_MEDIA_ROUTE);
   // Native img/audio/video elements cannot set x-hui. Their opaque random id is
   // the read capability, and CORP prevents embedding it from another origin.
@@ -3810,13 +3834,21 @@ async function handleRequest(
       return;
     }
     if (action[2] === "question" && request.method === "POST") {
-      const body = (await readBody(request)) as Record<string, unknown>;
-      const questionId = typeof body["id"] === "string" ? body["id"].trim() : "";
+      let body: Record<string, unknown>;
+      // A parse error quotes the body, which may hold a secret; keep it out of diagnostics.
+      try { body = (await readBody(request)) as Record<string, unknown>; }
+      catch { sendJson(response, 400, { error: "Invalid question response." }); return; }
+      const questionId = typeof body?.["id"] === "string" ? body["id"].trim() : "";
       if (!questionId) {
         sendJson(response, 400, { error: "A question id is required." });
         return;
       }
       try {
+        // A secret goes to the gateway's own request, never to the runtime.
+        if (secretRequests.answer(id, questionId, body)) {
+          sendJson(response, 200, { ok: true });
+          return;
+        }
         if (body["cancelled"] === true) {
           await liveSessions.cancelQuestion(id, questionId);
         } else if (typeof body["value"] === "string") {
@@ -3914,6 +3946,7 @@ export async function startBackend(): Promise<void> {
   }));
   initializeWatchers();
   initializeSubagents();
+  void secretFiles.sweep();
   await workers.list().catch(() => undefined);
   // Opening the Durable store resumes its interrupted runs, including those of
   // sessions no browser has reopened yet, once those sessions have loaded their
@@ -3962,6 +3995,8 @@ export function stopBackend(): void {
   automation.dispose();
   subagents.dispose();
   watchers.dispose();
+  secretRequests.dispose();
+  secretFiles.dispose();
   stopAgentToolBridge();
   // Closed first: remote sessions then keep running on their hosts instead of
   // receiving a kill from the disposal below.

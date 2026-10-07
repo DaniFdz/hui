@@ -44,6 +44,7 @@ import {
 } from "./bots.ts";
 import { SessionBusyError, type LiveSessions } from "./live-sessions.ts";
 import type { PromptAttachment, RuntimeQuestion, TranscriptEntry } from "./runtimes/types.ts";
+import type { SecretQuestion } from "./secret-requests.ts";
 import type { SessionRecord } from "./sessions.ts";
 import { resolveWorkingDirectory } from "./working-directories.ts";
 import { GATEWAY_ONLY_TOOLS } from "./worker/gateway-tools.ts";
@@ -1380,7 +1381,9 @@ function memoryStatus(status: BotMemoryStatus): BotMemoryStatus {
   };
 }
 
-function botQuestion(question: RuntimeQuestion): BotQuestion {
+function botQuestion(question: RuntimeQuestion | SecretQuestion): BotQuestion {
+  // HUI's own `secret_request` prompt: what the secret is for, never a value.
+  if (question.method === "secret") return { id: question.id, method: "secret", title: question.title, message: question.message };
   return {
     id: question.id,
     method: question.method,

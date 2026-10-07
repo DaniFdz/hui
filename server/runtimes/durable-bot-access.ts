@@ -49,7 +49,8 @@ const SKILL_READERS: readonly string[] = ["read", "bash"];
  * change files other programs load, such as PI extensions or shell startup files (`write`, `edit`), drive HUI's own
  * page and `file://` URLs (`browser`), or act through another session, which has every tool (`sessions_spawn`,
  * `sessions_send`, `subagents`). Like every tool they are on by default; the catalog labels them, so the operator sees
- * what turning another tool off leaves open.
+ * what turning another tool off leaves open. `secret_request` is not one: it only asks the operator, who answers each
+ * request in the chat's Secret card or refuses it.
  */
 export const POWERFUL_TOOLS: ReadonlySet<string> = new Set([
   "write", "edit", "bash", "terminal", "watcher", "browser", "sessions_spawn", "sessions_send", "subagents",

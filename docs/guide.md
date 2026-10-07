@@ -398,7 +398,9 @@ reach past whatever else is off. The shell, the shared terminal and watchers run
 commands; writing and editing files can change what other programs load; the
 browser opens HUI's own page and local files; spawning, messaging and steering
 sessions acts through a session that has every tool. They are on by default
-like the rest. Its own tools are always on and listed at the bottom: writing its
+like the rest. Asking you for a secret (**Request secret**, under HUI) is not
+powerful: it only shows you a Secret card in the bot's chat, and you decide
+whether to answer. Its own tools are always on and listed at the bottom: writing its
 SOUL.md, changing its name or title, asking for access, loading its skills, and
 its memory.
 
@@ -460,7 +462,9 @@ never goes in a folder you chose. The roster and the bot's chat show the worker 
 Everything else works as for a bot here: messages, routines, Stop, its Memory
 panel and Soul tab, calls, archiving and deleting, and messages between bots in
 both directions (a bot on a worker sees every bot in its list). Its memory's
-summaries are written on the worker with its utility model.
+summaries are written on the worker with its utility model. A secret it asks for
+is given in its chat's **Secret** card here, as for any session on a worker, and
+the worker writes the file, where its commands run.
 
 **When the worker is offline**, the bot shows it (reconnecting, or
 disconnected), its row keeps its latest message, its Memory panel and Soul tab
@@ -489,7 +493,10 @@ it; delete them first.
 `hui bot chat ada` streams the bot's replies as plain text, so it works over
 SSH. Typed lines are prompts while the bot is idle and steer the turn while it
 works; questions the bot asks are answered inline (a number, `y`/`n`, text or
-`/cancel`). What the bot gets from elsewhere appears as a `> ` line before its
+`/cancel`). A secret it asks for is the exception: `hui bot chat` names it, but
+you give it in the **Secret** card of the bot's chat in HUI, so it never shows in
+the terminal (`/cancel` still refuses it). What the bot gets from elsewhere
+appears as a `> ` line before its
 reply: a routine (`> [routine: Standup] …`), another bot (`> [from @bob] …`), a
 message typed in the Bots tab or sent with `hui bot send`, so the terminal
 shows the same conversation as the Bots tab. The first Ctrl+C stops a running
@@ -500,7 +507,7 @@ the bot is idle, a follow-up after its current turn when it is busy. `-` reads
 the message from stdin. With `--wait` it prints the reply of the turn that
 answers it and exits 0, 1 if that turn fails or `--timeout` (default 300
 seconds) passes first (the bot keeps working), and 2 when the bot asks a
-question, which you then answer in `hui bot chat`.
+question, which you then answer in `hui bot chat` (a secret in its Secret card).
 
 ### Routines
 
@@ -648,6 +655,51 @@ SOUL.md and the newest part of its memory) when it starts the call; the
 helper and the summary use the bot's utility model like any other request. The
 ChatGPT credential stays in the gateway. HUI stores no audio: what stays is each
 call's card (its summary and transcript) in the bot's chat.
+
+## Interactive widgets in the chat
+
+Agents and bots can show a small interactive HTML or SVG widget right in the
+transcript: a mockup to click through, a simulation, an explorable diagram or a
+dashboard of numbers they gathered. Ask for one ("show me this as an interactive
+widget") or let the agent decide; it calls the `show_widget` tool and the
+bundled `visualize` skill tells it when a widget beats plain text.
+
+- The widget appears as a card with its title. It follows HUI's theme, light or
+  dark, as you switch, and the card grows to fit it.
+- **Open full screen** (the arrow in the card's corner) gives it the whole
+  window without restarting it; Escape or the same control brings it back.
+- Links inside a widget open in a new tab when you click them.
+- If the widget hits an error, or tries to load something it may not, the card
+  shows a notice under it. The agent does not see your clicks or those notices;
+  tell it what went wrong.
+- Widgets are part of the conversation: they are back after a reload or a
+  gateway restart, and go away when you delete the session.
+
+## Giving an agent a secret
+
+When an agent needs an API key, a token, a password or a one-time login code,
+it asks for it with a **Secret** card above the composer instead of asking you
+to paste it into the chat. The card names the secret and says why the agent
+needs it; type or paste the value into the masked field and press **Submit**,
+or **Cancel** to refuse. The session shows *Waiting* until you answer, and the
+request expires after 15 minutes.
+
+- The value never appears in the conversation, the agent's history or HUI's
+  stores. The agent only receives the path of a private temporary file that
+  holds it, uses it in its next command and deletes it; HUI deletes it after
+  10 minutes in any case, or when it stops (after a crash, when it starts
+  again).
+- Stopping the agent, or restarting HUI, cancels a request you have not
+  answered.
+- For a session on a remote worker you answer in the same card; the file is
+  written on the worker, where the agent's commands run.
+
+A widget is code the agent wrote, so HUI runs it in a sandbox: it cannot reach
+HUI or its API, read the conversation, your cookies or storage, change or
+navigate the HUI page, open pop-ups or fetch anything from the network. It may
+load scripts, styles and fonts from a few public CDNs (cdnjs, jsDelivr, esm.sh,
+unpkg, Google and Bunny fonts), which then see your IP address.
+[docs/api.md](api.md#agent-widgets) has the full contract.
 
 ## After an upgrade: `hui doctor`
 

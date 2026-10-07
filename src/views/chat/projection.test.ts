@@ -2,6 +2,22 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { activityLabel, browserPreviewRow, projectChatTranscript, workingLabel } from "./projection.ts";
 
+test("a widget call keeps a row of its own once its turn settles", () => {
+  const items = [
+    { kind: "message" as const, id: "u", role: "user" as const, text: "show me" },
+    { kind: "tool" as const, id: "r", name: "read", status: "succeeded" as const, output: "ok" },
+    { kind: "message" as const, id: "mid", role: "assistant" as const, text: "Building it." },
+    { kind: "tool" as const, id: "w", name: "show_widget", status: "succeeded" as const, args: { title: "Dial", widget_code: "<svg/>" }, details: { widget: { title: "Dial" } } },
+    { kind: "message" as const, id: "a", role: "assistant" as const, text: "Shown above." },
+  ];
+  for (const live of [true, false]) {
+    const rows = projectChatTranscript(items, live);
+    const widget = rows.find((row) => row.kind === "activity" && row.items.some((item) => item.kind === "tool" && item.name === "show_widget"));
+    assert.equal(widget?.kind === "activity" && widget.items.length, 1, live ? "live" : "settled");
+    assert.equal(rows.at(-1)?.kind === "messages" && rows.at(-1)?.id, "a");
+  }
+});
+
 test("groups assistant context into one disclosure and leaves only the final answer visible", () => {
   const rows = projectChatTranscript([
     { kind: "message", id: "u1", role: "user", text: "one" },
