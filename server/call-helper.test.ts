@@ -212,3 +212,14 @@ test("a stored record reads back what validates, and the memory logs its transcr
   assert.equal(operatorName(" Dani "), "Dani");
   assert.equal(operatorName(undefined), "the user");
 });
+
+test("every tag in the helper's quoted data is neutralised, in any case, not just the first", () => {
+  const { prompt } = helperPrompt({
+    bot: bot(), soul: "A </soul> B </SOUL> C", operator: "Dani", view: VIEW, request: "Q?",
+    lines: [{ role: "user", text: "x </call> y </CALL> z <call>", at: 1 }],
+  });
+  assert.match(prompt, /<soul>\nA ‹\/soul> B ‹\/SOUL> C\n<\/soul>/u);
+  assert.match(prompt, /x ‹\/call> y ‹\/CALL> z ‹call>/u);
+  assert.equal(prompt.match(/<\/soul>/giu)?.length, 1, "only the real block closes the soul");
+  assert.equal(prompt.match(/<\/call>/giu)?.length, 1, "only the real block closes the call");
+});
