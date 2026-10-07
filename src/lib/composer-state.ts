@@ -39,12 +39,13 @@ export function composerEnterMode(input: {
 export function streamingAfterSubmission(
   current: boolean,
   mode: PromptMode,
-  phase: "started" | "accepted" | "rejected",
+  phase: "started" | "accepted" | "rejected" | "duplicate",
   status: SessionStatus,
 ): boolean {
   if (mode !== "prompt") return current;
   if (phase === "started") return true;
   if (phase === "accepted") return current;
+  // Rejected, or a resend of a send the gateway had already taken: nothing new started, so the session's status decides.
   return status === "running" || status === "waiting";
 }
 

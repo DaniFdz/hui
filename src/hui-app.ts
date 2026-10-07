@@ -2883,7 +2883,7 @@ export class HuiApp extends HuiElement {
         this.streaming = streamingAfterSubmission(
           this.streaming,
           mode,
-          "accepted",
+          duplicate ? "duplicate" : "accepted",
           this.selected?.status ?? session.status,
         );
       })
