@@ -79,9 +79,10 @@ export function boundBytes(text: string, maxBytes: number): string {
   return `${out.trimEnd()}…`;
 }
 
-/** Quoted data stays data: a closing tag inside it cannot end the block it sits in. */
+/** Quoted data stays data: no opening or closing tag inside it can end or start the block it sits in. One global
+ * pass swaps the "<" of every such tag, in any case, for "‹". */
 function quoted(text: string, tag: string): string {
-  return text.replace(new RegExp(`</?${tag}`, "giu"), (match) => match.replace("<", "‹"));
+  return text.replace(new RegExp(`<(/?${tag})`, "giu"), "‹$1");
 }
 
 /**
