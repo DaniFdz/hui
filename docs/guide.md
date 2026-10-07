@@ -266,7 +266,10 @@ at its next turn.
 `hui bot chat ada` streams the bot's replies as plain text, so it works over
 SSH. Typed lines are prompts while the bot is idle and steer the turn while it
 works; questions the bot asks are answered inline (a number, `y`/`n`, text or
-`/cancel`). What the bot gets from elsewhere appears as a `> ` line before its
+`/cancel`). A secret it asks for is the exception: `hui bot chat` names it, but
+you give it in the **Secret** card of the bot's chat in HUI, so it never shows in
+the terminal (`/cancel` still refuses it). What the bot gets from elsewhere
+appears as a `> ` line before its
 reply: a routine (`> [routine: Standup] …`), another bot (`> [from @bob] …`), a
 message typed in the Bots tab or sent with `hui bot send`, so the terminal
 shows the same conversation as the Bots tab. The first Ctrl+C stops a running
@@ -277,7 +280,7 @@ the bot is idle, a follow-up after its current turn when it is busy. `-` reads
 the message from stdin. With `--wait` it prints the reply of the turn that
 answers it and exits 0, 1 if that turn fails or `--timeout` (default 300
 seconds) passes first (the bot keeps working), and 2 when the bot asks a
-question, which you then answer in `hui bot chat`.
+question, which you then answer in `hui bot chat` (a secret in its Secret card).
 
 ### Routines
 

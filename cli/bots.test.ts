@@ -340,6 +340,7 @@ test("send reads - from stdin and exits 0 when answered, 1 on failure or timeout
     [{ status: "failed", error: "provider exploded" }, 1, /@ada failed: provider exploded/u, "err"],
     [{ status: "timeout" }, 1, /No answer within 90s; @ada keeps working/u, "err"],
     [{ status: "needs-input", questions: [{ id: "q1", method: "confirm", title: "Deploy", message: "Ship it?" }] }, 2, /\? Deploy\n {2}Ship it\?\n {2}Answer y or n, or \/cancel\.\n@ada needs an answer: reply with hui bot chat ada\./u, "out"],
+    [{ status: "needs-input", questions: [{ id: "s1", method: "secret", title: "API key", message: "To deploy." }] }, 2, /\? Secret: API key\n {2}To deploy\.\n {2}Give it in HUI's Secret card, in this bot's chat, so it stays out of this terminal; or \/cancel\.\n@ada needs a secret: give it in HUI's Secret card, in its chat\./u, "out"],
   ];
   for (const [result, code, pattern, stream] of outcomes) {
     gateway.replies.push(result);
@@ -418,6 +419,9 @@ test("parsers turn durations, zoom lines, schedules and typed answers into reque
   assert.deepEqual(questionAnswer({ id: "q", method: "confirm", title: "Sure?" }, "no"), { id: "q", confirmed: false });
   assert.deepEqual(questionAnswer({ id: "q", method: "input", title: "Name" }, " Ada "), { id: "q", value: " Ada " }, "typed input is kept as typed");
   assert.deepEqual(questionAnswer({ id: "q", method: "editor", title: "Text" }, "/cancel"), { id: "q", cancelled: true });
+  const secret = { id: "q", method: "secret" as const, title: "API key", message: "To deploy." };
+  assert.throws(() => questionAnswer(secret, "sk-typed-here"), /HUI's Secret card/u, "a secret is never sent from the terminal");
+  assert.deepEqual(questionAnswer(secret, " /cancel "), { id: "q", cancelled: true }, "but the request can be cancelled there");
   assert.match(formatBots([]), /No bots\. Add one with hui bot add --name <name>\./u);
 });
 

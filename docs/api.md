@@ -1331,7 +1331,9 @@ not the run before it. `answered` carries the last assistant text of that run
 as `reply` (absent when it wrote none); `failed` carries `error` (the run ended
 on an error, or the runtime failed or exited); `needs-input` comes as soon as
 that run asks a question, with `questions` (answer them with `POST
-/__hui/sessions/:sessionId/question`); `timeout` ends the wait, never the turn.
+/__hui/sessions/:sessionId/question`; a `secret` one is a [secret
+request](#secret-requests), whose `title` and `message` are its label and
+reason); `timeout` ends the wait, never the turn.
 A client that disconnects ends only its wait.
 
 `GET /__hui/bots/events` is a server-sent event stream like the session list's,
