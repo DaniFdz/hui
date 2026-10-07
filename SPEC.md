@@ -1491,7 +1491,8 @@ session on that worker, as any remote session's.
   naming the worker; a worker host from before bots is told apart.
 - **A remote session's limits.** The terminal, the managed browser and
   watchers act on the gateway's machine, so a bot on a worker has none of them,
-  and no worktrees.
+  and no worktrees. Its secret requests work as a worker session's: the card is
+  answered on the gateway and the worker host writes the file.
 
 ### New sessions run on Pi Durable
 

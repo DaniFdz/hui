@@ -344,7 +344,9 @@ you chose. The roster and the bot's chat show the worker beside its name,
 Everything else works as for a bot here: messages, routines, Stop, its Memory
 panel and Soul tab, calls, archiving and deleting, and messages between bots in
 both directions (a bot on a worker sees every bot in its list). Its memory's
-summaries are written on the worker with its utility model.
+summaries are written on the worker with its utility model. A secret it asks for
+is given in its chat's **Secret** card here, as for any session on a worker, and
+the worker writes the file, where its commands run.
 
 **When the worker is offline**, the bot shows it (reconnecting, or
 disconnected), its row keeps its latest message, its Memory panel and Soul tab
