@@ -10,6 +10,12 @@
  * gateway's own implementation and guard, on this directory), and a bot without
  * a directory of its own works there. The bot itself (its record, routines,
  * roster) stays with the gateway; nothing here knows other bots.
+ *
+ * What the operator turned off in a bot's chat lives in its `hui.bot` document
+ * here, and this host enforces it from that document alone (its tool offer, its
+ * HUI tool bridge, its prompt's skills). A gateway reads and writes those lists
+ * (`bot.access.*`) and what can be turned off (`bot.offer`: skills by the paths
+ * this host's loader finds them at, the mirrored ones included).
  */
 import { realpath, stat } from "node:fs/promises";
 import { isAbsolute, join, relative } from "node:path";
@@ -18,7 +24,7 @@ import { parseCallRecord } from "../../shared/calls.ts";
 import { durableBotConversations } from "../bot-conversations.ts";
 import { BotMemoryUnavailableError, optChatBotMemory, type BotMemorySettings } from "../bot-memory.ts";
 import { localBotSouls } from "../bot-souls.ts";
-import { normalizeSoul } from "../bots.ts";
+import { accessField, normalizeSoul } from "../bots.ts";
 import type { DurableHost } from "../runtimes/durable-host.ts";
 import { durableConversationId } from "../runtimes/durable.ts";
 import { resolveWorkingDirectory } from "../working-directories.ts";
@@ -28,6 +34,8 @@ import { isRecord, type Frame, type Peer } from "./protocol.ts";
 export const BOTS_FEATURE = "bots";
 /** The frame a watched memory's status arrives in. */
 export const BOT_MEMORY_STATUS_FRAME = "bot.memory.status";
+/** What `hello` lists when the host keeps bots' tool and skill lists (`bot.access.*`, `bot.offer`) and reports grants. */
+export const BOT_ACCESS_FEATURE = "bot-access";
 
 const ID = /^[A-Za-z0-9_-]{1,100}$/u;
 const MODEL = /^[^/\s]+\/\S+$/u;
@@ -156,6 +164,8 @@ export function hostBots(options: HostBotsOptions) {
         const model = optionalModel(params["model"], "The bot's model");
         const thinking = optionalLevel(params["thinking"], "The thinking level");
         const soul = params["soul"] === undefined ? "" : normalizeSoul(params["soul"]);
+        // What is off from its first turn, as the gateway checked it against this host's offer (`bot.offer`).
+        const access = params["access"] === undefined ? undefined : accessField(params["access"]);
         const cwd = params["cwd"] === undefined ? home(id) : await directory(params["cwd"]);
         await souls.prepare(id);
         try {
@@ -165,6 +175,7 @@ export function hostBots(options: HostBotsOptions) {
             ...(model ? { model } : {}),
             ...(thinking ? { thinking } : {}),
             memory: settings,
+            ...(access ? { access } : {}),
           });
           names.set(id, settings.name);
           return { reference, cwd };
@@ -174,6 +185,24 @@ export function hostBots(options: HostBotsOptions) {
         }
       },
       "bot.directory": async (params) => ({ cwd: await directory(params["cwd"]) }),
+      /** What the operator turned off in the bot's chat: its document's lists, which this host enforces. */
+      "bot.access.read": async (params) => ({ access: await conversations.access(reference(params["reference"])) }),
+      /** New lists in one commit; a session following the chat here is offered its tools again at once. */
+      "bot.access.write": async (params) => {
+        await conversations.setAccess(reference(params["reference"]), accessField(params["access"]));
+        return {};
+      },
+      /**
+       * What the operator can turn off in the bot's chat, as this host offers it: a live session's own offer (extension
+       * tools included), else the tools every chat has, and the skills this host's loader finds in the chat's
+       * directory, the gateway's mirrored there by their mirrored paths, with Settings' choices as the gateway mirrors
+       * them. Before the conversation exists: the folder asked for (checked here), or the bot's home.
+       */
+      "bot.offer": async (params) => {
+        const conversation = params["reference"] === undefined ? undefined : reference(params["reference"]);
+        const cwd = params["cwd"] === undefined ? home(botId(params["botId"])) : await directory(params["cwd"]);
+        return { offer: await conversations.offer(conversation, cwd) };
+      },
       /** A new working directory, from the conversation's next request: the only change a gateway makes here. */
       "bot.configure": async (params) => {
         await conversations.configure(reference(params["reference"]), { cwd: await directory(params["cwd"]) });

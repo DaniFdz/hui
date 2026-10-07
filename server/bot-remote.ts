@@ -11,14 +11,18 @@
  * Deleting a bot whose worker is offline leaves its memory and home there; the
  * clean-up waits in a small file on this machine (`cleanupFile`) and runs at
  * the worker's next connection, or is dropped with the worker.
+ *
+ * What the operator turned off in such a bot's chat is in its document there,
+ * which the worker's host enforces; these ports read and write it, and ask the
+ * host what can be turned off (skills by the paths it finds them at).
  */
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import type { BotMemoryStatus } from "../shared/bots.ts";
+import type { BotMemoryStatus, BotToolGroup } from "../shared/bots.ts";
 import { BotMemoryUnavailableError, type BotMemory } from "./bot-memory.ts";
-import type { BotSouls, BotStoredMessage, BotWorkers, RemoteBotConversations } from "./bot-service.ts";
-import { BotConflictError, BotInputError, BotWorkerOfflineError } from "./bots.ts";
-import { BOT_MEMORY_STATUS_FRAME, BOTS_FEATURE } from "./worker/host-bots.ts";
+import type { BotOffer, BotSouls, BotStoredMessage, BotWorkers, RemoteBotConversations } from "./bot-service.ts";
+import { BotConflictError, BotInputError, BotWorkerOfflineError, storedAccess } from "./bots.ts";
+import { BOT_ACCESS_FEATURE, BOT_MEMORY_STATUS_FRAME, BOTS_FEATURE } from "./worker/host-bots.ts";
 import { WorkerOfflineError, type WorkerService } from "./workers.ts";
 
 /** What these ports need of the worker service. */
@@ -63,6 +67,29 @@ export function reportedStatus(value: unknown): BotMemoryStatus | undefined {
     ...(failing ? { failing: { node: String(failing["node"] ?? ""), error: String(failing["error"]), since: String(failing["since"] ?? "") } } : {}),
     usage: { calls: calls!, input: input!, output: output!, cacheRead: cacheRead!, cacheWrite: cacheWrite!, cost: cost! },
   };
+}
+
+const TOOL_GROUPS: ReadonlySet<string> = new Set<BotToolGroup>(["files", "shell", "hui", "extension", "bots"]);
+const shortText = (value: unknown, maximum: number): string => typeof value === "string" ? value.slice(0, maximum) : "";
+
+/** What can be turned off in a bot's chat, as its worker reported it: entries that are not one are dropped, and a reply
+ * that is no offer at all is undefined. */
+export function reportedOffer(value: unknown): BotOffer | undefined {
+  if (!isRecord(value) || !Array.isArray(value["tools"]) || !Array.isArray(value["skills"]) || !Array.isArray(value["alwaysOn"])) return undefined;
+  const tools = value["tools"].flatMap((tool): BotOffer["tools"] => {
+    if (!isRecord(tool) || typeof tool["name"] !== "string" || !tool["name"] || typeof tool["group"] !== "string" || !TOOL_GROUPS.has(tool["group"])) return [];
+    return [{
+      name: tool["name"].slice(0, 200), label: shortText(tool["label"], 200) || tool["name"].slice(0, 200), description: shortText(tool["description"], 2_000),
+      group: tool["group"] as BotToolGroup, source: shortText(tool["source"], 500), powerful: tool["powerful"] === true,
+    }];
+  });
+  const skills = value["skills"].flatMap((skill): BotOffer["skills"] => {
+    if (!isRecord(skill) || typeof skill["name"] !== "string" || !skill["name"] || typeof skill["path"] !== "string" || !skill["path"]) return [];
+    return [{ name: skill["name"], path: skill["path"], description: shortText(skill["description"], 2_000), source: shortText(skill["source"], 4_096) }];
+  });
+  const alwaysOn = value["alwaysOn"].flatMap((tool): BotOffer["alwaysOn"] =>
+    isRecord(tool) && typeof tool["name"] === "string" && tool["name"] ? [{ name: tool["name"].slice(0, 200), description: shortText(tool["description"], 2_000) }] : []);
+  return { tools, skills, alwaysOn, live: value["live"] === true };
 }
 
 function storedMessage(value: unknown): BotStoredMessage | undefined {
@@ -134,13 +161,17 @@ export function remoteBots(workers: BotWorkerLink, options: RemoteBotsOptions): 
     ? `HUI is not connected to ${name(id)}. Connect it in Settings → Workers, then create the bot again.`
     : `${name(id)}, where this bot runs, is offline: HUI is not connected to it. Connect it in Settings → Workers, then try again.`);
 
-  /** One request to the worker's host: refused at once while HUI is not connected, or when the host predates bots. */
-  async function request<T>(id: string, op: string, params: Record<string, unknown>, options: { timeoutMs?: number; creating?: boolean } = {}): Promise<T> {
+  /** One request to the worker's host: refused at once while HUI is not connected, or when the host predates bots (or
+   * the `feature` the operation needs). */
+  async function request<T>(id: string, op: string, params: Record<string, unknown>, options: { timeoutMs?: number; creating?: boolean; feature?: string } = {}): Promise<T> {
     const creating = options.creating === true;
     const features = workers.features(id);
     if (!features) throw offline(id, creating);
     if (!features.includes(BOTS_FEATURE)) {
       throw new BotConflictError(`${name(id)} runs an older HUI worker that cannot run bots. Disconnect it in Settings → Workers and connect it again once its sessions are idle, so it runs this HUI's worker.`);
+    }
+    if (options.feature === BOT_ACCESS_FEATURE && !features.includes(BOT_ACCESS_FEATURE)) {
+      throw new BotConflictError(`${name(id)} runs an older HUI worker that cannot turn a bot's tools and skills off. Disconnect it in Settings → Workers and connect it again once its sessions are idle, so it runs this HUI's worker.`);
     }
     try {
       return await workers.hostRequest<T>(id, op, params, options.timeoutMs ?? REQUEST_TIMEOUT_MS);
@@ -286,6 +317,24 @@ export function remoteBots(workers: BotWorkerLink, options: RemoteBotsOptions): 
         },
         async forget(reference) {
           await request(id, "bot.forget", { reference });
+        },
+        async access(reference) {
+          const reply = await request<{ access?: unknown }>(id, "bot.access.read", { reference }, { feature: BOT_ACCESS_FEATURE });
+          if (!isRecord(reply.access)) throw new Error(`${name(id)} sent no tool and skill lists.`);
+          return storedAccess(reply.access);
+        },
+        async setAccess(reference, access) {
+          await request(id, "bot.access.write", { reference, access }, { feature: BOT_ACCESS_FEATURE });
+        },
+        // Without a conversation yet, part of creating the bot: an offline worker says so, and the store may open first.
+        async offer(reference, cwd, botId) {
+          const creating = reference === undefined;
+          const reply = await request<{ offer?: unknown }>(id, "bot.offer", {
+            ...(reference !== undefined ? { reference } : {}), ...(cwd !== undefined ? { cwd } : {}), ...(botId !== undefined ? { botId } : {}),
+          }, { feature: BOT_ACCESS_FEATURE, creating, ...(creating ? { timeoutMs: CREATE_TIMEOUT_MS } : {}) });
+          const offer = reportedOffer(reply.offer);
+          if (!offer) throw new Error(`${name(id)} sent nothing a bot's tools and skills could be checked against.`);
+          return offer;
         },
       };
     },

@@ -210,3 +210,48 @@ test("a bot's conversation and memory are made in the host's own store, in its o
   }
 });
 
+test("a bot's tool and skill lists live in its document here: made with it, read and written through the host, and checked against what this host offers, skills at the paths found here", async () => {
+  const gateway = await botGateway();
+  const { peer } = gateway;
+  try {
+    assert.ok(gateway.hello.features?.includes("bot-access"), "hello says the host keeps bots' lists");
+    // A skill of the gateway's as the mirror holds it here: this host's loader finds it there.
+    const skillDir = join(host.paths.agentDir, "skills", "alpha");
+    await mkdir(skillDir, { recursive: true });
+    await writeFile(join(skillDir, "SKILL.md"), "---\nname: alpha\ndescription: Alpha.\n---\n\n# alpha\n");
+    const alpha = { name: "alpha", path: join(skillDir, "SKILL.md") };
+    type Offer = { tools: Array<{ name: string; group: string; powerful: boolean }>; skills: Array<{ name: string; path: string; source: string; description: string }>; alwaysOn: Array<{ name: string }>; live: boolean };
+    // Before its conversation: its home here, which asking does not make.
+    const before = (await peer.request<{ offer: Offer }>("bot.offer", { botId: "bot-lists" })).offer;
+    assert.equal(before.live, false);
+    assert.deepEqual(["read", "bash", "message_bot"].map((name) => before.tools.some((tool) => tool.name === name)), [true, true, true]);
+    assert.equal(before.tools.find((tool) => tool.name === "bash")?.powerful, true);
+    assert.deepEqual(before.skills.filter((skill) => skill.name === "alpha"), [{ ...alpha, description: "Alpha.", source: "~/data/hui-worker/mirror/agent/skills" }]);
+    assert.deepEqual(before.alwaysOn.map((tool) => tool.name), ["write_soul", "set_profile", "request_access", "load_skill", "zoom", "date"]);
+    assert.equal(existsSync(join(host.paths.dataDir, "bots", "bot-lists")), false, "asking made nothing");
+    await assert.rejects(peer.request("bot.offer", { cwd: "~/missing" }), /No such directory on the remote/u);
+    await assert.rejects(peer.request("bot.offer", {}), /A bot id is required/u);
+
+    const { reference } = await peer.request<{ reference: string }>("bot.create", {
+      botId: "bot-lists", memory: { name: "Lists" }, soul: "# Who I am\nLists.", access: { disabledTools: ["bash"], disabledSkills: [alpha] },
+    });
+    assert.deepEqual(await peer.request("bot.access.read", { reference }), { access: { disabledTools: ["bash"], disabledSkills: [alpha] } }, "in its creating commit");
+    await peer.request("bot.access.write", { reference, access: { disabledTools: ["write", "write"], disabledSkills: [] } });
+    assert.deepEqual(await peer.request("bot.access.read", { reference }), { access: { disabledTools: ["write"], disabledSkills: [] } });
+    assert.equal((await peer.request<{ offer: Offer }>("bot.offer", { reference, cwd: join(host.paths.dataDir, "bots", "bot-lists") })).offer.live, false, "no session follows it here");
+    for (const [access, pattern] of [
+      [{ disabledTools: ["two words"] }, /is not a tool name/u],
+      [{ disabledSkills: ["alpha"] }, /as \{ name, path \}/u],
+      ["bash", /lists are required/u],
+    ] as const) {
+      await assert.rejects(peer.request("bot.access.write", { reference, access }), pattern);
+    }
+    await assert.rejects(peer.request("bot.create", { botId: "bot-bad-lists", memory: { name: "Bad" }, access: { disabledTools: [3] } }), /is not a tool name/u);
+    assert.equal(existsSync(join(host.paths.dataDir, "bots", "bot-bad-lists")), false, "a refused create made nothing");
+    await assert.rejects(peer.request("bot.access.read", { reference: "/tmp/session.jsonl" }), /conversation reference is required/u);
+    await peer.request("bot.forget", { reference });
+    await assert.rejects(peer.request("bot.access.write", { reference, access: { disabledTools: [] } }), /no bot's chat/u);
+  } finally {
+    gateway.disconnect();
+  }
+});

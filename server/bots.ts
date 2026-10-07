@@ -25,7 +25,8 @@ import { dirname, isAbsolute, join } from "node:path";
 
 import {
   BOT_FACE_SHAPES, BOT_HANDLE, BOT_LIMITS, BOT_THINKING_LEVELS, handleFromName, isBotFaceShape, NEW_BOT_NAME,
-  type BotAvatar, type BotAvatarPatch, type BotInput, type BotPatch, type BotRecord, type BotSkillRef, type BotSkillSelector, type BotVoice, type BotVoicePatch,
+  type BotAccess, type BotAvatar, type BotAvatarPatch, type BotInput, type BotPatch, type BotRecord, type BotSkillRef, type BotSkillSelector, type BotVoice,
+  type BotVoicePatch,
 } from "../shared/bots.ts";
 import { GPT_LIVE_VOICES, gptLiveVoice } from "../shared/calls.ts";
 import { VOICE_LANGUAGE_EXAMPLES, voiceLanguage } from "../shared/voice.ts";
@@ -463,6 +464,31 @@ function toolsField(raw: unknown): string[] {
   const bad = names.find((name) => !TOOL_NAME.test(name));
   if (bad !== undefined) throw new BotInputError(`disabledTools must name tools: ${JSON.stringify(bad)} is not a tool name.`);
   return [...new Set(names)];
+}
+
+/**
+ * A bot's lists as a gateway and a worker's host pass them (`bot.create`, `bot.access.write`): both lists, every entry
+ * valid; anything else is refused. Duplicates go.
+ */
+export function accessField(raw: unknown): BotAccess {
+  if (!isRecord(raw)) throw new BotInputError("A bot's tool and skill lists are required.");
+  const disabledTools = toolsField(raw["disabledTools"] ?? []);
+  const skills = raw["disabledSkills"] ?? [];
+  if (!Array.isArray(skills) || skills.length > MAX_LISTED) throw new BotInputError(`disabledSkills must be a list of at most ${MAX_LISTED} skills.`);
+  const disabledSkills: BotSkillRef[] = [];
+  for (const item of skills) {
+    if (!isRecord(item) || typeof item["name"] !== "string" || !item["name"].trim() || typeof item["path"] !== "string" || !item["path"].trim()) {
+      throw new BotInputError("disabledSkills must name skills as { name, path }.");
+    }
+    if (!disabledSkills.some((ref) => ref.name === item["name"] && ref.path === item["path"])) disabledSkills.push({ name: item["name"], path: item["path"] });
+  }
+  return { disabledTools, disabledSkills };
+}
+
+/** The lists a worker's host reports, read as a stored record's: what does not validate is dropped. */
+export function storedAccess(raw: unknown): BotAccess {
+  const source = isRecord(raw) ? raw : {};
+  return { disabledTools: storedTools(source["disabledTools"]), disabledSkills: storedSkills(source["disabledSkills"]) };
 }
 
 /** `disabledSkills`: skill names, or `{ name, path }` where a name alone is ambiguous. */

@@ -127,6 +127,50 @@ test("a worker's bot operations reach its host, and its answers are checked", as
   await assert.rejects(bots.memory("w-1").html("durable:7"), BotWorkerOfflineError);
 });
 
+test("a worker bot's lists and what can be turned off go through its host, which a host from before them refuses; offline, as every other read", async () => {
+  const fake = link();
+  fake.state.features = ["bots", "bot-access"];
+  const { bots } = portsOf(fake);
+  const conversations = bots.conversations("w-1");
+  const alpha = { name: "alpha", path: "/home/remote/.local/share/hui-worker/mirror/agent/skills/alpha/SKILL.md" };
+  const read = { name: "read", label: "Read files", description: "Read files and images", group: "files", source: "Durable", powerful: false };
+  fake.state.replies.set("bot.access.read", () => ({ access: { disabledTools: ["bash", 3, "two words"], disabledSkills: [alpha, { name: "x" }] } }));
+  fake.state.replies.set("bot.offer", (params) => ({ offer: {
+    tools: [read, { name: "odd", group: "nowhere" }, "bash"],
+    skills: [{ ...alpha, description: "Alpha.", source: "~/.local/share/hui-worker/mirror/agent/skills" }, { name: "pathless" }],
+    alwaysOn: [{ name: "write_soul", description: "Rewrite its SOUL.md" }, {}],
+    live: params["reference"] !== undefined,
+  } }));
+  assert.deepEqual(await conversations.access("durable:7"), { disabledTools: ["bash"], disabledSkills: [alpha] }, "what does not validate is dropped");
+  await conversations.setAccess("durable:7", { disabledTools: ["read"], disabledSkills: [] });
+  assert.deepEqual(await conversations.offer("durable:7", "/home/remote/src"), {
+    tools: [read], skills: [{ ...alpha, description: "Alpha.", source: "~/.local/share/hui-worker/mirror/agent/skills" }],
+    alwaysOn: [{ name: "write_soul", description: "Rewrite its SOUL.md" }], live: true,
+  });
+  assert.equal((await conversations.offer(undefined, undefined, "b")).live, false, "before its conversation: the bot's home there");
+  assert.deepEqual(fake.requests.map(({ op, params }) => [op, params]), [
+    ["bot.access.read", { reference: "durable:7" }],
+    ["bot.access.write", { reference: "durable:7", access: { disabledTools: ["read"], disabledSkills: [] } }],
+    ["bot.offer", { reference: "durable:7", cwd: "/home/remote/src" }],
+    ["bot.offer", { botId: "b" }],
+  ]);
+  fake.state.replies.set("bot.offer", () => ({}));
+  await assert.rejects(conversations.offer("durable:7", "/x"), /^Error: devbox sent nothing a bot's tools and skills could be checked against\.$/u);
+  fake.state.replies.set("bot.access.read", () => ({}));
+  await assert.rejects(conversations.access("durable:7"), /devbox sent no tool and skill lists/u);
+
+  // A host from before the lists is told apart at once; an offline worker answers as every other read does.
+  fake.state.features = ["bots"];
+  const sent = fake.requests.length;
+  for (const call of [() => conversations.access("durable:7"), () => conversations.setAccess("durable:7", { disabledTools: [], disabledSkills: [] }), () => conversations.offer("durable:7", "/x")]) {
+    await assert.rejects(call(), (error: unknown) => error instanceof BotConflictError && /^devbox runs an older HUI worker that cannot turn a bot's tools and skills off\./u.test(error.message));
+  }
+  fake.state.connected = false;
+  await assert.rejects(conversations.access("durable:7"), (error: unknown) => error instanceof BotWorkerOfflineError && /^devbox, where this bot runs, is offline/u.test(error.message));
+  await assert.rejects(conversations.offer(undefined, undefined, "b"), (error: unknown) => error instanceof BotWorkerOfflineError && /then create the bot again\.$/u.test(error.message));
+  assert.equal(fake.requests.length, sent, "nothing was sent");
+});
+
 test("memory status comes from what the worker reports: the first ask watches it, one request for a whole list, and a lost connection forgets it", async () => {
   const fake = link();
   const { bots } = portsOf(fake);

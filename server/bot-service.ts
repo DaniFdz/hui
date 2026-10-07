@@ -117,7 +117,11 @@ export type BotConversations = {
 };
 
 /** What a bot's chat reads and writes in the store that holds it, and its SOUL.md: the gateway's, or its worker's. */
-type BotPorts = { conversations: Pick<BotConversations, "configure" | "forget" | "lastMessage" | "writeCallRecord">; memory: BotMemory; souls: BotSouls };
+type BotPorts = {
+  conversations: Pick<BotConversations, "configure" | "forget" | "lastMessage" | "writeCallRecord" | "access" | "setAccess" | "offer">;
+  memory: BotMemory;
+  souls: BotSouls;
+};
 
 /**
  * Remote workers' half of the bots that run on them (HUI-18): each worker's own Durable store holds their conversations
@@ -146,7 +150,13 @@ export type BotWorkers = {
 };
 
 /** A worker's bot conversations. Each fails at once, naming the worker, while HUI is not connected to it. */
-export type RemoteBotConversations = Pick<BotConversations, "configure" | "forget" | "lastMessage" | "writeCallRecord"> & {
+export type RemoteBotConversations = Pick<BotConversations, "configure" | "forget" | "lastMessage" | "writeCallRecord" | "access" | "setAccess"> & {
+  /**
+   * `BotConversations.offer`, computed on the worker: what a session there is offered, and the skills its loader finds
+   * there by their mirrored paths. Before the conversation exists (`reference` undefined) `cwd` is the folder asked
+   * for (absolute or `~/`, checked there), or the bot's home there when absent.
+   */
+  offer(reference: string | undefined, cwd: string | undefined, botId?: string): Promise<BotOffer>;
   /**
    * `BotConversations.create` on the worker, in one operation there: the bot's home folder (always; SOUL.md lives
    * there), SOUL.md when `soul` is given, and the conversation in `cwd` (absolute or `~/`, checked there) or in that
@@ -312,14 +322,19 @@ export class BotService {
     let cwd: string;
     let reference: string;
     let undo: () => Promise<void>;
+    // Off from its first turn, checked on the machine it runs on: against the tools every chat has (its chat isn't
+    // running yet, so not its extensions') and the skills of its directory there.
+    const restricted = input.disabledTools !== undefined || input.disabledSkills !== undefined;
     let access: BotAccess | undefined;
     if (worker) {
-      if (input.disabledTools || input.disabledSkills) throw new BotConflictError(WORKER_LISTS);
       // On the worker, in one operation there: the home folder (always), SOUL.md when given, and the conversation in
-      // the chosen folder or that home. SOUL.md never goes in a chosen folder.
+      // the chosen folder or that home, with what is off. SOUL.md never goes in a chosen folder. Its skills there go by
+      // their mirrored paths, as the worker's own offer names them.
       const remote = this.#remote();
-      ({ reference, cwd } = await remote.conversations(worker.id).create({
-        ...conversation, ...(input.cwd ? { cwd: input.cwd } : {}), ...(input.soul ? { soul: input.soul } : {}),
+      const conversations = remote.conversations(worker.id);
+      if (restricted) access = resolveAccess(await conversations.offer(undefined, input.cwd, id), NOTHING_OFF, input);
+      ({ reference, cwd } = await conversations.create({
+        ...conversation, ...(input.cwd ? { cwd: input.cwd } : {}), ...(input.soul ? { soul: input.soul } : {}), ...(access ? { access } : {}),
       }));
       // Its home folder there goes with SOUL.md; a chosen folder lies outside it and stays.
       undo = async () => { await remote.souls(worker.id).remove(id).catch(() => {}); };
@@ -336,11 +351,7 @@ export class BotService {
         if (created) await rmdir(created).catch(() => {});
       };
       try {
-        // Off from its first turn: the tools every chat has (its chat isn't running yet, so not its extensions') and the
-        // skills of its directory.
-        if (input.disabledTools || input.disabledSkills) {
-          access = resolveAccess(await this.#deps.conversations.offer(undefined, cwd), NOTHING_OFF, input);
-        }
+        if (restricted) access = resolveAccess(await this.#deps.conversations.offer(undefined, cwd), NOTHING_OFF, input);
         // Every bot has its home folder, whatever its working directory: SOUL.md lives there.
         await this.#deps.souls.prepare(id);
         if (input.soul) await this.#deps.souls.write(id, input.soul);
@@ -441,11 +452,12 @@ export class BotService {
     // applies from its next request.
     let access: BotAccess | undefined;
     if (patch.disabledTools !== undefined || patch.disabledSkills !== undefined) {
-      if (bot.worker) throw new BotConflictError(WORKER_LISTS);
       await this.#open(record);
-      const current = await this.#deps.conversations.access(reference);
-      access = resolveAccess(await this.#deps.conversations.offer(reference, bot.cwd), current, patch);
-      await this.#deps.conversations.setAccess(reference, access);
+      // On a worker, read, checked and written there: its skills go by their mirrored paths.
+      const { conversations } = this.#ports(bot);
+      const current = await conversations.access(reference);
+      access = resolveAccess(await conversations.offer(reference, bot.cwd), current, patch);
+      await conversations.setAccess(reference, access);
     }
     if (patch.model !== undefined || patch.thinking !== undefined) {
       await this.#open(record);
@@ -508,15 +520,16 @@ export class BotService {
    * What the operator can turn off in the bot's chat and what is off (`GET /__hui/bots/:id/catalog`), from its
    * `hui.bot` document; a roster copy that differs is repaired. Opening the chat lists its extensions' tools; an
    * archived bot's chat, or one that can't start, gets only the tools every chat has (`live: false`). Its pending
-   * access request comes along, so the Tools tab can answer it too.
+   * access request comes along, so the Tools tab can answer it too. A bot on a worker: from its document and offer
+   * there, skills by their mirrored paths; while HUI is not connected to the worker, a 503 that names it.
    */
   async catalog(target: string): Promise<BotCatalog> {
     const bot = await this.resolve(target);
-    if (bot.worker) throw new BotConflictError(WORKER_LISTS);
     const record = await this.#sessionOf(bot);
     const reference = this.#reference(bot, record);
     if (!bot.archived) await this.#open(record).catch(() => undefined);
-    const [access, offer] = await Promise.all([this.#deps.conversations.access(reference), this.#deps.conversations.offer(reference, bot.cwd)]);
+    const { conversations } = this.#ports(bot);
+    const [access, offer] = await Promise.all([conversations.access(reference), conversations.offer(reference, bot.cwd)]);
     await this.#mirror(bot.id, access);
     const request = this.#accessRequest(bot);
     return {
@@ -556,11 +569,11 @@ export class BotService {
    * At the gateway's start: every bot's roster copy of its lists is checked against its chat's document, which may
    * have changed while the roster could not follow (a grant on a host that does not report to this gateway, or an
    * older HUI that dropped the copy). Returns how many it repaired; a bot that fails is reported and left as it was.
+   * Bots on workers are left out: their conversations are in their workers' stores, which a catalog read reaches.
    */
   async reconcileAccess(): Promise<number> {
     let repaired = 0;
     const records = await this.#deps.readSessions();
-    // A bot on a worker has no lists yet: its conversation is in that worker's store.
     for (const bot of (await this.#registry.list()).filter((each) => !each.worker)) {
       const reference = records.find((record) => record.id === bot.sessionId)?.piSessionFile;
       if (!reference) continue;
@@ -578,14 +591,15 @@ export class BotService {
 
   /**
    * The gateway's own check of a bot's HUI tool call, behind the one where its chat runs: a tool the operator turned off
-   * is refused. The roster's copy decides quickly; a refusal reads the chat's document first, so a copy that fell
-   * behind a grant never refuses what the operator allowed.
+   * is refused. The roster's copy decides quickly; a refusal reads the chat's document first (on its worker for a bot
+   * there, whose calls come back through the worker's bridge), so a copy that fell behind a grant never refuses what the
+   * operator allowed. A document that can't be read leaves the refusal standing.
    */
   async checkToolAllowed(callerSessionId: string, action: string): Promise<void> {
     const bot = this.#registry.cached.find((candidate) => candidate.sessionId === callerSessionId);
     if (!bot?.disabledTools?.includes(action)) return;
     const reference = (await this.#deps.readSessions()).find((record) => record.id === callerSessionId)?.piSessionFile;
-    const access = reference ? await this.#deps.conversations.access(reference) : undefined;
+    const access = reference ? await this.#ports(bot).conversations.access(reference).catch(() => undefined) : undefined;
     if (access && !access.disabledTools.includes(action)) {
       await this.#mirror(bot.id, access);
       return;
@@ -1306,9 +1320,6 @@ function botQuestion(question: RuntimeQuestion): BotQuestion {
 
 /** Nothing turned off: a new bot, and every bot from before the lists. */
 const NOTHING_OFF: BotAccess = { disabledTools: [], disabledSkills: [] };
-
-/** A worker's host doesn't keep a bot's tool and skill lists yet. */
-const WORKER_LISTS = "Tools and skills can't be turned off for a bot on a worker yet.";
 
 const sameSkill = (a: BotSkillRef, b: BotSkillRef) => a.name === b.name && a.path === b.path;
 
