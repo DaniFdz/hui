@@ -923,7 +923,8 @@ requests:
    ended), `src/views/hui-owned-surfaces.test.ts`, `src/views/bots.test.ts`,
    `src/views/settings-automation.test.ts`, `src/lib/bots.test.ts`,
    `src/lib/live-call.test.ts`, `cli/*.test.ts`, and an isolated gateway driven
-   in a browser (screens in the pull request).
+   in a browser ([`e2e/bots-labs.browser.md`](../e2e/bots-labs.browser.md),
+   screens in the pull request).
 
 ### HUI-19 — Agent widgets
 
