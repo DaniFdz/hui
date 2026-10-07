@@ -153,6 +153,7 @@ test("request_access lets one request per bot wait for the operator; the next ma
     ask: (question: unknown) => { asked.push(question); return new Promise<{ value: string }>((resolve) => { answer = resolve; }); },
     applyTools: async () => { applied += 1; },
     runInput: () => "[routine: Morning digest] check the inbox",
+    latestInput: async () => "[routine: Morning digest] check the inbox",
   };
   const tool = access.botAccessParts({ chat: () => chat, skills: async () => [], agentDir: "/nowhere" }).tools.find((each) => each.name === "request_access")!;
   const state = { bot: "bot-a", disabledTools: ["write", "edit"], disabledSkills: [] as BotSkillRef[] };

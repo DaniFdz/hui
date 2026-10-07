@@ -282,6 +282,9 @@ export interface BotChat {
   /** The message that started the run going now (or the latest one): who started the turn, as `botTurnOrigin` reads
    * it. */
   runInput(): string | undefined;
+  /** The newest message the conversation took, read from its store: one that joined the running turn since (a follow-up
+   * does, on a worker) is what its model answers then. */
+  latestInput(): Promise<string | undefined>;
 }
 
 export type BotAccessDeps = {

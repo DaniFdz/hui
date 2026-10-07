@@ -327,6 +327,22 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
     return undefined;
   }
 
+  /** The newest message in the history since the latest reset, read from the store rather than this view, so a tool sees
+   * the one its model answers: a follow-up placed into the running turn after the message that started it. */
+  async latestInput(): Promise<string | undefined> {
+    let cursor: Cursor | undefined;
+    do {
+      const page = await this.#conversation.entries({}, HISTORY_PAGE, cursor, context);
+      for (const entry of page.items) {
+        const message = [...entry.model ?? []].reverse().find((each) => each.role === "user" && !isCustomInput(each));
+        if (message) return textOf(message);
+        if (ResetEntry.is(entry)) return undefined;
+      }
+      cursor = page.next;
+    } while (cursor);
+    return undefined;
+  }
+
   /** The skills this conversation may use: those of its directory, less the ones the operator turned off in a bot's
    * chat. */
   async #skills(loader: { getSkills(): { skills: Skill[] } }): Promise<readonly Skill[]> {

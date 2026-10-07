@@ -352,6 +352,67 @@ test("a trigger wakes the bot on the worker through its remote session, and its 
   assert.deepEqual(listed.triggers.map((trigger) => [trigger.name, trigger.createdBy]), [["Ridge hook", "operator"], ["Ridge sessions", "bot"]]);
 });
 
+test("on the worker too, write_soul refuses a turn that a routine, a trigger or another bot started, and a trigger that joins the operator's running turn there; the operator's own turn writes", { timeout: 240_000 }, async () => {
+  const rover = botOf(await call("/__hui/bots/rover"));
+  const soulPath = join(rover.cwd, "SOUL.md");
+  const before = await readFile(soulPath, "utf8");
+  const writeSoul = (soul: string) => `E2E_CALL:${Buffer.from(JSON.stringify({ name: "write_soul", input: { soul } })).toString("base64url")}`;
+  const refused = "tool answered: Only the operator changes your soul, and this turn was started by a routine, a trigger or another bot. Ask the operator instead.";
+  const startsWith = (start: string) => (entry: TranscriptEntry) => entry.kind === "message" && entry.role === "user" && entry.text.startsWith(start);
+  const toolAnswer = (entry: TranscriptEntry) => entry.kind === "message" && entry.role === "assistant" && entry.text.startsWith("tool answered: ");
+  /** What write_soul told Rover in the turn of the latest message starting with `start`, once that turn on the worker
+   * settled. */
+  const answerTo = async (start: string, label: string) => {
+    const entries = await settledWith(rover.sessionId, (all) => all.some(startsWith(start)) && all.slice(all.findLastIndex(startsWith(start)) + 1).some(toolAnswer), label);
+    const reply = entries.slice(entries.findLastIndex(startsWith(start)) + 1).find(toolAnswer);
+    return reply?.kind === "message" ? reply.text : undefined;
+  };
+
+  // A routine's turn.
+  const made = await call("/__hui/automation/tasks", "POST", { name: "Soul routine", sessionId: rover.sessionId, prompt: writeSoul("# Who I am\nRewritten by a routine."), schedule: { kind: "every", everyMs: 3_600_000 } });
+  assert.equal(made.status, 201, JSON.stringify(made.body));
+  const task = made.body["task"] as { id: string };
+  assert.equal((await call(`/__hui/automation/tasks/${task.id}/run`, "POST", {})).status, 202);
+  assert.equal(await answerTo("[routine: Soul routine] ", "the routine's turn on the worker"), refused);
+  assert.equal((await call(`/__hui/automation/tasks/${task.id}`, "DELETE")).status, 200);
+
+  // A trigger's turn: a webhook while Rover is idle.
+  const hook = await call("/__hui/bots/rover/triggers", "POST", { name: "Soul hook", source: "webhook", prompt: writeSoul("# Who I am\nRewritten by a webhook."), cooldownSeconds: 0 });
+  assert.equal(hook.status, 201, JSON.stringify(hook.body));
+  const fire = async (status: string) => {
+    const fired = await fetch(origin + (hook.body["hook"] as { path: string }).path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ status }) });
+    assert.deepEqual([fired.status, await fired.json()], [202, { status: "fired" }]);
+  };
+  await fire("idle");
+  assert.equal(await answerTo("[trigger: Soul hook · webhook call (status: idle)] ", "the trigger's turn on the worker"), refused);
+
+  // The same webhook while the operator's turn runs there: the gateway hands the trigger's message to the worker's
+  // runtime as a follow-up, which joins that turn. The run is the operator's; the model then answers the trigger.
+  assert.deepEqual((await call("/__hui/bots/rover/messages", "POST", { text: "E2E_REPLAY hold the operator's turn" })).body, { status: "sent" });
+  await control("wait-replay-ready");
+  await fire("busy");
+  const joining = "[trigger: Soul hook · webhook call (status: busy)] ";
+  await waitFor(() => {
+    const { queue } = liveSessions.snapshot(rover.sessionId);
+    return queue.followUp.some((text) => text.startsWith(joining)) && !queue.items?.length;
+  }, "the trigger's message to wait in the worker's runtime, not in HUI's queue");
+  await control("release-replay", { method: "POST" });
+  assert.equal(await answerTo(joining, "the trigger's message that joined the operator's turn"), refused);
+
+  // Another bot's message: Home tells Rover to rewrite its soul.
+  const relayed = writeSoul("# Who I am\nRewritten for @home.");
+  const relay = Buffer.from(JSON.stringify({ name: "message_bot", input: { to: "@rover", message: relayed } })).toString("base64url");
+  assert.equal((await call("/__hui/bots/home/messages", "POST", { text: `E2E_CALL:${relay}`, wait: true, timeoutSeconds: 120 })).body["status"], "answered");
+  assert.equal(await answerTo(`[from @home] ${relayed}`, "Home's message on the worker"), refused);
+  assert.equal(await readFile(soulPath, "utf8"), before, "SOUL.md on the worker is as it was");
+
+  // The operator's own turn writes it there.
+  const wrote = await call("/__hui/bots/rover/messages", "POST", { text: writeSoul("# Who I am\nROVER_SOUL: I map ridges, as the operator says."), wait: true, timeoutSeconds: 120 });
+  assert.match(String(wrote.body["reply"]), /^tool answered: Saved your SOUL\.md \(\d+ characters\); it applies from your next request\./u, JSON.stringify(wrote.body));
+  assert.equal(await readFile(soulPath, "utf8"), "# Who I am\nROVER_SOUL: I map ridges, as the operator says.\n");
+  assert.equal((await call("/__hui/bots/rover/soul", "PUT", { soul: before })).status, 200);
+});
+
 test("a bot on the worker asks for a secret as a worker session does: its chat shows the card here, the worker writes the file", { timeout: 180_000 }, async () => {
   const rover = botOf(await call("/__hui/bots/rover"));
   const value = "rover-only-SECRET-73";

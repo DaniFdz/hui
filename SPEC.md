@@ -1198,8 +1198,11 @@ everything the Bots tab can, through the same routes.
   turn, in which it asks the operator what they expect, a question or two at a
   time (their real request always comes first), and then writes SOUL.md itself
   with its `write_soul` tool, which only bots' chats have (no file tools
-  needed). It changes SOUL.md when the operator asks, and says so; the operator
-  can also edit it in the Soul tab or with `hui bot soul`. A bot without a
+  needed). It changes SOUL.md when the operator asks, and says so. Only the
+  operator's turns (and HUI's kickoff) can rewrite it: SOUL.md steers every
+  later turn, so a turn that a routine, a trigger or another bot started
+  can't, as it can't rename the bot. The operator can also edit it in the
+  Soul tab or with `hui bot soul`. A bot without a
   model of its own runs on Settings' primary model, like a new session.
 - **Named by talking.** A bot created without a name is *New Bot*; its first
   conversation asks what to call it, and it renames itself with a bot-only

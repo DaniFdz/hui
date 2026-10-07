@@ -276,6 +276,7 @@ export class DurableHost implements ExtensionHost {
       }),
     });
     this.#bots = huiBotsExtensions({
+      chat: (conversationId) => this.chatFor(conversationId),
       invoke, section: async (botId) => this.botSection?.(botId), souls: () => this.botSouls,
       tools: access.tools, sections: access.sections,
     });

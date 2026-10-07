@@ -359,12 +359,15 @@ needs no file access): only what you told it or agreed to, since it asks rather
 than guesses. Then it says so, sums it up and tells you how to change it. If
 your first message asks for real work, it does the work first. A bot created
 with a name (`hui bot add --name Ada`) never asks about its name. Messages from
-routines and other bots don't count as you.
+routines, triggers and other bots don't count as you.
 
 From then on every turn reads SOUL.md, so a change applies from the next
 request. To change it, tell the bot ("be more formal", "don't message me before
-nine"): it edits SOUL.md and says so. Or edit it yourself in the bot's **Soul**
-tab, or from a terminal:
+nine"): it edits SOUL.md and says so. Only your own messages can make it do
+that, as with its name: in a turn that a routine, a trigger or another bot
+started, it can't rewrite SOUL.md, so text from elsewhere never becomes what
+steers it from then on. Or edit it yourself in the bot's **Soul** tab, or from
+a terminal:
 
 ```sh
 hui bot soul ada                    # print SOUL.md

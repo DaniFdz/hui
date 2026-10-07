@@ -1489,7 +1489,8 @@ extension renders it as the prompt section `soul`, the last section, after
 `bots`, where a persona goes (OptChat's prompt points to the user's
 instructions at its end): the file's absolute path; that the bot follows it
 and, when the operator asks for a change, rewrites it with `write_soul` (the
-whole file, at most 20,000 characters) and says what it changed; then the file. It is read
+whole file, at most 20,000 characters, only in the operator's own turns) and
+says what it changed; then the file. It is read
 from disk on every request of the host that runs the conversation, through
 the resolver that host sets (`DurableHost.botSouls`: the gateway's resolves
 each bot's home folder; a host without one leaves the section out), so it is
@@ -1504,8 +1505,9 @@ default), and finds out over a few messages what to look after, how to work and
 sound, how proactive to be and when to message them, and its boundaries, one or
 two questions at a time, never a questionnaire. A bot still called `New Bot`
 first asks what the operator wants to call it and saves the answer with
-`set_profile` (the host's resolver gives the section the bot's name). Messages from routines (`[routine: …]`) and
-other bots (`[from @…]`) are not the operator. It writes down only what the
+`set_profile` (the host's resolver gives the section the bot's name). Messages from routines (`[routine: …]`),
+triggers (`[trigger: …]`) and other bots (`[from @…]`) are not the operator,
+and it never saves its soul in their turns. It writes down only what the
 operator said or agreed to, asking about the rest (often its boundaries) rather
 than guessing. Once it knows enough, usually after a few exchanges, it saves
 SOUL.md with `write_soul` (suggested sections: who I am, what I look after,
@@ -1517,9 +1519,9 @@ file is written, so they stay out of SOUL.md.
 `set_profile({ name?, title? })`, beside it, changes the calling bot's own name
 and title in HUI under `PATCH`'s rules (so a derived handle follows the name). It
 goes through HUI's agent-tool handler, as `message_bot` does, and is refused in a
-turn that a routine or another bot started (its run's originating input,
-`runPrompt`, starts with `[routine: ` or `[from @`): only the operator names a
-bot.
+turn that a routine, a trigger or another bot started (its run's originating
+input, `runPrompt`, starts with `[routine: `, `[trigger: ` or `[from @`): only
+the operator names a bot.
 
 `write_soul({ soul })` lives in `hui-bots-tools` beside `message_bot`, so only
 bots' chats are offered it. It replaces the whole SOUL.md: the text is trimmed
@@ -1532,8 +1534,20 @@ first save (there was no SOUL.md), that this ends the first conversation, so the
 reply says the soul was saved, sums it up and says how to change it; after a
 later one, to say what changed. Its replay is safe (the same soul written again
 is the same file).
-Refusals (empty, too long, not a bot's chat, a host without a resolver) are
-tool errors the model reads.
+Only the operator's turns and HUI's kickoff may write it, as with `set_profile`:
+SOUL.md steers every later turn, so text that a routine, a trigger (from outside
+HUI) or another bot brought in must never become it. The host that runs the
+conversation checks, where the tool runs (a worker's host for a bot there):
+`botTurnOrigin` of the message that started the run (`DurableSession.runInput`)
+and of the newest one the conversation took since, read from its store (a
+follow-up joins a running turn, as a message to a busy bot on a worker does
+there). If either came from a routine, a trigger or another bot, it refuses:
+"Only the operator changes your soul, and this turn was started by a routine, a
+trigger or another bot. Ask the operator instead." It refuses as well when no
+live chat follows the conversation on that host, since nothing there can tell
+who started the turn.
+Refusals (empty, too long, not a bot's chat, a host without a resolver, a turn
+the operator didn't start) are tool errors the model reads.
 
 The **kickoff**: right after a create without `soul`, the gateway delivers one
 message to the new chat, as a prompt (like a routine's, so the run is
@@ -1724,8 +1738,9 @@ works, and for a bot on a worker its remote session there (polling stays on
 the gateway). A name is 1–60 characters on one line without `[`, `]` or
 `·`, unique per bot in any case; a summary carries no brackets of its own.
 `botTurnOrigin` reads a turn started this way as `{ kind: "trigger", name }`:
-`set_profile` refuses it as it refuses routines' and other bots' turns, and an
-access request asked in it says "Asked while handling the trigger …".
+`set_profile` and `write_soul` refuse it as they refuse routines' and other
+bots' turns, and an access request asked in it says "Asked while handling the
+trigger …".
 
 **Cooldown and caps.** `cooldownSeconds` (0–86,400, default 300): an event
 within that long of the trigger's last delivery waits, and when the cooldown
@@ -1915,7 +1930,9 @@ first conversation and `write_soul` work there, and `GET`/`PUT
 bot created without a soul has its first turn started through its remote
 session, like any message. `set_profile` reaches this gateway through the
 agent-tool bridge as the bot's session, so the origin check reads that session's
-`runPrompt` here, as for a bot here. A remote bot's `soul` in a list is what the
+`runPrompt` here, as for a bot here. `write_soul` runs on the worker, whose host
+checks who started the turn from the chat there, a trigger's or another bot's
+follow-up that joined a running turn in its runtime included. A remote bot's `soul` in a list is what the
 worker last said, read in the background when its chat's state changes (known
 at once after a create or a `PUT`), never a request per list.
 
