@@ -176,6 +176,37 @@ dark mode (`prefers-color-scheme` emulated), 1440×900 with a fine pointer and
 
 Screenshots of this run are in the pull request.
 
+### Stacked on the bot setup, with a bot on a worker (2026-10-07)
+
+After merging `feat/bot-setup` (#81, with #79's bots on workers), the same
+journey ran again on a built gateway of `feat/bot-tools` with a local worker
+*devbox*: a second temporary home reached through `env … sh -s`, with the built
+release installed there beforehand, as #79's and #81's runs did. Same fixture
+provider, skills and extension (mirrored to the worker when it connected), and the
+same drivers (dark, 1440×900 and 390×844).
+
+1. The panel's tabs sit on their own row under the bot's name: *Routines |
+   Memory | Soul | Tools | Settings*. Five tabs fit at 390×844 with no overflow,
+   and Tools opens on *3 of 19 tools and 1 of 9 skills are off* for a bot here.
+2. A bot created on devbox through `POST /__hui/bots` with `worker`,
+   `disabledTools` `bash`, `write` and `disabledSkills` `meeting-notes` stores
+   that skill by its path on the worker
+   (`…/remote/.local/share/hui-worker/mirror/agent/skills/meeting-notes/SKILL.md`).
+   Its Tools tab reads from the worker: *2 of 18 tools* (no managed browser on
+   a worker), the extension's tool, and every skill under
+   `~/.local/share/hui-worker/mirror/agent/skills`, *meeting-notes* off.
+3. "Run the checks on devbox and report back. E2E_REQUEST_ACCESS": the question
+   from the chat on the worker shows in the chat and at the top of its Tools tab.
+   **Allow** there: the bot replies that it has bash, the tab shows *1 of 18
+   tools*, and `bots.json` already holds `["write"]`, from the worker's report.
+4. With devbox disconnected, the Tools tab says *devbox, where this bot runs, is
+   offline: HUI is not connected to it. Connect it in Settings → Workers, then try
+   again.* with Retry, and `GET …/catalog` answers 503 with that message, as
+   does `hui bot skills rover`. Reconnected, `hui bot skills rover --deny
+   travel-planner` turns the mirrored skill off on the worker.
+
+Screenshots of this run are in the pull request.
+
 ## Evidence
 
 Screenshots of the final run (desktop 1440×900, mobile 390×844 and landscape
