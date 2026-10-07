@@ -55,7 +55,8 @@ async function fakeGateway(t: TestContext, replies: Record<string, (call: Call) 
     for await (const chunk of request) text += chunk as string;
     const call: Call = { method: request.method ?? "GET", path: request.url ?? "/", ...(text ? { body: JSON.parse(text) as Record<string, unknown> } : {}) };
     calls.push(call);
-    const reply = routes.get(`${call.method} ${call.path.split("?")[0]}`)?.(call) ?? { status: 404, body: { error: "unknown" } };
+    const handler = routes.get(`${call.method} ${call.path.split("?")[0]}`);
+    const reply = typeof handler === "function" ? handler(call) : { status: 404, body: { error: "unknown" } };
     response.writeHead(reply.status ?? 200, { "content-type": reply.raw ? "application/zip" : "application/json", ...reply.headers });
     response.end(reply.raw ?? JSON.stringify(reply.body));
   });
