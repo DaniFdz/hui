@@ -1249,8 +1249,18 @@ test("a delegation while a turn runs: a task handed off from a call queues behin
   const h = await harness(t);
   const bot = await h.service.create({ soul: SOUL, name: "Ada" });
   const chat = await h.chat(bot.sessionId);
-  const task = (text: string, signal?: AbortSignal) =>
-    h.service.send(bot.id, { text: `[call task] ${text}` }, { timeoutMs: 600_000, ...(signal ? { signal } : {}) });
+  // A task this test leaves waiting (an assertion failed first) ends with it, rather than wait out its ten minutes.
+  const ended = new AbortController();
+  const waiting: Promise<unknown>[] = [];
+  t.after(async () => {
+    ended.abort();
+    await Promise.all(waiting);
+  });
+  const task = (text: string, signal?: AbortSignal) => {
+    const sent = h.service.send(bot.id, { text: `[call task] ${text}` }, { timeoutMs: 600_000, signal: signal ? AbortSignal.any([signal, ended.signal]) : ended.signal });
+    waiting.push(sent.catch(() => {}));
+    return sent;
+  };
   const record = { kind: "call" as const, call: "c0", bot: "Ada", startedAt: 1, endedAt: 2, summary: "A record.", lines: [{ role: "assistant" as const, text: "Bye!", at: 2 }] };
 
   // Idle: a prompt marked as a call task, answered by the run it starts.
@@ -1265,6 +1275,8 @@ test("a delegation while a turn runs: a task handed off from a call queues behin
   // Busy with a typed message: the task queues as a follow-up and waits for its own run, not the one before it.
   await h.service.send(bot.id, { text: "typed while the call runs" });
   const second = task("Check the calendar for tomorrow");
+  // Two sends in flight at once may reach the queue in either order; the next task goes once this one is queued.
+  await queueHolds(h, bot.sessionId, 1);
   const third = task("And the weather");
   await queueHolds(h, bot.sessionId, 2);
   prompted = chat.nextPrompt();

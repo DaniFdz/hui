@@ -91,6 +91,7 @@ Pi Durable owns conversations, runs, queues and crash recovery.
   helps, what it deliberately leaves to someone else. A test enforces that the
   header exists (`scripts/module-headers.test.mjs`); keeping it true is the
   editor's job.
-- Tests sit beside their owner as `*.test.ts`.
+- Tests sit beside their owner as `*.test.ts`; helpers that several server tests share
+  (bounded waits, log readers) live in `server/test-support/`, which the build leaves out.
 - When you add a source directory, name it here; the same test checks that
   every directory holding source modules appears in this file.

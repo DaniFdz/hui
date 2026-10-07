@@ -180,7 +180,8 @@ test("real fixtures use distinct ports/state; doctor rejects wrong ports/provena
   assert.match(read.output, /Real SDK browser fixture/u);
   assert.ok(transcript.some((entry) => entry.kind === "message" && entry.role === "assistant" && entry.text.includes("Tool complete")));
   assert.equal((await huiApi(a.url, `sessions/${session.id}/tools`)).backend, "sdk");
-  const requests = (await readFile(join(a.artifacts, "provider.jsonl"), "utf8")).trim().split("\n").map(JSON.parse);
+  // Only the lines the provider has finished appending: one it is still writing would not parse.
+  const requests = (await readFile(join(a.artifacts, "provider.jsonl"), "utf8")).split("\n").slice(0, -1).filter(Boolean).map((line) => JSON.parse(line));
   assert.ok(requests.some((body) => JSON.stringify(body.messages).includes("E2E_RICH")));
   assert.ok(requests.some((body) => JSON.stringify(body.messages).includes("Real SDK browser fixture")));
   assert.equal((await cleanup(a.receipt)).portsClosed, true);

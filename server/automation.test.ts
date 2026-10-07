@@ -12,6 +12,7 @@ import {
   normalizeSchedule,
   parseCron,
 } from "./automation.ts";
+import { waitFor } from "./test-support/wait-for.ts";
 
 const future = "2030-01-02T12:00:00.000Z";
 
@@ -19,15 +20,18 @@ async function temporaryFile(): Promise<string> {
   return join(await mkdtemp(join(tmpdir(), "hui-automation-")), "automation.json");
 }
 
-async function waitFor(
-  check: () => Promise<boolean>,
-  attempts = 50,
-): Promise<void> {
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
-    if (await check()) return;
-    await new Promise<void>((resolve) => setImmediate(resolve));
-  }
-  assert.fail("observable automation state did not arrive");
+/** Waits until the newest run has ended with `status` and the service holds it no longer: its record can be on disk
+ * a moment before the run lets go. A timeout shows the scheduler and the runs. */
+async function runEnds(service: AutomationService, status: string): Promise<void> {
+  await waitFor(`the run to end ${status}`, async () => {
+    const { scheduler, runs } = await service.snapshot();
+    return runs[0]?.status === status && scheduler.activeRuns === 0;
+  }, {
+    state: async () => {
+      const { scheduler, runs } = await service.snapshot();
+      return { scheduler, runs };
+    },
+  });
 }
 
 test("validates cron fields and finds the next zoned occurrence", () => {
@@ -91,7 +95,7 @@ test("records manual run lifecycle and summary", async () => {
   await executorEntered;
   assert.equal((await service.snapshot()).runs[0]?.status, "running");
   release();
-  await waitFor(async () => (await service.snapshot()).runs[0]?.status === "completed");
+  await runEnds(service, "completed");
   const completed = (await service.snapshot()).runs[0];
   assert.equal(completed?.summary, "Done");
   assert.ok(completed?.finishedAt);
@@ -118,7 +122,7 @@ test("cancels only an active run and records cancellation", async () => {
   const run = await service.run(task.id);
   await executorEntered;
   await service.cancel(run.id);
-  await waitFor(async () => (await service.snapshot()).runs[0]?.status === "cancelled");
+  await runEnds(service, "cancelled");
   await assert.rejects(() => service.cancel(run.id));
   service.dispose();
 });

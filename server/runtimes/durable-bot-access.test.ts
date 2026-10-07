@@ -14,6 +14,8 @@ import type { BotMemory } from "../bot-memory.ts";
 import type { DurableSession } from "./durable.ts";
 import type { RuntimeEvent, RuntimeQuestion, TranscriptEntry } from "./types.ts";
 import { GATEWAY_ONLY_TOOLS } from "../worker/gateway-tools.ts";
+import { completeLines } from "../test-support/json-lines.ts";
+import { waitFor } from "../test-support/wait-for.ts";
 
 // HUI's configuration directory is resolved at import time; never the operator's own.
 const configDir = await mkdtemp(join(tmpdir(), "hui-bot-access-config-"));
@@ -163,7 +165,7 @@ test("request_access lets one request per bot wait for the operator; the next ma
     commit: async (change: (tx: unknown) => unknown) => change({ doc: async () => state }),
   } as unknown as ToolExecutionApi;
   const first = tool.execute({ tools: ["write"], reason: "First." } as never, api, BACKGROUND_CONTEXT);
-  while (!asked.length) await new Promise((resolve) => setImmediate(resolve));
+  await waitFor("the access request", () => asked.length > 0, { state: () => asked });
   assert.match(JSON.stringify(asked[0]), /First\.\\n\\nAsked during the routine \\"Morning digest\\"\./u, "a routine's turn may ask; the operator is told");
   const second = await tool.execute({ tools: ["edit"], reason: "Second." } as never, api, BACKGROUND_CONTEXT);
   assert.equal(second.isError, true);
@@ -175,7 +177,7 @@ test("request_access lets one request per bot wait for the operator; the next ma
   assert.deepEqual(state.disabledTools, ["edit"], "turned back on");
   assert.equal(applied, 1, "the chat's tools are offered again at once");
   const again = tool.execute({ tools: ["edit"], reason: "Now." } as never, api, BACKGROUND_CONTEXT);
-  while (asked.length < 2) await new Promise((resolve) => setImmediate(resolve));
+  await waitFor("the second access request", () => asked.length >= 2, { state: () => asked });
   answer({ value: "Deny" });
   assert.match(JSON.stringify((await again).content), /The operator denied the request/u);
   assert.deepEqual(state.disabledTools, ["edit"]);
@@ -265,7 +267,7 @@ async function fixture(t: TestContext, hostOptions: { gatewayOnlyTools?: readonl
 type ProviderRequest = { system?: unknown; tools?: Array<{ name?: string }>; messages?: Array<{ role: string; content: unknown }> };
 async function requests(log: string): Promise<ProviderRequest[]> {
   const text = await readFile(log, "utf8").catch(() => "");
-  return text.trim().split("\n").filter(Boolean).map((line) => JSON.parse(line) as ProviderRequest);
+  return completeLines(text).map((line) => JSON.parse(line) as ProviderRequest);
 }
 const toolNames = (request: ProviderRequest | undefined) => (request?.tools ?? []).map((tool) => tool.name);
 
