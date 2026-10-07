@@ -196,13 +196,11 @@ export function parseCursor(raw: unknown): RepoCursor | undefined {
   const baselineAt = iso(raw["baselineAt"]);
   const polledAt = iso(raw["polledAt"]);
   if (!baselineAt || !polledAt || !isRecord(raw["prs"]) || !isRecord(raw["etags"])) return undefined;
-  const prs: Record<string, PrSnapshot> = {};
-  for (const [key, value] of Object.entries(raw["prs"])) {
+  const prs: Record<string, PrSnapshot> = Object.fromEntries(Object.entries(raw["prs"]).flatMap(([key, value]): [string, PrSnapshot][] => {
     const snapshot = parseSnapshot(value);
-    if (snapshot && String(snapshot.number) === key) prs[key] = snapshot;
-  }
-  const etags: Record<string, string> = {};
-  for (const [path, etag] of Object.entries(raw["etags"])) if (typeof etag === "string" && ETAG.test(etag)) etags[path] = etag;
+    return snapshot && String(snapshot.number) === key ? [[key, snapshot]] : [];
+  }));
+  const etags: Record<string, string> = Object.fromEntries(Object.entries(raw["etags"]).filter((entry): entry is [string, string] => typeof entry[1] === "string" && ETAG.test(entry[1])));
   const issueComments = whole(raw["issueComments"]);
   const reviewComments = whole(raw["reviewComments"]);
   const reviewsSince = iso(raw["reviewsSince"]);
@@ -263,11 +261,19 @@ function event(repo: string, kind: GitHubTriggerEvent, pr: EventPull | undefined
   };
 }
 
-/** `@login` as a whole word, any case. */
-function mentions(body: string, login: string | undefined): boolean {
+const LOGIN_CHARACTER = /[A-Za-z0-9-]/u;
+
+/** `@login` as a whole word, any case; a plain search, so no text from GitHub ever becomes a pattern. */
+export function mentions(body: string, login: string | undefined): boolean {
   if (!login) return false;
-  const escaped = login.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
-  return new RegExp(`(^|[^A-Za-z0-9-])@${escaped}(?![A-Za-z0-9-])`, "iu").test(body);
+  const text = body.toLowerCase();
+  const wanted = `@${login.toLowerCase()}`;
+  for (let at = text.indexOf(wanted); at !== -1; at = text.indexOf(wanted, at + 1)) {
+    const before = at === 0 ? "" : text[at - 1]!;
+    const after = text[at + wanted.length] ?? "";
+    if (!LOGIN_CHARACTER.test(before) && !LOGIN_CHARACTER.test(after)) return true;
+  }
+  return false;
 }
 
 /* ── one poll ───────────────────────────────────────────────────────── */

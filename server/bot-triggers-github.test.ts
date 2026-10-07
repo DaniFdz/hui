@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { test, type TestContext } from "node:test";
 import type { GitHubTriggerEvent } from "../shared/bot-triggers.ts";
 import { createGitHubFake, type FakeGitHubState } from "../e2e/github-triggers-fixture.mjs";
-import { checkRunsPart, checksOutcome, ghRest, GitHubPollers, parseGhInclude, pollRepo, statusesPart, type GhRest, type GitHubEvent, type RepoCursor } from "./bot-triggers-github.ts";
+import { checkRunsPart, checksOutcome, ghRest, GitHubPollers, mentions, parseCursor, parseGhInclude, pollRepo, statusesPart, type GhRest, type GitHubEvent, type RepoCursor } from "./bot-triggers-github.ts";
 import { cursorStore } from "./bot-triggers-store.ts";
 
 const FIXTURE = fileURLToPath(new URL("../e2e/github-triggers-fixture.mjs", import.meta.url));
@@ -161,6 +161,24 @@ test("checks: running and then failing is an event once per commit; checks alrea
   const later = await poll(gh, failed.cursor, wants);
   assert.deepEqual(later.events, [], "once per commit");
   assert.deepEqual(checksOutcome(checkRunsPart({ check_runs: [] }), statusesPart({ statuses: [] })).state, "none");
+});
+
+test("a mention is @login as a whole word in any case, found by a plain search", () => {
+  assert.equal(mentions("Hey @operator, look", "operator"), true);
+  assert.equal(mentions("(@OPERATOR)", "operator"), true);
+  assert.equal(mentions("@operator", "operator"), true);
+  assert.equal(mentions("mail dev@operator.example", "operator"), false, "inside an address");
+  assert.equal(mentions("@operator-team please", "operator"), false, "another login that starts the same");
+  assert.equal(mentions("@operators", "operator"), false);
+  assert.equal(mentions("@op.*", "op.*"), true, "nothing in a login is a pattern");
+  assert.equal(mentions("@x", undefined), false);
+});
+
+test("a cursor a hand edit broke is a baseline again, and its keys stay keys", () => {
+  assert.equal(parseCursor({ baselineAt: "nope" }), undefined);
+  const cursor = parseCursor(JSON.parse('{"baselineAt":"2026-10-07T10:00:00Z","polledAt":"2026-10-07T10:00:00Z","prs":{},"etags":{"__proto__":"W/\\"x\\"","repos/a/b/pulls":"W/\\"y\\""}}'));
+  assert.equal(Object.getPrototypeOf(cursor!.etags), Object.prototype);
+  assert.deepEqual(Object.keys(cursor!.etags).sort(), ["__proto__", "repos/a/b/pulls"]);
 });
 
 test("only the kinds the repo's triggers want come out", async () => {

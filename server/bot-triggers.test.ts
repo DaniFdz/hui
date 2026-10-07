@@ -124,6 +124,8 @@ test("triggers are created, listed, changed and removed per bot, with their inpu
   await assert.rejects(f.service.update("ada", created.trigger.id, { source: "session" }), /source can't change/u);
   await assert.rejects(f.service.update("ada", created.trigger.id, { filter: { repos: [] } }), /repos/u, "required filter keys stay required");
   await assert.rejects(f.service.update("ada", "missing", { enabled: false }), TriggerNotFoundError);
+  await assert.rejects(f.service.update("ada", created.trigger.id, { filter: JSON.parse('{"__proto__":{"authors":["mallory"]}}') as Record<string, unknown> }), /Unknown github filter field: __proto__/u, "only the source's own filter keys");
+  await assert.rejects(f.service.update("ada", created.trigger.id, { filter: { match: { field: "a", op: "equals", value: "b" } } }), /Unknown github filter field: match/u);
   await f.service.remove("ada", hook.trigger.id);
   assert.deepEqual((await f.service.list("ada")).triggers.map((trigger) => trigger.name), ["PR watch"]);
 });

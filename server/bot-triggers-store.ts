@@ -93,19 +93,13 @@ function parseTriggerState(raw: Record<string, unknown>): TriggerState {
     triggers.push(trigger);
   }
   const runs = (Array.isArray(raw["runs"]) ? raw["runs"] : []).flatMap((run) => parseRun(run) ?? []);
-  const pending: Record<string, TriggerPending> = {};
-  if (isRecord(raw["pending"])) {
-    for (const [id, value] of Object.entries(raw["pending"])) {
-      const parsed = parsePending(value);
-      if (parsed && ids.has(id)) pending[id] = parsed;
-    }
-  }
-  const deliveries: Record<string, string[]> = {};
-  if (isRecord(raw["deliveries"])) {
-    for (const [botId, times] of Object.entries(raw["deliveries"])) {
-      if (Array.isArray(times)) deliveries[botId] = times.filter((time): time is string => typeof time === "string" && ISO.test(time)).slice(-100);
-    }
-  }
+  // Built with fromEntries, so no key a hand edit puts in the file (`__proto__` included) is more than a key.
+  const pending: Record<string, TriggerPending> = Object.fromEntries(Object.entries(isRecord(raw["pending"]) ? raw["pending"] : {}).flatMap(([id, value]): [string, TriggerPending][] => {
+    const parsed = parsePending(value);
+    return parsed && ids.has(id) ? [[id, parsed]] : [];
+  }));
+  const deliveries: Record<string, string[]> = Object.fromEntries(Object.entries(isRecord(raw["deliveries"]) ? raw["deliveries"] : {}).flatMap(([botId, times]): [string, string[]][] =>
+    /^[A-Za-z0-9_-]{1,100}$/u.test(botId) && Array.isArray(times) ? [[botId, times.filter((time): time is string => typeof time === "string" && ISO.test(time)).slice(-100)]] : []));
   return { triggers, runs, pending, deliveries, invalid };
 }
 

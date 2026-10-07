@@ -203,14 +203,24 @@ export function normalizeTriggerPatch(value: unknown): BotTriggerPatch {
   return patch;
 }
 
-/** The filter after a patch's keys: each given key replaces, `null` or an empty list clears an optional one. */
+const FILTER_KEYS: Readonly<Record<BotTriggerSource, readonly string[]>> = {
+  github: ["repos", "events", "authors", "labels", "base", "pullRequests", "draft"],
+  session: ["events"],
+  webhook: ["match"],
+};
+
+/** The filter after a patch's keys: each given key replaces, `null` or an empty list clears an optional one. Only the
+ * source's own keys are taken. */
 export function patchedFilter<S extends BotTriggerSource>(source: S, current: BotTriggerFilters[S], change: Record<string, unknown>): BotTriggerFilters[S] {
-  const merged: Record<string, unknown> = { ...current };
-  for (const [key, value] of Object.entries(change)) {
-    if (value === null || (Array.isArray(value) && !value.length && key !== "repos" && key !== "events")) delete merged[key];
-    else merged[key] = value;
+  refuseUnknown(change, FILTER_KEYS[source], `${source} filter`);
+  const entries = new Map<string, unknown>(Object.entries(current));
+  for (const key of FILTER_KEYS[source]) {
+    if (!Object.hasOwn(change, key)) continue;
+    const value = change[key];
+    if (value === null || (Array.isArray(value) && !value.length && key !== "repos" && key !== "events")) entries.delete(key);
+    else entries.set(key, value);
   }
-  return triggerFilter(source, merged);
+  return triggerFilter(source, Object.fromEntries(entries));
 }
 
 function storedText(raw: unknown, max: number): string | undefined {
