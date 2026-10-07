@@ -166,7 +166,8 @@ test("a bot's conversation is created in one commit with bot document and memory
   assert.equal(inspection.tools.find((tool) => tool.name === WRITE_SOUL_TOOL)?.source, "HUI", "write_soul beside it");
   await session.prompt("E2E_MESSAGE_BOT tell bob hello");
   await settledWith(session, answered("message_bot answered: Queued for @bob."));
-  assert.deepEqual(f.invocations, [{ callerSessionId: "ada-chat", action: MESSAGE_BOT_TOOL, params: { to: "@bob", message: "hello from the fixture" } }]);
+  // With who brought each input of the run it is called in: here only the operator's message.
+  assert.deepEqual(f.invocations, [{ callerSessionId: "ada-chat", action: MESSAGE_BOT_TOOL, params: { to: "@bob", message: "hello from the fixture" }, runOrigins: [{ kind: "operator" }] }]);
   const [first] = await requests(f.log);
   const system = JSON.stringify(first?.system);
   assert.ok(system.includes(JSON.stringify(`<soul>\n${soulSection(soulFile, "# Who I am\nYou are Ada. Answer tersely.")}\n</soul>`).slice(1, -1)), "the soul section: the file's path, then SOUL.md");
@@ -465,6 +466,34 @@ test("write_soul refuses a turn that a routine, a trigger or another bot started
   assert.equal(session.runInput(), "E2E_REPLAY hold this turn", "the message that started the run is the operator's");
   assert.equal(await session.latestInput(), joining, "the one its model answered is the trigger's");
   assert.equal(await readFile(file, "utf8"), "# Who I am\nAda, as the operator says.\n", "SOUL.md is the operator's");
+
+  // The operator's message after a trigger's, in one run: the run's first message and its newest are the operator's, but
+  // it took the trigger's in between, so write_soul still refuses. Every HUI tool call of the run carries who brought
+  // each of its inputs, for the gateway's gated tools (set_profile here).
+  await session.prompt("E2E_REPLAY hold another turn");
+  await f.control("wait-replay-ready");
+  await session.followUp("[trigger: CI · checks failed on #6] have a look");
+  const after = `E2E_CALL:${Buffer.from(JSON.stringify([{ name: WRITE_SOUL_TOOL, input: { soul: "# Who I am\nRewritten after a trigger's message." } }, { name: SET_PROFILE_TOOL, input: { title: "Retitled" } }])).toString("base64url")}`;
+  await session.followUp(after);
+  f.invocations.length = 0;
+  await f.control("release-replay", { method: "POST" });
+  const answer = await answerTo(after);
+  assert.ok(answer.includes(refused.slice("tool answered: ".length)), answer);
+  assert.equal(await readFile(file, "utf8"), "# Who I am\nAda, as the operator says.\n");
+  assert.equal(session.runInput(), "E2E_REPLAY hold another turn");
+  assert.equal(await session.latestInput(), after, "the newest message is the operator's");
+  assert.deepEqual(f.invocations.map(({ action, runOrigins }) => [action, runOrigins]), [[SET_PROFILE_TOOL, [{ kind: "operator" }, { kind: "trigger", name: "CI" }]]]);
+
+  // That run ended, and its inputs with it: the operator's next run writes, with a message of theirs joining it.
+  assert.deepEqual(await session.runOrigins(), [], "an idle chat has no run going");
+  await session.prompt("E2E_REPLAY one more turn");
+  await f.control("wait-replay-ready");
+  assert.deepEqual(await session.runOrigins(), [{ kind: "operator" }], "the run going now has taken the operator's message");
+  const mine = writeSoul("# Who I am\nAda, after that run ended.");
+  await session.followUp(mine);
+  await f.control("release-replay", { method: "POST" });
+  assert.match(await answerTo(mine), /^tool answered: Saved your SOUL\.md/u);
+  assert.equal(await readFile(file, "utf8"), "# Who I am\nAda, after that run ended.\n");
 });
 
 test("a bot without a model of its own starts on Settings' primary model, which defaultModel reports; PI's default only without one", { timeout: 90_000 }, async (t) => {
@@ -507,7 +536,7 @@ test("set_profile asks HUI to rename the calling bot, only from a bot's chat", {
   f.invocations.length = 0;
   const saved = await tool.execute({ name: "Echo", title: "Researcher" } as never, api, BACKGROUND_CONTEXT);
   assert.equal(saved.isError, undefined);
-  assert.deepEqual(f.invocations, [{ callerSessionId: "new-chat", action: SET_PROFILE_TOOL, params: { name: "Echo", title: "Researcher" } }], "HUI applies it as the chat's session");
+  assert.deepEqual(f.invocations, [{ callerSessionId: "new-chat", action: SET_PROFILE_TOOL, params: { name: "Echo", title: "Researcher" }, runOrigins: [] }], "HUI applies it as the chat's session, outside any run");
   assert.match(JSON.stringify((await tool.execute({} as never, api, BACKGROUND_CONTEXT)).content), /Give a name, a title or both/u);
   const notABot = { conversationId: 7 as unknown as ConversationId, snapshot: async () => undefined } as unknown as ToolExecutionApi;
   const refused = await tool.execute({ name: "X" } as never, notABot, BACKGROUND_CONTEXT);

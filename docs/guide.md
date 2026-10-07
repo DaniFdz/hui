@@ -365,9 +365,9 @@ From then on every turn reads SOUL.md, so a change applies from the next
 request. To change it, tell the bot ("be more formal", "don't message me before
 nine"): it edits SOUL.md and says so. Only your own messages can make it do
 that, as with its name: in a turn that a routine, a trigger or another bot
-started, it can't rewrite SOUL.md, so text from elsewhere never becomes what
-steers it from then on. Or edit it yourself in the bot's **Soul** tab, or from
-a terminal:
+started, or that took a message from one while it ran, it can't rewrite
+SOUL.md, so text from elsewhere never becomes what steers it from then on. Or
+edit it yourself in the bot's **Soul** tab, or from a terminal:
 
 ```sh
 hui bot soul ada                    # print SOUL.md
@@ -587,8 +587,9 @@ dropped. Each delivery shows under **Latest trigger runs**.
 
 A bot can manage its own triggers with its `triggers` tool (Tools tab, under
 Bots): ask it to watch a repo and it adds one. It can't add or change triggers
-in a turn another bot or a trigger started, and it can't create webhook
-triggers, whose token would pass through the model.
+in a turn another bot or a trigger started, or that took a message from one
+while it ran, and it can't create webhook triggers, whose token would pass
+through the model.
 
 While bots are off nothing fires: GitHub isn't polled, webhook URLs answer 409,
 and a session event is recorded as skipped. When you turn them on again, what

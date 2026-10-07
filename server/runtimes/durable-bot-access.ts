@@ -26,7 +26,7 @@ import { dirname, resolve, sep } from "node:path";
 import { defineTool, section, type ConversationId, type PromptSection, type ToolExecutionResult, type ToolRegistration } from "@earendil-works/pi-durable";
 import type { Skill } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { BOT_ACCESS_ANSWERS, botTurnOrigin, type BotAccess, type BotCatalogSkill, type BotCatalogTool, type BotSkillRef, type BotToolGroup } from "../../shared/bots.ts";
+import { BOT_ACCESS_ANSWERS, botTurnOrigin, type BotAccess, type BotCatalogSkill, type BotCatalogTool, type BotSkillRef, type BotToolGroup, type BotTurnOrigin } from "../../shared/bots.ts";
 import { bundledSkills } from "../bundled-skills.ts";
 import { BotDoc, conversationBotState, MESSAGE_BOT_TOOL, SET_PROFILE_TOOL, WRITE_SOUL_TOOL } from "./durable-bots.ts";
 import { TRIGGERS_TOOL, TRIGGERS_TOOL_INFO } from "./durable-bot-triggers.ts";
@@ -285,6 +285,8 @@ export interface BotChat {
   /** The newest message the conversation took, read from its store: one that joined the running turn since (a follow-up
    * does, on a worker) is what its model answers then. */
   latestInput(): Promise<string | undefined>;
+  /** Who brought each input of the run going now: its first message and every one it took since. */
+  runOrigins(): Promise<readonly BotTurnOrigin[]>;
 }
 
 export type BotAccessDeps = {

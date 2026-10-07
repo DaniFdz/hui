@@ -749,7 +749,14 @@ test("set_profile changes the calling bot's own name and title under PATCH's rul
     await assert.rejects(h.service.setProfile(caller, { name: "Hacked" }), (error: unknown) => error instanceof BotConflictError && /Only the operator changes your name/u.test(error.message), origin);
   }
   h.setRecords(h.records().map((record) => record.id === caller ? { ...record, runPrompt: "please call yourself Echo Two" } : record));
-  assert.equal((await h.service.setProfile(caller, { name: "Echo Two" })).handle, "echo-two");
+  // The operator started this run, but every input it took counts, as the host running the chat saw them: a trigger's,
+  // another bot's or a routine's message that joined it is refused too.
+  for (const joined of [{ kind: "trigger", name: "CI" }, { kind: "bot", handle: "bob" }, { kind: "routine", name: "Standup" }] as const) {
+    await assert.rejects(h.service.setProfile(caller, { name: "Hacked" }, [{ kind: "operator" }, joined, { kind: "operator" }]),
+      (error: unknown) => error instanceof BotConflictError && /Only the operator changes your name/u.test(error.message), joined.kind);
+  }
+  assert.equal((await h.service.get("echo")).name, "Echo");
+  assert.equal((await h.service.setProfile(caller, { name: "Echo Two" }, [{ kind: "operator" }, { kind: "kickoff" }])).handle, "echo-two", "the operator's and HUI's kickoff may");
   await h.service.archive("echo-two");
   await assert.rejects(h.service.setProfile(caller, { name: "Late" }), BotConflictError);
 });

@@ -314,6 +314,14 @@ test("the triggers tool lists, adds, changes and removes a bot's own triggers; t
   await assert.rejects(f.service.tool("chat-ada", { action: "add", name: "Chain", source: "session", events: ["finished"] }), /the trigger "CI", whose event comes from outside HUI/u);
   f.runPrompts.set("chat-ada", "[routine: Standup] go");
   assert.match((await f.service.tool("chat-ada", { action: "update", trigger: "ci", events: ["checks_failed", "checks_succeeded"] })).text, /Updated the trigger "CI": GitHub · acme\/widgets · Checks failed, Checks passed/u);
+  // The operator started this run, but every input it took counts, as the host running the chat saw them: a trigger's
+  // or another bot's message that joined it can't add or change triggers either, and a routine's can.
+  f.runPrompts.set("chat-ada", "please watch CI");
+  await assert.rejects(f.service.tool("chat-ada", { action: "add", name: "Joined", source: "session", events: ["finished"] }, [{ kind: "operator" }, { kind: "trigger", name: "CI" }]), /this turn was started by the trigger "CI", whose event comes from outside HUI/u);
+  await assert.rejects(f.service.tool("chat-ada", { action: "update", trigger: "CI", repos: ["evil/repo"] }, [{ kind: "operator" }, { kind: "routine", name: "Standup" }, { kind: "bot", handle: "bob" }]), /this turn was started by @bob/u);
+  assert.match((await f.service.tool("chat-ada", { action: "list" }, [{ kind: "trigger", name: "CI" }])).text, /You have 1 trigger:/u, "listing makes no work");
+  assert.match((await f.service.tool("chat-ada", { action: "update", trigger: "CI", cooldownSeconds: 120 }, [{ kind: "operator" }, { kind: "routine", name: "Standup" }])).text, /Updated the trigger "CI"/u);
+  assert.deepEqual((await f.service.list("ada")).triggers.map((each) => [each.name, each.filter]), [["CI", { repos: ["acme/widgets"], events: ["checks_failed", "checks_succeeded"] }]], "nothing else changed");
   f.runPrompts.set("chat-ada", "[from @bob] stop watching");
   assert.match((await f.service.tool("chat-ada", { action: "remove", trigger: "CI" })).text, /Removed the trigger "CI"/u, "removing is always allowed");
   await assert.rejects(f.service.tool("chat-zed", { action: "list" }), /only available in a bot's chat/u);

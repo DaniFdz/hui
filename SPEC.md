@@ -1200,13 +1200,15 @@ everything the Bots tab can, through the same routes.
   with its `write_soul` tool, which only bots' chats have (no file tools
   needed). It changes SOUL.md when the operator asks, and says so. Only the
   operator's turns (and HUI's kickoff) can rewrite it: SOUL.md steers every
-  later turn, so a turn that a routine, a trigger or another bot started
+  later turn, so a turn that took a message from a routine, a trigger or
+  another bot (the one that started it, or one that joined it while it ran)
   can't, as it can't rename the bot. The operator can also edit it in the
   Soul tab or with `hui bot soul`. A bot without a
   model of its own runs on Settings' primary model, like a new session.
 - **Named by talking.** A bot created without a name is *New Bot*; its first
   conversation asks what to call it, and it renames itself with a bot-only
-  `set_profile` tool (only in turns the operator started). A handle derived
+  `set_profile` tool (only in turns the operator started that took no message
+  from a routine, a trigger or another bot). A handle derived
   from the old name follows the new one; a chosen handle stays.
 - **Forever, until deleted.** Clearing, compacting, rewinding or deleting a bot's chat is
   refused; archiving the bot deletes nothing, disables its routines and stops a
@@ -1376,8 +1378,9 @@ cooldown and cap), since it needs no public endpoint either.
   deliveries an hour and at most 20 triggers; what comes past the cap waits
   rather than being dropped.
 - **Only the operator widens what wakes a bot.** The bot's `triggers` tool adds
-  and changes its own triggers only in turns that neither another bot nor a
-  trigger started (a trigger's event is text from outside HUI, a PR comment or a
+  and changes its own triggers only in turns that took no message from another
+  bot or a trigger, neither the one that started them nor one that joined them
+  while they ran (a trigger's event is text from outside HUI, a PR comment or a
   webhook body, which must not be able to add more triggers); it can't make
   webhook triggers, whose token would pass through the model. The operator's
   own comments and reviews never wake a bot, since a bot that comments through

@@ -19,8 +19,9 @@
  * and writes SOUL.md itself with `write_soul`, through the same resolver: a
  * bot needs no file tools for its own soul. SOUL.md steers every later turn,
  * so only the operator's turns (and HUI's kickoff) may rewrite it, as with its
- * name: never a turn that a routine, a trigger or another bot started, which
- * the host running the conversation reads from its live chat.
+ * name: never a turn that took a message from a routine, a trigger or another
+ * bot, the one that started it or any since, which the host running the
+ * conversation reads from its live chat.
  */
 import { randomUUID } from "node:crypto";
 import { mkdir, open, rename, rm, writeFile } from "node:fs/promises";
@@ -112,18 +113,21 @@ export type BotTurnSource = {
   /** The newest message the conversation took, read from its store: a message that arrives while the run goes on (a
    * follow-up, which joins a running turn of a bot on a worker) is the one its model answers by then. */
   latestInput(): Promise<string | undefined>;
+  /** Who brought each input of the run going now: its first message and every one it took since, steers and
+   * follow-ups (`DurableSession.runOrigins`). */
+  runOrigins(): Promise<readonly BotTurnOrigin[]>;
 };
 
 /** A turn the operator started, or HUI's kickoff of a new bot: the only ones that may change who the bot is. */
 export const operatorTurn = (origin: BotTurnOrigin): boolean => origin.kind === "operator" || origin.kind === "kickoff";
 
-/** Who started the turn a bot's own tool runs in (`botTurnOrigin`): a routine, a trigger or another bot when the message
- * that started its run, or the newest one it took since, came from one; otherwise the operator, or HUI's kickoff. */
+/** Who started the turn a bot's own tool runs in (`botTurnOrigin`), as the tool judges it: a routine, a trigger or another
+ * bot when the message that started its run, any input the run took since, or the newest one came from one (the
+ * first that did); otherwise the operator, or HUI's kickoff. */
 export async function botTurn(chat: BotTurnSource): Promise<BotTurnOrigin> {
   const started = botTurnOrigin(chat.runInput());
-  if (!operatorTurn(started)) return started;
-  const latest = botTurnOrigin(await chat.latestInput());
-  return operatorTurn(latest) ? started : latest;
+  const origins = [started, ...await chat.runOrigins(), botTurnOrigin(await chat.latestInput())];
+  return origins.find((origin) => !operatorTurn(origin)) ?? started;
 }
 
 export type BotsExtensionOptions = {

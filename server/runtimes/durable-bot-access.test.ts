@@ -24,7 +24,7 @@ const { startDurable, durableConversationId } = await import("./durable.ts");
 const { BotDoc } = await import("./durable-bots.ts");
 const access = await import("./durable-bot-access.ts");
 const { durableBotConversations } = await import("../bot-conversations.ts");
-const { botTurnOrigin, isBotAccessQuestion, botKickoffText } = await import("../../shared/bots.ts");
+const { botTurnOrigin, isBotAccessQuestion, botKickoffText, parseRunOrigins, runTurnOrigins } = await import("../../shared/bots.ts");
 const { bundledSkills } = await import("../bundled-skills.ts");
 type DurableHost = import("./durable-host.ts").DurableHost;
 type BotAccess = import("./durable-bots.ts").BotAccess;
@@ -142,6 +142,16 @@ test("who started a turn is read as set_profile reads it, and an access request 
   assert.equal(isBotAccessQuestion({ method: "confirm", title: "Allow access to bash?" }), false);
 });
 
+test("a gated tool judges a run by its originating input and every input the host running it saw; a worker's list counts only when well formed", () => {
+  assert.deepEqual(runTurnOrigins("please look", [{ kind: "trigger", name: "CI" }]), [{ kind: "operator" }, { kind: "trigger", name: "CI" }]);
+  assert.deepEqual(runTurnOrigins("[routine: Standup] go", undefined), [{ kind: "routine", name: "Standup" }], "a host that can't tell leaves the originating input alone");
+  const sent = [{ kind: "operator" }, { kind: "kickoff" }, { kind: "routine", name: "Standup" }, { kind: "trigger", name: "CI" }, { kind: "bot", handle: "scout" }];
+  assert.deepEqual(parseRunOrigins(JSON.parse(JSON.stringify(sent))), sent);
+  for (const value of [undefined, null, "operator", {}, [{ kind: "webhook" }], [{ kind: "trigger" }], [{ kind: "bot", name: "scout" }], new Array(1_001).fill({ kind: "operator" })]) {
+    assert.equal(parseRunOrigins(value), undefined, JSON.stringify(value)?.slice(0, 60));
+  }
+});
+
 test("request_access lets one request per bot wait for the operator; the next may ask once it is answered", async () => {
   const asked: unknown[] = [];
   let answer!: (response: { value: string }) => void;
@@ -154,6 +164,7 @@ test("request_access lets one request per bot wait for the operator; the next ma
     applyTools: async () => { applied += 1; },
     runInput: () => "[routine: Morning digest] check the inbox",
     latestInput: async () => "[routine: Morning digest] check the inbox",
+    runOrigins: async () => [{ kind: "routine" as const, name: "Morning digest" }],
   };
   const tool = access.botAccessParts({ chat: () => chat, skills: async () => [], agentDir: "/nowhere" }).tools.find((each) => each.name === "request_access")!;
   const state = { bot: "bot-a", disabledTools: ["write", "edit"], disabledSkills: [] as BotSkillRef[] };

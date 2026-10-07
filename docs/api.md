@@ -1519,9 +1519,29 @@ file is written, so they stay out of SOUL.md.
 `set_profile({ name?, title? })`, beside it, changes the calling bot's own name
 and title in HUI under `PATCH`'s rules (so a derived handle follows the name). It
 goes through HUI's agent-tool handler, as `message_bot` does, and is refused in a
-turn that a routine, a trigger or another bot started (its run's originating
-input, `runPrompt`, starts with `[routine: `, `[trigger: ` or `[from @`): only
-the operator names a bot.
+run that took a message from a routine, a trigger or another bot (one that
+starts with `[routine: `, `[trigger: ` or `[from @`), the one that started it or
+any since (below): only the operator names a bot.
+
+**Every input of the run.** A bot's gated tools (`set_profile`, `write_soul`
+and the `triggers` tool's `add` and `update`) judge the run they are called in
+by every input it took: the message that started it and each one that joined it
+since, a steer placed after a tool round or a follow-up, which Durable answers in
+a run it chains to the last before the conversation goes idle (a message to a
+busy bot on a worker joins its running turn so; here, one the operator steers in
+from HUI's queue). A tool refuses when any of them came from an origin it
+refuses, and a run's inputs reset once the conversation goes idle. The Durable
+host that runs the chat (the gateway's, or a worker's) reads them from its live
+chat (`DurableSession.runOrigins`: the inputs its store placed, as the stream
+reported them, then any committed since) and sends who brought each with every
+HUI tool call of a bot's chat (`runOrigins`, beside the tool's parameters,
+which the model chose; in the worker's `bridge` frame for a bot there). The
+gateway's gates judge them beside the run's originating input as it recorded it
+(`runPrompt`). A host that can't tell sends none (no live chat follows the
+conversation there, its store can't be read, or an older worker release), and
+the gates judge `runPrompt` alone, as before; a chat that started following
+during a run (after a restart) knows only the inputs since. Messages still queue
+and join as before: only the tools' checks changed.
 
 `write_soul({ soul })` lives in `hui-bots-tools` beside `message_bot`, so only
 bots' chats are offered it. It replaces the whole SOUL.md: the text is trimmed
@@ -1538,10 +1558,11 @@ Only the operator's turns and HUI's kickoff may write it, as with `set_profile`:
 SOUL.md steers every later turn, so text that a routine, a trigger (from outside
 HUI) or another bot brought in must never become it. The host that runs the
 conversation checks, where the tool runs (a worker's host for a bot there):
-`botTurnOrigin` of the message that started the run (`DurableSession.runInput`)
-and of the newest one the conversation took since, read from its store (a
-follow-up joins a running turn, as a message to a busy bot on a worker does
-there). If either came from a routine, a trigger or another bot, it refuses:
+`botTurnOrigin` of the message that started the run (`DurableSession.runInput`),
+of every input the run took since (`DurableSession.runOrigins`, above) and of
+the newest one the conversation took, read from its store (a follow-up joins a
+running turn, as a message to a busy bot on a worker does there). If any came
+from a routine, a trigger or another bot, it refuses:
 "Only the operator changes your soul, and this turn was started by a routine, a
 trigger or another bot. Ask the operator instead." It refuses as well when no
 live chat follows the conversation on that host, since nothing there can tell
@@ -1852,11 +1873,12 @@ lives in `hui-bots-tools` and reaches HUI's agent-tool handler as the calling
 chat's session (from a worker's host through the gateway's bridge): `list`,
 `add`, `update` (only what it gives; filter keys as `PATCH` merges them) and
 `remove` of that bot's own triggers, never another bot's. What it adds is
-`createdBy: "bot"`. `add` and `update` are refused in a turn another bot or a
-trigger started, as the run's originating input (`runPrompt`) shows, the check
-`set_profile` makes (a trigger's event comes from outside HUI); `remove` and
-`list` are not. A bot can't add a webhook trigger: its token would pass through
-the model, so the operator adds those. The tool is an ordinary switch of the
+`createdBy: "bot"`. `add` and `update` are refused in a run that took a message
+from another bot or a trigger, the one that started it or any since (see
+**Every input of the run** above), the check `set_profile` makes (a trigger's
+event comes from outside HUI); `remove` and `list` are not. A bot can't add a
+webhook trigger: its token would pass through the model, so the operator adds
+those. The tool is an ordinary switch of the
 Tools tab under Bots, on by default and not powerful; turned off, the bridge
 refuses it as any tool that is off.
 
@@ -1928,11 +1950,13 @@ first conversation and `write_soul` work there, and `GET`/`PUT
 /__hui/bots/:id/soul` and calls read and write it through the host
 (`bot.soul.read`, `bot.soul.write`); 503 naming the worker while it is offline. A
 bot created without a soul has its first turn started through its remote
-session, like any message. `set_profile` reaches this gateway through the
-agent-tool bridge as the bot's session, so the origin check reads that session's
-`runPrompt` here, as for a bot here. `write_soul` runs on the worker, whose host
-checks who started the turn from the chat there, a trigger's or another bot's
-follow-up that joined a running turn in its runtime included. A remote bot's `soul` in a list is what the
+session, like any message. `set_profile` and the `triggers` tool reach this
+gateway through the agent-tool bridge as the bot's session, with who brought each
+input of its run as the worker's host saw them (`runOrigins`), so the origin
+checks here count a trigger's or another bot's follow-up that joined a running
+turn in the worker's runtime, which the session's `runPrompt` here doesn't
+name. `write_soul` runs on the worker, whose host checks every input of the run
+from the chat there. A remote bot's `soul` in a list is what the
 worker last said, read in the background when its chat's state changes (known
 at once after a create or a `PUT`), never a request per list.
 

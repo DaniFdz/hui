@@ -340,6 +340,34 @@ export function botTurnOrigin(text: string | undefined): BotTurnOrigin {
   return botKickoffName(text) === undefined ? { kind: "operator" } : { kind: "kickoff" };
 }
 
+/**
+ * Who brought each input of a bot's running turn, as its gated tools judge it: they refuse when any of them is an
+ * origin they refuse. The message that started the run, as the gateway recorded it (`runPrompt`), then every input the
+ * host running the chat saw the run take (`runOrigins`, sent with the tool call: the first message and every steer and
+ * follow-up since). A host that can't tell sends none, which leaves the check on `runPrompt` alone.
+ */
+export function runTurnOrigins(runPrompt: string | undefined, runOrigins: readonly BotTurnOrigin[] | undefined): BotTurnOrigin[] {
+  return [botTurnOrigin(runPrompt), ...runOrigins ?? []];
+}
+
+/** Most origins a tool call carries: a host sends each one once. */
+const MAX_RUN_ORIGINS = 1_000;
+
+/** `runOrigins` as a worker's host sends them with a tool call; undefined for anything else (an older host sends
+ * none), which leaves the check on `runPrompt` alone. */
+export function parseRunOrigins(value: unknown): BotTurnOrigin[] | undefined {
+  if (!Array.isArray(value) || value.length > MAX_RUN_ORIGINS) return undefined;
+  const origins: BotTurnOrigin[] = [];
+  for (const item of value) {
+    const { kind, name, handle } = (typeof item === "object" && item !== null ? item : {}) as Record<string, unknown>;
+    if (kind === "operator" || kind === "kickoff") origins.push({ kind });
+    else if ((kind === "routine" || kind === "trigger") && typeof name === "string") origins.push({ kind, name });
+    else if (kind === "bot" && typeof handle === "string") origins.push({ kind, handle });
+    else return undefined;
+  }
+  return origins;
+}
+
 /* ── look ─────────────────────────────────────────────────────────────── */
 
 export function isBotFaceShape(value: unknown): value is BotFaceShape {

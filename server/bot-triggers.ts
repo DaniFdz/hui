@@ -21,7 +21,7 @@ import {
   type BotTrigger, type BotTriggerCreated, type BotTriggerRecord, type BotTriggerRun, type BotTriggerRunStatus, type BotTriggersList,
   type BotTriggerSource, type GitHubTriggerEvent, type GitHubTriggerFilter,
 } from "../shared/bot-triggers.ts";
-import { BOTS_OFF_MESSAGE, botTurnOrigin, type BotRecord } from "../shared/bots.ts";
+import { BOTS_OFF_MESSAGE, runTurnOrigins, type BotRecord, type BotTurnOrigin } from "../shared/bots.ts";
 import type { GitHubEvent, RepoPollStatus } from "./bot-triggers-github.ts";
 import { normalizeTriggerInput, normalizeTriggerPatch, patchedFilter, TriggerConflictError, TriggerInputError, TriggerNotFoundError } from "./bot-triggers-input.ts";
 import { sessionWatchable, type SessionEvent } from "./bot-triggers-session.ts";
@@ -383,11 +383,12 @@ export class BotTriggerService {
 
   /**
    * `triggers` from the bot whose chat `callerSessionId` is: its own triggers only. `add` and `update` are refused
-   * in a turn another bot started, or a trigger did (whose event comes from outside HUI), as their run's originating
-   * input (`runPrompt`) shows, the check `set_profile` makes. A bot can't add a webhook trigger: its URL holds a secret
-   * that would pass through the model.
+   * in a run that took any input from another bot or a trigger (whose event comes from outside HUI): the one that
+   * started it (its run's originating input, `runPrompt`) or any since (`runOrigins`, as the host running the chat
+   * saw them), the check `set_profile` makes. A bot can't add a webhook trigger: its URL holds a secret that would pass
+   * through the model.
    */
-  async tool(callerSessionId: string, params: Record<string, unknown>): Promise<{ text: string }> {
+  async tool(callerSessionId: string, params: Record<string, unknown>, runOrigins?: readonly BotTurnOrigin[]): Promise<{ text: string }> {
     if (!await this.#deps.active()) throw new BotsOffError();
     const bot = (await this.#deps.bots.list()).find((candidate) => candidate.sessionId === callerSessionId);
     if (!bot) throw new TriggerInputError("triggers is only available in a bot's chat.");
@@ -405,8 +406,8 @@ export class BotTriggerService {
       const removed = await this.remove(bot.id, ref);
       return { text: `Removed the trigger "${removed.name}".` };
     }
-    const origin = botTurnOrigin(await this.#deps.bots.runPrompt(callerSessionId));
-    if (origin.kind === "bot" || origin.kind === "trigger") {
+    const origin = runTurnOrigins(await this.#deps.bots.runPrompt(callerSessionId), runOrigins).find((each) => each.kind === "bot" || each.kind === "trigger");
+    if (origin?.kind === "bot" || origin?.kind === "trigger") {
       throw new TriggerConflictError(`Only the operator adds or changes your triggers, and this turn was started by ${origin.kind === "bot" ? `@${origin.handle}` : `the trigger "${origin.name}", whose event comes from outside HUI`}. Ask the operator instead.`);
     }
     if (action === "add") {

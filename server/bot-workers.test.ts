@@ -14,7 +14,7 @@ import { createServer } from "node:http";
 import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { after, before, test } from "node:test";
+import { after, before, test, type TestContext } from "node:test";
 import { fileURLToPath } from "node:url";
 import { botKickoffName, type BotCatalog, type BotMemoryStatus, type BotView } from "../shared/bots.ts";
 import type { TranscriptEntry } from "./runtimes/types.ts";
@@ -149,6 +149,57 @@ const says = (role: "user" | "assistant", text: string) => (entries: readonly Tr
 /** The chat's transcript once it is idle and `done` holds. */
 const settledWith = (id: string, done: (entries: readonly TranscriptEntry[]) => boolean, label: string) =>
   waitFor(() => liveSessions.status(id) === "idle" && done(liveSessions.transcript(id)) ? liveSessions.transcript(id) : undefined, label);
+
+/** Tool calls the fixture makes at once, in one response; its next answer quotes every result ("tool answered: …"). */
+const callsOf = (calls: unknown) => `E2E_CALL:${Buffer.from(JSON.stringify(calls)).toString("base64url")}`;
+/** Every gated tool at once, as `who` would have the bot call them, with the triggers tool's list. */
+const gatedCalls = (who: string) => [
+  { name: "set_profile", input: { title: `Retitled by ${who}` } },
+  { name: "triggers", input: { action: "add", name: `Added by ${who}`, source: "session", events: ["finished"] } },
+  { name: "triggers", input: { action: "update", trigger: "Keep", events: ["waiting"] } },
+  { name: "write_soul", input: { soul: `# Who I am\nRewritten by ${who}.` } },
+  { name: "triggers", input: { action: "list" } },
+];
+/** What the tools answered in the turn of the latest message of a chat starting with `start`, once it settled. */
+async function toolAnswer(sessionId: string, start: string, label: string): Promise<string> {
+  const startsWith = (entry: TranscriptEntry) => entry.kind === "message" && entry.role === "user" && entry.text.startsWith(start);
+  const answered = (entry: TranscriptEntry) => entry.kind === "message" && entry.role === "assistant" && entry.text.startsWith("tool answered: ");
+  const entries = await settledWith(sessionId, (all) => all.some(startsWith) && all.slice(all.findLastIndex(startsWith) + 1).some(answered), label);
+  const reply = entries.slice(entries.findLastIndex(startsWith) + 1).find(answered);
+  return reply?.kind === "message" ? reply.text : "";
+}
+/** Holds an operator's turn of a bot on the worker at the provider. */
+async function holdOperatorTurn(handle: string): Promise<void> {
+  assert.deepEqual((await call(`/__hui/bots/${handle}/messages`, "POST", { text: "E2E_REPLAY the operator's own turn" })).body, { status: "sent" });
+  await control("wait-replay-ready");
+}
+/** A message to a bot busy on the worker joins its run there: it waits in the worker's runtime, not in HUI's queue. */
+const joining = (sessionId: string, start: string) => waitFor(() => {
+  const { queue } = liveSessions.snapshot(sessionId);
+  return queue.followUp.some((text) => text.startsWith(start)) && !queue.items?.length;
+}, `"${start}" to wait in the worker's runtime`);
+
+const roverProfile = async () => { const bot = botOf(await call("/__hui/bots/rover")); return [bot.name, bot.handle, bot.title]; };
+const roverTrigger = async (name: string) => ((await call("/__hui/bots/rover/triggers")).body as { triggers: Array<{ name: string; filter: unknown }> }).triggers.find((each) => each.name === name);
+/** A webhook trigger of Rover's; the function it returns calls it. */
+async function roverWebhook(name: string, prompt: string): Promise<() => Promise<void>> {
+  const made = await call("/__hui/bots/rover/triggers", "POST", { name, source: "webhook", prompt, cooldownSeconds: 0 });
+  assert.equal(made.status, 201, JSON.stringify(made.body));
+  return async () => {
+    const fired = await fetch(origin + (made.body["hook"] as { path: string }).path, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+    assert.deepEqual([fired.status, await fired.json()], [202, { status: "fired" }]);
+  };
+}
+/** Once the test ends, however it went: Rover's triggers named here go, and its title and SOUL.md are as they were. */
+async function restoreRoverAfter(t: TestContext, ...triggers: string[]): Promise<void> {
+  const [, , title] = await roverProfile();
+  const soul = (await call("/__hui/bots/rover/soul")).body["soul"];
+  t.after(async () => {
+    for (const name of triggers) await call(`/__hui/bots/rover/triggers/${encodeURIComponent(name)}`, "DELETE");
+    await call("/__hui/bots/rover", "PATCH", { title: title ?? "" });
+    await call("/__hui/bots/rover/soul", "PUT", { soul });
+  });
+}
 
 async function memoryOf(handle: string): Promise<{ status: BotMemoryStatus; view: string }> {
   const reply = await call(`/__hui/bots/${handle}/memory`);
@@ -416,6 +467,119 @@ test("on the worker too, write_soul refuses a turn that a routine, a trigger or 
   assert.match(String(wrote.body["reply"]), /^tool answered: Saved your SOUL\.md \(\d+ characters\); it applies from your next request\./u, JSON.stringify(wrote.body));
   assert.equal(await readFile(soulPath, "utf8"), "# Who I am\nROVER_SOUL: I map ridges, as the operator says.\n");
   assert.equal((await call("/__hui/bots/rover/soul", "PUT", { soul: before })).status, 200);
+});
+
+test("on the worker, a gated tool judges the run by every input it took: a trigger's message that joins the operator's running turn there makes set_profile, the triggers tool's add and update, and write_soul refuse; list and remove still work", { timeout: 240_000 }, async (t) => {
+  const rover = botOf(await call("/__hui/bots/rover"));
+  const soulPath = join(rover.cwd, "SOUL.md");
+  const soul = await readFile(soulPath, "utf8");
+  await restoreRoverAfter(t, "Keep", "Drop", "Idle hook", "Joiner", "Added by a trigger");
+  for (const [name, events] of [["Keep", ["finished"]], ["Drop", ["failed"]]] as const) {
+    assert.equal((await call("/__hui/bots/rover/triggers", "POST", { name, source: "session", filter: { events } })).status, 201);
+  }
+  const refusals = (answer: string, trigger: string) => {
+    assert.match(answer, /Only the operator changes your name or title, and this turn was started by a routine, a trigger or another bot\./u, "set_profile");
+    assert.equal(answer.split(`Only the operator adds or changes your triggers, and this turn was started by the trigger "${trigger}", whose event comes from outside HUI.`).length, 3, "the triggers tool's add and update");
+    assert.match(answer, /Only the operator changes your soul, and this turn was started by a routine, a trigger or another bot\./u, "write_soul");
+    assert.match(answer, /You have \d+ triggers:/u, "list still works");
+  };
+
+  // A trigger's own turn, while Rover is idle, is refused as it always was.
+  const idle = await roverWebhook("Idle hook", callsOf(gatedCalls("a trigger")));
+  await idle();
+  refusals(await toolAnswer(rover.sessionId, "[trigger: Idle hook · ", "the idle trigger's turn"), "Idle hook");
+
+  // While the operator's turn runs on the worker, a trigger's message joins it there: the gateway's record still names the
+  // operator's message as the run's, but the host saw the trigger's come in, and every gated tool refuses.
+  const joiner = await roverWebhook("Joiner", callsOf([...gatedCalls("a trigger"), { name: "triggers", input: { action: "remove", trigger: "Drop" } }]));
+  await holdOperatorTurn("rover");
+  await joiner();
+  await joining(rover.sessionId, "[trigger: Joiner · ");
+  await control("release-replay", { method: "POST" });
+  const answer = await toolAnswer(rover.sessionId, "[trigger: Joiner · ", "the trigger's message that joined the operator's turn");
+  refusals(answer, "Joiner");
+  assert.match(answer, /Removed the trigger "Drop"\./u, "removing still works");
+  assert.deepEqual(await roverProfile(), [rover.name, rover.handle, rover.title], "Rover's name and title are as they were");
+  assert.equal(await readFile(soulPath, "utf8"), soul, "and its SOUL.md on the worker");
+  assert.equal(await roverTrigger("Added by a trigger"), undefined);
+  assert.deepEqual((await roverTrigger("Keep"))?.filter, { events: ["finished"] });
+  assert.equal(await roverTrigger("Drop"), undefined);
+});
+
+test("on the worker too, another bot's message that joins the operator's turn makes every gated tool refuse, and a routine's, which may add and change triggers, neither retitles the bot nor rewrites its soul", { timeout: 240_000 }, async (t) => {
+  const rover = botOf(await call("/__hui/bots/rover"));
+  const soulPath = join(rover.cwd, "SOUL.md");
+  const soul = await readFile(soulPath, "utf8");
+  await restoreRoverAfter(t, "Keep", "Added by @home", "Added by a routine");
+  assert.equal((await call("/__hui/bots/rover/triggers", "POST", { name: "Keep", source: "session", filter: { events: ["finished"] } })).status, 201);
+
+  // Home, the bot on this machine, tells Rover to change itself while the operator's turn runs there.
+  await holdOperatorTurn("rover");
+  const relay = { name: "message_bot", input: { to: "@rover", message: callsOf(gatedCalls("@home")) } };
+  assert.equal((await call("/__hui/bots/home/messages", "POST", { text: callsOf(relay), wait: true, timeoutSeconds: 120 })).body["status"], "answered");
+  await joining(rover.sessionId, "[from @home] ");
+  await control("release-replay", { method: "POST" });
+  const relayed = await toolAnswer(rover.sessionId, "[from @home] ", "Home's message that joined the operator's turn");
+  assert.match(relayed, /Only the operator changes your name or title/u);
+  assert.equal(relayed.split("Only the operator adds or changes your triggers, and this turn was started by @home.").length, 3);
+  assert.match(relayed, /Only the operator changes your soul/u);
+  assert.match(relayed, /You have \d+ triggers?:/u);
+  assert.equal(await roverTrigger("Added by @home"), undefined);
+
+  // A routine's message joins it the same way.
+  const task = (await call("/__hui/automation/tasks", "POST", { name: "Survey again", sessionId: rover.sessionId, prompt: callsOf(gatedCalls("a routine")), schedule: { kind: "every", everyMs: 3_600_000 } })).body["task"] as { id: string };
+  t.after(async () => {
+    await waitFor(async () => ((await call("/__hui/automation")).body as { runs: Array<{ taskId: string; finishedAt?: string }> }).runs.every((run) => run.taskId !== task.id || run.finishedAt !== undefined) || undefined, "the routine's run to end");
+    await call(`/__hui/automation/tasks/${task.id}`, "DELETE");
+  });
+  await holdOperatorTurn("rover");
+  assert.equal((await call(`/__hui/automation/tasks/${task.id}/run`, "POST", {})).status, 202);
+  await joining(rover.sessionId, "[routine: Survey again] ");
+  await control("release-replay", { method: "POST" });
+  const routine = await toolAnswer(rover.sessionId, "[routine: Survey again] ", "the routine's message that joined the operator's turn");
+  assert.match(routine, /Only the operator changes your name or title/u, "a routine can't retitle it");
+  assert.match(routine, /Added the trigger "Added by a routine"/u, "the triggers tool takes a routine's turn");
+  assert.match(routine, /Updated the trigger "Keep": Sessions · Sessions it starts · Waiting/u);
+  assert.match(routine, /Only the operator changes your soul/u, "nor rewrite its soul");
+  assert.deepEqual(await roverProfile(), [rover.name, rover.handle, rover.title]);
+  assert.equal(await readFile(soulPath, "utf8"), soul);
+});
+
+test("on the worker, a run stays tainted to its end: the operator's message after a trigger's in the same run is refused too; an operator-only run is allowed, and so is the operator's next run", { timeout: 240_000 }, async (t) => {
+  const rover = botOf(await call("/__hui/bots/rover"));
+  const soulPath = join(rover.cwd, "SOUL.md");
+  const soul = await readFile(soulPath, "utf8");
+  await restoreRoverAfter(t, "Ping", "Tainted", "Clean");
+  const ping = await roverWebhook("Ping", "E2E_PING look around");
+  const mine = (title: string) => callsOf([
+    { name: "set_profile", input: { title } },
+    { name: "write_soul", input: { soul: `# Who I am\n${title}.` } },
+    { name: "triggers", input: { action: "add", name: title, source: "session", events: ["finished"] } },
+  ]);
+
+  // The operator, then a trigger, then the operator again, all in one run there.
+  await holdOperatorTurn("rover");
+  await ping();
+  await joining(rover.sessionId, "[trigger: Ping · ");
+  assert.deepEqual((await call("/__hui/bots/rover/messages", "POST", { text: mine("Tainted") })).body, { status: "queued" });
+  await control("release-replay", { method: "POST" });
+  const tainted = await toolAnswer(rover.sessionId, mine("Tainted"), "the operator's message after the trigger's");
+  assert.match(tainted, /Only the operator changes your name or title/u);
+  assert.match(tainted, /Only the operator changes your soul/u);
+  assert.match(tainted, /Only the operator adds or changes your triggers, and this turn was started by the trigger "Ping"/u);
+  assert.deepEqual(await roverProfile(), [rover.name, rover.handle, rover.title]);
+  assert.equal(await readFile(soulPath, "utf8"), soul);
+  assert.equal(await roverTrigger("Tainted"), undefined);
+
+  // That run ended: the operator's next one, with a message of theirs joining it, may.
+  await holdOperatorTurn("rover");
+  assert.deepEqual((await call("/__hui/bots/rover/messages", "POST", { text: mine("Clean") })).body, { status: "queued" });
+  await control("release-replay", { method: "POST" });
+  const clean = await toolAnswer(rover.sessionId, mine("Clean"), "the operator's own run");
+  assert.match(clean, /Saved: you are Rover \(@rover\), Clean\./u, clean);
+  assert.match(clean, /Saved your SOUL\.md/u);
+  assert.match(clean, /Added the trigger "Clean"/u);
+  assert.equal(await readFile(soulPath, "utf8"), "# Who I am\nClean.\n");
 });
 
 test("a bot on the worker asks for a secret as a worker session does: its chat shows the card here, the worker writes the file", { timeout: 180_000 }, async () => {
