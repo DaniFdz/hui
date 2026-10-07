@@ -16,6 +16,9 @@ jobs:
   package:
     if: github.event.repository.private == false && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    # A green run takes about six minutes; a hung one fails here instead of
+    # holding the nightly back for GitHub's six-hour default.
+    timeout-minutes: 30
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
