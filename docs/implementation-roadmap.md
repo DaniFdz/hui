@@ -952,7 +952,9 @@ requests:
    catch-up, the tool's origin checks, the webhook token, filter and size cap,
    bots off), `server/bot-trigger-routes.test.ts` (a real gateway: a webhook and
    a fake GitHub's pull request reaching the bot through the fixture provider,
-   the bot's tool, the CLI, bots off), `server/runtimes/durable-bot-access.test.ts`,
+   the bot's tool, the CLI, bots off), `server/bot-workers.test.ts` (a real local
+   worker: a webhook's delivery runs on the worker, and the bot's tool there
+   reaches the gateway), `server/runtimes/durable-bot-access.test.ts`,
    `src/lib/bot-triggers.test.ts`, `src/views/bot-triggers.test.ts`,
    `cli/bot-triggers.test.ts` and an isolated gateway driven in a browser
    ([`e2e/bot-triggers.browser.md`](../e2e/bot-triggers.browser.md), screens in

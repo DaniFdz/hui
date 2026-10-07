@@ -330,6 +330,26 @@ test("a routine, a queued message, steering, a question and Stop all reach the b
   await waitFor(() => liveSessions.status(rover.sessionId) === "idle" || undefined, "the turn to stop");
 });
 
+test("a trigger wakes the bot on the worker through its remote session, and its triggers tool reaches the gateway from there", { timeout: 180_000 }, async () => {
+  const rover = botOf(await call("/__hui/bots/rover"));
+  const made = await call("/__hui/bots/rover/triggers", "POST", { name: "Ridge hook", source: "webhook", prompt: "E2E_WORKER_TRIGGER look", cooldownSeconds: 0 });
+  assert.equal(made.status, 201, JSON.stringify(made.body));
+  const path = (made.body["hook"] as { path: string }).path;
+  const fired = await fetch(origin + path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ status: "rockfall" }) });
+  assert.deepEqual([fired.status, await fired.json()], [202, { status: "fired" }]);
+  // Polling and webhooks stay on the gateway; the delivery runs on the worker, as any message to the bot.
+  await settledWith(rover.sessionId, (entries) => {
+    const index = entries.findIndex((entry) => entry.kind === "message" && entry.role === "user" && entry.text.startsWith("[trigger: Ridge hook · webhook call (status: rockfall)] E2E_WORKER_TRIGGER look"));
+    return index >= 0 && entries.slice(index + 1).some((entry) => entry.kind === "message" && entry.role === "assistant");
+  }, "the trigger's turn on the worker");
+  assert.ok(await chatRequest("E2E_WORKER_TRIGGER look"), "the worker's run asked the provider");
+  const add = Buffer.from(JSON.stringify({ name: "triggers", input: { action: "add", name: "Ridge sessions", source: "session", events: ["finished"] } })).toString("base64url");
+  const reply = await call("/__hui/bots/rover/messages", "POST", { text: `E2E_CALL:${add}`, wait: true, timeoutSeconds: 120 });
+  assert.match(String(reply.body["reply"]), /tool answered: Added the trigger "Ridge sessions"/u, JSON.stringify(reply.body));
+  const listed = (await call("/__hui/bots/rover/triggers")).body as { triggers: Array<{ name: string; createdBy: string }> };
+  assert.deepEqual(listed.triggers.map((trigger) => [trigger.name, trigger.createdBy]), [["Ridge hook", "operator"], ["Ridge sessions", "bot"]]);
+});
+
 test("a bot on the worker asks for a secret as a worker session does: its chat shows the card here, the worker writes the file", { timeout: 180_000 }, async () => {
   const rover = botOf(await call("/__hui/bots/rover"));
   const value = "rover-only-SECRET-73";
