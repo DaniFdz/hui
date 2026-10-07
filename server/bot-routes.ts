@@ -17,6 +17,8 @@
  *   GET    /__hui/bots/:id/memory            { status, view }
  *   GET    /__hui/bots/:id/memory/zoom?id=&n= { text }
  *   GET    /__hui/bots/:id/memory/html       the OptChat browse page (text/html); also a same-origin link's page load
+ *   GET    /__hui/bots/:id/catalog           BotCatalog: the tools and skills the operator can turn off, what is off,
+ *                                            and a pending access request
  *   GET    /__hui/bots/:id/soul              { soul } (SOUL.md's text, null while the bot has none)
  *   PUT    /__hui/bots/:id/soul              { soul } replaces SOUL.md atomically; "" removes it (the first conversation again)
  *
@@ -33,7 +35,7 @@ export const BOTS_ROUTE = "/__hui/bots";
 export const BOTS_EVENTS_ROUTE = "/__hui/bots/events";
 /** The memory page, which a link opens: `hui.ts` also accepts a same-origin page load there (docs/api.md#bots). */
 export const BOT_MEMORY_PAGE = /^\/__hui\/bots\/[A-Za-z0-9_-]{1,100}\/memory\/html$/u;
-const ROUTE = /^\/__hui\/bots(?:\/([A-Za-z0-9_-]{1,100})(?:\/(restore|messages|stop|memory|memory\/zoom|memory\/html|soul))?)?$/u;
+const ROUTE = /^\/__hui\/bots(?:\/([A-Za-z0-9_-]{1,100})(?:\/(restore|messages|stop|memory|memory\/zoom|memory\/html|soul|catalog))?)?$/u;
 /** SOUL.md reaches 20,000 characters, up to four bytes each, and JSON may escape them. */
 const BOT_BODY_BYTES = 256 * 1024;
 /** Messages may carry attachments, like prompts. */
@@ -146,6 +148,10 @@ export function createBotRoutes(deps: Deps) {
           return { status: 200, body: { bot: await service.archive(id) } };
         }
         return notAllowed;
+      }
+      if (action === "catalog") {
+        if (method !== "GET") return notAllowed;
+        return { status: 200, body: await service.catalog(id) };
       }
       if (action === "soul") {
         if (method === "GET") return { status: 200, body: { soul: await service.soul(id) } };

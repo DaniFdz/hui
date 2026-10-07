@@ -52,6 +52,16 @@ export type BotFaceColor = (typeof BOT_FACE_COLORS)[number];
 /** `color`: #rrggbb, lowercase. `shape` and `color` absent: the face derived from the bot's id. */
 export type BotAvatar = { emoji?: string; color?: string; shape?: BotFaceShape };
 
+/** A skill as a bot's lists name it: its name and source, as Settings' disabled skills do (its SKILL.md path, or a
+ * bundled skill's stable `hui:skill:` path). */
+export type BotSkillRef = { name: string; path: string };
+
+/** A skill in `POST` and `PATCH /__hui/bots`: its name, when no other skill of the bot's directory has it, or a ref. */
+export type BotSkillSelector = string | BotSkillRef;
+
+/** What the operator turned off in a bot's chat. */
+export type BotAccess = { disabledTools: string[]; disabledSkills: BotSkillRef[] };
+
 /** One bot as `bots.json` stores it. */
 export type BotRecord = {
   id: string;
@@ -82,6 +92,13 @@ export type BotRecord = {
   hidden?: boolean;
   /** Archived bots keep their chat and memory; their routines are disabled. */
   archived?: boolean;
+  /**
+   * Tools and skills the operator turned off in its chat; absent: none. Everything else a session in its directory
+   * gets is on, tools and skills that appear later included. A mirror: the chat's `hui.bot` document holds the lists,
+   * and the host that runs the chat enforces them.
+   */
+  disabledTools?: string[];
+  disabledSkills?: BotSkillRef[];
   /** HUI session record of its chat. */
   sessionId: string;
   createdAt: string;
@@ -110,6 +127,11 @@ export type BotInput = {
   avatar?: BotAvatar;
   voice?: BotVoice;
   hidden?: boolean;
+  /** Tools to turn off from its first turn: the ones every chat has (`GET /__hui/bots/:id/catalog` lists them all once
+   * it runs, extension tools included). */
+  disabledTools?: string[];
+  /** Skills of its directory to turn off. */
+  disabledSkills?: BotSkillSelector[];
 };
 
 /**
@@ -120,8 +142,10 @@ export type BotInput = {
  * `""` clears that key (`emoji: ""` switches the bot to its face, `shape: ""`
  * and `color: ""` back to the ones its id picks) and `avatar: null` clears all
  * three. A voice `language: ""` (back to Auto) or `live: ""` (back to Settings'
- * call voice) clears that key and `voice: null` clears both. SOUL.md changes
- * through `PUT /__hui/bots/:id/soul` instead.
+ * call voice) clears that key and `voice: null` clears both. `disabledTools` and
+ * `disabledSkills` replace the whole list (`[]` turns everything back on),
+ * validated against the bot's catalog; they apply from its chat's next request.
+ * SOUL.md changes through `PUT /__hui/bots/:id/soul` instead.
  */
 export type BotPatch = Partial<Omit<BotInput, "avatar" | "voice" | "soul" | "worker">> & { avatar?: BotAvatarPatch | null; voice?: BotVoicePatch | null };
 
@@ -229,6 +253,80 @@ export type BotMessageResult = BotDelivery | BotReply;
 
 /** A frame of `GET /__hui/bots/events`: `ids` (every bot, in list order) only when it changed. */
 export type BotsUpdate = { revision: number; ids?: string[]; upserts: BotView[] };
+
+/* ── tools and skills ─────────────────────────────────────────────────── */
+
+/** How the Tools tab groups a tool: files, shell, HUI's own, an extension's (by its source), or bots'. */
+export type BotToolGroup = "files" | "shell" | "hui" | "extension" | "bots";
+
+/** One tool the operator can turn off in a bot's chat. */
+export type BotCatalogTool = {
+  name: string;
+  label: string;
+  /** One line. */
+  description: string;
+  group: BotToolGroup;
+  /** `Durable` (the coding tools), `HUI`, or an extension's source label. */
+  source: string;
+  /** It reaches past whatever else is off: it runs commands, changes files other programs load, or acts through another
+   * session. On by default, like every tool; labelled so the operator knows. */
+  powerful: boolean;
+  enabled: boolean;
+};
+
+/** One skill of the bot's directory, Settings' choices applied. */
+export type BotCatalogSkill = BotSkillRef & {
+  description: string;
+  /** Where it comes from: `HUI defaults` for a bundled skill, else the directory holding it. */
+  source: string;
+  enabled: boolean;
+};
+
+/** An access request (`request_access`) waiting for the operator in the bot's chat. */
+export type BotAccessRequest = {
+  /** The session question to answer (`POST /__hui/sessions/:id/question` with `value` `"Allow"` or `"Deny"`). */
+  id: string;
+  sessionId: string;
+  title: string;
+  /** The bot's reason, and who started the turn when it wasn't the operator. */
+  message: string;
+};
+
+/** `GET /__hui/bots/:id/catalog`: what the operator can turn off in a bot's chat, and what is off. */
+export type BotCatalog = {
+  tools: BotCatalogTool[];
+  skills: BotCatalogSkill[];
+  /** Always on and never offered to turn off: its soul, profile and access tools, and OptChat's memory. */
+  alwaysOn: { name: string; description: string }[];
+  disabledTools: string[];
+  disabledSkills: BotSkillRef[];
+  /** False while its chat isn't running here: `tools` then lists only the tools every chat has, without extensions'. */
+  live: boolean;
+  request?: BotAccessRequest;
+};
+
+/* ── access requests ──────────────────────────────────────────────────── */
+
+/** The two answers of an access request. */
+export const BOT_ACCESS_ANSWERS = ["Allow", "Deny"] as const;
+
+/** Whether a session question is a bot's access request, as `request_access` asks it. */
+export function isBotAccessQuestion(question: { method: string; title?: string; options?: readonly string[] }): boolean {
+  return question.method === "select" && (question.title ?? "").startsWith("Allow access to ")
+    && question.options?.length === 2 && question.options[0] === BOT_ACCESS_ANSWERS[0] && question.options[1] === BOT_ACCESS_ANSWERS[1];
+}
+
+/** Who started a bot's turn, by the message that started it: a routine (`[routine: name] …`), another bot
+ * (`[from @handle] …`), HUI's kickoff of a new bot, or else the operator. */
+export type BotTurnOrigin = { kind: "operator" } | { kind: "kickoff" } | { kind: "routine"; name: string } | { kind: "bot"; handle: string };
+
+export function botTurnOrigin(text: string | undefined): BotTurnOrigin {
+  if (!text) return { kind: "operator" };
+  if (text.startsWith("[routine: ")) return { kind: "routine", name: /^\[routine: (.*?)\] /u.exec(text)?.[1] ?? "" };
+  const bot = /^\[from @([a-z0-9-]+)(?: · hop [1-9]\d*)?\] /u.exec(text);
+  if (bot) return { kind: "bot", handle: bot[1]! };
+  return botKickoffName(text) === undefined ? { kind: "operator" } : { kind: "kickoff" };
+}
 
 /* ── look ─────────────────────────────────────────────────────────────── */
 

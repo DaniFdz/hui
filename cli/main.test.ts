@@ -85,6 +85,12 @@ test("CLI parses bot commands, accepting bot and bots, with their operands and o
   const soul = parseCli(["bot", "soul", "ada", "--file", "-", "--json"]);
   assert.deepEqual([soul.command, soul.operands, soul.values.file, soul.values.json], ["bot soul", ["ada"], "-", true]);
   assert.deepEqual(parseCli(["bot", "soul", "Ada Lovelace"]).operands, ["Ada Lovelace"]);
+  const tools = parseCli(["bot", "tools", "ada", "--deny", "bash,write", "--allow", "read", "--json"]);
+  assert.deepEqual([tools.command, tools.operands, tools.values.deny, tools.values.allow, tools.values.json], ["bot tools", ["ada"], "bash,write", "read", true]);
+  assert.deepEqual(parseCli(["bot", "skills", "ada", "--allow", "release-notes"]).values.allow, "release-notes");
+  assert.equal(parseCli(["bot", "tools", "ada"]).command, "bot tools", "without flags it lists them");
+  const denied = parseCli(["bot", "add", "--name", "Ada", "--deny-tools", "bash", "--deny-skills", "alpha,beta"]);
+  assert.deepEqual([denied.values["deny-tools"], denied.values["deny-skills"]], ["bash", "alpha,beta"]);
   assert.deepEqual({ ...parseCli(["bot", "add"]).values }, {}, "a bot without a name is New Bot");
   assert.equal(parseCli(["bot", "delete", "ada", "--yes"]).values.yes, true);
   assert.equal(parseCli(["bot", "delete", "ada", "-y"]).values.yes, true);
@@ -145,6 +151,12 @@ test("CLI parses bot commands, accepting bot and bots, with their operands and o
     [["bot", "routine", "run", "ada"], /needs <bot> <routine>/u],
     [["bot", "list", "--name", "x"], /--name is not valid for bot list/u],
     [["bot", "chat", "ada", "--json"], /--json is not valid for bot chat/u],
+    [["bot", "tools"], /bot tools needs <bot>/u],
+    [["bot", "tools", "ada", "--deny", " , "], /--deny needs comma-separated names/u],
+    [["bot", "tools", "ada", "--allow", "bash", "--deny", "bash,write"], /bash can't be both allowed and denied/u],
+    [["bot", "skills", "ada", "--title", "x"], /--title is not valid for bot skills/u],
+    [["bot", "edit", "ada", "--deny-tools", "bash"], /--deny-tools is not valid for bot edit/u],
+    [["bot", "add", "--name", "Ada", "--deny-skills", ""], /--deny-skills needs comma-separated names/u],
     [["bot", "dance"], /Unknown command/u],
     [["bot", "routine", "pause", "ada"], /Unknown command/u],
     [["workers", "list", "--archived"], /--archived is not valid/u],
@@ -161,8 +173,13 @@ test("HELP lists every hui bot command", () => {
     "[--worker <name|id>] [--model <provider/model>]",
     "hui bot delete <bot> [--yes] [--json]",
     "Delete removes a bot for good, active or archived",
-    "hui bot edit <bot> [same flags as add but --soul-file and --worker] [--json]",
+    "hui bot edit <bot> [same flags as add but --soul-file, --worker and --deny-*] [--json]",
     "hui bot soul <bot> [--file <path|->] [--json]",
+    "hui bot tools <bot> [--allow <a,b>] [--deny <a,b>] [--json]",
+    "hui bot skills <bot> [--allow <a,b>] [--deny <a,b>] [--json]",
+    "[--deny-tools <a,b>] [--deny-skills <a,b>] [--json]",
+    "A bot has every tool and skill a session in its directory has, new ones\nincluded, until you turn some off",
+    "Tools are the boundary, not a\nsandbox",
     "A new bot starts by asking what you expect from it (talk with\nhui bot chat <handle>), then writes its persona, SOUL.md, itself",
     "hui bot remove <bot> [--json]",
     "hui bot restore <bot> [--json]",
@@ -175,7 +192,7 @@ test("HELP lists every hui bot command", () => {
     "hui bot routine run <bot> <routine>",
     "hui bot routine remove <bot> <routine> [--json]",
     "On edit, --model \"\" and --thinking \"\" go back to the model and",
-    "[--language <code>] [--call-voice <cove|arbor|breeze|ember|juniper|maple|sol|spruce|vale>] [--json]",
+    "[--language <code>] [--call-voice <cove|arbor|breeze|ember|juniper|maple|sol|spruce|vale>]",
     "--call-voice is the bot's GPT-Live voice on calls",
     "--language is the language it",
   ]) assert.ok(HELP.includes(line), line);

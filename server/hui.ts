@@ -327,6 +327,8 @@ durableHost().botSouls = {
   // From the last registry read: a bot still called "New Bot" asks for a name first.
   name: (botId) => bots.identity(botId)?.name,
 };
+// A bot's chat that turns tools back on (the operator allowed a request there) updates the roster's copy of its lists.
+durableHost().botAccessRecorded = (botId, access) => bots.accessRecorded(botId, access);
 /** The bot list every Bots screen shares, recomputed while one listens, like the session list. */
 const botList = createSessionListHub<BotView>(async () => [{ label: "bots", sessions: await bots.list({ archived: "all" }) }]);
 const subagents = new SubagentService(liveSessions);
@@ -351,6 +353,8 @@ liveSessions.setSecretRequestProvider((id) => secretRequests.questions(id));
 // A stopped turn must not leave its pages running in the headless browser.
 liveSessions.setAbortListener((id) => managedBrowser.closeOwner(id));
 registerAgentToolHandler(async (invocation) => {
+  // Behind the check where a bot's chat runs: HUI's own refusal of a tool the operator turned off in that chat.
+  await bots.checkToolAllowed(invocation.callerSessionId, invocation.action);
   // A bot's chat only: the service refuses every other caller.
   if (invocation.action === "message_bot") return bots.messageBot(invocation.callerSessionId, invocation.params);
   if (invocation.action === "set_profile") return bots.setProfile(invocation.callerSessionId, invocation.params);
@@ -3849,6 +3853,19 @@ export async function startBackend(): Promise<void> {
   }, (error: unknown) => recordDiagnosticEvent({
     area: "session", level: "warning", action: "bots_souls_migration_failed",
     summary: "Bots' instructions could not become SOUL.md; HUI tries again at its next start",
+    detail: error instanceof Error ? error.message : String(error),
+  }));
+  // The roster's copy of each bot's tool and skill lists follows its chat's document, which may have moved without it.
+  void bots.reconcileAccess().then((repaired) => {
+    if (repaired) {
+      recordDiagnosticEvent({
+        area: "session", level: "info", action: "bots_access_reconciled",
+        summary: `${repaired} bot${repaired === 1 ? "'s" : "s'"} tool and skill lists were copied again from their chats`,
+      });
+    }
+  }, (error: unknown) => recordDiagnosticEvent({
+    area: "session", level: "warning", action: "bots_access_reconcile_failed",
+    summary: "Bots' tool and skill lists could not be checked against their chats; HUI tries again at its next start",
     detail: error instanceof Error ? error.message : String(error),
   }));
   initializeWatchers();

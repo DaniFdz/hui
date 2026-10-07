@@ -527,6 +527,16 @@ export class DurableExtensions {
     return `${scope} · ${safeSourceLabel(source)} · ${safeSourceLabel(path)}`;
   }
 
+  /** An extension tool as a bot's tool catalog shows it: its label, its prompt snippet and its source label. */
+  describe(name: string): { source: string; label?: string; snippet?: string } {
+    const tool = this.#extensionTools().find((each) => each.definition.name === name);
+    return {
+      source: this.sourceOf(name) ?? "extension",
+      ...(tool?.definition.label ? { label: tool.definition.label } : {}),
+      ...(tool?.definition.promptSnippet ? { snippet: tool.definition.promptSnippet } : {}),
+    };
+  }
+
   // ── Hooks inside Durable's tasks ────────────────────────────────────────
 
   #hooks() {

@@ -37,9 +37,12 @@ export const HELP = `Usage:
   hui bot add [--name <name>] [--title <text>] [--soul-file <path|->] [--cwd <dir>]
               [--worker <name|id>] [--model <provider/model>] [--thinking <level>] [--utility-model <provider/model>] [--emoji <e>]
               [--shape <blob|round|triangle|heart|cookie>] [--color <name|#rrggbb>]
-              [--language <code>] [--call-voice <cove|arbor|breeze|ember|juniper|maple|sol|spruce|vale>] [--json]
-  hui bot edit <bot> [same flags as add but --soul-file and --worker] [--json]
+              [--language <code>] [--call-voice <cove|arbor|breeze|ember|juniper|maple|sol|spruce|vale>]
+              [--deny-tools <a,b>] [--deny-skills <a,b>] [--json]
+  hui bot edit <bot> [same flags as add but --soul-file, --worker and --deny-*] [--json]
   hui bot soul <bot> [--file <path|->] [--json]
+  hui bot tools <bot> [--allow <a,b>] [--deny <a,b>] [--json]
+  hui bot skills <bot> [--allow <a,b>] [--deny <a,b>] [--json]
   hui bot remove <bot> [--json]
   hui bot restore <bot> [--json]
   hui bot delete <bot> [--yes] [--json]
@@ -82,6 +85,14 @@ gives it one instead (- reads stdin) and skips that first conversation. Without
 which HUI must be connected to: its chat, memory, folder and SOUL.md live there,
 --cwd is then a folder there (absolute or ~/), and it never moves. Bots on a
 worker can't use terminals, the browser or watchers, which stay on this machine.
+A bot has every tool and skill a session in its directory has, new ones
+included, until you turn some off: tools lists them grouped, each on or off,
+and --deny turns tools off, --allow back on (comma-separated names); skills
+does the same for its skills. They apply from its next turn. On add,
+--deny-tools and --deny-skills turn some off from its first turn (the tools
+every chat has; an extension's tools once the bot exists). A bot can ask you to
+turn something back on; answer in hui bot chat. Tools are the boundary, not a
+sandbox: with bash or read a bot reaches whatever your account can.
 On edit, --model "" and --thinking "" go back to the model and
 thinking level a new chat gets. --model is the bot's main model (the smartest you
 have; speed does not matter); --utility-model the fastest, ideally cheap, for its
@@ -123,6 +134,7 @@ export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {
     cwd: { type: "string" }, worker: { type: "string" }, model: { type: "string" }, thinking: { type: "string" }, "memory-model": { type: "string" }, "utility-model": { type: "string" },
     emoji: { type: "string" }, shape: { type: "string" }, color: { type: "string" }, voice: { type: "string" }, "voice-speed": { type: "string" }, language: { type: "string" }, "call-voice": { type: "string" }, wait: { type: "boolean" }, timeout: { type: "string" }, zoom: { type: "string" }, html: { type: "string" },
     prompt: { type: "string" }, at: { type: "string" }, every: { type: "string" }, cron: { type: "string" }, timezone: { type: "string" },
+    allow: { type: "string" }, deny: { type: "string" }, "deny-tools": { type: "string" }, "deny-skills": { type: "string" },
   } });
   if (values.help || !args.length) return { command: "help", values };
   if (values.version) return { command: "version", values };
@@ -145,8 +157,8 @@ export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {
     update: ["from", "sha256", "rollback", "check", "json", "nightly"], desktop: [], "install-app": [],
     doctor: ["fix", "json"], "workers list": ["json"], "workers add": ["name", "command", "extra-path", "json"],
     "workers edit": ["name", "command", "extra-path", "json"], "workers remove": ["json"],
-    "bot list": ["archived", "json"], "bot show": ["json"], "bot add": [...BOT_FIELDS, "soul-file", "worker", "json"], "bot edit": [...BOT_FIELDS, "json"],
-    "bot soul": ["file", "json"],
+    "bot list": ["archived", "json"], "bot show": ["json"], "bot add": [...BOT_FIELDS, "soul-file", "worker", "deny-tools", "deny-skills", "json"], "bot edit": [...BOT_FIELDS, "json"],
+    "bot soul": ["file", "json"], "bot tools": ["allow", "deny", "json"], "bot skills": ["allow", "deny", "json"],
     "bot remove": ["json"], "bot restore": ["json"], "bot delete": ["yes", "json"], "bot chat": [], "bot send": ["wait", "timeout", "json"], "bot stop": ["json"],
     "bot memory": ["zoom", "html", "json"], "bot routine list": ["json"],
     "bot routine add": ["name", "prompt", "at", "every", "cron", "timezone", "json"], "bot routine run": [], "bot routine remove": ["json"],
@@ -178,7 +190,8 @@ export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {
 const BOT_FIELDS = ["name", "title", "cwd", "model", "thinking", "memory-model", "utility-model", "emoji", "shape", "color", "language", "call-voice"];
 /** Operands each bot command takes, in order. */
 const BOT_OPERANDS: Record<string, readonly string[]> = {
-  "bot list": [], "bot add": [], "bot show": ["bot"], "bot edit": ["bot"], "bot soul": ["bot"], "bot remove": ["bot"], "bot restore": ["bot"], "bot delete": ["bot"],
+  "bot list": [], "bot add": [], "bot show": ["bot"], "bot edit": ["bot"], "bot soul": ["bot"], "bot tools": ["bot"], "bot skills": ["bot"],
+  "bot remove": ["bot"], "bot restore": ["bot"], "bot delete": ["bot"],
   "bot chat": ["bot"], "bot send": ["bot", "message"], "bot stop": ["bot"], "bot memory": ["bot"],
   "bot routine list": ["bot"], "bot routine add": ["bot"], "bot routine run": ["bot", "routine"], "bot routine remove": ["bot", "routine"],
 };
@@ -217,6 +230,11 @@ function checkBotCommand(command: string, operands: readonly string[], values: R
   if (given("timeout") && (!values["wait"] || !/^\d+$/u.test(String(values["timeout"])) || Number(values["timeout"]) < 1 || Number(values["timeout"]) > 3600)) {
     throw new Error("--timeout needs --wait and 1-3600 seconds.");
   }
+  // Comma-separated names; one name may not be turned on and off at once.
+  const listed = (flag: string) => String(values[flag] ?? "").split(",").map((name) => name.trim()).filter(Boolean);
+  for (const flag of ["allow", "deny", "deny-tools", "deny-skills"]) if (given(flag) && !listed(flag).length) throw new Error(`--${flag} needs comma-separated names.`);
+  const both = listed("allow").filter((name) => listed("deny").includes(name));
+  if (both.length) throw new Error(`${both.join(", ")} can't be both allowed and denied.`);
   if (given("zoom") && given("html")) throw new Error("Use either --zoom or --html.");
   if (given("zoom") && !/^\d{1,15}\+\d{1,15}$/u.test(String(values["zoom"]))) throw new Error("--zoom takes a view line's id+n, such as 2184+8.");
   if (command === "bot routine add") {

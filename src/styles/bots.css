@@ -1,5 +1,6 @@
 /* Bots tab (PR "Bots tab UI"): the sidebar's Agents | Bots switch, the
- * roster and the bot view with its panel (Routines | Memory | Soul | Settings).
+ * roster and the bot view with its panel (Routines | Memory | Soul | Tools | Settings; Tools' own rules are in
+ * bot-tools.css).
  * Rows, menus, inputs and dialogs reuse the shell/session/settings classes;
  * only what bots add lives here, on the shared tokens. */
 

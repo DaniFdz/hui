@@ -1,9 +1,9 @@
 /**
  * The Bots tab: the sidebar roster, a bot's side panel (Routines | Memory |
- * Soul | Settings, the last in `bot-settings.ts`) and the archive and delete
- * confirmations. Rendering only; every read and write is a prop callback owned
- * by `hui-app.ts`. The bot's chat is the ordinary session pane (`renderHome`)
- * with a bot header, not a fork.
+ * Soul | Tools | Settings, the last two in `bot-tools.ts` and `bot-settings.ts`)
+ * and the archive and delete confirmations. Rendering only; every read and
+ * write is a prop callback owned by `hui-app.ts`. The bot's chat is the
+ * ordinary session pane (`renderHome`) with a bot header, not a fork.
  */
 import { html, nothing, type TemplateResult } from "lit";
 import { keyed } from "lit/directives/keyed.js";
@@ -37,6 +37,7 @@ import { renderMarkdown } from "../lib/markdown.ts";
 import { describeRoutineSchedule, formatTimestamp, runIsActive } from "./settings-automation.ts";
 import { renderSettingsToggle } from "./settings-toggle.ts";
 import { renderBotSettings, type BotSettingsProps } from "./bot-settings.ts";
+import { renderBotToolsTab, type BotToolsProps } from "./bot-tools.ts";
 
 // Node's focused view tests import this module without a CSS loader.
 if (typeof document !== "undefined") {
@@ -386,11 +387,13 @@ export type BotPanelProps = {
     onCancel: () => void;
     onRetry: () => void;
   };
+  /** The Tools tab's state and actions (`BotToolsController.props`). */
+  tools: Omit<BotToolsProps, "bot">;
   /** The Settings tab: everything but the bot, the ids and its face, which the panel supplies. */
   settings: Omit<BotSettingsProps, "bot" | "id" | "face">;
 };
 
-const PANEL_TAB_LABELS: Record<BotPanelTab, string> = { routines: "Routines", memory: "Memory", soul: "Soul", settings: "Settings" };
+const PANEL_TAB_LABELS: Record<BotPanelTab, string> = { routines: "Routines", memory: "Memory", soul: "Soul", tools: "Tools", settings: "Settings" };
 
 function panelTabId(panelId: string, tab: BotPanelTab): string {
   return `${panelId}-tab-${tab}`;
@@ -654,6 +657,8 @@ function renderPanelTab(props: BotPanelProps) {
     case "routines": return renderRoutinesTab(props);
     case "memory": return renderMemoryTab(props);
     case "soul": return renderSoulTab(props);
+    // Keyed, as Settings: another bot's switches and skill search start afresh.
+    case "tools": return keyed(props.bot.id, renderBotToolsTab({ bot: props.bot, ...props.tools }));
     // Keyed: another bot's tab starts afresh (its look closed, nothing typed carried over).
     case "settings": return keyed(props.bot.id, renderBotSettings({ ...props.settings, bot: props.bot, id: props.id, face: (avatar) => renderBotAvatar({ id: props.bot.id, avatar }, "md") }));
   }

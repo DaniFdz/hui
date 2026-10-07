@@ -141,6 +141,79 @@ What would you like me to look after for you?" and `E2E_WRITE_SOUL` with a
 
 The run with real models on the preview, and its screenshots, are in PR #69.
 
+## Tools and skills (2026-10-07)
+
+Every tool and skill is on until the operator turns it off. The run below used a
+built gateway of `feat/bot-tools` with `HOME` and `XDG_CONFIG_HOME` in a
+temporary directory, the fixture provider (`E2E_REQUEST_ACCESS` makes the bot
+call `request_access` for `bash` and then reply with the tool's answer), seven
+skills in the temporary PI agent directory beside HUI's two bundled ones, and a
+PI extension registering `weather_forecast`. Headless Chromium through CDP in
+dark mode (`prefers-color-scheme` emulated), 1440×900 with a fine pointer and
+390×844 with touch.
+
+1. A bot created through `POST /__hui/bots` with `disabledTools` `bash`,
+   `terminal`, `sessions_spawn` and `disabledSkills` `travel-planner`: panel →
+   **Tools** (the fourth tab) shows *3 of 19 tools and 1 of 9 skills are off*,
+   the groups Files, Shell, HUI, *Extension user · auto · weather.js* and Bots,
+   powerful tools labelled, the turned-off rows dimmed with their switches off.
+2. Send "Can you run the test suite and tell me whether it passes?
+   E2E_REQUEST_ACCESS": the chat shows the question *Allow access to bash
+   (powerful)?* with the bot's reason and Allow/Deny, the roster says *Waiting
+   for your answer*, and the Tools tab shows the same request at its top. A
+   reload keeps both.
+3. **Allow** in the Tools tab (desktop) or Allow + Submit in the chat's card
+   (mobile): the bot replies that it now has bash, the request goes, the Tools
+   tab shows bash on (*2 of 19 tools*), `bots.json` follows, and the provider's
+   next request offers 22 tools instead of 21, bash among them, without
+   `travel-planner` in its prompt.
+4. Switching **Browser** off and searching the skills for "notes" then switching
+   **meeting-notes** off each sends one `PATCH` with the whole list; the summary
+   follows (*3 of 19 tools and 2 of 9 skills*).
+5. `hui bot tools scout` and `hui bot skills scout --allow meeting-notes`
+   against the same gateway print the same state.
+6. A light-theme pass of the Tools tab at 1440×900.
+
+Screenshots of this run are in the pull request.
+
+### Stacked on the bot setup, with a bot on a worker (2026-10-07)
+
+After merging `feat/bot-setup` (#81, with #79's bots on workers), the same
+journey ran again on a built gateway of `feat/bot-tools` with a local worker
+*devbox*: a second temporary home reached through `env … sh -s`, with the built
+release installed there beforehand, as #79's and #81's runs did. Same fixture
+provider, skills and extension (mirrored to the worker when it connected), and the
+same drivers (dark, 1440×900 and 390×844).
+
+1. The panel's tabs sit on their own row under the bot's name: *Routines |
+   Memory | Soul | Tools | Settings*. Five tabs fit at 390×844 with no overflow,
+   and Tools opens on *3 of 19 tools and 1 of 9 skills are off* for a bot here.
+2. A bot created on devbox through `POST /__hui/bots` with `worker`,
+   `disabledTools` `bash`, `write` and `disabledSkills` `meeting-notes` stores
+   that skill by its path on the worker
+   (`…/remote/.local/share/hui-worker/mirror/agent/skills/meeting-notes/SKILL.md`).
+   Its Tools tab reads from the worker: *2 of 16 tools*, the extension's tool,
+   and every skill under `~/.local/share/hui-worker/mirror/agent/skills`,
+   *meeting-notes* off. The terminal, the browser and watchers aren't listed:
+   they stay on this machine, so its chat there isn't offered them. (The first
+   run, at `067db29`, showed *Shared terminal* switched on among 18 tools; the
+   review caught it, and the counts here are from the run after the fix.)
+3. "Run the checks on devbox and report back. E2E_REQUEST_ACCESS": the question
+   from the chat on the worker shows in the chat and at the top of its Tools tab.
+   **Allow** there: the bot replies that it has bash, the tab shows *1 of 16
+   tools*, and `bots.json` already holds `["write"]`, from the worker's report.
+   The provider's requests from the chat on devbox carry none of the three (19
+   tools, then 20 with bash). Creating a bot on devbox with `disabledTools:
+   ["terminal", "bash"]` is 400: *terminal stays on this machine, so a bot on
+   devbox can't use it and there is nothing to turn off: leave it out.*
+4. With devbox disconnected, the Tools tab says *devbox, where this bot runs, is
+   offline: HUI is not connected to it. Connect it in Settings → Workers, then try
+   again.* with Retry, and `GET …/catalog` answers 503 with that message, as
+   does `hui bot skills rover`. Reconnected, `hui bot skills rover --deny
+   travel-planner` turns the mirrored skill off on the worker.
+
+Screenshots of this run are in the pull request.
+
 ## Evidence
 
 Screenshots of the final run (desktop 1440×900, mobile 390×844 and landscape

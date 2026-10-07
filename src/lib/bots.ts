@@ -142,6 +142,11 @@ export function parseBot(value: unknown): BotView | undefined {
   const voice = parseVoice(value["voice"]);
   const lastMessage = parseLastMessage(value["lastMessage"]);
   const memory = parseBotMemoryStatus(value["memory"]);
+  // What the operator turned off in its chat (the Tools tab reads the details from the catalog).
+  const disabledTools = Array.isArray(value["disabledTools"]) ? value["disabledTools"].filter((name): name is string => typeof name === "string") : [];
+  const disabledSkills = Array.isArray(value["disabledSkills"])
+    ? value["disabledSkills"].flatMap((raw) => isRecord(raw) && typeof raw["name"] === "string" && typeof raw["path"] === "string" ? [{ name: raw["name"], path: raw["path"] }] : [])
+    : [];
   const worker = isRecord(value["worker"]) && text(value["worker"]["id"], 200) && text(value["worker"]["name"], 200)
     ? { id: text(value["worker"]["id"], 200), name: text(value["worker"]["name"], 200) }
     : undefined;
@@ -161,6 +166,8 @@ export function parseBot(value: unknown): BotView | undefined {
     ...(voice ? { voice } : {}),
     ...(value["hidden"] === true ? { hidden: true } : {}),
     ...(value["archived"] === true ? { archived: true } : {}),
+    ...(disabledTools.length ? { disabledTools } : {}),
+    ...(disabledSkills.length ? { disabledSkills } : {}),
     sessionId,
     createdAt: text(value["createdAt"], 100),
     updatedAt: text(value["updatedAt"], 100),

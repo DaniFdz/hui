@@ -122,12 +122,13 @@ test("tab strips move with arrows, Home and End and ignore other keys", () => {
   assert.equal(tabAfterKey(SIDEBAR_TABS, "bots", "Home"), "sessions");
   assert.equal(tabAfterKey(SIDEBAR_TABS, "sessions", "End"), "bots");
   assert.equal(tabAfterKey(SIDEBAR_TABS, "sessions", "Enter"), undefined);
-  assert.deepEqual(BOT_PANEL_TABS, ["routines", "memory", "soul", "settings"], "the bot panel: Routines | Memory | Soul | Settings, Settings last");
+  assert.deepEqual(BOT_PANEL_TABS, ["routines", "memory", "soul", "tools", "settings"], "the bot panel: Routines | Memory | Soul | Tools | Settings, Settings last");
   assert.equal(tabAfterKey(BOT_PANEL_TABS, "memory", "ArrowRight"), "soul");
-  assert.equal(tabAfterKey(BOT_PANEL_TABS, "soul", "ArrowRight"), "settings");
+  assert.equal(tabAfterKey(BOT_PANEL_TABS, "soul", "ArrowRight"), "tools");
+  assert.equal(tabAfterKey(BOT_PANEL_TABS, "tools", "ArrowRight"), "settings");
   assert.equal(tabAfterKey(BOT_PANEL_TABS, "settings", "ArrowRight"), "routines", "arrows wrap");
   assert.equal(tabAfterKey(BOT_PANEL_TABS, "routines", "End"), "settings");
-  assert.equal(tabAfterKey(BOT_PANEL_TABS, "settings", "ArrowLeft"), "soul");
+  assert.equal(tabAfterKey(BOT_PANEL_TABS, "settings", "ArrowLeft"), "tools");
   assert.equal(normalizeSidebarTab("bots"), "bots");
   for (const value of [null, "Bots", "agents", 1]) assert.equal(normalizeSidebarTab(value), "sessions");
 });

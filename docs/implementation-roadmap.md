@@ -862,6 +862,49 @@ requests:
    `src/views/bots.test.ts`, `server/bot-routes.test.ts` (a New Bot's
    opener) and the Browser journey `e2e/bot-setup.browser.md` (built gateway,
    fixture provider, a local worker, 1440×900, 1280×720 and 390×844, dark).
+8. **Tools and skills per bot** (implemented 2026-10-07; SPEC.md, "A bot has
+   every tool and skill until the operator turns some off"): every bot has
+   every tool and skill a session in its directory has until the operator
+   turns some off. `disabledTools` and `disabledSkills` live in the chat's
+   `hui.bot` document (optional fields of version 1, mirrored in `bots.json`),
+   so the host that runs the chat enforces them: its tool offer leaves them out,
+   extension tools included, and its HUI tool bridge refuses them, with a second
+   check in HUI's agent-tool handler. The prompt and `/skill:` list only the
+   skills that are on, and `load_skill` loads them for a bot without `read` or
+   `bash`. The bot asks for something that is off with `request_access`, a
+   session question with Allow and Deny only the operator answers, which says
+   when a routine or another bot started the turn. `POST`/`PATCH` take the lists,
+   `GET /__hui/bots/:id/catalog` lists what can be turned off (powerful tools
+   labelled) and a pending request; the panel's Tools tab (between Soul and
+   Settings) and `hui bot tools` / `hui bot skills` / `hui bot add --deny-tools
+   --deny-skills` use them. A bot on a worker (item 6) keeps its lists in its
+   document there, which the worker's host enforces; the gateway reaches them
+   through new host operations (`bot.access.read`, `bot.access.write`,
+   `bot.offer`: the catalog and creation's check computed there, skills by their
+   mirrored paths), a grant there comes back in a `bot.access` frame, and each
+   connection reconciles that worker's bots; offline, 503 naming it. Its chat
+   there isn't offered `terminal`, `browser` or `watcher`, which the gateway's
+   bridge refuses for any remote session (one list, `GATEWAY_ONLY_TOOLS`), so the
+   catalog leaves them out and a list can't name them. Proof:
+   `server/runtimes/durable-bot-access.test.ts` (real requests: offers, the
+   bridge, prompts, `/skill:`, `load_skill`, requests allowed, denied, refused
+   and one at a time, the port, documents from before the lists),
+   `server/runtimes/question-box.test.ts`, `server/bot-service.test.ts`,
+   `server/bot-routes.test.ts` (a real gateway: what is off leaves the
+   provider's request, a granted tool is on the next one, a skill that is off
+   is not in the prompt, the roster follows), `server/bots.test.ts`,
+   `src/lib/bot-tools.test.ts`, `src/views/bot-tools.test.ts`,
+   `cli/*.test.ts`, for workers `server/worker/host.test.ts` (the host's list
+   operations and offer), `server/bot-remote.test.ts`, `server/bot-service.test.ts`,
+   `server/runtimes/durable-bot-access.test.ts` (a host with `gatewayOnlyTools`: a
+   bot's chat never offered them nor able to ask for them, an ordinary session
+   keeping them), `server/workers.test.ts` (the bridge still refuses them) and
+   `server/bot-workers.test.ts` (a real local worker: created with lists,
+   its catalog with a mirrored skill and without the gateway's own tools, what is
+   off gone from its requests, a request allowed here and its grant reaching the
+   roster, a skill named by the gateway's path, lists naming the gateway's own
+   tools refused, offline answers), and an isolated gateway driven in a browser
+   (screens in the pull request).
 
 ### HUI-19 — Agent widgets
 

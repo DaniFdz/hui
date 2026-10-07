@@ -34,7 +34,8 @@ import type { RuntimeModel, RuntimeQueue, RuntimeQuestion, RuntimeSession, Runti
 import { installBrokeredCredentials, OfflineError, setCredentialTransport, setSecretEnv } from "./credentials.ts";
 import { completeWorkingDirectories, resolveWorkingDirectory } from "../working-directories.ts";
 import { attachPeer, isRecord, PROTOCOL_VERSION, type Peer } from "./protocol.ts";
-import { BOTS_FEATURE, hostBots } from "./host-bots.ts";
+import { BOT_ACCESS_FEATURE, BOT_ACCESS_FRAME, BOTS_FEATURE, hostBots } from "./host-bots.ts";
+import { GATEWAY_ONLY_TOOLS } from "./gateway-tools.ts";
 import { PACKAGE_ROOT } from "./release.ts";
 import { applySync, planSync, putSyncFiles, writeAtomic, type SyncCommit } from "./sync-apply.ts";
 import type { WorkerPaths } from "./paths.ts";
@@ -167,6 +168,8 @@ export class WorkerHost {
       agentDir: paths.agentDir,
       invokeTool: ({ callerSessionId, action, params, signal }) => this.#gatewayTool(callerSessionId, action, params, signal),
       lookupCaller: async (conversationId) => this.#callers.get(String(conversationId)),
+      // The gateway's bridge refuses these for every session here; a bot's chat isn't offered them.
+      gatewayOnlyTools: GATEWAY_ONLY_TOOLS,
     });
     // A bot's chat here lists the other bots as the gateway that owns them says.
     this.#durable.botSection = (botId) => this.#botSection(botId);
@@ -182,11 +185,16 @@ export class WorkerHost {
       operator: async () => operatorName((await readHuiSettings()).profileName),
       name: (botId) => this.#bots.nameOf(botId),
     };
+    // The operator allowed a bot's request here: its lists are already in its document, which this host enforces; every
+    // connected gateway hears of them, and the one whose bot it is updates its roster.
+    this.#durable.botAccessRecorded = async (botId, access) => {
+      for (const peer of [...this.#peers]) if (!peer.closed) peer.send({ t: BOT_ACCESS_FRAME, botId, access });
+    };
   }
 
   info(): HostInfo {
     return {
-      version: PROTOCOL_VERSION, release: this.#release, features: [BOTS_FEATURE], pid: process.pid, hostname: hostname(),
+      version: PROTOCOL_VERSION, release: this.#release, features: [BOTS_FEATURE, BOT_ACCESS_FEATURE], pid: process.pid, hostname: hostname(),
       platform: process.platform, arch: process.arch, node: process.version, home: this.paths.home,
       dataDir: this.paths.dataDir, mirrorDir: this.paths.mirrorDir, agentDir: this.paths.agentDir,
       providersDir: this.paths.providersDir, releaseDir: this.releaseDir,

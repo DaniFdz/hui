@@ -4,7 +4,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test, type TestContext } from "node:test";
-import { botKickoffText, type BotMessageResult, type BotView } from "../shared/bots.ts";
+import { botKickoffText, type BotCatalog, type BotCatalogTool, type BotMessageResult, type BotView } from "../shared/bots.ts";
 import type { AutomationTask } from "../src/lib/automation-types.ts";
 import { botCommand, findBot, formatBot, formatBots, formatLook, lookColor, parseDuration, parseZoom, questionAnswer, routineSchedule, type BotIO } from "./bots.ts";
 
@@ -16,6 +16,32 @@ function view(id: string, handle: string, extra: Partial<BotView> = {}): BotView
 }
 
 type Call = { method: string; path: string; body?: Record<string, unknown> };
+
+const SKILLS = [
+  { name: "alpha", path: "/skills/alpha/SKILL.md", description: "Writes release notes.", source: "/skills" },
+  { name: "beta", path: "hui:skill:beta", description: "Triage.", source: "HUI defaults" },
+];
+const TOOLS: Omit<BotCatalogTool, "enabled">[] = [
+  { name: "read", label: "Read files", description: "Read files and images", group: "files", source: "Durable", powerful: false },
+  { name: "bash", label: "Shell", description: "Run shell commands", group: "shell", source: "Durable", powerful: true },
+  { name: "echo", label: "Echo", description: "Echo text back", group: "extension", source: "user · echo.js", powerful: false },
+  { name: "message_bot", label: "Message bots", description: "Message another bot", group: "bots", source: "HUI", powerful: false },
+];
+
+/** The catalog route of the stand-in gateway: its tools and skills, against what the bot's record says is off. */
+function catalogFor(bot: BotView): BotCatalog {
+  const disabledTools = bot.disabledTools ?? [];
+  // A name stands for its skill, as the gateway resolves it.
+  const disabledSkills = ((bot.disabledSkills ?? []) as Array<string | { name: string; path: string }>)
+    .map((skill) => (typeof skill === "string" ? { name: skill, path: SKILLS.find((each) => each.name === skill)!.path } : skill));
+  return {
+    tools: TOOLS.map((tool) => ({ ...tool, enabled: !disabledTools.includes(tool.name) })),
+    skills: SKILLS.map((skill) => ({ ...skill, enabled: !disabledSkills.some((ref) => ref.name === skill.name && ref.path === skill.path) })),
+    alwaysOn: [{ name: "write_soul", description: "Rewrite its SOUL.md" }, { name: "request_access", description: "Ask you" }],
+    disabledTools, disabledSkills, live: true,
+    ...(bot.id === "id-bob" ? { request: { id: "q-1", sessionId: "s-bob", title: "Allow access to bash (powerful)?", message: "To run the checks." } } : {}),
+  };
+}
 
 /** A stand-in gateway: the bot, Automation and session routes over in-memory state, recording each request. */
 async function fakeGateway(t: TestContext) {
@@ -85,6 +111,7 @@ async function fakeGateway(t: TestContext) {
         return reply(200, { status: { messages: 12, built: 11, pending: 1, viewBytes: 4096, viewLines: 9, waiting: true, usage }, view: "<chat>\n0+8|user: plans\n</chat>" });
       }
       if (action === "memory/zoom") return reply(200, { text: `${url.searchParams.get("id")}+0|user: the plan` });
+      if (action === "catalog") return reply(200, catalogFor(bot));
       if (action === "soul" && request.method === "GET") return reply(200, { soul: souls.get(bot.id) ?? null });
       if (action === "soul" && request.method === "PUT") {
         const soul = String(body?.["soul"] ?? "").trim();
@@ -360,6 +387,59 @@ test("soul prints SOUL.md or says the bot has none yet, and --file replaces it f
   await botCommand(gateway.base, "soul", ["bob"], { file: "-" }, cleared.io);
   assert.deepEqual(gateway.calls.at(-1)?.body, { soul: "" });
   assert.equal(cleared.out, "Removed @bob's SOUL.md. It asks what you expect from it again in its next turn (hui bot chat bob).\n");
+});
+
+test("tools and skills print what a bot has, on or off, and --deny / --allow send the whole new list", async (t) => {
+  const gateway = await fakeGateway(t);
+  const listed = terminal();
+  assert.equal(await botCommand(gateway.base, "tools", ["ada"], {}, listed.io), 0);
+  assert.equal(listed.out, [
+    "@ada's tools: all 4 on. Changes apply from its next request.",
+    "",
+    "Files",
+    "  on   read         Read files and images",
+    "",
+    "Shell",
+    "  on   bash         Run shell commands (powerful)",
+    "",
+    "Extensions",
+    "  on   echo         Echo text back  [user · echo.js]",
+    "",
+    "Bots",
+    "  on   message_bot  Message another bot",
+    "",
+    "Always on: write_soul, request_access.",
+    "",
+  ].join("\n"));
+  const denied = terminal();
+  await botCommand(gateway.base, "tools", ["ada"], { deny: "bash, echo" }, denied.io);
+  assert.deepEqual(gateway.calls.filter((call) => call.method === "PATCH").at(-1), { method: "PATCH", path: "/__hui/bots/id-ada", body: { disabledTools: ["bash", "echo"] } });
+  assert.match(denied.out, /^@ada's tools: 2 of 4 off\./u);
+  assert.match(denied.out, /\n {2}off  bash {9}Run shell commands \(powerful\)\n/u);
+  const allowed = terminal();
+  await botCommand(gateway.base, "tools", ["ada"], { allow: "bash", json: true }, allowed.io);
+  assert.deepEqual(gateway.calls.filter((call) => call.method === "PATCH").at(-1)?.body, { disabledTools: ["echo"] }, "the rest stays off");
+  assert.deepEqual((JSON.parse(allowed.out) as BotCatalog).disabledTools, ["echo"]);
+  await assert.rejects(botCommand(gateway.base, "tools", ["ada"], { deny: "teleport" }, terminal().io), /^Error: Unknown tool: teleport\. @ada's tools: read, bash, echo, message_bot\.$/u);
+
+  const skills = terminal();
+  await botCommand(gateway.base, "skills", ["bob"], { deny: "alpha" }, skills.io);
+  assert.deepEqual(gateway.calls.filter((call) => call.method === "PATCH").at(-1), { method: "PATCH", path: "/__hui/bots/id-bob", body: { disabledSkills: ["alpha"] } }, "a new one by name: the gateway resolves it");
+  assert.equal(skills.out, [
+    "@bob's skills: 1 of 2 off. Changes apply from its next request.",
+    "",
+    "  off  alpha  Writes release notes.  [/skills]",
+    "  on   beta   Triage.  [HUI defaults]",
+    "",
+    "Waiting for you: Allow access to bash (powerful)? Answer it in hui bot chat bob or the Tools tab.",
+    "",
+  ].join("\n"));
+  await botCommand(gateway.base, "skills", ["bob"], { allow: "alpha" }, terminal().io);
+  assert.deepEqual(gateway.calls.filter((call) => call.method === "PATCH").at(-1)?.body, { disabledSkills: [] });
+  await assert.rejects(botCommand(gateway.base, "skills", ["bob"], { deny: "gamma" }, terminal().io), /Unknown skill: gamma\. @bob's skills: alpha, beta\./u);
+
+  await botCommand(gateway.base, "add", [], { name: "Locked", "deny-tools": "bash", "deny-skills": "alpha, beta" }, terminal().io);
+  assert.deepEqual(gateway.calls.findLast((call) => call.method === "POST" && call.path === "/__hui/bots")?.body, { name: "Locked", disabledTools: ["bash"], disabledSkills: ["alpha", "beta"] });
 });
 
 test("send reads - from stdin and exits 0 when answered, 1 on failure or timeout and 2 while the bot asks", async (t) => {

@@ -8,7 +8,10 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { createInterface } from "node:readline";
-import { BOT_FACE_SHAPE_LABELS, botColorName, botDisplayCwd, botFaceColor, botFaceShape, botKickoffName, botLook, NEW_BOT_NAME, type BotMessageResult, type BotQuestion, type BotSoul, type BotsUpdate, type BotView } from "../shared/bots.ts";
+import {
+  BOT_FACE_SHAPE_LABELS, botColorName, botDisplayCwd, botFaceColor, botFaceShape, botKickoffName, botLook, NEW_BOT_NAME,
+  type BotCatalog, type BotCatalogTool, type BotMessageResult, type BotQuestion, type BotSkillSelector, type BotSoul, type BotsUpdate, type BotView,
+} from "../shared/bots.ts";
 import { voiceLanguage, voiceLanguageName } from "../shared/voice.ts";
 import { gptLiveVoiceLabel } from "../shared/calls.ts";
 import type { AutomationSchedule, AutomationTask } from "../src/lib/automation-types.ts";
@@ -43,6 +46,12 @@ export type BotFlags = {
   every?: string;
   cron?: string;
   timezone?: string;
+  /** `tools` and `skills`: comma-separated names to turn on or off. */
+  allow?: string;
+  deny?: string;
+  /** `add`: tools and skills off from its first turn. */
+  "deny-tools"?: string;
+  "deny-skills"?: string;
 };
 
 /** The terminal, injectable so `chat` and `send` run against scripted input in tests. */
@@ -195,6 +204,9 @@ async function botBody(flags: BotFlags, io: BotIO): Promise<Record<string, unkno
       ...(flags.color !== undefined ? { color: lookColor(flags.color) } : {}),
     };
   }
+  // Off from its first turn; the gateway checks the names.
+  if (flags["deny-tools"] !== undefined) body["disabledTools"] = names(flags["deny-tools"]);
+  if (flags["deny-skills"] !== undefined) body["disabledSkills"] = names(flags["deny-skills"]);
   // The language it speaks on calls and its GPT-Live call voice; "" clears each on edit.
   if (flags.language !== undefined || flags["call-voice"] !== undefined) {
     body["voice"] = {
@@ -299,6 +311,8 @@ export async function botCommand(base: string, action: string, operands: readonl
     }
     case "send": return send(base, bot, operands[1]!, flags, io);
     case "soul": return soul(base, bot, flags, io);
+    case "tools": return tools(base, bot, flags, io);
+    case "skills": return skills(base, bot, flags, io);
     case "chat": return botChat(base, bot, io);
     case "memory": return memory(base, bot, flags, io);
     case "routine list": {
@@ -374,6 +388,56 @@ async function soul(base: string, bot: BotView, flags: BotFlags, io: BotIO): Pro
   }
   const result = await request<BotSoul>(base, path);
   io.out(`${flags.json ? JSON.stringify(result) : result.soul ?? `@${bot.handle} has no SOUL.md yet: it writes one in its first conversation with you (hui bot chat ${bot.handle}).`}\n`);
+  return 0;
+}
+
+/** `a, b,c` as distinct names. */
+export function names(value: string): string[] {
+  return [...new Set(value.split(",").map((name) => name.trim()).filter(Boolean))];
+}
+
+const catalogOf = (base: string, bot: BotView) => request<BotCatalog>(base, `/__hui/bots/${encodeURIComponent(bot.id)}/catalog`, { timeoutMs: 60_000 });
+
+/** `--allow` and `--deny`: whole lists sent to the gateway, which checks every name against the bot's chat. */
+async function changeAccess(base: string, bot: BotView, change: Record<string, unknown>): Promise<void> {
+  await request<{ bot: BotView }>(base, `/__hui/bots/${encodeURIComponent(bot.id)}`, { method: "PATCH", body: change, timeoutMs: 60_000 });
+}
+
+/** `hui bot tools`: what the bot's chat has, and with `--allow`/`--deny` what to turn on or off. Prints the catalog after. */
+async function tools(base: string, bot: BotView, flags: BotFlags, io: BotIO): Promise<number> {
+  if (flags.allow !== undefined || flags.deny !== undefined) {
+    const current = await catalogOf(base, bot);
+    const allow = names(flags.allow ?? "");
+    const deny = names(flags.deny ?? "");
+    const known = new Set([...current.tools.map((tool) => tool.name), ...current.disabledTools]);
+    // A bot's own tools are refused by the gateway, with its reason; other unknown names get the list here.
+    const unknown = [...allow, ...deny].filter((name) => !known.has(name) && !current.alwaysOn.some((tool) => tool.name === name));
+    if (unknown.length) throw new Error(`Unknown tool${unknown.length === 1 ? "" : "s"}: ${unknown.join(", ")}. @${bot.handle}'s tools: ${current.tools.map((tool) => tool.name).join(", ")}.`);
+    await changeAccess(base, bot, { disabledTools: [...current.disabledTools.filter((name) => !allow.includes(name)), ...deny.filter((name) => !current.disabledTools.includes(name))] });
+  }
+  const catalog = await catalogOf(base, bot);
+  io.out(`${flags.json ? JSON.stringify(catalog) : formatTools(bot, catalog)}\n`);
+  return 0;
+}
+
+/** `hui bot skills`: the skills of the bot's directory, on or off; `--allow`/`--deny` name them. */
+async function skills(base: string, bot: BotView, flags: BotFlags, io: BotIO): Promise<number> {
+  if (flags.allow !== undefined || flags.deny !== undefined) {
+    const current = await catalogOf(base, bot);
+    const allow = names(flags.allow ?? "");
+    const deny = names(flags.deny ?? "");
+    const known = new Set([...current.skills.map((skill) => skill.name), ...current.disabledSkills.map((skill) => skill.name)]);
+    const unknown = [...allow, ...deny].filter((name) => !known.has(name));
+    if (unknown.length) throw new Error(`Unknown skill${unknown.length === 1 ? "" : "s"}: ${unknown.join(", ")}. @${bot.handle}'s skills: ${current.skills.length ? current.skills.map((skill) => skill.name).join(", ") : "none"}.`);
+    // Kept as the refs they are; new ones by name, which the gateway resolves (and refuses when two skills share it).
+    const next: BotSkillSelector[] = [
+      ...current.disabledSkills.filter((skill) => !allow.includes(skill.name)),
+      ...deny.filter((name) => !current.disabledSkills.some((skill) => skill.name === name)),
+    ];
+    await changeAccess(base, bot, { disabledSkills: next });
+  }
+  const catalog = await catalogOf(base, bot);
+  io.out(`${flags.json ? JSON.stringify(catalog) : formatSkills(bot, catalog)}\n`);
   return 0;
 }
 
@@ -721,6 +785,45 @@ function formatQuestion(question: BotQuestion): string {
 }
 
 const plural = (count: number, one: string, many = `${one}s`) => `${count} ${count === 1 ? one : many}`;
+
+const TOOL_GROUPS: readonly [BotCatalogTool["group"], string][] = [["files", "Files"], ["shell", "Shell"], ["hui", "HUI"], ["extension", "Extensions"], ["bots", "Bots"]];
+
+/** A pending access request, and where to answer it. */
+function formatRequest(bot: BotView, catalog: BotCatalog): string[] {
+  return catalog.request ? ["", `Waiting for you: ${catalog.request.title} Answer it in hui bot chat ${bot.handle} or the Tools tab.`] : [];
+}
+
+/** The tools, grouped, each on or off; powerful ones marked. */
+export function formatTools(bot: BotView, catalog: BotCatalog): string {
+  const off = catalog.tools.filter((tool) => !tool.enabled).length;
+  const width = Math.max(0, ...catalog.tools.map((tool) => tool.name.length));
+  const lines = [`@${bot.handle}'s tools: ${off ? `${off} of ${catalog.tools.length} off` : `all ${catalog.tools.length} on`}. Changes apply from its next request.`];
+  if (!catalog.live) lines.push("Its chat isn't running, so an extension's tools aren't listed.");
+  for (const [group, title] of TOOL_GROUPS) {
+    const members = catalog.tools.filter((tool) => tool.group === group);
+    if (!members.length) continue;
+    lines.push("", title);
+    for (const tool of members) {
+      const source = group === "extension" ? `  [${tool.source}]` : "";
+      lines.push(`  ${tool.enabled ? "on " : "off"}  ${tool.name.padEnd(width)}  ${tool.description}${tool.powerful ? " (powerful)" : ""}${source}`);
+    }
+  }
+  lines.push("", `Always on: ${catalog.alwaysOn.map((tool) => tool.name).join(", ")}.`, ...formatRequest(bot, catalog));
+  return lines.join("\n");
+}
+
+/** The skills, each on or off, with where they come from. */
+export function formatSkills(bot: BotView, catalog: BotCatalog): string {
+  const off = catalog.skills.filter((skill) => !skill.enabled).length;
+  if (!catalog.skills.length) return [`@${bot.handle} has no skills: none are installed for its directory.`, ...formatRequest(bot, catalog)].join("\n");
+  const width = Math.max(0, ...catalog.skills.map((skill) => skill.name.length));
+  return [
+    `@${bot.handle}'s skills: ${off ? `${off} of ${catalog.skills.length} off` : `all ${catalog.skills.length} on`}. Changes apply from its next request.`,
+    "",
+    ...catalog.skills.map((skill) => `  ${skill.enabled ? "on " : "off"}  ${skill.name.padEnd(width)}  ${skill.description}  [${skill.source}]`),
+    ...formatRequest(bot, catalog),
+  ].join("\n");
+}
 
 /** One line: the log, the tree, the view, and what the compactor spent since the gateway opened the memory. */
 function formatMemory(status: NonNullable<BotView["memory"]>): string {

@@ -8,20 +8,21 @@
  * events through it.
  */
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
 import { clampThinkingLevel, type ImageContent, type Message, type ModelThinkingLevel, type TextContent } from "@earendil-works/pi-ai";
 import {
   CompactionEntry, InboxDoc, ResetEntry, SystemEntry, watchEvents,
   type AgentEvent, type AgentState, type CompactionResult, type Conversation, type ConversationId, type Cursor,
-  type EntryId, type EntryRecord, type Harness, type TaskId,
+  type EntryId, type EntryRecord, type Harness, type TaskId, type ToolRegistration,
 } from "@earendil-works/pi-durable";
 // The estimators Durable's own compaction uses, so the meter matches its thresholds.
 import { calculateContextTokens, estimateMessageTokens } from "@earendil-works/pi-ai/utils/estimate";
-import { SettingsManager } from "@earendil-works/pi-coding-agent";
+import { SettingsManager, type Skill } from "@earendil-works/pi-coding-agent";
 import { resolveCommandReference } from "../../src/lib/command-references.ts";
 import type { RuntimeInspection } from "../../src/lib/tools-types.ts";
 import { durableContext as context, durableHost, type DurableHost } from "./durable-host.ts";
 import { CallEntry } from "./durable-bots.ts";
+import { botSkills, describeTool, planBotTools, skillBlock, type BotChat, type OfferedTool, type ToolOrigin } from "./durable-bot-access.ts";
+import { QuestionBox, type QuestionDraft } from "./question-box.ts";
 import { DurableExtensions, ExtensionMessageEntry, isCustomInput, type CustomMessage, type ExtensionSession } from "./durable-extensions.ts";
 import { filterConfiguredModels } from "./pi-models.ts";
 import {
@@ -92,7 +93,7 @@ const internal = async <T>(path: string): Promise<T> =>
   await import(new URL(path, import.meta.resolve("@earendil-works/pi-coding-agent")).href) as T;
 const { expandPromptTemplate } = await internal<{ expandPromptTemplate(text: string, templates: unknown[]): string }>("./core/prompt-templates.js");
 
-/** PI's `/skill:name args` expansion, verbatim, for skills PI's loader found. */
+/** PI's `/skill:name args` expansion, verbatim, for the skills this conversation may use. */
 function expandSkill(text: string, skills: readonly { name: string; filePath: string; baseDir: string }[]): string {
   if (!text.startsWith("/skill:")) return text;
   const space = text.indexOf(" ");
@@ -100,8 +101,7 @@ function expandSkill(text: string, skills: readonly { name: string; filePath: st
   const args = space === -1 ? "" : text.slice(space + 1).trim();
   const skill = skills.find((candidate) => candidate.name === name);
   if (!skill) return text;
-  const body = readFileSync(skill.filePath, "utf8").replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/u, "").trim();
-  const block = `<skill name="${skill.name}" location="${skill.filePath}">\nReferences are relative to ${skill.baseDir}.\n\n${body}\n</skill>`;
+  const block = skillBlock(skill);
   return args ? `${block}\n\n${args}` : block;
 }
 
@@ -155,7 +155,7 @@ export async function initialModel(host: DurableHost, cwd: string, requested: st
   return first ? { provider: first.provider, modelId: first.id } : undefined;
 }
 
-export class DurableSession implements RuntimeSession, ExtensionSession {
+export class DurableSession implements RuntimeSession, ExtensionSession, BotChat {
   readonly #host: DurableHost;
   readonly #harness: Harness;
   readonly #cwd: string;
@@ -201,6 +201,13 @@ export class DurableSession implements RuntimeSession, ExtensionSession {
   #extensions: DurableExtensions | undefined;
   #extensionFailure: string | undefined;
   #huiSessionId: string | undefined;
+  /** What the session asks the operator itself: a bot's access requests. */
+  #questions = new QuestionBox((question) => this.#emit({ type: "question", question }));
+  /** The tools the operator can turn off in a bot's chat, as the latest `applyTools` found them; empty for every other
+   * conversation. */
+  #botOffer: readonly OfferedTool[] = [];
+  /** The message that started the latest run this view started; who started the turn (`runInput`). */
+  #runInput: string | undefined;
   readonly resumesInterruptedRuns = true;
 
   constructor(host: DurableHost, harness: Harness, conversation: Conversation, cwd: string) {
@@ -223,6 +230,7 @@ export class DurableSession implements RuntimeSession, ExtensionSession {
    * setup that fails to load leaves the session without extensions, and says why in its inspection. */
   async loadExtensions(huiSessionId: string): Promise<void> {
     this.#huiSessionId = huiSessionId;
+    this.#host.trackChat(this);
     this.#extensionFailure = undefined;
     try {
       const settings = await this.#host.settings();
@@ -243,21 +251,88 @@ export class DurableSession implements RuntimeSession, ExtensionSession {
   }
 
   /** Offers the conversation its extensions and the tools they keep active, OptChat's zoom and date when the
-   * conversation has OptChat, `message_bot` when it is a bot's chat, and drops the browser when Settings turns it off.
-   * Applies per conversation, at start and on every change. */
+   * conversation has OptChat, `message_bot` and a bot's own tools when it is a bot's chat, and drops the browser when
+   * Settings turns it off. A bot's chat goes without the tools the operator turned off, without its own tools while
+   * it has no use for them (`durable-bot-access.ts`), and without the HUI tools that act on another machine than this
+   * host's (`gatewayOnlyTools`, on a worker), which it is never offered. Applies per conversation, at start and on
+   * every change. */
   async applyTools(): Promise<void> {
     const browserEnabled = (await this.#host.settings()).browser.enabled !== false;
-    const inactive = new Map([...(browserEnabled ? [] : this.#host.toolsNamed(["browser"])), ...(this.#extensions?.inactiveTools() ?? [])].map((tool) => [tool.name, tool]));
+    const bot = await this.#host.botStateFor(this.#conversation.id);
+    const inactive = new Map([
+      ...(browserEnabled ? [] : this.#host.toolsNamed(["browser"])),
+      ...(bot ? this.#host.toolsNamed(this.#host.gatewayOnlyTools) : []),
+      ...(this.#extensions?.inactiveTools() ?? []),
+    ].map((tool) => [tool.name, tool]));
     // After the session's extensions, so OptChat's zoom and date win over same-named extension tools where OptChat is
     // on, and only there. Each is selected per conversation; every other conversation's selection stays as it was.
     const optchat = await this.#host.optchat.toolsFor(this.#conversation.id);
-    const botTools = await this.#host.botToolsFor(this.#conversation.id);
+    const botTools = bot ? await this.#host.botToolsFor(this.#conversation.id) : undefined;
     const added = [...(this.#extensions ? [this.#extensions.extension] : []), ...(optchat ? [optchat] : []), ...(botTools ? [botTools] : [])];
+    const remove = [...inactive.values()];
+    this.#botOffer = [];
+    if (bot) {
+      // What a session here is offered, in Durable's order: the coding tools, HUI's, the extensions' and the added ones.
+      const offered = this.#composed([
+        [this.#host.codingTools, () => ({ kind: "coding" })],
+        [this.#host.huiTools, () => ({ kind: "hui" })],
+        [this.#extensions?.extension.tools ?? [], (tool) => ({ kind: "extension", ...this.#extensions!.describe(tool.name) })],
+        [optchat?.tools ?? [], () => ({ kind: "hui" })],
+        [botTools?.tools ?? [], () => ({ kind: "bot" })],
+      ]).filter(({ name }) => !inactive.has(name));
+      const skills = await this.availableSkills();
+      const on = botSkills(skills, bot.disabledSkills).length;
+      const plan = planBotTools(offered, bot, { memory: (optchat?.tools ?? []).map((tool) => tool.name), skillsOn: on, skillsOff: skills.length - on });
+      this.#botOffer = plan.listable.map(({ tool, origin }) => describeTool(tool, origin));
+      // Removed by name, so a tool that appears later is on until the operator turns it off.
+      remove.push(...plan.removed.map(({ tool }) => tool));
+    }
     await this.#conversation.configure({
       // A view with no HUI session (a probe) leaves the selection of the session that owns the conversation alone.
       ...(this.#huiSessionId === undefined ? {} : { extensions: added.length ? { add: added } : null }),
-      tools: inactive.size ? { remove: [...inactive.values()] } : null,
+      tools: remove.length ? { remove } : null,
     }, context);
+  }
+
+  /** Tools composed as Durable composes the selected extensions: by name, in order, a later one replacing an earlier
+   * one of the same name in its place. Each keeps where it comes from. */
+  #composed(sources: readonly (readonly [readonly ToolRegistration[], (tool: ToolRegistration) => ToolOrigin])[]): { name: string; tool: ToolRegistration; origin: ToolOrigin }[] {
+    const composed = new Map<string, { name: string; tool: ToolRegistration; origin: ToolOrigin }>();
+    for (const [tools, origin] of sources) for (const tool of tools) composed.set(tool.name, { name: tool.name, tool, origin: origin(tool) });
+    return [...composed.values()];
+  }
+
+  botOffer(): readonly OfferedTool[] {
+    return this.#botOffer;
+  }
+
+  async availableSkills(): Promise<readonly Skill[]> {
+    return (await this.#host.prompt.loader(this.#cwd)).getSkills().skills;
+  }
+
+  /** Asks the operator in this chat (a bot's access request); resolves with the answer, or undefined once dismissed. */
+  ask(question: QuestionDraft, signal?: AbortSignal): Promise<RuntimeQuestionResponse | undefined> {
+    return this.#questions.ask(question, signal);
+  }
+
+  /** The message that started the run going now: the one this view started, or, for a run that resumed after a restart,
+   * the latest user message in the history. */
+  runInput(): string | undefined {
+    if (this.#runInput !== undefined) return this.#runInput;
+    const rows = this.rows();
+    for (let index = rows.length - 1; index >= 0; index--) {
+      const message = [...rows[index]!.model ?? []].reverse().find((each) => each.role === "user" && !isCustomInput(each));
+      if (message) return textOf(message);
+    }
+    return undefined;
+  }
+
+  /** The skills this conversation may use: those of its directory, less the ones the operator turned off in a bot's
+   * chat. */
+  async #skills(loader: { getSkills(): { skills: Skill[] } }): Promise<readonly Skill[]> {
+    const all = loader.getSkills().skills;
+    const bot = await this.#host.botStateFor(this.#conversation.id);
+    return bot ? botSkills(all, bot.disabledSkills) : all;
   }
 
   /** Entries since the latest reset, oldest first: what the extensions' PI session view holds. */
@@ -675,7 +750,7 @@ export class DurableSession implements RuntimeSession, ExtensionSession {
 
   async #expand(text: string): Promise<string> {
     const loader = await this.#host.prompt.loader(this.#cwd);
-    return expandPromptTemplate(expandSkill(text, loader.getSkills().skills), loader.getPrompts().prompts);
+    return expandPromptTemplate(expandSkill(text, text.startsWith("/skill:") ? await this.#skills(loader) : []), loader.getPrompts().prompts);
   }
 
   /**
@@ -731,6 +806,8 @@ export class DurableSession implements RuntimeSession, ExtensionSession {
    */
   async #start(text: string, sending: Sending): Promise<void> {
     this.#starting += 1;
+    // As HUI records a run's prompt: a routine's or another bot's marker leads it.
+    this.#runInput = text;
     const start = () => this.#send(text, "reject", sending).then((sent) => {
       if (!sent && !this.#streaming && this.#starting === 1) this.#emit({ type: "settled" });
     }).finally(() => {
@@ -891,7 +968,7 @@ export class DurableSession implements RuntimeSession, ExtensionSession {
     const loader = await this.#host.prompt.loader(this.#cwd);
     return [
       ...(this.#extensions?.commands() ?? []),
-      ...loader.getSkills().skills.map((skill) => ({ name: `skill:${skill.name}`, description: skill.description, source: "skill" as const })),
+      ...(await this.#skills(loader)).map((skill) => ({ name: `skill:${skill.name}`, description: skill.description, source: "skill" as const })),
       ...loader.getPrompts().prompts.map((prompt) => ({ name: prompt.name, description: prompt.description ?? "", source: "prompt" as const })),
     ];
   }
@@ -921,17 +998,19 @@ export class DurableSession implements RuntimeSession, ExtensionSession {
     return { steering: [...this.#queue.steering], followUp: [...this.#queue.followUp] };
   }
 
-  /** Questions the session's extensions are waiting on. */
+  /** Questions the session's extensions are waiting on, and its own. */
   pendingQuestions(): readonly RuntimeQuestion[] {
-    return this.#extensions?.pendingQuestions() ?? [];
+    return [...this.#extensions?.pendingQuestions() ?? [], ...this.#questions.pending()];
   }
 
   async respondQuestion(id: string, response: RuntimeQuestionResponse): Promise<void> {
+    if (this.#questions.has(id)) return this.#questions.respond(id, response);
     if (!this.#extensions) throw new Error(`Unknown question: ${id}`);
     this.#extensions.respondQuestion(id, response);
   }
 
   async cancelQuestion(id: string): Promise<void> {
+    if (this.#questions.has(id)) return this.#questions.cancel(id);
     if (!this.#extensions) throw new Error(`Unknown question: ${id}`);
     this.#extensions.cancelQuestion(id);
   }
@@ -1059,6 +1138,8 @@ export class DurableSession implements RuntimeSession, ExtensionSession {
   dispose(): void {
     if (this.#disposed) return;
     this.#disposed = true;
+    this.#host.untrackChat(this);
+    this.#questions.cancelAll();
     this.#listeners.clear();
     for (const waiter of [...this.#waiters]) waiter.resolve();
     void this.#stop?.().catch(() => {});

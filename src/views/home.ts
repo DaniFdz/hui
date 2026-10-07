@@ -351,7 +351,7 @@ export type HomeProps = {
 /** What the bot header's ⋯ menu asks the app to do. */
 export type BotHeaderAction = "edit" | "archive" | "delete";
 
-/** The bot view's header: who the bot is, its panel (Routines | Memory | Soul | Settings) and its ⋯ menu. */
+/** The bot view's header: who the bot is, its panel (Routines | Memory | Soul | Tools | Settings) and its ⋯ menu. */
 export type HomeBot = {
   bot: Pick<BotView, "id" | "name" | "title" | "avatar" | "memory" | "worker">;
   panelOpen: boolean;

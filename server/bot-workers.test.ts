@@ -16,8 +16,9 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { after, before, test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { botKickoffName, type BotMemoryStatus, type BotView } from "../shared/bots.ts";
+import { botKickoffName, type BotCatalog, type BotMemoryStatus, type BotView } from "../shared/bots.ts";
 import type { TranscriptEntry } from "./runtimes/types.ts";
+import { GATEWAY_ONLY_TOOLS } from "./worker/gateway-tools.ts";
 
 const repo = fileURLToPath(new URL("../", import.meta.url));
 const root = await mkdtemp(join(tmpdir(), "hui-bot-workers-"));
@@ -127,7 +128,7 @@ async function waitFor<T>(read: () => T | undefined | false | Promise<T | undefi
   }
 }
 
-type ProviderRequest = { model?: string; system?: unknown; messages?: unknown };
+type ProviderRequest = { model?: string; system?: unknown; messages?: unknown; tools?: Array<{ name?: string }> };
 async function providerRequests(): Promise<ProviderRequest[]> {
   return (await readFile(log, "utf8")).trim().split("\n").filter(Boolean).map((line) => JSON.parse(line) as ProviderRequest);
 }
@@ -383,6 +384,67 @@ test("archiving, restoring and deleting a bot on the worker", { timeout: 120_000
   assert.equal((await call("/__hui/bots/rover")).status, 404);
 });
 
+test("a bot on the worker has the tools and skills a session there has until the operator turns some off: its lists live there, its request is answered here, and the roster follows", { timeout: 240_000 }, async () => {
+  // A skill of the gateway's: once mirrored, the worker finds it at its mirrored path, and names it so.
+  await mkdir(join(agentDir, "skills", "atlas"), { recursive: true });
+  await writeFile(join(agentDir, "skills", "atlas", "SKILL.md"), "---\nname: atlas\ndescription: Read the survey maps.\n---\n\n# atlas\n\nRead the survey maps.\n");
+  await workers.sync(workerId);
+  const atlas = { name: "atlas", path: join(remoteData, "mirror", "agent", "skills", "atlas", "SKILL.md") };
+  const tools = (request: ProviderRequest | undefined) => (request?.tools ?? []).map((tool) => tool.name);
+
+  // Created with tools and that skill off: checked against the worker's own offer, in the creating commit there.
+  const created = await call("/__hui/bots", "POST", { name: "Surveyor", worker: "devbox", soul: "# Who I am\nSURVEYOR.", disabledTools: ["bash", "write"], disabledSkills: ["atlas"] });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  const surveyor = botOf(created);
+  assert.deepEqual([surveyor.disabledTools, surveyor.disabledSkills], [["bash", "write"], [atlas]]);
+  const refused = await call("/__hui/bots", "POST", { name: "Mapless", worker: "devbox", disabledSkills: ["no-such-skill"] });
+  assert.equal(refused.status, 400);
+  assert.match(String(refused.body["error"]), /^Unknown skill: no-such-skill\. Skills of its directory: .*atlas/u);
+
+  // Its catalog comes from the worker: the tools a session there is offered, the skill at its mirrored path.
+  let catalog = (await call("/__hui/bots/surveyor/catalog")).body as unknown as BotCatalog;
+  assert.equal(catalog.live, true, JSON.stringify(catalog));
+  assert.deepEqual(catalog.tools.filter((tool) => !tool.enabled).map((tool) => tool.name).sort(), ["bash", "write"]);
+  assert.deepEqual(catalog.tools.filter((tool) => GATEWAY_ONLY_TOOLS.includes(tool.name)), [], "the terminal, the browser and watchers stay on this machine: not listed, so never counted");
+  assert.deepEqual(catalog.skills.find((skill) => skill.name === "atlas"), { ...atlas, description: "Read the survey maps.", source: "~/.local/share/hui-worker/mirror/agent/skills", enabled: false });
+
+  // What is off leaves the request the chat on the worker makes, and the skill its prompt.
+  assert.equal((await call("/__hui/bots/surveyor/messages", "POST", { text: "SURVEYOR_FIRST look around", wait: true, timeoutSeconds: 120 })).body["status"], "answered");
+  const first = await chatRequest("SURVEYOR_FIRST");
+  assert.deepEqual(["read", "bash", "write", "request_access"].map((name) => tools(first).includes(name)), [true, false, false, true]);
+  assert.deepEqual(tools(first).filter((name) => name !== undefined && GATEWAY_ONLY_TOOLS.includes(name)), [], "nor offered to the chat on the worker, so it never calls them");
+  assert.doesNotMatch(systemOf(first), /<name>atlas<\/name>/u, "not among its skills");
+  assert.match(systemOf(first), /Skills:\\n- atlas: Read the survey maps\./u, "but named as off, so it can ask for it");
+
+  // It asks for bash: the question comes here, the operator allows it, and the worker's chat has it from its next step.
+  const asked = await call("/__hui/bots/surveyor/messages", "POST", { text: "E2E_REQUEST_ACCESS please", wait: true, timeoutSeconds: 120 });
+  assert.equal(asked.body["status"], "needs-input", JSON.stringify(asked.body));
+  const [question] = asked.body["questions"] as Array<{ id: string; title: string; options?: string[] }>;
+  assert.deepEqual([question?.title, question?.options], ["Allow access to bash (powerful)?", ["Allow", "Deny"]]);
+  catalog = (await call("/__hui/bots/surveyor/catalog")).body as unknown as BotCatalog;
+  assert.equal(catalog.request?.id, question!.id, "the Tools tab sees the same request");
+  assert.equal((await call(`/__hui/sessions/${surveyor.sessionId}/question`, "POST", { id: question!.id, value: "Allow" })).status, 200);
+  await settledWith(surveyor.sessionId, says("assistant", "you now have bash"), "the granted turn on the worker");
+  const granted = (await providerRequests()).filter((request) => !isCompactor(request) && JSON.stringify(request.messages).includes("tool-e2e-request-access")).at(-1);
+  assert.ok(tools(granted).includes("bash"), "its next request there offers bash");
+  // The worker reported the grant: the roster follows with no catalog read.
+  await waitFor(async () => botOf(await call("/__hui/bots/surveyor")).disabledTools?.join() === "write" || undefined, "the roster to follow the worker's grant");
+
+  // A list can't name what stays on this machine, at creation or later: there is nothing to turn off.
+  const termless = await call("/__hui/bots", "POST", { name: "Termless", worker: "devbox", disabledTools: ["terminal", "bash"] });
+  assert.deepEqual([termless.status, termless.body["error"]], [400, "terminal stays on this machine, so a bot on devbox can't use it and there is nothing to turn off: leave it out."]);
+  const watched = await call("/__hui/bots/surveyor", "PATCH", { disabledTools: ["watcher", "browser"] });
+  assert.deepEqual([watched.status, watched.body["error"]], [400, "watcher, browser stay on this machine, so a bot on devbox can't use them and there is nothing to turn off: leave them out."]);
+
+  // Edited from here, written there: a skill named by this gateway's own path finds its mirrored one.
+  const edited = await call("/__hui/bots/surveyor", "PATCH", { disabledTools: [], disabledSkills: [{ name: "atlas", path: join(agentDir, "skills", "atlas", "SKILL.md") }] });
+  assert.equal(edited.status, 200, JSON.stringify(edited.body));
+  assert.deepEqual([botOf(edited).disabledTools, botOf(edited).disabledSkills], [undefined, [atlas]]);
+  catalog = (await call("/__hui/bots/surveyor/catalog")).body as unknown as BotCatalog;
+  assert.deepEqual([catalog.disabledTools, catalog.disabledSkills], [[], [atlas]], "read back from the worker");
+  assert.equal((await call(`/__hui/bots/${surveyor.id}?permanent=1`, "DELETE")).status, 200);
+});
+
 test("a disconnected worker: creating there, its bot's memory and messages fail naming it, and the list stays fast", { timeout: 180_000 }, async () => {
   const crow = botOf(await call("/__hui/bots", "POST", { name: "Crow", worker: workerId, soul: "# Who I am\nCrow." }));
   assert.equal(crow.worker?.name, "devbox");
@@ -403,6 +465,13 @@ test("a disconnected worker: creating there, its bot's memory and messages fail 
     assert.equal(reply.status, 503);
     assert.match(String(reply.body["error"]), /^devbox, where this bot runs, is offline/u);
   }
+  // Nor its Tools tab its lists, which are in its document there.
+  const catalog = await call("/__hui/bots/crow/catalog");
+  assert.equal(catalog.status, 503);
+  assert.match(String(catalog.body["error"]), /^devbox, where this bot runs, is offline/u);
+  const lists = await call("/__hui/bots/crow", "PATCH", { disabledTools: ["bash"] });
+  assert.equal(lists.status, 503);
+  assert.match(String(lists.body["error"]), /devbox/u);
   const started = Date.now();
   const listed = await call("/__hui/bots");
   assert.equal(listed.status, 200);

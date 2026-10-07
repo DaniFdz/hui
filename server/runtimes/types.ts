@@ -33,6 +33,8 @@ export type RuntimeQuestion =
       id: string;
       method: "select";
       title: string;
+      /** Shown under the title, as a confirmation's message is (a bot's reason for an access request). */
+      message?: string;
       options: readonly string[];
       timeout?: number;
     }

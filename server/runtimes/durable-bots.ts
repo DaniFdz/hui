@@ -1,7 +1,10 @@
 /**
  * Bots in Pi Durable (HUI-18): the document that marks a conversation as a
- * bot's chat, the `bots` and `soul` prompt sections and the `message_bot`,
- * `write_soul` and `set_profile` tools only those chats get.
+ * bot's chat and holds what the operator turned off in it, the `bots` and
+ * `soul` prompt sections and the `message_bot`, `write_soul` and `set_profile`
+ * tools only those chats get. A bot's access tools and section
+ * (`request_access`, `load_skill`, `bot_access`) live in
+ * `durable-bot-access.ts` and join the same extensions.
  *
  * The sections' extension is in every gateway's default selection and renders
  * nothing without the conversation's `hui.bot` document. The tools live in an
@@ -22,14 +25,25 @@ import { dirname, join } from "node:path";
 import type { Context } from "@earendil-works/chord";
 import {
   defineDoc, defineEntry, defineExtension, defineTool, section,
-  type ConversationId, type DocumentReader, type Extension, type ToolRegistration,
+  type ConversationId, type DocumentReader, type Extension, type PromptSection, type ToolRegistration,
 } from "@earendil-works/pi-durable";
 import { Type } from "typebox";
-import { BOT_KICKOFF_MARKER, BOT_LIMITS, BOT_SOUL_FILE, NEW_BOT_NAME } from "../../shared/bots.ts";
+import { BOT_KICKOFF_MARKER, BOT_LIMITS, BOT_SOUL_FILE, NEW_BOT_NAME, type BotAccess, type BotSkillRef } from "../../shared/bots.ts";
 import type { CallRecord } from "../../shared/calls.ts";
 
-/** The bot a conversation is the chat of; `bot` stays empty for every other conversation. A fork stays the bot's. */
-export const BotDoc = defineDoc<{ bot: string }>({
+export type { BotAccess, BotSkillRef } from "../../shared/bots.ts";
+
+/** A bot's chat, as its document says: the bot, and what the operator turned off in it. Everything else a session in
+ * its directory gets is on, tools and skills that appear later included. */
+export type BotState = BotAccess & { bot: string };
+
+/**
+ * The bot a conversation is the chat of (`bot` stays empty for every other conversation), and what the operator
+ * turned off in it. The lists are optional fields of version 1: absent means nothing is off, so documents from before
+ * them need no upgrade, and an older HUI still reads the ones this one writes. A fork stays the bot's with its lists:
+ * a rewind never undoes the operator's choices.
+ */
+export const BotDoc = defineDoc<{ bot: string; disabledTools?: string[]; disabledSkills?: BotSkillRef[] }>({
   kind: "hui.bot",
   version: 1,
   scope: "conversation",
@@ -37,6 +51,9 @@ export const BotDoc = defineDoc<{ bot: string }>({
   fork: "current",
   initial: () => ({ bot: "" }),
 });
+
+const isSkillRef = (value: unknown): value is BotSkillRef =>
+  typeof value === "object" && value !== null && typeof (value as BotSkillRef).name === "string" && typeof (value as BotSkillRef).path === "string";
 
 /**
  * The record of one GPT-Live call with the bot (HUI-18): its summary and its whole transcript (`CallRecord`), written
@@ -62,6 +79,17 @@ export async function conversationBot(reader: DocumentReader, conversationId: Co
   return (await reader.snapshot(BotDoc, conversationId, context))?.bot || undefined;
 }
 
+/** The bot document of a bot's chat, as a copy; undefined for every other conversation. */
+export async function conversationBotState(reader: DocumentReader, conversationId: ConversationId, context: Context): Promise<BotState | undefined> {
+  const doc = await reader.snapshot(BotDoc, conversationId, context);
+  if (!doc?.bot) return undefined;
+  return {
+    bot: doc.bot,
+    disabledTools: Array.isArray(doc.disabledTools) ? doc.disabledTools.filter((name): name is string => typeof name === "string") : [],
+    disabledSkills: Array.isArray(doc.disabledSkills) ? doc.disabledSkills.filter(isSkillRef).map(({ name, path }) => ({ name, path })) : [],
+  };
+}
+
 /** How a host finds each bot's SOUL.md: the bot's home folder there, and what a first conversation needs to know. */
 export type BotSoulHost = {
   /** The absolute home folder of the bot on this host; its SOUL.md is directly inside. */
@@ -79,6 +107,10 @@ export type BotsExtensionOptions = {
   section(botId: string): Promise<string | undefined>;
   /** This host's SOUL.md resolver; undefined (a host that has none yet) leaves the `soul` section out. */
   souls(): BotSoulHost | undefined;
+  /** More tools only bots' chats get, after `set_profile`: `request_access` and `load_skill` (`durable-bot-access.ts`). */
+  tools?: readonly ToolRegistration[];
+  /** More sections, inert outside bots' chats, between `bots` and `soul` (`bot_access`). */
+  sections?: readonly PromptSection[];
 };
 
 /** The most of SOUL.md any read takes; the `soul` section shows only its first `BOT_LIMITS.soul` characters. */
@@ -275,6 +307,7 @@ export function huiBotsExtensions(options: BotsExtensionOptions): { section: Ext
           // A roster HUI cannot read (a broken bots.json) leaves the section out; it never fails the request.
           return bot ? await options.section(bot).catch(() => undefined) : undefined;
         }),
+        ...options.sections ?? [],
         // Last, where the persona went before: OptChat's prompt points to the instructions at its end.
         section("soul", async (input, context) => {
           const souls = options.souls();
@@ -283,6 +316,6 @@ export function huiBotsExtensions(options: BotsExtensionOptions): { section: Ext
         }),
       ],
     }),
-    tools: defineExtension({ name: "hui-bots-tools", tools: [messageBot, writeSoul, setProfile] }),
+    tools: defineExtension({ name: "hui-bots-tools", tools: [messageBot, writeSoul, setProfile, ...options.tools ?? []] }),
   };
 }

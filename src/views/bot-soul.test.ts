@@ -14,16 +14,18 @@ test("nothing asks for Instructions: no New or Edit dialog is left, and + create
   assert.doesNotMatch(read("../styles/bots.css"), /bot-dialog__instructions/u);
 });
 
-test("the bot panel is Routines | Memory | Soul | Settings, one tablist with the same keys and remembered tab", () => {
+test("the bot panel is Routines | Memory | Soul | Tools | Settings, one tablist with the same keys and remembered tab", () => {
   const source = read("./bots.ts");
-  assert.match(source, /const PANEL_TAB_LABELS: Record<BotPanelTab, string> = \{ routines: "Routines", memory: "Memory", soul: "Soul", settings: "Settings" \};/u);
+  assert.match(source, /const PANEL_TAB_LABELS: Record<BotPanelTab, string> = \{ routines: "Routines", memory: "Memory", soul: "Soul", tools: "Tools", settings: "Settings" \};/u);
   const panel = between(source, "export function renderBotPanel(", "/* ── archive confirmation");
   assert.match(panel, /\$\{BOT_PANEL_TABS\.map\(\(tab\) => html`<button type="button" role="tab"/u);
   assert.match(panel, /@keydown=\$\{\(event: KeyboardEvent\) => onPanelTabKeydown\(event, props\)\}/u);
   assert.match(panel, /\$\{renderPanelTab\(props\)\}/u);
-  assert.match(between(source, "function renderPanelTab(", "export function renderBotPanel("), /case "soul": return renderSoulTab\(props\);/u);
+  const tabs = between(source, "function renderPanelTab(", "export function renderBotPanel(");
+  assert.match(tabs, /case "soul": return renderSoulTab\(props\);/u);
+  assert.match(tabs, /case "tools": return keyed\(props\.bot\.id, renderBotToolsTab\(\{ bot: props\.bot, \.\.\.props\.tools \}\)\);/u, "Tools sits between Soul and Settings");
   assert.match(panel, /aria-label=\$\{`\$\{props\.bot\.name\}: bot panel`\}/u, "named for the bot, whatever its tabs");
-  assert.match(read("../lib/bot-roster.ts"), /tab: BOT_PANEL_TABS\.find\(\(tab\) => tab === raw\["tab"\]\) \?\? "routines"/u, "the stored tab may be Soul or Settings");
+  assert.match(read("../lib/bot-roster.ts"), /tab: BOT_PANEL_TABS\.find\(\(tab\) => tab === raw\["tab"\]\) \?\? "routines"/u, "the stored tab may be Soul, Tools or Settings");
   assert.match(read("./home.ts"), /aria-label=\$\{props\.bot\.panelOpen \? "Hide the bot panel" : "Show the bot panel"\} title="Bot panel"/u);
 });
 

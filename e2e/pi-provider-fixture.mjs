@@ -235,6 +235,29 @@ const server = createServer(async (request, response) => {
   response.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-store", connection: "keep-alive" });
   messageStart(response);
 
+  // Tool calls a test chooses: E2E_CALL:<base64url JSON of { name, input }, or an array of them> calls them all in one
+  // response, and the next answer quotes every result.
+  const chosen = /E2E_CALL:([A-Za-z0-9_-]+)/u.exec(source)?.[1];
+  if (chosen) {
+    const calls = [JSON.parse(Buffer.from(chosen, "base64url").toString("utf8"))].flat();
+    calls.forEach((call, index) => toolUse(response, `tool-e2e-call-${index}`, call.name, call.input ?? {}, index));
+    return finish(response, "tool_use");
+  }
+  if (String(latestToolResult?.id ?? "").startsWith("tool-e2e-call-")) {
+    text(response, `tool answered: ${toolResultTexts([body.messages?.at(-1)]).join(" | ")}`);
+    return finish(response);
+  }
+
+  // A bot asking the operator for the shell through request_access; its reply is the tool's answer.
+  if (source.includes("E2E_REQUEST_ACCESS")) {
+    toolUse(response, "tool-e2e-request-access", "request_access", { tools: ["bash"], reason: "I need the shell to run the test suite before I report back." });
+    return finish(response, "tool_use");
+  }
+  if (latestToolResult?.id === "tool-e2e-request-access") {
+    text(response, typeof latestToolResult.result === "string" ? latestToolResult.result : JSON.stringify(latestToolResult.result));
+    return finish(response);
+  }
+
   // A bot messaging another bot through HUI's message_bot tool: @bob, or the handle after it (E2E_MESSAGE_BOT @home).
   if (source.includes("E2E_MESSAGE_BOT")) {
     const to = /E2E_MESSAGE_BOT (@[a-z0-9-]+)/u.exec(source)?.[1] ?? "@bob";
