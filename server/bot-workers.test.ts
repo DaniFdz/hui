@@ -374,6 +374,11 @@ test("on the worker too, write_soul refuses a turn that a routine, a trigger or 
   const task = made.body["task"] as { id: string };
   assert.equal((await call(`/__hui/automation/tasks/${task.id}/run`, "POST", {})).status, 202);
   assert.equal(await answerTo("[routine: Soul routine] ", "the routine's turn on the worker"), refused);
+  // Its run ends just after the turn that answered it; then the routine goes.
+  await waitFor(async () => {
+    const automation = (await call("/__hui/automation")).body as { scheduler: { activeRuns: number }; runs: Array<{ taskId: string; finishedAt?: string }> };
+    return automation.scheduler.activeRuns === 0 && automation.runs.some((run) => run.taskId === task.id && run.finishedAt !== undefined) || undefined;
+  }, "the routine's run to end");
   assert.equal((await call(`/__hui/automation/tasks/${task.id}`, "DELETE")).status, 200);
 
   // A trigger's turn: a webhook while Rover is idle.
