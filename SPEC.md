@@ -32,10 +32,14 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   remain absent; HUI never estimates per-fragment tokens or historical duration.
   Live timings survive browser reconnects, not a PI runtime/gateway restart.
 
-- Session search lives in the fixed sidebar header, including the mobile drawer.
-  Search expands directly below the header and filters the session list; it is
-  not duplicated in the Sessions toolbar or a bottom footer. Settings is the last
-  primary-navigation destination, not a header button.
+- Session search is the field directly below the sidebar header; it filters the
+  session list and is not duplicated in the Sessions toolbar or a bottom footer.
+  The mobile top bar's Search opens it, and Ctrl+K (⌘K) finds sessions in the
+  command palette. The header holds only the collapse toggle, at its top-left,
+  where the restore control appears while the sidebar is collapsed, so toggling
+  needs no mouse travel (the owner dropped the header's New session and Search
+  buttons on 2026-10-06; new sessions start from a group's +). Settings is the
+  last primary-navigation destination, not a header button.
 - Appearance includes the native OpenClaw Miami palette in light, dark and
   system modes. Theme, accent, interface-font and chat-prose-font preferences
   persist in HUI settings. The two font selectors expose OpenClaw's ten choices
@@ -1177,8 +1181,8 @@ A **bot** is a named, persistent agent: a role, a persona it writes itself
 (SOUL.md), its own model, a working directory and **one chat that never ends**,
 whose memory is OptChat (HUI-18). Sessions keep everything they have (worktrees, rewind,
 `/compact`); bots are for assistants the operator returns to every day. The
-sidebar splits into **Sessions | Bots**; the Bots tab is the UI follow-up, and
-the `hui bot` CLI can do everything it can, through the same routes.
+sidebar splits into **Agents | Bots**, and the `hui bot` CLI can do
+everything the Bots tab can, through the same routes.
 
 - **A chat is a session.** A bot's chat is an ordinary Durable session on this
   gateway, created through New Session's path, so the chat view, streaming,
@@ -1218,6 +1222,59 @@ the `hui bot` CLI can do everything it can, through the same routes.
   the chat is never compacted. Bots reach it only through one interface, so its
   engine stays separate; `hui bot memory` and the memory routes show its
   status, its view, any line zoomed down to a message, and a browse page.
+- **The Bots tab** is opt-in: Settings → Sessions → *Show the Bots tab* (off by
+  default, saved in HUI settings). Hiding it never stops bots or routines. On,
+  an **Agents | Bots** switch fills the sidebar's top row after the collapse
+  toggle (arrow keys, Home/End; the browser remembers the tab): Agents is the
+  sidebar as before, and Bots shows only the roster, without the navigation.
+  Bot chats never
+  appear in the Sessions list, its search, Kanban, the Sessions page, the
+  command palette or session pickers; Automations labels their routines
+  *Bot · name* and words
+  their schedules as the bot's panel does (*Daily at 08:00*). The roster
+  lists bots by latest activity: an emoji or initial on a color stable per bot,
+  the name, the latest message or role, a short time, an activity badge (active,
+  waiting for an answer, summarizing memory, failed), an unread dot (also on the
+  Bots tab while Agents shows) and a warning while memory summaries keep
+  failing. Search matches name, handle and title. The toolbar's + opens **New
+  bot** (name, emoji, title, model, thinking, memory model, workspace; no
+  instructions: the bot starts by asking what you expect from it; nothing
+  changes until the gateway accepts it); *Gateway default*
+  leaves the model and thinking level to the gateway, and choosing it when
+  editing clears the bot's own. A row's menu offers Edit, Hide/Unhide (*Show
+  hidden* while any are hidden), Archive, confirmed, with a Restore toast, and
+  Delete…; *Show archived* (while any are archived) lists archived bots with
+  Restore and Delete (an icon that shows on the row under the pointer or
+  keyboard, and always on touch screens). Delete, from either, asks first in
+  a dialog that says what goes (its chat leaves HUI; its routines, memory and
+  folder go) and what stays (a workspace the operator chose); deleting the
+  open bot returns home. An archived bot's chat opens again only once
+  restored. A bot opens at `/bots/<id>` as its one chat in the ordinary
+  session pane, its header showing avatar, name, role and status and a ⋯ menu
+  with Edit bot…, Archive… and Delete…;
+  assistant turns carry the bot's name, `/clear`, `/compact`, Compact now and
+  rewind are not offered. A new bot speaks first: its chat opens on a small
+  centered note, *<name> was created*, where HUI started its first turn, then
+  the bot's questions (an empty chat says *Say hi to <name>*). Opening it
+  marks it read. A **Routines | Memory | Soul** panel docks beside the chat (open or
+  closed and the tab are remembered; on narrow screens it opens on request as a
+  sheet over the chat). Routines lists the bot's Automation tasks with schedule,
+  next run, an enable switch, Run now and Delete, adds routines every N
+  minutes/hours/days, daily, weekly or once in the browser's time zone, and shows
+  the latest runs. Memory shows messages, the view against its 128 KB budget,
+  its lines, pending summaries, what the summarizer spent since the gateway
+  started (calls, tokens, a cost once one is reported), *Summarizing memory…*
+  and failures, and lists the view's `id+n|text` lines (a click opens a line
+  into its halves, down to a message whole); while open it reads the memory
+  again whenever the bots stream reports it changed, with no timer. *Open memory
+  page* is a plain link to OptChat's browse page, opened in a new tab. Soul
+  shows SOUL.md as Markdown, through the chat's renderer, with **Edit**: a
+  textarea with Save and Cancel (Escape), the count against 20,000 characters
+  and the gateway's refusal inline; saving it empty removes SOUL.md. Before the
+  bot has one it says *<name> writes its soul in your first conversation* and
+  offers **Write it yourself**. While open it reads SOUL.md again when the bots
+  stream says the bot or HUI may have written it (its soul flag, its
+  `updatedAt`, or its latest message once a turn is over), with no timer.
 
 The contract is [docs/api.md#bots](docs/api.md#bots).
 
@@ -1264,6 +1321,16 @@ surfaces without a product decision: a bot is a chat with a name and a persona,
 not an Agents page or a global agent identity, and it adds no
 approval layer. Bots run with the same Full Access as every session, on this
 gateway only (remote workers are a later follow-up).
+
+On 2026-10-06 the owner asked for Hermes's layout: the switch moved to the top
+of the sidebar and its first tab is named **Agents**. Agents is the same session
+sidebar, not an Agents page or agent selector; Bots shows only the roster.
+Later that day he asked for it above everything else, the header buttons
+included, because the two tabs work differently: it is now a full-width tab bar
+over a divider in the sidebar's top row. He then dropped the header's New
+session and Search buttons, which he never used, and asked for the collapse
+toggle to stay put: it now starts that top row, and the restore control appears
+on the same spot while the sidebar is collapsed.
 
 ### New sessions run on Pi Durable
 

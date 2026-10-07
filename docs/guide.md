@@ -197,6 +197,27 @@ and the bot opens a line (`zoom`) when it needs the detail. The chat is never
 compacted or cleared; when a turn has to wait for the newest messages to be
 summarized, `hui bot chat` says "Summarizing memory…".
 
+### The Bots tab
+
+Settings → Sessions → **Show the Bots tab** adds an **Agents | Bots** switch to
+the very top of the sidebar (it is off by default, and hiding it never stops a
+bot or its routines). **Agents** is the usual sidebar; **Bots** shows only your bots,
+most recently active first, with their latest message, and **+** creates one,
+which greets you and asks what you expect from it (its chat opens on a small
+note, "Scout was created", where that first turn began).
+A bot's chat opens beside its **Routines | Memory | Soul** panel: Routines adds
+schedules (every few minutes, hours or days, daily, weekly or once, in your
+browser's time zone), runs one now and shows how the last runs went; Memory
+shows how much the bot remembers and what writing its summaries has cost, lets
+you open any summary line down to the original message, and **Open memory
+page** opens the whole memory in a new tab; Soul shows the bot's SOUL.md, with
+**Edit** to change it yourself (or, before the bot has written one, **Write it
+yourself**), and follows it when the bot rewrites it. A row's
+**⋯** menu (also in the bot's chat header) edits, hides, archives or deletes the
+bot; **Show archived** lists archived bots so you can restore them, or delete
+one with its trash icon. Deleting asks first, and takes the bot's chat,
+routines, memory and folder. Bot chats never appear among your sessions.
+
 ### Creating and editing
 
 ```sh
@@ -221,8 +242,9 @@ routine start a turn meanwhile, the edit is refused halfway: repeat it once the
 bot is idle).
 `--memory-model` picks the model that writes the memory's summaries. An empty
 value clears a choice: `hui bot edit ada --model "" --thinking ""` puts the chat
-back on the model and thinking level a new chat gets, and `--memory-model ""`
-hands the summaries back to the chat's own model.
+back on the model and thinking level a new chat gets (*Gateway default* in the
+Bots tab's dialog), and `--memory-model ""` hands the summaries back to the
+chat's own model.
 
 A bot's chat refuses what would end or fork it: `/clear`, `/compact`, rewind
 and deleting the session all answer with an explanation instead.
@@ -332,12 +354,14 @@ tree; a browser opens it from a link on HUI's own pages, such as the Bots tab
 
 `hui bot remove ada` archives the bot: its chat transcript and memory are kept,
 a running turn stops, messages still queued for it are withdrawn and its
-routines are disabled. `hui bot list --archived`
-shows archived bots and `hui bot restore ada` brings one back; its routines stay
-disabled until you turn them on again in Automations.
+routines are disabled. `hui bot list --archived` (or **Show archived** in the
+Bots tab) shows archived bots and `hui bot restore ada` (or their **Restore**)
+brings one back; its routines stay disabled until you turn them on again in
+Automations or its Routines panel.
 
-`hui bot delete ada` deletes a bot for good, active or archived, after asking
-(`--yes` skips the question, and is needed where it cannot ask): its turn
+`hui bot delete ada` (or **Delete…** in a bot's ⋯ menu in the Bots tab, or an
+archived bot's trash icon) deletes a bot for good, active or archived, after
+asking (`--yes` skips the question, and is needed where it cannot ask): its turn
 stops, its chat leaves HUI, and its routines, its memory and its folder go,
 SOUL.md and every file in it included. A folder you chose as its workspace is
 never touched. Pi Durable cannot delete a conversation yet, so the chat's raw

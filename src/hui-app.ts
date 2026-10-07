@@ -3,7 +3,8 @@ import { groupCheckoutDefaults } from "./lib/group-session-defaults.ts";
 import { renderDirectoryPicker } from "./views/directory-picker.ts";
 import { sessionTreeIds } from "./lib/session-tree.ts";
 import { applySessionListUpdate, type SessionListUpdate } from "../shared/session-list.ts";
-import { html, type PropertyValues } from "lit";
+import { html, nothing, type PropertyValues } from "lit";
+import { keyed } from "lit/directives/keyed.js";
 import { customElement, property, state } from "lit/decorators.js";
 import { HuiElement } from "./lit/hui-element.ts";
 import {
@@ -63,7 +64,32 @@ import {
 } from "./lib/sessions-store.ts";
 import { readAttachment, readTranscriptAttachments, validateAttachmentTotal } from "./lib/attachments.ts";
 import { resolveLaunchModel } from "./lib/model-selection.ts";
-import { completeCommandReference, composerCommands, filterSlashCommands, parseClearCommand, parseCompactCommand, parseReloadCommand, parseUpdateCommand, slashCommandQuery, type ComposerCommand } from "./lib/slash-commands.ts";
+import { botChatCommandRefusal, completeCommandReference, composerCommands, filterSlashCommands, parseClearCommand, parseCompactCommand, parseReloadCommand, parseUpdateCommand, slashCommandQuery, type ComposerCommand } from "./lib/slash-commands.ts";
+import {
+  applyBotsUpdate,
+  archiveBot,
+  deleteBot,
+  botInputFromDraft,
+  botMemoryPageUrl,
+  botPatchFromDraft,
+  isNewBotsFrame,
+  createBot,
+  botSoulKey,
+  loadBotMemory,
+  loadBotSoul,
+  loadBots,
+  restoreBot,
+  saveBotSoul,
+  subscribeBots,
+  updateBot,
+  upsertBot,
+  withoutBotSessions,
+  zoomBotMemory,
+  type BotView,
+} from "./lib/bots.ts";
+import { archivedBotCount, hiddenBotCount, readBotPanel, readSidebarTab, writeBotPanel, writeSidebarTab, type BotPanelState, type BotPanelTab, type SidebarTab } from "./lib/bot-roster.ts";
+import { memoryStatusChanged, parseMemoryView, parseMemoryZoom, type MemoryLine } from "./lib/bot-memory.ts";
+import { renderBotArchiveDialog, renderBotDeleteDialog, renderBotDialog, renderBotPanel, renderBotPlaceholder, type BotFormValues, type BotMemoryState, type BotSoulState, type MemoryZoomState } from "./views/bots.ts";
 import { checkUpdate, checkUpdateInBackground, installUpdate, loadUpdate } from "./lib/update-store.ts";
 import { availableUpdate, watchUpdateAvailability } from "./lib/update-notice.ts";
 import type { UpdateSnapshot } from "./lib/update-types.ts";
@@ -159,7 +185,7 @@ import {
 } from "./lib/control-surfaces.ts";
 import type { PowerStatus } from "../shared/power.ts";
 import { downloadDiagnostics, loadObservability, type ObservabilitySnapshot } from "./lib/observability.ts";
-import { renderHome, renderNewSession, type HomeProps } from "./views/home.ts";
+import { renderHome, renderNewSession, type BotHeaderAction, type HomeBot, type HomeProps } from "./views/home.ts";
 import { DEFAULT_SESSIONS_PAGE_FILTERS, renderSessionsPage, type SessionsPageFilters, type SessionsPageState } from "./views/sessions.ts";
 import type { WorktreeFilter } from "./views/worktrees.ts";
 import "./views/contributions.ts";
@@ -173,10 +199,10 @@ import type { BacklogCardAction, SessionCardAction } from "./views/kanban.ts";
 import type { BacklogStartTarget } from "./components/backlog-start-dialog.ts";
 import { addSuggestionToBacklog, backlogItemMarkdown, loadBacklog, removeBacklogItem, setBacklogItemGroup, type BacklogItem, type BacklogJiraState } from "./lib/backlog.ts";
 import { loadJiraConnection } from "./lib/jira.ts";
-import type { AutomationProps } from "./views/settings-automation.ts";
+import { localTimezone, type AutomationProps } from "./views/settings-automation.ts";
 import { loadWorkers, workerAction, type WorkerView } from "./lib/workers.ts";
 import { hasOpenWebAwesomePopup } from "./lib/web-awesome.ts";
-import { APP_SHELL_DRAWER_MEDIA, closeDrawerOnEscape, renderMain, renderSidebar, type GroupDropTarget, type GroupMenuAction, type NavId, type SessionCopyAction, type SessionOpenAction } from "./views/shell.ts";
+import { APP_SHELL_DRAWER_MEDIA, closeDrawerOnEscape, renderMain, renderSidebar, toggleNavigationDrawer, type GroupDropTarget, type GroupMenuAction, type NavId, type SessionCopyAction, type SessionOpenAction, type ShellBotsProps } from "./views/shell.ts";
 import { writeClipboardText } from "./lib/clipboard.ts";
 import { renderSettingsPage, type SettingsPage } from "./views/settings.ts";
 import type { JiraCreatedDetail } from "./components/jira-create-dialog.ts";
@@ -228,6 +254,11 @@ function readCollapsed(): Set<string> {
  * update or resize step. Lit still stores the newest value, but a rendered
  * button may keep an older one: capture only the pane/session id and the parent. */
 const paneCallback = { attribute: false, hasChanged: (value: unknown, old: unknown) => !value !== !old };
+
+/** The bot pane's header data, without its callback (passed separately as a
+ * pane callback). Compared by value: the parent rebuilds it on every render. */
+type PaneBot = Omit<HomeBot, "onTogglePanel" | "onAction">;
+const paneBotProperty = { attribute: false, hasChanged: (value: unknown, old: unknown) => JSON.stringify(value) !== JSON.stringify(old) };
 
 @customElement("hui-app")
 export class HuiApp extends HuiElement {
@@ -451,6 +482,67 @@ export class HuiApp extends HuiElement {
   @state() private commandPaletteQuery = "";
   @state() private commandPaletteActiveIndex = 0;
   @state() private mobileNavLayout = false;
+  /* ── bots (top-level app only; panes never read bots) ── */
+  @state() private bots: readonly BotView[] = [];
+  @state() private botsLoading = false;
+  @state() private botsLoaded = false;
+  @state() private botsError = "";
+  private botsInFlight: Promise<void> | undefined;
+  private botsAgain = false;
+  /** The gateway pushes the bot list; reads by GET are only its fallback. */
+  private botsStreamStop: (() => void) | undefined;
+  private botsStreamLive = false;
+  private botsStreamUnsupported = false;
+  private botsRevision = 0;
+  @state() private botSearch = "";
+  /** The sidebar's Agents | Bots choice, remembered by the browser. */
+  @state() private sidebarTab: SidebarTab = readSidebarTab();
+  @state() private showHiddenBots = false;
+  @state() private showArchivedBots = false;
+  @state() private botMenuFor = "";
+  @state() private botNotice = "";
+  @state() private botNoticeFailed = false;
+  @state() private botPendingId = "";
+  /** The bot whose chat the bot route shows. */
+  @state() private activeBotId = "";
+  @state() private botPanel: BotPanelState = readBotPanel();
+  /** Narrow layouts open the panel as a sheet only on request; never remembered. */
+  @state() private botSheetOpen = false;
+  @state() private botDialog: { mode: "create" } | { mode: "edit"; bot: BotView } | undefined;
+  @state() private botDialogPending = false;
+  @state() private botDialogError = "";
+  @state() private botDraftModel = "";
+  @state() private botDraftThinking = "";
+  @state() private botDraftMemoryModel = "";
+  @state() private botArchive: BotView | undefined;
+  @state() private botArchivePending = false;
+  @state() private botArchiveError = "";
+  /** The archived bot whose Delete asks for confirmation. */
+  @state() private botDelete: BotView | undefined;
+  @state() private botDeletePending = false;
+  @state() private botDeleteError = "";
+  @state() private botArchiveToast: { bot: BotView; restoring: boolean; error?: string } | undefined;
+  private botArchiveToastTimer: ReturnType<typeof setTimeout> | undefined;
+  @state() private botMemory: BotMemoryState & { botId: string } = { botId: "", loading: false, error: "" };
+  @state() private botMemoryZoom: ReadonlyMap<string, MemoryZoomState> = new Map();
+  private botMemoryRequest = 0;
+  private botMemoryInFlight = false;
+  /** A change arrived while a read was on its way: read once more after it. */
+  private botMemoryAgain = false;
+  /** The Soul tab: the active bot's SOUL.md as last read, and its editor (undefined while only shown). */
+  @state() private botSoul: BotSoulState & { botId: string } = { botId: "", loading: false, error: "" };
+  @state() private botSoulDraft: string | undefined;
+  @state() private botSoulSaving = false;
+  @state() private botSoulSaveError = "";
+  private botSoulRequest = 0;
+  /** `botSoulKey` of the bot when SOUL.md was last read: another key, once its turn is over, means read it again. */
+  private botSoulSeen = "";
+  private botRosterTick = 0;
+  /** Set on the bot route's embedded pane: header identity and panel state. */
+  @property(paneBotProperty) paneBot: PaneBot | undefined;
+  @property(paneCallback) onPaneBotPanel: (() => void) | undefined;
+  /** The bot header's ⋯ menu, handled by the app that owns the bot dialogs. */
+  @property(paneCallback) onPaneBotAction: ((action: BotHeaderAction) => void) | undefined;
   /** Browser-owned presentation state; each pane still owns its own runtime state. */
   @state() private sessionLayout: SessionLayout | undefined;
   @property({ type: Boolean, attribute: "embedded-pane" }) embeddedPane = false;
@@ -488,6 +580,8 @@ export class HuiApp extends HuiElement {
   private composerTextarea: HTMLTextAreaElement | null = null;
   private readonly onMobileNavChange = (event: MediaQueryListEvent) => {
     this.mobileNavLayout = event.matches;
+    // The bot panel moves between the side and a sheet; what it reads follows.
+    this.syncBotPanelData();
   };
 
   /** Ends the current event stream; replaced on every session switch. */
@@ -563,6 +657,15 @@ export class HuiApp extends HuiElement {
       this.closeSettings();
       return;
     }
+    if (!this.embeddedPane && this.view === "bot") {
+      if (this.mobileNavLayout && this.botSheetOpen) {
+        event.preventDefault();
+        this.closeBotPanel();
+        return;
+      }
+      this.botPaneApp()?.handleGlobalEscape(event);
+      return;
+    }
     if (!this.embeddedPane && this.view === "home" && this.selected) {
       this.activePaneApp()?.handleGlobalEscape(event);
       return;
@@ -596,6 +699,7 @@ export class HuiApp extends HuiElement {
         onStatus: this.applySessionStatusUpdate,
         onSessions: this.applySessionListChange,
       });
+      this.syncBotsStream();
       this.updateMonitor = watchUpdateAvailability({
         check: checkUpdateInBackground,
         receive: (snapshot) => {
@@ -634,11 +738,15 @@ export class HuiApp extends HuiElement {
     if (this.subagentExpiryTimer !== undefined) window.clearTimeout(this.subagentExpiryTimer);
     this.subagentExpiryTimer = undefined;
     this.stopAutomationPolling();
+    if (this.botArchiveToastTimer) clearTimeout(this.botArchiveToastTimer);
     if (this.piResourceCopyTimer !== undefined) window.clearTimeout(this.piResourceCopyTimer);
     this.piResourceCopyTimer = undefined;
     if (this.updatePollTimer !== undefined) window.clearTimeout(this.updatePollTimer);
     this.statusStreamStop?.();
     this.statusStreamStop = undefined;
+    this.botsStreamStop?.();
+    this.botsStreamStop = undefined;
+    this.botsStreamLive = false;
   }
 
   private sessionProgressPoll?: number;
@@ -684,6 +792,10 @@ export class HuiApp extends HuiElement {
       if (!this.embeddedPane && !document.hidden && this.settingsOpen && this.settingsPage === "connection") {
         void this.refreshGatewayHealth();
       }
+      // Roster times ("2m") age while nothing else re-renders the sidebar.
+      if (!this.embeddedPane && !document.hidden && this.settings.bots.showTab && this.sidebarTab === "bots" && ++this.botRosterTick % 10 === 0) {
+        this.requestUpdate();
+      }
     }, 3000);
     this.switchComposerDraft(NEW_SESSION_DRAFT_KEY);
     this.refreshDraftIndicators();
@@ -717,6 +829,15 @@ export class HuiApp extends HuiElement {
         return { ...session, status, unread: isUnread || undefined };
       }),
     }));
+    // Bot chats are sessions too: their roster rows follow the same stream.
+    if (this.bots.length) {
+      this.bots = this.bots.map((bot) => {
+        const status = this.sessionStatuses.get(bot.sessionId);
+        const isUnread = unread.get(bot.sessionId);
+        if (status === undefined && isUnread === undefined) return bot;
+        return { ...bot, ...(status ? { status } : {}), ...(isUnread !== undefined ? { unread: isUnread && !this.isSessionPresented(bot.sessionId) } : {}) };
+      });
+    }
   };
 
   private applySessionStatusUpdate = ({ id, status, unread, creating, creationError, title }: SessionStatusUpdate) => {
@@ -740,6 +861,20 @@ export class HuiApp extends HuiElement {
         : session),
     }));
     if (created) void this.refreshSessions(true);
+    const bot = this.bots.find((candidate) => candidate.sessionId === id);
+    if (bot) {
+      this.bots = this.bots.map((candidate) => candidate.sessionId === id
+        ? { ...candidate, status, unread: presented ? false : unread === undefined ? candidate.unread : unread }
+        : candidate);
+      // A turn started or settled: its latest message moved. The bot stream
+      // pushes that itself; without it (an older gateway) read the list again,
+      // and the open Memory and Soul tabs read again.
+      if (bot.status !== status && !this.botsStreamLive) {
+        void this.refreshBots();
+        if (bot.id === this.activeBotId && this.botMemoryTabVisible()) void this.refreshBotMemory();
+        if (bot.id === this.activeBotId && this.botSoulTabVisible() && status !== "running" && status !== "waiting") void this.refreshBotSoul();
+      }
+    }
     if (!this.embeddedPane && this.selected?.id === id) {
       this.reopenIfRestarted(id, status);
       this.selected = { ...this.selected, status, ...(title ? { title } : {}) };
@@ -853,7 +988,8 @@ export class HuiApp extends HuiElement {
   /** Lit cannot autofocus a field that appears on a later render, and typing
    * straight into a rename is the whole point of an inline field. */
   override updated(changed: PropertyValues) {
-    const textarea = !this.embeddedPane && this.view === "home" && this.selected
+    // Session and bot panes measure their own composers.
+    const textarea = !this.embeddedPane && ((this.view === "home" && this.selected) || this.view === "bot")
       ? null : this.renderRoot.querySelector<HTMLTextAreaElement>(".agent-chat__composer-combobox > textarea");
     if (textarea !== this.composerTextarea) {
       if (this.composerTextarea) disconnectTextareaOverflowObserver(this.composerTextarea);
@@ -873,11 +1009,27 @@ export class HuiApp extends HuiElement {
       textarea.setSelectionRange(this.draft.length, this.draft.length);
       this.setCommandQuery(slashCommandQuery(this.draft, this.draft.length));
     }
-    if (changed.has("selected") || changed.has("view") || changed.has("settingsOpen")) {
-      const activeSessionTitle = this.view === "home" && !this.settingsOpen
-        ? this.selected?.title
-        : undefined;
+    if (changed.has("selected") || changed.has("view") || changed.has("settingsOpen") || changed.has("activeBotId") || changed.has("bots")) {
+      const activeSessionTitle = this.settingsOpen ? undefined
+        : this.view === "home" ? this.selected?.title
+          : this.view === "bot" ? this.activeBot()?.name
+            : undefined;
       if (!this.embeddedPane) document.title = documentTitle(activeSessionTitle);
+    }
+    const botDialog = this.botDialog ? this.renderRoot.querySelector?.(".bot-dialog") : null;
+    if (botDialog instanceof HTMLDialogElement && !botDialog.open) {
+      ensureModal(botDialog);
+      botDialog.querySelector<HTMLInputElement>('input[name="name"]')?.focus();
+    }
+    const botArchiveDialog = this.botArchive ? this.renderRoot.querySelector?.(".bot-archive-dialog") : null;
+    if (botArchiveDialog instanceof HTMLDialogElement && !botArchiveDialog.open) {
+      ensureModal(botArchiveDialog);
+      botArchiveDialog.querySelector<HTMLButtonElement>(".bot-archive-cancel")?.focus();
+    }
+    const botDeleteDialog = this.botDelete ? this.renderRoot.querySelector?.(".bot-delete-dialog") : null;
+    if (botDeleteDialog instanceof HTMLDialogElement && !botDeleteDialog.open) {
+      ensureModal(botDeleteDialog);
+      botDeleteDialog.querySelector<HTMLButtonElement>(".bot-delete-cancel")?.focus();
     }
     // A selector that matches nothing walks the whole open transcript, and
     // this runs on every keystroke: query a dialog only while its state shows it.
@@ -969,6 +1121,7 @@ export class HuiApp extends HuiElement {
    * detailed stream. */
   private isSessionPresented(id: string): boolean {
     if (this.embeddedPane) return this.paneVisible && this.paneSessionId === id;
+    if (this.view === "bot") return !this.settingsOpen && this.activeBot()?.sessionId === id;
     if (this.view === "home" && !this.settingsOpen && this.sessionLayout) {
       const narrow = this.renderRoot.querySelector<SessionMultiplexer>("hui-session-multiplexer")?.narrow;
       return visibleSessionPanes(this.sessionLayout).some((pane) => isChatPane(pane) && pane.sessionId === id && (!narrow || pane.id === this.sessionLayout?.activePaneId));
@@ -1004,6 +1157,28 @@ export class HuiApp extends HuiElement {
 
     this.settingsOpen = false;
     this.stopAutomationPolling();
+    if (target.kind === "bot") {
+      // Bots exist in the UI only while Settings → Sessions shows the Bots tab.
+      if (this.embeddedPane || !this.settings.bots.showTab) {
+        this.navigate({ kind: "home" }, true);
+        return;
+      }
+      this.suspendSelectedSessionView();
+      this.resetSessionEphemeral();
+      this.pendingSessionId = "";
+      this.activePage = undefined;
+      if (this.activeBotId !== target.id) {
+        this.botSheetOpen = false;
+        this.resetBotMemory(target.id);
+        this.resetBotSoul(target.id);
+      }
+      this.activeBotId = target.id;
+      this.view = "bot";
+      this.setSidebarTab("bots");
+      this.ensureBots();
+      this.syncBotPanelData();
+      return;
+    }
     if (target.kind === "kanban") {
       this.suspendSelectedSessionView();
       this.resetSessionEphemeral();
@@ -1065,6 +1240,11 @@ export class HuiApp extends HuiElement {
       ?? (this.paneSession?.id === id ? this.paneSession : undefined);
     if (session) {
       this.pendingSessionId = "";
+      // A bot's chat opens as the bot (with its panel) wherever it is linked from.
+      if (!this.embeddedPane && session.bot && this.settings.bots.showTab) {
+        this.navigate({ kind: "bot", id: session.bot.id }, true);
+        return;
+      }
       this.activateSession(session);
       return;
     }
@@ -1124,7 +1304,7 @@ export class HuiApp extends HuiElement {
       query: this.commandPaletteQuery,
       activeIndex: this.commandPaletteActiveIndex,
       pages: HUI_PAGES,
-      groups: this.groups,
+      groups: this.listedGroups,
       onQuery: (query) => {
         this.commandPaletteQuery = query;
         this.commandPaletteActiveIndex = 0;
@@ -2335,7 +2515,7 @@ export class HuiApp extends HuiElement {
 
   private commandKeydown = (event: KeyboardEvent) => {
     if (this.slashQuery === null || event.isComposing || !(event.target instanceof HTMLTextAreaElement)) return;
-    const commands = filterSlashCommands(this.slashQuery?.startsWith("$") ? this.commands : composerCommands(this.selected ? this.commands : [], !!this.selected), this.slashQuery);
+    const commands = filterSlashCommands(this.slashQuery?.startsWith("$") ? this.commands : composerCommands(this.selected ? this.commands : [], !!this.selected, Boolean(this.selected?.bot)), this.slashQuery);
     const paths = this.localPathQuery ? this.localPaths : [];
     const count = commands.length + paths.length;
     if (event.key === "Escape") {
@@ -2478,6 +2658,13 @@ export class HuiApp extends HuiElement {
     const trimmed = text.trim();
     const hasImage = attachments.some((item) => item.kind === "image");
     if (!session || (!trimmed && !hasImage) || this.opening || this.sending || this.connection !== "live") {
+      return;
+    }
+    // The gateway refuses these for a bot's permanent chat; say why without a round trip.
+    const botRefusal = session.bot ? botChatCommandRefusal(trimmed) : undefined;
+    if (botRefusal) {
+      this.note = botRefusal;
+      this.noteLevel = "error";
       return;
     }
     const clearCommand = parseClearCommand(trimmed);
@@ -3381,6 +3568,736 @@ export class HuiApp extends HuiElement {
     localStorage.setItem(COLLAPSED_KEY, JSON.stringify([...next]));
   };
 
+  /* ── bots ─────────────────────────────────────────────────────────────── */
+
+  /** Session lists never show bot chats; the Bots tab lists their bots. The
+   * unfiltered registry stays in `groups` so a bot pane can open its chat. */
+  private listedGroupsSource: readonly SessionGroup[] | undefined;
+  private listedGroupsCache: readonly SessionGroup[] = [];
+  private get listedGroups(): readonly SessionGroup[] {
+    if (this.listedGroupsSource !== this.groups) {
+      this.listedGroupsSource = this.groups;
+      this.listedGroupsCache = withoutBotSessions(this.groups);
+    }
+    return this.listedGroupsCache;
+  }
+
+  private activeBot(): BotView | undefined {
+    return this.bots.find((bot) => bot.id === this.activeBotId);
+  }
+
+  private botPaneApp(): HuiApp | undefined {
+    return this.renderRoot.querySelector<HuiApp>(".bot-workspace__pane") ?? undefined;
+  }
+
+  /** Session statuses arrive on their own stream and win over a list's
+   * snapshot; the bot on screen is read, as its detailed stream says. */
+  private withLiveBotState(bots: readonly BotView[]): BotView[] {
+    return bots.map((bot) => {
+      const status = this.sessionStatuses.get(bot.sessionId);
+      const presented = bot.unread && this.isSessionPresented(bot.sessionId);
+      return status || presented ? { ...bot, ...(status ? { status } : {}), ...(presented ? { unread: false } : {}) } : bot;
+    });
+  }
+
+  /** The gateway's bot stream while the Bots tab is enabled. It starts with the
+   * whole list, then sends what changed; a gateway without it falls back to
+   * reading the list whenever a bot's session changes status. */
+  private syncBotsStream() {
+    if (this.embeddedPane) return;
+    const wanted = this.settings.bots.showTab && !this.botsStreamUnsupported;
+    if (wanted && !this.botsStreamStop) {
+      this.botsStreamStop = subscribeBots({
+        onUpdate: (update, first) => {
+          if (!isNewBotsFrame(update.revision, first, this.botsRevision)) return;
+          this.botsRevision = update.revision;
+          this.bots = this.withLiveBotState(applyBotsUpdate(this.bots, update));
+          this.botsLoaded = true;
+          this.botsError = "";
+          this.followBotMemory();
+          this.followBotSoul();
+        },
+        onConnection: (state) => {
+          this.botsStreamLive = state === "live";
+          if (state === "reconnecting" && !this.botsLoaded) this.botsError = "Could not reach the gateway for the bot list. Retrying…";
+          if (state === "unsupported") {
+            this.botsStreamUnsupported = true;
+            this.botsStreamStop = undefined;
+            void this.refreshBots();
+          }
+        },
+      });
+    } else if (!wanted && this.botsStreamStop) {
+      this.botsStreamStop();
+      this.botsStreamStop = undefined;
+      this.botsStreamLive = false;
+    }
+  }
+
+  /** The list is current when the stream runs; otherwise it is read now. */
+  private ensureBots() {
+    if (this.botsStreamUnsupported) void this.refreshBots();
+    else this.syncBotsStream();
+  }
+
+  /** Retry from an error state: restart a stopped stream or read the list. */
+  private retryBots = () => {
+    this.botsError = "";
+    if (this.botsStreamUnsupported || this.botsStreamLive) {
+      void this.refreshBots();
+      return;
+    }
+    this.botsStreamStop?.();
+    this.botsStreamStop = undefined;
+    this.syncBotsStream();
+  };
+
+  /** One read at a time; a change that lands meanwhile reads once more after it.
+   * Only used without a live stream, whose newer frames a read could overwrite. */
+  private refreshBots(): Promise<void> {
+    if (this.embeddedPane || this.botsStreamLive) return Promise.resolve();
+    if (this.botsInFlight) {
+      this.botsAgain = true;
+      return this.botsInFlight;
+    }
+    this.botsLoading = true;
+    this.botsInFlight = (async () => {
+      try {
+        do {
+          this.botsAgain = false;
+          try {
+            const bots = await loadBots();
+            // A stream that went live meanwhile is newer than this read.
+            if (!this.botsStreamLive) this.bots = this.withLiveBotState(bots);
+            this.botsLoaded = true;
+            this.botsError = "";
+          } catch (error) {
+            this.botsError = error instanceof Error ? error.message : "Could not read bots.";
+          }
+        } while (this.botsAgain);
+      } finally {
+        this.botsLoading = false;
+        this.botsInFlight = undefined;
+      }
+    })();
+    return this.botsInFlight;
+  }
+
+  private setSidebarTab = (tab: SidebarTab) => {
+    this.botMenuFor = "";
+    if (this.sidebarTab === tab) return;
+    this.sidebarTab = tab;
+    writeSidebarTab(tab);
+    if (tab === "bots") this.ensureBots();
+  };
+
+  private selectBot = (bot: BotView) => {
+    this.botMenuFor = "";
+    this.navigate({ kind: "bot", id: bot.id });
+  };
+
+  private shellBotsProps(): ShellBotsProps | undefined {
+    if (!this.settings.bots.showTab) return undefined;
+    return {
+      tab: this.sidebarTab,
+      onTab: this.setSidebarTab,
+      search: this.botSearch,
+      onSearch: (value) => { this.botSearch = value; },
+      onNew: this.openNewBot,
+      unread: this.bots.some((bot) => bot.unread && !bot.archived && !bot.hidden),
+      roster: {
+        bots: this.bots,
+        loading: this.botsLoading || !this.botsLoaded,
+        error: this.botsError,
+        query: this.botSearch,
+        showHidden: this.showHiddenBots,
+        showArchived: this.showArchivedBots,
+        activeBotId: this.view === "bot" ? this.activeBotId : "",
+        menuFor: this.botMenuFor,
+        notice: this.botNotice,
+        noticeFailed: this.botNoticeFailed,
+        pendingId: this.botPendingId,
+        now: Date.now(),
+        onSelect: this.selectBot,
+        onNew: this.openNewBot,
+        onEdit: this.openEditBot,
+        onSetHidden: this.setBotHidden,
+        onArchive: this.requestArchiveBot,
+        onToggleShowHidden: () => { this.showHiddenBots = !this.showHiddenBots; },
+        onToggleShowArchived: () => { this.showArchivedBots = !this.showArchivedBots; },
+        onRestore: this.restoreBotFromRoster,
+        onDelete: this.requestDeleteBot,
+        onRetry: this.retryBots,
+        onToggleMenu: (id) => { this.botMenuFor = this.botMenuFor === id ? "" : id; },
+        onCloseMenu: () => { this.botMenuFor = ""; },
+      },
+    };
+  }
+
+  private openNewBot = () => {
+    this.botMenuFor = "";
+    this.botDialog = { mode: "create" };
+    this.botDialogError = "";
+    this.botDraftModel = "";
+    this.botDraftThinking = "";
+    this.botDraftMemoryModel = "";
+    ++this.directorySuggestionRequest;
+    this.directorySuggestions = [];
+    // The model pickers read PI's catalog; New Session loads it the same way.
+    this.loadLaunchPreferences();
+  };
+
+  private openEditBot = (bot: BotView) => {
+    this.botMenuFor = "";
+    this.botDialog = { mode: "edit", bot };
+    this.botDialogError = "";
+    this.botDraftModel = bot.model ?? "";
+    this.botDraftThinking = bot.thinking ?? "";
+    this.botDraftMemoryModel = bot.memoryModel ?? "";
+    ++this.directorySuggestionRequest;
+    this.directorySuggestions = [];
+    this.loadLaunchPreferences();
+  };
+
+  private closeBotDialog = () => {
+    const dialog = this.renderRoot.querySelector?.(".bot-dialog");
+    if (dialog instanceof HTMLDialogElement) closeModal(dialog);
+    this.botDialog = undefined;
+    this.botDialogError = "";
+  };
+
+  /** Nothing changes until the gateway confirms; a refusal stays in the dialog. */
+  private submitBotDialog = (values: BotFormValues) => {
+    const state = this.botDialog;
+    if (!state || this.botDialogPending) return;
+    if (!values.name) {
+      this.botDialogError = "Name the bot.";
+      return;
+    }
+    const draft = { ...values, model: this.botDraftModel, thinking: this.botDraftThinking, memoryModel: this.botDraftMemoryModel };
+    const patch = state.mode === "edit" ? botPatchFromDraft(state.bot, draft) : undefined;
+    // Saving an untouched bot changes nothing, and the gateway refuses an empty change.
+    if (patch && !Object.keys(patch).length) {
+      this.closeBotDialog();
+      return;
+    }
+    this.botDialogPending = true;
+    this.botDialogError = "";
+    const request = state.mode === "create"
+      ? createBot(botInputFromDraft(draft))
+      : updateBot(state.bot.id, patch ?? {});
+    void request
+      .then((bot) => {
+        this.closeBotDialog();
+        this.bots = upsertBot(this.bots, bot);
+        this.botNotice = state.mode === "create" ? "" : `Saved ${bot.name}.`;
+        this.botNoticeFailed = false;
+        void this.refreshBots();
+        if (state.mode === "create") {
+          // The new chat is a new session; open the bot once the list has it.
+          void this.refreshSessions(true);
+          this.navigate({ kind: "bot", id: bot.id });
+        }
+      })
+      .catch((error: unknown) => {
+        this.botDialogError = error instanceof Error ? error.message : state.mode === "create" ? "Could not create the bot." : "Could not save the bot.";
+      })
+      .finally(() => {
+        this.botDialogPending = false;
+      });
+  };
+
+  private setBotHidden = (bot: BotView, hidden: boolean) => {
+    this.botMenuFor = "";
+    if (this.botPendingId) return;
+    this.botPendingId = bot.id;
+    void updateBot(bot.id, { hidden })
+      .then((updated) => {
+        this.bots = upsertBot(this.bots, updated);
+        // With nothing hidden any more, the next hidden bot starts out of sight again.
+        if (!hiddenBotCount(this.bots)) this.showHiddenBots = false;
+        this.botNotice = hidden ? `${updated.name} is hidden. Show hidden lists it again.` : `${updated.name} is back in the roster.`;
+        this.botNoticeFailed = false;
+      })
+      .catch((error: unknown) => {
+        this.botNotice = error instanceof Error ? error.message : "Could not change that bot.";
+        this.botNoticeFailed = true;
+      })
+      .finally(() => {
+        this.botPendingId = "";
+      });
+  };
+
+  private requestArchiveBot = (bot: BotView) => {
+    this.botMenuFor = "";
+    this.botArchive = bot;
+    this.botArchiveError = "";
+  };
+
+  private closeBotArchive = () => {
+    const dialog = this.renderRoot.querySelector?.(".bot-archive-dialog");
+    if (dialog instanceof HTMLDialogElement) closeModal(dialog);
+    this.botArchive = undefined;
+    this.botArchiveError = "";
+  };
+
+  private confirmArchiveBot = () => {
+    const bot = this.botArchive;
+    if (!bot || this.botArchivePending) return;
+    this.botArchivePending = true;
+    this.botArchiveError = "";
+    void archiveBot(bot.id)
+      .then((archived) => {
+        this.closeBotArchive();
+        this.bots = upsertBot(this.bots, archived);
+        this.botNotice = "";
+        this.botArchiveToast = { bot: archived, restoring: false };
+        this.scheduleBotArchiveToast();
+        if (this.view === "bot" && this.activeBotId === bot.id) this.navigate({ kind: "home" }, true);
+        void this.refreshBots();
+        void this.refreshSessions(true);
+      })
+      .catch((error: unknown) => {
+        this.botArchiveError = error instanceof Error ? error.message : "Could not archive that bot.";
+      })
+      .finally(() => {
+        this.botArchivePending = false;
+      });
+  };
+
+  /** Delete (the ⋯ menus, or Show archived's trash icon) asks first: deleting cannot be undone. */
+  private requestDeleteBot = (bot: BotView) => {
+    if (this.botPendingId) return;
+    this.botDelete = bot;
+    this.botDeleteError = "";
+  };
+
+  private closeBotDelete = () => {
+    const dialog = this.renderRoot.querySelector?.(".bot-delete-dialog");
+    if (dialog instanceof HTMLDialogElement) closeModal(dialog);
+    this.botDelete = undefined;
+    this.botDeleteError = "";
+  };
+
+  /** The row stays until the gateway confirms; a failure stays in the dialog. */
+  private confirmDeleteBot = () => {
+    const bot = this.botDelete;
+    if (!bot || this.botDeletePending) return;
+    this.botDeletePending = true;
+    this.botDeleteError = "";
+    this.botPendingId = bot.id;
+    void deleteBot(bot.id)
+      .then(() => {
+        this.closeBotDelete();
+        this.bots = this.bots.filter((each) => each.id !== bot.id);
+        if (!archivedBotCount(this.bots)) this.showArchivedBots = false;
+        if (this.botArchiveToast?.bot.id === bot.id) this.dismissBotArchiveToast();
+        this.botNotice = `Deleted ${bot.name}.`;
+        this.botNoticeFailed = false;
+        // Its chat is gone: the open bot view goes with it, as after archiving.
+        if (this.view === "bot" && this.activeBotId === bot.id) this.navigate({ kind: "home" }, true);
+        void this.refreshBots();
+        void this.refreshSessions(true);
+      })
+      .catch((error: unknown) => {
+        this.botDeleteError = error instanceof Error ? error.message : "Could not delete that bot.";
+      })
+      .finally(() => {
+        this.botDeletePending = false;
+        this.botPendingId = "";
+      });
+  };
+
+  /** Restore from Show archived: the row stays until the gateway confirms. */
+  private restoreBotFromRoster = (bot: BotView) => {
+    if (this.botPendingId) return;
+    this.botPendingId = bot.id;
+    void restoreBot(bot.id)
+      .then((restored) => {
+        this.bots = upsertBot(this.bots, restored);
+        // With nothing archived any more, the next archived bot starts out of sight again.
+        if (!archivedBotCount(this.bots)) this.showArchivedBots = false;
+        if (this.botArchiveToast?.bot.id === restored.id) this.dismissBotArchiveToast();
+        this.botNotice = `Restored ${restored.name}. Its routines stay paused until you turn them on.`;
+        this.botNoticeFailed = false;
+        void this.refreshBots();
+      })
+      .catch((error: unknown) => {
+        this.botNotice = error instanceof Error ? error.message : "Could not restore that bot.";
+        this.botNoticeFailed = true;
+      })
+      .finally(() => {
+        this.botPendingId = "";
+      });
+  };
+
+  private pauseBotArchiveToast = () => {
+    if (this.botArchiveToastTimer) clearTimeout(this.botArchiveToastTimer);
+    this.botArchiveToastTimer = undefined;
+  };
+
+  private dismissBotArchiveToast = () => {
+    this.pauseBotArchiveToast();
+    this.botArchiveToast = undefined;
+  };
+
+  /** Same lifetime as the session archive toast: 15 s without hover or focus. */
+  private scheduleBotArchiveToast = () => {
+    this.pauseBotArchiveToast();
+    if (!this.botArchiveToast || this.botArchiveToast.restoring || this.botArchiveToast.error) return;
+    const element = this.querySelector(".bot-archive-toast");
+    if (element?.matches(":hover") || element?.contains(document.activeElement)) return;
+    this.botArchiveToastTimer = setTimeout(this.dismissBotArchiveToast, 15_000);
+  };
+
+  private restoreArchivedBot = async () => {
+    const toast = this.botArchiveToast;
+    if (!toast || toast.restoring) return;
+    this.pauseBotArchiveToast();
+    this.botArchiveToast = { bot: toast.bot, restoring: true };
+    try {
+      const restored = await restoreBot(toast.bot.id);
+      this.bots = upsertBot(this.bots, restored);
+      if (this.botArchiveToast?.bot.id === toast.bot.id) this.dismissBotArchiveToast();
+      this.botNotice = `Restored ${restored.name}. Its routines stay paused until you turn them on.`;
+      this.botNoticeFailed = false;
+      void this.refreshBots();
+      void this.refreshSessions(true);
+    } catch (error) {
+      if (this.botArchiveToast?.bot.id === toast.bot.id) {
+        this.botArchiveToast = { bot: toast.bot, restoring: false, error: error instanceof Error ? error.message : "Could not restore that bot." };
+      }
+    }
+  };
+
+  private botPanelVisible(): boolean {
+    return this.view === "bot" && !this.settingsOpen && (this.mobileNavLayout ? this.botSheetOpen : this.botPanel.open);
+  }
+
+  private botMemoryTabVisible(): boolean {
+    return this.botPanelVisible() && this.botPanel.tab === "memory";
+  }
+
+  private botSoulTabVisible(): boolean {
+    return this.botPanelVisible() && this.botPanel.tab === "soul";
+  }
+
+  /** The panel's visible tab decides what is read: Routines polls Automation
+   * like its page; Memory reads once, then follows the bots stream. */
+  private syncBotPanelData() {
+    if (this.embeddedPane) return;
+    const visible = this.botPanelVisible();
+    if (visible && this.botPanel.tab === "routines") {
+      this.loadAutomationData();
+      this.startAutomationPolling();
+    } else if (this.view === "bot") {
+      this.stopAutomationPolling();
+    }
+    if (this.botMemoryTabVisible()) void this.refreshBotMemory();
+    if (this.botSoulTabVisible()) void this.refreshBotSoul();
+  }
+
+  /** The open Memory tab stays live without a timer: the bots stream carries
+   * each bot's memory status, and a status other than the one on screen means
+   * the memory moved (a message joined, a summary was built, a turn waits). */
+  private followBotMemory() {
+    if (!this.botMemoryTabVisible()) return;
+    const bot = this.activeBot();
+    if (bot && this.botMemory.botId === bot.id && memoryStatusChanged(this.botMemory.status, bot.memory)) void this.refreshBotMemory();
+  }
+
+  private toggleBotPanel = () => {
+    if (this.mobileNavLayout) {
+      this.botSheetOpen = !this.botSheetOpen;
+    } else {
+      this.botPanel = { ...this.botPanel, open: !this.botPanel.open };
+      writeBotPanel(this.botPanel);
+    }
+    this.automationFormError = "";
+    this.automationActionError = "";
+    this.syncBotPanelData();
+    if (this.botPanelVisible()) {
+      void this.updateComplete.then(() => this.renderRoot.querySelector<HTMLElement>('.bot-panel [role="tab"][aria-selected="true"]')?.focus());
+    }
+  };
+
+  private closeBotPanel = () => {
+    if (this.mobileNavLayout) this.botSheetOpen = false;
+    else {
+      this.botPanel = { ...this.botPanel, open: false };
+      writeBotPanel(this.botPanel);
+    }
+    this.syncBotPanelData();
+    void this.updateComplete.then(() => this.botPaneApp()?.updateComplete).then(() => {
+      this.renderRoot.querySelector<HTMLElement>(".bot-panel-toggle")?.focus();
+    });
+  };
+
+  private selectBotPanelTab = (tab: BotPanelTab) => {
+    this.botPanel = { ...this.botPanel, tab };
+    writeBotPanel(this.botPanel);
+    this.syncBotPanelData();
+  };
+
+  /** The open Soul tab follows SOUL.md without a timer: a new `botSoulKey` on the bots stream, once the bot's turn is
+   * over, means the bot or HUI may have written it. */
+  private followBotSoul() {
+    if (!this.botSoulTabVisible()) return;
+    const bot = this.activeBot();
+    if (!bot || this.botSoul.botId !== bot.id || bot.status === "running" || bot.status === "waiting") return;
+    if (botSoulKey(bot) !== this.botSoulSeen) void this.refreshBotSoul();
+  }
+
+  private resetBotSoul(botId: string) {
+    this.botSoulRequest += 1;
+    this.botSoul = { botId, loading: false, error: "" };
+    this.botSoulDraft = undefined;
+    this.botSoulSaving = false;
+    this.botSoulSaveError = "";
+    this.botSoulSeen = "";
+  }
+
+  /** Reads SOUL.md; an open editor keeps its text, and a failed read keeps what was shown. */
+  private refreshBotSoul = async () => {
+    const bot = this.activeBot();
+    if (!bot) return;
+    if (this.botSoul.botId !== bot.id) this.resetBotSoul(bot.id);
+    const request = ++this.botSoulRequest;
+    this.botSoulSeen = botSoulKey(bot);
+    this.botSoul = { ...this.botSoul, loading: true };
+    try {
+      const soul = await loadBotSoul(bot.id);
+      if (request !== this.botSoulRequest) return;
+      this.botSoul = { botId: bot.id, loading: false, error: "", soul };
+    } catch (error) {
+      if (request !== this.botSoulRequest) return;
+      this.botSoul = { ...this.botSoul, loading: false, error: error instanceof Error ? error.message : "Could not read the bot's soul." };
+    }
+  };
+
+  /** Opens the editor on SOUL.md, or empty for Write it yourself. */
+  private editBotSoul = () => {
+    this.botSoulSaveError = "";
+    this.botSoulDraft = this.botSoul.soul ?? "";
+    void this.updateComplete.then(() => this.renderRoot.querySelector<HTMLTextAreaElement>(".bot-soul__textarea")?.focus());
+  };
+
+  private cancelBotSoulEdit = () => {
+    this.botSoulDraft = undefined;
+    this.botSoulSaveError = "";
+    void this.updateComplete.then(() => this.renderRoot.querySelector<HTMLElement>(".bot-soul__edit, .bot-soul__write")?.focus());
+  };
+
+  /** Nothing changes until the gateway stored it; a refusal stays in the editor with its text. */
+  private saveBotSoulDraft = () => {
+    const bot = this.activeBot();
+    const draft = this.botSoulDraft;
+    if (!bot || draft === undefined || this.botSoulSaving) return;
+    this.botSoulSaving = true;
+    this.botSoulSaveError = "";
+    void saveBotSoul(bot.id, draft)
+      .then((soul) => {
+        if (this.botSoul.botId !== bot.id) return;
+        // A read already on its way must not put back what this save replaced.
+        this.botSoulRequest += 1;
+        this.botSoul = { botId: bot.id, loading: false, error: "", soul };
+        this.botSoulDraft = undefined;
+        void this.updateComplete.then(() => this.renderRoot.querySelector<HTMLElement>(".bot-soul__edit, .bot-soul__write")?.focus());
+      })
+      .catch((error: unknown) => {
+        this.botSoulSaveError = error instanceof Error ? error.message : "Could not save the soul.";
+      })
+      .finally(() => {
+        this.botSoulSaving = false;
+      });
+  };
+
+  private resetBotMemory(botId: string) {
+    this.botMemoryRequest += 1;
+    this.botMemoryInFlight = false;
+    this.botMemoryAgain = false;
+    this.botMemory = { botId, loading: false, error: "" };
+    this.botMemoryZoom = new Map();
+  }
+
+  /** A manual refresh shows itself; a live one only replaces what changed. */
+  private refreshBotMemory = async (manual = false) => {
+    const bot = this.activeBot();
+    if (!bot) return;
+    if (this.botMemory.botId !== bot.id) this.resetBotMemory(bot.id);
+    if (this.botMemoryInFlight) {
+      this.botMemoryAgain = true;
+      return;
+    }
+    this.botMemoryInFlight = true;
+    const request = ++this.botMemoryRequest;
+    if (manual || !this.botMemory.status) this.botMemory = { ...this.botMemory, loading: true };
+    try {
+      const memory = await loadBotMemory(bot.id);
+      if (request !== this.botMemoryRequest) return;
+      this.botMemory = { botId: bot.id, loading: false, error: "", status: memory.status, lines: parseMemoryView(memory.view) };
+    } catch (error) {
+      if (request !== this.botMemoryRequest) return;
+      this.botMemory = { ...this.botMemory, loading: false, error: error instanceof Error ? error.message : "Could not read the bot's memory." };
+    } finally {
+      if (request === this.botMemoryRequest) {
+        this.botMemoryInFlight = false;
+        if (this.botMemoryAgain) {
+          this.botMemoryAgain = false;
+          if (this.botMemoryTabVisible()) void this.refreshBotMemory();
+        }
+      }
+    }
+  };
+
+  /** Opens a line into its two halves (or a message whole); again folds it. */
+  private zoomBotMemoryLine = (line: MemoryLine) => {
+    const bot = this.activeBot();
+    if (!bot) return;
+    const next = new Map(this.botMemoryZoom);
+    if (next.delete(line.address)) {
+      this.botMemoryZoom = next;
+      return;
+    }
+    next.set(line.address, { loading: true, error: "", lines: [] });
+    this.botMemoryZoom = next;
+    const settle = (state: MemoryZoomState) => {
+      if (this.botMemory.botId !== bot.id || !this.botMemoryZoom.has(line.address)) return;
+      this.botMemoryZoom = new Map(this.botMemoryZoom).set(line.address, state);
+    };
+    void zoomBotMemory(bot.id, line)
+      .then((text) => settle({ loading: false, error: "", lines: parseMemoryZoom(text, line) }))
+      .catch((error: unknown) => settle({ loading: false, error: error instanceof Error ? error.message : "Could not open that line.", lines: [] }));
+  };
+
+  private renderBotWorkspace() {
+    const bot = this.activeBot();
+    const placeholder = (title: string, message: string, tone: "status" | "alert", onRetry?: () => void, actionLabel?: string) => renderBotPlaceholder({
+      title, message, tone, mobileNav: this.mobileNavLayout, onToggleNavigation: toggleNavigationDrawer, ...(onRetry ? { onRetry } : {}), ...(actionLabel ? { actionLabel } : {}),
+    });
+    if (!bot) {
+      if (!this.botsLoaded) {
+        return this.botsError
+          ? placeholder("Bot", this.botsError, "alert", this.retryBots)
+          : placeholder("Bot", "Loading bot…", "status");
+      }
+      return placeholder("Bot not found", "This bot does not exist or has been archived.", "alert");
+    }
+    // Its chat opens again once it is restored; until then it takes no messages from here.
+    if (bot.archived) {
+      return placeholder(bot.name, `${bot.name} is archived. Its chat and memory are kept; restore it to open the chat again.`, "status",
+        () => this.restoreBotFromRoster(bot), this.botPendingId === bot.id ? "Restoring…" : "Restore");
+    }
+    const session = this.listedSession(bot.sessionId);
+    if (!session) {
+      return this.sessionsError
+        ? placeholder(bot.name, this.sessionsError, "alert", () => void this.refreshSessions())
+        : placeholder(bot.name, `Opening ${bot.name}'s chat…`, "status");
+    }
+    const sheet = this.mobileNavLayout;
+    const panelOpen = sheet ? this.botSheetOpen : this.botPanel.open;
+    const panelId = `bot-panel-${bot.id.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+    const paneBot: PaneBot = {
+      bot: { id: bot.id, name: bot.name, ...(bot.title ? { title: bot.title } : {}), ...(bot.avatar ? { avatar: bot.avatar } : {}), ...(bot.memory ? { memory: bot.memory } : {}) },
+      panelOpen,
+      panelId,
+    };
+    return html`<div class="bot-workspace ${panelOpen && !sheet ? "bot-workspace--panel" : ""}" data-bot-id=${bot.id}>
+      <div class="bot-workspace__chat">
+        ${keyed(bot.id, html`<hui-app
+          class="hui-session-pane-app bot-workspace__pane"
+          embedded-pane
+          pane-session-id=${bot.sessionId}
+          .paneSession=${session}
+          .paneId=${`bot-${bot.id}`}
+          .paneActive=${true}
+          .paneVisible=${true}
+          .paneNarrow=${sheet}
+          .paneMobileNav=${this.mobileNavLayout}
+          .paneBot=${paneBot}
+          .onPaneBotPanel=${this.toggleBotPanel}
+          .onPaneBotAction=${(action: BotHeaderAction) => {
+            if (action === "edit") this.openEditBot(bot);
+            else if (action === "archive") this.requestArchiveBot(bot);
+            else this.requestDeleteBot(bot);
+          }}
+          .onPaneNavigate=${(id: string) => {
+            const target = this.listedSession(id);
+            if (target && id !== bot.sessionId) this.selectSession(target);
+          }}
+          .onPaneRegistryChange=${() => this.refreshSessions(true).then(() => this.updateComplete).then(() => {})}
+          .paneGroups=${this.sessionListRevision ? this.groups : undefined}
+          .onPaneUpdate=${(text: string, attachments: readonly Attachment[]) => this.handleUpdateCommand(text, attachments)}
+          .onPaneDraftChange=${(sessionId: string, hasDraft: boolean) => this.markSessionDraft(sessionId, hasDraft)}
+        ></hui-app>`)}
+      </div>
+      ${panelOpen ? renderBotPanel({
+        bot,
+        id: panelId,
+        tab: this.botPanel.tab,
+        sheet,
+        timezone: localTimezone(),
+        onTab: this.selectBotPanelTab,
+        onClose: this.closeBotPanel,
+        routines: {
+          automation: this.automation,
+          error: this.automationError,
+          pending: this.automationPending,
+          formError: this.automationFormError,
+          actionError: this.automationActionError,
+          onCreate: this.createAutomationTask,
+          onFormError: this.reportAutomationFormError,
+          onSetEnabled: this.setAutomationEnabled,
+          onRun: this.runAutomationTaskNow,
+          onDelete: this.deleteAutomationTask,
+          onRetry: this.loadAutomationData,
+        },
+        memory: {
+          state: this.botMemory.botId === bot.id ? this.botMemory : { loading: true, error: "" },
+          zoom: this.botMemoryZoom,
+          onZoom: this.zoomBotMemoryLine,
+          onRefresh: () => void this.refreshBotMemory(true),
+          pageUrl: botMemoryPageUrl(bot.id),
+        },
+        soul: {
+          state: this.botSoul.botId === bot.id ? this.botSoul : { loading: true, error: "" },
+          draft: this.botSoul.botId === bot.id ? this.botSoulDraft : undefined,
+          saving: this.botSoulSaving,
+          saveError: this.botSoulSaveError,
+          onEdit: this.editBotSoul,
+          onDraft: (text) => { this.botSoulDraft = text; },
+          onSave: this.saveBotSoulDraft,
+          onCancel: this.cancelBotSoulEdit,
+          onRetry: () => void this.refreshBotSoul(),
+        },
+      }) : nothing}
+    </div>`;
+  }
+
+  private renderBotDialogs() {
+    if (this.embeddedPane) return nothing;
+    const dialog = this.botDialog;
+    return html`${dialog ? renderBotDialog({
+      mode: dialog.mode,
+      ...(dialog.mode === "edit" ? { bot: dialog.bot } : {}),
+      pending: this.botDialogPending,
+      error: this.botDialogError,
+      models: this.pi?.model.catalog ?? [],
+      model: this.botDraftModel,
+      thinking: this.botDraftThinking,
+      memoryModel: this.botDraftMemoryModel,
+      directorySuggestions: this.directorySuggestions,
+      onDirectoryInput: this.requestDirectorySuggestions,
+      onModel: (value) => { this.botDraftModel = value; },
+      onThinking: (value) => { this.botDraftThinking = value; },
+      onMemoryModel: (value) => { this.botDraftMemoryModel = value; },
+      onSubmit: this.submitBotDialog,
+      onCancel: this.closeBotDialog,
+    }) : nothing}
+    ${this.botArchive ? renderBotArchiveDialog(this.botArchive, this.botArchivePending, this.botArchiveError, this.confirmArchiveBot, this.closeBotArchive) : nothing}
+    ${this.botDelete ? renderBotDeleteDialog(this.botDelete, this.botDeletePending, this.botDeleteError, this.confirmDeleteBot, this.closeBotDelete) : nothing}`;
+  }
+
   /* ── settings ─────────────────────────────────────────────────────────── */
 
   private async save(patch: Partial<Settings>) {
@@ -4111,7 +5028,12 @@ export class HuiApp extends HuiElement {
       session: this.selected,
       mobileNavLayout: this.embeddedPane ? this.paneMobileNav && this.paneActive : this.mobileNavLayout,
       controlScope: this.embeddedPane ? this.paneId : undefined,
-      groups: this.groups,
+      groups: this.listedGroups,
+      ...(this.paneBot && this.onPaneBotPanel ? { bot: {
+        ...this.paneBot,
+        onTogglePanel: () => this.onPaneBotPanel?.(),
+        ...(this.onPaneBotAction ? { onAction: (action: BotHeaderAction) => this.onPaneBotAction?.(action) } : {}),
+      } } : {}),
       transcript: this.transcript,
       subagents: this.subagents,
       opening: this.opening,
@@ -4191,7 +5113,7 @@ export class HuiApp extends HuiElement {
       onDraftInput: this.typeDraft,
       commandMenu: {
         open: this.slashQuery !== null && !this.sending && !this.opening && !this.launching && (!this.selected || this.connection === "live"),
-        commands: filterSlashCommands(this.slashQuery?.startsWith("$") ? this.commands : composerCommands(this.selected ? this.commands : [], !!this.selected), this.slashQuery ?? ""),
+        commands: filterSlashCommands(this.slashQuery?.startsWith("$") ? this.commands : composerCommands(this.selected ? this.commands : [], !!this.selected, Boolean(this.selected?.bot)), this.slashQuery ?? ""),
         catalog: this.commands,
         paths: this.localPathQuery ? this.localPaths : undefined,
         pathsLoading: this.localPathsLoading,
@@ -4362,6 +5284,17 @@ export class HuiApp extends HuiElement {
         <button type="button" class="app-toast__dismiss" aria-label="Dismiss archive notification"
           @click=${this.dismissArchiveToast}><span aria-hidden="true">×</span></button>
       </div>` : null}
+      ${this.botArchiveToast ? html`<div class="app-toast session-archive-toast bot-archive-toast"
+        @pointerenter=${this.pauseBotArchiveToast} @pointerleave=${this.scheduleBotArchiveToast}
+        @focusin=${this.pauseBotArchiveToast} @focusout=${this.scheduleBotArchiveToast}>
+        <span class="app-toast__message" role=${this.botArchiveToast.error ? "alert" : "status"}>
+          ${this.botArchiveToast.error ?? `Archived “${this.botArchiveToast.bot.name}”. Its chat and memory are kept.`}
+        </span>
+        <button type="button" class="app-toast__action" ?disabled=${this.botArchiveToast.restoring}
+          @click=${this.restoreArchivedBot}>${this.botArchiveToast.restoring ? "Restoring…" : "Restore"}</button>
+        <button type="button" class="app-toast__dismiss" aria-label="Dismiss archive notification"
+          @click=${this.dismissBotArchiveToast}><span aria-hidden="true">×</span></button>
+      </div>` : null}
     </div>`;
   }
 
@@ -4507,6 +5440,7 @@ export class HuiApp extends HuiElement {
           onChangeChat: (chat) => void this.save({ chat }),
           onChangeBrowser: (browser) => this.save({ browser }),
           onChangePower: (power) => void this.save({ power }).then(() => this.refreshPower()),
+          onChangeBots: (bots) => void this.save({ bots }).then(() => this.syncBotsStream()),
           onSetLidAwake: this.setLidAwakeFromUi,
           onChangeModels: (models) => {
             this.launchModel = models.primary;
@@ -4536,10 +5470,11 @@ export class HuiApp extends HuiElement {
     const props = {
       view: this.view,
       activePage: this.activePage,
-      selectedSessionId: this.selected?.id ?? "",
+      selectedSessionId: this.view === "bot" ? "" : this.selected?.id ?? "",
       splitSessionId: "",
       openSessionIds: new Set(this.sessionLayout && sessionPanes(this.sessionLayout).length > 1 ? sessionPanes(this.sessionLayout).map(({ sessionId }) => sessionId) : []),
-      groups: this.groups,
+      groups: this.listedGroups,
+      bots: this.shellBotsProps(),
       draftSessionIds: this.draftSessionIds,
       collapsed: this.collapsed,
       loading: this.sessionsLoading,
@@ -4624,6 +5559,7 @@ export class HuiApp extends HuiElement {
 
     const chatLikeRoute =
       (this.view === "home" && Boolean(this.selected)) ||
+      this.view === "bot" ||
       (this.view === "surface" && this.activePage?.id === "new-session");
 
     return html`<div
@@ -4636,6 +5572,7 @@ export class HuiApp extends HuiElement {
       ${this.renderJiraLinkDialog()}
       ${this.renderBacklogStartDialog()}
       ${this.renderBacklogRemoveDialog()}
+      ${this.renderBotDialogs()}
       ${this.commandPalette()}
       ${this.updateDialog()}
       ${renderPiResourceReader(this.piResourceReader, this.closePiResourceReader, this.copyPiResource)}
@@ -4643,9 +5580,11 @@ export class HuiApp extends HuiElement {
         props,
         this.view === "home"
           ? this.renderSessionMultiplex()
+          : this.view === "bot"
+            ? this.renderBotWorkspace()
           : this.view === "kanban"
             ? renderKanbanPage({
-                groups: this.groups,
+                groups: this.listedGroups,
                 loading: this.sessionsLoading,
                 error: this.sessionsError,
                 query: this.kanbanQuery,
@@ -4680,7 +5619,7 @@ export class HuiApp extends HuiElement {
                   ? renderAutomationSurface(this.automationProps(), this.activePage.id === "cron" ? "Automations" : "Tasks")
                 : this.activePage.id === "sessions"
                   ? renderSessionsPage({
-                      groups: this.groups,
+                      groups: this.listedGroups,
                       loading: this.sessionsLoading,
                       error: this.sessionsError,
                       query: this.search,

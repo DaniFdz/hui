@@ -45,6 +45,10 @@ export type Settings = {
   /** PI packages/extensions excluded before HUI's SDK worker discovers resources. */
   disabledPlugins: readonly { id: string; name: string; kind: "package" | "extension" }[];
   labs: { denseObservability: boolean; detailedDebug: boolean };
+  /** Settings → Sessions → Bots. The sidebar's Agents | Bots switch is
+   * opt-in, so a machine that never asks for it keeps today's sidebar; hiding
+   * the tab never stops bots or their routines, which the gateway owns. */
+  bots: { showTab: boolean };
 };
 
 export type BrowserSettings = {
@@ -82,6 +86,7 @@ export const DEFAULT_SETTINGS: Settings = {
   disabledSkills: [],
   disabledPlugins: [],
   labs: { denseObservability: false, detailedDebug: false },
+  bots: { showTab: false },
 };
 
 export function normalizeSettings(raw: unknown): Settings {
@@ -107,7 +112,13 @@ export function normalizeSettings(raw: unknown): Settings {
     disabledSkills: normalizeDisabledSkills(source["disabledSkills"]),
     disabledPlugins: normalizeDisabledPlugins(source["disabledPlugins"]),
     labs: normalizeLabs(source["labs"]),
+    bots: normalizeBots(source["bots"]),
   };
+}
+
+/** Opt-in: only an explicit true shows the Bots tab. */
+function normalizeBots(value: unknown): Settings["bots"] {
+  return { showTab: isRecord(value) && value["showTab"] === true };
 }
 
 /** Both switches are opt-out: only an explicit false changes the default. The

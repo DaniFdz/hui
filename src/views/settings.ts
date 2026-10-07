@@ -113,6 +113,7 @@ export type SettingsProps = AutomationProps & {
   onChangeBrowser: (next: Settings["browser"]) => Promise<unknown> | void;
   onChangeModels: (next: Settings["models"]) => void;
   onChangePower: (next: Settings["power"]) => void;
+  onChangeBots: (next: Settings["bots"]) => void;
   onSetLidAwake: (on: boolean) => void;
   onImportTheme: (url: string) => void;
   onClose: () => void;
@@ -651,7 +652,7 @@ function renderToolsPage(props: SettingsProps) {
   return html`
     <p class="settings-page__intro">HUI owns the tools, the managed browser and the default prompt. Inspect the shipped catalog without opening a session, or inspect an already-running session.</p>
     <hui-browser-settings .settings=${props.settings.browser} .onChange=${props.onChangeBrowser}></hui-browser-settings>
-    <hui-tools-settings .sessions=${props.sessions}></hui-tools-settings>`;
+    <hui-tools-settings .sessions=${props.sessions.filter((session) => !session.bot)}></hui-tools-settings>`;
 }
 
 function renderModelsPage(props: SettingsProps) {
@@ -933,7 +934,18 @@ function renderSessionsSettingsPage(props: SettingsProps) {
     ${renderSection("Retention", "Deleting HUI metadata never deletes PI conversation files.", html`
       ${renderRow("Transcript authority", "History is resumed directly from the runtime-owned session file.", html`<span class="settings-row__value">PI</span>`)}
       ${renderRow("Remove from HUI", "Stops tracking the row and runtime without deleting the transcript.", html`<span class="settings-row__value">Metadata only</span>`)}
-    `)}`;
+    `)}
+    ${renderSection("Bots", "Named agents with one permanent chat, their own model and a memory that summarizes older messages by itself.", html`
+      ${renderRow(
+        "Show the Bots tab",
+        "Adds an Agents | Bots switch to the top of the sidebar. Hiding it never stops bots or their routines.",
+        renderSettingsToggle("Show the Bots tab", props.settings.bots.showTab, (showTab) => props.onChangeBots({ ...props.settings.bots, showTab })),
+      )}
+      ${renderRow("Command line", "Everything the tab does is also available from a terminal on this machine.", html`<code>hui bot list</code>`)}
+    `)}
+    <p class="settings-page__note settings-page__intro">
+      ${props.saveFailed ? "Could not write settings.json — changes apply now but will not be remembered." : "Saved to ~/.config/hui/settings.json"}
+    </p>`;
 }
 
 function renderWorktreesSettingsPage(props: SettingsProps) {

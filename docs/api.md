@@ -22,7 +22,7 @@ or alternate persisted gateway state are introduced.
 The standalone production gateway and Vite development plugin share the same
 `/__hui/` middleware. Production serves compiled `dist/` assets with GET/HEAD,
 safe route fallbacks (single-segment page routes such as `/skills` or `/kanban`,
-plus `/sessions/…` and `/settings/…` deep links) and realpath containment; it never serves source files or
+plus `/sessions/…`, `/bots/…` and `/settings/…` deep links) and realpath containment; it never serves source files or
 escaping symlinks. Requests must use an allowed Host (loopback, the selected IP,
 its explicitly resolved Tailscale DNS name, or a name granted with `--allow-host`
 or `HUI_GATEWAY_ALLOWED_HOSTS`, or listed in `allowHosts` of `gateway/config.json`). A proxy that connects over loopback but answers

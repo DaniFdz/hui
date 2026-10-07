@@ -52,6 +52,17 @@ test("the managed browser is on and headless unless explicitly changed", () => {
   assert.equal(normalizeSettings({ browser: { executablePath: `/${"x".repeat(5_000)}` } }).browser.executablePath, "");
 });
 
+test("the Bots tab is opt-in: only an explicit true shows it", () => {
+  assert.deepEqual(DEFAULT_SETTINGS.bots, { showTab: false });
+  assert.deepEqual(normalizeSettings({}).bots, { showTab: false });
+  for (const bots of [null, "yes", [], { showTab: "true" }, { showTab: 1 }]) {
+    assert.deepEqual(normalizeSettings({ bots }).bots, { showTab: false }, JSON.stringify(bots));
+  }
+  assert.deepEqual(normalizeSettings({ bots: { showTab: true, extra: 1 } }).bots, { showTab: true });
+  // A saved choice survives the client/server round trip.
+  assert.deepEqual(normalizeSettings(JSON.parse(JSON.stringify(normalizeSettings({ bots: { showTab: true } })))).bots, { showTab: true });
+});
+
 test("keeping the Mac awake is opt-out and lid-close prevention is never saved", () => {
   assert.deepEqual(normalizeSettings({}).power, { keepAwake: true });
   assert.deepEqual(normalizeSettings({ power: { keepAwake: "no" } }).power, { keepAwake: true });

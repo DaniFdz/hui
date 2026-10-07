@@ -376,7 +376,22 @@ test("the floating sidebar restore control matches the in-sidebar collapse contr
   assert.match(restore, /background:\s*transparent/);
   assert.match(rule(".app-shell .sidebar-brand__icon svg"), /width:\s*16px[\s\S]*height:\s*16px/);
   assert.match(rule(".app-shell .shell-chrome-controls svg"), /width:\s*16px[\s\S]*height:\s*16px/);
-  // The touch block that enlarges the collapse control must enlarge the restore control too.
+  // One spot for both: the toggle opens the sidebar's top row, one row tall below the
+  // sidebar's top padding, and the restore control is placed from the same numbers, so
+  // collapsing and expanding need no mouse travel.
+  assert.match(rule(".app-shell"), /--shell-chrome-controls-inset:\s*10px/);
+  // One chat header tall from the very top, so the row lines up with the header beside it.
+  assert.match(rule(".app-shell"), /--shell-sidebar-pad-top:\s*0px;\s*--shell-sidebar-top-row-height:\s*48px/);
+  assert.match(rule(".app-shell .sidebar-shell"), /--sidebar-pad-x:\s*10px/);
+  assert.match(rule(".app-shell .sidebar-shell"), /padding:\s*var\(--shell-sidebar-pad-top\) var\(--sidebar-pad-x\)/);
+  assert.match(rule(".app-shell .sidebar-brand"), /min-height:\s*var\(--shell-sidebar-top-row-height\)/);
+  assert.match(restore, /top:\s*calc\(var\(--shell-sidebar-pad-top\) \+ \(var\(--shell-sidebar-top-row-height\) - var\(--shell-chrome-control-size\)\) \/ 2\)/);
+  assert.match(restore, /left:\s*var\(--shell-chrome-controls-inset\)/);
+  // Focus moves to whichever control is now shown, so a second Enter undoes the first.
+  const source = readFileSync(new URL("./shell.ts", import.meta.url), "utf8");
+  assert.match(source, /const next = collapsed \? "\.shell-chrome-controls" : "\.sidebar-brand__collapse";/);
+  assert.match(source, /shell\.querySelector<HTMLElement>\(next\)\?\.focus\(\)/);
+  // The touch block grows both controls; the 48px row already fits them.
   assert.match(css, /@media \(hover: none\), \(pointer: coarse\) \{[^@]*\.app-shell \{ --shell-chrome-control-size: 44px; \}[^@]*\.app-shell \.sidebar-brand__icon \{\s*width: 44px;\s*height: 44px;/u);
 });
 
@@ -412,17 +427,79 @@ test("the shell retains reference chrome geometry with header utilities", () => 
   assert.match(appSource, /@keydown=\$\{closeDrawerOnEscape\}/);
   assert.doesNotMatch(source, /sidebar-shell__footer|sidebar-footer-bar|renderFooter/);
   assert.doesNotMatch(source, /sidebar-agent-card|deck-card/);
-  assert.match(source, /<div class="sidebar-brand">\s*<div class="sidebar-brand__utilities">/su);
-  const header = source.slice(source.indexOf('<div class="sidebar-brand">'), source.indexOf('<div class="sidebar-shell__content">'));
-  assert.match(header, /sidebar-brand__search" aria-label="Search sessions"/);
-  const utilities = header.slice(header.indexOf("sidebar-brand__utilities"), header.indexOf("sidebar-brand__actions"));
-  const actions = header.slice(header.indexOf("sidebar-brand__actions"), header.indexOf('<label class="sidebar-search'));
-  assert.deepEqual([...utilities.matchAll(/aria-label="([^"]+)"/gu)].map((match) => match[1]), ["New session", "Search sessions"]);
-  assert.deepEqual([...actions.matchAll(/aria-label="([^"]+)"/gu)].map((match) => match[1]), ["Collapse sidebar"]);
+  // The header's only control is the collapse toggle, first in the top row: New session
+  // and search left it on 2026-10-06 (owner). New sessions start from a group's + or
+  // the Ctrl+K palette, which also finds sessions; the mobile top bar keeps its search.
+  const header = source.slice(source.indexOf('<div class="sidebar-brand">'), source.indexOf('<label class="sidebar-search'));
+  assert.match(header, /^<div class="sidebar-brand">\s*<button type="button" class="[^"]*sidebar-brand__collapse"/u);
+  assert.deepEqual([...header.matchAll(/aria-label=(?:"([^"]+)"|\$\{(\w+)\})/gu)].map((match) => match[1] ?? match[2]), ["Collapse sidebar"]);
+  assert.doesNotMatch(source, /sidebar-brand__(new-thread|search|utilities|actions)/u);
+  assert.match(source, /aria-label=\$\{`New session in \$\{sessionGroupLabel\(group\.label\)\}`\}/u);
+  assert.match(source, /class="topbar-search" aria-label=\$\{searchLabel\} @click=\$\{focusSessionSearch\}/u);
+  assert.match(source, /const searchLabel = botsTab \? "Search bots" : "Search sessions";/);
   assert.doesNotMatch(header, /sidebar-brand__settings|aria-label="Settings"/);
-  assert.match(header, /class="sidebar-search /);
+  assert.match(source.slice(source.indexOf('<label class="sidebar-search')), /^<label class="sidebar-search /u);
   assert.doesNotMatch(source.slice(source.indexOf('<div class="sidebar-sessions">')), /aria-label="Search sessions"/);
   assert.doesNotMatch(source, /sidebar-identity-card/);
+});
+
+test("the Bots tab's Agents | Bots switch tops the sidebar, and Bots shows only the roster", () => {
+  const source = readFileSync(new URL("./shell.ts", import.meta.url), "utf8");
+  const css = readFileSync(new URL("../styles/bots.css", import.meta.url), "utf8");
+  const tabs = source.slice(source.indexOf("function renderSidebarTabs"), source.indexOf("export function renderSidebar("));
+  // Agents keeps the `sessions` id that browsers already remember.
+  assert.match(tabs, /\[\["sessions", "Agents"\], \["bots", "Bots"\]\]/u);
+  const sidebar = source.slice(source.indexOf("export function renderSidebar("));
+  const at = (marker: string) => {
+    const index = sidebar.indexOf(marker);
+    assert.notEqual(index, -1, marker);
+    return index;
+  };
+  // The top row: the collapse toggle, then the switch. Nothing sits above them, and each
+  // tab has a sidebar of its own below.
+  const top = sidebar.slice(at('<div class="sidebar-shell sidebar-drawer__body">'), at('<label class="sidebar-search'));
+  assert.match(top, /^<div class="sidebar-shell sidebar-drawer__body">\s*<div class="sidebar-brand">\s*<button type="button" class="[^"]*sidebar-brand__collapse"[^>]*>\$\{icons\.panelLeftClose\}<\/button>\s*\$\{props\.bots \? html.<div class="sidebar-switch">\$\{renderSidebarTabs\(props\.bots\)\}<\/div>. : nothing\}\s*<\/div>\s*$/u);
+  assert.ok(at('<label class="sidebar-search') < at('<nav class="sidebar-nav"'));
+  assert.equal(sidebar.split("renderSidebarTabs(").length, 2, "one switch, not one per list");
+  // Bots: no primary navigation, and the toolbar names the roster.
+  assert.match(sidebar, /\$\{botsTab \? nothing : html`<nav class="sidebar-nav"/u);
+  assert.match(sidebar, /<span>\$\{botsTab \? "Bots" : "Sessions"\}<\/span>/u);
+  // The lists under the header are its tab panel, labelled by the selected tab.
+  assert.match(sidebar, /role=\$\{props\.bots \? "tabpanel" : nothing\}\s*aria-labelledby=\$\{props\.bots \? `sidebar-tab-\$\{props\.bots\.tab\}` : nothing\}/u);
+  // A full-width tab bar over a divider, unlike the uppercase section labels below it.
+  const rule = (selector: string) => {
+    const start = css.indexOf(`${selector} {`);
+    assert.notEqual(start, -1, selector);
+    return css.slice(start, css.indexOf("}", start));
+  };
+  assert.match(rule(".app-shell .sidebar-brand:has(> .sidebar-switch)"), /border-bottom:\s*1px solid var\(--border\)/u);
+  assert.match(rule(".app-shell .sidebar-switch"), /flex:\s*1 1 auto/u);
+  assert.match(rule(".app-shell .sidebar-tabs__tab"), /flex:\s*1 1 0/u);
+  assert.match(rule(".app-shell .sidebar-tabs__tab"), /height:\s*var\(--shell-sidebar-top-row-height\)/u);
+  assert.doesNotMatch(rule(".app-shell .sidebar-switch") + rule(".app-shell .sidebar-tabs__tab"), /text-transform:\s*uppercase/u);
+  // Flat tabs: no rounded top, and a hovered tab only brightens its label, so nothing reads as a raised tab.
+  assert.match(rule(".app-shell .sidebar-tabs__tab"), /border-radius:\s*0;/u);
+  assert.doesNotMatch(rule(".app-shell .sidebar-tabs__tab:hover"), /background/u);
+  assert.match(rule(".app-shell .sidebar-brand:has(> .sidebar-switch)"), /margin-block-end:\s*8px/u);
+  // The Bots list starts under the tab row, its header aligned with the avatars.
+  assert.match(sidebar, /class=\$\{botsTab \? "sidebar-sessions sidebar-sessions--bots" : "sidebar-sessions"\}/u);
+  assert.match(rule(".app-shell .sidebar-sessions--bots"), /margin-top:\s*4px/u);
+  assert.match(rule(".app-shell .sidebar-sessions--bots > .sidebar-recent-sessions__toolbar"), /padding-inline-start:\s*14px/u);
+  assert.doesNotMatch(css, /sidebar-recent-sessions__toolbar \.sidebar-tabs__tab/u, "the tabs no longer sit in the sessions toolbar");
+  // The drawer hides the toggle, so the top row shows there only with the switch in it.
+  const shellCss = readFileSync(new URL("../styles/openclaw-shell.css", import.meta.url), "utf8");
+  assert.match(shellCss, /\.app-shell \.sidebar-brand:not\(:has\(> \.sidebar-switch\)\) \{\s*display: none;/u);
+});
+
+test("a collapsed sidebar keeps the bot view's header clear of the restore control", () => {
+  const css = readFileSync(new URL("../styles/bots.css", import.meta.url), "utf8");
+  const app = readFileSync(new URL("../styles/app.css", import.meta.url), "utf8");
+  // The bot view has no content padding, so its headers start right under the control:
+  // the placeholder's directly, and the chat's inside the embedded pane app, which only
+  // a custom property reaches.
+  assert.match(css, /\.app-shell:not\(\.shell--mobile-nav\)\.shell--nav-collapsed \.bot-workspace__header,\s*\.app-shell:not\(\.shell--mobile-nav\)\[data-nav-collapsed="true"\] \.bot-workspace__header \{\s*padding-left: var\(--shell-chrome-safe-area-left\);/u);
+  assert.match(css, /\.app-shell:not\(\.shell--mobile-nav\)\.shell--nav-collapsed \.bot-workspace__pane,\s*\.app-shell:not\(\.shell--mobile-nav\)\[data-nav-collapsed="true"\] \.bot-workspace__pane \{\s*--hui-pane-chrome-inset: var\(--shell-chrome-safe-area-left\);/u);
+  assert.match(app, /\.hui-embedded-session > \.transcript__head\.chat-pane__header \{ padding-left: var\(--hui-pane-chrome-inset, 12px\); \}/u);
 });
 
 test("mobile topbar icons have a fixed glyph size inside their touch target", () => {

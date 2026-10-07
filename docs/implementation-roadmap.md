@@ -680,7 +680,7 @@ restarts. Proof: `server/watchers.test.ts`, `server/watcher-routes.test.ts`,
 
 Product decision approved by the owner on 2026-10-05 (SPEC.md, "Bots are named
 chats, not an agent selector"): GrokBot/Hermes-style bots beside sessions. The
-sidebar splits into **Sessions | Bots**; sessions stay as they are. A bot is a
+sidebar splits into **Agents | Bots**; sessions stay as they are. A bot is a
 named Durable conversation that never ends, with a role, a SOUL.md persona it
 writes in its first conversation, its own model and directory; its memory is
 [OptChat](optchat.md): every message
@@ -703,8 +703,8 @@ for now. It lands as stacked pull requests:
    plain requests, fresh turns, a frozen view across a tool loop and a restart,
    zoom and date, declined compaction, catch-up without duplicates, waiting for
    summaries and Stop).
-2. **Bots backend and `hui bot`** (implemented 2026-10-05; Bots tab and browser
-   E2E pending): `bots.json` registry and `shared/bots.ts` types; bot chats as
+2. **Bots backend and `hui bot`** (implemented 2026-10-05; browser proof
+   with item 3): `bots.json` registry and `shared/bots.ts` types; bot chats as
    ordinary Durable sessions whose conversation is created with its persona,
    `hui.bot` document and OptChat in one commit; edit (an empty model or
    thinking level goes back to the gateway defaults), archive (routines
@@ -756,8 +756,36 @@ for now. It lands as stacked pull requests:
    host without a resolver), `server/bot-routes.test.ts` (a real gateway: the
    first turn starts by itself, the bot writes SOUL.md with its write tool and
    the next request carries it, the routes and guards), `cli/*.test.ts`.
-3. **Bots tab** (UI): the Sessions | Bots split, bot chat, routines and memory
-   views, and the Browser-tool E2E that drives these routes.
+3. **Bots tab** (UI; done 2026-10-05): Settings → Sessions → *Show the Bots
+   tab* (off by default); the Agents | Bots switch in the sidebar's top row
+   (renamed from Sessions | Bots and moved there on 2026-10-06, beside the
+   collapse toggle; Bots shows only the roster); bot chats filtered from
+   every session list and picker; the roster (activity order, search, unread,
+   badges, New bot, Edit, Hide/Unhide, Archive with Restore, *Show archived*
+   with Restore and Delete) fed by `/__hui/bots/events`; the dialog's *Gateway default*
+   for the model and thinking level (clearing them on edit); `/bots/<id>`
+   rendering the bot's chat in the ordinary session pane without `/clear`,
+   `/compact` or rewind; the Routines | Memory panel (a sheet on narrow
+   screens), whose Memory tab shows the memory's stats and summarizer spend,
+   follows the bots stream while open, zooms a line down to its message and
+   links the memory page; bot routines' schedules worded on the Automations
+   page as in the panel. Proof: `src/lib/bots.test.ts`,
+   `src/lib/bot-roster.test.ts`, `src/lib/bot-routines.test.ts`,
+   `src/lib/bot-memory.test.ts`, `src/lib/navigation.test.ts`,
+   `src/lib/settings.test.ts`, `src/lib/slash-commands.test.ts`,
+   `src/views/settings-automation.test.ts` and the Browser-tool journey
+   `e2e/bots.browser.md` (create, chat, routine with Run now, real OptChat
+   memory live in the panel with *Summarizing memory…*, zoom to a message, the
+   memory page, Gateway default, hide, archive, Show archived and Restore, lists
+   without the bot chat, desktop, mobile and landscape).
+   **After review (2026-10-06):** the dialog lost Instructions (New bot says
+   the bot starts by asking what you expect), the panel became Routines |
+   Memory | Soul (SOUL.md as Markdown with Edit, *Write it yourself* before the
+   bot wrote one, followed live from the bots stream), and HUI's kickoff of a
+   new bot shows as a note, *<name> was created*. Proof:
+   `src/views/bot-soul.test.ts`, `src/views/chat/projection.test.ts`,
+   `src/lib/bots.test.ts`, `src/lib/bot-roster.test.ts` and the Browser-tool
+   journey in `e2e/bots.browser.md` (screens in PR #69).
 4. Voice through VoiceStudio. Not started.
 
 ### HUI-19 — Agent widgets

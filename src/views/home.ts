@@ -31,6 +31,7 @@ import { composerEnterMode } from "../lib/composer-state.ts";
 import { compactionBlocks, noteAnnouncement, type NoteLevel } from "../lib/session-ui-state.ts";
 import { adjustTextareaHeight as syncComposerTextarea } from "../lib/composer-textarea.ts";
 import { icons } from "../lib/icons.ts";
+import { closeDropdownOnEscape, labelDropdown } from "../lib/web-awesome.ts";
 import type { SplitDirection } from "../lib/session-multiplexer.ts";
 import { renderMarkdown } from "../lib/markdown.ts";
 import "../components/github-embeds.ts";
@@ -53,6 +54,8 @@ import { renderTaskSuggestionCard, type TaskSuggestionCardProps } from "./chat/t
 import { renderWatcherActivity, type WatcherActivityProps } from "./chat/watcher-activity.ts";
 import { browserToolSummary } from "../lib/browser-tool-display.ts";
 import { toggleNavigationDrawer } from "./shell.ts";
+import { renderBotAvatar } from "./bots.ts";
+import type { BotView } from "../lib/bots.ts";
 import { slashCommandQuery } from "../lib/slash-commands.ts";
 import { renderSlashMenu, SLASH_MENU_ID, slashOptionId, type SlashMenuProps } from "./slash-menu.ts";
 import { localPathQuery, type LocalPathQuery } from "../lib/local-paths.ts";
@@ -336,6 +339,21 @@ export type HomeProps = {
   onWorkspaceBranchSuggestionsOpen: (open: boolean) => void;
   onWorkspaceBranch: (branch: string) => void;
   onOpenBranchPrefixSettings: () => void;
+  /** Present when this pane is a bot's permanent chat in the bot view. */
+  bot?: HomeBot;
+};
+
+/** What the bot header's ⋯ menu asks the app to do. */
+export type BotHeaderAction = "edit" | "archive" | "delete";
+
+/** The bot view's header: who the bot is, its Routines | Memory | Soul panel and its ⋯ menu. */
+export type HomeBot = {
+  bot: Pick<BotView, "id" | "name" | "title" | "avatar" | "memory">;
+  panelOpen: boolean;
+  panelId: string;
+  onTogglePanel: () => void;
+  /** The ⋯ menu: Edit bot…, Archive…, Delete…; without it the header has none. */
+  onAction?: (action: BotHeaderAction) => void;
 };
 
 function sessionControlId(props: HomeProps, suffix: string): string {
@@ -1024,6 +1042,30 @@ function compactionRule(label: string, options: { metric?: string; glyph?: boole
   </div>`;
 }
 
+/** The bot header's ⋯ menu, like a roster row's: Edit bot…, Archive…, Delete… (both confirmed in a dialog). */
+function renderBotHeaderMenu(bot: HomeBot): TemplateResult {
+  return html`<wa-dropdown class="session-menu bot-header-menu" placement="bottom-end" distance="4"
+    @keydown=${closeDropdownOnEscape}
+    @wa-show=${labelDropdown}
+    @wa-select=${(event: CustomEvent<{ item: { value: string } }>) => {
+      (event.currentTarget as HTMLElement).querySelector<HTMLElement>('[slot="trigger"]')?.focus();
+      const action = event.detail.item.value;
+      if (action === "edit" || action === "archive" || action === "delete") bot.onAction?.(action);
+    }}>
+    <button slot="trigger" type="button" class="btn btn--ghost btn--icon chat-icon-btn bot-header-menu__trigger" aria-label=${`Actions for ${bot.bot.name}`} title="More">${icons.moreHorizontal}</button>
+    <wa-dropdown-item value="edit" class="session-menu__item"><span slot="icon" class="session-menu__icon" aria-hidden="true">${icons.edit}</span><span class="session-menu__text">Edit bot…</span></wa-dropdown-item>
+    <div class="session-menu__separator" role="separator"></div>
+    <wa-dropdown-item value="archive" variant="danger" class="session-menu__item session-menu__item--destructive"><span slot="icon" class="session-menu__icon" aria-hidden="true">${icons.box}</span><span class="session-menu__text">Archive…</span></wa-dropdown-item>
+    <wa-dropdown-item value="delete" variant="danger" class="session-menu__item session-menu__item--destructive"><span slot="icon" class="session-menu__icon" aria-hidden="true">${icons.trash}</span><span class="session-menu__text">Delete…</span></wa-dropdown-item>
+  </wa-dropdown>`;
+}
+
+/** Where HUI started a new bot's first turn: a small centered note, never a bubble of the operator's. */
+function renderBotCreated(props: HomeProps, row: Extract<ChatProjectionRow, { kind: "botCreated" }>): TemplateResult {
+  const name = row.name || props.bot?.bot.name || "This bot";
+  return html`<div class="chat-notice chat-bot-created" data-chat-row-key=${row.id}>${compactionRule(`${name} was created`)}</div>`;
+}
+
 /** OpenClaw's completed compaction marker; the summary PI wrote stays readable. */
 function renderCompaction(row: Extract<ChatProjectionRow, { kind: "compaction" }>): TemplateResult {
   const metric = row.item.tokensBefore ? `from ${compactTokens(row.item.tokensBefore)} tokens` : "";
@@ -1041,6 +1083,7 @@ function renderTranscriptRows(props: HomeProps, rows: readonly ChatProjectionRow
   const browserPreview = props.browserPreview ? browserPreviewRow(rows) : undefined;
   return html`${rows.map((row, rowIndex) => {
     if (row.kind === "subagentEvent") return renderSubagentEvent(props, row);
+    if (row.kind === "botCreated") return renderBotCreated(props, row);
     if (row.kind === "compaction") return renderCompaction(row);
     if (row.kind === "activity") {
       const media = presentedMedia(row.items);
@@ -1078,14 +1121,15 @@ function renderTranscriptRows(props: HomeProps, rows: readonly ChatProjectionRow
     const last = row.messages.at(-1);
     // History refreshed from PI carries entry ids; a prompt sent this run has
     // none yet. A prompt PI refused (failed) was never persisted: no rewind.
-    const rewindTo: RewindTarget | undefined = row.role !== "user" || !last || last.failed ? undefined
+    // A bot's chat is permanent: the gateway refuses rewinds, so none is offered.
+    const rewindTo: RewindTarget | undefined = row.role !== "user" || !last || last.failed || props.session?.bot ? undefined
       : last.entryId ?? { userFromEnd: new Set(props.transcript.slice(props.transcript.indexOf(last) + 1)
           .flatMap((item) => item.kind === "message" && item.role === "user" && !item.failed ? [item.entryId ?? item.id] : [])).size };
     const rewindTooltipId = sessionControlId(props, `rewind-tooltip-${row.id}`);
     return html`<div class="chat-group ${row.role} chat-group--with-footer ${row.id === latestAssistantRowId ? "chat-group--latest-assistant" : ""}" data-chat-row-key=${row.id}>
       <div class="chat-group-messages">${row.messages.map((item) => renderMessage(props, item))}</div>
       ${last?.pending ? nothing : html`<div class="chat-group-footer ${row.role === "user" ? "chat-group-footer--persistent-identity" : ""}">
-        <div class="chat-group-footer__meta"><span class="chat-sender-name">${row.role === "user" ? "You" : "pi"}</span>
+        <div class="chat-group-footer__meta"><span class="chat-sender-name">${row.role === "user" ? "You" : props.session?.bot?.name ?? "pi"}</span>
           ${last?.metrics?.completedAt !== undefined || last?.metrics?.timestamp !== undefined ? html`<time class="chat-group-timestamp" datetime=${new Date(last.metrics.completedAt ?? last.metrics.timestamp!).toISOString()} title=${`${last.metrics.completedAt !== undefined ? "Completed" : "Message created"}: ${new Date(last.metrics.completedAt ?? last.metrics.timestamp!).toLocaleString()}`}>${relativeTime(last.metrics.completedAt ?? last.metrics.timestamp!)}</time>` : nothing}</div>
         ${last?.text ? html`<div class="chat-group-footer-actions">${renderActionTooltip(sessionControlId(props, `reply-tooltip-${row.id}`), "Reply", html`
           <button type="button" class="chat-copy-btn" aria-label="Reply to message" aria-describedby=${sessionControlId(props, `reply-tooltip-${row.id}`)} @click=${(event: Event) => replyToMessage(event, props, last.text)}>${icons.messageSquare}</button>
@@ -1130,7 +1174,9 @@ function renderTranscriptBody(props: HomeProps, rows: readonly ChatProjectionRow
     </div>`;
   }
   if (props.transcript.length === 0) {
-    return html`<div class="agent-chat__empty"><strong>Start a conversation</strong><span>Send a message below.</span></div>`;
+    return props.bot
+      ? html`<div class="agent-chat__empty bot-chat-empty">${renderBotAvatar(props.bot.bot, "lg")}<strong>Say hi to ${props.bot.bot.name}</strong>${props.bot.bot.title ? html`<span>${props.bot.bot.title}</span>` : nothing}</div>`
+      : html`<div class="agent-chat__empty"><strong>Start a conversation</strong><span>Send a message below.</span></div>`;
   }
   return html`${renderTranscriptRows(props, rows)}${renderLiveCompaction(props.compaction, props.onCancelCompaction)}${renderWorkingIndicator(props)}`;
 }
@@ -1512,7 +1558,7 @@ function renderComposer(props: HomeProps) {
           </div>
           <div class="agent-chat__composer-trail">
             <div class="agent-chat__composer-controls">
-          ${renderContextPicker(props.usage, props.streaming || props.compaction?.status === "running" ? undefined : props.onCompact)}
+          ${renderContextPicker(props.usage, props.streaming || props.compaction?.status === "running" ? undefined : props.onCompact, !props.session?.bot)}
           <div class="chat-controls__session chat-controls__model chat-controls__model-settings">${renderModelPicker({
             models: props.models,
             current: props.currentModel,
@@ -1689,8 +1735,9 @@ function compactTokens(value: number): string {
   return `${(value / 1_000_000).toFixed(1)}m`;
 }
 
-/** `onCompact` is absent while the session is busy. */
-function renderContextPicker(usage: RuntimeUsage | undefined, onCompact?: () => void) {
+/** `onCompact` is absent while the session is busy; `compactable` is false
+ * for a bot's permanent chat, whose memory summarizes older messages itself. */
+function renderContextPicker(usage: RuntimeUsage | undefined, onCompact?: () => void, compactable = true) {
   const percent = usage?.percent;
   const label = percent === null || percent === undefined
     ? (usage?.contextWindow ? `Context window: ${compactTokens(usage.contextWindow)} · usage unavailable` : "Context usage unavailable")
@@ -1709,8 +1756,8 @@ function renderContextPicker(usage: RuntimeUsage | undefined, onCompact?: () => 
         ${usage
           ? html`<dl class="context-usage__stats"><div><dt>Input</dt><dd>${compactTokens(usage.inputTokens)}</dd></div><div><dt>Output</dt><dd>${compactTokens(usage.outputTokens)}</dd></div><div><dt>Est. cost</dt><dd>${usage.costUsd === null ? "Unavailable" : `$${usage.costUsd.toFixed(2)}`}</dd></div></dl>`
           : html`<p>The runtime has not reported usage for this session yet.</p>`}
-        <button type="button" class="btn btn--ghost btn--sm context-usage__compact" ?disabled=${!onCompact}
-          @click=${(event: Event) => { (event.currentTarget as HTMLElement).closest("details")?.removeAttribute("open"); onCompact?.(); }}>Compact now</button>
+        ${compactable ? html`<button type="button" class="btn btn--ghost btn--sm context-usage__compact" ?disabled=${!onCompact}
+          @click=${(event: Event) => { (event.currentTarget as HTMLElement).closest("details")?.removeAttribute("open"); onCompact?.(); }}>Compact now</button>` : nothing}
       </section>
   </details></div>`;
 }
@@ -2105,6 +2152,16 @@ function renderDeleteConfirmation(props: HomeProps, session: SessionView) {
   </dialog>`;
 }
 
+/** A bot's chat names the bot, its role and whether it is summarizing memory. */
+function renderBotIdentity(bot: HomeBot, session: SessionView) {
+  const status = bot.bot.memory?.waiting ? "Summarizing memory…" : unreachableHost(session)?.status ?? STATUS_TEXT[session.status];
+  return html`<div class="transcript__identity chat-pane__crumbs bot-chat-identity">
+    ${renderBotAvatar(bot.bot, "md")}
+    <h2 class="transcript__title chat-pane__session-title" title=${bot.bot.name}>${bot.bot.name}</h2>
+    <span class="transcript__meta" title=${session.cwd}>${bot.bot.title ? `${bot.bot.title} · ` : ""}${status}</span>
+  </div>`;
+}
+
 function renderHeader(props: HomeProps, session: SessionView) {
   return html`
     <header class="transcript__head chat-pane__header" tabindex="-1" draggable=${props.paneMovable ? "true" : "false"}>
@@ -2118,7 +2175,7 @@ function renderHeader(props: HomeProps, session: SessionView) {
           aria-expanded="false"
           @click=${toggleNavigationDrawer}
         >${icons.menu}</button>` : nothing}
-        ${props.renaming ? renderSessionEditor(props, session) : html`<div class="transcript__identity chat-pane__crumbs">
+        ${props.renaming ? renderSessionEditor(props, session) : props.bot ? renderBotIdentity(props.bot, session) : html`<div class="transcript__identity chat-pane__crumbs">
           <span class="session-row__dot" data-status=${session.status} aria-hidden="true"></span>
           <h2 class="transcript__title chat-pane__session-title" title=${session.title}>${session.title}</h2>
           <span class="transcript__meta" title=${session.cwd}>
@@ -2135,6 +2192,11 @@ function renderHeader(props: HomeProps, session: SessionView) {
       </div>
       <div class="chat-pane__header-trailing">
         <div class="chat-pane__actions chat-pane__header-actions">
+          ${props.bot ? html`<button type="button" class="btn btn--ghost btn--icon chat-icon-btn bot-panel-toggle"
+            aria-label=${props.bot.panelOpen ? "Hide routines, memory and soul" : "Show routines, memory and soul"} title="Routines, memory and soul"
+            aria-expanded=${String(props.bot.panelOpen)} aria-controls=${props.bot.panelOpen ? props.bot.panelId : nothing}
+            @click=${props.bot.onTogglePanel}>${icons.panelRightOpen}</button>` : nothing}
+          ${props.bot?.onAction ? renderBotHeaderMenu(props.bot) : nothing}
           ${props.onOpenBrowser ? html`<button type="button" class="btn btn--ghost btn--icon chat-icon-btn chat-open-browser" aria-label="Open browser panel" title="Open browser panel" @click=${props.onOpenBrowser}>${icons.globe}</button>` : nothing}
           ${props.onOpenTerminal && !session.worker ? html`<button type="button" class="btn btn--ghost btn--icon chat-icon-btn" aria-label="Open terminal" title="Open terminal" ?disabled=${props.terminalOpening} @click=${props.onOpenTerminal}>${icons.squareTerminal}</button>` : nothing}
           <button type="button" class="btn btn--ghost btn--sm session-history-action" ?disabled=${props.opening || props.streaming || props.continuing || props.transcript.length === 0} @click=${props.onContinue} aria-label="Continue without a prompt">
