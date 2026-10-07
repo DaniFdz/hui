@@ -117,6 +117,33 @@ test("a patch carries only what changes and may clear optional text and avatar k
   assert.equal(patchedAvatar({ emoji: "🦊" }, { emoji: "" }), undefined);
 });
 
+test("a bot's look: a face shape from the five and any #rrggbb color, an emoji beside them; \"\" or null clears", () => {
+  assert.deepEqual(normalizeBotInput({ name: "Ada", avatar: { shape: "heart", color: "#2FC49A" } }), { name: "Ada", avatar: { shape: "heart", color: "#2fc49a" } });
+  assert.deepEqual(normalizeBotInput({ name: "Ada", avatar: { emoji: "🦊", shape: "cookie" } }), { name: "Ada", avatar: { emoji: "🦊", shape: "cookie" } }, "the face waits behind an emoji");
+  assert.deepEqual(normalizeBotInput({ name: "Ada", avatar: { shape: "", color: "" } }), { name: "Ada" }, "a new bot has no look to clear: its id picks one");
+  for (const shape of ["blob", "round", "triangle", "heart", "cookie"]) assert.deepEqual(normalizeBotPatch({ avatar: { shape } }), { avatar: { shape } });
+  for (const [avatar, message] of [
+    [{ shape: "star" }, /Avatar shape must be one of: blob, round, triangle, heart, cookie/u],
+    [{ shape: "Heart" }, /Avatar shape must be one of/u],
+    [{ shape: 3 }, /Avatar shape must be one of/u],
+    [{ shape: null }, /Avatar shape must be one of/u],
+    [{ color: "mint" }, /#rrggbb/u],
+    [{ face: "heart" }, /Unknown avatar field: face/u],
+    ["heart", /emoji, color and\/or shape/u],
+  ] as const) {
+    assert.throws(() => normalizeBotPatch({ avatar }), (error: unknown) => error instanceof BotInputError && message.test(error.message), JSON.stringify(avatar));
+  }
+  assert.deepEqual(normalizeBotPatch({ avatar: { emoji: "", shape: "", color: "" } }), { avatar: { emoji: "", shape: "", color: "" } }, "\"\" is kept so the patch can tell it clears");
+  // PATCH: given keys replace, "" clears one, null clears all three.
+  const look = { emoji: "🦊", shape: "heart" as const, color: "#2fc49a" };
+  assert.deepEqual(patchedAvatar(look, { emoji: "" }), { shape: "heart", color: "#2fc49a" }, "clearing the emoji switches the bot to its face");
+  assert.deepEqual(patchedAvatar(look, { shape: "" }), { emoji: "🦊", color: "#2fc49a" }, "a cleared shape goes back to the id's");
+  assert.deepEqual(patchedAvatar(look, { shape: "round", color: "#3a7bfa" }), { emoji: "🦊", shape: "round", color: "#3a7bfa" });
+  assert.deepEqual(patchedAvatar(undefined, { shape: "triangle" }), { shape: "triangle" });
+  assert.equal(patchedAvatar(look, null), undefined);
+  assert.equal(patchedAvatar({ shape: "heart" }, { shape: "" }), undefined, "nothing left: the avatar goes");
+});
+
 test("SOUL.md text is trimmed with Unix line ends, at most 20,000 characters; the kickoff message is recognized by its first line", () => {
   assert.equal(normalizeSoul("\r\n# Soul\r\nline\rnext \n"), "# Soul\nline\nnext");
   assert.equal(normalizeSoul("   "), "", "blank is none");
@@ -135,6 +162,8 @@ test("SOUL.md text is trimmed with Unix line ends, at most 20,000 characters; th
 });
 
 test("stored records keep what validates: a bad optional field is dropped, a bad required one skips the record", () => {
+  assert.deepEqual(parseBotRecord({ ...bot("a", "ada"), avatar: { shape: "heart", color: "#2fc49a" } }), { ...bot("a", "ada"), avatar: { color: "#2fc49a", shape: "heart" } });
+  assert.deepEqual(parseBotRecord({ ...bot("a", "ada"), avatar: { emoji: "🦊", shape: "star" } }), { ...bot("a", "ada"), avatar: { emoji: "🦊" } }, "an unknown shape is dropped, not the bot");
   assert.deepEqual(parseBotRecord({ ...bot("a", "ada"), avatar: { emoji: "🦊", color: "teal" }, thinking: "max", title: "", hidden: "yes" }), {
     ...bot("a", "ada"), avatar: { emoji: "🦊" },
   });

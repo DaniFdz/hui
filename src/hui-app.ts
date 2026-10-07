@@ -199,6 +199,7 @@ import type { BacklogCardAction, SessionCardAction } from "./views/kanban.ts";
 import type { BacklogStartTarget } from "./components/backlog-start-dialog.ts";
 import { addSuggestionToBacklog, backlogItemMarkdown, loadBacklog, removeBacklogItem, setBacklogItemGroup, type BacklogItem, type BacklogJiraState } from "./lib/backlog.ts";
 import { loadJiraConnection } from "./lib/jira.ts";
+import { BOT_FACE_COLORS, BOT_FACE_SHAPES, botLook, botSeed, type BotFaceShape } from "../shared/bots.ts";
 import { localTimezone, type AutomationProps } from "./views/settings-automation.ts";
 import { loadWorkers, workerAction, type WorkerView } from "./lib/workers.ts";
 import { hasOpenWebAwesomePopup } from "./lib/web-awesome.ts";
@@ -514,6 +515,12 @@ export class HuiApp extends HuiElement {
   @state() private botDraftModel = "";
   @state() private botDraftThinking = "";
   @state() private botDraftMemoryModel = "";
+  /** The dialog's Look: a face (shape and color) or an emoji, edited live in its preview. */
+  @state() private botDraftLook: "face" | "emoji" = "face";
+  @state() private botDraftShape: BotFaceShape = "blob";
+  @state() private botDraftColor = "#3a7bfa";
+  @state() private botDraftEmoji = "";
+  private botDraftSeed = 0;
   @state() private botArchive: BotView | undefined;
   @state() private botArchivePending = false;
   @state() private botArchiveError = "";
@@ -3741,6 +3748,13 @@ export class HuiApp extends HuiElement {
     this.botDraftModel = "";
     this.botDraftThinking = "";
     this.botDraftMemoryModel = "";
+    // A new bot starts with a face picked at random; it keeps the one the dialog shows.
+    const random = Math.floor(Math.random() * 2 ** 32);
+    this.botDraftLook = "face";
+    this.botDraftShape = BOT_FACE_SHAPES[random % BOT_FACE_SHAPES.length]!;
+    this.botDraftColor = BOT_FACE_COLORS[Math.floor(random / BOT_FACE_SHAPES.length) % BOT_FACE_COLORS.length]!.hex;
+    this.botDraftEmoji = "";
+    this.botDraftSeed = random;
     ++this.directorySuggestionRequest;
     this.directorySuggestions = [];
     // The model pickers read PI's catalog; New Session loads it the same way.
@@ -3754,6 +3768,13 @@ export class HuiApp extends HuiElement {
     this.botDraftModel = bot.model ?? "";
     this.botDraftThinking = bot.thinking ?? "";
     this.botDraftMemoryModel = bot.memoryModel ?? "";
+    // An emoji bot keeps its emoji until Face is chosen; the face starts as the bot shows it (its own or its id's).
+    const look = botLook(bot);
+    this.botDraftLook = look.kind;
+    this.botDraftShape = look.shape;
+    this.botDraftColor = look.color;
+    this.botDraftEmoji = look.emoji ?? "";
+    this.botDraftSeed = botSeed(bot.id);
     ++this.directorySuggestionRequest;
     this.directorySuggestions = [];
     this.loadLaunchPreferences();
@@ -3774,7 +3795,12 @@ export class HuiApp extends HuiElement {
       this.botDialogError = "Name the bot.";
       return;
     }
-    const draft = { ...values, model: this.botDraftModel, thinking: this.botDraftThinking, memoryModel: this.botDraftMemoryModel };
+    if (this.botDraftLook === "emoji" && !this.botDraftEmoji.trim()) {
+      this.botDialogError = "Type an emoji, or choose Face.";
+      return;
+    }
+    const look = { look: this.botDraftLook, shape: this.botDraftShape, color: this.botDraftColor, emoji: this.botDraftEmoji };
+    const draft = { ...values, ...look, model: this.botDraftModel, thinking: this.botDraftThinking, memoryModel: this.botDraftMemoryModel };
     const patch = state.mode === "edit" ? botPatchFromDraft(state.bot, draft) : undefined;
     // Saving an untouched bot changes nothing, and the gateway refuses an empty change.
     if (patch && !Object.keys(patch).length) {
@@ -4293,6 +4319,17 @@ export class HuiApp extends HuiElement {
       onMemoryModel: (value) => { this.botDraftMemoryModel = value; },
       onSubmit: this.submitBotDialog,
       onCancel: this.closeBotDialog,
+      look: {
+        kind: this.botDraftLook,
+        shape: this.botDraftShape,
+        color: this.botDraftColor,
+        emoji: this.botDraftEmoji,
+        seed: this.botDraftSeed,
+        onKind: (kind) => { this.botDraftLook = kind; this.botDialogError = ""; },
+        onShape: (shape) => { this.botDraftShape = shape; },
+        onColor: (color) => { this.botDraftColor = color; },
+        onEmoji: (emoji) => { this.botDraftEmoji = emoji; },
+      },
     }) : nothing}
     ${this.botArchive ? renderBotArchiveDialog(this.botArchive, this.botArchivePending, this.botArchiveError, this.confirmArchiveBot, this.closeBotArchive) : nothing}
     ${this.botDelete ? renderBotDeleteDialog(this.botDelete, this.botDeletePending, this.botDeleteError, this.confirmDeleteBot, this.closeBotDelete) : nothing}`;

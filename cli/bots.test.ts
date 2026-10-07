@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { test, type TestContext } from "node:test";
 import { botKickoffText, type BotMessageResult, type BotView } from "../shared/bots.ts";
 import type { AutomationTask } from "../src/lib/automation-types.ts";
-import { botCommand, findBot, formatBots, parseDuration, parseZoom, questionAnswer, routineSchedule, type BotIO } from "./bots.ts";
+import { botCommand, findBot, formatBots, formatLook, lookColor, parseDuration, parseZoom, questionAnswer, routineSchedule, type BotIO } from "./bots.ts";
 
 function view(id: string, handle: string, extra: Partial<BotView> = {}): BotView {
   return {
@@ -228,7 +228,7 @@ test("list, show, add, edit, remove, restore and stop talk to the bot routes and
 
   const shown = terminal();
   await botCommand(gateway.base, "show", ["ada"], {}, shown.io);
-  assert.match(shown.out, /^@ada · Ada \(Researcher\)\nstatus: idle\nmodel: default\nmemory: 2 messages · 3 summaries built · 0 pending · view 300 B in 2 lines · compactor 1 call, 1 token in, 1 out\nroutines: 1\n/u);
+  assert.match(shown.out, /^@ada · Ada \(Researcher\)\nstatus: idle\nlook: face · Cookie \(from its id\) · Yellow \(from its id\)\nmodel: default\nmemory: 2 messages · 3 summaries built · 0 pending · view 300 B in 2 lines · compactor 1 call, 1 token in, 1 out\nroutines: 1\n/u);
   assert.match(shown.out, /\nsoul: SOUL\.md \(hui bot soul ada\)\n$/u);
   const unread = terminal();
   await botCommand(gateway.base, "show", ["bob"], {}, unread.io);
@@ -259,6 +259,15 @@ test("list, show, add, edit, remove, restore and stop talk to the bot routes and
   assert.deepEqual(gateway.calls.at(-1), { method: "PATCH", path: "/__hui/bots/id-ada", body: { title: "Lead", thinking: "high" } }, "only the given fields");
   await botCommand(gateway.base, "edit", ["ada"], { model: "", thinking: "", "memory-model": "" }, terminal().io);
   assert.deepEqual(gateway.calls.at(-1)?.body, { model: "", thinking: "", memoryModel: "" }, "empty values clear, back to the defaults");
+  // The look: an emoji, or the face's shape and color (palette names or #rrggbb); "" clears each, --emoji "" shows the face.
+  await botCommand(gateway.base, "edit", ["ada"], { shape: "Pebble", color: "Mint" }, terminal().io);
+  assert.deepEqual(gateway.calls.at(-1)?.body, { avatar: { shape: "round", color: "#2fc49a" } }, "a label and a palette name go as the id and hex");
+  await botCommand(gateway.base, "edit", ["ada"], { emoji: "", color: "#FF6B4A" }, terminal().io);
+  assert.deepEqual(gateway.calls.at(-1)?.body, { avatar: { emoji: "", color: "#ff6b4a" } });
+  await botCommand(gateway.base, "edit", ["ada"], { shape: "", color: "" }, terminal().io);
+  assert.deepEqual(gateway.calls.at(-1)?.body, { avatar: { shape: "", color: "" } }, "back to the id's face");
+  await botCommand(gateway.base, "add", [], { name: "Heart", shape: "heart", color: "coral" }, terminal().io);
+  assert.deepEqual(gateway.calls.at(-1)?.body, { name: "Heart", avatar: { shape: "heart", color: "#ff6b4a" } });
   const removed = terminal();
   await botCommand(gateway.base, "remove", ["bob"], {}, removed.io);
   assert.equal(gateway.calls.at(-1)?.method, "DELETE");
@@ -273,6 +282,16 @@ test("list, show, add, edit, remove, restore and stop talk to the bot routes and
   const idle = terminal();
   await botCommand(gateway.base, "stop", ["ada"], { json: true }, idle.io);
   assert.equal((JSON.parse(idle.out) as BotView).status, "idle");
+});
+
+test("show names the look: the face's shape and color, or the emoji, and what the bot's id picked", () => {
+  assert.equal(formatLook({ id: "id-ada" }), "face · Cookie (from its id) · Yellow (from its id)");
+  assert.equal(formatLook({ id: "id-ada", avatar: { shape: "heart", color: "#2fc49a" } }), "face · Heart · Mint");
+  assert.equal(formatLook({ id: "id-ada", avatar: { shape: "round", color: "#123456" } }), "face · Pebble · #123456", "a custom color shows as its hex");
+  assert.equal(formatLook({ id: "id-ada", avatar: { emoji: "🦊" } }), "emoji 🦊 · Yellow (from its id)");
+  assert.equal(lookColor(" Lilac "), "#9b7cf6");
+  assert.equal(lookColor("#ABCDEF"), "#abcdef");
+  assert.equal(lookColor(""), "");
 });
 
 test("delete removes any bot for good once confirmed: a terminal is asked, anything else needs --yes", async (t) => {

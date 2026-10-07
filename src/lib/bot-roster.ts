@@ -113,40 +113,6 @@ export function archivedBotCount(bots: readonly BotView[]): number {
   return bots.filter((bot) => bot.archived).length;
 }
 
-/** Colors the avatar draws from (the session palette in tokens.css). */
-export const BOT_AVATAR_TONES = 8;
-
-export type BotAvatarView = {
-  /** The bot's chosen emoji, drawn instead of the initial. */
-  emoji?: string;
-  initial: string;
-  /** The bot's own #rrggbb color; otherwise the palette tone applies. */
-  color?: string;
-  /** Deterministic palette index from the bot's id, stable across renames. */
-  tone: number;
-};
-
-function firstGrapheme(value: string): string {
-  const trimmed = value.trim();
-  if (!trimmed) return "";
-  if (typeof Intl !== "undefined" && "Segmenter" in Intl) {
-    const segment = new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(trimmed)[Symbol.iterator]().next();
-    if (!segment.done) return segment.value.segment;
-  }
-  return Array.from(trimmed)[0] ?? "";
-}
-
-export function botAvatar(bot: Pick<BotView, "id" | "name" | "avatar">): BotAvatarView {
-  let hash = 0;
-  for (const character of bot.id) hash = (hash * 31 + character.codePointAt(0)!) >>> 0;
-  return {
-    ...(bot.avatar?.emoji ? { emoji: bot.avatar.emoji } : {}),
-    initial: firstGrapheme(bot.name).toLocaleUpperCase() || "?",
-    ...(bot.avatar?.color ? { color: bot.avatar.color } : {}),
-    tone: hash % BOT_AVATAR_TONES,
-  };
-}
-
 /** The row's second line: the latest message, else the bot's role. */
 export function botPreview(bot: Pick<BotView, "lastMessage" | "title">): string {
   if (bot.lastMessage?.text) return `${bot.lastMessage.role === "user" ? "You: " : ""}${bot.lastMessage.text}`;

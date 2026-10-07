@@ -218,12 +218,25 @@ bot; **Show archived** lists archived bots so you can restore them, or delete
 one with its trash icon. Deleting asks first, and takes the bot's chat,
 routines, memory and folder. Bot chats never appear among your sessions.
 
+**Faces.** Every bot has an animated face, after OpenAI's Dots: a plush shape
+(Blob, Pebble, Triangle, Heart or Cookie) in one of six colors, with two dot
+eyes. It shows what the bot is doing: it breathes while idle, squints and
+ponders while it thinks, bobs while a tool runs, tilts and hops while it waits
+for your answer, gets sleepy while it summarizes its memory, droops after a
+failure and does a little hop when a turn ends. The large face of an empty chat
+looks at your pointer. With *reduce motion* on in your system settings the
+faces keep still and change only their expression. The bot dialog's **Look**
+chooses **Face** (shape and color, with a live preview) or **Emoji**; a bot that
+already had an emoji keeps it until you choose Face. Bots you never styled get a
+face picked by their id, the same on every screen.
+
 ### Creating and editing
 
 ```sh
 hui bot add                      # "New Bot", which asks what to call it
 hui bot add --name Ada --title Researcher --model openai/gpt-5.6
-hui bot edit ada --thinking high --emoji 🦊
+hui bot edit ada --thinking high --shape heart --color mint
+hui bot edit ada --emoji 🦊      # an emoji instead of the face; --emoji "" goes back to the face
 hui bot show ada
 ```
 
@@ -240,6 +253,9 @@ model picker, and a new working directory
 is accepted only while the bot is idle (its chat starts again there; should a
 routine start a turn meanwhile, the edit is refused halfway: repeat it once the
 bot is idle).
+`--shape` (blob, round or pebble, triangle, heart, cookie) and `--color` (blue,
+yellow, magenta, mint, coral, lilac or any `#rrggbb`) style the face; `""` goes
+back to the one the bot's id picks. `hui bot show` prints the look.
 `--memory-model` picks the model that writes the memory's summaries. An empty
 value clears a choice: `hui bot edit ada --model "" --thinking ""` puts the chat
 back on the model and thinking level a new chat gets (*Gateway default* in the

@@ -9,7 +9,7 @@ import { packageVersion, type Installation } from "./installation.ts";
 import { LOG_FILE, withLifecycleLock } from "./state.ts";
 import { updateRelease } from "./update.ts";
 import { checkNightly, checkRelease } from "./releases.ts";
-import { BOT_THINKING_LEVELS } from "../shared/bots.ts";
+import { BOT_FACE_COLORS, BOT_FACE_SHAPES, BOT_THINKING_LEVELS, botFaceColor, botFaceShape } from "../shared/bots.ts";
 
 export const HELP = `Usage:
   hui gateway start [--host <IP|tailnet>] [--port <number>] [--allow-host <name>] [--json]
@@ -33,7 +33,8 @@ export const HELP = `Usage:
   hui bot list [--archived] [--json]
   hui bot show <bot> [--json]
   hui bot add [--name <name>] [--title <text>] [--soul-file <path|->] [--cwd <dir>]
-              [--model <provider/model>] [--thinking <level>] [--memory-model <provider/model>] [--emoji <e>] [--json]
+              [--model <provider/model>] [--thinking <level>] [--memory-model <provider/model>] [--emoji <e>]
+              [--shape <blob|round|triangle|heart|cookie>] [--color <name|#rrggbb>] [--json]
   hui bot edit <bot> [same flags as add but --soul-file] [--json]
   hui bot soul <bot> [--file <path|->] [--json]
   hui bot remove <bot> [--json]
@@ -75,6 +76,11 @@ gives it one instead (- reads stdin) and skips that first conversation. Without
 --name it is "New Bot" and first asks what to call it. Soul prints SOUL.md;
 --file replaces it, and an empty file removes it so the bot asks again. On edit, --model "" and --thinking "" go back to the model and
 thinking level a new chat gets, --memory-model "" to the chat's own model.
+A bot shows an animated face, or its --emoji while it has one: --emoji "" switches
+it to its face. --shape is blob, round (or pebble), triangle, heart or cookie;
+--color one of blue, yellow, magenta, mint, coral, lilac or any #rrggbb. Without
+them a bot's face is picked by its id, the same everywhere; on edit "" goes back
+to that one.
 Remove archives: the chat transcript and memory are kept and its routines are
 disabled. Delete removes a bot for good, active or archived: its turn stops, its
 chat leaves HUI, and its routines, memory and folder (SOUL.md and every file in
@@ -100,7 +106,7 @@ export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {
     name: { type: "string" }, command: { type: "string" }, "extra-path": { type: "string", multiple: true },
     archived: { type: "boolean" }, title: { type: "string" }, "soul-file": { type: "string" }, file: { type: "string" }, yes: { type: "boolean", short: "y" },
     cwd: { type: "string" }, model: { type: "string" }, thinking: { type: "string" }, "memory-model": { type: "string" },
-    emoji: { type: "string" }, wait: { type: "boolean" }, timeout: { type: "string" }, zoom: { type: "string" }, html: { type: "string" },
+    emoji: { type: "string" }, shape: { type: "string" }, color: { type: "string" }, wait: { type: "boolean" }, timeout: { type: "string" }, zoom: { type: "string" }, html: { type: "string" },
     prompt: { type: "string" }, at: { type: "string" }, every: { type: "string" }, cron: { type: "string" }, timezone: { type: "string" },
   } });
   if (values.help || !args.length) return { command: "help", values };
@@ -149,7 +155,7 @@ export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {
 }
 
 /** The flags `bot add` and `bot edit` share. */
-const BOT_FIELDS = ["name", "title", "cwd", "model", "thinking", "memory-model", "emoji"];
+const BOT_FIELDS = ["name", "title", "cwd", "model", "thinking", "memory-model", "emoji", "shape", "color"];
 /** Operands each bot command takes, in order. */
 const BOT_OPERANDS: Record<string, readonly string[]> = {
   "bot list": [], "bot add": [], "bot show": ["bot"], "bot edit": ["bot"], "bot soul": ["bot"], "bot remove": ["bot"], "bot restore": ["bot"], "bot delete": ["bot"],
@@ -171,6 +177,12 @@ function checkBotCommand(command: string, operands: readonly string[], values: R
   const cleared = (flag: string) => values[flag] === "";
   if (given("thinking") && !cleared("thinking") && !(BOT_THINKING_LEVELS as readonly string[]).includes(String(values["thinking"]))) throw new Error(`--thinking must be one of: ${BOT_THINKING_LEVELS.join(", ")}.`);
   for (const flag of ["model", "memory-model"]) if (given(flag) && !cleared(flag) && !MODEL_REF.test(String(values[flag]))) throw new Error(`--${flag} must be provider/model.`);
+  if (given("shape") && !cleared("shape") && !botFaceShape(String(values["shape"]))) {
+    throw new Error(`--shape must be one of: ${BOT_FACE_SHAPES.join(", ")}; "" goes back to the one its id picks.`);
+  }
+  if (given("color") && !cleared("color") && !botFaceColor(String(values["color"])) && !/^#[0-9a-f]{6}$/iu.test(String(values["color"]).trim())) {
+    throw new Error(`--color must be one of ${BOT_FACE_COLORS.map((color) => color.id).join(", ")} or #rrggbb; "" goes back to the one its id picks.`);
+  }
   if (given("timeout") && (!values["wait"] || !/^\d+$/u.test(String(values["timeout"])) || Number(values["timeout"]) < 1 || Number(values["timeout"]) > 3600)) {
     throw new Error("--timeout needs --wait and 1-3600 seconds.");
   }

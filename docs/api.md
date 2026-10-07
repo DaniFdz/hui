@@ -1226,7 +1226,7 @@ type BotRecord = {
   thinking?: string;
   memoryModel?: string;        // "provider/id" of OptChat's compactor; absent: the chat's own model
   memoryThinking?: string;
-  avatar?: { emoji?: string /* one grapheme */; color?: string /* #rrggbb */ };
+  avatar?: { emoji?: string /* one grapheme */; color?: string /* #rrggbb */; shape?: "blob" | "round" | "triangle" | "heart" | "cookie" }; // the look, below
   hidden?: boolean;
   archived?: boolean;
   sessionId: string;           // HUI session record of the chat
@@ -1263,6 +1263,21 @@ Durable's compactions are declined. The gateway reads it through
 `DurableHost.optchat` (`optChatBotMemory` in `server/bot-memory.ts`); a chat
 whose conversation has no OptChat, or a store this process does not own, has no
 memory to read.
+
+**The look.** A bot shows an animated face (a plush `shape` in a `color`, two
+dot eyes, after OpenAI's Dots) or, while it has one, its `emoji` on a tile of
+that color; clearing the emoji switches it to its face. `shape` is one of
+`BOT_FACE_SHAPES` (`round` is labelled Pebble) and `color` any `#rrggbb`; the
+Bots tab and `hui bot --color` offer `BOT_FACE_COLORS` (blue `#3a7bfa`,
+yellow `#f5c21b`, magenta `#d23ce0`, mint `#2fc49a`, coral `#ff6b4a`, lilac
+`#9b7cf6`). A missing `shape` or `color` is not stored: every client derives it
+from the bot's id with `defaultBotLook` (`botSeed`, a 32-bit FNV-1a hash with a
+final mix: shape `seed % 5`, color `floor(seed / 5) % 6`), so the same bot has
+the same face in the roster, its chat and `hui bot show`, across reloads and
+machines. `botLook` resolves the whole look; views never carry it. The face's
+expression (thinking, using tools, waiting, summarizing, failed) is
+presentation only, derived in the browser from the bot's status and its open
+chat.
 
 `model` and `thinking` in a view are the chat's own (its session record), which
 the session's model controls may change at any time; `PATCH` sets both, and
@@ -1306,7 +1321,7 @@ read the chat's memory, 500 for storage failures; other methods answer 405.
 | `GET /__hui/bots[?archived=1]` | 200 `{ bots: BotView[] }` | Active bots, or with `archived=1` only archived ones, sorted by name |
 | `POST /__hui/bots` | 201 `{ bot }` | `BotInput`: the record fields, all optional (`{}` is enough), `handle` and `soul` (SOUL.md's text, ≤ 20,000 characters after trimming; given, the bot skips its first conversation and no kickoff runs). Without `name` the bot is `New Bot` (`NEW_BOT_NAME`), which its first conversation replaces (`set_profile`). Without `handle` one is derived from the name (`-2`, `-3`… on collision); an explicit handle that is taken is 409 |
 | `GET /__hui/bots/:id` | 200 `{ bot }` | |
-| `PATCH /__hui/bots/:id` | 200 `{ bot }` | Only what changes; `""` clears `title`, `description`, `model`, `thinking` (back to the gateway defaults, above), `memoryModel`, `memoryThinking` (back to the chat's model and OptChat's default level); an avatar key `""` clears it, `avatar: null` clears both. `soul` is refused (400): SOUL.md has its own route. A given handle replaces the old one (409 if taken); a new `name` without one re-derives the handle while it is still the automatic one, derived from the old name (kept unique), and a handle chosen before stays. `model`/`thinking` go through the live chat (`setModel`/`setThinking`); `name` and the memory fields reconfigure OptChat, `name` also the session title; `cwd` is accepted only while the chat is idle (409 otherwise) and boots its runtime again there; a turn that starts during that edit (a routine, say) makes it answer 409 after the conversation and the chat's session record already moved, with the bot record still naming the old directory, so repeat the edit once the bot is idle to finish it. Archived bots are 409 |
+| `PATCH /__hui/bots/:id` | 200 `{ bot }` | Only what changes; `""` clears `title`, `description`, `model`, `thinking` (back to the gateway defaults, above), `memoryModel`, `memoryThinking` (back to the chat's model and OptChat's default level); an avatar key `""` clears it (`emoji: ""` switches the bot to its face, `shape: ""` and `color: ""` go back to the ones its id picks), `avatar: null` clears all three (an unknown `shape` or a color that is not `#rrggbb` is 400). `soul` is refused (400): SOUL.md has its own route. A given handle replaces the old one (409 if taken); a new `name` without one re-derives the handle while it is still the automatic one, derived from the old name (kept unique), and a handle chosen before stays. `model`/`thinking` go through the live chat (`setModel`/`setThinking`); `name` and the memory fields reconfigure OptChat, `name` also the session title; `cwd` is accepted only while the chat is idle (409 otherwise) and boots its runtime again there; a turn that starts during that edit (a routine, say) makes it answer 409 after the conversation and the chat's session record already moved, with the bot record still naming the old directory, so repeat the edit once the bot is idle to finish it. Archived bots are 409 |
 | `DELETE /__hui/bots/:id` | 200 `{ bot }` | Archives, deleting nothing: marks the bot, disables every Automation task aimed at its chat, withdraws messages still in HUI's follow-up queue for it, stops a running turn and archives the chat's session record. Idempotent |
 | `DELETE /__hui/bots/:id?permanent=1` | 200 `{ ok: true }` | Deletes a bot for good, active or archived: withdraws messages still in HUI's follow-up queue for it and stops a running turn; its conversation stops being a bot's chat and its memory goes, in one commit (the `hui.bot` document cleared, OptChat turned off) and then OptChat's files; then every Automation task aimed at its chat, the chat's session record as `DELETE /__hui/sessions/:id` does (its runtime stops), its home folder `CONFIG_DIR/bots/<id>` with everything in it (SOUL.md and every file HUI or the bot put there; only `<BOTS_DIR>/<id>` itself, resolved, never following a link out), then the bot. A working directory the operator chose is never touched (when it lies inside the home folder, only SOUL.md goes). pi-durable cannot delete a conversation yet, so its raw log stays in the Durable store, where nothing reads it back. Each step can run again, so deleting again finishes an interrupted attempt; afterwards the bot is 404 |
 | `POST /__hui/bots/:id/restore` | 200 `{ bot }` | Unarchives the bot and its session record; routines stay disabled |

@@ -97,19 +97,18 @@
   line-height: 1;
   user-select: none;
 }
-.bot-avatar[data-tone="0"] { --bot-avatar-color: var(--session-color-purple); }
-.bot-avatar[data-tone="1"] { --bot-avatar-color: var(--session-color-blue); }
-.bot-avatar[data-tone="2"] { --bot-avatar-color: var(--session-color-yellow); }
-.bot-avatar[data-tone="3"] { --bot-avatar-color: var(--session-color-green); }
-.bot-avatar[data-tone="4"] { --bot-avatar-color: var(--session-color-cyan); }
-.bot-avatar[data-tone="5"] { --bot-avatar-color: var(--session-color-pink); }
-.bot-avatar[data-tone="6"] { --bot-avatar-color: var(--session-color-orange); }
-.bot-avatar[data-tone="7"] { --bot-avatar-color: var(--session-color-red); }
+/* An emoji sits on a tile of the bot's color (its own, or the one its id picks). */
 .bot-avatar--emoji { background: color-mix(in srgb, var(--bot-avatar-color) 16%, var(--bg-elevated)); font-size: 16px; }
-.bot-avatar--sm { width: 24px; height: 24px; font-size: 12px; }
-.bot-avatar--sm.bot-avatar--emoji { font-size: 14px; }
 .bot-avatar--lg { width: 52px; height: 52px; font-size: 22px; }
 .bot-avatar--lg.bot-avatar--emoji { font-size: 28px; }
+.bot-avatar--xl { width: 72px; height: 72px; font-size: 30px; }
+.bot-avatar--xl.bot-avatar--emoji { font-size: 40px; }
+/* A face is wider than the tile (bot-face.css: sm 32px, md 36px); in rows the tile
+ * takes the same room, so names line up whichever look a bot has. */
+.bot-avatar--sm.bot-avatar--emoji { margin-inline: 2px; }
+.bot-avatar--md.bot-avatar--emoji { margin-inline: 4px; }
+/* A face brings its own size (src/styles/bot-face.css) and needs no tile. */
+.bot-avatar.bot-avatar--face { width: auto; height: auto; border-radius: 0; background: none; }
 .bot-avatar__glyph { line-height: 1; }
 .bot-avatar__badge {
   position: absolute;
@@ -262,7 +261,7 @@
   padding: 6px 8px 6px 14px;
   border-radius: var(--radius-md);
 }
-.app-shell .bot-archived-row .bot-avatar { opacity: .72; }
+.app-shell .bot-archived-row .bot-avatar--emoji { opacity: .72; }
 .app-shell .bot-archived-row__text { display: flex; flex: 1 1 auto; flex-direction: column; gap: 1px; min-width: 0; }
 .app-shell .bot-archived-row__name,
 .app-shell .bot-archived-row__meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -654,10 +653,73 @@
 .bot-soul__actions { display: flex; justify-content: flex-end; gap: 6px; }
 
 /* ── New / Edit bot dialog ── */
-.bot-dialog__card { display: flex; flex-direction: column; gap: 12px; }
+/* The dialog scrolls; the card grows with its fields instead of inheriting the
+ * dialog's max-height, so a tall form keeps its background when scrolled. */
+.bot-dialog__card { display: flex; flex-direction: column; gap: 12px; max-height: none; }
 .bot-dialog__row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
-.bot-dialog__row:has(.bot-dialog__emoji) { grid-template-columns: minmax(0, 1fr) 96px; }
 .bot-dialog .input-dialog__field { min-width: 0; }
 @media (max-width: 520px) {
-  .bot-dialog__row:not(:has(.bot-dialog__emoji)) { grid-template-columns: minmax(0, 1fr); }
+  .bot-dialog__row { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* The Look: Face (shape and color chips beside a live preview) or Emoji. Native radios, visually hidden, keep Tab
+ * and arrow keys; the chip around a focused one shows the focus ring. */
+.bot-dialog__look { display: grid; gap: 8px; min-width: 0; min-inline-size: 0; margin-block-end: 0; margin-inline: 0; padding: 0; border: 0; }
+.bot-dialog__look-legend { float: left; width: 100%; margin: 0; padding: 0; color: var(--muted); font-size: 13px; font-weight: 500; }
+.bot-dialog__look input[type="radio"] { position: absolute; width: 1px; height: 1px; margin: 0; padding: 0; border: 0; opacity: 0; pointer-events: none; }
+.bot-dialog__look-kind { justify-self: start; }
+.bot-dialog__look-kind > .settings-segmented__btn { position: relative; padding: 0 14px; }
+.field .bot-dialog__look-kind span { color: inherit; font-size: inherit; font-weight: inherit; }
+.bot-dialog__look-kind > .settings-segmented__btn:has(input:checked) { background: var(--bg-elevated); color: var(--text-strong); box-shadow: var(--shadow-sm); }
+.bot-dialog__look-kind > .settings-segmented__btn:has(input:focus-visible) { box-shadow: var(--focus-ring); }
+.bot-dialog__look-body { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; min-width: 0; }
+.bot-dialog__look-preview {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 112px;
+  height: 112px;
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--text) 5%, transparent);
+}
+.bot-dialog__look-preview hui-bot-face[size] { --bot-face-size: 100px; }
+.bot-dialog__look .bot-avatar__glyph { color: inherit; font-size: inherit; font-weight: inherit; }
+.bot-dialog__look-preview .bot-avatar--lg.bot-avatar--emoji { width: 80px; height: 80px; font-size: 44px; }
+.bot-dialog__look-pickers { display: grid; flex: 1 1 220px; gap: 10px; min-width: 0; }
+.bot-dialog__shapes { display: flex; flex-wrap: wrap; gap: 6px; }
+.bot-dialog__chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 11px 0 7px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: var(--card, var(--panel));
+  color: var(--text);
+  cursor: var(--cursor-action, pointer);
+}
+.field .bot-dialog__chip span { color: inherit; font-size: var(--control-ui-text-sm); font-weight: 500; }
+.bot-dialog__shape-icon { width: 18px; height: 18px; flex: none; fill: var(--bot-look-color, var(--accent)); }
+.bot-dialog__chip:has(input:checked) { border-color: var(--accent); background: var(--accent-subtle); color: var(--text-strong); }
+.bot-dialog__chip:has(input:focus-visible) { box-shadow: var(--focus-ring); }
+.bot-dialog__colors { display: flex; flex-wrap: wrap; gap: 10px; padding: 2px; }
+.bot-dialog__swatch {
+  position: relative;
+  display: inline-block;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--swatch);
+  box-shadow: 0 0 0 2px var(--card, var(--bg-elevated)), 0 0 0 3px var(--border);
+  cursor: var(--cursor-action, pointer);
+}
+.bot-dialog__swatch:has(input:checked) { box-shadow: 0 0 0 2px var(--card, var(--bg-elevated)), 0 0 0 4px var(--text-strong); }
+.bot-dialog__swatch:has(input:focus-visible) { outline: 2px solid var(--ring); outline-offset: 5px; }
+.bot-dialog__look label:has(input:disabled) { opacity: .6; cursor: default; }
+@media (hover: hover) and (pointer: fine) {
+  .bot-dialog__chip:hover:not(:has(input:checked, input:disabled)) { background: var(--bg-hover); }
+}
+.bot-dialog__emoji { display: grid; flex: 1 1 160px; gap: 6px; min-width: 0; }
+.bot-dialog__emoji .settings-input { width: 100%; max-width: 160px; }

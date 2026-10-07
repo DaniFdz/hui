@@ -1232,12 +1232,12 @@ everything the Bots tab can, through the same routes.
   command palette or session pickers; Automations labels their routines
   *Bot · name* and words
   their schedules as the bot's panel does (*Daily at 08:00*). The roster
-  lists bots by latest activity: an emoji or initial on a color stable per bot,
-  the name, the latest message or role, a short time, an activity badge (active,
+  lists bots by latest activity: the bot's animated face (or its emoji), the
+  name, the latest message or role, a short time, an activity badge (active,
   waiting for an answer, summarizing memory, failed), an unread dot (also on the
   Bots tab while Agents shows) and a warning while memory summaries keep
   failing. Search matches name, handle and title. The toolbar's + opens **New
-  bot** (name, emoji, title, model, thinking, memory model, workspace; no
+  bot** (name, look, title, model, thinking, memory model, workspace; no
   instructions: the bot starts by asking what you expect from it; nothing
   changes until the gateway accepts it); *Gateway default*
   leaves the model and thinking level to the gateway, and choosing it when
@@ -1250,7 +1250,7 @@ everything the Bots tab can, through the same routes.
   folder go) and what stays (a workspace the operator chose); deleting the
   open bot returns home. An archived bot's chat opens again only once
   restored. A bot opens at `/bots/<id>` as its one chat in the ordinary
-  session pane, its header showing avatar, name, role and status and a ⋯ menu
+  session pane, its header showing face, name, role and status and a ⋯ menu
   with Edit bot…, Archive… and Delete…;
   assistant turns carry the bot's name, `/clear`, `/compact`, Compact now and
   rewind are not offered. A new bot speaks first: its chat opens on a small
@@ -1331,6 +1331,37 @@ over a divider in the sidebar's top row. He then dropped the header's New
 session and Search buttons, which he never used, and asked for the collapse
 toggle to stay put: it now starts that top row, and the restore control appears
 on the same spot while the sidebar is collapsed.
+
+### Bots have animated faces (2026-10-06)
+
+The owner asked for faces "like OpenAI Dots" instead of letter and emoji
+avatars and approved the prototype (`bot-face-prototype.html`, outside the
+repository) with "Okay, implement this"; the prototype is the spec. Each bot
+gets a plush SVG shape (Blob, Pebble, Triangle, Heart, Cookie) in one of six
+colors, with two dot eyes and no mouth, drawn by `<hui-bot-face>` with no new
+dependency. Expressions come from the eyes (blinks, glances, squints, closed
+arcs) and the body (breathing, sway, squash and stretch, hops), for ten
+states: idle, thinking, working (a tool runs), speaking and listening (for
+calls), waiting (a question), memory (summarizing), error, done (a hop when a
+turn ends) and offline (unreachable or archived).
+
+- **Look on the record, defaults from the id.** `avatar` gains `shape` beside
+  `emoji` and `color` (no format change: absent keys stay absent). A bot without
+  them gets the face its id picks, the same everywhere; a new bot from the Bots
+  tab keeps the face its dialog showed. The emoji stays an alternative: a bot
+  with one shows it until someone switches it to its face (clearing the emoji),
+  and its tile takes the bot's color. The CLI has `--shape`, `--color` and
+  `--emoji ""`, and `hui bot show` prints the look.
+- **Real states only.** Roster rows follow the bot's status (a running turn is
+  thinking); its open chat adds a running tool, a pending question, memory
+  waits and a failed turn. Text badges and status lines stay; faces are
+  `aria-hidden`.
+- **Cheap.** CSS keyframes carry the motion; small faces only blink and glance
+  on timers. Large faces (the empty chat, the dialog's preview) also follow
+  the pointer and morph on animation frames. Faces pause while hidden or off
+  screen, and prefers-reduced-motion leaves a still expression per state.
+- **Later, if wanted:** accessories (Dots' glasses, hats), more shapes, a custom
+  color picker, and sprite-sheet pets.
 
 ### New sessions run on Pi Durable
 

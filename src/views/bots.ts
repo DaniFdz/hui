@@ -9,7 +9,9 @@ import { icons } from "../lib/icons.ts";
 import { closeDropdownOnEscape, labelDropdown } from "../lib/web-awesome.ts";
 import { navigationPath } from "../lib/navigation.ts";
 import type { BotDraft, BotMemoryStatus, BotView } from "../lib/bots.ts";
-import { BOT_LIMITS, BOT_THINKING_LEVELS } from "../../shared/bots.ts";
+import { BOT_FACE_COLORS, BOT_FACE_SHAPES, BOT_FACE_SHAPE_LABELS, BOT_LIMITS, BOT_THINKING_LEVELS, botLook, type BotAvatar, type BotFaceShape } from "../../shared/bots.ts";
+import { facePath, rosterFaceState, type BotFaceSize, type BotFaceState } from "../lib/bot-face.ts";
+import "../components/bot-face.ts";
 import type { RuntimeModel } from "../lib/sessions-store.ts";
 import type { AutomationRun, AutomationSnapshot, AutomationTask, AutomationTaskInput } from "../lib/automation-types.ts";
 import {
@@ -18,7 +20,6 @@ import {
   botAccessibleName,
   botActivity,
   botActivityAt,
-  botAvatar,
   botPreview,
   compactRelativeTime,
   hiddenBotCount,
@@ -42,10 +43,23 @@ if (typeof document !== "undefined") {
 
 /* ── avatar ───────────────────────────────────────────────────────────────── */
 
-export function renderBotAvatar(bot: Pick<BotView, "id" | "name" | "avatar">, size: "sm" | "md" | "lg" = "md", badge: TemplateResult | typeof nothing = nothing) {
-  const avatar = botAvatar(bot);
-  return html`<span class="bot-avatar bot-avatar--${size} ${avatar.emoji ? "bot-avatar--emoji" : ""}" data-tone=${avatar.tone}
-    style=${avatar.color ? `--bot-avatar-color: ${avatar.color}` : nothing} aria-hidden="true"><span class="bot-avatar__glyph">${avatar.emoji ?? avatar.initial}</span>${badge}</span>`;
+export type BotAvatarOptions = {
+  /** What the face shows; an emoji has no expressions. */
+  state?: BotFaceState;
+  badge?: TemplateResult | typeof nothing;
+  /** An audio level (0–1) for a large face that speaks or listens. */
+  level?: () => number | undefined;
+};
+
+/** A bot's face (or its emoji, while it has one), decorative: the name and status stay in text beside it. */
+export function renderBotAvatar(bot: Pick<BotView, "id" | "avatar">, size: BotFaceSize = "md", options: BotAvatarOptions = {}) {
+  const look = botLook(bot);
+  const badge = options.badge ?? nothing;
+  if (look.kind === "emoji") {
+    return html`<span class="bot-avatar bot-avatar--${size} bot-avatar--emoji" style=${`--bot-avatar-color: ${look.color}`} aria-hidden="true"><span class="bot-avatar__glyph">${look.emoji}</span>${badge}</span>`;
+  }
+  return html`<span class="bot-avatar bot-avatar--${size} bot-avatar--face" aria-hidden="true"><hui-bot-face size=${size} shape=${look.shape} .color=${look.color}
+    .seed=${look.seed} state=${options.state ?? "idle"} .level=${options.level}></hui-bot-face>${badge}</span>`;
 }
 
 function activityBadge(bot: BotView) {
@@ -115,7 +129,7 @@ function botRow(bot: BotView, props: BotRosterProps, drawer: RosterDrawer) {
         drawer.navigate(event);
         props.onSelect(bot);
       }}>
-      ${renderBotAvatar(bot, "md", activityBadge(bot))}
+      ${renderBotAvatar(bot, "sm", { state: rosterFaceState(bot), badge: activityBadge(bot) })}
       <span class="bot-row__text">
         <span class="bot-row__top">
           <span class="bot-row__name sidebar-recent-session__name">${bot.name}</span>
@@ -164,7 +178,7 @@ function botRow(bot: BotView, props: BotRosterProps, drawer: RosterDrawer) {
 function archivedRow(bot: BotView, props: BotRosterProps, drawer: RosterDrawer) {
   const pending = props.pendingId === bot.id;
   return html`<li class="bot-archived-row" data-bot-id=${bot.id}>
-    ${renderBotAvatar(bot, "sm")}
+    ${renderBotAvatar(bot, "sm", { state: "offline" })}
     <span class="bot-archived-row__text">
       <span class="bot-archived-row__name">${bot.name}</span>
       <span class="bot-archived-row__meta">${bot.title || botPreview(bot)}</span>
@@ -621,7 +635,64 @@ export type BotDialogProps = {
   onMemoryModel: (value: string) => void;
   onSubmit: (values: BotFormValues) => void;
   onCancel: () => void;
+  /** The Look: a face (shape and color) or an emoji. */
+  look: BotDialogLook;
 };
+
+export type BotDialogLook = {
+  kind: "face" | "emoji";
+  shape: BotFaceShape;
+  /** #rrggbb: a palette color, or a custom one the bot already has. */
+  color: string;
+  emoji: string;
+  /** Seeds the preview's plush texture: the bot's, or any for a new bot. */
+  seed: number;
+  onKind: (kind: "face" | "emoji") => void;
+  onShape: (shape: BotFaceShape) => void;
+  onColor: (color: string) => void;
+  onEmoji: (emoji: string) => void;
+};
+
+/** A shape's outline, small, for its picker chip. */
+function shapeIcon(shape: BotFaceShape) {
+  return html`<svg class="bot-dialog__shape-icon" viewBox="16 22 88 88" aria-hidden="true" focusable="false"><path d=${facePath(shape)}></path></svg>`;
+}
+
+/** Face (shape and color, previewed live) or Emoji. Native radio groups: Tab enters each group, arrows choose. */
+function renderLookField(look: BotDialogLook, pending: boolean) {
+  const face = look.kind === "face";
+  const custom = BOT_FACE_COLORS.some((color) => color.hex === look.color) ? undefined : look.color;
+  const swatches = [...BOT_FACE_COLORS.map((color) => ({ hex: color.hex, label: color.label })), ...(custom ? [{ hex: custom, label: `Custom ${custom}` }] : [])];
+  const preview: Pick<BotView, "id" | "avatar"> & { avatar: BotAvatar } = { id: "preview", avatar: { color: look.color, shape: look.shape, ...(face ? {} : { emoji: look.emoji.trim() || "🤖" }) } };
+  return html`<fieldset class="field input-dialog__field bot-dialog__look" data-face-stage>
+    <legend class="bot-dialog__look-legend">Look</legend>
+    <div class="settings-segmented bot-dialog__look-kind" role="radiogroup" aria-label="Look">
+      ${([["face", "Face"], ["emoji", "Emoji"]] as const).map(([value, label]) => html`<label class="settings-segmented__btn">
+        <input type="radio" name="look" value=${value} .checked=${look.kind === value} ?disabled=${pending} @change=${() => look.onKind(value)} /><span>${label}</span></label>`)}
+    </div>
+    <div class="bot-dialog__look-body">
+      <div class="bot-dialog__look-preview">${face
+        ? html`<span class="bot-avatar bot-avatar--lg bot-avatar--face" aria-hidden="true"><hui-bot-face size="lg" shape=${look.shape} .color=${look.color} .seed=${look.seed} state="idle"></hui-bot-face></span>`
+        : renderBotAvatar(preview, "lg")}</div>
+      ${face ? html`<div class="bot-dialog__look-pickers">
+        <div class="bot-dialog__shapes" role="radiogroup" aria-label="Shape">
+          ${BOT_FACE_SHAPES.map((shape) => html`<label class="bot-dialog__chip" style=${`--bot-look-color: ${look.color}`}>
+            <input type="radio" name="shape" value=${shape} .checked=${look.shape === shape} ?disabled=${pending} @change=${() => look.onShape(shape)} />
+            ${shapeIcon(shape)}<span>${BOT_FACE_SHAPE_LABELS[shape]}</span></label>`)}
+        </div>
+        <div class="bot-dialog__colors" role="radiogroup" aria-label="Color">
+          ${swatches.map((color) => html`<label class="bot-dialog__swatch" style=${`--swatch: ${color.hex}`} title=${color.label}>
+            <input type="radio" name="color" value=${color.hex} aria-label=${color.label} .checked=${look.color === color.hex} ?disabled=${pending} @change=${() => look.onColor(color.hex)} /></label>`)}
+        </div>
+      </div>` : html`<label class="bot-dialog__emoji"><span class="bot-field__label">Emoji</span>
+        <input class="settings-input" name="emoji" type="text" maxlength="16" autocomplete="off" placeholder="🤖" .value=${look.emoji} ?disabled=${pending}
+          @input=${(event: Event) => look.onEmoji((event.target as HTMLInputElement).value)} /></label>`}
+    </div>
+    <span class="bot-field__hint">${face
+      ? "Its face shows what it is doing: thinking, using tools or waiting for you."
+      : "One emoji instead of a face."}</span>
+  </fieldset>`;
+}
 
 const THINKING_LABELS: Record<(typeof BOT_THINKING_LEVELS)[number], string> = { off: "Off", minimal: "Minimal", low: "Low", medium: "Medium", high: "High", xhigh: "Extra high" };
 /** "Gateway default" sends "": a new bot leaves the choice to the gateway, an
@@ -654,12 +725,9 @@ export function renderBotDialog(props: BotDialogProps) {
       <div class="exec-approval-sub">${editing
         ? "Changes apply to the bot's next turn. Its chat and memory stay as they are."
         : "A bot keeps one permanent chat with its own model and memory. Once it is created, it starts by asking what you expect from it."}</div>
-      <div class="bot-dialog__row">
-        <label class="field input-dialog__field bot-dialog__name"><span>Name</span>
-          <input class="settings-input" name="name" type="text" required maxlength=${BOT_LIMITS.name} autocomplete="off" placeholder="Scout" .value=${editing?.name ?? ""} ?disabled=${props.pending} /></label>
-        <label class="field input-dialog__field bot-dialog__emoji"><span>Emoji</span>
-          <input class="settings-input" name="emoji" type="text" maxlength="16" autocomplete="off" placeholder="🤖" .value=${editing?.avatar?.emoji ?? ""} ?disabled=${props.pending} /></label>
-      </div>
+      <label class="field input-dialog__field bot-dialog__name"><span>Name</span>
+        <input class="settings-input" name="name" type="text" required maxlength=${BOT_LIMITS.name} autocomplete="off" placeholder="Scout" .value=${editing?.name ?? ""} ?disabled=${props.pending} /></label>
+      ${renderLookField(props.look, props.pending)}
       <label class="field input-dialog__field"><span>Title</span>
         <input class="settings-input" name="title" type="text" maxlength=${BOT_LIMITS.title} autocomplete="off" placeholder="Research assistant" .value=${editing?.title ?? ""} ?disabled=${props.pending} /></label>
       <div class="bot-dialog__row">

@@ -55,6 +55,7 @@ import { renderWatcherActivity, type WatcherActivityProps } from "./chat/watcher
 import { browserToolSummary } from "../lib/browser-tool-display.ts";
 import { toggleNavigationDrawer } from "./shell.ts";
 import { renderBotAvatar } from "./bots.ts";
+import { chatFaceState, hasRunningTool, type BotFaceState } from "../lib/bot-face.ts";
 import type { BotView } from "../lib/bots.ts";
 import { slashCommandQuery } from "../lib/slash-commands.ts";
 import { renderSlashMenu, SLASH_MENU_ID, slashOptionId, type SlashMenuProps } from "./slash-menu.ts";
@@ -1175,7 +1176,7 @@ function renderTranscriptBody(props: HomeProps, rows: readonly ChatProjectionRow
   }
   if (props.transcript.length === 0) {
     return props.bot
-      ? html`<div class="agent-chat__empty bot-chat-empty">${renderBotAvatar(props.bot.bot, "lg")}<strong>Say hi to ${props.bot.bot.name}</strong>${props.bot.bot.title ? html`<span>${props.bot.bot.title}</span>` : nothing}</div>`
+      ? html`<div class="agent-chat__empty bot-chat-empty" data-face-stage>${renderBotAvatar(props.bot.bot, "lg", { state: botFaceState(props) })}<strong>Say hi to ${props.bot.bot.name}</strong>${props.bot.bot.title ? html`<span>${props.bot.bot.title}</span>` : nothing}</div>`
       : html`<div class="agent-chat__empty"><strong>Start a conversation</strong><span>Send a message below.</span></div>`;
   }
   return html`${renderTranscriptRows(props, rows)}${renderLiveCompaction(props.compaction, props.onCancelCompaction)}${renderWorkingIndicator(props)}`;
@@ -2152,11 +2153,24 @@ function renderDeleteConfirmation(props: HomeProps, session: SessionView) {
   </dialog>`;
 }
 
+/** What a bot's face shows in its open chat: its session's status refined by the live turn (a running tool, a question, a
+ * failed run) and its memory. */
+function botFaceState(props: HomeProps): BotFaceState {
+  return chatFaceState({
+    status: props.session?.status ?? "idle",
+    streaming: props.streaming,
+    question: Boolean(props.question),
+    memoryWaiting: Boolean(props.bot?.bot.memory?.waiting),
+    toolRunning: props.streaming && hasRunningTool(props.transcript),
+    failed: Boolean(props.runError),
+  });
+}
+
 /** A bot's chat names the bot, its role and whether it is summarizing memory. */
-function renderBotIdentity(bot: HomeBot, session: SessionView) {
+function renderBotIdentity(bot: HomeBot, session: SessionView, face: BotFaceState) {
   const status = bot.bot.memory?.waiting ? "Summarizing memory…" : unreachableHost(session)?.status ?? STATUS_TEXT[session.status];
   return html`<div class="transcript__identity chat-pane__crumbs bot-chat-identity">
-    ${renderBotAvatar(bot.bot, "md")}
+    ${renderBotAvatar(bot.bot, "md", { state: face })}
     <h2 class="transcript__title chat-pane__session-title" title=${bot.bot.name}>${bot.bot.name}</h2>
     <span class="transcript__meta" title=${session.cwd}>${bot.bot.title ? `${bot.bot.title} · ` : ""}${status}</span>
   </div>`;
@@ -2175,7 +2189,7 @@ function renderHeader(props: HomeProps, session: SessionView) {
           aria-expanded="false"
           @click=${toggleNavigationDrawer}
         >${icons.menu}</button>` : nothing}
-        ${props.renaming ? renderSessionEditor(props, session) : props.bot ? renderBotIdentity(props.bot, session) : html`<div class="transcript__identity chat-pane__crumbs">
+        ${props.renaming ? renderSessionEditor(props, session) : props.bot ? renderBotIdentity(props.bot, session, botFaceState(props)) : html`<div class="transcript__identity chat-pane__crumbs">
           <span class="session-row__dot" data-status=${session.status} aria-hidden="true"></span>
           <h2 class="transcript__title chat-pane__session-title" title=${session.title}>${session.title}</h2>
           <span class="transcript__meta" title=${session.cwd}>

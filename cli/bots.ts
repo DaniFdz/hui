@@ -8,7 +8,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { createInterface } from "node:readline";
-import { botKickoffName, NEW_BOT_NAME, type BotMessageResult, type BotQuestion, type BotSoul, type BotsUpdate, type BotView } from "../shared/bots.ts";
+import { BOT_FACE_SHAPE_LABELS, botColorName, botFaceColor, botFaceShape, botKickoffName, botLook, NEW_BOT_NAME, type BotMessageResult, type BotQuestion, type BotSoul, type BotsUpdate, type BotView } from "../shared/bots.ts";
 import type { AutomationSchedule, AutomationTask } from "../src/lib/automation-types.ts";
 
 export type BotFlags = {
@@ -25,6 +25,8 @@ export type BotFlags = {
   thinking?: string;
   "memory-model"?: string;
   emoji?: string;
+  shape?: string;
+  color?: string;
   wait?: boolean;
   timeout?: string;
   zoom?: string;
@@ -175,8 +177,31 @@ async function botBody(flags: BotFlags, io: BotIO): Promise<Record<string, unkno
   if (flags.model !== undefined) body["model"] = flags.model;
   if (flags.thinking !== undefined) body["thinking"] = flags.thinking;
   if (flags["memory-model"] !== undefined) body["memoryModel"] = flags["memory-model"];
-  if (flags.emoji !== undefined) body["avatar"] = { emoji: flags.emoji };
+  // The look: an emoji, or (with --emoji "") the face, its shape and color; "" clears each.
+  if (flags.emoji !== undefined || flags.shape !== undefined || flags.color !== undefined) {
+    body["avatar"] = {
+      ...(flags.emoji !== undefined ? { emoji: flags.emoji } : {}),
+      ...(flags.shape !== undefined ? { shape: flags.shape.trim() ? botFaceShape(flags.shape) ?? flags.shape.trim().toLowerCase() : "" } : {}),
+      ...(flags.color !== undefined ? { color: lookColor(flags.color) } : {}),
+    };
+  }
   return body;
+}
+
+/** A palette name (`mint`) as its hex; a hex as given, lowercase; "" as "", which clears the color. */
+export function lookColor(value: string): string {
+  const color = value.trim();
+  return color ? botFaceColor(color)?.hex ?? color.toLowerCase() : "";
+}
+
+/** `face · heart · Mint`, `emoji 🦊 · Mint`; "(from its id)" marks what the bot's id picked. */
+export function formatLook(bot: Pick<BotView, "id" | "avatar">): string {
+  const look = botLook(bot);
+  const picked = " (from its id)";
+  const color = `${botColorName(look.color)}${look.derived.color ? picked : ""}`;
+  return look.kind === "emoji"
+    ? `emoji ${look.emoji} · ${color}`
+    : `face · ${BOT_FACE_SHAPE_LABELS[look.shape]}${look.derived.shape ? picked : ""} · ${color}`;
 }
 
 const routinesOf = async (base: string, bot: BotView) =>
@@ -708,6 +733,7 @@ export function formatBot(bot: BotView): string {
   return [
     `${bot.avatar?.emoji ? `${bot.avatar.emoji} ` : ""}@${bot.handle} · ${bot.name}${bot.title ? ` (${bot.title})` : ""}${bot.archived ? " · archived" : ""}`,
     `status: ${bot.status}${bot.unread ? " · unread" : ""}`,
+    `look: ${formatLook(bot)}`,
     `model: ${bot.model ?? "default"}${bot.thinking ? ` · thinking ${bot.thinking}` : ""}`,
     `memory: ${bot.memory ? formatMemory(bot.memory) : "unavailable"}${bot.memoryModel ? ` · compactor model ${bot.memoryModel}` : ""}`,
     `routines: ${bot.routines}`,
