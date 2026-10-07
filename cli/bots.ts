@@ -332,8 +332,11 @@ async function send(base: string, bot: BotView, message: string, flags: BotFlags
   else if (result.status === "failed") io.err(`@${bot.handle} failed: ${result.error ?? "the turn ended with an error."}\n`);
   else if (result.status === "timeout") io.err(`No answer within ${timeoutSeconds ?? DEFAULT_WAIT_SECONDS}s; @${bot.handle} keeps working. Follow it with hui bot chat ${bot.handle}.\n`);
   else {
-    for (const question of "questions" in result ? result.questions ?? [] : []) io.out(formatQuestion(question));
-    io.out(`@${bot.handle} needs an answer: reply with hui bot chat ${bot.handle}.\n`);
+    const asked = "questions" in result ? result.questions ?? [] : [];
+    for (const question of asked) io.out(formatQuestion(question));
+    io.out(asked.length && asked.every((question) => question.method === "secret")
+      ? `@${bot.handle} needs a secret: give it in HUI's Secret card, in its chat.\n`
+      : `@${bot.handle} needs an answer: reply with hui bot chat ${bot.handle}.\n`);
   }
   return code;
 }
@@ -414,6 +417,8 @@ async function* frames(base: string, path: string, signal: AbortSignal): AsyncGe
 export function questionAnswer(question: BotQuestion, typed: string): Record<string, unknown> {
   const value = typed.trim();
   if (value === "/cancel") return { id: question.id, cancelled: true };
+  // HUI's masked card takes a secret: typed here it would stay on screen and in the terminal's scrollback.
+  if (question.method === "secret") throw new Error("Give the secret in HUI's Secret card, in this bot's chat, so it stays out of this terminal (or /cancel).");
   if (question.method === "confirm") {
     if (/^(y|yes)$/iu.test(value)) return { id: question.id, confirmed: true };
     if (/^(n|no)$/iu.test(value)) return { id: question.id, confirmed: false };
@@ -684,12 +689,13 @@ export async function botChat(base: string, bot: BotView, io: BotIO): Promise<nu
 }
 
 function formatQuestion(question: BotQuestion): string {
-  const lines = [`? ${question.title}`];
+  const lines = [`? ${question.method === "secret" ? `Secret: ${question.title}` : question.title}`];
   if (question.message) lines.push(`  ${question.message}`);
   (question.options ?? []).forEach((option, index) => lines.push(`  ${index + 1}. ${option}`));
   lines.push(question.method === "confirm" ? "  Answer y or n, or /cancel."
     : question.method === "select" ? "  Answer with a number, or /cancel."
-      : `  Type your answer${question.prefill ? ` (was: ${question.prefill})` : ""}, or /cancel.`);
+      : question.method === "secret" ? "  Give it in HUI's Secret card, in this bot's chat, so it stays out of this terminal; or /cancel."
+        : `  Type your answer${question.prefill ? ` (was: ${question.prefill})` : ""}, or /cancel.`);
   return `${lines.join("\n")}\n`;
 }
 

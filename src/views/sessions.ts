@@ -41,6 +41,16 @@ export type SessionsPageProps = {
   onCopyPath: (path: string, trigger: HTMLElement) => void;
   onNew: () => void;
   onRefresh: () => void;
+  /** Checked rows; only the visible ones are acted on. */
+  selected: ReadonlySet<string>;
+  onSelect: (ids: readonly string[], checked: boolean) => void;
+  confirmingDelete: boolean;
+  deleting: boolean;
+  /** Outcome of the last bulk delete. */
+  deleteNotice: string;
+  onDeleteSelected: () => void;
+  onCancelDelete: () => void;
+  onConfirmDelete: (ids: readonly string[], removeWorktrees: boolean) => void;
 };
 
 /** Starting sessions are about to run, so the Running filter includes them. */
@@ -153,9 +163,10 @@ export function formatBootDuration(milliseconds: number | undefined): string {
 
 function sessionRow(session: SessionView, props: SessionsPageProps): TemplateResult {
   return html`
-      <tr class="session-data-row" data-session-id=${session.id}>
+      <tr class="session-data-row ${session.archived ? "session-data-row--archived" : ""}" data-session-id=${session.id}>
         <td class="data-table-checkbox-col">
-          <input type="checkbox" disabled aria-label=${`Select ${session.title} (not yet available)`} />
+          <input type="checkbox" aria-label=${`Select ${session.title}`} .checked=${props.selected.has(session.id)}
+            @change=${(event: Event) => props.onSelect([session.id], (event.target as HTMLInputElement).checked)} />
         </td>
         <td class="data-table-key-col">
           <div class="session-key-cell">
@@ -230,6 +241,38 @@ function groupRow(section: SessionRowGroup): TemplateResult {
       </div>
     </td>
   </tr>`;
+}
+
+function visibleRows(props: SessionsPageProps) {
+  return props.loading || props.error ? [] : matchingSessions(props.groups, props.query, props.state, props.filters.status);
+}
+
+function deleteDialog(props: SessionsPageProps, ids: readonly string[]): TemplateResult | typeof nothing {
+  if (!props.confirmingDelete) return nothing;
+  const count = ids.length === 1 ? "1 session" : `${ids.length} sessions`;
+  return html`<dialog class="hui-modal-dialog sessions-delete-dialog" aria-labelledby="sessions-delete-title"
+    @cancel=${(event: Event) => { event.preventDefault(); props.onCancelDelete(); }}
+    @keydown=${(event: KeyboardEvent) => {
+      // HUI's document-level Escape handler would otherwise swallow the key.
+      if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); props.onCancelDelete(); }
+    }}>
+    <form class="exec-approval-card" method="dialog" @submit=${(event: SubmitEvent) => {
+      event.preventDefault();
+      props.onConfirmDelete(ids, new FormData(event.currentTarget as HTMLFormElement).has("worktrees"));
+    }}>
+      <div class="exec-approval-title" id="sessions-delete-title">Delete ${count} from HUI?</div>
+      <div class="exec-approval-sub">HUI will remove ${ids.length === 1 ? "this session" : "these sessions"} and all their subagents, and stop their runtimes. Their PI transcripts remain on disk and are not deleted.</div>
+      <label class="sessions-delete-dialog__option">
+        <input type="checkbox" name="worktrees" ?disabled=${props.deleting} />
+        <span>Also remove their worktrees
+          <small class="exec-approval-sub">Only HUI-created worktrees without local changes and not used by another session. Others are kept.</small></span>
+      </label>
+      <div class="exec-approval-actions">
+        <button type="submit" class="btn danger" ?disabled=${props.deleting}>${props.deleting ? "Deleting…" : `Delete ${count}`}</button>
+        <button type="button" class="btn sessions-delete-cancel" autofocus ?disabled=${props.deleting} @click=${props.onCancelDelete}>Cancel</button>
+      </div>
+    </form>
+  </dialog>`;
 }
 
 function body(props: SessionsPageProps): TemplateResult {
@@ -309,6 +352,9 @@ export function renderSessionsPage(props: SessionsPageProps): TemplateResult {
   const averageStartup = startupTimes.length
     ? startupTimes.reduce((total, value) => total + value, 0) / startupTimes.length
     : undefined;
+  const visibleIds = visibleRows(props).map(({ session }) => session.id);
+  const selectedIds = visibleIds.filter((id) => props.selected.has(id));
+  const archivedIds = props.loading || props.error ? [] : matchingSessions(props.groups, props.query, "archived", props.filters.status).map(({ session }) => session.id);
   const heaviest = measured.toSorted((a, b) => (b.runtime?.memoryBytes ?? 0) - (a.runtime?.memoryBytes ?? 0))[0];
   return html`
     <section class="settings-workspace hui-workspace-page sessions-workspace">
@@ -396,12 +442,26 @@ export function renderSessionsPage(props: SessionsPageProps): TemplateResult {
                   `)}
                 </div>
                 ${filtersPopover(props)}
+                ${archivedIds.length ? html`<button type="button" class="btn btn--sm"
+                  @click=${() => { props.onState("archived"); props.onSelect(archivedIds, true); }}>Select archived (${archivedIds.length})</button>` : nothing}
               </div>
+              ${selectedIds.length || props.deleteNotice ? html`<div class="sessions-bulk-bar">
+                ${selectedIds.length ? html`
+                  <span class="sessions-bulk-bar__count">${selectedIds.length} selected</span>
+                  <button type="button" class="btn btn--sm danger" @click=${props.onDeleteSelected}>${icons.trash} Delete…</button>
+                  <button type="button" class="btn btn--sm" @click=${() => props.onSelect(selectedIds, false)}>Clear selection</button>
+                ` : nothing}
+                ${props.deleteNotice ? html`<span class="sessions-bulk-bar__notice" role="status">${props.deleteNotice}</span>` : nothing}
+              </div>` : nothing}
               <div class="data-table-container">
                 <table class="data-table sessions-table">
                   <thead>
                     <tr>
-                      <th class="data-table-checkbox-col"><input type="checkbox" disabled aria-label="Select all sessions (not yet available)" /></th>
+                      <th class="data-table-checkbox-col"><input type="checkbox" aria-label="Select all shown sessions"
+                        ?disabled=${!visibleIds.length}
+                        .checked=${visibleIds.length > 0 && selectedIds.length === visibleIds.length}
+                        .indeterminate=${selectedIds.length > 0 && selectedIds.length < visibleIds.length}
+                        @change=${(event: Event) => props.onSelect(visibleIds, (event.target as HTMLInputElement).checked)} /></th>
                       <th class="data-table-key-col">Key</th>
                       <th class="session-runtime-col">Runtime</th>
                       <th class="session-status-col">Status</th>
@@ -418,6 +478,7 @@ export function renderSessionsPage(props: SessionsPageProps): TemplateResult {
           </section>
         </div>
       </div>
+      ${deleteDialog(props, selectedIds)}
     </section>
   `;
 }
