@@ -1,3 +1,7 @@
+/**
+ * Resolves how to launch PI's CLI: the copy installed with HUI's own pinned dependency, unless HUI_PI_CLI names
+ * another one explicitly.
+ */
 import { fileURLToPath } from "node:url";
 
 /** The package carries a compatible PI CLI; global PATH installations must not

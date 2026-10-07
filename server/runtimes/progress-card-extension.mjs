@@ -1,3 +1,7 @@
+/**
+ * HUI-owned presentation signal. PI persists ordinary tool calls in its transcript; HUI projects the latest
+ * arguments into the composer card.
+ */
 import { Type } from "typebox";
 
 const Step = Type.Object({
@@ -9,8 +13,6 @@ const Step = Type.Object({
   ]),
 });
 
-/** HUI-owned presentation signal. PI persists ordinary tool calls in its
- * transcript; HUI projects the latest arguments into the composer card. */
 export default function progressCardExtension(pi) {
   pi.registerTool({
     name: "progress_card",

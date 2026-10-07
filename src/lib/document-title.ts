@@ -1,3 +1,4 @@
+/** The browser tab's title. It names the selected session at most and never carries transcript content. */
 const APP_TITLE = "HUI";
 
 /** Keep browser chrome useful without leaking any transcript content. */

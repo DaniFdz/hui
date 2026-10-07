@@ -1,3 +1,8 @@
+/**
+ * Pixel geometry for split session panes: track sizes with minimums, each pane's rectangle and the dividers
+ * between them. Panes are positioned rather than re-parented, so moving one never restarts its stream or
+ * terminal.
+ */
 import type { PaneRect, SessionLayout } from "./session-multiplexer.ts";
 
 export const PANE_DIVIDER_SIZE = 6;

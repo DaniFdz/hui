@@ -1,3 +1,8 @@
+/**
+ * The single route from HUI tool code to the gateway's agent-tool handler. A tool running inside the gateway
+ * uses the caller-bound invoker directly; a PI child process uses the authenticated loopback bridge. Either way
+ * the caller's identity comes from the runtime, never from tool parameters.
+ */
 import { AsyncLocalStorage } from "node:async_hooks";
 import { request } from "node:http";
 import { text } from "node:stream/consumers";

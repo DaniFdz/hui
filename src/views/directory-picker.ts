@@ -1,3 +1,7 @@
+/**
+ * A working-directory field with a suggestion list, used wherever a session's directory is chosen. It owns the list's
+ * open/close, keyboard and focus handling on the DOM; the value and the suggestions belong to the caller.
+ */
 import { html, nothing } from "lit";
 
 function openDirectorySuggestions(event: FocusEvent | InputEvent, onInput: (value: string) => void) {

@@ -188,7 +188,7 @@ test("bots are created, read, edited, archived and restored through the guarded 
   assert.equal((await call("/__hui/bots/ada/memory", "POST", {})).status, 405);
 
   // A forever chat refuses what would reset, shorten, fork or delete it.
-  for (const [path, method, body] of [["clear", "POST", {}], ["compact", "POST", {}], ["rewind", "POST", { entryId: "1" }]] as const) {
+  for (const [path, method, body] of [["clear", "POST", {}], ["compact", "POST", {}], ["rewind", "POST", { entryId: "1" }], ["fork", "POST", { entryId: "1" }]] as const) {
     const refused = await call(`/__hui/sessions/${ada.sessionId}/${path}`, method, body);
     assert.equal(refused.status, 409, path);
     assert.match(String(refused.body["error"]), /@ada's forever chat/u);

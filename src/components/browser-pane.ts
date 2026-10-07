@@ -1,3 +1,8 @@
+/**
+ * The browser panel beside a chat, for one session's agent browser. Streaming, tabs and pointer marks come from the
+ * shared browser view controller; this element fits the frame to the pane and stops streaming while the pane is
+ * hidden. It only watches: the agent drives the browser, the operator can only choose which tab to see.
+ */
 import { html, nothing, type PropertyValues } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { keyed } from "lit/directives/keyed.js";

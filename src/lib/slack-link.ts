@@ -1,3 +1,4 @@
+/** Recognises canonical Slack conversation links for inline previews. Parsing only; it never contacts Slack. */
 export interface SlackLinkPreview {
   url: string;
   workspace: string;

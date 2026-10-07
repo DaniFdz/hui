@@ -11,6 +11,10 @@ details in the owning directory guide.
   overlapping edits with the owning agent.
 - Read `SPEC.md`, `docs/api.md`, and the relevant roadmap item before changing a
   product contract. Inspect the current implementation before adding an abstraction.
+- [docs/map.md](docs/map.md) maps areas to their owning modules. Every source
+  module starts with a header comment saying what it owns; keep it true when you
+  change the module, write one for each new module, and name new source
+  directories in the map (`scripts/module-headers.test.mjs` checks both exist).
 - Use npm and the checked-in scripts. Do not edit `dist/`, `node_modules/`, or
   generated output by hand.
 

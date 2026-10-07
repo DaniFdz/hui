@@ -1,3 +1,7 @@
+/**
+ * Wire shapes of the automation API: scheduled tasks, their runs and the scheduler snapshot as the browser
+ * receives them. Types only; validation and scheduling belong to the gateway.
+ */
 export type AutomationSchedule =
   | { kind: "at"; at: string }
   | { kind: "every"; everyMs: number }

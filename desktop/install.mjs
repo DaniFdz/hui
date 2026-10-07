@@ -1,3 +1,6 @@
+/** Registers HUI as a macOS application. It assembles HUI.app from the bundled Electron with the window shell inside,
+ * signs it ad hoc and only ever replaces a bundle HUI itself installed, recognized by its owner marker; the app keeps
+ * launching the installed CLI. Runs from `hui install-app` and from postinstall on global npm installs on macOS. */
 import { execFileSync } from 'node:child_process';
 import { cp, lstat, mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';

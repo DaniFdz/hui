@@ -1500,6 +1500,27 @@ test("rewind refreshes the authoritative transcript and broadcasts a snapshot", 
   if (snapshot?.kind === "snapshot") assert.deepEqual(snapshot.snapshot.transcript, manager.transcript(record.id));
 });
 
+test("a fork leaves the session running and its history as it was, and only runtimes that copy history fork", async () => {
+  const started: FakeSession[] = [];
+  const manager = new LiveSessions(factory(started));
+  const record = recordFor("fork-source");
+  manager.ensure(record);
+  await waitForBoot(manager, record.id);
+  await manager.prompt(record.id, "long job");
+  const runtime = started[0]!;
+  const asked: (string | undefined)[] = [];
+  Object.assign(runtime, { fork: async (entryId?: string) => { asked.push(entryId); return "durable:copy"; } });
+
+  assert.equal(await manager.fork(record.id, "assistant-3"), "durable:copy");
+  assert.equal(await manager.fork(record.id), "durable:copy");
+  assert.deepEqual(asked, ["assistant-3", undefined]);
+  assert.equal(runtime.aborts, 0, "the source's run goes on");
+  assert.equal(manager.status(record.id), "running");
+
+  Object.assign(runtime, { fork: undefined });
+  await assert.rejects(manager.fork(record.id, "assistant-3"), /only Pi Durable sessions can/u);
+});
+
 test("rewind aborts active work before changing the session tree", async () => {
   const started: FakeSession[] = [];
   const manager = new LiveSessions(factory(started));

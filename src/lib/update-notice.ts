@@ -1,3 +1,7 @@
+/**
+ * When the UI offers a HUI update and how often it checks. The page's lifetime owns the timer, not the
+ * gateway or a host scheduler, and failed background checks stay silent.
+ */
 import { UPDATE_CHECK_INTERVAL_MS, type ReleaseInfo, type UpdateSnapshot } from "./update-types.ts";
 
 /** No optimistic notifications, nor a stale offer during/after activation. */

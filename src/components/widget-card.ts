@@ -1,3 +1,7 @@
+/**
+ * Host side of agent widgets (`show_widget`). It owns the card, the frame's size and theme and the message channel to
+ * the sandbox page; the widget's own code only ever runs inside that opaque-origin frame, never in HUI's page.
+ */
 import { html, nothing, type PropertyValues } from "lit";
 import { keyed } from "lit/directives/keyed.js";
 import { ref } from "lit/directives/ref.js";

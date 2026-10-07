@@ -1,3 +1,7 @@
+/**
+ * The banner saying the Mac stays awake with its lid closed. It only decides whether the banner shows; the gateway
+ * reports the power state, and turning it off goes back through the app.
+ */
 import { html, nothing } from "lit";
 import type { PowerStatus } from "../../shared/power.ts";
 import { icons } from "../lib/icons.ts";

@@ -843,7 +843,7 @@ Only a changed stage writes; polling an unchanged board stays read-only.
 | `parentId`, `subagent` | HUI | Optional additive lineage/task state for `sessions_spawn`; PI still owns the child transcript |
 | `bot` | HUI | Optional id of the bot whose forever chat this record is (see [Bots](#bots)); set at creation, never changed. No registry version bump. The bot registry decides: a record whose bot is gone is an ordinary session |
 | `stage`, `stageSource`, `stagePullRequests` | HUI | Optional Kanban stage and who placed it (`operator`, `agent`, `pullRequest`); absent means Investigation. A session started from a backlog item is created with an operator placement in the target column. See [Session stages](#session-stages). `stagePullRequests` is server-only and never returned in views. |
-| `piSessionFile` | Runtime identity, HUI pointer | PI: learned from `get_state`, then stored by HUI for `--session` resume. Durable: `durable:<conversationId>`, replaced by a rewind's fork |
+| `piSessionFile` | Runtime identity, HUI pointer | PI: learned from `get_state`, then stored by HUI for `--session` resume. Durable: `durable:<conversationId>`, replaced by a rewind's fork; a fork's session starts on its copy |
 | messages and tool results | PI | PI's JSONL only; never copied into `sessions.json` |
 | `status` | HUI process | Derived live state; never persisted |
 | `~/.config/hui/bots.json` | HUI | Bots, separate from `sessions.json`: `{ version: 1, bots: BotRecord[] }`, mode 0600. Serialized mutations, atomic rename. A record that does not validate is skipped, reported once in Logs and written back untouched; a file with a newer `version` or invalid JSON is refused and never overwritten. See [Bots](#bots). |
@@ -1655,7 +1655,7 @@ API included. Real isolation means running the bot on a worker in a container.
 
 Bot chats refuse what would reset, shorten, fork or delete them, with 409 and a
 message naming the bot: `POST /__hui/sessions/:id/clear`, `POST …/compact`,
-`POST …/rewind` and `DELETE /__hui/sessions/:id` (archive the bot instead, or
+`POST …/rewind`, `POST …/fork` and `DELETE /__hui/sessions/:id` (archive the bot instead, or
 delete it with `DELETE /__hui/bots/:id?permanent=1`).
 Model and thinking changes stay allowed. The prompt route already refuses
 `/clear` and `/compact` text for every session.
@@ -2428,6 +2428,29 @@ if they exceed its threshold. A Durable rewind forks the conversation instead,
 and the fork holds the history up to the fork point only: a summary placed
 after it is left out wherever that point is, so the model reads the original
 turns again and Durable compacts the fork when it reaches its thresholds.
+
+### `POST /__hui/sessions/:id/fork`
+
+Body: `{ "entryId": "...", "worktree": true, "branchName": "..." }`; every field
+is optional (`{}` forks the latest point into the same folder). Copies a Pi Durable
+conversation's history up to that entry into a new conversation of the same
+harness (on a remote worker, that worker's) and registers it as a new session,
+responding 201 with `{ "session": SessionView }`. The entry must be a user
+message or an assistant reply that ends its turn; without one, the latest such
+entry is used. The source session is not stopped, rewound or otherwise changed,
+and may keep running. With `worktree: true` the gateway first creates a Git
+worktree from the source checkout's HEAD on a new branch (`branchName`, default
+`<title>-fork`, under the configured prefix) and moves the copy's agent into it;
+uncommitted changes stay in the source checkout, and a failure after the worktree
+exists removes it. Remote workers refuse worktrees (400). The new record takes the
+source's `cwd` (or the worktree), `worker`,
+`group`, `tool`, `model` and `thinking`, is titled `<title> (fork)` and
+carries none of its organizer fields (`pinned`, `unread`, `icon`,
+`jiraIssues`, `stage`). The copy keeps the Durable agent as of the fork entry
+and starts without OptChat; without a worktree no Git state changes. A malformed body, an entry
+that is unknown or still waiting on its tool calls, or a session whose runtime
+cannot fork (PI) returns 400. A bot's chat answers 409
+([a forever chat](#a-forever-chat)).
 
 ### `POST /__hui/sessions/:id/continue`
 

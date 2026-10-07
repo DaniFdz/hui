@@ -1,3 +1,7 @@
+/**
+ * Validation and labels for media a tool presented in chat. Only well-formed items pointing at HUI's own
+ * `/__hui/media/` URLs are shown; anything else in a tool's details is ignored.
+ */
 export type PresentedMediaItem = {
   id: string;
   name: string;

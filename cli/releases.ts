@@ -1,3 +1,6 @@
+/** Published HUI releases on GitHub: the latest stable release and the rolling nightly, update checks against the
+ * running build, and downloads verified by size and checksum. It reads the public API through paths built here and
+ * never installs anything; staging and activation belong to update.ts. */
 import { createHash } from "node:crypto";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";

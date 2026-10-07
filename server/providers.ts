@@ -1,3 +1,9 @@
+/**
+ * HUI's provider connections: OAuth and API-key sign-in for PI's built-in providers, several accounts per
+ * provider, the models selected for each, and short-lived quota caches. Credentials and selections live in
+ * HUI's providers directory through PI's model runtime, while custom providers stay in PI's models.json. One
+ * sign-in runs at a time, and its prompts are answered from the UI.
+ */
 import { randomUUID } from "node:crypto";
 import { ModelRuntime, readStoredCredential } from "@earendil-works/pi-coding-agent";
 import type { ProviderLogin, ProviderQuota, ProviderSnapshot, ProviderSummary } from "../shared/providers.ts";
