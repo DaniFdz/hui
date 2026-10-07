@@ -95,6 +95,10 @@ test("the catalog describes each tool: its group, its source and whether it is p
   assert.deepEqual({ ...spawned, description: undefined }, { name: "sessions_spawn", label: "Spawn subagent", description: undefined, group: "hui", source: "HUI", powerful: true });
   assert.equal(spawned.description, "Spawn a subagent for independent background work");
   assert.equal(access.describeTool({ name: "suggest_task" }, { kind: "hui" }).powerful, false);
+  // It only asks the operator, who answers each request in the chat's Secret card.
+  assert.deepEqual(access.describeTool({ name: "secret_request" }, { kind: "hui" }), {
+    name: "secret_request", label: "Request secret", description: "Ask the operator for a secret without it entering the conversation", group: "hui", source: "HUI", powerful: false,
+  });
   assert.equal(access.describeTool({ name: "message_bot" }, { kind: "bot" }).group, "bots");
   assert.deepEqual(access.describeTool({ name: "fixture_echo", description: "Echoes text. More words." }, { kind: "extension", source: "user · fixture.js · fixture.js" }), {
     name: "fixture_echo", label: "fixture_echo", description: "Echoes text", group: "extension", source: "user · fixture.js · fixture.js", powerful: false,
@@ -312,6 +316,7 @@ test("a bot has every tool and skill a session in its directory has until the op
   assert.deepEqual((await (await f.host.open()).snapshot(AgentDoc, id, durableContext))?.tools, { remove: ["request_access", "load_skill"] },
     "its own tools wait until it has a use for them");
   assert.deepEqual(names(session.botOffer()), [...plainTools, "message_bot"], "the operator can turn off any of them but its essentials");
+  assert.ok(plainTools.includes("secret_request"), "secret_request among them, on like every HUI tool");
   assert.equal(session.botOffer().find((tool) => tool.name === "fixture_other")?.group, "extension");
   assert.deepEqual(plain.botOffer(), []);
   await session.prompt("plain turn");
@@ -349,7 +354,7 @@ test("what the operator turns off leaves a bot's offer, extension tools included
 
 test("the HUI tool bridge refuses a bot's call to a HUI tool the operator turned off, whatever it was offered", { timeout: 60_000 }, async (t) => {
   const f = await fixture(t);
-  const { id } = await f.bot(off(["sessions_history", "terminal", "message_bot"]));
+  const { id } = await f.bot(off(["sessions_history", "terminal", "message_bot", "secret_request"]));
   const harness = await f.host.open();
   const api = (callId: string) => ({
     conversationId: id, callId,
@@ -358,6 +363,7 @@ test("the HUI tool bridge refuses a bot's call to a HUI tool the operator turned
   const huiTool = (name: string) => f.host.huiTools.find((tool) => tool.name === name)!;
   await assert.rejects(huiTool("sessions_history").execute({ sessionKey: "child" } as never, api("c1"), BACKGROUND_CONTEXT), /The operator turned off sessions_history in this bot's chat\. Ask for it with request_access/u);
   await assert.rejects(huiTool("terminal").execute({ action: "list" } as never, api("c2"), BACKGROUND_CONTEXT), /turned off terminal/u);
+  await assert.rejects(huiTool("secret_request").execute({ label: "Token", reason: "To log in." } as never, api("c5"), BACKGROUND_CONTEXT), /turned off secret_request/u, "no card is shown");
   const messageBot = f.host.botTools.find((tool) => tool.name === "message_bot")!;
   const refused = await messageBot.execute({ to: "bob", message: "hi" } as never, api("c3"), BACKGROUND_CONTEXT);
   assert.equal(refused.isError, true);
@@ -445,17 +451,21 @@ test("on a worker's host a bot's chat is never offered the tools that stay on th
   const f = await fixture(t, { gatewayOnlyTools: GATEWAY_ONLY_TOOLS });
   const gatewayOnly = (tools: readonly (string | undefined)[]) => tools.filter((name) => name !== undefined && GATEWAY_ONLY_TOOLS.includes(name));
   assert.deepEqual(gatewayOnly(names(f.host.builtinBotOffer())), [], "what a chat that isn't running yet is checked against");
+  // A secret's card is answered on the gateway and its file written here (the host's secret-request), so it stays.
+  assert.ok(names(f.host.builtinBotOffer()).includes("secret_request"));
   const plain = await startDurable({ cwd: f.cwd, huiSessionId: "plain" }, f.host);
   assert.deepEqual(gatewayOnly(names((await plain.inspect()).tools)).sort(), [...GATEWAY_ONLY_TOOLS].sort(), "an ordinary session keeps them, and the gateway's bridge refuses their calls");
   // bash off, and terminal in its list too, as a list written before its host left terminal out could hold it.
   const { session } = await f.bot(off(["bash", "terminal"]));
   assert.deepEqual(gatewayOnly(names((await session.inspect()).tools)), []);
   assert.deepEqual(gatewayOnly(names(session.botOffer())), [], "nothing for the operator to switch, and nothing counted as off");
+  assert.ok(names(session.botOffer()).includes("secret_request"), "but secret_request is the operator's to switch there too");
   await session.prompt(calls({ name: "request_access", input: { tools: ["terminal"], reason: "To use the shared terminal." } }));
   await settledWith(session, answered("tool answered:"));
   assert.equal(lastReply(session), "tool answered: terminal works only on HUI's own machine, not the one you run on: it isn't yours to ask for. You can ask for: bash.");
   const [first] = await requests(f.log);
   assert.deepEqual(gatewayOnly(toolNames(first)), [], "its model never sees them");
+  assert.ok(toolNames(first).includes("secret_request"), "it is offered secret_request");
   const system = JSON.stringify(first?.system);
   assert.match(system, /Tools:\\n- bash: /u, "its access section names what it can ask for");
   assert.doesNotMatch(system, /- terminal: /u);

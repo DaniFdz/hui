@@ -725,3 +725,34 @@ test("a bot's tools and skills through the routes: what is off leaves its reques
   }
   await call(`/__hui/bots/${tooly.id}?permanent=1`, "DELETE");
 });
+
+test("a bot's chat asks for a secret as a session does: on in its Tools catalog by default, the Secret card in its chat, and gone once turned off", { timeout: 120_000 }, async () => {
+  const created = await call("/__hui/bots", "POST", { name: "Keyholder", soul: "# Who I am\nKEYHOLDER_SOUL." });
+  assert.equal(created.status, 201);
+  const bot = botOf(created);
+  const catalog = (await call(`/__hui/bots/${bot.id}/catalog`)).body as unknown as BotCatalog;
+  const listed = catalog.tools.find((tool) => tool.name === "secret_request");
+  assert.deepEqual(listed && [listed.group, listed.source, listed.enabled, listed.powerful], ["hui", "HUI", true, false], "a HUI tool, on by default; not powerful, it only asks the operator");
+
+  const value = "keyholder-only-SECRET-58";
+  const asked = await call(`/__hui/bots/${bot.handle}/messages`, "POST", { text: "E2E_SECRET_REQUEST for the deploy", wait: true, timeoutSeconds: 60 });
+  assert.equal(asked.body["status"], "needs-input", JSON.stringify(asked.body));
+  const [question] = asked.body["questions"] as BotQuestion[];
+  assert.deepEqual({ ...question, id: undefined }, { id: undefined, method: "secret", title: "Fixture API key", message: "The fixture proves an agent can use a secret without seeing it." });
+  // The chat's own snapshot carries it, so its pane shows the Secret card as a session's does.
+  assert.deepEqual(liveSessions.snapshot(bot.sessionId).questions, [question]);
+  assert.equal(botOf(await call(`/__hui/bots/${bot.id}`)).status, "waiting");
+  assert.equal((await call(`/__hui/sessions/${bot.sessionId}/question`, "POST", { id: question!.id, value })).status, 200);
+  const entries = await settledWith(bot.sessionId, says("assistant", "I used the secret in a command without seeing it"));
+  assert.match(JSON.stringify(entries), new RegExp(`Secret length: ${value.length}`, "u"), "its next command read the file");
+  assert.ok(!JSON.stringify(entries).includes(value), "the value never enters the chat");
+  assert.ok(!(await readFile(log, "utf8")).includes(value), "nor reaches the model");
+
+  // Turned off, it leaves the chat's requests, and request_access may ask for it back.
+  const patched = await call(`/__hui/bots/${bot.id}`, "PATCH", { disabledTools: ["secret_request"] });
+  assert.equal(patched.status, 200, JSON.stringify(patched.body));
+  await call(`/__hui/bots/${bot.handle}/messages`, "POST", { text: "KEYHOLDER_AFTER_PATCH", wait: true, timeoutSeconds: 60 });
+  const later = (await chatRequests()).findLast((request) => JSON.stringify(request.messages).includes("KEYHOLDER_AFTER_PATCH"));
+  assert.ok(later && !offered(later).includes("secret_request") && offered(later).includes("request_access"), JSON.stringify(offered(later)));
+  await call(`/__hui/bots/${bot.id}?permanent=1`, "DELETE");
+});
