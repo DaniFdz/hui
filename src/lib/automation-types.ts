@@ -11,6 +11,12 @@ export type AutomationRunStatus =
   | "skipped"
   | "cancelled";
 
+/**
+ * Who made a task: the operator (Automations, a bot's Routines tab, `hui schedule` and `hui bot routine`) or a bot,
+ * with its `routines` tool, named by its id and the handle it had then.
+ */
+export type AutomationCreator = { kind: "operator" } | { kind: "bot"; botId: string; handle: string };
+
 export type AutomationTask = {
   id: string;
   name: string;
@@ -23,6 +29,15 @@ export type AutomationTask = {
   createdAt: string;
   updatedAt: string;
   nextRunAt: string | null;
+  /** Absent on tasks made before HUI recorded it. */
+  createdBy?: AutomationCreator;
+  /** A temporary task's end: at this time HUI disables and deletes it, whether or not it ran. */
+  until?: string;
+  /**
+   * A temporary task's runs left. Each run HUI starts counts, by hand or scheduled, except a skipped one (its target
+   * could not take it); once the last one ends HUI disables and deletes the task.
+   */
+  runsLeft?: number;
 };
 
 export type AutomationRun = {
@@ -53,4 +68,8 @@ export type AutomationTaskInput = {
   schedule: AutomationSchedule;
   enabled?: boolean;
   timeoutSeconds?: number;
+  /** An end time (ISO), after the task's next run. On update, absent keeps the task's and `null` clears it. */
+  until?: string | null;
+  /** How many runs it has, 1–1000. On update, absent keeps the runs it has left and `null` clears the limit. */
+  runs?: number | null;
 };
