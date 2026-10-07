@@ -32,7 +32,7 @@ import { BotDoc, conversationBotState, MESSAGE_BOT_TOOL, SET_PROFILE_TOOL, WRITE
 import { ROUTINES_TOOL } from "./durable-bot-routines.ts";
 import { TRIGGERS_TOOL, TRIGGERS_TOOL_INFO } from "./durable-bot-triggers.ts";
 import { huiToolDefinitions } from "./hui-tools.ts";
-import type { QuestionDraft } from "./question-box.ts";
+import { QuestionsClosedError, type QuestionDraft } from "./question-box.ts";
 import type { RuntimeQuestionResponse } from "./types.ts";
 
 export const REQUEST_ACCESS_TOOL = "request_access";
@@ -277,7 +277,8 @@ export interface BotChat {
   botOffer(): readonly OfferedTool[];
   /** Skills a session in this chat's directory gets, Settings' choices applied. */
   availableSkills(): Promise<readonly Skill[]>;
-  /** Asks the operator in this chat; undefined once dismissed, or when `signal` aborts first. */
+  /** Asks the operator in this chat; undefined once dismissed, or when `signal` aborts first. Rejects with
+   * `QuestionsClosedError` when the chat closes under the question. */
   ask(question: QuestionDraft, signal?: AbortSignal): Promise<RuntimeQuestionResponse | undefined>;
   /** Offers the conversation its tools again, after its lists changed. */
   applyTools(): Promise<void>;
@@ -294,6 +295,8 @@ export interface BotChat {
 export type BotAccessDeps = {
   /** The live session of a conversation; undefined while none has it open. */
   chat(conversationId: ConversationId): BotChat | undefined;
+  /** The conversation's live session once one opens: where an access request asks again after its chat closed. */
+  whenChat?(conversationId: ConversationId, signal?: AbortSignal): Promise<BotChat>;
   /** Skills of a directory (and of the bot whose chat `conversationId` is, its own), for prompts and `load_skill` without a
    * live session. */
   skills(cwd: string, conversationId?: ConversationId): Promise<readonly Skill[]>;
@@ -335,8 +338,30 @@ export function accessQuestion(tools: readonly OfferedTool[], skills: readonly B
 }
 
 /** `request_access`, `load_skill` and the `bot_access` section. Allows one request per bot at a time. */
+/** request_access's memos, kept with the call by Durable: the question went to the operator, and their answer
+ * (`""` when dismissed). */
+const ASKED_MEMO = "asked";
+const ANSWER_MEMO = "answer";
+
 export function botAccessParts(deps: BotAccessDeps): { tools: ToolRegistration[]; sections: PromptSection[] } {
   const pending = new Set<string>();
+
+  /**
+   * The operator's answer to an access request, trimmed; `""` when they dismissed it. A chat that closes under the
+   * question (the gateway stopping, the session reloading) is no answer: the question is asked again in the chat that
+   * opens next, unless `signal` aborts first, as it does when the gateway stops, so the call is left for its rerun.
+   */
+  const askOperator = async (chat: BotChat, question: QuestionDraft, conversationId: ConversationId, signal?: AbortSignal): Promise<string> => {
+    for (;;) {
+      try {
+        const response = await chat.ask(question, signal);
+        return response && "value" in response ? response.value.trim() : "";
+      } catch (error) {
+        if (!(error instanceof QuestionsClosedError) || !deps.whenChat) throw error;
+        chat = await deps.whenChat(conversationId, signal);
+      }
+    }
+  };
 
   const requestAccess = defineTool({
     name: REQUEST_ACCESS_TOOL,
@@ -346,12 +371,17 @@ export function botAccessParts(deps: BotAccessDeps): { tools: ToolRegistration[]
       skills: Type.Optional(Type.Array(Type.String({ minLength: 1, maxLength: 200 }), { maxItems: 20, description: "Skill names, as your bot_access section lists them." })),
       reason: Type.String({ minLength: 1, maxLength: 1_000, description: "Why the job needs them, in a sentence or two for the operator." }),
     }),
-    // An answered request is never asked again after a restart: the model hears the call was interrupted.
-    replay: "unsafe",
+    // A restart reruns it: a question still waiting is asked again once the chat is open, and an answer the operator
+    // gave is kept with the call (`ANSWER_MEMO`), so it is applied rather than asked twice. Turning tools back on is
+    // the same however often it runs.
+    replay: "safe",
     execute: async (args, api, context) => {
       const state = await conversationBotState(api, api.conversationId, context);
       if (!state) return text("request_access is only available in a bot's chat.", true);
-      const chat = deps.chat(api.conversationId);
+      // A rerun of a question already put to the operator waits for the chat, open with its tools offered, rather than
+      // giving up on it.
+      const rerun = deps.whenChat !== undefined && await api.memo<boolean>(ASKED_MEMO, context) === true;
+      const chat = rerun ? await deps.whenChat!(api.conversationId, context.abortSignal) : deps.chat(api.conversationId);
       if (!chat) return text("Your chat isn't open in HUI, so the operator can't be asked now. Try again in a later turn.", true);
       const wanted = { tools: unique(args.tools), skills: unique(args.skills) };
       if (!wanted.tools.length && !wanted.skills.length) return text("Name at least one tool or skill to ask for.", true);
@@ -377,17 +407,22 @@ export function botAccessParts(deps: BotAccessDeps): { tools: ToolRegistration[]
       const tools = offTools.filter((tool) => wanted.tools.includes(tool.name));
       const skills = offSkills.filter((skill) => wanted.skills.includes(skill.name)).map(skillRef);
       if (!tools.length && !skills.length) return text(`You already have ${listed([...wanted.tools, ...wanted.skills.map((name) => `the ${name} skill`)])}.`);
-      if (pending.has(state.bot)) return text("Another access request is already waiting for the operator. Wait for its answer before asking again.", true);
-      pending.add(state.bot);
-      let response: RuntimeQuestionResponse | undefined;
-      try {
-        // A routine's or another bot's turn may ask too; only the operator answers, through HUI's question routes.
-        response = await chat.ask(accessQuestion(tools, skills, args.reason.trim(), turnNote(chat.runInput())), context.abortSignal);
-      } finally {
-        pending.delete(state.bot);
+      let answer = await api.memo<string>(ANSWER_MEMO, context);
+      if (answer === undefined) {
+        if (pending.has(state.bot)) return text("Another access request is already waiting for the operator. Wait for its answer before asking again.", true);
+        pending.add(state.bot);
+        let asked: string;
+        try {
+          await api.memo(ASKED_MEMO, true, context);
+          // A routine's or another bot's turn may ask too; only the operator answers, through HUI's question routes.
+          asked = await askOperator(chat, accessQuestion(tools, skills, args.reason.trim(), turnNote(chat.runInput())), api.conversationId, context.abortSignal);
+        } finally {
+          pending.delete(state.bot);
+        }
+        if (context.abortSignal?.aborted) throw new Error("The access request was stopped.");
+        // The first answer kept wins: a rerun reads it instead of asking again.
+        answer = await api.memo(ANSWER_MEMO, asked, context);
       }
-      if (context.abortSignal?.aborted) throw new Error("The access request was stopped.");
-      const answer = response && "value" in response ? response.value.trim() : undefined;
       if (answer !== ALLOW) {
         return text(answer === DENY ? "The operator denied the request. Carry on without it, and ask again only if the job truly needs it."
           : answer ? `The operator didn't allow it and wrote: ${answer}`

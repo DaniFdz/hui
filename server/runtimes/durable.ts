@@ -334,6 +334,7 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
       ...(this.#huiSessionId === undefined ? {} : { extensions: added.length ? { add: added } : null }),
       tools: remove.length ? { remove } : null,
     }, context);
+    this.#host.chatReady(this);
   }
 
   /** Tools composed as Durable composes the selected extensions: by name, in order, a later one replacing an earlier
@@ -1278,7 +1279,7 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
     if (this.#disposed) return;
     this.#disposed = true;
     this.#host.untrackChat(this);
-    this.#questions.cancelAll();
+    this.#questions.close();
     this.#listeners.clear();
     for (const waiter of [...this.#waiters]) waiter.resolve();
     void this.#stop?.().catch(() => {});
