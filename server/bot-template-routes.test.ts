@@ -178,7 +178,9 @@ test("a bot exports to a zip that imports back: profile, soul, its own skills, r
   assert.deepEqual([again.body.bot.name, again.body.bot.handle, again.body.bot.emoji, again.body.bot.description], ["Nova", "nova-2", "🦊", "calm and precise"]);
   assert.match(again.body.notes.join("\n"), /@nova is taken here, so it is @nova-2\./u);
   assert.ok(again.body.soul.startsWith(files.get("SOUL.md")!.trim()), "the soul comes back as it was");
-  assert.match(again.body.soul, /### Memory of @nova when it was exported/u, "its memory joins what it already knows");
+  assert.doesNotMatch(again.body.soul, /Memory of @nova when it was exported/u, "an empty memory adds nothing");
+  assert.match(again.body.notes.join("\n"), /Its exported memory was empty\./u);
+  assert.match(files.get("memory.md")!, /\n---\n\n<chat>/u, "the view after the line its import reads from");
   assert.deepEqual(again.body.skills.map((skill) => skill.name), ["weather"]);
   assert.deepEqual(again.body.routines.map((routine) => [routine.name, routine.schedule, routine.guessed]), [["Heartbeat", { kind: "every", everyMs: 1_800_000 }, false]]);
 });

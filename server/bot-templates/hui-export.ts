@@ -96,9 +96,13 @@ export function parseHuiExport(all: readonly ImportFile[], origin?: string, pars
     const about = str(routine["description"]);
     template.routines.push({ name: routineName, prompt, ...(exact ? { automation: exact, schedule: scheduleLabel(exact) } : {}), ...(about ? { description: about } : {}) });
   }
+  // memory.md: a header for people, a line, then the memory's view; a file without the line is the memory whole.
   const memory = findFile(files, BOT_EXPORT_FILES.memory);
-  const remembered = memory ? fileText(memory)?.trim() : undefined;
-  if (remembered) template.memories.push({ name: `Memory of @${extras.handle ?? name} when it was exported`, text: remembered });
+  const text = memory ? fileText(memory) ?? "" : "";
+  const separator = text.search(/^---[ \t]*$/mu);
+  const remembered = (separator === -1 ? text : text.slice(separator).replace(/^---[ \t]*\n?/u, "")).trim();
+  if (remembered && !/^<chat>\s*<\/chat>$/u.test(remembered)) template.memories.push({ name: `Memory of @${extras.handle ?? name} when it was exported`, text: remembered });
+  else if (memory) template.notes.push("Its exported memory was empty.");
   return template;
 }
 

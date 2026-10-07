@@ -209,7 +209,9 @@ export class BotTemplateService {
     return [
       `# Memory of @${bot.handle} (${bot.name})`,
       "",
-      `Its OptChat memory as HUI exported it on ${new Date(this.#now()).toISOString().slice(0, 10)}: the latest messages one line each, older ones summarized. Importing this file puts it in the new bot's SOUL.md, under "What you already know".`,
+      `Its OptChat memory as HUI exported it on ${new Date(this.#now()).toISOString().slice(0, 10)}: the latest messages one line each, older ones summarized. Importing this file puts what follows the line below in the new bot's SOUL.md, under "What you already know".`,
+      "",
+      "---",
       "",
       view.trim(),
     ].join("\n");
