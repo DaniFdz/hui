@@ -36,7 +36,7 @@ export function isBotFaceState(value: unknown): value is BotFaceState {
 }
 
 /** Small for roster rows and the call bar, medium for the chat header, large
- * for the empty chat and the dialog's preview, extra large for the call. */
+ * for the empty chat, extra large for the call. */
 export const BOT_FACE_SIZES = ["sm", "md", "lg", "xl"] as const;
 export type BotFaceSize = (typeof BOT_FACE_SIZES)[number];
 

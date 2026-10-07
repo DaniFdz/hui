@@ -633,7 +633,8 @@ test("a bot created without a name is New Bot, asks what to call it, and names i
   assert.equal(created.status, 201);
   const fresh = botOf(created);
   assert.deepEqual([fresh.name, fresh.handle], ["New Bot", "new-bot"]);
-  await settledWith(fresh.sessionId, says("assistant", "What would you like me to look after"));
+  // The fixture asks for a name only when the prompt says the bot has none, as a model told so would.
+  await settledWith(fresh.sessionId, says("assistant", "What would you like to call me?"));
   const kickoff = (await chatRequests()).findLast((request) => JSON.stringify(request.messages).includes("[HUI bot created]\\nname: New Bot\\n"));
   assert.ok(kickoff, "its own kickoff");
   assert.match(JSON.stringify(kickoff.system), /You have no name yet/u, "it asks for a name first");

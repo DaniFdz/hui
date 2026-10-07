@@ -119,11 +119,14 @@ export type ShellBotsProps = {
   /** The roster has its own query, so switching tabs keeps each search. */
   search: string;
   onSearch: (value: string) => void;
+  /** + creates a bot at once (Grok Bot's way: no form) and opens its chat. */
   onNew: () => void;
   /** Remote workers: while there is one, + is a menu that creates a bot on Local or on a worker (`onCreate`). */
   workers: readonly BotPlace[];
   onCreate: (worker: string | undefined) => void;
   onWorkersMenu?: () => void;
+  /** A bot is being created; + waits for it. */
+  creating: boolean;
   /** An unread bot marks the Bots tab while Agents is shown. */
   unread: boolean;
   roster: BotRosterProps;
@@ -901,7 +904,7 @@ export function renderSidebar(props: ShellProps) {
             <span>${botsTab ? "Bots" : "Sessions"}</span>
             <span>
               ${botsTab ? renderNewBotButton({
-                workers: botsTab.workers, onNew: botsTab.onNew, onCreate: botsTab.onCreate,
+                workers: botsTab.workers, onNew: botsTab.onNew, onCreate: botsTab.onCreate, creating: botsTab.creating,
                 ...(botsTab.onWorkersMenu ? { onOpen: botsTab.onWorkersMenu } : {}),
                 closeDrawer: (event) => closeContainingDrawer(event),
               }) : html`

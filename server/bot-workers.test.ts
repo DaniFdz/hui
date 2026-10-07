@@ -241,14 +241,15 @@ test("a bot made on the worker without a soul speaks first there, writes SOUL.md
   const home = join(remoteData, "bots", fresh.id);
   const soulPath = join(home, "SOUL.md");
   assert.equal(fresh.cwd, home);
-  const opened = await settledWith(fresh.sessionId, says("assistant", "What would you like me to look after for you?"), "its opener, from the worker");
+  // The fixture asks for a name only when the prompt says the bot has none, as a model told so would.
+  const opened = await settledWith(fresh.sessionId, says("assistant", "What would you like to call me?"), "its opener, from the worker");
   const users = opened.filter((entry) => entry.kind === "message" && entry.role === "user");
   assert.deepEqual(users.map((entry) => entry.kind === "message" ? botKickoffName(entry.text) : undefined), ["New Bot"], "nobody typed anything: HUI's kickoff");
   const kickoff = (await providerRequests()).find((request) => !isCompactor(request) && JSON.stringify(request.messages).includes("[HUI bot created]\\nname: New Bot\\n"));
   assert.ok(kickoff, "the kickoff reached the model from the worker");
   assert.ok(systemOf(kickoff).includes(JSON.stringify(`<soul>\nYou have no soul yet: ${soulPath} does not exist.`).slice(1, -1)), "its first conversation, with SOUL.md's place in its home on the worker");
   assert.match(systemOf(kickoff), /You have no name yet/u, "the worker's host knows it is still New Bot");
-  assert.equal(botOf(await call(`/__hui/bots/${fresh.id}`)).lastMessage?.text, "Hi, I'm new here. What would you like me to look after for you?", "the list previews the opener, not the kickoff");
+  assert.equal(botOf(await call(`/__hui/bots/${fresh.id}`)).lastMessage?.text, "Hi, I'm new here and I don't have a name yet. What would you like to call me?", "the list previews the opener, not the kickoff");
   assert.deepEqual((await call(`/__hui/bots/${fresh.id}/soul`)).body, { soul: null });
 
   // set_profile crosses to this gateway as the bot's session, whose record holds the turn's origin: a routine's turn

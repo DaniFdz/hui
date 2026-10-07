@@ -351,7 +351,7 @@ export type HomeProps = {
 /** What the bot header's ⋯ menu asks the app to do. */
 export type BotHeaderAction = "edit" | "archive" | "delete";
 
-/** The bot view's header: who the bot is, its Routines | Memory | Soul panel and its ⋯ menu. */
+/** The bot view's header: who the bot is, its panel (Routines | Memory | Soul | Settings) and its ⋯ menu. */
 export type HomeBot = {
   bot: Pick<BotView, "id" | "name" | "title" | "avatar" | "memory" | "worker">;
   panelOpen: boolean;
@@ -2216,7 +2216,7 @@ function renderHeader(props: HomeProps, session: SessionView) {
         <div class="chat-pane__actions chat-pane__header-actions">
           ${props.bot && props.call ? renderCallButton({ botName: props.bot.bot.name, inCall: props.call.inCall, onCall: props.call.onCall }) : nothing}
           ${props.bot ? html`<button type="button" class="btn btn--ghost btn--icon chat-icon-btn bot-panel-toggle"
-            aria-label=${props.bot.panelOpen ? "Hide routines, memory and soul" : "Show routines, memory and soul"} title="Routines, memory and soul"
+            aria-label=${props.bot.panelOpen ? "Hide the bot panel" : "Show the bot panel"} title="Bot panel"
             aria-expanded=${String(props.bot.panelOpen)} aria-controls=${props.bot.panelOpen ? props.bot.panelId : nothing}
             @click=${props.bot.onTogglePanel}>${icons.panelRightOpen}</button>` : nothing}
           ${props.bot?.onAction ? renderBotHeaderMenu(props.bot) : nothing}

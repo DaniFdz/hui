@@ -245,9 +245,12 @@ const server = createServer(async (request, response) => {
     text(response, `message_bot answered: ${typeof latestToolResult.result === "string" ? latestToolResult.result : JSON.stringify(latestToolResult.result)}`);
     return finish(response);
   }
-  // A new bot's first turn, which HUI starts: the first conversation's opening question.
+  // A new bot's first turn, which HUI starts: the first conversation's opening question. A bot still called
+  // "New Bot", whose soul section says it has no name yet, asks what to call it first, as its prompt tells it to.
   if (source.includes("[HUI bot created]")) {
-    text(response, "Hi, I'm new here. What would you like me to look after for you?");
+    text(response, flattenedText(body.system).includes("You have no name yet")
+      ? "Hi, I'm new here and I don't have a name yet. What would you like to call me?"
+      : "Hi, I'm new here. What would you like me to look after for you?");
     return finish(response);
   }
   // A bot saving its own SOUL.md with its write_soul tool.

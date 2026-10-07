@@ -1238,32 +1238,32 @@ everything the Bots tab can, through the same routes.
   name, the latest message or role, a short time, an activity badge (active,
   waiting for an answer, summarizing memory, failed), an unread dot (also on the
   Bots tab while Agents shows) and a warning while memory summaries keep
-  failing. Search matches name, handle and title. The toolbar's + opens **New
-  bot** (name, look, title, model, thinking, memory model, workspace; no
-  instructions: the bot starts by asking what you expect from it; nothing
-  changes until the gateway accepts it), and while a remote worker exists it
-  is a menu, *New bot on Local* or on each worker, whose choice creates *New
-  Bot* there at once and opens its chat; *Gateway default*
-  leaves the model and thinking level to the gateway, and choosing it when
-  editing clears the bot's own. A row's menu offers Edit, Hide/Unhide (*Show
-  hidden* while any are hidden), Archive, confirmed, with a Restore toast, and
-  Delete…; *Show archived* (while any are archived) lists archived bots with
-  Restore and Delete (an icon that shows on the row under the pointer or
-  keyboard, and always on touch screens). Delete, from either, asks first in
-  a dialog that says what goes (its chat leaves HUI; its routines, memory and
-  folder go) and what stays (a workspace the operator chose); deleting the
-  open bot returns home. An archived bot's chat opens again only once
-  restored. A bot opens at `/bots/<id>` as its one chat in the ordinary
-  session pane, its header showing face, name, role, the worker it runs on (if
-  any) and status and a ⋯ menu
-  with Edit bot…, Archive… and Delete…;
+  failing. Search matches name, handle and title. The toolbar's + (and an
+  empty roster's New bot) creates a bot at once, with no form and no name: the
+  gateway calls it *New Bot* until its first conversation asks for one, its
+  chat opens once the gateway has created it, everything else starts on the
+  defaults, and a refusal shows in the roster's notice. While a remote worker
+  exists the toolbar's + is a menu, *New bot on Local* or on each worker, and
+  the bot is created on the machine chosen. A row's menu offers
+  Edit (the bot's chat on its Settings tab), Hide/Unhide (*Show hidden* while
+  any are hidden), Archive, confirmed, with a Restore toast, and Delete…;
+  *Show archived* (while any are archived) lists archived bots with Restore and
+  Delete (an icon that shows on the row under the pointer or keyboard, and
+  always on touch screens). Delete, from either, asks first in a dialog that
+  says what goes (its chat leaves HUI; its routines, memory and folder go) and
+  what stays (a workspace the operator chose); deleting the open bot returns
+  home. An archived bot's chat opens again only once restored. A bot opens at
+  `/bots/<id>` as its one chat in the ordinary session pane, its header
+  showing face, name, role, the worker it runs on (if any) and status and a ⋯
+  menu with Edit bot…, Archive… and Delete…;
   assistant turns carry the bot's name, `/clear`, `/compact`, Compact now and
   rewind are not offered. A new bot speaks first: its chat opens on a small
   centered note, *<name> was created*, where HUI started its first turn, then
   the bot's questions (an empty chat says *Say hi to <name>*). Opening it
-  marks it read. A **Routines | Memory | Soul** panel docks beside the chat (open or
-  closed and the tab are remembered; on narrow screens it opens on request as a
-  sheet over the chat). Routines lists the bot's Automation tasks with schedule,
+  marks it read. A **Routines | Memory | Soul | Settings** panel docks beside
+  the chat (open or closed and the tab are remembered; on narrow screens it
+  opens on request as a sheet over the chat); its header names the bot beside
+  Close and its tabs fill a row of their own under it. Routines lists the bot's Automation tasks with schedule,
   next run, an enable switch, Run now and Delete, adds routines every N
   minutes/hours/days, daily, weekly or once in the browser's time zone, and shows
   the latest runs. Memory shows messages, the view against its 128 KB budget,
@@ -1280,16 +1280,27 @@ everything the Bots tab can, through the same routes.
   offers **Write it yourself**. While open it reads SOUL.md again when the bots
   stream says the bot or HUI may have written it (its soul flag, its
   `updatedAt`, or its latest message once a turn is over), with no timer.
+  Settings holds the rest of the bot as compact rows: Profile (name with its
+  handle, title, and the look, a row that opens into Face or Emoji),
+  Model (model, thinking and utility model; *Gateway default* leaves the model
+  and thinking level to the gateway, and choosing it clears the bot's own),
+  Calls (call voice and language; without a ChatGPT login its head says calls
+  need one) and Workspace (the directory, locked while the bot works, with
+  folder suggestions from the machine it runs on, and, while a worker exists,
+  Runs on, that machine read-only). Each change is its own `PATCH`, sent in
+  order, with the row's pending state and refusal inline and no Save button;
+  typed text saves on Enter or blur.
+  Ctrl+Shift+, (⇧⌘,) shows or hides it on a bot's chat.
 - **Calls** talk through GPT-Live (see the decisions below): the header's
   **Call** shows whenever HUI has a ChatGPT login. A bot has a call voice, its
   own or Settings → Models → Calls' default, and a language it speaks on calls
-  (its dialog, or `--call-voice`/`--language`): one of Whisper's languages,
-  never a translation, or Auto to answer in the language spoken. The call view
-  takes the bot's color and shows its face listening to the microphone and
-  speaking with the bot's audio, a timer, both sides' captions, Mute, Speaker
-  and Hang up, and minimizes to a bar; hanging up deletes nothing. The
-  microphone opens only for a call and closes with it; HUI stores no audio, only
-  the call's card in the chat.
+  (its Settings tab, or `--call-voice`/`--language`): one of Whisper's
+  languages, never a translation, or Auto to answer in the language spoken. The
+  call view takes the bot's color and shows its face listening to the
+  microphone and speaking with the bot's audio, a timer, both sides' captions,
+  Mute, Speaker and Hang up, and minimizes to a bar; hanging up deletes
+  nothing. The microphone opens only for a call and closes with it; HUI stores
+  no audio, only the call's card in the chat.
 
 The contract is [docs/api.md#bots](docs/api.md#bots).
 
@@ -1362,8 +1373,8 @@ offline (unreachable or archived).
 
 - **Look on the record, defaults from the id.** `avatar` gains `shape` beside
   `emoji` and `color` (no format change: absent keys stay absent). A bot without
-  them gets the face its id picks, the same everywhere; a new bot from the Bots
-  tab keeps the face its dialog showed. The emoji stays an alternative: a bot
+  them gets the face its id picks, the same everywhere, a new bot included. The
+  emoji stays an alternative: a bot
   with one shows it until someone switches it to its face (clearing the emoji),
   and its tile takes the bot's color. The CLI has `--shape`, `--color` and
   `--emoji ""`, and `hui bot show` prints the look.
@@ -1374,7 +1385,7 @@ offline (unreachable or archived).
   streams, without rerouting the audio). Text badges and status lines stay;
   faces are `aria-hidden`.
 - **Cheap.** CSS keyframes carry the motion; small faces only blink and glance
-  on timers. Large faces (empty chat, call, the dialog's preview) also follow
+  on timers. Large faces (empty chat, call) also follow
   the pointer and morph on animation frames. Faces pause while hidden or off
   screen, and prefers-reduced-motion leaves a still expression per state.
 - **Later, if wanted:** accessories (Dots' glasses, hats), more shapes, a custom
@@ -1493,6 +1504,48 @@ session on that worker, as any remote session's.
   watchers act on the gateway's machine, so a bot on a worker has none of them,
   and no worktrees. Its secret requests work as a worker session's: the card is
   answered on the gateway and the worker host writes the file.
+
+### Bots are set up like Grok Bot (2026-10-06)
+
+The owner, reviewing the bots stack: "the modal to configure the model looks
+really bad, needing to scroll in a PC is not the best experience tbh, how does
+grok bot do this?" The bot dialog held every field (name, look, title,
+instructions, model and thinking, utility model, voices, language, workspace)
+and was far taller than the screen: 1,381 px at 1440×900 without VoiceStudio,
+1,516 px with it. Grok Bot
+([bots](https://docs.x.ai/grok-bot/bots),
+[overview](https://docs.x.ai/grok-bot/overview),
+[chat and collaboration](https://docs.x.ai/grok-bot/chat-and-collaboration),
+[design](https://x.ai/news/designing-grok-bot)) creates a bot from its name and
+opens it ("Setup is a message, not a workflow builder"), edits name, label,
+description and avatar in Edit Profile, and keeps per-bot settings in a Bot
+settings panel toggled with Ctrl/Cmd+Shift+, beside the conversation, with
+models "beneath the interface".
+
+- **No form.** The owner chose Grok Bot's way outright: + creates a bot at
+  once, without a name, and opens its chat; the gateway calls it *New Bot*, and
+  its first conversation asks what to call it and renames it with
+  `set_profile`. The New bot and Edit dialogs are gone. Everything starts on
+  the defaults: the model and thinking level a new session gets, Settings'
+  utility model, Settings' call voice, Auto, a private folder and the
+  face its id picks. While a remote worker exists, + is the workers' menu (*New
+  bot on Local* or on each worker, [above](#bots-run-on-remote-workers-2026-10-06)),
+  and the bot is created where it is chosen, still without a name.
+- **A Settings tab in the bot's panel** holds the rest, after Grok Bot's Bot
+  settings: Profile (name, title and look, edited in place), Model, Calls and
+  Workspace (the machine it runs on, read-only while a worker exists, and its
+  directory, whose suggestions come from that machine), as Settings-page rows. Every change saves on its own through the
+  existing `PATCH /__hui/bots/:id`; the API and CLI do not change. Edit bot…
+  in the bot's ⋯ menus opens it, and so does Ctrl+Shift+,. It fits a 1440×900
+  screen with its look editor closed.
+- **The panel's tabs get a row of their own** under a header with the bot's name
+  and Close, as the sidebar's Agents | Bots do, so the soul and tools tabs fit
+  in 344 px beside Routines, Memory and Settings.
+- **Calls only.** With VoiceStudio gone
+  ([above](#voicestudio-is-gone-calls-are-gpt-live-only-2026-10-06)), the
+  tab's Calls section is GPT-Live's call voice and the language, and it always
+  shows. Without a ChatGPT login its head says calls need one, so the missing
+  Call button has a reason; the voice and language still save.
 
 ### New sessions run on Pi Durable
 

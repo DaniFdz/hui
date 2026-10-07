@@ -829,7 +829,7 @@ requests:
    `message_bot` crosses both ways. While a worker exists the roster's + is a
    menu, *New bot on Local* or on each worker, that creates *New Bot* there at
    once; the machine shows beside a remote bot in its row and header, read-only
-   in Edit; and `hui bot add --worker`. With SOUL.md (merged 2026-10-07) every
+   in its Settings tab (item 7); and `hui bot add --worker`. With SOUL.md (merged 2026-10-07) every
    bot on a worker has its home there, where its SOUL.md, first conversation and
    `write_soul` live; the Soul tab and calls read it through the host, and
    deleting removes that home there, or queues the removal on the gateway's
@@ -846,6 +846,22 @@ requests:
    `src/lib/bots.test.ts`, `src/views/bots.test.ts`, `cli/*.test.ts` and the
    browser journey `e2e/bots-workers.browser.md` (a built gateway with a local
    worker, headless Chromium through CDP; screenshots in the pull request).
+7. **Bot setup like Grok Bot** (2026-10-06; SPEC.md, "Bots are set up like
+   Grok Bot"): no form; + creates a bot at once, without a name, and opens its
+   chat, where the bot (*New Bot* until then) asks what to call it; while a
+   worker exists + is item 6's menu, and the bot is made on the machine chosen.
+   The New bot and Edit dialogs are gone. A Settings tab in the bot's panel
+   holds Profile (name, title and look, edited in place), Model, Calls (call
+   voice and language; its head says when calls need a ChatGPT login) and
+   Workspace (Runs on, the machine read-only while a worker exists, and the
+   directory, with that machine's folder suggestions), each change saved on its
+   own through the existing `PATCH`; Edit bot… in either ⋯ menu opens it, as
+   does Ctrl+Shift+,; the panel's tabs moved to a row of their own under a
+   header with the bot's name, with room for five. No API or CLI change. Proof:
+   `src/lib/bots.test.ts`, `src/lib/bot-roster.test.ts`,
+   `src/views/bots.test.ts`, `server/bot-routes.test.ts` (a New Bot's
+   opener) and the Browser journey `e2e/bot-setup.browser.md` (built gateway,
+   fixture provider, a local worker, 1440×900, 1280×720 and 390×844, dark).
 
 ### HUI-19 — Agent widgets
 

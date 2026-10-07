@@ -14,6 +14,12 @@ real; the model provider (`e2e/pi-provider-fixture.mjs`) is the deterministic
 fake. Driven through CDP in headless Chromium. No operator transcript,
 credential or account is used.
 
+Since 2026-10-07 the bot dialog is gone: + creates *New Bot* without a name
+(still on Local or on the worker chosen), and **Runs on** and the worker's
+folders are in the bot's Settings tab, Workspace
+([bot-setup.browser.md](bot-setup.browser.md)); step 3 below describes the old
+dialog.
+
 ## Reproduce
 
 1. `npm run build`. In a temporary root: a PI agent directory under its
