@@ -40,7 +40,7 @@ const DESCRIPTION = [
   "list shows them with their ids. add needs name, prompt and one of every (\"5m\", \"2h\", \"1d\"; at least 1m), cron (five fields, minute hour day month weekday, in timezone, default HUI's) or at (an ISO date and time, once).",
   "update changes only what you give (routine: its id or name; enabled false pauses it, true resumes it). remove deletes one, also from that routine's own turn.",
   "A temporary routine ends by itself: until (an ISO date and time) and/or runs (how many runs it has); HUI deletes it after either. Use one to watch for something, such as every 5m until a check passes, and remove it yourself as soon as you are done.",
-  `At most ${BOT_ROUTINE_LIMITS.active} active routines. A turn another bot started ("[from @…]") can't add or change routines; the operator's turns and your routines' turns can. You never see or touch other bots' or sessions' tasks.`,
+  `At most ${BOT_ROUTINE_LIMITS.active} active routines. Only the operator's turns and your routines' turns can add or change routines: a turn another bot started ("[from @…]") can't, nor can any other. You never see or touch other bots' or sessions' tasks.`,
 ].join(" ");
 
 /** The `routines` tool of bots' chats. */

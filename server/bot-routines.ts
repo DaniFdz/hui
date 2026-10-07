@@ -5,9 +5,9 @@
  *
  * - **Its own chat only.** A bot lists, changes and removes only the tasks whose session is its chat; another
  *   bot's or session's task is never named, as if it did not exist.
- * - **Who started the turn.** Adding or changing one is refused in a turn another bot started (`[from @…]`), read
- *   from the run's originating input as `set_profile` reads it; the operator's turns and its routines' turns may.
- *   Listing and removing work in any turn: they never make more work.
+ * - **Who started the turn.** Only the operator's turns, its routines' turns and HUI's kickoff may add or change one,
+ *   read from the run's originating input as `set_profile` reads it. Any other turn is refused, another bot's
+ *   (`[from @…]`) among them. Listing and removing work in any turn: they never make more work.
  * - **Limits.** At most `BOT_ROUTINE_LIMITS.active` enabled routines in its chat once it adds or resumes one, one
  *   name per routine, Automation's own one-minute minimum, and up to `BOT_ROUTINE_LIMITS.runs` runs.
  * - **Temporary routines** carry `until` and/or `runs`; Automation deletes them after either, and the bot may
@@ -99,9 +99,17 @@ export class BotRoutines {
     const origin = botTurnOrigin((await this.#deps.readSessions()).find((record) => record.id === callerSessionId)?.runPrompt);
     if (action === "list") return { text: this.#list(bot, own) };
     if (action === "remove") return this.#remove(own, params, origin);
-    // Another bot can't make this one schedule more work: that is how bots would loop.
-    if (origin.kind === "bot") {
-      throw new BotConflictError(`This turn answers a message from @${origin.handle}: another bot can't make you add or change routines. Ask the operator, or do it in your own turn.`);
+    // Only the operator's turns, its routines' and HUI's kickoff may make more work. Another bot can't (that is how
+    // bots would loop), and neither can a turn anything else started: refused by default, not by name.
+    switch (origin.kind) {
+      case "operator":
+      case "routine":
+      case "kickoff":
+        break;
+      case "bot":
+        throw new BotConflictError(`This turn answers a message from @${origin.handle}: another bot can't make you add or change routines. Ask the operator, or do it in your own turn.`);
+      default:
+        throw new BotConflictError("Only the operator's messages and your routines can make you add or change routines, and something else started this turn. Ask the operator instead.");
     }
     return action === "add" ? this.#add(bot, own, params) : this.#update(own, params);
   }
