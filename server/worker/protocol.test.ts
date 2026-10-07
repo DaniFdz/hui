@@ -6,8 +6,10 @@ import { attachPeer, LineSplitter } from "./protocol.ts";
 function pair() {
   const ab = new PassThrough();
   const ba = new PassThrough();
-  return { a: attachPeer(ba, ab), b: attachPeer(ab, ba), ba };
+  return { a: attachPeer(ba, ab), b: attachPeer(ab, ba), ab, ba };
 }
+
+const aborted = (signal: AbortSignal) => signal.aborted ? Promise.resolve() : new Promise((resolve) => signal.addEventListener("abort", resolve, { once: true }));
 
 test("frames split on newlines only, across chunk boundaries", () => {
   const splitter = new LineSplitter();
@@ -78,4 +80,37 @@ test("a long frame still arriving keeps the peer alive", async () => {
   input.write("\n");
   assert.equal((await received)["t"], "out");
   assert.equal(peer.closed, false);
+});
+
+test("a requester that gives up aborts the handler's signal, and so does a closed peer", async () => {
+  const { a, b, ab } = pair();
+  const signals: AbortSignal[] = [];
+  let entered!: () => void;
+  const next = () => new Promise<void>((resolve) => { entered = resolve; });
+  b.handle("wait", (_params, signal) => { signals.push(signal); entered(); return new Promise(() => undefined); });
+
+  let started = next();
+  const call = new AbortController();
+  const cancelled = a.request("wait", {}, 30_000, call.signal);
+  await started;
+  call.abort();
+  await assert.rejects(cancelled, /wait request was cancelled/u);
+  await aborted(signals[0]!);
+
+  started = next();
+  const timedOut = a.request("wait", {}, 50);
+  // The request timer is unref'd; hold the event loop open until it fires.
+  const hold = setTimeout(() => undefined, 5_000);
+  await started;
+  await assert.rejects(timedOut, /did not answer wait in time/u);
+  clearTimeout(hold);
+  await aborted(signals[1]!);
+
+  await assert.rejects(a.request("wait", {}, 30_000, AbortSignal.abort()), /cancelled/u);
+
+  started = next();
+  void a.request("wait").catch(() => undefined);
+  await started;
+  ab.destroy();
+  await aborted(signals[2]!);
 });

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import type { ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -425,6 +425,24 @@ test("a plain session returns under its provisional title while the utility mode
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(stored[0]?.id, created.id);
   assert.equal(stored[0]?.title, "New session timeouts");
+});
+
+test("a session started without a model uses the primary route, not PI's default", async () => {
+  const settingsFile = join(process.env["XDG_CONFIG_HOME"]!, "hui", "settings.json");
+  await mkdir(join(process.env["XDG_CONFIG_HOME"]!, "hui"), { recursive: true });
+  await writeFile(settingsFile, JSON.stringify({ models: { primary: "openai/main", fallback: "anthropic/backup" } }), "utf8");
+  try {
+    let stored: SessionRecord[] = [];
+    const registry = async (mutate: (records: readonly SessionRecord[]) => readonly SessionRecord[]) => {
+      stored = [...mutate(stored)];
+      return stored;
+    };
+    const sessions = { accept: () => undefined, ensure: () => true };
+    assert.equal((await createSession({ cwd: tmpdir(), title: "Follow-up" }, sessions, registry)).model, "openai/main");
+    assert.equal((await createSession({ cwd: tmpdir(), title: "Picked", model: "x/chosen" }, sessions, registry)).model, "x/chosen");
+  } finally {
+    await rm(settingsFile, { force: true });
+  }
 });
 
 test("a generated title is published but never replaces an operator rename", async () => {

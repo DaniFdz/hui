@@ -18,6 +18,7 @@ import { interruptedRunPrompt } from "./interrupted-run.ts";
 import type { SessionRecord } from "./sessions.ts";
 import type { TaskSuggestion } from "../shared/task-suggestions.ts";
 import type { Watcher } from "../shared/watchers.ts";
+import type { SecretQuestion } from "./secret-requests.ts";
 import { SessionRegistryError, updateRegistry } from "./sessions.ts";
 import { piRuntime } from "./runtimes/pi.ts";
 import { durableRuntime } from "./runtimes/durable.ts";
@@ -79,7 +80,8 @@ export type SessionSnapshot = {
   usage?: RuntimeUsage;
   thinking?: string;
   queue: RuntimeQueue;
-  questions: readonly RuntimeQuestion[];
+  /** The runtime's questions, then HUI's pending `secret_request` prompts. */
+  questions: readonly (RuntimeQuestion | SecretQuestion)[];
   subagents: readonly SubagentTaskView[];
   /** Pending `suggest_task` cards; omitted when there are none. */
   suggestions?: readonly TaskSuggestion[];
@@ -240,6 +242,7 @@ export class LiveSessions {
   #subagentSnapshot: (parentId: string) => readonly SubagentTaskView[] = () => [];
   #suggestionSnapshot: (sessionId: string) => readonly TaskSuggestion[] = () => [];
   #watcherSnapshot: (sessionId: string) => readonly Watcher[] = () => [];
+  #secretQuestions: (sessionId: string) => readonly SecretQuestion[] = () => [];
   #aborted: (sessionId: string) => void = () => {};
 
   /** Injectable so the state machine can be exercised without waiting to boot a
@@ -346,6 +349,12 @@ export class LiveSessions {
     this.#watcherSnapshot = provider;
   }
 
+  /** HUI's own pending `secret_request` prompts: shown and answered like the
+   * runtime's questions, and like them they leave the session waiting. */
+  setSecretRequestProvider(provider: (sessionId: string) => readonly SecretQuestion[]): void {
+    this.#secretQuestions = provider;
+  }
+
   /** Every stop (the Stop button, rewind, automations, subagents) passes here. */
   setAbortListener(listener: (sessionId: string) => void): void {
     this.#aborted = listener;
@@ -355,7 +364,10 @@ export class LiveSessions {
    * runtime event stream. */
   notifySnapshot(id: string): void {
     const live = this.#live.get(id);
-    if (live) this.#broadcast(live, { kind: "snapshot", snapshot: this.snapshot(id) });
+    if (!live) return;
+    // A secret prompt starts or ends a wait, which the session list shows.
+    this.#setStatus(live, this.#reported(live));
+    this.#broadcast(live, { kind: "snapshot", snapshot: this.snapshot(id) });
   }
 
   /** Whether this gateway currently owns a runtime lifecycle for the id.
@@ -393,7 +405,7 @@ export class LiveSessions {
     if (["starting", "error", "reconnecting", "disconnected"].includes(live.status)) {
       return live.status;
     }
-    if (live.questions.size > 0) {
+    if (live.questions.size > 0 || this.#secretQuestions(live.record.id).length > 0) {
       return "waiting";
     }
     return live.promptPending || live.runtime?.isStreaming || this.#compactionBlocks(live) ? "running" : "idle";
@@ -434,7 +446,7 @@ export class LiveSessions {
       ...(usage ? { usage } : {}),
       ...(live.thinking ? { thinking: live.thinking } : {}),
       queue: this.#queueSnapshot(live),
-      questions: [...live.questions.values()],
+      questions: [...live.questions.values(), ...this.#secretQuestions(id)],
       subagents: [...this.#subagentSnapshot(id)],
       ...this.#suggestionField(id),
       ...this.#watcherField(id),

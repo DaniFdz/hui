@@ -318,7 +318,7 @@ test("the launch directory picker uses the themed combobox instead of a native d
 test("the thread follows the live compaction divider like new transcript rows", () => {
   const app = readFileSync(new URL("../hui-app.ts", import.meta.url), "utf8");
 
-  assert.match(app, /if \(\(changed\.has\("transcript"\) \|\| changed\.has\("compaction"\)\) && this\.autoFollow\) this\.scrollToBottom\(\);/);
+  assert.match(app, /if \(\(changed\.has\("transcript"\) \|\| changed\.has\("compaction"\) \|\| changed\.has\("paneVisible"\)\) && this\.autoFollow\) this\.scrollToBottom\(\);/);
 });
 
 test("the composer exposes PI context usage beside the model", () => {
@@ -340,8 +340,10 @@ test("PI questions use the inline OpenClaw card instead of a modal", () => {
 
   assert.match(source, /class="session-question-card chat-question-panel"/);
   assert.match(source, /Type your own answer here/);
-  assert.match(source, />Skip</);
+  assert.match(source, /secret \? "Cancel" : "Skip"/);
   assert.match(source, />Submit</);
+  // A secret request is masked, kept from password managers and never prefilled.
+  assert.match(source, /<input class="input" type="password" name="answer" autocomplete="one-time-code" aria-describedby=\$\{reasonId\} \/>/);
   assert.doesNotMatch(source, /class="question-dialog"/);
   assert.match(styles, /\.chat-question-panel\s*\{[^}]*gap: 12px;[^}]*padding: 14px;/s);
   assert.match(styles, /\.chat-question-panel__option\s*\{[^}]*padding: 10px 11px;/s);

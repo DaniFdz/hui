@@ -10,7 +10,7 @@ import { directHuiBridge } from "./bridge-client.mjs";
 import { huiToolDefinitions } from "./hui-tools.ts";
 
 export type DurableToolInvoker = (invocation: AgentToolInvocation) => Promise<unknown>;
-type ConversationInvoker = (conversationId: ConversationId, action: string, params: Record<string, unknown>) => Promise<unknown>;
+type ConversationInvoker = (conversationId: ConversationId, action: string, params: Record<string, unknown>, signal?: AbortSignal) => Promise<unknown>;
 
 /** Whether an interrupted call may rerun after a crash. HUI actions can have
  * taken effect (a spawned child, a typed terminal line), so none are replayed:
@@ -25,7 +25,7 @@ function durableTool(tool: ToolDefinition, invoke: ConversationInvoker): ToolReg
     replay: REPLAY,
     execute: async (args, api, context) => {
       const result = await directHuiBridge.run(
-        (action, params) => invoke(api.conversationId, action, params),
+        (action, params, signal) => invoke(api.conversationId, action, params, signal),
         () => tool.execute(api.callId, args as never, context.abortSignal, undefined, undefined as never),
       );
       return {
