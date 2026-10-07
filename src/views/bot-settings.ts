@@ -109,7 +109,7 @@ function renderRow(props: BotSettingsProps, options: RowOptions) {
   </div>`;
 }
 
-function sectionHead(props: BotSettingsProps, section: string, title: string, note?: string) {
+function sectionHead(props: BotSettingsProps, section: string, title: string, note?: string | TemplateResult) {
   return html`<div class="bot-settings__head"><h3 class="bot-panel__heading" id=${`${props.id}-settings-${section}`}>${title}</h3>${note ? html`<span class="bot-settings__note">${note}</span>` : nothing}</div>`;
 }
 
@@ -301,16 +301,22 @@ export function renderBotMachine(worker: BotView["worker"]) {
 }
 
 /**
- * Runs on: the machine the bot stays on, read-only (its chat and memory live in that machine's store). Shown for a bot
- * on a worker, and for one here while a worker exists; where a bot runs is chosen when it is created, with the roster's
- * + (`renderNewBotButton`). A bot here needs no more than the machine's name, so the tab still fits a 1440×900 screen;
- * a bot on a worker says why it stays there and what it can't use.
+ * Runs on: the machine the bot stays on, read-only (its chat and memory live in that machine's store), beside the
+ * Workspace heading as Model's says when its changes apply, so it costs the tab no height and the tab still fits a
+ * 1440×900 screen. Shown for a bot on a worker, and for one here while a worker exists; where a bot runs is chosen when
+ * it is created, with the roster's + (`renderNewBotButton`).
  */
-export function renderBotMachineField(props: BotSettingsProps) {
+export function renderBotMachineField(props: BotSettingsProps): TemplateResult | undefined {
   const { worker } = props.bot;
-  if (!worker && !props.workersExist) return nothing;
-  return renderRow(props, { setting: "machine", title: "Runs on", control: renderBotMachine(worker),
-    ...(worker ? { desc: "A bot stays on the machine it was created on: its chat and memory live there. Terminals, the browser and watchers stay on this machine, so it can't use them." } : {}) });
+  if (!worker && !props.workersExist) return undefined;
+  return html`Runs on ${renderBotMachine(worker)}`;
+}
+
+/** A bot on a worker, under its Workspace: why it stays there, and what it can't use from there. */
+function renderMachineHint(bot: BotView) {
+  return bot.worker
+    ? html`<p class="bot-panel__hint bot-settings__machine-hint">A bot stays on the machine it was created on: its chat and memory live there. Terminals, the browser and watchers stay on this machine, so it can't use them.</p>`
+    : nothing;
 }
 
 /** What the directory row says: a folder on the machine the bot runs on, which can move only while it is idle. */
@@ -323,9 +329,8 @@ function renderWorkspace(props: BotSettingsProps) {
   const busy = botIsBusy(props.bot);
   const inputId = `${props.id}-settings-cwd`;
   return html`<section class="bot-settings__section" aria-labelledby=${`${props.id}-settings-workspace`}>
-    ${sectionHead(props, "workspace", "Workspace")}
+    ${sectionHead(props, "workspace", "Workspace", renderBotMachineField(props))}
     <div class="settings-group bot-settings__group">
-      ${renderBotMachineField(props)}
       ${renderRow(props, { setting: "workspace", keys: ["cwd"], stacked: true, title: "Directory", labelFor: inputId,
         desc: directoryHint(props.bot),
         control: html`<div class="bot-settings__directory" @keydown=${{ handleEvent: (event: KeyboardEvent) => onTextKeydown(event, "cwd", props), capture: true }}
@@ -334,6 +339,7 @@ function renderWorkspace(props: BotSettingsProps) {
             inputClass: "settings-input", externalLabel: true, disabled: busy })}
         </div>` })}
     </div>
+    ${renderMachineHint(props.bot)}
   </section>`;
 }
 

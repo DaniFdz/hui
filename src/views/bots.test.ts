@@ -238,12 +238,13 @@ test("Settings → Workspace shows the machine a bot runs on, read-only, and off
   assert.match(between(source, "export function renderBotMachine(", "/**\n * Runs on:"),
     /data-bot-machine>\$\{worker \? icons\.globe : icons\.terminal\}<span>\$\{worker\?\.name \?\? "Local"\}<\/span>/u, "a helper any view can show read-only");
   const field = between(source, "export function renderBotMachineField(", "/** What the directory row says");
-  assert.match(field, /if \(!worker && !props\.workersExist\) return nothing;/u, "for a bot on a worker, and for one here while a worker exists");
-  assert.match(field, /title: "Runs on", control: renderBotMachine\(worker\)/u, "read-only: nothing to change it with");
-  assert.match(field, /A bot stays on the machine it was created on: its chat and memory live there\. Terminals, the browser and watchers stay on this machine, so it can't use them\./u, "a remote bot's limits");
+  assert.match(field, /if \(!worker && !props\.workersExist\) return undefined;/u, "for a bot on a worker, and for one here while a worker exists");
+  assert.match(field, /return html`Runs on \$\{renderBotMachine\(worker\)\}`;/u, "read-only: nothing to change it with");
+  assert.match(field, /bot\.worker\n\s+\? html`<p class="bot-panel__hint bot-settings__machine-hint">A bot stays on the machine it was created on: its chat and memory live there\. Terminals, the browser and watchers stay on this machine, so it can't use them\.<\/p>`/u, "a remote bot's limits");
   assert.match(between(source, "function directoryHint(", "function renderWorkspace("), /A folder on \$\{bot\.worker\.name\}\. Can change only while it is idle\./u);
   const workspace = between(source, "function renderWorkspace(", "export function renderBotSettings(");
-  assert.match(workspace, /\$\{renderBotMachineField\(props\)\}\n\s+\$\{renderRow\(props, \{ setting: "workspace"/u, "Runs on, then the directory");
+  assert.match(workspace, /\$\{sectionHead\(props, "workspace", "Workspace", renderBotMachineField\(props\)\)\}/u, "Runs on beside the heading, as Model's note: no height, so the tab still fits 1440×900 with a worker around");
+  assert.match(workspace, /<\/div>\n\s+\$\{renderMachineHint\(props\.bot\)\}\n\s+<\/section>/u, "a bot on a worker says why under the section");
   assert.doesNotMatch(source, /renderPicker\(\{ label: "Runs on"/u, "a bot's machine is chosen with +, never changed");
   const app = read("../hui-app.ts");
   assert.match(app, /suggestions: this\.directorySuggestionsFrom === \(bot\.worker\?\.id \?\? ""\) \? this\.directorySuggestions : \[\],\n\s+onInput: \(value\) => this\.loadDirectorySuggestions\(value, bot\.worker\?\.id\),/u,

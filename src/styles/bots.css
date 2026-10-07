@@ -741,9 +741,11 @@
 .bot-settings .new-session-page__directory-menu { position: relative; top: auto; margin-top: 6px; width: 100%; min-width: 0; max-width: 100%; }
 .bot-settings .new-session-page__directory-picker > input { font-size: var(--control-ui-text-sm); }
 .bot-settings .new-session-page__directory-picker > input:disabled { opacity: .6; cursor: not-allowed; }
-/* Runs on: the machine a bot stays on, read-only (its worker, or Local), as the roster's + menu names it. */
-.bot-settings .bot-machine { display: inline-flex; align-items: center; gap: 6px; color: var(--text); font-size: var(--control-ui-text-sm); font-weight: 500; }
-.bot-settings .bot-machine svg { flex: none; width: 14px; height: 14px; color: var(--muted); }
+/* Runs on, beside the Workspace heading: the machine a bot stays on, read-only (its worker, or Local), named as the
+ * roster's + menu names it. A bot on a worker says why under the section, in the panel's hint type. */
+.bot-settings__note .bot-machine { display: inline-flex; align-items: center; gap: 4px; color: var(--text); font-weight: 500; vertical-align: bottom; }
+.bot-settings__note .bot-machine svg { flex: none; width: 12px; height: 12px; color: var(--muted); }
+.bot-settings .bot-settings__machine-hint { font-size: var(--control-ui-text-xs); line-height: 1.4; }
 
 /* The Look: a row with the face and what it is, opening into Face (shape and
  * color) or Emoji. Native radios, visually hidden, keep Tab and arrow keys; the
