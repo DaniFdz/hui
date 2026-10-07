@@ -6,19 +6,19 @@ import test from "node:test";
 import { ProviderService, ProviderInputError } from "./providers.ts";
 import { createSessionModelRuntime, readProviderSelections, writeProviderSelections } from "./runtimes/hui-models.ts";
 import { filterConfiguredModels } from "./runtimes/pi-models.ts";
+import { waitFor } from "./test-support/wait-for.ts";
 
 async function fixture(t: test.TestContext) {
   const dir = await mkdtemp(join(tmpdir(), "hui-provider-test-"));
   t.after(() => rm(dir, { recursive: true, force: true }));
   return { dir, service: new ProviderService(dir) };
 }
-async function until<T>(read: () => Promise<T>, predicate: (value: T) => boolean): Promise<T> {
-  const deadline = Date.now() + 8000;
-  for (;;) {
-    const value = await read(); if (predicate(value)) return value;
-    if (Date.now() >= deadline) throw new Error("Provider state did not settle.");
-    await new Promise<void>((resolve) => setImmediate(resolve));
-  }
+async function until<T extends object>(read: () => Promise<T>, predicate: (value: T) => boolean): Promise<T> {
+  let last: T | undefined;
+  return waitFor("the provider state", async () => {
+    last = await read();
+    return predicate(last) ? last : undefined;
+  }, { state: () => last });
 }
 
 test("built-in API key login stores credentials only in HUI and redacts snapshots", async (t) => {

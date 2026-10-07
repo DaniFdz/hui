@@ -5,6 +5,7 @@ import type { ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { waitFor } from "./test-support/wait-for.ts";
 
 // Keep all filesystem-backed module state isolated, including on a failed
 // assertion. The registry and attachment paths are captured at import time.
@@ -550,11 +551,9 @@ test("a worktree session returns before Git finishes and the gateway sends its p
   await assert.rejects(() => startWorktreeSession({ cwd: tmpdir(), worktree: true, model: "bad" }), /provider\/id/);
   assert.deepEqual(statuses(), [], "invalid input is refused without a pending session");
 
-  const settled = async (id: string, status: string) => {
-    while (!statuses().some((update) => update.id === id && update.status === status && !update.creating)) {
-      await new Promise((resolve) => setTimeout(resolve, 10));
-    }
-  };
+  const settled = (id: string, status: string) => waitFor(`${id} to be ${status}`,
+    () => statuses().some((update) => update.id === id && update.status === status && !update.creating),
+    { state: () => statuses().filter((update) => update.id === id) });
 
   const repo = await gitRepository();
   let stored: SessionRecord[] = [];
@@ -585,7 +584,7 @@ test("a worktree session returns before Git finishes and the gateway sends its p
   await settled(pending.id, "starting");
   assert.equal(stored[0]?.id, pending.id, "the finished record keeps the pending id");
   assert.notEqual(stored[0]?.cwd, repo);
-  while (calls.length < 2) await new Promise((resolve) => setTimeout(resolve, 10));
+  await waitFor("the first prompt", () => calls.length >= 2, { state: () => calls });
   assert.deepEqual(calls, ["ensure true", "prompt true first turn shot.png"], "the gateway sends the first prompt once, after persisting");
 
   response.emit("close");
