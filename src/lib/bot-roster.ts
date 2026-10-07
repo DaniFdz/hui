@@ -160,6 +160,7 @@ export function botAccessibleName(bot: BotView): string {
   return [
     bot.name,
     ...(bot.title ? [bot.title] : []),
+    ...(bot.worker ? [`on ${bot.worker.name}`] : []),
     botActivityLabel(bot),
     ...(bot.unread ? ["unread"] : []),
     ...(bot.hidden ? ["hidden"] : []),

@@ -31,6 +31,8 @@ import { CONFIG_DIR } from "./paths.ts";
 export const BOTS_FILE = join(CONFIG_DIR, "bots.json");
 /** Default working directories, one per bot, created with it. */
 export const BOTS_DIR = join(CONFIG_DIR, "bots");
+/** What deleting a bot left on its worker while HUI was not connected to it, done at that worker's next connection. */
+export const BOT_CLEANUP_FILE = join(CONFIG_DIR, "bot-cleanup.json");
 export const BOTS_VERSION = 1;
 /** Handles a route already uses: `/__hui/bots/events` is the list stream. */
 export const RESERVED_HANDLES: ReadonlySet<string> = new Set(["events"]);
@@ -52,6 +54,11 @@ export class BotConflictError extends Error {
 /** bots.json cannot be read or written safely; it is left untouched. */
 export class BotStoreError extends Error {
   override name = "BotStoreError";
+}
+
+/** The bot runs on a remote worker HUI is not connected to now (503): the worker's name is in the message. */
+export class BotWorkerOfflineError extends Error {
+  override name = "BotWorkerOfflineError";
 }
 
 const ID = /^[A-Za-z0-9_-]{1,100}$/u;
@@ -126,11 +133,13 @@ export function parseBotRecord(raw: unknown): BotRecord | undefined {
   const memoryThinking = level("memoryThinking");
   const avatar = storedAvatar(raw["avatar"]);
   const voice = storedVoice(raw["voice"]);
+  const worker = ID.test(str(raw["worker"])) ? str(raw["worker"]) : undefined;
   return {
     id, handle, name,
     ...(title ? { title } : {}),
     ...(description ? { description } : {}),
     cwd,
+    ...(worker ? { worker } : {}),
     ...(chatModel ? { model: chatModel } : {}),
     ...(thinking ? { thinking } : {}),
     ...(memoryModel ? { memoryModel } : {}),
@@ -311,11 +320,11 @@ export function findBot(bots: readonly BotRecord[], target: string): BotRecord {
 }
 
 const INPUT_KEYS = new Set([
-  "name", "handle", "title", "description", "soul", "cwd", "model", "thinking", "memoryModel", "utilityModel", "memoryThinking", "avatar", "voice", "hidden",
+  "name", "handle", "title", "description", "soul", "cwd", "worker", "model", "thinking", "memoryModel", "utilityModel", "memoryThinking", "avatar", "voice", "hidden",
 ]);
 const LABELS: Record<string, string> = {
   name: "Bot name", handle: "Bot handle", title: "Bot title", description: "Bot description", soul: "SOUL.md",
-  cwd: "Working directory", model: "Bot model", thinking: "Thinking level", memoryModel: "Utility model", utilityModel: "Utility model", memoryThinking: "Memory thinking level",
+  cwd: "Working directory", worker: "Worker", model: "Bot model", thinking: "Thinking level", memoryModel: "Utility model", utilityModel: "Utility model", memoryThinking: "Memory thinking level",
 };
 
 function body(value: unknown, what: string): Record<string, unknown> {
@@ -426,15 +435,19 @@ function cwdField(raw: unknown): string {
   return value;
 }
 
-/** Validates `POST /__hui/bots`. Optional text left empty is omitted. The directory is checked by the service. */
+/** Validates `POST /__hui/bots`. Optional text left empty is omitted. The directory (and the worker) are checked by the
+ * service. */
 export function normalizeBotInput(value: unknown): BotInput {
   const input = body(value, "A bot");
-  // Without a name the bot is "New Bot" until its first conversation names it (set_profile).
-  const { soul: rawSoul, ...fields } = "name" in input ? input : { ...input, name: NEW_BOT_NAME };
+  // Without a name the bot is "New Bot" until its first conversation names it (set_profile). Where it runs is chosen
+  // here, once; a patch refuses it.
+  const { soul: rawSoul, worker: rawWorker, ...fields } = "name" in input ? input : { ...input, name: NEW_BOT_NAME };
   const soul = rawSoul === undefined ? "" : normalizeSoul(rawSoul);
+  const worker = rawWorker === undefined ? "" : textField(rawWorker, "worker", 100, { line: true });
   // The patch rules, then empty optional text and avatar keys dropped: a new bot has nothing to clear.
   const patch = normalizeBotPatch(fields);
   const result: BotInput = { name: patch.name! };
+  if (worker) result.worker = worker;
   if (patch.handle) result.handle = patch.handle;
   if (patch.title) result.title = patch.title;
   if (patch.description) result.description = patch.description;
@@ -456,6 +469,8 @@ export function normalizeBotInput(value: unknown): BotInput {
 export function normalizeBotPatch(value: unknown): BotPatch {
   const input = body(value, "A bot change");
   if (!Object.keys(input).length) throw new BotInputError("Nothing to change.");
+  // Its conversation, memory and SOUL.md live in that machine's store: moving them is not something an edit does.
+  if ("worker" in input) throw new BotInputError("A bot stays on the machine it was created on.");
   if ("soul" in input) throw new BotInputError("Change a bot's SOUL.md with PUT /__hui/bots/:id/soul.");
   const patch: BotPatch = {};
   if ("name" in input) patch.name = textField(input["name"], "name", BOT_LIMITS.name, { line: true, required: true });

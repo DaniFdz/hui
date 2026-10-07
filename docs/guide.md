@@ -194,8 +194,9 @@ A **bot** is a named, persistent agent: a role, a persona it writes with you
 ends**.
 Sessions stay what they were (coding work with worktrees, rewind and
 `/compact`); a bot is for the assistant you come back to every day. Its chat is
-an ordinary Pi Durable session on this gateway, so the chat view, streaming,
-steering, follow-ups, questions and model switching work as in any session.
+an ordinary Pi Durable session on this gateway, or on a remote worker if you
+[create it there](#bots-on-a-worker), so the chat view, streaming, steering,
+follow-ups, questions and model switching work as in any session.
 
 **Models.** A bot's **Model** does its real work: the smartest model you have.
 Its **Utility model** does its quick work (the memory's summaries, quick answers
@@ -314,6 +315,51 @@ much of a longer file and the bot is told to shorten it. Bots created before
 SOUL.md had their instructions turned into it once, the first time the gateway
 started with this version; a bot that had none starts its first conversation
 at its next turn.
+
+### Bots on a worker
+
+A bot can live on a remote worker (Settings → Workers) instead of this
+machine: its chat runs there, and its conversation, memory, folder and SOUL.md
+are kept there, so it works next to that machine's files, and a turn it started
+keeps going while HUI is away from it. Once you have a worker, the roster's
+**+** is a small menu, **New bot on Local** or **New bot on devbox**: a choice
+creates *New Bot* there at once and opens its chat, where it greets you, asks
+what to call it and what you expect, and writes its SOUL.md on the worker, as
+above. From a terminal:
+
+```sh
+hui bot add --worker devbox                               # New Bot, in its home folder on devbox
+hui bot add --name Rover --worker devbox --cwd ~/src/app  # a folder there: absolute or ~/
+```
+
+HUI must be connected to the worker when you create the bot. Where a bot runs
+is chosen once: it never moves, and Edit shows the machine without offering to
+change it. Its home folder, HUI's private folder for it under the worker's HUI
+data directory (`~/.local/share/hui-worker/bots/<id>`), holds its SOUL.md and is
+its working directory unless you choose a folder on the worker (Edit suggests
+that worker's folders), shown as `devbox:/path`; SOUL.md never goes in a folder
+you chose. The roster and the bot's chat show the worker beside its name,
+`hui bot list` marks it `on devbox` and `hui bot show` names it.
+
+Everything else works as for a bot here: messages, routines, Stop, its Memory
+panel and Soul tab, calls, archiving and deleting, and messages between bots in
+both directions (a bot on a worker sees every bot in its list). Its memory's
+summaries are written on the worker with its utility model. A secret it asks for
+is given in its chat's **Secret** card here, as for any session on a worker, and
+the worker writes the file, where its commands run.
+
+**When the worker is offline**, the bot shows it (reconnecting, or
+disconnected), its row keeps its latest message, its Memory panel and Soul tab
+say the worker is offline, and messages to it fail with that reason until HUI is
+connected again. Deleting it still takes it off the roster at once: HUI notes
+what is left on the worker (its memory and home folder) on this machine and
+removes them the next time it connects to the worker; removing the worker first
+drops the note.
+
+**Limits.** A bot on a worker has the limits of any session on a worker: the
+terminal, the managed browser and watchers act on this machine, so it can't use
+them, and it can't use worktrees. A worker can't be removed while bots run on
+it; delete them first.
 
 ### Talking to a bot
 

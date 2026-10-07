@@ -55,6 +55,19 @@ export type WorkerConfig = {
 
 export class WorkerInputError extends Error {}
 export class WorkerNotFoundError extends Error {}
+/** HUI holds no live connection to the worker; nothing was sent. */
+export class WorkerOfflineError extends Error {}
+
+/** A request a worker host may send the gateway beyond credentials and tools (`bot.section`), by worker. */
+export type HostRequestHandler = (workerId: string, params: Record<string, unknown>) => Promise<unknown>;
+
+/** What every connection shares with the service that owns it. */
+type ConnectionHooks = {
+  /** The requests registered with `WorkerService.serve`. */
+  served(): Iterable<[string, HostRequestHandler]>;
+  /** A frame that belongs to no session (`bot.memory.status`). */
+  onHostFrame(frame: Frame): void;
+};
 
 function normalizeInput(value: unknown, existing?: WorkerConfig): Omit<WorkerConfig, "id" | "createdAt" | "updatedAt"> {
   if (!isRecord(value)) throw new WorkerInputError("A worker is required.");
@@ -180,10 +193,12 @@ class WorkerConnection {
   lostSessions = false;
   /** Closed on purpose (a disconnect), so nothing reconnects by itself. */
   #closing = false;
+  #hooks: ConnectionHooks;
 
-  constructor(worker: WorkerConfig, onPhase: (phase: string) => void) {
+  constructor(worker: WorkerConfig, onPhase: (phase: string) => void, hooks: ConnectionHooks) {
     this.worker = worker;
     this.#onPhase = onPhase;
+    this.#hooks = hooks;
   }
 
   get closed(): boolean {
@@ -266,6 +281,7 @@ class WorkerConnection {
       peer.handle("credential", (params) => this.#credential(params));
       peer.handle("bridge", (params, signal) => this.#bridge(params, signal));
       peer.handle("secret-request", (params, signal) => this.#secretRequest(params, signal));
+      for (const [op, handler] of this.#hooks.served()) this.serve(op, handler);
       peer.onFrame((frame) => this.#frame(frame));
       transport.on("error", (error) => fail(`Could not run ${command[0]}: ${error.message}`));
       transport.on("exit", (code, signal) => {
@@ -292,6 +308,11 @@ class WorkerConnection {
 
   request<T>(op: string, params: Record<string, unknown> = {}, timeoutMs?: number): Promise<T> {
     return this.#peer.request<T>(op, params, timeoutMs);
+  }
+
+  /** Answers `op` from the host with `handler`, as this worker. */
+  serve(op: string, handler: HostRequestHandler): void {
+    this.#peer?.handle(op, (params) => handler(this.worker.id, params));
   }
 
   /** Sync if the mirror may be stale; concurrent callers share one run. */
@@ -423,6 +444,10 @@ class WorkerConnection {
   }
 
   #frame(frame: Frame): void {
+    if (frame.t.startsWith("bot.")) {
+      this.#hooks.onHostFrame(frame);
+      return;
+    }
     const sink = typeof frame["key"] === "string" ? this.#sessions.get(frame["key"]) : undefined;
     if (!sink) return;
     if (frame.t === "session.event") sink.receive(frame as Parameters<RemoteSessionSink["receive"]>[0]);
@@ -514,6 +539,9 @@ export class WorkerService {
   #names = new Map<string, string>();
   /** Workers the user disconnected: opening a session never reconnects them. */
   #disconnectedByUser = new Set<string>();
+  #served = new Map<string, HostRequestHandler>();
+  #hostFrameListeners = new Set<(workerId: string, frame: Frame) => void>();
+  #closedListeners = new Set<(workerId: string) => void>();
 
   async #read(): Promise<WorkerConfig[]> {
     const list = await readWorkers();
@@ -534,6 +562,14 @@ export class WorkerService {
     return () => this.#connectedListeners.delete(listener);
   }
 
+  #removedListeners = new Set<(workerId: string) => void>();
+
+  /** A worker deleted from Settings → Workers, once it is gone from the list. */
+  onRemoved(listener: (workerId: string) => void): () => void {
+    this.#removedListeners.add(listener);
+    return () => this.#removedListeners.delete(listener);
+  }
+
   #stoppedListeners = new Set<(workerId: string) => void>();
 
   /** HUI stopped trying to reach a worker: a disconnect, a removal, or a
@@ -546,6 +582,43 @@ export class WorkerService {
   onChange(listener: () => void): () => void {
     this.#listeners.add(listener);
     return () => this.#listeners.delete(listener);
+  }
+
+  /** Every connection that ends: a disconnect, a removal, or a lost link HUI may reconnect. */
+  onClosed(listener: (workerId: string) => void): () => void {
+    this.#closedListeners.add(listener);
+    return () => this.#closedListeners.delete(listener);
+  }
+
+  /** Frames hosts send that belong to no session, such as `bot.memory.status`. */
+  onHostFrame(listener: (workerId: string, frame: Frame) => void): () => void {
+    this.#hostFrameListeners.add(listener);
+    return () => this.#hostFrameListeners.delete(listener);
+  }
+
+  /** Answers a request worker hosts send, on every connection, now and later. */
+  serve(op: string, handler: HostRequestHandler): void {
+    this.#served.set(op, handler);
+    for (const connection of this.#connections.values()) if (!connection.closed) connection.serve(op, handler);
+  }
+
+  /** Whether HUI holds a live connection to the worker. */
+  connected(id: string): boolean {
+    const connection = this.#connections.get(id);
+    return Boolean(connection && !connection.closed);
+  }
+
+  /** What the connected worker's host offers beyond sessions (`bots`): empty for an older host, undefined while not connected. */
+  features(id: string): readonly string[] | undefined {
+    const connection = this.#connections.get(id);
+    return connection && !connection.closed ? connection.host.features ?? [] : undefined;
+  }
+
+  /** One request to the host of a connected worker. Never connects: without a live connection it fails at once. */
+  hostRequest<T>(id: string, op: string, params: Record<string, unknown> = {}, timeoutMs?: number): Promise<T> {
+    const connection = this.#connections.get(id);
+    if (!connection || connection.closed) return Promise.reject(new WorkerOfflineError(`HUI is not connected to ${this.nameOf(id) ?? "that worker"}.`));
+    return connection.request<T>(op, params, timeoutMs);
   }
 
   #changed(): void {
@@ -608,6 +681,7 @@ export class WorkerService {
     await writeWorkers(workers.filter((item) => item.id !== id));
     this.#status.delete(id);
     this.#changed();
+    for (const listener of this.#removedListeners) listener(id);
   }
 
   /** The live connection, opening (and if needed installing) it first. */
@@ -625,6 +699,9 @@ export class WorkerService {
       const connection = new WorkerConnection(worker, (phase) => {
         this.#status.set(id, { state: "connecting", phase });
         this.#changed();
+      }, {
+        served: () => this.#served.entries(),
+        onHostFrame: (frame) => { for (const listener of this.#hostFrameListeners) listener(id, frame); },
       });
       try {
         await connection.open();
@@ -644,6 +721,7 @@ export class WorkerService {
       this.#connections.set(id, connection);
       this.#status.set(id, { state: "connected" });
       this.#reconnect.delete(id);
+      connection.onClose(() => { for (const listener of this.#closedListeners) listener(id); });
       connection.onClose((reason) => {
         if (this.#connections.get(id) !== connection) return;
         this.#connections.delete(id);

@@ -353,7 +353,7 @@ export type BotHeaderAction = "edit" | "archive" | "delete";
 
 /** The bot view's header: who the bot is, its Routines | Memory | Soul panel and its ⋯ menu. */
 export type HomeBot = {
-  bot: Pick<BotView, "id" | "name" | "title" | "avatar" | "memory">;
+  bot: Pick<BotView, "id" | "name" | "title" | "avatar" | "memory" | "worker">;
   panelOpen: boolean;
   panelId: string;
   onTogglePanel: () => void;
@@ -2171,13 +2171,16 @@ function botFaceState(props: HomeProps): BotFaceState {
   });
 }
 
-/** A bot's chat names the bot, its role and whether it is summarizing memory. */
+/** A bot's chat names the bot, its role, the worker it runs on and whether it is summarizing memory. */
 function renderBotIdentity(bot: HomeBot, session: SessionView, face: BotFaceState) {
   const status = bot.bot.memory?.waiting ? "Summarizing memory…" : unreachableHost(session)?.status ?? STATUS_TEXT[session.status];
+  const worker = bot.bot.worker;
   return html`<div class="transcript__identity chat-pane__crumbs bot-chat-identity">
     ${renderBotAvatar(bot.bot, "md", { state: face })}
     <h2 class="transcript__title chat-pane__session-title" title=${bot.bot.name}>${bot.bot.name}</h2>
-    <span class="transcript__meta" title=${session.cwd}>${bot.bot.title ? `${bot.bot.title} · ` : ""}${status}</span>
+    <span class="transcript__meta" title=${worker ? `${worker.name}:${session.cwd}` : session.cwd}>${bot.bot.title ? `${bot.bot.title} · ` : ""}${worker
+      ? html`<span class="bot-chat-identity__machine" title=${`Runs on ${worker.name}`}><span class="sr-only">on </span>${icons.globe}<span>${worker.name}</span></span> · `
+      : nothing}${status}</span>
   </div>`;
 }
 

@@ -29,7 +29,7 @@ export type BotMemory = { status: BotMemoryStatus; view: string };
 export type BotDraft = {
   name: string;
   title: string;
-  /** Empty: a private folder the gateway creates for the bot. */
+  /** Empty: a private folder the gateway creates for the bot. On a worker's bot, a folder there. */
   cwd: string;
   emoji: string;
   /** The dialog's Look: "face" sends the shape and color and clears the emoji, "emoji" sends the emoji. Absent: the
@@ -142,6 +142,9 @@ export function parseBot(value: unknown): BotView | undefined {
   const voice = parseVoice(value["voice"]);
   const lastMessage = parseLastMessage(value["lastMessage"]);
   const memory = parseBotMemoryStatus(value["memory"]);
+  const worker = isRecord(value["worker"]) && text(value["worker"]["id"], 200) && text(value["worker"]["name"], 200)
+    ? { id: text(value["worker"]["id"], 200), name: text(value["worker"]["name"], 200) }
+    : undefined;
   const optional: Partial<Record<"title" | "description" | "model" | "thinking" | "memoryModel" | "memoryThinking", string>> = {};
   for (const [key, maximum] of [["title", 200], ["description", 2_000], ["model", 200], ["thinking", 40], ["memoryModel", 200], ["memoryThinking", 40]] as const) {
     const entry = optionalText(value[key], maximum);
@@ -153,6 +156,7 @@ export function parseBot(value: unknown): BotView | undefined {
     name,
     ...optional,
     cwd: text(value["cwd"], 4_096),
+    ...(worker ? { worker } : {}),
     ...(avatar ? { avatar } : {}),
     ...(voice ? { voice } : {}),
     ...(value["hidden"] === true ? { hidden: true } : {}),

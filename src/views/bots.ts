@@ -10,6 +10,7 @@ import { closeDropdownOnEscape, labelDropdown } from "../lib/web-awesome.ts";
 import { navigationPath } from "../lib/navigation.ts";
 import type { BotDraft, BotMemoryStatus, BotView } from "../lib/bots.ts";
 import { BOT_FACE_COLORS, BOT_FACE_SHAPES, BOT_FACE_SHAPE_LABELS, BOT_LIMITS, BOT_THINKING_LEVELS, botLook, type BotAvatar, type BotFaceShape } from "../../shared/bots.ts";
+import type { WorkerState } from "../../shared/workers.ts";
 import { facePath, rosterFaceState, type BotFaceSize, type BotFaceState } from "../lib/bot-face.ts";
 import "../components/bot-face.ts";
 import { GPT_LIVE_VOICES, gptLiveVoiceLabel, type GptLiveVoice } from "../../shared/calls.ts";
@@ -139,6 +140,7 @@ function botRow(bot: BotView, props: BotRosterProps, drawer: RosterDrawer) {
           <time class="bot-row__time" datetime=${at ? new Date(at).toISOString() : nothing} title=${at ? new Date(at).toLocaleString() : nothing}>${compactRelativeTime(at, props.now)}</time>
         </span>
         <span class="bot-row__bottom">
+          ${bot.worker ? html`<span class="bot-row__tag bot-row__machine" title=${`Runs on ${bot.worker.name}`}>${icons.globe}<span>${bot.worker.name}</span></span>` : nothing}
           ${bot.hidden ? html`<span class="bot-row__tag">Hidden</span>` : nothing}
           <span class="bot-row__preview">${preview}</span>
           ${unread ? html`<span class="sidebar-session-unread-dot bot-row__unread" title="Unread"></span>` : nothing}
@@ -243,6 +245,54 @@ export function renderBotRoster(props: BotRosterProps, drawer: RosterDrawer) {
     </div>
     ${renderRosterToggles(props, drawer)}`;
 }
+
+/* ── new bot ──────────────────────────────────────────────────────────────── */
+
+/** A remote worker a new bot can be created on (Settings → Workers). */
+export type BotPlace = { id: string; name: string; state: WorkerState };
+
+export type NewBotButtonProps = {
+  /** None: + is the plain New bot it always was. */
+  workers: readonly BotPlace[];
+  /** + without workers. */
+  onNew: () => void;
+  /** A menu choice: creates the bot at once on the worker with this id, or on this machine (undefined). */
+  onCreate: (worker: string | undefined) => void;
+  /** The menu opens: a chance to read the workers' state again. */
+  onOpen?: () => void;
+  /** After a choice, as the roster's other actions close the mobile drawer. */
+  closeDrawer: (event: Event) => void;
+};
+
+/**
+ * The roster's +. While a remote worker exists it is a small menu, New bot on Local or on each worker, and a choice
+ * creates the bot there at once: a bot stays on the machine it is created on. Without workers it is plain New bot.
+ */
+export function renderNewBotButton(props: NewBotButtonProps) {
+  if (!props.workers.length) {
+    return html`<button type="button" aria-label="New bot" title="New bot" data-new-bot-trigger @click=${(event: Event) => {
+      props.onNew();
+      props.closeDrawer(event);
+    }}>${icons.plus}</button>`;
+  }
+  return html`<wa-dropdown class="session-menu new-bot-menu" placement="bottom-end" distance="4" @keydown=${closeDropdownOnEscape}
+    @wa-show=${(event: Event) => { labelDropdown(event); props.onOpen?.(); }}
+    @wa-select=${(event: CustomEvent<{ item: { value: string } }>) => {
+      const value = event.detail.item.value;
+      props.onCreate(value === NEW_BOT_LOCAL ? undefined : value);
+      props.closeDrawer(event);
+    }}>
+    <button slot="trigger" type="button" aria-label="New bot" title="New bot" data-new-bot-trigger>${icons.plus}</button>
+    <wa-dropdown-item value=${NEW_BOT_LOCAL} class="session-menu__item"><span slot="icon" class="session-menu__icon" aria-hidden="true">${icons.terminal}</span><span class="session-menu__text">New bot on Local</span></wa-dropdown-item>
+    <div class="session-menu__separator" role="separator"></div>
+    ${props.workers.map((worker) => html`<wa-dropdown-item value=${worker.id} class="session-menu__item"><span slot="icon" class="session-menu__icon" aria-hidden="true">${icons.globe}</span><span class="session-menu__text">New bot on ${worker.name}${worker.state === "connected"
+      ? nothing
+      : html` <span class="settings-row__muted">· ${worker.state === "error" ? "offline" : worker.state}</span>`}</span></wa-dropdown-item>`)}
+  </wa-dropdown>`;
+}
+
+/** The menu item for this machine; worker ids are UUIDs, so they never collide with it. */
+const NEW_BOT_LOCAL = "local";
 
 /* ── chat placeholder (no bot or no chat yet) ─────────────────────────────── */
 
@@ -517,7 +567,7 @@ function renderMemoryTab(props: BotPanelProps) {
       <div><dt>View</dt><dd>${memoryBudgetLabel(status.viewBytes)}</dd></div>
       <div><dt>Lines</dt><dd>${status.viewLines.toLocaleString()}</dd></div>
       <div><dt>Pending summaries</dt><dd>${status.pending.toLocaleString()}</dd></div>
-      <div class="bot-memory__usage"><dt>Summarizer since the gateway started</dt><dd title=${memoryUsageDetail(status.usage)}>${memoryUsageLabel(status.usage)}</dd></div>
+      <div class="bot-memory__usage"><dt>${props.bot.worker ? `Summarizer since HUI started on ${props.bot.worker.name}` : "Summarizer since the gateway started"}</dt><dd title=${memoryUsageDetail(status.usage)}>${memoryUsageLabel(status.usage)}</dd></div>
     </dl>
     ${status.waiting ? html`<p class="bot-memory__notice" role="status">Summarizing memory…</p>` : nothing}
     ${status.failing ? html`<p class="bot-memory__notice bot-memory__notice--failing" role="alert">Summaries are failing${status.failing.node ? ` at ${status.failing.node}` : ""}: ${status.failing.error}. HUI keeps retrying.</p>` : nothing}
@@ -643,6 +693,8 @@ export type BotDialogProps = {
   look: BotDialogLook;
   /** How the bot sounds on calls (HUI-18): its GPT-Live voice and its language. */
   call: BotDialogCall;
+  /** A remote worker exists (Settings → Workers): an edited bot shows the machine it runs on, even this one. */
+  workersExist?: boolean;
 };
 
 /** A GPT-Live call voice, and the language the bot speaks on calls. */
@@ -743,6 +795,31 @@ function modelOptions(models: readonly RuntimeModel[], empty: string, current: s
   return current && !options.some((option) => option.value === current) ? [...options, { value: current, label: current }] : options;
 }
 
+/** The machine a bot runs on, read-only: its worker, or this machine. */
+export function renderBotMachine(worker: BotView["worker"]) {
+  return html`<span class="bot-dialog__machine-value" data-bot-machine>${worker ? icons.globe : icons.terminal}<span>${worker?.name ?? "Local"}</span></span>`;
+}
+
+/**
+ * Runs on, for a bot that exists: the machine it stays on, read-only (its chat and memory live in that machine's
+ * store). Shown for a bot on a worker, and for one here while a worker exists. Where a bot runs is chosen when it is
+ * created, with the roster's + (`renderNewBotButton`).
+ */
+export function renderBotMachineField(bot: Pick<BotView, "worker">, workersExist: boolean) {
+  if (!bot.worker && !workersExist) return nothing;
+  return html`<div class="field input-dialog__field bot-dialog__machine"><span>Runs on</span>
+    ${renderBotMachine(bot.worker)}
+    <span class="bot-field__hint">A bot stays on the machine it was created on: its chat and memory live there.${bot.worker
+      ? " Terminals, the browser and watchers stay on this machine, so it can't use them."
+      : ""}</span></div>`;
+}
+
+/** What the workspace field says: a folder on the machine the bot runs on. */
+function workspaceHint(editing: BotView | undefined): string {
+  if (editing) return editing.worker ? `A folder on ${editing.worker.name}. Can change only while the bot is idle.` : "Can change only while the bot is idle.";
+  return "Leave empty for a private folder HUI creates for this bot.";
+}
+
 export function renderBotDialog(props: BotDialogProps) {
   const editing = props.mode === "edit" ? props.bot : undefined;
   const titleId = "bot-dialog-title";
@@ -782,9 +859,10 @@ export function renderBotDialog(props: BotDialogProps) {
         <span class="bot-field__hint">The fastest model you have, ideally a cheap one. It writes the memory's summaries, answers quick questions on calls and writes each call's summary.</span></div>
       ${renderCallVoiceField(props.call, props.pending)}
       ${renderLanguageField(props.call, props.pending)}
+      ${editing ? renderBotMachineField(editing, Boolean(props.workersExist)) : nothing}
       <div class="field input-dialog__field"><label for="bot-dialog-cwd">Workspace directory</label>
         ${renderDirectoryPicker({ id: "bot-dialog-cwd", label: "Workspace directory", value: editing?.cwd ?? "", suggestions: props.directorySuggestions, onInput: props.onDirectoryInput, inputClass: "settings-input", externalLabel: true, placeholder: "Automatic" })}
-        <span class="bot-field__hint">${editing ? "Can change only while the bot is idle." : "Leave empty for a private folder HUI creates for this bot."}</span></div>
+        <span class="bot-field__hint">${workspaceHint(editing)}</span></div>
       ${props.error ? html`<p class="group-action-dialog__error bot-field__error" role="alert">${props.error}</p>` : nothing}
       <div class="exec-approval-actions">
         <button type="submit" class="btn primary" ?disabled=${props.pending}>${props.pending ? (editing ? "Saving…" : "Creating…") : editing ? "Save" : "Create bot"}</button>
@@ -801,7 +879,7 @@ export function renderBotArchiveDialog(bot: BotView, pending: boolean, error: st
     @cancel=${(event: Event) => { event.preventDefault(); if (!pending) onCancel(); }}>
     <form class="exec-approval-card" method="dialog" @submit=${(event: SubmitEvent) => { event.preventDefault(); onConfirm(); }}>
       <div class="exec-approval-title" id="bot-archive-title">Archive ${bot.name}?</div>
-      <div class="exec-approval-sub">${bot.name} leaves the roster and its routines are disabled. Its chat, memory and workspace stay on this machine, and it can be restored.</div>
+      <div class="exec-approval-sub">${bot.name} leaves the roster and its routines are disabled. Its chat, memory and workspace stay on ${bot.worker?.name ?? "this machine"}, and it can be restored.</div>
       ${error ? html`<p class="group-action-dialog__error" role="alert">${error}</p>` : nothing}
       <div class="exec-approval-actions">
         <button type="submit" class="btn danger" ?disabled=${pending}>${pending ? "Archiving…" : "Archive"}</button>
@@ -819,7 +897,7 @@ export function renderBotDeleteDialog(bot: BotView, pending: boolean, error: str
     @cancel=${(event: Event) => { event.preventDefault(); if (!pending) onCancel(); }}>
     <form class="exec-approval-card" method="dialog" @submit=${(event: SubmitEvent) => { event.preventDefault(); onConfirm(); }}>
       <div class="exec-approval-title" id="bot-delete-title">Delete ${bot.name}?</div>
-      <div class="exec-approval-sub">${bot.name} is deleted for good: its chat leaves HUI, and its routines, its memory and its folder (SOUL.md and every file in it) go. A workspace you chose for it stays. This cannot be undone.</div>
+      <div class="exec-approval-sub">${bot.name} is deleted for good: its chat leaves HUI, and its routines, its memory and its folder${bot.worker ? ` on ${bot.worker.name}` : ""} (SOUL.md and every file in it) go${bot.worker && bot.status === "disconnected" ? `; HUI is not connected to ${bot.worker.name} now, so those go there when it reconnects` : ""}. A workspace you chose for it stays. This cannot be undone.</div>
       ${error ? html`<p class="group-action-dialog__error" role="alert">${error}</p>` : nothing}
       <div class="exec-approval-actions">
         <button type="submit" class="btn danger" ?disabled=${pending}>${pending ? "Deleting…" : "Delete"}</button>
