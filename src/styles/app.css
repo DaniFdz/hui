@@ -253,10 +253,15 @@ hui-session-multiplexer {
   color: var(--text-strong);
 }
 /* A task's maker (a bot) and limits beside its description: "made by @ada · until 18:00 · 3 runs left". */
+.cron-table__name-meta:has(.cron-table__fact) {
+  flex-wrap: wrap;
+  row-gap: 0;
+}
 .cron-table__fact {
   flex: none;
   color: var(--muted);
   font-size: var(--control-ui-text-xs);
+  font-weight: 400;
   white-space: nowrap;
 }
 .automation-form:not([data-schedule="cron"]) .automation-field--cron,
