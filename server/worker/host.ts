@@ -32,6 +32,7 @@ import { installBrokeredCredentials, OfflineError, setCredentialTransport, setSe
 import { completeWorkingDirectories, resolveWorkingDirectory } from "../working-directories.ts";
 import { attachPeer, isRecord, PROTOCOL_VERSION, type Peer } from "./protocol.ts";
 import { BOT_ACCESS_FEATURE, BOT_ACCESS_FRAME, BOTS_FEATURE, hostBots } from "./host-bots.ts";
+import { GATEWAY_ONLY_TOOLS } from "./gateway-tools.ts";
 import { PACKAGE_ROOT } from "./release.ts";
 import { applySync, planSync, putSyncFiles, writeAtomic, type SyncCommit } from "./sync-apply.ts";
 import type { WorkerPaths } from "./paths.ts";
@@ -163,6 +164,8 @@ export class WorkerHost {
       agentDir: paths.agentDir,
       invokeTool: ({ callerSessionId, action, params }) => this.#gatewayTool(callerSessionId, action, params),
       lookupCaller: async (conversationId) => this.#callers.get(String(conversationId)),
+      // The gateway's bridge refuses these for every session here; a bot's chat isn't offered them.
+      gatewayOnlyTools: GATEWAY_ONLY_TOOLS,
     });
     // A bot's chat here lists the other bots as the gateway that owns them says.
     this.#durable.botSection = (botId) => this.#botSection(botId);

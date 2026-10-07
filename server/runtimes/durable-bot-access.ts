@@ -288,6 +288,9 @@ export type BotAccessDeps = {
   skills(cwd: string): Promise<readonly Skill[]>;
   /** Where a conversation without a directory runs. */
   agentDir: string;
+  /** HUI tools a bot's chat here is never offered, since they act on another machine (a worker host's
+   * `gatewayOnlyTools`): never listed as off, never asked for. */
+  gatewayOnly?: readonly string[];
   /** After the operator allowed a request: the gateway mirrors the lists into its roster. */
   recorded?(botId: string, access: BotAccess): Promise<void>;
   /** A step after a grant failed: mirroring it (`roster`) or offering the tools again (`offer`). Never the model's. */
@@ -345,12 +348,17 @@ export function botAccessParts(deps: BotAccessDeps): { tools: ToolRegistration[]
       const available = await chat.availableSkills();
       const offTools = offer.filter((tool) => state.disabledTools.includes(tool.name));
       const offSkills = available.filter((skill) => hasSkill(state.disabledSkills, skillRef(skill)));
-      const unknownTools = wanted.tools.filter((name) => !current.has(name) && !offer.some((tool) => tool.name === name));
+      // What acts on another machine isn't this chat's to ask for, whatever its lists say.
+      const elsewhere = wanted.tools.filter((name) => deps.gatewayOnly?.includes(name) === true);
+      const unknownTools = wanted.tools.filter((name) => !elsewhere.includes(name) && !current.has(name) && !offer.some((tool) => tool.name === name));
       const unknownSkills = wanted.skills.filter((name) => !available.some((skill) => skill.name === name));
-      if (unknownTools.length || unknownSkills.length) {
+      if (elsewhere.length || unknownTools.length || unknownSkills.length) {
         const askable = (names: readonly string[], kind: string) => (names.length ? names.join(", ") : `nothing, no ${kind} is turned off`);
+        const one = elsewhere.length === 1;
         return text([
-          ...(unknownTools.length ? [`No tool named ${listed(unknownTools)}. You can ask for: ${askable(offTools.map((tool) => tool.name), "tool")}.`] : []),
+          ...(elsewhere.length ? [`${listed(elsewhere)} ${one ? "works" : "work"} only on HUI's own machine, not the one you run on: ${one ? "it isn't" : "they aren't"} yours to ask for.`] : []),
+          ...(unknownTools.length ? [`No tool named ${listed(unknownTools)}.`] : []),
+          ...(elsewhere.length || unknownTools.length ? [`You can ask for: ${askable(offTools.map((tool) => tool.name), "tool")}.`] : []),
           ...(unknownSkills.length ? [`No skill named ${listed(unknownSkills)}. You can ask for: ${askable(offSkills.map((skill) => skill.name), "skill")}.`] : []),
         ].join(" "), true);
       }
@@ -425,10 +433,10 @@ export function botAccessParts(deps: BotAccessDeps): { tools: ToolRegistration[]
     const state = await conversationBotState(input.read, input.conversationId, context);
     if (!state || (!state.disabledTools.length && !state.disabledSkills.length)) return undefined;
     const offered = new Set(input.agent.tools.map((tool) => tool.name));
-    // The live chat's offer, or what the request's extensions compose.
+    // The live chat's offer, or what the request's extensions compose: never what acts on another machine.
     const live = deps.chat(input.conversationId)?.botOffer();
     const candidates = live ?? input.agent.extensions.flatMap((extension) => extension.tools ?? [])
-      .filter((tool) => !BOT_OWN_TOOLS.includes(tool.name)).map((tool) => describeTool(tool, originOf(tool.name)));
+      .filter((tool) => !BOT_OWN_TOOLS.includes(tool.name) && !deps.gatewayOnly?.includes(tool.name)).map((tool) => describeTool(tool, originOf(tool.name)));
     const tools = candidates.filter((tool) => state.disabledTools.includes(tool.name) && !offered.has(tool.name));
     const cwd = input.env?.cwd ?? input.agent.cwd ?? deps.agentDir;
     const skills = (await deps.skills(cwd).catch(() => [])).filter((skill) => hasSkill(state.disabledSkills, skillRef(skill)));

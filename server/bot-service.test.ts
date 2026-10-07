@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { test, type TestContext } from "node:test";
 
 import { BOT_KICKOFF_MARKER, botDisplayCwd, botKickoffName, type BotAccess, type BotMemoryStatus } from "../shared/bots.ts";
+import { GATEWAY_ONLY_TOOLS } from "./worker/gateway-tools.ts";
 import type { CallRecord } from "../shared/calls.ts";
 import type { AutomationTask } from "../src/lib/automation-types.ts";
 import { DEFAULT_SETTINGS } from "../src/lib/settings.ts";
@@ -1242,13 +1243,31 @@ test("a worker's skills match by name and mirrored path: a skill this gateway na
   const alias = (path: string) => path.startsWith("/skills/") ? `/home/remote/.local/share/hui-worker/mirror/agent${path}` : undefined;
   const none = { disabledTools: [], disabledSkills: [] };
   const alpha = { name: "alpha", path: REMOTE_ALPHA };
-  assert.deepEqual(resolveAccess(offer, none, { disabledSkills: [{ name: "alpha", path: "/skills/alpha/SKILL.md" }] }, alias).disabledSkills, [alpha]);
-  assert.deepEqual(resolveAccess(offer, none, { disabledSkills: [alpha, "alpha"] }, alias).disabledSkills, [alpha], "the worker's own path, or the name, too");
+  assert.deepEqual(resolveAccess(offer, none, { disabledSkills: [{ name: "alpha", path: "/skills/alpha/SKILL.md" }] }, { alias }).disabledSkills, [alpha]);
+  assert.deepEqual(resolveAccess(offer, none, { disabledSkills: [alpha, "alpha"] }, { alias }).disabledSkills, [alpha], "the worker's own path, or the name, too");
   assert.throws(() => resolveAccess(offer, none, { disabledSkills: [{ name: "alpha", path: "/skills/alpha/SKILL.md" }] }), /Unknown skill: alpha \(\/skills\/alpha\/SKILL\.md\)/u, "without the worker's naming, a path here is no skill there");
-  assert.throws(() => resolveAccess(offer, none, { disabledSkills: [{ name: "beta", path: "/skills/alpha/SKILL.md" }] }, alias), /Unknown skill: beta/u, "the name must match too");
+  assert.throws(() => resolveAccess(offer, none, { disabledSkills: [{ name: "beta", path: "/skills/alpha/SKILL.md" }] }, { alias }), /Unknown skill: beta/u, "the name must match too");
   // Already off and no longer offered there: it may stay off under either path.
   const off = { disabledTools: [], disabledSkills: [{ name: "gone", path: "/home/remote/.local/share/hui-worker/mirror/agent/skills/gone/SKILL.md" }] };
-  assert.deepEqual(resolveAccess(offer, off, { disabledSkills: [{ name: "gone", path: "/skills/gone/SKILL.md" }] }, alias).disabledSkills, off.disabledSkills);
+  assert.deepEqual(resolveAccess(offer, off, { disabledSkills: [{ name: "gone", path: "/skills/gone/SKILL.md" }] }, { alias }).disabledSkills, off.disabledSkills);
+});
+
+test("a bot on a worker can't name the tools that stay on this machine: refused as such, not as unknown; a list from before keeps them", async (t) => {
+  const offer = { tools: [{ name: "bash", label: "Shell", description: "Run shell commands", group: "shell" as const, source: "Durable", powerful: true }], skills: [], alwaysOn: [], live: true };
+  const none = { disabledTools: [], disabledSkills: [] };
+  const elsewhere = { tools: GATEWAY_ONLY_TOOLS, worker: "devbox" };
+  assert.throws(() => resolveAccess(offer, none, { disabledTools: ["terminal", "bash"] }, { elsewhere }),
+    (error: unknown) => error instanceof BotInputError && error.message === "terminal stays on this machine, so a bot on devbox can't use it and there is nothing to turn off: leave it out.");
+  assert.throws(() => resolveAccess(offer, none, { disabledTools: ["watcher", "browser"] }, { elsewhere }), /: watcher, browser stay on this machine, so a bot on devbox can't use them and there is nothing to turn off: leave them out\.$/u);
+  assert.throws(() => resolveAccess(offer, none, { disabledTools: ["teleport"] }, { elsewhere }), /: Unknown tool: teleport\./u);
+  assert.throws(() => resolveAccess(offer, none, { disabledTools: ["terminal"] }), /: Unknown tool: terminal\./u, "for a bot here, whose host offers them, only a name its offer lacks gets this far");
+  // A list from before its host left them out keeps them, harmlessly: nothing lists, counts or asks for them.
+  assert.deepEqual(resolveAccess(offer, { disabledTools: ["terminal"], disabledSkills: [] }, { disabledTools: ["terminal", "bash"] }, { elsewhere }).disabledTools, ["terminal", "bash"]);
+  // Through the service: the worker's offer leaves them out, and the refusal names the worker.
+  const h = await harness(t);
+  await assert.rejects(h.service.create({ name: "Termless", worker: "devbox", disabledTools: ["terminal"] }),
+    (error: unknown) => error instanceof BotInputError && error.message === "terminal stays on this machine, so a bot on devbox can't use it and there is nothing to turn off: leave it out.");
+  assert.equal(h.remote.created.length, 0, "nothing created there");
 });
 
 test("a bot on a worker keeps its lists there: created with them, listed and checked there, its skills by the worker's paths, and refused naming the worker while it is offline", async (t) => {

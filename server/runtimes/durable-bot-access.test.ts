@@ -13,6 +13,7 @@ import type { AgentToolInvocation } from "../agent-tools-bridge.ts";
 import type { BotMemory } from "../bot-memory.ts";
 import type { DurableSession } from "./durable.ts";
 import type { RuntimeEvent, RuntimeQuestion, TranscriptEntry } from "./types.ts";
+import { GATEWAY_ONLY_TOOLS } from "../worker/gateway-tools.ts";
 
 // HUI's configuration directory is resolved at import time; never the operator's own.
 const configDir = await mkdtemp(join(tmpdir(), "hui-bot-access-config-"));
@@ -194,7 +195,8 @@ const LATER = "export default function (pi) {\n"
   + "  pi.registerTool({ name: 'fixture_later', label: 'Later', description: 'Installed after the bot was set up.', parameters: { type: 'object', properties: {} }, async execute() { return { content: [{ type: 'text', text: 'later' }], details: {} }; } });\n"
   + "}\n";
 
-async function fixture(t: TestContext) {
+/** A real host and the fixture provider; `hostOptions` as a worker's host passes them. */
+async function fixture(t: TestContext, hostOptions: { gatewayOnlyTools?: readonly string[] } = {}) {
   const dir = await mkdtemp(join(tmpdir(), "hui-bot-access-"));
   const agentDir = join(dir, "agent");
   const cwd = join(dir, "workspace");
@@ -235,6 +237,7 @@ async function fixture(t: TestContext) {
     readSettings: async () => normalizeSettings(undefined),
     invokeTool: async (invocation) => { invocations.push(invocation); return { text: "Queued for @bob." }; },
     lookupCaller: async () => undefined,
+    ...hostOptions,
   });
   hosts.push(host);
   const port = durableBotConversations(host, fakeMemory());
@@ -436,6 +439,44 @@ test("request_access refuses unknown names with the ones that are off, and asks 
   assert.equal(most, 1, "never more than one request waits for the operator");
   const left = (await (await f.host.open()).snapshot(BotDoc, id, durableContext))?.disabledTools;
   assert.ok(left?.length === 3 && left[0] === "bash" && left[1] === "fixture_other" && ["write", "edit"].includes(left[2]!), JSON.stringify(left));
+});
+
+test("on a worker's host a bot's chat is never offered the tools that stay on the gateway's machine: not in its requests, its offer or what it can ask for; other sessions there keep them", { timeout: 60_000 }, async (t) => {
+  const f = await fixture(t, { gatewayOnlyTools: GATEWAY_ONLY_TOOLS });
+  const gatewayOnly = (tools: readonly (string | undefined)[]) => tools.filter((name) => name !== undefined && GATEWAY_ONLY_TOOLS.includes(name));
+  assert.deepEqual(gatewayOnly(names(f.host.builtinBotOffer())), [], "what a chat that isn't running yet is checked against");
+  const plain = await startDurable({ cwd: f.cwd, huiSessionId: "plain" }, f.host);
+  assert.deepEqual(gatewayOnly(names((await plain.inspect()).tools)).sort(), [...GATEWAY_ONLY_TOOLS].sort(), "an ordinary session keeps them, and the gateway's bridge refuses their calls");
+  // bash off, and terminal in its list too, as a list written before its host left terminal out could hold it.
+  const { session } = await f.bot(off(["bash", "terminal"]));
+  assert.deepEqual(gatewayOnly(names((await session.inspect()).tools)), []);
+  assert.deepEqual(gatewayOnly(names(session.botOffer())), [], "nothing for the operator to switch, and nothing counted as off");
+  await session.prompt(calls({ name: "request_access", input: { tools: ["terminal"], reason: "To use the shared terminal." } }));
+  await settledWith(session, answered("tool answered:"));
+  assert.equal(lastReply(session), "tool answered: terminal works only on HUI's own machine, not the one you run on: it isn't yours to ask for. You can ask for: bash.");
+  const [first] = await requests(f.log);
+  assert.deepEqual(gatewayOnly(toolNames(first)), [], "its model never sees them");
+  const system = JSON.stringify(first?.system);
+  assert.match(system, /Tools:\\n- bash: /u, "its access section names what it can ask for");
+  assert.doesNotMatch(system, /- terminal: /u);
+});
+
+test("without a live chat, a bot's access section still leaves out what acts on another machine", async () => {
+  const tool = (name: string) => ({ name, description: name, parameters: {}, execute: async () => ({ content: [] }) });
+  const input = {
+    conversationId: 7,
+    agent: { tools: [tool("read")], extensions: [{ name: "hui-tools", tools: [tool("read"), tool("bash"), tool("terminal")] }], cwd: "/work" },
+    env: undefined, shown: {},
+    read: { snapshot: async () => ({ bot: "bot-1", disabledTools: ["bash", "terminal"], disabledSkills: [] }) },
+  } as never;
+  const render = async (gatewayOnly?: readonly string[]) => {
+    const [section] = access.botAccessParts({ chat: () => undefined, skills: async () => [], agentDir: "/agent", ...(gatewayOnly ? { gatewayOnly } : {}) }).sections;
+    return String(await section!.render(input, BACKGROUND_CONTEXT));
+  };
+  assert.match(await render(), /- bash: [^]*- terminal: /u, "on the gateway, both are this chat's to ask for");
+  const onWorker = await render(GATEWAY_ONLY_TOOLS);
+  assert.match(onWorker, /Tools:\n- bash: /u);
+  assert.doesNotMatch(onWorker, /terminal/u);
 });
 
 test("a bot's prompt and /skill: offer only the skills that are on; a session in its directory keeps them all", { timeout: 60_000 }, async (t) => {

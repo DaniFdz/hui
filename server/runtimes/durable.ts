@@ -252,15 +252,21 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
 
   /** Offers the conversation its extensions and the tools they keep active, OptChat's zoom and date when the
    * conversation has OptChat, `message_bot` and a bot's own tools when it is a bot's chat, and drops the browser when
-   * Settings turns it off. A bot's chat goes without the tools the operator turned off, and without its own tools while
-   * it has no use for them (`durable-bot-access.ts`). Applies per conversation, at start and on every change. */
+   * Settings turns it off. A bot's chat goes without the tools the operator turned off, without its own tools while
+   * it has no use for them (`durable-bot-access.ts`), and without the HUI tools that act on another machine than this
+   * host's (`gatewayOnlyTools`, on a worker), which it is never offered. Applies per conversation, at start and on
+   * every change. */
   async applyTools(): Promise<void> {
     const browserEnabled = (await this.#host.settings()).browser.enabled !== false;
-    const inactive = new Map([...(browserEnabled ? [] : this.#host.toolsNamed(["browser"])), ...(this.#extensions?.inactiveTools() ?? [])].map((tool) => [tool.name, tool]));
+    const bot = await this.#host.botStateFor(this.#conversation.id);
+    const inactive = new Map([
+      ...(browserEnabled ? [] : this.#host.toolsNamed(["browser"])),
+      ...(bot ? this.#host.toolsNamed(this.#host.gatewayOnlyTools) : []),
+      ...(this.#extensions?.inactiveTools() ?? []),
+    ].map((tool) => [tool.name, tool]));
     // After the session's extensions, so OptChat's zoom and date win over same-named extension tools where OptChat is
     // on, and only there. Each is selected per conversation; every other conversation's selection stays as it was.
     const optchat = await this.#host.optchat.toolsFor(this.#conversation.id);
-    const bot = await this.#host.botStateFor(this.#conversation.id);
     const botTools = bot ? await this.#host.botToolsFor(this.#conversation.id) : undefined;
     const added = [...(this.#extensions ? [this.#extensions.extension] : []), ...(optchat ? [optchat] : []), ...(botTools ? [botTools] : [])];
     const remove = [...inactive.values()];

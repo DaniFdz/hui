@@ -34,6 +34,7 @@ import type { HostInfo, RemoteLaunch, RemoteState } from "./worker/host.ts";
 import { RuntimeUnreachableError, type RuntimeEvent, type TranscriptEntry } from "./runtimes/types.ts";
 import { formatCommand, parseCommand, type WorkerInput, type WorkerView } from "../shared/workers.ts";
 import { invokeAgentTool } from "./agent-tools-bridge.ts";
+import { GATEWAY_ONLY_TOOLS } from "./worker/gateway-tools.ts";
 import { readRegistry } from "./sessions.ts";
 
 export const WORKERS_FILE = join(CONFIG_DIR, "workers.json");
@@ -483,8 +484,8 @@ class WorkerConnection {
     const toolParams = isRecord(params["params"]) ? params["params"] : {};
     const caller = (await readRegistry()).find((record) => record.id === key && record.worker === this.worker.id);
     if (!action || !caller) throw new Error("That conversation does not run on this worker.");
-    // These act on the gateway's machine, not the worker's.
-    if (action === "terminal" || action === "browser" || action === "watcher") throw new Error(`The ${action} tool is not available to sessions on a remote worker yet.`);
+    // These act on the gateway's machine, not the worker's (a bot's chat there isn't even offered them).
+    if (GATEWAY_ONLY_TOOLS.includes(action)) throw new Error(`The ${action} tool is not available to sessions on a remote worker yet.`);
     if (action !== "present_media") return invokeAgentTool({ callerSessionId: key, action, params: toolParams });
     // Media lives on the remote: copy it here, then present it as usual.
     const paths = Array.isArray(toolParams["paths"]) ? toolParams["paths"].filter((path): path is string => typeof path === "string").slice(0, 8) : [];

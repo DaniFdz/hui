@@ -158,6 +158,13 @@ export type DurableHostOptions = {
    * model defaults to it (HUI-18). Defaults to HUI's settings unless `readSettings` is given.
    */
   utilityModel?: () => Promise<string | undefined>;
+  /**
+   * HUI tools that act on another machine, which this host's sessions reach through a bridge that refuses them: a
+   * worker host passes `GATEWAY_ONLY_TOOLS`, the gateway none. A bot's chat here isn't offered them, so its model never
+   * calls them, `request_access` can't ask for them and the operator's catalog doesn't list them. Other sessions here
+   * are offered them as before, and the bridge refuses them.
+   */
+  gatewayOnlyTools?: readonly string[];
 };
 
 /** Registry fallback: the HUI session whose resume reference names this conversation. */
@@ -173,6 +180,8 @@ export class DurableHost implements ExtensionHost {
   readonly agentDir: string;
   readonly prompt: DurablePrompt;
   readonly settings: () => Promise<PromptSettings>;
+  /** HUI tools a bot's chat here is never offered: they act on another machine (`DurableHostOptions.gatewayOnlyTools`). */
+  readonly gatewayOnlyTools: readonly string[];
   /** OptChat memories of the conversations that enable it; a no-op for every other conversation. */
   readonly optchat: OptChatManager;
   #invokeTool: DurableToolInvoker;
@@ -232,6 +241,7 @@ export class DurableHost implements ExtensionHost {
     this.agentDir = options.agentDir;
     this.#resume = options.resume !== false;
     this.settings = options.readSettings ?? readHuiSettings;
+    this.gatewayOnlyTools = options.gatewayOnlyTools ?? [];
     this.optchat = new OptChatManager({
       dir: options.dir, models: () => this.models,
       // A bot's utility model defaults to Settings' (HUI-18): memory summaries are quick work.
@@ -254,6 +264,7 @@ export class DurableHost implements ExtensionHost {
       chat: (conversationId) => this.chatFor(conversationId),
       skills: async (cwd) => (await this.prompt.loader(cwd)).getSkills().skills,
       agentDir: this.agentDir,
+      gatewayOnly: this.gatewayOnlyTools,
       recorded: async (botId, lists) => { await this.botAccessRecorded?.(botId, lists); },
       report: (step, error) => recordDiagnosticEvent({
         area: "runtime", level: "warning", action: step === "roster" ? "bot_access_mirror_failed" : "bot_access_offer_failed",
@@ -310,9 +321,9 @@ export class DurableHost implements ExtensionHost {
   untrackChat(chat: BotChat & { conversation(): Conversation }): void { this.#chats.delete(chat); }
 
   /** The tools every bot's chat has before extensions that the operator can turn off: what a chat that isn't running
-   * here is checked against. */
+   * here is checked against. Never the ones that act on another machine (`gatewayOnlyTools`). */
   builtinBotOffer(): OfferedTool[] {
-    return builtinOffer(this.codingTools, this.huiTools, this.botTools);
+    return builtinOffer(this.codingTools, this.huiTools.filter((tool) => !this.gatewayOnlyTools.includes(tool.name)), this.botTools);
   }
 
   /** The live session following the conversation now; a rewind moves a session to its fork. */

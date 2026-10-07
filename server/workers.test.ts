@@ -32,6 +32,7 @@ const { remoteRuntime } = await import("./runtimes/remote.ts");
 const piRuntime = remoteRuntime("pi");
 const { workerRelease } = await import("./worker/release.ts");
 const { registerAgentToolHandler } = await import("./agent-tools-bridge.ts");
+const { GATEWAY_ONLY_TOOLS } = await import("./worker/gateway-tools.ts");
 const { readRegistry, writeRegistry } = await import("./sessions.ts");
 const durable = remoteRuntime("durable");
 const control = (path: string, init?: RequestInit) => fetch(`${baseUrl.replace(/\/v1$/u, "")}/control/${path}`, init);
@@ -508,6 +509,27 @@ test("a Durable session on the worker calls HUI tools on the gateway as itself, 
     await session.abort!();
     await waitFor(() => !session.isStreaming || undefined, "the run to stop");
     assert.ok(session.transcript().some((entry) => entry.kind === "message" && entry.text === "E2E_ABORT now"));
+  } finally {
+    session.dispose();
+  }
+});
+
+test("the gateway refuses a worker session's calls to the tools that stay on its machine, before HUI's tool handler sees them", async () => {
+  // The list a bot's chat on a worker isn't offered, too. The browser is already off there (Settings mirrored to the
+  // worker turn it off), so the model can't call it; terminal and watcher are still offered to an ordinary session.
+  assert.deepEqual(GATEWAY_ONLY_TOOLS, ["terminal", "browser", "watcher"]);
+  const key = "remote-durable-gateway-only";
+  await registerRemote(key);
+  const calls: string[] = [];
+  registerAgentToolHandler(async ({ action }) => { calls.push(action); return { ok: true }; });
+  const session = await durable.start({ cwd: project, worker: workerId, huiSessionId: key });
+  try {
+    const done = settled(session);
+    await session.prompt(`E2E_CALL:${Buffer.from(JSON.stringify([{ name: "terminal", input: { action: "list" } }, { name: "watcher", input: { action: "list" } }])).toString("base64url")}`);
+    await done;
+    const answer = lastAnswer(session) ?? "";
+    for (const name of ["terminal", "watcher"]) assert.ok(answer.includes(`The ${name} tool is not available to sessions on a remote worker yet.`), answer);
+    assert.deepEqual(calls, [], "refused at the bridge");
   } finally {
     session.dispose();
   }

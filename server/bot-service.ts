@@ -46,6 +46,7 @@ import { SessionBusyError, type LiveSessions } from "./live-sessions.ts";
 import type { PromptAttachment, RuntimeQuestion, TranscriptEntry } from "./runtimes/types.ts";
 import type { SessionRecord } from "./sessions.ts";
 import { resolveWorkingDirectory } from "./working-directories.ts";
+import { GATEWAY_ONLY_TOOLS } from "./worker/gateway-tools.ts";
 
 /** `message_bot` messages one bot may send per hour: a backstop behind the hop guard. */
 const MESSAGES_PER_HOUR = 30;
@@ -348,7 +349,7 @@ export class BotService {
       // their mirrored paths, as the worker's own offer names them.
       const remote = this.#remote();
       const conversations = remote.conversations(worker.id);
-      if (restricted) access = resolveAccess(await conversations.offer(undefined, input.cwd, id), NOTHING_OFF, input, (path) => remote.skillPath(worker.id, path));
+      if (restricted) access = resolveAccess(await conversations.offer(undefined, input.cwd, id), NOTHING_OFF, input, onWorker(worker.name, (path) => remote.skillPath(worker.id, path)));
       ({ reference, cwd } = await conversations.create({
         ...conversation, ...(input.cwd ? { cwd: input.cwd } : {}), ...(input.soul ? { soul: input.soul } : {}), ...(access ? { access } : {}),
       }));
@@ -473,7 +474,8 @@ export class BotService {
       const { conversations } = this.#ports(bot);
       const current = await conversations.access(reference);
       const worker = bot.worker;
-      access = resolveAccess(await conversations.offer(reference, bot.cwd), current, patch, worker ? (path) => this.#remote().skillPath(worker, path) : undefined);
+      access = resolveAccess(await conversations.offer(reference, bot.cwd), current, patch,
+        worker ? onWorker(this.#remote().nameOf(worker) ?? "its worker", (path) => this.#remote().skillPath(worker, path)) : {});
       await conversations.setAccess(reference, access);
     }
     if (patch.model !== undefined || patch.thinking !== undefined) {
@@ -1353,6 +1355,10 @@ function botQuestion(question: RuntimeQuestion): BotQuestion {
 /** Nothing turned off: a new bot, and every bot from before the lists. */
 const NOTHING_OFF: BotAccess = { disabledTools: [], disabledSkills: [] };
 
+/** `resolveAccess`'s options for a bot on the worker named `worker`: skills by its mirrored paths too, and the tools that
+ * stay on this machine (`GATEWAY_ONLY_TOOLS`) named as such. */
+const onWorker = (worker: string, alias: (path: string) => string | undefined) => ({ alias, elsewhere: { tools: GATEWAY_ONLY_TOOLS, worker } });
+
 const sameSkill = (a: BotSkillRef, b: BotSkillRef) => a.name === b.name && a.path === b.path;
 
 /** The roster's copy of the lists, as a record stores it: only the lists that name something. */
@@ -1381,18 +1387,25 @@ function sameAccess(bot: Pick<BotRecord, "disabledTools" | "disabledSkills">, ac
  * The lists a create or a patch asks for, checked against what the operator can turn off: every tool one the chat is
  * offered and every skill one of its directory's, named alone when no other skill shares its name. What is off already
  * may stay off when it is no longer offered (an extension removed meanwhile). A bot's own tools are never turned off.
- * A list left out stays as it is. For a bot on a worker, `alias` names a skill given by this gateway's path the way
- * the worker does (its mirrored path), so either path finds it.
+ * A list left out stays as it is. For a bot on a worker (`onWorker`), `alias` names a skill given by this gateway's
+ * path the way the worker does (its mirrored path), so either path finds it, and the tools that act on this machine,
+ * which its offer there leaves out, are refused as such rather than as unknown.
  */
 export function resolveAccess(
   offer: BotOffer, current: BotAccess, wanted: { disabledTools?: readonly string[]; disabledSkills?: readonly BotSkillSelector[] },
-  alias?: (path: string) => string | undefined,
+  options: { alias?: (path: string) => string | undefined; elsewhere?: { tools: readonly string[]; worker: string } } = {},
 ): BotAccess {
+  const { alias, elsewhere } = options;
   let disabledTools = current.disabledTools;
   if (wanted.disabledTools) {
     const own = wanted.disabledTools.filter((name) => offer.alwaysOn.some((tool) => tool.name === name));
     if (own.length) throw new BotInputError(`${own.join(", ")} can't be turned off: ${own.length === 1 ? "it is" : "they are"} one of a bot's own tools.`);
     const unknown = wanted.disabledTools.filter((name) => !offer.tools.some((tool) => tool.name === name) && !current.disabledTools.includes(name));
+    const here = unknown.filter((name) => elsewhere?.tools.includes(name) === true);
+    if (here.length) {
+      const one = here.length === 1;
+      throw new BotInputError(`${here.join(", ")} ${one ? "stays" : "stay"} on this machine, so a bot on ${elsewhere!.worker} can't use ${one ? "it" : "them"} and there is nothing to turn off: leave ${one ? "it" : "them"} out.`);
+    }
     if (unknown.length) {
       throw new BotInputError(`Unknown tool${unknown.length === 1 ? "" : "s"}: ${unknown.join(", ")}. Tools you can turn off: ${offer.tools.map((tool) => tool.name).join(", ")}${offer.live ? "" : ". An extension's tools can be turned off once the bot's chat runs"}.`);
     }
