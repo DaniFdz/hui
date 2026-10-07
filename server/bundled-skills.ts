@@ -15,6 +15,11 @@ export const bundledSkills = [{
   path: fileURLToPath(new URL("../skills/git-selective-staging/SKILL.md", import.meta.url)),
   preferencePath: "hui:skill:git-selective-staging",
   tags: ["good practices"],
+}, {
+  name: "visualize",
+  path: fileURLToPath(new URL("../skills/visualize/SKILL.md", import.meta.url)),
+  preferencePath: "hui:skill:visualize",
+  tags: ["presentation"],
 }] as const;
 
 export function isBundledSkillPreference(entry: { path: string }): boolean {

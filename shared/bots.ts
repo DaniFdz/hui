@@ -191,10 +191,11 @@ export type BotView = BotRecord & {
   routines: number;
 };
 
-/** A question the bot's chat is waiting on, as the session API reports it. */
+/** A question the bot's chat is waiting on, as the session API reports it. `secret` is HUI's own `secret_request`
+ * prompt (`title` names the secret, `message` says why): it is answered in HUI's masked Secret card. */
 export type BotQuestion = {
   id: string;
-  method: "select" | "confirm" | "input" | "editor";
+  method: "select" | "confirm" | "input" | "editor" | "secret";
   title: string;
   message?: string;
   options?: readonly string[];

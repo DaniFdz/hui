@@ -240,17 +240,19 @@ export class DurableHost implements ExtensionHost {
     };
     this.#invokeTool = options.invokeTool ?? invokeAgentTool;
     this.#lookupCaller = options.lookupCaller ?? registryCaller;
-    const invoke = (conversationId: ConversationId, action: string, params: Record<string, unknown>) => this.#invokeAs(conversationId, action, params);
+    const invoke = (conversationId: ConversationId, action: string, params: Record<string, unknown>, signal?: AbortSignal) =>
+      this.#invokeAs(conversationId, action, params, signal);
     this.#tools = huiDurableTools({ invoke });
     this.#bots = huiBotsExtensions({ invoke, section: async (botId) => this.botSection?.(botId), souls: () => this.botSouls });
   }
 
-  /** HUI's agent-tool handler, called as the HUI session bound to the conversation. */
-  async #invokeAs(conversationId: ConversationId, action: string, params: Record<string, unknown>): Promise<unknown> {
+  /** HUI's agent-tool handler, called as the HUI session bound to the conversation. `signal` is the tool call's own
+   * abort (Stop), which the handler sees as a PI child's dropped call. */
+  async #invokeAs(conversationId: ConversationId, action: string, params: Record<string, unknown>, signal?: AbortSignal): Promise<unknown> {
     const callerSessionId = this.#callers.get(conversationId) ?? await this.#lookupCaller(conversationId);
     if (!callerSessionId) throw new Error("HUI agent tools are unavailable for this conversation.");
     this.#callers.set(conversationId, callerSessionId);
-    return this.#invokeTool({ callerSessionId, action, params });
+    return this.#invokeTool({ callerSessionId, action, params, ...(signal ? { signal } : {}) });
   }
 
   /** Names of the HUI-owned tools, for inspection labels. */

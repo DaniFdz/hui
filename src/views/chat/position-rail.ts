@@ -124,11 +124,20 @@ class ConversationPositionRail extends AsyncDirective {
       for (const element of [thread, inner, marks]) this.observer.observe(element);
       this.geometryDirty = true;
     }
+    // A retained view out of sight is not laid out; measuring it would lay out
+    // its whole transcript. Showing it again renders the rail, which resyncs.
+    if (thread.checkVisibility?.() === false) return;
 
     const conversation = thread.closest<HTMLElement>(".chat-main__conversation") ?? thread;
     thread.style.setProperty("--chat-position-rail-viewport-height", `${conversation.clientHeight}px`);
     const gutter = inner.getBoundingClientRect().left - thread.getBoundingClientRect().left - thread.clientLeft;
-    thread.toggleAttribute("data-position-rail-gutter", gutter >= 68);
+    // The thread's content box, which the pinned `chat-transcript` size
+    // container query measured before HUI dropped it (openclaw-chat.css).
+    const box = getComputedStyle(thread);
+    const width = thread.clientWidth - parseFloat(box.paddingLeft) - parseFloat(box.paddingRight);
+    const height = thread.clientHeight - parseFloat(box.paddingTop) - parseFloat(box.paddingBottom);
+    marks.style.setProperty("--chat-position-thread-height", `${height}px`);
+    thread.toggleAttribute("data-position-rail-gutter", gutter >= 68 && width > 960 && height > 360);
     const visible = marks.clientHeight > 0;
     if (!visible) {
       const hadPreview = !!(this.hoveredId || this.focusedId);

@@ -34,6 +34,13 @@ transcripts; the display parser never executes commands.
 The select picker, anchored-popup geometry, hub tabs, switch wrapper and
 tab-list accessibility adapter are also ported from 2026.9.5. HUI keeps its
 own registration, English labels, navigation, persistence and PI callbacks.
+Agent widgets port OpenClaw 2026.9.6's `show_widget`: its fragment contract,
+widget theme token names, base stylesheet and helper classes, CDN allowlist and
+inline-script scanner (`shared/widgets.ts`, `server/runtimes/widget-code.mjs`),
+and the two-frame sandbox page after its MCP App sandbox host
+(`server/widget-sandbox.ts`). HUI parses scripts with V8 instead of acorn and
+uses its own bridges. The bundled `visualize` skill is adapted from OpenClaw's
+skill of the same name.
 
 Source: https://github.com/openclaw/openclaw
 

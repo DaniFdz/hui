@@ -632,3 +632,27 @@
 .worktree-remove-dialog__risks li[data-risk="dirty"] strong,
 .worktree-remove-dialog__risks li[data-risk="unknown"] strong,
 .worktree-remove-dialog__risks li[data-risk="running"] strong { color: var(--danger); }
+
+/* Sessions bulk delete -------------------------------------------------- */
+
+.sessions-bulk-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+  font-size: var(--control-ui-text-sm);
+}
+
+.sessions-bulk-bar__count { font-weight: 600; }
+.sessions-bulk-bar__notice { color: var(--muted); overflow-wrap: anywhere; }
+
+.sessions-delete-dialog__option {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.sessions-delete-dialog__option small { display: block; }
