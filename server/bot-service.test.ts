@@ -17,7 +17,7 @@ import type { AgentRuntime, PromptAttachment, RuntimeEvent, RuntimeModel, Runtim
 process.env["XDG_CONFIG_HOME"] = await mkdtemp(join(tmpdir(), "hui-bot-service-config-"));
 const { LiveSessions } = await import("./live-sessions.ts");
 const { BotRegistry, BotConflictError, BotInputError, BotNotFoundError, BotWorkerOfflineError } = await import("./bots.ts");
-const { BotService, botsSection, hopOf, MAX_BOT_HOPS } = await import("./bot-service.ts");
+const { BotService, botsSection, hopOf, MAX_BOT_HOPS, resolveAccess } = await import("./bot-service.ts");
 const { BotMemoryUnavailableError } = await import("./bot-memory.ts");
 const { localBotSouls } = await import("./bot-souls.ts");
 type SessionRecord = import("./sessions.ts").SessionRecord;
@@ -315,6 +315,8 @@ async function harness(t: TestContext, options: { messagesPerHour?: number; memo
       subscribe: () => () => {},
     }),
     onConnected: (listener) => { remote.connected.add(listener); return () => remote.connected.delete(listener); },
+    // The gateway's own skills live under /skills; devbox mirrors them under its data directory.
+    skillPath: (_id, path) => remote.online && path.startsWith("/skills/") ? `/home/remote/.local/share/hui-worker/mirror/agent${path}` : undefined,
   };
   const souls = localBotSouls(botsDir);
   /** `exists` calls, to see the bot list's cache at work. */
@@ -1225,6 +1227,23 @@ test("the bots section tells the bot how calls reach it", async (t) => {
 const REMOTE_MEMORY: BotMemoryStatus = { ...MEMORY, messages: 9 };
 /** The gateway's skill /skills/alpha as devbox finds it, mirrored there. */
 const REMOTE_ALPHA = "/home/remote/.local/share/hui-worker/mirror/agent/skills/alpha/SKILL.md";
+
+test("a worker's skills match by name and mirrored path: a skill this gateway names by its own path finds the one the worker mirrors", () => {
+  const offer = {
+    tools: [], alwaysOn: [], live: true,
+    skills: [{ name: "alpha", path: REMOTE_ALPHA, description: "Alpha.", source: "~/.local/share/hui-worker/mirror/agent/skills" }],
+  };
+  const alias = (path: string) => path.startsWith("/skills/") ? `/home/remote/.local/share/hui-worker/mirror/agent${path}` : undefined;
+  const none = { disabledTools: [], disabledSkills: [] };
+  const alpha = { name: "alpha", path: REMOTE_ALPHA };
+  assert.deepEqual(resolveAccess(offer, none, { disabledSkills: [{ name: "alpha", path: "/skills/alpha/SKILL.md" }] }, alias).disabledSkills, [alpha]);
+  assert.deepEqual(resolveAccess(offer, none, { disabledSkills: [alpha, "alpha"] }, alias).disabledSkills, [alpha], "the worker's own path, or the name, too");
+  assert.throws(() => resolveAccess(offer, none, { disabledSkills: [{ name: "alpha", path: "/skills/alpha/SKILL.md" }] }), /Unknown skill: alpha \(\/skills\/alpha\/SKILL\.md\)/u, "without the worker's naming, a path here is no skill there");
+  assert.throws(() => resolveAccess(offer, none, { disabledSkills: [{ name: "beta", path: "/skills/alpha/SKILL.md" }] }, alias), /Unknown skill: beta/u, "the name must match too");
+  // Already off and no longer offered there: it may stay off under either path.
+  const off = { disabledTools: [], disabledSkills: [{ name: "gone", path: "/home/remote/.local/share/hui-worker/mirror/agent/skills/gone/SKILL.md" }] };
+  assert.deepEqual(resolveAccess(offer, off, { disabledSkills: [{ name: "gone", path: "/skills/gone/SKILL.md" }] }, alias).disabledSkills, off.disabledSkills);
+});
 
 test("a bot on a worker keeps its lists there: created with them, listed and checked there, its skills by the worker's paths, and refused naming the worker while it is offline", async (t) => {
   const h = await harness(t);

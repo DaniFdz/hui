@@ -147,6 +147,9 @@ export type BotWorkers = {
   cleanUp(id: string, bot: { botId: string; reference?: string; cwd: string }): Promise<"done" | "queued">;
   /** Each (re)connection: what the worker's store may have changed meanwhile is read again. */
   onConnected(listener: (id: string) => void): () => void;
+  /** How the connected worker names a skill this gateway has at `path` (its mirrored path there, or a bundled skill's
+   * stable preference), as remote sessions' Settings name it; undefined while HUI is not connected to it. */
+  skillPath(id: string, path: string): string | undefined;
 };
 
 /** A worker's bot conversations. Each fails at once, naming the worker, while HUI is not connected to it. */
@@ -332,7 +335,7 @@ export class BotService {
       // their mirrored paths, as the worker's own offer names them.
       const remote = this.#remote();
       const conversations = remote.conversations(worker.id);
-      if (restricted) access = resolveAccess(await conversations.offer(undefined, input.cwd, id), NOTHING_OFF, input);
+      if (restricted) access = resolveAccess(await conversations.offer(undefined, input.cwd, id), NOTHING_OFF, input, (path) => remote.skillPath(worker.id, path));
       ({ reference, cwd } = await conversations.create({
         ...conversation, ...(input.cwd ? { cwd: input.cwd } : {}), ...(input.soul ? { soul: input.soul } : {}), ...(access ? { access } : {}),
       }));
@@ -456,7 +459,8 @@ export class BotService {
       // On a worker, read, checked and written there: its skills go by their mirrored paths.
       const { conversations } = this.#ports(bot);
       const current = await conversations.access(reference);
-      access = resolveAccess(await conversations.offer(reference, bot.cwd), current, patch);
+      const worker = bot.worker;
+      access = resolveAccess(await conversations.offer(reference, bot.cwd), current, patch, worker ? (path) => this.#remote().skillPath(worker, path) : undefined);
       await conversations.setAccess(reference, access);
     }
     if (patch.model !== undefined || patch.thinking !== undefined) {
@@ -1349,9 +1353,13 @@ function sameAccess(bot: Pick<BotRecord, "disabledTools" | "disabledSkills">, ac
  * The lists a create or a patch asks for, checked against what the operator can turn off: every tool one the chat is
  * offered and every skill one of its directory's, named alone when no other skill shares its name. What is off already
  * may stay off when it is no longer offered (an extension removed meanwhile). A bot's own tools are never turned off.
- * A list left out stays as it is.
+ * A list left out stays as it is. For a bot on a worker, `alias` names a skill given by this gateway's path the way
+ * the worker does (its mirrored path), so either path finds it.
  */
-export function resolveAccess(offer: BotOffer, current: BotAccess, wanted: { disabledTools?: readonly string[]; disabledSkills?: readonly BotSkillSelector[] }): BotAccess {
+export function resolveAccess(
+  offer: BotOffer, current: BotAccess, wanted: { disabledTools?: readonly string[]; disabledSkills?: readonly BotSkillSelector[] },
+  alias?: (path: string) => string | undefined,
+): BotAccess {
   let disabledTools = current.disabledTools;
   if (wanted.disabledTools) {
     const own = wanted.disabledTools.filter((name) => offer.alwaysOn.some((tool) => tool.name === name));
@@ -1372,7 +1380,9 @@ export function resolveAccess(offer: BotOffer, current: BotAccess, wanted: { dis
         if (named.length > 1) throw new BotInputError(`Several skills are named ${selector}: give { name, path } with one of these paths: ${named.map((skill) => skill.path).join(", ")}.`);
         ref = named[0] ?? current.disabledSkills.find((skill) => skill.name === selector);
       } else {
-        ref = offer.skills.find((skill) => sameSkill(skill, selector)) ?? current.disabledSkills.find((skill) => sameSkill(skill, selector));
+        const aliased = alias?.(selector.path);
+        const named = (skill: BotSkillRef) => sameSkill(skill, selector) || (aliased !== undefined && sameSkill(skill, { name: selector.name, path: aliased }));
+        ref = offer.skills.find(named) ?? current.disabledSkills.find(named);
       }
       if (!ref) {
         const name = typeof selector === "string" ? selector : `${selector.name} (${selector.path})`;

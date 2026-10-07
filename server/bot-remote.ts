@@ -26,7 +26,7 @@ import { BOT_ACCESS_FEATURE, BOT_MEMORY_STATUS_FRAME, BOTS_FEATURE } from "./wor
 import { WorkerOfflineError, type WorkerService } from "./workers.ts";
 
 /** What these ports need of the worker service. */
-export type BotWorkerLink = Pick<WorkerService, "list" | "nameOf" | "connected" | "features" | "hostRequest" | "onHostFrame" | "onClosed" | "onConnected" | "onRemoved">;
+export type BotWorkerLink = Pick<WorkerService, "list" | "nameOf" | "connected" | "features" | "hostRequest" | "onHostFrame" | "onClosed" | "onConnected" | "onRemoved" | "skillPath">;
 
 export type RemoteBotsOptions = {
   /** Where deleted bots' clean-ups wait for their worker: JSON, owner-only, written atomically. */
@@ -338,6 +338,8 @@ export function remoteBots(workers: BotWorkerLink, options: RemoteBotsOptions): 
         },
       };
     },
+
+    skillPath: (id, path) => workers.skillPath(id, path),
 
     souls(id): BotSouls {
       const read = async (botId: string) => {

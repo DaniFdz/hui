@@ -371,35 +371,34 @@ class WorkerConnection {
     return this.#sync;
   }
 
+  /** How the host names a skill this machine has at `path`: a bundled skill by its stable preference, which any release
+   * matches, any other by its mirrored path there. Settings' disabled skills and bots' lists (`skillPath`) alike. */
+  skillPath(path: string): string {
+    if (isBundledSkillPreference({ path })) return bundledSkills.find((bundled) => bundled.path === path)?.preferencePath ?? path;
+    return `${this.host.mirrorDir}/${mirrorPath(path, { agentDir: resolvePiAgentDir(), home: homedir() })}`;
+  }
+
   /** HUI's settings as the host reads them: skills and plugins named by their
    * mirrored paths, and no managed browser, which runs on this machine. */
   async #remoteSettings(pluginIds: Map<string, string>): Promise<Settings> {
     const settings = await readHuiSettings();
-    const source = { agentDir: resolvePiAgentDir(), home: homedir() };
     return {
       ...settings,
       browser: { ...settings.browser, enabled: false },
-      disabledSkills: settings.disabledSkills.map((skill) => ({
-        ...skill,
-        // Bundled skills by their stable preference, which any release matches.
-        path: isBundledSkillPreference(skill)
-          ? bundledSkills.find((bundled) => bundled.path === skill.path)?.preferencePath ?? skill.path
-          : `${this.host.mirrorDir}/${mirrorPath(skill.path, source)}`,
-      })),
+      disabledSkills: settings.disabledSkills.map((skill) => ({ ...skill, path: this.skillPath(skill.path) })),
       disabledPlugins: settings.disabledPlugins.map((plugin) => ({ ...plugin, id: pluginIds.get(plugin.id) ?? plugin.id })),
     };
   }
 
   async #launchDefaults(pluginIds: Map<string, string>): Promise<Record<string, unknown>> {
     const settings = await sessionSettings();
-    const source = { agentDir: resolvePiAgentDir(), home: homedir() };
     return {
       disabledPluginIds: settings.disabledPluginIds.map((id) => pluginIds.get(id) ?? id),
       bundledSkillPaths: settings.bundledSkillPaths.flatMap((path) => remoteReleasePath(this.release, this.host.releaseDir, path) ?? []),
       // The managed browser runs on the gateway machine; remote sessions
       // cannot hand it their files yet.
       browserTool: false,
-      disabledSkills: settings.disabledSkills.map((skill) => ({ name: skill.name, path: `${this.host.mirrorDir}/${mirrorPath(skill.path, source)}` })),
+      disabledSkills: settings.disabledSkills.map((skill) => ({ name: skill.name, path: this.skillPath(skill.path) })),
     };
   }
 
@@ -581,6 +580,13 @@ export class WorkerService {
   serve(op: string, handler: HostRequestHandler): void {
     this.#served.set(op, handler);
     for (const connection of this.#connections.values()) if (!connection.closed) connection.serve(op, handler);
+  }
+
+  /** How a connected worker's host names a skill this machine has at `path` (`WorkerConnection.skillPath`): its
+   * mirrored path there, or a bundled skill's stable preference; undefined while HUI is not connected to it. */
+  skillPath(id: string, path: string): string | undefined {
+    const connection = this.#connections.get(id);
+    return connection && !connection.closed ? connection.skillPath(path) : undefined;
   }
 
   /** Whether HUI holds a live connection to the worker. */

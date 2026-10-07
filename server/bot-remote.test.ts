@@ -42,6 +42,7 @@ function link() {
     onClosed: (listener) => { closed.add(listener); return () => closed.delete(listener); },
     onConnected: (listener) => { connected.add(listener); return () => connected.delete(listener); },
     onRemoved: (listener) => { removed.add(listener); return () => removed.delete(listener); },
+    skillPath: (_id, path) => state.connected ? `/home/remote/.local/share/hui-worker/mirror/agent${path}` : undefined,
   };
   return {
     workers, state, requests,
@@ -169,6 +170,14 @@ test("a worker bot's lists and what can be turned off go through its host, which
   await assert.rejects(conversations.access("durable:7"), (error: unknown) => error instanceof BotWorkerOfflineError && /^devbox, where this bot runs, is offline/u.test(error.message));
   await assert.rejects(conversations.offer(undefined, undefined, "b"), (error: unknown) => error instanceof BotWorkerOfflineError && /then create the bot again\.$/u.test(error.message));
   assert.equal(fake.requests.length, sent, "nothing was sent");
+});
+
+test("a worker names this gateway's skills as remote sessions' Settings do: by their mirrored paths there, only while connected", () => {
+  const fake = link();
+  const { bots } = portsOf(fake);
+  assert.equal(bots.skillPath("w-1", "/skills/alpha/SKILL.md"), "/home/remote/.local/share/hui-worker/mirror/agent/skills/alpha/SKILL.md");
+  fake.state.connected = false;
+  assert.equal(bots.skillPath("w-1", "/skills/alpha/SKILL.md"), undefined);
 });
 
 test("memory status comes from what the worker reports: the first ask watches it, one request for a whole list, and a lost connection forgets it", async () => {
