@@ -51,15 +51,12 @@ export type Settings = {
   labs: {
     denseObservability: boolean;
     detailedDebug: boolean;
-    /** Settings → Labs → Bots: bots (HUI-18) are a preview, off until the operator turns them on. Off, they are dormant
-     * everywhere: the gateway refuses their routes and calls, skips their routines and starts none of their turns, and
-     * no screen shows them. Nothing is deleted, and turning it on brings them back as they were, without a restart. */
+    /** Settings → Labs → Bots, the one switch for bots (HUI-18), a preview: off until the operator turns it on. On, the
+     * sidebar gets its Agents | Bots switch. Off, bots are dormant everywhere: the gateway refuses their routes and
+     * calls, skips their routines and starts none of their turns, and no screen shows them. Nothing is deleted, and
+     * turning it on brings them back as they were, without a restart. */
     bots: boolean;
   };
-  /** Settings → Sessions → Bots, shown while Labs → Bots is on. The sidebar's Agents | Bots switch is
-   * opt-in, so a machine that never asks for it keeps today's sidebar; hiding
-   * the tab never stops bots or their routines, which the gateway owns. */
-  bots: { showTab: boolean };
 };
 
 export type BrowserSettings = {
@@ -98,17 +95,12 @@ export const DEFAULT_SETTINGS: Settings = {
   disabledSkills: [],
   disabledPlugins: [],
   labs: { denseObservability: false, detailedDebug: false, bots: false },
-  bots: { showTab: false },
 };
 
-/** Settings → Labs → Bots: whether bots exist at all, on the gateway and on every screen. */
+/** Settings → Labs → Bots: whether bots exist at all, on the gateway and on every screen (the sidebar's Agents | Bots
+ * switch included). */
 export function botsEnabled(settings: Pick<Settings, "labs">): boolean {
   return settings.labs.bots;
-}
-
-/** The sidebar's Agents | Bots switch: bots on, and Settings → Sessions showing their tab. */
-export function botsTabShown(settings: Pick<Settings, "labs" | "bots">): boolean {
-  return settings.labs.bots && settings.bots.showTab;
 }
 
 export function normalizeSettings(raw: unknown): Settings {
@@ -135,8 +127,7 @@ export function normalizeSettings(raw: unknown): Settings {
     calls: normalizeCalls(source["calls"]),
     disabledSkills: normalizeDisabledSkills(source["disabledSkills"]),
     disabledPlugins: normalizeDisabledPlugins(source["disabledPlugins"]),
-    labs: normalizeLabs(source["labs"]),
-    bots: normalizeBots(source["bots"]),
+    labs: normalizeLabs(source["labs"], source["bots"]),
   };
 }
 
@@ -145,11 +136,6 @@ export function normalizeSettings(raw: unknown): Settings {
 export function normalizeCalls(value: unknown): Settings["calls"] {
   const source = isRecord(value) ? value : {};
   return { voice: gptLiveVoice(source["voice"]) ?? DEFAULT_GPT_LIVE_VOICE };
-}
-
-/** Opt-in: only an explicit true shows the Bots tab. */
-function normalizeBots(value: unknown): Settings["bots"] {
-  return { showTab: isRecord(value) && value["showTab"] === true };
 }
 
 /** Both switches are opt-out: only an explicit false changes the default. The
@@ -260,13 +246,15 @@ function boundedText(value: unknown, fallback: string, maximum: number): string 
   return value.trim().slice(0, maximum);
 }
 
-/** Every Labs flag is opt-in: only an explicit true turns one on. */
-function normalizeLabs(value: unknown): Settings["labs"] {
+/** Every Labs flag is opt-in: only an explicit true turns one on. Bots also stay on for a file from before Labs →
+ * Bots that had Settings → Sessions → Show the Bots tab on (`bots.showTab`, `legacyBots` here) while it has no
+ * `labs.bots`: an operator who had the tab keeps bots. The next save writes only `labs.bots`. */
+function normalizeLabs(value: unknown, legacyBots: unknown): Settings["labs"] {
   const source = isRecord(value) ? value : {};
   return {
     denseObservability: source["denseObservability"] === true,
     detailedDebug: source["detailedDebug"] === true,
-    bots: source["bots"] === true,
+    bots: source["bots"] === true || (source["bots"] === undefined && isRecord(legacyBots) && legacyBots["showTab"] === true),
   };
 }
 

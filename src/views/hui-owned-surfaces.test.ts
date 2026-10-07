@@ -4,7 +4,7 @@ import test from "node:test";
 
 import { HUI_PAGES } from "../lib/pages.ts";
 import { DEFAULT_SETTINGS, normalizeSettings, type Settings } from "../lib/settings.ts";
-import { BOTS_LABS_HINT, botsLabsHint, renderOwnedSurface } from "./hui-owned-surfaces.ts";
+import { BOTS_LABS_HINT, renderOwnedSurface } from "./hui-owned-surfaces.ts";
 
 const source = await readFile(new URL("./hui-owned-surfaces.ts", import.meta.url), "utf8");
 
@@ -58,11 +58,12 @@ test("Labs offers Bots, a preview that is off until turned on, beside the presen
   ]);
 });
 
-test("with bots on and their tab hidden, the Bots hint says where the tab is", () => {
-  assert.equal(botsLabsHint(DEFAULT_SETTINGS), BOTS_LABS_HINT);
-  assert.equal(botsLabsHint(normalizeSettings({ bots: { showTab: true } })), BOTS_LABS_HINT, "off, whatever the tab says");
-  assert.equal(botsLabsHint(normalizeSettings({ labs: { bots: true } })), `${BOTS_LABS_HINT} Their tab is hidden: Settings → Sessions → Show the Bots tab.`);
-  assert.equal(botsLabsHint(normalizeSettings({ labs: { bots: true }, bots: { showTab: true } })), BOTS_LABS_HINT);
+test("the Bots switch is the only one: its hint points nowhere else, on or off", () => {
+  for (const settings of [DEFAULT_SETTINGS, normalizeSettings({ labs: { bots: true } })]) {
+    const page = text(labs(settings));
+    assert.ok(page.includes(`<span class="settings-row__desc">${BOTS_LABS_HINT}</span>`));
+    assert.doesNotMatch(page, /Show the Bots tab|Settings → Sessions/u);
+  }
 });
 
 test("settings render their optimistic snapshot before awaiting persistence", async () => {

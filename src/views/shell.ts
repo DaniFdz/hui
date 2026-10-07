@@ -111,7 +111,7 @@ export type GroupDropTarget = { group: string; position: "before" | "after" };
 /** The Agents | Bots switch fills the sidebar's top row, right after the
  * collapse toggle, because each tab has a sidebar of its own: Agents is the
  * sidebar as before, and Bots shows only the roster. Present only while
- * Settings → Sessions → Show the Bots tab is on; without it the top row holds
+ * Settings → Labs → Bots is on; without it the top row holds
  * only the toggle. */
 export type ShellBotsProps = {
   tab: SidebarTab;

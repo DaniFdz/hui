@@ -558,6 +558,14 @@ test("bots are a Labs preview: off, their routes, calls and chats refuse naming 
   const settings = (await call("/__hui/settings")).body as { labs: Record<string, boolean> };
   assert.equal(settings.labs["bots"], true);
 
+  // A bot waiting on the operator's answer to a secret request (#77), whose card only its chat shows.
+  const sol = botOf(await call("/__hui/bots", "POST", { name: "Sol", soul: "You are Sol." }));
+  assert.equal((await call("/__hui/bots/sol/messages", "POST", { text: "E2E_SECRET_REQUEST" })).status, 202);
+  await new Promise<void>((resolve) => {
+    const watched = liveSessions.watch(sol.sessionId, () => { if (liveSessions.snapshot(sol.sessionId).questions.some((question) => question.method === "secret")) { watched.unsubscribe(); resolve(); } });
+    if (liveSessions.snapshot(sol.sessionId).questions.some((question) => question.method === "secret")) { watched.unsubscribe(); resolve(); }
+  });
+
   // An open bot stream ends as bots are turned off, so the screen holding it hears it.
   const stream = await fetch(`${origin}/__hui/bots/events`, { headers: { "x-hui": "1", accept: "text/event-stream" } });
   assert.equal(stream.status, 200);
@@ -570,6 +578,11 @@ test("bots are a Labs preview: off, their routes, calls and chats refuse naming 
   assert.equal((off.body["labs"] as Record<string, boolean>)["bots"], false, "the setting round-trips");
   assert.equal(((await call("/__hui/settings")).body["labs"] as Record<string, boolean>)["bots"], false);
   for (;;) if ((await reader.read()).done) break;
+  // Sol's turn stopped and its secret request went with it: no card waits anywhere, and its chat is idle.
+  await settledWith(sol.sessionId, () => liveSessions.snapshot(sol.sessionId).questions.length === 0);
+  const solView = ((await call("/__hui/sessions")).body["groups"] as Array<{ sessions: Array<{ id: string; status: string }> }>).flatMap((group) => group.sessions).find((session) => session.id === sol.sessionId);
+  assert.equal(solView?.status, "idle", "the session list has nothing waiting for an answer");
+  assert.equal((await call(`/__hui/sessions/${sol.sessionId}/question`, "POST", { questionId: "x", value: "v" })).status, 409, "and nothing can answer it");
   const offer = "v=0\r\no=- 1 2 IN IP4 127.0.0.1\r\ns=-\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111\r\n";
   for (const [path, method, body] of [
     ["/__hui/bots", "GET"], ["/__hui/bots?archived=1", "GET"], ["/__hui/bots", "POST", { name: "Lee" }], [`/__hui/bots/${kim.id}`, "GET"],

@@ -1235,9 +1235,8 @@ everything the Bots tab can, through the same routes.
   is deleted: no screen shows them, the gateway refuses their routes, calls and
   chats, skips their routines and starts none of their turns; turning them on
   brings everything back as it was, without a restart.
-- **The Bots tab** is opt-in too: with bots on, Settings → Sessions → *Show the Bots tab* (off by
-  default, saved in HUI settings). Hiding it never stops bots or routines. On,
-  an **Agents | Bots** switch fills the sidebar's top row after the collapse
+- **The Bots tab** comes with them: while Labs → *Bots* (their one switch) is
+  on, an **Agents | Bots** switch fills the sidebar's top row after the collapse
   toggle (arrow keys, Home/End; the browser remembers the tab): Agents is the
   sidebar as before, and Bots shows only the roster, without the navigation.
   Bot chats never
@@ -1330,8 +1329,14 @@ As the bots stack was about to be squash-merged into `main`, the owner asked:
 settings) for bots while theyre wip". So bots are a preview behind
 `settings.labs.bots`, a Bots switch on the Labs page ("Experimental and opt-in
 features"), off by default; a settings file from before it has bots off, so
-`main` never shows bots unless the operator turns them on. Settings → Sessions →
-*Show the Bots tab* stays, as the sidebar choice once bots are on.
+`main` never shows bots unless the operator turns them on.
+
+- **One switch.** Settings → Sessions → *Show the Bots tab*, the sidebar's
+  earlier opt-in, folds into Labs → Bots, which the owner asked to be the one
+  opt-in: the sidebar's Agents | Bots switch shows exactly while bots are on. A
+  settings file where the tab was on and Labs → Bots is absent reads as bots on,
+  so nobody who had the tab loses bots, and the next save writes only
+  `labs.bots`.
 
 - **Off means dormant everywhere, and nothing is deleted.** The browser shows
   nothing of them: no Agents | Bots switch, `/bots` addresses land home (a

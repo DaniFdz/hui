@@ -191,8 +191,9 @@ are with bots only, so that section shows while [bots](#bots) are on.
 ## Bots
 
 > **Bots are a preview.** They are still being built, so they are off until you
-> turn them on: Settings → Labs → **Bots**. Then Settings → Sessions → **Show
-> the Bots tab** adds their tab ([below](#the-bots-tab)).
+> turn them on: Settings → Labs → **Bots**, their one switch. The sidebar then
+> gets its **Agents | Bots** switch ([below](#the-bots-tab)). If you had
+> Settings → Sessions → *Show the Bots tab* on before it existed, bots stay on.
 
 While bots are off they are dormant everywhere, and nothing is deleted:
 
@@ -239,9 +240,8 @@ summarized, `hui bot chat` says "Summarizing memory…".
 
 ### The Bots tab
 
-With bots on in Settings → Labs, Settings → Sessions → **Show the Bots tab** adds an **Agents | Bots** switch to
-the very top of the sidebar (it is off by default, and hiding it never stops a
-bot or its routines). **Agents** is the usual sidebar; **Bots** shows only your bots,
+While bots are on (Settings → Labs → **Bots**), an **Agents | Bots** switch tops
+the sidebar. **Agents** is the usual sidebar; **Bots** shows only your bots,
 most recently active first, with their latest message, and **+** creates one at
 once: a bot called *New Bot* whose chat opens on its greeting, asking what to call
 it and what you expect from it (the chat opens on a small note, "New Bot was

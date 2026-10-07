@@ -26,8 +26,8 @@ dialog.
    `home/.pi/agent` (models.json with the fixture provider and two models,
    `fixture` and `utility`; an auth.json key the fixture requires), HUI settings
    `{"bots":{"showTab":true},"models":{"utility":"fx/utility"}}` (since 2026-10-07
-   also `"labs":{"bots":true}`: bots are off until Settings → Labs → Bots turns
-   them on), and the worker
+   `"labs":{"bots":true}` instead: Settings → Labs → Bots, the one switch,
+   replaced Show the Bots tab; an old `showTab` still reads as bots on), and the worker
    release written into `<root>/remote/.local/share/hui-worker/releases/<id>/`
    from `build/server/worker/release.js`'s `workerRelease()`, with `node_modules`
    linked and `.ready` written.

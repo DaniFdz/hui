@@ -115,7 +115,6 @@ export type SettingsProps = AutomationProps & {
   onChangeModels: (next: Settings["models"]) => void;
   onChangeCalls: (next: Settings["calls"]) => void;
   onChangePower: (next: Settings["power"]) => void;
-  onChangeBots: (next: Settings["bots"]) => void;
   onSetLidAwake: (on: boolean) => void;
   onImportTheme: (url: string) => void;
   onClose: () => void;
@@ -948,13 +947,8 @@ function renderSessionsSettingsPage(props: SettingsProps) {
       ${renderRow("Transcript authority", "History is resumed directly from the runtime-owned session file.", html`<span class="settings-row__value">PI</span>`)}
       ${renderRow("Remove from HUI", "Stops tracking the row and runtime without deleting the transcript.", html`<span class="settings-row__value">Metadata only</span>`)}
     `)}
-    ${botsEnabled(props.settings) ? renderSection("Bots", "Named agents with one permanent chat, their own model and a memory that summarizes older messages by itself.", html`
-      ${renderRow(
-        "Show the Bots tab",
-        "Adds an Agents | Bots switch to the top of the sidebar. Hiding it never stops bots or their routines.",
-        renderSettingsToggle("Show the Bots tab", props.settings.bots.showTab, (showTab) => props.onChangeBots({ ...props.settings.bots, showTab })),
-      )}
-      ${renderRow("Command line", "Everything the tab does is also available from a terminal on this machine.", html`<code>hui bot list</code>`)}
+    ${botsEnabled(props.settings) ? renderSection("Bots", "Named agents with one permanent chat, their own model and a memory that summarizes older messages by itself. Settings → Labs → Bots turns them on and off.", html`
+      ${renderRow("Command line", "Everything the Bots tab does is also available from a terminal on this machine.", html`<code>hui bot list</code>`)}
     `) : nothing}
     <p class="settings-page__note settings-page__intro">
       ${props.saveFailed ? "Could not write settings.json — changes apply now but will not be remembered." : "Saved to ~/.config/hui/settings.json"}

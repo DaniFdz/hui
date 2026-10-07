@@ -913,7 +913,9 @@ requests:
    409 naming the setting, routines are skipped (kept, never failed), nothing
    starts a bot's turn and turning them off stops what they were doing; the UI
    shows nothing of them; nothing is deleted, and on again restores everything
-   live. **Bots stay behind Labs until HUI-18 is done**: the flag (and this
+   live. It is the one switch: item 3's Settings → Sessions → *Show the Bots
+   tab* folds into it (a file where that was on keeps bots on). **Bots stay
+   behind Labs until HUI-18 is done**: the flag (and this
    item's refusals) go only once the owner calls bots finished, in their own
    change. Proof: `src/lib/settings.test.ts`, `server/bot-service.test.ts`,
    `server/bot-routes.test.ts` (a real gateway: every refusal while off, toggled

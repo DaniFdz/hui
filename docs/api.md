@@ -1368,11 +1368,15 @@ background (below); the create does not wait for it.
 ### Bots are a preview (Settings → Labs → Bots)
 
 Bots stay behind an opt-in Labs flag while they are work in progress:
-`settings.labs.bots`, a boolean in `settings.json` that only an explicit `true`
-turns on (absent, as in every file from before it, is off). It round-trips through
-`GET`/`PUT /__hui/settings` like the other Labs flags, and the gateway reads it at
-each use, so either change applies at once, without a restart. A worker's host
-reads no flag: the gateway's refusals cover the bots that run there.
+`settings.labs.bots`, a boolean in `settings.json` and the only switch for bots
+(the sidebar's Agents | Bots switch shows exactly while it is on). Only an explicit
+`true` turns it on. Absent, it is off, except in a file from before it where
+Settings → Sessions → *Show the Bots tab* (`bots.showTab: true`, now gone) was on:
+that reads as `true`, so an operator who had the tab keeps bots, and the next
+save writes only `labs.bots`. It round-trips through `GET`/`PUT
+/__hui/settings` like the other Labs flags, and the gateway reads it at each use,
+so either change applies at once, without a restart. A worker's host reads no
+flag: the gateway's refusals cover the bots that run there.
 
 While it is off, bots are dormant and nothing about them is deleted:
 
