@@ -30,6 +30,7 @@ import {
   renameSession,
   resumeSession,
   rewindSession,
+  forkSession,
   type RewindTarget,
   type TranscriptAttachment,
   cancelCompaction,
@@ -361,6 +362,8 @@ export class HuiApp extends HuiElement {
   @state() private stopping = false;
   @state() private continuing = false;
   @state() private rewindPending = false;
+  /** A fork is being copied; it outlives the session switch that opens the copy. */
+  @state() private forkPending = false;
   @state() private sideChat: HomeProps["sideChat"];
   /** The composer's live text, deliberately not reactive: a keystroke only
    * changes what its own textarea already shows, so typing must not re-render
@@ -3058,6 +3061,29 @@ export class HuiApp extends HuiElement {
       });
   };
 
+  /** Copies the history up to a reply into a new session, refreshes the list and opens the copy. The source session
+   * is left running or idle as it was; a failure stays on it as a note. */
+  private forkFromMessage = (entryId: string) => {
+    const session = this.selected;
+    if (!session || this.opening || this.forkPending) return;
+    this.forkPending = true;
+    this.note = "";
+    this.noteLevel = "info";
+    void forkSession(session.id, entryId)
+      .then(async (forked) => {
+        await this.refreshSessions();
+        this.selectSession(this.groups.flatMap((group) => group.sessions).find((candidate) => candidate.id === forked.id) ?? forked);
+      })
+      .catch((error: unknown) => {
+        if (!isSelectedSession(session.id, this.selected?.id)) return;
+        this.note = error instanceof Error ? error.message : "Could not fork that session.";
+        this.noteLevel = "error";
+      })
+      .finally(() => {
+        this.forkPending = false;
+      });
+  };
+
   private continueRun = () => {
     const session = this.selected;
     if (!session || this.streaming || this.opening || this.continuing) return;
@@ -5308,6 +5334,7 @@ export class HuiApp extends HuiElement {
       stopping: this.stopping,
       continuing: this.continuing,
       rewindPending: this.rewindPending,
+      forkPending: this.forkPending,
       draft: this.draft,
       chatPreferences: this.settings.chat,
       queue: this.queue,
@@ -5442,6 +5469,7 @@ export class HuiApp extends HuiElement {
       onAbort: this.abort,
       onContinue: this.continueRun,
       onRewind: this.rewindToMessage,
+      onFork: this.forkFromMessage,
       onCompact: () => this.compactNow(),
       onCancelCompaction: () => this.cancelCompactionNow(),
       onAddAttachments: this.addAttachments,

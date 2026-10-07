@@ -13,6 +13,7 @@ process.env["XDG_CONFIG_HOME"] = await mkdtemp(join(tmpdir(), "hui-sse-"));
 const {
   createSession,
   deleteSession,
+  forkSession,
   readAttachments,
   recoverInterruptedSessions,
   reopenDurableSessions,
@@ -443,6 +444,37 @@ test("a session started without a model uses the primary route, not PI's default
   } finally {
     await rm(settingsFile, { force: true });
   }
+});
+
+test("a fork registers its conversation copy as a session of its own, without the source's organizer marks", async () => {
+  let stored: SessionRecord[] = [];
+  const registry = async (mutate: (records: readonly SessionRecord[]) => readonly SessionRecord[]) => {
+    stored = [...mutate(stored)];
+    return stored;
+  };
+  const started: SessionRecord[] = [];
+  const sessions = { accept: () => undefined, ensure: (started_: SessionRecord) => { started.push(started_); return true; } };
+  const source: SessionRecord = {
+    ...record(), id: "fork-source", title: "Plan the API", group: "backend", tool: "durable", piSessionFile: "durable:1",
+    model: "x/chosen", thinking: "high", pinned: true, unread: true, icon: "🚀", stage: "testing", stageSource: "operator",
+    jiraIssues: [{ key: "HUI-1", url: "https://example.atlassian.net/browse/HUI-1" }],
+  };
+
+  const forked = await forkSession(source, "durable:2", sessions, registry);
+  assert.notEqual(forked.id, source.id);
+  assert.deepEqual(
+    { title: forked.title, group: forked.group, cwd: forked.cwd, tool: forked.tool, model: forked.model, thinking: forked.thinking, piSessionFile: forked.piSessionFile },
+    { title: "Plan the API (fork)", group: "backend", cwd: source.cwd, tool: "durable", model: "x/chosen", thinking: "high", piSessionFile: "durable:2" },
+  );
+  for (const mark of ["pinned", "unread", "icon", "stage", "stageSource", "jiraIssues", "bot", "parentId"] as const) {
+    assert.equal(forked[mark], undefined, mark);
+  }
+  assert.deepEqual(stored.map((session) => session.id), [forked.id], "registered before its runtime starts");
+  assert.deepEqual(started.map((session) => session.piSessionFile), ["durable:2"], "the runtime resumes the copy");
+
+  const long = await forkSession({ ...source, title: "x".repeat(200) }, "durable:3", sessions, registry);
+  assert.equal(long.title.length, 200);
+  assert.match(long.title, / \(fork\)$/u);
 });
 
 test("a generated title is published but never replaces an operator rename", async () => {

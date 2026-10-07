@@ -216,7 +216,7 @@ const SESSION_GROUP_MAX = 200;
 const SESSION_GROUP_ORDER_MAX = 1_000;
 /** Session actions and live catalogs, all addressed by HUI's own session id. */
 const SESSION_ACTION =
-  /^\/__hui\/sessions\/([^/]+)\/(open|prompt|continue|resume|steer|follow-up|btw|queue|events|connect|models|commands|tools|model|thinking|question|abort|clear|reload|compact|rewind)$/;
+  /^\/__hui\/sessions\/([^/]+)\/(open|prompt|continue|resume|steer|follow-up|btw|queue|events|connect|models|commands|tools|model|thinking|question|abort|clear|reload|compact|rewind|fork)$/;
 /** The session itself, for changing it rather than acting on it. */
 const SESSION_ONE = /^\/__hui\/sessions\/([^/]+)$/;
 const GITHUB_ROUTE = `${PREFIX}github`;
@@ -1021,12 +1021,13 @@ export class SessionNotFoundError extends Error {
 
 /** Why a bot's chat refuses an operation that would end, shorten or fork it (409). Without a handle (an unreadable
  * bot registry), the record's `bot` field alone refuses. */
-function foreverChatRefusal(handle: string | undefined, operation: "clear" | "compact" | "rewind" | "delete"): string {
+function foreverChatRefusal(handle: string | undefined, operation: "clear" | "compact" | "rewind" | "fork" | "delete"): string {
   const chat = handle ? `@${handle}'s` : "a bot's";
   return {
     clear: `This is ${chat} forever chat: it cannot be cleared. Its memory keeps everything; archive the bot when you are done with it.`,
     compact: `This is ${chat} forever chat: its memory condenses it by itself, so it is not compacted by hand.`,
     rewind: `This is ${chat} forever chat: it cannot be rewound or forked.`,
+    fork: `This is ${chat} forever chat: it cannot be rewound or forked.`,
     delete: `This is ${chat} forever chat: archive the bot instead${handle ? ` (hui bot remove ${handle})` : ""}, which keeps its chat and memory, or delete the bot${handle ? ` (hui bot delete ${handle})` : ""} with its chat, memory and folder.`,
   }[operation];
 }
@@ -1523,6 +1524,8 @@ export async function createSession(
     nameSession?: typeof generateSessionNames;
     /** A bot's chat: its bot, and the Durable conversation already created for it (bot-service.ts). */
     bot?: { id: string; piSessionFile: string };
+    /** A fork: the resume reference of the conversation copy it continues (`liveSessions.fork`). */
+    piSessionFile?: string;
   } = {},
 ): Promise<SessionRecord> {
   if (typeof body["cwd"] !== "string") throw new Error("Working directory must be text.");
@@ -1617,6 +1620,7 @@ export async function createSession(
     ...(thinking ? { thinking } : {}),
     ...(seed.stage ? { stage: seed.stage, stageSource: "operator" as const } : {}),
     ...(seed.bot ? { bot: seed.bot.id, piSessionFile: seed.bot.piSessionFile } : {}),
+    ...(seed.piSessionFile ? { piSessionFile: seed.piSessionFile } : {}),
     createdAt: now,
     updatedAt: now,
     source: "hui",
@@ -1681,6 +1685,30 @@ export async function createSession(
     void renameWithGeneratedTitle(record, () => nameSession({ cwd: namingCwd, prompt: initialPrompt, settings }), registryUpdater);
   }
   return record;
+}
+
+/**
+ * Registers a fork's conversation copy as a session of its own. It takes what runs the work from the source (its
+ * directory, worker, group, runtime, model and reasoning) and none of the operator's marks: it starts unpinned, read,
+ * without an icon, Jira links or a Kanban stage. Pull request marks come from the transcript, so pull requests the
+ * source opened before the fork point show on the copy too. It shares the source's checkout; nothing in Git changes.
+ */
+export async function forkSession(
+  source: SessionRecord,
+  piSessionFile: string,
+  sessions: Pick<typeof liveSessions, "accept" | "ensure"> = liveSessions,
+  registryUpdater: typeof updateRegistry = updateRegistry,
+): Promise<SessionRecord> {
+  const suffix = " (fork)";
+  return createSession({
+    cwd: source.cwd,
+    ...(source.worker ? { worker: source.worker } : {}),
+    group: source.group,
+    title: `${source.title.slice(0, SESSION_TITLE_MAX - suffix.length)}${suffix}`,
+    tool: source.tool,
+    ...(source.model ? { model: source.model } : {}),
+    ...(source.thinking ? { thinking: source.thinking } : {}),
+  }, sessions, registryUpdater, undefined, { piSessionFile });
 }
 
 /**
@@ -3522,7 +3550,7 @@ async function handleRequest(
       return;
     }
     // A bot's chat never ends: what would reset, shorten or fork it is refused here; the model stays switchable.
-    if (record.bot && request.method === "POST" && (action[2] === "clear" || action[2] === "compact" || action[2] === "rewind")) {
+    if (record.bot && request.method === "POST" && (action[2] === "clear" || action[2] === "compact" || action[2] === "rewind" || action[2] === "fork")) {
       // The bot registry decides; one that cannot be read refuses rather than risk the chat.
       const owner = await bots.botForSession(record.id).then((bot) => bot ? { handle: bot.handle } : undefined, () => ({ handle: undefined }));
       if (owner) {
@@ -3794,6 +3822,25 @@ async function handleRequest(
         sendJson(response, error instanceof SessionBusyError ? 409 : 400, {
           error: error instanceof Error ? error.message : "PI could not rewind that session.",
         });
+      }
+      return;
+    }
+    if (action[2] === "fork" && request.method === "POST") {
+      try {
+        const body = (await readBody(request)) as Record<string, unknown>;
+        if (body["entryId"] !== undefined && (typeof body["entryId"] !== "string" || !body["entryId"].trim())) {
+          throw new Error("A fork point must be a history entry id.");
+        }
+        const entryId = typeof body["entryId"] === "string" ? body["entryId"].trim() : undefined;
+        if (!liveSessions.ensure(record)) {
+          sendJson(response, 404, { error: `unknown session: ${id}` });
+          return;
+        }
+        await liveSessions.booted(id);
+        const forked = await forkSession(record, await liveSessions.fork(id, entryId));
+        sendJson(response, 201, { session: toView(forked, liveSessions.status(forked.id)) });
+      } catch (error) {
+        sendJson(response, 400, { error: error instanceof Error ? error.message : "Could not fork that session." });
       }
       return;
     }

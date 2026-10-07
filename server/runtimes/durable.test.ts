@@ -348,6 +348,33 @@ test("rewinding forks the conversation and keeps the abandoned branch", { timeou
   assert(answered("Tool complete")(kept.transcript()), "the abandoned branch is still stored");
 });
 
+test("a fork copies the history up to a reply into a new conversation and leaves the source untouched", { timeout: 60_000 }, async (t) => {
+  const f = await fixture(t);
+  const host = f.host();
+  const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-fork-source" }, host);
+  await turns(session, ["FORK_ONE first turn", "FORK_TWO second turn"]);
+  const messages = (entries: TranscriptEntry[]) => entries.flatMap((entry) => entry.kind === "message" ? [`${entry.role}:${entry.text}`] : []);
+  const before = session.transcript();
+  const firstAnswer = before.find((entry) => entry.kind === "message" && entry.role === "assistant");
+  assert(firstAnswer?.kind === "message" && firstAnswer.entryId, "replies carry their Durable entry ID");
+
+  const reference = await session.fork(firstAnswer.entryId);
+  assert(durableConversationId(reference), reference);
+  assert.notEqual(reference, session.sessionFile, "the copy is a conversation of its own");
+  assert.deepEqual(session.transcript(), before, "the source keeps its whole history");
+  const copy = await startDurable({ cwd: f.cwd, sessionFile: reference, huiSessionId: "durable-fork-copy" }, host);
+  assert.deepEqual(messages(copy.transcript()), messages(before).slice(0, 2), "the copy ends at the reply it was forked from");
+  await turns(copy, ["FORK_THREE in the copy"]);
+  const context = await lastTurnRequest(f.log);
+  assert.match(context, /FORK_ONE/u, "the model reads the copied history");
+  assert.doesNotMatch(context, /FORK_TWO/u, "nothing after the fork point reaches the copy");
+  assert.deepEqual(messages(session.transcript()), messages(before), "the copy's turn stays out of the source");
+
+  const latest = await startDurable({ cwd: f.cwd, sessionFile: await session.fork(), huiSessionId: "durable-fork-latest" }, host);
+  assert.deepEqual(messages(latest.transcript()), messages(before), "without an entry the fork copies everything");
+  await assert.rejects(session.fork("missing-entry"), /no longer available/u);
+});
+
 test("Durable compaction keeps the whole history and marks where it summarized", { timeout: 60_000 }, async (t) => {
   const f = await fixture(t, KEPT_WINDOW);
   const host = f.host();

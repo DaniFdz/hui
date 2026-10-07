@@ -31,6 +31,7 @@ import { composerEnterMode } from "../lib/composer-state.ts";
 import { compactionBlocks, noteAnnouncement, type NoteLevel } from "../lib/session-ui-state.ts";
 import { adjustTextareaHeight as syncComposerTextarea } from "../lib/composer-textarea.ts";
 import { icons } from "../lib/icons.ts";
+import { forkPoint } from "../lib/fork-point.ts";
 import { closeDropdownOnEscape, labelDropdown } from "../lib/web-awesome.ts";
 import type { SplitDirection } from "../lib/session-multiplexer.ts";
 import { renderMarkdown } from "../lib/markdown.ts";
@@ -205,6 +206,7 @@ export type HomeProps = {
   stopping: boolean;
   continuing: boolean;
   rewindPending: boolean;
+  forkPending: boolean;
   draft: string;
   chatPreferences: {
     collapseTaskProgress: boolean;
@@ -292,6 +294,8 @@ export type HomeProps = {
   onContinue: () => void;
   /** Rewind to before a user message, restoring its text and attachments to the composer. */
   onRewind: (target: RewindTarget, text: string, attachments?: readonly (string | TranscriptAttachment)[]) => void;
+  /** Copies the history up to a reply into a new session and opens it; this session is left as it is. */
+  onFork: (entryId: string) => void;
   /** Same as sending `/compact`. */
   onCompact: () => void;
   /** Cancels a manual compaction running beside the conversation (Durable's). */
@@ -1132,6 +1136,9 @@ function renderTranscriptRows(props: HomeProps, rows: readonly ChatProjectionRow
       : last.entryId ?? { userFromEnd: new Set(props.transcript.slice(props.transcript.indexOf(last) + 1)
           .flatMap((item) => item.kind === "message" && item.role === "user" && !item.failed ? [item.entryId ?? item.id] : [])).size };
     const rewindTooltipId = sessionControlId(props, `rewind-tooltip-${row.id}`);
+    // Only Pi Durable copies a history into a new conversation; a bot's chat is never forked.
+    const forkAt = props.session?.tool === "durable" && !props.session.bot ? forkPoint(props.transcript, last) : undefined;
+    const forkTooltipId = sessionControlId(props, `fork-tooltip-${row.id}`);
     return html`<div class="chat-group ${row.role} chat-group--with-footer ${row.id === latestAssistantRowId ? "chat-group--latest-assistant" : ""}" data-chat-row-key=${row.id}>
       <div class="chat-group-messages">${row.messages.map((item) => renderMessage(props, item))}</div>
       ${last?.pending ? nothing : html`<div class="chat-group-footer ${row.role === "user" ? "chat-group-footer--persistent-identity" : ""}">
@@ -1143,6 +1150,11 @@ function renderTranscriptRows(props: HomeProps, rows: readonly ChatProjectionRow
         ${rewindTo ? html`<div class="chat-group-footer-actions">
           ${renderActionTooltip(rewindTooltipId, props.rewindPending ? "Rewinding…" : "Rewind", html`
             <button type="button" class="chat-group-rewind" aria-label=${props.rewindPending ? "Rewinding…" : "Rewind to here"} aria-describedby=${rewindTooltipId} ?disabled=${props.rewindPending} @click=${() => props.onRewind(rewindTo, last?.text ?? "", last?.attachments)}>${rewindIcon}</button>
+          `)}
+        </div>` : nothing}
+        ${forkAt ? html`<div class="chat-group-footer-actions">
+          ${renderActionTooltip(forkTooltipId, props.forkPending ? "Forking…" : "Fork from here", html`
+            <button type="button" class="chat-copy-btn chat-group-fork" aria-label=${props.forkPending ? "Forking…" : "Fork into a new session from here"} aria-describedby=${forkTooltipId} ?disabled=${props.forkPending} @click=${() => props.onFork(forkAt)}>${icons.gitBranch}</button>
           `)}
         </div>` : nothing}
       </div>`}

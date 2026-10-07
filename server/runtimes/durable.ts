@@ -135,6 +135,15 @@ function inContext(message: Message): boolean {
 
 const role = (message: unknown): unknown => (message as { role?: unknown } | null)?.role;
 
+/** A point a fork can carry on from: a prompt, or an answer that ends its turn. An answer asking for tools, or a tool
+ * result, would leave the copy waiting on a turn that never finishes there. */
+function forkable(message: unknown): boolean {
+  if (role(message) === "user") return true;
+  if (role(message) !== "assistant") return false;
+  const content = (message as { content?: unknown }).content;
+  return !Array.isArray(content) || !content.some((part) => (part as { type?: unknown } | null)?.type === "toolCall");
+}
+
 /** PI's default thinking level for a new conversation without an explicit one. */
 export function defaultThinking(host: DurableHost, cwd: string): string | undefined {
   return SettingsManager.create(cwd, host.agentDir).getDefaultThinkingLevel();
@@ -1102,6 +1111,21 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
     // a fork of an OptChat conversation, which starts without OptChat, gives up its tools.
     if (!at || optchat) await this.applyTools();
     this.#extensions?.rewound();
+  }
+
+  /** A fork into another session: the history up to one entry (the latest point a fork can carry on from when absent)
+   * copied into a new conversation of the same harness. This conversation is not touched and may keep running. The
+   * copy keeps the agent (model, thinking, tools) as of that entry and, like a rewind's fork, starts without OptChat. */
+  async fork(entryId?: string): Promise<string> {
+    await this.#read();
+    const visible = this.#history.slice(this.#resetIndex())
+      .filter((candidate) => !CompactionEntry.is(candidate.entry) && candidate.shown.length > 0);
+    const isPoint = (candidate: Row) => candidate.shown.every(forkable);
+    const row = entryId === undefined ? visible.filter(isPoint).at(-1) : visible.find((candidate) => String(candidate.entry.id) === entryId);
+    if (!row) throw new Error(entryId === undefined ? "There is nothing to fork yet." : "That fork point is no longer available.");
+    if (!isPoint(row)) throw new Error("A fork starts from a prompt or a finished reply, not one still waiting on its tools.");
+    const next = await this.#conversation.fork(row.entry.id, { ownership: { kind: "ownerless" } }, context);
+    return durableReference(next.id);
   }
 
   async attachmentImage(message: number, image: number): Promise<{ mimeType: string; data: Buffer } | undefined> {
