@@ -1,3 +1,8 @@
+/**
+ * Pure rules for the state of the session shown in Home: merging live statuses, when the composer is locked
+ * or released, when to ask for models and flush a launch prompt, and guards that drop late results from a
+ * previous session or request.
+ */
 import type {
   Attachment,
   RuntimeCompaction,

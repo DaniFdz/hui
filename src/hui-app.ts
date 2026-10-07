@@ -1,3 +1,9 @@
+/**
+ * The root application element, also reused as the embedded chat pane inside splits and bot views. As the shell it
+ * holds the browser-side state (route, session list, layout, drafts, bots, settings and the polls that refresh them)
+ * and passes it to the view render functions as props. Durable state lives behind the gateway's `/__hui/` routes;
+ * this element mirrors it and sends requests, it never reads files or runs processes.
+ */
 import { renderPicker } from "./views/settings-picker.ts";
 import { groupCheckoutDefaults } from "./lib/group-session-defaults.ts";
 import { renderDirectoryPicker } from "./views/directory-picker.ts";

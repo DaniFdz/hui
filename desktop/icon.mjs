@@ -1,3 +1,5 @@
+/** Draws HUI's application icon in code, as a PNG and its macOS .icns wrapper, so the desktop app needs neither
+ * image assets nor an image library. */
 import { deflateSync } from 'node:zlib';
 
 function crc32(bytes) {

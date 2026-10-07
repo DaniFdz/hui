@@ -1,3 +1,8 @@
+/**
+ * Subscription usage for the providers that report it (Anthropic, OpenAI Codex, OpenCode Go). It calls each
+ * provider's fixed first-party usage endpoint and normalizes the reply into labelled usage windows, reporting
+ * only what the provider said rather than inferring billing state from stored credentials.
+ */
 import { providerEmail } from "./provider-identity.ts";
 import type { ProviderQuota } from "../shared/providers.ts";
 

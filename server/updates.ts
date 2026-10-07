@@ -1,3 +1,8 @@
+/**
+ * Self-update for an installed gateway: a release check cached once per gateway and shared by every tab, and
+ * starting an update, which hands off to a detached update worker once no session holds blocking work. The
+ * development server has no installation and reports updates as unavailable.
+ */
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { open } from "node:fs/promises";

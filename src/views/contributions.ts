@@ -1,3 +1,7 @@
+/**
+ * The Contributions page element. It charts the GitHub activity the gateway reads through `gh` and hosts the session
+ * calendar as its second tab; only the chosen metric, account and view persist, in localStorage.
+ */
 import { LitElement, html, nothing, svg } from "lit";
 
 import type { GitHubContributions } from "../../shared/github.ts";

@@ -1,3 +1,6 @@
+/** Installs, activates and rolls back HUI releases. A candidate is staged with npm beside the installation, booted
+ * against a throwaway configuration, then switched in by rewriting the release pointer and restarting the gateway;
+ * a failed activation restores the previous pointer and gateway. It never edits a source checkout or PI data. */
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, realpath, rm, stat } from "node:fs/promises";

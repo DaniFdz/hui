@@ -1,3 +1,7 @@
+/**
+ * Read-only dialog for a PI resource such as a skill or plugin file: Markdown rendered, anything else shown as
+ * source. Loading, copying and closing belong to the caller.
+ */
 import { html, nothing } from "lit";
 
 import type { PiResourceDocument } from "../lib/pi.ts";

@@ -1,5 +1,3 @@
-import { diagnosticPath, recordDiagnosticEvent, type DiagnosticEvent } from "./observability.ts";
-
 /**
  * Browser-side failures never reach the gateway by themselves: an uncaught
  * error, an unhandled promise rejection or a request that could not connect.
@@ -7,6 +5,8 @@ import { diagnosticPath, recordDiagnosticEvent, type DiagnosticEvent } from "./o
  * batch and records it as `ui` diagnostics, rate-limited because gateway.log
  * does not rotate.
  */
+import { diagnosticPath, recordDiagnosticEvent, type DiagnosticEvent } from "./observability.ts";
+
 export const UI_ERROR_KINDS = ["uncaught_error", "unhandled_rejection", "request_failed"] as const;
 export type UiErrorKind = (typeof UI_ERROR_KINDS)[number];
 

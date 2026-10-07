@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+/** Installed `hui` entry point. It only checks that the package was built and hands off to the compiled launcher,
+ * which picks the active release; every command lives in cli/. */
 import { fileURLToPath } from "node:url";
 import { existsSync } from "node:fs";
 

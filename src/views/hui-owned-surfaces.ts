@@ -1,3 +1,7 @@
+/**
+ * The pages HUI owns outright instead of reading from PI: Labs, Profile and About. Their state is HUI's own
+ * settings, saved through the callback the app passes in; nothing here changes PI's configuration.
+ */
 import { html, type TemplateResult } from "lit";
 import { renderSettingsToggle } from "./settings-toggle.ts";
 

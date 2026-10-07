@@ -1,3 +1,8 @@
+/**
+ * The WebSocket transport for terminals. Upgrades are accepted only with a short-lived, single-use ticket
+ * minted through a guarded request, from the same origin and an allowed host; the socket then streams terminal
+ * events out and input and resize messages in.
+ */
 import { randomBytes } from "node:crypto";
 import type { IncomingMessage } from "node:http";
 import type { EventEmitter } from "node:events";

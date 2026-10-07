@@ -1,3 +1,8 @@
+/**
+ * Resolution and completion for paths the operator types: a new session's working directory and file paths
+ * inside a session's workspace. Relative input resolves against home or the session workspace, never the
+ * gateway's own cwd, and suggestions are capped.
+ */
 import { readdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { isAbsolute, join, normalize, resolve, sep } from "node:path";

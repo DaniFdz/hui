@@ -1,3 +1,8 @@
+/**
+ * Settings → Models → Calls (HUI-18): calls with bots run on GPT-Live; this sets its default voice and says which
+ * ChatGPT login calls use. The page passes the setting in and saves it; the login status comes from `/__hui/calls` and
+ * never carries a token.
+ */
 import { LitElement, html, nothing } from "lit";
 import { GPT_LIVE_VOICES, gptLiveVoiceLabel, type CallsStatus, type GptLiveVoice } from "../../shared/calls.ts";
 import type { Settings } from "../lib/settings.ts";
@@ -12,11 +17,6 @@ export function chatGptLoginSummary(status: CallsStatus["chatgpt"] | undefined, 
   return "No ChatGPT login yet. Sign in under Providers above: OpenAI Codex, with your ChatGPT Plus or Pro account.";
 }
 
-/**
- * Settings → Models → Calls (HUI-18): calls with bots run on GPT-Live; this sets its default voice and says which
- * ChatGPT login calls use. The page passes the setting in and saves it; the login status comes from `/__hui/calls` and
- * never carries a token.
- */
 export class HuiCallSettings extends LitElement {
   #calls: Settings["calls"] = { voice: "cove" };
   #status: CallsStatus | undefined;

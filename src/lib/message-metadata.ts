@@ -1,3 +1,7 @@
+/**
+ * Small text formatters around chat messages: elapsed and relative times, token counts, a run's metric
+ * summary and the quoted reply draft. Presentation only; the metrics themselves come from the gateway.
+ */
 import type { TranscriptMetrics } from "../../server/runtimes/transcript-metrics.ts";
 
 export function elapsedLabel(ms: number): string {

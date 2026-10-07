@@ -1,3 +1,8 @@
+/**
+ * The sidebar's projection of the session registry: grouping, sorting, filtering, the parent/child tree and
+ * custom group order, plus the per-browser view options in localStorage. Every projection is view-only; the
+ * registry's groups and order are changed only through its API.
+ */
 import { DEFAULT_SESSION_STAGE, isSessionStage, stageRank } from "../../shared/session-stages.ts";
 import { sessionGroupLabel, type SessionGroup, type SessionStatus, type SessionView } from "./sessions-store.ts";
 

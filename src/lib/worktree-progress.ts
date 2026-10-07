@@ -1,3 +1,4 @@
+/** Status line shown while the gateway creates a session's Git worktree. */
 import type { WorktreeProgress } from "./sessions-store.ts";
 
 /** The status line shown while the gateway creates a session's worktree. */

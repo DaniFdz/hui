@@ -1,3 +1,8 @@
+/**
+ * Routes PI's model requests across the provider accounts connected in HUI. Each request is pinned to one
+ * account's credentials, moves to the next account when a quota error arrives before any output, and puts the
+ * exhausted account on cooldown. Once a response has started streaming it is never replayed elsewhere.
+ */
 import { AsyncLocalStorage } from "node:async_hooks";
 import { findPackageJSON } from "node:module";
 import { pathToFileURL } from "node:url";

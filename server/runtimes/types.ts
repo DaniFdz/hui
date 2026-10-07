@@ -1,5 +1,3 @@
-import type { TranscriptMetrics } from "./transcript-metrics.ts";
-import type { CallRecord } from "../../shared/calls.ts";
 /**
  * The contract every tool adapter implements.
  *
@@ -13,6 +11,8 @@ import type { CallRecord } from "../../shared/calls.ts";
  * and `pi` (PI's SDK worker, kept for existing sessions and as a fallback).
  * Another harness can slot in beside them without any of the UI changing.
  */
+import type { TranscriptMetrics } from "./transcript-metrics.ts";
+import type { CallRecord } from "../../shared/calls.ts";
 
 export type RuntimeQueue = {
   steering: readonly string[];

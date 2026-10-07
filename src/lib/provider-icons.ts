@@ -1,3 +1,7 @@
+/**
+ * Brand icons for model providers. It maps provider ids onto the bundled mask assets and falls back to a
+ * letter badge for providers without one.
+ */
 import { html, nothing } from "lit";
 
 // Provider identity mapping and mask assets are from the same OpenClaw 2026.9.5 source.

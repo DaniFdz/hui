@@ -1,3 +1,7 @@
+/**
+ * The narrow-screen pane chooser for split workspaces. It reads the layout's panes and reports a choice; which
+ * pane is active stays with the layout's owner.
+ */
 import { html, nothing } from "lit";
 import { icons } from "../lib/icons.ts";
 import type { SessionPane } from "../lib/session-multiplexer.ts";
