@@ -13,5 +13,11 @@ async function tests(directory) {
 }
 const args = process.argv.slice(2);
 const files = args.length ? args : (await Promise.all(["bin", "cli", "desktop", "evals", "server", "src"].map(tests))).flat().sort();
-try { execFileSync(process.execPath, ["--test", ...files], { stdio: "inherit" }); }
+// A test file or test that never ends fails after five minutes, far past the
+// slowest one, and the log names it. Without a limit it holds the run open until
+// CI cancels the job, and since node:test reports files in order, it also hides
+// every result after it. Node 24 applies the limit to tests only: a file that
+// never finishes loading, or that a handle holds open, still waits for the job's.
+const TEST_TIMEOUT_MS = 300_000;
+try { execFileSync(process.execPath, ["--test", `--test-timeout=${TEST_TIMEOUT_MS}`, ...files], { stdio: "inherit" }); }
 catch (error) { process.exitCode = error.status ?? 1; }
