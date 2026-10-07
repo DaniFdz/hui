@@ -80,6 +80,33 @@ export function routineCadenceSummary(schedule: AutomationSchedule): string | un
   return `${ROUTINE_WEEKDAYS[Number(match[3]) % 7]}s at ${time}`;
 }
 
+/** "18:00" for a time today in `timeZone`, else "8 Oct, 18:00": when a temporary routine ends. */
+export function routineEndLabel(until: string, now: number, timeZone?: string): string {
+  const at = Date.parse(until);
+  if (!Number.isFinite(at)) return until;
+  const zone = timeZone ? { timeZone } : {};
+  const day = (timestamp: number) => new Intl.DateTimeFormat("en-CA", { ...zone, year: "numeric", month: "2-digit", day: "2-digit" }).format(timestamp);
+  const time = new Intl.DateTimeFormat("en-GB", { ...zone, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(at);
+  if (day(at) === day(now)) return time;
+  return `${new Intl.DateTimeFormat("en-GB", { ...zone, day: "numeric", month: "short" }).format(at)}, ${time}`;
+}
+
+/**
+ * What a routine shows beside its schedule, in the bot's Routines tab and on the Automations page: who made it when a
+ * bot did, and a temporary routine's limits: "made by @ada", "until 18:00", "3 runs left". `handle` names the bot by
+ * its id now (a handle can follow a new name); the one stored when it was made stands in.
+ */
+export function routineFacts(
+  task: Pick<AutomationTask, "createdBy" | "until" | "runsLeft">,
+  options: { handle?: (botId: string) => string | undefined; now?: number; timeZone?: string } = {},
+): string[] {
+  return [
+    ...(task.createdBy?.kind === "bot" ? [`made by @${options.handle?.(task.createdBy.botId) ?? task.createdBy.handle}`] : []),
+    ...(task.until ? [`until ${routineEndLabel(task.until, options.now ?? Date.now(), options.timeZone)}`] : []),
+    ...(task.runsLeft === undefined ? [] : [task.runsLeft === 0 ? "last run" : `${task.runsLeft} run${task.runsLeft === 1 ? "" : "s"} left`]),
+  ];
+}
+
 /** The bot's routines: soonest next run first, paused ones (no next run) last. */
 export function botRoutines(snapshot: AutomationSnapshot | undefined, sessionId: string): AutomationTask[] {
   if (!snapshot) return [];

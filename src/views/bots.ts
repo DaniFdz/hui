@@ -31,7 +31,7 @@ import {
   BOT_PANEL_TABS,
   type BotPanelTab,
 } from "../lib/bot-roster.ts";
-import { botRoutineRuns, botRoutines, routineSchedule, RoutineFormError, ROUTINE_WEEKDAYS } from "../lib/bot-routines.ts";
+import { botRoutineRuns, botRoutines, routineFacts, routineSchedule, RoutineFormError, ROUTINE_WEEKDAYS } from "../lib/bot-routines.ts";
 import { memoryBudgetLabel, memoryUsageDetail, memoryUsageLabel, type MemoryLine } from "../lib/bot-memory.ts";
 import { renderMarkdown } from "../lib/markdown.ts";
 import { describeRoutineSchedule, formatTimestamp, runIsActive } from "./settings-automation.ts";
@@ -427,12 +427,21 @@ function renderRoutine(task: AutomationTask, props: BotPanelProps) {
       ${renderSettingsToggle(`Enable ${task.name}`, task.enabled, (checked) => routines.onSetEnabled(task, checked), routines.pending)}
     </div>
     <p class="bot-routine__meta">${describeRoutineSchedule(task.schedule)} · ${task.enabled ? `next ${formatTimestamp(task.nextRunAt)}` : "paused"}</p>
+    ${renderRoutineFacts(task, props)}
     <p class="bot-routine__prompt" title=${task.prompt}>${task.prompt}</p>
     <div class="bot-routine__actions">
       <button type="button" class="btn btn--sm bot-routine__run" ?disabled=${routines.pending} aria-label=${`Run now: ${task.name}`} @click=${() => routines.onRun(task)}>${playIcon}<span>Run now</span></button>
       <button type="button" class="btn btn--sm btn--ghost bot-routine__delete" ?disabled=${routines.pending} aria-label=${`Delete ${task.name}`} @click=${() => routines.onDelete(task)}>${icons.trash}<span>Delete</span></button>
     </div>
   </li>`;
+}
+
+/** Who made a routine when the bot did, and a temporary routine's limits: "made by @ada", "until 18:00", "3 runs left". */
+function renderRoutineFacts(task: AutomationTask, props: BotPanelProps) {
+  const facts = routineFacts(task, { handle: (botId) => (botId === props.bot.id ? props.bot.handle : undefined), timeZone: props.timezone });
+  return facts.length
+    ? html`<ul class="bot-routine__facts" aria-label=${`About ${task.name}`}>${facts.map((fact) => html`<li class="bot-routine__fact">${fact}</li>`)}</ul>`
+    : nothing;
 }
 
 function renderRun(run: AutomationRun) {
