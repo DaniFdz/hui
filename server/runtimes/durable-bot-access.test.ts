@@ -72,6 +72,17 @@ test("skills are named by name and source, bundled ones by their stable preferen
   assert.deepEqual(access.botSkills(skills, [{ name: "renamed", path: "/a/beta/SKILL.md" }]), skills, "the name is part of the identity");
 });
 
+test("a skill in the catalog: bundled ones by their stable path from HUI defaults, others from the folder holding them, ~ for home", async () => {
+  const { homedir } = await import("node:os");
+  const home = homedir();
+  assert.deepEqual(access.offeredSkill({ name: "notes", description: "Notes.", filePath: join(home, ".pi/agent/skills/notes/SKILL.md"), baseDir: join(home, ".pi/agent/skills/notes") }),
+    { name: "notes", path: join(home, ".pi/agent/skills/notes/SKILL.md"), description: "Notes.", source: "~/.pi/agent/skills" });
+  assert.equal(access.offeredSkill({ name: "x", description: "", filePath: "/srv/skills/x/SKILL.md", baseDir: "/srv/skills/x" }).source, "/srv/skills");
+  const bundled = bundledSkills[0];
+  assert.deepEqual(access.offeredSkill({ name: bundled.name, description: "B.", filePath: bundled.path, baseDir: join(bundled.path, "..") }),
+    { name: bundled.name, path: bundled.preferencePath, description: "B.", source: "HUI defaults" });
+});
+
 test("the catalog describes each tool: its group, its source and whether it is powerful", () => {
   assert.deepEqual(access.describeTool({ name: "bash" }, { kind: "coding" }), {
     name: "bash", label: "Shell", description: "Run shell commands", group: "shell", source: "Durable", powerful: true,

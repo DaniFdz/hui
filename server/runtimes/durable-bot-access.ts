@@ -21,6 +21,7 @@
  */
 import { readFileSync } from "node:fs";
 import { readFile, realpath, stat } from "node:fs/promises";
+import { homedir } from "node:os";
 import { dirname, resolve, sep } from "node:path";
 import { defineTool, section, type ConversationId, type PromptSection, type ToolExecutionResult, type ToolRegistration } from "@earendil-works/pi-durable";
 import type { Skill } from "@earendil-works/pi-coding-agent";
@@ -147,11 +148,15 @@ export function builtinOffer(coding: readonly ToolRegistration[], hui: readonly 
   ];
 }
 
-/** A skill as the catalog shows it: by the name and path a bot's lists use, with where it comes from. */
+/** A skill as the catalog shows it: by the name and path a bot's lists use, with where it comes from (the directory
+ * holding it, `~` for this host's home). */
 export function offeredSkill(skill: Pick<Skill, "name" | "description" | "filePath" | "baseDir">): OfferedSkill {
   const ref = skillRef(skill);
   const bundled = ref.path !== skill.filePath;
-  return { ...ref, description: skill.description, source: bundled ? "HUI defaults" : dirname(skill.baseDir) };
+  const folder = dirname(skill.baseDir);
+  const home = homedir();
+  const shown = folder === home || folder.startsWith(home + sep) ? `~${folder.slice(home.length)}` : folder;
+  return { ...ref, description: skill.description, source: bundled ? "HUI defaults" : shown };
 }
 
 /** Where a tool probably comes from, by its name, for a description without a live session. */
