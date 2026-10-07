@@ -1396,7 +1396,7 @@ While it is off, bots are dormant and nothing about them is deleted:
 - **Nothing starts a bot's turn**: every turn HUI starts for a bot (a message,
   a routine, a `message_bot` message, a call's hand-off, a new bot's first turn)
   passes one check in `BotService` that refuses with that message, as do the
-  bot-only tools `message_bot` and `set_profile`. A bot's chat that starts a
+  bot-only tools `message_bot`, `set_profile` and `routines`. A bot's chat that starts a
   turn anyway (Durable resuming a run a restart interrupted, a worker's host
   reattaching, a subagent reporting back) is stopped as soon as it reports
   `running` or `waiting`.
@@ -1566,8 +1566,9 @@ conversation at its next turn.
 ### Tools and skills
 
 Every bot has every tool and skill a session in its directory has (the coding
-tools, HUI's tools, its PI extensions' tools, `message_bot`, and the skills PI
-finds there, Settings' choices applied) until the operator turns some off. What
+tools, HUI's tools, its PI extensions' tools, `message_bot` and `routines`, and
+the skills PI finds there, Settings' choices applied) until the operator turns
+some off. What
 is off lives in the chat's `hui.bot` conversation document as `disabledTools`
 (tool names) and `disabledSkills` (skills by name and source: the SKILL.md path,
 or a bundled skill's stable `hui:skill:<name>` path, as Settings' disabled
@@ -1647,6 +1648,10 @@ tool. They are on by default like everything else. `secret_request` is not one
 of them: it only asks the operator, who answers each request in the chat's
 Secret card or refuses it. `message_bot` lets a bot ask
 a better-equipped bot to act for it; turning `message_bot` off prevents that.
+`routines` (*Manage its own routines*, in the Bots group) is not powerful: it
+only schedules prompts to the bot's own chat, behind the guards
+[below](#routines); turning it off leaves a bot with the routines the operator
+gives it.
 Tools are the boundary, not a sandbox: a bot with `bash` or `read` reaches
 whatever the user's account can, the files of turned-off skills and HUI's own
 API included. Real isolation means running the bot on a worker in a container.
@@ -1682,6 +1687,54 @@ chat or the task's timeout (`timeoutSeconds`, default 900) stops that turn. An
 archived bot's routine fails. Archiving disables a bot's routines; restoring
 leaves them disabled.
 
+**A bot's own routines.** Every bot's chat has a `routines` tool (SPEC.md,
+"Schedules are a CLI, and bots schedule their own routines"), in the
+`hui-bots-tools` extension beside `write_soul`, `set_profile` and
+`request_access` (`server/runtimes/durable-bot-routines.ts`). Unlike those, the
+operator can turn it off: the catalog lists it as *Manage its own routines*, a
+normal switch in the Bots group, on by default, not powerful. It reaches HUI's
+agent-tool handler as the chat's session, from a worker's host too, where
+`server/bot-routines.ts` owns every rule:
+
+```ts
+routines({
+  action: "list" | "add" | "update" | "remove",
+  routine?: string,            // update, remove: an id, or a name only one of its routines has
+  name?: string,               // add (required), update; 1–200, unique among its routines
+  prompt?: string,             // add (required), update; 1–20,000
+  every?: string,              // "30m", "2h", "1d": a number and s, m, h or d, at least 1m
+  cron?: string, timezone?: string, // five fields; timezone defaults to the gateway's (and on update to the cron's own)
+  at?: string,                 // once, an ISO date and time
+  until?: string,              // ISO; on update "" clears it
+  runs?: number,               // 1–1000; on update 0 clears it
+  enabled?: boolean,           // update: false pauses, true resumes
+})
+```
+
+- **Its own chat only.** It lists, changes and removes only the Automation tasks
+  whose `sessionId` is its chat, whoever made them; another bot's or session's
+  task answers as unknown, never touched and never named.
+- **Who started the turn.** `add` and `update` are refused in a turn another bot
+  started (`[from @…]`, any hop), read from the run's originating input
+  (`runPrompt`) as `set_profile` reads it; turns the operator, a routine or HUI's
+  kickoff started may. `list` and `remove` work in any turn: they never make
+  work.
+- **Limits.** Adding a routine, or resuming one, is refused while its chat has
+  20 enabled routines (the operator's count too; the operator's own routes have
+  no cap); `every` is at least a minute (cron fires at most once a minute
+  anyway); names are unique among its routines.
+- **Recorded as its own.** What it adds carries `createdBy: { kind: "bot", botId,
+  handle }`; the Routines tab, Automations and `hui schedule` show *made by
+  @handle*.
+- **Temporary routines** take `until` and/or `runs` ([Automation](#post-__huiautomationtasks)):
+  HUI deletes the routine after either, by itself. The bot can remove one
+  sooner, from that routine's own turn too: the routine goes and that turn
+  finishes (its run completes as usual). Removing a routine whose run waits
+  behind another turn withdraws that run first, so its message never arrives.
+- Bots off, it refuses like every bot tool (409 `BOTS_OFF_MESSAGE`); an archived
+  bot has none to manage. Refusals come back as the tool's error text, for the
+  model to read.
+
 While bots are off ([above](#bots-are-a-preview-settings--labs--bots)) the
 executor skips a routine's run instead: it ends `skipped` (not `failed`), with
 `error` saying `Skipped because bots are off: turn them on in Settings → Labs →
@@ -1700,7 +1753,7 @@ once when the scheduler starts.
 Every gateway's default Durable selection includes the `hui-bots` extension,
 whose prompt sections `bots` and `soul` (above) read the conversation's
 `hui.bot` document and render nothing without it. The tool `message_bot({ to, message })` (`to` ≤ 100,
-`message` ≤ 20,000 characters) lives in a second extension, `hui-bots-tools` (with `write_soul`, `set_profile`, `request_access` and `load_skill`),
+`message` ≤ 20,000 characters) lives in a second extension, `hui-bots-tools` (with `write_soul`, `set_profile`, `request_access`, `load_skill` and `routines`),
 installed but selected only by a bot's chat (`DurableSession.applyTools`), and
 refuses in any conversation without the document. Every other conversation's
 offered tools, system prompt and stored agent are unchanged. The section lists
@@ -2491,7 +2544,18 @@ Returns the whole scheduler snapshot:
 `{ "scheduler": { "enabled": true, "activeRuns": number, "nextWakeAt": string | null }, "tasks": AutomationTask[], "runs": AutomationRun[] }`.
 The scheduler and its store are HUI-owned (`~/.config/hui/automation.json`); PI
 has no scheduler contract to reuse. A malformed store is reported and never
-replaced by a later mutation.
+replaced by a later mutation. Each task (`src/lib/automation-types.ts`) has
+`id`, `name`, `description`, `sessionId`, `prompt`, `schedule`, `enabled`,
+`timeoutSeconds`, `createdAt`, `updatedAt` and `nextRunAt`, and three optional
+fields, absent from tasks written before them (which load unchanged; a value
+that isn't valid is left out rather than failing the store):
+
+- `createdBy`: `{ "kind": "operator" }` for a task made through these routes (the
+  Automations page, a bot's Routines tab, `hui schedule`, `hui bot routine`), or
+  `{ "kind": "bot", "botId", "handle" }` for one a bot made with its
+  [`routines`](#routines) tool. A body never sets it.
+- `until`: a temporary task's end, ISO.
+- `runsLeft`: a temporary task's runs left.
 
 ### `POST /__hui/automation/tasks`
 
@@ -2503,12 +2567,44 @@ Body: `{ "name", "description"?, "sessionId", "prompt", "schedule", "enabled"?, 
 `{ "task", "snapshot" }`. Rejected input returns 400 with the reason. A task
 aimed at a bot's chat is one of its [routines](#routines).
 
+A **temporary** task also takes `"until"` (an ISO date and time, in the future
+and after the task's next run, or it would never run) and/or `"runs"` (1–1000,
+stored as `runsLeft`). HUI deletes it by itself after either:
+
+- **At `until`**, paused or not; a run still going then finishes on its own and
+  stays in the history. No run is planned at or after `until` (`nextRunAt` is
+  `null` once none is left before it).
+- **After its last run.** Each run HUI starts counts, by hand or scheduled, and
+  is taken from `runsLeft` as it starts; a run that ends `skipped` (its target
+  couldn't take it, or bots were off) gives it back. Once `runsLeft` is 0
+  nothing more is planned, and the task goes when that run ends (whatever its
+  outcome). A run by hand of a task with none left is a 409.
+- **Across a restart**: the scheduler's start deletes a task whose `until`
+  passed while the gateway was down, and one whose last run the restart cut
+  short (that run is recorded `failed` as usual).
+
+Deleting is one write of the store, so a temporary task never runs again once
+it is due to go. Its runs stay in the history.
+
 ### `PUT|DELETE /__hui/automation/tasks/:id`
 
 `PUT` takes the same body as creation and rewrites the task, recomputing
-`nextRunAt` (`null` when `enabled` is false). `DELETE` removes it. Both respond
-`{ "snapshot" }`. An unknown id returns 404; deleting a task whose run is still
-in flight returns 409.
+`nextRunAt` (`null` when `enabled` is false). `createdBy` stays. `until` and
+`runs` change only when the body names them, and `null` clears either, so a
+client that doesn't know them (the enable switch, an older build) keeps a task's
+limits. `DELETE` removes it. Both respond `{ "snapshot" }`. An unknown id
+returns 404; deleting a task whose run is still in flight returns 409 (a bot
+removing its own routine from that routine's turn is the one exception, above).
+
+`hui schedule` (alias `schedules`) drives these routes from a terminal for every
+task: `list [--bot <bot> | --session <session>]`, `show`, `add`, `edit` (only the
+flags given; `--bot` or `--session` moves a task, `--until ""` and `--runs ""`
+clear the limits), `pause`, `resume`, `run` and `remove`, naming a task by id or
+exact name and a session by id or exact title (from `GET /__hui/sessions`).
+`hui bot routine …` runs on the same code. While bots are off, anything that
+names a bot, a bot's chat or a bot's routine prints the gateway's
+`GET /__hui/bots` refusal and exits 1, and `list` leaves bots' routines out, as
+Automations does; sessions' schedules work regardless.
 
 ### `POST /__hui/automation/tasks/:id/run`
 
