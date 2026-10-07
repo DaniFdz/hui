@@ -48,8 +48,15 @@ export type Settings = {
   disabledSkills: readonly { name: string; path: string }[];
   /** PI packages/extensions excluded before HUI's SDK worker discovers resources. */
   disabledPlugins: readonly { id: string; name: string; kind: "package" | "extension" }[];
-  labs: { denseObservability: boolean; detailedDebug: boolean };
-  /** Settings → Sessions → Bots. The sidebar's Agents | Bots switch is
+  labs: {
+    denseObservability: boolean;
+    detailedDebug: boolean;
+    /** Settings → Labs → Bots: bots (HUI-18) are a preview, off until the operator turns them on. Off, they are dormant
+     * everywhere: the gateway refuses their routes and calls, skips their routines and starts none of their turns, and
+     * no screen shows them. Nothing is deleted, and turning it on brings them back as they were, without a restart. */
+    bots: boolean;
+  };
+  /** Settings → Sessions → Bots, shown while Labs → Bots is on. The sidebar's Agents | Bots switch is
    * opt-in, so a machine that never asks for it keeps today's sidebar; hiding
    * the tab never stops bots or their routines, which the gateway owns. */
   bots: { showTab: boolean };
@@ -90,9 +97,19 @@ export const DEFAULT_SETTINGS: Settings = {
   calls: { voice: DEFAULT_GPT_LIVE_VOICE },
   disabledSkills: [],
   disabledPlugins: [],
-  labs: { denseObservability: false, detailedDebug: false },
+  labs: { denseObservability: false, detailedDebug: false, bots: false },
   bots: { showTab: false },
 };
+
+/** Settings → Labs → Bots: whether bots exist at all, on the gateway and on every screen. */
+export function botsEnabled(settings: Pick<Settings, "labs">): boolean {
+  return settings.labs.bots;
+}
+
+/** The sidebar's Agents | Bots switch: bots on, and Settings → Sessions showing their tab. */
+export function botsTabShown(settings: Pick<Settings, "labs" | "bots">): boolean {
+  return settings.labs.bots && settings.bots.showTab;
+}
 
 export function normalizeSettings(raw: unknown): Settings {
   const source = isRecord(raw) ? raw : {};
@@ -243,11 +260,13 @@ function boundedText(value: unknown, fallback: string, maximum: number): string 
   return value.trim().slice(0, maximum);
 }
 
+/** Every Labs flag is opt-in: only an explicit true turns one on. */
 function normalizeLabs(value: unknown): Settings["labs"] {
   const source = isRecord(value) ? value : {};
   return {
     denseObservability: source["denseObservability"] === true,
     detailedDebug: source["detailedDebug"] === true,
+    bots: source["bots"] === true,
   };
 }
 

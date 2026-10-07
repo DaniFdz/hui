@@ -58,6 +58,9 @@ await writeFile(join(agentDir, "models.json"), JSON.stringify({ providers: { fx:
 // The key exists only in the gateway's PI login: the worker's runs and its compactor get it brokered.
 await writeFile(join(agentDir, "auth.json"), JSON.stringify({ fx: { type: "api_key", key: KEY } }));
 await writeFile(join(agentDir, "settings.json"), JSON.stringify({ defaultProvider: "fx", defaultModel: "fixture" }));
+// Bots are a preview, off until Settings → Labs → Bots turns them on (the gateway's setting; workers need none).
+await mkdir(join(root, "gateway", "config", "hui"), { recursive: true });
+await writeFile(join(root, "gateway", "config", "hui", "settings.json"), JSON.stringify({ labs: { bots: true } }));
 
 const { middleware, startBackend, stopBackend } = await import("./hui.ts");
 const { workers } = await import("./workers.ts");
@@ -201,7 +204,7 @@ test("a bot made on the worker keeps its conversation and memory there, answers 
 
 test("a bot on the worker without a utility model of its own summarizes with the Settings' one, mirrored there", { timeout: 180_000 }, async () => {
   // Settings' utility model reaches the worker with the mirrored settings.
-  await writeFile(join(root, "gateway", "config", "hui", "settings.json"), JSON.stringify({ models: { utility: "fx/utility" } }));
+  await writeFile(join(root, "gateway", "config", "hui", "settings.json"), JSON.stringify({ models: { utility: "fx/utility" }, labs: { bots: true } }));
   await workers.sync(workerId);
   const sparrow = botOf(await call("/__hui/bots", "POST", { name: "Sparrow", worker: "devbox", soul: "# Who I am\nSparrow." }));
   assert.equal(sparrow.memoryModel, undefined, "no utility model of its own");

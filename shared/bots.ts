@@ -10,6 +10,16 @@ import type { BotVoice, VoiceLanguage } from "./voice.ts";
 
 export type { BotVoice } from "./voice.ts";
 
+/**
+ * Bots are a preview: Settings → Labs → Bots (`settings.labs.bots`) turns them on, and they are off until then. Off,
+ * every `/__hui/bots` route, every call route and the session routes of a bot's chat answer 409 with this message,
+ * the CLI prints it, and a call whose gateway says it ends.
+ */
+export const BOTS_OFF_MESSAGE = "Bots are off on this gateway: they are a preview. Turn them on in Settings → Labs → Bots.";
+
+/** A routine's run while bots are off: skipped (not failed), and the routine is kept. */
+export const BOTS_OFF_ROUTINE_MESSAGE = "Skipped because bots are off: turn them on in Settings → Labs → Bots. The routine is kept and runs at its next time once they are on.";
+
 /** Limits the gateway enforces at its boundary; the CLI and browser mirror them. */
 export const BOT_LIMITS = {
   name: 60,

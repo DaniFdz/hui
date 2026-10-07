@@ -469,6 +469,14 @@ export class CallBroker {
     return true;
   }
 
+  /** Hangs every call up in HUI, each recorded once, as bots are turned off; their browsers hear it at their next
+   * heartbeat. Returns how many were still held. */
+  endAll(): number {
+    const calls = [...this.#calls.values()];
+    for (const call of calls) this.#close(call);
+    return calls.length;
+  }
+
   /** Ends the calls that went quiet or ran past their time; each is recorded once. */
   sweep(): void {
     const idle = this.#deps.idleMs ?? CALL_LIMITS.idleMs;

@@ -25,7 +25,7 @@ import { fileURLToPath } from "node:url";
 import type { Connect, Plugin } from "vite";
 import { workers } from "./workers.ts";
 import { createWorkerRoutes, WORKERS_ROUTE } from "./worker-routes.ts";
-import { BOT_CLEANUP_FILE, BotInputError, BotRegistry, BotStoreError } from "./bots.ts";
+import { BOT_CLEANUP_FILE, BotInputError, BotRegistry, BotsOffError, BotStoreError } from "./bots.ts";
 import { BotService } from "./bot-service.ts";
 import { remoteBots } from "./bot-remote.ts";
 import { BOT_MEMORY_PAGE, BOTS_EVENTS_ROUTE, BOTS_ROUTE, createBotRoutes } from "./bot-routes.ts";
@@ -35,7 +35,7 @@ import { CALLS_ROUTE, createCallRoutes } from "./call-routes.ts";
 import { buildCallRecord, createCallDelegate, operatorName, type CallCompletion } from "./call-helper.ts";
 import { optChatBotMemory } from "./bot-memory.ts";
 import { botHome, localBotSouls, operatorName as soulOperatorName } from "./bot-souls.ts";
-import type { BotReply, BotsUpdate, BotView } from "../shared/bots.ts";
+import { BOTS_OFF_MESSAGE, BOTS_OFF_ROUTINE_MESSAGE, type BotReply, type BotsUpdate, type BotView } from "../shared/bots.ts";
 import { clampThinkingLevel } from "@earendil-works/pi-ai";
 import { progressCardFromTranscript, type ProgressCard } from "../shared/progress-card.ts";
 import type { SessionPullRequest } from "../shared/pull-requests.ts";
@@ -57,7 +57,7 @@ import { MacPower } from "./power.ts";
 import { attachBrowserTransport, browserViewTicket } from "./browser-transport.ts";
 import type { EventEmitter } from "node:events";
 import type { BrowserStatus } from "../shared/browser.ts";
-import { normalizeSettings, type Settings } from "../src/lib/settings.ts";
+import { botsEnabled, normalizeSettings, type Settings } from "../src/lib/settings.ts";
 import { mapTheme, type ShadcnTheme } from "../src/lib/shadcn-theme.ts";
 import { ProviderService, ProviderInputError } from "./providers.ts";
 import { readPiConfig, invalidateModelCatalog } from "./pi-config.ts";
@@ -294,8 +294,18 @@ const bots = new BotService({
       await automation.remove(task.id).catch(automationStoreFailure);
     },
   },
+  // Bots are a preview: off (Settings → Labs → Bots), nothing starts a bot's turn, and a chat that starts one anyway
+  // (Durable resuming an interrupted run, a worker reattaching) goes quiet again.
+  active: botsOn,
+  statuses: liveSessions,
   report: (event) => recordDiagnosticEvent({ area: "session", ...event }),
 });
+/** Settings → Labs → Bots, read at each use, so turning bots on or off applies without a restart. */
+async function botsOn(): Promise<boolean> {
+  return botsEnabled(await readSettings());
+}
+/** Open `GET /__hui/bots/events` streams, ended as bots are turned off so every screen hears it. */
+const botStreams = new Set<ServerResponse>();
 const botRoutes = createBotRoutes({
   service: bots,
   readAttachments: async (sessionId, raw) => {
@@ -471,18 +481,21 @@ const reportCall = (summary: string, detail?: string) => recordDiagnosticEvent({
 
 /** GPT-Live calls with bots over the ChatGPT login (HUI-18): the credential stays here, audio goes browser ↔ ChatGPT.
  * A call's quick questions go to the bot's helper (its utility model); its record goes to the bot's chat at the end. */
-const callRoutes = createCallRoutes({
-  broker: new CallBroker({
-    accounts: providerCallAccounts(providerService.accounts),
-    report: ({ status, detail }) => recordDiagnosticEvent({
-      area: "runtime", level: "warning", action: "call_refused", summary: `ChatGPT refused a GPT-Live call (${status})`, ...(detail ? { detail } : {}),
-    }),
-    onEnd: (call, endedAt) => void (async () => {
-      const bot = await bots.resolve(call.botId);
-      const record = await buildCallRecord({ bot, call, endedAt, settings: await callSettings(), completion: callCompletion, report: reportCall });
-      if (record) await bots.recordCall(bot.id, record);
-    })().catch((error: unknown) => reportCall("A call's record could not be written", error instanceof Error ? error.message : String(error))),
+const callBroker = new CallBroker({
+  accounts: providerCallAccounts(providerService.accounts),
+  report: ({ status, detail }) => recordDiagnosticEvent({
+    area: "runtime", level: "warning", action: "call_refused", summary: `ChatGPT refused a GPT-Live call (${status})`, ...(detail ? { detail } : {}),
   }),
+  // A call's record is one passive entry in the bot's chat (no turn runs for it), so it is written even when the call
+  // ended because bots were turned off.
+  onEnd: (call, endedAt) => void (async () => {
+    const bot = await bots.resolve(call.botId);
+    const record = await buildCallRecord({ bot, call, endedAt, settings: await callSettings(), completion: callCompletion, report: reportCall });
+    if (record) await bots.recordCall(bot.id, record);
+  })().catch((error: unknown) => reportCall("A call's record could not be written", error instanceof Error ? error.message : String(error))),
+});
+const callRoutes = createCallRoutes({
+  broker: callBroker,
   bots,
   delegate: createCallDelegate({
     view: async (botId) => (await bots.callContext(botId)).view,
@@ -534,12 +547,34 @@ async function ensureConfigDir(): Promise<void> {
 
 async function writeSettings(raw: unknown): Promise<Settings> {
   const settings = normalizeSettings(raw);
+  const botsWereOn = botsEnabled(await readSettings());
   await ensureConfigDir();
   await writeFile(SETTINGS_FILE, `${JSON.stringify(settings, null, 2)}\n`, "utf8");
   // A changed browser mode or executable must not leave the old process running.
   await managedBrowser.applySettings(settings.browser);
   macPower?.setKeepAwake(settings.power.keepAwake);
+  if (botsWereOn && !botsEnabled(settings)) quietBots();
   return settings;
+}
+
+/**
+ * Bots were just turned off (Settings → Labs → Bots). Their routes already refuse, as each reads the setting; what
+ * they were doing stops too: every bot goes quiet (queued messages withdrawn, a running turn stopped), calls end and
+ * are recorded, and open bot streams end, so each screen learns it. Nothing is deleted: turning bots on again finds
+ * them as they were.
+ */
+function quietBots(): void {
+  for (const response of botStreams) response.end();
+  const calls = callBroker.endAll();
+  recordDiagnosticEvent({
+    area: "session", level: "info", action: "bots_turned_off",
+    summary: `Bots were turned off in Settings → Labs${calls ? `; ${calls} call${calls === 1 ? "" : "s"} ended` : ""}`,
+  });
+  void bots.quietAll().catch((error: unknown) => recordDiagnosticEvent({
+    area: "session", level: "warning", action: "bots_off_stop_failed",
+    summary: "Bots were turned off, but HUI could not read them all to stop their turns",
+    detail: error instanceof Error ? error.message : String(error),
+  }));
 }
 
 async function browserStatus(): Promise<BrowserStatus> {
@@ -1409,9 +1444,16 @@ async function executeAutomationTask(
 ): Promise<AutomationExecution> {
   const record = (await readRegistry()).find((session) => session.id === task.sessionId);
   if (!record) throw new AutomationNotFoundError("The target session no longer exists.");
-  // A bot's routine: marked as such, and queued behind a busy bot instead of skipped.
+  // A bot's routine: marked as such, and queued behind a busy bot instead of skipped. While bots are off it is skipped
+  // (409, never a failure) and kept: its next time runs once they are on, and a skipped time is not run again.
   const bot = record.bot ? await bots.botForSession(record.id) : undefined;
-  if (bot) return bots.runRoutine(bot, record, task, signal);
+  if (bot) {
+    if (!await botsOn()) throw new AutomationConflictError(BOTS_OFF_ROUTINE_MESSAGE);
+    return bots.runRoutine(bot, record, task, signal).catch((error: unknown) => {
+      // Turned off as it started: skipped all the same.
+      throw error instanceof BotsOffError ? new AutomationConflictError(BOTS_OFF_ROUTINE_MESSAGE) : error;
+    });
+  }
   if (liveSessions.status(record.id) === "running") {
     throw new AutomationConflictError("The target session is already running.");
   }
@@ -2208,6 +2250,7 @@ export function streamSessionStatuses(
 
 /** `GET /__hui/bots/events`: the complete bot list first, then only the bots whose views changed. */
 export function streamBots(response: ServerResponse, list: Pick<typeof botList, "subscribe"> = botList): void {
+  botStreams.add(response);
   response.writeHead(200, {
     "content-type": "text/event-stream; charset=utf-8",
     "cache-control": "no-store",
@@ -2225,9 +2268,26 @@ export function streamBots(response: ServerResponse, list: Pick<typeof botList, 
   }, HEARTBEAT_MS);
   heartbeat.unref();
   response.on("close", () => {
+    botStreams.delete(response);
     clearInterval(heartbeat);
     unlist();
   });
+}
+
+/** Bots off: every bot route, call route and bot chat's session route answers 409 with `BOTS_OFF_MESSAGE`, which names
+ * the setting. 409, not 404: the gateway's settings refuse the request, and the bots and their data are all still
+ * there (404 is a bot that does not exist). True when it answered. */
+async function refusedWhileBotsOff(response: ServerResponse): Promise<boolean> {
+  if (await botsOn()) return false;
+  sendJson(response, 409, { error: BOTS_OFF_MESSAGE });
+  return true;
+}
+
+/** A bot's chat while bots are off: no session route reaches it, since opening or prompting it would resume it. The
+ * bot registry decides, as for its forever chat; a registry that cannot be read refuses. */
+async function isDormantBotChat(record: SessionRecord): Promise<boolean> {
+  if (!record.bot || await botsOn()) return false;
+  return bots.botForSession(record.id).then((bot) => Boolean(bot), () => true);
 }
 
 /** `/__hui/calls` and `/__hui/bots/:id/calls…` (`call-routes.ts`). */
@@ -2320,6 +2380,7 @@ async function handleRequest(
       sendJson(response, 403, { error: `missing ${CLIENT_HEADER} header` });
       return;
     }
+    if (await refusedWhileBotsOff(response)) return;
     await serveBotRoute(request, response, path);
     return;
   }
@@ -2575,18 +2636,19 @@ async function handleRequest(
   }
 
   if (path === BOTS_EVENTS_ROUTE) {
-    if (request.method === "GET") streamBots(response);
-    else sendJson(response, 405, { error: "method not allowed" });
+    if (request.method !== "GET") sendJson(response, 405, { error: "method not allowed" });
+    else if (!await refusedWhileBotsOff(response)) streamBots(response);
     return;
   }
 
+  // Calls are with bots only, so their status route goes with them.
   if (path === CALLS_ROUTE || BOT_CALLS.test(path)) {
-    await serveCallRoute(request, response, path);
+    if (!await refusedWhileBotsOff(response)) await serveCallRoute(request, response, path);
     return;
   }
 
   if (path === BOTS_ROUTE || path.startsWith(`${BOTS_ROUTE}/`)) {
-    await serveBotRoute(request, response, path);
+    if (!await refusedWhileBotsOff(response)) await serveBotRoute(request, response, path);
     return;
   }
 
@@ -3369,6 +3431,12 @@ async function handleRequest(
       return;
     }
 
+    const owned = (await readRegistry()).find((session) => session.id === id);
+    if (owned && await isDormantBotChat(owned)) {
+      sendJson(response, 409, { error: BOTS_OFF_MESSAGE });
+      return;
+    }
+
     if (request.method === "DELETE") {
       // A bot owns its chat: deleting the row would orphan the bot. Archiving keeps both.
       const bot = await bots.botForSession(id).catch(() => undefined);
@@ -3419,6 +3487,11 @@ async function handleRequest(
       sendJson(response, pending ? 409 : 404, {
         error: pending ? pending.error ?? "The Git worktree is still being created." : `unknown session: ${id}`,
       });
+      return;
+    }
+    // Bots off: nothing reaches a bot's chat this way, so nothing resumes it.
+    if (await isDormantBotChat(record)) {
+      sendJson(response, 409, { error: BOTS_OFF_MESSAGE });
       return;
     }
     // A bot's chat never ends: what would reset, shorten or fork it is refused here; the model stays switchable.
@@ -3901,7 +3974,8 @@ export function attachLiveStreams(server: EventEmitter, allowedHosts?: ReadonlyS
   const detachBrowser = attachBrowserTransport(server, managedBrowser, allowedHosts);
   const detachSessions = attachSessionTransport(server, async (id, send) => {
     const record = (await readRegistry()).find((session) => session.id === id);
-    return record && liveSessions.ensure(record) ? watchSessionEvents(id, send) : undefined;
+    if (!record || await isDormantBotChat(record)) return undefined;
+    return liveSessions.ensure(record) ? watchSessionEvents(id, send) : undefined;
   }, allowedHosts);
   return () => { detachBrowser(); detachSessions(); };
 }

@@ -39,7 +39,7 @@ import type { CallRecord } from "../shared/calls.ts";
 import type { AutomationTask } from "../src/lib/automation-types.ts";
 import { BotMemoryUnavailableError, type BotMemory, type BotMemorySettings } from "./bot-memory.ts";
 import {
-  BOTS_DIR, BotConflictError, BotInputError, BotNotFoundError, BotWorkerOfflineError, findBot, isDerivedHandle, normalizeBotInput, normalizeBotPatch, normalizeSoul, patchedAvatar, patchedVoice, uniqueHandle,
+  BOTS_DIR, BotConflictError, BotInputError, BotNotFoundError, BotsOffError, BotWorkerOfflineError, findBot, isDerivedHandle, normalizeBotInput, normalizeBotPatch, normalizeSoul, patchedAvatar, patchedVoice, uniqueHandle,
   type BotRegistry,
 } from "./bots.ts";
 import { SessionBusyError, type LiveSessions } from "./live-sessions.ts";
@@ -215,6 +215,14 @@ export type BotServiceDeps = {
   routines: BotRoutines;
   /** Bots on remote workers; absent, a bot can only run here. */
   workers?: BotWorkers;
+  /**
+   * Settings → Labs → Bots, read at each use: false while bots are off. Then nothing starts a bot's turn — a message,
+   * a routine, `message_bot`, a call's hand-off or a new bot's first turn is refused with `BotsOffError` — and, with
+   * `statuses`, a bot's chat that starts one anyway goes quiet at once. Absent: always on.
+   */
+  active?: () => Promise<boolean>;
+  /** Every live session's status changes, for that guard. */
+  statuses?: Pick<LiveSessions, "watchStatuses">;
   botsDir?: string;
   now?: () => number;
   messagesPerHour?: number;
@@ -271,6 +279,16 @@ export class BotService {
     deps.workers?.onConnected((id) => {
       for (const bot of this.#registry.cached) if (bot.worker === id) this.#lastMessages.delete(bot.id);
       void this.#reconcileWorker(id).catch((error: unknown) => this.#report("warning", "bot_access_reconcile_failed", "Bots' tool and skill lists on a worker could not be checked against their chats", error));
+    });
+    // Bots off: a bot's chat that starts a turn anyway (Durable resuming a run a restart interrupted, a worker's host
+    // reattaching, a subagent reporting back) goes quiet again at once. Only sessions' status changes reach here, so with
+    // bots on this costs a lookup per change.
+    deps.statuses?.watchStatuses(({ id, status }) => {
+      if (status !== "running" && status !== "waiting") return;
+      const bot = this.#registry.cached.find((candidate) => candidate.sessionId === id);
+      if (!bot) return;
+      void this.#isActive().then((active) => active ? undefined : this.#quiet(bot, "bots_off_stop_failed"))
+        .catch((error: unknown) => this.#report("warning", "bots_off_stop_failed", `@${bot.handle}'s turn could not be stopped while bots are off`, error));
     });
     // The operator allowed a request in a bot's chat on a worker: the roster follows that worker's report, for a bot
     // that runs there only.
@@ -647,6 +665,7 @@ export class BotService {
    * bot started is refused, as its run's originating input (`runPrompt`) shows.
    */
   async setProfile(callerSessionId: string, params: Record<string, unknown>): Promise<{ text: string; name: string; handle: string }> {
+    await this.#assertActive();
     const bot = (await this.#registry.list()).find((candidate) => candidate.sessionId === callerSessionId);
     if (!bot) throw new BotInputError("set_profile is only available in a bot's chat.");
     if (bot.archived) throw new BotConflictError("An archived bot cannot change its profile.");
@@ -685,6 +704,16 @@ export class BotService {
     await this.#quiet(bot, "bot_archive_stop_failed");
     await this.#deps.updateSessions((records) => records.map((record) => record.id === bot.sessionId && !record.archived ? { ...record, archived: true } : record));
     return this.#viewOf(bot);
+  }
+
+  /**
+   * Bots are turned off (Settings → Labs → Bots): every bot goes quiet as archiving makes one, without archiving it.
+   * Messages still waiting in HUI's queue for it are withdrawn and a running turn stops, so no turn runs while they are
+   * off; its chat, memory, SOUL.md, routines and settings stay as they are. A bot that fails is reported and the rest
+   * still go quiet.
+   */
+  async quietAll(): Promise<void> {
+    for (const bot of await this.#registry.list()) await this.#quiet(bot, "bots_off_stop_failed");
   }
 
   /** Withdraws the messages still waiting in HUI's queue for the bot (they would start a new turn once the current one
@@ -918,6 +947,7 @@ export class BotService {
    * the hourly limit. Fire-and-forget: it returns once the message is accepted.
    */
   async messageBot(callerSessionId: string, params: Record<string, unknown>): Promise<{ text: string; to: string; status: "sent" | "queued" }> {
+    await this.#assertActive();
     const bots = await this.#registry.list();
     const sender = bots.find((bot) => bot.sessionId === callerSessionId);
     if (!sender) throw new BotInputError("message_bot is only available in a bot's chat.");
@@ -1133,13 +1163,25 @@ export class BotService {
     });
   }
 
-  /** A prompt while idle, else a follow-up; with `wait`, also the outcome of the run that answers it. */
+  /** Settings → Labs → Bots; always on without the `active` port. */
+  #isActive(): Promise<boolean> {
+    return this.#deps.active ? this.#deps.active() : Promise.resolve(true);
+  }
+
+  async #assertActive(): Promise<void> {
+    if (!await this.#isActive()) throw new BotsOffError();
+  }
+
+  /** A prompt while idle, else a follow-up; with `wait`, also the outcome of the run that answers it. Every bot turn
+   * HUI starts passes here (messages, routines, `message_bot`, calls' hand-offs, a new bot's first turn), so bots that
+   * are off refuse here. */
   async #deliver(
     record: SessionRecord,
     text: string,
     attachments: readonly PromptAttachment[] | undefined,
     wait?: WaitOptions,
   ): Promise<{ status: "sent" | "queued"; outcome?: Promise<BotReply> }> {
+    await this.#assertActive();
     await this.#open(record);
     if (wait?.signal?.aborted) throw new DOMException("The wait was cancelled.", "AbortError");
     const files = attachments?.length ? attachments : undefined;

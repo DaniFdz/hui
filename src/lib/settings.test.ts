@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { DEFAULT_SETTINGS, normalizeBranchPrefix, normalizeCalls, normalizeSettings } from "./settings.ts";
+import { botsEnabled, botsTabShown, DEFAULT_SETTINGS, normalizeBranchPrefix, normalizeCalls, normalizeSettings } from "./settings.ts";
 
 test("round-trips a complete file", () => {
   assert.deepEqual(
@@ -37,7 +37,28 @@ test("normalizes HUI-owned profile and labs", () => {
   });
   assert.equal(settings.profileName, "Alex");
   assert.equal(settings.profileHandle, "@alex");
-  assert.deepEqual(settings.labs, { denseObservability: true, detailedDebug: false });
+  assert.deepEqual(settings.labs, { denseObservability: true, detailedDebug: false, bots: false });
+});
+
+test("bots are a Labs preview: off by default, and only an explicit true turns them on", () => {
+  assert.equal(DEFAULT_SETTINGS.labs.bots, false);
+  assert.equal(normalizeSettings({}).labs.bots, false, "a settings.json from before the flag has bots off");
+  for (const labs of [null, "yes", [], {}, { bots: "true" }, { bots: 1 }, { bots: "on" }, { bots: null }]) {
+    assert.equal(normalizeSettings({ labs }).labs.bots, false, JSON.stringify(labs));
+  }
+  assert.deepEqual(normalizeSettings({ labs: { bots: true } }).labs, { denseObservability: false, detailedDebug: false, bots: true });
+  // A saved choice survives the client/server round trip, beside the other flags.
+  const saved = normalizeSettings({ labs: { bots: true, detailedDebug: true } });
+  assert.deepEqual(normalizeSettings(JSON.parse(JSON.stringify(saved))).labs, { denseObservability: false, detailedDebug: true, bots: true });
+});
+
+test("the Agents | Bots switch needs bots on in Labs and their tab shown in Settings → Sessions", () => {
+  const settings = (bots: boolean, showTab: boolean) => normalizeSettings({ labs: { bots }, bots: { showTab } });
+  assert.deepEqual([botsEnabled(settings(false, true)), botsTabShown(settings(false, true))], [false, false], "off hides the switch, whatever the tab says");
+  assert.deepEqual([botsEnabled(settings(false, false)), botsTabShown(settings(false, false))], [false, false]);
+  assert.deepEqual([botsEnabled(settings(true, false)), botsTabShown(settings(true, false))], [true, false], "on, with the tab hidden");
+  assert.deepEqual([botsEnabled(settings(true, true)), botsTabShown(settings(true, true))], [true, true], "on shows it again");
+  assert.equal(botsTabShown(DEFAULT_SETTINGS), false);
 });
 
 test("the managed browser is on and headless unless explicitly changed", () => {
