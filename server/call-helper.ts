@@ -85,6 +85,18 @@ export class CallHelperError extends Error {
   }
 }
 
+/**
+ * A time budget whose signal aborts with a `TimeoutError` after `ms`, like `AbortSignal.timeout`'s, but whose timer
+ * keeps the process alive until it fires or `clear` runs. `AbortSignal.timeout`'s timer is unreferenced: where nothing
+ * else is pending (a CLI, or a test on Node 22's test runner, which then cancels it), a wait on that budget alone ends
+ * with the event loop instead of with the budget.
+ */
+export function deadline(ms: number): { signal: AbortSignal; clear: () => void } {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(new DOMException("The operation was aborted due to timeout", "TimeoutError")), ms);
+  return { signal: controller.signal, clear: () => clearTimeout(timer) };
+}
+
 /** Tries each model in turn until one answers, within the signal's time. */
 export async function complete(models: readonly string[], request: { system: string; prompt: string; signal: AbortSignal }, completion: CallCompletion): Promise<{ text: string; model: string }> {
   if (!models.length) throw new CallHelperError("No utility model is configured for this bot.", false);
@@ -167,9 +179,9 @@ export function createCallDelegate(deps: CallDelegateDeps) {
     call.questions += 1;
     const [view, soul, settings] = await Promise.all([deps.view(bot.id).catch(() => undefined), deps.soul?.(bot.id).catch(() => undefined), deps.settings()]);
     const { system, prompt } = helperPrompt({ bot, operator: settings.operator, ...(soul ? { soul } : {}), ...(view ? { view } : {}), lines: call.lines, request });
-    const budget = AbortSignal.timeout(deps.budgetMs ?? CALL_LIMITS.helperSeconds * 1000);
+    const budget = deadline(deps.budgetMs ?? CALL_LIMITS.helperSeconds * 1000);
     try {
-      const { text } = await complete(utilityCandidates(bot, settings.utility), { system, prompt, signal: signal ? AbortSignal.any([signal, budget]) : budget }, deps.completion);
+      const { text } = await complete(utilityCandidates(bot, settings.utility), { system, prompt, signal: signal ? AbortSignal.any([signal, budget.signal]) : budget.signal }, deps.completion);
       const reply = parseHelperReply(text);
       if (reply.kind === "handoff") return handOff(bot, call, reply.task);
       call.lines.push({ role: "helper", request, text: reply.text, at: now() });
@@ -182,6 +194,8 @@ export function createCallDelegate(deps: CallDelegateDeps) {
         return { status: "timeout", speak: `That is taking ${bot.name} a while to answer. I can hand it to ${bot.name}'s chat to work on, if you like.` };
       }
       return { status: "failed", speak: boundText(`${bot.name} could not answer that quickly (${message}). I can hand it to ${bot.name}'s chat instead, if you like.`, CALL_LIMITS.result) };
+    } finally {
+      budget.clear();
     }
   };
 }
@@ -205,13 +219,16 @@ export async function buildCallRecord(input: {
   // record reads in the order things happened.
   const lines = [...input.call.lines].sort((a, b) => a.at - b.at);
   const record: CallRecord = { call: input.call.id, bot: input.bot.name, startedAt: input.call.startedAt, endedAt: input.endedAt, lines };
+  const budget = deadline(input.budgetMs ?? 90_000);
   try {
     const { system, prompt } = summaryPrompt({ bot: input.bot, operator: input.settings.operator, record });
-    const { text } = await complete(utilityCandidates(input.bot, input.settings.utility), { system, prompt, signal: AbortSignal.timeout(input.budgetMs ?? 90_000) }, input.completion);
+    const { text } = await complete(utilityCandidates(input.bot, input.settings.utility), { system, prompt, signal: budget.signal }, input.completion);
     record.summary = boundText(text, 2_000);
   } catch (error) {
     record.summaryUnavailable = true;
     input.report?.("A call's summary could not be written", error instanceof Error ? error.message : String(error));
+  } finally {
+    budget.clear();
   }
   return record;
 }
