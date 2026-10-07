@@ -33,7 +33,8 @@ function languageRule(bot: Pick<BotRecord, "voice">): string {
   return language ? voiceLanguageName(language) : "the language the user speaks";
 }
 
-const quote = (text: string, tag: string) => text.replace(new RegExp(`</?${tag}`, "giu"), (match) => match.replace("<", "‹"));
+/** Quoted data stays data: one global pass swaps the "<" of every opening or closing tag, in any case, for "‹". */
+const quote = (text: string, tag: string) => text.replace(new RegExp(`<(/?${tag})`, "giu"), "‹$1");
 
 export type HelperInput = {
   bot: Pick<BotRecord, "name" | "voice">;
