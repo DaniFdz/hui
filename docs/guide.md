@@ -537,6 +537,61 @@ the scheduler turns any one-off task off once its time comes.) Times missed
 while the gateway itself was down are different: each overdue routine runs once
 when it starts again.
 
+### Triggers
+
+Triggers wake a bot when something happens, the way routines wake it on a
+schedule: a pull request changes on GitHub, a session the bot started finishes,
+fails or asks something, or another program calls the trigger's webhook URL.
+They sit in the bot's **Routines** tab, under its routines: each shows what it
+watches, when it last fired, its cooldown and an on/off switch, with **Test**
+(a sample event, now) and **Delete**; **Add trigger** below them. From a
+terminal:
+
+```sh
+hui bot trigger add ada --name CI --github DaniFdz/hui --on checks_failed,review_changes_requested --prompt "Find out what broke"
+hui bot trigger add ada --name Deps --github DaniFdz/hui --on pr_opened --author "dependabot[bot]" --label dependencies
+hui bot trigger add ada --name Helpers --session --on finished,failed,waiting
+hui bot trigger add ada --name Deploys --webhook --match status=failed --prompt "Tell me why the deploy failed"
+hui bot trigger list ada
+hui bot trigger test ada CI
+hui bot trigger remove ada Deploys
+```
+
+An event reaches the bot as `[trigger: <name> · <summary>] <prompt>` with the
+event's details, as a routine's message does (a follow-up while it works). Events
+within a trigger's cooldown (5 minutes unless you choose another, `--cooldown`)
+arrive together, as one message listing them, and a bot takes at most 12
+trigger messages an hour; more wait for the next free slot rather than being
+dropped. Each delivery shows under **Latest trigger runs**.
+
+- **GitHub** reads the repos through the gateway's GitHub CLI login (Settings →
+  Integrations → GitHub), every minute, with conditional requests, so a repo
+  where nothing happens costs nothing of your rate limit. It wakes on pull
+  requests opened, pushed to, merged or closed, checks that failed or passed,
+  reviews (approved, changes requested, commented), comments, and comments that
+  mention you; narrow them by author, label, base branch, pull request number or
+  drafts. Your own comments and reviews never wake a bot: a bot that comments
+  through `gh` posts as you. A new trigger starts from what the repo looks like
+  then; it doesn't replay the past.
+- **Sessions** wake a bot when a session it started itself (with
+  `sessions_spawn`) finishes, fails or waits for an answer.
+- **Webhook** makes a URL with a secret token, shown once (copy it then; **New
+  URL** replaces it). Programs on this machine or your tailnet POST JSON or text
+  to it, up to 64 KiB; `--match field=value` (or `field~value` for contains)
+  keeps only matching calls. The gateway stays on your tailnet: exposing the URL
+  to the internet with Tailscale Funnel is up to you, and then the token is all
+  that guards it.
+
+A bot can manage its own triggers with its `triggers` tool (Tools tab, under
+Bots): ask it to watch a repo and it adds one. It can't add or change triggers
+in a turn another bot or a trigger started, and it can't create webhook
+triggers, whose token would pass through the model.
+
+While bots are off nothing fires: GitHub isn't polled, webhook URLs answer 409,
+and a session event is recorded as skipped. When you turn them on again, what
+happened on GitHub meanwhile arrives as one summary per trigger, not one message
+per event.
+
 ### Bots talking to bots
 
 Every bot's chat has a `message_bot` tool and a short list of the other bots.
