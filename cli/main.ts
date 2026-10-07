@@ -58,6 +58,13 @@ export const HELP = `Usage:
               [--timezone <tz>]) [--json]
   hui bot routine run <bot> <routine>
   hui bot routine remove <bot> <routine> [--json]
+  hui schedule list [--bot <bot> | --session <session>] [--json]
+  hui schedule show <schedule> [--json]
+  hui schedule add --name <name> --prompt <text> (--at <ISO time> | --every <duration> | --cron <expr> [--timezone <tz>])
+              (--bot <bot> | --session <session>) [--description <text>] [--timeout <seconds>]
+              [--until <ISO time>] [--runs <n>] [--disabled] [--json]
+  hui schedule edit <schedule> [same flags as add] [--json]
+  hui schedule pause|resume|run|remove <schedule> [--json]
   hui --version
 
 HUI_GATEWAY_HOST and HUI_GATEWAY_PORT configure defaults; CLI flags override them.
@@ -125,6 +132,18 @@ failure or timeout, 2 while the bot waits for an answer (give it in chat).
 Routines are Automation tasks aimed at the bot's chat. --every takes 30s, 5m,
 2h or 1d (Automation allows one minute at least); --cron uses this machine's
 time zone unless --timezone names another.
+Schedules are every Automation task: a prompt HUI sends a session, or a bot's
+chat (its routines), on a schedule, as on the Automations page; "schedules"
+works as "schedule". <schedule> is an id or an exact name, <session> a
+session's id or exact title. Edit changes only the flags given: --bot or
+--session moves it there, --disabled pauses it. A temporary schedule ends by
+itself: --until at that time, --runs after that many runs (1-1000; a skipped
+run doesn't count), and HUI deletes it after either; on edit --until "" and
+--runs "" clear them. --timeout is how long one run may take (10-86400
+seconds, default 900). A bot can schedule its own routines too, with its
+routines tool, which shows as made by @bot. While bots are off, anything that
+names a bot or a bot's routine prints the gateway's refusal and list leaves
+bots' routines out; sessions' schedules work regardless.
 `;
 
 export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {
@@ -140,6 +159,7 @@ export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {
     emoji: { type: "string" }, shape: { type: "string" }, color: { type: "string" }, voice: { type: "string" }, "voice-speed": { type: "string" }, language: { type: "string" }, "call-voice": { type: "string" }, wait: { type: "boolean" }, timeout: { type: "string" }, zoom: { type: "string" }, html: { type: "string" },
     prompt: { type: "string" }, at: { type: "string" }, every: { type: "string" }, cron: { type: "string" }, timezone: { type: "string" },
     allow: { type: "string" }, deny: { type: "string" }, "deny-tools": { type: "string" }, "deny-skills": { type: "string" },
+    bot: { type: "string" }, session: { type: "string" }, description: { type: "string" }, until: { type: "string" }, runs: { type: "string" }, disabled: { type: "boolean" },
   } });
   if (values.help || !args.length) return { command: "help", values };
   if (values.version) return { command: "version", values };
@@ -148,13 +168,15 @@ export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {
   if (values["voice-speed"] !== undefined) throw new Error("--voice-speed is gone: HUI no longer uses VoiceStudio, and GPT-Live sets the pace of its own voices.");
   const [first, second, ...extra] = positionals;
   const bots = first === "bot" || first === "bots";
+  const schedules = first === "schedule" || first === "schedules";
   const routine = bots && (second === "routine" || second === "routines");
   const command = bots ? (routine ? `bot routine ${extra.shift() ?? "list"}` : `bot ${second ?? "list"}`)
+    : schedules ? `schedule ${second ?? "list"}`
     : first === "gateway" ? `gateway ${second ?? "run"}` : first === "workers" ? `workers ${second ?? "list"}` : first;
   // `workers edit` and `workers remove` name the worker they act on.
   const target = command === "workers edit" || command === "workers remove" ? extra.shift() : undefined;
-  // A bot command's operands: the bot, then a message or a routine.
-  const operands = bots ? extra.splice(0) : [];
+  // A bot command's operands: the bot, then a message or a routine; a schedule command's, the schedule.
+  const operands = bots || schedules ? extra.splice(0) : [];
   const allowed: Record<string, string[]> = {
     "gateway start": ["host", "port", "json", "allow-host"], "gateway run": ["host", "port", "allow-host"],
     "gateway stop": ["force", "json"], "gateway restart": ["host", "port", "force", "json", "allow-host"],
@@ -167,13 +189,16 @@ export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {
     "bot remove": ["json"], "bot restore": ["json"], "bot delete": ["yes", "json"], "bot chat": [], "bot send": ["wait", "timeout", "json"], "bot stop": ["json"],
     "bot memory": ["zoom", "html", "json"], "bot routine list": ["json"],
     "bot routine add": ["name", "prompt", "at", "every", "cron", "timezone", "json"], "bot routine run": [], "bot routine remove": ["json"],
+    "schedule list": ["bot", "session", "json"], "schedule show": ["json"], "schedule add": [...SCHEDULE_FIELDS, "json"], "schedule edit": [...SCHEDULE_FIELDS, "json"],
+    "schedule pause": ["json"], "schedule resume": ["json"], "schedule run": ["json"], "schedule remove": ["json"],
   };
-  if (!command || !allowed[command] || extra.length || first !== "gateway" && first !== "workers" && !bots && second) throw new Error("Unknown command. Run hui --help.");
+  if (!command || !allowed[command] || extra.length || first !== "gateway" && first !== "workers" && !bots && !schedules && second) throw new Error("Unknown command. Run hui --help.");
   // Where a bot runs is chosen once; an edit cannot move it.
   if (command === "bot edit" && values.worker !== undefined) throw new Error("A bot stays on the machine it was created on: --worker only applies to bot add.");
   if (command === "bot edit" && values["soul-file"] !== undefined) throw new Error("bot edit does not change SOUL.md: use hui bot soul <bot> --file <path|->.");
   for (const flag of Object.keys(values)) if (!allowed[command]!.includes(flag)) throw new Error(`--${flag} is not valid for ${command}.`);
   if (bots) checkBotCommand(command, operands, values);
+  if (schedules) checkScheduleCommand(command, operands, values);
   if (["gateway start", "gateway run", "gateway restart"].includes(command)) {
     values.host ??= env["HUI_GATEWAY_HOST"];
     values.port ??= env["HUI_GATEWAY_PORT"];
@@ -188,7 +213,42 @@ export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {
   if (command === "workers add" && (!values.name || !values.command)) throw new Error("workers add needs --name and --command.");
   if ((command === "workers edit" || command === "workers remove") && !target) throw new Error(`${command} needs the worker's name or id.`);
   if (command === "workers edit" && values.name === undefined && values.command === undefined && !values["extra-path"]) throw new Error("workers edit needs --name, --command or --extra-path.");
-  return { command, values, ...(target ? { target } : {}), ...(bots ? { operands } : {}) };
+  return { command, values, ...(target ? { target } : {}), ...(bots || schedules ? { operands } : {}) };
+}
+
+/** The flags `schedule add` and `schedule edit` share. */
+const SCHEDULE_FIELDS = ["name", "prompt", "description", "at", "every", "cron", "timezone", "bot", "session", "timeout", "until", "runs", "disabled"];
+const ISO_HINT = "an ISO date and time, such as 2026-10-06T09:00:00+02:00";
+
+/** What the gateway would refuse anyway, refused before a request. */
+function checkScheduleCommand(command: string, operands: readonly string[], values: Record<string, string | boolean | string[] | undefined>): void {
+  const takes = command === "schedule list" || command === "schedule add" ? 0 : 1;
+  if (operands.length !== takes) throw new Error(takes ? `${command} needs <schedule>: its id or exact name (hui schedule list).` : `${command} takes no operands.`);
+  const given = (flag: string) => values[flag] !== undefined;
+  const text = (flag: string) => String(values[flag] ?? "");
+  if (given("bot") && given("session")) throw new Error("Use either --bot or --session.");
+  for (const flag of ["bot", "session", "name", "prompt"]) if (given(flag) && !text(flag).trim()) throw new Error(`--${flag} can't be empty.`);
+  const schedules = ["at", "every", "cron"].filter(given);
+  if (schedules.length > 1) throw new Error("Use one of --at, --every or --cron.");
+  if (given("every") && !/^\d{1,9}(s|m|h|d)$/u.test(text("every"))) throw new Error("--every takes a duration such as 30s, 5m, 2h or 1d.");
+  if (given("at") && !Number.isFinite(Date.parse(text("at")))) throw new Error(`--at takes ${ISO_HINT}.`);
+  const edit = command === "schedule edit";
+  // On edit "" clears a limit; anything else must be one.
+  if (given("until") && !(edit && !text("until").trim()) && !Number.isFinite(Date.parse(text("until")))) throw new Error(`--until takes ${ISO_HINT}${edit ? `; "" clears it` : ""}.`);
+  if (given("runs") && !(edit && !text("runs").trim()) && (!/^\d{1,4}$/u.test(text("runs")) || Number(text("runs")) < 1 || Number(text("runs")) > 1000)) {
+    throw new Error(`--runs takes 1-1000 runs${edit ? `; "" clears it` : ""}.`);
+  }
+  if (given("timeout") && (!/^\d{1,5}$/u.test(text("timeout")) || Number(text("timeout")) < 10 || Number(text("timeout")) > 86_400)) throw new Error("--timeout takes 10-86400 seconds.");
+  if (command === "schedule add") {
+    if (!given("name") || !given("prompt")) throw new Error("schedule add needs --name and --prompt.");
+    if (schedules.length !== 1) throw new Error("schedule add needs one of --at, --every or --cron.");
+    if (!given("bot") && !given("session")) throw new Error("schedule add needs --bot <bot> or --session <session>: where it sends its prompt.");
+    if (given("timezone") && !given("cron")) throw new Error("--timezone only applies to --cron.");
+  }
+  if (edit) {
+    if (!SCHEDULE_FIELDS.some(given)) throw new Error(`schedule edit needs at least one of ${SCHEDULE_FIELDS.map((flag) => `--${flag}`).join(", ")}.`);
+    if (given("timezone") && schedules.length && !given("cron")) throw new Error("--timezone only applies to --cron.");
+  }
 }
 
 /** The flags `bot add` and `bot edit` share. */
@@ -298,6 +358,13 @@ export async function main(args: string[], installation: Installation): Promise<
     if (status.status !== "running" || !status.url) throw new Error("Gateway is not running. Start it with hui gateway start.");
     const { botCommand, terminalBotIO } = await import("./bots.ts");
     process.exitCode = await botCommand(status.url, command.slice("bot ".length), operands ?? [], values, terminalBotIO());
+    return;
+  }
+  if (command.startsWith("schedule ")) {
+    const status = await gatewayStatus();
+    if (status.status !== "running" || !status.url) throw new Error("Gateway is not running. Start it with hui gateway start.");
+    const [{ scheduleCommand }, { terminalBotIO }] = await Promise.all([import("./schedules.ts"), import("./bots.ts")]);
+    process.exitCode = await scheduleCommand(status.url, command.slice("schedule ".length), operands ?? [], values, terminalBotIO());
     return;
   }
   if (command === "gateway status") { const status = await gatewayStatus(); report(status); if (status.status === "unresponsive") process.exitCode = 1; return; }

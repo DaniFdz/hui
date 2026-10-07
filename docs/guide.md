@@ -384,7 +384,8 @@ at its next turn.
 A bot has every tool and skill a session in its directory has: reading,
 writing and editing files, the shell, HUI's tools (the shared terminal,
 subagents, the browser, presenting media…), its PI extensions' tools,
-messaging other bots, and the skills PI finds there. Everything is on until you
+messaging other bots, managing its own routines, and the skills PI finds there.
+Everything is on until you
 turn something off, and whatever appears later (a new extension, a HUI update, a
 new skill) is on too. That is the trade-off of everything on by default: a bot
 you restricted by hand gains newly installed tools, so look at its Tools tab
@@ -431,7 +432,10 @@ told and from its `/skill:` commands.
 can reach whatever your account can, the files of skills you turned off and
 HUI's own API included. Messaging other bots lets it ask a better-equipped bot
 to do something for it; turn **Message bots** off to prevent that. To really
-isolate a bot, run it on a worker in a container.
+isolate a bot, run it on a worker in a container. **Manage its own routines**
+is not powerful: it only schedules prompts to the bot's own chat
+([Routines](#routines)); turn it off and the bot keeps only the routines you
+give it.
 
 ### Bots on a worker
 
@@ -512,14 +516,28 @@ question, which you then answer in `hui bot chat` (a secret in its Secret card).
 ### Routines
 
 Routines are Automation tasks aimed at a bot's chat; they appear in Automations
-too.
+too. You add them in the bot's Routines tab, in Automations, or from a terminal,
+where `hui schedule` manages every scheduled task and `hui bot routine` a bot's:
 
 ```sh
 hui bot routine add ada --name Standup --prompt "Summarize yesterday's work" --cron "0 9 * * 1-5"
 hui bot routine add ada --name Inbox --prompt "Triage new issues" --every 2h
 hui bot routine run ada Standup
 hui bot routine list ada
+hui schedule add --bot ada --name "Watch #82" --prompt "Is PR #82 green yet?" --every 5m --until 2026-10-07T18:00 --runs 12
+hui schedule list --bot ada
 ```
+
+A bot can also schedule its own routines, with a tool of its own: ask it to
+"check every 5 minutes until #82 is green" and it adds a **temporary** routine
+that ends by itself, at a time (*until 18:00*) and/or after a number of runs
+(*3 runs left*), and removes it as soon as it's done, even from that routine's
+own turn. The Routines tab and Automations show who made each one (*made by
+@ada*) and its limits. A bot only ever sees and changes the routines of its own
+chat, can have at most 20 active ones, never more often than once a minute, and
+a message from another bot can't make it add or change one (yours and its
+routines' can). Turn **Manage its own routines** off in its Tools tab to stop
+it.
 
 A routine's message reaches the bot as `[routine: <name>] <prompt>`. A busy bot
 takes it as a follow-up instead of skipping it, and the run completes when the
@@ -535,7 +553,39 @@ stays on, and that time isn't run later. Once bots are on again it runs at its
 next time. (A once routine whose time passes while they are off is used up, as
 the scheduler turns any one-off task off once its time comes.) Times missed
 while the gateway itself was down are different: each overdue routine runs once
-when it starts again.
+when it starts again. A skipped run doesn't count against a temporary routine's
+runs, but its end time still comes.
+
+### Schedules from a terminal
+
+`hui schedule` (or `hui schedules`) manages every scheduled task, a session's
+or a bot's, through the running gateway, as the Automations page does.
+`<schedule>` is a task's id or exact name; `--session` takes a session's id or
+exact title, `--bot` a bot's handle, id or name:
+
+```sh
+hui schedule list                                  # every schedule: target, next run, maker and limits
+hui schedule list --session "Docs cleanup" --json
+hui schedule show "Watch #82"
+hui schedule add --name "Nightly review" --prompt "Review open work" --cron "0 2 * * *" --session "Docs cleanup"
+hui schedule add --name "Release" --prompt "Is v0.2 out?" --every 1h --bot ada --until 2026-10-10T18:00 --runs 24 --timeout 300
+hui schedule edit "Nightly review" --cron "30 2 * * *" --timezone Europe/Madrid
+hui schedule edit "Watch #82" --session "Docs cleanup"  # moves it
+hui schedule edit "Watch #82" --until "" --runs ""       # no longer temporary
+hui schedule pause "Nightly review"
+hui schedule resume "Nightly review"
+hui schedule run "Nightly review"
+hui schedule remove "Nightly review"
+```
+
+Edit changes only the flags you give. `--every` takes `30s`, `5m`, `2h` or
+`1d` (a minute at least), `--cron` five fields in this machine's time zone
+unless `--timezone` names another, `--at` one ISO date and time, and
+`--timeout` how long one run may take (10–86400 seconds, 15 minutes by
+default); `--disabled` creates a schedule paused (or pauses it on edit). While
+bots are off, `hui schedule` refuses anything that names a bot or one of its
+routines with the gateway's message, and `list` leaves bots' routines out;
+sessions' schedules work as always.
 
 ### Bots talking to bots
 

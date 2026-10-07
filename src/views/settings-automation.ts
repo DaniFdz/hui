@@ -12,7 +12,7 @@ import type {
   AutomationTaskInput,
 } from "../lib/automation-types.ts";
 import type { SessionView } from "../lib/sessions-store.ts";
-import { routineCadenceSummary } from "../lib/bot-routines.ts";
+import { routineCadenceSummary, routineFacts } from "../lib/bot-routines.ts";
 import { icons } from "../lib/icons.ts";
 import { labelDropdown, closeDropdownOnEscape } from "../lib/web-awesome.ts";
 import { renderSettingsToggle } from "./settings-toggle.ts";
@@ -176,12 +176,14 @@ function renderTask(props: AutomationProps, task: AutomationTask) {
   const lastRun = props.automation?.runs.find((run) => run.taskId === task.id);
   // Bot routines read as their bot's panel shows them; other tasks keep the generic summary.
   const routine = props.sessions.some((session) => session.id === task.sessionId && session.bot);
+  // Who made it when a bot did, by its handle now, and a temporary task's limits.
+  const facts = routineFacts(task, { handle: (botId) => props.sessions.find((session) => session.bot?.id === botId)?.bot?.handle });
   return html`
     <article class="cron-table__row ${task.enabled ? "" : "cron-table__row--paused"}" data-task=${task.id}>
       <button type="button" class="cron-table__name" @click=${() => props.onEditAutomationTask(task)} aria-label=${`Edit ${task.name}`}>
         <span class="cron-table__state" aria-hidden="true"><span class="cron-table__state-dot"></span></span>
         <span class="cron-table__name-copy"><span class="cron-table__name-line"><span class="cron-table__name-text">${task.name}</span></span>
-          <span class="cron-table__name-meta"><span class="cron-table__description">${task.description || sessionLabel(props, task.sessionId)}</span></span>
+          <span class="cron-table__name-meta"><span class="cron-table__description">${task.description || sessionLabel(props, task.sessionId)}</span>${facts.map((fact) => html`<span class="cron-table__meta-separator" aria-hidden="true">·</span><span class="cron-table__fact">${fact}</span>`)}</span>
         </span>
       </button>
       <span class="cron-table__cell cron-table__schedule"><span class="cron-table__cell-label">Schedule</span><span class="cron-table__cell-value">${routine ? describeRoutineSchedule(task.schedule) : describeSchedule(task.schedule)}</span></span>

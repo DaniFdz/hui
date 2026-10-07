@@ -91,6 +91,8 @@ import {
   type AutomationExecution,
 } from "./automation.ts";
 import type { AutomationTask } from "../src/lib/automation-types.ts";
+import { BotRoutines } from "./bot-routines.ts";
+import { ROUTINES_TOOL } from "./runtimes/durable-bot-routines.ts";
 import { completeLocalPaths, completeWorkingDirectories, displayPath, resolveWorkingDirectory } from "./working-directories.ts";
 import { diagnosticPath, mirrorDiagnosticLogs, readObservability, recordDiagnosticEvent } from "./observability.ts";
 import { durableHost } from "./runtimes/durable-host.ts";
@@ -368,6 +370,7 @@ registerAgentToolHandler(async (invocation) => {
   // A bot's chat only: the service refuses every other caller.
   if (invocation.action === "message_bot") return bots.messageBot(invocation.callerSessionId, invocation.params);
   if (invocation.action === "set_profile") return bots.setProfile(invocation.callerSessionId, invocation.params);
+  if (invocation.action === ROUTINES_TOOL) return botRoutines.handle(invocation.callerSessionId, invocation.params);
   if (invocation.action === "suggest_task" || invocation.action === "dismiss_task") {
     const caller = (await readRegistry()).find(({ id }) => id === invocation.callerSessionId);
     if (!caller) throw new TaskSuggestionInputError("Conversation no longer exists.");
@@ -1491,6 +1494,13 @@ async function executeAutomationTask(
 }
 
 const automation = new AutomationService(AUTOMATION_FILE, executeAutomationTask);
+/** A bot's `routines` tool: its own chat's Automation tasks, behind its guards. */
+const botRoutines = new BotRoutines({
+  botForSession: (sessionId) => bots.botForSession(sessionId),
+  readSessions: readRegistry,
+  automation,
+  active: botsOn,
+});
 
 /** Registers a session and starts it. The directory is checked before anything
  * is written: a bad cwd would otherwise fail minutes later, inside pi. */

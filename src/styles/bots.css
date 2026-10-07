@@ -523,6 +523,17 @@
 .bot-routine--paused .bot-routine__meta { color: var(--muted); }
 .bot-routine__meta,
 .bot-routine__prompt { margin: 0; color: var(--muted); font-size: var(--control-ui-text-xs); line-height: 1.4; }
+/* Who made it (a bot) and a temporary routine's limits: "made by @ada", "until 18:00", "3 runs left". */
+.bot-routine__facts { display: flex; flex-wrap: wrap; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.bot-routine__fact {
+  padding: 0 7px;
+  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: var(--control-ui-text-xs);
+  line-height: 1.6;
+  white-space: nowrap;
+}
 .bot-routine__prompt {
   display: -webkit-box;
   overflow: hidden;

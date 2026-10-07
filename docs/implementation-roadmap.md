@@ -926,6 +926,36 @@ requests:
    `src/lib/live-call.test.ts`, `cli/*.test.ts`, and an isolated gateway driven
    in a browser ([`e2e/bots-labs.browser.md`](../e2e/bots-labs.browser.md),
    screens in the pull request).
+10. **Schedules as a CLI, and bots that schedule their own routines**
+    (implemented 2026-10-07; the owner's request, SPEC.md, "Schedules are a CLI,
+    and bots schedule their own routines"): `hui schedule` (alias `schedules`)
+    lists, shows, adds, edits, pauses, resumes, runs and removes every
+    Automation task, attached to a session or a bot (`--session`/`--bot`, which
+    also move a task on edit), and `hui bot routine` runs on its code. A bot's
+    `routines` tool (the bot tools' extension, *Manage its own routines* in the
+    Tools tab, on by default, not powerful) lists, adds, changes and removes its
+    own chat's routines, behind the gateway's guards: its own chat only, 20
+    active at most, once a minute at most, and no adding or changing in a turn
+    another bot started (set_profile's origin check). Temporary tasks take
+    `until` and/or `runs` and are deleted after either, across a restart too;
+    a bot can remove its routine from that routine's own turn. Tasks record who
+    made them (`createdBy`) and their limits as optional fields, shown in the
+    Routines tab and on Automations (*made by @bot*, *until 18:00*, *3 runs
+    left*). Bots off, every bot-facing part refuses and `hui schedule` prints
+    the gateway's refusal; sessions' schedules work regardless. Proof:
+    `server/automation.test.ts` (makers, limits, expiry by `until` and by runs,
+    a skipped run given back, across a restart), `server/bot-routines.test.ts`
+    (own tasks only, the cap, the minimum interval, names, the origin check,
+    removal from a routine's own turn), `server/runtimes/durable-bot-routines.test.ts`
+    (the tool in the bot tools' extension, the catalog entry, turned off and
+    refused by the bridge), `server/bot-schedules.test.ts` (a real gateway: a
+    bot adds a temporary routine through a real turn, that routine's turn
+    removes it, another bot's message can't add one, `hui schedule` with bots
+    off), `server/bot-workers.test.ts` (the tool from a bot on a worker),
+    `cli/schedules.test.ts`, `cli/*.test.ts`, `src/lib/bot-routines.test.ts`
+    and an isolated gateway driven in a browser
+    ([`e2e/bot-schedules.browser.md`](../e2e/bot-schedules.browser.md), screens
+    in the pull request).
 
 ### HUI-19 — Agent widgets
 
