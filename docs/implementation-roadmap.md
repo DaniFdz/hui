@@ -676,6 +676,33 @@ and dismiss controls. The registry survives gateway
 restarts. Proof: `server/watchers.test.ts`, `server/watcher-routes.test.ts`,
 `src/views/chat/watcher-activity.test.ts` and `e2e/watchers.browser.md`.
 
+### HUI-18 — Bots with OptChat memory
+
+Approved product decision (2026-10-05): beside its sessions, HUI gets **bots**,
+in a Hermes-style **Sessions | Bots** split. A bot is a named Durable
+conversation that never ends; its memory is
+[OptChat](optchat.md): every message is kept in an append-only log, a cheap
+model compresses it into a tree of one-line summaries, and every turn starts
+fresh from a fixed-size view of the whole chat. A `hui bot` CLI has parity with
+the UI, routines run through Automation, and voice comes later through
+VoiceStudio. It lands as stacked pull requests:
+
+1. **OptChat memory for Pi Durable conversations** — done 2026-10-05. The engine
+   (`server/optchat/`) and its Durable integration
+   (`server/runtimes/durable-optchat.ts`): a conversation whose `hui.optchat`
+   document is enabled projects its entries into the log, starts every request
+   fresh from a view frozen per run, offers `zoom` and `date`, declines Durable's
+   compactions and marks Anthropic cache breakpoints in its view; every other
+   conversation is unchanged. No UI, route or CLI yet, so no Browser-tool proof
+   applies. Proof: `server/optchat/*.test.ts` and
+   `server/runtimes/durable-optchat.test.ts` (deterministic provider: unchanged
+   plain requests, fresh turns, a frozen view across a tool loop and a restart,
+   zoom and date, declined compaction, catch-up without duplicates, waiting for
+   summaries and Stop).
+2. Bots: create, rename and list named OptChat conversations, their routes and
+   the Sessions | Bots UI, with a `hui bot` CLI at parity. Not started.
+3. Routines through Automation, then voice through VoiceStudio. Not started.
+
 ### HUI-19 — Agent widgets
 
 Done 2026-10-06. Agents and bots show interactive HTML/SVG widgets inline in the

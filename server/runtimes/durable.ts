@@ -238,14 +238,18 @@ export class DurableSession implements RuntimeSession, ExtensionSession {
     await this.#extensions?.start(reason);
   }
 
-  /** Offers the conversation its extensions and the tools they keep active, and drops the browser when Settings turns it
-   * off. Applies per conversation, at start and on every change. */
+  /** Offers the conversation its extensions and the tools they keep active, OptChat's zoom and date when the
+   * conversation has OptChat, and drops the browser when Settings turns it off. Applies per conversation, at start and
+   * on every change. */
   async applyTools(): Promise<void> {
     const browserEnabled = (await this.#host.settings()).browser.enabled !== false;
     const inactive = new Map([...(browserEnabled ? [] : this.#host.toolsNamed(["browser"])), ...(this.#extensions?.inactiveTools() ?? [])].map((tool) => [tool.name, tool]));
+    // Last, so OptChat's zoom and date win over same-named extension tools where OptChat is on, and only there.
+    const optchat = await this.#host.optchat.toolsFor(this.#conversation.id);
+    const added = [...(this.#extensions ? [this.#extensions.extension] : []), ...(optchat ? [optchat] : [])];
     await this.#conversation.configure({
       // A view with no HUI session (a probe) leaves the selection of the session that owns the conversation alone.
-      ...(this.#huiSessionId === undefined ? {} : { extensions: this.#extensions ? { add: [this.#extensions.extension] } : null }),
+      ...(this.#huiSessionId === undefined ? {} : { extensions: added.length ? { add: added } : null }),
       tools: inactive.size ? { remove: [...inactive.values()] } : null,
     }, context);
   }
@@ -973,6 +977,7 @@ export class DurableSession implements RuntimeSession, ExtensionSession {
       before--;
     }
     const at = options?.excludeUserMessage === true && isUser ? this.#history[before - 1]?.entry.id : row.entry.id;
+    const optchat = await this.#host.optchat.enabled(this.#conversation.id);
     const next = at
       ? await this.#conversation.fork(at, { ownership: { kind: "ownerless" } }, context)
       : await this.#harness.createConversation({ ownership: { kind: "ownerless" }, agent: {
@@ -985,8 +990,9 @@ export class DurableSession implements RuntimeSession, ExtensionSession {
     this.#conversation = next;
     this.#toolOutput.clear();
     await this.attach();
-    // A fork keeps its parent's agent; a conversation started over needs the session's extensions and tools again.
-    if (!at) await this.applyTools();
+    // A fork keeps its parent's agent; a conversation started over needs the session's extensions and tools again, and
+    // a fork of an OptChat conversation, which starts without OptChat, gives up its tools.
+    if (!at || optchat) await this.applyTools();
     this.#extensions?.rewound();
   }
 
