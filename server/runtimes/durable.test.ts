@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -10,6 +10,7 @@ import { normalizeSettings } from "../../src/lib/settings.ts";
 import type { DurableSession } from "./durable.ts";
 import type { AgentToolInvocation } from "../agent-tools-bridge.ts";
 import type { RuntimeEvent, TranscriptEntry } from "./types.ts";
+import { SecretFiles, SecretRequests } from "../secret-requests.ts";
 
 // HUI's configuration directory (provider selections, credentials, the default
 // Durable store) is resolved at import time; never read the operator's own.
@@ -282,6 +283,37 @@ test("HUI tools reach the gateway handler as the bound session, never a model-ch
     ["durable-tools", "suggest_task"], ["durable-tools", "suggest_task"],
   ]);
   assert.equal(f.invocations[0]!.params["title"], "Replace native terminal switcher select with HUI picker");
+});
+
+test("secret_request keeps the value out of the store and the model, and Stop cancels a pending one", { timeout: 45_000 }, async (t) => {
+  const f = await fixture(t);
+  const changed: Array<() => void> = [];
+  const requests = new SecretRequests({ onChange: () => { for (const wake of changed.splice(0)) wake(); } });
+  const files = new SecretFiles(f.dir);
+  t.after(() => { requests.dispose(); files.dispose(); });
+  const pending = async (count: number) => {
+    while (requests.questions("durable-secret").length !== count) await new Promise<void>((wake) => changed.push(wake));
+    return requests.questions("durable-secret");
+  };
+  const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-secret" }, f.host({
+    invokeTool: async ({ callerSessionId, action, params, signal }) => action === "secret_request" ? files.deliver(await requests.request(callerSessionId, params, signal)) : { ok: true },
+  }));
+  await session.prompt("E2E_SECRET_REQUEST");
+  const [question] = await pending(1);
+  requests.answer("durable-secret", question!.id, { value: "sk-fixture-0123456789" });
+  const entries = await transcriptWhere(session, (items) => answered("used the secret in a command without seeing it")(items) && !session.isStreaming);
+  assert.match(JSON.stringify(entries), /Secret length: 21/u, "the agent's next command read the file");
+  const stored = await Promise.all((await readdir(f.store, { recursive: true, withFileTypes: true }))
+    .filter((entry) => entry.isFile()).map((entry) => readFile(join(entry.parentPath, entry.name), "latin1")));
+  assert(stored.some((text) => text.includes("Fixture API key")), "the store keeps the request itself");
+  for (const text of [JSON.stringify(entries), await readFile(f.log, "utf8"), ...stored]) {
+    assert(!text.includes("sk-fixture"), "neither the store nor the model ever holds the value");
+  }
+
+  await session.prompt("E2E_SECRET_REQUEST again");
+  await pending(1);
+  await session.abort();
+  await pending(0);
 });
 
 test("rewinding forks the conversation and keeps the abandoned branch", { timeout: 45_000 }, async (t) => {

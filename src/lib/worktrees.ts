@@ -1,4 +1,4 @@
-import type { WorktreeInventory, WorktreeRemovalMode, WorktreeRemovalResult, WorktreeRisk } from "../../shared/worktrees.ts";
+import type { WorktreeInventory, WorktreeRemovalMode, WorktreeRemovalResult, WorktreeRisk, WorktreeRow } from "../../shared/worktrees.ts";
 import { fetchJson } from "./settings-store.ts";
 
 export type { WorktreeInventory, WorktreeRemovalResult, WorktreeRisk, WorktreeRow } from "../../shared/worktrees.ts";
@@ -33,4 +33,9 @@ export function formatBytes(bytes: number | undefined): string {
     unit += 1;
   }
   return `${unit >= 2 ? value.toFixed(1) : Math.round(value)} ${units[unit]}`;
+}
+
+/** Worktrees whose every linked session is in `ids`, so removing them strands no other session. */
+export function worktreesOnlyUsedBy(rows: readonly WorktreeRow[], ids: ReadonlySet<string>): string[] {
+  return rows.filter((row) => row.sessions.length > 0 && row.sessions.every((session) => ids.has(session.id))).map((row) => row.path);
 }

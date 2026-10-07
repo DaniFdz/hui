@@ -33,6 +33,7 @@ const { workers } = await import("./workers.ts");
 type SessionRecord = import("./sessions.ts").SessionRecord;
 type SessionStreamMessage = import("./live-sessions.ts").SessionStreamMessage;
 type SessionSnapshot = import("./live-sessions.ts").SessionSnapshot;
+type SecretQuestion = import("./secret-requests.ts").SecretQuestion;
 
 /** Stands in for a pi subprocess, so the state machine can be driven event by
  * event instead of waiting five seconds for a real boot. */
@@ -1919,6 +1920,29 @@ test("Stop on a waiting question leaves an idle session, not a stale question", 
   assert.deepEqual(manager.snapshot("stopped-card").questions, []);
   await manager.rewind("stopped-card", "user-1");
   assert.equal(started[0]!.rewoundTo.at(-1)?.target, "user-1");
+});
+
+test("a pending secret request is shown as a question and leaves the session waiting", async () => {
+  const started: FakeSession[] = [];
+  const manager = new LiveSessions(factory(started));
+  let pending: SecretQuestion[] = [];
+  manager.setSecretRequestProvider((id) => id === "secret" ? pending : []);
+  manager.ensure(recordFor("secret"));
+  await waitForBoot(manager, "secret");
+  await manager.prompt("secret", "log the workspace in");
+  const updates: string[] = [];
+  manager.watchStatuses((update) => { if (update.id === "secret") updates.push(update.status); });
+
+  pending = [{ id: "secret-1", method: "secret", title: "Approval code", message: "Finish the login." }];
+  manager.notifySnapshot("secret");
+  assert.equal(manager.status("secret"), "waiting");
+  assert.deepEqual(manager.snapshot("secret").questions, pending);
+
+  pending = [];
+  manager.notifySnapshot("secret");
+  assert.equal(manager.status("secret"), "running");
+  assert.deepEqual(manager.snapshot("secret").questions, []);
+  assert.deepEqual(updates, ["waiting", "running"], "the session list follows the wait");
 });
 
 test("HUI-owned follow-ups can be edited, reordered, removed and steered before delivery", async () => {

@@ -10,6 +10,7 @@ import type { AutomationTask } from "../src/lib/automation-types.ts";
 import { DEFAULT_SETTINGS } from "../src/lib/settings.ts";
 import type { BotMemory } from "./bot-memory.ts";
 import type { AgentRuntime, PromptAttachment, RuntimeEvent, RuntimeModel, RuntimeQuestion, RuntimeSession, StartOptions, TranscriptEntry } from "./runtimes/types.ts";
+import type { SecretQuestion } from "./secret-requests.ts";
 
 // Paths are resolved at import time: never the operator's own configuration.
 process.env["XDG_CONFIG_HOME"] = await mkdtemp(join(tmpdir(), "hui-bot-service-config-"));
@@ -727,6 +728,19 @@ test("messages prompt an idle bot, queue behind a busy one, and a wait reports t
   assert.deepEqual(await asking, { status: "needs-input", questions: [{ id: "q1", method: "confirm", title: "Deploy", message: "Ship it to production?" }] });
   chat.questions = [];
   chat.answer("cancelled");
+
+  // HUI's own secret prompt (secret_request) waits for the operator too: what it is for, never a value.
+  let secrets: SecretQuestion[] = [];
+  h.sessions.setSecretRequestProvider((id) => id === bot.sessionId ? secrets : []);
+  prompted = chat.nextPrompt();
+  const secret = h.service.send(bot.id, { text: "log in" }, { timeoutMs: 10_000 });
+  await prompted;
+  secrets = [{ id: "s1", method: "secret", title: "API key", message: "To log in." }];
+  h.sessions.notifySnapshot(bot.sessionId);
+  assert.deepEqual(await secret, { status: "needs-input", questions: [{ id: "s1", method: "secret", title: "API key", message: "To log in." }] });
+  secrets = [];
+  h.sessions.notifySnapshot(bot.sessionId);
+  chat.answer("logged in");
 
   prompted = chat.nextPrompt();
   const slow = h.service.send(bot.id, { text: "take your time" }, { timeoutMs: 15 });

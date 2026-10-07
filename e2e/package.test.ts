@@ -71,6 +71,7 @@ test("installed package lifecycle, real SDK resume, verified update and rollback
     assert(packed.files.some((file: { path: string }) => file.path === `build/skills/create-verification-skill/${path}`), `Package contains generator ${path}`);
   }
   assert(packed.files.some((file: { path: string }) => file.path === "build/skills/git-selective-staging/SKILL.md"), "Package contains git-selective-staging");
+  assert(packed.files.some((file: { path: string }) => file.path === "build/skills/visualize/SKILL.md"), "Package contains visualize");
   assert(!packed.files.some((file: { path: string }) => /\.test\.|^(src|media|e2e|node_modules)\//u.test(file.path)), "Package excludes source/tests/personal data");
   await npm(["install", "--global", "--prefix", prefix, "--ignore-scripts", "--no-audit", "--no-fund", join(temporary, packed.filename)]);
   await assert.rejects(stat(join(installed, "node_modules/vite")), { code: "ENOENT" });
@@ -175,11 +176,12 @@ require('node:fs').writeFileSync(process.env.HUI_DESKTOP_PROOF, JSON.stringify({
   assert.match(JSON.stringify(history), /Installed SDK content/u);
   assert.equal((await api(`sessions/${session.id}/tools`)).backend, "sdk");
   const bundledSkills = (await api("pi")).skills.filter((skill: { origin?: string }) => skill.origin === "hui");
-  assert.deepEqual(bundledSkills.map((skill: { name: string }) => skill.name), ["create-verification-skill", "git-selective-staging"]);
+  assert.deepEqual(bundledSkills.map((skill: { name: string }) => skill.name), ["create-verification-skill", "git-selective-staging", "visualize"]);
   const commands = (await api(`sessions/${session.id}/commands`)).commands as { name: string }[];
+  const tags: Record<string, string[]> = { "create-verification-skill": ["good practices"], "git-selective-staging": ["good practices"], visualize: ["presentation"] };
   for (const bundled of bundledSkills) {
     assert.equal(bundled.preferencePath, `hui:skill:${bundled.name}`);
-    assert.deepEqual(bundled.tags, ["good practices"]);
+    assert.deepEqual(bundled.tags, tags[bundled.name]);
     assert(bundled.path.startsWith(installed), `${bundled.name} resolves inside the installed package, not the checkout`);
     assert(commands.some((command) => command.name === `skill:${bundled.name}`), `${bundled.name} is loaded as a skill command`);
   }

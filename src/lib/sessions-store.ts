@@ -243,9 +243,11 @@ export type TranscriptItem = { metrics?: TranscriptMetrics } & (
   | { kind: "error"; id: string; text: string });
 
 export type PromptMode = "prompt" | "steer" | "followUp";
+/** `secret` is HUI's own `secret_request` prompt: `title` is the label and
+ * `message` the reason. Its answer goes to the gateway, never to the runtime. */
 export type RuntimeQuestion = {
   id: string;
-  method: "select" | "confirm" | "input" | "editor";
+  method: "select" | "confirm" | "input" | "editor" | "secret";
   title?: string;
   message?: string;
   options?: readonly string[];
