@@ -17,10 +17,9 @@ import {
   type WorktreeRisk,
   type WorktreeRow,
 } from "../lib/worktrees.ts";
+import { loadViewAssets } from "../lib/view-assets.ts";
 
-if (typeof document !== "undefined") {
-  await import("../styles/openclaw-workspaces.css");
-}
+loadViewAssets(() => import("../styles/openclaw-workspaces.css"));
 
 export type WorktreeFilter = "all" | "hui" | "merged";
 

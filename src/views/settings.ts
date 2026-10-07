@@ -34,10 +34,9 @@ import {
   APP_SHELL_DRAWER_MEDIA,
   unbindDrawerMedia,
 } from "./shell.ts";
+import { loadViewAssets } from "../lib/view-assets.ts";
 
-if (typeof document !== "undefined") {
-  await import("../styles/openclaw-workspaces.css");
-}
+loadViewAssets(() => import("../styles/openclaw-workspaces.css"));
 
 const MODE_LABELS: Record<ThemeMode, string> = {
   system: "System",

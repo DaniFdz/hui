@@ -6,8 +6,38 @@
     <meta name="color-scheme" content="dark light" />
     <link rel="icon" type="image/png" href="/pi-logo-3d.png" />
     <title>HUI</title>
+    <style>
+      /* The boot screen (src/lib/boot-screen.ts): the page's only content until
+         the app has painted. Inline, so it needs nothing else to arrive. The
+         saved theme is not known yet, so it follows the system's light or dark. */
+      #hui-boot { position: fixed; inset: 0; z-index: 2147483647; display: grid; place-items: center; padding: 24px;
+        background: Canvas; color: GrayText; font: 13px/1.45 var(--font-body, system-ui, sans-serif); }
+      .hui-boot__card { display: grid; justify-items: center; gap: 14px; width: min(260px, 100%); text-align: center; }
+      .hui-boot__name { color: CanvasText; font-size: 22px; font-weight: 650; letter-spacing: .02em; }
+      .hui-boot__bar { position: relative; width: 100%; height: 3px; overflow: hidden; border-radius: 3px;
+        background: color-mix(in srgb, currentColor 16%, transparent); }
+      .hui-boot__bar::after { content: ""; position: absolute; inset: 0 auto 0 0; width: 40%; border-radius: inherit;
+        background: var(--accent, Highlight); animation: hui-boot-slide 1.1s ease-in-out infinite; }
+      .hui-boot__slow { margin: 0; opacity: 0; animation: hui-boot-reveal .3s ease 6s forwards; }
+      .hui-boot__slow a, .hui-boot__failure button { color: var(--accent, LinkText); font: inherit; }
+      .hui-boot__failure { display: none; margin: 0; }
+      .hui-boot__failure button { padding: 0; border: 0; background: none; cursor: pointer; text-decoration: underline; }
+      #hui-boot[data-state="failed"] .hui-boot__bar, #hui-boot[data-state="failed"] .hui-boot__slow { display: none; }
+      #hui-boot[data-state="failed"] .hui-boot__failure { display: block; }
+      @keyframes hui-boot-slide { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
+      @keyframes hui-boot-reveal { to { opacity: 1; } }
+      @media (prefers-reduced-motion: reduce) { .hui-boot__bar::after { width: 100%; opacity: .45; animation: none; } }
+    </style>
   </head>
   <body>
+    <div id="hui-boot" role="status" aria-live="polite">
+      <div class="hui-boot__card">
+        <span class="hui-boot__name">HUI</span>
+        <span class="hui-boot__bar" role="progressbar" aria-label="Loading HUI"></span>
+        <p class="hui-boot__slow">Still loading — the connection is slow. <a href="">Reload</a></p>
+        <p class="hui-boot__failure" role="alert"><span class="hui-boot__detail">HUI could not load.</span> <button type="button">Reload</button></p>
+      </div>
+    </div>
     <hui-app></hui-app>
     <script type="module" src="/src/main.ts"></script>
   </body>

@@ -45,7 +45,7 @@ Pi Durable owns conversations, runs, queues and crash recovery.
 
 | Area | Start here |
 |---|---|
-| HTTP entry and routing | `hui.ts` (all `/__hui/` routes), `gateway.ts` (process start), `host.ts` (bind address), `static-files.ts` |
+| HTTP entry and routing | `hui.ts` (all `/__hui/` routes), `gateway.ts` (process start), `host.ts` (bind address), `static-files.ts`, `http-compression.ts` (Brotli/gzip for files and JSON) |
 | Session registry and lifecycle | `sessions.ts` (HUI registry), `live-sessions.ts` (running sessions), `session-list.ts`, `session-transport.ts` |
 | Runtimes | `runtimes/types.ts` (contract), `runtimes/durable*.ts` (Pi Durable: host, adapter, prompt, tools, PI extensions, questions), `runtimes/pi*.ts` (PI SDK worker and CLI fallback), `runtimes/pi-import.ts` (moves PI sessions to Durable for `hui doctor --fix`) |
 | HUI agent tools | `runtimes/hui-tools.ts` (definitions), `agent-tools-bridge.ts` (loopback bridge for PI workers), `subagents.ts`, `watchers.ts`, `task-suggestions.ts`, `secret-requests.ts` |
@@ -62,8 +62,8 @@ Pi Durable owns conversations, runs, queues and crash recovery.
 
 | Area | Start here |
 |---|---|
-| App shell | `main.ts` (styles, mount), `hui-app.ts` (navigation and cross-view state), `lit/hui-element.ts` |
-| Client stores and API | `lib/sessions-store.ts` (session API), `lib/settings-store.ts` (fetch boundary, `x-hui` header), other `lib/*-store.ts` |
+| App shell | `main.ts` (styles, boot, mount), `lib/boot-screen.ts` (index.html's boot screen), `lib/view-assets.ts` (view stylesheets loaded together before the first paint), `hui-app.ts` (navigation and cross-view state), `lit/hui-element.ts` |
+| Client stores and API | `lib/sessions-store.ts` (session API), `lib/settings-store.ts` (fetch boundary, `x-hui` header), `lib/gateway-request.ts` (response deadline), other `lib/*-store.ts` |
 | Pure logic | `lib/` (normalizers, parsers, layout and menu rules; tested beside each file) |
 | Chat | `views/chat/` (projection, tool cards, position rail), `lib/markdown*.ts`, `lib/composer-*.ts` |
 | Sidebar and sessions | `lib/sidebar-sessions.ts`, `lib/session-tree.ts`, `views/sessions.ts`, `views/sidebar-session-options.ts` |

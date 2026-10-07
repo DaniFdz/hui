@@ -33,11 +33,9 @@ import {
   type BotFaceSize,
   type BotFaceState,
 } from "../lib/bot-face.ts";
+import { loadViewAssets } from "../lib/view-assets.ts";
 
-// Node's focused view tests import this module without a CSS loader.
-if (typeof document !== "undefined") {
-  await import("../styles/bot-face.css");
-}
+loadViewAssets(() => import("../styles/bot-face.css"));
 
 /** How long the one-shot "done" hop shows before the face rests. */
 const DONE_MS = 1150;

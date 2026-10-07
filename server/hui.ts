@@ -164,6 +164,7 @@ import { WATCHER_LIMITS } from "../shared/watchers.ts";
 import { terminals, TerminalError } from "./terminals.ts";
 import { attachSessionTransport, sessionStreamTicket } from "./session-transport.ts";
 import { createSessionListHub } from "./session-list.ts";
+import { COMPRESSION_MIN_BYTES, compressBody, negotiateEncoding } from "./http-compression.ts";
 import { attachTerminalTransport, terminalTicket } from "./terminal-transport.ts";
 import {
   createSessionGroup,
@@ -833,8 +834,15 @@ export async function importTweakcnTheme(input: string): Promise<string> {
 /** Error text of failed `/__hui/` responses, kept for their request diagnostic. */
 const responseFailures = new WeakMap<ServerResponse, string>();
 
+/** Responses whose body is being compressed: they are answered, just not ended yet. */
+const compressing = new WeakSet<ServerResponse>();
+
+/**
+ * A large body (a session's transcript) is compressed when the client accepts
+ * it, off the event loop. The first answer wins, as when the body is sent at once.
+ */
 function sendJson(response: ServerResponse, status: number, body: unknown): void {
-  if (response.writableEnded) {
+  if (response.writableEnded || compressing.has(response)) {
     return;
   }
   if (status >= 400 && !responseFailures.has(response)) {
@@ -844,7 +852,24 @@ function sendJson(response: ServerResponse, status: number, body: unknown): void
   response.statusCode = status;
   response.setHeader("content-type", "application/json; charset=utf-8");
   response.setHeader("cache-control", "no-store");
-  response.end(JSON.stringify(body));
+  const text = JSON.stringify(body);
+  const encoding = text.length >= COMPRESSION_MIN_BYTES ? negotiateEncoding(response.req?.headers["accept-encoding"]) : undefined;
+  if (!encoding) {
+    response.end(text);
+    return;
+  }
+  response.setHeader("vary", "accept-encoding");
+  compressing.add(response);
+  const raw = Buffer.from(text);
+  void compressBody(raw, encoding, "fast").then((compressed) => {
+    response.setHeader("content-encoding", encoding);
+    return compressed;
+  }, () => raw).then((sent) => {
+    compressing.delete(response);
+    if (response.writableEnded || response.destroyed) return;
+    response.setHeader("content-length", sent.length);
+    response.end(sent);
+  });
 }
 
 /** A page HUI renders itself (a bot's memory). Its text comes from a chat, so it may run nothing, load nothing but its
