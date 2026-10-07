@@ -1165,7 +1165,12 @@ everything the Bots tab can, through the same routes.
   the chat is never compacted. Bots reach it only through one interface, so its
   engine stays separate; `hui bot memory` and the memory routes show its
   status, its view, any line zoomed down to a message, and a browse page.
-- **The Bots tab** is opt-in: Settings → Sessions → *Show the Bots tab* (off by
+- **A preview behind Labs.** Bots are off until Settings → Labs → *Bots*
+  turns them on (decision below). Off, they are dormant everywhere and nothing
+  is deleted: no screen shows them, the gateway refuses their routes, calls and
+  chats, skips their routines and starts none of their turns; turning them on
+  brings everything back as it was, without a restart.
+- **The Bots tab** is opt-in too: with bots on, Settings → Sessions → *Show the Bots tab* (off by
   default, saved in HUI settings). Hiding it never stops bots or routines. On,
   an **Agents | Bots** switch fills the sidebar's top row after the collapse
   toggle (arrow keys, Home/End; the browser remembers the tab): Agents is the
@@ -1252,6 +1257,40 @@ everything the Bots tab can, through the same routes.
 The contract is [docs/api.md#bots](docs/api.md#bots).
 
 ## Decisions
+
+### Bots stay behind an opt-in Labs setting while they are a preview (2026-10-07)
+
+As the bots stack was about to be squash-merged into `main`, the owner asked:
+"make sure that there is an optin config (like a feature flag, but in
+settings) for bots while theyre wip". So bots are a preview behind
+`settings.labs.bots`, a Bots switch on the Labs page ("Experimental and opt-in
+features"), off by default; a settings file from before it has bots off, so
+`main` never shows bots unless the operator turns them on. Settings → Sessions →
+*Show the Bots tab* stays, as the sidebar choice once bots are on.
+
+- **Off means dormant everywhere, and nothing is deleted.** The browser shows
+  nothing of them: no Agents | Bots switch, `/bots` addresses land home (a
+  remembered Bots tab shows Agents meanwhile), no unread marks, no Sessions →
+  Bots or Models → Calls settings, no routines in Automations. The gateway
+  refuses every bot route and call and the session routes of a bot's chat, and
+  starts none of their turns: messages, routines, `message_bot`, calls'
+  hand-offs and a new bot's first turn are refused, and a chat that starts a
+  turn anyway (Durable resuming an interrupted run) is stopped. Turning them off
+  stops what bots were doing, as archiving does but without archiving them.
+- **Turning them on restores everything as it was**, live, without a restart:
+  their chats, memory, SOUL.md, routines and settings never changed.
+- **409, not 404.** The refusal names the setting: "Bots are off on this
+  gateway: they are a preview. Turn them on in Settings → Labs → Bots." It is a
+  409 because the gateway's settings refuse the request while the bots exist; a
+  404 would read as a bot that is gone, which clients already treat as such.
+- **Routines are skipped, never failed or deleted.** A routine's run while bots
+  are off ends *Skipped* with that reason. That is the scheduler's existing rule
+  for a run its target can't take: the time is not run later, and once bots are
+  on the routine runs at its next time.
+- **Workers need no flag:** the gateway's refusals cover the bots on them. The
+  clean-up queue of bots deleted while their worker was offline and the
+  one-time migration of instructions to SOUL.md keep running, since neither
+  starts a turn.
 
 ### A bot has every tool and skill until the operator turns some off (2026-10-06)
 

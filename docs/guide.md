@@ -185,9 +185,34 @@ choose the smartest model you have, speed doesn't matter. The **utility model**
 does the quick work (session and branch names, Jira drafts, `/btw`, and for bots
 their memory summaries, quick answers on calls and call summaries): choose the
 fastest you have, ideally a cheap one. **GPT-Live** (Settings → Models → Calls)
-talks on calls with bots: it is made for phone calls and quick to respond.
+talks on calls with bots: it is made for phone calls and quick to respond. Calls
+are with bots only, so that section shows while [bots](#bots) are on.
 
 ## Bots
+
+> **Bots are a preview.** They are still being built, so they are off until you
+> turn them on: Settings → Labs → **Bots**. Then Settings → Sessions → **Show
+> the Bots tab** adds their tab ([below](#the-bots-tab)).
+
+While bots are off they are dormant everywhere, and nothing is deleted:
+
+- The sidebar has no Agents | Bots switch, a bot's address (`/bots/…`) opens
+  the home page, and Settings hides Sessions → Bots and Models → Calls.
+  Automations leaves the bots' routines out. Bot chats never show among your
+  sessions, on or off.
+- The gateway refuses every bot route and call, and the session routes of a
+  bot's chat, with `Bots are off on this gateway: they are a preview. Turn them
+  on in Settings → Labs → Bots.` That is also what every `hui bot` command
+  prints.
+- Routines are kept but skipped: Automations records each time that comes due
+  as *Skipped* with that reason, and a skipped time isn't run later.
+- Nothing starts a bot's turn. Turning bots off stops what they were doing, as
+  archiving does: a running turn stops, messages still queued for a bot are
+  withdrawn, and a call ends.
+
+Turn them on again and everything is back as it was (their chats, memory,
+SOUL.md, routines and settings), at once and without a restart; each routine
+runs at its next time.
 
 A **bot** is a named, persistent agent: a role, a persona it writes with you
 (its SOUL.md), its own model, a working directory, and **one chat that never
@@ -214,7 +239,7 @@ summarized, `hui bot chat` says "Summarizing memory…".
 
 ### The Bots tab
 
-Settings → Sessions → **Show the Bots tab** adds an **Agents | Bots** switch to
+With bots on in Settings → Labs, Settings → Sessions → **Show the Bots tab** adds an **Agents | Bots** switch to
 the very top of the sidebar (it is off by default, and hiding it never stops a
 bot or its routines). **Agents** is the usual sidebar; **Bots** shows only your bots,
 most recently active first, with their latest message, and **+** creates one at
@@ -496,6 +521,14 @@ your answer in the chat until the routine's timeout (15 minutes unless the task
 says otherwise) stops the turn. `--every` takes `30s`, `5m`, `2h` or `1d`; Automation
 refuses intervals under a minute. `--cron` uses this machine's time zone unless
 `--timezone` names another.
+
+While bots are off ([above](#bots)) a routine whose time comes is skipped, not
+failed: Automations records the run as *Skipped* with the reason, the routine
+stays on, and that time isn't run later. Once bots are on again it runs at its
+next time. (A once routine whose time passes while they are off is used up, as
+the scheduler turns any one-off task off once its time comes.) Times missed
+while the gateway itself was down are different: each overdue routine runs once
+when it starts again.
 
 ### Bots talking to bots
 

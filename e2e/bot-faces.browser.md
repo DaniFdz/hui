@@ -21,7 +21,9 @@ the old dialog.
    feat/bot-faces --pi-sessions`, then `doctor` on the receipt
    before and after the browser work, and `cleanup` at the end.
 2. Setup through HUI's guarded API (not the journey under test): `PUT
-   /__hui/settings {"bots":{"showTab":true}}`, then `POST /__hui/bots` for ten
+   /__hui/settings {"bots":{"showTab":true}}` (since 2026-10-07 also
+   `"labs":{"bots":true}`: bots are off until Settings → Labs → Bots turns them
+   on), then `POST /__hui/bots` for ten
    bots: Scout (blob, blue), Coach (heart, magenta), Atlas (round, mint), Pixel
    (cookie, coral), Tri (triangle, yellow), Juno (heart, lilac), Moss (cookie,
    mint), Owl (🦉), and Ledger and Nova with no look (their ids pick it); an
