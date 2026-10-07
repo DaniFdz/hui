@@ -9,5 +9,5 @@
     "outDir": "build"
   },
   "include": ["server/**/*.ts", "server/**/*.mjs", "cli/**/*.ts"],
-  "exclude": ["**/*.test.*"]
+  "exclude": ["**/*.test.*", "server/test-support/**"]
 }

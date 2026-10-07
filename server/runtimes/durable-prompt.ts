@@ -19,6 +19,7 @@ import { HUI_PRESENTATION_PROMPT } from "./hui-presentation.ts";
 import { huiToolDefinitions } from "./hui-tools.ts";
 import { BOT_TOOL_CONTRIBUTIONS, type BotSkillRef } from "./durable-bots.ts";
 import { BOT_ACCESS_CONTRIBUTIONS, botSkills, botSkillsPrompt, LOAD_SKILL_TOOL } from "./durable-bot-access.ts";
+import { BOT_ROUTINES_CONTRIBUTION, ROUTINES_TOOL } from "./durable-bot-routines.ts";
 import type { Contribution, RunPrompt } from "./durable-extensions.ts";
 
 export type PromptSettings = Pick<Settings, "disabledSkills" | "browser" | "disabledPlugins">;
@@ -38,6 +39,7 @@ const PI_TOOL_CONTRIBUTIONS: Record<string, Contribution> = {
 const HUI_TOOL_CONTRIBUTIONS: Record<string, Contribution> = {
   ...BOT_TOOL_CONTRIBUTIONS,
   ...BOT_ACCESS_CONTRIBUTIONS,
+  [ROUTINES_TOOL]: BOT_ROUTINES_CONTRIBUTION,
   ...Object.fromEntries(huiToolDefinitions().map((tool) => [
     tool.name, { snippet: tool.promptSnippet ?? "", guidelines: tool.promptGuidelines ?? [] },
   ])),

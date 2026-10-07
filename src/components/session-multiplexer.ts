@@ -1,3 +1,8 @@
+/**
+ * The split workspace: lays out the layout's columns and stacks, and handles pane focus, resizing and drag and drop
+ * of sessions and panes. It keeps recently shown sessions mounted per pane so switching back does not rebuild them.
+ * The layout and each pane's contents belong to the caller, which renders panes and applies changes via callbacks.
+ */
 import { html, nothing, render, type TemplateResult } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { repeat } from "lit/directives/repeat.js";

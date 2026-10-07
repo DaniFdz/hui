@@ -1,3 +1,10 @@
+/**
+ * The gateway process itself: the public HTTP server with its Host allowlist, static app and terminal and
+ * live-stream upgrades, and a token-guarded loopback control server that `hui` uses for status and stop. It
+ * publishes the gateway state file once listening, removes it on stop, and refuses an unforced stop while
+ * sessions, terminals or mutations a restart would interrupt are in flight. Routing the `/__hui/` API belongs
+ * to hui.ts.
+ */
 import { execFile } from "node:child_process";
 import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { mkdir } from "node:fs/promises";
@@ -98,7 +105,7 @@ export async function runGateway(options: GatewayOptions): Promise<{ state: Gate
       closing = true;
       detachTerminals();
       detachStreams();
-      stopBackend();
+      await stopBackend();
       await Promise.all([close(server), close(control)]);
       await removeState(instance);
       process.off("SIGTERM", onSignal); process.off("SIGINT", onSignal);
@@ -126,6 +133,6 @@ export async function runGateway(options: GatewayOptions): Promise<{ state: Gate
   } catch (error) {
     detachTerminals();
     detachStreams();
-    stopBackend(); await Promise.all([close(server), close(control)]); throw error;
+    await stopBackend(); await Promise.all([close(server), close(control)]); throw error;
   }
 }

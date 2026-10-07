@@ -1,3 +1,7 @@
+/**
+ * The Cmd/Ctrl+K palette: its shortcut, the search and ranking over pages, settings pages and chats, keyboard
+ * movement and the dialog. It keeps no state; the open flag, query and active index belong to the app.
+ */
 import { html, nothing, type TemplateResult } from "lit";
 
 import { icons } from "../lib/icons.ts";

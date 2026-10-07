@@ -1,3 +1,8 @@
+/**
+ * Read-only inspection behind the gateway health and workspace views: session counts by live status, the
+ * context and memory files in each local session's workspace, and the Git worktrees of their repositories. It
+ * never writes; symlinked memory files and anything under OpenClaw's own ~/.openclaw directory are left out.
+ */
 import { execFile } from "node:child_process";
 import { lstat, readdir, realpath, stat } from "node:fs/promises";
 import { homedir } from "node:os";

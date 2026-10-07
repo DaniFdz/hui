@@ -29,6 +29,9 @@ import { BOT_CLEANUP_FILE, BOTS_DIR, BotInputError, BotRegistry, BotsOffError, B
 import { BotService } from "./bot-service.ts";
 import { remoteBots } from "./bot-remote.ts";
 import { BOT_MEMORY_PAGE, BOTS_EVENTS_ROUTE, BOTS_ROUTE, createBotRoutes, type BotRouteRequest } from "./bot-routes.ts";
+import { BOT_TRIGGERS_ROUTE } from "./bot-trigger-routes.ts";
+import { createGatewayTriggers } from "./bot-triggers-gateway.ts";
+import { isHookPath } from "./bot-triggers-webhook.ts";
 import { BotTemplateService } from "./bot-template-import.ts";
 import { createBotTemplateRoutes, sendDownload } from "./bot-template-routes.ts";
 import { fetchGrokBotPage } from "./bot-templates/fetch.ts";
@@ -95,6 +98,8 @@ import {
   type AutomationExecution,
 } from "./automation.ts";
 import type { AutomationTask } from "../src/lib/automation-types.ts";
+import { BotRoutines } from "./bot-routines.ts";
+import { ROUTINES_TOOL } from "./runtimes/durable-bot-routines.ts";
 import { completeLocalPaths, completeWorkingDirectories, displayPath, resolveWorkingDirectory } from "./working-directories.ts";
 import { diagnosticPath, mirrorDiagnosticLogs, readObservability, recordDiagnosticEvent } from "./observability.ts";
 import { durableHost } from "./runtimes/durable-host.ts";
@@ -220,7 +225,7 @@ const SESSION_GROUP_MAX = 200;
 const SESSION_GROUP_ORDER_MAX = 1_000;
 /** Session actions and live catalogs, all addressed by HUI's own session id. */
 const SESSION_ACTION =
-  /^\/__hui\/sessions\/([^/]+)\/(open|prompt|continue|resume|steer|follow-up|btw|queue|events|connect|models|commands|tools|model|thinking|question|abort|clear|reload|compact|rewind)$/;
+  /^\/__hui\/sessions\/([^/]+)\/(open|prompt|continue|resume|steer|follow-up|btw|queue|events|connect|models|commands|tools|model|thinking|question|abort|clear|reload|compact|rewind|fork)$/;
 /** The session itself, for changing it rather than acting on it. */
 const SESSION_ONE = /^\/__hui\/sessions\/([^/]+)$/;
 const GITHUB_ROUTE = `${PREFIX}github`;
@@ -399,7 +404,10 @@ registerAgentToolHandler(async (invocation) => {
   await bots.checkToolAllowed(invocation.callerSessionId, invocation.action);
   // A bot's chat only: the service refuses every other caller.
   if (invocation.action === "message_bot") return bots.messageBot(invocation.callerSessionId, invocation.params);
-  if (invocation.action === "set_profile") return bots.setProfile(invocation.callerSessionId, invocation.params);
+  // A bot's gated tools judge its run by every input it took, as the host running the chat saw them (`runOrigins`).
+  if (invocation.action === "set_profile") return bots.setProfile(invocation.callerSessionId, invocation.params, invocation.runOrigins);
+  if (invocation.action === ROUTINES_TOOL) return botRoutines.handle(invocation.callerSessionId, invocation.params, invocation.runOrigins);
+  if (invocation.action === "triggers") return triggers.service.tool(invocation.callerSessionId, invocation.params, invocation.runOrigins);
   if (invocation.action === "suggest_task" || invocation.action === "dismiss_task") {
     const caller = (await readRegistry()).find(({ id }) => id === invocation.callerSessionId);
     if (!caller) throw new TaskSuggestionInputError("Conversation no longer exists.");
@@ -601,6 +609,13 @@ async function writeSettings(raw: unknown): Promise<Settings> {
   await managedBrowser.applySettings(settings.browser);
   macPower?.setKeepAwake(settings.power.keepAwake);
   if (botsWereOn && !botsEnabled(settings)) quietBots();
+  // Triggers' pollers stop while bots are off and resume from their cursors once they are on again.
+  if (botsWereOn !== botsEnabled(settings)) {
+    void triggers.service.setActive(botsEnabled(settings)).catch((error: unknown) => recordDiagnosticEvent({
+      area: "session", level: "warning", action: "triggers_toggle_failed", summary: "Triggers could not follow bots being turned on or off",
+      detail: error instanceof Error ? error.message : String(error),
+    }));
+  }
   return settings;
 }
 
@@ -1053,12 +1068,13 @@ export class SessionNotFoundError extends Error {
 
 /** Why a bot's chat refuses an operation that would end, shorten or fork it (409). Without a handle (an unreadable
  * bot registry), the record's `bot` field alone refuses. */
-function foreverChatRefusal(handle: string | undefined, operation: "clear" | "compact" | "rewind" | "delete"): string {
+function foreverChatRefusal(handle: string | undefined, operation: "clear" | "compact" | "rewind" | "fork" | "delete"): string {
   const chat = handle ? `@${handle}'s` : "a bot's";
   return {
     clear: `This is ${chat} forever chat: it cannot be cleared. Its memory keeps everything; archive the bot when you are done with it.`,
     compact: `This is ${chat} forever chat: its memory condenses it by itself, so it is not compacted by hand.`,
     rewind: `This is ${chat} forever chat: it cannot be rewound or forked.`,
+    fork: `This is ${chat} forever chat: it cannot be rewound or forked.`,
     delete: `This is ${chat} forever chat: archive the bot instead${handle ? ` (hui bot remove ${handle})` : ""}, which keeps its chat and memory, or delete the bot${handle ? ` (hui bot delete ${handle})` : ""} with its chat, memory and folder.`,
   }[operation];
 }
@@ -1159,6 +1175,16 @@ export function sessionMutationErrorStatus(error: unknown): 400 | 500 {
  * `gh`; HUI never sees the token. `HUI_GITHUB_CLI` points E2E at a fake executable. */
 const GH_COMMAND = process.env["HUI_GITHUB_CLI"] || "gh";
 const githubCli = new GitHubCli({ command: GH_COMMAND });
+/** Bots' triggers (HUI-18): GitHub pollers through the same `gh`, the sessions bots start, and webhook calls. */
+const triggers = createGatewayTriggers({
+  send: (botId, message) => bots.send(botId, message),
+  listBots: () => botRegistry.list(),
+  readSessions: readRegistry,
+  sessions: liveSessions,
+  active: botsOn,
+  ghCommand: GH_COMMAND,
+  report: (event) => recordDiagnosticEvent({ area: "session", ...event }),
+});
 const githubPreviews = new GitHubPreviews(ghApi(GH_COMMAND));
 const githubContributions = new GitHubContributionsReader(GH_COMMAND);
 const pullRequestStatuses = new PullRequestStatuses(previewPullRequestFetcher(githubPreviews));
@@ -1522,6 +1548,13 @@ async function executeAutomationTask(
 }
 
 const automation = new AutomationService(AUTOMATION_FILE, executeAutomationTask);
+/** A bot's `routines` tool: its own chat's Automation tasks, behind its guards. */
+const botRoutines = new BotRoutines({
+  botForSession: (sessionId) => bots.botForSession(sessionId),
+  readSessions: readRegistry,
+  automation,
+  active: botsOn,
+});
 
 /** Registers a session and starts it. The directory is checked before anything
  * is written: a bad cwd would otherwise fail minutes later, inside pi. */
@@ -1555,6 +1588,8 @@ export async function createSession(
     nameSession?: typeof generateSessionNames;
     /** A bot's chat: its bot, and the Durable conversation already created for it (bot-service.ts). */
     bot?: { id: string; piSessionFile: string };
+    /** A fork: the resume reference of the conversation copy it continues (`liveSessions.fork`). */
+    piSessionFile?: string;
   } = {},
 ): Promise<SessionRecord> {
   if (typeof body["cwd"] !== "string") throw new Error("Working directory must be text.");
@@ -1649,6 +1684,7 @@ export async function createSession(
     ...(thinking ? { thinking } : {}),
     ...(seed.stage ? { stage: seed.stage, stageSource: "operator" as const } : {}),
     ...(seed.bot ? { bot: seed.bot.id, piSessionFile: seed.bot.piSessionFile } : {}),
+    ...(seed.piSessionFile ? { piSessionFile: seed.piSessionFile } : {}),
     createdAt: now,
     updatedAt: now,
     source: "hui",
@@ -1713,6 +1749,87 @@ export async function createSession(
     void renameWithGeneratedTitle(record, () => nameSession({ cwd: namingCwd, prompt: initialPrompt, settings }), registryUpdater);
   }
   return record;
+}
+
+const FORK_SUFFIX = " (fork)";
+const forkTitle = (title: string) => `${title.slice(0, SESSION_TITLE_MAX - FORK_SUFFIX.length)}${FORK_SUFFIX}`;
+
+export type ForkRequest = { entryId?: string; worktree?: boolean; branchName?: string };
+
+/** Validates a fork route body; unknown fields are ignored like every other session route. */
+export function forkRequest(body: Record<string, unknown>): ForkRequest {
+  if (body["entryId"] !== undefined && (typeof body["entryId"] !== "string" || !body["entryId"].trim())) {
+    throw new Error("A fork point must be a history entry id.");
+  }
+  if (body["worktree"] !== undefined && typeof body["worktree"] !== "boolean") throw new Error("Worktree must be true or false.");
+  const branchName = sessionText(body, "branchName", SESSION_TITLE_MAX, { optional: true, allowEmpty: false });
+  if (branchName && body["worktree"] !== true) throw new Error("A branch name requires a new worktree.");
+  return {
+    ...(typeof body["entryId"] === "string" ? { entryId: body["entryId"].trim() } : {}),
+    ...(body["worktree"] === true ? { worktree: true } : {}),
+    ...(branchName ? { branchName } : {}),
+  };
+}
+
+/**
+ * A fork from a session, start to finish: the optional worktree first (from the source checkout's HEAD, on a new
+ * branch, as New Session makes one), then the conversation copy moved into it, then the record. A failure after the
+ * worktree exists removes it again. Uncommitted changes in the source checkout stay there.
+ */
+export async function forkFromSession(
+  source: SessionRecord,
+  request: ForkRequest,
+  fork: (entryId: string | undefined, options?: { cwd: string }) => Promise<string>,
+  sessions: Pick<typeof liveSessions, "accept" | "ensure"> = liveSessions,
+  registryUpdater: typeof updateRegistry = updateRegistry,
+  worktreesRoot?: string,
+): Promise<SessionRecord> {
+  if (!request.worktree) return forkSession(source, await fork(request.entryId), sessions, registryUpdater);
+  if (source.worker) throw new Error("Worktrees are not available on remote workers yet.");
+  const settings = await readSettings();
+  const worktree = await createSessionWorktree({
+    sourceDirectory: source.cwd,
+    title: forkTitle(source.title),
+    branchName: request.branchName ?? `${fallbackBranchName(source.title)}-fork`,
+    branchPrefix: settings.branchPrefix,
+    ...(worktreesRoot ? { root: worktreesRoot } : {}),
+  });
+  try {
+    const reference = await fork(request.entryId, { cwd: worktree.cwd });
+    return await forkSession(source, reference, sessions, registryUpdater, worktree.cwd);
+  } catch (error) {
+    try {
+      await worktree.rollback();
+    } catch (rollbackError) {
+      throw new Error(`${error instanceof Error ? error.message : String(error)} Rollback failed: ${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}`);
+    }
+    throw error;
+  }
+}
+
+/**
+ * Registers a fork's conversation copy as a session of its own. It takes what runs the work from the source (its
+ * directory, worker, group, runtime, model and reasoning) and none of the operator's marks: it starts unpinned, read,
+ * without an icon, Jira links or a Kanban stage. Pull request marks come from the transcript, so pull requests the
+ * source opened before the fork point show on the copy too. It shares the source's checkout; nothing in Git changes.
+ */
+export async function forkSession(
+  source: SessionRecord,
+  piSessionFile: string,
+  sessions: Pick<typeof liveSessions, "accept" | "ensure"> = liveSessions,
+  registryUpdater: typeof updateRegistry = updateRegistry,
+  /** A worktree made for the fork: the session works there instead of in the source's directory. */
+  cwd: string = source.cwd,
+): Promise<SessionRecord> {
+  return createSession({
+    cwd,
+    ...(source.worker ? { worker: source.worker } : {}),
+    group: source.group,
+    title: forkTitle(source.title),
+    tool: source.tool,
+    ...(source.model ? { model: source.model } : {}),
+    ...(source.thinking ? { thinking: source.thinking } : {}),
+  }, sessions, registryUpdater, undefined, { piSessionFile });
 }
 
 /**
@@ -2370,6 +2487,13 @@ async function serveBotRoute(request: Connect.IncomingMessage, response: ServerR
   else sendJson(response, result.status, result.body);
 }
 
+/** `/__hui/bots/:id/triggers…` (`bot-trigger-routes.ts`). */
+async function serveTriggerRoute(request: Connect.IncomingMessage, response: ServerResponse, path: string): Promise<void> {
+  const result = await triggers.routes.handle({ method: request.method ?? "GET", path, body: (maxBytes) => readBody(request, maxBytes) });
+  if (!result) sendJson(response, 404, { error: `unknown route: ${path}` });
+  else sendJson(response, result.status, result.body);
+}
+
 async function handleRequest(
   request: Connect.IncomingMessage,
   response: ServerResponse,
@@ -2441,6 +2565,13 @@ async function handleRequest(
     }
     if (await refusedWhileBotsOff(response)) return;
     await serveBotRoute(request, response, path);
+    return;
+  }
+
+  // A webhook trigger's caller is another program: its token is the credential, not x-hui (`bot-triggers-webhook.ts`).
+  if (isHookPath(path)) {
+    const result = await triggers.hook(request, path);
+    sendJson(response, result.status, result.body);
     return;
   }
 
@@ -2707,7 +2838,7 @@ async function handleRequest(
   }
 
   if (path === BOTS_ROUTE || path.startsWith(`${BOTS_ROUTE}/`)) {
-    if (!await refusedWhileBotsOff(response)) await serveBotRoute(request, response, path);
+    if (!await refusedWhileBotsOff(response)) await (BOT_TRIGGERS_ROUTE.test(path) ? serveTriggerRoute(request, response, path) : serveBotRoute(request, response, path));
     return;
   }
 
@@ -3557,7 +3688,7 @@ async function handleRequest(
       return;
     }
     // A bot's chat never ends: what would reset, shorten or fork it is refused here; the model stays switchable.
-    if (record.bot && request.method === "POST" && (action[2] === "clear" || action[2] === "compact" || action[2] === "rewind")) {
+    if (record.bot && request.method === "POST" && (action[2] === "clear" || action[2] === "compact" || action[2] === "rewind" || action[2] === "fork")) {
       // The bot registry decides; one that cannot be read refuses rather than risk the chat.
       const owner = await bots.botForSession(record.id).then((bot) => bot ? { handle: bot.handle } : undefined, () => ({ handle: undefined }));
       if (owner) {
@@ -3832,6 +3963,21 @@ async function handleRequest(
       }
       return;
     }
+    if (action[2] === "fork" && request.method === "POST") {
+      try {
+        const fork = forkRequest((await readBody(request)) as Record<string, unknown>);
+        if (!liveSessions.ensure(record)) {
+          sendJson(response, 404, { error: `unknown session: ${id}` });
+          return;
+        }
+        await liveSessions.booted(id);
+        const forked = await forkFromSession(record, fork, (entryId, options) => liveSessions.fork(id, entryId, options));
+        sendJson(response, 201, { session: toView(forked, liveSessions.status(forked.id)) });
+      } catch (error) {
+        sendJson(response, 400, { error: error instanceof Error ? error.message : "Could not fork that session." });
+      }
+      return;
+    }
     if (action[2] === "resume" && request.method === "POST") {
       try {
         await liveSessions.continueRun(id);
@@ -3981,6 +4127,11 @@ export async function startBackend(): Promise<void> {
   }));
   initializeWatchers();
   initializeSubagents();
+  // Triggers: what waited for a cooldown across the restart, the session watch and, while bots are on, the pollers.
+  void triggers.start().catch((error: unknown) => recordDiagnosticEvent({
+    area: "session", level: "warning", action: "triggers_start_failed", summary: "Bots' triggers did not start",
+    detail: error instanceof Error ? error.message : String(error),
+  }));
   void secretFiles.sweep();
   await workers.list().catch(() => undefined);
   // Opening the Durable store resumes its interrupted runs, including those of
@@ -4022,11 +4173,13 @@ export function recoverInterruptedSessions(
   return started;
 }
 
-export function stopBackend(): void {
+export async function stopBackend(): Promise<void> {
   macPower?.dispose();
   managedBrowser.dispose();
   terminals.dispose();
   githubCli.dispose();
+  // Before the sessions close: a delivery still going out reaches its bot, and every trigger write has settled.
+  await triggers.stop();
   automation.dispose();
   subagents.dispose();
   watchers.dispose();
@@ -4073,7 +4226,7 @@ export function huiConfig(): Plugin {
       server.middlewares.use(middleware);
     },
     closeBundle() {
-      stopBackend();
+      return stopBackend();
     },
   };
 }

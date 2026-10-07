@@ -1,3 +1,7 @@
+/**
+ * Read access to HUI's own settings file in its config directory. A missing or malformed file yields the
+ * normalized defaults instead of an error.
+ */
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 

@@ -1,0 +1,125 @@
+/* The Triggers section of a bot's Routines tab (src/views/bot-triggers.ts). Built from the panel's own tokens and
+ * the routine cards' look, so the two lists read as one tab. */
+.bot-triggers__list { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.bot-trigger {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+  border-radius: var(--radius-md);
+  background: var(--card);
+}
+.bot-trigger__head { display: flex; align-items: center; gap: 8px; }
+.bot-trigger__source { display: inline-flex; flex: none; color: var(--muted); }
+.bot-trigger__source svg { width: 14px; height: 14px; }
+.bot-trigger__name { flex: 1 1 auto; min-width: 0; color: var(--text-strong); font-weight: 600; overflow-wrap: anywhere; }
+.bot-trigger--paused .bot-trigger__name,
+.bot-trigger--paused .bot-trigger__filter { color: var(--muted); }
+.bot-trigger__filter,
+.bot-trigger__meta,
+.bot-trigger__prompt { margin: 0; color: var(--muted); font-size: var(--control-ui-text-xs); line-height: 1.4; overflow-wrap: anywhere; }
+.bot-trigger__filter { color: var(--text); }
+.bot-trigger__meta--pending { color: var(--warn); }
+.bot-trigger__meta--error { color: var(--danger); }
+.bot-trigger__prompt {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.bot-trigger__actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.bot-trigger__actions .btn,
+.bot-trigger-url .btn { display: inline-flex; align-items: center; gap: 6px; }
+.bot-trigger__actions svg,
+.bot-trigger-url svg { width: 13px; height: 13px; }
+
+.bot-trigger-url {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border));
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--accent) 8%, var(--card));
+}
+.bot-trigger-url__title { margin: 0; color: var(--text-strong); font-weight: 600; overflow-wrap: anywhere; }
+/* The whole URL, wrapped and selected in one click, so it reads and copies even where the clipboard is refused. */
+.bot-trigger-url__value {
+  display: block;
+  padding: 6px 8px;
+  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+  border-radius: var(--radius-sm, 6px);
+  background: var(--bg);
+  color: var(--text-strong);
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: var(--control-ui-text-xs);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+.bot-trigger-url__actions { display: flex; justify-content: flex-end; gap: 6px; }
+
+.bot-triggers__subheading { margin: 4px 0 0; color: var(--muted); font-size: var(--control-ui-text-xs); font-weight: 600; }
+.bot-trigger-run[data-status="fired"] .bot-run__status,
+.bot-trigger-run[data-status="coalesced"] .bot-run__status { color: var(--ok); }
+.bot-trigger-run[data-status="skipped"] .bot-run__status { color: var(--warn); }
+.bot-trigger-run[data-status="failed"] .bot-run__status { color: var(--danger); }
+
+.bot-trigger-form { border: 1px dashed var(--border); border-radius: var(--radius-md); }
+.bot-trigger-form[open] { border-style: solid; background: var(--card); }
+.bot-trigger-form__summary,
+.bot-trigger-form__more-summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
+  color: var(--text);
+  font-weight: 550;
+  list-style: none;
+  cursor: var(--cursor-action, pointer);
+}
+.bot-trigger-form__summary::-webkit-details-marker,
+.bot-trigger-form__more-summary::-webkit-details-marker { display: none; }
+.bot-trigger-form__summary svg { width: 14px; height: 14px; }
+.bot-trigger-form__summary:focus-visible,
+.bot-trigger-form__more-summary:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.bot-trigger-form__body { display: flex; flex-direction: column; gap: 10px; padding: 0 12px 12px; }
+.bot-trigger-form__sources { align-self: flex-start; }
+.bot-trigger-form__sources > .settings-segmented__btn { position: relative; padding: 0 10px; }
+.bot-trigger-form__sources input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+.bot-trigger-form__sources > .settings-segmented__btn:has(input:checked) {
+  background: var(--bg-elevated);
+  color: var(--text-strong);
+  box-shadow: var(--shadow-sm);
+}
+.bot-trigger-form__sources > .settings-segmented__btn:has(input:focus-visible) { box-shadow: var(--focus-ring); }
+.bot-trigger-form__when { display: none; flex-direction: column; gap: 10px; }
+.bot-trigger-form:has(input[name="source"][value="github"]:checked) .bot-trigger-form__when--github,
+.bot-trigger-form:has(input[name="source"][value="session"]:checked) .bot-trigger-form__when--session,
+.bot-trigger-form:has(input[name="source"][value="webhook"]:checked) .bot-trigger-form__when--webhook { display: flex; }
+.bot-trigger-form__checks { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.bot-trigger-form__check { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; color: var(--text); font-size: var(--control-ui-text-sm); }
+.bot-trigger-form__check input { margin: 0; accent-color: var(--accent); }
+.bot-trigger-form__more { border: 1px solid color-mix(in srgb, var(--border) 70%, transparent); border-radius: var(--radius-md); }
+.bot-trigger-form__more-summary { padding: 6px 10px; color: var(--muted); font-size: var(--control-ui-text-sm); }
+.bot-trigger-form__grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding: 0 10px 10px; }
+.bot-trigger-form__grid .bot-field:last-child { grid-column: 1 / -1; }
+.bot-trigger-form__match { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 6px; }
+.bot-trigger-form__cooldown .settings-input { width: auto; align-self: flex-start; }
+.bot-trigger-form__actions { display: flex; justify-content: flex-end; }
+@media (max-width: 420px) {
+  .bot-trigger-form__grid { grid-template-columns: minmax(0, 1fr); }
+  .bot-trigger-form__match { grid-template-columns: minmax(0, 1fr); }
+}
+@media (pointer: coarse) {
+  .bot-trigger-form__check { min-height: 40px; }
+}

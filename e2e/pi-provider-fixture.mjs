@@ -302,6 +302,23 @@ const server = createServer(async (request, response) => {
     text(response, `set_profile answered: ${typeof latestToolResult.result === "string" ? latestToolResult.result : JSON.stringify(latestToolResult.result)}`);
     return finish(response);
   }
+  // A bot scheduling itself with its routines tool, "every 5 minutes until #82 is green": a temporary routine, every 5
+  // minutes for at most 3 runs or 3 hours. That routine's own turn (its prompt carries E2E_ROUTINE_DONE) removes it.
+  if (String(latestToolResult?.id ?? "").startsWith("tool-e2e-routine-")) {
+    text(response, `routines answered: ${typeof latestToolResult.result === "string" ? latestToolResult.result : JSON.stringify(latestToolResult.result)}`);
+    return finish(response);
+  }
+  if (source.includes("E2E_ROUTINE_DONE")) {
+    toolUse(response, "tool-e2e-routine-remove", "routines", { action: "remove", routine: "Watch #82" });
+    return finish(response, "tool_use");
+  }
+  if (source.includes("E2E_ROUTINE_ADD")) {
+    toolUse(response, "tool-e2e-routine-add", "routines", {
+      action: "add", name: "Watch #82", prompt: "E2E_ROUTINE_DONE Check whether PR #82 is green, and remove this routine once it is.",
+      every: "5m", until: new Date(Date.now() + 3 * 3_600_000).toISOString(), runs: 3,
+    });
+    return finish(response, "tool_use");
+  }
 
   if (source.includes("E2E_SHARED_TERMINAL")) {
     toolUse(response, "tool-terminal-list", "terminal", { action: "list" });

@@ -1,9 +1,9 @@
 /**
  * `hui bot`: bots (HUI-18) from a terminal. Everything goes through the running
  * gateway, as in Settings and the Bots tab: the `/__hui/bots` routes, the
- * session API for `chat`, and the Automation routes for routines. The CLI
- * never opens the Durable store or OptChat's files; the gateway is their only
- * writer.
+ * session API for `chat`, and the Automation routes for routines, which
+ * `hui schedule` shares (`schedules.ts`). The CLI never opens the Durable store
+ * or OptChat's files; the gateway is their only writer.
  */
 import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
@@ -14,7 +14,7 @@ import {
 } from "../shared/bots.ts";
 import { voiceLanguage, voiceLanguageName } from "../shared/voice.ts";
 import { gptLiveVoiceLabel } from "../shared/calls.ts";
-import type { AutomationSchedule, AutomationTask } from "../src/lib/automation-types.ts";
+import type { AutomationSchedule } from "../src/lib/automation-types.ts";
 
 export type BotFlags = {
   archived?: boolean;
@@ -238,19 +238,6 @@ export function formatLook(bot: Pick<BotView, "id" | "avatar">): string {
     : `face · ${BOT_FACE_SHAPE_LABELS[look.shape]}${look.derived.shape ? picked : ""} · ${color}`;
 }
 
-const routinesOf = async (base: string, bot: BotView) =>
-  (await request<{ tasks: AutomationTask[] }>(base, "/__hui/automation")).tasks.filter((task) => task.sessionId === bot.sessionId);
-
-function findRoutine(routines: readonly AutomationTask[], bot: BotView, target: string): AutomationTask {
-  const byId = routines.find((task) => task.id === target);
-  if (byId) return byId;
-  const named = routines.filter((task) => task.name === target);
-  if (named.length === 1) return named[0]!;
-  throw new Error(named.length
-    ? `${named.length} routines of @${bot.handle} are named ${target}. Use an id: hui bot routine list ${bot.handle} --json.`
-    : `@${bot.handle} has no routine named ${target}. See hui bot routine list ${bot.handle}.`);
-}
-
 /** Runs one `hui bot` action and returns the exit code. */
 export async function botCommand(base: string, action: string, operands: readonly string[], flags: BotFlags, io: BotIO): Promise<number> {
   const print = (value: unknown, text: string) => io.out(`${flags.json ? JSON.stringify(value) : text}\n`);
@@ -323,30 +310,13 @@ export async function botCommand(base: string, action: string, operands: readonl
     case "skills": return skills(base, bot, flags, io);
     case "chat": return botChat(base, bot, io);
     case "memory": return memory(base, bot, flags, io);
-    case "routine list": {
-      const routines = await routinesOf(base, bot);
-      print(routines, formatRoutines(bot, routines));
-      return 0;
-    }
-    case "routine add": {
-      const { task } = await request<{ task: AutomationTask }>(base, "/__hui/automation/tasks", {
-        method: "POST",
-        body: { name: flags.name, sessionId: bot.sessionId, prompt: flags.prompt, schedule: routineSchedule(flags, io.timezone), enabled: true },
-      });
-      print(task, `Added routine ${task.name} for @${bot.handle}${task.nextRunAt ? `; first run ${task.nextRunAt}` : ""}.`);
-      return 0;
-    }
-    case "routine run": {
-      const task = findRoutine(await routinesOf(base, bot), bot, operands[1]!);
-      const { run } = await request<{ run: unknown }>(base, `/__hui/automation/tasks/${encodeURIComponent(task.id)}/run`, { method: "POST", body: {} });
-      print(run, `Started routine ${task.name}; @${bot.handle} answers in its chat.`);
-      return 0;
-    }
+    case "routine list":
+    case "routine add":
+    case "routine run":
     case "routine remove": {
-      const task = findRoutine(await routinesOf(base, bot), bot, operands[1]!);
-      await request(base, `/__hui/automation/tasks/${encodeURIComponent(task.id)}`, { method: "DELETE" });
-      print({ removed: task.name, id: task.id }, `Removed routine ${task.name} of @${bot.handle}.`);
-      return 0;
+      // Routines are schedules aimed at the bot's chat: `hui schedule`'s code, worded for the bot.
+      const { routineCommand } = await import("./schedules.ts");
+      return routineCommand(base, bot, action.slice("routine ".length), operands.slice(1), flags, io);
     }
     default:
       throw new Error("Unknown command. Run hui --help.");
@@ -888,22 +858,5 @@ export function formatBot(bot: BotView): string {
   ].join("\n");
 }
 
-export function formatSchedule(schedule: AutomationSchedule): string {
-  if (schedule.kind === "at") return `at ${schedule.at}`;
-  if (schedule.kind === "every") {
-    const units = [[86_400_000, "d"], [3_600_000, "h"], [60_000, "m"], [1_000, "s"]] as const;
-    const [size, unit] = units.find(([step]) => schedule.everyMs % step === 0) ?? [1, "ms"];
-    return `every ${schedule.everyMs / size}${unit}`;
-  }
-  return `cron ${schedule.expression} (${schedule.timezone})`;
-}
-
-export function formatRoutines(bot: BotView, routines: readonly AutomationTask[]): string {
-  if (!routines.length) return `@${bot.handle} has no routines. Add one with hui bot routine add ${bot.handle} --name <name> --prompt <text> --every 1d.`;
-  return routines.map((task) => [
-    task.name,
-    formatSchedule(task.schedule),
-    task.enabled ? `next ${task.nextRunAt ?? "-"}` : "disabled",
-    task.id,
-  ].join("  ")).join("\n");
-}
+/** A schedule as `hui schedule` prints it (`schedules.ts`), for `hui bot import`'s preview of a template's routines. */
+export { scheduleText as formatSchedule } from "./schedules.ts";

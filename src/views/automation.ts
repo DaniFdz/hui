@@ -1,3 +1,7 @@
+/**
+ * The Automation page reached from the navigation. It frames the same scheduler surface Settings shows, so the two
+ * cannot drift apart; the scheduler page itself lives in settings-automation.ts.
+ */
 import { html, type TemplateResult } from "lit";
 import { icons } from "../lib/icons.ts";
 import { renderAutomationPage, type AutomationProps } from "./settings-automation.ts";

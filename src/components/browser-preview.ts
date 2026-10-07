@@ -1,3 +1,7 @@
+/**
+ * The agent's browser as a card in the transcript. It decides between streaming and a single snapshot from the turn
+ * and the card's visibility; the browser itself and its frames stay with the gateway and the shared view controller.
+ */
 import { html, nothing, type PropertyValues } from "lit";
 import { keyed } from "lit/directives/keyed.js";
 import { HuiElement } from "../lit/hui-element.ts";

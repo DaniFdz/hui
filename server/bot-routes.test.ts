@@ -10,6 +10,7 @@ import { after, before, test } from "node:test";
 import { botKickoffName, BOTS_OFF_MESSAGE, BOTS_OFF_ROUTINE_MESSAGE, type BotCatalog, type BotMemoryStatus, type BotQuestion, type BotsUpdate, type BotView } from "../shared/bots.ts";
 import type { BotIO } from "../cli/bots.ts";
 import type { TranscriptEntry } from "./runtimes/types.ts";
+import { completeLines } from "./test-support/json-lines.ts";
 
 // One isolated gateway: HUI's directory, PI's agent directory and a deterministic provider, all temporary.
 const dir = await mkdtemp(join(tmpdir(), "hui-bot-routes-"));
@@ -117,7 +118,7 @@ function settledWith(id: string, predicate: (entries: TranscriptEntry[]) => bool
 
 /** Every request the provider received, compactor calls included. */
 async function providerRequests(): Promise<Array<{ model?: string; system?: unknown; messages?: unknown }>> {
-  return (await readFile(log, "utf8")).trim().split("\n").map((line) => JSON.parse(line) as { model?: string; system?: unknown; messages?: unknown });
+  return completeLines(await readFile(log, "utf8")).map((line) => JSON.parse(line) as { model?: string; system?: unknown; messages?: unknown });
 }
 
 const says = (role: "user" | "assistant", text: string) => (entries: TranscriptEntry[]) =>
@@ -187,7 +188,7 @@ test("bots are created, read, edited, archived and restored through the guarded 
   assert.equal((await call("/__hui/bots/ada/memory", "POST", {})).status, 405);
 
   // A forever chat refuses what would reset, shorten, fork or delete it.
-  for (const [path, method, body] of [["clear", "POST", {}], ["compact", "POST", {}], ["rewind", "POST", { entryId: "1" }]] as const) {
+  for (const [path, method, body] of [["clear", "POST", {}], ["compact", "POST", {}], ["rewind", "POST", { entryId: "1" }], ["fork", "POST", { entryId: "1" }]] as const) {
     const refused = await call(`/__hui/sessions/${ada.sessionId}/${path}`, method, body);
     assert.equal(refused.status, 409, path);
     assert.match(String(refused.body["error"]), /@ada's forever chat/u);
@@ -414,11 +415,20 @@ test("the bot list streams: the whole list first, then the bots that changed", {
   const first = await next();
   assert.deepEqual(first.upserts.map((bot) => bot.handle).toSorted(), ["ada", "bob", "mem"]);
   assert.deepEqual(first.ids?.length, 3);
+  const views = new Map(first.upserts.map((bot) => [bot.id, JSON.stringify(bot)]));
   await call("/__hui/bots/bob", "PATCH", { title: "Helper" });
-  const changed = await next();
-  assert.deepEqual(changed.upserts.map((bot) => [bot.handle, bot.title]), [["bob", "Helper"]]);
-  assert.equal(changed.ids, undefined, "membership did not change");
-  assert.ok(changed.revision > first.revision);
+  // Other bots may change meanwhile (the last test's chat settling, its memory building): each frame carries only
+  // bots whose view changed, until the one with bob's new title.
+  let changed: BotsUpdate;
+  do {
+    changed = await next();
+    assert.equal(changed.ids, undefined, "membership did not change");
+    assert.ok(changed.revision > first.revision);
+    for (const bot of changed.upserts) {
+      assert.notEqual(JSON.stringify(bot), views.get(bot.id), `@${bot.handle} is sent only when its view changed`);
+      views.set(bot.id, JSON.stringify(bot));
+    }
+  } while (!changed.upserts.some((bot) => bot.handle === "bob" && bot.title === "Helper"));
   stop.abort();
   await reader.cancel().catch(() => {});
 });
@@ -771,7 +781,7 @@ test("a bot's tools and skills through the routes: what is off leaves its reques
   }
   const refused = await call("/__hui/bots", "POST", { name: "Refused", soul: "x", disabledTools: ["teleport"] });
   assert.equal(refused.status, 400);
-  assert.match(String(refused.body["error"]), /^Unknown tool: teleport\. Tools you can turn off: read, write, edit, bash, .*message_bot\. An extension's tools can be turned off once the bot's chat runs\.$/u);
+  assert.match(String(refused.body["error"]), /^Unknown tool: teleport\. Tools you can turn off: read, write, edit, bash, .*message_bot, triggers, routines\. An extension's tools can be turned off once the bot's chat runs\.$/u);
   const created = await call("/__hui/bots", "POST", { name: "Tooly", soul: "# Who I am\nTOOLY_SOUL.", disabledTools: ["bash"], disabledSkills: ["tools-beta"] });
   assert.equal(created.status, 201);
   const tooly = botOf(created);

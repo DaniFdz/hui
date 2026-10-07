@@ -1,3 +1,7 @@
+/**
+ * Single-key mnemonics for a session's dropdown menu (pin, rename, unread, archive, delete). They run the
+ * matching item instead of Web Awesome's typeahead and stay out of text fields and submenus.
+ */
 import { closeDropdownOnEscape } from "./web-awesome.ts";
 
 /** Menu mnemonics are actions, not Web Awesome typeahead navigation. */

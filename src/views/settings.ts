@@ -1,3 +1,8 @@
+/**
+ * The Settings shell: its page list, drawer and search, and the render functions for the built-in pages. Edits leave
+ * through prop callbacks to the app; the pi-backed pages only report pi's configuration, and self-contained sections
+ * (providers, integrations, tools, browser, workers, calls) are their own elements.
+ */
 import { html, nothing, type TemplateResult } from "lit";
 import { TERMINAL_FONTS, normalizeTerminalFont, terminalFontStack } from "../lib/terminal-font.ts";
 import { TEXT_SCALE_STOPS, TYPEFACES, type TextScaleStop } from "../lib/appearance.ts";

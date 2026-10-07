@@ -1,3 +1,6 @@
+/** Release planning for CI. It decides whether a commit is a release, checks that package.json, package-lock.json and
+ * any tag agree on a rising stable version, and writes the changelog since the previous stable tag. It only reads
+ * git; tagging and publishing belong to the workflow. */
 import { execFileSync } from "node:child_process";
 import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";

@@ -34,6 +34,7 @@ import type { Settings } from "../src/lib/settings.ts";
 import type { HostInfo, RemoteLaunch, RemoteState } from "./worker/host.ts";
 import { RuntimeUnreachableError, type RuntimeEvent, type TranscriptEntry } from "./runtimes/types.ts";
 import { formatCommand, parseCommand, type WorkerInput, type WorkerView } from "../shared/workers.ts";
+import { parseRunOrigins } from "../shared/bots.ts";
 import { invokeAgentTool } from "./agent-tools-bridge.ts";
 import { GATEWAY_ONLY_TOOLS } from "./worker/gateway-tools.ts";
 import { readRegistry } from "./sessions.ts";
@@ -491,6 +492,8 @@ class WorkerConnection {
   async #bridge(params: Record<string, unknown>, signal: AbortSignal): Promise<unknown> {
     const action = typeof params["action"] === "string" ? params["action"] : "";
     const toolParams = isRecord(params["params"]) ? params["params"] : {};
+    // Beside the tool's own parameters, which its model chose: who brought each input of the run, as the host saw them.
+    const runOrigins = parseRunOrigins(params["runOrigins"]);
     const caller = await this.#caller(params);
     const key = caller.id;
     if (!action) throw new Error("That conversation does not run on this worker.");
@@ -499,7 +502,7 @@ class WorkerConnection {
     // Not one of them: a secret's file is written where the session's commands run, so a current host asks with
     // `secret-request`, and one that asks through the bridge predates it.
     if (action === "secret_request") throw new Error("This worker runs an older HUI release without secret requests; it updates once its sessions are idle.");
-    if (action !== "present_media") return invokeAgentTool({ callerSessionId: key, action, params: toolParams, signal });
+    if (action !== "present_media") return invokeAgentTool({ callerSessionId: key, action, params: toolParams, signal, ...(runOrigins ? { runOrigins } : {}) });
     // Media lives on the remote: copy it here, then present it as usual.
     const paths = Array.isArray(toolParams["paths"]) ? toolParams["paths"].filter((path): path is string => typeof path === "string").slice(0, 8) : [];
     const dir = await mkdtemp(join(tmpdir(), "hui-remote-media-"));

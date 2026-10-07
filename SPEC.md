@@ -93,8 +93,9 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   custom values use the same bounded session-icon metadata contract.
   Project grouping remains a read-only projection and never becomes a drop target.
 - OpenClaw's **Assign to** is absent because PI has no multi-user ownership
-  model. **Fork conversation** is absent until PI exposes a transcript-branching
-  RPC; HUI never copies or rewrites PI's JSONL to imitate a fork.
+  model. **Fork conversation** is absent from the row menu: a Pi Durable session
+  forks from a reply in its transcript instead (below). A session still on PI
+  never forks; HUI never copies or rewrites PI's JSONL to imitate a fork.
 - In custom-group mode, custom groups are reordered by dragging a group header
   above or below another group, or with the group menu's keyboard-accessible
   **Move group up** / **Move group down** actions. The order persists in the HUI
@@ -296,7 +297,19 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   context meter's Compact now start one. Continue invokes PI's native
   prompt-free continuation primitive; only when the branch already ends with a
   completed assistant response does HUI send an explicit continuation prompt.
-  Reply and fork remain absent rather than simulated.
+  A finished reply in a Durable session offers **Fork from here**, which first
+  asks where the fork works. In a Git checkout the dialog offers **New worktree**
+  (the default: a separate checkout on a new branch from the checkout's HEAD,
+  suffix `<title>-fork` unless typed; uncommitted changes stay behind) or
+  **Same checkout** (both sessions edit the same files). Outside Git, or on a
+  remote worker, it forks into the same folder. Durable then copies the history
+  up to that reply into a new conversation, which opens at once as a new session
+  in the same group, titled `<title> (fork)`, on the source's model and
+  reasoning. The source keeps its history and any run in flight. The copy starts
+  unpinned and read, without an icon, Jira links, a Kanban stage or OptChat. A
+  failure keeps the dialog open with its reason and removes a worktree it had
+  made. A reply followed by its tool calls, a bot's chat and sessions still on
+  PI offer no fork.
 - Markdown code fences retain the reference's reveal and word-wrap controls;
   copying remains a confirmed clipboard operation with a retryable failure. All
   HUI copy actions prefer the Clipboard API and fall back to a temporary native
@@ -1198,12 +1211,17 @@ everything the Bots tab can, through the same routes.
   turn, in which it asks the operator what they expect, a question or two at a
   time (their real request always comes first), and then writes SOUL.md itself
   with its `write_soul` tool, which only bots' chats have (no file tools
-  needed). It changes SOUL.md when the operator asks, and says so; the operator
-  can also edit it in the Soul tab or with `hui bot soul`. A bot without a
+  needed). It changes SOUL.md when the operator asks, and says so. Only the
+  operator's turns (and HUI's kickoff) can rewrite it: SOUL.md steers every
+  later turn, so a turn that took a message from a routine, a trigger or
+  another bot (the one that started it, or one that joined it while it ran)
+  can't, as it can't rename the bot. The operator can also edit it in the
+  Soul tab or with `hui bot soul`. A bot without a
   model of its own runs on Settings' primary model, like a new session.
 - **Named by talking.** A bot created without a name is *New Bot*; its first
   conversation asks what to call it, and it renames itself with a bot-only
-  `set_profile` tool (only in turns the operator started). A handle derived
+  `set_profile` tool (only in turns the operator started that took no message
+  from a routine, a trigger or another bot). A handle derived
   from the old name follows the new one; a chosen handle stays.
 - **Forever, until deleted.** Clearing, compacting, rewinding or deleting a bot's chat is
   refused; archiving the bot deletes nothing, disables its routines and stops a
@@ -1214,13 +1232,24 @@ everything the Bots tab can, through the same routes.
   on a bot's chat sees a message another one sent (a routine, a bot, the Bots
   tab) before the reply to it.
 - **Routines** are Automation tasks aimed at a bot's chat, marked
-  `[routine: <name>]`, queued behind a busy bot instead of skipped.
+  `[routine: <name>]`, queued behind a busy bot instead of skipped. A bot
+  schedules its own with a `routines` tool, temporary ones included, which end
+  by themselves at a time or after a number of runs; `hui schedule` manages
+  every scheduled task from a terminal (decision below).
 - **Tools and skills.** A bot has every tool and skill a session in its
   directory has, new ones included, until the operator turns some off in its
   panel's Tools tab or with `hui bot tools` / `hui bot skills`. The host that
   runs its chat enforces what is off (a worker's host for a bot on a worker); the
   bot asks for it back with `request_access`, which only the operator answers.
   Tools are the boundary, not a sandbox.
+- **Triggers** wake a bot when something happens elsewhere, beside its routines
+  (decision below): pull requests on GitHub, read through the gateway's `gh`
+  with one conditional poller per repo; the sessions it started finishing,
+  failing or asking; or a webhook URL with a secret token, on the tailnet.
+  Each delivery is `[trigger: <name> · <summary>] <prompt>` in its chat;
+  a cooldown coalesces events into one delivery and an hourly cap holds the
+  rest. The Routines tab lists them, `hui bot trigger` manages them, and the
+  bot can manage its own with a `triggers` tool.
 - **Bots talk to bots** with a `message_bot` tool only bots' chats have,
   beside a byte-stable list of the other bots in their system prompt. A message
   arrives as `[from @handle] …`; chains stop after three hops and each bot sends
@@ -1243,7 +1272,8 @@ everything the Bots tab can, through the same routes.
   appear in the Sessions list, its search, Kanban, the Sessions page, the
   command palette or session pickers; Automations labels their routines
   *Bot · name* and words
-  their schedules as the bot's panel does (*Daily at 08:00*). The roster
+  their schedules as the bot's panel does (*Daily at 08:00*), and shows who
+  made a task when a bot did and a temporary one's limits. The roster
   lists bots by latest activity: the bot's animated face (or its emoji), the
   name, the latest message or role, a short time, an activity badge (active,
   waiting for an answer, summarizing memory, failed), an unread dot (also on the
@@ -1274,9 +1304,14 @@ everything the Bots tab can, through the same routes.
   the chat (open or closed and the tab are remembered; on narrow screens it
   opens on request as a sheet over the chat); its header names the bot beside
   Close and its tabs fill a row of their own under it. Routines lists the bot's Automation tasks with schedule,
-  next run, an enable switch, Run now and Delete, adds routines every N
+  next run, who made one when the bot did and a temporary one's limits (*made by
+  @ada*, *until 18:00*, *3 runs left*), an enable switch, Run now and Delete, adds routines every N
   minutes/hours/days, daily, weekly or once in the browser's time zone, and shows
-  the latest runs. Memory shows messages, the view against its 128 KB budget,
+  the latest runs; under them, Triggers lists the bot's triggers (source, what
+  they watch, last fired, cooldown, events waiting, an enable switch, Test,
+  Delete and, for a webhook, New URL), shows a new webhook URL once with Copy,
+  adds triggers for each source and shows their latest runs, read again every
+  few seconds while it shows. Memory shows messages, the view against its 128 KB budget,
   its lines, pending summaries, what the summarizer spent since the gateway
   started (calls, tokens, a cost once one is reported), *Summarizing memory…*
   and failures, and lists the view's `id+n|text` lines (a click opens a line
@@ -1325,6 +1360,100 @@ everything the Bots tab can, through the same routes.
 The contract is [docs/api.md#bots](docs/api.md#bots).
 
 ## Decisions
+
+### Schedules are a CLI, and bots schedule their own routines (2026-10-07)
+
+With the Bots stack on `main` behind Labs, the owner asked: "Schedules should be a
+cli as well, and can be attached to bots, so they can create them themselves."
+Schedules are HUI's Automation tasks, so nothing new schedules anything: the
+scheduler gains a terminal and bots gain a tool over the same tasks.
+
+- **`hui schedule`** (alias `schedules`) lists, shows, adds, edits, pauses,
+  resumes, runs and removes every task through the Automation routes, attached
+  to a session (`--session`, by id or exact title) or a bot (`--bot`, which aims
+  it at the bot's chat: one of its routines). Edit changes only the flags given,
+  and `--bot`/`--session` moves a task. `hui bot routine …` runs on the same
+  code. While bots are off, anything that names a bot, its chat or one of its
+  routines prints the gateway's refusal and `list` leaves bots' routines out;
+  sessions' schedules work regardless.
+- **A bot's `routines` tool** lists, adds, changes and removes the routines of
+  its own chat, beside `write_soul`, `set_profile` and `request_access` in the
+  bot tools' extension. It is a normal switch in the Tools tab, *Manage its own
+  routines*, on by default and not powerful: unlike a bot's own tools the
+  operator can turn it off, and it schedules nothing but prompts to the bot
+  itself.
+- **Temporary routines** end by themselves: `until` (an end time) and/or `runs`
+  (a run count), after either of which HUI deletes the routine. That is the
+  "every 5 minutes until #82 is green" pattern; the bot can also remove the
+  routine itself, from that routine's own turn too, which then finishes. Every
+  run HUI starts counts, by hand or scheduled, except a skipped one, and a run
+  still going at the end finishes on its own. The operator can make temporary
+  schedules too (`--until`, `--runs`).
+- **Guardrails**, at the gateway, for bots on workers too: only its own chat's
+  tasks (another bot's or session's are never seen or touched); at most 20
+  enabled routines per bot's chat once it adds or resumes one, and Automation's
+  one-minute minimum; and adding or changing one is refused in a turn that took
+  a message from another bot (`[from @…]`) or anything but the operator, its
+  routines and HUI's kickoff, the one that started it or one that joined it,
+  judged by every input of the run as `set_profile` judges it, while the
+  operator's turns, its routines' turns and HUI's kickoff may. Listing and
+  removing work in any turn, since they never make more work. Changing is
+  refused with adding because a change can make a routine more frequent or
+  longer-lived; the operator's own routes have no cap.
+- **Who made it** (the operator or a bot, by id and handle) and the limits are
+  optional fields of the task, so the store keeps its version and tasks from
+  before load unchanged; a route body never names a maker. The bot's Routines
+  tab and Automations show *made by @bot*, *until 18:00* and *3 runs left*.
+
+### Triggers wake bots on GitHub, session and webhook events (2026-10-07)
+
+Looking at Grok Bot's triggers ("a bot can listen for events from other apps,
+watch a Slack thread or a GitHub PR"), the owner asked: "This is nice, and fits
+really good some of my use cases. Listening on PR's, listening on slack
+messages, etc. Is that possible?" So bots get triggers beside their routines:
+what wakes them when something happens, where a routine wakes them on a
+schedule. GitHub, session and webhook sources land first; Slack waits until the
+owner names a workspace, and its Socket Mode connection fits the same source
+contract (events in, matched against a filter, delivered through the same
+cooldown and cap), since it needs no public endpoint either.
+
+- **No public endpoint.** HUI runs on the operator's machine behind Tailscale.
+  GitHub is polled, never a GitHub webhook; the webhook route answers only
+  loopback and Tailscale's addresses, and Tailscale Funnel stays the
+  operator's own choice.
+- **Per-repo listing, not the notifications API.** Notifications would be one
+  request for every repo, but they only cover the threads the operator watches
+  or takes part in, under their GitHub notification settings; their reason is
+  sticky per thread (one stays `mention` after the first mention), so a new
+  mention or review can't be told from an old one; checks come only for
+  workflow runs the operator started; and what happened (which check failed,
+  who approved, merged or closed) needs a request per thread anyway. A repo's
+  pull requests, sorted by their last update, answer most of it in one
+  request, the rest only for what the repo's triggers want. Every request
+  carries the last ETag, so a quiet repo costs 304s, which GitHub doesn't count
+  against the rate limit.
+- **Never twice, never a flood.** A repo's first poll is a silent baseline and
+  its cursor is saved before any event goes out, so a restart never repeats
+  one. Turning bots on again (or a gateway restart) collapses what happened
+  while HUI wasn't watching into one catch-up delivery per trigger rather than
+  skipping it: the bot learns what it missed in one message. Session events
+  while bots are off are skipped (recorded), and webhooks are refused with 409
+  so their sender knows.
+- **Bounded turns.** Events within a trigger's cooldown (5 minutes by default)
+  coalesce into one delivery that lists them; a bot takes at most 12 trigger
+  deliveries an hour and at most 20 triggers; what comes past the cap waits
+  rather than being dropped.
+- **Only the operator widens what wakes a bot.** The bot's `triggers` tool adds
+  and changes its own triggers only in turns that took no message from another
+  bot or a trigger, neither the one that started them nor one that joined them
+  while they ran (a trigger's event is text from outside HUI, a PR comment or a
+  webhook body, which must not be able to add more triggers); it can't make
+  webhook triggers, whose token would pass through the model. The operator's
+  own comments and reviews never wake a bot, since a bot that comments through
+  `gh` posts as the operator and would wake itself.
+- **Sessions: only the bot's own, for now.** A bot watches the sessions it
+  started; the owner is still deciding how far bots may reach into other
+  sessions, so that rule is one function (`sessionWatchable`).
 
 ### Bots import other platforms' templates and export their own (2026-10-07)
 

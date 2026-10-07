@@ -120,12 +120,29 @@ hui workers edit devbox --extra-path ~/.pi/agent/mcp.json
 hui workers remove devbox
 ```
 
+Scheduled tasks (Automations) work from a terminal too: a prompt HUI sends a
+session or a bot's chat on a schedule (`hui schedules` is the same command).
+`<schedule>` is an id or an exact name and `<session>` a session's id or exact
+title; edit changes only the flags given, and `--until`/`--runs` make a
+temporary schedule that HUI deletes after either:
+
+```sh
+hui schedule list [--bot <bot> | --session <session>] [--json]
+hui schedule show <schedule> [--json]
+hui schedule add --name <name> --prompt <text> (--at <ISO time> | --every <duration> | --cron <expr> [--timezone <tz>])
+                 (--bot <bot> | --session <session>) [--description <text>] [--timeout <seconds>]
+                 [--until <ISO time>] [--runs <n>] [--disabled] [--json]
+hui schedule edit <schedule> [same flags as add] [--json]   # --bot/--session move it; --until "" / --runs "" clear them
+hui schedule pause|resume|run|remove <schedule> [--json]
+```
+
 Bots are a **preview**, off until you turn them on in Settings → Labs → **Bots**,
 their one switch (the sidebar then gets its Agents | Bots switch). While they are
 off nothing of them shows or runs, `hui bot` prints the gateway's refusal, and
 nothing is deleted. They are named agents with one forever chat each, whose memory never needs
 clearing. A new bot starts by asking what you expect from it, then writes its
-persona (SOUL.md) itself; they can run routines and message one another. Everything the Bots tab
+persona (SOUL.md) itself; they can run routines, schedule their own (temporary
+ones end by themselves) and message one another. Everything the Bots tab
 does works from a terminal too, through the running gateway (`hui bots` is the
 same command). `<bot>` is an id, a handle or an exact name:
 

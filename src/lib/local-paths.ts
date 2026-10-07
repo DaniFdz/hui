@@ -1,3 +1,7 @@
+/**
+ * Path completion in the composer: finding the path or `@` mention at the caret, splicing a chosen suggestion
+ * back in, and asking the gateway for matches. The browser never reads the filesystem itself.
+ */
 import { fetchJson } from "./settings-store.ts";
 
 export type LocalPathSuggestion = {

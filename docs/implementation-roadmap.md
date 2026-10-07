@@ -233,8 +233,9 @@ The menu-parity follow-up replaces the flattened row actions with OpenClaw
 icon, group placement, copy link/Markdown/ID, open in tab/window/editor
 and delete. Archive/read/appearance are durable HUI metadata; archived rows are
 restorable from Sessions. `Assign to` remains excluded because PI has no owner
-model, and transcript fork remains excluded because PI exposes no fork RPC and
-its JSONL is externally owned. Desktop/mobile Browser proof is recorded in
+model, and the row menu's fork remains excluded: PI exposes no fork RPC and
+its JSONL is externally owned. Pi Durable sessions later gained a fork from a
+reply in the transcript instead (SPEC Part 1). Desktop/mobile Browser proof is recorded in
 [`e2e/session-menu-parity.browser.md`](../e2e/session-menu-parity.browser.md).
 The picker follow-up restores OpenClaw's custom-emoji entry and uses centered
 SVG reset controls for both color and icon instead of typographic crosses.
@@ -925,6 +926,70 @@ requests:
    `src/lib/live-call.test.ts`, `cli/*.test.ts`, and an isolated gateway driven
    in a browser ([`e2e/bots-labs.browser.md`](../e2e/bots-labs.browser.md),
    screens in the pull request).
+10. **Schedules as a CLI, and bots that schedule their own routines**
+    (implemented 2026-10-07; the owner's request, SPEC.md, "Schedules are a CLI,
+    and bots schedule their own routines"): `hui schedule` (alias `schedules`)
+    lists, shows, adds, edits, pauses, resumes, runs and removes every
+    Automation task, attached to a session or a bot (`--session`/`--bot`, which
+    also move a task on edit), and `hui bot routine` runs on its code. A bot's
+    `routines` tool (the bot tools' extension, *Manage its own routines* in the
+    Tools tab, on by default, not powerful) lists, adds, changes and removes its
+    own chat's routines, behind the gateway's guards: its own chat only, 20
+    active at most, once a minute at most, and no adding or changing in a turn
+    another bot started (set_profile's origin check). Temporary tasks take
+    `until` and/or `runs` and are deleted after either, across a restart too;
+    a bot can remove its routine from that routine's own turn. Tasks record who
+    made them (`createdBy`) and their limits as optional fields, shown in the
+    Routines tab and on Automations (*made by @bot*, *until 18:00*, *3 runs
+    left*). Bots off, every bot-facing part refuses and `hui schedule` prints
+    the gateway's refusal; sessions' schedules work regardless. Proof:
+    `server/automation.test.ts` (makers, limits, expiry by `until` and by runs,
+    a skipped run given back, across a restart), `server/bot-routines.test.ts`
+    (own tasks only, the cap, the minimum interval, names, the origin check,
+    removal from a routine's own turn), `server/runtimes/durable-bot-routines.test.ts`
+    (the tool in the bot tools' extension, the catalog entry, turned off and
+    refused by the bridge), `server/bot-schedules.test.ts` (a real gateway: a
+    bot adds a temporary routine through a real turn, that routine's turn
+    removes it, another bot's message can't add one, `hui schedule` with bots
+    off), `server/bot-workers.test.ts` (the tool from a bot on a worker),
+    `cli/schedules.test.ts`, `cli/*.test.ts`, `src/lib/bot-routines.test.ts`
+    and an isolated gateway driven in a browser
+    ([`e2e/bot-schedules.browser.md`](../e2e/bot-schedules.browser.md), screens
+    in the pull request).
+11. **Triggers** (implemented 2026-10-07; the owner's request, SPEC.md, "Triggers
+   wake bots on GitHub, session and webhook events"): per-bot triggers beside its
+   routines in `bot-triggers.json` (owner-only, atomic, like `bots.json`), the
+   GitHub pollers' cursors in `bot-trigger-cursors.json`. Three sources: GitHub
+   (one poller per repo through the gateway's `gh api --include`, conditional on
+   ETags so quiet polls are free 304s, `X-Poll-Interval` and `Retry-After`
+   honoured, a silent baseline and cursors saved before events go out; pull
+   requests opened, pushed, merged and closed, checks failed or passed, reviews,
+   comments and mentions of the operator, filtered by author, label, base, number
+   and draft), sessions the bot started (finished, failed, waiting; one check,
+   `sessionWatchable`), and webhooks (`POST /__hui/hooks/<token>`, tailnet and
+   loopback only, a token shown once and stored hashed, a 64 KiB body, an optional
+   equals/contains field filter). Deliveries are `[trigger: <name> · <summary>]
+   <prompt>` with the event's details through the bot's message path (its remote
+   session for a bot on a worker), recorded as runs; a cooldown coalesces events
+   into one delivery, and a bot takes at most 12 deliveries an hour and has at
+   most 20 triggers. Bots off: pollers stop, webhooks answer 409, session events
+   are skipped; on again, a catch-up delivery per trigger. The bot's `triggers`
+   tool (an ordinary Tools switch under Bots) lists, adds, changes and removes its
+   own, never adding or changing in a turn another bot or a trigger started, and
+   never a webhook. The Routines tab's Triggers section and `hui bot trigger
+   list|add|remove|test`. Slack (Socket Mode) is next, once the owner names a
+   workspace. Proof: `server/bot-triggers*.test.ts` (a fake gh for the pollers,
+   ETag/304 accounting, cursors across a restart, coalescing, the hourly cap,
+   catch-up, the tool's origin checks, the webhook token, filter and size cap,
+   bots off), `server/bot-trigger-routes.test.ts` (a real gateway: a webhook and
+   a fake GitHub's pull request reaching the bot through the fixture provider,
+   the bot's tool, the CLI, bots off), `server/bot-workers.test.ts` (a real local
+   worker: a webhook's delivery runs on the worker, and the bot's tool there
+   reaches the gateway), `server/runtimes/durable-bot-access.test.ts`,
+   `src/lib/bot-triggers.test.ts`, `src/views/bot-triggers.test.ts`,
+   `cli/bot-triggers.test.ts` and an isolated gateway driven in a browser
+   ([`e2e/bot-triggers.browser.md`](../e2e/bot-triggers.browser.md), screens in
+   the pull request).
 
 ### HUI-19 — Agent widgets
 

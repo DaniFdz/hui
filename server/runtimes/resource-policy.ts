@@ -1,3 +1,7 @@
+/**
+ * Applies HUI's per-resource switches to PI packages and extensions. Resources get stable hashed IDs, and the SDK
+ * reads an in-memory settings copy without the disabled ones; PI's own settings files are never modified.
+ */
 import { createHash } from "node:crypto";
 
 import { SettingsManager } from "@earendil-works/pi-coding-agent";

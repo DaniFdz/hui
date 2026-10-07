@@ -1,3 +1,9 @@
+/**
+ * Interactive shells the operator opens inside a conversation. Owns the PTY processes, their bounded replay
+ * buffers and the per-session and global limits, and lets that conversation's agent use the same terminals
+ * through the terminal tool. Terminals live only in this gateway process; closing one kills its whole process
+ * tree.
+ */
 import { randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { userInfo } from "node:os";

@@ -1,3 +1,7 @@
+/**
+ * Narrows PI's model catalog to the models the user selected, in HUI's provider settings or PI's models.json.
+ * It decides which models HUI lists, not which ones may be called, and reads only provider names and model IDs.
+ */
 import { readProviderSelections, type ProviderSelections } from "./hui-models.ts";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";

@@ -1,3 +1,5 @@
+/** Child entry point for a detached gateway. The parent CLI sends the gateway options over IPC; this process starts the
+ * gateway, reports readiness or the startup error back, then drops the channel and keeps serving on its own. */
 import { runGateway, type GatewayOptions } from "../server/gateway.ts";
 
 process.once("message", (options: GatewayOptions) => {

@@ -26,9 +26,11 @@ import { dirname, resolve, sep } from "node:path";
 import { defineTool, section, type ConversationId, type PromptSection, type ToolExecutionResult, type ToolRegistration } from "@earendil-works/pi-durable";
 import type { Skill } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { BOT_ACCESS_ANSWERS, botTurnOrigin, type BotAccess, type BotCatalogSkill, type BotCatalogTool, type BotSkillRef, type BotToolGroup } from "../../shared/bots.ts";
+import { BOT_ACCESS_ANSWERS, botTurnOrigin, type BotAccess, type BotCatalogSkill, type BotCatalogTool, type BotSkillRef, type BotToolGroup, type BotTurnOrigin } from "../../shared/bots.ts";
 import { bundledSkills } from "../bundled-skills.ts";
 import { BotDoc, conversationBotState, MESSAGE_BOT_TOOL, SET_PROFILE_TOOL, WRITE_SOUL_TOOL } from "./durable-bots.ts";
+import { ROUTINES_TOOL } from "./durable-bot-routines.ts";
+import { TRIGGERS_TOOL, TRIGGERS_TOOL_INFO } from "./durable-bot-triggers.ts";
 import { huiToolDefinitions } from "./hui-tools.ts";
 import type { QuestionDraft } from "./question-box.ts";
 import type { RuntimeQuestionResponse } from "./types.ts";
@@ -97,6 +99,8 @@ const CODING_TOOLS: Readonly<Record<string, { group: BotToolGroup; label: string
 };
 const BOT_TOOLS: Readonly<Record<string, { label: string; description: string }>> = {
   [MESSAGE_BOT_TOOL]: { label: "Message bots", description: "Message another bot of this HUI, which answers in its own chat" },
+  [ROUTINES_TOOL]: { label: "Manage its own routines", description: "List, add, change and remove its own routines, temporary ones included" },
+  [TRIGGERS_TOOL]: TRIGGERS_TOOL_INFO,
 };
 
 function firstSentence(text: string): string {
@@ -280,6 +284,11 @@ export interface BotChat {
   /** The message that started the run going now (or the latest one): who started the turn, as `botTurnOrigin` reads
    * it. */
   runInput(): string | undefined;
+  /** The newest message the conversation took, read from its store: one that joined the running turn since (a follow-up
+   * does, on a worker) is what its model answers then. */
+  latestInput(): Promise<string | undefined>;
+  /** Who brought each input of the run going now: its first message and every one it took since. */
+  runOrigins(): Promise<readonly BotTurnOrigin[]>;
 }
 
 export type BotAccessDeps = {
@@ -308,6 +317,7 @@ export function turnNote(input: string | undefined): string | undefined {
   const origin = botTurnOrigin(input);
   switch (origin.kind) {
     case "routine": return `Asked during the routine "${origin.name}".`;
+    case "trigger": return `Asked while handling the trigger "${origin.name}".`;
     case "bot": return `Asked while handling a message from @${origin.handle}.`;
     case "kickoff": return "Asked in its first turn, before you wrote.";
     case "operator": return undefined;

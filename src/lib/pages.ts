@@ -1,3 +1,7 @@
+/**
+ * Catalog of HUI's routed pages, each served at `/<id>` with its label, area and summary. Sessions, Settings
+ * and the Kanban board are routed separately in `navigation.ts`.
+ */
 export type HuiPage = {
   id: string;
   label: string;

@@ -1,3 +1,8 @@
+/**
+ * A panel showing one of a session's shared terminals, drawn with ghostty-web. The PTY lives in the gateway: this
+ * element replays its snapshot, streams output and input over the terminal socket, reconnects with backoff and resizes
+ * the PTY to fit. Hiding the panel leaves the terminal running; only "End terminal" stops it.
+ */
 import { html, nothing, type PropertyValues } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import type { Terminal, FitAddon } from "ghostty-web";

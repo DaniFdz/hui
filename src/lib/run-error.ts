@@ -1,3 +1,8 @@
+/**
+ * The notice the composer shows when a run ends on a runtime or provider error, and the prompt sent to
+ * continue after it. The error row itself stays in the transcript; this only surfaces it outside the
+ * collapsed activity.
+ */
 import type { TranscriptItem } from "./sessions-store.ts";
 
 export type RunErrorNotice = {

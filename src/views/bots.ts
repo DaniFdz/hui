@@ -31,13 +31,14 @@ import {
   BOT_PANEL_TABS,
   type BotPanelTab,
 } from "../lib/bot-roster.ts";
-import { botRoutineRuns, botRoutines, routineSchedule, RoutineFormError, ROUTINE_WEEKDAYS } from "../lib/bot-routines.ts";
+import { botRoutineRuns, botRoutines, routineFacts, routineSchedule, RoutineFormError, ROUTINE_WEEKDAYS } from "../lib/bot-routines.ts";
 import { memoryBudgetLabel, memoryUsageDetail, memoryUsageLabel, type MemoryLine } from "../lib/bot-memory.ts";
 import { renderMarkdown } from "../lib/markdown.ts";
 import { describeRoutineSchedule, formatTimestamp, runIsActive } from "./settings-automation.ts";
 import { renderSettingsToggle } from "./settings-toggle.ts";
 import { renderBotSettings, type BotSettingsProps } from "./bot-settings.ts";
 import { renderBotToolsTab, type BotToolsProps } from "./bot-tools.ts";
+import { renderBotTriggers, type BotTriggersProps } from "./bot-triggers.ts";
 
 // Node's focused view tests import this module without a CSS loader.
 if (typeof document !== "undefined") {
@@ -399,6 +400,8 @@ export type BotPanelProps = {
   };
   /** The Tools tab's state and actions (`BotToolsController.props`). */
   tools: Omit<BotToolsProps, "bot">;
+  /** The Routines tab's Triggers section (`BotTriggersController.props`). */
+  triggers: Omit<BotTriggersProps, "bot" | "now">;
   /** The Settings tab: everything but the bot, the ids and its face, which the panel supplies. */
   settings: Omit<BotSettingsProps, "bot" | "id" | "face">;
 };
@@ -437,12 +440,21 @@ function renderRoutine(task: AutomationTask, props: BotPanelProps) {
       ${renderSettingsToggle(`Enable ${task.name}`, task.enabled, (checked) => routines.onSetEnabled(task, checked), routines.pending)}
     </div>
     <p class="bot-routine__meta">${describeRoutineSchedule(task.schedule)} · ${task.enabled ? `next ${formatTimestamp(task.nextRunAt)}` : "paused"}</p>
+    ${renderRoutineFacts(task, props)}
     <p class="bot-routine__prompt" title=${task.prompt}>${task.prompt}</p>
     <div class="bot-routine__actions">
       <button type="button" class="btn btn--sm bot-routine__run" ?disabled=${routines.pending} aria-label=${`Run now: ${task.name}`} @click=${() => routines.onRun(task)}>${playIcon}<span>Run now</span></button>
       <button type="button" class="btn btn--sm btn--ghost bot-routine__delete" ?disabled=${routines.pending} aria-label=${`Delete ${task.name}`} @click=${() => routines.onDelete(task)}>${icons.trash}<span>Delete</span></button>
     </div>
   </li>`;
+}
+
+/** Who made a routine when the bot did, and a temporary routine's limits: "made by @ada", "until 18:00", "3 runs left". */
+function renderRoutineFacts(task: AutomationTask, props: BotPanelProps) {
+  const facts = routineFacts(task, { handle: (botId) => (botId === props.bot.id ? props.bot.handle : undefined), timeZone: props.timezone });
+  return facts.length
+    ? html`<ul class="bot-routine__facts" aria-label=${`About ${task.name}`}>${facts.map((fact) => html`<li class="bot-routine__fact">${fact}</li>`)}</ul>`
+    : nothing;
 }
 
 function renderRun(run: AutomationRun) {
@@ -664,7 +676,7 @@ function renderSoulTab(props: BotPanelProps) {
 
 function renderPanelTab(props: BotPanelProps) {
   switch (props.tab) {
-    case "routines": return renderRoutinesTab(props);
+    case "routines": return html`${renderRoutinesTab(props)}${renderBotTriggers({ bot: props.bot, now: Date.now(), ...props.triggers })}`;
     case "memory": return renderMemoryTab(props);
     case "soul": return renderSoulTab(props);
     // Keyed, as Settings: another bot's switches and skill search start afresh.

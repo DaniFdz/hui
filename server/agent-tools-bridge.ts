@@ -8,6 +8,7 @@
  */
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { createServer, type IncomingMessage, type Server } from "node:http";
+import type { BotTurnOrigin } from "../shared/bots.ts";
 
 const MAX_BODY_BYTES = 64 * 1024;
 const TOKENS = new Map<string, string>();
@@ -20,6 +21,9 @@ export type AgentToolInvocation = {
   signal?: AbortSignal;
   /** The worker whose connection carried the call (workers.ts); never set from a request body. */
   fromWorker?: string;
+  /** From a bot's chat: who brought each input of the run the call is made in, as the Durable host running it saw them
+   * (its first message and every one since); absent when that host can't tell. Never set from a request body. */
+  runOrigins?: readonly BotTurnOrigin[];
 };
 
 type AgentToolHandler = (invocation: AgentToolInvocation) => Promise<unknown>;

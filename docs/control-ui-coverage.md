@@ -41,7 +41,7 @@ Actual session routes and their questions are exercised separately.
 |---|---|
 | Chat / New Session | Real PI RPC, create/open/resume, streaming/stop/reconnect, model/effort, tools, supported Markdown/copy, uploads, queue/steer, context, progress, session-born subagents and shared PTY panels/tool |
 | Question (inside sessions) | Select/custom answer, confirm, text input, editor with prefill, submit and skip |
-| Sessions / sidebar | Search, groups/defaults, rename, pin, automatic interrupted-run recovery, accent unread state, archive/restore, icon, move, copy/open actions, nested child sessions, remove HUI entry without deleting PI transcript, keyboard menus, drawers and history. Owner assignment and transcript fork remain explicit PI protocol gaps. |
+| Sessions / sidebar | Search, groups/defaults, rename, pin, automatic interrupted-run recovery, accent unread state, archive/restore, icon, move, copy/open actions, nested child sessions, remove HUI entry without deleting PI transcript, keyboard menus, drawers and history. Owner assignment remains an explicit PI protocol gap; transcript fork exists for Pi Durable sessions as a reply action, not a row-menu item. |
 | Appearance | Themes/import validation, mode/system resolution, accent/reset, independent interface/chat fonts (ten choices), text scale, message width, collapsed progress, send shortcut and follow-up preference |
 | Skills / Plugins / Plugin | Discovery, bounded read-only skill/package/extension viewer, HUI-only enable/disable before SDK resource loading, low-cost agent-assisted skill install, PI package install and confirmed removal, inventory/details |
 | Skill Workshop | Discovery/ownership projection only; publication is not implemented |

@@ -359,12 +359,15 @@ needs no file access): only what you told it or agreed to, since it asks rather
 than guesses. Then it says so, sums it up and tells you how to change it. If
 your first message asks for real work, it does the work first. A bot created
 with a name (`hui bot add --name Ada`) never asks about its name. Messages from
-routines and other bots don't count as you.
+routines, triggers and other bots don't count as you.
 
 From then on every turn reads SOUL.md, so a change applies from the next
 request. To change it, tell the bot ("be more formal", "don't message me before
-nine"): it edits SOUL.md and says so. Or edit it yourself in the bot's **Soul**
-tab, or from a terminal:
+nine"): it edits SOUL.md and says so. Only your own messages can make it do
+that, as with its name: in a turn that a routine, a trigger or another bot
+started, or that took a message from one while it ran, it can't rewrite
+SOUL.md, so text from elsewhere never becomes what steers it from then on. Or
+edit it yourself in the bot's **Soul** tab, or from a terminal:
 
 ```sh
 hui bot soul ada                    # print SOUL.md
@@ -384,7 +387,8 @@ at its next turn.
 A bot has every tool and skill a session in its directory has: reading,
 writing and editing files, the shell, HUI's tools (the shared terminal,
 subagents, the browser, presenting media…), its PI extensions' tools,
-messaging other bots, and the skills PI finds there. Everything is on until you
+messaging other bots, managing its own routines, and the skills PI finds there.
+Everything is on until you
 turn something off, and whatever appears later (a new extension, a HUI update, a
 new skill) is on too. That is the trade-off of everything on by default: a bot
 you restricted by hand gains newly installed tools, so look at its Tools tab
@@ -431,7 +435,10 @@ told and from its `/skill:` commands.
 can reach whatever your account can, the files of skills you turned off and
 HUI's own API included. Messaging other bots lets it ask a better-equipped bot
 to do something for it; turn **Message bots** off to prevent that. To really
-isolate a bot, run it on a worker in a container.
+isolate a bot, run it on a worker in a container. **Manage its own routines**
+is not powerful: it only schedules prompts to the bot's own chat
+([Routines](#routines)); turn it off and the bot keeps only the routines you
+give it.
 
 ### Bots on a worker
 
@@ -512,14 +519,28 @@ question, which you then answer in `hui bot chat` (a secret in its Secret card).
 ### Routines
 
 Routines are Automation tasks aimed at a bot's chat; they appear in Automations
-too.
+too. You add them in the bot's Routines tab, in Automations, or from a terminal,
+where `hui schedule` manages every scheduled task and `hui bot routine` a bot's:
 
 ```sh
 hui bot routine add ada --name Standup --prompt "Summarize yesterday's work" --cron "0 9 * * 1-5"
 hui bot routine add ada --name Inbox --prompt "Triage new issues" --every 2h
 hui bot routine run ada Standup
 hui bot routine list ada
+hui schedule add --bot ada --name "Watch #82" --prompt "Is PR #82 green yet?" --every 5m --until 2026-10-07T18:00 --runs 12
+hui schedule list --bot ada
 ```
+
+A bot can also schedule its own routines, with a tool of its own: ask it to
+"check every 5 minutes until #82 is green" and it adds a **temporary** routine
+that ends by itself, at a time (*until 18:00*) and/or after a number of runs
+(*3 runs left*), and removes it as soon as it's done, even from that routine's
+own turn. The Routines tab and Automations show who made each one (*made by
+@ada*) and its limits. A bot only ever sees and changes the routines of its own
+chat, can have at most 20 active ones, never more often than once a minute, and
+a message from another bot or a trigger can't make it add or change one (yours
+and its routines' can). Turn **Manage its own routines** off in its Tools tab
+to stop it.
 
 A routine's message reaches the bot as `[routine: <name>] <prompt>`. A busy bot
 takes it as a follow-up instead of skipping it, and the run completes when the
@@ -535,7 +556,95 @@ stays on, and that time isn't run later. Once bots are on again it runs at its
 next time. (A once routine whose time passes while they are off is used up, as
 the scheduler turns any one-off task off once its time comes.) Times missed
 while the gateway itself was down are different: each overdue routine runs once
-when it starts again.
+when it starts again. A skipped run doesn't count against a temporary routine's
+runs, but its end time still comes.
+
+### Schedules from a terminal
+
+`hui schedule` (or `hui schedules`) manages every scheduled task, a session's
+or a bot's, through the running gateway, as the Automations page does.
+`<schedule>` is a task's id or exact name; `--session` takes a session's id or
+exact title, `--bot` a bot's handle, id or name:
+
+```sh
+hui schedule list                                  # every schedule: target, next run, maker and limits
+hui schedule list --session "Docs cleanup" --json
+hui schedule show "Watch #82"
+hui schedule add --name "Nightly review" --prompt "Review open work" --cron "0 2 * * *" --session "Docs cleanup"
+hui schedule add --name "Release" --prompt "Is v0.2 out?" --every 1h --bot ada --until 2026-10-10T18:00 --runs 24 --timeout 300
+hui schedule edit "Nightly review" --cron "30 2 * * *" --timezone Europe/Madrid
+hui schedule edit "Watch #82" --session "Docs cleanup"  # moves it
+hui schedule edit "Watch #82" --until "" --runs ""       # no longer temporary
+hui schedule pause "Nightly review"
+hui schedule resume "Nightly review"
+hui schedule run "Nightly review"
+hui schedule remove "Nightly review"
+```
+
+Edit changes only the flags you give. `--every` takes `30s`, `5m`, `2h` or
+`1d` (a minute at least), `--cron` five fields in this machine's time zone
+unless `--timezone` names another, `--at` one ISO date and time, and
+`--timeout` how long one run may take (10–86400 seconds, 15 minutes by
+default); `--disabled` creates a schedule paused (or pauses it on edit). While
+bots are off, `hui schedule` refuses anything that names a bot or one of its
+routines with the gateway's message, and `list` leaves bots' routines out;
+sessions' schedules work as always.
+
+### Triggers
+
+Triggers wake a bot when something happens, the way routines wake it on a
+schedule: a pull request changes on GitHub, a session the bot started finishes,
+fails or asks something, or another program calls the trigger's webhook URL.
+They sit in the bot's **Routines** tab, under its routines: each shows what it
+watches, when it last fired, its cooldown and an on/off switch, with **Test**
+(a sample event, now) and **Delete**; **Add trigger** below them. From a
+terminal:
+
+```sh
+hui bot trigger add ada --name CI --github DaniFdz/hui --on checks_failed,review_changes_requested --prompt "Find out what broke"
+hui bot trigger add ada --name Deps --github DaniFdz/hui --on pr_opened --author "dependabot[bot]" --label dependencies
+hui bot trigger add ada --name Helpers --session --on finished,failed,waiting
+hui bot trigger add ada --name Deploys --webhook --match status=failed --prompt "Tell me why the deploy failed"
+hui bot trigger list ada
+hui bot trigger test ada CI
+hui bot trigger remove ada Deploys
+```
+
+An event reaches the bot as `[trigger: <name> · <summary>] <prompt>` with the
+event's details, as a routine's message does (a follow-up while it works). Events
+within a trigger's cooldown (5 minutes unless you choose another, `--cooldown`)
+arrive together, as one message listing them, and a bot takes at most 12
+trigger messages an hour; more wait for the next free slot rather than being
+dropped. Each delivery shows under **Latest trigger runs**.
+
+- **GitHub** reads the repos through the gateway's GitHub CLI login (Settings →
+  Integrations → GitHub), every minute, with conditional requests, so a repo
+  where nothing happens costs nothing of your rate limit. It wakes on pull
+  requests opened, pushed to, merged or closed, checks that failed or passed,
+  reviews (approved, changes requested, commented), comments, and comments that
+  mention you; narrow them by author, label, base branch, pull request number or
+  drafts. Your own comments and reviews never wake a bot: a bot that comments
+  through `gh` posts as you. A new trigger starts from what the repo looks like
+  then; it doesn't replay the past.
+- **Sessions** wake a bot when a session it started itself (with
+  `sessions_spawn`) finishes, fails or waits for an answer.
+- **Webhook** makes a URL with a secret token, shown once (copy it then; **New
+  URL** replaces it). Programs on this machine or your tailnet POST JSON or text
+  to it, up to 64 KiB; `--match field=value` (or `field~value` for contains)
+  keeps only matching calls. The gateway stays on your tailnet: exposing the URL
+  to the internet with Tailscale Funnel is up to you, and then the token is all
+  that guards it.
+
+A bot can manage its own triggers with its `triggers` tool (Tools tab, under
+Bots): ask it to watch a repo and it adds one. It can't add or change triggers
+in a turn another bot or a trigger started, or that took a message from one
+while it ran, and it can't create webhook triggers, whose token would pass
+through the model.
+
+While bots are off nothing fires: GitHub isn't polled, webhook URLs answer 409,
+and a session event is recorded as skipped. When you turn them on again, what
+happened on GitHub meanwhile arrives as one summary per trigger, not one message
+per event.
 
 ### Bots talking to bots
 

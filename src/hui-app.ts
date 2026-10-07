@@ -1,3 +1,9 @@
+/**
+ * The root application element, also reused as the embedded chat pane inside splits and bot views. As the shell it
+ * holds the browser-side state (route, session list, layout, drafts, bots, settings and the polls that refresh them)
+ * and passes it to the view render functions as props. Durable state lives behind the gateway's `/__hui/` routes;
+ * this element mirrors it and sends requests, it never reads files or runs processes.
+ */
 import { renderPicker } from "./views/settings-picker.ts";
 import { groupCheckoutDefaults } from "./lib/group-session-defaults.ts";
 import { renderDirectoryPicker } from "./views/directory-picker.ts";
@@ -89,6 +95,7 @@ import {
 } from "./lib/bots.ts";
 import { archivedBotCount, hiddenBotCount, isBotSettingsShortcut, readBotPanel, readSidebarTab, writeBotPanel, writeSidebarTab, type BotPanelState, type BotPanelTab, type SidebarTab } from "./lib/bot-roster.ts";
 import { BotToolsController } from "./lib/bot-tools.ts";
+import { BotTriggersController } from "./lib/bot-triggers.ts";
 import { memoryStatusChanged, parseMemoryView, parseMemoryZoom, type MemoryLine } from "./lib/bot-memory.ts";
 import { renderBotArchiveDialog, renderBotDeleteDialog, renderBotPanel, renderBotPlaceholder, type BotMemoryState, type BotSoulState, type MemoryZoomState } from "./views/bots.ts";
 import { renderBotExportDialog, renderBotImportDialog } from "./views/bot-import.ts";
@@ -201,6 +208,7 @@ import { readKanbanOptions, writeKanbanOptions, type KanbanMove, type KanbanOpti
 import { DEFAULT_SESSION_STAGE, SESSION_STAGE_LABELS, type SessionStage } from "../shared/session-stages.ts";
 import type { BacklogCardAction, SessionCardAction } from "./views/kanban.ts";
 import type { BacklogStartTarget } from "./components/backlog-start-dialog.ts";
+import type { ForkTarget } from "./components/fork-dialog.ts";
 import { addSuggestionToBacklog, backlogItemMarkdown, loadBacklog, removeBacklogItem, setBacklogItemGroup, type BacklogItem, type BacklogJiraState } from "./lib/backlog.ts";
 import { loadJiraConnection } from "./lib/jira.ts";
 import { VoiceController } from "./lib/voice-controller.ts";
@@ -363,6 +371,8 @@ export class HuiApp extends HuiElement {
   @state() private stopping = false;
   @state() private continuing = false;
   @state() private rewindPending = false;
+  /** The Fork from here dialog: the session and reply it forks from. While it is open, the chat's fork buttons rest. */
+  @state() private forkTarget: ForkTarget | undefined;
   @state() private sideChat: HomeProps["sideChat"];
   /** The composer's live text, deliberately not reactive: a keystroke only
    * changes what its own textarea already shows, so typing must not re-render
@@ -578,6 +588,8 @@ export class HuiApp extends HuiElement {
   private botSoulSeen = "";
   /** The Tools tab: what the operator can turn off in the bot's chat, kept in its own controller. */
   private botTools = new BotToolsController(this);
+  /** The Routines tab's Triggers section, read while it shows. */
+  private botTriggers = new BotTriggersController(this, { visible: () => this.botPanelVisible() && this.botPanel.tab === "routines" });
   private botRosterTick = 0;
   /** Set on the bot route's embedded pane: header identity and panel state. */
   @property(paneBotProperty) paneBot: PaneBot | undefined;
@@ -1232,6 +1244,7 @@ export class HuiApp extends HuiElement {
         this.resetBotMemory(target.id);
         this.resetBotSoul(target.id);
         this.botTools.reset(target.id);
+        this.botTriggers.reset(target.id);
       }
       this.activeBotId = target.id;
       this.view = "bot";
@@ -3073,6 +3086,30 @@ export class HuiApp extends HuiElement {
       });
   };
 
+  /** Asks where the fork works (same checkout or a new worktree); the dialog copies the history and `forked` opens
+   * the copy. The source session is left running or idle as it was. */
+  private forkFromMessage = (entryId: string) => {
+    const session = this.selected;
+    if (!session || this.opening || this.forkTarget) return;
+    void import("./components/fork-dialog.ts").then(() => { this.forkTarget = { session, entryId }; });
+  };
+
+  private forked = async (forked: SessionView) => {
+    this.forkTarget = undefined;
+    await this.refreshSessions();
+    this.selectSession(this.groups.flatMap((group) => group.sessions).find((candidate) => candidate.id === forked.id) ?? forked);
+  };
+
+  private renderForkDialog() {
+    if (!this.forkTarget) return null;
+    return html`<hui-fork-dialog
+      .target=${this.forkTarget}
+      .branchPrefix=${this.settings.branchPrefix}
+      .onClose=${() => { this.forkTarget = undefined; }}
+      .onForked=${this.forked}
+    ></hui-fork-dialog>`;
+  }
+
   private continueRun = () => {
     const session = this.selected;
     if (!session || this.streaming || this.opening || this.continuing) return;
@@ -3699,6 +3736,7 @@ export class HuiApp extends HuiElement {
           this.followBotMemory();
           this.followBotSoul();
           this.followBotTools();
+          this.followBotTriggers();
         },
         onConnection: (state) => {
           this.botsStreamLive = state === "live";
@@ -4176,6 +4214,13 @@ export class HuiApp extends HuiElement {
     if (bot) this.botTools.follow(bot);
   }
 
+  /** The Routines tab's Triggers section starts reading once the bot is known (a `/bots/<id>` load), and reads again
+   * when the bot's chat changes state: a trigger may just have woken it. */
+  private followBotTriggers() {
+    const bot = this.botPanelVisible() && this.botPanel.tab === "routines" ? this.activeBot() : undefined;
+    if (bot) this.botTriggers.follow(bot);
+  }
+
   /** The panel's visible tab decides what is read: Routines polls Automation
    * like its page; Memory reads once, then follows the bots stream. */
   private syncBotPanelData() {
@@ -4187,6 +4232,7 @@ export class HuiApp extends HuiElement {
     } else if (this.view === "bot") {
       this.stopAutomationPolling();
     }
+    this.botTriggers.sync(visible && this.botPanel.tab === "routines" ? this.activeBot() : undefined);
     if (this.botMemoryTabVisible()) void this.refreshBotMemory();
     if (this.botSoulTabVisible()) void this.refreshBotSoul();
     const toolsBot = this.botToolsTabVisible() ? this.activeBot() : undefined;
@@ -4481,6 +4527,7 @@ export class HuiApp extends HuiElement {
           onRetry: () => void this.refreshBotSoul(),
         },
         tools: this.botTools.props(bot),
+        triggers: this.botTriggers.props(bot),
         settings: {
           models: this.pi?.model.catalog ?? [],
           ...(utilityDefault ? { utilityDefault } : {}),
@@ -5334,6 +5381,7 @@ export class HuiApp extends HuiElement {
       stopping: this.stopping,
       continuing: this.continuing,
       rewindPending: this.rewindPending,
+      forkPending: Boolean(this.forkTarget),
       draft: this.draft,
       chatPreferences: this.settings.chat,
       queue: this.queue,
@@ -5468,6 +5516,7 @@ export class HuiApp extends HuiElement {
       onAbort: this.abort,
       onContinue: this.continueRun,
       onRewind: this.rewindToMessage,
+      onFork: this.forkFromMessage,
       onCompact: () => this.compactNow(),
       onCancelCompaction: () => this.cancelCompactionNow(),
       onAddAttachments: this.addAttachments,
@@ -5677,7 +5726,7 @@ export class HuiApp extends HuiElement {
 
   private renderWorkspace() {
     if (this.embeddedPane) {
-      return html`<div class="hui-embedded-session">${this.selected ? renderHome(this.homeProps()) : html`<p role="status">Opening session…</p>`}${this.renderJiraCreateDialog()}</div>`;
+      return html`<div class="hui-embedded-session">${this.selected ? renderHome(this.homeProps()) : html`<p role="status">Opening session…</p>`}${this.renderJiraCreateDialog()}${this.renderForkDialog()}</div>`;
     }
 
     if (this.settingsOpen) {
@@ -5867,6 +5916,7 @@ export class HuiApp extends HuiElement {
       ${this.renderJiraLinkDialog()}
       ${this.renderBacklogStartDialog()}
       ${this.renderBacklogRemoveDialog()}
+      ${this.renderForkDialog()}
       ${this.renderBotDialogs()}
       ${this.renderFloatingCallBar()}
       ${this.commandPalette()}

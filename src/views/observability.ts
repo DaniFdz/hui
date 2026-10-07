@@ -1,3 +1,7 @@
+/**
+ * The Activity, Logs, Debug and Usage pages, rendered from the gateway's observability snapshot. They only read:
+ * refreshing and exporting go back to the app, and usage totals come from PI's session files via the gateway.
+ */
 import { html, nothing, type TemplateResult } from "lit";
 
 import type { HuiPage } from "../lib/pages.ts";
