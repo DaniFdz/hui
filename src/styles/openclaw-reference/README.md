@@ -36,6 +36,10 @@ detects unreviewed changes to this versioned snapshot.
   using the original Settings rows, controls and action classes.
 - The attachment-only menu uses the upstream attachment surface (176 px), not
   the 208 px combined capability menu whose extra features HUI does not expose.
+- `.chat-thread` is not a size container (`openclaw-chat.css`): in Chrome it made
+  every keystroke and streamed token lay out the whole conversation again. The
+  position rail's controller measures the thread's content box for the rail's
+  height and its 960 × 360 px hide rule instead of `chat-transcript` queries.
 
 ## Verification
 

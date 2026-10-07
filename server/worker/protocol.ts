@@ -3,7 +3,9 @@
  * duplex byte stream (a Unix socket on the remote, the stdio of a connect
  * command on the gateway). JSON.stringify never emits a raw newline, so the
  * framing needs no escaping. Requests and responses share the stream with
- * fire-and-forget frames such as process output.
+ * fire-and-forget frames such as process output. A requester that gives up
+ * (its caller aborted, or it timed out) sends `cancel`, which aborts the
+ * handler's signal; a closed peer aborts them all. Older peers ignore it.
  */
 import type { Readable, Writable } from "node:stream";
 
@@ -13,7 +15,7 @@ export const PROTOCOL_VERSION = 1;
 export const MAX_FRAME_BYTES = 256 * 1024 * 1024;
 
 export type Frame = { t: string } & Record<string, unknown>;
-type RequestHandler = (params: Record<string, unknown>) => Promise<unknown> | unknown;
+type RequestHandler = (params: Record<string, unknown>, signal: AbortSignal) => Promise<unknown> | unknown;
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -67,8 +69,10 @@ export function parseFrame(line: string): Frame {
 export class Peer {
   #write: (line: string) => void;
   #next = 0;
-  #pending = new Map<string, { resolve(value: unknown): void; reject(error: Error): void; timer: NodeJS.Timeout }>();
+  #pending = new Map<string, { resolve(value: unknown): void; reject(error: Error): void }>();
   #handlers = new Map<string, RequestHandler>();
+  /** Requests the other side made that are still being answered. */
+  #answering = new Map<string, AbortController>();
   #listeners = new Set<(frame: Frame) => void>();
   #closeListeners = new Set<(reason: string) => void>();
   #closed: string | undefined;
@@ -98,19 +102,32 @@ export class Peer {
     this.#seen = Date.now();
   }
 
-  request<T = unknown>(op: string, params: Record<string, unknown> = {}, timeoutMs = 30_000): Promise<T> {
+  request<T = unknown>(op: string, params: Record<string, unknown> = {}, timeoutMs = 30_000, signal?: AbortSignal): Promise<T> {
     if (this.#closed) return Promise.reject(new Error(this.#closed));
+    if (signal?.aborted) return Promise.reject(new Error(`The ${op} request was cancelled.`));
     const id = `r${++this.#next}`;
     return new Promise<T>((resolve, reject) => {
-      const timer = setTimeout(() => {
+      const done = () => {
         this.#pending.delete(id);
-        reject(new Error(`Remote worker did not answer ${op} in time.`));
-      }, timeoutMs);
-      timer.unref?.();
-      this.#pending.set(id, { resolve: resolve as (value: unknown) => void, reject, timer });
-      if (!this.send({ t: "req", id, op, p: params })) {
         clearTimeout(timer);
-        this.#pending.delete(id);
+        signal?.removeEventListener("abort", abort);
+      };
+      const giveUp = (message: string) => {
+        if (!this.#pending.has(id)) return;
+        done();
+        this.send({ t: "cancel", id });
+        reject(new Error(message));
+      };
+      const abort = () => giveUp(`The ${op} request was cancelled.`);
+      const timer = setTimeout(() => giveUp(`Remote worker did not answer ${op} in time.`), timeoutMs);
+      timer.unref?.();
+      signal?.addEventListener("abort", abort, { once: true });
+      this.#pending.set(id, {
+        resolve: (value) => { done(); resolve(value as T); },
+        reject: (error) => { done(); reject(error); },
+      });
+      if (!this.send({ t: "req", id, op, p: params })) {
+        done();
         reject(new Error(this.#closed ?? `The ${op} request is too large to send.`));
       }
     });
@@ -136,14 +153,16 @@ export class Peer {
     if (frame.t === "res") {
       const pending = typeof frame["id"] === "string" ? this.#pending.get(frame["id"]) : undefined;
       if (!pending) return;
-      this.#pending.delete(frame["id"] as string);
-      clearTimeout(pending.timer);
       if (frame["ok"] === true) pending.resolve(frame["result"]);
       else pending.reject(new Error(typeof frame["error"] === "string" ? frame["error"] : "Remote worker request failed."));
       return;
     }
     if (frame.t === "req") {
       void this.#answer(frame);
+      return;
+    }
+    if (frame.t === "cancel") {
+      if (typeof frame["id"] === "string") this.#answering.get(frame["id"])?.abort();
       return;
     }
     for (const listener of this.#listeners) listener(frame);
@@ -153,12 +172,16 @@ export class Peer {
     const id = frame["id"];
     const handler = typeof frame["op"] === "string" ? this.#handlers.get(frame["op"]) : undefined;
     if (typeof id !== "string") return;
+    const call = new AbortController();
+    this.#answering.set(id, call);
     try {
       if (!handler) throw new Error(`Unsupported remote worker request: ${String(frame["op"])}`);
       const params = isRecord(frame["p"]) ? frame["p"] : {};
-      if (!this.send({ t: "res", id, ok: true, result: await handler(params) })) throw new Error("The reply is too large to send.");
+      if (!this.send({ t: "res", id, ok: true, result: await handler(params, call.signal) })) throw new Error("The reply is too large to send.");
     } catch (error) {
       this.send({ t: "res", id, ok: false, error: error instanceof Error ? error.message : String(error) });
+    } finally {
+      if (this.#answering.get(id) === call) this.#answering.delete(id);
     }
   }
 
@@ -176,11 +199,8 @@ export class Peer {
   close(reason: string): void {
     if (this.#closed) return;
     this.#closed = reason;
-    for (const pending of this.#pending.values()) {
-      clearTimeout(pending.timer);
-      pending.reject(new Error(reason));
-    }
-    this.#pending.clear();
+    for (const pending of [...this.#pending.values()]) pending.reject(new Error(reason));
+    for (const call of this.#answering.values()) call.abort();
     for (const listener of this.#closeListeners) listener(reason);
     this.#closeListeners.clear();
   }

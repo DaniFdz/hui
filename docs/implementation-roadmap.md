@@ -847,6 +847,45 @@ requests:
    browser journey `e2e/bots-workers.browser.md` (a built gateway with a local
    worker, headless Chromium through CDP; screenshots in the pull request).
 
+### HUI-19 — Agent widgets
+
+Done 2026-10-06. Agents and bots show interactive HTML/SVG widgets inline in the
+chat through the HUI `show_widget` tool, ported from OpenClaw's: the gateway
+validates the fragment (256 KiB, no full documents, every inline classic and
+module script parsed with line:column errors), the call itself is the only
+record, and the chat renders it as a titled card in a two-frame opaque-origin
+sandbox (`/__hui/widget-sandbox`, a strict CSP with no connections) on HUI's live
+theme, with fitted height, full screen, error notices and click-only links.
+`sendPrompt` is a follow-up. Proof: `server/runtimes/widget-code.test.ts`,
+`server/widget-sandbox.test.ts`, `src/lib/widgets.test.ts`,
+`src/components/widget-card.test.ts`, `src/views/chat/projection.test.ts`,
+`server/runtimes/pi-sdk.test.ts` and `e2e/widgets.browser.md`.
+
+### HUI-20 — Secret requests
+
+Done 2026-10-06. Agents ask the operator for a secret (an API key, a token, a
+password, a one-time code) with the HUI `secret_request` tool instead of the
+chat. The request is a masked *Secret* card in the question dock that leaves
+the session waiting; the gateway writes the answer to a private temporary file
+(`0600` in its own `0700` directory, deleted after 10 minutes or at gateway
+stop, a crashed gateway's at the next start) and the agent receives only its
+path, so the value never reaches the transcript, the model, PI's or Durable's
+stores or diagnostics. Cancel, Stop and a 15-minute expiry end it. The bridge
+now passes a tool call's abort to the gateway handler for PI children and
+Durable alike, and PI children reach it over `node:http`, whose replies may
+take longer than fetch's five minutes. Proof: `server/secret-requests.test.ts`,
+`server/agent-tools-bridge.test.ts`, `server/live-sessions.test.ts`,
+`server/runtimes/pi-sdk.test.ts`, `server/runtimes/durable.test.ts` and
+`e2e/secret-requests.browser.md`.
+
+Follow-up 2026-10-06: worker sessions get secret requests too. The card stays on
+the gateway; its answer goes back over the worker connection (`secret-request`)
+and the worker host writes the file there, with the same naming, lifetime and
+cleanup. Requests across the connection can now be cancelled (`cancel`), so a
+Stop on the worker closes the card. Proof: `server/worker/protocol.test.ts`,
+`server/worker/host.test.ts`, `server/workers.test.ts` and the worker section of
+`e2e/secret-requests.browser.md`.
+
 ## Recommended implementation order
 
 `HUI-01 → HUI-02 → HUI-03 → HUI-04 → HUI-05 → HUI-06`, then run HUI-07,

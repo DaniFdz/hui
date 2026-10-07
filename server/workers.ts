@@ -8,7 +8,8 @@
  * then multiplexes every remote session over that one connection; the host
  * runs the session's own runtime adapter and `runtimes/remote.ts` drives it. The gateway
  * answers the host's credential and agent tool requests; nothing secret is
- * written on the remote.
+ * written on the remote, except the answer to a session's own
+ * `secret_request`, which the host keeps in a private file for ten minutes.
  *
  *   ~/.config/hui/workers.json
  */
@@ -278,7 +279,8 @@ class WorkerConnection {
       this.#peer = peer;
       // The host may ask for credentials in the very chunk that says ready.
       peer.handle("credential", (params) => this.#credential(params));
-      peer.handle("bridge", (params) => this.#bridge(params));
+      peer.handle("bridge", (params, signal) => this.#bridge(params, signal));
+      peer.handle("secret-request", (params, signal) => this.#secretRequest(params, signal));
       for (const [op, handler] of this.#hooks.served()) this.serve(op, handler);
       peer.onFrame((frame) => this.#frame(frame));
       transport.on("error", (error) => fail(`Could not run ${command[0]}: ${error.message}`));
@@ -478,15 +480,25 @@ class WorkerConnection {
     }
   }
 
-  async #bridge(params: Record<string, unknown>): Promise<unknown> {
+  /** The calling session, which must run on this worker. */
+  async #caller(params: Record<string, unknown>) {
     const key = typeof params["key"] === "string" ? params["key"] : "";
+    const caller = (await readRegistry()).find((record) => record.id === key && record.worker === this.worker.id);
+    if (!caller) throw new Error("That conversation does not run on this worker.");
+    return caller;
+  }
+
+  async #bridge(params: Record<string, unknown>, signal: AbortSignal): Promise<unknown> {
     const action = typeof params["action"] === "string" ? params["action"] : "";
     const toolParams = isRecord(params["params"]) ? params["params"] : {};
-    const caller = (await readRegistry()).find((record) => record.id === key && record.worker === this.worker.id);
-    if (!action || !caller) throw new Error("That conversation does not run on this worker.");
+    const caller = await this.#caller(params);
+    const key = caller.id;
+    if (!action) throw new Error("That conversation does not run on this worker.");
     // These act on the gateway's machine, not the worker's.
     if (action === "terminal" || action === "browser" || action === "watcher") throw new Error(`The ${action} tool is not available to sessions on a remote worker yet.`);
-    if (action !== "present_media") return invokeAgentTool({ callerSessionId: key, action, params: toolParams });
+    // A host that asks through the bridge predates `secret-request`.
+    if (action === "secret_request") throw new Error("This worker runs an older HUI release without secret requests; it updates once its sessions are idle.");
+    if (action !== "present_media") return invokeAgentTool({ callerSessionId: key, action, params: toolParams, signal });
     // Media lives on the remote: copy it here, then present it as usual.
     const paths = Array.isArray(toolParams["paths"]) ? toolParams["paths"].filter((path): path is string => typeof path === "string").slice(0, 8) : [];
     const dir = await mkdtemp(join(tmpdir(), "hui-remote-media-"));
@@ -499,10 +511,17 @@ class WorkerConnection {
         await writeFile(target, Buffer.from(file.data, "base64"));
         local.push(target);
       }
-      return await invokeAgentTool({ callerSessionId: key, action, params: { ...toolParams, paths: local } });
+      return await invokeAgentTool({ callerSessionId: key, action, params: { ...toolParams, paths: local }, signal });
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
+  }
+
+  /** A session's `secret_request`: the card is shown here, and the answer
+   * goes back to the host, which writes the file the agent's commands read. */
+  async #secretRequest(params: Record<string, unknown>, signal: AbortSignal): Promise<unknown> {
+    const caller = await this.#caller(params);
+    return invokeAgentTool({ callerSessionId: caller.id, action: "secret_request", params: isRecord(params["params"]) ? params["params"] : {}, signal, fromWorker: this.worker.id });
   }
 }
 

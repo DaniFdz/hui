@@ -12,6 +12,17 @@ function output(result) {
   };
 }
 
+/** What the model reads back from `secret_request`: where the secret is, never what it is. */
+function secretRequestText(result) {
+  const label = JSON.stringify(result?.label ?? "the secret");
+  if (result?.status === "provided") {
+    return `The operator provided ${label}. It is in ${result.path} until ${result.expiresAt}. Use it without printing it and delete the file when done.`;
+  }
+  return result?.status === "expired"
+    ? `The operator did not provide ${label} in time; the request expired.`
+    : `The operator cancelled the request for ${label}.`;
+}
+
 export default function agentToolsExtension(pi) {
   pi.registerTool({
     name: "terminal",
@@ -81,6 +92,28 @@ export default function agentToolsExtension(pi) {
         content: [{ type: "text", text: `Presented ${count} media ${count === 1 ? "item" : "items"} in HUI.` }],
         details: result,
       };
+    },
+  });
+
+  pi.registerTool({
+    name: "secret_request",
+    label: "Request secret",
+    description: "Ask the operator for a secret (an API key, token, password or one-time code) through a masked prompt in this HUI conversation. Waits until they provide it, cancel or 15 minutes pass. The value never enters the conversation: the result holds the path of a private temporary file that contains it.",
+    promptSnippet: "Ask the operator for a secret without it entering the conversation",
+    promptGuidelines: [
+      "Use secret_request whenever you need a secret from the operator: an API key, token, password or one-time code. Never ask them to paste a secret into the chat or a shared terminal.",
+      "label names the secret and reason says why you need it. Both are shown to the operator and stay in the conversation, so never put a secret in them.",
+      "The result holds a file path, never the value. Use it in the next command without printing it: redirect it to stdin (< file) or read it into an environment variable (TOKEN=\"$(cat file)\" command), not a command-line argument. Delete the file when done; HUI deletes it after 10 minutes, so ask again if you need it later.",
+      "If the operator cancels or the request expires, do not ask for the secret another way unless they say so.",
+    ],
+    parameters: Type.Object({
+      label: Type.String({ minLength: 1, maxLength: 120 }),
+      reason: Type.String({ minLength: 1, maxLength: 500 }),
+    }),
+    async execute(_toolCallId, params, signal) {
+      // Above the gateway's 15-minute wait for the operator.
+      const result = await invokeHuiBridge("secret_request", params, { timeoutMs: 16 * 60_000, signal });
+      return { content: [{ type: "text", text: secretRequestText(result) }], details: result };
     },
   });
 
