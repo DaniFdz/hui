@@ -192,13 +192,20 @@ same drivers (dark, 1440×900 and 390×844).
    `disabledTools` `bash`, `write` and `disabledSkills` `meeting-notes` stores
    that skill by its path on the worker
    (`…/remote/.local/share/hui-worker/mirror/agent/skills/meeting-notes/SKILL.md`).
-   Its Tools tab reads from the worker: *2 of 18 tools* (no managed browser on
-   a worker), the extension's tool, and every skill under
-   `~/.local/share/hui-worker/mirror/agent/skills`, *meeting-notes* off.
+   Its Tools tab reads from the worker: *2 of 16 tools*, the extension's tool,
+   and every skill under `~/.local/share/hui-worker/mirror/agent/skills`,
+   *meeting-notes* off. The terminal, the browser and watchers aren't listed:
+   they stay on this machine, so its chat there isn't offered them. (The first
+   run, at `067db29`, showed *Shared terminal* switched on among 18 tools; the
+   review caught it, and the counts here are from the run after the fix.)
 3. "Run the checks on devbox and report back. E2E_REQUEST_ACCESS": the question
    from the chat on the worker shows in the chat and at the top of its Tools tab.
-   **Allow** there: the bot replies that it has bash, the tab shows *1 of 18
+   **Allow** there: the bot replies that it has bash, the tab shows *1 of 16
    tools*, and `bots.json` already holds `["write"]`, from the worker's report.
+   The provider's requests from the chat on devbox carry none of the three (19
+   tools, then 20 with bash). Creating a bot on devbox with `disabledTools:
+   ["terminal", "bash"]` is 400: *terminal stays on this machine, so a bot on
+   devbox can't use it and there is nothing to turn off: leave it out.*
 4. With devbox disconnected, the Tools tab says *devbox, where this bot runs, is
    offline: HUI is not connected to it. Connect it in Settings → Workers, then try
    again.* with Retry, and `GET …/catalog` answers 503 with that message, as
