@@ -1,3 +1,7 @@
+/**
+ * Settings → Workers: machines HUI runs sessions on. The gateway owns the worker list and their connections; this
+ * page adds, edits, removes and acts on workers, and polls faster while a worker is changing state.
+ */
 import { LitElement, html, nothing } from "lit";
 import { createWorker, loadWorkers, removeWorker, updateWorker, workerAction, type WorkerView } from "../lib/workers.ts";
 
@@ -11,7 +15,6 @@ const STATUS: Record<WorkerView["state"], { kind: string; label: string }> = {
   disconnected: { kind: "", label: "Disconnected" },
 };
 
-/** Settings → Workers: machines HUI runs sessions on. */
 export class HuiWorkersSettings extends LitElement {
   #workers: WorkerView[] = [];
   #loading = true;

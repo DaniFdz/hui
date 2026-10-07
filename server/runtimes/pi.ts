@@ -1,6 +1,3 @@
-import { piEnvironment } from "./pi-environment.ts";
-import { RuntimeTimings, sanitizeMetrics } from "./transcript-metrics.ts";
-import { parseCallRecord } from "../../shared/calls.ts";
 /**
  * PI adapter. The HUI-owned SDK worker and opt-in CLI fallback share PI's RPC
  * transport. Both live outside the gateway; only the SDK exposes inspection.
@@ -10,6 +7,9 @@ import { parseCallRecord } from "../../shared/calls.ts";
  * `readline` is explicitly not compliant, because it also splits on U+2028 and
  * U+2029, which are legal inside JSON strings.
  */
+import { piEnvironment } from "./pi-environment.ts";
+import { RuntimeTimings, sanitizeMetrics } from "./transcript-metrics.ts";
+import { parseCallRecord } from "../../shared/calls.ts";
 import { resolveCommandReference } from "../../src/lib/command-references.ts";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { relayCredentials, secretEnv } from "../worker/credentials.ts";

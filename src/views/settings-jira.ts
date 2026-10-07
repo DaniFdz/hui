@@ -1,11 +1,13 @@
+/**
+ * The Jira section of Settings → Integrations. Owns only this section; the token is write-only here and never
+ * returned by the server. Connecting and disconnecting go through the gateway, which also lists the projects to pick.
+ */
 import { LitElement, html, nothing } from "lit";
 import { JIRA_API_TOKEN_URL, type JiraConnection, type JiraProject } from "../../shared/jira.ts";
 import { icons } from "../lib/icons.ts";
 import { connectJira, disconnectJira, jiraProjectSearch, loadJiraConnection, loadJiraProjects, mergeJiraProjects, setJiraDefaultProject } from "../lib/jira.ts";
 import { renderPicker } from "./settings-picker.ts";
 
-/** The Jira section of Settings → Integrations. Owns only this section; the token is write-only here and
- * never returned by the server. */
 export class HuiJiraSettings extends LitElement {
   #connection?: JiraConnection;
   #projects: JiraProject[] = [];

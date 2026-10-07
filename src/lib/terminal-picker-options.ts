@@ -1,3 +1,4 @@
+/** Rows for the terminal switcher, keeping the current terminal selectable after it leaves the list. */
 import type { PickerOption } from "../views/settings-picker.ts";
 import type { TerminalView } from "./terminal-types.ts";
 

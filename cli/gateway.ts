@@ -1,3 +1,6 @@
+/** The background gateway's lifecycle as seen from the CLI: start it detached, report its status, stop it and tail its
+ * log. Every action is checked against the recorded state file and the gateway's authenticated control endpoint; a PID
+ * alone never authorizes a signal, and the gateway itself rechecks which active work a stop would interrupt. */
 import { spawn } from "node:child_process";
 import { open } from "node:fs/promises";
 import { join } from "node:path";

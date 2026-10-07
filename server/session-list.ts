@@ -1,10 +1,10 @@
+/** Owns the one in-memory session list every screen shares. While anyone
+ * listens it is recomputed on an interval and only changes are broadcast.
+ * ponytail: timer-driven; hook registry/runtime events if 1 s lag matters. */
 import { diffSessionList, sessionListLayout, type SessionListGroup, type SessionListUpdate } from "../shared/session-list.ts";
 
 type Groups<S> = SessionListGroup<S>[];
 
-/** Owns the one in-memory session list every screen shares. While anyone
- * listens it is recomputed on an interval and only changes are broadcast.
- * ponytail: timer-driven; hook registry/runtime events if 1 s lag matters. */
 export function createSessionListHub<S extends { id: string }>(load: () => Promise<Groups<S>>, intervalMs = 1_000) {
   // Clock-seeded so revisions keep rising across gateway restarts.
   let current = { revision: Date.now(), groups: [] as Groups<S> };

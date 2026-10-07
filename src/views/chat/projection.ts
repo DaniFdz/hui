@@ -1,3 +1,8 @@
+/**
+ * Turns PI's transcript items into the rows the chat renders: message groups, folded activity, compactions, calls,
+ * subagent events and bot kickoffs, plus the working labels and where the live browser preview goes. Presentation
+ * only; PI's transcript keeps the order and the data.
+ */
 import type { TranscriptItem } from "../../lib/sessions-store.ts";
 import { parseSubagentCompletionEvent, type SubagentCompletionItem } from "../../lib/subagent-completion.ts";
 import { botKickoffName } from "../../../shared/bots.ts";

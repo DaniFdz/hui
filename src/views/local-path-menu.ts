@@ -1,3 +1,7 @@
+/**
+ * The composer's list of local files and folders for mentions. It renders the options and their ids only; the
+ * composer owns the query, the active option and the path lookup.
+ */
 import { html, nothing } from "lit";
 import { icons } from "../lib/icons.ts";
 import type { LocalPathSuggestion } from "../lib/local-paths.ts";

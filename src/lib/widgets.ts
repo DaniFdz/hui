@@ -1,3 +1,8 @@
+/**
+ * Host side of the inline widgets shown by `show_widget`: what a call renders, the theme tokens passed into
+ * the sandbox, validation of messages coming back from it, and the limits on size and links. The widget
+ * code itself runs only inside the sandboxed frame.
+ */
 import {
   isCompleteHtmlDocument,
   WIDGET_CODE_MAX_BYTES,

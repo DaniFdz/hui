@@ -1,3 +1,7 @@
+/**
+ * HUI's managed browser. The gateway owns the Chromium process and its profile; this extension only forwards
+ * validated calls over the bridge.
+ */
 import { Type } from "typebox";
 import { invokeHuiBridge } from "./bridge-client.mjs";
 
@@ -5,8 +9,6 @@ const ACTIONS = ["status", "tabs", "open", "navigate", "back", "forward", "reloa
 const ACT_KINDS = ["click", "type", "press", "hover", "select", "scroll", "wait"];
 const literals = (values) => Type.Union(values.map((value) => Type.Literal(value)));
 
-/** HUI's managed browser. The gateway owns the Chromium process and its
- * profile; this extension only forwards validated calls over the bridge. */
 export default function browserToolExtension(pi) {
   pi.registerTool({
     name: "browser",

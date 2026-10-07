@@ -1,3 +1,8 @@
+/**
+ * The composer's slash commands: HUI's own commands, the runtime's commands merged under them, discovery and
+ * completion at the caret, and parsers that reserve HUI's command names so a malformed variant is never sent to
+ * the model as a prompt.
+ */
 import { commandReference } from "./command-references.ts";
 import type { RuntimeCommand } from "./sessions-store.ts";
 

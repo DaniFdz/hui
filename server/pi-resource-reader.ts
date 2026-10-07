@@ -1,3 +1,8 @@
+/**
+ * Reads the document behind a configured PI skill, extension or package so the UI can show it: the skill file,
+ * the extension source, or a package's README or package.json. Resources are addressed by their configuration
+ * id, never by a path from the browser, and every read is size-bounded.
+ */
 import { open, readdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, isAbsolute, join, resolve } from "node:path";

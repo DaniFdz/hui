@@ -1,3 +1,7 @@
+/**
+ * Settings → Tools → Browser. The switches and path save through the shared settings store; the gateway reports the
+ * process, its tabs and previews, which this page polls and captures while it is open.
+ */
 import { LitElement, html, nothing, type PropertyValues } from "lit";
 import type { BrowserStatus, BrowserTabView } from "../../shared/browser.ts";
 import { browserStatusLabel, browserVersionLabel } from "../lib/browser-status.ts";
@@ -10,8 +14,6 @@ if (typeof document !== "undefined") await import("../styles/tools.css");
 /** Tabs and state change as agents work; this page is the only reader. */
 const POLL_MS = 4_000;
 
-/** Settings → Tools → Browser. The switches and path save through the shared
- * settings store; the gateway reports the process, its tabs and previews. */
 export class HuiBrowserSettings extends LitElement {
   static override properties = {
     settings: { attribute: false },

@@ -1,3 +1,8 @@
+/**
+ * HUI's default system prompt and the extension that adds HUI's own sections to each PI turn. PI still assembles
+ * context files, skills and APPEND_SYSTEM; HUI contributes only its presentation formats and the guidance for
+ * the tools actually active in that turn.
+ */
 import type { ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import { HUI_PRESENTATION_PROMPT } from "./hui-presentation.ts";
 

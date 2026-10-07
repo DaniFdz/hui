@@ -1,3 +1,8 @@
+/**
+ * Settings → Models → Providers: the model providers the gateway can sign in to, their login prompts, the models
+ * chosen per provider, account priority and quotas, all through `/__hui/providers`. A sign-in or sign-out is
+ * announced with a `providers-changed` event so sections that depend on a login can refresh.
+ */
 import { LitElement, html, nothing } from "lit";
 import { repeat } from "lit/directives/repeat.js";
 import type { ProviderLogin, ProviderQuota, ProviderSnapshot, ProviderSummary } from "../../shared/providers.ts";

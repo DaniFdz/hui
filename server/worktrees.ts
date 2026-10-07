@@ -1,3 +1,9 @@
+/**
+ * Git checkout handling for new sessions: listing branches for the checkout picker, switching the selected
+ * checkout, and creating an isolated worktree on a fresh prefixed branch under HUI's worktrees directory. Git
+ * enforces safety, so HUI never forces, stashes or fetches, and a created worktree comes with a rollback the
+ * caller runs if the session is never registered.
+ */
 import { createHash } from "node:crypto";
 import { mkdir, realpath, stat } from "node:fs/promises";
 import { basename, join, relative, resolve, sep } from "node:path";

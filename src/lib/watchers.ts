@@ -1,3 +1,7 @@
+/**
+ * Browser client for a session's watchers: stopping, restarting or dismissing one and reading its log. The
+ * gateway runs the watchers; the shared parser keeps both sides on one shape.
+ */
 import { parseWatchers, type Watcher } from "../../shared/watchers.ts";
 import { fetchJson } from "./settings-store.ts";
 

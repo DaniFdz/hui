@@ -1,3 +1,8 @@
+/**
+ * The chat view and the New Session form, as render functions of `HomeProps`: launch form, transcript, composer and
+ * its pickers, queue, questions, session header and bot identity. All state arrives in props and changes leave
+ * through callbacks; the app element owns that state, and the chat projection decides the transcript's rows.
+ */
 import { formatCount, metricSummary, relativeTime, replyDraft } from "../lib/message-metadata.ts";
 import { renderDirectoryPicker } from "./directory-picker.ts";
 import { html, nothing, type TemplateResult } from "lit";

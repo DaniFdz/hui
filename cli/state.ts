@@ -1,3 +1,6 @@
+/** The gateway's on-disk control state under HUI's config directory: the state file recording a running gateway's
+ * identity and control token, its log location, atomic JSON writes, and the lock that serializes every gateway and
+ * update operation across CLI processes. */
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, readdir, rename, rmdir, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";

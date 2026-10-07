@@ -1,3 +1,8 @@
+/**
+ * HUI's agent tools for PI conversations: shared terminals, sibling sessions and subagents, media, secret
+ * requests, task suggestions, the stage and watchers. Each tool only declares its schema and forwards the call
+ * over HUI's agent bridge; the gateway owns the state and decides what the bound caller may do.
+ */
 import { Type } from "typebox";
 import { invokeHuiBridge } from "./bridge-client.mjs";
 

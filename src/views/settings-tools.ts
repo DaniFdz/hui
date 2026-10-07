@@ -1,3 +1,7 @@
+/**
+ * Settings → Tools: the shipped tool catalog, the configured PI sources and HUI's default prompt, plus a live look at
+ * one session's tools and assembled prompt. Owns only this read-only surface; runtime protocol never enters the view.
+ */
 import { LitElement, html, nothing } from "lit";
 import type { SessionView } from "../lib/sessions-store.ts";
 import type { SessionTools, ToolsCatalog } from "../lib/tools-types.ts";
@@ -5,7 +9,6 @@ import { inspectSessionTools, loadToolsCatalog } from "../lib/tools-store.ts";
 
 if (typeof document !== "undefined") await import("../styles/tools.css");
 
-/** Owns only this read-only surface; runtime protocol never enters the view. */
 export class HuiToolsSettings extends LitElement {
   static override properties = { sessions: { attribute: false } };
   declare sessions: readonly SessionView[];

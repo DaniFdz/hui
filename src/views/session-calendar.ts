@@ -1,3 +1,7 @@
+/**
+ * The session calendar element. It reads session activity for the shown period from the gateway and keeps only
+ * presentation state: the period, the grouping (remembered in localStorage), the open block and the highlight.
+ */
 import { LitElement, html, nothing } from "lit";
 
 import { icons } from "../lib/icons.ts";

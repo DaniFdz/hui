@@ -1,3 +1,6 @@
+/** Picks which release's CLI handles a command. The installed package delegates to the release named by the update
+ * pointer, except `update --rollback`, which always runs the originally installed CLI so recovery still works when
+ * the active release is broken. */
 import { realpath } from "node:fs/promises";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
