@@ -190,7 +190,7 @@ import { renderHome, renderNewSession, type BotHeaderAction, type HomeBot, type 
 import { DEFAULT_SESSIONS_PAGE_FILTERS, renderSessionsPage, type SessionsPageFilters, type SessionsPageState } from "./views/sessions.ts";
 import type { WorktreeFilter } from "./views/worktrees.ts";
 import "./views/contributions.ts";
-import { loadWorktrees, removeWorktrees, type WorktreeInventory, type WorktreeRemovalResult, type WorktreeRisk } from "./lib/worktrees.ts";
+import { loadWorktrees, removeWorktrees, worktreesOnlyUsedBy, type WorktreeInventory, type WorktreeRemovalResult, type WorktreeRisk } from "./lib/worktrees.ts";
 import { renderPanelSelector } from "./views/panel-selector.ts";
 import { renderAutomationSurface } from "./views/automation.ts";
 import { renderKanbanPage } from "./views/kanban.ts";
@@ -283,6 +283,10 @@ export class HuiApp extends HuiElement {
   @state() private search = "";
   @state() private sessionsPageState: SessionsPageState = "all";
   @state() private sessionsPageFilters: SessionsPageFilters = { ...DEFAULT_SESSIONS_PAGE_FILTERS };
+  @state() private sessionsSelected: ReadonlySet<string> = new Set();
+  @state() private sessionsDeleteConfirm = false;
+  @state() private sessionsDeleting = false;
+  @state() private sessionsDeleteNotice = "";
   @state() private worktreeInventory: WorktreeInventory | undefined;
   @state() private worktreesLoading = false;
   @state() private worktreesError = "";
@@ -1069,6 +1073,8 @@ export class HuiApp extends HuiElement {
       ensureModal(worktreeDialog);
       worktreeDialog.querySelector<HTMLButtonElement>(".worktree-remove-cancel")?.focus();
     }
+    const sessionsDeleteDialog = this.sessionsDeleteConfirm ? this.renderRoot.querySelector?.(".sessions-delete-dialog") : null;
+    if (sessionsDeleteDialog instanceof HTMLDialogElement) ensureModal(sessionsDeleteDialog);
     const backlogRemoveDialog = this.backlogRemove ? this.renderRoot.querySelector?.(".backlog-remove-dialog") : null;
     if (backlogRemoveDialog instanceof HTMLDialogElement) ensureModal(backlogRemoveDialog);
     const deleteDialog = this.deletingFor ? this.renderRoot.querySelector?.(".delete-session-dialog") : null;
@@ -1099,7 +1105,7 @@ export class HuiApp extends HuiElement {
       }
     }
     // The live compaction divider sits below the transcript rows, so its changes follow too.
-    if ((changed.has("transcript") || changed.has("compaction")) && this.autoFollow) this.scrollToBottom();
+    if ((changed.has("transcript") || changed.has("compaction") || changed.has("paneVisible")) && this.autoFollow) this.scrollToBottom();
     if (!this.renamingFor) {
       return;
     }
@@ -3269,7 +3275,9 @@ export class HuiApp extends HuiElement {
   private scrollToBottom = () => {
     this.autoFollow = true;
     void this.updateComplete.then(() => {
-      if (!this.autoFollow) return;
+      // Measuring a pane out of sight would lay out its whole transcript on
+      // every streamed token; it follows once it is shown again.
+      if (!this.autoFollow || !this.paneVisible) return;
       const scroller = this.renderRoot.querySelector?.(".chat-thread");
       if (scroller instanceof HTMLElement) {
         scroller.scrollTop = scroller.scrollHeight;
@@ -4932,6 +4940,69 @@ export class HuiApp extends HuiElement {
       });
   };
 
+  private selectSessions = (ids: readonly string[], checked: boolean) => {
+    this.sessionsDeleteNotice = "";
+    const next = new Set(this.sessionsSelected);
+    for (const id of ids) {
+      if (checked) next.add(id);
+      else next.delete(id);
+    }
+    this.sessionsSelected = next;
+  };
+
+  private closeSessionsDeleteDialog = () => {
+    if (this.sessionsDeleting) return;
+    closeModal(this.renderRoot.querySelector?.(".sessions-delete-dialog") as HTMLDialogElement | undefined);
+    this.sessionsDeleteConfirm = false;
+  };
+
+  /** Deletes each selected tree, then removes worktrees only those sessions used.
+   * Worktree removal never forces: local changes or a non-HUI worktree keep it. */
+  private deleteSelectedSessions = async (ids: readonly string[], withWorktrees: boolean) => {
+    if (this.sessionsDeleting || ids.length === 0) return;
+    this.sessionsDeleting = true;
+    this.sessionsDeleteNotice = "";
+    const all = this.groups.flatMap((group) => group.sessions);
+    const deleted = new Set<string>();
+    const failures: string[] = [];
+    let worktreeNote = "";
+    try {
+      // Read links before deleting: the inventory forgets a deleted session.
+      const worktrees = withWorktrees ? (await loadWorktrees()).worktrees : [];
+      for (const id of ids) {
+        if (deleted.has(id)) continue; // Already gone with its parent.
+        try {
+          await deleteSession(id);
+          for (const member of sessionTreeIds(all, id)) deleted.add(member);
+        } catch (error) {
+          failures.push(error instanceof Error ? error.message : `Could not delete ${id}.`);
+        }
+      }
+      if (this.selected && deleted.has(this.selected.id)) this.clearSessionState();
+      let removed = 0;
+      const kept: string[] = [];
+      for (const path of worktreesOnlyUsedBy(worktrees, deleted)) {
+        const result = await removeWorktrees([path], "single").then(({ results }) => results[0]).catch(() => undefined);
+        if (result?.removed) removed += 1;
+        else kept.push(result?.label ?? path);
+      }
+      if (withWorktrees) {
+        worktreeNote = ` Removed ${removed} worktree${removed === 1 ? "" : "s"}.${kept.length
+          ? ` Kept ${kept.join(", ")} (local changes or not created by HUI); review ${kept.length === 1 ? "it" : "them"} in Settings → Worktrees.`
+          : ""}`;
+      }
+    } catch (error) {
+      failures.push(error instanceof Error ? error.message : "Could not read worktrees.");
+    } finally {
+      const count = ids.filter((id) => deleted.has(id)).length;
+      this.sessionsDeleteNotice = `Deleted ${count} session${count === 1 ? "" : "s"}.${worktreeNote}${failures.length ? ` Failed: ${failures.join("; ")}` : ""}`;
+      this.sessionsSelected = new Set([...this.sessionsSelected].filter((id) => !deleted.has(id)));
+      this.sessionsDeleting = false;
+      this.closeSessionsDeleteDialog();
+      void this.refreshSessions();
+    }
+  };
+
   private closeWorktreeDialog() {
     const dialog = this.renderRoot.querySelector?.(".worktree-remove-dialog");
     if (dialog instanceof HTMLDialogElement) closeModal(dialog);
@@ -5763,6 +5834,14 @@ export class HuiApp extends HuiElement {
                       onCopyPath: this.copyPath,
                       onNew: () => this.openPageById("new-session"),
                       onRefresh: () => void this.refreshSessions(),
+                      selected: this.sessionsSelected,
+                      onSelect: this.selectSessions,
+                      confirmingDelete: this.sessionsDeleteConfirm,
+                      deleting: this.sessionsDeleting,
+                      deleteNotice: this.sessionsDeleteNotice,
+                      onDeleteSelected: () => { this.sessionsDeleteConfirm = true; },
+                      onCancelDelete: this.closeSessionsDeleteDialog,
+                      onConfirmDelete: (ids, withWorktrees) => void this.deleteSelectedSessions(ids, withWorktrees),
                     })
                   : this.activePage.id === "contributions"
                     ? html`<hui-contributions-page .onOpenSettings=${() => this.navigate({ kind: "settings", page: "integrations" })}

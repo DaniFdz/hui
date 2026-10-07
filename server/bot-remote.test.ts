@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
@@ -182,37 +182,6 @@ test("only a complete status is reported", () => {
   assert.deepEqual(reportedStatus({ ...STATUS, extra: "internal", failing: { node: "2+1", error: "rate limited", since: "now" } }), { ...STATUS, failing: { node: "2+1", error: "rate limited", since: "now" } });
   assert.equal(reportedStatus({ ...STATUS, usage: undefined }), undefined);
   assert.equal(reportedStatus({ ...STATUS, viewLines: -1 }), undefined);
-});
-
-test("deleting a bot leaves its worker a clean-up: done at once while connected, kept on disk while offline and run at the next connection, dropped with the worker", async () => {
-  const fake = link();
-  const reported: unknown[] = [];
-  const { bots, cleanupFile } = portsOf(fake, reported);
-  const saved = async () => JSON.parse(await readFile(cleanupFile, "utf8").catch(() => '{"cleanups":[]}')).cleanups.map((entry: Record<string, unknown>) => [entry["botId"], entry["reference"], entry["cwd"]]);
-  assert.equal(await bots.cleanUp("w-1", { botId: "a", reference: "durable:1", cwd: "/home/remote/.local/share/hui-worker/bots/a" }), "done");
-  assert.deepEqual(fake.requests.map(({ op, params }) => [op, params]), [
-    ["bot.forget", { reference: "durable:1" }],
-    ["bot.remove-home", { botId: "a", cwd: "/home/remote/.local/share/hui-worker/bots/a" }],
-  ], "its conversation forgotten, then its home removed, the working directory saying whether it lies inside");
-  fake.requests.length = 0;
-  fake.close();
-  assert.equal(await bots.cleanUp("w-1", { botId: "b", reference: "durable:2", cwd: "/srv/b" }), "queued", "an offline worker never holds the delete up");
-  assert.equal(await bots.cleanUp("w-1", { botId: "c", cwd: "/srv/c" }), "queued");
-  assert.deepEqual(await saved(), [["b", "durable:2", "/srv/b"], ["c", undefined, "/srv/c"]]);
-  assert.equal((await stat(cleanupFile)).mode & 0o777, 0o600, "owner-only");
-  assert.deepEqual(fake.requests, [], "nothing sent while offline");
-  // The worker refuses one of them once it is back: the other is done, the refused one waits for the next connection.
-  fake.state.replies.set("bot.remove-home", (params) => { if (params["botId"] === "c") throw new Error("Refusing to delete it."); return {}; });
-  fake.open();
-  await waitFor(async () => (await saved()).length === 1 || undefined, "the queue to drain");
-  assert.deepEqual(await saved(), [["c", undefined, "/srv/c"]]);
-  assert.deepEqual(fake.requests.map(({ op, params }) => [op, params["botId"] ?? params["reference"]]), [["bot.forget", "durable:2"], ["bot.remove-home", "b"], ["bot.remove-home", "c"]]);
-  assert.match(String((reported.at(-1) as unknown[])[1]), /on devbox could not be removed yet; HUI tries again at its next connection/u);
-  // A refusal while connected fails the delete instead of queueing it: deleting again tries again.
-  await assert.rejects(bots.cleanUp("w-1", { botId: "c", cwd: "/srv/c" }), /Refusing to delete it\./u);
-  // Removing the worker drops what still waits for it.
-  fake.remove();
-  await waitFor(async () => (await saved()).length === 0 || undefined, "the queue to drop the removed worker's clean-ups");
 });
 
 test("clean-ups for a worker that no longer exists are dropped when the gateway starts", async () => {

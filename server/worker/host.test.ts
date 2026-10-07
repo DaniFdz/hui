@@ -19,6 +19,7 @@ const { workerPaths } = await import("./paths.ts");
 const { WorkerHost } = await import("./host.ts");
 const { attachPeer } = await import("./protocol.ts");
 const { brokeredStore, ownLogin } = await import("./credentials.ts");
+const { invokeAgentTool } = await import("../agent-tools-bridge.ts");
 type Store = ReturnType<typeof brokeredStore>;
 type Frame = import("./protocol.ts").Frame;
 type HostInfo = import("./host.ts").HostInfo;
@@ -210,3 +211,34 @@ test("a bot's conversation and memory are made in the host's own store, in its o
   }
 });
 
+test("a session's secret request is answered on the gateway, written here, and its Stop reaches the gateway", async (t) => {
+  const socket = connect(host.paths.socket);
+  const peer = attachPeer(socket, socket);
+  t.after(() => socket.destroy());
+  const asked: Record<string, unknown>[] = [];
+  let held: AbortSignal | undefined;
+  let entered!: () => void;
+  const started = new Promise<void>((resolve) => { entered = resolve; });
+  peer.handle("secret-request", (params, signal) => {
+    asked.push(params);
+    if ((params["params"] as { label?: string }).label !== "Held") return { status: "provided", label: "Token", value: "s3cr3t-on-the-worker" };
+    held = signal;
+    entered();
+    return new Promise(() => undefined);
+  });
+  await peer.request("hello");
+
+  const delivered = await invokeAgentTool({ callerSessionId: "remote-key", action: "secret_request", params: { label: "Token", reason: "Log in" } }) as { status: string; path: string };
+  assert.equal(delivered.status, "provided");
+  assert.equal(await readFile(delivered.path, "utf8"), "s3cr3t-on-the-worker");
+  assert.equal((await stat(delivered.path)).mode & 0o777, 0o600);
+  assert.ok(!JSON.stringify(delivered).includes("s3cr3t"), "the agent gets the path, never the value");
+  assert.deepEqual(asked[0], { key: "remote-key", params: { label: "Token", reason: "Log in" } });
+
+  const stop = new AbortController();
+  const pending = invokeAgentTool({ callerSessionId: "remote-key", action: "secret_request", params: { label: "Held", reason: "Stop me" }, signal: stop.signal });
+  await started;
+  stop.abort();
+  await assert.rejects(pending, /cancelled/u);
+  if (!held!.aborted) await new Promise((resolve) => held!.addEventListener("abort", resolve, { once: true }));
+});

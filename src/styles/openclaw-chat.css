@@ -126,6 +126,25 @@
 :root[data-chat-message-width="comfortable"] .chat { --chat-thread-max-width: 48rem; }
 :root[data-chat-message-width="wide"] .chat { --chat-thread-max-width: 64rem; }
 
+/* Not a size container: Chrome lays a size container's whole subtree out again
+   whenever its column changes, so every keystroke and streamed token reflowed
+   the entire conversation. Only the position rail queried it; its controller
+   measures the thread instead (position-rail.ts). */
+.chat-thread { container-type: normal; }
+.chat-position-rail__marks {
+  --chat-position-marks-height: min(
+    var(--chat-position-rail-height),
+    max(
+      0px,
+      calc(
+        var(--chat-position-thread-height, 0px) + var(--chat-thread-padding-top) + var(--chat-thread-padding-bottom) -
+          var(--chat-transcript-composer-underlap, 0px) - var(--chat-position-rail-top) -
+          var(--chat-position-rail-clearance)
+      )
+    )
+  );
+}
+
 /* Native command options reuse the reference command sheet's geometry. */
 .slash-menu-item { width: 100%; border: 0; background: transparent; font: inherit; text-align: left; cursor: pointer; }
 .slash-menu-item--active { background: var(--bg-hover); }
@@ -320,6 +339,45 @@
 .hui-presented-media > video { max-height: min(56dvh, 480px); }
 .hui-presented-media > audio { min-height: 48px; }
 .hui-presented-media .chat-assistant-attachment-card__action { color: var(--text); }
+
+/* Agent widgets (show_widget): the attachment-card anatomy around a sandboxed
+   frame whose height follows the widget. Full screen promotes the same card to
+   the top layer (manual popover), so the frame is never moved or reloaded. */
+hui-widget-card { display: block; width: 100%; }
+.chat-group--widget .chat-group-messages { width: 100%; }
+.hui-widget-card { display: flex; flex-direction: column; }
+.hui-widget-card:hover { background-color: transparent; }
+:root[data-theme-mode="light"] .hui-widget-card:hover { background-color: var(--chat-attachment-surface); }
+.hui-widget-card__header { padding: 8px 10px 8px 12px; border-bottom: 1px solid var(--chat-attachment-border); }
+.hui-widget-card__icon { display: inline-flex; flex: none; color: var(--muted); }
+.hui-widget-card__icon svg { width: 16px; height: 16px; }
+.hui-widget-card__toggle svg { width: 15px; height: 15px; }
+.hui-widget-card__body { position: relative; min-height: 64px; padding: var(--widget-frame-inset, 12px); }
+.hui-widget-card__frame { display: block; width: 100%; height: var(--hui-widget-height, 160px); border: 0; background: transparent; }
+.hui-widget-card__loading,
+.hui-widget-card__placeholder { display: flex; align-items: center; justify-content: center; gap: 8px; color: var(--muted); font-size: 13px; }
+.hui-widget-card__loading { position: absolute; inset: 0; background: var(--chat-attachment-surface, var(--bg)); }
+.hui-widget-card__placeholder { min-height: 96px; }
+.hui-widget-card__message { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; margin: 0; color: var(--text); font-size: 13px; line-height: 1.45; }
+.hui-widget-card__notice { display: flex; align-items: flex-start; gap: 8px; margin: 0; padding: 8px 12px; border-top: 1px solid var(--chat-attachment-border); color: var(--warn); font-size: 12px; line-height: 1.45; }
+.hui-widget-card__notice svg { flex: none; width: 14px; height: 14px; margin-top: 1px; }
+.hui-widget-card__notice span { min-width: 0; color: var(--text); overflow-wrap: anywhere; }
+.hui-widget-card__guard { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.hui-widget-card[data-expanded] {
+  position: fixed; inset: 0; z-index: 1000; width: 100%; max-width: none; height: 100%; max-height: none;
+  margin: 0; padding: 0; border: 0; border-radius: 0; color: var(--text); background: var(--bg); overflow: hidden;
+}
+.hui-widget-card[data-expanded]:hover { background: var(--bg); }
+.hui-widget-card[data-expanded]::backdrop { background: var(--bg); }
+.hui-widget-card[data-expanded] .hui-widget-card__header { padding-top: max(8px, env(safe-area-inset-top)); }
+.hui-widget-card[data-expanded] .hui-widget-card__body {
+  flex: 1; min-height: 0;
+  padding: var(--widget-frame-inset, 12px) max(var(--widget-frame-inset, 12px), env(safe-area-inset-right)) max(var(--widget-frame-inset, 12px), env(safe-area-inset-bottom)) max(var(--widget-frame-inset, 12px), env(safe-area-inset-left));
+}
+.hui-widget-card[data-expanded] .hui-widget-card__frame { height: 100%; }
+@media (prefers-reduced-motion: reduce) {
+  hui-widget-card .session-run-spinner { animation: none; }
+}
 
 /* Rich Markdown embeds stay bounded by the transcript and fail locally: one
    malformed diagram or blocked provider must not blank the assistant turn. */

@@ -722,7 +722,10 @@ type RuntimeQuestion =
   | { id: string; method: "select"; title: string; options: readonly string[] }
   | { id: string; method: "confirm"; title: string; message: string }
   | { id: string; method: "input"; title: string; placeholder?: string }
-  | { id: string; method: "editor"; title: string; prefill?: string };
+  | { id: string; method: "editor"; title: string; prefill?: string }
+  // HUI's own `secret_request` prompt, never a runtime's: title is the label,
+  // message the reason. See Secret requests.
+  | { id: string; method: "secret"; title: string; message: string };
 type SessionSnapshot = {
   transcript: readonly TranscriptEntry[];
   status: SessionStatus;
@@ -870,7 +873,9 @@ The tools do not use `/__hui/` browser routes. Each PI child inherits an
 immutable HUI session id plus a process-local random bearer token for a private
 HTTP listener bound to `127.0.0.1`. Calls are authorized to the caller's root
 tree before registry or transcript data is returned. The token, PI file paths
-and unrelated session metadata never enter tool output.
+and unrelated session metadata never enter tool output. A PI child cancels a
+call (Stop) by dropping its connection; the handler sees that as the call's
+abort signal, as it sees a Durable tool call's own.
 
 `sessions_spawn` allows at most eight active descendants per root. A child has
 its own PI process/session file and receives `[Subagent Task]` as its first user
@@ -917,7 +922,8 @@ Assistant Markdown has six bounded rich forms in addition to CommonMark/GFM:
   and never implies that the agent has read the private conversation. Labeled,
   mixed-prose, HTTP and non-canonical Slack URLs remain ordinary text or links.
 
-Raw author HTML, SVG, scripts and arbitrary iframes remain escaped. The runtime
+Raw author HTML, SVG, scripts and arbitrary iframes remain escaped; interactive
+HTML and SVG are [agent widgets](#agent-widgets). The runtime
 system prompt renders one compact `hui_presentation` section from the structured
 capability catalog. Declarative renderers are not presented as callable tools.
 The separate `hui_tools` and `hui_tool_guidelines` sections continue to come
@@ -972,6 +978,126 @@ the route additionally requires the exact stored display name and sends
 byte range (`206`/`416`) for native video/audio seek. Recognized media is inline;
 unknown formats use `application/octet-stream` and attachment disposition.
 
+## Agent widgets
+
+The HUI-owned `show_widget` tool (`server/runtimes/show-widget-extension.mjs`) is
+registered with the other HUI tools, so Durable conversations, PI SDK worker
+sessions and the PI CLI fallback (`--extension`) all offer it. It is a port of
+OpenClaw's tool of the same name; see the SPEC decision *Agent widgets run in an
+opaque-origin sandbox* for the threat model.
+
+```ts
+type ShowWidgetInput = {
+  title: string;       // 1–120 characters after trimming: the card heading
+  widget_code: string; // an HTML or SVG fragment, at most 262,144 UTF-8 bytes
+};
+```
+
+`server/runtimes/widget-code.mjs` validates the call where the tool runs. Every
+failure is a failed tool result that tells the model what to fix:
+
+- a missing or longer title, empty code, or more than 256 KiB;
+- a full document: a leading `<!doctype html>`, `<html>`, `<head>` or `<body>`;
+- code that does not start with markup (a file path, a Markdown fence, prose);
+- an inline script that does not parse. Classic scripts (no `type` or a
+  JavaScript MIME type) compile with `vm.Script`, module scripts with
+  `vm.SourceTextModule` in a worker started with `--experimental-vm-modules`;
+  nothing runs or links. Scripts with `src` and other types are skipped but
+  counted. The first error reads `widget_code has a JavaScript syntax error in
+  inline script N at line L, column C: <message>. Offending line: <line>.`, with
+  1-based positions in `widget_code` itself. A worker that cannot start leaves
+  module scripts to the browser's error notice.
+
+The result tells the model the widget is shown, runs sandboxed and cannot be
+read back. Its `details` are the only state the tool records:
+
+```ts
+type ShowWidgetDetails = { widget: { version: 1; title: string; mode: "html" | "svg"; bytes: number } };
+```
+
+The chat renders a succeeded call's own `args.widget_code` when `details.widget` is
+present and the code still passes the size and fragment checks, so a widget
+returns with its transcript (reload, Back/Forward, a gateway restart) and leaves
+HUI with its session; the runtime transcript keeps it like the rest of the
+conversation. A running call shows a pending card, a failed one stays an
+ordinary failed tool row, and a succeeded call without usable code says so. No
+route serves widget content and nothing is persisted outside the transcript.
+
+### `GET|HEAD /__hui/widget-sandbox`
+
+The static outer page of every widget (`server/widget-sandbox.ts`), identical for
+every caller and holding no data, so it needs no x-hui header (an iframe cannot
+send one). Other methods answer 405. Headers:
+
+| Header | Value |
+|---|---|
+| `Content-Security-Policy` | the widget policy below, plus `frame-ancestors 'self'; sandbox allow-scripts allow-forms` |
+| `Permissions-Policy` | camera, microphone, geolocation, display capture, clipboard, payment, USB, serial and HID denied |
+| `Referrer-Policy` | `no-referrer` |
+| `Cross-Origin-Resource-Policy` | `same-origin` |
+| `X-Content-Type-Options` | `nosniff` |
+| `Cache-Control` | `no-store` |
+
+The widget policy (`widgetContentSecurityPolicy` in `shared/widgets.ts`) is
+`default-src 'none'`; `script-src 'unsafe-inline'` plus cdnjs.cloudflare.com,
+cdn.jsdelivr.net, esm.sh and unpkg.com; `style-src` the same plus
+fonts.googleapis.com and fonts.bunny.net; `font-src data:`, the script CDNs,
+fonts.gstatic.com and fonts.bunny.net; `img-src` and `media-src data: blob:`;
+and `'none'` for `connect-src`, `frame-src`, `worker-src`, `object-src`,
+`manifest-src`, `base-uri` and `form-action`.
+
+The page's script stops unless it is framed, its referrer is an http(s) page and
+it cannot read that page (an opaque origin). The HUI page that framed it is its
+host. For each document it receives it builds a new widget frame
+(`srcdoc`, `sandbox="allow-scripts allow-forms"`), which inherits the policy, and
+relays everything else between the host and the widget, dropping
+`ui/notifications/sandbox-*` methods from the widget. It forwards `ui/open-link` only
+while the widget frame holds focus and the page has transient user activation.
+Its hash may carry `scheme=light|dark`, the first color scheme until the host
+context arrives.
+
+### Frame protocol
+
+JSON-RPC 2.0 over `postMessage`, with MCP Apps method names where one exists. The
+chat accepts messages only from the window of its own frame, and starts a widget
+only when the sandbox page posts as the opaque origin `"null"`.
+
+| From → to | Method | Params | Contract |
+|---|---|---|---|
+| page → chat | `ui/notifications/sandbox-proxy-ready` | `{}` | the page is ready; within 5 s of its load or the card fails |
+| chat → page | `ui/notifications/sandbox-resource-ready` | `{ html, renderId, title }` | the composed document; replaces the widget frame |
+| page → chat | `ui/notifications/sandbox-resource-loaded` | `{ renderId }` | the widget frame's first load |
+| page → chat | `ui/notifications/sandbox-resource-navigated` | `{ renderId }` | HUI addition: a later load means the widget navigated; the frame is removed and the card stops |
+| widget → chat | `ui/notifications/size-changed` | `{ height }` | body height; the frame is clamped to 48–8,000 px |
+| chat → widget | `ui/notifications/host-context-changed` | `{ theme, displayMode, styles: { variables } }` | after load and on every theme or display-mode change |
+| widget → chat | `notifications/message` | `{ level: "error", logger: "widget", data: { kind, message, source?, line?, column? } }` | uncaught errors, rejections and policy violations, three distinct per load; the card shows the first and a count |
+| widget → chat | `ui/open-link` (request) | `{ url }` | http(s) without credentials, at most 2,048 characters, only right after a click in the focused widget; opened with `noopener,noreferrer` |
+| widget → chat | `ui/request-display-mode` (request) | `{ mode }` | `inline` always; `fullscreen` only after a click in the focused widget; the result is the resulting mode |
+
+### Canonical document
+
+`buildWidgetDocument` wraps the fragment once: a meta tag repeating the widget policy,
+`<meta name="referrer" content="no-referrer">`, the title, `:root` with the color
+scheme and HUI's current tokens over OpenClaw's light or dark defaults,
+OpenClaw's base stylesheet and helper classes, the bridge script and then the
+fragment (an SVG fragment inside `.svg-widget`). Errors in inline widget scripts are
+reported with lines counted from the fragment's first line. Tokens are read from
+the HUI root on every send and bounded to 256 characters without `; { } < > \`:
+
+| Widget variable | HUI variable | Widget variable | HUI variable |
+|---|---|---|---|
+| `--surface` | `--bg` | `--accent-fill` | `--primary` |
+| `--card` | `--card` | `--accent-fg` | `--primary-foreground` |
+| `--elevated` | `--bg-elevated` | `--ok`, `--warn`, `--danger`, `--info` | same names |
+| `--text`, `--text-strong`, `--muted` | same names | `--radius`, `--radius-full` | same names |
+| `--border`, `--border-strong` | same names | `--font-body` / `--font-mono` | `--font-body` / `--mono` |
+| `--accent` | `--accent` | `--scrollbar-*` | same names |
+
+The card (`src/components/widget-card.ts`) is `role="group"` inline. Full screen
+promotes the same element to the top layer (a manual popover) as
+`role="dialog" aria-modal="true"`, keeps Tab inside it and returns on Escape, the
+control or a widget's own Escape, so the frame is never moved or reloaded.
+
 ## Remote workers
 
 Workers are stored in `~/.config/hui/workers.json` (`{ version: 1, workers: [{ id,
@@ -989,7 +1115,10 @@ the gateway's own worker code, then `npm install --omit=dev`), and finally
 `{"t":"ready"}` once it reaches the host's Unix socket; earlier output is shell
 noise and ignored. From then on both sides exchange `\n`-delimited JSON frames:
 `{t:"req",id,op,p}` / `{t:"res",id,ok,result|error}` requests in either
-direction, plus pushed `session.event` and `session.exit` frames.
+direction, plus pushed `session.event` and `session.exit` frames. A requester
+that gives up on a request (its caller aborted, or it timed out) sends
+`{t:"cancel",id}`, which aborts the handler's signal; a closed connection
+aborts them all. Peers that predate it ignore the frame.
 Gateway requests: `hello` (the host's protocol version and release; a
 mismatch replaces an idle host), `shutdown` (only when idle and no other
 gateway is connected; running Durable work does not count, it resumes in the
@@ -1040,11 +1169,18 @@ restarted host resumes call HUI tools as that session. Host requests: `credentia
 `hui:<providers-relative path>`), the nested `credential-step` that runs an
 OAuth refresh callback on the remote while the gateway holds its lock, and
 `bridge` (a HUI agent tool call; the gateway refuses callers whose session is
-not on that worker, and refuses `terminal`, `browser` and `watcher`) and
+not on that worker, and refuses `terminal`, `browser` and `watcher`, and
+`secret_request` from a host that predates `secret-request`),
 `bot.section {botId}` (`{ section: string | null }`, the `bots` prompt section of
-a bot whose chat runs on that worker; any other bot is refused). With no
-gateway connected a `bridge` call fails at once, and one in flight fails when
-the connection drops. `read` and `list` answers are cached in host memory
+a bot whose chat runs on that worker; any other bot is refused) and
+`secret-request {key,params}`, whose answer `{status:"provided",label,value}`
+(or `cancelled`/`expired`) only the host sees: it writes the value to its own
+private file and gives the agent the path. The gateway answers it only for a
+session on that worker, a bot's chat there included, and a secret request from
+anywhere else for a worker's session is refused. A Stop on the worker cancels
+the request and closes the card. With no gateway connected a `bridge` or
+`secret-request` call fails at once, and one in flight fails when the
+connection drops. `read` and `list` answers are cached in host memory
 until the credential's `expires` (API keys: while the host runs) and served
 while no gateway is connected; nothing is written to disk. Without a cached
 answer the remote's own PI login is used (its `auth.json` only if it already
@@ -1245,7 +1381,9 @@ not the run before it. `answered` carries the last assistant text of that run
 as `reply` (absent when it wrote none); `failed` carries `error` (the run ended
 on an error, or the runtime failed or exited); `needs-input` comes as soon as
 that run asks a question, with `questions` (answer them with `POST
-/__hui/sessions/:sessionId/question`); `timeout` ends the wait, never the turn.
+/__hui/sessions/:sessionId/question`; a `secret` one is a [secret
+request](#secret-requests), whose `title` and `message` are its label and
+reason); `timeout` ends the wait, never the turn.
 A client that disconnects ends only its wait.
 
 `GET /__hui/bots/events` is a server-sent event stream like the session list's,
@@ -1659,7 +1797,8 @@ Session. `model` uses canonical `provider/id` form: the first slash separates th
 provider from the complete model ID, which may contain further slashes (for
 example, `vercel-ai-gateway/anthropic/claude-opus-5.5`). Neither part may be empty
 or contain whitespace. `thinking` accepts `off`,
-`minimal`, `low`, `medium`, `high`, or `xhigh`. Both are persisted before the
+`minimal`, `low`, `medium`, `high`, or `xhigh`. Without `model`, the session
+uses `settings.models.primary` when one is set, otherwise PI's default. Both are persisted before the
 runtime starts and are passed to PI on its first launch as well as later reopen.
 
 `worktree` is optional and defaults to false. `baseRef` optionally selects any
@@ -1886,7 +2025,10 @@ Answers or cancels a pending PI extension-UI request:
 ```
 
 A question is claimed before awaiting PI, so concurrent double-submit cannot
-answer it twice; a rejected runtime response restores it.
+answer it twice; a rejected runtime response restores it. A `secret` question
+is answered here too, but its `value` (non-empty, kept exactly as typed) goes
+to the gateway's [secret request](#secret-requests), never to the runtime; an
+empty value is a 400 that leaves the request pending.
 
 ### `PATCH /__hui/sessions/:id`
 
@@ -2506,6 +2648,32 @@ logPath, state, pid, exitCode?, startedAt, endedAt?, lastLine }`; `state` is
 `~/.config/hui/watchers/`. State is derived on read and on the gateway's poll,
 which re-emits the session snapshot when a watcher's state or latest log line
 changes.
+
+### Secret requests
+
+A regular PI session asks the operator for a secret with the HUI
+`secret_request` tool, so the value never enters the conversation:
+
+| Tool | Contract |
+|---|---|
+| `secret_request { label ≤120, reason ≤500 }` | Both are trimmed, required and shown to the operator; they stay in the transcript. Waits until the operator answers or cancels, the call is aborted (Stop, a PI child that went away, a gateway stop) or 15 minutes pass; a lost worker connection fails the call. Returns `{ status: "provided", label, path, expiresAt }` or `{ status: "cancelled" \| "expired", label }`; the tool text names the file and its expiry, never the value. On a remote worker the file is written there |
+
+A pending request is gateway memory, scoped to its session. It joins the
+session snapshot's `questions` as `{ id, method: "secret", title: label,
+message: reason }` after the runtime's questions and makes the session report
+`waiting`; its start and end re-emit the snapshot and status. It is answered or
+cancelled through [`POST /__hui/sessions/:id/question`](#post-__huisessionsidquestion).
+A provided value is written exactly as typed to `secret` in a fresh
+`hui-secret-<pid>-*` directory under the system temporary directory (`0700`,
+file `0600`) by the process where the session's commands run: the gateway, or
+for a worker session the worker host (see [Transport and
+protocol](#transport-and-protocol)). That path is the result. The process
+deletes the directory 10 minutes later, or when it stops (a worker host also
+stops when HUI upgrades it); a start removes those of processes that are no
+longer running. Nothing else persists the value: not
+the transcript, a tool result, PI's or Durable's stores, the registry or
+diagnostics. The question route answers a malformed body with a fixed 400, so
+not even a JSON parse error quotes it into a diagnostic.
 
 ### Kanban backlog
 

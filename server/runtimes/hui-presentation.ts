@@ -36,5 +36,5 @@ export const HUI_PRESENTATION_CAPABILITIES: readonly HuiPresentationCapability[]
 export const HUI_PRESENTATION_PROMPT = [
   "HUI can render the following declarative response formats:",
   ...HUI_PRESENTATION_CAPABILITIES.map(({ id, guidance }) => `- ${id}: ${guidance}`),
-  "- Raw HTML, arbitrary SVG and iframes are escaped. Do not claim unsupported markup will render.",
+  "- Raw HTML, arbitrary SVG and iframes in Markdown are escaped. When the show_widget tool is active, it is the way to show interactive HTML or SVG. Do not claim unsupported markup will render.",
 ].join("\n");
