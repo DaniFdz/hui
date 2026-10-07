@@ -56,6 +56,19 @@ export async function loadSettings(): Promise<Settings> {
   return settings;
 }
 
+/** Reads the settings again, for a change another screen made (bots turned off there, say). Unlike `loadSettings`, a
+ * failed read changes nothing and resolves undefined. */
+export async function refreshSettings(): Promise<Settings | undefined> {
+  try {
+    settings = normalizeSettings(await fetchJson<unknown>(SETTINGS_URL));
+  } catch {
+    return undefined;
+  }
+  applyAppearance(settings);
+  applyUiPreferences(settings);
+  return settings;
+}
+
 /**
  * Applies immediately and writes in the background, so the UI never waits on
  * disk. Returns whether the write landed: a false lets the caller say so rather

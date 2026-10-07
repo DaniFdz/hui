@@ -97,6 +97,34 @@ test("emoji tiles take a face's width in rows, so names line up whichever look a
   }
 });
 
+test("with Settings → Labs → Bots off the sidebar has no Agents | Bots switch, bot addresses land home and nothing of bots shows; on, it all comes back", () => {
+  const app = read("../hui-app.ts");
+  assert.doesNotMatch(app, /settings\.bots\.showTab/u, "every bot surface asks botsTabShown or botsEnabled, which need Labs → Bots");
+  // The switch, and with it every unread mark on the Bots tab, goes with the setting; the remembered choice stays put.
+  assert.match(between(app, "private shellBotsProps(", "private createNewBot"), /^private shellBotsProps\(\): ShellBotsProps \| undefined \{\n\s+if \(!botsTabShown\(this\.settings\)\) return undefined;/u);
+  assert.match(read("./shell.ts"), /\$\{props\.bots \? html`<div class="sidebar-switch">\$\{renderSidebarTabs\(props\.bots\)\}<\/div>` : nothing\}/u, "no props, no switch");
+  assert.doesNotMatch(between(app, "private followBotsSetting(", "private shellBotsProps("), /writeSidebarTab/u, "a remembered Bots choice shows Agents while off, and Bots again once on");
+  // /bots and /bots/:id land on the normal home; a bot's chat opens nowhere, even through a session address.
+  assert.match(between(app, "private applyNavigation(", "private openPendingSession("), /if \(target\.kind === "bot"\) \{[\s\S]*?if \(this\.embeddedPane \|\| !botsTabShown\(this\.settings\)\) \{\n\s+this\.navigate\(\{ kind: "home" \}, true\);/u);
+  assert.match(between(app, "private openPendingSession(", "private selectView"), /if \(session\.bot && !botsEnabled\(this\.settings\)\) \{\n\s+this\.navigate\(\{ kind: "home" \}, true\);\n\s+return;\n\s+\}/u);
+  assert.match(app, /const wanted = botsTabShown\(this\.settings\) && !this\.botsStreamUnsupported;/u, "no bot stream while off");
+  // Bot chats stay out of the Agents list on or off: it filters by the session's bot, not by a setting.
+  assert.match(between(app, "private get listedGroups(", "private activeBot("), /if \(this\.listedGroupsSource !== this\.groups\) \{\n\s+this\.listedGroupsSource = this\.groups;\n\s+this\.listedGroupsCache = withoutBotSessions\(this\.groups\);/u);
+  // Either way it applies at once: the setting's change follows here, and another screen's through the stream's 409.
+  assert.match(app, /if \(changed\.has\("settings"\)\) \{\n\s+const before = changed\.get\("settings"\) as Settings \| undefined;\n\s+if \(before && \(botsEnabled\(before\) !== botsEnabled\(this\.settings\) \|\| botsTabShown\(before\) !== botsTabShown\(this\.settings\)\)\) this\.followBotsSetting\(\);/u);
+  const follow = between(app, "private followBotsSetting(", "private shellBotsProps(");
+  assert.match(follow, /this\.syncBotsStream\(\);\n\s+if \(botsTabShown\(this\.settings\)\) return;/u);
+  assert.match(follow, /if \(!botsEnabled\(this\.settings\) && this\.voice\.call\) this\.voice\.hangUp\(\);/u, "a call ends with bots");
+  assert.match(follow, /if \(this\.view === "bot"\) this\.navigate\(\{ kind: "home" \}, true\);/u, "a bot's page goes home");
+  assert.match(app, /if \(state === "off"\) \{\n\s+this\.botsStreamStop = undefined;\n\s+void refreshSettings\(\)\.then\(\(settings\) => \{ if \(settings\) this\.settings = settings; \}\);/u);
+  // Bot-only settings go too: Sessions → Bots, Models → Calls, and Automations' routines.
+  const settings = read("./settings.ts");
+  assert.match(between(settings, "function renderCallsSection(", "function renderModelsPage("), /if \(!botsEnabled\(props\.settings\)\) return nothing;/u);
+  assert.match(between(settings, "function renderSessionsSettingsPage(", "function renderWorktreesSettingsPage("), /\$\{botsEnabled\(props\.settings\) \? renderSection\("Bots",/u);
+  assert.match(between(settings, "function renderModelsPage(", "PI defaults"), /Two roles: the primary model does the real work and the utility model the quick work\./u, "the models' intro names no calls while they are hidden");
+  assert.match(app, /sessions: this\.groups\.flatMap\(\(group\) => group\.sessions\),\n\s+bots: botsEnabled\(this\.settings\),/u);
+});
+
 test("+ creates a bot at once, without a name, and opens its chat, as in Grok Bot; no dialog is left", () => {
   const app = read("../hui-app.ts");
   const create = between(app, "private createNewBot = ", "/** The roster's Edit");

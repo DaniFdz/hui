@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { CALL_LIMITS, type CallDelegationResult, type CallLine, type CallTaskResult } from "../../shared/calls.ts";
+import { BOTS_OFF_MESSAGE } from "../../shared/bots.ts";
 import {
   ActivityGate, CallTranscript, callStatusLabel, delegationAppends, GREETING_FALLBACK_MS, initialLiveCallState, LiveCall, livePhaseOf, MIC_GATE, parseLiveEvent, reduceLiveCall, sessionAppends, VOICE_GATE,
   type LiveCallPlatform, type LiveConnectionHandlers, type LiveEvent,
@@ -539,6 +540,17 @@ test("failures show in the call: the microphone, the setup, a lost connection, a
   s.advance(30_000);
   await flush();
   assert.deepEqual([released.state.phase, released.state.error], ["failed", "The gateway released this call."]);
+
+  // Bots turned off (Settings → Labs → Bots) end the call too, saying why.
+  const o = platform();
+  const off = new LiveCall(o.live, { botName: "Juno" });
+  await off.start();
+  o.open();
+  o.failHeartbeats(new Error(BOTS_OFF_MESSAGE));
+  o.advance(30_000);
+  await flush();
+  assert.deepEqual([off.state.phase, off.state.error], ["failed", BOTS_OFF_MESSAGE]);
+  assert(o.sent.some((event) => event["type"] === "session.close"), "the session at ChatGPT is asked to close");
 
   const t = platform();
   const expired = new LiveCall(t.live, { botName: "Juno" });

@@ -236,8 +236,9 @@ export function applyBotsUpdate(bots: readonly BotView[], update: Pick<BotsUpdat
 export type BotsStreamHandlers = {
   /** `first` marks the complete list each (re)connect starts with. */
   onUpdate: (update: BotsUpdate, first: boolean) => void;
-  /** `unsupported`: the gateway has no bot stream (an older build); stop asking. */
-  onConnection: (state: "live" | "reconnecting" | "unsupported") => void;
+  /** `unsupported`: the gateway has no bot stream (an older build); `off`: bots are off there (Settings → Labs → Bots,
+   * a 409); either way, stop asking. */
+  onConnection: (state: "live" | "reconnecting" | "unsupported" | "off") => void;
 };
 
 function waitFor(ms: number, signal: AbortSignal): Promise<void> {
@@ -257,8 +258,8 @@ export function subscribeBots(handlers: BotsStreamHandlers, fetcher: typeof fetc
     while (!abort.signal.aborted) {
       const outcome = await connectBotsOnce(handlers, abort.signal, fetcher, () => { attempt = 0; });
       if (abort.signal.aborted) return;
-      if (outcome === "unsupported") {
-        handlers.onConnection("unsupported");
+      if (outcome === "unsupported" || outcome === "off") {
+        handlers.onConnection(outcome);
         return;
       }
       handlers.onConnection("reconnecting");
@@ -269,13 +270,14 @@ export function subscribeBots(handlers: BotsStreamHandlers, fetcher: typeof fetc
   return () => abort.abort();
 }
 
-async function connectBotsOnce(handlers: BotsStreamHandlers, signal: AbortSignal, fetcher: typeof fetch, onLive: () => void): Promise<"dropped" | "unsupported"> {
+async function connectBotsOnce(handlers: BotsStreamHandlers, signal: AbortSignal, fetcher: typeof fetch, onLive: () => void): Promise<"dropped" | "unsupported" | "off"> {
   let response: Response;
   try {
     response = await fetcher(BOTS_EVENTS_URL, { headers: { ...CLIENT_HEADERS, accept: "text/event-stream" }, cache: "no-store", signal });
   } catch {
     return "dropped";
   }
+  if (response.status === 409) return "off";
   if (!response.ok || !response.body) return response.status === 404 || response.status === 405 ? "unsupported" : "dropped";
   const reader = response.body.getReader();
   const decoder = new TextDecoder();

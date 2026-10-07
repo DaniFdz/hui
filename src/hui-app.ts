@@ -139,8 +139,8 @@ import {
 } from "./lib/session-ui-state.ts";
 import { closeModal, ensureModal } from "./lib/modal-dialog.ts";
 import { documentTitle } from "./lib/document-title.ts";
-import type { Settings } from "./lib/settings.ts";
-import { currentSettings, patchSettings } from "./lib/settings-store.ts";
+import { botsEnabled, botsTabShown, type Settings } from "./lib/settings.ts";
+import { currentSettings, patchSettings, refreshSettings } from "./lib/settings-store.ts";
 import type { ThemeMode, ThemeVariant } from "./lib/theme.ts";
 import {
   applyAccent,
@@ -830,7 +830,7 @@ export class HuiApp extends HuiElement {
         void this.refreshGatewayHealth();
       }
       // Roster times ("2m") age while nothing else re-renders the sidebar.
-      if (!this.embeddedPane && !document.hidden && this.settings.bots.showTab && this.sidebarTab === "bots" && ++this.botRosterTick % 10 === 0) {
+      if (!this.embeddedPane && !document.hidden && botsTabShown(this.settings) && this.sidebarTab === "bots" && ++this.botRosterTick % 10 === 0) {
         this.requestUpdate();
       }
     }, 3000);
@@ -1046,6 +1046,11 @@ export class HuiApp extends HuiElement {
       textarea.setSelectionRange(this.draft.length, this.draft.length);
       this.setCommandQuery(slashCommandQuery(this.draft, this.draft.length));
     }
+    // Bots turned on or off, or their tab shown or hidden, here or (through the bot stream) on another screen.
+    if (changed.has("settings")) {
+      const before = changed.get("settings") as Settings | undefined;
+      if (before && (botsEnabled(before) !== botsEnabled(this.settings) || botsTabShown(before) !== botsTabShown(this.settings))) this.followBotsSetting();
+    }
     // A bot's chat offers GPT-Live calls once the gateway says a ChatGPT login is there.
     if (!this.embeddedPane && this.view === "bot" && !this.callsStatus) void this.loadCallsStatus();
     if (changed.has("selected") || changed.has("view") || changed.has("settingsOpen") || changed.has("activeBotId") || changed.has("bots")) {
@@ -1190,8 +1195,9 @@ export class HuiApp extends HuiElement {
     this.settingsOpen = false;
     this.stopAutomationPolling();
     if (target.kind === "bot") {
-      // Bots exist in the UI only while Settings → Sessions shows the Bots tab.
-      if (this.embeddedPane || !this.settings.bots.showTab) {
+      // Bots exist in the UI only while Settings → Labs → Bots is on and Settings → Sessions shows their tab; a bot's
+      // address lands on the normal home otherwise.
+      if (this.embeddedPane || !botsTabShown(this.settings)) {
         this.navigate({ kind: "home" }, true);
         return;
       }
@@ -1273,8 +1279,13 @@ export class HuiApp extends HuiElement {
       ?? (this.paneSession?.id === id ? this.paneSession : undefined);
     if (session) {
       this.pendingSessionId = "";
+      // While bots are off a bot's chat opens nowhere, like a session that is gone (the gateway refuses it too).
+      if (session.bot && !botsEnabled(this.settings)) {
+        this.navigate({ kind: "home" }, true);
+        return;
+      }
       // A bot's chat opens as the bot (with its panel) wherever it is linked from.
-      if (!this.embeddedPane && session.bot && this.settings.bots.showTab) {
+      if (!this.embeddedPane && session.bot && botsTabShown(this.settings)) {
         this.navigate({ kind: "bot", id: session.bot.id }, true);
         return;
       }
@@ -3652,7 +3663,7 @@ export class HuiApp extends HuiElement {
    * reading the list whenever a bot's session changes status. */
   private syncBotsStream() {
     if (this.embeddedPane) return;
-    const wanted = this.settings.bots.showTab && !this.botsStreamUnsupported;
+    const wanted = botsTabShown(this.settings) && !this.botsStreamUnsupported;
     if (wanted && !this.botsStreamStop) {
       this.botsStreamStop = subscribeBots({
         onUpdate: (update, first) => {
@@ -3672,6 +3683,12 @@ export class HuiApp extends HuiElement {
             this.botsStreamUnsupported = true;
             this.botsStreamStop = undefined;
             void this.refreshBots();
+          }
+          // Bots were turned off on another screen (the gateway ends this stream then): this one reads the settings
+          // again and lets them go too.
+          if (state === "off") {
+            this.botsStreamStop = undefined;
+            void refreshSettings().then((settings) => { if (settings) this.settings = settings; });
           }
         },
       });
@@ -3746,8 +3763,25 @@ export class HuiApp extends HuiElement {
     this.navigate({ kind: "bot", id: bot.id });
   };
 
+  /**
+   * Bots were turned on or off (Settings → Labs → Bots) or their tab shown or hidden: the bot stream follows, and
+   * without the tab a bot's page goes home; with bots off a call hangs up too. Nothing is forgotten here: the roster,
+   * the remembered Agents | Bots choice and the panel come back with them.
+   */
+  private followBotsSetting() {
+    if (this.embeddedPane) return;
+    this.syncBotsStream();
+    if (botsTabShown(this.settings)) return;
+    this.botMenuFor = "";
+    this.botSheetOpen = false;
+    if (!botsEnabled(this.settings) && this.voice.call) this.voice.hangUp();
+    if (this.view === "bot") this.navigate({ kind: "home" }, true);
+  }
+
+  /** Without the Agents | Bots switch (bots off, or their tab hidden) the sidebar is the one it was before bots, and a
+   * remembered Bots choice shows Agents until the switch is back. */
   private shellBotsProps(): ShellBotsProps | undefined {
-    if (!this.settings.bots.showTab) return undefined;
+    if (!botsTabShown(this.settings)) return undefined;
     return {
       tab: this.sidebarTab,
       onTab: this.setSidebarTab,
@@ -5384,6 +5418,7 @@ export class HuiApp extends HuiElement {
       automationFormError: this.automationFormError,
       automationActionError: this.automationActionError,
       sessions: this.groups.flatMap((group) => group.sessions),
+      bots: botsEnabled(this.settings),
       onRetryAutomation: this.loadAutomationData,
       onCreateAutomationTask: this.createAutomationTask,
       automationEditingId: this.automationEditingId,

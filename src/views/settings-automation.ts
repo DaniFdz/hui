@@ -29,6 +29,9 @@ export type AutomationProps = {
   /** Every registered session. Bot chats label their routines but are not
    * offered as targets: a bot's routines are added from its own panel. */
   sessions: readonly SessionView[];
+  /** Settings → Labs → Bots. `false` (bots off) leaves bots' routines and their runs out, like every other trace of
+   * bots; the scheduler keeps them, skipping their runs. */
+  bots?: boolean;
   onRetryAutomation: () => void;
   /** Resolves `true` once the scheduler accepted the task, so the form clears. */
   onCreateAutomationTask: (input: AutomationTaskInput) => Promise<boolean>;
@@ -360,6 +363,18 @@ function syncScheduleVisibility(form: HTMLFormElement, kind: string) {
   }
 }
 
+/** What the page lists: every task and run, or, while bots are off (Settings → Labs → Bots), all but bots' routines and
+ * their runs, which the scheduler keeps and skips. */
+export function listedAutomation(
+  snapshot: Pick<AutomationSnapshot, "tasks" | "runs">,
+  sessions: readonly Pick<SessionView, "id" | "bot">[],
+  bots: boolean | undefined,
+): Pick<AutomationSnapshot, "tasks" | "runs"> {
+  if (bots !== false) return { tasks: snapshot.tasks, runs: snapshot.runs };
+  const chats = new Set(sessions.filter((session) => session.bot).map((session) => session.id));
+  return { tasks: snapshot.tasks.filter((task) => !chats.has(task.sessionId)), runs: snapshot.runs.filter((run) => !chats.has(run.sessionId)) };
+}
+
 export function renderAutomationPage(props: AutomationProps, renderSection: SectionRenderer) {
   const state = automationState(props);
   if (state !== "ready") {
@@ -374,8 +389,7 @@ export function renderAutomationPage(props: AutomationProps, renderSection: Sect
     `;
   }
   const snapshot = props.automation as AutomationSnapshot;
-  const tasks = snapshot.tasks;
-  const runs = snapshot.runs;
+  const { tasks, runs } = listedAutomation(snapshot, props.sessions, props.bots);
   return html`<div class="cron-page settings-stack">
     <p class="settings-page__intro">Scheduled tasks, manual runs and run history owned by HUI.</p>
     ${renderSection(
