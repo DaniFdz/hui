@@ -140,7 +140,7 @@ import {
 import { closeModal, ensureModal } from "./lib/modal-dialog.ts";
 import { documentTitle } from "./lib/document-title.ts";
 import { botsEnabled, botsTabShown, type Settings } from "./lib/settings.ts";
-import { currentSettings, patchSettings, refreshSettings } from "./lib/settings-store.ts";
+import { currentSettings, patchSettings, refreshSettings, settingsWritten } from "./lib/settings-store.ts";
 import type { ThemeMode, ThemeVariant } from "./lib/theme.ts";
 import {
   applyAccent,
@@ -509,6 +509,8 @@ export class HuiApp extends HuiElement {
   private botsStreamStop: (() => void) | undefined;
   private botsStreamLive = false;
   private botsStreamUnsupported = false;
+  /** The stream was asked again after a 409 whose settings still said bots are on; once is enough. */
+  private botsStreamRetried = false;
   private botsRevision = 0;
   @state() private botSearch = "";
   /** The sidebar's Agents | Bots choice, remembered by the browser. */
@@ -3678,17 +3680,27 @@ export class HuiApp extends HuiElement {
         },
         onConnection: (state) => {
           this.botsStreamLive = state === "live";
+          if (state === "live") this.botsStreamRetried = false;
           if (state === "reconnecting" && !this.botsLoaded) this.botsError = "Could not reach the gateway for the bot list. Retrying…";
           if (state === "unsupported") {
             this.botsStreamUnsupported = true;
             this.botsStreamStop = undefined;
             void this.refreshBots();
           }
-          // Bots were turned off on another screen (the gateway ends this stream then): this one reads the settings
-          // again and lets them go too.
+          // A 409: bots are off on the gateway, turned off on another screen (which ends this stream) or not on there
+          // yet. Once this screen's own writes have landed the settings are read again and followed; if they still say
+          // bots are on, the stream is asked once more.
           if (state === "off") {
             this.botsStreamStop = undefined;
-            void refreshSettings().then((settings) => { if (settings) this.settings = settings; });
+            const retry = !this.botsStreamRetried;
+            void settingsWritten().then(refreshSettings).then((settings) => {
+              if (!settings) return;
+              this.settings = settings;
+              if (retry && botsTabShown(settings)) {
+                this.botsStreamRetried = true;
+                this.syncBotsStream();
+              }
+            });
           }
         },
       });
@@ -3770,8 +3782,13 @@ export class HuiApp extends HuiElement {
    */
   private followBotsSetting() {
     if (this.embeddedPane) return;
+    // The gateway refuses the bot stream until it has the setting too: with the tab back, the stream starts once this
+    // screen's own write has landed; without it, it stops at once.
+    if (botsTabShown(this.settings)) {
+      void settingsWritten().then(() => this.syncBotsStream());
+      return;
+    }
     this.syncBotsStream();
-    if (botsTabShown(this.settings)) return;
     this.botMenuFor = "";
     this.botSheetOpen = false;
     if (!botsEnabled(this.settings) && this.voice.call) this.voice.hangUp();

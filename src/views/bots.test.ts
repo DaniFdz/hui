@@ -113,10 +113,13 @@ test("with Settings → Labs → Bots off the sidebar has no Agents | Bots switc
   // Either way it applies at once: the setting's change follows here, and another screen's through the stream's 409.
   assert.match(app, /if \(changed\.has\("settings"\)\) \{\n\s+const before = changed\.get\("settings"\) as Settings \| undefined;\n\s+if \(before && \(botsEnabled\(before\) !== botsEnabled\(this\.settings\) \|\| botsTabShown\(before\) !== botsTabShown\(this\.settings\)\)\) this\.followBotsSetting\(\);/u);
   const follow = between(app, "private followBotsSetting(", "private shellBotsProps(");
-  assert.match(follow, /this\.syncBotsStream\(\);\n\s+if \(botsTabShown\(this\.settings\)\) return;/u);
+  assert.match(follow, /if \(botsTabShown\(this\.settings\)\) \{\n\s+void settingsWritten\(\)\.then\(\(\) => this\.syncBotsStream\(\)\);\n\s+return;\n\s+\}\n\s+this\.syncBotsStream\(\);/u, "the stream starts once the gateway has the setting, and stops at once");
   assert.match(follow, /if \(!botsEnabled\(this\.settings\) && this\.voice\.call\) this\.voice\.hangUp\(\);/u, "a call ends with bots");
   assert.match(follow, /if \(this\.view === "bot" \|\| \(!botsEnabled\(this\.settings\) && this\.view === "home" && this\.selected\?\.bot\)\) this\.navigate\(\{ kind: "home" \}, true\);/u, "a bot's page goes home, and so does its chat open as a session");
-  assert.match(app, /if \(state === "off"\) \{\n\s+this\.botsStreamStop = undefined;\n\s+void refreshSettings\(\)\.then\(\(settings\) => \{ if \(settings\) this\.settings = settings; \}\);/u);
+  const off = between(app, "if (state === \"off\") {", "} else if (!wanted && this.botsStreamStop)");
+  assert.match(off, /void settingsWritten\(\)\.then\(refreshSettings\)\.then\(\(settings\) => \{\n\s+if \(!settings\) return;\n\s+this\.settings = settings;/u, "a 409 reads the settings again once this screen's writes landed");
+  assert.match(off, /if \(retry && botsTabShown\(settings\)\) \{\n\s+this\.botsStreamRetried = true;\n\s+this\.syncBotsStream\(\);/u, "still on: asked once more, never in a loop");
+  assert.match(app, /if \(state === "live"\) this\.botsStreamRetried = false;/u);
   // Bot-only settings go too: Sessions → Bots, Models → Calls, and Automations' routines.
   const settings = read("./settings.ts");
   assert.match(between(settings, "function renderCallsSection(", "function renderModelsPage("), /if \(!botsEnabled\(props\.settings\)\) return nothing;/u);
