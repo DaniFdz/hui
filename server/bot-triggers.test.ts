@@ -31,14 +31,32 @@ async function waitFor(check: () => boolean | Promise<boolean>, what: string): P
   }
 }
 
+const cleanups = new WeakMap<TestContext, { services: BotTriggerService[]; dirs: string[] }>();
+
+/** A test's cleanup, in one hook: every service stops, its last write settled, before any directory goes, whichever
+ * fixture made which (a restart's second fixture writes into the first one's directory). */
+function cleanupOf(t: TestContext): { services: BotTriggerService[]; dirs: string[] } {
+  const known = cleanups.get(t);
+  if (known) return known;
+  const cleanup = { services: [] as BotTriggerService[], dirs: [] as string[] };
+  cleanups.set(t, cleanup);
+  t.after(async () => {
+    await Promise.all(cleanup.services.map((service) => service.stop()));
+    await Promise.all(cleanup.dirs.map((dir) => rm(dir, { recursive: true, force: true, maxRetries: 3 })));
+  });
+  return cleanup;
+}
+
 async function fixture(t: TestContext, options: { perHour?: number; file?: string } = {}) {
+  const cleanup = cleanupOf(t);
   const dir = options.file ? undefined : await mkdtemp(join(tmpdir(), "hui-check-triggers-"));
-  if (dir) t.after(() => rm(dir, { recursive: true, force: true }));
+  if (dir) cleanup.dirs.push(dir);
   const file = options.file ?? join(dir!, "bot-triggers.json");
   const clock = { now: START };
   const scheduled: Scheduled[] = [];
   const delivered: { botId: string; text: string }[] = [];
-  const flags = { active: true };
+  /** `delivering`: deliveries wait for it before they reach the bot. */
+  const flags: { active: boolean; delivering?: Promise<void> } = { active: true };
   const bots: BotRecord[] = [bot("ada"), bot("bob")];
   const runPrompts = new Map<string, string>();
   const github = { synced: [] as Map<string, Set<GitHubTriggerEvent>>[], stopped: 0 };
@@ -47,6 +65,7 @@ async function fixture(t: TestContext, options: { perHour?: number; file?: strin
     bots: {
       list: async () => bots,
       deliver: async (botId, text) => {
+        if (flags.delivering) await flags.delivering;
         if (!flags.active) throw new BotsOffError();
         delivered.push({ botId, text });
         return { status: "sent" };
@@ -55,7 +74,7 @@ async function fixture(t: TestContext, options: { perHour?: number; file?: strin
     },
     github: {
       sync: async (wanted) => { github.synced.push(new Map([...wanted].map(([repo, kinds]) => [repo, new Set(kinds)]))); },
-      stop: () => { github.stopped += 1; },
+      stop: async () => { github.stopped += 1; },
       status: () => undefined,
     },
     active: async () => flags.active,
@@ -68,7 +87,7 @@ async function fixture(t: TestContext, options: { perHour?: number; file?: strin
     resyncMs: 3_600_000,
     ...(options.perHour !== undefined ? { perHour: options.perHour } : {}),
   });
-  t.after(() => service.stop());
+  cleanup.services.push(service);
   /** Moves the clock and runs what came due, flushes included. */
   const advance = async (ms: number) => {
     clock.now += ms;
@@ -242,7 +261,7 @@ test("what waits for a cooldown survives a restart and goes out when it ends", a
   await first.service.create("ada", githubTrigger());
   await first.service.github([ghEvent(1), ghEvent(2)]);
   await first.settled(1);
-  first.service.stop();
+  await first.service.stop();
   const second = await fixture(t, { file: first.file });
   second.clock.now = START + 2 * MINUTE;
   await second.service.start();
@@ -250,6 +269,31 @@ test("what waits for a cooldown survives a restart and goes out when it ends", a
   await second.advance(3 * MINUTE);
   await waitFor(() => second.delivered.length === 1, "the waiting event");
   assert.match(second.delivered[0]!.text, /#2 opened by alice/u);
+});
+
+test("stopping waits for what is going out and the run it writes, and schedules nothing more", async (t) => {
+  const f = await fixture(t);
+  await f.service.start();
+  await f.service.create("ada", githubTrigger());
+  let release!: () => void;
+  f.flags.delivering = new Promise((resolve) => { release = resolve; });
+  await f.service.github([ghEvent(1), ghEvent(2)]);
+  let stopped = false;
+  const stopping = f.service.stop().then(() => { stopped = true; });
+  try {
+    // What the pollers' last poll hands on while the service stops waits in the file, with no timer of its own.
+    await f.service.github([ghEvent(3)]);
+    assert.equal(stopped, false, "#1 is still going out");
+    assert.ok(f.scheduled.every((entry) => entry.cancelled), "the flush and the resync are cancelled, and nothing new is scheduled");
+  } finally {
+    release();
+  }
+  await stopping;
+  assert.equal(f.github.stopped, 1, "the pollers stopped");
+  const saved = JSON.parse(await readFile(f.file, "utf8")) as { runs: BotTriggerRun[]; pending: Record<string, { events: { summary: string }[] }> };
+  assert.deepEqual(saved.runs.map((run) => [run.status, run.summary]), [["fired", "#1 opened by alice in acme/widgets: PR 1"]], "#1's run was written before stop resolved");
+  assert.deepEqual(Object.values(saved.pending).flatMap((waiting) => waiting.events.map((event) => event.summary)),
+    ["#2 opened by alice in acme/widgets: PR 2", "#3 opened by alice in acme/widgets: PR 3"], "what waits stays for the next start");
 });
 
 test("the triggers tool lists, adds, changes and removes a bot's own triggers; turns of another bot or a trigger can't add or change them", async (t) => {

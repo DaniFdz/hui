@@ -170,6 +170,25 @@ export class JsonStateFile<T> {
   }
 }
 
+/**
+ * Work in flight that a `stop()` waits for: `track` keeps a promise until it settles, and `settled` resolves once none
+ * is left, counting what started while it waited.
+ */
+export class InFlight {
+  readonly #work = new Set<Promise<unknown>>();
+
+  track<T>(work: Promise<T>): Promise<T> {
+    this.#work.add(work);
+    const forget = () => { this.#work.delete(work); };
+    work.then(forget, forget);
+    return work;
+  }
+
+  async settled(): Promise<void> {
+    while (this.#work.size) await Promise.allSettled([...this.#work]);
+  }
+}
+
 /** `bot-triggers.json`. `onInvalid` hears how many records it keeps aside, once per change of that number. */
 export function triggerStore(file = TRIGGERS_FILE, onInvalid: (count: number) => void = () => {}): JsonStateFile<TriggerState> {
   let reported = 0;

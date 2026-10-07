@@ -62,13 +62,14 @@ before(async () => {
 });
 
 after(async () => {
-  stopBackend();
+  // The backend first: its triggers' last writes settle before their directory goes.
+  await stopBackend();
   server.closeAllConnections();
   await new Promise<void>((resolve) => server.close(() => resolve()));
   const exit = once(provider, "exit");
   provider.kill();
   await exit;
-  await rm(dir, { recursive: true, force: true });
+  await rm(dir, { recursive: true, force: true, maxRetries: 3 });
 });
 
 async function call(path: string, method = "GET", body?: unknown, guard = true): Promise<{ status: number; body: Record<string, unknown> }> {
@@ -99,9 +100,12 @@ async function until<T>(what: string, check: () => Promise<T | undefined>, timeo
   }
 }
 
+/** The lines another process has finished appending to a log: one it is still writing waits for the next read. */
+const completeLines = (text: string): string[] => text.split("\n").slice(0, -1).filter(Boolean);
+
 /** Whether a provider request's newest message contains `text` (compared as the JSON the request carries it in). */
 async function asked(text: string): Promise<boolean> {
-  const lines = (await readFile(log, "utf8").catch(() => "")).trim().split("\n").filter(Boolean);
+  const lines = completeLines(await readFile(log, "utf8").catch(() => ""));
   const needle = JSON.stringify(text).slice(1, -1);
   return lines.some((line) => {
     const request = JSON.parse(line) as { messages?: unknown[] };
@@ -147,7 +151,7 @@ test("a webhook trigger wakes its bot through the gateway; its token, method, si
 test("a GitHub trigger: the fake GitHub's new pull request reaches the bot, after a silent baseline and conditional polls", { timeout: 120_000 }, async () => {
   const made = await call(`/__hui/bots/${ada.id}/triggers`, "POST", { name: "PRs", source: "github", filter: { repos: ["acme/widgets"], events: ["pr_opened"], authors: ["bob"] }, cooldownSeconds: 0 });
   assert.equal(made.status, 201);
-  const requests = async () => (await readFile(join(ghDir, "requests.jsonl"), "utf8").catch(() => "")).trim().split("\n").filter(Boolean).map((line) => JSON.parse(line) as { path: string; status: number; etag: string | null });
+  const requests = async () => completeLines(await readFile(join(ghDir, "requests.jsonl"), "utf8").catch(() => "")).map((line) => JSON.parse(line) as { path: string; status: number; etag: string | null });
   await until("the baseline poll", async () => ((await requests()).some((entry) => entry.path.startsWith("repos/acme/widgets/pulls")) ? true : undefined));
   await until("a conditional poll answered 304", async () => ((await requests()).some((entry) => entry.status === 304 && entry.etag) ? true : undefined));
   assert.equal(await asked("[trigger: PRs"), false, "the baseline wakes nobody");

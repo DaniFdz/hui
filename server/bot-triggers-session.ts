@@ -7,6 +7,7 @@
  */
 import type { SessionTriggerEvent } from "../shared/bot-triggers.ts";
 import type { BotRecord } from "../shared/bots.ts";
+import { InFlight } from "./bot-triggers-store.ts";
 import type { LiveSessions, SessionStatus, SessionStatusUpdate } from "./live-sessions.ts";
 import type { TranscriptEntry } from "./runtimes/types.ts";
 import type { SessionRecord } from "./sessions.ts";
@@ -54,6 +55,8 @@ export class SessionWatch {
   readonly #deps: SessionWatchDeps;
   readonly #last = new Map<string, SessionStatus>();
   #unsubscribe?: () => void;
+  /** Events on their way to `onEvent`: what `stop` waits for. */
+  readonly #emits = new InFlight();
 
   constructor(deps: SessionWatchDeps) {
     this.#deps = deps;
@@ -66,10 +69,13 @@ export class SessionWatch {
     this.#unsubscribe = watched.unsubscribe;
   }
 
-  stop(): void {
+  /** Stops following the sessions, and resolves once the events on their way have been handed to `onEvent` and settled
+   * there. */
+  async stop(): Promise<void> {
     this.#unsubscribe?.();
     this.#unsubscribe = undefined;
     this.#last.clear();
+    await this.#emits.settled();
   }
 
   /** One status change: a run that ended (idle after running or waiting), a failure, or a question. */
@@ -82,7 +88,7 @@ export class SessionWatch {
     else if (status === "error") kind = "failed";
     else if (status === "idle" && (before === "running" || before === "waiting")) kind = endedInError(this.#deps.sessions.transcript(id)) ? "failed" : "finished";
     if (!kind) return;
-    void this.#emit(id, kind).catch((error: unknown) => this.#deps.report?.(error));
+    void this.#emits.track(this.#emit(id, kind).catch((error: unknown) => this.#deps.report?.(error)));
   }
 
   async #emit(id: string, kind: SessionTriggerEvent): Promise<void> {

@@ -42,9 +42,13 @@ async function poll(gh: GhRest, cursor: RepoCursor | undefined, wants: ReadonlyS
 
 const kinds = (events: readonly GitHubEvent[]) => events.map((event) => `${event.kind}#${event.prNumber}`);
 
-async function tempDir(t: TestContext): Promise<string> {
+/** A temporary directory, removed after the test once `pollers`, which write into it, have stopped. */
+async function tempDir(t: TestContext, pollers: readonly GitHubPollers[] = []): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), "hui-check-triggers-gh-"));
-  t.after(() => rm(dir, { recursive: true, force: true }));
+  t.after(async () => {
+    await Promise.all(pollers.map((each) => each.stop()));
+    await rm(dir, { recursive: true, force: true, maxRetries: 3 });
+  });
   return dir;
 }
 
@@ -210,15 +214,19 @@ test("a 403 with Retry-After pauses polling and keeps the cursor; X-Poll-Interva
 });
 
 test("one poller per repo for every trigger; cursors persist, so a restart never fires twice and its first poll is a catch-up", async (t) => {
-  const dir = await tempDir(t);
+  const made: GitHubPollers[] = [];
+  const dir = await tempDir(t, made);
   const state = fakeState();
   const { gh, repo } = inProcess(state);
   const file = join(dir, "cursors.json");
   const seen: GitHubEvent[] = [];
-  const make = () => new GitHubPollers({ gh, cursors: cursorStore(file), onEvents: (events) => { seen.push(...events); }, intervalMs: 3_600_000, firstDelayMs: 3_600_000 });
+  const make = () => {
+    const created = new GitHubPollers({ gh, cursors: cursorStore(file), onEvents: (events) => { seen.push(...events); }, intervalMs: 3_600_000, firstDelayMs: 3_600_000 });
+    made.push(created);
+    return created;
+  };
   const wanted = new Map([[REPO, new Set<GitHubTriggerEvent>(["pr_opened"])]]);
   const pollers = make();
-  t.after(() => pollers.stop());
   await pollers.sync(wanted);
   // Two triggers on the same repo are one entry of the map, and one poller.
   assert.deepEqual(pollers.repos, [REPO]);
@@ -229,19 +237,17 @@ test("one poller per repo for every trigger; cursors persist, so a restart never
   assert.deepEqual(kinds(seen), ["pr_opened#5"]);
   assert.equal(seen[0]!.catchUp, undefined, "found while watching");
   assert.ok(pollers.status(REPO)!.requests >= 2);
-  pollers.stop();
+  await pollers.stop();
 
   const restarted = make();
-  t.after(() => restarted.stop());
   await restarted.sync(wanted);
   await restarted.pollNow(REPO);
   assert.deepEqual(kinds(seen), ["pr_opened#5"], "a restart never fires the same event again");
   assert.equal(restarted.status(REPO)!.notModified, restarted.status(REPO)!.requests, "and its polls were all 304s");
-  restarted.stop();
+  await restarted.stop();
 
   repo.pulls = [...repo.pulls!, pull(6, { created: soon(4) })];
   const later = make();
-  t.after(() => later.stop());
   await later.sync(wanted);
   await later.pollNow(REPO);
   assert.deepEqual(kinds(seen), ["pr_opened#5", "pr_opened#6"]);
@@ -250,4 +256,58 @@ test("one poller per repo for every trigger; cursors persist, so a restart never
   assert.deepEqual(later.repos, []);
   const saved = JSON.parse(await readFile(file, "utf8")) as { repos: Record<string, unknown> };
   assert.deepEqual(saved.repos, {}, "a repo no trigger watches forgets its cursor: watching it again starts with a baseline");
+});
+
+test("stop waits for the events a poll hands on after saving its cursor, not for a poll still waiting on GitHub", async (t) => {
+  const made: GitHubPollers[] = [];
+  const dir = await tempDir(t, made);
+  const file = join(dir, "cursors.json");
+  const { gh, repo } = inProcess(fakeState());
+  const deferred = () => {
+    let resolve!: () => void;
+    return { promise: new Promise<void>((done) => { resolve = done; }), resolve: () => resolve() };
+  };
+  const handed = deferred();
+  const held = deferred();
+  const seen: GitHubEvent[] = [];
+  const make = (ask: GhRest, onEvents: (events: GitHubEvent[]) => Promise<void> | void) => {
+    const created = new GitHubPollers({ gh: ask, cursors: cursorStore(file), onEvents, intervalMs: 3_600_000, firstDelayMs: 3_600_000 });
+    made.push(created);
+    return created;
+  };
+  const wanted = new Map([[REPO, new Set<GitHubTriggerEvent>(["pr_opened"])]]);
+  const pollers = make(gh, async (events) => { handed.resolve(); await held.promise; seen.push(...events); });
+  await pollers.sync(wanted);
+  await pollers.pollNow(REPO);
+  repo.pulls = [...repo.pulls!, pull(5, { created: soon() })];
+  const polling = pollers.pollNow(REPO);
+  await Promise.race([handed.promise, polling]);
+  let stopped = false;
+  const stopping = pollers.stop().then(() => { stopped = true; });
+  try {
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(stopped, false, "the cursor is saved and the events are still on their way");
+  } finally {
+    held.resolve();
+  }
+  await Promise.all([stopping, polling]);
+  assert.deepEqual(kinds(seen), ["pr_opened#5"]);
+
+  const asked = deferred();
+  const answer = deferred();
+  const restarted = make(async (path, etag) => { asked.resolve(); await answer.promise; return gh(path, etag); }, (events) => { seen.push(...events); });
+  await restarted.sync(wanted);
+  repo.pulls = [...repo.pulls!, pull(6, { created: soon(4) })];
+  const before = await readFile(file, "utf8");
+  const waiting = restarted.pollNow(REPO);
+  await Promise.race([asked.promise, waiting]);
+  try {
+    const first = await Promise.race([restarted.stop().then(() => "stopped"), new Promise((resolve) => setImmediate(() => resolve("waiting")))]);
+    assert.equal(first, "stopped", "stop doesn't wait for GitHub");
+  } finally {
+    answer.resolve();
+  }
+  await waiting;
+  assert.equal(await readFile(file, "utf8"), before, "the dropped poll saves nothing");
+  assert.deepEqual(kinds(seen), ["pr_opened#5"], "and hands nothing on");
 });

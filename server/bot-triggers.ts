@@ -25,7 +25,7 @@ import { BOTS_OFF_MESSAGE, botTurnOrigin, type BotRecord } from "../shared/bots.
 import type { GitHubEvent, RepoPollStatus } from "./bot-triggers-github.ts";
 import { normalizeTriggerInput, normalizeTriggerPatch, patchedFilter, TriggerConflictError, TriggerInputError, TriggerNotFoundError } from "./bot-triggers-input.ts";
 import { sessionWatchable, type SessionEvent } from "./bot-triggers-session.ts";
-import { withRun, type JsonStateFile, type PendingEvent, type TriggerPending, type TriggerState } from "./bot-triggers-store.ts";
+import { InFlight, withRun, type JsonStateFile, type PendingEvent, type TriggerPending, type TriggerState } from "./bot-triggers-store.ts";
 import { hashHookToken, HookBodyError, matchesWebhook, newHookToken, sameHash, webhookEvent, type HookBody } from "./bot-triggers-webhook.ts";
 import { BotConflictError, BotsOffError, findBot } from "./bots.ts";
 
@@ -47,7 +47,8 @@ export type TriggerBots = {
 
 export type TriggerPollers = {
   sync(wanted: ReadonlyMap<string, ReadonlySet<GitHubTriggerEvent>>): Promise<void>;
-  stop(): void;
+  /** Pauses every poller; resolves once what they were saving or handing on has settled. */
+  stop(): Promise<void>;
   status(repo: string): RepoPollStatus | undefined;
 };
 
@@ -203,7 +204,10 @@ export class BotTriggerService {
   #bots: readonly BotRecord[] = [];
   readonly #timers = new Map<string, () => void>();
   #resync?: () => void;
-  #running = false;
+  /** From `stop` until the next `start`: nothing new is scheduled, and the pollers stay stopped. */
+  #stopping = false;
+  /** Writes, deliveries, flushes and resyncs in flight: what `stop` waits for. */
+  readonly #work = new InFlight();
 
   constructor(deps: BotTriggerServiceDeps) {
     this.#deps = deps;
@@ -220,7 +224,7 @@ export class BotTriggerService {
   /** At the gateway's start: drops the triggers of bots that are gone, schedules what waited across the restart and
    * starts the pollers (while bots are on). */
   async start(): Promise<void> {
-    this.#running = true;
+    this.#stopping = false;
     await this.#sync();
     const state = await this.#read();
     const now = this.#now();
@@ -231,19 +235,22 @@ export class BotTriggerService {
     this.#loop();
   }
 
-  stop(): void {
-    this.#running = false;
+  /** Clears the timers and stops the pollers, then resolves once every write, delivery and flush in flight has settled,
+   * those of the events the pollers' last poll hands on included. Nothing more is scheduled until the next `start`. */
+  async stop(): Promise<void> {
+    this.#stopping = true;
     this.#resync?.();
     this.#resync = undefined;
     for (const cancel of this.#timers.values()) cancel();
     this.#timers.clear();
-    this.#deps.github.stop();
+    await this.#deps.github.stop();
+    await this.#work.settled();
   }
 
   /** Bots were turned on (resume the pollers from their cursors) or off (stop them; the cursors stay). */
   async setActive(on: boolean): Promise<void> {
     if (!on) {
-      this.#deps.github.stop();
+      await this.#deps.github.stop();
       return;
     }
     await this.#sync();
@@ -482,7 +489,7 @@ export class BotTriggerService {
     const now = this.#now();
     const plan = await this.#update((state) => this.#decide(state, trigger.id, bots, active, events, options.catchUp === true, now));
     if (plan.heldUntil !== undefined) this.#flushAt(trigger.id, plan.heldUntil);
-    if (plan.kind === "fire") void this.#deliver(plan.trigger, plan.events, plan.more, { catchUp: plan.catchUp });
+    if (plan.kind === "fire") void this.#work.track(this.#deliver(plan.trigger, plan.events, plan.more, { catchUp: plan.catchUp }));
     return plan.kind;
   }
 
@@ -581,9 +588,11 @@ export class BotTriggerService {
 
   #flushAt(id: string, at: number): void {
     this.#cancelFlush(id);
+    // Stopping: what waits stays in the file, and the next start schedules it again.
+    if (this.#stopping) return;
     this.#timers.set(id, this.#schedule(() => {
       this.#timers.delete(id);
-      void this.#flush(id).catch((error: unknown) => this.#deps.report?.("warning", "trigger_flush_failed", "Events waiting for a trigger could not be delivered", error instanceof Error ? error.message : String(error)));
+      void this.#work.track(this.#flush(id).catch((error: unknown) => this.#deps.report?.("warning", "trigger_flush_failed", "Events waiting for a trigger could not be delivered", error instanceof Error ? error.message : String(error))));
     }, at - this.#now()));
   }
 
@@ -600,11 +609,11 @@ export class BotTriggerService {
   }
 
   async #update<R>(mutate: (state: TriggerState) => { value: TriggerState; result: R }): Promise<R> {
-    return this.#store.update((state) => {
+    return this.#work.track(this.#store.update((state) => {
       const next = mutate(state);
       this.#state = next.value;
       return next;
-    });
+    }));
   }
 
   /** Bots read again, triggers of bots that are gone dropped, and the pollers set to the repos enabled triggers name
@@ -628,17 +637,18 @@ export class BotTriggerService {
       });
     }
     if (!await this.#deps.active()) {
-      this.#deps.github.stop();
+      await this.#deps.github.stop();
       return;
     }
-    await this.#deps.github.sync(githubWanted(state.triggers, bots));
+    // Stopping: the pollers stay stopped.
+    if (!this.#stopping) await this.#deps.github.sync(githubWanted(state.triggers, bots));
   }
 
   #loop(): void {
-    if (!this.#running) return;
+    if (this.#stopping) return;
     this.#resync = this.#schedule(() => {
-      void this.#sync().catch((error: unknown) => this.#deps.report?.("warning", "triggers_sync_failed", "Triggers could not be checked against the bots", error instanceof Error ? error.message : String(error)))
-        .finally(() => this.#loop());
+      void this.#work.track(this.#sync().catch((error: unknown) => this.#deps.report?.("warning", "triggers_sync_failed", "Triggers could not be checked against the bots", error instanceof Error ? error.message : String(error)))
+        .finally(() => this.#loop()));
     }, this.#deps.resyncMs ?? RESYNC_MS);
   }
 

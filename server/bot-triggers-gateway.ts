@@ -79,9 +79,11 @@ export function createGatewayTriggers(deps: GatewayTriggerDeps) {
       watch.start();
       await triggers.start();
     },
-    stop(): void {
-      watch.stop();
-      triggers.stop();
+    /** The session watch first, so an event it is still handing on reaches a service that records it; then the service,
+     * its pollers and what they have in flight. */
+    async stop(): Promise<void> {
+      await watch.stop();
+      await triggers.stop();
     },
     /** `POST /__hui/hooks/<token>`: only from this machine or the tailnet (403 otherwise), POST only (405). */
     async hook(request: IncomingMessage, path: string): Promise<{ status: number; body: Record<string, unknown> }> {

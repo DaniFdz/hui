@@ -4027,12 +4027,13 @@ export function recoverInterruptedSessions(
   return started;
 }
 
-export function stopBackend(): void {
+export async function stopBackend(): Promise<void> {
   macPower?.dispose();
   managedBrowser.dispose();
   terminals.dispose();
   githubCli.dispose();
-  triggers.stop();
+  // Before the sessions close: a delivery still going out reaches its bot, and every trigger write has settled.
+  await triggers.stop();
   automation.dispose();
   subagents.dispose();
   watchers.dispose();
@@ -4079,7 +4080,7 @@ export function huiConfig(): Plugin {
       server.middlewares.use(middleware);
     },
     closeBundle() {
-      stopBackend();
+      return stopBackend();
     },
   };
 }

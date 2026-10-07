@@ -19,7 +19,7 @@
 import { execFile } from "node:child_process";
 
 import { GITHUB_TRIGGER_EVENTS, type GitHubTriggerEvent } from "../shared/bot-triggers.ts";
-import type { CursorState, JsonStateFile } from "./bot-triggers-store.ts";
+import { InFlight, type CursorState, type JsonStateFile } from "./bot-triggers-store.ts";
 import { GH_ENV } from "./github.ts";
 import { classifyGhFailure, GitHubApiError } from "./github-previews.ts";
 
@@ -666,6 +666,8 @@ export class GitHubPollers {
   readonly #pollers = new Map<string, Poller>();
   #queue: Promise<unknown> = Promise.resolve();
   #login?: { value: string | undefined; at: number };
+  /** Cursors being saved (with the events handed on after them) or forgotten: what `stop` waits for. */
+  readonly #busy = new InFlight();
 
   constructor(deps: GitHubPollersDeps) {
     this.#deps = deps;
@@ -688,20 +690,14 @@ export class GitHubPollers {
       this.#schedule(created, this.#deps.firstDelayMs ?? Math.min(2_000, this.#intervalMs / 4) * Math.random());
     }
     // A repo no trigger watches any more forgets where it was: watching it again starts with a silent baseline.
-    const saved = await this.#deps.cursors.read().catch(() => undefined);
-    const forget = Object.keys(saved?.repos ?? {}).filter((repo) => !wanted.has(repo));
-    if (forget.length) {
-      await this.#deps.cursors.update((state) => {
-        const repos = { ...state.repos };
-        for (const repo of forget) delete repos[repo];
-        return { value: { repos }, result: undefined };
-      });
-    }
+    await this.#busy.track(this.#forget(wanted));
   }
 
-  /** Pauses every poller; the cursors stay for the next `sync`. */
-  stop(): void {
+  /** Pauses every poller; the cursors stay for the next `sync`. Resolves once the cursors being saved or forgotten, and
+   * the events a poll hands on after saving, have settled; a poll still waiting on GitHub drops its answer instead. */
+  async stop(): Promise<void> {
     for (const repo of [...this.#pollers.keys()]) this.#remove(repo);
+    await this.#busy.settled();
   }
 
   status(repo: string): RepoPollStatus | undefined {
@@ -720,6 +716,17 @@ export class GitHubPollers {
     if (poller.timer) clearTimeout(poller.timer);
     poller.timer = undefined;
     await this.#tick(poller);
+  }
+
+  async #forget(wanted: ReadonlyMap<string, unknown>): Promise<void> {
+    const saved = await this.#deps.cursors.read().catch(() => undefined);
+    const forget = Object.keys(saved?.repos ?? {}).filter((repo) => !wanted.has(repo));
+    if (!forget.length) return;
+    await this.#deps.cursors.update((state) => {
+      const repos = { ...state.repos };
+      for (const repo of forget) delete repos[repo];
+      return { value: { repos }, result: undefined };
+    });
   }
 
   #remove(repo: string): void {
@@ -773,22 +780,7 @@ export class GitHubPollers {
       if (result.rateRemaining !== undefined) poller.status.rateRemaining = result.rateRemaining;
       // Dropped meanwhile (no trigger watches it, or bots were turned off): nothing is saved or delivered.
       if (this.#pollers.get(poller.repo) !== poller) return;
-      await this.#deps.cursors.update((state) => ({ value: { repos: { ...state.repos, [poller.repo]: result.cursor } }, result: undefined }));
-      poller.status.polledAt = new Date(this.#now()).toISOString();
-      if (result.error) {
-        poller.failures += 1;
-        poller.status.error = result.error.message;
-        delay = result.retryAt !== undefined ? Math.max(delay, result.retryAt - this.#now())
-          : result.error.status === 404 ? NOT_FOUND_RETRY_MS
-            : Math.min(MAX_BACKOFF_MS, this.#intervalMs * 2 ** Math.min(poller.failures, 8));
-      } else {
-        poller.failures = 0;
-        delete poller.status.error;
-        poller.polled = true;
-        if (result.retryAt !== undefined) delay = Math.max(delay, result.retryAt - this.#now());
-      }
-      if (result.pollInterval) delay = Math.max(delay, result.pollInterval * 1_000);
-      if (result.events.length) await this.#deps.onEvents(catchUp ? result.events.map((each) => ({ ...each, catchUp: true as const })) : result.events);
+      delay = await this.#busy.track(this.#keep(poller, result, catchUp));
     } catch (error) {
       poller.failures += 1;
       poller.status.error = error instanceof Error ? error.message : String(error);
@@ -797,5 +789,27 @@ export class GitHubPollers {
     } finally {
       this.#schedule(poller, delay);
     }
+  }
+
+  /** A poll's outcome kept: its cursor saved, then its events handed on. Answers how long until the next poll. */
+  async #keep(poller: Poller, result: PollOutcome, catchUp: boolean): Promise<number> {
+    let delay = this.#intervalMs;
+    await this.#deps.cursors.update((state) => ({ value: { repos: { ...state.repos, [poller.repo]: result.cursor } }, result: undefined }));
+    poller.status.polledAt = new Date(this.#now()).toISOString();
+    if (result.error) {
+      poller.failures += 1;
+      poller.status.error = result.error.message;
+      delay = result.retryAt !== undefined ? Math.max(delay, result.retryAt - this.#now())
+        : result.error.status === 404 ? NOT_FOUND_RETRY_MS
+          : Math.min(MAX_BACKOFF_MS, this.#intervalMs * 2 ** Math.min(poller.failures, 8));
+    } else {
+      poller.failures = 0;
+      delete poller.status.error;
+      poller.polled = true;
+      if (result.retryAt !== undefined) delay = Math.max(delay, result.retryAt - this.#now());
+    }
+    if (result.pollInterval) delay = Math.max(delay, result.pollInterval * 1_000);
+    if (result.events.length) await this.#deps.onEvents(catchUp ? result.events.map((each) => ({ ...each, catchUp: true as const })) : result.events);
+    return delay;
   }
 }

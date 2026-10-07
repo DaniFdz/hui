@@ -53,9 +53,9 @@ test("the watch reports a run that finished, failed or waits for an answer, and 
   wanted = false;
   subscriber!({ id: "done", status: "running" });
   subscriber!({ id: "done", status: "idle" });
-  await settle();
+  // Stopping waits for any event on its way to onEvent: none set out.
+  await watch.stop();
   assert.equal(events.length, 4, "no session trigger: nothing");
-  watch.stop();
   assert.equal(subscriber, undefined);
   assert.equal(endedInError([]), undefined);
 });

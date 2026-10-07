@@ -96,7 +96,8 @@ before(async () => {
 });
 
 after(async () => {
-  stopBackend();
+  // The backend first: its triggers' last writes settle before their directory goes.
+  await stopBackend();
   server.closeAllConnections();
   await new Promise<void>((resolve) => server.close(() => resolve()));
   const exit = once(provider, "exit");
@@ -104,7 +105,7 @@ after(async () => {
   await exit;
   // The host is durable by design; stop the one this suite started.
   try { execFileSync("pkill", ["-f", remoteHome]); } catch { /* already gone */ }
-  await rm(root, { recursive: true, force: true });
+  await rm(root, { recursive: true, force: true, maxRetries: 3 });
 });
 
 async function call(path: string, method = "GET", body?: unknown): Promise<{ status: number; body: Record<string, unknown> }> {
@@ -133,7 +134,8 @@ async function waitFor<T>(read: () => T | undefined | false | Promise<T | undefi
 
 type ProviderRequest = { model?: string; system?: unknown; messages?: unknown; tools?: Array<{ name?: string }> };
 async function providerRequests(): Promise<ProviderRequest[]> {
-  return (await readFile(log, "utf8")).trim().split("\n").filter(Boolean).map((line) => JSON.parse(line) as ProviderRequest);
+  // Only the lines the provider has finished appending: one it is still writing waits for the next read.
+  return (await readFile(log, "utf8")).split("\n").slice(0, -1).filter(Boolean).map((line) => JSON.parse(line) as ProviderRequest);
 }
 const systemOf = (request: ProviderRequest | undefined) => JSON.stringify(request?.system ?? "");
 const isCompactor = (request: ProviderRequest) => systemOf(request).includes("You write the memory of");
