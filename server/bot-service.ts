@@ -30,10 +30,10 @@ import { mkdir, realpath, rmdir, stat } from "node:fs/promises";
 import { isAbsolute, join, relative } from "node:path";
 
 import {
-  BOT_LIMITS, botKickoffName, botKickoffText, botTurnOrigin, handleFromName, isBotAccessQuestion, previewLine,
+  BOT_LIMITS, botKickoffName, botKickoffText, handleFromName, isBotAccessQuestion, previewLine, runTurnOrigins,
   type BotAccessRequest, type BotCatalog, type BotSkillRef, type BotSkillSelector,
   type BotAccess, type BotCatalogSkill, type BotCatalogTool, type BotLastMessage, type BotMemoryStatus, type BotMessageResult, type BotPatch,
-  type BotQuestion, type BotRecord, type BotReply, type BotView,
+  type BotQuestion, type BotRecord, type BotReply, type BotTurnOrigin, type BotView,
 } from "../shared/bots.ts";
 import type { CallRecord } from "../shared/calls.ts";
 import type { AutomationTask } from "../src/lib/automation-types.ts";
@@ -662,17 +662,18 @@ export class BotService {
 
   /**
    * `set_profile` from the bot whose chat `callerSessionId` is: its own name and/or title, under `PATCH`'s rules
-   * (`update`, so a derived handle follows the name). Only the operator decides them: a turn that a routine or another
-   * bot started is refused, as its run's originating input (`runPrompt`) shows.
+   * (`update`, so a derived handle follows the name). Only the operator decides them: a run that took any input from a
+   * routine, a trigger or another bot is refused, the one that started it (its run's originating input, `runPrompt`)
+   * or any since (`runOrigins`, as the host running the chat saw them; none from a host that can't tell).
    */
-  async setProfile(callerSessionId: string, params: Record<string, unknown>): Promise<{ text: string; name: string; handle: string }> {
+  async setProfile(callerSessionId: string, params: Record<string, unknown>, runOrigins?: readonly BotTurnOrigin[]): Promise<{ text: string; name: string; handle: string }> {
     await this.#assertActive();
     const bot = (await this.#registry.list()).find((candidate) => candidate.sessionId === callerSessionId);
     if (!bot) throw new BotInputError("set_profile is only available in a bot's chat.");
     if (bot.archived) throw new BotConflictError("An archived bot cannot change its profile.");
-    const origin = botTurnOrigin((await this.#deps.readSessions()).find((record) => record.id === callerSessionId)?.runPrompt);
-    if (origin.kind === "routine" || origin.kind === "bot") {
-      throw new BotConflictError("Only the operator changes your name or title, and this turn was started by a routine or another bot. Ask the operator instead.");
+    const origins = runTurnOrigins((await this.#deps.readSessions()).find((record) => record.id === callerSessionId)?.runPrompt, runOrigins);
+    if (origins.some((origin) => origin.kind === "routine" || origin.kind === "trigger" || origin.kind === "bot")) {
+      throw new BotConflictError("Only the operator changes your name or title, and this turn was started by a routine, a trigger or another bot. Ask the operator instead.");
     }
     const unknown = Object.keys(params).filter((key) => key !== "name" && key !== "title");
     if (unknown.length) throw new BotInputError(`set_profile takes name and title only, not ${unknown.join(", ")}.`);

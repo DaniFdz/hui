@@ -10,13 +10,14 @@
 import { createHash } from "node:crypto";
 import { clampThinkingLevel, type ImageContent, type Message, type ModelThinkingLevel, type TextContent } from "@earendil-works/pi-ai";
 import {
-  CompactionEntry, InboxDoc, ResetEntry, SystemEntry, watchEvents,
+  CompactionEntry, InboxDoc, ResetEntry, SystemEntry, UserEntry, watchEvents,
   type AgentEvent, type AgentState, type CompactionResult, type Conversation, type ConversationId, type Cursor,
   type EntryId, type EntryRecord, type Harness, type TaskId, type ToolRegistration,
 } from "@earendil-works/pi-durable";
 // The estimators Durable's own compaction uses, so the meter matches its thresholds.
 import { calculateContextTokens, estimateMessageTokens } from "@earendil-works/pi-ai/utils/estimate";
 import { SettingsManager, type Skill } from "@earendil-works/pi-coding-agent";
+import { botTurnOrigin, type BotTurnOrigin } from "../../shared/bots.ts";
 import { resolveCommandReference } from "../../src/lib/command-references.ts";
 import type { RuntimeInspection } from "../../src/lib/tools-types.ts";
 import { durableContext as context, durableHost, type DurableHost } from "./durable-host.ts";
@@ -144,6 +145,36 @@ function forkable(message: unknown): boolean {
   return !Array.isArray(content) || !content.some((part) => (part as { type?: unknown } | null)?.type === "toolCall");
 }
 
+/** The text of an input someone sent the conversation (an entry Durable placed for a submission); undefined for any
+ * other entry, and for an extension's custom message, which isn't anyone's input. */
+function inputText(entry: EntryRecord): string | undefined {
+  if (!UserEntry.is(entry)) return undefined;
+  const message = entry.model?.find((each) => each.role === "user");
+  return message && !isCustomInput(message) ? textOf(message) : undefined;
+}
+
+/** Each origin once, in the order they first came. */
+function distinct(origins: readonly BotTurnOrigin[]): BotTurnOrigin[] {
+  const seen = new Set<string>();
+  return origins.filter((origin) => {
+    const key = JSON.stringify(origin);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+/** The run going now, as the stream shows it batch by batch (one batch per commit). */
+type RunFollow = {
+  /** Durable runs one: several chained ones too, since a follow-up starts the next in the commit that ends the last,
+   * and the conversation never goes idle in between. */
+  going: boolean;
+  /** Who brought each input the stream showed it take: its first message, then each steer and follow-up. */
+  origins: BotTurnOrigin[];
+  /** The newest entry the stream reported; what came after is read from the store. */
+  reported: EntryId | undefined;
+};
+
 /** PI's default thinking level for a new conversation without an explicit one. */
 export function defaultThinking(host: DurableHost, cwd: string): string | undefined {
   return SettingsManager.create(cwd, host.agentDir).getDefaultThinkingLevel();
@@ -217,6 +248,8 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
   #botOffer: readonly OfferedTool[] = [];
   /** The message that started the latest run this view started; who started the turn (`runInput`). */
   #runInput: string | undefined;
+  /** Every input of the run going now (`runOrigins`); unset until this view follows the conversation. */
+  #run: RunFollow | undefined;
   readonly resumesInterruptedRuns = true;
 
   constructor(host: DurableHost, harness: Harness, conversation: Conversation, cwd: string) {
@@ -336,6 +369,74 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
     return undefined;
   }
 
+  /** The newest message in the history since the latest reset, read from the store rather than this view, so a tool sees
+   * the one its model answers: a follow-up placed into the running turn after the message that started it. */
+  async latestInput(): Promise<string | undefined> {
+    let cursor: Cursor | undefined;
+    do {
+      const page = await this.#conversation.entries({}, HISTORY_PAGE, cursor, context);
+      for (const entry of page.items) {
+        const message = [...entry.model ?? []].reverse().find((each) => each.role === "user" && !isCustomInput(each));
+        if (message) return textOf(message);
+        if (ResetEntry.is(entry)) return undefined;
+      }
+      cursor = page.next;
+    } while (cursor);
+    return undefined;
+  }
+
+  /**
+   * Who brought each input of the run going now, each once, oldest first: the message that started it and every one it
+   * took since, the steers placed after a tool round and the follow-ups Durable answers in the runs it chains until the
+   * conversation goes idle, which ends the run. A bot's gated tools refuse when any came from an origin they refuse. The
+   * stream reports them; those committed since its latest batch are read from the store, so a tool call never misses
+   * the one its model answers. A view that started following during the run (after a restart) knows only those since;
+   * the message that started it is still `runInput`, and the gateway's `runPrompt`.
+   */
+  async runOrigins(): Promise<readonly BotTurnOrigin[]> {
+    const run = this.#run;
+    if (!run) return [];
+    const origins = [...run.origins];
+    const after = run.reported;
+    const fresh: BotTurnOrigin[] = [];
+    let cursor: Cursor | undefined;
+    scan: do {
+      const page = await this.#conversation.entries(after === undefined ? {} : { minEntryId: after }, HISTORY_PAGE, cursor, context);
+      for (const entry of page.items) {
+        if (after !== undefined && entry.id <= after) break scan;
+        const text = inputText(entry);
+        if (text !== undefined) fresh.push(botTurnOrigin(text));
+      }
+      cursor = page.next;
+    } while (cursor);
+    return distinct([...origins, ...fresh.reverse()]);
+  }
+
+  /** Follows the run going now through one batch of the stream: each input it takes, and its end once a commit leaves
+   * the conversation idle. */
+  #follow(events: readonly AgentEvent[]): void {
+    const run = this.#run;
+    if (!run) return;
+    const saw = (entry: EntryRecord) => {
+      if (run.reported !== undefined && entry.id <= run.reported) return;
+      run.reported = entry.id;
+      const text = inputText(entry);
+      if (text !== undefined) run.origins.push(botTurnOrigin(text));
+    };
+    for (const event of events) {
+      if (event.type === "run_start") run.going = true;
+      else if (event.type === "run_end") run.going = false;
+      else if (event.type === "message_end" || event.type === "entry_appended") saw(event.entry);
+      else if (event.type === "tool_execution_end" && event.entry) saw(event.entry);
+      else if (event.type === "snapshot") {
+        // The stream fell behind: what it skipped and the run still has is in the newest view.
+        run.going = event.run !== undefined;
+        for (const entry of [...event.entries].sort((a, b) => a.id - b.id)) saw(entry);
+      }
+    }
+    if (!run.going) run.origins = [];
+  }
+
   /** The skills this conversation may use: those of its directory, less the ones the operator turned off in a bot's
    * chat. */
   async #skills(loader: { getSkills(): { skills: Skill[] } }): Promise<readonly Skill[]> {
@@ -371,9 +472,13 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
     this.#lastStart = undefined;
     this.#compactions = new Map(stream.snapshot.compactions.map((status) => [status.taskId, compactionOf(status)]));
     this.#syncSnapshot(stream.snapshot);
+    // A run already going started before this view: only the inputs it takes from now on can be told.
+    const newest = stream.snapshot.entries.reduce<EntryId | undefined>((max, entry) => max === undefined || entry.id > max ? entry.id : max, undefined);
+    this.#run = { going: stream.snapshot.run !== undefined, origins: [], reported: newest };
     await this.#read();
     await this.#refreshQueue();
     stream.start(async (events) => {
+      this.#follow(events);
       for (const event of events) await this.#onEvent(event);
       // Extensions' failures are theirs: they must never stop this view from following the conversation.
       try {

@@ -95,6 +95,7 @@ import {
 } from "./lib/bots.ts";
 import { archivedBotCount, hiddenBotCount, isBotSettingsShortcut, readBotPanel, readSidebarTab, writeBotPanel, writeSidebarTab, type BotPanelState, type BotPanelTab, type SidebarTab } from "./lib/bot-roster.ts";
 import { BotToolsController } from "./lib/bot-tools.ts";
+import { BotTriggersController } from "./lib/bot-triggers.ts";
 import { memoryStatusChanged, parseMemoryView, parseMemoryZoom, type MemoryLine } from "./lib/bot-memory.ts";
 import { renderBotArchiveDialog, renderBotDeleteDialog, renderBotPanel, renderBotPlaceholder, type BotMemoryState, type BotSoulState, type MemoryZoomState } from "./views/bots.ts";
 import { NO_BOT_SETTINGS_SAVES, type BotSettingKey, type BotSettingsProps, type BotSettingsSaves, type BotSettingValue } from "./views/bot-settings.ts";
@@ -573,6 +574,8 @@ export class HuiApp extends HuiElement {
   private botSoulSeen = "";
   /** The Tools tab: what the operator can turn off in the bot's chat, kept in its own controller. */
   private botTools = new BotToolsController(this);
+  /** The Routines tab's Triggers section, read while it shows. */
+  private botTriggers = new BotTriggersController(this, { visible: () => this.botPanelVisible() && this.botPanel.tab === "routines" });
   private botRosterTick = 0;
   /** Set on the bot route's embedded pane: header identity and panel state. */
   @property(paneBotProperty) paneBot: PaneBot | undefined;
@@ -1226,6 +1229,7 @@ export class HuiApp extends HuiElement {
         this.resetBotMemory(target.id);
         this.resetBotSoul(target.id);
         this.botTools.reset(target.id);
+        this.botTriggers.reset(target.id);
       }
       this.activeBotId = target.id;
       this.view = "bot";
@@ -3717,6 +3721,7 @@ export class HuiApp extends HuiElement {
           this.followBotMemory();
           this.followBotSoul();
           this.followBotTools();
+          this.followBotTriggers();
         },
         onConnection: (state) => {
           this.botsStreamLive = state === "live";
@@ -4190,6 +4195,13 @@ export class HuiApp extends HuiElement {
     if (bot) this.botTools.follow(bot);
   }
 
+  /** The Routines tab's Triggers section starts reading once the bot is known (a `/bots/<id>` load), and reads again
+   * when the bot's chat changes state: a trigger may just have woken it. */
+  private followBotTriggers() {
+    const bot = this.botPanelVisible() && this.botPanel.tab === "routines" ? this.activeBot() : undefined;
+    if (bot) this.botTriggers.follow(bot);
+  }
+
   /** The panel's visible tab decides what is read: Routines polls Automation
    * like its page; Memory reads once, then follows the bots stream. */
   private syncBotPanelData() {
@@ -4201,6 +4213,7 @@ export class HuiApp extends HuiElement {
     } else if (this.view === "bot") {
       this.stopAutomationPolling();
     }
+    this.botTriggers.sync(visible && this.botPanel.tab === "routines" ? this.activeBot() : undefined);
     if (this.botMemoryTabVisible()) void this.refreshBotMemory();
     if (this.botSoulTabVisible()) void this.refreshBotSoul();
     const toolsBot = this.botToolsTabVisible() ? this.activeBot() : undefined;
@@ -4495,6 +4508,7 @@ export class HuiApp extends HuiElement {
           onRetry: () => void this.refreshBotSoul(),
         },
         tools: this.botTools.props(bot),
+        triggers: this.botTriggers.props(bot),
         settings: {
           models: this.pi?.model.catalog ?? [],
           ...(utilityDefault ? { utilityDefault } : {}),

@@ -26,7 +26,7 @@ const { startDurable, durableConversationId } = await import("./durable.ts");
 const { BotDoc } = await import("./durable-bots.ts");
 const access = await import("./durable-bot-access.ts");
 const { durableBotConversations } = await import("../bot-conversations.ts");
-const { botTurnOrigin, isBotAccessQuestion, botKickoffText } = await import("../../shared/bots.ts");
+const { botTurnOrigin, isBotAccessQuestion, botKickoffText, parseRunOrigins, runTurnOrigins } = await import("../../shared/bots.ts");
 const { bundledSkills } = await import("../bundled-skills.ts");
 type DurableHost = import("./durable-host.ts").DurableHost;
 type BotAccess = import("./durable-bots.ts").BotAccess;
@@ -144,6 +144,16 @@ test("who started a turn is read as set_profile reads it, and an access request 
   assert.equal(isBotAccessQuestion({ method: "confirm", title: "Allow access to bash?" }), false);
 });
 
+test("a gated tool judges a run by its originating input and every input the host running it saw; a worker's list counts only when well formed", () => {
+  assert.deepEqual(runTurnOrigins("please look", [{ kind: "trigger", name: "CI" }]), [{ kind: "operator" }, { kind: "trigger", name: "CI" }]);
+  assert.deepEqual(runTurnOrigins("[routine: Standup] go", undefined), [{ kind: "routine", name: "Standup" }], "a host that can't tell leaves the originating input alone");
+  const sent = [{ kind: "operator" }, { kind: "kickoff" }, { kind: "routine", name: "Standup" }, { kind: "trigger", name: "CI" }, { kind: "bot", handle: "scout" }];
+  assert.deepEqual(parseRunOrigins(JSON.parse(JSON.stringify(sent))), sent);
+  for (const value of [undefined, null, "operator", {}, [{ kind: "webhook" }], [{ kind: "trigger" }], [{ kind: "bot", name: "scout" }], new Array(1_001).fill({ kind: "operator" })]) {
+    assert.equal(parseRunOrigins(value), undefined, JSON.stringify(value)?.slice(0, 60));
+  }
+});
+
 test("request_access lets one request per bot wait for the operator; the next may ask once it is answered", async () => {
   const asked: unknown[] = [];
   let answer!: (response: { value: string }) => void;
@@ -155,6 +165,8 @@ test("request_access lets one request per bot wait for the operator; the next ma
     ask: (question: unknown) => { asked.push(question); return new Promise<{ value: string }>((resolve) => { answer = resolve; }); },
     applyTools: async () => { applied += 1; },
     runInput: () => "[routine: Morning digest] check the inbox",
+    latestInput: async () => "[routine: Morning digest] check the inbox",
+    runOrigins: async () => [{ kind: "routine" as const, name: "Morning digest" }],
   };
   const tool = access.botAccessParts({ chat: () => chat, skills: async () => [], agentDir: "/nowhere" }).tools.find((each) => each.name === "request_access")!;
   const state = { bot: "bot-a", disabledTools: ["write", "edit"], disabledSkills: [] as BotSkillRef[] };
@@ -314,17 +326,20 @@ test("a bot has every tool and skill a session in its directory has until the op
   const plain = await startDurable({ cwd: f.cwd, huiSessionId: "plain" }, f.host);
   const plainTools = names((await plain.inspect()).tools);
   const { id, session } = await f.bot(NONE);
-  assert.deepEqual(names((await session.inspect()).tools), [...plainTools, "message_bot", "write_soul", "set_profile", "routines"], "every tool, message_bot, its soul and profile tools and its routines");
+  assert.deepEqual(names((await session.inspect()).tools), [...plainTools, "message_bot", "write_soul", "set_profile", "triggers", "routines"], "every tool, message_bot, its soul and profile tools, its triggers and its routines");
   assert.deepEqual((await (await f.host.open()).snapshot(AgentDoc, id, durableContext))?.tools, { remove: ["request_access", "load_skill"] },
     "its own tools wait until it has a use for them");
-  assert.deepEqual(names(session.botOffer()), [...plainTools, "message_bot", "routines"], "the operator can turn off any of them but its essentials");
+  assert.deepEqual(names(session.botOffer()), [...plainTools, "message_bot", "triggers", "routines"], "the operator can turn off any of them but its essentials");
+  assert.deepEqual(session.botOffer().find((tool) => tool.name === "triggers"), {
+    name: "triggers", label: "Triggers", description: "Add, change and remove its own triggers: GitHub and session events that wake it", group: "bots", source: "HUI", powerful: false,
+  }, "triggers is an ordinary switch under Bots, not powerful");
   assert.ok(plainTools.includes("secret_request"), "secret_request among them, on like every HUI tool");
   assert.equal(session.botOffer().find((tool) => tool.name === "fixture_other")?.group, "extension");
   assert.deepEqual(plain.botOffer(), []);
   await session.prompt("plain turn");
   await settledWith(session, answered("Fixture response"));
   const [first] = await requests(f.log);
-  assert.deepEqual(toolNames(first), [...plainTools, "message_bot", "write_soul", "set_profile", "routines"]);
+  assert.deepEqual(toolNames(first), [...plainTools, "message_bot", "write_soul", "set_profile", "triggers", "routines"]);
   const system = JSON.stringify(first?.system);
   assert.match(system, /Use the read tool to load a skill's file/u, "PI's own skills section, every skill");
   assert.match(system, /<name>alpha<\/name>[^]*<name>beta<\/name>/u);
@@ -616,5 +631,5 @@ test("a bot document from before the lists reads as nothing turned off, and an o
   assert.equal(old?.bot, "bot-restricted", "the same version: an older HUI reads it and ignores the lists, so a rollback keeps the chat");
   const plain = await startDurable({ cwd: f.cwd, huiSessionId: "plain" }, f.host);
   const session = await startDurable({ cwd: f.cwd, sessionFile: `durable:${created.id}`, huiSessionId: "old-chat" }, f.host);
-  assert.deepEqual(names((await session.inspect()).tools), [...names((await plain.inspect()).tools), "message_bot", "write_soul", "set_profile", "routines"], "every tool, as before");
+  assert.deepEqual(names((await session.inspect()).tools), [...names((await plain.inspect()).tools), "message_bot", "write_soul", "set_profile", "triggers", "routines"], "every tool, as before");
 });

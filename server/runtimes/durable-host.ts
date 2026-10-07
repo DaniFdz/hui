@@ -277,6 +277,7 @@ export class DurableHost implements ExtensionHost {
       }),
     });
     this.#bots = huiBotsExtensions({
+      chat: (conversationId) => this.chatFor(conversationId),
       invoke, section: async (botId) => this.botSection?.(botId), souls: () => this.botSouls,
       tools: [...access.tools, botRoutinesTool({ invoke })], sections: access.sections,
     });
@@ -286,7 +287,10 @@ export class DurableHost implements ExtensionHost {
 
   /** HUI's agent-tool handler, called as the HUI session bound to the conversation. A bot's chat may not call a HUI tool
    * the operator turned off, whatever it was offered: the bridge checks the bot's document itself. `signal` is the tool
-   * call's own abort (Stop), which the handler sees as a PI child's dropped call. */
+   * call's own abort (Stop), which the handler sees as a PI child's dropped call. A call from a bot's chat carries who
+   * brought each input of its run, as the live chat here saw them (`runOrigins`): the gateway's gated tools judge the
+   * run by all of them. Without a live chat here, or when its store can't be read, it carries none, and they judge the
+   * message that started the run alone. */
   async #invokeAs(conversationId: ConversationId, action: string, params: Record<string, unknown>, signal?: AbortSignal): Promise<unknown> {
     const bot = await this.botStateFor(conversationId);
     if (bot && !botMayCall(bot, action)) {
@@ -295,7 +299,8 @@ export class DurableHost implements ExtensionHost {
     const callerSessionId = this.#callers.get(conversationId) ?? await this.#lookupCaller(conversationId);
     if (!callerSessionId) throw new Error("HUI agent tools are unavailable for this conversation.");
     this.#callers.set(conversationId, callerSessionId);
-    return this.#invokeTool({ callerSessionId, action, params, ...(signal ? { signal } : {}) });
+    const runOrigins = bot ? await this.chatFor(conversationId)?.runOrigins().catch(() => undefined) : undefined;
+    return this.#invokeTool({ callerSessionId, action, params, ...(signal ? { signal } : {}), ...(runOrigins ? { runOrigins } : {}) });
   }
 
   /** Names of the HUI-owned tools, for inspection labels. */

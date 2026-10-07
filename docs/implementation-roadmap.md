@@ -956,6 +956,40 @@ requests:
     and an isolated gateway driven in a browser
     ([`e2e/bot-schedules.browser.md`](../e2e/bot-schedules.browser.md), screens
     in the pull request).
+11. **Triggers** (implemented 2026-10-07; the owner's request, SPEC.md, "Triggers
+   wake bots on GitHub, session and webhook events"): per-bot triggers beside its
+   routines in `bot-triggers.json` (owner-only, atomic, like `bots.json`), the
+   GitHub pollers' cursors in `bot-trigger-cursors.json`. Three sources: GitHub
+   (one poller per repo through the gateway's `gh api --include`, conditional on
+   ETags so quiet polls are free 304s, `X-Poll-Interval` and `Retry-After`
+   honoured, a silent baseline and cursors saved before events go out; pull
+   requests opened, pushed, merged and closed, checks failed or passed, reviews,
+   comments and mentions of the operator, filtered by author, label, base, number
+   and draft), sessions the bot started (finished, failed, waiting; one check,
+   `sessionWatchable`), and webhooks (`POST /__hui/hooks/<token>`, tailnet and
+   loopback only, a token shown once and stored hashed, a 64 KiB body, an optional
+   equals/contains field filter). Deliveries are `[trigger: <name> · <summary>]
+   <prompt>` with the event's details through the bot's message path (its remote
+   session for a bot on a worker), recorded as runs; a cooldown coalesces events
+   into one delivery, and a bot takes at most 12 deliveries an hour and has at
+   most 20 triggers. Bots off: pollers stop, webhooks answer 409, session events
+   are skipped; on again, a catch-up delivery per trigger. The bot's `triggers`
+   tool (an ordinary Tools switch under Bots) lists, adds, changes and removes its
+   own, never adding or changing in a turn another bot or a trigger started, and
+   never a webhook. The Routines tab's Triggers section and `hui bot trigger
+   list|add|remove|test`. Slack (Socket Mode) is next, once the owner names a
+   workspace. Proof: `server/bot-triggers*.test.ts` (a fake gh for the pollers,
+   ETag/304 accounting, cursors across a restart, coalescing, the hourly cap,
+   catch-up, the tool's origin checks, the webhook token, filter and size cap,
+   bots off), `server/bot-trigger-routes.test.ts` (a real gateway: a webhook and
+   a fake GitHub's pull request reaching the bot through the fixture provider,
+   the bot's tool, the CLI, bots off), `server/bot-workers.test.ts` (a real local
+   worker: a webhook's delivery runs on the worker, and the bot's tool there
+   reaches the gateway), `server/runtimes/durable-bot-access.test.ts`,
+   `src/lib/bot-triggers.test.ts`, `src/views/bot-triggers.test.ts`,
+   `cli/bot-triggers.test.ts` and an isolated gateway driven in a browser
+   ([`e2e/bot-triggers.browser.md`](../e2e/bot-triggers.browser.md), screens in
+   the pull request).
 
 ### HUI-19 — Agent widgets
 

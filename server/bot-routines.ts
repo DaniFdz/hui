@@ -6,8 +6,10 @@
  * - **Its own chat only.** A bot lists, changes and removes only the tasks whose session is its chat; another
  *   bot's or session's task is never named, as if it did not exist.
  * - **Who started the turn.** Only the operator's turns, its routines' turns and HUI's kickoff may add or change one,
- *   read from the run's originating input as `set_profile` reads it. Any other turn is refused, another bot's
- *   (`[from @…]`) among them. Listing and removing work in any turn: they never make more work.
+ *   judged by every input of the run as `set_profile` judges it: the one that started it (its originating input) and
+ *   any since (`runOrigins`, as the host running the chat saw them). A run that took any other is refused, another
+ *   bot's (`[from @…]`) and a trigger's (`[trigger: …]`, whose event comes from outside HUI) among them. Listing and
+ *   removing work in any turn: they never make more work.
  * - **Limits.** At most `BOT_ROUTINE_LIMITS.active` enabled routines in its chat once it adds or resumes one, one
  *   name per routine, Automation's own one-minute minimum, and up to `BOT_ROUTINE_LIMITS.runs` runs.
  * - **Temporary routines** carry `until` and/or `runs`; Automation deletes them after either, and the bot may
@@ -16,7 +18,7 @@
  * What it makes is recorded as the bot's (`createdBy`). Bots off (Settings → Labs → Bots), it refuses like every
  * bot tool; an archived bot has none to manage.
  */
-import { botTurnOrigin, type BotRecord } from "../shared/bots.ts";
+import { botTurnOrigin, runTurnOrigins, type BotRecord, type BotTurnOrigin } from "../shared/bots.ts";
 import type { AutomationSchedule, AutomationTask } from "../src/lib/automation-types.ts";
 import { AutomationInputError, normalizeSchedule, type AutomationService } from "./automation.ts";
 import { BotConflictError, BotInputError, BotsOffError } from "./bots.ts";
@@ -85,8 +87,9 @@ export class BotRoutines {
     this.#deps = deps;
   }
 
-  /** One call of the tool from the bot whose chat `callerSessionId` is. */
-  async handle(callerSessionId: string, params: Record<string, unknown>): Promise<{ text: string }> {
+  /** One call of the tool from the bot whose chat `callerSessionId` is, with who brought each input of its run as the
+   * host running the chat saw them (`runOrigins`; none from a host that can't tell). */
+  async handle(callerSessionId: string, params: Record<string, unknown>, runOrigins?: readonly BotTurnOrigin[]): Promise<{ text: string }> {
     if (!await this.#deps.active()) throw new BotsOffError();
     const bot = await this.#deps.botForSession(callerSessionId);
     if (!bot) throw new BotInputError(`${ROUTINES_TOOL} is only available in a bot's chat.`);
@@ -96,11 +99,15 @@ export class BotRoutines {
     const unknown = Object.keys(params).filter((key) => !FIELDS.has(key));
     if (unknown.length) throw new BotInputError(`${ROUTINES_TOOL} does not take ${unknown.join(", ")}.`);
     const own = (await this.#deps.automation.snapshot()).tasks.filter((task) => task.sessionId === bot.sessionId);
-    const origin = botTurnOrigin((await this.#deps.readSessions()).find((record) => record.id === callerSessionId)?.runPrompt);
+    const runPrompt = (await this.#deps.readSessions()).find((record) => record.id === callerSessionId)?.runPrompt;
+    // Whose turn it is, for a routine removing itself: the run's originating input.
+    const started = botTurnOrigin(runPrompt);
     if (action === "list") return { text: this.#list(bot, own) };
-    if (action === "remove") return this.#remove(own, params, origin);
+    if (action === "remove") return this.#remove(own, params, started);
     // Only the operator's turns, its routines' and HUI's kickoff may make more work. Another bot can't (that is how
-    // bots would loop), and neither can a turn anything else started: refused by default, not by name.
+    // bots would loop), nor a trigger (its event is text from outside HUI), and neither can a turn anything else
+    // started: refused by default, not by name. Every input of the run counts, and the first that may not names the refusal.
+    const origin = runTurnOrigins(runPrompt, runOrigins).find((each) => each.kind !== "operator" && each.kind !== "routine" && each.kind !== "kickoff") ?? started;
     switch (origin.kind) {
       case "operator":
       case "routine":
@@ -108,6 +115,8 @@ export class BotRoutines {
         break;
       case "bot":
         throw new BotConflictError(`This turn answers a message from @${origin.handle}: another bot can't make you add or change routines. Ask the operator, or do it in your own turn.`);
+      case "trigger":
+        throw new BotConflictError(`This turn was started by the trigger "${origin.name}", whose event comes from outside HUI: it can't make you add or change routines. Ask the operator instead.`);
       default:
         throw new BotConflictError("Only the operator's messages and your routines can make you add or change routines, and something else started this turn. Ask the operator instead.");
     }

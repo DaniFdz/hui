@@ -15,6 +15,7 @@ import { checkNightly, checkRelease } from "./releases.ts";
 import { BOT_FACE_COLORS, BOT_FACE_SHAPES, BOT_THINKING_LEVELS, botFaceColor, botFaceShape } from "../shared/bots.ts";
 import { VOICE_LANGUAGE_EXAMPLES, voiceLanguage } from "../shared/voice.ts";
 import { GPT_LIVE_VOICES, gptLiveVoice } from "../shared/calls.ts";
+import { checkTriggerAdd } from "./bot-triggers.ts";
 
 export const HELP = `Usage:
   hui gateway start [--host <IP|tailnet>] [--port <number>] [--allow-host <name>] [--json]
@@ -58,6 +59,12 @@ export const HELP = `Usage:
               [--timezone <tz>]) [--json]
   hui bot routine run <bot> <routine>
   hui bot routine remove <bot> <routine> [--json]
+  hui bot trigger list <bot> [--json]
+  hui bot trigger add <bot> --name <name> (--github <owner/name,…> --on <events> [--author <a,b>] [--label <a,b>]
+              [--base <branch,…>] [--pr <n,…>] [--draft|--ready] | --session --on <finished,failed,waiting>
+              | --webhook [--match <field=value|field~value>]) [--prompt <text>] [--cooldown <0|30s|5m|1h>] [--json]
+  hui bot trigger remove <bot> <trigger> [--json]
+  hui bot trigger test <bot> <trigger> [--json]
   hui schedule list [--bot <bot> | --session <session>] [--json]
   hui schedule show <schedule> [--json]
   hui schedule add --name <name> --prompt <text> (--at <ISO time> | --every <duration> | --cron <expr> [--timezone <tz>])
@@ -132,6 +139,16 @@ failure or timeout, 2 while the bot waits for an answer (give it in chat).
 Routines are Automation tasks aimed at the bot's chat. --every takes 30s, 5m,
 2h or 1d (Automation allows one minute at least); --cron uses this machine's
 time zone unless --timezone names another.
+Triggers wake a bot when something happens, as [trigger: <name> · <summary>]
+<prompt> in its chat: --github watches pull requests of those repos for the
+--on events (pr_opened, pr_pushed, checks_failed, checks_succeeded,
+review_approved, review_changes_requested, review_commented, comment, mention,
+pr_merged, pr_closed), through the gateway's gh login; --session watches the
+sessions the bot itself starts; --webhook makes a URL, shown once, that
+programs on this machine or the tailnet POST to (--match keeps only calls whose
+JSON field equals, or with ~ contains, a value). Events within --cooldown
+(default 5m) of the last delivery arrive together. <trigger> is a name or id;
+test sends a sample event now.
 Schedules are every Automation task: a prompt HUI sends a session, or a bot's
 chat (its routines), on a schedule, as on the Automations page; "schedules"
 works as "schedule". <schedule> is an id or an exact name, <session> a
@@ -147,7 +164,7 @@ bots' routines out; sessions' schedules work regardless.
 `;
 
 export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {
-  const { values, positionals } = parseArgs({ args, allowPositionals: true, strict: true, options: {
+  const options = {
     help: { type: "boolean", short: "h" }, version: { type: "boolean", short: "v" }, json: { type: "boolean" },
     force: { type: "boolean" }, host: { type: "string" }, port: { type: "string" }, lines: { type: "string" },
     "allow-host": { type: "string", multiple: true },
@@ -160,7 +177,18 @@ export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {
     prompt: { type: "string" }, at: { type: "string" }, every: { type: "string" }, cron: { type: "string" }, timezone: { type: "string" },
     allow: { type: "string" }, deny: { type: "string" }, "deny-tools": { type: "string" }, "deny-skills": { type: "string" },
     bot: { type: "string" }, session: { type: "string" }, description: { type: "string" }, until: { type: "string" }, runs: { type: "string" }, disabled: { type: "boolean" },
-  } });
+    github: { type: "string" }, webhook: { type: "boolean" }, on: { type: "string" }, author: { type: "string" },
+    label: { type: "string" }, base: { type: "string" }, pr: { type: "string" }, draft: { type: "boolean" }, ready: { type: "boolean" },
+    match: { type: "string" }, cooldown: { type: "string" },
+  } as const;
+  // --session names a session to hui schedule but is a flag to hui bot trigger add (--session --on finished): a first
+  // read that never throws finds the command, and only a bot trigger command reads --session as a flag. Its type is
+  // then the command's, the one each command's reader (scheduleCommand, triggerBody) takes.
+  const [noun, verb] = parseArgs({ args, allowPositionals: true, strict: false, options }).positionals;
+  const sessionFlag = (noun === "bot" || noun === "bots") && (verb === "trigger" || verb === "triggers");
+  const parsed = parseArgs({ args, allowPositionals: true, strict: true, options: { ...options, session: { type: sessionFlag ? "boolean" : "string" } } });
+  const values: Omit<typeof parsed.values, "session"> & { session?: any } = parsed.values;
+  const { positionals } = parsed;
   if (values.help || !args.length) return { command: "help", values };
   if (values.version) return { command: "version", values };
   // VoiceStudio is gone (2026-10-06): its flags say what took their place instead of failing as unknown options.
@@ -170,7 +198,8 @@ export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {
   const bots = first === "bot" || first === "bots";
   const schedules = first === "schedule" || first === "schedules";
   const routine = bots && (second === "routine" || second === "routines");
-  const command = bots ? (routine ? `bot routine ${extra.shift() ?? "list"}` : `bot ${second ?? "list"}`)
+  const trigger = bots && (second === "trigger" || second === "triggers");
+  const command = bots ? (routine ? `bot routine ${extra.shift() ?? "list"}` : trigger ? `bot trigger ${extra.shift() ?? "list"}` : `bot ${second ?? "list"}`)
     : schedules ? `schedule ${second ?? "list"}`
     : first === "gateway" ? `gateway ${second ?? "run"}` : first === "workers" ? `workers ${second ?? "list"}` : first;
   // `workers edit` and `workers remove` name the worker they act on.
@@ -189,6 +218,8 @@ export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {
     "bot remove": ["json"], "bot restore": ["json"], "bot delete": ["yes", "json"], "bot chat": [], "bot send": ["wait", "timeout", "json"], "bot stop": ["json"],
     "bot memory": ["zoom", "html", "json"], "bot routine list": ["json"],
     "bot routine add": ["name", "prompt", "at", "every", "cron", "timezone", "json"], "bot routine run": [], "bot routine remove": ["json"],
+    "bot trigger list": ["json"], "bot trigger remove": ["json"], "bot trigger test": ["json"],
+    "bot trigger add": ["name", "prompt", "github", "session", "webhook", "on", "author", "label", "base", "pr", "draft", "ready", "match", "cooldown", "json"],
     "schedule list": ["bot", "session", "json"], "schedule show": ["json"], "schedule add": [...SCHEDULE_FIELDS, "json"], "schedule edit": [...SCHEDULE_FIELDS, "json"],
     "schedule pause": ["json"], "schedule resume": ["json"], "schedule run": ["json"], "schedule remove": ["json"],
   };
@@ -259,6 +290,7 @@ const BOT_OPERANDS: Record<string, readonly string[]> = {
   "bot remove": ["bot"], "bot restore": ["bot"], "bot delete": ["bot"],
   "bot chat": ["bot"], "bot send": ["bot", "message"], "bot stop": ["bot"], "bot memory": ["bot"],
   "bot routine list": ["bot"], "bot routine add": ["bot"], "bot routine run": ["bot", "routine"], "bot routine remove": ["bot", "routine"],
+  "bot trigger list": ["bot"], "bot trigger add": ["bot"], "bot trigger remove": ["bot", "trigger"], "bot trigger test": ["bot", "trigger"],
 };
 const MODEL_REF = /^[^/\s]+\/\S+$/u;
 
@@ -302,6 +334,7 @@ function checkBotCommand(command: string, operands: readonly string[], values: R
   if (both.length) throw new Error(`${both.join(", ")} can't be both allowed and denied.`);
   if (given("zoom") && given("html")) throw new Error("Use either --zoom or --html.");
   if (given("zoom") && !/^\d{1,15}\+\d{1,15}$/u.test(String(values["zoom"]))) throw new Error("--zoom takes a view line's id+n, such as 2184+8.");
+  if (command === "bot trigger add") checkTriggerAdd(values);
   if (command === "bot routine add") {
     if (!values["name"] || !values["prompt"]) throw new Error("bot routine add needs --name and --prompt.");
     if (["at", "every", "cron"].filter(given).length !== 1) throw new Error("bot routine add needs exactly one of --at, --every or --cron.");
@@ -351,6 +384,13 @@ export async function main(args: string[], installation: Installation): Promise<
     const action = command.slice("workers ".length);
     const result = await workersCommand(status.url, action, target, values);
     if (action === "list" && !values.json) console.log(formatWorkers(result as Parameters<typeof formatWorkers>[0])); else report(result);
+    return;
+  }
+  if (command.startsWith("bot trigger ")) {
+    const status = await gatewayStatus();
+    if (status.status !== "running" || !status.url) throw new Error("Gateway is not running. Start it with hui gateway start.");
+    const [{ terminalBotIO }, { triggerCommand }] = await Promise.all([import("./bots.ts"), import("./bot-triggers.ts")]);
+    process.exitCode = await triggerCommand(status.url, command.slice("bot trigger ".length), operands ?? [], values, terminalBotIO());
     return;
   }
   if (command.startsWith("bot ")) {

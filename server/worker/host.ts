@@ -23,6 +23,7 @@ import { createServer, type Server, type Socket } from "node:net";
 import { chmod, lstat, mkdir, readdir, readFile, realpath, rm, stat, unlink, writeFile } from "node:fs/promises";
 import { hostname } from "node:os";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
+import type { BotTurnOrigin } from "../../shared/bots.ts";
 import { registerAgentToolHandler, stopAgentToolBridge } from "../agent-tools-bridge.ts";
 import { operatorName } from "../bot-souls.ts";
 import { readHuiSettings } from "../hui-settings.ts";
@@ -166,7 +167,7 @@ export class WorkerHost {
     this.#durable = new DurableHost({
       dir: join(paths.stateDir, "durable"),
       agentDir: paths.agentDir,
-      invokeTool: ({ callerSessionId, action, params, signal }) => this.#gatewayTool(callerSessionId, action, params, signal),
+      invokeTool: ({ callerSessionId, action, params, signal, runOrigins }) => this.#gatewayTool(callerSessionId, action, params, signal, runOrigins),
       lookupCaller: async (conversationId) => this.#callers.get(String(conversationId)),
       // The gateway's bridge refuses these for every session here; a bot's chat isn't offered them.
       gatewayOnlyTools: GATEWAY_ONLY_TOOLS,
@@ -525,11 +526,12 @@ export class WorkerHost {
     return undefined;
   }
 
-  /** HUI tools act on the gateway; without one they fail at once, never replayed. */
-  async #gatewayTool(key: string, action: string, params: Record<string, unknown>, signal?: AbortSignal): Promise<unknown> {
+  /** HUI tools act on the gateway; without one they fail at once, never replayed. A bot's chat sends who brought each
+   * input of its run (`runOrigins`), as its live chat here saw them, for the gateway's gated tools. */
+  async #gatewayTool(key: string, action: string, params: Record<string, unknown>, signal?: AbortSignal, runOrigins?: readonly BotTurnOrigin[]): Promise<unknown> {
     const peer = this.#gateway(key);
     if (!peer) throw new Error("HUI is not connected to this worker right now; its tools are unavailable until it reconnects.");
-    if (action !== "secret_request") return peer.request("bridge", { key, action, params }, 170_000, signal);
+    if (action !== "secret_request") return peer.request("bridge", { key, action, params, ...(runOrigins ? { runOrigins } : {}) }, 170_000, signal);
     // The operator answers on the gateway; the file belongs here, where the
     // session's commands run, and only its path goes on to the agent.
     const answer = await peer.request<SecretAnswer>("secret-request", { key, params }, SECRET_REQUEST_TIMEOUT_MS + 60_000, signal);

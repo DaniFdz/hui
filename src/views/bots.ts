@@ -38,6 +38,7 @@ import { describeRoutineSchedule, formatTimestamp, runIsActive } from "./setting
 import { renderSettingsToggle } from "./settings-toggle.ts";
 import { renderBotSettings, type BotSettingsProps } from "./bot-settings.ts";
 import { renderBotToolsTab, type BotToolsProps } from "./bot-tools.ts";
+import { renderBotTriggers, type BotTriggersProps } from "./bot-triggers.ts";
 
 // Node's focused view tests import this module without a CSS loader.
 if (typeof document !== "undefined") {
@@ -389,6 +390,8 @@ export type BotPanelProps = {
   };
   /** The Tools tab's state and actions (`BotToolsController.props`). */
   tools: Omit<BotToolsProps, "bot">;
+  /** The Routines tab's Triggers section (`BotTriggersController.props`). */
+  triggers: Omit<BotTriggersProps, "bot" | "now">;
   /** The Settings tab: everything but the bot, the ids and its face, which the panel supplies. */
   settings: Omit<BotSettingsProps, "bot" | "id" | "face">;
 };
@@ -663,7 +666,7 @@ function renderSoulTab(props: BotPanelProps) {
 
 function renderPanelTab(props: BotPanelProps) {
   switch (props.tab) {
-    case "routines": return renderRoutinesTab(props);
+    case "routines": return html`${renderRoutinesTab(props)}${renderBotTriggers({ bot: props.bot, now: Date.now(), ...props.triggers })}`;
     case "memory": return renderMemoryTab(props);
     case "soul": return renderSoulTab(props);
     // Keyed, as Settings: another bot's switches and skill search start afresh.
