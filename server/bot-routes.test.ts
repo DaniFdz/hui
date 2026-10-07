@@ -414,11 +414,20 @@ test("the bot list streams: the whole list first, then the bots that changed", {
   const first = await next();
   assert.deepEqual(first.upserts.map((bot) => bot.handle).toSorted(), ["ada", "bob", "mem"]);
   assert.deepEqual(first.ids?.length, 3);
+  const views = new Map(first.upserts.map((bot) => [bot.id, JSON.stringify(bot)]));
   await call("/__hui/bots/bob", "PATCH", { title: "Helper" });
-  const changed = await next();
-  assert.deepEqual(changed.upserts.map((bot) => [bot.handle, bot.title]), [["bob", "Helper"]]);
-  assert.equal(changed.ids, undefined, "membership did not change");
-  assert.ok(changed.revision > first.revision);
+  // Other bots may change meanwhile (the last test's chat settling, its memory building): each frame carries only
+  // bots whose view changed, until the one with bob's new title.
+  let changed: BotsUpdate;
+  do {
+    changed = await next();
+    assert.equal(changed.ids, undefined, "membership did not change");
+    assert.ok(changed.revision > first.revision);
+    for (const bot of changed.upserts) {
+      assert.notEqual(JSON.stringify(bot), views.get(bot.id), `@${bot.handle} is sent only when its view changed`);
+      views.set(bot.id, JSON.stringify(bot));
+    }
+  } while (!changed.upserts.some((bot) => bot.handle === "bob" && bot.title === "Helper"));
   stop.abort();
   await reader.cancel().catch(() => {});
 });
