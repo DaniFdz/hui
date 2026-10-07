@@ -39,6 +39,11 @@ function answer(state, path) {
     return pull ? { status: 200, body: pull } : { status: 404, body: { message: "Not Found" } };
   }
   if (rest[0] === "issues" && rest[1] === "comments") return { status: 200, body: [...(repo.issueComments ?? [])].sort(byDate("created_at")).slice(0, perPage) };
+  // A pull request is an issue too, as GitHub answers it (what link previews read).
+  if (rest[0] === "issues" && /^\d+$/u.test(rest[1] ?? "") && rest.length === 2) {
+    const pull = (repo.pulls ?? []).find((each) => String(each.number) === rest[1]);
+    return pull ? { status: 200, body: { ...pull, pull_request: { url: `https://api.github.com/repos/${parts[1]}/${parts[2]}/pulls/${pull.number}`, html_url: pull.html_url } } } : { status: 404, body: { message: "Not Found" } };
+  }
   if (rest[0] === "commits" && rest[2] === "check-runs") {
     const runs = repo.checkRuns?.[rest[1]] ?? [];
     return { status: 200, body: { total_count: runs.length, check_runs: runs } };
