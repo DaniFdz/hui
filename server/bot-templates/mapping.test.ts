@@ -74,6 +74,9 @@ test("SOUL.md is the persona, then what it already knows while it fits; memories
   assert.equal(full.included, 1);
   assert.ok(full.soul.length <= BOT_LIMITS.soul);
   assert.deepEqual(composeSoul("", [{ text: "lost" }], "x"), { soul: "", included: 0, cut: false });
+  const again = composeSoul(soul, [{ name: "Memory of @nova when it was exported", text: "<chat>\n0+1|user: hi\n</chat>" }], "HUI bot export");
+  assert.equal(again.soul.split(KNOWN_HEADING).length, 2, "a HUI export of an imported bot gets no second heading");
+  assert.ok(again.soul.endsWith("PI\n\n### Memory of @nova when it was exported\n\n<chat>\n0+1|user: hi\n</chat>"));
 });
 
 test("a template from the browser is checked again: types, sizes and lists; what is left becomes a clean template", () => {

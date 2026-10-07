@@ -85,7 +85,8 @@ export const KNOWN_HEADING = "## What you already know";
 
 /**
  * SOUL.md for an imported bot: its persona (cut to fit), then its memories under "What you already know", each as a
- * line or a short section, while they fit in `BOT_LIMITS.soul`. Memories need a persona: without one the bot writes
+ * line or a short section, while they fit in `BOT_LIMITS.soul`. A persona that already has that section (a HUI export
+ * of an imported bot) gets them at its end, under no second heading. Memories need a persona: without one the bot writes
  * its own soul in its first conversation, and they stay out.
  */
 export function composeSoul(persona: string, memories: readonly { name?: string; text: string }[], source: string): { soul: string; included: number; cut: boolean } {
@@ -93,15 +94,18 @@ export function composeSoul(persona: string, memories: readonly { name?: string;
   const cut = soul.length > BOT_LIMITS.soul;
   if (cut) soul = soul.slice(0, BOT_LIMITS.soul).trimEnd();
   if (!soul || !memories.length) return { soul, included: 0, cut };
-  const head = `${KNOWN_HEADING}\n\nBrought over from ${source} when HUI created you. It is what you knew there; the operator may correct it.`;
+  const head = soul.includes(KNOWN_HEADING) ? "" : `${KNOWN_HEADING}\n\nBrought over from ${source} when HUI created you. It is what you knew there; the operator may correct it.\n\n`;
   let body = "";
+  let previous = "";
   let included = 0;
   for (const memory of memories) {
     const text = memory.text.trim();
     const line = text.includes("\n") ? `### ${memory.name ? oneLine(memory.name, 120) : "Note"}\n\n${text}` : `- ${memory.name ? `**${oneLine(memory.name, 120)}:** ` : ""}${text}`;
-    const next = `${body}${body ? (line.startsWith("###") || body.endsWith("\n\n") ? "\n\n" : "\n") : "\n\n"}${line}`;
+    // Bullets stay together; a section stands apart from what is around it.
+    const next = body ? `${body}${line.startsWith("- ") && previous.startsWith("- ") ? "\n" : "\n\n"}${line}` : line;
     if (`${soul}\n\n${head}${next}`.length > BOT_LIMITS.soul) break;
     body = next;
+    previous = line;
     included += 1;
   }
   return { soul: included ? `${soul}\n\n${head}${body}` : soul, included, cut };
