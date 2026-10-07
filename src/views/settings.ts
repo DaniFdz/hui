@@ -17,6 +17,7 @@ import { renderSettingsToggle } from "./settings-toggle.ts";
 import "./settings-tools.ts";
 import "./settings-browser.ts";
 import "./settings-jira.ts";
+import "./settings-calls.ts";
 import "./settings-github.ts";
 import "./settings-providers.ts";
 import "./settings-workers.ts";
@@ -112,6 +113,7 @@ export type SettingsProps = AutomationProps & {
   /** Resolves once the settings write lands, so the Browser section can re-read status. */
   onChangeBrowser: (next: Settings["browser"]) => Promise<unknown> | void;
   onChangeModels: (next: Settings["models"]) => void;
+  onChangeCalls: (next: Settings["calls"]) => void;
   onChangePower: (next: Settings["power"]) => void;
   onChangeBots: (next: Settings["bots"]) => void;
   onSetLidAwake: (on: boolean) => void;
@@ -655,10 +657,15 @@ function renderToolsPage(props: SettingsProps) {
     <hui-tools-settings .sessions=${props.sessions.filter((session) => !session.bot)}></hui-tools-settings>`;
 }
 
+/** Settings → Models → Calls: GPT-Live through the ChatGPT login above (HUI-18). */
+function renderCallsSection(props: SettingsProps) {
+  return html`<hui-call-settings .calls=${props.settings.calls} .onChange=${props.onChangeCalls}></hui-call-settings>`;
+}
+
 function renderModelsPage(props: SettingsProps) {
   const pi = props.pi;
   if (!pi) {
-    return html`<hui-provider-settings @providers-changed=${props.onRetryPi}></hui-provider-settings>${renderPiMissing(props)}`;
+    return html`<hui-provider-settings @providers-changed=${props.onRetryPi}></hui-provider-settings>${renderCallsSection(props)}${renderPiMissing(props)}`;
   }
   const model = pi.model;
   const modelOptions = [
@@ -671,8 +678,8 @@ function renderModelsPage(props: SettingsProps) {
     });
   return html`
     <p class="settings-page__intro">
-      Connect providers and choose models without changing PI's configuration. Primary handles normal turns,
-      fallback recovers a turn when the primary provider fails, and utility handles short internal work.
+      Connect providers and choose models without changing PI's configuration. Three roles: the primary model does
+      the real work, the utility model the quick work, and GPT-Live (Calls, below) talks on calls.
     </p>
     <hui-provider-settings @providers-changed=${props.onRetryPi}></hui-provider-settings>
     ${renderSection(
@@ -681,7 +688,7 @@ function renderModelsPage(props: SettingsProps) {
       html`
         ${renderRow(
           "Primary model",
-          "The normal session model. Example: OpenAI Astra for coding and longer tasks.",
+          "The smartest model you have. Speed doesn't matter: it does the real work of new sessions and bots.",
           routePicker("Primary model", "primary"),
         )}
         ${renderRow(
@@ -691,11 +698,12 @@ function renderModelsPage(props: SettingsProps) {
         )}
         ${renderRow(
           "Utility model",
-          "Choose a cheap, fast model for short session names and /btw side questions. Examples: GPT-5.6 Luna or Claude Haiku.",
+          "The fastest model you have, ideally a cheap one. It names sessions and branches, drafts Jira items and answers /btw; for bots without their own, it writes memory summaries, answers quick questions on calls and writes call summaries.",
           routePicker("Utility model", "utility"),
         )}
       `,
     )}
+    ${renderCallsSection(props)}
     ${renderSection(
       "PI defaults",
       "Read-only fallbacks used when HUI has no primary route.",

@@ -7,7 +7,9 @@
  * Responses are normalized on the way in, like settings: a malformed or newer
  * record is skipped or narrowed rather than reaching the roster as `undefined`.
  */
-import { botLook, isBotFaceShape, type BotAvatar, type BotAvatarPatch, type BotFaceShape, type BotInput, type BotMemoryStatus, type BotMemoryUsage, type BotPatch, type BotSessionStatus, type BotsUpdate, type BotView } from "../../shared/bots.ts";
+import { botLook, isBotFaceShape, type BotAvatar, type BotAvatarPatch, type BotFaceShape, type BotInput, type BotMemoryStatus, type BotMemoryUsage, type BotPatch, type BotSessionStatus, type BotsUpdate, type BotView, type BotVoice } from "../../shared/bots.ts";
+import { gptLiveVoice } from "../../shared/calls.ts";
+import { voiceLanguage } from "../../shared/voice.ts";
 import { CLIENT_HEADERS, fetchJson } from "./settings-store.ts";
 import { decodeSseFrame, reconnectDelay, STATUS_STREAM_STALL_MS, type SessionGroup, type SessionView } from "./sessions-store.ts";
 import { trackedFetch } from "./ui-errors.ts";
@@ -39,6 +41,10 @@ export type BotDraft = {
   model: string;
   thinking: string;
   memoryModel: string;
+  /** The language the bot speaks on calls ("" for Auto); absent leaves it as it is. */
+  voiceLanguage?: string;
+  /** A GPT-Live call voice ("" for Settings' default); absent leaves it as it is. */
+  callVoice?: string;
 };
 
 /** OptChat's view budget: the memory panel reports sizes against it. */
@@ -90,6 +96,14 @@ function parseBotMemoryUsage(value: unknown): BotMemoryUsage {
   };
 }
 
+function parseVoice(value: unknown): BotVoice | undefined {
+  if (!isRecord(value)) return undefined;
+  const language = voiceLanguage(value["language"]);
+  const live = gptLiveVoice(value["live"]);
+  const voice: BotVoice = { ...(language ? { language } : {}), ...(live ? { live } : {}) };
+  return Object.keys(voice).length ? voice : undefined;
+}
+
 export function parseBotMemoryStatus(value: unknown): BotMemoryStatus | undefined {
   if (!isRecord(value)) return undefined;
   const failing = isRecord(value["failing"]) ? value["failing"] : undefined;
@@ -125,6 +139,7 @@ export function parseBot(value: unknown): BotView | undefined {
   if (!id || !name || !sessionId) return undefined;
   const status = SESSION_STATUSES.find((candidate) => candidate === value["status"]) ?? "idle";
   const avatar = parseAvatar(value["avatar"]);
+  const voice = parseVoice(value["voice"]);
   const lastMessage = parseLastMessage(value["lastMessage"]);
   const memory = parseBotMemoryStatus(value["memory"]);
   const optional: Partial<Record<"title" | "description" | "model" | "thinking" | "memoryModel" | "memoryThinking", string>> = {};
@@ -139,6 +154,7 @@ export function parseBot(value: unknown): BotView | undefined {
     ...optional,
     cwd: text(value["cwd"], 4_096),
     ...(avatar ? { avatar } : {}),
+    ...(voice ? { voice } : {}),
     ...(value["hidden"] === true ? { hidden: true } : {}),
     ...(value["archived"] === true ? { archived: true } : {}),
     sessionId,
@@ -297,10 +313,12 @@ export function botInputFromDraft(draft: BotDraft): BotInput {
     memoryModel: optional(draft.memoryModel),
   };
   const avatar = draftAvatar(draft);
+  const voice = draftVoice(draft);
   return {
     name: draft.name.trim(),
     ...Object.fromEntries(Object.entries(entries).filter(([, value]) => value !== undefined)),
     ...(avatar ? { avatar } : {}),
+    ...(voice ? { voice } : {}),
   };
 }
 
@@ -317,6 +335,14 @@ function draftAvatar(draft: BotDraft): BotAvatar | undefined {
     ...(draft.shape && isBotFaceShape(draft.shape) ? { shape: draft.shape } : {}),
   };
   return Object.keys(avatar).length ? avatar : undefined;
+}
+
+/** The dialog's call section: a language and a call voice; nothing for Auto and Settings' default. */
+function draftVoice(draft: BotDraft): BotVoice | undefined {
+  const language = voiceLanguage(draft.voiceLanguage);
+  const live = gptLiveVoice(draft.callVoice);
+  const voice: BotVoice = { ...(language ? { language } : {}), ...(live ? { live } : {}) };
+  return Object.keys(voice).length ? voice : undefined;
 }
 
 /** Edit payload: only what changed, so an untouched workspace never trips the
@@ -338,6 +364,15 @@ export function botPatchFromDraft(bot: BotView, draft: BotDraft): BotPatch {
   if (cwd && cwd !== bot.cwd) patch.cwd = cwd;
   const avatar = avatarPatch(bot, draft);
   if (avatar) patch.avatar = avatar;
+  // The call voice and the language change only when they differ from the bot's.
+  const voice: NonNullable<BotPatch["voice"]> = {};
+  // Auto ("") clears the language; a draft without one leaves it alone.
+  const language = draft.voiceLanguage === undefined ? undefined : voiceLanguage(draft.voiceLanguage) ?? "";
+  if (language !== undefined && language !== (bot.voice?.language ?? "")) voice.language = language;
+  // "Default" ("") follows Settings → Models → Calls.
+  const live = draft.callVoice === undefined ? undefined : gptLiveVoice(draft.callVoice) ?? "";
+  if (live !== undefined && live !== (bot.voice?.live ?? "")) voice.live = live;
+  if (Object.keys(voice).length) patch.voice = voice;
   return patch;
 }
 

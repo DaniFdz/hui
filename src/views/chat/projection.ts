@@ -4,7 +4,8 @@ import { botKickoffName } from "../../../shared/bots.ts";
 
 export type ChatMessage = Extract<TranscriptItem, { kind: "message" }>;
 export type ChatCompaction = Extract<TranscriptItem, { kind: "compaction" }>;
-export type ChatActivity = Exclude<TranscriptItem, { kind: "message" | "compaction" }> | ChatMessage;
+export type ChatCall = Extract<TranscriptItem, { kind: "call" }>;
+export type ChatActivity = Exclude<TranscriptItem, { kind: "message" | "compaction" | "call" }> | ChatMessage;
 
 /** Tool calls that present something to the user get a row of their own, so
  * they stay visible after the turn's other activity folds into a disclosure. */
@@ -15,6 +16,8 @@ export type ChatProjectionRow =
   | { kind: "activity"; id: string; items: readonly ChatActivity[] }
   /** Where PI summarized the history above; it stays visible and rewindable. */
   | { kind: "compaction"; id: string; item: ChatCompaction }
+  /** A GPT-Live call with a bot: one card (chat-call.ts). */
+  | { kind: "call"; id: string; item: ChatCall }
   /** A HUI-injected subagent completion: a system event, never a user turn. */
   | { kind: "subagentEvent"; id: string; items: readonly SubagentCompletionItem[] }
   /** HUI's kickoff of a new bot (`[HUI bot created]`): a note where its first turn began, never the operator's words.
@@ -112,6 +115,11 @@ export function projectChatTranscript(
     if (item.kind === "compaction") {
       flushCompletedAssistantTurn();
       rows.push({ kind: "compaction", id: item.id, item });
+      continue;
+    }
+    if (item.kind === "call") {
+      flushCompletedAssistantTurn();
+      rows.push({ kind: "call", id: item.id, item });
       continue;
     }
     assistantTurn.push(item);

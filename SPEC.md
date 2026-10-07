@@ -1275,6 +1275,16 @@ everything the Bots tab can, through the same routes.
   offers **Write it yourself**. While open it reads SOUL.md again when the bots
   stream says the bot or HUI may have written it (its soul flag, its
   `updatedAt`, or its latest message once a turn is over), with no timer.
+- **Calls** talk through GPT-Live (see the decisions below): the header's
+  **Call** shows whenever HUI has a ChatGPT login. A bot has a call voice, its
+  own or Settings → Models → Calls' default, and a language it speaks on calls
+  (its dialog, or `--call-voice`/`--language`): one of Whisper's languages,
+  never a translation, or Auto to answer in the language spoken. The call view
+  takes the bot's color and shows its face listening to the microphone and
+  speaking with the bot's audio, a timer, both sides' captions, Mute, Speaker
+  and Hang up, and minimizes to a bar; hanging up deletes nothing. The
+  microphone opens only for a call and closes with it; HUI stores no audio, only
+  the call's card in the chat.
 
 The contract is [docs/api.md#bots](docs/api.md#bots).
 
@@ -1341,9 +1351,9 @@ gets a plush SVG shape (Blob, Pebble, Triangle, Heart, Cookie) in one of six
 colors, with two dot eyes and no mouth, drawn by `<hui-bot-face>` with no new
 dependency. Expressions come from the eyes (blinks, glances, squints, closed
 arcs) and the body (breathing, sway, squash and stretch, hops), for ten
-states: idle, thinking, working (a tool runs), speaking and listening (for
-calls), waiting (a question), memory (summarizing), error, done (a hop when a
-turn ends) and offline (unreachable or archived).
+states: idle, thinking, working (a tool runs), speaking, listening, waiting (a
+question), memory (summarizing), error, done (a hop when a turn ends) and
+offline (unreachable or archived).
 
 - **Look on the record, defaults from the id.** `avatar` gains `shape` beside
   `emoji` and `color` (no format change: absent keys stay absent). A bot without
@@ -1354,14 +1364,82 @@ turn ends) and offline (unreachable or archived).
   `--emoji ""`, and `hui bot show` prints the look.
 - **Real states only.** Roster rows follow the bot's status (a running turn is
   thinking); its open chat adds a running tool, a pending question, memory
-  waits and a failed turn. Text badges and status lines stay; faces are
-  `aria-hidden`.
+  waits and a failed turn; a call listens with the microphone's level and
+  speaks with the level of the bot's audio as it plays (analysers on both
+  streams, without rerouting the audio). Text badges and status lines stay;
+  faces are `aria-hidden`.
 - **Cheap.** CSS keyframes carry the motion; small faces only blink and glance
-  on timers. Large faces (the empty chat, the dialog's preview) also follow
+  on timers. Large faces (empty chat, call, the dialog's preview) also follow
   the pointer and morph on animation frames. Faces pause while hidden or off
   screen, and prefers-reduced-motion leaves a still expression per state.
 - **Later, if wanted:** accessories (Dots' glasses, hats), more shapes, a custom
   color picker, and sprite-sheet pets.
+
+### Calls talk through GPT-Live, OpenDots-style (2026-10-06)
+
+The owner asked for calls through GPT-Live over the ChatGPT subscription, with a
+section under Settings → Models to select it ("I think GPT-Live via chatgpt
+subscription should work, I guess we need settings for bots as well, lets add a
+section under models in which we can select this"), and approved the call design
+on 2026-10-06 after OpenDots (CopilotKit/OpenDots, MIT): "I like the
+implementation of OpenDots, I think it makes the most sense. Giving a hang-up
+what happened is the proper way to go, and having a tool to ask the main agent
+sounds really good, I would just add that it should use a different model that is
+faster."
+
+- **A realtime conversation model with one tool.** GPT-Live
+  (`gpt-live-1-codex`) on the route ChatGPT's own voice mode uses, through HUI's
+  ChatGPT login: the gateway keeps the credential and sets each call up, the
+  browser carries the audio and the call's data channel. GPT-Live's one tool
+  (client delegation) asks the bot.
+- **The tool runs on a faster model.** A call helper on the bot's utility model,
+  at low thinking, answers from the bot's soul (its SOUL.md), its memory and the call
+  so far. It never queues behind the bot's own turn. What needs tools goes to the
+  bot's chat as a `[call task]` message on the bot's own model; its reply is
+  spoken if the call is still up and stays in the chat either way. The limits
+  follow OpenDots': 25 s per question (then GPT-Live offers to hand it off), six
+  questions and four hand-offs per call, and calls of at most 15 minutes. The
+  helper has no tools yet: a restricted tool set would need new runtime
+  plumbing, so it hands off anything that needs one.
+- **What happened, at hang-up.** No chat message per utterance. When a call
+  ends (hang-up, 90 s without a heartbeat, or 15 minutes), the utility model
+  writes a summary in the bot's language: what was discussed, confirmed
+  decisions, facts to remember and tasks handed off. The chat gets one card with
+  the duration, the summary and the whole transcript. The bot's memory logs both,
+  so later turns and calls recall the call. A failed summary leaves the
+  transcript.
+- **Three model roles, in the owner's words.** "The main model should be the
+  most clever one, doesn't matter how fast it is; the utility one should be the
+  fastest possible and ideally cheap, and for conversation describe that it
+  should be model focused on phone calls, that is fast to respond." Settings →
+  Models describes the primary and utility models that way, and its Calls section
+  GPT-Live, the conversation model, as made for phone calls. A bot's Memory
+  model became its **Utility model**. `memoryModel` and `--memory-model` keep
+  working. Its default is Settings' utility model, then the bot's own model.
+
+### VoiceStudio is gone: calls are GPT-Live only (2026-10-06)
+
+The owner dropped VoiceStudio on 2026-10-06, before it merged: "Lets remove
+VoiceStudio dependency, I don't need that feature, I only want gpt live for
+calls", then "delete everything related to VoiceStudio". This supersedes voice
+through VoiceStudio in [Bots are named chats](#bots-are-named-chats-not-an-agent-selector-2026-10-05)
+and everything built on it.
+
+- **What went.** The VoiceStudio connection (Settings → Integrations →
+  VoiceStudio, `/__hui/voice` and its routes, `voicestudio.json`), voice notes and
+  their `[voice] ` messages, Read aloud, calls through VoiceStudio's speech
+  chain with the choice of conversation model, and a bot's VoiceStudio voice
+  and speed. The CLI refuses `--voice` and `--voice-speed` and says what
+  replaced them.
+- **What stays.** Calls with GPT-Live: the header's Call whenever a ChatGPT
+  login is there, the call view and its bar, the bot's call voice (its own,
+  else Settings') and language, the call helper, hand-offs and call cards. The
+  faces listen and speak on calls.
+- **Stored data.** `settings.json` and `bots.json` written while VoiceStudio was
+  there keep loading: `calls.engine`, `voice.sendNotesImmediately` and a bot's
+  voice `profile` and `speed` are no longer read, and the next write leaves them
+  out. A leftover `voicestudio.json` is ignored. No release ever had VoiceStudio,
+  so no `hui doctor` check is needed.
 
 ### New sessions run on Pi Durable
 

@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { test, type TestContext } from "node:test";
 import { botKickoffText, type BotMessageResult, type BotView } from "../shared/bots.ts";
 import type { AutomationTask } from "../src/lib/automation-types.ts";
-import { botCommand, findBot, formatBots, formatLook, lookColor, parseDuration, parseZoom, questionAnswer, routineSchedule, type BotIO } from "./bots.ts";
+import { botCommand, findBot, formatBot, formatBots, formatLook, lookColor, parseDuration, parseZoom, questionAnswer, routineSchedule, type BotIO } from "./bots.ts";
 
 function view(id: string, handle: string, extra: Partial<BotView> = {}): BotView {
   return {
@@ -228,7 +228,7 @@ test("list, show, add, edit, remove, restore and stop talk to the bot routes and
 
   const shown = terminal();
   await botCommand(gateway.base, "show", ["ada"], {}, shown.io);
-  assert.match(shown.out, /^@ada · Ada \(Researcher\)\nstatus: idle\nlook: face · Cookie \(from its id\) · Yellow \(from its id\)\nmodel: default\nmemory: 2 messages · 3 summaries built · 0 pending · view 300 B in 2 lines · compactor 1 call, 1 token in, 1 out\nroutines: 1\n/u);
+  assert.match(shown.out, /^@ada · Ada \(Researcher\)\nstatus: idle\nlook: face · Cookie \(from its id\) · Yellow \(from its id\)\nmodel: default\nmemory: 2 messages · 3 summaries built · 0 pending · view 300 B in 2 lines · compactor 1 call, 1 token in, 1 out\nutility model: default \(Settings' utility model, else its model\)\nlanguage: auto\nroutines: 1\n/u);
   assert.match(shown.out, /\nsoul: SOUL\.md \(hui bot soul ada\)\n$/u);
   const unread = terminal();
   await botCommand(gateway.base, "show", ["bob"], {}, unread.io);
@@ -259,6 +259,12 @@ test("list, show, add, edit, remove, restore and stop talk to the bot routes and
   assert.deepEqual(gateway.calls.at(-1), { method: "PATCH", path: "/__hui/bots/id-ada", body: { title: "Lead", thinking: "high" } }, "only the given fields");
   await botCommand(gateway.base, "edit", ["ada"], { model: "", thinking: "", "memory-model": "" }, terminal().io);
   assert.deepEqual(gateway.calls.at(-1)?.body, { model: "", thinking: "", memoryModel: "" }, "empty values clear, back to the defaults");
+  await botCommand(gateway.base, "edit", ["ada"], { "utility-model": "anthropic/claude-haiku" }, terminal().io);
+  assert.deepEqual(gateway.calls.at(-1)?.body, { memoryModel: "anthropic/claude-haiku" }, "--utility-model is the stored memoryModel");
+  await botCommand(gateway.base, "edit", ["ada"], { language: " ES " }, terminal().io);
+  assert.deepEqual(gateway.calls.at(-1)?.body, { voice: { language: "es" } }, "a language goes as its code");
+  await botCommand(gateway.base, "edit", ["ada"], { language: "" }, terminal().io);
+  assert.deepEqual(gateway.calls.at(-1)?.body, { voice: { language: "" } }, "an empty language goes back to Auto");
   // The look: an emoji, or the face's shape and color (palette names or #rrggbb); "" clears each, --emoji "" shows the face.
   await botCommand(gateway.base, "edit", ["ada"], { shape: "Pebble", color: "Mint" }, terminal().io);
   assert.deepEqual(gateway.calls.at(-1)?.body, { avatar: { shape: "round", color: "#2fc49a" } }, "a label and a palette name go as the id and hex");
@@ -268,6 +274,8 @@ test("list, show, add, edit, remove, restore and stop talk to the bot routes and
   assert.deepEqual(gateway.calls.at(-1)?.body, { avatar: { shape: "", color: "" } }, "back to the id's face");
   await botCommand(gateway.base, "add", [], { name: "Heart", shape: "heart", color: "coral" }, terminal().io);
   assert.deepEqual(gateway.calls.at(-1)?.body, { name: "Heart", avatar: { shape: "heart", color: "#ff6b4a" } });
+  await botCommand(gateway.base, "add", [], { name: "Lola", language: "yue" }, terminal().io);
+  assert.deepEqual(gateway.calls.at(-1)?.body, { name: "Lola", voice: { language: "yue" } });
   const removed = terminal();
   await botCommand(gateway.base, "remove", ["bob"], {}, removed.io);
   assert.equal(gateway.calls.at(-1)?.method, "DELETE");
@@ -617,4 +625,27 @@ test("chat ends cleanly when stdin closes, and reports a runtime that exits", as
   gateway2.push("session", "closed", {});
   assert.equal(await failed, 1);
   assert.match(crashed.out, /@bob's chat runtime exited\./u);
+});
+
+test("show names a bot's language, auto when it has none", () => {
+  const base: BotView = { id: "id-vox", handle: "vox", name: "Vox", cwd: "/tmp", sessionId: "s", createdAt: "2026-10-05T10:00:00.000Z", updatedAt: "2026-10-05T10:00:00.000Z", status: "idle", soul: false, unread: false, routines: 0 };
+  assert.match(formatBot(base), /\nlanguage: auto\n/u);
+  const spanish = formatBot({ ...base, voice: { language: "es" } });
+  assert.match(spanish, /\nlanguage: es \(Spanish\)\n/u);
+  assert.doesNotMatch(spanish, /\nvoice:/u, "no VoiceStudio voice line");
+  assert.match(formatBot({ ...base, voice: { language: "haw" } }), /\nlanguage: haw \(Hawaiian\)\n/u);
+});
+
+
+test("--call-voice sets the bot's GPT-Live voice, \"\" goes back to Settings' default, and show names it", async (t) => {
+  const gateway = await fakeGateway(t);
+  await botCommand(gateway.base, "edit", ["ada"], { "call-voice": " Ember " }, terminal().io);
+  assert.deepEqual(gateway.calls.at(-1)?.body, { voice: { live: "ember" } });
+  await botCommand(gateway.base, "edit", ["ada"], { "call-voice": "", language: "es" }, terminal().io);
+  assert.deepEqual(gateway.calls.at(-1)?.body, { voice: { language: "es", live: "" } });
+  await botCommand(gateway.base, "add", [], { name: "Lola", "call-voice": "sol" }, terminal().io);
+  assert.deepEqual(gateway.calls.at(-1)?.body, { name: "Lola", voice: { live: "sol" } });
+  const base: BotView = { id: "id-vox", handle: "vox", name: "Vox", cwd: "/tmp", sessionId: "s", createdAt: "2026-10-05T10:00:00.000Z", updatedAt: "2026-10-05T10:00:00.000Z", status: "idle", soul: false, unread: false, routines: 0 };
+  assert.match(formatBot({ ...base, voice: { language: "es", live: "juniper" } }), /\nlanguage: es \(Spanish\)\ncall voice: Juniper\nroutines: /u);
+  assert.doesNotMatch(formatBot(base), /call voice:/u, "without one it follows Settings");
 });

@@ -9,6 +9,8 @@ import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { BOT_FACE_SHAPE_LABELS, botColorName, botFaceColor, botFaceShape, botKickoffName, botLook, NEW_BOT_NAME, type BotMessageResult, type BotQuestion, type BotSoul, type BotsUpdate, type BotView } from "../shared/bots.ts";
+import { voiceLanguage, voiceLanguageName } from "../shared/voice.ts";
+import { gptLiveVoiceLabel } from "../shared/calls.ts";
 import type { AutomationSchedule, AutomationTask } from "../src/lib/automation-types.ts";
 
 export type BotFlags = {
@@ -24,9 +26,12 @@ export type BotFlags = {
   model?: string;
   thinking?: string;
   "memory-model"?: string;
+  "utility-model"?: string;
   emoji?: string;
   shape?: string;
   color?: string;
+  language?: string;
+  "call-voice"?: string;
   wait?: boolean;
   timeout?: string;
   zoom?: string;
@@ -177,12 +182,20 @@ async function botBody(flags: BotFlags, io: BotIO): Promise<Record<string, unkno
   if (flags.model !== undefined) body["model"] = flags.model;
   if (flags.thinking !== undefined) body["thinking"] = flags.thinking;
   if (flags["memory-model"] !== undefined) body["memoryModel"] = flags["memory-model"];
+  if (flags["utility-model"] !== undefined) body["memoryModel"] = flags["utility-model"];
   // The look: an emoji, or (with --emoji "") the face, its shape and color; "" clears each.
   if (flags.emoji !== undefined || flags.shape !== undefined || flags.color !== undefined) {
     body["avatar"] = {
       ...(flags.emoji !== undefined ? { emoji: flags.emoji } : {}),
       ...(flags.shape !== undefined ? { shape: flags.shape.trim() ? botFaceShape(flags.shape) ?? flags.shape.trim().toLowerCase() : "" } : {}),
       ...(flags.color !== undefined ? { color: lookColor(flags.color) } : {}),
+    };
+  }
+  // The language it speaks on calls and its GPT-Live call voice; "" clears each on edit.
+  if (flags.language !== undefined || flags["call-voice"] !== undefined) {
+    body["voice"] = {
+      ...(flags.language !== undefined ? { language: flags.language.trim().toLowerCase() } : {}),
+      ...(flags["call-voice"] !== undefined ? { live: flags["call-voice"].trim().toLowerCase() } : {}),
     };
   }
   return body;
@@ -729,13 +742,22 @@ export function formatBots(list: readonly BotView[], archived = false): string {
   ].join("  ")).join("\n");
 }
 
+/** `es (Spanish)`; `auto` when the bot answers in the language it hears. */
+function formatLanguage(value: string | undefined): string {
+  const code = voiceLanguage(value);
+  return code ? `${code} (${voiceLanguageName(code)})` : "auto";
+}
+
 export function formatBot(bot: BotView): string {
   return [
     `${bot.avatar?.emoji ? `${bot.avatar.emoji} ` : ""}@${bot.handle} · ${bot.name}${bot.title ? ` (${bot.title})` : ""}${bot.archived ? " · archived" : ""}`,
     `status: ${bot.status}${bot.unread ? " · unread" : ""}`,
     `look: ${formatLook(bot)}`,
     `model: ${bot.model ?? "default"}${bot.thinking ? ` · thinking ${bot.thinking}` : ""}`,
-    `memory: ${bot.memory ? formatMemory(bot.memory) : "unavailable"}${bot.memoryModel ? ` · compactor model ${bot.memoryModel}` : ""}`,
+    `memory: ${bot.memory ? formatMemory(bot.memory) : "unavailable"}`,
+    `utility model: ${bot.memoryModel ?? "default (Settings' utility model, else its model)"}`,
+    `language: ${formatLanguage(bot.voice?.language)}`,
+    ...(bot.voice?.live ? [`call voice: ${gptLiveVoiceLabel(bot.voice.live)}`] : []),
     `routines: ${bot.routines}`,
     `cwd: ${bot.cwd}`,
     `chat session: ${bot.sessionId}`,

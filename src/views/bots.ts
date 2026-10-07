@@ -12,6 +12,8 @@ import type { BotDraft, BotMemoryStatus, BotView } from "../lib/bots.ts";
 import { BOT_FACE_COLORS, BOT_FACE_SHAPES, BOT_FACE_SHAPE_LABELS, BOT_LIMITS, BOT_THINKING_LEVELS, botLook, type BotAvatar, type BotFaceShape } from "../../shared/bots.ts";
 import { facePath, rosterFaceState, type BotFaceSize, type BotFaceState } from "../lib/bot-face.ts";
 import "../components/bot-face.ts";
+import { GPT_LIVE_VOICES, gptLiveVoiceLabel, type GptLiveVoice } from "../../shared/calls.ts";
+import { languageOptions } from "../lib/voice.ts";
 import type { RuntimeModel } from "../lib/sessions-store.ts";
 import type { AutomationRun, AutomationSnapshot, AutomationTask, AutomationTaskInput } from "../lib/automation-types.ts";
 import {
@@ -47,7 +49,7 @@ export type BotAvatarOptions = {
   /** What the face shows; an emoji has no expressions. */
   state?: BotFaceState;
   badge?: TemplateResult | typeof nothing;
-  /** An audio level (0–1) for a large face that speaks or listens. */
+  /** The call's audio level (0–1) for a large face that speaks or listens. */
   level?: () => number | undefined;
 };
 
@@ -628,6 +630,8 @@ export type BotDialogProps = {
   model: string;
   thinking: string;
   memoryModel: string;
+  /** The name of Settings' utility model, the bot's utility model while it has none of its own. */
+  utilityDefault?: string;
   directorySuggestions: readonly string[];
   onDirectoryInput: (value: string) => void;
   onModel: (value: string) => void;
@@ -637,6 +641,18 @@ export type BotDialogProps = {
   onCancel: () => void;
   /** The Look: a face (shape and color) or an emoji. */
   look: BotDialogLook;
+  /** How the bot sounds on calls (HUI-18): its GPT-Live voice and its language. */
+  call: BotDialogCall;
+};
+
+/** A GPT-Live call voice, and the language the bot speaks on calls. */
+export type BotDialogCall = {
+  /** "" follows Settings' default. */
+  voice: string;
+  defaultVoice: GptLiveVoice;
+  language: string;
+  onVoice: (value: string) => void;
+  onLanguage: (value: string) => void;
 };
 
 export type BotDialogLook = {
@@ -689,9 +705,30 @@ function renderLookField(look: BotDialogLook, pending: boolean) {
           @input=${(event: Event) => look.onEmoji((event.target as HTMLInputElement).value)} /></label>`}
     </div>
     <span class="bot-field__hint">${face
-      ? "Its face shows what it is doing: thinking, using tools or waiting for you."
+      ? "Its face shows what it is doing: thinking, using tools, waiting for you, listening and speaking on calls."
       : "One emoji instead of a face."}</span>
   </fieldset>`;
+}
+
+/** Every language's English name and code, read once: they never change while HUI runs. */
+let languageChoices: ReturnType<typeof languageOptions> | undefined;
+
+/** The call voice: GPT-Live's built-in voices, "Default" following Settings. */
+function renderCallVoiceField(call: BotDialogCall, pending: boolean) {
+  const options = [{ value: "", label: "Default (" + gptLiveVoiceLabel(call.defaultVoice) + ")" }, ...GPT_LIVE_VOICES.map((voice) => ({ value: voice, label: gptLiveVoiceLabel(voice) }))];
+  return html`<div class="field input-dialog__field bot-dialog__call-voice"><span>Call voice</span>
+    ${renderPicker({ label: "Call voice", value: call.voice, disabled: pending, options, onChange: call.onVoice })}
+    <span class="bot-field__hint">How the bot sounds on calls. Default follows Settings → Models → Calls.</span>
+  </div>`;
+}
+
+/** The language the bot speaks on calls. */
+function renderLanguageField(call: BotDialogCall, pending: boolean) {
+  languageChoices ??= languageOptions();
+  return html`<div class="field input-dialog__field bot-dialog__language"><span>Language</span>
+    ${renderPicker({ label: "Language", value: call.language, disabled: pending, searchable: true, searchPlaceholder: "Search languages", options: languageChoices, onChange: call.onLanguage })}
+    <span class="bot-field__hint">The language the bot speaks on calls. Auto answers in the language you speak.</span>
+  </div>`;
 }
 
 const THINKING_LABELS: Record<(typeof BOT_THINKING_LEVELS)[number], string> = { off: "Off", minimal: "Minimal", low: "Low", medium: "Medium", high: "High", xhigh: "Extra high" };
@@ -733,15 +770,18 @@ export function renderBotDialog(props: BotDialogProps) {
       <div class="bot-dialog__row">
         <div class="field input-dialog__field"><span>Model</span>
           ${renderPicker({ label: "Model", value: props.model, disabled: props.pending, searchable: true, searchPlaceholder: "Search models",
-            options: modelOptions(props.models, "Gateway default", props.model), onChange: props.onModel })}</div>
+            options: modelOptions(props.models, "Gateway default", props.model), onChange: props.onModel })}
+          <span class="bot-field__hint">The smartest model you have. Speed doesn't matter.</span></div>
         <div class="field input-dialog__field"><span>Thinking</span>
           ${renderPicker({ label: "Thinking", value: props.thinking, disabled: props.pending,
             options: THINKING_CHOICES.map(([value, label]) => ({ value, label })), onChange: props.onThinking })}</div>
       </div>
-      <div class="field input-dialog__field"><span>Memory model</span>
-        ${renderPicker({ label: "Memory model", value: props.memoryModel, disabled: props.pending, searchable: true, searchPlaceholder: "Search models",
-          options: modelOptions(props.models, "Same as bot", props.memoryModel), onChange: props.onMemoryModel })}
-        <span class="bot-field__hint">Writes the summaries that let the chat go on forever. A fast, cheap model is enough.</span></div>
+      <div class="field input-dialog__field bot-dialog__utility"><span>Utility model</span>
+        ${renderPicker({ label: "Utility model", value: props.memoryModel, disabled: props.pending, searchable: true, searchPlaceholder: "Search models",
+          options: modelOptions(props.models, props.utilityDefault ? `Default (${props.utilityDefault})` : "Default (same as the bot)", props.memoryModel), onChange: props.onMemoryModel })}
+        <span class="bot-field__hint">The fastest model you have, ideally a cheap one. It writes the memory's summaries, answers quick questions on calls and writes each call's summary.</span></div>
+      ${renderCallVoiceField(props.call, props.pending)}
+      ${renderLanguageField(props.call, props.pending)}
       <div class="field input-dialog__field"><label for="bot-dialog-cwd">Workspace directory</label>
         ${renderDirectoryPicker({ id: "bot-dialog-cwd", label: "Workspace directory", value: editing?.cwd ?? "", suggestions: props.directorySuggestions, onInput: props.onDirectoryInput, inputClass: "settings-input", externalLabel: true, placeholder: "Automatic" })}
         <span class="bot-field__hint">${editing ? "Can change only while the bot is idle." : "Leave empty for a private folder HUI creates for this bot."}</span></div>

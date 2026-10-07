@@ -53,6 +53,25 @@ test("CLI parses bot commands, accepting bot and bots, with their operands and o
   assert.deepEqual(add.operands, []);
   assert.equal(add.values["memory-model"], "openai/gpt-mini");
   assert.equal(add.values["soul-file"], "soul.md");
+  // VoiceStudio is gone: its flags are refused with what took their place, not as unknown options.
+  for (const args of [["bot", "add", "--name", "Ada", "--voice", "vp-aria"], ["bot", "edit", "ada", "--voice", ""], ["gateway", "start", "--voice", "x"]]) {
+    assert.throws(() => parseCli(args), /--voice is gone: HUI no longer uses VoiceStudio\. A bot speaks on calls with one of GPT-Live's voices: --call-voice <cove\|arbor\|breeze\|ember\|juniper\|maple\|sol\|spruce\|vale>\./u, args.join(" "));
+  }
+  for (const args of [["bot", "edit", "ada", "--voice-speed", "1.25"], ["bot", "add", "--name", "Ada", "--voice-speed", ""]]) {
+    assert.throws(() => parseCli(args), /--voice-speed is gone: HUI no longer uses VoiceStudio, and GPT-Live sets the pace of its own voices\./u, args.join(" "));
+  }
+  for (const language of ["es", "ES", "haw", "yue", "jw"]) assert.equal(parseCli(["bot", "edit", "ada", "--language", language]).values.language, language, language);
+  assert.equal(parseCli(["bot", "add", "--name", "Ada", "--language", "de"]).values.language, "de");
+  assert.equal(parseCli(["bot", "edit", "ada", "--language", ""]).values.language, "", "\"\" goes back to Auto");
+  for (const language of ["spanish", "es-ES", "xx", "jv", "auto"]) {
+    assert.throws(() => parseCli(["bot", "edit", "ada", "--language", language]), /--language must be one of Whisper's language codes, such as en, es, fr, de or ja \(not a name like Spanish\); "" goes back to Auto\./u, language);
+  }
+  assert.throws(() => parseCli(["bot", "list", "--language", "es"]), /--language is not valid for bot list/u);
+  for (const voice of ["cove", "Ember", "vale", ""]) assert.equal(parseCli(["bot", "edit", "ada", "--call-voice", voice]).values["call-voice"], voice, voice);
+  assert.equal(parseCli(["bot", "add", "--name", "Ada", "--call-voice", "sol"]).values["call-voice"], "sol");
+  for (const voice of ["marin", "alloy", "x"]) {
+    assert.throws(() => parseCli(["bot", "edit", "ada", "--call-voice", voice]), /--call-voice must be one of GPT-Live's voices: cove, arbor, breeze, ember, juniper, maple, sol, spruce, vale; "" goes back to Settings' default\./u, voice);
+  }
   const look = parseCli(["bot", "add", "--name", "Ada", "--shape", "heart", "--color", "mint"]);
   assert.deepEqual([look.values.shape, look.values.color], ["heart", "mint"]);
   for (const shape of ["blob", "round", "Pebble", "TRIANGLE", "heart", "cookie", ""]) assert.equal(parseCli(["bot", "edit", "ada", "--shape", shape]).values.shape, shape, shape);
@@ -71,6 +90,9 @@ test("CLI parses bot commands, accepting bot and bots, with their operands and o
   assert.equal(parseCli(["bot", "delete", "ada", "-y"]).values.yes, true);
   const cleared = parseCli(["bot", "edit", "ada", "--model", "", "--thinking", "", "--memory-model", ""]);
   assert.deepEqual([cleared.values.model, cleared.values.thinking, cleared.values["memory-model"]], ["", "", ""], "an empty value clears the choice");
+  assert.equal(parseCli(["bot", "edit", "ada", "--utility-model", "anthropic/claude-haiku"]).values["utility-model"], "anthropic/claude-haiku");
+  assert.throws(() => parseCli(["bot", "edit", "ada", "--utility-model", "a/b", "--memory-model", "a/b"]), /either --utility-model or --memory-model/u);
+  assert.throws(() => parseCli(["bot", "edit", "ada", "--utility-model", "nope"]), /--utility-model must be provider\/model/u);
   assert.deepEqual(parseCli(["bot", "send", "ada", "-", "--wait", "--timeout", "90"]).operands, ["ada", "-"]);
   assert.equal(parseCli(["bot", "send", "ada", "hello there"]).operands?.[1], "hello there");
   assert.equal(parseCli(["bot", "chat", "Ada Lovelace"]).operands?.[0], "Ada Lovelace");
@@ -143,7 +165,11 @@ test("HELP lists every hui bot command", () => {
     "hui bot routine run <bot> <routine>",
     "hui bot routine remove <bot> <routine> [--json]",
     "On edit, --model \"\" and --thinking \"\" go back to the model and",
+    "[--language <code>] [--call-voice <cove|arbor|breeze|ember|juniper|maple|sol|spruce|vale>] [--json]",
+    "--call-voice is the bot's GPT-Live voice on calls",
+    "--language is the language it",
   ]) assert.ok(HELP.includes(line), line);
+  assert.doesNotMatch(HELP, /VoiceStudio|--voice/u, "VoiceStudio's flags are gone");
 });
 
 test("production binding is explicit and never a wildcard", () => {

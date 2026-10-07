@@ -1,6 +1,6 @@
 /**
  * Bots' animated faces (HUI-18), the pure half: what a face shows for a bot's
- * roster entry and its open chat, and the geometry and colors of
+ * roster entry, its open chat and its call, and the geometry and colors of
  * the face itself, ported from the prototype the owner approved on
  * 2026-10-06 (OpenAI Dots: a plush shape, two dot eyes, no mouth).
  * `<hui-bot-face>` (src/components/bot-face.ts) draws it.
@@ -8,6 +8,7 @@
 import type { BotFaceShape } from "../../shared/bots.ts";
 import type { BotView } from "./bots.ts";
 import { botActivity } from "./bot-roster.ts";
+import type { CallView } from "./live-call.ts";
 import type { SessionStatus, TranscriptItem } from "./sessions-store.ts";
 
 /* ── states ───────────────────────────────────────────────────────────── */
@@ -90,6 +91,24 @@ export function hasRunningTool(transcript: readonly TranscriptItem[]): boolean {
     if (item.kind === "message" && item.role === "user") return false;
   }
   return false;
+}
+
+/** A call: the bot listens while the microphone is open and speaks while its voice plays. */
+export function callFaceState(call: Pick<CallView, "phase" | "micMuted" | "tool">, summarizing = false): BotFaceState {
+  switch (call.phase) {
+    case "connecting": return "idle";
+    case "listening": return call.micMuted ? "idle" : "listening";
+    case "hearing": return "listening";
+    case "thinking": return summarizing ? "memory" : call.tool ? "working" : "thinking";
+    case "speaking": return "speaking";
+    case "ended": return "offline";
+    case "failed": return "error";
+  }
+}
+
+/** Which audio moves the face during a call: the microphone while it listens, the bot's voice while it speaks. */
+export function callLevelSource(state: BotFaceState): "microphone" | "voice" | undefined {
+  return state === "listening" ? "microphone" : state === "speaking" ? "voice" : undefined;
 }
 
 /** A turn that ends plays the one-shot "done" hop before the face rests again. */

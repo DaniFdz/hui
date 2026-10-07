@@ -56,6 +56,8 @@ import { browserToolSummary } from "../lib/browser-tool-display.ts";
 import { toggleNavigationDrawer } from "./shell.ts";
 import { renderBotAvatar } from "./bots.ts";
 import { chatFaceState, hasRunningTool, type BotFaceState } from "../lib/bot-face.ts";
+import { renderCallButton } from "./bot-voice.ts";
+import { renderCallCard } from "./chat-call.ts";
 import type { BotView } from "../lib/bots.ts";
 import { slashCommandQuery } from "../lib/slash-commands.ts";
 import { renderSlashMenu, SLASH_MENU_ID, slashOptionId, type SlashMenuProps } from "./slash-menu.ts";
@@ -342,6 +344,8 @@ export type HomeProps = {
   onOpenBranchPrefixSettings: () => void;
   /** Present when this pane is a bot's permanent chat in the bot view. */
   bot?: HomeBot;
+  /** The bot header's Call button: present while the bot can be called; starts a call or returns to the one under way. */
+  call?: { inCall: boolean; onCall: () => void };
 };
 
 /** What the bot header's ⋯ menu asks the app to do. */
@@ -1086,6 +1090,7 @@ function renderTranscriptRows(props: HomeProps, rows: readonly ChatProjectionRow
     if (row.kind === "subagentEvent") return renderSubagentEvent(props, row);
     if (row.kind === "botCreated") return renderBotCreated(props, row);
     if (row.kind === "compaction") return renderCompaction(row);
+    if (row.kind === "call") return renderCallCard(row.item);
     if (row.kind === "activity") {
       const media = presentedMedia(row.items);
       if (media.length) {
@@ -2206,6 +2211,7 @@ function renderHeader(props: HomeProps, session: SessionView) {
       </div>
       <div class="chat-pane__header-trailing">
         <div class="chat-pane__actions chat-pane__header-actions">
+          ${props.bot && props.call ? renderCallButton({ botName: props.bot.bot.name, inCall: props.call.inCall, onCall: props.call.onCall }) : nothing}
           ${props.bot ? html`<button type="button" class="btn btn--ghost btn--icon chat-icon-btn bot-panel-toggle"
             aria-label=${props.bot.panelOpen ? "Hide routines, memory and soul" : "Show routines, memory and soul"} title="Routines, memory and soul"
             aria-expanded=${String(props.bot.panelOpen)} aria-controls=${props.bot.panelOpen ? props.bot.panelId : nothing}

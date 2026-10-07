@@ -4,7 +4,7 @@ import { once } from "node:events";
 import { createServer } from "node:http";
 import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { after, before, test } from "node:test";
 import { botKickoffName, type BotMemoryStatus, type BotsUpdate, type BotView } from "../shared/bots.ts";
@@ -41,6 +41,7 @@ const { readRegistry } = await import("./sessions.ts");
 const { durableHost } = await import("./runtimes/durable-host.ts");
 const { optChatBotMemory } = await import("./bot-memory.ts");
 const { botChat } = await import("../cli/bots.ts");
+const { HUI_SETTINGS_FILE } = await import("./hui-settings.ts");
 const { BotDoc } = await import("./runtimes/durable-bots.ts");
 const { OptChatDoc } = await import("./runtimes/durable-optchat.ts");
 const { durableContext } = await import("./runtimes/durable-host.ts");
@@ -414,6 +415,28 @@ test("the bot list streams: the whole list first, then the bots that changed", {
   await reader.cancel().catch(() => {});
 });
 
+test("a bot's voice is its language and call voice, and VoiceStudio's routes and voice fields are gone", { timeout: 60_000 }, async () => {
+  const created = await call("/__hui/bots", "POST", { name: "Vox", voice: { language: "ES", live: "Sol" } });
+  assert.equal(created.status, 201);
+  assert.deepEqual(botOf(created).voice, { language: "es", live: "sol" });
+  for (const voice of [{ profile: "vp-aria" }, { speed: 1.25 }]) {
+    const refused = await call("/__hui/bots", "POST", { name: "Vox 2", voice });
+    assert.equal(refused.status, 400, JSON.stringify(voice));
+    assert.match(String(refused.body["error"]), /^Unknown voice field: (?:profile|speed)\.$/u);
+    assert.equal((await call("/__hui/bots/vox", "PATCH", { voice })).status, 400, JSON.stringify(voice));
+  }
+  assert.deepEqual(botOf(await call("/__hui/bots/vox", "PATCH", { voice: { language: "" } })).voice, { live: "sol" }, "back to Auto");
+  assert.deepEqual(botOf(await call("/__hui/bots/vox")).voice, { live: "sol" }, "stored, not just echoed");
+  assert.equal(botOf(await call("/__hui/bots/vox", "PATCH", { voice: null })).voice, undefined);
+  // The VoiceStudio connection, its voices, speech and transcription: no routes answer for them.
+  for (const [path, method] of [
+    ["/__hui/voice", "GET"], ["/__hui/voice", "PUT"], ["/__hui/voice", "DELETE"], ["/__hui/voices", "GET"],
+    ["/__hui/voice/voices", "GET"], ["/__hui/voice/speech", "POST"], ["/__hui/voice/transcriptions", "POST"],
+  ] as const) {
+    assert.equal((await call(path, method, method === "PUT" || method === "POST" ? { url: "http://127.0.0.1:9", text: "hi" } : undefined)).status, 404, `${method} ${path}`);
+  }
+});
+
 // Last: hui bot chat also follows the bot list, whose cached frame would otherwise lead the stream test.
 test("hui bot chat shows what the bot gets from elsewhere before its reply, and never repeats what was typed in it", { timeout: 120_000 }, async () => {
   const bob = botOf(await call("/__hui/bots/bob"));
@@ -435,6 +458,45 @@ test("hui bot chat shows what the bot gets from elsewhere before its reply, and 
   assert.equal(await chat, 0);
   assert.doesNotMatch(term.out, /> hello from the terminal/u, "a line typed here is on screen already");
   await settledWith(bob.sessionId, says("user", "[routine: Ping] ping"));
+});
+
+
+test("settings.json saved while HUI had VoiceStudio loads, and the next save leaves its fields out", { timeout: 30_000 }, async () => {
+  const before = await readFile(HUI_SETTINGS_FILE, "utf8").catch(() => undefined);
+  await mkdir(dirname(HUI_SETTINGS_FILE), { recursive: true });
+  await writeFile(HUI_SETTINGS_FILE, JSON.stringify({ profileName: "Dani", voice: { sendNotesImmediately: true }, calls: { engine: "voicestudio", voice: "sol" } }));
+  try {
+    const loaded = await call("/__hui/settings");
+    assert.equal(loaded.status, 200);
+    assert.equal(loaded.body["voice"], undefined, "no voice-notes switch");
+    assert.deepEqual(loaded.body["calls"], { voice: "sol" }, "no engine; the default call voice stays");
+    assert.equal(loaded.body["profileName"], "Dani");
+    assert.equal((await call("/__hui/settings", "PUT", loaded.body)).status, 200);
+    const saved = JSON.parse(await readFile(HUI_SETTINGS_FILE, "utf8")) as Record<string, unknown>;
+    assert.deepEqual([saved["profileName"], saved["calls"], "voice" in saved], ["Dani", { voice: "sol" }, false]);
+    assert.doesNotMatch(JSON.stringify(saved), /sendNotesImmediately|engine|voicestudio/u);
+  } finally {
+    if (before === undefined) await rm(HUI_SETTINGS_FILE, { force: true });
+    else await writeFile(HUI_SETTINGS_FILE, before);
+  }
+});
+
+test("call routes take the x-hui guard like every other route, and say what calls need here", { timeout: 60_000 }, async () => {
+  const offer = "v=0\r\no=- 1 2 IN IP4 127.0.0.1\r\ns=-\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111\r\n";
+  for (const [path, method] of [["/__hui/calls", "GET"], ["/__hui/bots/mem/calls", "POST"], ["/__hui/bots/mem/calls/0f8fad5b-d9cb-469f-a165-70867728950e/lines", "POST"], ["/__hui/bots/mem/calls/0f8fad5b-d9cb-469f-a165-70867728950e", "DELETE"]] as const) {
+    const refused = await call(path, method, method === "POST" ? { sdp: offer } : undefined, false);
+    assert.equal(refused.status, 403, path);
+    assert.deepEqual(refused.body, { error: "missing x-hui header" }, path);
+  }
+  const status = await call("/__hui/calls");
+  assert.equal(status.status, 200);
+  assert.deepEqual(status.body["chatgpt"], { signedIn: false }, "this gateway has no ChatGPT login");
+  // Calls run on GPT-Live only, whatever settings.json says: without a ChatGPT login there is no call, and the gateway
+  // says where to sign in.
+  const unavailable = await call("/__hui/bots/mem/calls", "POST", { sdp: offer });
+  assert.equal(unavailable.status, 409);
+  assert.equal(unavailable.body["error"], "Sign in to ChatGPT in Settings → Models (OpenAI Codex) to call bots with GPT-Live.");
+  assert.equal((await call("/__hui/bots/mem/calls/0f8fad5b-d9cb-469f-a165-70867728950e/heartbeat", "POST")).status, 404, "no such call");
 });
 
 test("deleting a bot, active or archived, removes its routines, its chat, its memory and its whole folder", { timeout: 120_000 }, async () => {
@@ -491,7 +553,8 @@ test("a bot without a soul speaks first on the primary model, writes SOUL.md its
   const users = opened.filter((entry) => entry.kind === "message" && entry.role === "user");
   assert.equal(users.length, 1, "nobody typed anything");
   assert.equal(users[0]?.kind === "message" ? botKickoffName(users[0].text) : undefined, "Nova");
-  const first = (await chatRequests()).find((request) => JSON.stringify(request.messages).includes("[HUI bot created]"));
+  // Nova's own kickoff: Vox, created without a soul by an earlier test, had one too.
+  const first = (await chatRequests()).find((request) => JSON.stringify(request.messages).includes("[HUI bot created]\\nname: Nova\\n"));
   assert.ok(first, "the kickoff reached the model");
   assert.equal(first.model, "other", "on Settings' primary model, not PI's default");
   const firstSystem = JSON.stringify(first.system);

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { DEFAULT_SETTINGS, normalizeBranchPrefix, normalizeSettings } from "./settings.ts";
+import { DEFAULT_SETTINGS, normalizeBranchPrefix, normalizeCalls, normalizeSettings } from "./settings.ts";
 
 test("round-trips a complete file", () => {
   assert.deepEqual(
@@ -161,4 +161,22 @@ test("normalizes a safe worktree branch prefix", () => {
   for (const prefix of ["", "/feature", "feature//nested", "../escape", "bad prefix", "topic.lock/"]) {
     assert.equal(normalizeBranchPrefix(prefix), "feature/");
   }
+});
+
+test("settings saved while HUI had VoiceStudio load, and the next save leaves its fields out", () => {
+  const older = normalizeSettings({ profileName: "Dani", voice: { sendNotesImmediately: true }, calls: { engine: "voicestudio", voice: "sol" } });
+  assert.equal("voice" in older, false, "the voice-notes switch is gone");
+  assert.deepEqual(older.calls, { voice: "sol" }, "the engine is gone; the default call voice stays");
+  assert.equal(older.profileName, "Dani");
+  assert.doesNotMatch(JSON.stringify(older), /sendNotesImmediately|engine|voicestudio/u, "what the gateway writes back");
+});
+
+test("calls take Cove unless a known GPT-Live voice is saved", () => {
+  assert.deepEqual(DEFAULT_SETTINGS.calls, { voice: "cove" });
+  assert.deepEqual(normalizeSettings({}).calls, { voice: "cove" });
+  assert.deepEqual(normalizeSettings({ calls: { voice: "Juniper" } }).calls, { voice: "juniper" });
+  for (const calls of [{ voice: "alloy" }, "gpt-live", null, [], { voice: 3 }]) {
+    assert.deepEqual(normalizeSettings({ calls }).calls, { voice: "cove" }, JSON.stringify(calls));
+  }
+  assert.deepEqual(normalizeCalls({ voice: "marin" }), { voice: "cove" }, "a public-API voice is not one of the route's");
 });

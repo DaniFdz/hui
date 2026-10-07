@@ -177,6 +177,19 @@ test("resume references round-trip Durable's integer conversation IDs only", () 
   }
 });
 
+test("the live view streams an answer Durable sends whole, exactly once", { timeout: 45_000 }, async (t) => {
+  const f = await fixture(t);
+  const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-whole-answer" }, f.host());
+  const streamed: string[] = [];
+  session.subscribe((event) => { if (event.type === "text") streamed.push(event.delta); });
+  const settled = nextEvent(session, (event) => event.type === "settled");
+  await session.prompt("hello there");
+  await settled;
+  // The fixture's short reply reaches Durable's stream as one partial; the live view shows it from these events.
+  assert.equal(streamed.join(""), "Fixture response.");
+  await transcriptWhere(session, answered("Fixture response."));
+});
+
 test("Durable runs a real tool turn and reopens the conversation from its store", { timeout: 45_000 }, async (t) => {
   const f = await fixture(t);
   const host = f.host();

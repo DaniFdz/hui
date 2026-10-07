@@ -180,6 +180,13 @@ provider quota windows and reset times. Unsupported quotas are labeled explicitl
 Reopen existing sessions after changing connections; new sessions use the updated
 configuration. HUI-managed connections require the default PI SDK backend.
 
+Settings → Models names three roles. The **primary model** does the real work:
+choose the smartest model you have, speed doesn't matter. The **utility model**
+does the quick work (session and branch names, Jira drafts, `/btw`, and for bots
+their memory summaries, quick answers on calls and call summaries): choose the
+fastest you have, ideally a cheap one. **GPT-Live** (Settings → Models → Calls)
+talks on calls with bots: it is made for phone calls and quick to respond.
+
 ## Bots
 
 A **bot** is a named, persistent agent: a role, a persona it writes with you
@@ -189,6 +196,13 @@ Sessions stay what they were (coding work with worktrees, rewind and
 `/compact`); a bot is for the assistant you come back to every day. Its chat is
 an ordinary Pi Durable session on this gateway, so the chat view, streaming,
 steering, follow-ups, questions and model switching work as in any session.
+
+**Models.** A bot's **Model** does its real work: the smartest model you have.
+Its **Utility model** does its quick work (the memory's summaries, quick answers
+on calls, each call's summary): the fastest you have, ideally a cheap one. Without
+one of its own it uses Settings' utility model, then its own model. From a
+terminal: `hui bot edit ada --model openai-codex/gpt-6.1-sol --utility-model anthropic/claude-haiku-4-5`
+(`--memory-model` is the same flag; `""` goes back to the default).
 
 **Memory.** A bot's chat carries [OptChat](optchat.md) memory: every message is
 kept word for word and a cheap model condenses the chat into a tree of one-line
@@ -223,12 +237,14 @@ routines, memory and folder. Bot chats never appear among your sessions.
 eyes. It shows what the bot is doing: it breathes while idle, squints and
 ponders while it thinks, bobs while a tool runs, tilts and hops while it waits
 for your answer, gets sleepy while it summarizes its memory, droops after a
-failure and does a little hop when a turn ends. The large face of an empty chat
-looks at your pointer. With *reduce motion* on in your system settings the
-faces keep still and change only their expression. The bot dialog's **Look**
-chooses **Face** (shape and color, with a live preview) or **Emoji**; a bot that
-already had an emoji keeps it until you choose Face. Bots you never styled get a
-face picked by their id, the same on every screen.
+failure and does a little hop when a turn ends. On a call it fills the screen
+in the bot's color, puffs up as it listens to your voice and stretches with its
+own. The large faces (an empty chat, a call) look at your pointer. With
+*reduce motion* on in your system settings the faces keep still and change only
+their expression. The bot dialog's **Look** chooses **Face** (shape and color,
+with a live preview) or **Emoji**; a bot that already had an emoji keeps it
+until you choose Face. Bots you never styled get a face picked by their id, the
+same on every screen.
 
 ### Creating and editing
 
@@ -366,6 +382,67 @@ with `n` = 1. The page lists the view, every message and each level of the
 tree; a browser opens it from a link on HUI's own pages, such as the Bots tab
 (another site cannot load or frame it).
 
+### Calls with GPT-Live
+
+The phone button in a bot's header calls the bot. Calls talk to GPT-Live in
+real time through the ChatGPT login you added in Settings → Models, so the
+button shows once there is one. The call opens over the chat with the bot's
+face in its color, a timer, captions of what you said and of the bot's answer,
+and **Mute**, **Speaker** and **Hang up**. **Minimize** leaves a bar above the
+chat, or at the top of any other page, with Mute and Hang up; it brings the call
+back. One call runs at a time.
+
+Settings → Models → **Calls** shows the account calls use (the first one not
+waiting for its quota, as model turns choose) and the **default voice**. Each bot
+can have its own **Call voice**, one of GPT-Live's voices, and a **Language**,
+in its dialog or from a terminal:
+
+```sh
+hui bot edit ada --call-voice ember --language es
+hui bot edit ada --call-voice "" --language ""   # back to Settings' voice and Auto
+```
+
+**Language.** *Auto (detect)* lets GPT-Live answer in the language you speak. A
+bot's language (one of Whisper's, found by its name or code: `es`, `de`, `yue`…)
+is the one it speaks on calls; its helper and the call's summary use it too.
+Nothing is translated.
+
+The call works like [OpenDots](https://github.com/CopilotKit/OpenDots):
+
+- **GPT-Live talks.** It answers greetings, small talk and what the bot's
+  soul and recent memory already say, about a second after you stop.
+- **Quick questions go to the bot's helper.** When GPT-Live needs to know
+  something, it asks the bot: a helper on the bot's utility model answers from
+  the bot's soul (its SOUL.md), the newest part of its memory and the call so far, in
+  a few seconds. What it cannot see there (older memory, files) it hands to the
+  bot's chat instead of saying it does not know. It never waits for the bot's
+  own turn. It has 25 seconds per question; past
+  them GPT-Live says it is taking long and offers to hand it off.
+- **Real work goes to the bot's chat.** What needs tools, files or current
+  information arrives in the chat as a message starting with `[call task]`,
+  done by the bot's own model and tools. GPT-Live tells you it is on it, and
+  reads you the result if it comes while the call is still up. Otherwise it
+  stays in the chat.
+- **One card per call.** Nothing lands in the chat line by line. When you hang
+  up, the utility model writes a summary in the bot's language: what was
+  discussed, what was decided, facts to remember and tasks handed off. The chat
+  gets one card with the call's duration, that summary and the whole
+  transcript (both sides and the helper's answers), expandable. The bot's
+  memory keeps both, so later turns and calls recall the call. A call whose
+  page vanishes is summarized after 90 seconds without news from it; if the
+  summary fails, the card keeps the transcript and says so.
+
+A call ends after 15 minutes. The helper answers six questions per call (then
+everything goes to the chat), a call hands off at most four tasks, and two calls
+can run at once on the gateway. The route is the one ChatGPT's own voice mode
+uses, not a public API: it may change, and calls count against your ChatGPT
+plan's voice usage.
+
+**Microphone.** Browsers give the microphone only to secure pages: open HUI on
+`https://` (Tailscale Serve) or on this machine's `localhost`. HUI's desktop
+app does not allow the microphone yet. The microphone opens only when you press
+Call, and closes when the call ends.
+
 ### Archiving and deleting
 
 `hui bot remove ada` archives the bot: its chat transcript and memory are kept,
@@ -388,8 +465,15 @@ keep everything, SOUL.md included.
 
 Bots live in HUI's own files on this machine: `bots.json` (owner-only) in HUI's
 configuration directory, each bot's SOUL.md in its home folder beside it
-(owner-only), their chats in the Pi Durable store and their memory beside it. Nothing about a bot leaves the machine except the model requests its
-chat and its memory's compactor make to the providers you configured.
+(owner-only), their chats in the Pi Durable store and their memory beside it.
+Nothing about a bot leaves the machine except the model requests its chat and
+its memory's compactor make to the providers you configured. A
+GPT-Live call sends your voice from the browser straight to OpenAI under your
+ChatGPT account, and the gateway sends the call's instructions (the bot's
+SOUL.md and the newest part of its memory) when it starts the call; the
+helper and the summary use the bot's utility model like any other request. The
+ChatGPT credential stays in the gateway. HUI stores no audio: what stays is each
+call's card (its summary and transcript) in the bot's chat.
 
 ## Interactive widgets in the chat
 

@@ -1,0 +1,240 @@
+/* Calls with bots (HUI-18): the call cards in the chat, the bot header's Call,
+ * and the call view with its minimized bar. Built on the shared tokens and the
+ * chat classes; only what calls add is here. */
+
+/* ── a GPT-Live call's record, in the chat: one card ── */
+.chat-call-card {
+  display: grid;
+  gap: 8px;
+  margin: 8px 0;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg, 12px);
+  background: var(--card, var(--bg-elevated));
+  min-width: 0;
+}
+.chat-call-card__header { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.chat-call-card__icon { display: inline-flex; color: var(--accent); }
+.chat-call-card__icon svg { width: 16px; height: 16px; }
+.chat-call-card__title { font-weight: 600; color: var(--text-strong); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-call-card__meta { margin-left: auto; flex: 0 0 auto; color: var(--muted); font-size: var(--font-size-xs, 12px); font-variant-numeric: tabular-nums; }
+.chat-call-card__summary { font-size: 14px; }
+.chat-call-card__summary > :first-child { margin-top: 0; }
+.chat-call-card__summary > :last-child { margin-bottom: 0; }
+.chat-call-card__unavailable { margin: 0; color: var(--muted); font-size: 13px; }
+.chat-call-card__transcript > summary { cursor: var(--cursor-action, pointer); color: var(--muted); font-size: 13px; }
+.chat-call-card__lines { display: grid; gap: 6px; margin: 8px 0 0; padding: 0; list-style: none; }
+.chat-call-card__line { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; font-size: 13px; line-height: 1.45; overflow-wrap: anywhere; }
+.chat-call-card__speaker { color: var(--muted); font-size: var(--font-size-xs, 12px); font-weight: 600; }
+.chat-call-card__asked { color: var(--muted); font-size: var(--font-size-xs, 12px); font-style: italic; }
+.chat-call-card__line[data-role="handoff"] .chat-call-card__text { color: var(--accent); }
+
+/* ── bot header: Call ── */
+@keyframes voice-dot { 50% { opacity: 0.35; } }
+/* Above the theme's ghost-icon color (:root[data-theme-mode] .btn--icon). */
+:root .chat-icon-btn.bot-call-toggle--active { color: var(--ok); }
+.bot-call-toggle--active svg { animation: voice-dot 1.6s ease-in-out infinite; }
+
+/* ── the call view, over the bot's chat ── */
+.bot-workspace__chat { position: relative; flex-direction: column; }
+.bot-workspace__chat > .bot-workspace__pane { flex: 1 1 auto; min-height: 0; }
+.bot-call {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: max(16px, var(--safe-area-top, 0px)) 20px max(20px, var(--safe-area-bottom, 0px));
+  overflow-y: auto;
+  /* The bot's color tints the call, as Dots' call screen takes its dot's. */
+  background:
+    radial-gradient(120% 70% at 50% 0%, color-mix(in srgb, var(--bot-color, var(--accent)) 18%, transparent), transparent 70%),
+    var(--bg);
+  color: var(--text);
+}
+.bot-call__header { display: flex; align-items: center; gap: 10px; width: 100%; max-width: 720px; }
+.bot-call__badge { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: var(--text-sm, 13px); }
+.bot-call__badge svg { width: 14px; height: 14px; }
+.bot-call__timer { margin-inline-start: auto; font-variant-numeric: tabular-nums; font-size: var(--text-base, 14px); color: var(--text); }
+.bot-call__minimize svg { width: 16px; height: 16px; }
+.bot-call__stage { display: flex; flex-direction: column; align-items: center; gap: 8px; margin-top: clamp(8px, 6vh, 48px); text-align: center; }
+.bot-call__orb {
+  display: grid;
+  place-items: center;
+  width: 132px;
+  height: 132px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--accent) 8%, var(--panel));
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 30%, transparent);
+  transition: box-shadow var(--duration-normal, 200ms) ease, background var(--duration-normal, 200ms) ease;
+}
+.bot-call__orb .bot-avatar--xl .bot-avatar__glyph { font-size: 30px; }
+.bot-call__orb .bot-avatar--xl.bot-avatar--emoji .bot-avatar__glyph { font-size: 40px; }
+.bot-call__orb[data-phase="listening"] { animation: voice-breathe 3.2s ease-in-out infinite; }
+.bot-call__orb[data-phase="hearing"] { box-shadow: 0 0 0 10px color-mix(in srgb, var(--info, var(--accent)) 28%, transparent); }
+.bot-call__orb[data-phase="transcribing"],
+.bot-call__orb[data-phase="thinking"] { animation: voice-think 1.4s ease-in-out infinite; }
+.bot-call__orb[data-phase="speaking"] { background: color-mix(in srgb, var(--ok) 14%, var(--panel)); animation: voice-speak 0.9s ease-in-out infinite; }
+.bot-call__orb[data-phase="failed"] { background: color-mix(in srgb, var(--danger) 12%, var(--panel)); }
+/* A face is the call's whole stage: no disc and no rings, its body and eyes show the phase. */
+.bot-call__orb.bot-call__orb--face[data-phase] { width: auto; height: auto; background: none; box-shadow: none; animation: none; }
+@keyframes voice-breathe { 50% { box-shadow: 0 0 0 8px color-mix(in srgb, var(--accent) 14%, transparent); } }
+@keyframes voice-think { 50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--muted) 22%, transparent); } }
+@keyframes voice-speak { 50% { box-shadow: 0 0 0 14px color-mix(in srgb, var(--ok) 22%, transparent); } }
+.bot-call__name { margin: 4px 0 0; font-size: var(--text-xl, 22px); font-weight: 600; }
+.bot-call__status { margin: 0; min-height: 1.4em; color: var(--muted); font-size: var(--text-base, 14px); }
+.bot-call__captions { display: grid; gap: 10px; width: 100%; max-width: 640px; }
+.bot-call__caption {
+  display: grid;
+  gap: 4px;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--card, var(--panel));
+}
+.bot-call__caption--bot { border-color: color-mix(in srgb, var(--accent) 30%, var(--border)); }
+.bot-call__speaker { color: var(--muted); font-size: var(--font-size-xs, 12px); font-weight: 600; letter-spacing: 0.02em; text-transform: uppercase; }
+.bot-call__line { margin: 0; max-height: 9.6em; overflow-y: auto; line-height: 1.6; overflow-wrap: anywhere; }
+.bot-call__line[data-empty="true"] { color: var(--muted); }
+.bot-call__notice, .bot-call__error { margin: 0; max-width: 640px; font-size: var(--text-sm, 13px); text-align: center; overflow-wrap: anywhere; }
+.bot-call__notice { color: var(--warn, var(--muted)); }
+.bot-call__error { color: var(--danger); }
+/* Sticky so Mute, Speaker and Hang up stay in view when the captions outgrow the view (a long reply, a phone in
+ * landscape); the band fades into the page over the text scrolling under it. */
+.bot-call__controls {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 14px;
+  width: 100%;
+  margin-top: auto;
+  padding: 8px 0 2px;
+  background: linear-gradient(to bottom, transparent, var(--bg) 14px);
+}
+.bot-call__control {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-width: 72px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--font-size-xs, 12px);
+  cursor: var(--cursor-action, pointer);
+}
+.bot-call__control svg {
+  box-sizing: content-box;
+  width: 22px;
+  height: 22px;
+  padding: 16px;
+  border-radius: 50%;
+  background: var(--panel-strong, var(--panel));
+  border: 1px solid var(--border);
+  transition: background var(--duration-fast) ease, color var(--duration-fast) ease;
+}
+@media (hover: hover) and (pointer: fine) {
+  .bot-call__control:hover svg { background: var(--panel-hover, var(--bg-hover)); }
+}
+.bot-call__control[aria-pressed="true"] svg { background: var(--text); color: var(--bg); border-color: var(--text); }
+.bot-call__control--hangup svg, .bot-call__control--hangup:hover svg { background: var(--danger); border-color: var(--danger); color: var(--destructive-foreground, #fff); }
+.bot-call__control:focus-visible { outline: none; }
+.bot-call__control:focus-visible svg { box-shadow: var(--focus-ring); }
+.bot-call__privacy { margin: 0; color: var(--muted); font-size: var(--font-size-xs, 12px); text-align: center; }
+
+/* ── the minimized call ── */
+.bot-call-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 6px 12px 0;
+  padding: 4px 4px 4px 6px;
+  border: 1px solid color-mix(in srgb, var(--ok) 40%, var(--border));
+  border-radius: var(--radius-full);
+  background: color-mix(in srgb, var(--ok) 10%, var(--card, var(--panel)));
+  color: var(--text);
+  font-size: var(--text-sm, 13px);
+}
+/* Away from the bot's chat the bar takes a band at the top of the shell's content cell, and the page moves down
+ * to make room (`shell--call-bar`), so it never covers a header, a title or the navigation button. */
+.shell > .bot-call-bar--floating {
+  grid-area: content;
+  align-self: start;
+  justify-self: center;
+  position: relative;
+  z-index: 30;
+  width: min(640px, calc(100% - 24px));
+  margin: 8px 0 0;
+  box-shadow: var(--shadow-md, 0 4px 18px rgb(0 0 0 / 0.18));
+}
+.shell.shell--call-bar > .content { margin-top: 58px; }
+.bot-call-bar__open {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1 1 auto;
+  height: 32px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: var(--cursor-action, pointer);
+}
+.bot-call-bar__open:focus-visible, .bot-call-bar__button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.bot-call-bar__pulse { width: 8px; height: 8px; flex: 0 0 8px; border-radius: 50%; background: var(--ok); animation: voice-dot 1.6s ease-in-out infinite; }
+.bot-call-bar .bot-avatar--face hui-bot-face { --bot-face-size: 26px; }
+.bot-call-bar .bot-avatar--emoji { width: 24px; height: 24px; font-size: 14px; }
+.bot-call-bar__name { font-weight: 600; white-space: nowrap; }
+.bot-call-bar__status { min-width: 0; overflow: hidden; color: var(--muted); text-overflow: ellipsis; white-space: nowrap; }
+.bot-call-bar__time { margin-inline-start: auto; font-variant-numeric: tabular-nums; }
+.bot-call-bar__button {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text);
+  cursor: var(--cursor-action, pointer);
+}
+.bot-call-bar__button svg { width: 16px; height: 16px; }
+.bot-call-bar__button[aria-pressed="true"] { background: var(--text); color: var(--bg); }
+.bot-call-bar__button--hangup { background: var(--danger); color: var(--destructive-foreground, #fff); }
+
+@media (max-width: 640px) {
+  .bot-call { gap: 12px; padding-inline: 14px; }
+  .bot-call__orb { width: 112px; height: 112px; }
+  .bot-call__orb.bot-call__orb--face hui-bot-face { --bot-face-size: 148px; }
+  .bot-call__controls { gap: 8px; }
+  .bot-call__control { min-width: 64px; }
+  .bot-call-bar { margin-inline: 8px; }
+}
+/* Short screens (a phone in landscape): a smaller avatar and tighter spacing leave room for the captions. */
+@media (max-height: 520px) {
+  .bot-call { gap: 8px; padding-top: max(10px, var(--safe-area-top, 0px)); }
+  .bot-call__stage { gap: 4px; margin-top: 0; }
+  .bot-call__orb { width: 64px; height: 64px; }
+  .bot-call__orb .bot-avatar--xl.bot-avatar--emoji { width: 44px; height: 44px; }
+  .bot-call__orb .bot-avatar--xl .bot-avatar__glyph { font-size: 20px; }
+  .bot-call__orb .bot-avatar--xl.bot-avatar--emoji .bot-avatar__glyph { font-size: 26px; }
+  .bot-call__orb.bot-call__orb--face hui-bot-face { --bot-face-size: 84px; }
+  .bot-call__name { margin: 0; font-size: var(--text-lg, 18px); }
+  .bot-call__control svg { padding: 12px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bot-call__orb, .bot-call-bar__pulse, .bot-call-toggle--active svg { animation: none; }
+}

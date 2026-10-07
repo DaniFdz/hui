@@ -24,7 +24,7 @@ test("roster rows show each bot's state and keep their badges; archived bots sle
 
 test("the dialog's Look is Face (shape, color, live preview) or Emoji, as native radio groups", () => {
   const source = read("./bots.ts");
-  const look = between(source, "function renderLookField(", "const THINKING_LABELS");
+  const look = between(source, "function renderLookField(", "/** Every language's English name");
   assert.match(look, /<fieldset class="field input-dialog__field bot-dialog__look" data-face-stage>/u, "the preview's eyes follow the pointer over the field");
   assert.match(look, /<legend class="bot-dialog__look-legend">Look<\/legend>/u);
   assert.match(look, /role="radiogroup" aria-label="Look"/u);
@@ -52,6 +52,20 @@ test("the chat's header and empty chat show the open chat's state; the large fac
   assert.match(state, /memoryWaiting: Boolean\(props\.bot\?\.bot\.memory\?\.waiting\)/u);
   assert.match(state, /toolRunning: props\.streaming && hasRunningTool\(props\.transcript\)/u);
   assert.match(state, /failed: Boolean\(props\.runError\)/u);
+});
+
+test("a call shows the bot's face listening to the microphone and speaking with its voice, tinted with its color", () => {
+  const source = read("./bot-voice.ts");
+  const view = between(source, "export function renderCallView(", "/** The minimized call");
+  assert.match(view, /style=\$\{`--bot-color: \$\{look\.color\}`\} data-face-stage/u);
+  assert.match(view, /renderBotAvatar\(bot, "xl", \{ state: callFaceState\(state, props\.summarizing\), \.\.\.\(props\.level \? \{ level: props\.level \} : \{\}\) \}\)/u);
+  assert.match(view, /<p class="bot-call__status" role="status" aria-live="polite">\$\{callStatusLabel\(state, props\.summarizing, bot\.name\)\}<\/p>/u, "the status stays in text");
+  const bar = between(source, "export function renderCallBar(", "\n}\n");
+  assert.match(bar, /renderBotAvatar\(bot, "sm", \{ state: callFaceState\(state, props\.summarizing\) \}\)/u);
+  assert.match(bar, /class="bot-call-bar__pulse"/u, "the bar keeps its live dot");
+  const app = read("../hui-app.ts");
+  assert.match(app, /this\.voice\.call\?\.state\.phase === "speaking" \? this\.voice\.voiceLevel\(\) : this\.voice\.micLevel\(\)/u);
+  assert.match(read("../lib/voice-controller.ts"), /return this\.call \? this\.#session\?\.voiceLevel : 0;/u, "the bot's voice is GPT-Live's stream, as it plays");
 });
 
 test("faces are decorative, pause when unseen and keep still under reduced motion", () => {
@@ -82,4 +96,37 @@ test("emoji tiles take a face's width in rows, so names line up whichever look a
     const margin = px(new RegExp(String.raw`\.bot-avatar--${size}\.bot-avatar--emoji \{ margin-inline: (\d+)px; \}`, "u"), css);
     assert.equal(tile + 2 * margin, face, size);
   }
+});
+
+test("the dialog shows the bot's Call voice and Language, and no VoiceStudio voice, speed or preview", () => {
+  const source = read("./bots.ts");
+  const dialog = between(source, "export function renderBotDialog(", "/* ── archive confirmation");
+  assert.match(dialog, /\$\{renderCallVoiceField\(props\.call, props\.pending\)\}\s*\$\{renderLanguageField\(props\.call, props\.pending\)\}/u, "always, whatever else the gateway has");
+  const call = between(source, "function renderCallVoiceField(", "function renderLanguageField(");
+  assert.match(call, /<span>Call voice<\/span>/u);
+  assert.match(call, /Default \(" \+ gptLiveVoiceLabel\(call\.defaultVoice\) \+ "\)"/u, "Default names Settings' voice");
+  assert.match(call, /How the bot sounds on calls\. Default follows Settings → Models → Calls\./u);
+  const language = between(source, "function renderLanguageField(", "const THINKING_LABELS");
+  assert.match(language, /<span>Language<\/span>/u);
+  assert.match(language, /The language the bot speaks on calls\. Auto answers in the language you speak\./u);
+  assert.doesNotMatch(source, /VoiceStudio|renderVoiceField|BotDialogVoice|Read-aloud voice|bot-dialog__speed|bot-dialog__preview/u);
+  const app = read("../hui-app.ts");
+  assert.match(between(app, "private botDialogCall(", "private closeBotDialog"), /voice: this\.botDraftCallVoice,\s*defaultVoice: this\.settings\.calls\.voice,\s*language: this\.botDraftVoiceLanguage,/u);
+  assert.match(app, /const voice = \{ voiceLanguage: this\.botDraftVoiceLanguage, callVoice: this\.botDraftCallVoice \};/u, "a save sends both, and an edit only what changed");
+});
+
+test("a bot chat offers a call whenever GPT-Live can run, and nothing of VoiceStudio", () => {
+  const app = read("../hui-app.ts");
+  assert.match(between(app, "private callsAvailable(", "private isUpdateSession("), /return callsReady\(this\.callsStatus\);/u);
+  assert.match(app, /if \(!this\.embeddedPane && this\.view === "bot" && !this\.callsStatus\) void this\.loadCallsStatus\(\);/u, "read on every bot page, whatever settings.json holds");
+  assert.doesNotMatch(app, /VoiceStudio|voiceNotes|readAloud|paneVoice|VOICE_CONNECTION_EVENT|calls\.engine/u);
+  const home = read("./home.ts");
+  assert.match(home, /renderCallButton\(\{ botName: props\.bot\.bot\.name, inCall: props\.call\.inCall, onCall: props\.call\.onCall \}\)/u, "the phone button");
+  assert.doesNotMatch(home, /renderVoiceNoteButton|renderVoiceNoteStatus|renderReadAloud|chat-read-aloud|chat-voice-btn/u, "no microphone in the composer, no Read aloud under replies");
+});
+
+test("the dialog's Model and Thinking pickers line up although only Model has a hint", () => {
+  const css = readFileSync(new URL("../styles/bots.css", import.meta.url), "utf8");
+  assert.match(css, /\.bot-dialog__row \{[^}]*\balign-items: start;/u, "each field keeps its own height instead of stretching to the row");
+  assert.match(read("./bots.ts"), /<div class="bot-dialog__row">\s*<div class="field input-dialog__field"><span>Model<\/span>/u);
 });

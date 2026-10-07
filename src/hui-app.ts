@@ -89,7 +89,7 @@ import {
 } from "./lib/bots.ts";
 import { archivedBotCount, hiddenBotCount, readBotPanel, readSidebarTab, writeBotPanel, writeSidebarTab, type BotPanelState, type BotPanelTab, type SidebarTab } from "./lib/bot-roster.ts";
 import { memoryStatusChanged, parseMemoryView, parseMemoryZoom, type MemoryLine } from "./lib/bot-memory.ts";
-import { renderBotArchiveDialog, renderBotDeleteDialog, renderBotDialog, renderBotPanel, renderBotPlaceholder, type BotFormValues, type BotMemoryState, type BotSoulState, type MemoryZoomState } from "./views/bots.ts";
+import { renderBotArchiveDialog, renderBotDeleteDialog, renderBotDialog, renderBotPanel, renderBotPlaceholder, type BotDialogCall, type BotFormValues, type BotMemoryState, type BotSoulState, type MemoryZoomState } from "./views/bots.ts";
 import { checkUpdate, checkUpdateInBackground, installUpdate, loadUpdate } from "./lib/update-store.ts";
 import { availableUpdate, watchUpdateAvailability } from "./lib/update-notice.ts";
 import type { UpdateSnapshot } from "./lib/update-types.ts";
@@ -199,6 +199,10 @@ import type { BacklogCardAction, SessionCardAction } from "./views/kanban.ts";
 import type { BacklogStartTarget } from "./components/backlog-start-dialog.ts";
 import { addSuggestionToBacklog, backlogItemMarkdown, loadBacklog, removeBacklogItem, setBacklogItemGroup, type BacklogItem, type BacklogJiraState } from "./lib/backlog.ts";
 import { loadJiraConnection } from "./lib/jira.ts";
+import { VoiceController } from "./lib/voice-controller.ts";
+import { renderCallBar, renderCallView, type CallViewProps } from "./views/bot-voice.ts";
+import { liveCallPlatform, loadCallsStatus } from "./lib/live-call-platform.ts";
+import { callsReady, type CallsStatus } from "../shared/calls.ts";
 import { BOT_FACE_COLORS, BOT_FACE_SHAPES, botLook, botSeed, type BotFaceShape } from "../shared/bots.ts";
 import { localTimezone, type AutomationProps } from "./views/settings-automation.ts";
 import { loadWorkers, workerAction, type WorkerView } from "./lib/workers.ts";
@@ -255,6 +259,10 @@ function readCollapsed(): Set<string> {
  * update or resize step. Lit still stores the newest value, but a rendered
  * button may keep an older one: capture only the pane/session id and the parent. */
 const paneCallback = { attribute: false, hasChanged: (value: unknown, old: unknown) => !value !== !old };
+
+/** A bot pane's Call button (HUI-18): offered while calls can run (GPT-Live, with a ChatGPT login). Compared by value. */
+type PaneCall = { botId: string; inCall: boolean };
+const paneCallProperty = { attribute: false, hasChanged: (value: unknown, old: unknown) => JSON.stringify(value) !== JSON.stringify(old) };
 
 /** The bot pane's header data, without its callback (passed separately as a
  * pane callback). Compared by value: the parent rebuilds it on every render. */
@@ -521,6 +529,13 @@ export class HuiApp extends HuiElement {
   @state() private botDraftColor = "#3a7bfa";
   @state() private botDraftEmoji = "";
   private botDraftSeed = 0;
+  /** The dialog's call section (HUI-18): the language the bot speaks on calls ("" for Auto) and its GPT-Live voice ("" follows
+   * Settings). */
+  @state() private botDraftVoiceLanguage = "";
+  @state() private botDraftCallVoice = "";
+  /** The ChatGPT login GPT-Live calls use (`/__hui/calls`), read on a bot's page. */
+  @state() private callsStatus: CallsStatus | undefined;
+  private callsStatusLoading: Promise<void> | undefined;
   @state() private botArchive: BotView | undefined;
   @state() private botArchivePending = false;
   @state() private botArchiveError = "";
@@ -583,6 +598,15 @@ export class HuiApp extends HuiElement {
   /** Embedded panes own the composer but not the sidebar; report draft
    * presence so the shell can project the pencil onto the session row. */
   @property(paneCallback) onPaneDraftChange: ((sessionId: string, hasDraft: boolean) => void) | undefined;
+  /** Set on the bot route's pane while the bot can be called. */
+  @property(paneCallProperty) paneCall: PaneCall | undefined;
+  @property(paneCallback) onPaneCall: (() => void) | undefined;
+  /** The app's calls (top-level only): the one call with a bot, on GPT-Live. */
+  private readonly voice = new VoiceController(this, {
+    platform: liveCallPlatform,
+    now: () => Date.now(),
+    setInterval: (callback, ms) => { const timer = window.setInterval(callback, ms); return () => window.clearInterval(timer); },
+  });
   private mobileNavMedia: MediaQueryList | undefined;
   private composerTextarea: HTMLTextAreaElement | null = null;
   private readonly onMobileNavChange = (event: MediaQueryListEvent) => {
@@ -740,6 +764,7 @@ export class HuiApp extends HuiElement {
     window.removeEventListener("focus", this.onUpdateVisibility);
     this.updateMonitor?.stop();
     this.updateMonitor = undefined;
+    if (!this.embeddedPane) this.voice.dispose();
     this.streamStop?.();
     this.streamStop = undefined;
     if (this.subagentExpiryTimer !== undefined) window.clearTimeout(this.subagentExpiryTimer);
@@ -1016,6 +1041,8 @@ export class HuiApp extends HuiElement {
       textarea.setSelectionRange(this.draft.length, this.draft.length);
       this.setCommandQuery(slashCommandQuery(this.draft, this.draft.length));
     }
+    // A bot's chat offers GPT-Live calls once the gateway says a ChatGPT login is there.
+    if (!this.embeddedPane && this.view === "bot" && !this.callsStatus) void this.loadCallsStatus();
     if (changed.has("selected") || changed.has("view") || changed.has("settingsOpen") || changed.has("activeBotId") || changed.has("bots")) {
       const activeSessionTitle = this.settingsOpen ? undefined
         : this.view === "home" ? this.selected?.title
@@ -2297,6 +2324,20 @@ export class HuiApp extends HuiElement {
     this.setDraft(draft);
     void this.persistComposerDraft();
   };
+
+  /** The ChatGPT login GPT-Live calls use; a read under way is shared. A failed read leaves Call hidden. */
+  private loadCallsStatus(): Promise<void> {
+    this.callsStatusLoading ??= loadCallsStatus().then(
+      (status) => { this.callsStatus = status; },
+      () => { this.callsStatus = undefined; },
+    ).finally(() => { this.callsStatusLoading = undefined; });
+    return this.callsStatusLoading;
+  }
+
+  /** Call shows whenever GPT-Live can run: with a ChatGPT login. */
+  private callsAvailable(): boolean {
+    return callsReady(this.callsStatus);
+  }
 
   private isUpdateSession(session: SessionView | undefined): boolean {
     return session?.title === HUI_UPDATE_SESSION_TITLE && session.group === "";
@@ -3759,6 +3800,7 @@ export class HuiApp extends HuiElement {
     this.directorySuggestions = [];
     // The model pickers read PI's catalog; New Session loads it the same way.
     this.loadLaunchPreferences();
+    this.openBotDialogCall(undefined);
   };
 
   private openEditBot = (bot: BotView) => {
@@ -3778,7 +3820,32 @@ export class HuiApp extends HuiElement {
     ++this.directorySuggestionRequest;
     this.directorySuggestions = [];
     this.loadLaunchPreferences();
+    this.openBotDialogCall(bot);
   };
+
+  /** The dialog's call section starts from the bot's call voice and language. */
+  private openBotDialogCall(bot: BotView | undefined) {
+    this.botDraftVoiceLanguage = bot?.voice?.language ?? "";
+    this.botDraftCallVoice = bot?.voice?.live ?? "";
+  }
+
+  /** Settings' utility model by its catalog name, the default of a bot's utility model. */
+  private utilityModelName(): string | undefined {
+    const ref = this.settings.models.utility;
+    if (!ref) return undefined;
+    return this.pi?.model.catalog.find((entry) => `${entry.provider}/${entry.id}` === ref)?.name ?? ref;
+  }
+
+  /** The dialog's call voice and language. */
+  private botDialogCall(): BotDialogCall {
+    return {
+      voice: this.botDraftCallVoice,
+      defaultVoice: this.settings.calls.voice,
+      language: this.botDraftVoiceLanguage,
+      onVoice: (value) => { this.botDraftCallVoice = value; },
+      onLanguage: (value) => { this.botDraftVoiceLanguage = value; },
+    };
+  }
 
   private closeBotDialog = () => {
     const dialog = this.renderRoot.querySelector?.(".bot-dialog");
@@ -3799,8 +3866,10 @@ export class HuiApp extends HuiElement {
       this.botDialogError = "Type an emoji, or choose Face.";
       return;
     }
+    // The dialog always shows the call voice and the language.
+    const voice = { voiceLanguage: this.botDraftVoiceLanguage, callVoice: this.botDraftCallVoice };
     const look = { look: this.botDraftLook, shape: this.botDraftShape, color: this.botDraftColor, emoji: this.botDraftEmoji };
-    const draft = { ...values, ...look, model: this.botDraftModel, thinking: this.botDraftThinking, memoryModel: this.botDraftMemoryModel };
+    const draft = { ...values, ...look, model: this.botDraftModel, thinking: this.botDraftThinking, memoryModel: this.botDraftMemoryModel, ...voice };
     const patch = state.mode === "edit" ? botPatchFromDraft(state.bot, draft) : undefined;
     // Saving an untouched bot changes nothing, and the gateway refuses an empty change.
     if (patch && !Object.keys(patch).length) {
@@ -4228,8 +4297,12 @@ export class HuiApp extends HuiElement {
       panelOpen,
       panelId,
     };
+    const call = this.voice.call?.bot.id === bot.id ? this.voice.call : undefined;
+    // A call under way stays reachable even if the ChatGPT login went meanwhile.
+    const paneCall: PaneCall | undefined = call || this.callsAvailable() ? { botId: bot.id, inCall: Boolean(call) } : undefined;
     return html`<div class="bot-workspace ${panelOpen && !sheet ? "bot-workspace--panel" : ""}" data-bot-id=${bot.id}>
       <div class="bot-workspace__chat">
+        ${call?.minimized ? renderCallBar({ ...this.callViewProps(bot, call), floating: false }) : nothing}
         ${keyed(bot.id, html`<hui-app
           class="hui-session-pane-app bot-workspace__pane"
           embedded-pane
@@ -4255,7 +4328,10 @@ export class HuiApp extends HuiElement {
           .paneGroups=${this.sessionListRevision ? this.groups : undefined}
           .onPaneUpdate=${(text: string, attachments: readonly Attachment[]) => this.handleUpdateCommand(text, attachments)}
           .onPaneDraftChange=${(sessionId: string, hasDraft: boolean) => this.markSessionDraft(sessionId, hasDraft)}
+          .paneCall=${paneCall}
+          .onPaneCall=${paneCall ? this.paneCallAction(bot) : undefined}
         ></hui-app>`)}
+        ${call && !call.minimized ? renderCallView(this.callViewProps(bot, call)) : nothing}
       </div>
       ${panelOpen ? renderBotPanel({
         bot,
@@ -4312,6 +4388,7 @@ export class HuiApp extends HuiElement {
       model: this.botDraftModel,
       thinking: this.botDraftThinking,
       memoryModel: this.botDraftMemoryModel,
+      ...(this.utilityModelName() ? { utilityDefault: this.utilityModelName()! } : {}),
       directorySuggestions: this.directorySuggestions,
       onDirectoryInput: this.requestDirectorySuggestions,
       onModel: (value) => { this.botDraftModel = value; },
@@ -4330,9 +4407,88 @@ export class HuiApp extends HuiElement {
         onColor: (color) => { this.botDraftColor = color; },
         onEmoji: (emoji) => { this.botDraftEmoji = emoji; },
       },
+      call: this.botDialogCall(),
     }) : nothing}
     ${this.botArchive ? renderBotArchiveDialog(this.botArchive, this.botArchivePending, this.botArchiveError, this.confirmArchiveBot, this.closeBotArchive) : nothing}
     ${this.botDelete ? renderBotDeleteDialog(this.botDelete, this.botDeletePending, this.botDeleteError, this.confirmDeleteBot, this.closeBotDelete) : nothing}`;
+  }
+
+  /* ── calls with bots (HUI-18) ─────────────────────────────────────────── */
+
+  /** Captures only the bot's id: a rendered button may keep an older closure, and the bot is read again when used. */
+  private paneCallAction(bot: BotView): () => void {
+    const botId = bot.id;
+    return () => {
+      const current = this.bots.find((candidate) => candidate.id === botId);
+      if (current) this.openCall(current);
+    };
+  }
+
+  /** Calls a bot (or returns to its call) and shows its view. One call at a time, on GPT-Live. */
+  private openCall = (bot: BotView) => {
+    if (!this.voice.startCall({ id: bot.id, sessionId: bot.sessionId, name: bot.name })) {
+      this.botNotice = `Hang up the call with ${this.voice.call?.bot.name ?? "the other bot"} first.`;
+      this.botNoticeFailed = true;
+      return;
+    }
+    if (this.view !== "bot" || this.activeBotId !== bot.id || this.settingsOpen) this.navigate({ kind: "bot", id: bot.id });
+    void this.updateComplete.then(() => this.renderRoot.querySelector<HTMLElement>(".bot-call__control--hangup, .bot-call__close")?.focus());
+  };
+
+  /** After the call view closes, focus returns to the chat it covered. */
+  private focusBotChat() {
+    void this.updateComplete.then(() => this.botPaneApp()?.updateComplete).then(() => {
+      this.botPaneApp()?.renderRoot.querySelector<HTMLElement>(".bot-call-toggle, .agent-chat__composer-combobox > textarea")?.focus();
+    });
+  }
+
+  private callViewProps(bot: Pick<BotView, "id" | "name" | "title" | "avatar" | "sessionId" | "memory">, call: NonNullable<VoiceController["call"]>): CallViewProps {
+    return {
+      bot: { id: bot.id, name: bot.name, ...(bot.title ? { title: bot.title } : {}), ...(bot.avatar ? { avatar: bot.avatar } : {}) },
+      state: call.state,
+      now: this.voice.now,
+      summarizing: Boolean(bot.memory?.waiting),
+      // Read every animation frame by the face, never rendered: the bot's voice while it speaks, else the microphone.
+      level: this.callLevel,
+      onToggleMic: () => this.voice.toggleMic(),
+      onToggleSpeaker: () => this.voice.toggleSpeaker(),
+      onMinimize: () => {
+        this.voice.minimize();
+        void this.updateComplete.then(() => this.renderRoot.querySelector<HTMLElement>(".bot-call-bar__open")?.focus());
+      },
+      onExpand: () => {
+        if (this.view !== "bot" || this.activeBotId !== bot.id || this.settingsOpen) this.navigate({ kind: "bot", id: bot.id });
+        this.voice.expand();
+        void this.updateComplete.then(() => this.renderRoot.querySelector<HTMLElement>(".bot-call__control--hangup")?.focus());
+      },
+      onHangUp: () => {
+        this.voice.hangUp();
+        this.focusBotChat();
+      },
+      onClose: () => {
+        this.voice.closeCall();
+        this.focusBotChat();
+      },
+    };
+  }
+
+  private readonly callLevel = (): number | undefined =>
+    this.voice.call?.state.phase === "speaking" ? this.voice.voiceLevel() : this.voice.micLevel();
+
+  /** The call, while the operator is elsewhere in HUI (another page, another bot, Settings). */
+  private floatingCall() {
+    const call = this.voice.call;
+    if (this.embeddedPane || !call) return undefined;
+    if (this.view === "bot" && this.activeBotId === call.bot.id && !this.settingsOpen) return undefined;
+    return call;
+  }
+
+  /** That call stays in sight in a band above the page's content (`shell--call-bar` makes room), never over it. */
+  private renderFloatingCallBar() {
+    const call = this.floatingCall();
+    if (!call) return nothing;
+    const bot = this.bots.find((candidate) => candidate.id === call.bot.id) ?? { id: call.bot.id, name: call.bot.name, sessionId: call.bot.sessionId };
+    return renderCallBar({ ...this.callViewProps(bot, call), floating: true });
   }
 
   /* ── settings ─────────────────────────────────────────────────────────── */
@@ -5086,6 +5242,7 @@ export class HuiApp extends HuiElement {
       question: this.question,
       connection: this.connection,
       copiedId: this.copiedId,
+      ...(this.paneCall && this.onPaneCall ? { call: { inCall: this.paneCall.inCall, onCall: this.onPaneCall } } : {}),
       expandedActivityIds: this.expandedActivityIds,
       showScrollToBottom: this.showScrollToBottom,
       models: this.models,
@@ -5424,7 +5581,7 @@ export class HuiApp extends HuiElement {
     }
 
     if (this.settingsOpen) {
-      return html`<div class="shell shell--settings settings-shell ${this.mobileNavLayout ? "shell--mobile-nav" : ""}">
+      return html`<div class="shell shell--settings settings-shell ${this.mobileNavLayout ? "shell--mobile-nav" : ""} ${this.floatingCall() ? "shell--call-bar" : ""}">
         ${renderSettingsPage({
           page: this.settingsPage,
           worktrees: {
@@ -5476,6 +5633,7 @@ export class HuiApp extends HuiElement {
           onChangeAppearance: (next) => void this.save(next),
           onChangeChat: (chat) => void this.save({ chat }),
           onChangeBrowser: (browser) => this.save({ browser }),
+          onChangeCalls: (calls) => void this.save({ calls }),
           onChangePower: (power) => void this.save({ power }).then(() => this.refreshPower()),
           onChangeBots: (bots) => void this.save({ bots }).then(() => this.syncBotsStream()),
           onSetLidAwake: this.setLidAwakeFromUi,
@@ -5498,6 +5656,7 @@ export class HuiApp extends HuiElement {
           onReadPlugin: (resource) => this.readPiResource("plugin", resource),
           ...this.automationProps(),
         })}
+        ${this.renderFloatingCallBar()}
         ${this.commandPalette()}
         ${this.updateDialog()}
         ${renderPiResourceReader(this.piResourceReader, this.closePiResourceReader, this.copyPiResource)}
@@ -5600,7 +5759,7 @@ export class HuiApp extends HuiElement {
       (this.view === "surface" && this.activePage?.id === "new-session");
 
     return html`<div
-      class="shell app-shell ${this.mobileNavLayout ? "shell--mobile-nav" : ""} ${chatLikeRoute ? "shell--chat" : ""} ${chatLikeRoute && this.mobileNavLayout ? "shell--merged-chat-chrome" : ""}"
+      class="shell app-shell ${this.mobileNavLayout ? "shell--mobile-nav" : ""} ${chatLikeRoute ? "shell--chat" : ""} ${chatLikeRoute && this.mobileNavLayout ? "shell--merged-chat-chrome" : ""} ${this.floatingCall() ? "shell--call-bar" : ""}"
       @keydown=${closeDrawerOnEscape}
     >
       ${renderSidebar(props)}
@@ -5610,6 +5769,7 @@ export class HuiApp extends HuiElement {
       ${this.renderBacklogStartDialog()}
       ${this.renderBacklogRemoveDialog()}
       ${this.renderBotDialogs()}
+      ${this.renderFloatingCallBar()}
       ${this.commandPalette()}
       ${this.updateDialog()}
       ${renderPiResourceReader(this.piResourceReader, this.closePiResourceReader, this.copyPiResource)}

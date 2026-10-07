@@ -1,3 +1,4 @@
+import { DEFAULT_GPT_LIVE_VOICE, gptLiveVoice, type GptLiveVoice } from "../../shared/calls.ts";
 import { normalizeAppearance, DEFAULT_APPEARANCE, type Appearance } from "./appearance.ts";
 import { DEFAULT_TERMINAL_FONT, normalizeTerminalFont } from "./terminal-font.ts";
 import { normalizeThemeMode, type ThemeMode } from "./theme.ts";
@@ -40,6 +41,9 @@ export type Settings = {
     fallback: string;
     utility: string;
   };
+  /** Settings → Models → Calls: calls with bots talk through GPT-Live over the ChatGPT login saved in Settings → Models.
+   * `voice` is the GPT-Live voice of a bot that has none of its own. */
+  calls: { voice: GptLiveVoice };
   /** PI skills hidden from HUI-owned runtimes without changing PI's installation. */
   disabledSkills: readonly { name: string; path: string }[];
   /** PI packages/extensions excluded before HUI's SDK worker discovers resources. */
@@ -83,6 +87,7 @@ export const DEFAULT_SETTINGS: Settings = {
   browser: DEFAULT_BROWSER_SETTINGS,
   power: { keepAwake: true },
   models: { primary: "", fallback: "", utility: "" },
+  calls: { voice: DEFAULT_GPT_LIVE_VOICE },
   disabledSkills: [],
   disabledPlugins: [],
   labs: { denseObservability: false, detailedDebug: false },
@@ -108,12 +113,21 @@ export function normalizeSettings(raw: unknown): Settings {
     branchPrefix: normalizeBranchPrefix(source["branchPrefix"]),
     browser: normalizeBrowserSettings(source["browser"]),
     power: normalizePower(source["power"]),
+    // VoiceStudio's `voice` (its voice-notes switch) is not read either: the next save leaves it out.
     models: normalizeModels(source["models"]),
+    calls: normalizeCalls(source["calls"]),
     disabledSkills: normalizeDisabledSkills(source["disabledSkills"]),
     disabledPlugins: normalizeDisabledPlugins(source["disabledPlugins"]),
     labs: normalizeLabs(source["labs"]),
     bots: normalizeBots(source["bots"]),
   };
+}
+
+/** An unknown voice is GPT-Live's default. A file saved while VoiceStudio could run calls also holds an `engine` here:
+ * it is not read, so the next save leaves it out. */
+export function normalizeCalls(value: unknown): Settings["calls"] {
+  const source = isRecord(value) ? value : {};
+  return { voice: gptLiveVoice(source["voice"]) ?? DEFAULT_GPT_LIVE_VOICE };
 }
 
 /** Opt-in: only an explicit true shows the Bots tab. */

@@ -29,9 +29,13 @@ import { BotInputError, BotRegistry, BotStoreError } from "./bots.ts";
 import { BotService } from "./bot-service.ts";
 import { BOT_MEMORY_PAGE, BOTS_EVENTS_ROUTE, BOTS_ROUTE, createBotRoutes } from "./bot-routes.ts";
 import { durableBotConversations } from "./bot-conversations.ts";
+import { CallBroker, providerCallAccounts } from "./calls.ts";
+import { CALLS_ROUTE, createCallRoutes } from "./call-routes.ts";
+import { buildCallRecord, createCallDelegate, operatorName, type CallCompletion } from "./call-helper.ts";
 import { optChatBotMemory } from "./bot-memory.ts";
-import { botHome, localBotSouls, operatorName } from "./bot-souls.ts";
-import type { BotsUpdate, BotView } from "../shared/bots.ts";
+import { botHome, localBotSouls, operatorName as soulOperatorName } from "./bot-souls.ts";
+import type { BotReply, BotsUpdate, BotView } from "../shared/bots.ts";
+import { clampThinkingLevel } from "@earendil-works/pi-ai";
 import { progressCardFromTranscript, type ProgressCard } from "../shared/progress-card.ts";
 import type { SessionPullRequest } from "../shared/pull-requests.ts";
 import {
@@ -304,7 +308,7 @@ function automationStoreFailure(error: unknown): never {
 durableHost().botSection = (botId) => bots.section(botId);
 durableHost().botSouls = {
   home: (botId) => botHome(botId),
-  operator: async () => operatorName((await readSettings()).profileName),
+  operator: async () => soulOperatorName((await readSettings()).profileName),
   // From the last registry read: a bot still called "New Bot" asks for a name first.
   name: (botId) => bots.identity(botId)?.name,
 };
@@ -434,6 +438,61 @@ const FETCH_TIMEOUT_MS = 10_000;
 const THEME_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
 
 const providerService = new ProviderService(undefined, invalidateModelCatalog);
+
+/** One completion through the gateway's models (HUI's provider accounts included), at low thinking: the call's helper
+ * and its record use the bot's utility model. */
+const callCompletion: CallCompletion = async (ref, { system, prompt, signal }) => {
+  const host = durableHost();
+  await host.open();
+  const slash = ref.indexOf("/");
+  let model = host.models.getModel(ref.slice(0, slash), ref.slice(slash + 1));
+  if (!model) {
+    await host.refreshModels();
+    model = host.models.getModel(ref.slice(0, slash), ref.slice(slash + 1));
+  }
+  if (!model) throw new Error(`Unknown model: ${ref}`);
+  const level = clampThinkingLevel(model, "low");
+  const reply = await host.models.completeSimple(model, {
+    systemPrompt: system,
+    messages: [{ role: "user", content: [{ type: "text", text: prompt }], timestamp: Date.now() }],
+  }, { signal, ...(level === "off" ? {} : { reasoning: level }) });
+  if (reply.stopReason === "error" || reply.stopReason === "aborted") throw new Error(reply.errorMessage || `The model stopped: ${reply.stopReason}`);
+  return reply.content.flatMap((part) => part.type === "text" ? [part.text] : []).join("");
+};
+const callSettings = async () => {
+  const settings = await readSettings();
+  return { utility: settings.models.utility, operator: operatorName(settings.profileName) };
+};
+const reportCall = (summary: string, detail?: string) => recordDiagnosticEvent({ area: "runtime", level: "warning", action: "call_helper", summary, ...(detail ? { detail } : {}) });
+
+/** GPT-Live calls with bots over the ChatGPT login (HUI-18): the credential stays here, audio goes browser ↔ ChatGPT.
+ * A call's quick questions go to the bot's helper (its utility model); its record goes to the bot's chat at the end. */
+const callRoutes = createCallRoutes({
+  broker: new CallBroker({
+    accounts: providerCallAccounts(providerService.accounts),
+    report: ({ status, detail }) => recordDiagnosticEvent({
+      area: "runtime", level: "warning", action: "call_refused", summary: `ChatGPT refused a GPT-Live call (${status})`, ...(detail ? { detail } : {}),
+    }),
+    onEnd: (call, endedAt) => void (async () => {
+      const bot = await bots.resolve(call.botId);
+      const record = await buildCallRecord({ bot, call, endedAt, settings: await callSettings(), completion: callCompletion, report: reportCall });
+      if (record) await bots.recordCall(bot.id, record);
+    })().catch((error: unknown) => reportCall("A call's record could not be written", error instanceof Error ? error.message : String(error))),
+  }),
+  bots,
+  delegate: createCallDelegate({
+    view: async (botId) => (await bots.callContext(botId)).view,
+    soul: async (botId) => (await bots.soul(botId)) ?? undefined,
+    settings: callSettings,
+    completion: callCompletion,
+    // Real work goes to the bot's own chat, as any message: a prompt, or a follow-up behind its running turn.
+    handOff: async (botId, text) => await bots.send(botId, { text }, { timeoutMs: 600_000 }) as BotReply,
+    report: reportCall,
+  }),
+  settings: () => readSettings(),
+  timeZone: () => Intl.DateTimeFormat().resolvedOptions().timeZone,
+});
+const BOT_CALLS = /^\/__hui\/bots\/[^/]+\/calls(?:\/|$)/u;
 
 const SETTINGS_FILE = join(CONFIG_DIR, "settings.json");
 const BUILTIN_THEME_DIR = fileURLToPath(new URL("../themes/", import.meta.url));
@@ -2170,6 +2229,16 @@ export function streamBots(response: ServerResponse, list: Pick<typeof botList, 
   });
 }
 
+/** `/__hui/calls` and `/__hui/bots/:id/calls…` (`call-routes.ts`). */
+async function serveCallRoute(request: Connect.IncomingMessage, response: ServerResponse, path: string): Promise<void> {
+  // A browser that leaves abandons a call being set up, and ends a task's wait (never the bot's turn).
+  const gone = new AbortController();
+  response.once("close", () => gone.abort());
+  const result = await callRoutes.handle({ method: request.method ?? "GET", path, body: (maxBytes) => readBody(request, maxBytes), signal: gone.signal });
+  if (!result) sendJson(response, 404, { error: `unknown route: ${path}` });
+  else sendJson(response, result.status, result.body);
+}
+
 /** `/__hui/bots` and everything under it but the events stream (`bot-routes.ts`). */
 async function serveBotRoute(request: Connect.IncomingMessage, response: ServerResponse, path: string): Promise<void> {
   // A client that leaves ends its wait for a reply, never the bot's turn.
@@ -2513,6 +2582,11 @@ async function handleRequest(
   if (path === BOTS_EVENTS_ROUTE) {
     if (request.method === "GET") streamBots(response);
     else sendJson(response, 405, { error: "method not allowed" });
+    return;
+  }
+
+  if (path === CALLS_ROUTE || BOT_CALLS.test(path)) {
+    await serveCallRoute(request, response, path);
     return;
   }
 

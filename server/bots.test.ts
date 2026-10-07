@@ -7,7 +7,7 @@ import { test, type TestContext } from "node:test";
 import { BOT_KICKOFF_MARKER, botKickoffName, botKickoffText, handleFromName, previewLine, type BotRecord } from "../shared/bots.ts";
 import {
   BotConflictError, BotInputError, BotNotFoundError, BotRegistry, BotStoreError,
-  findBot, isDerivedHandle, isOneGrapheme, normalizeBotInput, normalizeBotPatch, normalizeSoul, parseBotRecord, patchedAvatar, uniqueHandle,
+  findBot, isDerivedHandle, isOneGrapheme, normalizeBotInput, normalizeBotPatch, normalizeSoul, parseBotRecord, patchedAvatar, patchedVoice, uniqueHandle,
 } from "./bots.ts";
 
 async function tempFile(t: TestContext): Promise<string> {
@@ -104,6 +104,10 @@ test("a patch carries only what changes and may clear optional text and avatar k
   assert.deepEqual(normalizeBotPatch({ title: "", memoryModel: "", memoryThinking: "" }), { title: "", memoryModel: "", memoryThinking: "" });
   assert.throws(() => normalizeBotPatch({ soul: "x" }), /PUT \/__hui\/bots\/:id\/soul/u, "SOUL.md has its own route");
   assert.throws(() => normalizeBotPatch({ instructions: "" }), /no instructions any more/u);
+  // The utility model is stored as memoryModel, its name before calls; both names keep working.
+  assert.deepEqual(normalizeBotPatch({ utilityModel: "anthropic/claude-haiku" }), { memoryModel: "anthropic/claude-haiku" });
+  assert.deepEqual(normalizeBotPatch({ utilityModel: "a/b", memoryModel: "a/b" }), { memoryModel: "a/b" });
+  assert.throws(() => normalizeBotPatch({ utilityModel: "a/b", memoryModel: "c/d" }), /Give the utility model once/u);
   assert.deepEqual(normalizeBotPatch({ avatar: null, hidden: false }), { avatar: null, hidden: false });
   assert.deepEqual(normalizeBotPatch({ model: "", thinking: "" }), { model: "", thinking: "" }, "the chat goes back to the gateway's defaults");
   assert.throws(() => normalizeBotPatch({ model: "gpt" }), /provider\/id/u);
@@ -251,4 +255,75 @@ test("previews are one line of at most 200 characters", () => {
   const long = previewLine("word ".repeat(100));
   assert.equal(long.length, 200);
   assert.ok(long.endsWith("…"));
+});
+
+test("a bot's voice is its language and its call voice: nothing else, cleared key by key", () => {
+  assert.deepEqual(normalizeBotInput({ name: "Ada", voice: { language: "es", live: "sol" } }).voice, { language: "es", live: "sol" });
+  assert.equal(normalizeBotInput({ name: "Ada", voice: { language: "", live: "" } }).voice, undefined, "a new bot has nothing to clear");
+  for (const [voice, message] of [
+    ["loud", /^Voice must be an object with language and\/or live\.$/u],
+    [{ volume: 3 }, /^Unknown voice field: volume\.$/u],
+    // VoiceStudio's voice profile and speed went with it.
+    [{ profile: "vp-aria" }, /^Unknown voice field: profile\.$/u],
+    [{ speed: 1.25, language: "es" }, /^Unknown voice field: speed\.$/u],
+  ] as const) {
+    assert.throws(() => normalizeBotInput({ name: "Ada", voice }), (error: unknown) => error instanceof BotInputError && message.test(error.message), JSON.stringify(voice));
+    assert.throws(() => normalizeBotPatch({ voice }), (error: unknown) => error instanceof BotInputError && message.test(error.message), JSON.stringify(voice));
+  }
+  assert.deepEqual(normalizeBotPatch({ voice: null }), { voice: null });
+  assert.equal(patchedVoice({ language: "es", live: "sol" }, null), undefined, "voice: null clears both");
+  assert.equal(parseBotRecord({ ...bot("a", "ada"), voice: "x" })?.voice, undefined);
+});
+
+test("a bot's language is one of Whisper's codes, cleared back to Auto with \"\"", () => {
+  assert.deepEqual(normalizeBotInput({ name: "Ada", voice: { language: " ES " } }).voice, { language: "es" });
+  for (const language of ["haw", "yue", "jw", "en", "zh"]) assert.deepEqual(normalizeBotInput({ name: "Ada", voice: { language } }).voice, { language }, language);
+  assert.equal(normalizeBotInput({ name: "Ada", voice: { language: "" } }).voice, undefined, "a new bot has no language to clear");
+  for (const language of ["spanish", "es-ES", "jv", "xx", "auto", 7, null, "zz"]) {
+    assert.throws(() => normalizeBotInput({ name: "Ada", voice: { language } }), (error: unknown) => error instanceof BotInputError
+      && error.message === "Voice language must be one of Whisper's language codes, such as en, es, fr, de or ja, or \"\" for Auto.", String(language));
+    assert.throws(() => normalizeBotPatch({ voice: { language } }), BotInputError, String(language));
+  }
+  assert.throws(() => normalizeBotPatch({ voice: { dialect: "es" } }), /Unknown voice field: dialect/u);
+  assert.deepEqual(normalizeBotPatch({ voice: { language: "" } }), { voice: { language: "" } });
+  assert.deepEqual(normalizeBotPatch({ voice: { language: "DE" } }), { voice: { language: "de" } });
+  const current = { language: "es" as const, live: "vale" as const };
+  assert.deepEqual(patchedVoice(current, { language: "haw" }), { language: "haw", live: "vale" });
+  assert.deepEqual(patchedVoice(current, { language: "" }), { live: "vale" }, "back to Auto, the call voice stays");
+  assert.deepEqual(patchedVoice(undefined, { language: "yue" }), { language: "yue" });
+  assert.equal(patchedVoice({ language: "es" }, { language: "" }), undefined);
+  // bots.json keeps a valid code and drops anything else, without losing the call voice.
+  assert.deepEqual(parseBotRecord({ ...bot("a", "ada"), voice: { language: "yue" } })?.voice, { language: "yue" });
+  assert.deepEqual(parseBotRecord({ ...bot("a", "ada"), voice: { live: "sol", language: "klingon" } })?.voice, { live: "sol" });
+  assert.equal(parseBotRecord({ ...bot("a", "ada"), voice: { language: "jv" } })?.voice, undefined, "Javanese is stored as Whisper's jw");
+});
+
+test("a bot's call voice is one of GPT-Live's voices, cleared back to the default with \"\"", () => {
+  assert.deepEqual(normalizeBotInput({ name: "Ada", voice: { live: " Ember " } }).voice, { live: "ember" });
+  assert.equal(normalizeBotInput({ name: "Ada", voice: { live: "" } }).voice, undefined, "a new bot has no call voice to clear");
+  for (const live of ["marin", "alloy", "Cove!", 3, null]) {
+    assert.throws(() => normalizeBotPatch({ voice: { live } }), (error: unknown) => error instanceof BotInputError && /Call voice must be one of GPT-Live's voices: cove, arbor/u.test(error.message), String(live));
+  }
+  assert.deepEqual(normalizeBotPatch({ voice: { live: "" } }), { voice: { live: "" } });
+  assert.deepEqual(patchedVoice({ language: "es", live: "vale" }, { live: "" }), { language: "es" }, "the language outlives the call voice");
+  assert.deepEqual(patchedVoice({ language: "es" }, { live: "maple" }), { language: "es", live: "maple" });
+  assert.deepEqual(parseBotRecord({ ...bot("a", "ada"), voice: { live: "nova", language: "es" } })?.voice, { language: "es" }, "bots.json drops an unknown call voice and keeps the rest");
+});
+
+test("bots.json written while HUI had VoiceStudio loads, and the next write leaves out the VoiceStudio voice", async (t) => {
+  const file = await tempFile(t);
+  const older = (id: string, handle: string, voice: unknown) => ({ ...bot(id, handle), voice });
+  await writeFile(file, JSON.stringify({ version: 1, bots: [
+    older("a", "ada", { profile: "vp-aria", speed: 1.25, language: "es", live: "sol" }),
+    older("b", "bob", { profile: "vp-dani", speed: 0.8 }),
+  ] }));
+  const registry = new BotRegistry(file);
+  const [ada, bob] = await registry.list();
+  assert.deepEqual(ada?.voice, { language: "es", live: "sol" }, "the language and call voice stay");
+  assert.equal(bob?.voice, undefined, "a VoiceStudio voice alone is no voice");
+  assert.ok((await readFile(file, "utf8")).includes("vp-aria"), "reading rewrites nothing");
+  await registry.update((bots) => ({ bots: bots.map((entry) => entry.id === "b" ? { ...entry, title: "Builder" } : entry), result: undefined }));
+  const written = JSON.parse(await readFile(file, "utf8")) as { bots: { id: string; voice?: unknown; title?: string }[] };
+  assert.deepEqual(written.bots.map(({ id, voice, title }) => [id, voice, title]), [["a", { language: "es", live: "sol" }, undefined], ["b", undefined, "Builder"]]);
+  assert.doesNotMatch(JSON.stringify(written), /profile|speed|vp-aria|vp-dani/u);
 });

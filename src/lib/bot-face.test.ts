@@ -7,6 +7,8 @@ import {
   FACE_EYES,
   FACE_GAZE,
   SyllableLevel,
+  callFaceState,
+  callLevelSource,
   chatFaceState,
   eyesBlink,
   faceBodyColor,
@@ -20,6 +22,7 @@ import {
   settlesWithDone,
   type ChatFaceInput,
 } from "./bot-face.ts";
+import { initialLiveCallState } from "./live-call.ts";
 import type { TranscriptItem } from "./sessions-store.ts";
 
 const PALETTE: ReadonlySet<string> = new Set(BOT_FACE_COLORS.map((color) => color.hex));
@@ -120,6 +123,23 @@ test("a roster entry maps the bot's activity, archived bots sleep", () => {
   assert.equal(rosterFaceState({ status: "error" }), "error");
   assert.equal(rosterFaceState({ status: "disconnected" }), "offline");
   assert.equal(rosterFaceState({ status: "running", archived: true }), "offline");
+});
+
+test("a call's face listens while the microphone is open and speaks while the bot's voice plays", () => {
+  const call = initialLiveCallState(0);
+  assert.equal(callFaceState(call), "idle", "connecting");
+  assert.equal(callFaceState({ ...call, phase: "listening" }), "listening");
+  assert.equal(callFaceState({ ...call, phase: "listening", micMuted: true }), "idle", "a muted microphone hears nothing");
+  assert.equal(callFaceState({ ...call, phase: "hearing" }), "listening");
+  assert.equal(callFaceState({ ...call, phase: "thinking" }), "thinking");
+  assert.equal(callFaceState({ ...call, phase: "thinking", tool: "read" }), "working");
+  assert.equal(callFaceState({ ...call, phase: "thinking" }, true), "memory");
+  assert.equal(callFaceState({ ...call, phase: "speaking" }), "speaking");
+  assert.equal(callFaceState({ ...call, phase: "failed" }), "error");
+  assert.equal(callFaceState({ ...call, phase: "ended" }), "offline");
+  assert.equal(callLevelSource("listening"), "microphone");
+  assert.equal(callLevelSource("speaking"), "voice");
+  assert.equal(callLevelSource("thinking"), undefined);
 });
 
 test("a turn that ends hops once; other changes do not", () => {

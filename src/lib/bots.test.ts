@@ -321,3 +321,39 @@ test("bot chats leave every session list while groups keep their meaning", () =>
   // OTHER stays while it still lists ordinary sessions.
   assert.deepEqual(withoutBotSessions([{ label: "ungrouped", sessions: [scout, session("loose", "")] }]).map((group) => group.sessions.map(({ id }) => id)), [["loose"]]);
 });
+
+test("the dialog's language goes with a new bot, an edit sends it only when it changed and Auto clears it", () => {
+  assert.deepEqual(botInputFromDraft({ ...EMPTY_DRAFT, name: "Vox", voiceLanguage: "es" }).voice, { language: "es" });
+  assert.equal(botInputFromDraft({ ...EMPTY_DRAFT, name: "Vox", voiceLanguage: "" }).voice, undefined, "Auto is no language at all");
+  assert.equal(botInputFromDraft({ ...EMPTY_DRAFT, name: "Vox", voiceLanguage: "klingon" }).voice, undefined, "only Whisper's codes");
+  const bot = { ...(parseBot(RECORD) as BotView), voice: { language: "es" as const } };
+  const unchanged: BotDraft = { name: "Scout", title: "Research assistant", cwd: bot.cwd, emoji: "🔭", model: "anthropic/claude", thinking: "medium", memoryModel: "", voiceLanguage: "es" };
+  assert.deepEqual(botPatchFromDraft(bot, unchanged), {});
+  assert.deepEqual(botPatchFromDraft(bot, { ...unchanged, voiceLanguage: "haw" }), { voice: { language: "haw" } });
+  assert.deepEqual(botPatchFromDraft(bot, { ...unchanged, voiceLanguage: "" }), { voice: { language: "" } }, "back to Auto");
+  const { voiceLanguage: _language, ...withoutLanguage } = unchanged;
+  assert.deepEqual(botPatchFromDraft(bot, withoutLanguage), {}, "a draft without a language leaves it alone");
+  assert.deepEqual(parseBot({ ...RECORD, voice: { language: "ES" } })?.voice, { language: "es" });
+  assert.equal(parseBot({ ...RECORD, voice: { language: "spanish" } })?.voice, undefined, "a language that is not a code is dropped");
+  assert.equal(parseBot({ ...RECORD, voice: { language: "jv" } })?.voice, undefined, "Whisper calls Javanese jw");
+});
+
+test("the dialog's call voice goes with a new bot, and an edit sends it when it changed", () => {
+  assert.deepEqual(botInputFromDraft({ ...EMPTY_DRAFT, name: "Vox", callVoice: "ember", voiceLanguage: "es" }).voice, { language: "es", live: "ember" });
+  assert.equal(botInputFromDraft({ ...EMPTY_DRAFT, name: "Vox", callVoice: "" }).voice, undefined, "Default is no call voice of its own");
+  assert.equal(botInputFromDraft({ ...EMPTY_DRAFT, name: "Vox", callVoice: "marin" }).voice, undefined, "only GPT-Live's ChatGPT voices");
+  const bot = { ...(parseBot(RECORD) as BotView), voice: { live: "sol" as const } };
+  const unchanged: BotDraft = { name: "Scout", title: "Research assistant", cwd: bot.cwd, emoji: "🔭", model: "anthropic/claude", thinking: "medium", memoryModel: "", callVoice: "sol", voiceLanguage: "" };
+  assert.deepEqual(botPatchFromDraft(bot, unchanged), {});
+  assert.deepEqual(botPatchFromDraft(bot, { ...unchanged, callVoice: "vale" }), { voice: { live: "vale" } });
+  assert.deepEqual(botPatchFromDraft(bot, { ...unchanged, callVoice: "" }), { voice: { live: "" } }, "back to Settings' voice");
+  assert.deepEqual(botPatchFromDraft(bot, { ...unchanged, voiceLanguage: "fr" }), { voice: { language: "fr" } });
+  const { callVoice: _call, ...withoutCallVoice } = unchanged;
+  assert.deepEqual(botPatchFromDraft(bot, withoutCallVoice), {}, "a draft without a call voice leaves it alone");
+  assert.equal(parseBot({ ...RECORD, voice: { live: "nova" } })?.voice, undefined);
+});
+
+test("a bot whose record still carries a VoiceStudio voice shows only its language and call voice", () => {
+  assert.deepEqual(parseBot({ ...RECORD, voice: { profile: "vp-dani", speed: 1.25, language: "es", live: "juniper" } })?.voice, { language: "es", live: "juniper" });
+  assert.equal(parseBot({ ...RECORD, voice: { profile: "vp-dani", speed: 1.25 } })?.voice, undefined);
+});

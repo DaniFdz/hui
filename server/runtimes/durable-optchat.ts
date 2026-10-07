@@ -27,6 +27,8 @@ import { OptChatMemory, OPTCHAT_DEFAULTS, type OptChatStatus } from "../optchat/
 import { masterPrompt, viewDoc } from "../optchat/prompts.ts";
 import { LineFile, readLines, syncDirectory, type Kind } from "../optchat/store.ts";
 import { recordDiagnosticEvent } from "../observability.ts";
+import { callRecordLines, parseCallRecord } from "../../shared/calls.ts";
+import { CallEntry } from "./durable-bots.ts";
 
 /** A conversation's OptChat choice. `name` is the agent's display name in the prompts; `model` ("provider/id") and
  * `thinking` pick the compactor's model, by default the conversation's own model at medium thinking. */
@@ -164,10 +166,18 @@ const contentText = (content: string | readonly { type: string; text?: string }[
 
 /**
  * The log lines of one entry: a user message, an answer's text (talk) and each of its tool calls (tool: name and JSON
- * input), a tool result (echo, `error: ` when it failed). Thoughts are never logged, nor answers Durable keeps out of
- * the context (error, aborted, deferred), nor system, reset and compaction entries.
+ * input), a tool result (echo, `error: ` when it failed), a call's record (`hui.call`: its transcript as user, its
+ * summary as talk, both marked `[call]`). Thoughts are never logged, nor answers Durable keeps out of the context
+ * (error, aborted, deferred), nor system, reset and compaction entries.
  */
 export function projectEntry(entry: EntryRecord): ProjectedLine[] {
+  // A call with the bot: its transcript (both sides, the helper's answers, the hand-offs), then its summary.
+  if (CallEntry.is(entry)) {
+    const record = parseCallRecord(entry.data);
+    if (!record?.lines.length) return [];
+    const { transcript, summary } = callRecordLines(record);
+    return [{ kind: "user", text: transcript }, ...(summary ? [{ kind: "talk" as const, text: summary }] : [])];
+  }
   const message = entry.model?.[0];
   if (!message) return [];
   if (UserEntry.is(entry) && message.role === "user") return [{ kind: "user", text: contentText(message.content) }];
@@ -376,6 +386,8 @@ export type OptChatManagerOptions = {
   readonly dir: string;
   /** Model access for the compactor, current at each call. */
   readonly models: () => Models;
+  /** HUI's utility model (Settings → Models), the compactor's model when the document names none. */
+  readonly utilityModel?: () => Promise<string | undefined>;
   readonly tuning?: OptChatTuning;
 };
 
@@ -389,6 +401,7 @@ export class OptChatManager {
   readonly toolsExtension: Extension;
   readonly #dir: string;
   readonly #models: () => Models;
+  readonly #utilityModel: (() => Promise<string | undefined>) | undefined;
   readonly #tuning: OptChatTuning;
   readonly #marks: readonly number[];
   /** One compactor limit for every memory of the gateway. */
@@ -405,6 +418,7 @@ export class OptChatManager {
   constructor(options: OptChatManagerOptions) {
     this.#dir = options.dir;
     this.#models = options.models;
+    this.#utilityModel = options.utilityModel;
     this.#tuning = options.tuning ?? {};
     this.#marks = this.#tuning.marks ?? OPTCHAT_DEFAULTS.marks;
     this.#limiter = createLimiter(this.#tuning.jobs ?? OPTCHAT_DEFAULTS.jobs);
@@ -725,13 +739,32 @@ export class OptChatManager {
     return { content: [{ type: "text", text: ask(handle.memory) }] };
   }
 
-  /** One compactor call through the gateway's models: the document's model, or the conversation's own. */
+  /**
+   * One compactor call through the gateway's models: the document's model, else HUI's utility model, else the
+   * conversation's own. Without a model of its own, a failing utility model hands over to the conversation's.
+   */
   async #summarize(conversationId: ConversationId, request: SummaryRequest, signal: AbortSignal): Promise<SummaryReply> {
     const harness = this.#harness;
     if (!harness) throw new Error("The Durable store is closed.");
     const state = await harness.snapshot(OptChatDoc, conversationId, context);
-    const ref = modelRef(state?.model) ?? (await harness.snapshot(AgentDoc, conversationId, context))?.model;
-    if (!ref) throw new Error("The conversation has no model for OptChat's compactor.");
+    const own = modelRef(state?.model);
+    const conversationModel = (await harness.snapshot(AgentDoc, conversationId, context))?.model;
+    const utility = own ? undefined : modelRef(await this.#utilityModel?.().catch(() => undefined));
+    const refs = own ? [own] : [utility, conversationModel].filter((ref): ref is { provider: string; modelId: string } => Boolean(ref));
+    if (!refs.length) throw new Error("The conversation has no model for OptChat's compactor.");
+    let failure: unknown;
+    for (const ref of refs) {
+      try {
+        return await this.#summarizeWith(ref, state, request, signal);
+      } catch (error) {
+        if (signal.aborted) throw error;
+        failure = error;
+      }
+    }
+    throw failure;
+  }
+
+  async #summarizeWith(ref: { provider: string; modelId: string }, state: OptChatState | undefined, request: SummaryRequest, signal: AbortSignal): Promise<SummaryReply> {
     const models = this.#models();
     const model = models.getModel(ref.provider, ref.modelId);
     if (!model) throw new Error(`Unknown model for OptChat's compactor: ${ref.provider}/${ref.modelId}`);

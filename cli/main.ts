@@ -10,6 +10,8 @@ import { LOG_FILE, withLifecycleLock } from "./state.ts";
 import { updateRelease } from "./update.ts";
 import { checkNightly, checkRelease } from "./releases.ts";
 import { BOT_FACE_COLORS, BOT_FACE_SHAPES, BOT_THINKING_LEVELS, botFaceColor, botFaceShape } from "../shared/bots.ts";
+import { VOICE_LANGUAGE_EXAMPLES, voiceLanguage } from "../shared/voice.ts";
+import { GPT_LIVE_VOICES, gptLiveVoice } from "../shared/calls.ts";
 
 export const HELP = `Usage:
   hui gateway start [--host <IP|tailnet>] [--port <number>] [--allow-host <name>] [--json]
@@ -33,8 +35,9 @@ export const HELP = `Usage:
   hui bot list [--archived] [--json]
   hui bot show <bot> [--json]
   hui bot add [--name <name>] [--title <text>] [--soul-file <path|->] [--cwd <dir>]
-              [--model <provider/model>] [--thinking <level>] [--memory-model <provider/model>] [--emoji <e>]
-              [--shape <blob|round|triangle|heart|cookie>] [--color <name|#rrggbb>] [--json]
+              [--model <provider/model>] [--thinking <level>] [--utility-model <provider/model>] [--emoji <e>]
+              [--shape <blob|round|triangle|heart|cookie>] [--color <name|#rrggbb>]
+              [--language <code>] [--call-voice <cove|arbor|breeze|ember|juniper|maple|sol|spruce|vale>] [--json]
   hui bot edit <bot> [same flags as add but --soul-file] [--json]
   hui bot soul <bot> [--file <path|->] [--json]
   hui bot remove <bot> [--json]
@@ -74,13 +77,21 @@ an exact name. A new bot starts by asking what you expect from it (talk with
 hui bot chat <handle>), then writes its persona, SOUL.md, itself; --soul-file
 gives it one instead (- reads stdin) and skips that first conversation. Without
 --name it is "New Bot" and first asks what to call it. Soul prints SOUL.md;
---file replaces it, and an empty file removes it so the bot asks again. On edit, --model "" and --thinking "" go back to the model and
-thinking level a new chat gets, --memory-model "" to the chat's own model.
+--file replaces it, and an empty file removes it so the bot asks again.
+On edit, --model "" and --thinking "" go back to the model and
+thinking level a new chat gets. --model is the bot's main model (the smartest you
+have; speed does not matter); --utility-model the fastest, ideally cheap, for its
+memory summaries, quick answers on calls and call summaries (--memory-model is
+the same flag); "" goes back to Settings' utility model, then the bot's own.
 A bot shows an animated face, or its --emoji while it has one: --emoji "" switches
 it to its face. --shape is blob, round (or pebble), triangle, heart or cookie;
 --color one of blue, yellow, magenta, mint, coral, lilac or any #rrggbb. Without
 them a bot's face is picked by its id, the same everywhere; on edit "" goes back
 to that one.
+--call-voice is the bot's GPT-Live voice on calls (Settings → Models → Calls);
+"" goes back to the default voice Settings chose. --language is the language it
+speaks on calls, a Whisper code (en, es, fr, de, ja, zh, haw, yue…); nothing is
+translated, and "" goes back to Auto (it answers in the language you speak).
 Remove archives: the chat transcript and memory are kept and its routines are
 disabled. Delete removes a bot for good, active or archived: its turn stops, its
 chat leaves HUI, and its routines, memory and folder (SOUL.md and every file in
@@ -105,12 +116,15 @@ export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {
     check: { type: "boolean" }, fix: { type: "boolean" }, nightly: { type: "boolean" },
     name: { type: "string" }, command: { type: "string" }, "extra-path": { type: "string", multiple: true },
     archived: { type: "boolean" }, title: { type: "string" }, "soul-file": { type: "string" }, file: { type: "string" }, yes: { type: "boolean", short: "y" },
-    cwd: { type: "string" }, model: { type: "string" }, thinking: { type: "string" }, "memory-model": { type: "string" },
-    emoji: { type: "string" }, shape: { type: "string" }, color: { type: "string" }, wait: { type: "boolean" }, timeout: { type: "string" }, zoom: { type: "string" }, html: { type: "string" },
+    cwd: { type: "string" }, model: { type: "string" }, thinking: { type: "string" }, "memory-model": { type: "string" }, "utility-model": { type: "string" },
+    emoji: { type: "string" }, shape: { type: "string" }, color: { type: "string" }, voice: { type: "string" }, "voice-speed": { type: "string" }, language: { type: "string" }, "call-voice": { type: "string" }, wait: { type: "boolean" }, timeout: { type: "string" }, zoom: { type: "string" }, html: { type: "string" },
     prompt: { type: "string" }, at: { type: "string" }, every: { type: "string" }, cron: { type: "string" }, timezone: { type: "string" },
   } });
   if (values.help || !args.length) return { command: "help", values };
   if (values.version) return { command: "version", values };
+  // VoiceStudio is gone (2026-10-06): its flags say what took their place instead of failing as unknown options.
+  if (values.voice !== undefined) throw new Error(`--voice is gone: HUI no longer uses VoiceStudio. A bot speaks on calls with one of GPT-Live's voices: --call-voice <${GPT_LIVE_VOICES.join("|")}>.`);
+  if (values["voice-speed"] !== undefined) throw new Error("--voice-speed is gone: HUI no longer uses VoiceStudio, and GPT-Live sets the pace of its own voices.");
   const [first, second, ...extra] = positionals;
   const bots = first === "bot" || first === "bots";
   const routine = bots && (second === "routine" || second === "routines");
@@ -155,7 +169,7 @@ export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {
 }
 
 /** The flags `bot add` and `bot edit` share. */
-const BOT_FIELDS = ["name", "title", "cwd", "model", "thinking", "memory-model", "emoji", "shape", "color"];
+const BOT_FIELDS = ["name", "title", "cwd", "model", "thinking", "memory-model", "utility-model", "emoji", "shape", "color", "language", "call-voice"];
 /** Operands each bot command takes, in order. */
 const BOT_OPERANDS: Record<string, readonly string[]> = {
   "bot list": [], "bot add": [], "bot show": ["bot"], "bot edit": ["bot"], "bot soul": ["bot"], "bot remove": ["bot"], "bot restore": ["bot"], "bot delete": ["bot"],
@@ -173,15 +187,23 @@ function checkBotCommand(command: string, operands: readonly string[], values: R
   }
   const given = (flag: string) => values[flag] !== undefined;
   if (command === "bot edit" && !BOT_FIELDS.some(given)) throw new Error(`bot edit needs at least one of ${BOT_FIELDS.map((flag) => `--${flag}`).join(", ")}.`);
-  // `""` clears a choice: the gateway's default for the chat, the chat's own model for the memory.
+  // `""` clears a choice: the gateway's default for the chat, Settings' utility model, Auto for the language,
+  // Settings' call voice.
   const cleared = (flag: string) => values[flag] === "";
   if (given("thinking") && !cleared("thinking") && !(BOT_THINKING_LEVELS as readonly string[]).includes(String(values["thinking"]))) throw new Error(`--thinking must be one of: ${BOT_THINKING_LEVELS.join(", ")}.`);
-  for (const flag of ["model", "memory-model"]) if (given(flag) && !cleared(flag) && !MODEL_REF.test(String(values[flag]))) throw new Error(`--${flag} must be provider/model.`);
+  for (const flag of ["model", "memory-model", "utility-model"]) if (given(flag) && !cleared(flag) && !MODEL_REF.test(String(values[flag]))) throw new Error(`--${flag} must be provider/model.`);
+  if (given("memory-model") && given("utility-model")) throw new Error("Use either --utility-model or --memory-model: they are the same.");
   if (given("shape") && !cleared("shape") && !botFaceShape(String(values["shape"]))) {
     throw new Error(`--shape must be one of: ${BOT_FACE_SHAPES.join(", ")}; "" goes back to the one its id picks.`);
   }
   if (given("color") && !cleared("color") && !botFaceColor(String(values["color"])) && !/^#[0-9a-f]{6}$/iu.test(String(values["color"]).trim())) {
     throw new Error(`--color must be one of ${BOT_FACE_COLORS.map((color) => color.id).join(", ")} or #rrggbb; "" goes back to the one its id picks.`);
+  }
+  if (given("language") && !cleared("language") && !voiceLanguage(values["language"])) {
+    throw new Error(`--language must be one of Whisper's language codes, such as ${VOICE_LANGUAGE_EXAMPLES} (not a name like Spanish); "" goes back to Auto.`);
+  }
+  if (given("call-voice") && !cleared("call-voice") && !gptLiveVoice(values["call-voice"])) {
+    throw new Error(`--call-voice must be one of GPT-Live's voices: ${GPT_LIVE_VOICES.join(", ")}; "" goes back to Settings' default.`);
   }
   if (given("timeout") && (!values["wait"] || !/^\d+$/u.test(String(values["timeout"])) || Number(values["timeout"]) < 1 || Number(values["timeout"]) > 3600)) {
     throw new Error("--timeout needs --wait and 1-3600 seconds.");

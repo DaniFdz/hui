@@ -152,6 +152,11 @@ export type DurableHostOptions = {
   resume?: boolean;
   /** OptChat constants a test changes (docs/optchat.md). */
   optchat?: OptChatTuning;
+  /**
+   * HUI's utility model (Settings → Models), the memory compactor's model where a memory names none: a bot's utility
+   * model defaults to it (HUI-18). Defaults to HUI's settings unless `readSettings` is given.
+   */
+  utilityModel?: () => Promise<string | undefined>;
 };
 
 /** Registry fallback: the HUI session whose resume reference names this conversation. */
@@ -219,7 +224,13 @@ export class DurableHost implements ExtensionHost {
     this.agentDir = options.agentDir;
     this.#resume = options.resume !== false;
     this.settings = options.readSettings ?? readHuiSettings;
-    this.optchat = new OptChatManager({ dir: options.dir, models: () => this.models, ...(options.optchat ? { tuning: options.optchat } : {}) });
+    this.optchat = new OptChatManager({
+      dir: options.dir, models: () => this.models,
+      // A bot's utility model defaults to Settings' (HUI-18): memory summaries are quick work.
+      ...(options.utilityModel ? { utilityModel: options.utilityModel }
+        : options.readSettings ? {} : { utilityModel: async () => (await readHuiSettings()).models.utility || undefined }),
+      ...(options.optchat ? { tuning: options.optchat } : {}),
+    });
     this.prompt = new DurablePrompt(options.agentDir, this.settings);
     this.prompt.extras = (conversationId) => {
       const extensions = this.#extensionsOf(conversationId);

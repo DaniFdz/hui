@@ -72,8 +72,11 @@ operator transcript, credential or account is used.
 10. Browser page errors: none. Console errors: none (Lit's development-mode
     warnings, as on the base branch).
 
-That run also checked the face on a call. Calls and their screen now come with
-GPT-Live calls (#76), so that step moved there.
+That run also checked the face on a call, through a VoiceStudio fixture HUI no
+longer has. On GPT-Live calls the face listens with the microphone's level and
+speaks with the bot's audio: `src/lib/bot-face.test.ts`,
+`src/lib/voice-controller.test.ts` and `src/lib/live-call.test.ts` check it, as
+did the real calls of the calls pull request.
 
 ## Limits and gaps
 

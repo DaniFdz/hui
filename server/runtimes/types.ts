@@ -1,4 +1,5 @@
 import type { TranscriptMetrics } from "./transcript-metrics.ts";
+import type { CallRecord } from "../../shared/calls.ts";
 /**
  * The contract every tool adapter implements.
  *
@@ -97,6 +98,9 @@ export type RuntimeEvent =
   /** The agent stopped entirely. Distinct from `turn_end`: a turn can end while
    * the agent is still working, and the prompt guard follows this one. */
   | { type: "settled"; historyRefreshed?: boolean }
+  /** Entries written outside a run (a call's lines) changed the history. Never sent to a browser: an idle session
+   * answers it with a fresh snapshot, a busy one shows them when its turn settles. */
+  | { type: "history" }
   /** `output` holds the last lines the runtime process wrote to stderr before
    * it failed. It feeds diagnostics only and is never sent to a browser. */
   | { type: "error"; message: string; output?: string };
@@ -257,6 +261,8 @@ export type TranscriptEntry = { metrics?: TranscriptMetrics } & (
       /** Files or images the user attached to that turn. */
       attachments?: readonly TranscriptAttachment[];
     }
+  /** The record of a GPT-Live call with a bot: one card with its summary and transcript. No turn ran for it. */
+  | ({ kind: "call" } & CallRecord)
   /** Where PI summarized everything before its kept window. */
   | { kind: "compaction"; summary: string; tokensBefore: number }
   | { kind: "thinking"; text: string }

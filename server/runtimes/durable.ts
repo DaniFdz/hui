@@ -21,6 +21,7 @@ import { SettingsManager } from "@earendil-works/pi-coding-agent";
 import { resolveCommandReference } from "../../src/lib/command-references.ts";
 import type { RuntimeInspection } from "../../src/lib/tools-types.ts";
 import { durableContext as context, durableHost, type DurableHost } from "./durable-host.ts";
+import { CallEntry } from "./durable-bots.ts";
 import { DurableExtensions, ExtensionMessageEntry, isCustomInput, type CustomMessage, type ExtensionSession } from "./durable-extensions.ts";
 import { filterConfiguredModels } from "./pi-models.ts";
 import {
@@ -184,6 +185,9 @@ export class DurableSession implements RuntimeSession, ExtensionSession {
   #agent: AgentState = {};
   #queue: RuntimeQueue = { steering: [], followUp: [] };
   #toolOutput = new Map<string, string>();
+  /** Text each block of the in-flight answer has streamed, per content index: Durable sends a first partial, a
+   * short answer or a replaced block whole, and the live view gets what it adds. */
+  #streamedText = new Map<number, string>();
   /** A run is going: from the submit of its input to its end. */
   #streaming = false;
   /** Prompts passing their extension handlers before anything is submitted. */
@@ -332,9 +336,11 @@ export class DurableSession implements RuntimeSession, ExtensionSession {
     this.#ids.add(entry.id);
     let index = this.#history.length;
     while (index > 0 && this.#history[index - 1]!.entry.id > entry.id) index--;
-    // An extension's custom message is context only; PI sessions do not show it either.
+    // An extension's custom message is context only; PI sessions do not show it either. A call's record shows as one
+    // card, without an entry id: no turn ran for it, so nothing rewinds to it.
     const shown = SystemEntry.is(entry) || ExtensionMessageEntry.is(entry) || isCustomInput(entry.model?.[0]) ? []
       : CompactionEntry.is(entry) ? [{ role: "compaction", summary: compactionSummary(entry), tokensBefore: this.#contextTokens(index) }]
+      : CallEntry.is(entry) ? [{ role: "call", record: entry.data }]
       : (entry.model ?? []).map((message) => ({ ...message, entryId: String(entry.id) }));
     this.#history.splice(index, 0, { entry, shown });
     this.#changed();
@@ -428,15 +434,26 @@ export class DurableSession implements RuntimeSession, ExtensionSession {
       case "turn_end":
         this.#emit({ type: event.type });
         return;
+      case "message_start":
+        this.#streamedText.clear();
+        if (event.message.role === "assistant") event.message.content.forEach((block, index) => this.#streamBlock(index, block));
+        return;
       case "message_update":
         for (const change of event.changes) {
-          if (change.type === "text_delta" && change.delta) this.#emit({ type: "text", delta: change.delta });
-          else if (change.type === "thinking_delta" && change.delta) this.#emit({ type: "thinking", delta: change.delta });
+          if (change.type === "text_delta" && change.delta) {
+            this.#streamedText.set(change.contentIndex, (this.#streamedText.get(change.contentIndex) ?? "") + change.delta);
+            this.#emit({ type: "text", delta: change.delta });
+          } else if (change.type === "thinking_delta" && change.delta) this.#emit({ type: "thinking", delta: change.delta });
+          else if (change.type === "text_start" || change.type === "block") this.#streamBlock(change.contentIndex, change.block);
+          else if (change.type === "message") change.message.content.forEach((block, index) => this.#streamBlock(index, block));
         }
         return;
       case "message_end":
       case "entry_appended":
+        if (event.type === "message_end") this.#streamedText.clear();
         this.#add(event.entry);
+        // A call's record, written while no run streams: the chat shows it now rather than at the next settle.
+        if (event.type === "entry_appended" && CallEntry.is(event.entry) && !this.#streaming) this.#emit({ type: "history" });
         return;
       case "tool_execution_start":
         this.#toolOutput.set(event.toolCallId, "");
@@ -494,6 +511,16 @@ export class DurableSession implements RuntimeSession, ExtensionSession {
       default:
         return;
     }
+  }
+
+  /** Streams what a text block adds to what it showed. A block that no longer extends it is left to the history
+   * refresh that ends the run (streamed text cannot be taken back). */
+  #streamBlock(index: number, block: { type: string; text?: unknown }): void {
+    if (block.type !== "text" || typeof block.text !== "string") return;
+    const before = this.#streamedText.get(index) ?? "";
+    if (!block.text.startsWith(before)) return;
+    if (block.text.length > before.length) this.#emit({ type: "text", delta: block.text.slice(before.length) });
+    this.#streamedText.set(index, block.text);
   }
 
   /** After a run, or a compaction outside one: read what the store committed, then report the settle. */

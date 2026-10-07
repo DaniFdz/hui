@@ -656,7 +656,11 @@
 /* The dialog scrolls; the card grows with its fields instead of inheriting the
  * dialog's max-height, so a tall form keeps its background when scrolled. */
 .bot-dialog__card { display: flex; flex-direction: column; gap: 12px; max-height: none; }
-.bot-dialog__row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+/* Model and Thinking share a row, but only Model has a hint under it. Each field
+ * keeps its own height, so the two pickers line up; stretched to the row, the
+ * Thinking field's grid would hand the extra height to its label and push its
+ * picker down. */
+.bot-dialog__row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; align-items: start; }
 .bot-dialog .input-dialog__field { min-width: 0; }
 @media (max-width: 520px) {
   .bot-dialog__row { grid-template-columns: minmax(0, 1fr); }

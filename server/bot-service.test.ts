@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { test, type TestContext } from "node:test";
 
 import { BOT_KICKOFF_MARKER, botKickoffName, type BotMemoryStatus } from "../shared/bots.ts";
+import type { CallRecord } from "../shared/calls.ts";
 import type { AutomationTask } from "../src/lib/automation-types.ts";
 import { DEFAULT_SETTINGS } from "../src/lib/settings.ts";
 import type { BotMemory } from "./bot-memory.ts";
@@ -147,6 +148,9 @@ async function harness(t: TestContext, options: { messagesPerHour?: number; memo
     /** Conversations a deleted bot left: no longer a bot's chat, memory off and deleted. */
     forgotten: [] as string[],
     async forget(reference: string) { this.forgotten.push(reference); },
+    /** Call records written, in order: [reference, record]. */
+    records: [] as Array<[string, CallRecord]>,
+    async writeCallRecord(reference: string, record: CallRecord) { this.records.push([reference, record]); },
     async lastMessage(reference: string) {
       this.lastReads.push(reference);
       return { role: "assistant" as const, text: "stored reply", at: "2026-10-01T09:00:00.000Z" };
@@ -899,9 +903,83 @@ test("memory reads go through BotMemory, and a chat whose memory cannot be read 
   assert.match(await h.service.memoryHtml(bot.id), /<title>memory<\/title>/u);
 
   const plain = await harness(t, { memoryReadable: false });
-  const other = await plain.service.create({ name: "Bob" });
+  const other = await plain.service.create({ soul: SOUL, name: "Bob" });
   assert.equal((await plain.service.get(other.id)).memory, undefined, "the view leaves it out");
   for (const read of [() => plain.service.memory(other.id), () => plain.service.zoom(other.id, 0, 1), () => plain.service.memoryHtml(other.id)]) {
     await assert.rejects(read(), BotMemoryUnavailableError);
   }
+});
+
+
+test("a call's record goes to the bot's conversation as one write, its context carries the memory, and an archived bot takes no call", async (t) => {
+  const h = await harness(t);
+  const bot = await h.service.create({ name: "Ada", soul: "Be brief." });
+  const record: CallRecord = {
+    call: "call-1", bot: "Ada", startedAt: 1, endedAt: 60_001, summary: "**To remember**: the sister's birthday is March 3.",
+    lines: [{ role: "user", text: "Remember my sister's birthday is March 3.", at: 1 }, { role: "assistant", text: "Got it, March 3.", at: 2 }],
+  };
+  await h.service.recordCall(bot.handle, record);
+  assert.deepEqual(h.conversations.records, [["durable:1", record]]);
+  const context = await h.service.callContext(bot.handle);
+  assert.equal(context.bot.id, bot.id);
+  assert.equal(context.soul, "Be brief.", "the call gets its SOUL.md");
+  assert.equal(context.view, "<chat>\n0+1|user: hi\n</chat>");
+  const plain = await harness(t, { memoryReadable: false });
+  const other = await plain.service.create({ soul: SOUL, name: "Bob" });
+  assert.equal((await plain.service.callContext(other.id)).view, undefined, "a call goes on without a memory it cannot read");
+  const unsouled = await plain.service.create({ name: "Cy" });
+  assert.equal((await plain.service.callContext(unsouled.id)).soul, undefined, "nor a soul it has not written yet");
+  await h.service.archive(bot.id);
+  await assert.rejects(h.service.callContext(bot.id), BotConflictError);
+});
+
+test("a delegation while a turn runs: a task handed off from a call queues behind the running turn and answers with its own reply, never that turn's, beside a call's record", async (t) => {
+  const h = await harness(t);
+  const bot = await h.service.create({ soul: SOUL, name: "Ada" });
+  const chat = await h.chat(bot.sessionId);
+  const task = (text: string, signal?: AbortSignal) =>
+    h.service.send(bot.id, { text: `[call task] ${text}` }, { timeoutMs: 600_000, ...(signal ? { signal } : {}) });
+  const record = { kind: "call" as const, call: "c0", bot: "Ada", startedAt: 1, endedAt: 2, summary: "A record.", lines: [{ role: "assistant" as const, text: "Bye!", at: 2 }] };
+
+  // Idle: a prompt marked as a call task, answered by the run it starts.
+  let prompted = chat.nextPrompt();
+  const first = task("What's my dog called?");
+  assert.equal(await prompted, "[call task] What's my dog called?");
+  // An earlier call's record lands while the turn runs: neither the turn's input nor its reply.
+  chat.answer("Pancho.");
+  chat.history.push(record);
+  assert.deepEqual(await first, { status: "answered", reply: "Pancho." });
+
+  // Busy with a typed message: the task queues as a follow-up and waits for its own run, not the one before it.
+  await h.service.send(bot.id, { text: "typed while the call runs" });
+  const second = task("Check the calendar for tomorrow");
+  const third = task("And the weather");
+  await queueHolds(h, bot.sessionId, 2);
+  prompted = chat.nextPrompt();
+  chat.answer("typed reply");
+  assert.equal(await prompted, "[call task] Check the calendar for tomorrow");
+  prompted = chat.nextPrompt();
+  chat.answer("Dentist at ten.");
+  assert.equal(await prompted, "[call task] And the weather");
+  chat.answer("Sunny, 24 degrees.");
+  assert.deepEqual(await second, { status: "answered", reply: "Dentist at ten." }, "never the typed message's reply");
+  assert.deepEqual(await third, { status: "answered", reply: "Sunny, 24 degrees." });
+
+  // Hanging up ends the wait, never the turn.
+  prompted = chat.nextPrompt();
+  const gone = new AbortController();
+  const fourth = task("Write the report", gone.signal);
+  await prompted;
+  gone.abort();
+  await assert.rejects(fourth, (error: unknown) => error instanceof DOMException && error.name === "AbortError");
+  assert.equal(h.sessions.status(bot.sessionId), "running", "the turn goes on and its reply lands in the chat");
+  chat.answer("Report written.");
+});
+
+test("the bots section tells the bot how calls reach it", async (t) => {
+  const h = await harness(t);
+  const ada = await h.service.create({ soul: SOUL, name: "Ada" });
+  const section = await h.service.section(ada.id);
+  assert.match(section!, /"\[call task\]"/u);
+  assert.match(section!, /After each call your chat and memory get its record, marked "\[call\]": a summary and the whole transcript\./u);
 });

@@ -21,11 +21,12 @@ import { mkdir, open, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { Context } from "@earendil-works/chord";
 import {
-  defineDoc, defineExtension, defineTool, section,
+  defineDoc, defineEntry, defineExtension, defineTool, section,
   type ConversationId, type DocumentReader, type Extension, type ToolRegistration,
 } from "@earendil-works/pi-durable";
 import { Type } from "typebox";
 import { BOT_KICKOFF_MARKER, BOT_LIMITS, BOT_SOUL_FILE, NEW_BOT_NAME } from "../../shared/bots.ts";
+import type { CallRecord } from "../../shared/calls.ts";
 
 /** The bot a conversation is the chat of; `bot` stays empty for every other conversation. A fork stays the bot's. */
 export const BotDoc = defineDoc<{ bot: string }>({
@@ -36,6 +37,14 @@ export const BotDoc = defineDoc<{ bot: string }>({
   fork: "current",
   initial: () => ({ bot: "" }),
 });
+
+/**
+ * The record of one GPT-Live call with the bot (HUI-18): its summary and its whole transcript (`CallRecord`), written
+ * once at hang-up as a passive entry, so no model turn runs for it. It carries no model messages: the chat shows it
+ * as one card, OptChat logs it (its transcript and summary, marked `[call]`), and Durable places it at a running
+ * turn's next boundary.
+ */
+export const CallEntry = defineEntry<CallRecord>("hui.call");
 
 export const MESSAGE_BOT_TOOL = "message_bot";
 export const WRITE_SOUL_TOOL = "write_soul";
