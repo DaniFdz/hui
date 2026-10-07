@@ -373,7 +373,9 @@ reach past whatever else is off. The shell, the shared terminal and watchers run
 commands; writing and editing files can change what other programs load; the
 browser opens HUI's own page and local files; spawning, messaging and steering
 sessions acts through a session that has every tool. They are on by default
-like the rest. Its own tools are always on and listed at the bottom: writing its
+like the rest. Asking you for a secret (**Request secret**, under HUI) is not
+powerful: it only shows you a Secret card in the bot's chat, and you decide
+whether to answer. Its own tools are always on and listed at the bottom: writing its
 SOUL.md, changing its name or title, asking for access, loading its skills, and
 its memory.
 

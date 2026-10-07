@@ -1587,7 +1587,9 @@ whatever else is off: `bash`, `terminal` and `watcher` run commands; `write` and
 `edit` change files other programs load (PI extensions, shell startup files);
 `browser` drives HUI's own page and `file://` URLs; `sessions_spawn`,
 `sessions_send` and `subagents` act through another session, which has every
-tool. They are on by default like everything else. `message_bot` lets a bot ask
+tool. They are on by default like everything else. `secret_request` is not one
+of them: it only asks the operator, who answers each request in the chat's
+Secret card or refuses it. `message_bot` lets a bot ask
 a better-equipped bot to act for it; turning `message_bot` off prevents that.
 Tools are the boundary, not a sandbox: a bot with `bash` or `read` reaches
 whatever the user's account can, the files of turned-off skills and HUI's own
@@ -1765,6 +1767,9 @@ not, so the catalog doesn't list them and they never count as off;
 naming them is 400, e.g. *terminal stays on this machine, so a bot on devbox
 can't use it and there is nothing to turn off: leave it out.* Ordinary sessions
 on a worker are still offered them, and the bridge refuses their calls.
+`secret_request` is not one of them: its card is answered on the gateway and the
+worker's host writes the file (`secret-request`), so a bot's chat on a worker
+keeps it, on or off like any other tool.
 
 A bot on a worker has a remote session's limits: the `terminal`, `browser`
 and `watcher` tools act on the gateway's machine, so its chat isn't offered them
