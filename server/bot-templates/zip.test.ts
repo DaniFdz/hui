@@ -78,4 +78,3 @@ test("a PNG's text chunks come out by keyword: tEXt, zTXt and iTXt, compressed o
   assert.equal(chunks.get("packed"), "small");
   assert.equal(pngTextChunks(Buffer.from("nope")).size, 0);
 });
-
