@@ -675,6 +675,13 @@ bundled `visualize` skill tells it when a widget beats plain text.
 - Widgets are part of the conversation: they are back after a reload or a
   gateway restart, and go away when you delete the session.
 
+A widget is code the agent wrote, so HUI runs it in a sandbox: it cannot reach
+HUI or its API, read the conversation, your cookies or storage, change or
+navigate the HUI page, open pop-ups or fetch anything from the network. It may
+load scripts, styles and fonts from a few public CDNs (cdnjs, jsDelivr, esm.sh,
+unpkg, Google and Bunny fonts), which then see your IP address.
+[docs/api.md](api.md#agent-widgets) has the full contract.
+
 ## Giving an agent a secret
 
 When an agent needs an API key, a token, a password or a one-time login code,
@@ -693,13 +700,6 @@ request expires after 15 minutes.
   answered.
 - For a session on a remote worker you answer in the same card; the file is
   written on the worker, where the agent's commands run.
-
-A widget is code the agent wrote, so HUI runs it in a sandbox: it cannot reach
-HUI or its API, read the conversation, your cookies or storage, change or
-navigate the HUI page, open pop-ups or fetch anything from the network. It may
-load scripts, styles and fonts from a few public CDNs (cdnjs, jsDelivr, esm.sh,
-unpkg, Google and Bunny fonts), which then see your IP address.
-[docs/api.md](api.md#agent-widgets) has the full contract.
 
 ## After an upgrade: `hui doctor`
 
