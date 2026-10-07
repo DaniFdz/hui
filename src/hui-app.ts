@@ -139,8 +139,8 @@ import {
 } from "./lib/session-ui-state.ts";
 import { closeModal, ensureModal } from "./lib/modal-dialog.ts";
 import { documentTitle } from "./lib/document-title.ts";
-import type { Settings } from "./lib/settings.ts";
-import { currentSettings, patchSettings } from "./lib/settings-store.ts";
+import { botsEnabled, type Settings } from "./lib/settings.ts";
+import { currentSettings, patchSettings, refreshSettings, settingsWritten } from "./lib/settings-store.ts";
 import type { ThemeMode, ThemeVariant } from "./lib/theme.ts";
 import {
   applyAccent,
@@ -513,6 +513,8 @@ export class HuiApp extends HuiElement {
   private botsStreamStop: (() => void) | undefined;
   private botsStreamLive = false;
   private botsStreamUnsupported = false;
+  /** The stream was asked again after a 409 whose settings still said bots are on; once is enough. */
+  private botsStreamRetried = false;
   private botsRevision = 0;
   @state() private botSearch = "";
   /** The sidebar's Agents | Bots choice, remembered by the browser. */
@@ -834,7 +836,7 @@ export class HuiApp extends HuiElement {
         void this.refreshGatewayHealth();
       }
       // Roster times ("2m") age while nothing else re-renders the sidebar.
-      if (!this.embeddedPane && !document.hidden && this.settings.bots.showTab && this.sidebarTab === "bots" && ++this.botRosterTick % 10 === 0) {
+      if (!this.embeddedPane && !document.hidden && botsEnabled(this.settings) && this.sidebarTab === "bots" && ++this.botRosterTick % 10 === 0) {
         this.requestUpdate();
       }
     }, 3000);
@@ -1050,6 +1052,11 @@ export class HuiApp extends HuiElement {
       textarea.setSelectionRange(this.draft.length, this.draft.length);
       this.setCommandQuery(slashCommandQuery(this.draft, this.draft.length));
     }
+    // Bots turned on or off, here or (through the bot stream) on another screen.
+    if (changed.has("settings")) {
+      const before = changed.get("settings") as Settings | undefined;
+      if (before && botsEnabled(before) !== botsEnabled(this.settings)) this.followBotsSetting();
+    }
     // A bot's chat offers GPT-Live calls once the gateway says a ChatGPT login is there.
     if (!this.embeddedPane && this.view === "bot" && !this.callsStatus) void this.loadCallsStatus();
     if (changed.has("selected") || changed.has("view") || changed.has("settingsOpen") || changed.has("activeBotId") || changed.has("bots")) {
@@ -1196,8 +1203,8 @@ export class HuiApp extends HuiElement {
     this.settingsOpen = false;
     this.stopAutomationPolling();
     if (target.kind === "bot") {
-      // Bots exist in the UI only while Settings → Sessions shows the Bots tab.
-      if (this.embeddedPane || !this.settings.bots.showTab) {
+      // Bots exist in the UI only while Settings → Labs → Bots is on; a bot's address lands on the normal home otherwise.
+      if (this.embeddedPane || !botsEnabled(this.settings)) {
         this.navigate({ kind: "home" }, true);
         return;
       }
@@ -1279,8 +1286,13 @@ export class HuiApp extends HuiElement {
       ?? (this.paneSession?.id === id ? this.paneSession : undefined);
     if (session) {
       this.pendingSessionId = "";
+      // While bots are off a bot's chat opens nowhere, like a session that is gone (the gateway refuses it too).
+      if (session.bot && !botsEnabled(this.settings)) {
+        this.navigate({ kind: "home" }, true);
+        return;
+      }
       // A bot's chat opens as the bot (with its panel) wherever it is linked from.
-      if (!this.embeddedPane && session.bot && this.settings.bots.showTab) {
+      if (!this.embeddedPane && session.bot) {
         this.navigate({ kind: "bot", id: session.bot.id }, true);
         return;
       }
@@ -3660,7 +3672,7 @@ export class HuiApp extends HuiElement {
    * reading the list whenever a bot's session changes status. */
   private syncBotsStream() {
     if (this.embeddedPane) return;
-    const wanted = this.settings.bots.showTab && !this.botsStreamUnsupported;
+    const wanted = botsEnabled(this.settings) && !this.botsStreamUnsupported;
     if (wanted && !this.botsStreamStop) {
       this.botsStreamStop = subscribeBots({
         onUpdate: (update, first) => {
@@ -3675,11 +3687,27 @@ export class HuiApp extends HuiElement {
         },
         onConnection: (state) => {
           this.botsStreamLive = state === "live";
+          if (state === "live") this.botsStreamRetried = false;
           if (state === "reconnecting" && !this.botsLoaded) this.botsError = "Could not reach the gateway for the bot list. Retrying…";
           if (state === "unsupported") {
             this.botsStreamUnsupported = true;
             this.botsStreamStop = undefined;
             void this.refreshBots();
+          }
+          // A 409: bots are off on the gateway, turned off on another screen (which ends this stream) or not on there
+          // yet. Once this screen's own writes have landed the settings are read again and followed; if they still say
+          // bots are on, the stream is asked once more.
+          if (state === "off") {
+            this.botsStreamStop = undefined;
+            const retry = !this.botsStreamRetried;
+            void settingsWritten().then(refreshSettings).then((settings) => {
+              if (!settings) return;
+              this.settings = settings;
+              if (retry && botsEnabled(settings)) {
+                this.botsStreamRetried = true;
+                this.syncBotsStream();
+              }
+            });
           }
         },
       });
@@ -3754,8 +3782,31 @@ export class HuiApp extends HuiElement {
     this.navigate({ kind: "bot", id: bot.id });
   };
 
+  /**
+   * Bots were turned on or off (Settings → Labs → Bots): the bot stream follows, and with bots off a bot's page goes
+   * home and a call hangs up. Nothing is forgotten here: the roster, the remembered Agents | Bots choice and the panel
+   * come back with them.
+   */
+  private followBotsSetting() {
+    if (this.embeddedPane) return;
+    // The gateway refuses the bot stream until it has the setting too: with bots on, the stream starts once this
+    // screen's own write has landed; with them off, it stops at once.
+    if (botsEnabled(this.settings)) {
+      void settingsWritten().then(() => this.syncBotsStream());
+      return;
+    }
+    this.syncBotsStream();
+    this.botMenuFor = "";
+    this.botSheetOpen = false;
+    if (this.voice.call) this.voice.hangUp();
+    // A bot's page goes home, and so does a bot's chat open as a session.
+    if (this.view === "bot" || (this.view === "home" && this.selected?.bot)) this.navigate({ kind: "home" }, true);
+  }
+
+  /** The Agents | Bots switch shows exactly while Settings → Labs → Bots is on. Without it the sidebar is the one it
+   * was before bots, and a remembered Bots choice shows Agents until the switch is back. */
   private shellBotsProps(): ShellBotsProps | undefined {
-    if (!this.settings.bots.showTab) return undefined;
+    if (!botsEnabled(this.settings)) return undefined;
     return {
       tab: this.sidebarTab,
       onTab: this.setSidebarTab,
@@ -5455,6 +5506,7 @@ export class HuiApp extends HuiElement {
       automationFormError: this.automationFormError,
       automationActionError: this.automationActionError,
       sessions: this.groups.flatMap((group) => group.sessions),
+      bots: botsEnabled(this.settings),
       onRetryAutomation: this.loadAutomationData,
       onCreateAutomationTask: this.createAutomationTask,
       automationEditingId: this.automationEditingId,
@@ -5657,7 +5709,6 @@ export class HuiApp extends HuiElement {
           onChangeBrowser: (browser) => this.save({ browser }),
           onChangeCalls: (calls) => void this.save({ calls }),
           onChangePower: (power) => void this.save({ power }).then(() => this.refreshPower()),
-          onChangeBots: (bots) => void this.save({ bots }).then(() => this.syncBotsStream()),
           onSetLidAwake: this.setLidAwakeFromUi,
           onChangeModels: (models) => {
             this.launchModel = models.primary;

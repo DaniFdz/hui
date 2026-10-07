@@ -1365,10 +1365,66 @@ conversation can remain in the store, never addressed. A bot created without
 `soul` speaks first: once it exists, HUI starts its first turn in the
 background (below); the create does not wait for it.
 
+### Bots are a preview (Settings → Labs → Bots)
+
+Bots stay behind an opt-in Labs flag while they are work in progress:
+`settings.labs.bots`, a boolean in `settings.json` and the only switch for bots
+(the sidebar's Agents | Bots switch shows exactly while it is on). Only an explicit
+`true` turns it on. Absent, it is off, except in a file from before it where
+Settings → Sessions → *Show the Bots tab* (`bots.showTab: true`, now gone) was on:
+that reads as `true`, so an operator who had the tab keeps bots, and the next
+save writes only `labs.bots`. It round-trips through `GET`/`PUT
+/__hui/settings` like the other Labs flags, and the gateway reads it at each use,
+so either change applies at once, without a restart. A worker's host reads no
+flag: the gateway's refusals cover the bots that run there.
+
+While it is off, bots are dormant and nothing about them is deleted:
+
+- **Every bot route refuses** with `409 { "error": "Bots are off on this gateway:
+  they are a preview. Turn them on in Settings → Labs → Bots." }`
+  (`BOTS_OFF_MESSAGE` in `shared/bots.ts`): everything under `/__hui/bots`
+  (the events stream and the memory page included), `/__hui/calls` and every
+  call route, and the session routes of a bot's chat (`/__hui/sessions/:id/…`
+  actions, `PATCH`/`DELETE /__hui/sessions/:id` and its live stream's
+  WebSocket), since opening or prompting the chat would resume it. A record whose
+  bot is gone is an ordinary session, as elsewhere. 409, not 404: the gateway's
+  settings refuse the request while the bot and its data are all still there,
+  and 404 already means a bot that does not exist (the Bots tab and `hui bot`
+  treat it so). `hui bot …` prints that message (`hui: Bots are off…`) and
+  exits 1; the bots stream's client stops at the 409 and reads the settings
+  again.
+- **Nothing starts a bot's turn**: every turn HUI starts for a bot (a message,
+  a routine, a `message_bot` message, a call's hand-off, a new bot's first turn)
+  passes one check in `BotService` that refuses with that message, as do the
+  bot-only tools `message_bot` and `set_profile`. A bot's chat that starts a
+  turn anyway (Durable resuming a run a restart interrupted, a worker's host
+  reattaching, a subagent reporting back) is stopped as soon as it reports
+  `running` or `waiting`.
+- **Routines** are kept, enabled, and skipped ([Routines](#routines)).
+- **Turning it off** (a `PUT` that changes it from on to off) stops what bots
+  were doing, as archiving does without archiving: messages still waiting in
+  HUI's queue for a bot are withdrawn and a running turn stops; held calls end
+  and are recorded as usual (one passive entry in the chat, no turn), and their
+  browsers stop at the next heartbeat's 409; open bot streams end.
+- What still runs: the queue of clean-ups that deleting bots on offline workers
+  left (`bot-cleanup.json`), the one-time migration of instructions to SOUL.md,
+  and the read-only check of the roster's tool lists against each bot's chat at
+  start and at each worker connection; none of them starts a turn.
+
+Session views keep naming a bot's chat (`bot`), so the browser keeps it out of
+every session list whatever the flag says, and `GET /__hui/session-activity`
+leaves bots' chats out while it is off. The browser shows nothing of bots
+while it is off: no Agents | Bots switch, `/bots` and `/bots/:id` land on the
+home page (a remembered Bots tab shows Agents until the switch is back), no bot
+unread marks, no Settings → Sessions → Bots or Settings → Models → Calls, and no
+routines or their runs in Automations (whose next wake then counts only the
+tasks it lists).
+
 ### Routes
 
 All under `/__hui/bots`, with the usual `x-hui` guard (the memory page also
-accepts a same-origin page load, below). `:id` is a bot's id or handle. Bodies are JSON (create, edit and soul up to 256 KiB, messages up to 24 MB);
+accepts a same-origin page load, below). While bots are off every one answers
+409 ([above](#bots-are-a-preview-settings--labs--bots)). `:id` is a bot's id or handle. Bodies are JSON (create, edit and soul up to 256 KiB, messages up to 24 MB);
 unknown fields are refused, and `instructions` with a message saying the persona is SOUL.md now. Errors use the common `{ "error" }` shape: 400 for
 input (including an unknown model or a missing directory), 404 for an unknown
 bot, 409 when the bot's state refuses the request, 503 when the gateway cannot
@@ -1625,6 +1681,19 @@ like any turn, so its routine's run stays active until someone answers in the
 chat or the task's timeout (`timeoutSeconds`, default 900) stops that turn. An
 archived bot's routine fails. Archiving disables a bot's routines; restoring
 leaves them disabled.
+
+While bots are off ([above](#bots-are-a-preview-settings--labs--bots)) the
+executor skips a routine's run instead: it ends `skipped` (not `failed`), with
+`error` saying `Skipped because bots are off: turn them on in Settings → Labs →
+Bots. The routine is kept and runs at its next time once they are on.`
+(`BOTS_OFF_ROUTINE_MESSAGE`), and nothing reaches the chat. The task is
+neither disabled nor deleted. That is the scheduler's existing rule for a run
+its target can't take (as for a busy ordinary session): the time it came due is
+consumed and not run later, and once bots are on the routine runs at its next
+time. A once (`at`) routine that comes due while they are off is turned off by
+the scheduler, as every one-off task is once its time comes. Times missed while
+the gateway was down follow the start-up rule instead: each overdue task runs
+once when the scheduler starts.
 
 ### Bot-to-bot messages
 
@@ -2525,9 +2594,12 @@ catalogue, a `fontTerminal` local family name (1–128 characters, default
 OpenClaw-compatible HUI chat preferences (`messageWidth`,
 `collapseTaskProgress`, `sendShortcut` and `githubEmbeds`),
 [`power`](#macos-power), the Git workspace `branchPrefix` (`feature/` by default),
-Profile presentation fields and reversible Labs flags. These values affect HUI
-only. They never change PI configuration, provider identity, runtime permissions
-or transcripts.
+Profile presentation fields and reversible Labs flags (`labs`:
+`denseObservability`, `detailedDebug` and `bots`, each off unless explicitly
+`true`). `labs.bots` is more than presentation: the gateway reads it too, and
+bots are dormant while it is off ([Bots are a preview](#bots-are-a-preview-settings--labs--bots)).
+These values affect HUI only. They never change PI configuration, provider
+identity, runtime permissions or transcripts.
 
 ### Browser-owned composer drafts
 
@@ -3141,7 +3213,10 @@ the lookup.
 
 A call with a bot (HUI-18) is a full-duplex WebRTC session between the browser and GPT-Live
 (`gpt-live-1-codex`), over the ChatGPT login HUI keeps for the `openai-codex`
-provider. This is the route ChatGPT's own voice mode uses, not a public API: it may
+provider. Calls are with bots only: while bots are off (Settings → Labs → Bots)
+every call route, `GET /__hui/calls` included, answers 409 with the bots' message,
+turning them off ends the calls HUI holds, and a browser whose heartbeat gets
+that answer ends its call saying so ([Bots are a preview](#bots-are-a-preview-settings--labs--bots)). This is the route ChatGPT's own voice mode uses, not a public API: it may
 change. The gateway sets each call up and keeps the credential; the browser
 carries the audio and the call's data channel (`oai-events`) and never sees a
 token or an account id. Shared types are in `shared/calls.ts`:

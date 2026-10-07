@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { applyBotsUpdate, botChangePatch, botDraftOf, botInputFromDraft, botMemoryPageUrl, BotMemoryUnavailableError, botPatchFromDraft, botSettingChange, botSettingOf, botSoulKey, createBot, isBotSession, isNewBotsFrame, loadBotMemory, loadBotSoul, loadBots, parseBotsUpdate, parseBotSoul, saveBotSoul, subscribeBots, parseBot, parseBotList, parseBotMemory, parseBotMemoryStatus, upsertBot, withoutBotSessions, type BotDraft, type BotView } from "./bots.ts";
 import type { SessionGroup, SessionView } from "./sessions-store.ts";
-import { botLook } from "../../shared/bots.ts";
+import { botLook, BOTS_OFF_MESSAGE } from "../../shared/bots.ts";
 
 const RECORD = {
   id: "b1",
@@ -145,6 +145,16 @@ test("the bot stream reads SSE frames, reports a gateway without it, and stops w
     subscribeBots({ onUpdate: () => {}, onConnection: resolve }, async () => new Response("{}", { status: 404 }));
   });
   assert.equal(unsupported, "unsupported");
+
+  // Bots off on the gateway (Settings → Labs → Bots): its 409 stops the stream instead of a retry loop.
+  let asked = 0;
+  const off = await new Promise<string>((resolve) => {
+    subscribeBots({ onUpdate: () => {}, onConnection: resolve }, async () => {
+      asked += 1;
+      return new Response(JSON.stringify({ error: BOTS_OFF_MESSAGE }), { status: 409 });
+    });
+  });
+  assert.deepEqual([off, asked], ["off", 1]);
 });
 
 test("the memory page is the gateway's own route, which a same-origin link opens", () => {

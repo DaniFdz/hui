@@ -18,7 +18,7 @@ import type { Settings } from "../src/lib/settings.ts";
 import { BotMemoryUnavailableError } from "./bot-memory.ts";
 import type { BotRecord } from "../shared/bots.ts";
 import type { BotService } from "./bot-service.ts";
-import { BotConflictError, BotInputError, BotNotFoundError } from "./bots.ts";
+import { BotConflictError, BotInputError, BotNotFoundError, BotsOffError } from "./bots.ts";
 import {
   buildCallInstructions, buildCallSession, CallInputError, CallLimitError, CallNotFoundError, CallUnavailableError, CallUpstreamError,
   checkOffer, checkRequest, sessionVoice, taskResult, type ActiveCall, type CallBroker,
@@ -61,11 +61,12 @@ export type CallRouteDeps = {
   now?: () => number;
 };
 
-/** 400 input, 404 no such bot or call, 409 a state that refuses it, 429 the call limit, 502 ChatGPT refused or failed. */
+/** 400 input, 404 no such bot or call, 409 a state that refuses it (bots off included), 429 the call limit, 502 ChatGPT
+ * refused or failed. */
 export function callErrorStatus(error: unknown): number {
   if (error instanceof CallInputError || error instanceof BotInputError || error instanceof SyntaxError) return 400;
   if (error instanceof BotNotFoundError || error instanceof CallNotFoundError) return 404;
-  if (error instanceof BotConflictError || error instanceof CallUnavailableError) return 409;
+  if (error instanceof BotConflictError || error instanceof CallUnavailableError || error instanceof BotsOffError) return 409;
   if (error instanceof CallLimitError) return 429;
   if (error instanceof CallUpstreamError) return 502;
   if (error instanceof BotMemoryUnavailableError) return 503;

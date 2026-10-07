@@ -74,8 +74,10 @@ Workers are the remote machines of Settings → Workers, managed through the
 running gateway. A new worker connects at once; --extra-path is repeatable and
 on edit replaces the list. Edit changes only the fields given; a new command
 applies the next time the worker connects.
-Bots are named agents with one forever chat each, managed through the running
-gateway like the Bots tab; "bots" works as "bot". <bot> is an id, a handle or
+Bots are a preview: off until Settings → Labs → Bots turns them on, and until
+then every hui bot command prints the gateway's refusal. They are named agents
+with one forever chat each, managed through the running gateway like the Bots
+tab; "bots" works as "bot". <bot> is an id, a handle or
 an exact name. A new bot starts by asking what you expect from it (talk with
 hui bot chat <handle>), then writes its persona, SOUL.md, itself; --soul-file
 gives it one instead (- reads stdin) and skips that first conversation. Without

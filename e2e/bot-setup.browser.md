@@ -31,7 +31,10 @@ transcript, credential or account is involved.
    `fixture-mini`; `<agent>/settings.json` defaults to `hui-e2e/fixture`.
 3. Start the built gateway, then set it up through the guarded API (not the
    journey under test): `PUT /__hui/settings` with
-   `{"bots":{"showTab":true},"calls":{"voice":"cove"},"models":{"primary":"","fallback":"","utility":"hui-e2e/fixture-mini"}}`,
+   `{"bots":{"showTab":true},"calls":{"voice":"cove"},"models":{"primary":"","fallback":"","utility":"hui-e2e/fixture-mini"}}`
+   (since 2026-10-07 `"labs":{"bots":true}` replaces `"bots":{"showTab":true}`:
+   Settings → Labs → Bots is the one switch, and an old `showTab` still reads
+   as bots on),
    and `POST /__hui/bots` for Scout (blob, blue, `hui-e2e/fixture`, medium,
    language `es`, call voice `ember`), Pixel (heart, coral) and Owl (🦉).
 4. Chromium `--headless=new` with a disposable profile. Desktop runs add

@@ -24,7 +24,7 @@ import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join } from "node:path";
 
 import {
-  BOT_FACE_SHAPES, BOT_HANDLE, BOT_LIMITS, BOT_THINKING_LEVELS, handleFromName, isBotFaceShape, NEW_BOT_NAME,
+  BOT_FACE_SHAPES, BOT_HANDLE, BOT_LIMITS, BOT_THINKING_LEVELS, BOTS_OFF_MESSAGE, handleFromName, isBotFaceShape, NEW_BOT_NAME,
   type BotAccess, type BotAvatar, type BotAvatarPatch, type BotInput, type BotPatch, type BotRecord, type BotSkillRef, type BotSkillSelector, type BotVoice,
   type BotVoicePatch,
 } from "../shared/bots.ts";
@@ -63,6 +63,17 @@ export class BotStoreError extends Error {
 /** The bot runs on a remote worker HUI is not connected to now (503): the worker's name is in the message. */
 export class BotWorkerOfflineError extends Error {
   override name = "BotWorkerOfflineError";
+}
+
+/**
+ * Settings → Labs → Bots is off (409, `BOTS_OFF_MESSAGE`): bots are a preview this gateway has not turned on. The
+ * gateway's settings refuse the request, not the bot, which exists unchanged; 404 would read as a bot that is gone.
+ */
+export class BotsOffError extends Error {
+  override name = "BotsOffError";
+  constructor(message: string = BOTS_OFF_MESSAGE) {
+    super(message);
+  }
 }
 
 const ID = /^[A-Za-z0-9_-]{1,100}$/u;

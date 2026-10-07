@@ -2,7 +2,7 @@ import { html, nothing, type TemplateResult } from "lit";
 import { TERMINAL_FONTS, normalizeTerminalFont, terminalFontStack } from "../lib/terminal-font.ts";
 import { TEXT_SCALE_STOPS, TYPEFACES, type TextScaleStop } from "../lib/appearance.ts";
 import { modeIsSelectable, THEME_MODES, type ThemeMode, type ThemeVariant } from "../lib/theme.ts";
-import type { Settings } from "../lib/settings.ts";
+import { botsEnabled, type Settings } from "../lib/settings.ts";
 import type { PowerState, PowerStatus } from "../../shared/power.ts";
 import type { ThemePreview } from "../lib/theme-store.ts";
 import type { ThemeSwatches } from "../lib/shadcn-theme.ts";
@@ -115,7 +115,6 @@ export type SettingsProps = AutomationProps & {
   onChangeModels: (next: Settings["models"]) => void;
   onChangeCalls: (next: Settings["calls"]) => void;
   onChangePower: (next: Settings["power"]) => void;
-  onChangeBots: (next: Settings["bots"]) => void;
   onSetLidAwake: (on: boolean) => void;
   onImportTheme: (url: string) => void;
   onClose: () => void;
@@ -657,8 +656,10 @@ function renderToolsPage(props: SettingsProps) {
     <hui-tools-settings .sessions=${props.sessions.filter((session) => !session.bot)}></hui-tools-settings>`;
 }
 
-/** Settings → Models → Calls: GPT-Live through the ChatGPT login above (HUI-18). */
+/** Settings → Models → Calls: GPT-Live through the ChatGPT login above (HUI-18). Calls are with bots only, so the
+ * section goes with them while Settings → Labs → Bots is off. */
 function renderCallsSection(props: SettingsProps) {
+  if (!botsEnabled(props.settings)) return nothing;
   return html`<hui-call-settings .calls=${props.settings.calls} .onChange=${props.onChangeCalls}></hui-call-settings>`;
 }
 
@@ -676,10 +677,13 @@ function renderModelsPage(props: SettingsProps) {
     renderSettingsPicker(label, props.settings.models[key], modelOptions, (value) => {
       props.onChangeModels({ ...props.settings.models, [key]: value });
     });
+  // Bots and their calls are named only while Settings → Labs → Bots is on.
+  const bots = botsEnabled(props.settings);
   return html`
     <p class="settings-page__intro">
-      Connect providers and choose models without changing PI's configuration. Three roles: the primary model does
-      the real work, the utility model the quick work, and GPT-Live (Calls, below) talks on calls.
+      ${bots
+        ? "Connect providers and choose models without changing PI's configuration. Three roles: the primary model does the real work, the utility model the quick work, and GPT-Live (Calls, below) talks on calls."
+        : "Connect providers and choose models without changing PI's configuration. Two roles: the primary model does the real work and the utility model the quick work."}
     </p>
     <hui-provider-settings @providers-changed=${props.onRetryPi}></hui-provider-settings>
     ${renderSection(
@@ -688,7 +692,7 @@ function renderModelsPage(props: SettingsProps) {
       html`
         ${renderRow(
           "Primary model",
-          "The smartest model you have. Speed doesn't matter: it does the real work of new sessions and bots.",
+          `The smartest model you have. Speed doesn't matter: it does the real work of new sessions${bots ? " and bots" : ""}.`,
           routePicker("Primary model", "primary"),
         )}
         ${renderRow(
@@ -698,7 +702,7 @@ function renderModelsPage(props: SettingsProps) {
         )}
         ${renderRow(
           "Utility model",
-          "The fastest model you have, ideally a cheap one. It names sessions and branches, drafts Jira items and answers /btw; for bots without their own, it writes memory summaries, answers quick questions on calls and writes call summaries.",
+          `The fastest model you have, ideally a cheap one. It names sessions and branches, drafts Jira items and answers /btw${bots ? "; for bots without their own, it writes memory summaries, answers quick questions on calls and writes call summaries" : ""}.`,
           routePicker("Utility model", "utility"),
         )}
       `,
@@ -943,14 +947,9 @@ function renderSessionsSettingsPage(props: SettingsProps) {
       ${renderRow("Transcript authority", "History is resumed directly from the runtime-owned session file.", html`<span class="settings-row__value">PI</span>`)}
       ${renderRow("Remove from HUI", "Stops tracking the row and runtime without deleting the transcript.", html`<span class="settings-row__value">Metadata only</span>`)}
     `)}
-    ${renderSection("Bots", "Named agents with one permanent chat, their own model and a memory that summarizes older messages by itself.", html`
-      ${renderRow(
-        "Show the Bots tab",
-        "Adds an Agents | Bots switch to the top of the sidebar. Hiding it never stops bots or their routines.",
-        renderSettingsToggle("Show the Bots tab", props.settings.bots.showTab, (showTab) => props.onChangeBots({ ...props.settings.bots, showTab })),
-      )}
-      ${renderRow("Command line", "Everything the tab does is also available from a terminal on this machine.", html`<code>hui bot list</code>`)}
-    `)}
+    ${botsEnabled(props.settings) ? renderSection("Bots", "Named agents with one permanent chat, their own model and a memory that summarizes older messages by itself. Settings → Labs → Bots turns them on and off.", html`
+      ${renderRow("Command line", "Everything the Bots tab does is also available from a terminal on this machine.", html`<code>hui bot list</code>`)}
+    `) : nothing}
     <p class="settings-page__note settings-page__intro">
       ${props.saveFailed ? "Could not write settings.json — changes apply now but will not be remembered." : "Saved to ~/.config/hui/settings.json"}
     </p>`;

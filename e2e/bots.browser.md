@@ -31,7 +31,9 @@ a bot at once and **Edit bot…** opens the bot's Settings tab
    (`HTTP_PROXY` with `NODE_USE_ENV_PROXY=1`), unset those variables for the
    launcher: its ownership check talks to its own loopback instance.
 2. Open the receipt's `browserUrl` at 1440×900. The fresh instance has the
-   Bots tab off.
+   Bots tab off. Since 2026-10-07 bots are a preview, off until Settings →
+   Labs → **Bots** turns them on; that one switch replaced the Settings →
+   Sessions → *Show the Bots tab* steps below.
 3. Messages over 512 bytes are summarized by a compactor call; shorter ones are
    their own summary lines. The long message below (667 characters) is
    "OPT_NOTES Notes for later, keep them word for word: ", then "the blue door

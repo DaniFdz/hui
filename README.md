@@ -120,7 +120,10 @@ hui workers edit devbox --extra-path ~/.pi/agent/mcp.json
 hui workers remove devbox
 ```
 
-Bots are named agents with one forever chat each, whose memory never needs
+Bots are a **preview**, off until you turn them on in Settings → Labs → **Bots**,
+their one switch (the sidebar then gets its Agents | Bots switch). While they are
+off nothing of them shows or runs, `hui bot` prints the gateway's refusal, and
+nothing is deleted. They are named agents with one forever chat each, whose memory never needs
 clearing. A new bot starts by asking what you expect from it, then writes its
 persona (SOUL.md) itself; they can run routines and message one another. Everything the Bots tab
 does works from a terminal too, through the running gateway (`hui bots` is the

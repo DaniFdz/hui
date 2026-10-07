@@ -4,7 +4,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test, type TestContext } from "node:test";
-import { botKickoffText, type BotCatalog, type BotCatalogTool, type BotMessageResult, type BotView } from "../shared/bots.ts";
+import { botKickoffText, BOTS_OFF_MESSAGE, type BotCatalog, type BotCatalogTool, type BotMessageResult, type BotView } from "../shared/bots.ts";
 import type { AutomationTask } from "../src/lib/automation-types.ts";
 import { botCommand, findBot, formatBot, formatBots, formatLook, lookColor, parseDuration, parseZoom, questionAnswer, routineSchedule, type BotIO } from "./bots.ts";
 
@@ -229,6 +229,33 @@ function terminal(stdin = "", answers: string[] = [], interactive = false) {
     }),
   };
 }
+
+test("with bots off on the gateway every hui bot command fails with its refusal, which names Settings → Labs → Bots", async (t) => {
+  // The gateway's answer while Settings → Labs → Bots is off: 409 on every bot route.
+  const requests: string[] = [];
+  const server = createServer((request, response) => {
+    requests.push(`${request.method} ${request.url}`);
+    response.writeHead(409, { "content-type": "application/json" });
+    response.end(JSON.stringify({ error: BOTS_OFF_MESSAGE }));
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+  const base = `http://127.0.0.1:${(server.address() as { port: number }).port}/`;
+  for (const [action, operands, flags] of [
+    ["list", [], {}], ["list", [], { json: true }], ["add", [], { name: "Kim" }], ["show", ["kim"], {}], ["send", ["kim", "hi"], { wait: true }],
+    ["chat", ["kim"], {}], ["memory", ["kim"], {}], ["routine list", ["kim"], {}], ["delete", ["kim"], { yes: true }],
+  ] as const) {
+    const term = terminal();
+    await assert.rejects(botCommand(base, action, operands, flags, term.io), (error: unknown) => {
+      // bin/hui.mjs prints it as `hui: <message>` and exits 1.
+      assert.deepEqual([(error as Error).name, (error as Error).message, (error as { status?: number }).status], ["GatewayError", BOTS_OFF_MESSAGE, 409], action);
+      return true;
+    });
+    assert.equal(term.out, "", `${action} prints nothing else`);
+  }
+  assert.match(BOTS_OFF_MESSAGE, /Settings → Labs → Bots/u);
+  assert.ok(requests.every((line) => line.includes(" /__hui/bots")), "each stopped at its first bot route");
+});
 
 test("bots are found by id, handle or exact name, archived ones included, and shared names are refused", async (t) => {
   const gateway = await fakeGateway(t);
