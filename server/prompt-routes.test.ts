@@ -85,6 +85,9 @@ test("a resent request id is answered with the first send's outcome and never ru
   const id = (created.body["session"] as { id: string; tool: string }).id;
   assert.equal((created.body["session"] as { tool: string }).tool, "durable");
   assert.equal((await call(`/__hui/sessions/${id}/open`, "POST", {})).status, 200);
+  // Opening answers before the runtime is up; a prompt meanwhile is refused as still starting.
+  await liveSessions.booted(id);
+  await waitFor("the session's runtime", () => liveSessions.hasRuntime(id), { state: () => liveSessions.status(id) });
 
   const first = await call(`/__hui/sessions/${id}/prompt`, "POST", { text: "RESEND_ONE", requestId: "req-1" });
   assert.deepEqual(first, { status: 200, body: { ok: true } });
