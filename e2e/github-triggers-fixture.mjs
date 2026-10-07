@@ -106,20 +106,26 @@ function main(args) {
   }
   let etag;
   let path;
+  let include = false;
   for (let index = 1; index < args.length; index += 1) {
     const arg = args[index];
     if (arg === "-H" || arg === "--header") {
       const header = args[++index] ?? "";
       if (/^if-none-match:/iu.test(header)) etag = header.slice(header.indexOf(":") + 1).trim();
-    } else if (!arg.startsWith("-")) path = arg;
+    } else if (arg === "--include" || arg === "-i") include = true;
+    else if (!arg.startsWith("-")) path = arg;
   }
   const fake = createGitHubFake(state);
   const result = fake.respond(path ?? "", etag);
   appendFileSync(join(dir, "requests.jsonl"), `${JSON.stringify({ ...fake.log[0], at: new Date().toISOString() })}\n`);
-  const head = [`HTTP/1.1 ${result.status} ${REASONS[result.status] ?? ""}`, ...Object.entries(result.headers).map(([name, value]) => `${name.replace(/(^|-)([a-z])/gu, (_, dash, letter) => dash + letter.toUpperCase())}: ${value}\r`)].join("\n");
-  process.stdout.write(`${head}\n\r\n${result.body === undefined ? "" : JSON.stringify(result.body)}`);
+  // Like gh: the status line and headers only with --include (what previews and badges read is the body alone).
+  if (include) {
+    const head = [`HTTP/1.1 ${result.status} ${REASONS[result.status] ?? ""}`, ...Object.entries(result.headers).map(([name, value]) => `${name.replace(/(^|-)([a-z])/gu, (_, dash, letter) => dash + letter.toUpperCase())}: ${value}\r`)].join("\n");
+    process.stdout.write(`${head}\n\r\n`);
+  }
+  if (result.status < 300 || include) process.stdout.write(result.body === undefined ? "" : JSON.stringify(result.body));
   if (result.status >= 300) {
-    process.stderr.write(`gh: HTTP ${result.status}\n`);
+    process.stderr.write(result.status === 304 ? "gh: HTTP 304\n" : `gh: ${result.body?.message ?? REASONS[result.status] ?? "error"} (HTTP ${result.status})\n`);
     process.exit(1);
   }
 }

@@ -274,6 +274,8 @@ export class BotTriggersController implements ReactiveController {
   #request = 0;
   #timer?: ReturnType<typeof setInterval>;
   #watched?: BotView;
+  /** The bot and its chat's status when `follow` last looked. */
+  #followed = "";
 
   /** `visible`: whether the section still shows; the timer stops by itself once it doesn't. */
   constructor(host: ReactiveControllerHost, options: { api?: BotTriggersApi; visible?: () => boolean } = {}) {
@@ -320,6 +322,21 @@ export class BotTriggersController implements ReactiveController {
         }, TRIGGERS_POLL_MS);
       }
     }
+  }
+
+  /** From the bots stream while the section shows: starts reading once the bot is known, and reads again when its chat
+   * changes state (a trigger may just have woken it). */
+  follow(bot: BotView): void {
+    const key = `${bot.id}|${bot.status}`;
+    if (this.#watched?.id !== bot.id || !this.#timer) {
+      this.#followed = key;
+      this.sync(bot);
+      return;
+    }
+    this.#watched = bot;
+    if (key === this.#followed) return;
+    this.#followed = key;
+    if (!this.state.pending) void this.refresh(bot);
   }
 
   /** Reads the triggers; a failed read keeps what was shown. */

@@ -133,6 +133,20 @@ test("a test says how its run went", async () => {
   assert.equal(controller.state.notice, "Sent a test event to Ada's chat.");
 });
 
+test("following the bots stream starts reading once the bot is known, and reads again when its chat changes state", async () => {
+  const fake = api();
+  const controller = new BotTriggersController(host(), { api: fake });
+  controller.follow({ ...BOT, status: "idle" });
+  await new Promise((resolve) => setImmediate(resolve));
+  controller.follow({ ...BOT, status: "idle" });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(fake.calls, ["list id-ada"], "the same state reads nothing");
+  controller.follow({ ...BOT, status: "running" });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(fake.calls, ["list id-ada", "list id-ada"], "a trigger may just have woken it");
+  controller.sync(undefined);
+});
+
 test("polling runs only while the section shows", async () => {
   let visible = true;
   const fake = api();

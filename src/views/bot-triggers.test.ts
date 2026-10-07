@@ -16,6 +16,7 @@ test("Triggers is a section of the Routines tab, after the routines, self-contai
   assert.match(app, /this\.botTools\.reset\(target\.id\);\n\s+this\.botTriggers\.reset\(target\.id\);/u, "another bot starts clean");
   assert.match(app, /this\.botTriggers\.sync\(visible && this\.botPanel\.tab === "routines" \? this\.activeBot\(\) : undefined\);/u, "read while the tab shows");
   assert.match(app, /triggers: this\.botTriggers\.props\(bot\),/u);
+  assert.match(app, /this\.followBotTools\(\);\n\s+this\.followBotTriggers\(\);/u, "on every bots frame: a bot loaded after the tab opened, or woken");
   assert.match(read("./bot-triggers.ts"), /await import\("\.\.\/styles\/bot-triggers\.css"\);/u);
 });
 

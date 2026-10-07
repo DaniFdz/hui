@@ -3688,6 +3688,7 @@ export class HuiApp extends HuiElement {
           this.followBotMemory();
           this.followBotSoul();
           this.followBotTools();
+          this.followBotTriggers();
         },
         onConnection: (state) => {
           this.botsStreamLive = state === "live";
@@ -4159,6 +4160,13 @@ export class HuiApp extends HuiElement {
   private followBotTools() {
     const bot = this.botToolsTabVisible() ? this.activeBot() : undefined;
     if (bot) this.botTools.follow(bot);
+  }
+
+  /** The Routines tab's Triggers section starts reading once the bot is known (a `/bots/<id>` load), and reads again
+   * when the bot's chat changes state: a trigger may just have woken it. */
+  private followBotTriggers() {
+    const bot = this.botPanelVisible() && this.botPanel.tab === "routines" ? this.activeBot() : undefined;
+    if (bot) this.botTriggers.follow(bot);
   }
 
   /** The panel's visible tab decides what is read: Routines polls Automation

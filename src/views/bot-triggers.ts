@@ -78,12 +78,11 @@ function renderRevealed(revealed: RevealedHook, props: BotTriggersProps) {
   return html`<div class="bot-trigger-url" role="status" aria-live="polite">
     <p class="bot-trigger-url__title">${revealed.name}: its webhook URL</p>
     <p class="bot-panel__hint">Copy it now: HUI keeps only a fingerprint of it and can't show it again. POST JSON or text to it from this machine or your tailnet.</p>
-    <div class="bot-trigger-url__row">
-      <input class="settings-input bot-trigger-url__value" type="text" readonly .value=${revealed.url} aria-label=${`Webhook URL of ${revealed.name}`}
-        @focus=${(event: FocusEvent) => (event.currentTarget as HTMLInputElement).select()} />
+    <code class="bot-trigger-url__value" aria-label=${`Webhook URL of ${revealed.name}`}>${revealed.url}</code>
+    <div class="bot-trigger-url__actions">
       <button type="button" class="btn btn--sm bot-trigger-url__copy" @click=${props.onCopy}>${revealed.copied ? icons.check : icons.copy}<span>${revealed.copied ? "Copied" : "Copy"}</span></button>
+      <button type="button" class="btn btn--sm btn--ghost" @click=${props.onDismissUrl}>Done</button>
     </div>
-    <div class="bot-trigger-url__actions"><button type="button" class="btn btn--sm btn--ghost" @click=${props.onDismissUrl}>Done</button></div>
   </div>`;
 }
 
