@@ -373,6 +373,14 @@ test("a fork copies the history up to a reply into a new conversation and leaves
   const latest = await startDurable({ cwd: f.cwd, sessionFile: await session.fork(), huiSessionId: "durable-fork-latest" }, host);
   assert.deepEqual(messages(latest.transcript()), messages(before), "without an entry the fork copies everything");
   await assert.rejects(session.fork("missing-entry"), /no longer available/u);
+
+  // A fork into a worktree moves the copy's agent there; the source keeps its directory.
+  const elsewhere = join(f.cwd, "..", "worktree");
+  await mkdir(elsewhere);
+  const moved = durableConversationId(await session.fork(firstAnswer.entryId, { cwd: elsewhere }))!;
+  const harness = await host.open();
+  assert.equal((await (await harness.conversation(moved, durableContext))!.agent(durableContext)).cwd, elsewhere);
+  assert.equal((await (await harness.conversation(durableConversationId(session.sessionFile)!, durableContext))!.agent(durableContext)).cwd, f.cwd);
 });
 
 test("Durable compaction keeps the whole history and marks where it summarized", { timeout: 60_000 }, async (t) => {

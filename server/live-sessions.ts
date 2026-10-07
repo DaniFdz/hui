@@ -825,10 +825,10 @@ export class LiveSessions {
   /** Copies the session's history up to `entryId` (its latest settled point when absent) into a new runtime
    * conversation and returns that conversation's resume reference. The session itself is untouched, running or
    * not; registering the copy as a session of its own is the caller's job. */
-  async fork(id: string, entryId?: string): Promise<string> {
+  async fork(id: string, entryId?: string, options?: { cwd?: string }): Promise<string> {
     const live = this.#ready(id);
     if (!live.runtime?.fork) throw new Error(`${live.record.tool} sessions cannot be forked; only Pi Durable sessions can.`);
-    return live.runtime.fork(entryId);
+    return options ? live.runtime.fork(entryId, options) : live.runtime.fork(entryId);
   }
 
   async continueRun(id: string): Promise<void> {

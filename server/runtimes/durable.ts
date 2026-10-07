@@ -1115,16 +1115,21 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
 
   /** A fork into another session: the history up to one entry (the latest point a fork can carry on from when absent)
    * copied into a new conversation of the same harness. This conversation is not touched and may keep running. The
-   * copy keeps the agent (model, thinking, tools) as of that entry and, like a rewind's fork, starts without OptChat. */
-  async fork(entryId?: string): Promise<string> {
+   * copy keeps the agent (model, thinking, tools) as of that entry and, like a rewind's fork, starts without OptChat.
+   * `cwd` moves the copy's agent to another directory, such as a worktree made for it. */
+  async fork(entryId?: string, options?: { cwd?: string }): Promise<string> {
     await this.#read();
     const visible = this.#history.slice(this.#resetIndex())
       .filter((candidate) => !CompactionEntry.is(candidate.entry) && candidate.shown.length > 0);
     const isPoint = (candidate: Row) => candidate.shown.every(forkable);
-    const row = entryId === undefined ? visible.filter(isPoint).at(-1) : visible.find((candidate) => String(candidate.entry.id) === entryId);
-    if (!row) throw new Error(entryId === undefined ? "There is nothing to fork yet." : "That fork point is no longer available.");
+    // A remote worker's relay sends an absent entry as null.
+    const row = !entryId ? visible.filter(isPoint).at(-1) : visible.find((candidate) => String(candidate.entry.id) === entryId);
+    if (!row) throw new Error(!entryId ? "There is nothing to fork yet." : "That fork point is no longer available.");
     if (!isPoint(row)) throw new Error("A fork starts from a prompt or a finished reply, not one still waiting on its tools.");
-    const next = await this.#conversation.fork(row.entry.id, { ownership: { kind: "ownerless" } }, context);
+    const next = await this.#conversation.fork(row.entry.id, {
+      ownership: { kind: "ownerless" },
+      ...(options?.cwd ? { agent: { cwd: options.cwd } } : {}),
+    }, context);
     return durableReference(next.id);
   }
 

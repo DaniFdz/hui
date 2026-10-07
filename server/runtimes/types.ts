@@ -227,8 +227,9 @@ export type RuntimeSession = {
   rewind?(target: RuntimeRewindTarget, options?: RuntimeRewindOptions): Promise<void>;
   /** Copy the history up to a history entry (the latest one when absent) into a
    * new conversation and return its resume reference. This session is unchanged
-   * and may keep running; the copy starts idle. */
-  fork?(entryId?: string): Promise<string>;
+   * and may keep running; the copy starts idle, working in `cwd` when given
+   * (a new worktree) and in this session's directory otherwise. */
+  fork?(entryId?: string, options?: { cwd?: string }): Promise<string>;
   /** Resume the model from the current non-assistant tail without a user prompt. */
   continueRun?(): Promise<void>;
   /** Fires when the tool's process ends on its own, so a gateway can mark the

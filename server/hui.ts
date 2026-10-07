@@ -1687,6 +1687,62 @@ export async function createSession(
   return record;
 }
 
+const FORK_SUFFIX = " (fork)";
+const forkTitle = (title: string) => `${title.slice(0, SESSION_TITLE_MAX - FORK_SUFFIX.length)}${FORK_SUFFIX}`;
+
+export type ForkRequest = { entryId?: string; worktree?: boolean; branchName?: string };
+
+/** Validates a fork route body; unknown fields are ignored like every other session route. */
+export function forkRequest(body: Record<string, unknown>): ForkRequest {
+  if (body["entryId"] !== undefined && (typeof body["entryId"] !== "string" || !body["entryId"].trim())) {
+    throw new Error("A fork point must be a history entry id.");
+  }
+  if (body["worktree"] !== undefined && typeof body["worktree"] !== "boolean") throw new Error("Worktree must be true or false.");
+  const branchName = sessionText(body, "branchName", SESSION_TITLE_MAX, { optional: true, allowEmpty: false });
+  if (branchName && body["worktree"] !== true) throw new Error("A branch name requires a new worktree.");
+  return {
+    ...(typeof body["entryId"] === "string" ? { entryId: body["entryId"].trim() } : {}),
+    ...(body["worktree"] === true ? { worktree: true } : {}),
+    ...(branchName ? { branchName } : {}),
+  };
+}
+
+/**
+ * A fork from a session, start to finish: the optional worktree first (from the source checkout's HEAD, on a new
+ * branch, as New Session makes one), then the conversation copy moved into it, then the record. A failure after the
+ * worktree exists removes it again. Uncommitted changes in the source checkout stay there.
+ */
+export async function forkFromSession(
+  source: SessionRecord,
+  request: ForkRequest,
+  fork: (entryId: string | undefined, options?: { cwd: string }) => Promise<string>,
+  sessions: Pick<typeof liveSessions, "accept" | "ensure"> = liveSessions,
+  registryUpdater: typeof updateRegistry = updateRegistry,
+  worktreesRoot?: string,
+): Promise<SessionRecord> {
+  if (!request.worktree) return forkSession(source, await fork(request.entryId), sessions, registryUpdater);
+  if (source.worker) throw new Error("Worktrees are not available on remote workers yet.");
+  const settings = await readSettings();
+  const worktree = await createSessionWorktree({
+    sourceDirectory: source.cwd,
+    title: forkTitle(source.title),
+    branchName: request.branchName ?? `${fallbackBranchName(source.title)}-fork`,
+    branchPrefix: settings.branchPrefix,
+    ...(worktreesRoot ? { root: worktreesRoot } : {}),
+  });
+  try {
+    const reference = await fork(request.entryId, { cwd: worktree.cwd });
+    return await forkSession(source, reference, sessions, registryUpdater, worktree.cwd);
+  } catch (error) {
+    try {
+      await worktree.rollback();
+    } catch (rollbackError) {
+      throw new Error(`${error instanceof Error ? error.message : String(error)} Rollback failed: ${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}`);
+    }
+    throw error;
+  }
+}
+
 /**
  * Registers a fork's conversation copy as a session of its own. It takes what runs the work from the source (its
  * directory, worker, group, runtime, model and reasoning) and none of the operator's marks: it starts unpinned, read,
@@ -1698,13 +1754,14 @@ export async function forkSession(
   piSessionFile: string,
   sessions: Pick<typeof liveSessions, "accept" | "ensure"> = liveSessions,
   registryUpdater: typeof updateRegistry = updateRegistry,
+  /** A worktree made for the fork: the session works there instead of in the source's directory. */
+  cwd: string = source.cwd,
 ): Promise<SessionRecord> {
-  const suffix = " (fork)";
   return createSession({
-    cwd: source.cwd,
+    cwd,
     ...(source.worker ? { worker: source.worker } : {}),
     group: source.group,
-    title: `${source.title.slice(0, SESSION_TITLE_MAX - suffix.length)}${suffix}`,
+    title: forkTitle(source.title),
     tool: source.tool,
     ...(source.model ? { model: source.model } : {}),
     ...(source.thinking ? { thinking: source.thinking } : {}),
@@ -3827,17 +3884,13 @@ async function handleRequest(
     }
     if (action[2] === "fork" && request.method === "POST") {
       try {
-        const body = (await readBody(request)) as Record<string, unknown>;
-        if (body["entryId"] !== undefined && (typeof body["entryId"] !== "string" || !body["entryId"].trim())) {
-          throw new Error("A fork point must be a history entry id.");
-        }
-        const entryId = typeof body["entryId"] === "string" ? body["entryId"].trim() : undefined;
+        const fork = forkRequest((await readBody(request)) as Record<string, unknown>);
         if (!liveSessions.ensure(record)) {
           sendJson(response, 404, { error: `unknown session: ${id}` });
           return;
         }
         await liveSessions.booted(id);
-        const forked = await forkSession(record, await liveSessions.fork(id, entryId));
+        const forked = await forkFromSession(record, fork, (entryId, options) => liveSessions.fork(id, entryId, options));
         sendJson(response, 201, { session: toView(forked, liveSessions.status(forked.id)) });
       } catch (error) {
         sendJson(response, 400, { error: error instanceof Error ? error.message : "Could not fork that session." });

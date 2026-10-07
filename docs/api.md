@@ -2431,17 +2431,23 @@ turns again and Durable compacts the fork when it reaches its thresholds.
 
 ### `POST /__hui/sessions/:id/fork`
 
-Body: `{ "entryId": "..." }`, or `{}` for the latest point. Copies a Pi Durable
+Body: `{ "entryId": "...", "worktree": true, "branchName": "..." }`; every field
+is optional (`{}` forks the latest point into the same folder). Copies a Pi Durable
 conversation's history up to that entry into a new conversation of the same
 harness (on a remote worker, that worker's) and registers it as a new session,
 responding 201 with `{ "session": SessionView }`. The entry must be a user
 message or an assistant reply that ends its turn; without one, the latest such
 entry is used. The source session is not stopped, rewound or otherwise changed,
-and may keep running. The new record takes the source's `cwd`, `worker`,
+and may keep running. With `worktree: true` the gateway first creates a Git
+worktree from the source checkout's HEAD on a new branch (`branchName`, default
+`<title>-fork`, under the configured prefix) and moves the copy's agent into it;
+uncommitted changes stay in the source checkout, and a failure after the worktree
+exists removes it. Remote workers refuse worktrees (400). The new record takes the
+source's `cwd` (or the worktree), `worker`,
 `group`, `tool`, `model` and `thinking`, is titled `<title> (fork)` and
 carries none of its organizer fields (`pinned`, `unread`, `icon`,
 `jiraIssues`, `stage`). The copy keeps the Durable agent as of the fork entry
-and starts without OptChat; no Git state changes. A malformed entry, an entry
+and starts without OptChat; without a worktree no Git state changes. A malformed body, an entry
 that is unknown or still waiting on its tool calls, or a session whose runtime
 cannot fork (PI) returns 400. A bot's chat answers 409
 ([a forever chat](#a-forever-chat)).

@@ -162,7 +162,9 @@ class RemoteRuntimeSession implements RuntimeSession, RemoteSessionSink {
   async cancelCompaction(): Promise<void> { await this.#call("cancelCompaction"); }
   async rewind(target: unknown, options?: unknown): Promise<void> { await this.#call("rewind", target, ...(options === undefined ? [] : [options])); }
   /** The fork lives in the worker's store, so the reference only resumes there. */
-  async fork(entryId?: string): Promise<string> { return await this.#call<string>("fork", ...(entryId === undefined ? [] : [entryId])); }
+  async fork(entryId?: string, options?: { cwd?: string }): Promise<string> {
+    return await this.#call<string>("fork", entryId, ...(options === undefined ? [] : [options]));
+  }
   async continueRun(): Promise<void> { await this.#call("continueRun"); }
   onExit(listener: (unreachable?: RuntimeUnreachableError) => void): () => void {
     this.#exitListeners.add(listener);

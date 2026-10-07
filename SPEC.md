@@ -297,13 +297,19 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   context meter's Compact now start one. Continue invokes PI's native
   prompt-free continuation primitive; only when the branch already ends with a
   completed assistant response does HUI send an explicit continuation prompt.
-  A finished reply in a Durable session offers **Fork from here**: Durable copies the history up to that reply into a new conversation,
-  which opens at once as a new session in the same directory, worker and group,
-  titled `<title> (fork)`, on the source's model and reasoning. The source keeps
-  its history and any run in flight. The copy starts unpinned and read, without
-  an icon, Jira links, a Kanban stage or OptChat, and runs in the same checkout
-  (no worktree is created). A reply followed by its tool calls, a bot's chat and
-  sessions still on PI offer no fork.
+  A finished reply in a Durable session offers **Fork from here**, which first
+  asks where the fork works. In a Git checkout the dialog offers **New worktree**
+  (the default: a separate checkout on a new branch from the checkout's HEAD,
+  suffix `<title>-fork` unless typed; uncommitted changes stay behind) or
+  **Same checkout** (both sessions edit the same files). Outside Git, or on a
+  remote worker, it forks into the same folder. Durable then copies the history
+  up to that reply into a new conversation, which opens at once as a new session
+  in the same group, titled `<title> (fork)`, on the source's model and
+  reasoning. The source keeps its history and any run in flight. The copy starts
+  unpinned and read, without an icon, Jira links, a Kanban stage or OptChat. A
+  failure keeps the dialog open with its reason and removes a worktree it had
+  made. A reply followed by its tool calls, a bot's chat and sessions still on
+  PI offer no fork.
 - Markdown code fences retain the reference's reveal and word-wrap controls;
   copying remains a confirmed clipboard operation with a retryable failure. All
   HUI copy actions prefer the Clipboard API and fall back to a temporary native
