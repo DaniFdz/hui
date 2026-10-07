@@ -678,14 +678,18 @@ restarts. Proof: `server/watchers.test.ts`, `server/watcher-routes.test.ts`,
 
 ### HUI-18 — Bots with OptChat memory
 
-Approved product decision (2026-10-05): beside its sessions, HUI gets **bots**,
-in a Hermes-style **Sessions | Bots** split. A bot is a named Durable
-conversation that never ends; its memory is
-[OptChat](optchat.md): every message is kept in an append-only log, a cheap
-model compresses it into a tree of one-line summaries, and every turn starts
-fresh from a fixed-size view of the whole chat. A `hui bot` CLI has parity with
-the UI, routines run through Automation, and voice comes later through
-VoiceStudio. It lands as stacked pull requests:
+Product decision approved by the owner on 2026-10-05 (SPEC.md, "Bots are named
+chats, not an agent selector"): GrokBot/Hermes-style bots beside sessions. The
+sidebar splits into **Sessions | Bots**; sessions stay as they are. A bot is a
+named Durable conversation that never ends, with a role, a SOUL.md persona it
+writes in its first conversation, its own model and directory; its memory is
+[OptChat](optchat.md): every message
+is kept in an append-only log, a cheap model compresses it into a tree of
+one-line summaries, and every turn starts fresh from a fixed-size view of the
+whole chat. `hui bot` can do everything the Bots tab can, through the same
+routes. Routines are Automation tasks aimed at a bot's chat; bots message each
+other; voice comes later through VoiceStudio. Bots run on the local gateway only
+for now. It lands as stacked pull requests:
 
 1. **OptChat memory for Pi Durable conversations** — done 2026-10-05. The engine
    (`server/optchat/`) and its Durable integration
@@ -699,9 +703,62 @@ VoiceStudio. It lands as stacked pull requests:
    plain requests, fresh turns, a frozen view across a tool loop and a restart,
    zoom and date, declined compaction, catch-up without duplicates, waiting for
    summaries and Stop).
-2. Bots: create, rename and list named OptChat conversations, their routes and
-   the Sessions | Bots UI, with a `hui bot` CLI at parity. Not started.
-3. Routines through Automation, then voice through VoiceStudio. Not started.
+2. **Bots backend and `hui bot`** (implemented 2026-10-05; Bots tab and browser
+   E2E pending): `bots.json` registry and `shared/bots.ts` types; bot chats as
+   ordinary Durable sessions whose conversation is created with its persona,
+   `hui.bot` document and OptChat in one commit; edit (an empty model or
+   thinking level goes back to the gateway defaults), archive (routines
+   disabled, nothing deleted) and restore; `/__hui/bots` routes with messages
+   (prompt or follow-up, optional wait for the answering run), stop, memory and
+   an events stream; forever-chat refusals of clear, compact, rewind and
+   delete; routines marked `[routine: <name>]` and queued behind a busy bot;
+   `message_bot` and a byte-stable `bots` section only in bots' chats, with a
+   three-hop loop guard and an hourly limit; the `hui bot` CLI with streamed
+   `chat` (what the bot gets from elsewhere shown before its reply, since the
+   chat's stream announces each prompt it accepts), `send --wait` exit codes
+   and routines. OptChat reaches bots through the `BotMemory` port only, whose
+   adapter (`optChatBotMemory`) maps it onto the engine: a bot's chat has its
+   memory from its creating commit, and the memory routes and `hui bot memory`
+   read its status (with view lines and the compactor's usage), view, zoom and
+   browse page, which a same-origin link opens. Proof: `server/bots.test.ts`,
+   `server/bot-service.test.ts`, `server/bot-routes.test.ts` (a real gateway
+   with a deterministic provider: routes, guards, a waited reply, a bot-to-bot
+   message, a routine, the events stream, real OptChat memory with built
+   summaries, the view, zoom down to a whole message and the page under its
+   same-origin rule, clearing the model and thinking, and `hui bot chat`
+   showing a message from elsewhere and a routine before their replies),
+   `server/runtimes/durable-bots.test.ts` (requests of plain conversations
+   unchanged; a bot conversation's commit, persona, section and tool; with the
+   real adapter, OptChat on in the creating commit, zoom and date beside
+   `message_bot`, a fresh second turn and every read),
+   `server/live-sessions.test.ts`, `cli/main.test.ts` and `cli/bots.test.ts`
+   (a fake gateway and a scripted terminal).
+   **After review (2026-10-06):** instructions became SOUL.md plus a first
+   conversation (SPEC.md, "Bots write their own SOUL.md in a first
+   conversation"). Every bot has a home folder with its SOUL.md, rendered as
+   the last prompt section (`soul`) on every request through a resolver the
+   host provides; without it the section is the first conversation, and a bot
+   created without a soul gets a kickoff turn so it speaks first. `soul` on
+   create, `GET`/`PUT /__hui/bots/:id/soul`, `BotView.soul` (cached per chat
+   state), the `BotSouls` port, delete removing SOUL.md, a one-time migration
+   of existing instructions, and `hui bot add --soul-file` / `hui bot soul`.
+   The bot saves SOUL.md with a bot-only `write_soul` tool (no file tools
+   needed), and a bot without its own model starts on Settings' primary model,
+   as new sessions do, instead of PI's catalog default. Then (owner's
+   answers): a bot created without a name is *New Bot* and names itself in its
+   first conversation with a bot-only `set_profile` (a derived handle follows
+   the name), and delete works on active bots too and removes the bot's whole
+   folder and its OptChat memory (the raw Durable log stays: pi-durable cannot
+   delete conversations), `hui bot delete` asking first or taking `--yes`.
+   Proof: `server/bots.test.ts`, `server/bot-service.test.ts` (kickoff,
+   soul routes, cache, migration, delete), `server/runtimes/durable-bots.test.ts`
+   (the section in real requests, the first conversation's text, truncation, a
+   host without a resolver), `server/bot-routes.test.ts` (a real gateway: the
+   first turn starts by itself, the bot writes SOUL.md with its write tool and
+   the next request carries it, the routes and guards), `cli/*.test.ts`.
+3. **Bots tab** (UI): the Sessions | Bots split, bot chat, routines and memory
+   views, and the Browser-tool E2E that drives these routes.
+4. Voice through VoiceStudio. Not started.
 
 ### HUI-19 — Agent widgets
 

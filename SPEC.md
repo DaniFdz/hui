@@ -1171,7 +1171,99 @@ leaves worker records unchanged.
   browser, New worktree and branch checkouts, and multi-account quota rotation
   (the default account is used). Usage totals skip remote transcripts.
 
+## Bots
+
+A **bot** is a named, persistent agent: a role, a persona it writes itself
+(SOUL.md), its own model, a working directory and **one chat that never ends**,
+whose memory is OptChat (HUI-18). Sessions keep everything they have (worktrees, rewind,
+`/compact`); bots are for assistants the operator returns to every day. The
+sidebar splits into **Sessions | Bots**; the Bots tab is the UI follow-up, and
+the `hui bot` CLI can do everything it can, through the same routes.
+
+- **A chat is a session.** A bot's chat is an ordinary Durable session on this
+  gateway, created through New Session's path, so the chat view, streaming,
+  steering, follow-ups, questions and model switching are the session's own.
+  Its record names the bot; the bot registry (`bots.json`) holds the rest.
+  Remote workers do not run bots.
+- **Before the first word.** OptChat is switched on, and the conversation
+  marked as the bot's, in the commit that creates it.
+- **A soul, not instructions.** A bot's persona is the SOUL.md in its home
+  folder, read on every request. A new bot speaks first: HUI starts its first
+  turn, in which it asks the operator what they expect, a question or two at a
+  time (their real request always comes first), and then writes SOUL.md itself
+  with its `write_soul` tool, which only bots' chats have (no file tools
+  needed). It changes SOUL.md when the operator asks, and says so; the operator
+  can also edit it in the Soul tab or with `hui bot soul`. A bot without a
+  model of its own runs on Settings' primary model, like a new session.
+- **Named by talking.** A bot created without a name is *New Bot*; its first
+  conversation asks what to call it, and it renames itself with a bot-only
+  `set_profile` tool (only in turns the operator started). A handle derived
+  from the old name follows the new one; a chosen handle stays.
+- **Forever, until deleted.** Clearing, compacting, rewinding or deleting a bot's chat is
+  refused; archiving the bot deletes nothing, disables its routines and stops a
+  running turn, and restoring it brings it back with its routines still off.
+- **Messages.** A message to a bot is a prompt when it is idle and a follow-up
+  when it is busy; a caller may wait for the reply of the turn that answers it,
+  and learns at once when that turn asks a question. Every screen and terminal
+  on a bot's chat sees a message another one sent (a routine, a bot, the Bots
+  tab) before the reply to it.
+- **Routines** are Automation tasks aimed at a bot's chat, marked
+  `[routine: <name>]`, queued behind a busy bot instead of skipped.
+- **Bots talk to bots** with a `message_bot` tool only bots' chats have,
+  beside a byte-stable list of the other bots in their system prompt. A message
+  arrives as `[from @handle] …`; chains stop after three hops and each bot sends
+  at most 30 bot messages an hour.
+- **Memory** is OptChat's ([docs/optchat.md](docs/optchat.md)): every message
+  kept word for word and condensed into a summary tree a fresh turn reads, so
+  the chat is never compacted. Bots reach it only through one interface, so its
+  engine stays separate; `hui bot memory` and the memory routes show its
+  status, its view, any line zoomed down to a message, and a browse page.
+
+The contract is [docs/api.md#bots](docs/api.md#bots).
+
 ## Decisions
+
+### Bots write their own SOUL.md in a first conversation (2026-10-06)
+
+Reviewing the Bots stack, the owner asked for bots to have a SOUL.md "like
+OpenClaw", and for the first conversation to be proactive: the bot asks what he
+expects from it, instead of an Instructions field. OpenClaw's `SOUL.md` and
+`BOOTSTRAP.md` are the model. A bot's persona is its SOUL.md, in a home folder
+HUI keeps for every bot (never a directory the operator chose), rendered as the
+last prompt section on every request and bounded at 20,000 characters. Without
+it, that section is the first conversation: short and conversational, never a
+questionnaire, and a ritual rather than a gate, since the operator's request
+always comes first. The bot writes the file itself with a `write_soul` tool of
+its own (bots may have no file tools), mentions any change it makes, and the
+operator can edit or clear it (clearing
+brings the first conversation back). Right after a create without a soul HUI
+starts the bot's first turn with a kickoff message that clients show as a note,
+so the bot's opener is waiting when the operator opens the chat. Name and look
+stay in the dialog, so the bot never asks for them. The `instructions` field
+and Durable instructions are gone; the gateway turns existing instructions into
+SOUL.md once.
+
+Later that day the owner chose Grok-style creation, with no New bot dialog: a
+bot created without a name is *New Bot*, asks what to call it in its first
+conversation and renames itself with `set_profile` (the no-dialog flow and a
+bot Settings tab follow on top of the calls branch). He also asked that
+deleting a bot delete its folder ("so SOUL, MEMORY, configs...") and work from
+the ⋯ menu on active bots too: delete now stops its turn, clears what HUI owns
+of its conversation (the bot document and OptChat, whose files go) and removes
+its routines, its chat's session record and its whole home folder, never a
+workspace the operator chose. pi-durable cannot delete a conversation, so the
+raw log stays in the store, unread.
+
+### Bots are named chats, not an agent selector (2026-10-05)
+
+The owner approved GrokBot/Hermes-style bots on 2026-10-05: a **Sessions | Bots**
+sidebar split, bots as named Durable conversations with OptChat memory, `hui bot`
+CLI parity with the Bots tab, routines through Automation and voice through
+VoiceStudio later. This satisfies the rule against new Agents or Approvals
+surfaces without a product decision: a bot is a chat with a name and a persona,
+not an Agents page or a global agent identity, and it adds no
+approval layer. Bots run with the same Full Access as every session, on this
+gateway only (remote workers are a later follow-up).
 
 ### New sessions run on Pi Durable
 
@@ -1405,7 +1497,8 @@ there is no PNG export.
 - A global agent identity/selector surface and approval queues. HUI runs the
   installed PI configuration in Full Access, subject only to HUI-owned resource
   enablement; session-born subagents share that runtime configuration and do not
-  add an approval interception layer.
+  add an approval interception layer. Bots (above) are named chats under that
+  same configuration, not an agent selector.
 - Attaching to tmux panes, accounts and MCP plumbing.
 - Restoring Git worktrees, or bulk-removing or bulk-forcing worktrees. See
   Worktrees for the confirmed per-row removal HUI does own.

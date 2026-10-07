@@ -180,6 +180,177 @@ provider quota windows and reset times. Unsupported quotas are labeled explicitl
 Reopen existing sessions after changing connections; new sessions use the updated
 configuration. HUI-managed connections require the default PI SDK backend.
 
+## Bots
+
+A **bot** is a named, persistent agent: a role, a persona it writes with you
+(its SOUL.md), its own model, a working directory, and **one chat that never
+ends**.
+Sessions stay what they were (coding work with worktrees, rewind and
+`/compact`); a bot is for the assistant you come back to every day. Its chat is
+an ordinary Pi Durable session on this gateway, so the chat view, streaming,
+steering, follow-ups, questions and model switching work as in any session.
+
+**Memory.** A bot's chat carries [OptChat](optchat.md) memory: every message is
+kept word for word and a cheap model condenses the chat into a tree of one-line
+summaries, so each turn starts fresh from a fixed-size view of the whole history
+and the bot opens a line (`zoom`) when it needs the detail. The chat is never
+compacted or cleared; when a turn has to wait for the newest messages to be
+summarized, `hui bot chat` says "Summarizing memory…".
+
+### Creating and editing
+
+```sh
+hui bot add                      # "New Bot", which asks what to call it
+hui bot add --name Ada --title Researcher --model openai/gpt-5.6
+hui bot edit ada --thinking high --emoji 🦊
+hui bot show ada
+```
+
+The handle (`@ada`) comes from the name: lowercase letters, digits and dashes,
+with `-2`, `-3`… when another bot has it. Renaming moves a handle that came from
+the old name to the new one (`new-bot` becomes `scout`); a handle you chose
+stays. A bot added without a name is "New Bot" until it asks you what to call
+it. Every bot
+gets a private home folder in HUI's configuration directory, where its SOUL.md
+lives; without `--cwd` that folder is also its working directory. Without
+`--model` a bot runs on Settings' primary model, as a new session does (PI's
+default only while none is set). A model change goes through the chat like the
+model picker, and a new working directory
+is accepted only while the bot is idle (its chat starts again there; should a
+routine start a turn meanwhile, the edit is refused halfway: repeat it once the
+bot is idle).
+`--memory-model` picks the model that writes the memory's summaries. An empty
+value clears a choice: `hui bot edit ada --model "" --thinking ""` puts the chat
+back on the model and thinking level a new chat gets, and `--memory-model ""`
+hands the summaries back to the chat's own model.
+
+A bot's chat refuses what would end or fork it: `/clear`, `/compact`, rewind
+and deleting the session all answer with an explanation instead.
+
+### Soul and the first conversation
+
+A bot's persona is its **SOUL.md**: who it is, what it looks after, how it works
+and sounds, when it reaches out to you and its boundaries. You don't fill in a
+form for it. A new bot speaks first: as soon as it is created, HUI starts its
+first turn, and its opening message is waiting when you open its chat (the chat
+shows a small note, "Ada was created", where that turn began). It asks what you
+expect from it, one or two questions at a time (a bot still called "New Bot"
+first asks what to call it, and renames itself). Once it knows enough, usually
+after a few answers, it writes SOUL.md itself (with a tool of its own, so it
+needs no file access): only what you told it or agreed to, since it asks rather
+than guesses. Then it says so, sums it up and tells you how to change it. If
+your first message asks for real work, it does the work first. A bot you named
+in the New bot dialog never asks about its name or look. Messages from routines
+and other bots don't count as you.
+
+From then on every turn reads SOUL.md, so a change applies from the next
+request. To change it, tell the bot ("be more formal", "don't message me before
+nine"): it edits SOUL.md and says so. Or edit it yourself in the bot's **Soul**
+tab, or from a terminal:
+
+```sh
+hui bot soul ada                    # print SOUL.md
+hui bot soul ada --file soul.md     # replace it (- reads stdin)
+hui bot add --name Ada --soul-file soul.md   # start with one: no first conversation
+```
+
+An empty file removes SOUL.md, and the bot asks what you expect again at its
+next turn. SOUL.md holds up to 20,000 characters; the chat reads only that
+much of a longer file and the bot is told to shorten it. Bots created before
+SOUL.md had their instructions turned into it once, the first time the gateway
+started with this version; a bot that had none starts its first conversation
+at its next turn.
+
+### Talking to a bot
+
+`hui bot chat ada` streams the bot's replies as plain text, so it works over
+SSH. Typed lines are prompts while the bot is idle and steer the turn while it
+works; questions the bot asks are answered inline (a number, `y`/`n`, text or
+`/cancel`). A secret it asks for is the exception: `hui bot chat` names it, but
+you give it in the **Secret** card of the bot's chat in HUI, so it never shows in
+the terminal (`/cancel` still refuses it). What the bot gets from elsewhere
+appears as a `> ` line before its
+reply: a routine (`> [routine: Standup] …`), another bot (`> [from @bob] …`), a
+message typed in the Bots tab or sent with `hui bot send`, so the terminal
+shows the same conversation as the Bots tab. The first Ctrl+C stops a running
+turn, the next one leaves.
+
+`hui bot send ada "summarize today's PRs"` delivers one message: a prompt when
+the bot is idle, a follow-up after its current turn when it is busy. `-` reads
+the message from stdin. With `--wait` it prints the reply of the turn that
+answers it and exits 0, 1 if that turn fails or `--timeout` (default 300
+seconds) passes first (the bot keeps working), and 2 when the bot asks a
+question, which you then answer in `hui bot chat` (a secret in its Secret card).
+
+### Routines
+
+Routines are Automation tasks aimed at a bot's chat; they appear in Automations
+too.
+
+```sh
+hui bot routine add ada --name Standup --prompt "Summarize yesterday's work" --cron "0 9 * * 1-5"
+hui bot routine add ada --name Inbox --prompt "Triage new issues" --every 2h
+hui bot routine run ada Standup
+hui bot routine list ada
+```
+
+A routine's message reaches the bot as `[routine: <name>] <prompt>`. A busy bot
+takes it as a follow-up instead of skipping it, and the run completes when the
+turn answering it ends. If that turn asks you something, the run waits for
+your answer in the chat until the routine's timeout (15 minutes unless the task
+says otherwise) stops the turn. `--every` takes `30s`, `5m`, `2h` or `1d`; Automation
+refuses intervals under a minute. `--cron` uses this machine's time zone unless
+`--timezone` names another.
+
+### Bots talking to bots
+
+Every bot's chat has a `message_bot` tool and a short list of the other bots.
+A message arrives in the other bot's chat as `[from @ada] …`, and that bot
+answers in its own chat; nothing comes back to the sender by itself. To stop
+loops, an answer to a bot message is marked `[from @bob · hop 2]` and HUI
+refuses to go beyond three hops; a bot can also send at most 30 bot messages an
+hour. Archived bots can neither send nor receive them.
+
+### Memory
+
+```sh
+hui bot memory ada                 # status, then the view the next turn starts from
+hui bot memory ada --zoom 0+8      # open a view line into the two lines under it
+hui bot memory ada --zoom 3+1      # n = 1: message 3, word for word
+hui bot memory ada --html ada.html # the whole memory as one page
+```
+
+The status line counts the messages, the summaries built and still pending, the
+view's size and lines, and what the compactor spent since the gateway opened the
+memory (calls, tokens, cost). Every view line is `id+n|text`: `n` messages
+from `id`, in one summary; `--zoom id+n` opens it, down to a single message
+with `n` = 1. The page lists the view, every message and each level of the
+tree; a browser opens it from a link on HUI's own pages, such as the Bots tab
+(another site cannot load or frame it).
+
+### Archiving and deleting
+
+`hui bot remove ada` archives the bot: its chat transcript and memory are kept,
+a running turn stops, messages still queued for it are withdrawn and its
+routines are disabled. `hui bot list --archived`
+shows archived bots and `hui bot restore ada` brings one back; its routines stay
+disabled until you turn them on again in Automations.
+
+`hui bot delete ada` deletes a bot for good, active or archived, after asking
+(`--yes` skips the question, and is needed where it cannot ask): its turn
+stops, its chat leaves HUI, and its routines, its memory and its folder go,
+SOUL.md and every file in it included. A folder you chose as its workspace is
+never touched. Pi Durable cannot delete a conversation yet, so the chat's raw
+log stays in its store, where nothing reads it back. Archiving and restoring
+keep everything, SOUL.md included.
+
+### Privacy
+
+Bots live in HUI's own files on this machine: `bots.json` (owner-only) in HUI's
+configuration directory, each bot's SOUL.md in its home folder beside it
+(owner-only), their chats in the Pi Durable store and their memory beside it. Nothing about a bot leaves the machine except the model requests its
+chat and its memory's compactor make to the providers you configured.
+
 ## Interactive widgets in the chat
 
 Agents and bots can show a small interactive HTML or SVG widget right in the

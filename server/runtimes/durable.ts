@@ -239,14 +239,16 @@ export class DurableSession implements RuntimeSession, ExtensionSession {
   }
 
   /** Offers the conversation its extensions and the tools they keep active, OptChat's zoom and date when the
-   * conversation has OptChat, and drops the browser when Settings turns it off. Applies per conversation, at start and
-   * on every change. */
+   * conversation has OptChat, `message_bot` when it is a bot's chat, and drops the browser when Settings turns it off.
+   * Applies per conversation, at start and on every change. */
   async applyTools(): Promise<void> {
     const browserEnabled = (await this.#host.settings()).browser.enabled !== false;
     const inactive = new Map([...(browserEnabled ? [] : this.#host.toolsNamed(["browser"])), ...(this.#extensions?.inactiveTools() ?? [])].map((tool) => [tool.name, tool]));
-    // Last, so OptChat's zoom and date win over same-named extension tools where OptChat is on, and only there.
+    // After the session's extensions, so OptChat's zoom and date win over same-named extension tools where OptChat is
+    // on, and only there. Each is selected per conversation; every other conversation's selection stays as it was.
     const optchat = await this.#host.optchat.toolsFor(this.#conversation.id);
-    const added = [...(this.#extensions ? [this.#extensions.extension] : []), ...(optchat ? [optchat] : [])];
+    const botTools = await this.#host.botToolsFor(this.#conversation.id);
+    const added = [...(this.#extensions ? [this.#extensions.extension] : []), ...(optchat ? [optchat] : []), ...(botTools ? [botTools] : [])];
     await this.#conversation.configure({
       // A view with no HUI session (a probe) leaves the selection of the session that owns the conversation alone.
       ...(this.#huiSessionId === undefined ? {} : { extensions: added.length ? { add: added } : null }),

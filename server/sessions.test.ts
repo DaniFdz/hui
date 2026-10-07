@@ -97,6 +97,18 @@ test("a subagent record round-trips lineage and lifecycle without a registry mig
   assert.equal(child?.subagent?.summary, "All clear");
 });
 
+test("a bot's chat record keeps its bot without a registry migration; a blank one is an ordinary session", async () => {
+  await writeRegistry([
+    record("chat", { tool: "durable", bot: "bot-1", piSessionFile: "durable:4" }),
+    record("plain", { bot: "  " } as Partial<SessionRecord>),
+  ]);
+  const [chat, plain] = await readRegistry();
+  assert.equal(chat?.bot, "bot-1");
+  assert.equal(chat?.piSessionFile, "durable:4");
+  assert.equal(plain && "bot" in plain, false);
+  assert.equal(JSON.parse(await readFile(join(configHome, "hui", "sessions.json"), "utf8")).version, 2, "same registry version");
+});
+
 test("version one registries migrate their session groups without losing rows", async () => {
   const registryFile = join(configHome, "hui", "sessions.json");
   await writeFile(registryFile, JSON.stringify({

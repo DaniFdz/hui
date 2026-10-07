@@ -120,6 +120,35 @@ hui workers edit devbox --extra-path ~/.pi/agent/mcp.json
 hui workers remove devbox
 ```
 
+Bots are named agents with one forever chat each, whose memory never needs
+clearing. A new bot starts by asking what you expect from it, then writes its
+persona (SOUL.md) itself; they can run routines and message one another. Everything the Bots tab
+does works from a terminal too, through the running gateway (`hui bots` is the
+same command). `<bot>` is an id, a handle or an exact name:
+
+```sh
+hui bot list [--archived] [--json]
+hui bot show <bot> [--json]
+hui bot add [--name <name>] [--title <text>] [--soul-file <path|->] [--cwd <dir>]
+            [--model <provider/model>] [--thinking <level>] [--memory-model <provider/model>] [--emoji <e>] [--json]
+hui bot edit <bot> [same flags as add but --soul-file] [--json]  # --model "" / --thinking "": back to the defaults
+hui bot soul <bot> [--file <path|->] [--json]   # print SOUL.md, or replace it (empty: ask again)
+hui bot remove <bot> [--json]          # archives: its chat and memory are kept
+hui bot restore <bot> [--json]
+hui bot delete <bot> [--yes] [--json]  # for good: its chat leaves HUI; routines, memory and folder go
+hui bot chat <bot>                     # streamed plain text; works over SSH
+hui bot send <bot> <message|-> [--wait] [--timeout <seconds>] [--json]
+hui bot stop <bot> [--json]
+hui bot memory <bot> [--zoom <id+n>] [--html <file>] [--json]
+hui bot routine list <bot> [--json]
+hui bot routine add <bot> --name <name> --prompt <text> (--at <ISO time> | --every <duration> | --cron <expr> [--timezone <tz>]) [--json]
+hui bot routine run <bot> <routine>
+hui bot routine remove <bot> <routine> [--json]
+```
+
+See [Bots](docs/guide.md#bots) for their soul, what they remember, how routines
+and bot-to-bot messages work, and the exit codes of `send --wait`.
+
 On a headless host, use `hui ui --no-open` to print the URL without opening a
 browser. `hui browser` is an alias for `hui ui`. The development launcher is
 separate from an installed production gateway.
@@ -200,6 +229,7 @@ Please report security issues privately as described in [SECURITY.md](SECURITY.m
 | Use the desktop app and Spotlight         | [Desktop app](docs/guide.md#desktop-app-and-spotlight-macos)                                    |
 | Connect model providers                   | [Model providers](docs/guide.md#model-providers)                                                |
 | Reach the gateway through a proxy         | [Remote access](docs/guide.md#remote-access-through-a-reverse-proxy)                            |
+| Run bots, their routines and memory       | [Bots](docs/guide.md#bots)                                                                      |
 | Understand the product and its contracts  | [SPEC.md](SPEC.md) · [Browser/server API](docs/api.md)                                          |
 | Contribute or cut a release               | [CONTRIBUTING.md](CONTRIBUTING.md)                                                              |
 
