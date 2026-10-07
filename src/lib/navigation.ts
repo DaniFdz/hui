@@ -1,3 +1,7 @@
+/**
+ * HUI's client-side routes: parsing a browser path into a navigation target, building canonical paths and the
+ * Settings return rules. Unknown or malformed paths resolve to Home rather than an error page.
+ */
 import { HUI_PAGES, type HuiPage } from "./pages.ts";
 
 export const ROUTABLE_SETTINGS_PAGES = [

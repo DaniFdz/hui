@@ -1,3 +1,9 @@
+/**
+ * Files an agent shows in the chat through present_media. Each one is copied out of the session workspace into
+ * HUI's presented-media store under a random id, so the chat keeps it after the original changes, and is
+ * served back as an immutable, range-capable response. The id in the URL is the capability; nothing outside
+ * that store is ever served.
+ */
 import { randomUUID } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { copyFile, mkdir, readFile, realpath, stat, writeFile } from "node:fs/promises";

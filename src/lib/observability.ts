@@ -1,3 +1,7 @@
+/**
+ * Browser client for the gateway's diagnostics: recent activity and logs, usage totals and runtime details,
+ * plus a download of the redacted diagnostics export. The gateway collects and retains the events in memory.
+ */
 import { fetchJson } from "./settings-store.ts";
 
 export type DiagnosticEvent = {

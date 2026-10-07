@@ -1,3 +1,8 @@
+/**
+ * Browser client for task suggestions recorded in a session: dismissing one and starting it as a new
+ * session, worktree or follow-up. Parsing and prompt wording live in `shared/`; the gateway creates the
+ * sessions.
+ */
 import type { TaskSuggestion, TaskSuggestionStartMode } from "../../shared/task-suggestions.ts";
 import type { SessionView } from "./sessions-store.ts";
 import { fetchJson } from "./settings-store.ts";

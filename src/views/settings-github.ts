@@ -1,3 +1,7 @@
+/**
+ * The GitHub section of Settings → Integrations. Status and sign-in go through the gateway's `gh` CLI; this view
+ * never sees a token. While `gh` waits for the device approval, the section keeps polling for the result.
+ */
 import { LitElement, html, nothing } from "lit";
 import { GITHUB_CLI_URL, type GitHubConnection } from "../../shared/github.ts";
 import { writeClipboardText } from "../lib/clipboard.ts";
@@ -6,8 +10,6 @@ import { icons } from "../lib/icons.ts";
 
 const POLL_MS = 2_000;
 
-/** The GitHub section of Settings → Integrations. Status and sign-in go through
- * the gateway's `gh` CLI; this view never sees a token. */
 export class HuiGitHubSettings extends LitElement {
   #connection?: GitHubConnection;
   #loading = true;

@@ -1,3 +1,9 @@
+/**
+ * HUI's scheduled prompts: the task and run registry in one JSON file, the at/every/cron schedule rules, and
+ * the in-process timer that fires due tasks. Sending a prompt to its session is the injected executor's job;
+ * this module only decides when a task runs and records how each run ended. Runs a previous gateway left
+ * queued or running are marked failed on start.
+ */
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";

@@ -1,3 +1,6 @@
+/** Detached worker that performs a browser-requested update. Only the gateway launches it, with no shell and no
+ * browser-supplied executable, URL or arguments; it outlives the server it replaces and records the outcome in the
+ * update receipt, passing only HUI's own lifecycle messages back to the browser. */
 import { mkdir } from "node:fs/promises";
 import { updateRelease } from "./update.ts";
 import { updateJobFile } from "./update-job.ts";
@@ -5,8 +8,6 @@ import { updateDirectory, type Installation } from "./installation.ts";
 import { atomicJson, withLifecycleLock } from "./state.ts";
 import type { UpdateJob } from "../src/lib/update-types.ts";
 
-// Only the gateway launches this detached worker. No shell or browser-supplied
-// executable/URL/arguments; it outlives the server that it needs to replace.
 const installation = JSON.parse(process.argv[2]!) as Installation;
 const job: UpdateJob = { id: process.argv[3]!, version: process.argv[4]!, pid: process.pid, status: "running", message: "Downloading and verifying the release…" };
 let claimed = false;

@@ -11,6 +11,7 @@ import type { DurableSession } from "./durable.ts";
 import type { AgentToolInvocation } from "../agent-tools-bridge.ts";
 import type { RuntimeEvent, TranscriptEntry } from "./types.ts";
 import { SecretFiles, SecretRequests } from "../secret-requests.ts";
+import { completeLines } from "../test-support/json-lines.ts";
 
 // HUI's configuration directory (provider selections, credentials, the default
 // Durable store) is resolved at import time; never read the operator's own.
@@ -132,7 +133,7 @@ function userEntryId(session: DurableSession, prefix: string): string {
 
 type ProviderRequest = { system?: unknown; messages?: unknown };
 async function providerRequests(log: string): Promise<ProviderRequest[]> {
-  return (await readFile(log, "utf8")).trim().split("\n").map((line) => JSON.parse(line) as ProviderRequest);
+  return completeLines(await readFile(log, "utf8")).map((line) => JSON.parse(line) as ProviderRequest);
 }
 const summarizing = (request: ProviderRequest) => JSON.stringify(request.system ?? "").includes("context summarization assistant");
 /** The messages of the newest model request that was not a summary. */
@@ -210,7 +211,7 @@ test("Durable runs a real tool turn and reopens the conversation from its store"
   assert.deepEqual(shape, ["user", "tool", "assistant"]);
   const read = live.find((entry) => entry.kind === "tool");
   assert(read?.kind === "tool" && read.name === "read" && read.failed === false, JSON.stringify(read));
-  const requests = (await readFile(f.log, "utf8")).trim().split("\n").map((line) => JSON.parse(line) as { system?: unknown });
+  const requests = completeLines(await readFile(f.log, "utf8")).map((line) => JSON.parse(line) as { system?: unknown });
   const system = JSON.stringify(requests[0]!.system);
   assert.match(system, /You are the coding assistant in HUI/u, "HUI's default preamble");
   assert.match(system, /hui_tools/u, "HUI's active-tool section");
@@ -346,6 +347,41 @@ test("rewinding forks the conversation and keeps the abandoned branch", { timeou
   session.dispose();
   const kept = await startDurable({ cwd: f.cwd, sessionFile: original }, host);
   assert(answered("Tool complete")(kept.transcript()), "the abandoned branch is still stored");
+});
+
+test("a fork copies the history up to a reply into a new conversation and leaves the source untouched", { timeout: 60_000 }, async (t) => {
+  const f = await fixture(t);
+  const host = f.host();
+  const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-fork-source" }, host);
+  await turns(session, ["FORK_ONE first turn", "FORK_TWO second turn"]);
+  const messages = (entries: TranscriptEntry[]) => entries.flatMap((entry) => entry.kind === "message" ? [`${entry.role}:${entry.text}`] : []);
+  const before = session.transcript();
+  const firstAnswer = before.find((entry) => entry.kind === "message" && entry.role === "assistant");
+  assert(firstAnswer?.kind === "message" && firstAnswer.entryId, "replies carry their Durable entry ID");
+
+  const reference = await session.fork(firstAnswer.entryId);
+  assert(durableConversationId(reference), reference);
+  assert.notEqual(reference, session.sessionFile, "the copy is a conversation of its own");
+  assert.deepEqual(session.transcript(), before, "the source keeps its whole history");
+  const copy = await startDurable({ cwd: f.cwd, sessionFile: reference, huiSessionId: "durable-fork-copy" }, host);
+  assert.deepEqual(messages(copy.transcript()), messages(before).slice(0, 2), "the copy ends at the reply it was forked from");
+  await turns(copy, ["FORK_THREE in the copy"]);
+  const context = await lastTurnRequest(f.log);
+  assert.match(context, /FORK_ONE/u, "the model reads the copied history");
+  assert.doesNotMatch(context, /FORK_TWO/u, "nothing after the fork point reaches the copy");
+  assert.deepEqual(messages(session.transcript()), messages(before), "the copy's turn stays out of the source");
+
+  const latest = await startDurable({ cwd: f.cwd, sessionFile: await session.fork(), huiSessionId: "durable-fork-latest" }, host);
+  assert.deepEqual(messages(latest.transcript()), messages(before), "without an entry the fork copies everything");
+  await assert.rejects(session.fork("missing-entry"), /no longer available/u);
+
+  // A fork into a worktree moves the copy's agent there; the source keeps its directory.
+  const elsewhere = join(f.cwd, "..", "worktree");
+  await mkdir(elsewhere);
+  const moved = durableConversationId(await session.fork(firstAnswer.entryId, { cwd: elsewhere }))!;
+  const harness = await host.open();
+  assert.equal((await (await harness.conversation(moved, durableContext))!.agent(durableContext)).cwd, elsewhere);
+  assert.equal((await (await harness.conversation(durableConversationId(session.sessionFile)!, durableContext))!.agent(durableContext)).cwd, f.cwd);
 });
 
 test("Durable compaction keeps the whole history and marks where it summarized", { timeout: 60_000 }, async (t) => {
@@ -781,7 +817,7 @@ export default function (pi) {
 
 async function extensionLog(log: string): Promise<Record<string, unknown>[]> {
   const text = await readFile(log, "utf8").catch(() => "");
-  return text.trim().split("\n").filter(Boolean).map((line) => JSON.parse(line) as Record<string, unknown>);
+  return completeLines(text).map((line) => JSON.parse(line) as Record<string, unknown>);
 }
 
 const logged = async (log: string, event: string) => (await extensionLog(log)).filter((entry) => entry["event"] === event);

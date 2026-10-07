@@ -1,3 +1,6 @@
+/** Electron window shell around the gateway's web UI. It starts or reuses the gateway through the installed CLI, shows
+ * one sandboxed window confined to that origin and hands every other link to the system browser. Closing or quitting
+ * the window never stops the gateway or its runs. */
 const { app, BrowserWindow, dialog, Menu, nativeTheme, shell } = require('electron');
 const { execFile } = require('node:child_process');
 const { readFileSync } = require('node:fs');

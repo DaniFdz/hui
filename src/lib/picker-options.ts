@@ -1,3 +1,4 @@
+/** Search filtering shared by the settings pickers, including the optional typed custom row. */
 import type { PickerOption } from "../views/settings-picker.ts";
 
 /**

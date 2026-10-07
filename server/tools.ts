@@ -1,3 +1,8 @@
+/**
+ * The Tools page catalog: HUI's shipped tools and default prompt, the PI backend and SDK version, and the
+ * extension and package sources named in PI's settings. It reads settings.json as data only: no runtime
+ * creation, model requests, package resolution or extension code.
+ */
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { resolvePiAgentDir } from "./pi-paths.ts";
@@ -7,7 +12,6 @@ import { HUI_DEFAULT_PROMPT, HUI_PROMPT_REVISION } from "./runtimes/hui-prompt.t
 import { piBackend, PI_SDK_VERSION } from "./runtimes/pi-backend.ts";
 import type { ToolsCatalog } from "../src/lib/tools-types.ts";
 
-/** No runtime creation, model requests, package resolution or extension code. */
 export async function readToolsCatalog(agentDir = resolvePiAgentDir()): Promise<ToolsCatalog> {
   const sources: string[] = [];
   const diagnostics: string[] = [];

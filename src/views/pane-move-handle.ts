@@ -1,3 +1,7 @@
+/**
+ * The drag grip shared by chat, terminal and browser pane headers. It is markup only; the session multiplexer
+ * handles dragging and arrow-key moves.
+ */
 import { html, nothing } from "lit";
 
 export function renderPaneMoveHandle(enabled: boolean | undefined) {

@@ -1,3 +1,8 @@
+/**
+ * Pure model for the conversation position rail: which messages get a marker, which one is current at a scroll
+ * position, and how keys move between markers. It reads projected rows and measured positions only; the view does
+ * the measuring and scrolling.
+ */
 import type { ChatProjectionRow } from "./projection.ts";
 
 export type ConversationMarker = {

@@ -14,6 +14,7 @@ import {
   parseCron,
 } from "./automation.ts";
 import type { AutomationTask } from "../src/lib/automation-types.ts";
+import { waitFor } from "./test-support/wait-for.ts";
 
 const future = "2030-01-02T12:00:00.000Z";
 
@@ -21,15 +22,18 @@ async function temporaryFile(): Promise<string> {
   return join(await mkdtemp(join(tmpdir(), "hui-automation-")), "automation.json");
 }
 
-async function waitFor(
-  check: () => Promise<boolean>,
-  attempts = 50,
-): Promise<void> {
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
-    if (await check()) return;
-    await new Promise<void>((resolve) => setImmediate(resolve));
-  }
-  assert.fail("observable automation state did not arrive");
+/** Waits until the newest run has ended with `status` and the service holds it no longer: its record can be on disk
+ * a moment before the run lets go. A timeout shows the scheduler and the runs. */
+async function runEnds(service: AutomationService, status: string): Promise<void> {
+  await waitFor(`the run to end ${status}`, async () => {
+    const { scheduler, runs } = await service.snapshot();
+    return runs[0]?.status === status && scheduler.activeRuns === 0;
+  }, {
+    state: async () => {
+      const { scheduler, runs } = await service.snapshot();
+      return { scheduler, runs };
+    },
+  });
 }
 
 test("validates cron fields and finds the next zoned occurrence", () => {
@@ -93,7 +97,7 @@ test("records manual run lifecycle and summary", async () => {
   await executorEntered;
   assert.equal((await service.snapshot()).runs[0]?.status, "running");
   release();
-  await waitFor(async () => (await service.snapshot()).runs[0]?.status === "completed");
+  await runEnds(service, "completed");
   const completed = (await service.snapshot()).runs[0];
   assert.equal(completed?.summary, "Done");
   assert.ok(completed?.finishedAt);
@@ -120,7 +124,7 @@ test("cancels only an active run and records cancellation", async () => {
   const run = await service.run(task.id);
   await executorEntered;
   await service.cancel(run.id);
-  await waitFor(async () => (await service.snapshot()).runs[0]?.status === "cancelled");
+  await runEnds(service, "cancelled");
   await assert.rejects(() => service.cancel(run.id));
   service.dispose();
 });
@@ -134,7 +138,10 @@ test("corrupt automation data is reported and never replaced", async () => {
   service.dispose();
 });
 
-/** A clock the test moves: timers fire only when `advance` passes them. */
+/**
+ * A clock the test moves: timers fire only when `advance` passes them. The scheduler never waits on a real timer; only
+ * the tests' waits for its writes to land do, through waitFor and its limit in time rather than attempts.
+ */
 function manualClock(start: number) {
   let now = start;
   const timers = new Set<{ at: number; callback: () => void }>();
@@ -160,19 +167,6 @@ function manualClock(start: number) {
       }
     },
   };
-}
-
-/**
- * Resolves once `check` holds, as the service's writes land. The scheduler itself never waits on a real timer (it
- * runs on `manualClock`); only this wait has a real limit, in time rather than attempts, so a busy machine where the
- * writes land slowly can't fail it early.
- */
-async function eventually(check: () => Promise<boolean>, label: string): Promise<void> {
-  const deadline = Date.now() + 10_000;
-  while (!(await check())) {
-    if (Date.now() > deadline) assert.fail(label);
-    await new Promise<void>((resolve) => setTimeout(resolve, 5));
-  }
 }
 
 const T0 = Date.parse("2030-01-01T09:00:00.000Z");
@@ -240,21 +234,21 @@ test("a temporary task ends at its until: HUI deletes it then, paused or not, an
   const until = new Date(T0 + 2.5 * MINUTE).toISOString();
   await service.create({ name: "Watch", sessionId: "s-1", prompt: "Check.", schedule: { kind: "every", everyMs: MINUTE }, until });
   await service.create({ name: "Paused", sessionId: "s-1", prompt: "Later.", schedule: { kind: "every", everyMs: MINUTE }, enabled: false, until });
-  await eventually(async () => time.nextWake() === T0 + MINUTE, "the first run is planned");
+  await waitFor("the first run is planned", async () => time.nextWake() === T0 + MINUTE);
   time.advanceTo(T0 + MINUTE);
-  await eventually(async () => (await service.snapshot()).runs.filter((run) => run.status === "completed").length === 1, "first run");
-  await eventually(async () => time.nextWake() === T0 + 2 * MINUTE, "the second run is planned");
+  await waitFor("first run", async () => (await service.snapshot()).runs.filter((run) => run.status === "completed").length === 1);
+  await waitFor("the second run is planned", async () => time.nextWake() === T0 + 2 * MINUTE);
   // The second run is still going when the end comes.
   hold = new Promise<void>((resolve) => { release = resolve; });
   time.advanceTo(T0 + 2 * MINUTE);
-  await eventually(async () => (await service.snapshot()).runs.some((run) => run.status === "running"), "second run going");
+  await waitFor("second run going", async () => (await service.snapshot()).runs.some((run) => run.status === "running"));
   const watching = await taskNamed(service, "Watch");
   assert.equal(watching?.nextRunAt, null, "no run is planned at or after its end");
-  await eventually(async () => time.nextWake() === Date.parse(until), "the scheduler wakes at the end");
+  await waitFor("the scheduler wakes at the end", async () => time.nextWake() === Date.parse(until));
   time.advanceTo(Date.parse(until));
-  await eventually(async () => (await service.snapshot()).tasks.length === 0, "both tasks went at their end, the paused one too");
+  await waitFor("both tasks went at their end, the paused one too", async () => (await service.snapshot()).tasks.length === 0);
   release();
-  await eventually(async () => (await service.snapshot()).runs.filter((run) => run.status === "completed").length === 2, "the run going finished on its own");
+  await waitFor("the run going finished on its own", async () => (await service.snapshot()).runs.filter((run) => run.status === "completed").length === 2);
   service.dispose();
 });
 
@@ -269,17 +263,17 @@ test("a task with runs runs that many times, then goes; a skipped run gives its 
   const service = new AutomationService(file, async () => outcomes.shift()!(), time.clock);
   await service.start();
   const task = await service.create({ name: "Twice", sessionId: "s-1", prompt: "Go.", schedule: { kind: "every", everyMs: MINUTE }, runs: 2 });
-  await eventually(async () => time.nextWake() === T0 + MINUTE, "first time planned");
+  await waitFor("first time planned", async () => time.nextWake() === T0 + MINUTE);
   time.advanceTo(T0 + MINUTE);
-  await eventually(async () => (await service.snapshot()).runs[0]?.status === "skipped", "skipped");
+  await waitFor("skipped", async () => (await service.snapshot()).runs[0]?.status === "skipped");
   assert.equal((await taskNamed(service, "Twice"))?.runsLeft, 2, "a skipped run never reached its target and gives its run back");
-  await eventually(async () => time.nextWake() === T0 + 2 * MINUTE, "next time planned");
+  await waitFor("next time planned", async () => time.nextWake() === T0 + 2 * MINUTE);
   time.advanceTo(T0 + 2 * MINUTE);
-  await eventually(async () => (await service.snapshot()).runs[0]?.status === "completed", "scheduled run");
+  await waitFor("scheduled run", async () => (await service.snapshot()).runs[0]?.status === "completed");
   assert.equal((await taskNamed(service, "Twice"))?.runsLeft, 1);
   // A run by hand counts too; it is the last, so the task goes once it ends.
   await service.run(task.id);
-  await eventually(async () => (await service.snapshot()).tasks.length === 0, "gone after its last run");
+  await waitFor("gone after its last run", async () => (await service.snapshot()).tasks.length === 0);
   const runs = (await service.snapshot()).runs;
   assert.deepEqual(runs.map((run) => [run.source, run.status]).toReversed(), [["scheduled", "skipped"], ["scheduled", "completed"], ["manual", "completed"]]);
   await assert.rejects(service.run(task.id), /Unknown automation task/u);
@@ -299,7 +293,7 @@ test("limits hold across a restart: an end that came, or a last run cut short, w
   assert.deepEqual((await second.snapshot()).tasks.map((task) => [task.name, task.runsLeft]), [["Ends", 3], ["Kept", 2], ["Last", 1]]);
   // The last run of Last starts and never finishes: HUI goes down meanwhile.
   await second.run(last.id);
-  await eventually(async () => (await second.snapshot()).runs[0]?.status === "running", "Last's run going");
+  await waitFor("Last's run going", async () => (await second.snapshot()).runs[0]?.status === "running");
   assert.equal((await taskNamed(second, "Last"))?.runsLeft, 0);
   second.dispose();
 
@@ -317,12 +311,12 @@ test("a task whose run is going is deleted only when asked to leave the run be, 
   const service = new AutomationService(file, async () => { await held; return { summary: "done" }; });
   const task = await service.create({ name: "Long", sessionId: "s-1", prompt: "Wait.", schedule: { kind: "at", at: future } });
   const run = await service.run(task.id);
-  await eventually(async () => service.activeRun(task.id) === run.id, "run active");
+  await waitFor("run active", async () => service.activeRun(task.id) === run.id);
   await assert.rejects(service.remove(task.id), AutomationConflictError);
   await service.remove(task.id, { whileRunning: true });
   assert.equal((await service.snapshot()).tasks.length, 0);
   release();
-  await eventually(async () => (await service.snapshot()).runs[0]?.status === "completed", "the run finished");
+  await waitFor("the run finished", async () => (await service.snapshot()).runs[0]?.status === "completed");
   assert.equal(service.activeRun(task.id), undefined);
   service.dispose();
 });

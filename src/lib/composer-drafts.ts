@@ -1,3 +1,8 @@
+/**
+ * Durable composer drafts in this browser's IndexedDB: one per session plus the New Session form. Storage is
+ * best effort and bounded by count, age and attachment size, writes to one key are serialised, and draft
+ * contents never leave the browser.
+ */
 import { attachmentBytes, validateAttachmentTotal } from "./attachments.ts";
 import type { Attachment } from "./sessions-store.ts";
 

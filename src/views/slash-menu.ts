@@ -1,3 +1,8 @@
+/**
+ * The composer's slash menu: HUI commands, plugin actions, skills and prompt templates, grouped by source, with
+ * local paths after them. It renders options and their ids only; the composer owns the query, the active option and
+ * loading the catalog.
+ */
 import { html, nothing } from "lit";
 import type { ComposerCommand } from "../lib/slash-commands.ts";
 import { commandReference } from "../lib/command-references.ts";

@@ -93,8 +93,9 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   custom values use the same bounded session-icon metadata contract.
   Project grouping remains a read-only projection and never becomes a drop target.
 - OpenClaw's **Assign to** is absent because PI has no multi-user ownership
-  model. **Fork conversation** is absent until PI exposes a transcript-branching
-  RPC; HUI never copies or rewrites PI's JSONL to imitate a fork.
+  model. **Fork conversation** is absent from the row menu: a Pi Durable session
+  forks from a reply in its transcript instead (below). A session still on PI
+  never forks; HUI never copies or rewrites PI's JSONL to imitate a fork.
 - In custom-group mode, custom groups are reordered by dragging a group header
   above or below another group, or with the group menu's keyboard-accessible
   **Move group up** / **Move group down** actions. The order persists in the HUI
@@ -296,7 +297,19 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   context meter's Compact now start one. Continue invokes PI's native
   prompt-free continuation primitive; only when the branch already ends with a
   completed assistant response does HUI send an explicit continuation prompt.
-  Reply and fork remain absent rather than simulated.
+  A finished reply in a Durable session offers **Fork from here**, which first
+  asks where the fork works. In a Git checkout the dialog offers **New worktree**
+  (the default: a separate checkout on a new branch from the checkout's HEAD,
+  suffix `<title>-fork` unless typed; uncommitted changes stay behind) or
+  **Same checkout** (both sessions edit the same files). Outside Git, or on a
+  remote worker, it forks into the same folder. Durable then copies the history
+  up to that reply into a new conversation, which opens at once as a new session
+  in the same group, titled `<title> (fork)`, on the source's model and
+  reasoning. The source keeps its history and any run in flight. The copy starts
+  unpinned and read, without an icon, Jira links, a Kanban stage or OptChat. A
+  failure keeps the dialog open with its reason and removes a worktree it had
+  made. A reply followed by its tool calls, a bot's chat and sessions still on
+  PI offer no fork.
 - Markdown code fences retain the reference's reveal and word-wrap controls;
   copying remains a confirmed clipboard operation with a retryable failure. All
   HUI copy actions prefer the Clipboard API and fall back to a temporary native

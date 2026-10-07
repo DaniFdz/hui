@@ -1,3 +1,9 @@
+/**
+ * Changes to PI's user configuration that HUI asks the `pi` CLI to make: installing and removing pi.dev
+ * packages, and installing a skill from a URL through a cheap-model installer agent. PI owns those files and
+ * HUI never edits them; this module validates the input, runs one mutation at a time and returns a fresh PI
+ * snapshot.
+ */
 import { spawn } from "node:child_process";
 import { piEnvironment } from "./runtimes/pi-environment.ts";
 import { piCommand } from "./runtimes/pi-command.ts";

@@ -233,8 +233,9 @@ The menu-parity follow-up replaces the flattened row actions with OpenClaw
 icon, group placement, copy link/Markdown/ID, open in tab/window/editor
 and delete. Archive/read/appearance are durable HUI metadata; archived rows are
 restorable from Sessions. `Assign to` remains excluded because PI has no owner
-model, and transcript fork remains excluded because PI exposes no fork RPC and
-its JSONL is externally owned. Desktop/mobile Browser proof is recorded in
+model, and the row menu's fork remains excluded: PI exposes no fork RPC and
+its JSONL is externally owned. Pi Durable sessions later gained a fork from a
+reply in the transcript instead (SPEC Part 1). Desktop/mobile Browser proof is recorded in
 [`e2e/session-menu-parity.browser.md`](../e2e/session-menu-parity.browser.md).
 The picker follow-up restores OpenClaw's custom-emoji entry and uses centered
 SVG reset controls for both color and icon instead of typographic crosses.

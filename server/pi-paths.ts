@@ -1,3 +1,7 @@
+/**
+ * Locates PI's agent directory from the environment: PI's canonical override first, then the aliases HUI
+ * accepted before, then ~/.pi/agent.
+ */
 import { homedir } from "node:os";
 import { join } from "node:path";
 

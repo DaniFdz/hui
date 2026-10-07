@@ -1,3 +1,8 @@
+/**
+ * Shape, defaults and normalisation of HUI's user settings. Every value passes through here on the way in and
+ * out, so a stale or hand-edited file degrades to defaults instead of reaching CSS or the gateway. Loading
+ * and saving them through the gateway is `settings-store.ts`'s job.
+ */
 import { DEFAULT_GPT_LIVE_VOICE, gptLiveVoice, type GptLiveVoice } from "../../shared/calls.ts";
 import { normalizeAppearance, DEFAULT_APPEARANCE, type Appearance } from "./appearance.ts";
 import { DEFAULT_TERMINAL_FONT, normalizeTerminalFont } from "./terminal-font.ts";

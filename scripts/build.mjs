@@ -1,3 +1,6 @@
+/** Produces the package build: compiles the server and CLI, bundles the web app, copies themes and skills, and stamps
+ * the release marker that installs and updates verify. It writes generated output only; the repository lockfile is
+ * copied to npm-shrinkwrap.json for the package, never changed. */
 import { execFileSync } from "node:child_process";
 import { cp, readFile, rm, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";

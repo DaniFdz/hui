@@ -1,3 +1,5 @@
+/** Pure decisions for the desktop shell, kept apart from the Electron process code: which URLs stay in the window,
+ * which open externally, what counts as a valid gateway address, and how the saved theme maps to Electron's. */
 const { URL } = require('node:url');
 const { isIP } = require('node:net');
 

@@ -1,3 +1,9 @@
+/**
+ * The gateway's diagnostics: an in-memory ring of recent events, redacted and bounded before they are kept,
+ * with warnings, errors and gateway lifecycle mirrored to the gateway log; and token and cost totals read from
+ * PI transcripts and the Durable store. Nothing here is persisted, so the event history starts over with each
+ * gateway process.
+ */
 import { readFile, stat } from "node:fs/promises";
 import { platform, release } from "node:os";
 

@@ -1,3 +1,7 @@
+/**
+ * Browser client for the gateway's automation scheduler. Tasks, schedules and runs live on the server; this
+ * module only crosses `/__hui/automation` and hands back the scheduler snapshot that follows each change.
+ */
 import type {
   AutomationRun,
   AutomationSnapshot,

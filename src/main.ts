@@ -1,3 +1,7 @@
+/**
+ * Browser entry point. It loads the global stylesheets and the pinned Web Awesome components, starts UI error
+ * reporting and applies the saved theme before anything paints, and only then loads the app shell.
+ */
 import "@awesome.me/webawesome/dist/styles/themes/default.css";
 import "./styles/tokens.css";
 import "./styles/app.css";

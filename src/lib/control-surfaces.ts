@@ -1,3 +1,8 @@
+/**
+ * Browser client for the gateway's read-mostly control surfaces: health, macOS power and the workspace
+ * inspection of context files, memory and worktrees. The gateway gathers all of it; this module only fetches
+ * and types the results.
+ */
 import type { PowerStatus } from "../../shared/power.ts";
 import { fetchJson } from "./settings-store.ts";
 

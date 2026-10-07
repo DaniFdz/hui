@@ -1,3 +1,6 @@
+/** The `hui` command line: argument parsing, validation and dispatch. Gateway lifecycle and updates run here under
+ * the lifecycle lock; worker and bot commands only talk to the running gateway, and the doctor, desktop, update and
+ * release logic live in their own modules. */
 import { execFileSync, spawn } from "node:child_process";
 import { isIP } from "node:net";
 import { join } from "node:path";
