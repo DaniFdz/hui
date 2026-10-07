@@ -25,5 +25,8 @@ reads, long-lived session lifecycle, and runtime adapters.
   runtimes. Never mutate real `~/.pi` or `~/.config/hui` data in a test.
 - Prove lifecycle edges: duplicate opens, busy prompts, abort/exit, reconnect,
   persistence failure, and cleanup. Wait for emitted state; do not use arbitrary sleeps.
+- State a test cannot await is polled with `waitFor` (`test-support/wait-for.ts`):
+  a wall-clock deadline, setTimeout between reads, and the awaited state in its
+  failure. Never re-poll with setImmediate or an iteration count.
 - Run the focused test file, then `npm test` and `npm run typecheck`. Changes to
   routes or runtime behavior also require Browser-tool E2E proof of the consuming flow.

@@ -20,6 +20,7 @@ import type {
 } from "./runtimes/types.ts";
 import { DEFAULT_SETTINGS } from "../src/lib/settings.ts";
 import { RuntimeOutputError, RuntimeUnreachableError } from "./runtimes/types.ts";
+import { waitFor } from "./test-support/wait-for.ts";
 
 // The registry path is read once, at import time, so the throwaway home has to
 // be in place before the module is loaded.
@@ -33,6 +34,7 @@ const { workers } = await import("./workers.ts");
 type SessionRecord = import("./sessions.ts").SessionRecord;
 type SessionStreamMessage = import("./live-sessions.ts").SessionStreamMessage;
 type SessionSnapshot = import("./live-sessions.ts").SessionSnapshot;
+type SessionStatusUpdate = import("./live-sessions.ts").SessionStatusUpdate;
 type SecretQuestion = import("./secret-requests.ts").SecretQuestion;
 
 /** Stands in for a pi subprocess, so the state machine can be driven event by
@@ -273,6 +275,30 @@ async function waitForStatus(
 function recordFor(id: string): SessionRecord {
   const now = new Date().toISOString();
   return { id, title: id, group: "", cwd: tmpdir(), tool: "pi", createdAt: now, updatedAt: now };
+}
+
+/** A session's row in the registry, as a restarted gateway would read it. */
+async function stored(id: string): Promise<SessionRecord | undefined> {
+  return (await readRegistry()).find((session) => session.id === id);
+}
+
+/** What the manager itself holds for a session: its status and unread mark. */
+function managerView(manager: InstanceType<typeof LiveSessions>, id: string): SessionStatusUpdate | undefined {
+  const { statuses, unsubscribe } = manager.watchStatuses(() => {});
+  unsubscribe();
+  return statuses.find((entry) => entry.id === id);
+}
+
+/** Waits until a session's registry row passes `done`; a timeout shows the row and the manager's view. */
+function waitForStored(
+  manager: InstanceType<typeof LiveSessions>,
+  id: string,
+  label: string,
+  done: (record: SessionRecord | undefined) => boolean,
+): Promise<boolean> {
+  return waitFor(label, async () => done(await stored(id)), {
+    state: async () => ({ registry: await stored(id), manager: managerView(manager, id) }),
+  });
 }
 
 test("tool inspection never boots cold sessions and marks unsupported runtimes honestly", async () => {
@@ -520,13 +546,7 @@ test("a prompt flips running and idle, and a second one while streaming is refus
 
   started[0]?.emit({ type: "settled" });
   assert.equal(manager.status("prompt"), "idle");
-  await new Promise<void>((resolve) => {
-    const inspect = async () => {
-      if (!(await readRegistry()).find((session) => session.id === "prompt")?.runStartedAt) resolve();
-      else setImmediate(() => void inspect());
-    };
-    void inspect();
-  });
+  await waitForStored(manager, "prompt", "the run marker to be cleared", (record) => !record?.runStartedAt);
 });
 
 test("a gateway restart automatically continues the journaled request", async () => {
@@ -545,12 +565,8 @@ test("a gateway restart automatically continues the journaled request", async ()
   const replacement = new LiveSessions(factory(resumed));
   replacement.ensure(durable!);
   await waitForStatus(replacement, "interrupted", "running");
-  await new Promise<void>((resolve) => {
-    const inspect = () => {
-      if (resumed[0]?.prompts.length) resolve();
-      else setImmediate(inspect);
-    };
-    inspect();
+  await waitFor("the recovery prompt", () => resumed[0]?.prompts.length, {
+    state: () => ({ status: replacement.status("interrupted"), prompts: resumed[0]?.prompts }),
   });
   assert.match(resumed[0]?.prompts.at(-1) ?? "", /long task/u);
   assert.equal((await readRegistry()).find((session) => session.id === "interrupted")?.runRecoveryAttempts, 1);
@@ -573,13 +589,7 @@ test("a runtime that resumes its own runs is never replayed after a restart", as
     runPrompt: "the original task",
   });
   await waitForBoot(manager, "self-resuming");
-  await new Promise<void>((resolve) => {
-    const inspect = async () => {
-      if (!(await readRegistry()).find((session) => session.id === "self-resuming")?.runStartedAt) resolve();
-      else setImmediate(() => void inspect());
-    };
-    void inspect();
-  });
+  await waitForStored(manager, "self-resuming", "the run marker to be cleared", (record) => !record?.runStartedAt);
   assert.deepEqual(started[0]?.prompts, [], "no recovery prompt is sent");
   const record = (await readRegistry()).find((session) => session.id === "self-resuming");
   assert.equal(record?.runPrompt, undefined);
@@ -651,23 +661,11 @@ test("settled background activity becomes unread and a reader clears it", async 
 
   await manager.prompt("unread", "finish in background");
   started[0]?.emit({ type: "settled" });
-  await new Promise<void>((resolve) => {
-    const inspect = async () => {
-      if ((await readRegistry()).find((session) => session.id === "unread")?.unread) resolve();
-      else setImmediate(() => void inspect());
-    };
-    void inspect();
-  });
+  await waitForStored(manager, "unread", "the unread mark to be saved", (record) => record?.unread === true);
   assert.equal(updates.at(-1)?.unread, true);
 
   const reader = manager.watch("unread", () => {}, { reader: true });
-  await new Promise<void>((resolve) => {
-    const inspect = async () => {
-      if (!(await readRegistry()).find((session) => session.id === "unread")?.unread) resolve();
-      else setImmediate(() => void inspect());
-    };
-    void inspect();
-  });
+  await waitForStored(manager, "unread", "the reader to clear the unread mark", (record) => !record?.unread);
   assert.equal(updates.at(-1)?.unread, false);
 
   await manager.prompt("unread", "finish while visible");
@@ -1969,12 +1967,8 @@ test("HUI-owned follow-ups can be edited, reordered, removed and steered before 
   ]);
 
   started[0]?.emit({ type: "settled" });
-  await new Promise<void>((resolve) => {
-    const inspect = () => {
-      if ((started[0]?.prompts.length ?? 0) >= 2) resolve();
-      else setImmediate(inspect);
-    };
-    inspect();
+  await waitFor("the edited follow-up to be sent", () => (started[0]?.prompts.length ?? 0) >= 2, {
+    state: () => ({ prompts: started[0]?.prompts, queue: manager.snapshot("editable-queue").queue }),
   });
   assert.deepEqual(started[0]?.prompts, ["active turn", "second edited"]);
   assert.equal(manager.snapshot("editable-queue").queue.items, undefined);
@@ -2041,13 +2035,6 @@ function scriptedWorker(t: TestContext) {
   });
 }
 
-async function until(done: () => boolean, label: string): Promise<void> {
-  for (const deadline = Date.now() + 5_000; !done();) {
-    if (Date.now() > deadline) throw new Error(`Timed out waiting for ${label}.`);
-    await new Promise((resolve) => setImmediate(resolve));
-  }
-}
-
 test("a worker session hands a follow-up to its runtime only while a run streams there and none waits in HUI's queue", async (t) => {
   const worker = scriptedWorker(t);
   const id = "remote-follow-up";
@@ -2071,9 +2058,9 @@ test("a worker session hands a follow-up to its runtime only while a run streams
   await manager.followUp(id, "B");
   assert.deepEqual(manager.snapshot(id).queue.items?.map((item) => item.text), ["A", "B"]);
   worker.settle();
-  await until(() => worker.calls.length === 4, "the first held follow-up");
+  await waitFor("the first held follow-up", () => worker.calls.length === 4, { state: () => worker.calls });
   worker.settle();
-  await until(() => worker.calls.length === 5, "the second held follow-up");
+  await waitFor("the second held follow-up", () => worker.calls.length === 5, { state: () => worker.calls });
   assert.deepEqual(worker.calls.slice(2), ["prompt:second turn", "prompt:A", "prompt:B"]);
   manager.disposeAll();
 });
@@ -2097,7 +2084,7 @@ test("follow-ups HUI holds for an unreachable worker session hold up a gateway r
   assert.equal(manager.status(id), "disconnected");
   assert.equal(manager.blockingWorkCount, 1);
   manager.ensure(record, true);
-  await until(() => worker.calls.length === 2, "the held follow-up");
+  await waitFor("the held follow-up", () => worker.calls.length === 2, { state: () => worker.calls });
   assert.deepEqual(worker.calls, ["prompt:turn", "prompt:held here"]);
   manager.disposeAll();
 });
@@ -2192,7 +2179,7 @@ test("a run that finished on the worker while HUI was away settles for what wait
   reattach();
   await waitForBoot(manager, id);
   const settled = () => seen.filter((message) => message.kind === "event" && message.event.type === "settled").length;
-  await until(() => settled() === 1, "the settled event");
+  await waitFor("the settled event", () => settled() === 1, { state: () => seen.map((message) => message.kind) });
   assert.equal(records[0]!.runStartedAt, undefined, "the run is no longer unfinished work");
   // Reattaching to a session with no run in flight settles nothing.
   worker.lose(true);
