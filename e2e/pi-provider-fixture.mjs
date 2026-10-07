@@ -233,6 +233,16 @@ const server = createServer(async (request, response) => {
     return finish(response);
   }
 
+  // A bot asking the operator for the shell through request_access; its reply is the tool's answer.
+  if (source.includes("E2E_REQUEST_ACCESS")) {
+    toolUse(response, "tool-e2e-request-access", "request_access", { tools: ["bash"], reason: "I need the shell to run the test suite before I report back." });
+    return finish(response, "tool_use");
+  }
+  if (latestToolResult?.id === "tool-e2e-request-access") {
+    text(response, typeof latestToolResult.result === "string" ? latestToolResult.result : JSON.stringify(latestToolResult.result));
+    return finish(response);
+  }
+
   // A bot messaging another bot through HUI's message_bot tool.
   if (source.includes("E2E_MESSAGE_BOT")) {
     toolUse(response, "tool-e2e-message-bot", "message_bot", { to: "@bob", message: "hello from the fixture" });

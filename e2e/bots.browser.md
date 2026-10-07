@@ -137,6 +137,41 @@ What would you like me to look after for you?" and `E2E_WRITE_SOUL` with a
 
 The run with real models on the preview, and its screenshots, are in PR #69.
 
+## Tools and skills (2026-10-07)
+
+Every tool and skill is on until the operator turns it off. The run below used a
+built gateway of `feat/bot-tools` with `HOME` and `XDG_CONFIG_HOME` in a
+temporary directory, the fixture provider (`E2E_REQUEST_ACCESS` makes the bot
+call `request_access` for `bash` and then reply with the tool's answer), seven
+skills in the temporary PI agent directory beside HUI's two bundled ones, and a
+PI extension registering `weather_forecast`. Headless Chromium through CDP in
+dark mode (`prefers-color-scheme` emulated), 1440×900 with a fine pointer and
+390×844 with touch.
+
+1. A bot created through `POST /__hui/bots` with `disabledTools` `bash`,
+   `terminal`, `sessions_spawn` and `disabledSkills` `travel-planner`: panel →
+   **Tools** (the fourth tab) shows *3 of 19 tools and 1 of 9 skills are off*,
+   the groups Files, Shell, HUI, *Extension user · auto · weather.js* and Bots,
+   powerful tools labelled, the turned-off rows dimmed with their switches off.
+2. Send "Can you run the test suite and tell me whether it passes?
+   E2E_REQUEST_ACCESS": the chat shows the question *Allow access to bash
+   (powerful)?* with the bot's reason and Allow/Deny, the roster says *Waiting
+   for your answer*, and the Tools tab shows the same request at its top. A
+   reload keeps both.
+3. **Allow** in the Tools tab (desktop) or Allow + Submit in the chat's card
+   (mobile): the bot replies that it now has bash, the request goes, the Tools
+   tab shows bash on (*2 of 19 tools*), `bots.json` follows, and the provider's
+   next request offers 22 tools instead of 21, bash among them, without
+   `travel-planner` in its prompt.
+4. Switching **Browser** off and searching the skills for "notes" then switching
+   **meeting-notes** off each sends one `PATCH` with the whole list; the summary
+   follows (*3 of 19 tools and 2 of 9 skills*).
+5. `hui bot tools scout` and `hui bot skills scout --allow meeting-notes`
+   against the same gateway print the same state.
+6. A light-theme pass of the Tools tab at 1440×900.
+
+Screenshots of this run are in the pull request.
+
 ## Evidence
 
 Screenshots of the final run (desktop 1440×900, mobile 390×844 and landscape
