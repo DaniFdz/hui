@@ -138,12 +138,12 @@ test("+ creates a bot at once, without a name, and opens its chat, as in Grok Bo
   assert.match(create, /this\.navigate\(\{ kind: "bot", id: bot\.id \}\);/u, "its chat opens");
   assert.match(create, /this\.botNotice = error instanceof Error \? error\.message : "Could not create a bot\.";\n\s+this\.botNoticeFailed = true;/u, "a refusal (an offline worker, say) shows in the roster");
   assert.match(create, /this\.botNotice = `Creating a bot on \$\{this\.launchWorkers\.find\(\(candidate\) => candidate\.id === worker\)\?\.name \?\? "the worker"\}…`;/u, "a worker can take a moment: the roster says where");
-  assert.match(app, /onNew: \(\) => this\.createNewBot\(\),\n\s+workers: this\.launchWorkers,\n\s+onCreate: \(worker\) => this\.createNewBot\(worker\),\n\s+onWorkersMenu: \(\) => this\.loadLaunchWorkers\(\),\n\s+creating: this\.botCreating,/u, "+ and its menu create the same way");
+  assert.match(app, /onNew: \(\) => this\.createNewBot\(\),\n\s+workers: this\.launchWorkers,\n\s+onCreate: \(worker\) => this\.createNewBot\(worker\),\n\s+onImport: this\.botImports\.openImport,\n\s+onWorkersMenu: \(\) => this\.loadLaunchWorkers\(\),\n\s+creating: this\.botCreating,/u, "+ and its menu create the same way");
   assert.doesNotMatch(app, /\bNEW_BOT_NAME\b|createBotOn/u, "one way to create a bot, without a name");
   const source = read("./bots.ts");
   const button = between(source, "export function renderNewBotButton(", "/** The menu item for this machine");
-  assert.equal(button.match(/data-new-bot-trigger \?disabled=\$\{busy\} aria-busy=\$\{busy \? "true" : "false"\}/gu)?.length, 2, "+ waits for the bot it is creating, plain or as the menu's trigger");
-  assert.match(read("./shell.ts"), /onCreate: botsTab\.onCreate, creating: botsTab\.creating,/u);
+  assert.equal(button.match(/data-new-bot-trigger \?disabled=\$\{busy\} aria-busy=\$\{busy \? "true" : "false"\}/gu)?.length, 1, "+, the menu's trigger, waits for the bot it is creating");
+  assert.match(read("./shell.ts"), /onCreate: botsTab\.onCreate, onImport: botsTab\.onImport, creating: botsTab\.creating,/u);
   assert.match(source, /props\.creating \? "Creating…" : "New bot"/u, "and so does the empty roster's New bot");
   for (const file of [source, app]) assert.doesNotMatch(file, /renderBotDialog\b|bot-dialog|botDialog|botDraft/u, "the New bot and Edit dialogs are gone");
   assert.match(read("../lib/bots.ts"), /export type NewBotInput = Omit<BotInput, "name"> & \{ name\?: string \};/u, "the create body may leave the name out");
@@ -244,10 +244,12 @@ test("the Settings tab uses no fixed heights that could clip it", () => {
   assert.doesNotMatch(css, /\.bot-dialog/u, "no dialog styles are left");
 });
 
-test("while a worker exists the roster's + is a menu, New bot on Local or on each worker, and a choice creates the bot there at once", () => {
+test("the roster's + is a menu, New bot (on Local or on each worker while a worker exists) then Import bot…, and a choice creates the bot there at once", () => {
   const source = read("./bots.ts");
   const button = between(source, "export function renderNewBotButton(", "/** The menu item for this machine");
-  assert.match(button, /if \(!props\.workers\.length\) \{\n\s+return html`<button type="button" aria-label="New bot" title="New bot" data-new-bot-trigger [^\n]*@click=\$\{\(event: Event\) => \{\n\s+props\.onNew\(\);/u, "without workers, + is the plain New bot");
+  assert.match(button, /if \(value === IMPORT_BOT\) props\.onImport\(\);\n\s+else if \(!props\.workers\.length\) props\.onNew\(\);/u, "without workers, New bot creates it here");
+  assert.match(button, /<span class="session-menu__text">New bot<\/span><\/wa-dropdown-item>/u);
+  assert.match(button, /<div class="session-menu__separator" role="separator"><\/div>\n\s+<wa-dropdown-item value=\$\{IMPORT_BOT\} class="session-menu__item">[^\n]*<span class="session-menu__text">Import bot…<\/span>/u, "Import bot… after a separator, always");
   assert.match(button, /<wa-dropdown class="session-menu new-bot-menu" placement="bottom-end"/u);
   assert.match(button, /<button slot="trigger" type="button" aria-label="New bot" title="New bot" data-new-bot-trigger /u, "the same + opens the menu");
   assert.match(button, /props\.onCreate\(value === NEW_BOT_LOCAL \? undefined : value\);/u, "a choice creates the bot there");

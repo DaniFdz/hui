@@ -38,8 +38,8 @@ export const BOTS_DIR = join(CONFIG_DIR, "bots");
 /** What deleting a bot left on its worker while HUI was not connected to it, done at that worker's next connection. */
 export const BOT_CLEANUP_FILE = join(CONFIG_DIR, "bot-cleanup.json");
 export const BOTS_VERSION = 1;
-/** Handles a route already uses: `/__hui/bots/events` is the list stream. */
-export const RESERVED_HANDLES: ReadonlySet<string> = new Set(["events"]);
+/** Handles a route already uses: `/__hui/bots/events` is the list stream, `/__hui/bots/import` imports a bot. */
+export const RESERVED_HANDLES: ReadonlySet<string> = new Set(["events", "import"]);
 
 /** Rejected input: the route answers 400 with the message. */
 export class BotInputError extends Error {

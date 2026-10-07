@@ -1317,10 +1317,54 @@ everything the Bots tab can, through the same routes.
   Mute, Speaker and Hang up, and minimizes to a bar; hanging up deletes
   nothing. The microphone opens only for a call and closes with it; HUI stores
   no audio, only the call's card in the chat.
+- **Import and export**: + → **Import bot…** makes a bot from another platform's
+  template (Grok Bot, OpenClaw, Claude Code, Letta, character cards, CrewAI) or a
+  HUI export, after a preview of everything it would get; a bot's ⋯ →
+  **Export…** saves it as a zip that import reads back (decision below).
 
 The contract is [docs/api.md#bots](docs/api.md#bots).
 
 ## Decisions
+
+### Bots import other platforms' templates and export their own (2026-10-07)
+
+The owner asked: "Would it be possible to import other platform templates, that
+would be nice". So **+ → Import bot…** (and `hui bot import`) makes a bot from a
+Grok Bot marketplace link, an OpenClaw workspace, a Claude Code subagent, a Letta
+agent file, a character card, a CrewAI `agents.yaml` or a HUI export, and a bot's
+**⋯ → Export…** (`hui bot export`) saves it as a zip HUI imports again. Every
+source becomes one normalized template; the gateway previews what creating it
+would do before anything exists, then creates exactly that. The contract is
+[docs/api.md#importing-and-exporting-bots](docs/api.md#importing-and-exporting-bots).
+
+- **Imported text is untrusted, so the preview shows all of it** (SOUL.md, the
+  first message, every skill and routine prompt) as plain text, and **an import
+  never turns on more than a new bot has**: a Claude Code tools list or a HUI
+  export's list only turns tools off, routines start disabled, and a model is
+  kept only when this gateway resolves it.
+- **Memories go into SOUL.md**, under *What you already know*. OptChat's memory is
+  the chat's own log, so nothing else can seed it; SOUL.md is read on every
+  request and the operator edits it in the Soul tab. What doesn't fit its 20,000
+  characters is listed as left out.
+- **The opener is the bot's first turn**, a kickoff that asks it to send the
+  opener, rather than a message HUI writes into the chat: that would never reach
+  OptChat's log, so the bot would not remember saying it. It costs one turn.
+- **Skills are the bot's own**: `skills/<name>/SKILL.md` in its home folder, loaded
+  only by its chat, beside its directory's skills and listed with them in its
+  Tools tab. They are **on**, like every skill of a bot (they are text the operator
+  read, they widen no tool, and each can be turned off); routines are the only part
+  that acts unattended, so they are the part that starts off.
+- **OpenClaw's AGENTS.md is left out**, with the reason in the preview: it is
+  OpenClaw's operating manual (memory files, heartbeats, group chats), which
+  describes OpenClaw's runtime, not the bot, and would contradict HUI's.
+- **Grok Bot pages are read best effort**: the bot is in the page's Next.js
+  server-components payload, which x.ai can change. HUI fetches it only when the
+  operator asks, from x.ai over https, bounded; when it can't read it, it says so
+  and suggests pasting the bot's instructions instead.
+- **Export is a zip** (`bot.json`, `SOUL.md`, `skills/`, optionally `memory.md`) rather
+  than one JSON file: the soul and skills stay files a person can read and edit,
+  as in an OpenClaw workspace, and importing it round-trips. Like everything of
+  bots, all of this exists only while Labs → Bots is on.
 
 ### Bots stay behind an opt-in Labs setting while they are a preview (2026-10-07)
 

@@ -307,7 +307,12 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
   }
 
   async availableSkills(): Promise<readonly Skill[]> {
-    return (await this.#host.prompt.loader(this.#cwd)).getSkills().skills;
+    return (await this.#loader()).getSkills().skills;
+  }
+
+  /** PI's resources for this conversation: its directory's, and for a bot's chat its own skills too. */
+  async #loader() {
+    return this.#host.prompt.loader(this.#cwd, await this.#host.skillDirsFor(this.#conversation.id));
   }
 
   /** Asks the operator in this chat (a bot's access request); resolves with the answer, or undefined once dismissed. */
@@ -749,7 +754,7 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
   }
 
   async #expand(text: string): Promise<string> {
-    const loader = await this.#host.prompt.loader(this.#cwd);
+    const loader = await this.#loader();
     return expandPromptTemplate(expandSkill(text, text.startsWith("/skill:") ? await this.#skills(loader) : []), loader.getPrompts().prompts);
   }
 
@@ -965,7 +970,7 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
   }
 
   async listCommands(): Promise<readonly RuntimeCommand[]> {
-    const loader = await this.#host.prompt.loader(this.#cwd);
+    const loader = await this.#loader();
     return [
       ...(this.#extensions?.commands() ?? []),
       ...(await this.#skills(loader)).map((skill) => ({ name: `skill:${skill.name}`, description: skill.description, source: "skill" as const })),
@@ -1053,7 +1058,7 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
 
   async reload(): Promise<void> {
     this.#host.prompt.reload(this.#cwd);
-    await this.#host.prompt.loader(this.#cwd);
+    await this.#loader();
     if (this.#extensions) {
       await this.#extensions.restart("reload");
     } else if (this.#huiSessionId) {
@@ -1128,7 +1133,7 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
     const data = {
       status: "live" as const, backend: "durable", version: DURABLE_VERSION, tools, prompt,
       promptPhase: this.#streaming ? "current-turn" as const : "initialized" as const,
-      promptSource: (await this.#host.prompt.loader(this.#cwd)).getSystemPromptSource() ? "SYSTEM.md override" : "hui-v4",
+      promptSource: (await this.#loader()).getSystemPromptSource() ? "SYSTEM.md override" : "hui-v4",
       diagnostics: [...(this.#extensionFailure ? [this.#extensionFailure] : []), ...(this.#extensions?.diagnostics ?? [])],
     };
     return { ...data, revision: createHash("sha256").update(JSON.stringify(data)).digest("hex").slice(0, 16) };

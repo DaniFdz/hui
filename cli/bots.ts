@@ -52,6 +52,11 @@ export type BotFlags = {
   /** `add`: tools and skills off from its first turn. */
   "deny-tools"?: string;
   "deny-skills"?: string;
+  /** `import`: which agent of a file that holds several. */
+  agent?: string;
+  /** `export`: where to save the zip, and whether it carries the bot's memory. */
+  out?: string;
+  memory?: boolean;
 };
 
 /** The terminal, injectable so `chat` and `send` run against scripted input in tests. */
@@ -115,7 +120,7 @@ const SESSION_STATUSES_BUSY = new Set(["running", "waiting"]);
 const DEFAULT_WAIT_SECONDS = 300;
 
 /** One `/__hui/` request; a refusal throws its message (a few, such as a disallowed Host, are plain text). */
-async function request<T>(base: string, path: string, options: { method?: string; body?: unknown; timeoutMs?: number; html?: boolean } = {}): Promise<T> {
+export async function request<T>(base: string, path: string, options: { method?: string; body?: unknown; timeoutMs?: number; html?: boolean } = {}): Promise<T> {
   const response = await fetch(new URL(path, base), {
     method: options.method ?? "GET",
     headers: { "x-hui": "1", ...(options.body === undefined ? {} : { "content-type": "application/json" }) },
@@ -264,6 +269,8 @@ export async function botCommand(base: string, action: string, operands: readonl
         : `Added @${bot.handle} (${bot.name})${where}. It starts by asking what you expect from it: talk with hui bot chat ${bot.handle}.`);
     return 0;
   }
+  // A template from another platform, or a HUI export: its operand is the source, not a bot.
+  if (action === "import") return (await import("./bot-templates.ts")).importCommand(base, operands[0]!, flags, io);
   const bot = await findBot(base, operands[0]!);
   const path = `/__hui/bots/${encodeURIComponent(bot.id)}`;
   switch (action) {
@@ -310,6 +317,7 @@ export async function botCommand(base: string, action: string, operands: readonl
       return 0;
     }
     case "send": return send(base, bot, operands[1]!, flags, io);
+    case "export": return (await import("./bot-templates.ts")).exportCommand(base, bot, flags, io);
     case "soul": return soul(base, bot, flags, io);
     case "tools": return tools(base, bot, flags, io);
     case "skills": return skills(base, bot, flags, io);
@@ -880,7 +888,7 @@ export function formatBot(bot: BotView): string {
   ].join("\n");
 }
 
-function formatSchedule(schedule: AutomationSchedule): string {
+export function formatSchedule(schedule: AutomationSchedule): string {
   if (schedule.kind === "at") return `at ${schedule.at}`;
   if (schedule.kind === "every") {
     const units = [[86_400_000, "d"], [3_600_000, "h"], [60_000, "m"], [1_000, "s"]] as const;

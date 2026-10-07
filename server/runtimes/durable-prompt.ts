@@ -5,7 +5,8 @@
  * plus HUI's presentation and active-tool sections. This loader runs with no
  * extensions; a session's PI extensions (`durable-extensions.ts`) add their
  * tools' snippets and may change the prompt of a run, as in PI. Skills load per
- * directory; a bot's chat lists only the ones the operator left on
+ * directory, and a bot's chat adds its own (`skills/` in its home folder,
+ * `bot-skills.ts`); it lists only the ones the operator left on
  * (`durable-bot-access.ts`), so two chats in one directory can differ.
  */
 import { DefaultResourceLoader, type BuildSystemPromptOptions } from "@earendil-works/pi-coding-agent";
@@ -70,7 +71,7 @@ export function huiToolSections(selectedTools: readonly string[], contributions:
 export class DurablePrompt {
   readonly #agentDir: string;
   readonly #readSettings: () => Promise<PromptSettings>;
-  /** Context files and skills load once per directory, like a PI session. */
+  /** Context files and skills load once per directory (and a bot's own skill folders), like a PI session. */
   #loaders = new Map<string, Promise<DefaultResourceLoader>>();
   #built = new WeakMap<PromptInput, Promise<Record<string, string>>>();
   /** The prompt of each conversation's latest request, as PI's `ctx.getSystemPrompt()` reports it. */
@@ -80,6 +81,8 @@ export class DurablePrompt {
   /** The skills the operator turned off in a bot's chat; undefined for every other conversation, which lists every skill
    * of its directory. The Durable host answers. */
   disabledSkillsFor: (conversationId: ConversationId) => Promise<readonly BotSkillRef[] | undefined> = async () => undefined;
+  /** A bot's own skill folders, which only its chat loads; none for every other conversation. The Durable host answers. */
+  skillDirsFor: (conversationId: ConversationId) => Promise<readonly string[]> = async () => [];
   readonly extension;
 
   constructor(agentDir: string, readSettings: () => Promise<PromptSettings>) {
@@ -91,18 +94,20 @@ export class DurablePrompt {
     });
   }
 
-  /** PI resources for one working directory, honoring HUI's skill controls. */
-  loader(cwd: string): Promise<DefaultResourceLoader> {
-    let loading = this.#loaders.get(cwd);
+  /** PI resources for one working directory, honoring HUI's skill controls; `skillDirs` adds a bot's own skills, after
+   * its directory's (a skill of the directory wins a shared name, as PI's own skills win over HUI's bundled ones). */
+  loader(cwd: string, skillDirs: readonly string[] = []): Promise<DefaultResourceLoader> {
+    const key = [cwd, ...skillDirs].join("\0");
+    let loading = this.#loaders.get(key);
     if (!loading) {
-      loading = this.#load(cwd);
-      loading.catch(() => this.#loaders.delete(cwd));
-      this.#loaders.set(cwd, loading);
+      loading = this.#load(cwd, skillDirs);
+      loading.catch(() => this.#loaders.delete(key));
+      this.#loaders.set(key, loading);
     }
     return loading;
   }
 
-  async #load(cwd: string): Promise<DefaultResourceLoader> {
+  async #load(cwd: string, skillDirs: readonly string[]): Promise<DefaultResourceLoader> {
     const settings = await this.#readSettings();
     const disabled = settings.disabledSkills;
     // Bundled opt-out controls only the fallback; other skills are filtered by path.
@@ -111,7 +116,7 @@ export class DurablePrompt {
       cwd, agentDir: this.#agentDir,
       // A disabled package contributes no skills or prompts either, as for the PI worker.
       settingsManager: createPolicySettingsManager({ cwd, agentDir: this.#agentDir, disabledIds: new Set(settings.disabledPlugins.map((plugin) => plugin.id)) }),
-      additionalSkillPaths: enabledBundledSkillPaths(disabled),
+      additionalSkillPaths: [...skillDirs, ...enabledBundledSkillPaths(disabled)],
       noExtensions: true, noThemes: true,
       systemPromptOverride: (base) => base ?? HUI_DEFAULT_PROMPT,
       skillsOverride: (base) => ({ ...base, skills: base.skills.filter((skill) => !disabledPaths.has(skill.filePath)) }),
@@ -122,8 +127,8 @@ export class DurablePrompt {
 
   /** Re-read context files, skills and prompt templates for later requests. */
   reload(cwd?: string): void {
-    if (cwd) this.#loaders.delete(cwd);
-    else this.#loaders.clear();
+    if (!cwd) this.#loaders.clear();
+    else for (const key of [...this.#loaders.keys()]) if (key === cwd || key.startsWith(`${cwd}\0`)) this.#loaders.delete(key);
   }
 
   #build(input: PromptInput): Promise<Record<string, string>> {
@@ -154,8 +159,8 @@ export class DurablePrompt {
   /** PI's builder input for a request offering these tools. A bot's chat (`disabledSkills` given) lists only the skills
    * the operator left on: in PI's own section while it has read or bash, otherwise in one of HUI's that loads them with
    * `load_skill`, which such a chat is offered. */
-  async options(cwd: string, selectedTools: readonly string[], extra: Record<string, Contribution> = {}, disabledSkills?: readonly BotSkillRef[]): Promise<BuildSystemPromptOptions> {
-    const loader = await this.loader(cwd);
+  async options(cwd: string, selectedTools: readonly string[], extra: Record<string, Contribution> = {}, disabledSkills?: readonly BotSkillRef[], skillDirs: readonly string[] = []): Promise<BuildSystemPromptOptions> {
+    const loader = await this.loader(cwd, skillDirs);
     const skills = disabledSkills ? botSkills(loader.getSkills().skills, disabledSkills) : loader.getSkills().skills;
     const own = disabledSkills && selectedTools.includes(LOAD_SKILL_TOOL) ? botSkillsPrompt(skills) : undefined;
     const contributions = { ...PI_TOOL_CONTRIBUTIONS, ...extra, ...HUI_TOOL_CONTRIBUTIONS };
@@ -186,7 +191,8 @@ export class DurablePrompt {
     // A prompt an extension forced replaces the whole prompt for its run, as in PI.
     if (run?.forced !== undefined) return { preamble: run.forced };
     const disabled = conversationId === undefined ? undefined : await this.disabledSkillsFor(conversationId);
-    const base = await this.options(cwd, selectedTools, extras?.contributions, disabled);
+    const skillDirs = conversationId === undefined ? [] : await this.skillDirsFor(conversationId);
+    const base = await this.options(cwd, selectedTools, extras?.contributions, disabled, skillDirs);
     const sections = buildSystemPromptSections(run?.options ? {
       ...run.options,
       // The run keeps the sections its extensions edited; the tool loadout stays the request's own, and so do a bot's

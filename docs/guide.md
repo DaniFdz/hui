@@ -624,6 +624,56 @@ plan's voice usage.
 app does not allow the microphone yet. The microphone opens only when you press
 Call, and closes when the call ends.
 
+### Importing and exporting
+
+**+ → Import bot…** makes a bot from another platform's template (also from the
+empty roster). Pick a file or a folder, paste a Grok Bot marketplace link, or
+paste text. HUI reads:
+
+- **Grok Bot** marketplace links (`https://x.ai/bot/marketplace/bots/…`): its name,
+  instructions, memories, skills, routines and integrations. HUI fetches the page
+  once, when you ask; x.ai can change that page, and if HUI can't read it, copy the
+  bot's instructions from it and paste them instead.
+- **OpenClaw** workspaces, a folder or a zip: SOUL.md, IDENTITY.md's name, emoji
+  and vibe, MEMORY.md and USER.md, HEARTBEAT.md (as a routine) and its skills.
+  AGENTS.md is left out: it is OpenClaw's operating manual (memory files,
+  heartbeats, group chats), not the bot; copy any rule you want into its soul.
+- **Claude Code** subagents (`.claude/agents/<name>.md`): its prompt, description,
+  model, color, and its tools list, which keeps only those tools on.
+- **Letta** agent files (`.af`): its persona and memory blocks and its tools; the
+  message history is skipped.
+- **Character cards** (V2 or V3, JSON or the PNG): description, personality,
+  scenario and system prompt, its first message, and its lorebook.
+- **CrewAI** `agents.yaml`: each agent's role (its title), goal and backstory.
+- **HUI** exports (below). Any other text becomes the bot's persona.
+
+Before anything exists you see what the bot will get: its name and handle, its
+whole SOUL.md, its first message, its skills, its routines and their schedules,
+how each integration maps to a HUI tool (or that HUI has none), the tools it
+turns off, its model, and a list of what was left out and why. **Imported text
+is untrusted**: read it, then **Create bot**. A file with several agents lets
+you pick one. An import never turns on more than a new bot has: its routines
+start **disabled** (check them in its Routines tab, then turn them on), a tools
+list can only turn tools off, and a model it names is kept only when this
+gateway has it. What it already knew goes into its SOUL.md, under *What you
+already know*, where you can edit it in its Soul tab. Its skills are its own: they
+live in its folder, only it loads them, and they are on like every skill (turn
+any off in its Tools tab). With a first message, the bot's chat opens with it.
+
+A bot's **⋯ → Export…** downloads it as `<handle>.hui-bot.zip`: `bot.json` (its
+profile, routines and what you turned off), `SOUL.md` and its own skills, plus its
+memory if you include it (that can be private). Importing the file gives the bot
+back, on this HUI or another; its chat stays where it was.
+
+```sh
+hui bot import code-reviewer.md                  # prints everything, then asks
+hui bot import https://x.ai/bot/marketplace/bots/<slug> --yes
+hui bot import ./my-openclaw-workspace --worker devbox
+hui bot import agents.yaml --agent researcher
+pbpaste | hui bot import -
+hui bot export ada --out ada.zip --memory
+```
+
 ### Archiving and deleting
 
 `hui bot remove ada` archives the bot: its chat transcript and memory are kept,

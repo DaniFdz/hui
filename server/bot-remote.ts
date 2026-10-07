@@ -23,7 +23,8 @@ import type { BotAccess, BotMemoryStatus, BotToolGroup } from "../shared/bots.ts
 import { BotMemoryUnavailableError, type BotMemory } from "./bot-memory.ts";
 import type { BotOffer, BotSouls, BotStoredMessage, BotWorkers, RemoteBotConversations } from "./bot-service.ts";
 import { BotConflictError, BotInputError, BotWorkerOfflineError, storedAccess } from "./bots.ts";
-import { BOT_ACCESS_FEATURE, BOT_ACCESS_FRAME, BOT_MEMORY_STATUS_FRAME, BOTS_FEATURE } from "./worker/host-bots.ts";
+import type { BotOwnSkill, BotSkillFiles } from "./bot-skills.ts";
+import { BOT_ACCESS_FEATURE, BOT_ACCESS_FRAME, BOT_MEMORY_STATUS_FRAME, BOT_SKILLS_FEATURE, BOTS_FEATURE } from "./worker/host-bots.ts";
 import { WorkerOfflineError, type WorkerService } from "./workers.ts";
 
 /** What these ports need of the worker service. */
@@ -147,7 +148,14 @@ function cleanupQueue(file: string, report: NonNullable<RemoteBotsOptions["repor
   };
 }
 
-export function remoteBots(workers: BotWorkerLink, options: RemoteBotsOptions): BotWorkers {
+/** A worker's bots' own skills (`bot-skills.ts`), in their homes there: what imports write and exports read. */
+export type RemoteBotSkills = {
+  skills(id: string): BotSkillFiles;
+  /** Whether the connected worker keeps bots' own skills; false while offline or on an older worker. */
+  keepsSkills(id: string): boolean;
+};
+
+export function remoteBots(workers: BotWorkerLink, options: RemoteBotsOptions): BotWorkers & RemoteBotSkills {
   const name = (id: string) => workers.nameOf(id) ?? "That worker";
   const warn = options.report ?? (() => {});
   const queue = cleanupQueue(options.cleanupFile, warn);
@@ -173,6 +181,9 @@ export function remoteBots(workers: BotWorkerLink, options: RemoteBotsOptions): 
     }
     if (options.feature === BOT_ACCESS_FEATURE && !features.includes(BOT_ACCESS_FEATURE)) {
       throw new BotConflictError(`${name(id)} runs an older HUI worker that cannot turn a bot's tools and skills off. Disconnect it in Settings → Workers and connect it again once its sessions are idle, so it runs this HUI's worker.`);
+    }
+    if (options.feature === BOT_SKILLS_FEATURE && !features.includes(BOT_SKILLS_FEATURE)) {
+      throw new BotConflictError(`${name(id)} runs an older HUI worker that cannot keep a bot's own skills. Disconnect it in Settings → Workers and connect it again once its sessions are idle, so it runs this HUI's worker.`);
     }
     try {
       return await workers.hostRequest<T>(id, op, params, options.timeoutMs ?? REQUEST_TIMEOUT_MS);
@@ -348,6 +359,21 @@ export function remoteBots(workers: BotWorkerLink, options: RemoteBotsOptions): 
     },
 
     skillPath: (id, path) => workers.skillPath(id, path),
+
+    skills(id): BotSkillFiles {
+      return {
+        async write(botId, skills) {
+          await request(id, "bot.skills.write", { botId, skills }, { feature: BOT_SKILLS_FEATURE });
+        },
+        async read(botId) {
+          const reply = await request<{ skills?: unknown }>(id, "bot.skills.read", { botId }, { feature: BOT_SKILLS_FEATURE });
+          return (Array.isArray(reply.skills) ? reply.skills : []).filter((skill): skill is BotOwnSkill =>
+            isRecord(skill) && typeof skill["name"] === "string" && typeof skill["text"] === "string");
+        },
+      };
+    },
+
+    keepsSkills: (id) => (workers.features(id) ?? []).includes(BOT_SKILLS_FEATURE),
 
     onAccessRecorded(listener) {
       accessListeners.add(listener);

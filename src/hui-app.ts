@@ -91,6 +91,8 @@ import { archivedBotCount, hiddenBotCount, isBotSettingsShortcut, readBotPanel, 
 import { BotToolsController } from "./lib/bot-tools.ts";
 import { memoryStatusChanged, parseMemoryView, parseMemoryZoom, type MemoryLine } from "./lib/bot-memory.ts";
 import { renderBotArchiveDialog, renderBotDeleteDialog, renderBotPanel, renderBotPlaceholder, type BotMemoryState, type BotSoulState, type MemoryZoomState } from "./views/bots.ts";
+import { renderBotExportDialog, renderBotImportDialog } from "./views/bot-import.ts";
+import { BotImportController } from "./lib/bot-import-controller.ts";
 import { NO_BOT_SETTINGS_SAVES, type BotSettingKey, type BotSettingsProps, type BotSettingsSaves, type BotSettingValue } from "./views/bot-settings.ts";
 import { checkUpdate, checkUpdateInBackground, installUpdate, loadUpdate } from "./lib/update-store.ts";
 import { availableUpdate, watchUpdateAvailability } from "./lib/update-notice.ts";
@@ -547,6 +549,18 @@ export class HuiApp extends HuiElement {
   @state() private botDeletePending = false;
   @state() private botDeleteError = "";
   @state() private botArchiveToast: { bot: BotView; restoring: boolean; error?: string } | undefined;
+  /** Import bot… (+) and Export… (a bot's ⋯): their dialogs' state. An imported bot opens like a new one. */
+  private botImports = new BotImportController(this, {
+    workers: () => this.launchWorkers,
+    imported: (bot, warnings) => {
+      this.bots = upsertBot(this.bots, bot);
+      this.botNotice = warnings.length ? `Imported ${bot.name}. ${warnings.join(" ")}` : "";
+      this.botNoticeFailed = warnings.length > 0;
+      void this.refreshBots();
+      void this.refreshSessions(true);
+      this.navigate({ kind: "bot", id: bot.id });
+    },
+  });
   private botArchiveToastTimer: ReturnType<typeof setTimeout> | undefined;
   @state() private botMemory: BotMemoryState & { botId: string } = { botId: "", loading: false, error: "" };
   @state() private botMemoryZoom: ReadonlyMap<string, MemoryZoomState> = new Map();
@@ -1076,6 +1090,7 @@ export class HuiApp extends HuiElement {
       ensureModal(botDeleteDialog);
       botDeleteDialog.querySelector<HTMLButtonElement>(".bot-delete-cancel")?.focus();
     }
+    this.botImports.showDialogs(this.renderRoot);
     // A selector that matches nothing walks the whole open transcript, and
     // this runs on every keystroke: query a dialog only while its state shows it.
     const worktreeDialog = this.worktreeConfirm && this.worktreeConfirm !== "merged" ? this.renderRoot.querySelector?.(".worktree-remove-dialog") : null;
@@ -3798,6 +3813,7 @@ export class HuiApp extends HuiElement {
     this.syncBotsStream();
     this.botMenuFor = "";
     this.botSheetOpen = false;
+    this.botImports.close();
     if (this.voice.call) this.voice.hangUp();
     // A bot's page goes home, and so does a bot's chat open as a session.
     if (this.view === "bot" || (this.view === "home" && this.selected?.bot)) this.navigate({ kind: "home" }, true);
@@ -3815,6 +3831,7 @@ export class HuiApp extends HuiElement {
       onNew: () => this.createNewBot(),
       workers: this.launchWorkers,
       onCreate: (worker) => this.createNewBot(worker),
+      onImport: this.botImports.openImport,
       onWorkersMenu: () => this.loadLaunchWorkers(),
       creating: this.botCreating,
       unread: this.bots.some((bot) => bot.unread && !bot.archived && !bot.hidden),
@@ -3841,6 +3858,8 @@ export class HuiApp extends HuiElement {
         onToggleShowArchived: () => { this.showArchivedBots = !this.showArchivedBots; },
         onRestore: this.restoreBotFromRoster,
         onDelete: this.requestDeleteBot,
+        onExport: (bot) => { this.botMenuFor = ""; this.botImports.openExport(bot); },
+        onImport: this.botImports.openImport,
         onRetry: this.retryBots,
         onToggleMenu: (id) => { this.botMenuFor = this.botMenuFor === id ? "" : id; },
         onCloseMenu: () => { this.botMenuFor = ""; },
@@ -4483,7 +4502,14 @@ export class HuiApp extends HuiElement {
   private renderBotDialogs() {
     if (this.embeddedPane) return nothing;
     return html`${this.botArchive ? renderBotArchiveDialog(this.botArchive, this.botArchivePending, this.botArchiveError, this.confirmArchiveBot, this.closeBotArchive) : nothing}
-    ${this.botDelete ? renderBotDeleteDialog(this.botDelete, this.botDeletePending, this.botDeleteError, this.confirmDeleteBot, this.closeBotDelete) : nothing}`;
+    ${this.botDelete ? renderBotDeleteDialog(this.botDelete, this.botDeletePending, this.botDeleteError, this.confirmDeleteBot, this.closeBotDelete) : nothing}
+    ${this.renderBotTemplateDialogs()}`;
+  }
+
+  private renderBotTemplateDialogs() {
+    const importing = this.botImports.importProps();
+    const exporting = this.botImports.exportProps();
+    return html`${importing ? renderBotImportDialog(importing) : nothing}${exporting ? renderBotExportDialog(exporting) : nothing}`;
   }
 
   /* ── calls with bots (HUI-18) ─────────────────────────────────────────── */
