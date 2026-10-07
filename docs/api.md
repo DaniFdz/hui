@@ -1754,10 +1754,12 @@ routines({
   task answers as unknown, never touched and never named.
 - **Who started the turn.** `add` and `update` are refused in a turn another bot
   started (`[from @…]`, any hop) or a trigger did (`[trigger: …]`, whose event
-  comes from outside HUI; the refusal names the trigger), read from the run's
-  originating input (`runPrompt`) as `set_profile` reads it; turns the operator,
-  a routine or HUI's kickoff started may. `list` and `remove` work in any turn:
-  they never make work.
+  comes from outside HUI; the refusal names the trigger), judged by every input
+  of the run as `set_profile` judges it (the one that started it, `runPrompt`, and
+  any that joined it since, `runOrigins`: see **Every input of the run**), so a
+  turn that took such a message is refused too, the first one naming the
+  refusal; turns that only the operator, a routine or HUI's kickoff brought
+  input to may. `list` and `remove` work in any turn: they never make work.
 - **Limits.** Adding a routine, or resuming one, is refused while its chat has
   20 enabled routines (the operator's count too; the operator's own routes have
   no cap); `every` is at least a minute (cron fires at most once a minute

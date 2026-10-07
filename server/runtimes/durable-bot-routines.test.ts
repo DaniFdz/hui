@@ -86,9 +86,10 @@ test("routines is a bot tool of the hui-bots-tools extension: it asks HUI as the
   const refused = await f.tool.execute(params as never, f.api(id), BACKGROUND_CONTEXT);
   assert.equal(refused.isError, true, "HUI's refusal is the model's to read");
   assert.match(textOf(refused), /another bot can't make you add or change routines/u);
+  // With who brought each input of the run it is called in: none here, outside any run.
   assert.deepEqual(f.invocations, [
-    { callerSessionId: "ada-chat", action: ROUTINES_TOOL, params: { action: "list" } },
-    { callerSessionId: "ada-chat", action: ROUTINES_TOOL, params },
+    { callerSessionId: "ada-chat", action: ROUTINES_TOOL, params: { action: "list" }, runOrigins: [] },
+    { callerSessionId: "ada-chat", action: ROUTINES_TOOL, params, runOrigins: [] },
   ], "HUI acts as the chat's session, with what the model gave");
   const notABot = await f.tool.execute({ action: "list" } as never, { conversationId: 7 as unknown as ConversationId, snapshot: async () => undefined } as unknown as ToolExecutionApi, BACKGROUND_CONTEXT);
   assert.equal(notABot.isError, true);

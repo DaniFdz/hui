@@ -1388,12 +1388,14 @@ scheduler gains a terminal and bots gain a tool over the same tasks.
 - **Guardrails**, at the gateway, for bots on workers too: only its own chat's
   tasks (another bot's or session's are never seen or touched); at most 20
   enabled routines per bot's chat once it adds or resumes one, and Automation's
-  one-minute minimum; and adding or changing one is refused in a turn another
-  bot started (`[from @…]`), read from the run's originating input as
-  `set_profile` reads it, while the operator's turns, its routines' turns and
-  HUI's kickoff may. Listing and removing work in any turn, since they never make
-  more work. Changing is refused with adding because a change can make a routine
-  more frequent or longer-lived; the operator's own routes have no cap.
+  one-minute minimum; and adding or changing one is refused in a turn that took
+  a message from another bot (`[from @…]`) or anything but the operator, its
+  routines and HUI's kickoff, the one that started it or one that joined it,
+  judged by every input of the run as `set_profile` judges it, while the
+  operator's turns, its routines' turns and HUI's kickoff may. Listing and
+  removing work in any turn, since they never make more work. Changing is
+  refused with adding because a change can make a routine more frequent or
+  longer-lived; the operator's own routes have no cap.
 - **Who made it** (the operator or a bot, by id and handle) and the limits are
   optional fields of the task, so the store keeps its version and tasks from
   before load unchanged; a route body never names a maker. The bot's Routines

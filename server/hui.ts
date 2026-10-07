@@ -374,7 +374,7 @@ registerAgentToolHandler(async (invocation) => {
   if (invocation.action === "message_bot") return bots.messageBot(invocation.callerSessionId, invocation.params);
   // A bot's gated tools judge its run by every input it took, as the host running the chat saw them (`runOrigins`).
   if (invocation.action === "set_profile") return bots.setProfile(invocation.callerSessionId, invocation.params, invocation.runOrigins);
-  if (invocation.action === ROUTINES_TOOL) return botRoutines.handle(invocation.callerSessionId, invocation.params);
+  if (invocation.action === ROUTINES_TOOL) return botRoutines.handle(invocation.callerSessionId, invocation.params, invocation.runOrigins);
   if (invocation.action === "triggers") return triggers.service.tool(invocation.callerSessionId, invocation.params, invocation.runOrigins);
   if (invocation.action === "suggest_task" || invocation.action === "dismiss_task") {
     const caller = (await readRegistry()).find(({ id }) => id === invocation.callerSessionId);
