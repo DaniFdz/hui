@@ -53,7 +53,7 @@ Pi Durable owns conversations, runs, queues and crash recovery.
 | Git and GitHub | `worktrees.ts`, `worktree-inventory.ts`, `github*.ts`, `pull-requests.ts` |
 | Integrations | `jira*.ts`, `backlog.ts` (Kanban), `automation.ts` |
 | Terminals and browser | `terminals.ts`, `terminal-transport.ts`, `browser/` (managed Chromium over a CDP pipe), `browser-transport.ts` |
-| Bots and calls (Labs) | `bots.ts`, `bot-*.ts`, `calls.ts`, `call-*.ts`, `runtimes/durable-bots.ts` |
+| Bots and calls (Labs) | `bots.ts`, `bot-*.ts`, `bot-templates/` (other platforms' bot templates, read for import), `calls.ts`, `call-*.ts`, `runtimes/durable-bots.ts` |
 | OptChat memory | `optchat/` (engine, no HUI imports), `runtimes/durable-optchat.ts` (Durable glue); see `docs/optchat.md` |
 | Remote workers | `workers.ts`, `worker-routes.ts` (gateway side), `worker/` (host daemon, protocol, bootstrap, config sync) |
 | Settings, paths, updates | `hui-settings.ts`, `paths.ts`, `updates.ts`, `power.ts` |
