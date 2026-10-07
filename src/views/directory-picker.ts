@@ -74,6 +74,8 @@ export type DirectoryPickerProps = {
   externalLabel?: boolean;
   /** Shown while empty; the launch form's empty value means the home directory. */
   placeholder?: string;
+  /** A bot's directory cannot move while it works. */
+  disabled?: boolean;
 };
 
 /** Shared themed directory completion for launch and group defaults. */
@@ -81,7 +83,7 @@ export function renderDirectoryPicker(props: DirectoryPickerProps) {
   return html`
   <div class="new-session-page__target-input new-session-page__directory-picker">
     ${props.externalLabel ? nothing : html`<label class="sr-only" for=${props.id}>${props.label}</label>`}
-    <input id=${props.id} name="cwd" class=${props.inputClass} type="text" role="combobox" ?required=${props.required} spellcheck="false" autocomplete="off"
+    <input id=${props.id} name="cwd" class=${props.inputClass} type="text" role="combobox" ?required=${props.required} ?disabled=${props.disabled} spellcheck="false" autocomplete="off"
       aria-autocomplete="list" aria-controls=${`${props.id}-options`} aria-expanded="false" placeholder=${props.placeholder ?? "~/"}
       .value=${props.value}
       @focus=${(event: FocusEvent) => openDirectorySuggestions(event, props.onInput)}

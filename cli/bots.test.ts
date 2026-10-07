@@ -273,6 +273,8 @@ test("list, show, add, edit, remove, restore and stop talk to the bot routes and
   const fresh = terminal();
   await botCommand(gateway.base, "add", [], { name: "Home", cwd: "~/bots/home" }, fresh.io);
   assert.equal(gateway.calls.at(-1)?.body?.["cwd"], "~/bots/home", "~ is left for the gateway to resolve");
+  await botCommand(gateway.base, "add", [], { name: "Rover", worker: " devbox ", cwd: "/srv/rover" }, terminal().io);
+  assert.deepEqual(gateway.calls.at(-1)?.body, { name: "Rover", worker: "devbox", cwd: "/srv/rover" }, "a folder on the worker goes as given; the worker checks it");
   assert.equal(fresh.out, "Added @home (Home). It starts by asking what you expect from it: talk with hui bot chat home.\n");
   const piped = terminal("# Who I am\nPiped.\n");
   await botCommand(gateway.base, "add", [], { name: "Piped", "soul-file": "-" }, piped.io);
@@ -317,6 +319,15 @@ test("list, show, add, edit, remove, restore and stop talk to the bot routes and
   const idle = terminal();
   await botCommand(gateway.base, "stop", ["ada"], { json: true }, idle.io);
   assert.equal((JSON.parse(idle.out) as BotView).status, "idle");
+});
+
+test("list marks a bot on a worker and show names the worker and its folder there", () => {
+  const rover = view("id-rover", "rover", { cwd: "/home/remote/.local/share/hui-worker/bots/id-rover", worker: { id: "w-1", name: "devbox" } });
+  assert.equal(formatBots([rover, view("id-ada", "ada")]), "@rover  Rover  idle · on devbox  0 routines  id-rover\n@ada  Ada  idle  0 routines  id-ada");
+  const shown = formatBot(rover);
+  assert.match(shown, /\nstatus: idle\nworker: devbox \(w-1\)\nlook: /u);
+  assert.match(shown, /\ncwd: devbox:\/home\/remote\/\.local\/share\/hui-worker\/bots\/id-rover\n/u);
+  assert.doesNotMatch(formatBot(view("id-ada", "ada")), /worker:/u, "a bot here names no worker");
 });
 
 test("show names the look: the face's shape and color, or the emoji, and what the bot's id picked", () => {

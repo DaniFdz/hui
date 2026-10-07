@@ -23,17 +23,17 @@ const CREATE_BOT_TIMEOUT_MS = 60_000;
 
 export type BotMemory = { status: BotMemoryStatus; view: string };
 
-/** The New/Edit dialog as typed. Empty model fields mean the default: the
- * gateway's model, the default thinking level, the bot's own model for memory.
- * The persona is not here: the bot writes its SOUL.md in its first conversation. */
+/** A bot's editable fields as its Settings tab holds them. Empty model fields mean the default: the gateway's
+ * model, the default thinking level, Settings' utility model. The persona is not here: the bot writes its SOUL.md in
+ * its first conversation. */
 export type BotDraft = {
   name: string;
   title: string;
-  /** Empty: a private folder the gateway creates for the bot. */
+  /** Empty: a private folder the gateway creates for the bot. On a worker's bot, a folder there. */
   cwd: string;
   emoji: string;
-  /** The dialog's Look: "face" sends the shape and color and clears the emoji, "emoji" sends the emoji. Absent: the
-   * emoji decides, as before faces. */
+  /** The look: "face" sends the shape and color and clears the emoji, "emoji" sends the emoji. Absent: the emoji
+   * decides, as before faces. */
   look?: "face" | "emoji";
   shape?: BotFaceShape;
   /** #rrggbb */
@@ -147,6 +147,9 @@ export function parseBot(value: unknown): BotView | undefined {
   const disabledSkills = Array.isArray(value["disabledSkills"])
     ? value["disabledSkills"].flatMap((raw) => isRecord(raw) && typeof raw["name"] === "string" && typeof raw["path"] === "string" ? [{ name: raw["name"], path: raw["path"] }] : [])
     : [];
+  const worker = isRecord(value["worker"]) && text(value["worker"]["id"], 200) && text(value["worker"]["name"], 200)
+    ? { id: text(value["worker"]["id"], 200), name: text(value["worker"]["name"], 200) }
+    : undefined;
   const optional: Partial<Record<"title" | "description" | "model" | "thinking" | "memoryModel" | "memoryThinking", string>> = {};
   for (const [key, maximum] of [["title", 200], ["description", 2_000], ["model", 200], ["thinking", 40], ["memoryModel", 200], ["memoryThinking", 40]] as const) {
     const entry = optionalText(value[key], maximum);
@@ -158,6 +161,7 @@ export function parseBot(value: unknown): BotView | undefined {
     name,
     ...optional,
     cwd: text(value["cwd"], 4_096),
+    ...(worker ? { worker } : {}),
     ...(avatar ? { avatar } : {}),
     ...(voice ? { voice } : {}),
     ...(value["hidden"] === true ? { hidden: true } : {}),
@@ -307,7 +311,7 @@ async function connectBotsOnce(handlers: BotsStreamHandlers, signal: AbortSignal
   return "dropped";
 }
 
-/* ── dialog drafts ────────────────────────────────────────────────────────── */
+/* ── drafts ───────────────────────────────────────────────────────────────── */
 
 /** Create payload: trimmed, with empty optional fields left to the gateway's defaults. */
 export function botInputFromDraft(draft: BotDraft): BotInput {
@@ -333,7 +337,7 @@ function draftLook(draft: BotDraft): "face" | "emoji" {
   return draft.look ?? (draft.emoji.trim() ? "emoji" : "face");
 }
 
-/** A new bot keeps the look its dialog showed: the shape and color picked (or preselected), and the emoji in Emoji. */
+/** A new bot's look from a draft: the shape and color picked, and the emoji in Emoji. */
 function draftAvatar(draft: BotDraft): BotAvatar | undefined {
   const emoji = draft.emoji.trim();
   const avatar: BotAvatar = {
@@ -344,7 +348,7 @@ function draftAvatar(draft: BotDraft): BotAvatar | undefined {
   return Object.keys(avatar).length ? avatar : undefined;
 }
 
-/** The dialog's call section: a language and a call voice; nothing for Auto and Settings' default. */
+/** A draft's call voice and language; nothing for Auto and Settings' default. */
 function draftVoice(draft: BotDraft): BotVoice | undefined {
   const language = voiceLanguage(draft.voiceLanguage);
   const live = gptLiveVoice(draft.callVoice);
@@ -381,6 +385,64 @@ export function botPatchFromDraft(bot: BotView, draft: BotDraft): BotPatch {
   if (live !== undefined && live !== (bot.voice?.live ?? "")) voice.live = live;
   if (Object.keys(voice).length) patch.voice = voice;
   return patch;
+}
+
+/** A control of a bot's Settings tab, by what it saves through `PATCH /__hui/bots/:id`: the look's shape, color and
+ * emoji are parts of `avatar`, a call's voice and language parts of `voice`. */
+export type BotSettingKey = "name" | "title" | "shape" | "color" | "emoji" | "model" | "thinking" | "memoryModel" | "callVoice" | "voiceLanguage" | "cwd";
+export type BotSettingValue = string;
+
+/** What a control shows for the bot as it is: "" for a default, the look as the bot shows it. */
+export function botSettingOf(bot: BotView, key: BotSettingKey): BotSettingValue {
+  switch (key) {
+    case "name": return bot.name;
+    case "title": return bot.title ?? "";
+    case "shape": return botLook(bot).shape;
+    case "color": return botLook(bot).color;
+    case "emoji": return bot.avatar?.emoji ?? "";
+    case "model": return bot.model ?? "";
+    case "thinking": return bot.thinking ?? "";
+    case "memoryModel": return bot.memoryModel ?? "";
+    case "callVoice": return bot.voice?.live ?? "";
+    case "voiceLanguage": return bot.voice?.language ?? "";
+    case "cwd": return bot.cwd;
+  }
+}
+
+/** A control's new value as the draft change `botChangePatch` turns into a PATCH. An emoji is the Emoji look; an
+ * empty one goes back to the face. */
+export function botSettingChange(key: BotSettingKey, value: BotSettingValue): Partial<BotDraft> {
+  if (key === "emoji") return value.trim() ? { look: "emoji", emoji: value } : { look: "face", emoji: "" };
+  return { [key]: value };
+}
+
+/** The draft that changes nothing: the bot as it is, its look as it shows, and its call voice and language as stored. */
+export function botDraftOf(bot: BotView): BotDraft {
+  const look = botLook(bot);
+  return {
+    name: bot.name,
+    title: bot.title ?? "",
+    cwd: bot.cwd,
+    emoji: bot.avatar?.emoji ?? "",
+    look: look.kind,
+    shape: look.shape,
+    color: look.color,
+    model: bot.model ?? "",
+    thinking: bot.thinking ?? "",
+    memoryModel: bot.memoryModel ?? "",
+    voiceLanguage: bot.voice?.language ?? "",
+    callVoice: bot.voice?.live ?? "",
+  };
+}
+
+/** One change from the Settings tab as the PATCH
+ * that makes it: only what differs from the bot now, by the edit rules above
+ * (an empty model or thinking level goes back to the gateway's defaults, an
+ * empty utility model to Settings', and a blank name or workspace changes
+ * nothing). Undefined when there is nothing to send. */
+export function botChangePatch(bot: BotView, change: Partial<BotDraft>): BotPatch | undefined {
+  const patch = botPatchFromDraft(bot, { ...botDraftOf(bot), ...change });
+  return Object.keys(patch).length ? patch : undefined;
 }
 
 function avatarPatch(bot: BotView, draft: BotDraft): BotAvatarPatch | undefined {
@@ -433,8 +495,12 @@ export async function loadBots(): Promise<BotView[]> {
   return parseBotList({ bots: [...entries(active), ...entries(archived)] });
 }
 
+/** `POST /__hui/bots`'s body. Without `name` the gateway creates "New Bot" (`NEW_BOT_NAME`), which asks what to call it
+ * in its first conversation: what + sends, with `worker` for a bot created on a remote worker. */
+export type NewBotInput = Omit<BotInput, "name"> & { name?: string };
+
 /** Resolves only once the gateway created the bot, its chat and its memory. */
-export async function createBot(input: BotInput): Promise<BotView> {
+export async function createBot(input: NewBotInput): Promise<BotView> {
   return parseBotBody(await fetchJson<unknown>(BOTS_URL, {
     method: "POST",
     headers: JSON_HEADERS,

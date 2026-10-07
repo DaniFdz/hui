@@ -5,24 +5,28 @@ import test from "node:test";
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
 const between = (source: string, start: string, end: string) => source.slice(source.indexOf(start), source.indexOf(end, source.indexOf(start)));
 
-test("the New and Edit dialogs have no Instructions; New bot says the bot starts by asking what you expect", () => {
-  const dialog = between(read("./bots.ts"), "export function renderBotDialog(", "/* ── archive confirmation");
-  assert.doesNotMatch(dialog, /Instructions|instructions/u, "the persona is the SOUL.md the bot writes");
-  assert.match(dialog, /Once it is created, it starts by asking what you expect from it\./u);
-  assert.match(read("./bots.ts"), /export type BotFormValues = Pick<BotDraft, "name" \| "title" \| "cwd" \| "emoji">;/u);
+test("nothing asks for Instructions: no New or Edit dialog is left, and + creates a bot that starts by asking", () => {
+  for (const file of ["./bots.ts", "./bot-settings.ts"]) {
+    assert.doesNotMatch(read(file), /Instructions|instructions/u, `${file}: the persona is the SOUL.md the bot writes`);
+  }
+  assert.doesNotMatch(read("./bots.ts"), /renderBotDialog\b|BotFormValues/u, "the New and Edit dialogs are gone");
+  assert.match(read("../hui-app.ts"), /void createBot\(worker \? \{ worker \} : \{\}\)/u, "no name: the bot is New Bot and asks what to call it, here or on the worker chosen");
   assert.doesNotMatch(read("../styles/bots.css"), /bot-dialog__instructions/u);
 });
 
-test("the bot panel is Routines | Memory | Soul | Tools, one tablist with the same keys and remembered tab", () => {
+test("the bot panel is Routines | Memory | Soul | Tools | Settings, one tablist with the same keys and remembered tab", () => {
   const source = read("./bots.ts");
-  assert.match(source, /const PANEL_TAB_LABELS: Record<BotPanelTab, string> = \{ routines: "Routines", memory: "Memory", soul: "Soul", tools: "Tools" \};/u);
-  const panel = between(source, "export function renderBotPanel(", "/* ── New / Edit bot dialog");
+  assert.match(source, /const PANEL_TAB_LABELS: Record<BotPanelTab, string> = \{ routines: "Routines", memory: "Memory", soul: "Soul", tools: "Tools", settings: "Settings" \};/u);
+  const panel = between(source, "export function renderBotPanel(", "/* ── archive confirmation");
   assert.match(panel, /\$\{BOT_PANEL_TABS\.map\(\(tab\) => html`<button type="button" role="tab"/u);
   assert.match(panel, /@keydown=\$\{\(event: KeyboardEvent\) => onPanelTabKeydown\(event, props\)\}/u);
-  assert.match(panel, /props\.tab === "routines" \? renderRoutinesTab\(props\) : props\.tab === "memory" \? renderMemoryTab\(props\) : props\.tab === "soul" \? renderSoulTab\(props\) : renderBotToolsTab\(\{ bot: props\.bot, \.\.\.props\.tools \}\)/u);
-  assert.match(panel, /aria-label=\$\{`\$\{props\.bot\.name\}: routines, memory, soul and tools`\}/u);
-  assert.match(read("../lib/bot-roster.ts"), /tab: BOT_PANEL_TABS\.find\(\(tab\) => tab === raw\["tab"\]\) \?\? "routines"/u, "the stored tab may be Soul");
-  assert.match(read("./home.ts"), /aria-label=\$\{props\.bot\.panelOpen \? "Hide routines, memory, soul and tools" : "Show routines, memory, soul and tools"\}/u);
+  assert.match(panel, /\$\{renderPanelTab\(props\)\}/u);
+  const tabs = between(source, "function renderPanelTab(", "export function renderBotPanel(");
+  assert.match(tabs, /case "soul": return renderSoulTab\(props\);/u);
+  assert.match(tabs, /case "tools": return keyed\(props\.bot\.id, renderBotToolsTab\(\{ bot: props\.bot, \.\.\.props\.tools \}\)\);/u, "Tools sits between Soul and Settings");
+  assert.match(panel, /aria-label=\$\{`\$\{props\.bot\.name\}: bot panel`\}/u, "named for the bot, whatever its tabs");
+  assert.match(read("../lib/bot-roster.ts"), /tab: BOT_PANEL_TABS\.find\(\(tab\) => tab === raw\["tab"\]\) \?\? "routines"/u, "the stored tab may be Soul, Tools or Settings");
+  assert.match(read("./home.ts"), /aria-label=\$\{props\.bot\.panelOpen \? "Hide the bot panel" : "Show the bot panel"\} title="Bot panel"/u);
 });
 
 test("Soul shows SOUL.md through the chat's markdown renderer, with Edit; without one, what the first conversation does", () => {

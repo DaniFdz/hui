@@ -194,8 +194,9 @@ A **bot** is a named, persistent agent: a role, a persona it writes with you
 ends**.
 Sessions stay what they were (coding work with worktrees, rewind and
 `/compact`); a bot is for the assistant you come back to every day. Its chat is
-an ordinary Pi Durable session on this gateway, so the chat view, streaming,
-steering, follow-ups, questions and model switching work as in any session.
+an ordinary Pi Durable session on this gateway, or on a remote worker if you
+[create it there](#bots-on-a-worker), so the chat view, streaming, steering,
+follow-ups, questions and model switching work as in any session.
 
 **Models.** A bot's **Model** does its real work: the smartest model you have.
 Its **Utility model** does its quick work (the memory's summaries, quick answers
@@ -216,22 +217,25 @@ summarized, `hui bot chat` says "Summarizing memory…".
 Settings → Sessions → **Show the Bots tab** adds an **Agents | Bots** switch to
 the very top of the sidebar (it is off by default, and hiding it never stops a
 bot or its routines). **Agents** is the usual sidebar; **Bots** shows only your bots,
-most recently active first, with their latest message, and **+** creates one,
-which greets you and asks what you expect from it (its chat opens on a small
-note, "Scout was created", where that first turn began).
-A bot's chat opens beside its **Routines | Memory | Soul | Tools** panel: Routines adds
-schedules (every few minutes, hours or days, daily, weekly or once, in your
-browser's time zone), runs one now and shows how the last runs went; Memory
-shows how much the bot remembers and what writing its summaries has cost, lets
-you open any summary line down to the original message, and **Open memory
-page** opens the whole memory in a new tab; Soul shows the bot's SOUL.md, with
-**Edit** to change it yourself (or, before the bot has written one, **Write it
-yourself**), and follows it when the bot rewrites it; Tools turns the bot's
-tools and skills on and off ([Tools and skills](#tools-and-skills)). A row's
-**⋯** menu (also in the bot's chat header) edits, hides, archives or deletes the
-bot; **Show archived** lists archived bots so you can restore them, or delete
-one with its trash icon. Deleting asks first, and takes the bot's chat,
-routines, memory and folder. Bot chats never appear among your sessions.
+most recently active first, with their latest message, and **+** creates one at
+once: a bot called *New Bot* whose chat opens on its greeting, asking what to call
+it and what you expect from it (the chat opens on a small note, "New Bot was
+created", where that first turn began).
+A bot's chat opens beside its **Routines | Memory | Soul | Tools | Settings** panel:
+Routines adds schedules (every few minutes, hours or days, daily, weekly or
+once, in your browser's time zone), runs one now and shows how the last runs
+went; Memory shows how much the bot remembers and what writing its summaries
+has cost, lets you open any summary line down to the original message, and
+**Open memory page** opens the whole memory in a new tab; Soul shows the bot's
+SOUL.md, with **Edit** to change it yourself (or, before the bot has written
+one, **Write it yourself**), and follows it when the bot rewrites it; Tools
+turns the bot's tools and skills on and off ([Tools and skills](#tools-and-skills));
+Settings is everything else you can change about the bot ([below](#creating-and-editing)).
+A row's **⋯** menu (also in the bot's chat header) opens its Settings (**Edit
+bot…**), hides, archives or deletes the bot; **Show archived** lists archived
+bots so you can restore them, or delete one with its trash icon. Deleting asks
+first, and takes the bot's chat, routines, memory and folder. Bot chats never
+appear among your sessions.
 
 **Faces.** Every bot has an animated face, after OpenAI's Dots: a plush shape
 (Blob, Pebble, Triangle, Heart or Cookie) in one of six colors, with two dot
@@ -242,12 +246,46 @@ failure and does a little hop when a turn ends. On a call it fills the screen
 in the bot's color, puffs up as it listens to your voice and stretches with its
 own. The large faces (an empty chat, a call) look at your pointer. With
 *reduce motion* on in your system settings the faces keep still and change only
-their expression. The bot dialog's **Look** chooses **Face** (shape and color,
-with a live preview) or **Emoji**; a bot that already had an emoji keeps it
-until you choose Face. Bots you never styled get a face picked by their id, the
-same on every screen.
+their expression. The **Look** in a bot's Settings tab chooses **Face** (shape and
+color) or **Emoji**; a bot that already had an emoji keeps it until you choose
+Face. Bots you never styled, new ones included, get a face picked by their id,
+the same on every screen.
 
 ### Creating and editing
+
+Setting a bot up works like [Grok Bot](https://docs.x.ai/grok-bot/bots): there
+is no form. The **+** above the roster (or **New bot** in an empty roster)
+creates a bot at once and opens its chat (with a remote worker, + asks where:
+[Bots on a worker](#bots-on-a-worker)). It is called *New Bot* until you tell
+it its name: its first message greets you and asks what to call it, and it
+renames itself when you answer ([below](#soul-and-the-first-conversation)).
+Everything else starts on the defaults: the model and thinking level a new
+session gets, Settings' utility model, Settings' call voice, *Auto* for
+the language, a private folder of its own and the face its id picks.
+
+**Settings** is the panel's last tab. **Edit bot…** in a bot's **⋯** menu (its
+roster row's or its chat header's) opens the bot's chat on it (the docked panel,
+or the sheet on a phone), and **Ctrl+Shift+,** (**⇧⌘,** on a Mac) shows or hides
+it on a bot's chat. It has:
+
+- **Profile**: the **Name** (its handle under it), the **Title** and the
+  **Look**, whose **Change** opens Face (shape and color) or Emoji.
+- **Model**: the **Model**, **Thinking** and **Utility model** (below).
+  *Gateway default* (and *Default* for the utility model) clears the bot's own
+  choice. A change applies from the bot's next turn.
+- **Calls**: the bot's **Call voice** (*Default* follows Settings → Models →
+  Calls) and the **Language** it speaks on calls
+  ([Calls with GPT-Live](#calls-with-gpt-live)). Until HUI has a ChatGPT login,
+  the section says *Needs a ChatGPT login*; both still save.
+- **Workspace**: the bot's **Directory**, which can change only while the bot
+  is idle (the field is locked while it works). While you have a remote worker,
+  **Runs on** shows the machine the bot stays on: *Local*, or its worker
+  ([below](#bots-on-a-worker)).
+
+Every change saves on its own as you make it; there is no Save button. A row
+says *Saving…* while the gateway takes the change and shows the reason if it
+refuses one. Typed text (the name, title, emoji or directory) saves on Enter or
+when you leave the field, and Escape takes it back.
 
 ```sh
 hui bot add                      # "New Bot", which asks what to call it
@@ -276,8 +314,8 @@ back to the one the bot's id picks. `hui bot show` prints the look.
 `--memory-model` picks the model that writes the memory's summaries. An empty
 value clears a choice: `hui bot edit ada --model "" --thinking ""` puts the chat
 back on the model and thinking level a new chat gets (*Gateway default* in the
-Bots tab's dialog), and `--memory-model ""` hands the summaries back to the
-chat's own model.
+bot's Settings tab), and `--memory-model ""` puts the utility model back on its
+default (Settings' utility model, then the chat's own model).
 
 A bot's chat refuses what would end or fork it: `/clear`, `/compact`, rewind
 and deleting the session all answer with an explanation instead.
@@ -294,9 +332,9 @@ first asks what to call it, and renames itself). Once it knows enough, usually
 after a few answers, it writes SOUL.md itself (with a tool of its own, so it
 needs no file access): only what you told it or agreed to, since it asks rather
 than guesses. Then it says so, sums it up and tells you how to change it. If
-your first message asks for real work, it does the work first. A bot you named
-in the New bot dialog never asks about its name or look. Messages from routines
-and other bots don't count as you.
+your first message asks for real work, it does the work first. A bot created
+with a name (`hui bot add --name Ada`) never asks about its name. Messages from
+routines and other bots don't count as you.
 
 From then on every turn reads SOUL.md, so a change applies from the next
 request. To change it, tell the bot ("be more formal", "don't message me before
@@ -367,6 +405,50 @@ can reach whatever your account can, the files of skills you turned off and
 HUI's own API included. Messaging other bots lets it ask a better-equipped bot
 to do something for it; turn **Message bots** off to prevent that. To really
 isolate a bot, run it on a worker in a container.
+
+### Bots on a worker
+
+A bot can live on a remote worker (Settings → Workers) instead of this
+machine: its chat runs there, and its conversation, memory, folder and SOUL.md
+are kept there, so it works next to that machine's files, and a turn it started
+keeps going while HUI is away from it. Once you have a worker, the roster's
+**+** is a small menu, **New bot on Local** or **New bot on devbox**: a choice
+creates *New Bot* there at once and opens its chat, where it greets you, asks
+what to call it and what you expect, and writes its SOUL.md on the worker, as
+above. From a terminal:
+
+```sh
+hui bot add --worker devbox                               # New Bot, in its home folder on devbox
+hui bot add --name Rover --worker devbox --cwd ~/src/app  # a folder there: absolute or ~/
+```
+
+HUI must be connected to the worker when you create the bot. Where a bot runs
+is chosen once: it never moves, and its Settings tab shows the machine
+(**Workspace → Runs on**) without offering to change it. Its home folder, HUI's
+private folder for it under the worker's HUI data directory
+(`~/.local/share/hui-worker/bots/<id>`), holds its SOUL.md and is its working
+directory unless you choose a folder on the worker (its Settings tab suggests
+that worker's folders, never this machine's), shown as `devbox:/path`; SOUL.md
+never goes in a folder you chose. The roster and the bot's chat show the worker beside its name,
+`hui bot list` marks it `on devbox` and `hui bot show` names it.
+
+Everything else works as for a bot here: messages, routines, Stop, its Memory
+panel and Soul tab, calls, archiving and deleting, and messages between bots in
+both directions (a bot on a worker sees every bot in its list). Its memory's
+summaries are written on the worker with its utility model.
+
+**When the worker is offline**, the bot shows it (reconnecting, or
+disconnected), its row keeps its latest message, its Memory panel and Soul tab
+say the worker is offline, and messages to it fail with that reason until HUI is
+connected again. Deleting it still takes it off the roster at once: HUI notes
+what is left on the worker (its memory and home folder) on this machine and
+removes them the next time it connects to the worker; removing the worker first
+drops the note.
+
+**Limits.** A bot on a worker has the limits of any session on a worker: the
+terminal, the managed browser and watchers act on this machine, so it can't use
+them, and it can't use worktrees. A worker can't be removed while bots run on
+it; delete them first.
 
 ### Talking to a bot
 
@@ -445,7 +527,7 @@ back. One call runs at a time.
 Settings → Models → **Calls** shows the account calls use (the first one not
 waiting for its quota, as model turns choose) and the **default voice**. Each bot
 can have its own **Call voice**, one of GPT-Live's voices, and a **Language**,
-in its dialog or from a terminal:
+in its Settings tab or from a terminal:
 
 ```sh
 hui bot edit ada --call-voice ember --language es

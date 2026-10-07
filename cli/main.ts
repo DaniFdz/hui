@@ -35,11 +35,11 @@ export const HELP = `Usage:
   hui bot list [--archived] [--json]
   hui bot show <bot> [--json]
   hui bot add [--name <name>] [--title <text>] [--soul-file <path|->] [--cwd <dir>]
-              [--model <provider/model>] [--thinking <level>] [--utility-model <provider/model>] [--emoji <e>]
+              [--worker <name|id>] [--model <provider/model>] [--thinking <level>] [--utility-model <provider/model>] [--emoji <e>]
               [--shape <blob|round|triangle|heart|cookie>] [--color <name|#rrggbb>]
               [--language <code>] [--call-voice <cove|arbor|breeze|ember|juniper|maple|sol|spruce|vale>]
               [--deny-tools <a,b>] [--deny-skills <a,b>] [--json]
-  hui bot edit <bot> [same flags as add but --soul-file and --deny-*] [--json]
+  hui bot edit <bot> [same flags as add but --soul-file, --worker and --deny-*] [--json]
   hui bot soul <bot> [--file <path|->] [--json]
   hui bot tools <bot> [--allow <a,b>] [--deny <a,b>] [--json]
   hui bot skills <bot> [--allow <a,b>] [--deny <a,b>] [--json]
@@ -81,6 +81,10 @@ hui bot chat <handle>), then writes its persona, SOUL.md, itself; --soul-file
 gives it one instead (- reads stdin) and skips that first conversation. Without
 --name it is "New Bot" and first asks what to call it. Soul prints SOUL.md;
 --file replaces it, and an empty file removes it so the bot asks again.
+--worker runs a new bot on a remote worker of Settings → Workers, by name or id,
+which HUI must be connected to: its chat, memory, folder and SOUL.md live there,
+--cwd is then a folder there (absolute or ~/), and it never moves. Bots on a
+worker can't use terminals, the browser or watchers, which stay on this machine.
 A bot has every tool and skill a session in its directory has, new ones
 included, until you turn some off: tools lists them grouped, each on or off,
 and --deny turns tools off, --allow back on (comma-separated names); skills
@@ -127,7 +131,7 @@ export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {
     check: { type: "boolean" }, fix: { type: "boolean" }, nightly: { type: "boolean" },
     name: { type: "string" }, command: { type: "string" }, "extra-path": { type: "string", multiple: true },
     archived: { type: "boolean" }, title: { type: "string" }, "soul-file": { type: "string" }, file: { type: "string" }, yes: { type: "boolean", short: "y" },
-    cwd: { type: "string" }, model: { type: "string" }, thinking: { type: "string" }, "memory-model": { type: "string" }, "utility-model": { type: "string" },
+    cwd: { type: "string" }, worker: { type: "string" }, model: { type: "string" }, thinking: { type: "string" }, "memory-model": { type: "string" }, "utility-model": { type: "string" },
     emoji: { type: "string" }, shape: { type: "string" }, color: { type: "string" }, voice: { type: "string" }, "voice-speed": { type: "string" }, language: { type: "string" }, "call-voice": { type: "string" }, wait: { type: "boolean" }, timeout: { type: "string" }, zoom: { type: "string" }, html: { type: "string" },
     prompt: { type: "string" }, at: { type: "string" }, every: { type: "string" }, cron: { type: "string" }, timezone: { type: "string" },
     allow: { type: "string" }, deny: { type: "string" }, "deny-tools": { type: "string" }, "deny-skills": { type: "string" },
@@ -153,13 +157,15 @@ export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {
     update: ["from", "sha256", "rollback", "check", "json", "nightly"], desktop: [], "install-app": [],
     doctor: ["fix", "json"], "workers list": ["json"], "workers add": ["name", "command", "extra-path", "json"],
     "workers edit": ["name", "command", "extra-path", "json"], "workers remove": ["json"],
-    "bot list": ["archived", "json"], "bot show": ["json"], "bot add": [...BOT_FIELDS, "soul-file", "deny-tools", "deny-skills", "json"], "bot edit": [...BOT_FIELDS, "json"],
+    "bot list": ["archived", "json"], "bot show": ["json"], "bot add": [...BOT_FIELDS, "soul-file", "worker", "deny-tools", "deny-skills", "json"], "bot edit": [...BOT_FIELDS, "json"],
     "bot soul": ["file", "json"], "bot tools": ["allow", "deny", "json"], "bot skills": ["allow", "deny", "json"],
     "bot remove": ["json"], "bot restore": ["json"], "bot delete": ["yes", "json"], "bot chat": [], "bot send": ["wait", "timeout", "json"], "bot stop": ["json"],
     "bot memory": ["zoom", "html", "json"], "bot routine list": ["json"],
     "bot routine add": ["name", "prompt", "at", "every", "cron", "timezone", "json"], "bot routine run": [], "bot routine remove": ["json"],
   };
   if (!command || !allowed[command] || extra.length || first !== "gateway" && first !== "workers" && !bots && second) throw new Error("Unknown command. Run hui --help.");
+  // Where a bot runs is chosen once; an edit cannot move it.
+  if (command === "bot edit" && values.worker !== undefined) throw new Error("A bot stays on the machine it was created on: --worker only applies to bot add.");
   if (command === "bot edit" && values["soul-file"] !== undefined) throw new Error("bot edit does not change SOUL.md: use hui bot soul <bot> --file <path|->.");
   for (const flag of Object.keys(values)) if (!allowed[command]!.includes(flag)) throw new Error(`--${flag} is not valid for ${command}.`);
   if (bots) checkBotCommand(command, operands, values);
@@ -199,6 +205,9 @@ function checkBotCommand(command: string, operands: readonly string[], values: R
     throw new Error(expected.length ? `${command} needs ${expected.map((name) => `<${name}>`).join(" ")}.` : `${command} takes no operands.`);
   }
   const given = (flag: string) => values[flag] !== undefined;
+  if (given("worker") && !String(values["worker"]).trim()) throw new Error("--worker needs a worker's name or id: see hui workers list.");
+  // A folder on a worker is never relative to where this command runs.
+  if (given("worker") && given("cwd") && !/^(?:\/|~(?:\/|$))/u.test(String(values["cwd"]).trim())) throw new Error("With --worker, --cwd is a folder on the worker: absolute or ~/….");
   if (command === "bot edit" && !BOT_FIELDS.some(given)) throw new Error(`bot edit needs at least one of ${BOT_FIELDS.map((flag) => `--${flag}`).join(", ")}.`);
   // `""` clears a choice: the gateway's default for the chat, Settings' utility model, Auto for the language,
   // Settings' call voice.

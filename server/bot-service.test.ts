@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import { existsSync } from "node:fs";
 import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test, type TestContext } from "node:test";
 
-import { BOT_KICKOFF_MARKER, botKickoffName, type BotAccess, type BotMemoryStatus } from "../shared/bots.ts";
+import { BOT_KICKOFF_MARKER, botDisplayCwd, botKickoffName, type BotAccess, type BotMemoryStatus } from "../shared/bots.ts";
 import type { CallRecord } from "../shared/calls.ts";
 import type { AutomationTask } from "../src/lib/automation-types.ts";
 import { DEFAULT_SETTINGS } from "../src/lib/settings.ts";
@@ -15,13 +16,23 @@ import type { AgentRuntime, PromptAttachment, RuntimeEvent, RuntimeModel, Runtim
 // Paths are resolved at import time: never the operator's own configuration.
 process.env["XDG_CONFIG_HOME"] = await mkdtemp(join(tmpdir(), "hui-bot-service-config-"));
 const { LiveSessions } = await import("./live-sessions.ts");
-const { BotRegistry, BotConflictError, BotInputError, BotNotFoundError } = await import("./bots.ts");
+const { BotRegistry, BotConflictError, BotInputError, BotNotFoundError, BotWorkerOfflineError } = await import("./bots.ts");
 const { BotService, botsSection, hopOf, MAX_BOT_HOPS } = await import("./bot-service.ts");
 const { BotMemoryUnavailableError } = await import("./bot-memory.ts");
 const { localBotSouls } = await import("./bot-souls.ts");
 type SessionRecord = import("./sessions.ts").SessionRecord;
 type BotConversationInput = import("./bot-service.ts").BotConversationInput;
 type BotOffer = import("./bot-service.ts").BotOffer;
+type BotWorkers = import("./bot-service.ts").BotWorkers;
+
+async function waitFor<T>(read: () => T | undefined | Promise<T | undefined>, label: string): Promise<T> {
+  for (const deadline = Date.now() + 5_000; ;) {
+    const value = await read();
+    if (value !== undefined) return value;
+    if (Date.now() > deadline) throw new Error(`Timed out waiting for ${label}.`);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+}
 
 /** A Durable-like chat runtime driven by the test: it records prompts and settles when told. */
 class FakeChat implements RuntimeSession {
@@ -207,6 +218,79 @@ async function harness(t: TestContext, options: { messagesPerHour?: number; memo
     html: async () => readable ? "<!doctype html><title>memory</title>" : unreadable(),
     subscribe: () => () => {},
   };
+  // A remote worker, "devbox" (w-1): its store's ports, as `bot-remote.ts` gives them, reachable while `online`.
+  const remote = {
+    online: true,
+    next: 101,
+    created: [] as Array<{ worker: string; input: unknown }>,
+    configured: [] as Array<[string, string, unknown]>,
+    directories: [] as string[],
+    forgotten: [] as string[],
+    /** SOUL.md on the worker, by bot id. */
+    soulFiles: new Map<string, string>(),
+    soulReads: [] as string[],
+    homesRemoved: [] as string[],
+    /** What deleting a bot left for the worker: done at once while online, queued otherwise. */
+    cleanups: [] as Array<{ worker: string; botId: string; reference?: string; cwd: string; queued: boolean }>,
+    records: [] as Array<[string, string, CallRecord]>,
+    lastReads: [] as string[],
+    memoryCalls: [] as Array<[string, ...unknown[]]>,
+    /** Holds every newest-message read until released. */
+    hold: undefined as Promise<void> | undefined,
+    connected: new Set<(id: string) => void>(),
+  };
+  const offline = () => new BotWorkerOfflineError("devbox, where this bot runs, is offline: HUI is not connected to it. Connect it in Settings → Workers, then try again.");
+  const reachable = () => { if (!remote.online) throw offline(); };
+  const onRemote = (path: string) => path.replace(/^~/u, "/home/remote");
+  const workers: BotWorkers = {
+    find: async (target) => {
+      if (target === "w-1" || target === "devbox") return { id: "w-1", name: "devbox" };
+      throw new BotInputError(`No worker named ${target}. See Settings → Workers.`);
+    },
+    nameOf: (id) => id === "w-1" ? "devbox" : undefined,
+    conversations: (id) => ({
+      create: async (input) => {
+        if (!remote.online) throw new BotWorkerOfflineError("HUI is not connected to devbox. Connect it in Settings → Workers, then create the bot again.");
+        remote.created.push({ worker: id, input });
+        return { reference: `durable:${remote.next++}`, cwd: input.cwd ? onRemote(input.cwd) : `/home/remote/.local/share/hui-worker/bots/${input.botId}` };
+      },
+      directory: async (cwd) => { reachable(); remote.directories.push(cwd); return onRemote(cwd); },
+      configure: async (reference, change) => { reachable(); remote.configured.push([id, reference, change]); },
+      lastMessage: async (reference) => {
+        remote.lastReads.push(reference);
+        await remote.hold;
+        reachable();
+        return { role: "assistant" as const, text: "remote reply", at: "2026-10-06T21:00:00.000Z" };
+      },
+      writeCallRecord: async (reference, record) => { reachable(); remote.records.push([id, reference, record]); },
+      forget: async (reference) => { reachable(); remote.forgotten.push(reference); },
+    }),
+    souls: () => ({
+      prepare: async () => { reachable(); },
+      read: async (botId) => { reachable(); remote.soulReads.push(botId); return remote.soulFiles.get(botId); },
+      exists: async (botId) => { reachable(); remote.soulReads.push(botId); return remote.soulFiles.has(botId); },
+      write: async (botId, soul) => { reachable(); if (soul) remote.soulFiles.set(botId, soul); else remote.soulFiles.delete(botId); },
+      remove: async (botId) => { reachable(); remote.soulFiles.delete(botId); remote.homesRemoved.push(botId); },
+    }),
+    cleanUp: async (id, bot) => {
+      remote.cleanups.push({ worker: id, ...bot, queued: !remote.online });
+      if (remote.online) remote.soulFiles.delete(bot.botId);
+      return remote.online ? "done" : "queued";
+    },
+    memory: () => ({
+      enable: async () => {},
+      disable: async () => {},
+      purge: async () => {},
+      configure: async (reference, settings) => { reachable(); remote.memoryCalls.push(["configure", reference, settings]); },
+      // What the worker last reported: nothing while it is offline.
+      status: async () => remote.online ? { ...MEMORY, messages: 9, extra: "internal" } as BotMemoryStatus : undefined,
+      view: async () => { reachable(); return "<chat>\n0+1|user: from the worker\n</chat>"; },
+      zoom: async (_reference, at, n) => { reachable(); return `${at}+${n - 1}|user: from the worker`; },
+      html: async () => { reachable(); return "<!doctype html><title>remote memory</title>"; },
+      subscribe: () => () => {},
+    }),
+    onConnected: (listener) => { remote.connected.add(listener); return () => remote.connected.delete(listener); },
+  };
   const souls = localBotSouls(botsDir);
   /** `exists` calls, to see the bot list's cache at work. */
   const soulChecks: string[] = [];
@@ -227,6 +311,7 @@ async function harness(t: TestContext, options: { messagesPerHour?: number; memo
       const now = new Date(clock).toISOString();
       const record: SessionRecord = {
         id: randomUUID(), title: String(body["title"]), group: String(body["group"]), cwd: String(body["cwd"]), tool: String(body["tool"]),
+        ...(typeof body["worker"] === "string" ? { worker: body["worker"] } : {}),
         ...(typeof body["model"] === "string" ? { model: body["model"] } : {}),
         ...(typeof body["thinking"] === "string" ? { thinking: body["thinking"] } : {}),
         bot: bot.id, piSessionFile: bot.piSessionFile, createdAt: now, updatedAt: now,
@@ -242,6 +327,7 @@ async function harness(t: TestContext, options: { messagesPerHour?: number; memo
     },
     conversations,
     memory,
+    workers,
     souls: { ...souls, exists: async (botId) => { soulChecks.push(botId); return souls.exists(botId); } },
     routines: {
       tasks: async () => tasks,
@@ -258,7 +344,7 @@ async function harness(t: TestContext, options: { messagesPerHour?: number; memo
     ...(options.messagesPerHour ? { messagesPerHour: options.messagesPerHour } : {}),
   });
   return {
-    dir, botsDir, sessions, service, registry, conversations, memoryCalls, tasks, created, removed, chats, histories, soulChecks,
+    dir, botsDir, sessions, service, registry, conversations, memoryCalls, tasks, created, removed, chats, histories, remote, soulChecks,
     /** The bot's SOUL.md on disk, or undefined. */
     soulFile: (botId: string) => readFile(join(botsDir, botId, "SOUL.md"), "utf8").catch(() => undefined),
     records: () => records,
@@ -814,6 +900,19 @@ test("bots from before SOUL.md get their instructions as SOUL.md once, then thei
   assert.deepEqual((await h.service.list()).map((each) => [each.handle, each.soul]), [["ada", true], ["bob", true], ["cy", true], ["dee", false]]);
 });
 
+test("the migration to SOUL.md leaves bots on workers alone: their homes and souls are on the worker", async (t) => {
+  const h = await harness(t);
+  const rover = await h.service.create({ name: "Rover", worker: "w-1", soul: "# Who I am\nRover." });
+  const file = join(h.dir, "bots.json");
+  const stored = JSON.parse(await readFile(file, "utf8")) as { bots: Array<Record<string, unknown>> };
+  stored.bots = stored.bots.map((each) => each["id"] === rover.id ? { ...each, instructions: "Old Rover." } : each);
+  await writeFile(file, JSON.stringify(stored));
+  const reads = h.remote.soulReads.length;
+  assert.deepEqual(await h.service.migrate(), { souls: 0, cleared: 0 });
+  assert.equal(existsSync(join(h.botsDir, rover.id)), false, "no home folder for it on this machine");
+  assert.deepEqual([h.remote.configured, h.remote.soulReads.length, h.remote.soulFiles.size], [[], reads, 0], "nothing asked of or written to the worker");
+});
+
 test("messages prompt an idle bot, queue behind a busy one, and a wait reports the run that answers them", async (t) => {
   const h = await harness(t);
   const bot = await h.service.create({ soul: SOUL, name: "Ada" });
@@ -1095,3 +1194,153 @@ test("the bots section tells the bot how calls reach it", async (t) => {
   assert.match(section!, /"\[call task\]"/u);
   assert.match(section!, /After each call your chat and memory get its record, marked "\[call\]": a summary and the whole transcript\./u);
 });
+
+/* ── bots on remote workers ─────────────────────────────────────────────── */
+
+const REMOTE_MEMORY: BotMemoryStatus = { ...MEMORY, messages: 9 };
+
+test("a bot created on a worker gets its conversation, memory and folder there, and its chat is a session on that worker", async (t) => {
+  const h = await harness(t);
+  const view = await h.service.create({ name: "Rover", worker: "devbox", soul: "# Who I am\nRover.", model: "fixture/one", memoryModel: "fixture/cheap" });
+  assert.deepEqual(view.worker, { id: "w-1", name: "devbox" }, "named as session views name it");
+  assert.equal(view.cwd, `/home/remote/.local/share/hui-worker/bots/${view.id}`, "its home, which the worker made");
+  assert.equal(view.soul, true, "known from the create: the list does not wait for the worker to say");
+  // Its home, SOUL.md and conversation in one operation there.
+  assert.deepEqual(h.remote.created, [{ worker: "w-1", input: { botId: view.id, model: "fixture/one", soul: "# Who I am\nRover.", memory: { name: "Rover", model: "fixture/cheap" } } }]);
+  assert.deepEqual(h.conversations.created, [], "nothing in this gateway's store");
+  assert.equal(existsSync(join(h.botsDir, view.id)), false, "no home folder, and so no SOUL.md, on this machine");
+  assert.deepEqual(h.created, [{
+    body: { cwd: view.cwd, title: "Rover", group: "", tool: "durable", worker: "w-1", model: "fixture/one" },
+    bot: { id: view.id, piSessionFile: "durable:101" },
+  }], "its chat is registered through New Session's path, on the worker");
+  assert.equal(h.record(view.sessionId)?.worker, "w-1");
+  assert.equal((await h.registry.list()).find((bot) => bot.id === view.id)?.worker, "w-1", "bots.json keeps the worker's id");
+  assert.equal(botDisplayCwd(view), `devbox:/home/remote/.local/share/hui-worker/bots/${view.id}`);
+
+  // A directory it names is checked there; one that cannot be a path on a worker is refused here.
+  assert.equal((await h.service.create({ name: "Placed", worker: "w-1", cwd: "~/src" })).cwd, "/home/remote/src");
+  await assert.rejects(h.service.create({ name: "Lost", worker: "w-1", cwd: "src" }), /A directory on a worker must be absolute or start with ~\//u);
+  await assert.rejects(h.service.create({ name: "Nowhere", worker: "nope" }), /No worker named nope/u);
+  assert.equal(h.remote.created.length, 2, "refused creates reach no worker");
+
+  // Where a bot runs is chosen once.
+  await assert.rejects(h.service.update(view.id, { worker: "w-1" }), (error: unknown) => error instanceof BotInputError && error.message === "A bot stays on the machine it was created on.");
+  await assert.rejects(h.service.update(view.id, { title: "Scout", worker: "" }), /stays on the machine it was created on/u);
+});
+
+test("a bot on a worker is edited, called and remembered in its worker's store; model checks stay here", async (t) => {
+  const h = await harness(t);
+  const rover = await h.service.create({ name: "Rover", worker: "w-1", soul: "# Who I am\nRover." });
+  const reference = h.record(rover.sessionId)!.piSessionFile!;
+  await h.service.update(rover.id, { name: "Rover Two", memoryModel: "fixture/cheap" });
+  assert.deepEqual(h.remote.configured, [], "nothing changes in its conversation: no instructions any more");
+  assert.deepEqual(h.remote.memoryCalls, [["configure", reference, { name: "Rover Two", model: "fixture/cheap" }]]);
+  assert.deepEqual([h.conversations.configured, h.memoryCalls], [[], []], "this gateway's store is untouched");
+  await assert.rejects(h.service.update(rover.id, { memoryModel: "other/model" }), /Unknown model: other\/model/u);
+  // A directory is checked on the worker; the same one is no move.
+  assert.equal((await h.service.update(rover.id, { cwd: rover.cwd })).cwd, rover.cwd);
+  assert.deepEqual(h.remote.directories, [rover.cwd]);
+  await assert.rejects(h.service.update(rover.id, { cwd: "relative/dir" }), /absolute or start with ~\//u);
+
+  const record: CallRecord = { call: "call-9", bot: "Rover", startedAt: 1, endedAt: 60_001, lines: [{ role: "user", text: "Where are you?", at: 1 }] };
+  await h.service.recordCall(rover.id, record);
+  assert.deepEqual(h.remote.records, [["w-1", reference, record]]);
+  assert.deepEqual(h.conversations.records, []);
+  // SOUL.md is read and written in its home on the worker: its Soul tab and its calls.
+  h.remote.soulFiles.set(rover.id, "# Who I am\nRover, on devbox.");
+  assert.equal(await h.service.soul(rover.id), "# Who I am\nRover, on devbox.");
+  assert.equal(await h.service.setSoul(rover.id, "# Who I am\r\nRover Two.\n"), "# Who I am\nRover Two.");
+  assert.equal(h.remote.soulFiles.get(rover.id), "# Who I am\nRover Two.");
+  assert.equal((await h.service.get(rover.id)).soul, true);
+  assert.equal(await h.service.setSoul(rover.id, ""), null, "an empty soul removes it there");
+  assert.equal(h.remote.soulFiles.has(rover.id), false);
+  assert.equal((await h.service.get(rover.id)).soul, false, "known at once, not read again from a list");
+  await h.service.setSoul(rover.id, "# Who I am\nRover Two.");
+  assert.deepEqual(await h.service.callContext(rover.id), {
+    bot: (await h.registry.list()).find((bot) => bot.id === rover.id), view: "<chat>\n0+1|user: from the worker\n</chat>", soul: "# Who I am\nRover Two.",
+  }, "a call starts from the soul on the worker");
+  assert.equal(existsSync(join(h.botsDir, rover.id)), false, "never a SOUL.md on this machine");
+  h.remote.online = false;
+  await assert.rejects(h.service.soul(rover.id), BotWorkerOfflineError);
+  await assert.rejects(h.service.setSoul(rover.id, "x"), BotWorkerOfflineError);
+  assert.equal((await h.service.callContext(rover.id)).soul, undefined, "a call goes on without it");
+  h.remote.online = true;
+  assert.equal((await h.service.callContext(rover.id)).view, "<chat>\n0+1|user: from the worker\n</chat>");
+  assert.deepEqual(await h.service.memory(rover.id), { status: REMOTE_MEMORY, view: "<chat>\n0+1|user: from the worker\n</chat>" });
+  assert.equal(await h.service.zoom(rover.id, 4, 2), "4+1|user: from the worker");
+  assert.match(await h.service.memoryHtml(rover.id), /remote memory/u);
+});
+
+test("a bot list never waits on a worker: memory from its last report, the newest message read once per connection in the background", async (t) => {
+  const h = await harness(t);
+  let release!: () => void;
+  h.remote.hold = new Promise<void>((resolve) => { release = resolve; });
+  const rover = await h.service.create({ name: "Rover", worker: "w-1" });
+  const first = (await h.service.list()).find((bot) => bot.id === rover.id)!;
+  assert.equal(first.lastMessage, undefined, "the read is still out: the list did not wait for it");
+  assert.deepEqual(first.memory, REMOTE_MEMORY);
+  assert.equal(h.remote.lastReads.length, 1);
+  await h.service.list();
+  assert.equal(h.remote.lastReads.length, 1, "one read in flight at a time");
+  release();
+  await waitFor(async () => (await h.service.get(rover.id)).lastMessage, "the background read");
+  assert.deepEqual((await h.service.get(rover.id)).lastMessage, { role: "assistant", text: "remote reply", at: "2026-10-06T21:00:00.000Z" });
+  for (let index = 0; index < 3; index += 1) await h.service.list();
+  assert.equal(h.remote.lastReads.length, 1, "cached for this connection");
+  // The worker's runs went on while HUI was away: a new connection reads it again.
+  for (const listener of h.remote.connected) listener("w-1");
+  await h.service.list();
+  assert.equal(h.remote.lastReads.length, 2);
+
+  // Offline: the list still answers at once, with the chat's state and no memory.
+  h.remote.online = false;
+  const away = (await h.service.list()).find((bot) => bot.id === rover.id)!;
+  assert.equal(away.memory, undefined);
+  assert.equal(away.worker?.name, "devbox");
+});
+
+test("an offline worker: creating there fails naming it, its bots' memory says it is offline, and messages fail clearly", async (t) => {
+  const h = await harness(t);
+  h.remote.online = false;
+  await assert.rejects(h.service.create({ name: "Late", worker: "w-1" }), (error: unknown) => error instanceof BotWorkerOfflineError && /HUI is not connected to devbox/u.test(error.message));
+  assert.deepEqual([h.created, await h.registry.list()], [[], []], "nothing is left behind");
+  h.remote.online = true;
+  const rover = await h.service.create({ name: "Rover", worker: "w-1" });
+  h.remote.online = false;
+  for (const read of [() => h.service.memory(rover.id), () => h.service.zoom(rover.id, 0, 1), () => h.service.memoryHtml(rover.id)]) {
+    await assert.rejects(read(), (error: unknown) => error instanceof BotWorkerOfflineError && /devbox, where this bot runs, is offline/u.test(error.message));
+  }
+  assert.equal((await h.service.callContext(rover.id)).view, undefined, "a call goes on without the memory");
+  // This gateway has no such worker configured, so the chat's session cannot reach it, as a remote session's could not.
+  await waitFor(() => h.sessions.status(rover.sessionId) === "disconnected" || undefined, "the chat to show the disconnect");
+  assert.equal((await h.service.get(rover.id)).status, "disconnected");
+  await assert.rejects(h.service.send(rover.id, { text: "hello?" }), (error: unknown) => error instanceof BotWorkerOfflineError && /runs on devbox, which HUI is disconnected from/u.test(error.message));
+});
+
+test("deleting a bot on a worker cleans up there at once, or queues it while the worker is offline; it leaves the roster either way", async (t) => {
+  const h = await harness(t);
+  const rover = await h.service.create({ name: "Rover", worker: "w-1", soul: "# Who I am\nRover." });
+  const crow = await h.service.create({ name: "Crow", worker: "w-1", cwd: "~/src/crow" });
+  const [roverRef, crowRef] = h.remote.created.map((_, index) => `durable:${101 + index}`);
+  assert.deepEqual(await h.service.delete(rover.id), { queued: false });
+  assert.deepEqual(h.remote.cleanups, [{ worker: "w-1", botId: rover.id, reference: roverRef, cwd: "/home/remote/.local/share/hui-worker/bots/" + rover.id, queued: false }]);
+  assert.equal(await h.soulFile(rover.id), undefined, "nothing of it on this machine");
+  h.remote.online = false;
+  // An offline worker: its chat cannot be reached, and the bot still goes at once.
+  assert.deepEqual(await h.service.delete(crow.id), { queued: true });
+  assert.deepEqual(h.remote.cleanups.at(-1), { worker: "w-1", botId: crow.id, reference: crowRef, cwd: "/home/remote/src/crow", queued: true }, "with the folder it worked in, so the worker never removes a chosen one");
+  assert.deepEqual(await h.registry.list(), []);
+  assert.deepEqual(h.remote.forgotten, [], "the worker forgets its conversations itself, in the clean-up");
+});
+
+test("a worker's host gets the bots section only for a bot that runs on it", async (t) => {
+  const h = await harness(t);
+  const home = await h.service.create({ name: "Home" });
+  const rover = await h.service.create({ name: "Rover", worker: "w-1" });
+  const section = await h.service.workerSection("w-1", rover.id);
+  assert.match(section!, /You are @rover \(Rover\)/u);
+  assert.match(section!, /- @home: Home/u, "the roster includes the bots here");
+  await assert.rejects(h.service.workerSection("w-1", home.id), BotNotFoundError);
+  await assert.rejects(h.service.workerSection("w-2", rover.id), BotNotFoundError);
+});
+

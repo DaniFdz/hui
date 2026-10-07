@@ -5,11 +5,12 @@ import test from "node:test";
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
 const between = (source: string, start: string, end: string) => source.slice(source.indexOf(start), source.indexOf(end, source.indexOf(start)));
 
-test("Tools is the panel's fourth tab, self-contained in bot-tools.ts with its own controller and styles", () => {
+test("Tools is the panel's fourth tab, between Soul and Settings, self-contained in bot-tools.ts with its own controller and styles", () => {
   const panel = read("./bots.ts");
   assert.match(panel, /import \{ renderBotToolsTab, type BotToolsProps \} from "\.\/bot-tools\.ts";/u);
   assert.match(panel, /tools: Omit<BotToolsProps, "bot">;/u);
-  assert.match(read("../lib/bot-roster.ts"), /export const BOT_PANEL_TABS: readonly BotPanelTab\[\] = \["routines", "memory", "soul", "tools"\];/u);
+  assert.match(read("../lib/bot-roster.ts"), /export const BOT_PANEL_TABS: readonly BotPanelTab\[\] = \["routines", "memory", "soul", "tools", "settings"\];/u);
+  assert.match(between(panel, "function renderPanelTab(", "export function renderBotPanel("), /case "tools": return keyed\(props\.bot\.id, renderBotToolsTab\(\{ bot: props\.bot, \.\.\.props\.tools \}\)\);/u, "another bot's tab starts afresh");
   const app = read("../hui-app.ts");
   assert.match(app, /private botTools = new BotToolsController\(this\);/u);
   assert.match(app, /this\.resetBotSoul\(target\.id\);\n\s+this\.botTools\.reset\(target\.id\);/u, "another bot starts clean");
@@ -17,8 +18,7 @@ test("Tools is the panel's fourth tab, self-contained in bot-tools.ts with its o
   assert.match(app, /if \(toolsBot\) void this\.botTools\.refresh\(toolsBot\);/u, "on opening the tab");
   assert.match(app, /tools: this\.botTools\.props\(bot\),/u);
   assert.match(read("./bot-tools.ts"), /await import\("\.\.\/styles\/bot-tools\.css"\);/u);
-  const dialog = between(panel, "export function renderBotDialog(", "/* ── archive confirmation");
-  assert.doesNotMatch(dialog, /disabledTools|Available tools|Tools/u, "the New bot dialog gets no new fields");
+  assert.doesNotMatch(read("./bot-settings.ts"), /disabledTools|disabledSkills|Available tools/u, "Settings gets no tools fields: they are this tab");
 });
 
 test("Available tools: grouped switches with descriptions, powerful ones labelled, every switch waiting for a save", () => {

@@ -243,18 +243,22 @@ const server = createServer(async (request, response) => {
     return finish(response);
   }
 
-  // A bot messaging another bot through HUI's message_bot tool.
+  // A bot messaging another bot through HUI's message_bot tool: @bob, or the handle after it (E2E_MESSAGE_BOT @home).
   if (source.includes("E2E_MESSAGE_BOT")) {
-    toolUse(response, "tool-e2e-message-bot", "message_bot", { to: "@bob", message: "hello from the fixture" });
+    const to = /E2E_MESSAGE_BOT (@[a-z0-9-]+)/u.exec(source)?.[1] ?? "@bob";
+    toolUse(response, "tool-e2e-message-bot", "message_bot", { to, message: "hello from the fixture" });
     return finish(response, "tool_use");
   }
   if (latestToolResult?.id === "tool-e2e-message-bot") {
     text(response, `message_bot answered: ${typeof latestToolResult.result === "string" ? latestToolResult.result : JSON.stringify(latestToolResult.result)}`);
     return finish(response);
   }
-  // A new bot's first turn, which HUI starts: the first conversation's opening question.
+  // A new bot's first turn, which HUI starts: the first conversation's opening question. A bot still called
+  // "New Bot", whose soul section says it has no name yet, asks what to call it first, as its prompt tells it to.
   if (source.includes("[HUI bot created]")) {
-    text(response, "Hi, I'm new here. What would you like me to look after for you?");
+    text(response, flattenedText(body.system).includes("You have no name yet")
+      ? "Hi, I'm new here and I don't have a name yet. What would you like to call me?"
+      : "Hi, I'm new here. What would you like me to look after for you?");
     return finish(response);
   }
   // A bot saving its own SOUL.md with its write_soul tool.

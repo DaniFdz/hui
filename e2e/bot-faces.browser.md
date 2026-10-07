@@ -10,6 +10,10 @@ gateway's `/__hui/bots` routes and stream, Pi Durable and OptChat are real; the
 model provider (`e2e/pi-provider-fixture.mjs`) is a deterministic fake. No
 operator transcript, credential or account is used.
 
+Since 2026-10-07 the Look is a row of the bot's Settings tab rather than a
+dialog ([bot-setup.browser.md](bot-setup.browser.md)); step 5 below describes
+the old dialog.
+
 ## Reproduce
 
 1. From the checkout, with `HTTP_PROXY`/`HTTPS_PROXY`/`ALL_PROXY` (any case) and

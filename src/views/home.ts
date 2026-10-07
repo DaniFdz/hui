@@ -349,9 +349,9 @@ export type HomeProps = {
 /** What the bot header's ⋯ menu asks the app to do. */
 export type BotHeaderAction = "edit" | "archive" | "delete";
 
-/** The bot view's header: who the bot is, its Routines | Memory | Soul panel and its ⋯ menu. */
+/** The bot view's header: who the bot is, its panel (Routines | Memory | Soul | Tools | Settings) and its ⋯ menu. */
 export type HomeBot = {
-  bot: Pick<BotView, "id" | "name" | "title" | "avatar" | "memory">;
+  bot: Pick<BotView, "id" | "name" | "title" | "avatar" | "memory" | "worker">;
   panelOpen: boolean;
   panelId: string;
   onTogglePanel: () => void;
@@ -2138,13 +2138,16 @@ function botFaceState(props: HomeProps): BotFaceState {
   });
 }
 
-/** A bot's chat names the bot, its role and whether it is summarizing memory. */
+/** A bot's chat names the bot, its role, the worker it runs on and whether it is summarizing memory. */
 function renderBotIdentity(bot: HomeBot, session: SessionView, face: BotFaceState) {
   const status = bot.bot.memory?.waiting ? "Summarizing memory…" : unreachableHost(session)?.status ?? STATUS_TEXT[session.status];
+  const worker = bot.bot.worker;
   return html`<div class="transcript__identity chat-pane__crumbs bot-chat-identity">
     ${renderBotAvatar(bot.bot, "md", { state: face })}
     <h2 class="transcript__title chat-pane__session-title" title=${bot.bot.name}>${bot.bot.name}</h2>
-    <span class="transcript__meta" title=${session.cwd}>${bot.bot.title ? `${bot.bot.title} · ` : ""}${status}</span>
+    <span class="transcript__meta" title=${worker ? `${worker.name}:${session.cwd}` : session.cwd}>${bot.bot.title ? `${bot.bot.title} · ` : ""}${worker
+      ? html`<span class="bot-chat-identity__machine" title=${`Runs on ${worker.name}`}><span class="sr-only">on </span>${icons.globe}<span>${worker.name}</span></span> · `
+      : nothing}${status}</span>
   </div>`;
 }
 
@@ -2180,7 +2183,7 @@ function renderHeader(props: HomeProps, session: SessionView) {
         <div class="chat-pane__actions chat-pane__header-actions">
           ${props.bot && props.call ? renderCallButton({ botName: props.bot.bot.name, inCall: props.call.inCall, onCall: props.call.onCall }) : nothing}
           ${props.bot ? html`<button type="button" class="btn btn--ghost btn--icon chat-icon-btn bot-panel-toggle"
-            aria-label=${props.bot.panelOpen ? "Hide routines, memory, soul and tools" : "Show routines, memory, soul and tools"} title="Routines, memory, soul and tools"
+            aria-label=${props.bot.panelOpen ? "Hide the bot panel" : "Show the bot panel"} title="Bot panel"
             aria-expanded=${String(props.bot.panelOpen)} aria-controls=${props.bot.panelOpen ? props.bot.panelId : nothing}
             @click=${props.bot.onTogglePanel}>${icons.panelRightOpen}</button>` : nothing}
           ${props.bot?.onAction ? renderBotHeaderMenu(props.bot) : nothing}

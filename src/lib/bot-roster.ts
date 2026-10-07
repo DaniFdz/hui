@@ -40,8 +40,9 @@ export function tabAfterKey<Tab extends string>(tabs: readonly Tab[], current: T
 
 /* ── side panel ───────────────────────────────────────────────────────────── */
 
-export type BotPanelTab = "routines" | "memory" | "soul" | "tools";
-export const BOT_PANEL_TABS: readonly BotPanelTab[] = ["routines", "memory", "soul", "tools"];
+export type BotPanelTab = "routines" | "memory" | "soul" | "tools" | "settings";
+/** The panel's tabs in order: what the bot does and knows, who it is, what it may use, then its Settings, last. */
+export const BOT_PANEL_TABS: readonly BotPanelTab[] = ["routines", "memory", "soul", "tools", "settings"];
 export type BotPanelState = { open: boolean; tab: BotPanelTab };
 export const BOT_PANEL_KEY = "hui.bot-panel";
 export const DEFAULT_BOT_PANEL: Readonly<BotPanelState> = { open: true, tab: "routines" };
@@ -64,6 +65,23 @@ export function readBotPanel(): BotPanelState {
 
 export function writeBotPanel(panel: BotPanelState) {
   try { localStorage.setItem(BOT_PANEL_KEY, JSON.stringify(panel)); } catch { /* Keep the in-memory choice if storage is unavailable. */ }
+}
+
+const APPLE_PLATFORM = typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/u.test(navigator.platform);
+
+/** Ctrl+Shift+, (⇧⌘, on Apple platforms) toggles a bot's Settings tab, as in Grok Bot. The comma key by its
+ * position, so layouts whose Shift+comma types another character still match. */
+export function isBotSettingsShortcut(
+  event: Pick<KeyboardEvent, "altKey" | "code" | "ctrlKey" | "defaultPrevented" | "isComposing" | "key" | "metaKey" | "shiftKey">,
+  isApplePlatform = APPLE_PLATFORM,
+): boolean {
+  if (event.defaultPrevented || event.isComposing || event.altKey || !event.shiftKey) return false;
+  if (event.code !== "Comma" && event.key !== ",") return false;
+  return isApplePlatform ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
+}
+
+export function botSettingsShortcutLabel(isApplePlatform = APPLE_PLATFORM): string {
+  return isApplePlatform ? "⇧⌘," : "Ctrl+Shift+,";
 }
 
 /* ── roster ───────────────────────────────────────────────────────────────── */
@@ -160,6 +178,7 @@ export function botAccessibleName(bot: BotView): string {
   return [
     bot.name,
     ...(bot.title ? [bot.title] : []),
+    ...(bot.worker ? [`on ${bot.worker.name}`] : []),
     botActivityLabel(bot),
     ...(bot.unread ? ["unread"] : []),
     ...(bot.hidden ? ["hidden"] : []),

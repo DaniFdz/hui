@@ -12,6 +12,8 @@ import {
   hiddenBotCount,
   normalizeBotPanel,
   normalizeSidebarTab,
+  botSettingsShortcutLabel,
+  isBotSettingsShortcut,
   rosterBots,
   tabAfterKey,
   BOT_PANEL_TABS,
@@ -120,11 +122,13 @@ test("tab strips move with arrows, Home and End and ignore other keys", () => {
   assert.equal(tabAfterKey(SIDEBAR_TABS, "bots", "Home"), "sessions");
   assert.equal(tabAfterKey(SIDEBAR_TABS, "sessions", "End"), "bots");
   assert.equal(tabAfterKey(SIDEBAR_TABS, "sessions", "Enter"), undefined);
-  assert.deepEqual(BOT_PANEL_TABS, ["routines", "memory", "soul", "tools"], "the bot panel: Routines | Memory | Soul | Tools");
+  assert.deepEqual(BOT_PANEL_TABS, ["routines", "memory", "soul", "tools", "settings"], "the bot panel: Routines | Memory | Soul | Tools | Settings, Settings last");
   assert.equal(tabAfterKey(BOT_PANEL_TABS, "memory", "ArrowRight"), "soul");
   assert.equal(tabAfterKey(BOT_PANEL_TABS, "soul", "ArrowRight"), "tools");
-  assert.equal(tabAfterKey(BOT_PANEL_TABS, "tools", "ArrowRight"), "routines");
-  assert.equal(tabAfterKey(BOT_PANEL_TABS, "routines", "End"), "tools");
+  assert.equal(tabAfterKey(BOT_PANEL_TABS, "tools", "ArrowRight"), "settings");
+  assert.equal(tabAfterKey(BOT_PANEL_TABS, "settings", "ArrowRight"), "routines", "arrows wrap");
+  assert.equal(tabAfterKey(BOT_PANEL_TABS, "routines", "End"), "settings");
+  assert.equal(tabAfterKey(BOT_PANEL_TABS, "settings", "ArrowLeft"), "tools");
   assert.equal(normalizeSidebarTab("bots"), "bots");
   for (const value of [null, "Bots", "agents", 1]) assert.equal(normalizeSidebarTab(value), "sessions");
 });
@@ -133,5 +137,22 @@ test("the side panel remembers open/closed and its tab, defaulting open on Routi
   assert.deepEqual(normalizeBotPanel(null), { open: true, tab: "routines" });
   assert.deepEqual(normalizeBotPanel({ open: false, tab: "memory" }), { open: false, tab: "memory" });
   assert.deepEqual(normalizeBotPanel({ open: true, tab: "soul" }), { open: true, tab: "soul" }, "the Soul tab is remembered too");
-  assert.deepEqual(normalizeBotPanel({ open: "no", tab: "settings" }), { open: true, tab: "routines" });
+  assert.deepEqual(normalizeBotPanel({ open: false, tab: "settings" }), { open: false, tab: "settings" }, "Edit and the shortcut leave the panel on Settings");
+  assert.deepEqual(normalizeBotPanel({ open: "no", tab: "secrets" }), { open: true, tab: "routines" });
+});
+
+test("Ctrl+Shift+, (⇧⌘, on Apple) toggles a bot's Settings, by the comma key's position", () => {
+  const key = (overrides: Partial<KeyboardEvent>) => ({ altKey: false, code: "Comma", ctrlKey: false, defaultPrevented: false, isComposing: false, key: "<", metaKey: false, shiftKey: true, ...overrides });
+  assert.equal(isBotSettingsShortcut(key({ ctrlKey: true }), false), true);
+  assert.equal(isBotSettingsShortcut(key({ ctrlKey: true, code: "KeyM", key: ";" }), false), false, "another key that types the same character");
+  assert.equal(isBotSettingsShortcut(key({ ctrlKey: true, code: "", key: "," }), false), true, "a comma without a key position");
+  assert.equal(isBotSettingsShortcut(key({ metaKey: true }), true), true);
+  assert.equal(isBotSettingsShortcut(key({ ctrlKey: true }), true), false, "Ctrl is not the Apple modifier");
+  assert.equal(isBotSettingsShortcut(key({ metaKey: true }), false), false);
+  assert.equal(isBotSettingsShortcut(key({ ctrlKey: true, shiftKey: false }), false), false, "Ctrl+, alone is not it");
+  assert.equal(isBotSettingsShortcut(key({ ctrlKey: true, altKey: true }), false), false);
+  assert.equal(isBotSettingsShortcut(key({ ctrlKey: true, isComposing: true }), false), false);
+  assert.equal(isBotSettingsShortcut(key({ ctrlKey: true, defaultPrevented: true }), false), false);
+  assert.equal(botSettingsShortcutLabel(false), "Ctrl+Shift+,");
+  assert.equal(botSettingsShortcutLabel(true), "⇧⌘,");
 });

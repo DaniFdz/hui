@@ -9,7 +9,8 @@
  *   GET    /__hui/bots/:id                   { bot }
  *   PATCH  /__hui/bots/:id                   edit ({ bot })
  *   DELETE /__hui/bots/:id                   archive ({ bot }); nothing is deleted
- *   DELETE /__hui/bots/:id?permanent=1       delete an archived bot for good ({ ok: true }); 409 while active
+ *   DELETE /__hui/bots/:id?permanent=1       delete a bot for good, active or archived ({ ok: true }; queued: true
+ *                                            while its worker is offline: what it left there goes at its next connection)
  *   POST   /__hui/bots/:id/restore           { bot }
  *   POST   /__hui/bots/:id/messages          prompt or follow-up; 202 { status } or, with wait, 200 { status, reply?, … }
  *   POST   /__hui/bots/:id/stop              stop the current turn ({ bot })
@@ -26,7 +27,7 @@
 import { parseClearCommand, parseCompactCommand, parseReloadCommand, parseUpdateCommand } from "../src/lib/slash-commands.ts";
 import { BotMemoryUnavailableError } from "./bot-memory.ts";
 import type { BotService } from "./bot-service.ts";
-import { BotConflictError, BotInputError, BotNotFoundError } from "./bots.ts";
+import { BotConflictError, BotInputError, BotNotFoundError, BotWorkerOfflineError } from "./bots.ts";
 import { SessionBusyError } from "./live-sessions.ts";
 import type { PromptAttachment } from "./runtimes/types.ts";
 
@@ -62,12 +63,13 @@ type Deps = {
   readAttachments(sessionId: string, raw: unknown): Promise<{ attachments: PromptAttachment[]; cleanupRejected(): Promise<void> }>;
 };
 
-/** 400 for input, 404/409 for a bot's state, 503 when the chat's memory cannot be read, 500 for storage. */
+/** 400 for input, 404/409 for a bot's state, 503 when the chat's memory cannot be read or its worker is offline, 500 for
+ * storage. */
 export function botErrorStatus(error: unknown): number {
   if (error instanceof BotInputError || error instanceof SyntaxError) return 400;
   if (error instanceof BotNotFoundError) return 404;
   if (error instanceof BotConflictError || error instanceof SessionBusyError) return 409;
-  if (error instanceof BotMemoryUnavailableError) return 503;
+  if (error instanceof BotMemoryUnavailableError || error instanceof BotWorkerOfflineError) return 503;
   // Durable and runtime refusals (an unknown model, say) are the caller's to fix; storage failures are not.
   return error instanceof Error && !/Store|Registry/u.test(error.name) ? 400 : 500;
 }
@@ -139,8 +141,9 @@ export function createBotRoutes(deps: Deps) {
           // Without permanent=1 a DELETE archives, the step that can be undone.
           const permanent = request.query.get("permanent");
           if (permanent === "1" || permanent === "true") {
-            await service.delete(id);
-            return { status: 200, body: { ok: true } };
+            // A bot on an offline worker goes at once; what it left there goes at the worker's next connection.
+            const { queued } = await service.delete(id);
+            return { status: 200, body: { ok: true, ...(queued ? { queued: true } : {}) } };
           }
           return { status: 200, body: { bot: await service.archive(id) } };
         }

@@ -9,7 +9,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { createInterface } from "node:readline";
 import {
-  BOT_FACE_SHAPE_LABELS, botColorName, botFaceColor, botFaceShape, botKickoffName, botLook, NEW_BOT_NAME,
+  BOT_FACE_SHAPE_LABELS, botColorName, botDisplayCwd, botFaceColor, botFaceShape, botKickoffName, botLook, NEW_BOT_NAME,
   type BotCatalog, type BotCatalogTool, type BotMessageResult, type BotQuestion, type BotSkillSelector, type BotSoul, type BotsUpdate, type BotView,
 } from "../shared/bots.ts";
 import { voiceLanguage, voiceLanguageName } from "../shared/voice.ts";
@@ -26,6 +26,8 @@ export type BotFlags = {
   "soul-file"?: string;
   file?: string;
   cwd?: string;
+  /** `add` only: a remote worker's name or id. */
+  worker?: string;
   model?: string;
   thinking?: string;
   "memory-model"?: string;
@@ -186,8 +188,10 @@ async function botBody(flags: BotFlags, io: BotIO): Promise<Record<string, unkno
   if (flags.name !== undefined) body["name"] = flags.name;
   if (flags.title !== undefined) body["title"] = flags.title;
   if (flags["soul-file"] !== undefined) body["soul"] = await readText(flags["soul-file"], io);
-  // `~` is the gateway user's home there; anything else is relative to where the command runs.
-  if (flags.cwd !== undefined) body["cwd"] = flags.cwd.startsWith("~") ? flags.cwd : resolve(io.cwd, flags.cwd);
+  // `~` is the gateway user's home there; anything else is relative to where the command runs. On a worker, `~` is the
+  // remote user's home, and the worker checks the folder.
+  if (flags.worker !== undefined) body["worker"] = flags.worker.trim();
+  if (flags.cwd !== undefined) body["cwd"] = flags.cwd.startsWith("~") || flags.worker !== undefined ? flags.cwd : resolve(io.cwd, flags.cwd);
   if (flags.model !== undefined) body["model"] = flags.model;
   if (flags.thinking !== undefined) body["thinking"] = flags.thinking;
   if (flags["memory-model"] !== undefined) body["memoryModel"] = flags["memory-model"];
@@ -252,11 +256,12 @@ export async function botCommand(base: string, action: string, operands: readonl
   }
   if (action === "add") {
     const { bot } = await request<{ bot: BotView }>(base, "/__hui/bots", { method: "POST", body: await botBody(flags, io), timeoutMs: 60_000 });
+    const where = bot.worker ? ` on ${bot.worker.name}` : "";
     print(bot, bot.soul
-      ? `Added @${bot.handle} (${bot.name}) with the soul you gave it. Talk to it with hui bot chat ${bot.handle}.`
+      ? `Added @${bot.handle} (${bot.name})${where} with the soul you gave it. Talk to it with hui bot chat ${bot.handle}.`
       : bot.name === NEW_BOT_NAME && flags.name === undefined
-        ? `Added @${bot.handle} (${bot.name}). It starts by asking what to call it and what you expect from it: talk with hui bot chat ${bot.handle}.`
-        : `Added @${bot.handle} (${bot.name}). It starts by asking what you expect from it: talk with hui bot chat ${bot.handle}.`);
+        ? `Added @${bot.handle} (${bot.name})${where}. It starts by asking what to call it and what you expect from it: talk with hui bot chat ${bot.handle}.`
+        : `Added @${bot.handle} (${bot.name})${where}. It starts by asking what you expect from it: talk with hui bot chat ${bot.handle}.`);
     return 0;
   }
   const bot = await findBot(base, operands[0]!);
@@ -284,15 +289,18 @@ export async function botCommand(base: string, action: string, operands: readonl
     }
     case "delete": {
       // For good, active or archived: a terminal is asked first, anything else needs --yes.
+      const where = bot.worker ? ` on ${bot.worker.name}` : "";
       if (!flags.yes) {
         if (!io.interactive) throw new Error(`hui bot delete cannot ask here (no terminal): add --yes to delete @${bot.handle} for good.`);
-        if (!/^\s*(y|yes)\s*$/iu.test(await io.ask(`Delete @${bot.handle} for good? Its chat leaves HUI and its routines, memory and folder go. [y/N] `))) {
+        if (!/^\s*(y|yes)\s*$/iu.test(await io.ask(`Delete @${bot.handle} for good? Its chat leaves HUI and its routines, memory and folder${where} go. [y/N] `))) {
           io.out("Nothing was deleted.\n");
           return 1;
         }
       }
-      await request<{ ok: true }>(base, `${path}?permanent=1`, { method: "DELETE", timeoutMs: 60_000 });
-      print({ id: bot.id, handle: bot.handle, deleted: true }, `Deleted @${bot.handle} for good: its chat left HUI, and its routines, memory and folder are gone.`);
+      const deleted = await request<{ ok: true; queued?: boolean }>(base, `${path}?permanent=1`, { method: "DELETE", timeoutMs: 60_000 });
+      print({ id: bot.id, handle: bot.handle, deleted: true, ...(deleted.queued ? { queued: true } : {}) }, deleted.queued
+        ? `Deleted @${bot.handle} for good: its chat left HUI and its routines are gone. HUI is not connected to ${bot.worker?.name ?? "its worker"} now, so its memory and folder there go when it reconnects.`
+        : `Deleted @${bot.handle} for good: its chat left HUI, and its routines, memory and folder${where} are gone.`);
       return 0;
     }
     case "stop": {
@@ -832,7 +840,7 @@ export function formatBots(list: readonly BotView[], archived = false): string {
   return list.map((bot) => [
     `${bot.avatar?.emoji ? `${bot.avatar.emoji} ` : ""}@${bot.handle}`,
     bot.name,
-    `${bot.status}${bot.unread ? " · unread" : ""}`,
+    `${bot.status}${bot.unread ? " · unread" : ""}${bot.worker ? ` · on ${bot.worker.name}` : ""}`,
     ...(bot.title ? [bot.title] : []),
     `${bot.routines} routine${bot.routines === 1 ? "" : "s"}`,
     bot.id,
@@ -849,6 +857,7 @@ export function formatBot(bot: BotView): string {
   return [
     `${bot.avatar?.emoji ? `${bot.avatar.emoji} ` : ""}@${bot.handle} · ${bot.name}${bot.title ? ` (${bot.title})` : ""}${bot.archived ? " · archived" : ""}`,
     `status: ${bot.status}${bot.unread ? " · unread" : ""}`,
+    ...(bot.worker ? [`worker: ${bot.worker.name} (${bot.worker.id})`] : []),
     `look: ${formatLook(bot)}`,
     `model: ${bot.model ?? "default"}${bot.thinking ? ` · thinking ${bot.thinking}` : ""}`,
     `memory: ${bot.memory ? formatMemory(bot.memory) : "unavailable"}`,
@@ -856,7 +865,7 @@ export function formatBot(bot: BotView): string {
     `language: ${formatLanguage(bot.voice?.language)}`,
     ...(bot.voice?.live ? [`call voice: ${gptLiveVoiceLabel(bot.voice.live)}`] : []),
     `routines: ${bot.routines}`,
-    `cwd: ${bot.cwd}`,
+    `cwd: ${botDisplayCwd(bot)}`,
     `chat session: ${bot.sessionId}`,
     `id: ${bot.id}`,
     ...(bot.lastMessage ? [`last message (${bot.lastMessage.role}, ${bot.lastMessage.at}): ${bot.lastMessage.text}`] : []),

@@ -27,6 +27,6 @@ test("the bot's chat header has a ⋯ menu: Edit bot…, Archive… and Delete�
 
 test("the delete confirmation says what goes and what stays", () => {
   const dialog = between(read("./bots.ts"), "export function renderBotDeleteDialog(", "\n}\n");
-  assert.match(dialog, /\$\{bot\.name\} is deleted for good: its chat leaves HUI, and its routines, its memory and its folder \(SOUL\.md and every file in it\) go\. A workspace you chose for it stays\. This cannot be undone\./u);
+  assert.match(dialog, /\$\{bot\.name\} is deleted for good: its chat leaves HUI, and its routines, its memory and its folder\$\{bot\.worker \? .*? : ""\} \(SOUL\.md and every file in it\) go\$\{bot\.worker && bot\.status === "disconnected" \? .*? : ""\}\. A workspace you chose for it stays\. This cannot be undone\./u, "a bot on a worker names it; the rest reads the same");
   assert.doesNotMatch(dialog, /archived/u, "any bot, not only an archived one");
 });

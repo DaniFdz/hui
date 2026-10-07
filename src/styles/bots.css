@@ -1,5 +1,6 @@
 /* Bots tab (PR "Bots tab UI"): the sidebar's Agents | Bots switch, the
- * roster, the bot view with its Routines | Memory | Soul panel and the bot dialog.
+ * roster and the bot view with its panel (Routines | Memory | Soul | Tools | Settings; Tools' own rules are in
+ * bot-tools.css).
  * Rows, menus, inputs and dialogs reuse the shell/session/settings classes;
  * only what bots add lives here, on the shared tokens. */
 
@@ -146,6 +147,14 @@
  * the archived rows do, rather than with the Agents tab's nav labels. */
 .app-shell .sidebar-sessions--bots { margin-top: 4px; }
 .app-shell .sidebar-sessions--bots > .sidebar-recent-sessions__toolbar { padding-inline-start: 14px; }
+/* The + menu (New bot on Local or a worker) sits in the toolbar: its items read as menu items, not as the toolbar's
+ * small caps, like the sessions' sort menu. */
+.app-shell .sidebar-recent-sessions__toolbar .new-bot-menu {
+  font-size: calc(13px * var(--control-ui-text-scale));
+  font-weight: 400;
+  letter-spacing: normal;
+  text-transform: none;
+}
 .app-shell .bot-roster__rows { gap: 2px; }
 .app-shell .session-row-wrap.bot-row { min-height: 48px; }
 .app-shell .bot-row .bot-row__link {
@@ -205,6 +214,16 @@
   font-size: 10px;
   line-height: 16px;
 }
+/* The worker a bot runs on, before its preview: an icon and the name, cut before it crowds the preview out. */
+.app-shell .bot-row__machine {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  max-width: 45%;
+  overflow: hidden;
+}
+.app-shell .bot-row__machine svg { flex: none; width: 10px; height: 10px; }
+.app-shell .bot-row__machine span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .app-shell .bot-row--hidden .bot-row__link { opacity: .72; }
 /* The row menu takes the trailing edge on hover, like a session's duration. */
 .app-shell .bot-row:is(:hover, :focus-within) .bot-row__text { padding-inline-end: 26px; }
@@ -337,6 +356,9 @@
   row-gap: 1px;
 }
 .transcript__head .chat-pane__crumbs.bot-chat-identity > .bot-avatar { grid-row: 1 / 3; }
+/* The worker it runs on, in the role line: as compact as the session header's "on devbox". */
+.bot-chat-identity__machine { display: inline-flex; align-items: center; gap: 3px; vertical-align: bottom; }
+.bot-chat-identity__machine svg { flex: none; width: 11px; height: 11px; }
 .bot-chat-empty { gap: 10px; }
 .bot-chat-empty .bot-avatar { margin-bottom: 4px; }
 /* The empty-state copy styles every span; the avatar keeps its own size. */
@@ -353,6 +375,9 @@
   border-inline-start: 1px solid var(--border);
   background: var(--bg);
 }
+/* The header names the bot beside Close, one chat header tall; the tabs get a
+ * full-width row of their own under it, like the sidebar's Agents | Bots, so
+ * five fit in 344px where a segmented control beside Close held two. */
 .bot-panel__header {
   display: flex;
   flex: 0 0 auto;
@@ -360,35 +385,66 @@
   justify-content: space-between;
   gap: 8px;
   min-height: 48px;
-  padding: 0 6px 0 12px;
-  border-bottom: 1px solid color-mix(in srgb, var(--border) 74%, transparent);
+  padding: 0 6px 0 16px;
 }
+.bot-panel__title {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--text-strong);
+  font-size: var(--control-ui-text-md);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Five tabs and a routine count fit 344px with room to spare; a larger text
+ * scale scrolls the row sideways rather than clipping a label. */
 .bot-panel__tabs {
-  display: inline-flex;
-  gap: 2px;
-  padding: 2px;
-  border: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
-  border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--bg) 80%, var(--bg-elevated) 20%);
+  display: flex;
+  flex: 0 0 auto;
+  min-width: 0;
+  padding: 0 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  /* The divider is drawn inside the row, so the scrolling row cannot clip the underline on it. */
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--border) 74%, transparent);
 }
+.bot-panel__tabs::-webkit-scrollbar { display: none; }
+/* Tabs share the row by their labels; none wraps or clips its label. */
 .bot-panel__tab {
+  position: relative;
   display: inline-flex;
+  flex: 1 0 auto;
   align-items: center;
+  justify-content: center;
   gap: 6px;
-  height: 28px;
-  padding: 0 12px;
+  height: 36px;
+  padding: 0 6px;
   border: 0;
-  border-radius: calc(var(--radius-md) - 3px);
+  border-radius: 0;
   background: transparent;
   color: var(--muted);
   font: inherit;
   font-size: var(--control-ui-text-sm);
   font-weight: 550;
+  white-space: nowrap;
   cursor: var(--cursor-action, pointer);
 }
-.bot-panel__tab:hover { color: var(--text); }
-.bot-panel__tab[aria-selected="true"] { background: var(--bg-elevated); color: var(--text-strong); box-shadow: var(--shadow-sm); }
-.bot-panel__tab:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+@media (hover: hover) {
+  .bot-panel__tab:hover { color: var(--text); }
+}
+.bot-panel__tab[aria-selected="true"] { color: var(--text-strong); }
+/* The selected tab's underline sits on the row's divider. */
+.bot-panel__tab[aria-selected="true"]::after {
+  position: absolute;
+  inset-inline: 6px;
+  bottom: 0;
+  height: 2px;
+  border-radius: var(--radius-full);
+  background: var(--accent);
+  content: "";
+}
+.bot-panel__tab:focus-visible { outline: none; box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--ring) 80%, transparent); }
 .bot-panel__count {
   min-width: 18px;
   height: 18px;
@@ -442,7 +498,7 @@
 }
 @media (pointer: coarse) {
   .bot-panel__close { width: 44px; height: 44px; }
-  .bot-panel__tab { height: 36px; }
+  .bot-panel__tab { height: 44px; }
 }
 
 /* ── routines ── */
@@ -517,9 +573,8 @@
 .bot-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; margin: 0; padding: 0; border: 0; }
 .bot-field__label { padding: 0; color: var(--muted); font-size: var(--control-ui-text-xs); font-weight: 600; }
 .bot-field .settings-input { width: 100%; }
-/* Prompts and instructions are prose: wrap them in the interface font. */
-.bot-field textarea.settings-input,
-.bot-dialog textarea.settings-input { font-family: inherit; white-space: pre-wrap; overflow-wrap: anywhere; }
+/* Prompts are prose: wrap them in the interface font. */
+.bot-field textarea.settings-input { font-family: inherit; white-space: pre-wrap; overflow-wrap: anywhere; }
 .bot-field textarea.settings-input { min-height: 72px; resize: vertical; }
 .bot-field__hint { margin: 0; color: var(--muted); font-size: var(--control-ui-text-xs); line-height: 1.4; }
 .bot-field__error { margin: 0; color: var(--danger); font-size: var(--control-ui-text-sm); overflow-wrap: anywhere; }
@@ -652,78 +707,109 @@
 .bot-field textarea.bot-soul__textarea { min-height: 280px; line-height: 1.5; }
 .bot-soul__actions { display: flex; justify-content: flex-end; gap: 6px; }
 
-/* ── New / Edit bot dialog ── */
-/* The dialog scrolls; the card grows with its fields instead of inheriting the
- * dialog's max-height, so a tall form keeps its background when scrolled. */
-.bot-dialog__card { display: flex; flex-direction: column; gap: 12px; max-height: none; }
-/* Model and Thinking share a row, but only Model has a hint under it. Each field
- * keeps its own height, so the two pickers line up; stretched to the row, the
- * Thinking field's grid would hand the extra height to its label and push its
- * picker down. */
-.bot-dialog__row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; align-items: start; }
-.bot-dialog .input-dialog__field { min-width: 0; }
-@media (max-width: 520px) {
-  .bot-dialog__row { grid-template-columns: minmax(0, 1fr); }
-}
-
-/* The Look: Face (shape and color chips beside a live preview) or Emoji. Native radios, visually hidden, keep Tab
- * and arrow keys; the chip around a focused one shows the focus ring. */
-.bot-dialog__look { display: grid; gap: 8px; min-width: 0; min-inline-size: 0; margin-block-end: 0; margin-inline: 0; padding: 0; border: 0; }
-.bot-dialog__look-legend { float: left; width: 100%; margin: 0; padding: 0; color: var(--muted); font-size: 13px; font-weight: 500; }
-.bot-dialog__look input[type="radio"] { position: absolute; width: 1px; height: 1px; margin: 0; padding: 0; border: 0; opacity: 0; pointer-events: none; }
-.bot-dialog__look-kind { justify-self: start; }
-.bot-dialog__look-kind > .settings-segmented__btn { position: relative; padding: 0 14px; }
-.field .bot-dialog__look-kind span { color: inherit; font-size: inherit; font-weight: inherit; }
-.bot-dialog__look-kind > .settings-segmented__btn:has(input:checked) { background: var(--bg-elevated); color: var(--text-strong); box-shadow: var(--shadow-sm); }
-.bot-dialog__look-kind > .settings-segmented__btn:has(input:focus-visible) { box-shadow: var(--focus-ring); }
-.bot-dialog__look-body { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; min-width: 0; }
-.bot-dialog__look-preview {
+/* ── Settings tab: rows of HUI's Settings pages, compact for the panel ── */
+.bot-settings { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.bot-settings__section { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.bot-settings__head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; min-width: 0; }
+.bot-settings__head .bot-panel__heading { margin: 0; }
+.bot-settings__note { color: var(--muted); font-size: var(--control-ui-text-xs); }
+/* A row: title and description beside the control, or above it where the
+ * control needs the width (stacked). The save's state shares the title's line,
+ * so a save never moves the rows; a refusal takes a line under them. */
+.bot-settings .settings-row.bot-setting {
   display: grid;
-  flex: none;
-  place-items: center;
-  width: 112px;
-  height: 112px;
-  border-radius: var(--radius-lg);
-  background: color-mix(in srgb, var(--text) 5%, transparent);
-}
-.bot-dialog__look-preview hui-bot-face[size] { --bot-face-size: 100px; }
-.bot-dialog__look .bot-avatar__glyph { color: inherit; font-size: inherit; font-weight: inherit; }
-.bot-dialog__look-preview .bot-avatar--lg.bot-avatar--emoji { width: 80px; height: 80px; font-size: 44px; }
-.bot-dialog__look-pickers { display: grid; flex: 1 1 220px; gap: 10px; min-width: 0; }
-.bot-dialog__shapes { display: flex; flex-wrap: wrap; gap: 6px; }
-.bot-dialog__chip {
-  position: relative;
-  display: inline-flex;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: 6px;
-  min-height: 32px;
-  padding: 0 11px 0 7px;
+  gap: 6px 12px;
+  min-height: 0;
+  padding: 8px 12px;
+}
+.bot-settings .settings-row.bot-setting--stacked { grid-template-columns: minmax(0, 1fr); }
+.bot-settings .bot-setting .settings-row__control { min-width: 0; max-width: none; }
+/* A stacked control takes the row's width: model names and paths need it. */
+.bot-settings .bot-setting--stacked .settings-row__control { display: grid; grid-template-columns: minmax(0, 1fr); justify-content: stretch; }
+.bot-settings .bot-setting:not(.bot-setting--stacked) .settings-row__control > .settings-select { width: 164px; min-width: 0; }
+.bot-settings .bot-setting__title { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 8px; min-width: 0; }
+.bot-settings .settings-row__title { font-size: var(--control-ui-text-sm); }
+.bot-settings .settings-row__desc { font-size: var(--control-ui-text-xs); line-height: 1.4; }
+.bot-settings .bot-setting__status { color: var(--muted); font-size: var(--control-ui-text-xs); }
+.bot-settings .bot-setting__error { grid-column: 1 / -1; margin: 0; color: var(--danger); font-size: var(--control-ui-text-xs); line-height: 1.4; overflow-wrap: anywhere; }
+/* Name and title: a field beside the row's title, the handle under it. */
+.bot-settings .bot-setting:not(.bot-setting--stacked) .settings-row__control > .settings-input { width: 184px; min-width: 0; font-size: var(--control-ui-text-sm); }
+.bot-settings .bot-setting .settings-row__desc { overflow-wrap: anywhere; }
+/* Directory suggestions flow under the field instead of overflowing the panel. */
+.bot-settings .new-session-page__directory-picker { flex: none; }
+.bot-settings .new-session-page__directory-menu { position: relative; top: auto; margin-top: 6px; width: 100%; min-width: 0; max-width: 100%; }
+.bot-settings .new-session-page__directory-picker > input { font-size: var(--control-ui-text-sm); }
+.bot-settings .new-session-page__directory-picker > input:disabled { opacity: .6; cursor: not-allowed; }
+/* Runs on, beside the Workspace heading: the machine a bot stays on, read-only (its worker, or Local), named as the
+ * roster's + menu names it. A bot on a worker says why under the section, in the panel's hint type. */
+.bot-settings__note .bot-machine { display: inline-flex; align-items: center; gap: 4px; color: var(--text); font-weight: 500; vertical-align: bottom; }
+.bot-settings__note .bot-machine svg { flex: none; width: 12px; height: 12px; color: var(--muted); }
+.bot-settings .bot-settings__machine-hint { font-size: var(--control-ui-text-xs); line-height: 1.4; }
+
+/* The Look: a row with the face and what it is, opening into Face (shape and
+ * color) or Emoji. Native radios, visually hidden, keep Tab and arrow keys; the
+ * chip around a focused one shows the focus ring. */
+.bot-settings .settings-row.bot-look { display: block; padding: 0; }
+.bot-look__summary {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  list-style: none;
+  cursor: var(--cursor-action, pointer);
+}
+.bot-look__summary::-webkit-details-marker { display: none; }
+.bot-look__summary:focus-visible { outline: none; box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--ring) 80%, transparent); }
+.bot-look__summary .bot-avatar--emoji { margin-inline: 4px; }
+.bot-look__change { color: var(--accent); font-size: var(--control-ui-text-xs); font-weight: 600; }
+.bot-look__change::after { content: "Change"; }
+.bot-look[open] .bot-look__change::after { content: "Done"; }
+.bot-look__editor { display: grid; gap: 10px; padding: 0 12px 12px; }
+.bot-look input[type="radio"] { position: absolute; width: 1px; height: 1px; margin: 0; padding: 0; border: 0; opacity: 0; pointer-events: none; }
+.bot-look__kind { justify-self: start; }
+.bot-look__kind > .settings-segmented__btn { position: relative; padding: 0 14px; }
+.bot-look__kind > .settings-segmented__btn:has(input:checked) { background: var(--bg-elevated); color: var(--text-strong); box-shadow: var(--shadow-sm); }
+.bot-look__kind > .settings-segmented__btn:has(input:focus-visible) { box-shadow: var(--focus-ring); }
+/* Face shows the shapes and colors, Emoji its field: whichever is checked, saved or not. */
+.bot-look__face { display: grid; gap: 10px; }
+.bot-look:has(.bot-look__kind input[value="emoji"]:checked) .bot-look__face { display: none; }
+.bot-look:not(:has(.bot-look__kind input[value="emoji"]:checked)) .bot-look__emoji { display: none; }
+.bot-look__shapes { display: flex; flex-wrap: wrap; gap: 6px; }
+.bot-look__chip {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 40px;
+  height: 32px;
   border: 1px solid var(--border);
   border-radius: var(--radius-full);
   background: var(--card, var(--panel));
-  color: var(--text);
   cursor: var(--cursor-action, pointer);
 }
-.field .bot-dialog__chip span { color: inherit; font-size: var(--control-ui-text-sm); font-weight: 500; }
-.bot-dialog__shape-icon { width: 18px; height: 18px; flex: none; fill: var(--bot-look-color, var(--accent)); }
-.bot-dialog__chip:has(input:checked) { border-color: var(--accent); background: var(--accent-subtle); color: var(--text-strong); }
-.bot-dialog__chip:has(input:focus-visible) { box-shadow: var(--focus-ring); }
-.bot-dialog__colors { display: flex; flex-wrap: wrap; gap: 10px; padding: 2px; }
-.bot-dialog__swatch {
+.bot-look__shape-icon { width: 18px; height: 18px; fill: var(--bot-look-color, var(--accent)); }
+.bot-look__chip:has(input:checked) { border-color: var(--accent); background: var(--accent-subtle); }
+.bot-look__chip:has(input:focus-visible) { box-shadow: var(--focus-ring); }
+.bot-look__colors { display: flex; flex-wrap: wrap; gap: 10px; padding: 2px; }
+.bot-look__swatch {
   position: relative;
   display: inline-block;
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
   background: var(--swatch);
   box-shadow: 0 0 0 2px var(--card, var(--bg-elevated)), 0 0 0 3px var(--border);
   cursor: var(--cursor-action, pointer);
 }
-.bot-dialog__swatch:has(input:checked) { box-shadow: 0 0 0 2px var(--card, var(--bg-elevated)), 0 0 0 4px var(--text-strong); }
-.bot-dialog__swatch:has(input:focus-visible) { outline: 2px solid var(--ring); outline-offset: 5px; }
-.bot-dialog__look label:has(input:disabled) { opacity: .6; cursor: default; }
+.bot-look__swatch:has(input:checked) { box-shadow: 0 0 0 2px var(--card, var(--bg-elevated)), 0 0 0 4px var(--text-strong); }
+.bot-look__swatch:has(input:focus-visible) { outline: 2px solid var(--ring); outline-offset: 5px; }
 @media (hover: hover) and (pointer: fine) {
-  .bot-dialog__chip:hover:not(:has(input:checked, input:disabled)) { background: var(--bg-hover); }
+  .bot-look__chip:hover:not(:has(input:checked)) { background: var(--bg-hover); }
 }
-.bot-dialog__emoji { display: grid; flex: 1 1 160px; gap: 6px; min-width: 0; }
-.bot-dialog__emoji .settings-input { width: 100%; max-width: 160px; }
+@media (pointer: coarse) {
+  .bot-look__chip { width: 48px; height: 44px; }
+  .bot-look__swatch { width: 32px; height: 32px; }
+}
+.bot-look__emoji { display: grid; grid-template-columns: auto minmax(0, 140px); align-items: center; gap: 10px; }

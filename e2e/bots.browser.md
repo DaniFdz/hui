@@ -19,6 +19,10 @@ account was used.
 The first version of this journey (at `093f1a9`, before OptChat was wired) saw
 the Memory tab only as the gateway's 503 text; this one supersedes it.
 
+Since 2026-10-07 the New bot and Edit dialogs these steps use are gone: + creates
+a bot at once and **Edit bot…** opens the bot's Settings tab
+([bot-setup.browser.md](bot-setup.browser.md)).
+
 ## Reproduce
 
 1. From the checkout: `node e2e/visual-verification.mjs launch --branch

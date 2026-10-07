@@ -1,20 +1,20 @@
 /**
  * The Bots tab: the sidebar roster, a bot's side panel (Routines | Memory |
- * Soul | Tools, the last in `bot-tools.ts`), the New/Edit bot dialog and the archive confirmation. Rendering only; every
- * read and write is a prop callback owned by `hui-app.ts`. The bot's chat is
- * the ordinary session pane (`renderHome`) with a bot header, not a fork.
+ * Soul | Tools | Settings, the last two in `bot-tools.ts` and `bot-settings.ts`)
+ * and the archive and delete confirmations. Rendering only; every read and
+ * write is a prop callback owned by `hui-app.ts`. The bot's chat is the
+ * ordinary session pane (`renderHome`) with a bot header, not a fork.
  */
 import { html, nothing, type TemplateResult } from "lit";
+import { keyed } from "lit/directives/keyed.js";
 import { icons } from "../lib/icons.ts";
 import { closeDropdownOnEscape, labelDropdown } from "../lib/web-awesome.ts";
 import { navigationPath } from "../lib/navigation.ts";
-import type { BotDraft, BotMemoryStatus, BotView } from "../lib/bots.ts";
-import { BOT_FACE_COLORS, BOT_FACE_SHAPES, BOT_FACE_SHAPE_LABELS, BOT_LIMITS, BOT_THINKING_LEVELS, botLook, type BotAvatar, type BotFaceShape } from "../../shared/bots.ts";
-import { facePath, rosterFaceState, type BotFaceSize, type BotFaceState } from "../lib/bot-face.ts";
+import type { BotMemoryStatus, BotView } from "../lib/bots.ts";
+import { BOT_LIMITS, botLook } from "../../shared/bots.ts";
+import type { WorkerState } from "../../shared/workers.ts";
+import { rosterFaceState, type BotFaceSize, type BotFaceState } from "../lib/bot-face.ts";
 import "../components/bot-face.ts";
-import { GPT_LIVE_VOICES, gptLiveVoiceLabel, type GptLiveVoice } from "../../shared/calls.ts";
-import { languageOptions } from "../lib/voice.ts";
-import type { RuntimeModel } from "../lib/sessions-store.ts";
 import type { AutomationRun, AutomationSnapshot, AutomationTask, AutomationTaskInput } from "../lib/automation-types.ts";
 import {
   archivedBotCount,
@@ -27,6 +27,7 @@ import {
   hiddenBotCount,
   rosterBots,
   tabAfterKey,
+  botSettingsShortcutLabel,
   BOT_PANEL_TABS,
   type BotPanelTab,
 } from "../lib/bot-roster.ts";
@@ -35,8 +36,7 @@ import { memoryBudgetLabel, memoryUsageDetail, memoryUsageLabel, type MemoryLine
 import { renderMarkdown } from "../lib/markdown.ts";
 import { describeRoutineSchedule, formatTimestamp, runIsActive } from "./settings-automation.ts";
 import { renderSettingsToggle } from "./settings-toggle.ts";
-import { renderPicker } from "./settings-picker.ts";
-import { renderDirectoryPicker } from "./directory-picker.ts";
+import { renderBotSettings, type BotSettingsProps } from "./bot-settings.ts";
 import { renderBotToolsTab, type BotToolsProps } from "./bot-tools.ts";
 
 // Node's focused view tests import this module without a CSS loader.
@@ -93,7 +93,10 @@ export type BotRosterProps = {
   pendingId: string;
   now: number;
   onSelect: (bot: BotView) => void;
+  /** Creates a bot at once on this machine (the gateway calls it "New Bot") and opens its chat. */
   onNew: () => void;
+  /** A bot is being created: New bot waits for it. */
+  creating: boolean;
   onEdit: (bot: BotView) => void;
   onSetHidden: (bot: BotView, hidden: boolean) => void;
   onArchive: (bot: BotView) => void;
@@ -140,6 +143,7 @@ function botRow(bot: BotView, props: BotRosterProps, drawer: RosterDrawer) {
           <time class="bot-row__time" datetime=${at ? new Date(at).toISOString() : nothing} title=${at ? new Date(at).toLocaleString() : nothing}>${compactRelativeTime(at, props.now)}</time>
         </span>
         <span class="bot-row__bottom">
+          ${bot.worker ? html`<span class="bot-row__tag bot-row__machine" title=${`Runs on ${bot.worker.name}`}>${icons.globe}<span>${bot.worker.name}</span></span>` : nothing}
           ${bot.hidden ? html`<span class="bot-row__tag">Hidden</span>` : nothing}
           <span class="bot-row__preview">${preview}</span>
           ${unread ? html`<span class="sidebar-session-unread-dot bot-row__unread" title="Unread"></span>` : nothing}
@@ -230,7 +234,8 @@ export function renderBotRoster(props: BotRosterProps, drawer: RosterDrawer) {
       <p class="sidebar-list__note">${archived
         ? `${archived === 1 ? "One archived bot keeps its chat and memory" : `${archived} archived bots keep their chats and memory`}; Show archived lists ${archived === 1 ? "it" : "them"} to restore or delete.`
         : "A bot is a named agent with one permanent chat, its own model and a memory that summarizes older messages by itself. Routines can message it on a schedule."}</p>
-      <button type="button" class="btn btn--sm bot-roster__new" @click=${(event: Event) => { drawer.dialog(event); props.onNew(); }}>${icons.plus}<span>New bot</span></button>
+      <button type="button" class="btn btn--sm bot-roster__new" ?disabled=${props.creating} aria-busy=${props.creating ? "true" : "false"}
+        @click=${(event: Event) => { drawer.navigate(event); props.onNew(); }}>${icons.plus}<span>${props.creating ? "Creating…" : "New bot"}</span></button>
     </div>
     ${renderRosterToggles(props, drawer)}`;
   }
@@ -244,6 +249,57 @@ export function renderBotRoster(props: BotRosterProps, drawer: RosterDrawer) {
     </div>
     ${renderRosterToggles(props, drawer)}`;
 }
+
+/* ── new bot ──────────────────────────────────────────────────────────────── */
+
+/** A remote worker a new bot can be created on (Settings → Workers). */
+export type BotPlace = { id: string; name: string; state: WorkerState };
+
+export type NewBotButtonProps = {
+  /** None: + is the plain New bot it always was. */
+  workers: readonly BotPlace[];
+  /** + without workers. */
+  onNew: () => void;
+  /** A menu choice: creates the bot at once on the worker with this id, or on this machine (undefined). */
+  onCreate: (worker: string | undefined) => void;
+  /** The menu opens: a chance to read the workers' state again. */
+  onOpen?: () => void;
+  /** After a choice, as the roster's other actions close the mobile drawer. */
+  closeDrawer: (event: Event) => void;
+  /** A bot is being created: + waits for it. */
+  creating?: boolean;
+};
+
+/**
+ * The roster's +. While a remote worker exists it is a small menu, New bot on Local or on each worker, and a choice
+ * creates the bot there at once: a bot stays on the machine it is created on. Without workers it is plain New bot.
+ */
+export function renderNewBotButton(props: NewBotButtonProps) {
+  const busy = Boolean(props.creating);
+  if (!props.workers.length) {
+    return html`<button type="button" aria-label="New bot" title="New bot" data-new-bot-trigger ?disabled=${busy} aria-busy=${busy ? "true" : "false"} @click=${(event: Event) => {
+      props.onNew();
+      props.closeDrawer(event);
+    }}>${icons.plus}</button>`;
+  }
+  return html`<wa-dropdown class="session-menu new-bot-menu" placement="bottom-end" distance="4" @keydown=${closeDropdownOnEscape}
+    @wa-show=${(event: Event) => { labelDropdown(event); props.onOpen?.(); }}
+    @wa-select=${(event: CustomEvent<{ item: { value: string } }>) => {
+      const value = event.detail.item.value;
+      props.onCreate(value === NEW_BOT_LOCAL ? undefined : value);
+      props.closeDrawer(event);
+    }}>
+    <button slot="trigger" type="button" aria-label="New bot" title="New bot" data-new-bot-trigger ?disabled=${busy} aria-busy=${busy ? "true" : "false"}>${icons.plus}</button>
+    <wa-dropdown-item value=${NEW_BOT_LOCAL} class="session-menu__item"><span slot="icon" class="session-menu__icon" aria-hidden="true">${icons.terminal}</span><span class="session-menu__text">New bot on Local</span></wa-dropdown-item>
+    <div class="session-menu__separator" role="separator"></div>
+    ${props.workers.map((worker) => html`<wa-dropdown-item value=${worker.id} class="session-menu__item"><span slot="icon" class="session-menu__icon" aria-hidden="true">${icons.globe}</span><span class="session-menu__text">New bot on ${worker.name}${worker.state === "connected"
+      ? nothing
+      : html` <span class="settings-row__muted">· ${worker.state === "error" ? "offline" : worker.state}</span>`}</span></wa-dropdown-item>`)}
+  </wa-dropdown>`;
+}
+
+/** The menu item for this machine; worker ids are UUIDs, so they never collide with it. */
+const NEW_BOT_LOCAL = "local";
 
 /* ── chat placeholder (no bot or no chat yet) ─────────────────────────────── */
 
@@ -333,9 +389,11 @@ export type BotPanelProps = {
   };
   /** The Tools tab's state and actions (`BotToolsController.props`). */
   tools: Omit<BotToolsProps, "bot">;
+  /** The Settings tab: everything but the bot, the ids and its face, which the panel supplies. */
+  settings: Omit<BotSettingsProps, "bot" | "id" | "face">;
 };
 
-const PANEL_TAB_LABELS: Record<BotPanelTab, string> = { routines: "Routines", memory: "Memory", soul: "Soul", tools: "Tools" };
+const PANEL_TAB_LABELS: Record<BotPanelTab, string> = { routines: "Routines", memory: "Memory", soul: "Soul", tools: "Tools", settings: "Settings" };
 
 function panelTabId(panelId: string, tab: BotPanelTab): string {
   return `${panelId}-tab-${tab}`;
@@ -520,7 +578,7 @@ function renderMemoryTab(props: BotPanelProps) {
       <div><dt>View</dt><dd>${memoryBudgetLabel(status.viewBytes)}</dd></div>
       <div><dt>Lines</dt><dd>${status.viewLines.toLocaleString()}</dd></div>
       <div><dt>Pending summaries</dt><dd>${status.pending.toLocaleString()}</dd></div>
-      <div class="bot-memory__usage"><dt>Summarizer since the gateway started</dt><dd title=${memoryUsageDetail(status.usage)}>${memoryUsageLabel(status.usage)}</dd></div>
+      <div class="bot-memory__usage"><dt>${props.bot.worker ? `Summarizer since HUI started on ${props.bot.worker.name}` : "Summarizer since the gateway started"}</dt><dd title=${memoryUsageDetail(status.usage)}>${memoryUsageLabel(status.usage)}</dd></div>
     </dl>
     ${status.waiting ? html`<p class="bot-memory__notice" role="status">Summarizing memory…</p>` : nothing}
     ${status.failing ? html`<p class="bot-memory__notice bot-memory__notice--failing" role="alert">Summaries are failing${status.failing.node ? ` at ${status.failing.node}` : ""}: ${status.failing.error}. HUI keeps retrying.</p>` : nothing}
@@ -594,10 +652,24 @@ function renderSoulTab(props: BotPanelProps) {
     <p class="bot-panel__hint">${name} follows this every turn. Ask it to change something and it updates SOUL.md and tells you.</p>`;
 }
 
+function renderPanelTab(props: BotPanelProps) {
+  switch (props.tab) {
+    case "routines": return renderRoutinesTab(props);
+    case "memory": return renderMemoryTab(props);
+    case "soul": return renderSoulTab(props);
+    // Keyed, as Settings: another bot's switches and skill search start afresh.
+    case "tools": return keyed(props.bot.id, renderBotToolsTab({ bot: props.bot, ...props.tools }));
+    // Keyed: another bot's tab starts afresh (its look closed, nothing typed carried over).
+    case "settings": return keyed(props.bot.id, renderBotSettings({ ...props.settings, bot: props.bot, id: props.id, face: (avatar) => renderBotAvatar({ id: props.bot.id, avatar }, "md") }));
+  }
+}
+
+/** The panel: a header with the bot's name and Close, then its tabs on a full-width row of their own (as the
+ * sidebar's Agents | Bots), which leaves room for more tabs than a segmented control beside Close would. */
 export function renderBotPanel(props: BotPanelProps) {
   const tabpanel = `${props.id}-tabpanel`;
-  return html`${props.sheet ? html`<button type="button" class="bot-panel__backdrop" tabindex="-1" aria-label="Close routines, memory, soul and tools" @click=${props.onClose}></button>` : nothing}
-    <aside class="bot-panel ${props.sheet ? "bot-panel--sheet" : ""}" id=${props.id} aria-label=${`${props.bot.name}: routines, memory, soul and tools`}
+  return html`${props.sheet ? html`<button type="button" class="bot-panel__backdrop" tabindex="-1" aria-label="Close the bot panel" @click=${props.onClose}></button>` : nothing}
+    <aside class="bot-panel ${props.sheet ? "bot-panel--sheet" : ""}" id=${props.id} aria-label=${`${props.bot.name}: bot panel`}
       @keydown=${(event: KeyboardEvent) => {
         if (event.key !== "Escape" || !props.sheet || event.defaultPrevented) return;
         event.preventDefault();
@@ -605,196 +677,19 @@ export function renderBotPanel(props: BotPanelProps) {
         props.onClose();
       }}>
       <header class="bot-panel__header">
-        <div class="bot-panel__tabs" role="tablist" aria-label="Bot panel">
-          ${BOT_PANEL_TABS.map((tab) => html`<button type="button" role="tab" class="bot-panel__tab" id=${panelTabId(props.id, tab)}
-            aria-selected=${String(props.tab === tab)} aria-controls=${tabpanel} tabindex=${props.tab === tab ? "0" : "-1"}
-            @click=${() => props.onTab(tab)} @keydown=${(event: KeyboardEvent) => onPanelTabKeydown(event, props)}>${PANEL_TAB_LABELS[tab]}${tab === "routines" && props.bot.routines ? html`<span class="bot-panel__count">${props.bot.routines}</span>` : nothing}</button>`)}
-        </div>
-        <button type="button" class="btn btn--ghost btn--icon chat-icon-btn bot-panel__close" aria-label="Close routines, memory, soul and tools" title="Close" @click=${props.onClose}>${icons.close}</button>
+        <h2 class="bot-panel__title">${props.bot.name}</h2>
+        <button type="button" class="btn btn--ghost btn--icon chat-icon-btn bot-panel__close" aria-label="Close the bot panel" title="Close" @click=${props.onClose}>${icons.close}</button>
       </header>
+      <div class="bot-panel__tabs" role="tablist" aria-label=${`${props.bot.name}'s panel`}>
+        ${BOT_PANEL_TABS.map((tab) => html`<button type="button" role="tab" class="bot-panel__tab" id=${panelTabId(props.id, tab)} data-tab=${tab}
+          aria-selected=${String(props.tab === tab)} aria-controls=${tabpanel} tabindex=${props.tab === tab ? "0" : "-1"}
+          title=${tab === "settings" ? `Settings (${botSettingsShortcutLabel()})` : nothing}
+          @click=${() => props.onTab(tab)} @keydown=${(event: KeyboardEvent) => onPanelTabKeydown(event, props)}>${PANEL_TAB_LABELS[tab]}${tab === "routines" && props.bot.routines ? html`<span class="bot-panel__count">${props.bot.routines}</span>` : nothing}</button>`)}
+      </div>
       <div class="bot-panel__body" role="tabpanel" id=${tabpanel} aria-labelledby=${panelTabId(props.id, props.tab)} tabindex="0">
-        ${props.tab === "routines" ? renderRoutinesTab(props) : props.tab === "memory" ? renderMemoryTab(props) : props.tab === "soul" ? renderSoulTab(props) : renderBotToolsTab({ bot: props.bot, ...props.tools })}
+        ${renderPanelTab(props)}
       </div>
     </aside>`;
-}
-
-/* ── New / Edit bot dialog ────────────────────────────────────────────────── */
-
-/** The dialog's text fields; the pickers are controlled by the app. */
-export type BotFormValues = Pick<BotDraft, "name" | "title" | "cwd" | "emoji">;
-
-export type BotDialogProps = {
-  mode: "create" | "edit";
-  /** The bot as it was when the dialog opened; edits never chase a refresh. */
-  bot?: BotView;
-  pending: boolean;
-  error: string;
-  models: readonly RuntimeModel[];
-  model: string;
-  thinking: string;
-  memoryModel: string;
-  /** The name of Settings' utility model, the bot's utility model while it has none of its own. */
-  utilityDefault?: string;
-  directorySuggestions: readonly string[];
-  onDirectoryInput: (value: string) => void;
-  onModel: (value: string) => void;
-  onThinking: (value: string) => void;
-  onMemoryModel: (value: string) => void;
-  onSubmit: (values: BotFormValues) => void;
-  onCancel: () => void;
-  /** The Look: a face (shape and color) or an emoji. */
-  look: BotDialogLook;
-  /** How the bot sounds on calls (HUI-18): its GPT-Live voice and its language. */
-  call: BotDialogCall;
-};
-
-/** A GPT-Live call voice, and the language the bot speaks on calls. */
-export type BotDialogCall = {
-  /** "" follows Settings' default. */
-  voice: string;
-  defaultVoice: GptLiveVoice;
-  language: string;
-  onVoice: (value: string) => void;
-  onLanguage: (value: string) => void;
-};
-
-export type BotDialogLook = {
-  kind: "face" | "emoji";
-  shape: BotFaceShape;
-  /** #rrggbb: a palette color, or a custom one the bot already has. */
-  color: string;
-  emoji: string;
-  /** Seeds the preview's plush texture: the bot's, or any for a new bot. */
-  seed: number;
-  onKind: (kind: "face" | "emoji") => void;
-  onShape: (shape: BotFaceShape) => void;
-  onColor: (color: string) => void;
-  onEmoji: (emoji: string) => void;
-};
-
-/** A shape's outline, small, for its picker chip. */
-function shapeIcon(shape: BotFaceShape) {
-  return html`<svg class="bot-dialog__shape-icon" viewBox="16 22 88 88" aria-hidden="true" focusable="false"><path d=${facePath(shape)}></path></svg>`;
-}
-
-/** Face (shape and color, previewed live) or Emoji. Native radio groups: Tab enters each group, arrows choose. */
-function renderLookField(look: BotDialogLook, pending: boolean) {
-  const face = look.kind === "face";
-  const custom = BOT_FACE_COLORS.some((color) => color.hex === look.color) ? undefined : look.color;
-  const swatches = [...BOT_FACE_COLORS.map((color) => ({ hex: color.hex, label: color.label })), ...(custom ? [{ hex: custom, label: `Custom ${custom}` }] : [])];
-  const preview: Pick<BotView, "id" | "avatar"> & { avatar: BotAvatar } = { id: "preview", avatar: { color: look.color, shape: look.shape, ...(face ? {} : { emoji: look.emoji.trim() || "🤖" }) } };
-  return html`<fieldset class="field input-dialog__field bot-dialog__look" data-face-stage>
-    <legend class="bot-dialog__look-legend">Look</legend>
-    <div class="settings-segmented bot-dialog__look-kind" role="radiogroup" aria-label="Look">
-      ${([["face", "Face"], ["emoji", "Emoji"]] as const).map(([value, label]) => html`<label class="settings-segmented__btn">
-        <input type="radio" name="look" value=${value} .checked=${look.kind === value} ?disabled=${pending} @change=${() => look.onKind(value)} /><span>${label}</span></label>`)}
-    </div>
-    <div class="bot-dialog__look-body">
-      <div class="bot-dialog__look-preview">${face
-        ? html`<span class="bot-avatar bot-avatar--lg bot-avatar--face" aria-hidden="true"><hui-bot-face size="lg" shape=${look.shape} .color=${look.color} .seed=${look.seed} state="idle"></hui-bot-face></span>`
-        : renderBotAvatar(preview, "lg")}</div>
-      ${face ? html`<div class="bot-dialog__look-pickers">
-        <div class="bot-dialog__shapes" role="radiogroup" aria-label="Shape">
-          ${BOT_FACE_SHAPES.map((shape) => html`<label class="bot-dialog__chip" style=${`--bot-look-color: ${look.color}`}>
-            <input type="radio" name="shape" value=${shape} .checked=${look.shape === shape} ?disabled=${pending} @change=${() => look.onShape(shape)} />
-            ${shapeIcon(shape)}<span>${BOT_FACE_SHAPE_LABELS[shape]}</span></label>`)}
-        </div>
-        <div class="bot-dialog__colors" role="radiogroup" aria-label="Color">
-          ${swatches.map((color) => html`<label class="bot-dialog__swatch" style=${`--swatch: ${color.hex}`} title=${color.label}>
-            <input type="radio" name="color" value=${color.hex} aria-label=${color.label} .checked=${look.color === color.hex} ?disabled=${pending} @change=${() => look.onColor(color.hex)} /></label>`)}
-        </div>
-      </div>` : html`<label class="bot-dialog__emoji"><span class="bot-field__label">Emoji</span>
-        <input class="settings-input" name="emoji" type="text" maxlength="16" autocomplete="off" placeholder="🤖" .value=${look.emoji} ?disabled=${pending}
-          @input=${(event: Event) => look.onEmoji((event.target as HTMLInputElement).value)} /></label>`}
-    </div>
-    <span class="bot-field__hint">${face
-      ? "Its face shows what it is doing: thinking, using tools, waiting for you, listening and speaking on calls."
-      : "One emoji instead of a face."}</span>
-  </fieldset>`;
-}
-
-/** Every language's English name and code, read once: they never change while HUI runs. */
-let languageChoices: ReturnType<typeof languageOptions> | undefined;
-
-/** The call voice: GPT-Live's built-in voices, "Default" following Settings. */
-function renderCallVoiceField(call: BotDialogCall, pending: boolean) {
-  const options = [{ value: "", label: "Default (" + gptLiveVoiceLabel(call.defaultVoice) + ")" }, ...GPT_LIVE_VOICES.map((voice) => ({ value: voice, label: gptLiveVoiceLabel(voice) }))];
-  return html`<div class="field input-dialog__field bot-dialog__call-voice"><span>Call voice</span>
-    ${renderPicker({ label: "Call voice", value: call.voice, disabled: pending, options, onChange: call.onVoice })}
-    <span class="bot-field__hint">How the bot sounds on calls. Default follows Settings → Models → Calls.</span>
-  </div>`;
-}
-
-/** The language the bot speaks on calls. */
-function renderLanguageField(call: BotDialogCall, pending: boolean) {
-  languageChoices ??= languageOptions();
-  return html`<div class="field input-dialog__field bot-dialog__language"><span>Language</span>
-    ${renderPicker({ label: "Language", value: call.language, disabled: pending, searchable: true, searchPlaceholder: "Search languages", options: languageChoices, onChange: call.onLanguage })}
-    <span class="bot-field__hint">The language the bot speaks on calls. Auto answers in the language you speak.</span>
-  </div>`;
-}
-
-const THINKING_LABELS: Record<(typeof BOT_THINKING_LEVELS)[number], string> = { off: "Off", minimal: "Minimal", low: "Low", medium: "Medium", high: "High", xhigh: "Extra high" };
-/** "Gateway default" sends "": a new bot leaves the choice to the gateway, an
- * edited one goes back to it (the model and thinking level a new chat gets). */
-const THINKING_CHOICES: readonly (readonly [string, string])[] = [["", "Gateway default"], ...BOT_THINKING_LEVELS.map((level) => [level, THINKING_LABELS[level]] as const)];
-
-/** `empty` labels the default choice, the empty value. */
-function modelOptions(models: readonly RuntimeModel[], empty: string, current: string) {
-  const options = [{ value: "", label: empty }, ...models.map((model) => ({ value: `${model.provider}/${model.id}`, label: model.name, description: model.provider }))];
-  // A model no longer in the catalog still shows what the bot runs on.
-  return current && !options.some((option) => option.value === current) ? [...options, { value: current, label: current }] : options;
-}
-
-export function renderBotDialog(props: BotDialogProps) {
-  const editing = props.mode === "edit" ? props.bot : undefined;
-  const titleId = "bot-dialog-title";
-  return html`<dialog class="hui-modal-dialog group-action-dialog bot-dialog" aria-labelledby=${titleId}
-    @cancel=${(event: Event) => { event.preventDefault(); if (!props.pending) props.onCancel(); }}>
-    <form class="exec-approval-card bot-dialog__card" method="dialog" novalidate @submit=${(event: SubmitEvent) => {
-      event.preventDefault();
-      const data = new FormData(event.currentTarget as HTMLFormElement);
-      props.onSubmit({
-        name: formText(data, "name"),
-        title: formText(data, "title"),
-        cwd: formText(data, "cwd"),
-        emoji: formText(data, "emoji"),
-      });
-    }}>
-      <div class="exec-approval-title" id=${titleId}>${editing ? `Edit ${editing.name}` : "New bot"}</div>
-      <div class="exec-approval-sub">${editing
-        ? "Changes apply to the bot's next turn. Its chat and memory stay as they are."
-        : "A bot keeps one permanent chat with its own model and memory. Once it is created, it starts by asking what you expect from it."}</div>
-      <label class="field input-dialog__field bot-dialog__name"><span>Name</span>
-        <input class="settings-input" name="name" type="text" required maxlength=${BOT_LIMITS.name} autocomplete="off" placeholder="Scout" .value=${editing?.name ?? ""} ?disabled=${props.pending} /></label>
-      ${renderLookField(props.look, props.pending)}
-      <label class="field input-dialog__field"><span>Title</span>
-        <input class="settings-input" name="title" type="text" maxlength=${BOT_LIMITS.title} autocomplete="off" placeholder="Research assistant" .value=${editing?.title ?? ""} ?disabled=${props.pending} /></label>
-      <div class="bot-dialog__row">
-        <div class="field input-dialog__field"><span>Model</span>
-          ${renderPicker({ label: "Model", value: props.model, disabled: props.pending, searchable: true, searchPlaceholder: "Search models",
-            options: modelOptions(props.models, "Gateway default", props.model), onChange: props.onModel })}
-          <span class="bot-field__hint">The smartest model you have. Speed doesn't matter.</span></div>
-        <div class="field input-dialog__field"><span>Thinking</span>
-          ${renderPicker({ label: "Thinking", value: props.thinking, disabled: props.pending,
-            options: THINKING_CHOICES.map(([value, label]) => ({ value, label })), onChange: props.onThinking })}</div>
-      </div>
-      <div class="field input-dialog__field bot-dialog__utility"><span>Utility model</span>
-        ${renderPicker({ label: "Utility model", value: props.memoryModel, disabled: props.pending, searchable: true, searchPlaceholder: "Search models",
-          options: modelOptions(props.models, props.utilityDefault ? `Default (${props.utilityDefault})` : "Default (same as the bot)", props.memoryModel), onChange: props.onMemoryModel })}
-        <span class="bot-field__hint">The fastest model you have, ideally a cheap one. It writes the memory's summaries, answers quick questions on calls and writes each call's summary.</span></div>
-      ${renderCallVoiceField(props.call, props.pending)}
-      ${renderLanguageField(props.call, props.pending)}
-      <div class="field input-dialog__field"><label for="bot-dialog-cwd">Workspace directory</label>
-        ${renderDirectoryPicker({ id: "bot-dialog-cwd", label: "Workspace directory", value: editing?.cwd ?? "", suggestions: props.directorySuggestions, onInput: props.onDirectoryInput, inputClass: "settings-input", externalLabel: true, placeholder: "Automatic" })}
-        <span class="bot-field__hint">${editing ? "Can change only while the bot is idle." : "Leave empty for a private folder HUI creates for this bot."}</span></div>
-      ${props.error ? html`<p class="group-action-dialog__error bot-field__error" role="alert">${props.error}</p>` : nothing}
-      <div class="exec-approval-actions">
-        <button type="submit" class="btn primary" ?disabled=${props.pending}>${props.pending ? (editing ? "Saving…" : "Creating…") : editing ? "Save" : "Create bot"}</button>
-        <button type="button" class="btn" ?disabled=${props.pending} @click=${props.onCancel}>Cancel</button>
-      </div>
-    </form>
-  </dialog>`;
 }
 
 /* ── archive confirmation ─────────────────────────────────────────────────── */
@@ -804,7 +699,7 @@ export function renderBotArchiveDialog(bot: BotView, pending: boolean, error: st
     @cancel=${(event: Event) => { event.preventDefault(); if (!pending) onCancel(); }}>
     <form class="exec-approval-card" method="dialog" @submit=${(event: SubmitEvent) => { event.preventDefault(); onConfirm(); }}>
       <div class="exec-approval-title" id="bot-archive-title">Archive ${bot.name}?</div>
-      <div class="exec-approval-sub">${bot.name} leaves the roster and its routines are disabled. Its chat, memory and workspace stay on this machine, and it can be restored.</div>
+      <div class="exec-approval-sub">${bot.name} leaves the roster and its routines are disabled. Its chat, memory and workspace stay on ${bot.worker?.name ?? "this machine"}, and it can be restored.</div>
       ${error ? html`<p class="group-action-dialog__error" role="alert">${error}</p>` : nothing}
       <div class="exec-approval-actions">
         <button type="submit" class="btn danger" ?disabled=${pending}>${pending ? "Archiving…" : "Archive"}</button>
@@ -822,7 +717,7 @@ export function renderBotDeleteDialog(bot: BotView, pending: boolean, error: str
     @cancel=${(event: Event) => { event.preventDefault(); if (!pending) onCancel(); }}>
     <form class="exec-approval-card" method="dialog" @submit=${(event: SubmitEvent) => { event.preventDefault(); onConfirm(); }}>
       <div class="exec-approval-title" id="bot-delete-title">Delete ${bot.name}?</div>
-      <div class="exec-approval-sub">${bot.name} is deleted for good: its chat leaves HUI, and its routines, its memory and its folder (SOUL.md and every file in it) go. A workspace you chose for it stays. This cannot be undone.</div>
+      <div class="exec-approval-sub">${bot.name} is deleted for good: its chat leaves HUI, and its routines, its memory and its folder${bot.worker ? ` on ${bot.worker.name}` : ""} (SOUL.md and every file in it) go${bot.worker && bot.status === "disconnected" ? `; HUI is not connected to ${bot.worker.name} now, so those go there when it reconnects` : ""}. A workspace you chose for it stays. This cannot be undone.</div>
       ${error ? html`<p class="group-action-dialog__error" role="alert">${error}</p>` : nothing}
       <div class="exec-approval-actions">
         <button type="submit" class="btn danger" ?disabled=${pending}>${pending ? "Deleting…" : "Delete"}</button>

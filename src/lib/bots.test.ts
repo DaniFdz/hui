@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { applyBotsUpdate, botInputFromDraft, botMemoryPageUrl, BotMemoryUnavailableError, botPatchFromDraft, botSoulKey, isBotSession, isNewBotsFrame, loadBotMemory, loadBotSoul, loadBots, parseBotsUpdate, parseBotSoul, saveBotSoul, subscribeBots, parseBot, parseBotList, parseBotMemory, parseBotMemoryStatus, upsertBot, withoutBotSessions, type BotDraft, type BotView } from "./bots.ts";
+import { applyBotsUpdate, botChangePatch, botDraftOf, botInputFromDraft, botMemoryPageUrl, BotMemoryUnavailableError, botPatchFromDraft, botSettingChange, botSettingOf, botSoulKey, createBot, isBotSession, isNewBotsFrame, loadBotMemory, loadBotSoul, loadBots, parseBotsUpdate, parseBotSoul, saveBotSoul, subscribeBots, parseBot, parseBotList, parseBotMemory, parseBotMemoryStatus, upsertBot, withoutBotSessions, type BotDraft, type BotView } from "./bots.ts";
 import type { SessionGroup, SessionView } from "./sessions-store.ts";
 import { botLook } from "../../shared/bots.ts";
 
@@ -264,6 +264,16 @@ test("an edit sends only what changed, clears emptied fields and keeps an untouc
   assert.deepEqual(botPatchFromDraft(bot, { ...unchanged, name: "  " }), {}, "a blank name is never sent");
 });
 
+test("a bot on a worker: its view names the worker, and an edit never moves it", () => {
+  const remote = parseBot({ ...RECORD, cwd: "/home/remote/.local/share/hui-worker/bots/b1", worker: { id: "w-1", name: "devbox" } }) as BotView;
+  assert.deepEqual(remote.worker, { id: "w-1", name: "devbox" });
+  assert.equal(parseBot({ ...RECORD, worker: { id: "w-1" } })?.worker, undefined, "a worker without its name is no worker to show");
+  assert.equal(parseBot({ ...RECORD, worker: "w-1" })?.worker, undefined);
+  const unchanged: BotDraft = { name: "Scout", title: "Research assistant", cwd: remote.cwd, emoji: "🔭", model: "anthropic/claude", thinking: "medium", memoryModel: "" };
+  assert.deepEqual(botPatchFromDraft(remote, unchanged), {}, "an untouched folder on the worker sends nothing");
+  assert.equal("worker" in botPatchFromDraft(remote, { ...unchanged, name: "Rover" }), false, "where a bot runs is never part of an edit");
+});
+
 test("the dialog's Look: a new bot keeps the face it showed, or its emoji, with that color", () => {
   const face: BotDraft = { ...EMPTY_DRAFT, name: "Scout", look: "face", shape: "heart", color: "#2FC49A", emoji: "🦊" };
   assert.deepEqual(botInputFromDraft(face), { name: "Scout", avatar: { color: "#2fc49a", shape: "heart" } }, "Face ignores a typed emoji");
@@ -351,6 +361,54 @@ test("the dialog's call voice goes with a new bot, and an edit sends it when it 
   const { callVoice: _call, ...withoutCallVoice } = unchanged;
   assert.deepEqual(botPatchFromDraft(bot, withoutCallVoice), {}, "a draft without a call voice leaves it alone");
   assert.equal(parseBot({ ...RECORD, voice: { live: "nova" } })?.voice, undefined);
+});
+
+test("the Settings tab sends one change at a time by the edit rules, and nothing for a choice that stays", () => {
+  const bot = { ...(parseBot(RECORD) as BotView), voice: { language: "es" as const, live: "sol" as const } };
+  assert.deepEqual(botPatchFromDraft(bot, botDraftOf(bot)), {}, "the bot as it is changes nothing");
+  assert.equal(botChangePatch(bot, { model: "anthropic/claude" }), undefined, "the same model sends nothing");
+  assert.deepEqual(botChangePatch(bot, { model: "" }), { model: "" }, "Gateway default clears the model");
+  assert.deepEqual(botChangePatch(bot, { thinking: "" }), { thinking: "" }, "and the thinking level");
+  assert.deepEqual(botChangePatch(bot, { memoryModel: "openai/mini" }), { memoryModel: "openai/mini" });
+  assert.deepEqual(botChangePatch({ ...bot, memoryModel: "openai/mini" }, { memoryModel: "" }), { memoryModel: "" }, "Default goes back to Settings' utility model");
+  assert.deepEqual(botChangePatch(bot, botSettingChange("callVoice", "vale")), { voice: { live: "vale" } }, "a call voice leaves the rest of the voice alone");
+  assert.deepEqual(botChangePatch(bot, botSettingChange("callVoice", "")), { voice: { live: "" } }, "Default follows Settings' call voice");
+  assert.deepEqual(botChangePatch(bot, botSettingChange("voiceLanguage", "")), { voice: { language: "" } }, "Auto clears the language");
+  assert.equal(botChangePatch(bot, botSettingChange("cwd", "  ")), undefined, "an emptied workspace keeps the one it has");
+  assert.deepEqual(botChangePatch(bot, botSettingChange("cwd", " ~/bots/scout ")), { cwd: "~/bots/scout" });
+  assert.deepEqual(["model", "thinking", "memoryModel", "callVoice", "voiceLanguage", "cwd"].map((key) => botSettingOf(bot, key as never)),
+    ["anthropic/claude", "medium", "", "sol", "es", bot.cwd], "each row starts from the bot, \"\" for a default");
+});
+
+test("the Profile rows send the name, title and look that changed, one part at a time", () => {
+  const bot = parseBot({ ...RECORD, avatar: { shape: "heart", color: "#2fc49a" } }) as BotView;
+  assert.deepEqual(["name", "title", "shape", "color", "emoji"].map((key) => botSettingOf(bot, key as never)), ["Scout", "Research assistant", "heart", "#2fc49a", ""]);
+  assert.equal(botChangePatch(bot, botSettingChange("name", "Scout")), undefined, "an untouched name sends nothing");
+  assert.deepEqual(botChangePatch(bot, botSettingChange("name", " Scout II ")), { name: "Scout II" });
+  assert.equal(botChangePatch(bot, botSettingChange("name", "  ")), undefined, "a blank name is never sent");
+  assert.deepEqual(botChangePatch(bot, botSettingChange("title", "")), { title: "" }, "an emptied title clears it");
+  assert.deepEqual(botChangePatch(bot, botSettingChange("shape", "cookie")), { avatar: { shape: "cookie" } });
+  assert.deepEqual(botChangePatch(bot, botSettingChange("color", "#FF6B4A")), { avatar: { color: "#ff6b4a" } });
+  assert.deepEqual(botChangePatch(bot, botSettingChange("emoji", "🦉")), { avatar: { emoji: "🦉" } }, "an emoji switches to the Emoji look");
+  const owl = parseBot({ ...RECORD, avatar: { emoji: "🦉", shape: "heart" } }) as BotView;
+  assert.deepEqual(botChangePatch(owl, botSettingChange("emoji", "")), { avatar: { emoji: "" } }, "Face clears the emoji and keeps the face behind it");
+  assert.deepEqual(botChangePatch(owl, botSettingChange("shape", "round")), { avatar: { shape: "round" } }, "a shape waits behind the emoji");
+});
+
+test("+ creates a bot without a name: the gateway calls it New Bot, and it asks what to call it", async () => {
+  const original = globalThis.fetch;
+  const calls: { url: string; method: string; body: string }[] = [];
+  globalThis.fetch = (async (input: RequestInfo | URL, init: RequestInit = {}) => {
+    calls.push({ url: String(input), method: init.method ?? "GET", body: String(init.body) });
+    return new Response(JSON.stringify({ bot: { ...RECORD, id: "b7", name: "New Bot", handle: "new-bot", soul: false } }), { status: 201, headers: { "content-type": "application/json" } });
+  }) as typeof fetch;
+  try {
+    const bot = await createBot({});
+    assert.equal(bot.name, "New Bot");
+    assert.deepEqual(calls.map(({ url, method, body }) => [url, method, JSON.parse(body)]), [["/__hui/bots", "POST", {}]], "no name in the body, nothing else either");
+  } finally {
+    globalThis.fetch = original;
+  }
 });
 
 test("a bot whose record still carries a VoiceStudio voice shows only its language and call voice", () => {
