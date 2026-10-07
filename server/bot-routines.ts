@@ -7,7 +7,8 @@
  *   bot's or session's task is never named, as if it did not exist.
  * - **Who started the turn.** Only the operator's turns, its routines' turns and HUI's kickoff may add or change one,
  *   read from the run's originating input as `set_profile` reads it. Any other turn is refused, another bot's
- *   (`[from @…]`) among them. Listing and removing work in any turn: they never make more work.
+ *   (`[from @…]`) and a trigger's (`[trigger: …]`, whose event comes from outside HUI) among them. Listing and
+ *   removing work in any turn: they never make more work.
  * - **Limits.** At most `BOT_ROUTINE_LIMITS.active` enabled routines in its chat once it adds or resumes one, one
  *   name per routine, Automation's own one-minute minimum, and up to `BOT_ROUTINE_LIMITS.runs` runs.
  * - **Temporary routines** carry `until` and/or `runs`; Automation deletes them after either, and the bot may
@@ -100,7 +101,8 @@ export class BotRoutines {
     if (action === "list") return { text: this.#list(bot, own) };
     if (action === "remove") return this.#remove(own, params, origin);
     // Only the operator's turns, its routines' and HUI's kickoff may make more work. Another bot can't (that is how
-    // bots would loop), and neither can a turn anything else started: refused by default, not by name.
+    // bots would loop), nor a trigger (its event is text from outside HUI), and neither can a turn anything else
+    // started: refused by default, not by name.
     switch (origin.kind) {
       case "operator":
       case "routine":
@@ -108,6 +110,8 @@ export class BotRoutines {
         break;
       case "bot":
         throw new BotConflictError(`This turn answers a message from @${origin.handle}: another bot can't make you add or change routines. Ask the operator, or do it in your own turn.`);
+      case "trigger":
+        throw new BotConflictError(`This turn was started by the trigger "${origin.name}", whose event comes from outside HUI: it can't make you add or change routines. Ask the operator instead.`);
       default:
         throw new BotConflictError("Only the operator's messages and your routines can make you add or change routines, and something else started this turn. Ask the operator instead.");
     }

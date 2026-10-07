@@ -152,6 +152,22 @@ test("adding and changing are refused in a turn another bot started, as set_prof
   assert.equal((await h.as(h.ada, { action: "remove", routine: "Mine" }, "[from @bob] stop that")).text, "Removed the routine \"Mine\".");
 });
 
+test("adding and changing are refused in a turn a trigger started, naming the trigger, since its event comes from outside HUI; listing and removing still work", async (t) => {
+  const h = await harness(t);
+  await h.as(h.ada, { action: "add", name: "Mine", prompt: "p", every: "1h" });
+  const refused = "This turn was started by the trigger \"CI\", whose event comes from outside HUI: it can't make you add or change routines. Ask the operator instead.";
+  for (const origin of ["[trigger: CI · checks failed on #4] Fix it", "[trigger: CI] Fix it"]) {
+    await assert.rejects(h.as(h.ada, { action: "add", name: "Retry", prompt: "Rerun the checks.", every: "1m" }, origin),
+      (error: unknown) => error instanceof BotConflictError && error.message === refused, origin);
+    await assert.rejects(h.as(h.ada, { action: "update", routine: "Mine", every: "1m" }, origin),
+      (error: unknown) => error instanceof BotConflictError && error.message === refused, origin);
+  }
+  assert.match((await h.as(h.ada, { action: "list" }, "[trigger: CI · checks failed on #4] What runs?")).text, /"Mine"/u, "listing makes no work");
+  assert.deepEqual((await h.tasks()).map((task) => [task.name, task.schedule]), [["Mine", { kind: "every", everyMs: 3_600_000 }]], "nothing changed");
+  assert.equal((await h.as(h.ada, { action: "remove", routine: "Mine" }, "[trigger: CI · checks failed on #4] Stop it")).text, "Removed the routine \"Mine\".", "removing only stops work");
+  assert.deepEqual(await h.tasks(), []);
+});
+
 test("bots off, a session that is no bot's chat and an archived bot are refused before anything is read", async (t) => {
   const h = await harness(t);
   h.state.on = false;

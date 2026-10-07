@@ -538,9 +538,9 @@ that ends by itself, at a time (*until 18:00*) and/or after a number of runs
 own turn. The Routines tab and Automations show who made each one (*made by
 @ada*) and its limits. A bot only ever sees and changes the routines of its own
 chat, can have at most 20 active ones, never more often than once a minute, and
-a message from another bot can't make it add or change one (yours and its
-routines' can). Turn **Manage its own routines** off in its Tools tab to stop
-it.
+a message from another bot or a trigger can't make it add or change one (yours
+and its routines' can). Turn **Manage its own routines** off in its Tools tab
+to stop it.
 
 A routine's message reaches the bot as `[routine: <name>] <prompt>`. A busy bot
 takes it as a follow-up instead of skipping it, and the run completes when the
