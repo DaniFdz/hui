@@ -6,6 +6,7 @@ import {
   registerAgentToolHandler,
   stopAgentToolBridge,
 } from "./agent-tools-bridge.ts";
+import { invokeHuiBridge } from "./runtimes/bridge-client.mjs";
 
 after(() => stopAgentToolBridge());
 
@@ -69,4 +70,27 @@ test("a session token cannot impersonate another caller", async () => {
     ok: false,
     error: "Agent tool request is missing callerSessionId, action, or params.",
   });
+});
+
+test("the PI-side client reaches the handler, and aborting its call aborts the handler's signal", { timeout: 10_000 }, async () => {
+  Object.assign(process.env, await agentToolEnvironment("caller-5"));
+  registerAgentToolHandler(async (invocation) => ({ caller: invocation.callerSessionId, action: invocation.action }));
+  assert.deepEqual(await invokeHuiBridge("sessions_list", {}), { caller: "caller-5", action: "sessions_list" });
+
+  let called!: () => void;
+  const started = new Promise<void>((resolve) => { called = resolve; });
+  const aborted = new Promise<boolean>((resolve) => {
+    registerAgentToolHandler(async (invocation) => {
+      called();
+      await new Promise((wake) => invocation.signal?.addEventListener("abort", wake, { once: true }));
+      resolve(invocation.signal?.aborted === true);
+      return {};
+    });
+  });
+  const call = new AbortController();
+  const pending = invokeHuiBridge("secret_request", {}, { signal: call.signal });
+  await started;
+  call.abort();
+  await assert.rejects(pending, { name: "AbortError" });
+  assert.equal(await aborted, true);
 });

@@ -72,7 +72,10 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   sessions leave the sidebar and remain restorable from Sessions, whose table
   opens on **All** (then Active, Archived) and whose filter popover narrows by
   live status and groups rows by custom group or project directory; these are
-  browser-only view choices. While the row
+  browser-only view choices. Row checkboxes (and a select-all for the rows
+  shown) select sessions for one confirmed bulk delete of their trees; the
+  confirmation can also remove worktrees used only by deleted sessions, never
+  forcing past local changes or a worktree HUI did not create. While the row
   menu is open, its displayed P/R/U/A/D keys activate their actions immediately
   rather than using typeahead (D still opens the delete confirmation). Modified
   shortcuts, held-key repeats, text inputs and nested submenus retain native
@@ -693,7 +696,8 @@ GitHub-style callouts, the consent-gated X/Twitter facade and static Slack link
 cards without describing them as tools. Real PI tools remain a separate, live
 list built from PI's
 selected names, snippets and deduplicated guidelines. This does not grant network
-access or make arbitrary HTML, SVG, scripts or iframes renderable.
+access or make arbitrary HTML, SVG, scripts or iframes in Markdown renderable;
+interactive HTML and SVG go through the `show_widget` tool (Agent widgets, below).
 
 Unsent composer state is scoped per HUI session and stored in browser IndexedDB,
 following OpenClaw's durable-draft model. Text and attachments survive navigation
@@ -760,6 +764,32 @@ completed plans have no heads-up. Notes-only cards have no invented percentage.
 Touch does not gain an extra progress button absent from the original. Background sessions
 refresh while the page is visible. After a gateway restart, progress returns when
 the session is reopened and its runtime restores the transcript.
+
+## Agent widgets
+
+An agent or bot shows something the user should see and use, not just read,
+with HUI's `show_widget` tool: a title and an HTML or SVG fragment with
+optional `<style>` and `<script>`, as OpenClaw's tool of the same name takes.
+The tool refuses a full document, a file path, more than 256 KiB, or an inline
+classic or module script that does not parse, naming the script, line and
+column in the agent's own code so it can fix the call. It stores nothing of its
+own: the call's arguments and its result live in the conversation's transcript,
+so the widget is shown wherever the transcript is, after a reload, Back/Forward
+or a gateway restart, and is gone from HUI with its session.
+
+The chat shows an accepted call as a titled card in the transcript, on a row of
+its own that stays visible after the turn's other activity folds away. The
+widget runs live in a sandboxed frame (see the decision below) on HUI's current
+theme, which it follows as the theme changes; the frame is as tall as the
+widget, from 48 to 8,000 px. Expand shows the same widget full screen without
+reloading it, and Escape, in HUI or inside the widget, returns. Runtime errors
+and blocked loads appear as a notice on the card, for the user. A click on an
+http(s) link in the widget opens it in a new tab. While the call runs the card
+says it is preparing the widget; a rejected call stays an ordinary failed tool
+row with its error.
+
+Agents learn when a widget beats prose from the tool's own guidance and the
+bundled `visualize` skill.
 
 ## Session-born subagents
 
@@ -848,6 +878,40 @@ restart reappears with its state, and one killed by a reboot is shown dead
 instead of silently missing. HUI does not install a launchd agent: a watcher
 runs until its command ends or the machine restarts, and *Restart* brings it
 back afterwards.
+
+## Secret requests
+
+An agent that needs a secret from the operator (an API key, a token, a
+password, a one-time code such as an OAuth `code#state`) asks for it with
+HUI's `secret_request` tool instead of asking for it in the chat or a shared
+terminal. The call names the secret (`label`) and says why it is needed
+(`reason`); both stay in the conversation, so they must not hold the secret.
+The call waits for the operator.
+
+The open conversation shows the request in the question dock above the
+composer, in OpenClaw's question card: *Secret*, the label, the reason, a line
+saying the value stays out of the conversation, a masked field and *Cancel* /
+*Submit*. Escape does not cancel it: password managers close their menus over
+the field with Escape. Meanwhile the session reads *Waiting*, like a session
+with a question. Submitting sends the value to the gateway only. The gateway
+writes it, exactly as typed, to a private temporary file (owner-only, in its
+own owner-only directory under the system temporary directory) and gives the
+agent that file's path; for a session on a remote worker the gateway passes it
+over the worker connection and the worker writes the file there, where the
+session's commands run. The agent's guidance is to use it in its next command
+without printing it (on stdin or in an environment variable, not as a
+command-line argument) and to delete it; HUI deletes it after ten minutes, or
+when the gateway or the worker host stops (HUI upgrading the host stops it
+too). After a crash, the next start removes it.
+
+The value never enters the transcript, a tool result, PI's or Durable's stores,
+HUI's registry or its diagnostics: the tool call records the label, the reason,
+the outcome and the file path, nothing else. *Cancel*, Stop, a gateway stop or
+fifteen minutes without an answer end the request: the card closes, no file is
+written and the agent learns the request was cancelled or expired. When a
+worker's connection drops, the card closes too and the call fails, as other
+HUI tools do there. Pending requests live in gateway memory and do not survive
+a restart.
 
 ## Kanban
 
@@ -1102,9 +1166,10 @@ leaves worker records unchanged.
   through the gateway; presented media is copied back from the remote. With no
   gateway connected (or when it leaves mid-call) a HUI tool call fails at once
   with a message saying HUI is not connected; it is never replayed.
-  Not yet available remotely: terminals, watchers, the managed browser, New
-  worktree and branch checkouts, and multi-account quota rotation (the default
-  account is used). Usage totals skip remote transcripts.
+  Secret requests are answered on the gateway and their file is written on
+  the worker. Not yet available remotely: terminals, watchers, the managed
+  browser, New worktree and branch checkouts, and multi-account quota rotation
+  (the default account is used). Usage totals skip remote transcripts.
 
 ## Bots
 
@@ -1245,8 +1310,8 @@ PI's own extension runner, bound to the conversation:
   `agent_settled` handlers ran, or 30 seconds after it ended. Stop while a
   prompt passes its handlers sends nothing.
 - Their dialogs are HUI questions and their notifications HUI notices.
-  Terminal-only UI (status lines, widgets, custom components, shortcuts) is
-  ignored.
+  Terminal-only UI (status lines, terminal widgets, custom components,
+  shortcuts) is ignored. HUI's own `show_widget` tool is unrelated to it.
 - What they store with `appendEntry` and the messages they send are Durable
   entries, so their state survives a restart. Their messages stay out of the
   transcript, as in PI sessions, even one that starts a turn.
@@ -1343,6 +1408,89 @@ shape: a gateway that owns sessions, and a UI that talks to it.
 
 Measured: `pi --mode rpc` takes **4.5–5.7 seconds** to become ready, so the UI has
 to show that it is starting.
+
+### Agent widgets run in an opaque-origin sandbox
+
+Decided 2026-10-06, at Dani's request for inline, interactive, agent-authored
+widgets like OpenClaw's `show_widget`.
+
+**What.** `show_widget({ title, widget_code })` is a HUI tool, offered with the
+other HUI tools to every Durable conversation, PI SDK worker sessions and the PI
+CLI fallback. Bot chats (the unmerged bots stack, #67–#70) build on the same
+Durable tool set, so they get it once rebased. Its validator is
+dependency-free and runs where the tool runs. V8 parses each inline classic
+script in place and each module script in a short-lived worker
+(`vm.SourceTextModule` needs `--experimental-vm-modules`); nothing is
+executed or linked. The call's arguments and result (`details.widget`) are the
+only record. The chat wraps the accepted fragment at render time in OpenClaw's
+canonical document: its theme token names, classless base stylesheet, helper
+classes and CDN allowlist, so a fragment renders the same in both hosts.
+
+**Preflight: MCP Apps.** The MCP Apps extension (SEP-1865) renders `ui://`
+resources in sandboxed iframes behind a postMessage bridge; `@mcp-ui/client`'s
+`AppRenderer` and `@modelcontextprotocol/ext-apps`' `AppBridge` are the
+maintained hosts. They were not adopted: they host complete documents served by
+MCP servers, which HUI does not have; a web host must run the sandbox proxy on a
+second origin with `allow-same-origin`, a new listener and remote-access
+mapping; and the renderers are React components and new dependencies. HUI takes
+the standard where it fits: the two-frame sandbox proxy and the JSON-RPC
+messages `ui/notifications/sandbox-proxy-ready` and `…-resource-ready`,
+`ui/notifications/size-changed`, `ui/notifications/host-context-changed`,
+`ui/open-link`, `ui/request-display-mode` and `notifications/message`, so a
+later MCP Apps host can reuse the frame protocol.
+
+**Threat model.** The fragment is untrusted code from a model that may have read
+hostile input. It must not reach HUI's API (`/__hui/*`), read the HUI page's
+DOM, cookies or storage, see the rest of the conversation, navigate or replace
+the HUI page, or open popups. The boundary:
+
+1. `GET /__hui/widget-sandbox` serves one static page that holds no data, so it
+   needs no x-hui header. Its response policy is the widget policy plus
+   `sandbox allow-scripts allow-forms` (an opaque origin even when opened
+   directly) and `frame-ancestors 'self'` (only HUI may embed it). The page runs
+   only when framed by an http(s) page it cannot read; it builds the widget's
+   frame (srcdoc, `sandbox="allow-scripts allow-forms"`), which inherits the
+   policy, and relays messages, dropping the reserved
+   `ui/notifications/sandbox-*` methods from the widget.
+2. The policy: `default-src 'none'`; inline scripts and styles; scripts, styles
+   and fonts only from the pinned CDNs (cdnjs, jsDelivr, esm.sh, unpkg, Google
+   and Bunny fonts); images and media only from `data:` and `blob:`; and
+   `connect-src`, `frame-src`, `worker-src`, `object-src`, `base-uri` and
+   `form-action` all `'none'`.
+3. The chat's frame is `sandbox="allow-scripts allow-forms"`, never with
+   `allow-same-origin`, popups, top navigation, modals or downloads. The chat
+   accepts messages only from its own frame's window, delivers a widget only to
+   a page that posts as the opaque origin `null`, and validates and bounds
+   every message (heights 48–8,000 px, three error notices).
+4. A widget opens a link only through the chat: a click on an http(s) link,
+   while the widget frame holds focus with transient user activation, checked by
+   both the sandbox page and the chat, opens a new tab with
+   `noopener,noreferrer`. `window.open` and top navigation stay blocked.
+
+`e2e/widget-probe.html` exercises the boundary from inside a widget: a fetch of
+`/__hui/settings` with x-hui, cookies, localStorage, the HUI DOM, top
+navigation, `window.open`, a script, an image and a WebSocket from an origin
+outside the allowlist are all blocked, and its origin is `null`.
+
+**Accepted residuals.** A widget can still send its own content out: by
+navigating its own frame (the sandbox page notices the second load, removes the
+frame and the card says so, after the request has gone), over WebRTC, or in the
+URLs of CDN requests. It holds nothing but its own code and the theme tokens,
+and the agent that wrote it could send the same through its own tools. CDN
+requests reveal the user's IP to those CDNs, and code loaded from them runs in
+the widget. The sandbox page is served from HUI's origin: the frames are opaque,
+so relative URLs reach only GET routes that refuse them without x-hui. A
+dedicated origin becomes necessary only for MCP Apps that need
+`allow-same-origin`. The policy is HUI's current one at render time, so
+tightening it also covers older widgets. Cached session views keep their
+widgets running.
+
+**Later.** `sendPrompt(text)` does not ship yet: a widget that can write into
+the conversation needs a private channel captured before widget code runs,
+transient activation, focus, rate limits, refusing slash commands and a visibly
+attributed message, which is a change of its own and nothing in this one needs
+it. Runtime errors are shown to the user and not yet reported to the agent, and
+there is no PNG export.
 
 ## Explicitly out of scope
 

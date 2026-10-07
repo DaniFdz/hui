@@ -30,6 +30,7 @@ PI transcripts into its own storage.
 <tr><td><b>Live agent work</b></td><td>Live transcripts, streaming status, tool activity and model controls.</td></tr>
 <tr><td><b>A gateway that keeps running</b></td><td>A local gateway that keeps running independently of the browser window.</td></tr>
 <tr><td><b>One place for settings</b></td><td>Appearance, skills, tools, models and workspace settings in one UI.</td></tr>
+<tr><td><b>Interactive widgets</b></td><td>Agents show live, sandboxed HTML/SVG widgets right in the chat, on your theme.</td></tr>
 <tr><td><b>A browser for your agents</b></td><td>A dedicated, headless-by-default browser agents can drive without touching your own browser, with a live preview of its page in the chat (Settings → Tools → Browser).</td></tr>
 <tr><td><b>Desktop app</b></td><td>An Electron window over the same UI and gateway, registered with Spotlight on macOS.</td></tr>
 <tr><td><b>Safe updates</b></td><td>Transactional local updates with verification and rollback support.</td></tr>

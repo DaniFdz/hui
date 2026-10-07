@@ -1,0 +1,91 @@
+<div id="probe">
+<style>
+#probe{display:grid;gap:10px}
+#probe td:first-child{width:46%}
+#probe .detail{display:block;margin-top:2px;font-family:var(--font-mono);font-size:11px;color:var(--muted);overflow-wrap:anywhere}
+</style>
+<p class="muted">Each row tries to leave HUI's widget sandbox. <strong>Blocked</strong> is the expected result.</p>
+<table aria-label="Sandbox probe results">
+  <thead><tr><th scope="col">Attempt</th><th scope="col">Result</th></tr></thead>
+  <tbody id="probe-rows"></tbody>
+</table>
+<p class="row"><span id="probe-summary" class="badge info" role="status">Running…</span><a href="https://example.com/" target="_blank" rel="noopener">example.com in a new tab</a></p>
+<script>
+(async () => {
+  const rows = document.getElementById("probe-rows");
+  const violations = [];
+  document.addEventListener("securitypolicyviolation", (event) => violations.push(event.effectiveDirective + " " + event.blockedURI));
+  const results = [];
+  const add = (name, blocked, detail) => {
+    results.push(blocked);
+    const row = document.createElement("tr");
+    const label = document.createElement("td");
+    label.textContent = name;
+    const cell = document.createElement("td");
+    const badge = document.createElement("span");
+    badge.className = "badge " + (blocked ? "ok" : "danger");
+    badge.textContent = blocked ? "Blocked" : "ALLOWED";
+    const note = document.createElement("span");
+    note.className = "detail";
+    note.textContent = detail;
+    cell.append(badge, note);
+    row.append(label, cell);
+    rows.append(row);
+  };
+  const policy = (host) => [...new Set(violations.filter((entry) => entry.includes(host)).map((entry) => entry.split(" ")[0]))].join(", ");
+  // Violation events arrive just after the failure they explain.
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 150));
+  const attempt = async (name, run, host) => {
+    try {
+      add(name, false, String((await run()) ?? "succeeded"));
+    } catch (error) {
+      if (host) await settle();
+      const blockedBy = host ? policy(host) : "";
+      add(name, true, (blockedBy ? "CSP " + blockedBy + " · " : "") + (error && error.name ? error.name + ": " + error.message : String(error)));
+    }
+  };
+  await attempt("fetch /__hui/settings with x-hui", async () => {
+    const response = await fetch("/__hui/settings", { headers: { "x-hui": "1" } });
+    return "HTTP " + response.status + " " + (await response.text()).slice(0, 80);
+  }, "/__hui/settings");
+  await attempt("Read HUI's cookies", () => "read " + document.cookie.length + " characters");
+  await attempt("Read localStorage", () => window.localStorage.length + " keys");
+  await attempt("Read HUI's DOM (top.document)", () => "title " + window.top.document.title);
+  await attempt("Navigate the top window", async () => {
+    window.top.location.href = "/";
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    throw new Error("navigation did not happen");
+  });
+  await attempt("Open a popup with window.open", () => {
+    if (!window.open("https://example.com/")) throw new Error("window.open returned null");
+    return "opened";
+  });
+  await attempt("Load a script from example.com", () => new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "https://example.com/probe.js";
+    script.onload = () => resolve("loaded");
+    script.onerror = () => reject(new Error("script failed to load"));
+    document.head.append(script);
+  }), "example.com/probe.js");
+  await attempt("Load an image from example.com", () => new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve("loaded");
+    image.onerror = () => reject(new Error("image failed to load"));
+    image.src = "https://example.com/probe.png";
+  }), "example.com/probe.png");
+  await attempt("Open a WebSocket to example.com", () => new Promise((resolve, reject) => {
+    const socket = new WebSocket("wss://example.com/");
+    socket.onopen = () => resolve("open");
+    socket.onerror = () => reject(new Error("connection failed"));
+  }), "wss://example.com");
+  await attempt("Run in an opaque origin", () => {
+    if (self.origin === "null") throw new Error("origin is null");
+    return "origin " + self.origin;
+  });
+  const blocked = results.filter(Boolean).length;
+  const summary = document.getElementById("probe-summary");
+  summary.className = "badge " + (blocked === results.length ? "ok" : "danger");
+  summary.textContent = blocked + "/" + results.length + " blocked";
+})();
+</script>
+</div>

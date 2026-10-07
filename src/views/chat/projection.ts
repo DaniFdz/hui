@@ -5,6 +5,10 @@ export type ChatMessage = Extract<TranscriptItem, { kind: "message" }>;
 export type ChatCompaction = Extract<TranscriptItem, { kind: "compaction" }>;
 export type ChatActivity = Exclude<TranscriptItem, { kind: "message" | "compaction" }> | ChatMessage;
 
+/** Tool calls that present something to the user get a row of their own, so
+ * they stay visible after the turn's other activity folds into a disclosure. */
+const PRESENTATION_TOOLS = new Set(["present_media", "show_widget"]);
+
 export type ChatProjectionRow =
   | { kind: "messages"; id: string; role: ChatMessage["role"]; messages: readonly ChatMessage[] }
   | { kind: "activity"; id: string; items: readonly ChatActivity[] }
@@ -36,7 +40,7 @@ export function projectChatTranscript(
       ordinary = [];
     };
     for (const item of items) {
-      if (item.kind === "tool" && item.name === "present_media") {
+      if (item.kind === "tool" && PRESENTATION_TOOLS.has(item.name)) {
         flushOrdinary();
         rows.push({ kind: "activity", id: item.id, items: [item] });
       } else ordinary.push(item);
