@@ -239,7 +239,7 @@ export class HuiSessionCalendar extends LitElement {
             title="View day" ?disabled=${this.#loading || date > dayStart(now)} @click=${() => this.#go(date, 1)}>${label}</button>`;
         })}
         <div class="session-calendar__hours" aria-hidden="true">
-          ${hours.filter((hour) => hour % 3 === 0).map((hour) => html`<span class="session-calendar__hour" style="top:${(hour - first) * HOUR_PX}px">${hourLabel(hour)}</span>`)}
+          ${hours.filter((hour) => hour % 3 === 0).map((hour) => html`<span class="session-calendar__hour" style="grid-row:${hour - first + 1}">${hourLabel(hour)}</span>`)}
         </div>
         ${period.days.map(({ date, blocks }) => {
           const today = holds(date, now);
