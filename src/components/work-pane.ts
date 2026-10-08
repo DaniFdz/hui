@@ -12,7 +12,7 @@ import { HuiElement } from "../lit/hui-element.ts";
 import { hasOpenWebAwesomePopup } from "../lib/web-awesome.ts";
 import { ariaShortcut, formatShortcut } from "../lib/shortcut-binding.ts";
 import {
-  clampWorkPaneWidth, sessionWorkPane, workViewKey, workViewKind, workViewKinds,
+  clampWorkPaneWidth, sessionWorkPane, workPaneFits, workViewKey, workViewKind, workViewKinds,
   WORK_PANE_MIN_WIDTH, WORK_PANE_TOGGLE_SHORTCUT,
   type WorkPaneStore, type WorkViewKind, type WorkViewRef, type WorkViewResource,
 } from "../lib/work-pane.ts";
@@ -45,6 +45,8 @@ export class WorkPane extends HuiElement {
   /** Conversations whose views stay mounted, most recent first (from `retainWorkSessions`). */
   @property({ attribute: false }) retained: readonly string[] = [];
   @property({ type: Boolean }) narrow = false;
+  /** Chat columns side by side beside the pane; each keeps its room (`WORK_PANE_CHAT_MIN_WIDTH`). */
+  @property({ type: Number }) chatColumns = 1;
   /** Narrow screens: the pane is the destination shown instead of the chat. */
   @property({ type: Boolean }) narrowShown = false;
   /** The view the operator just launched; it may take focus. */
@@ -63,6 +65,8 @@ export class WorkPane extends HuiElement {
   @property({ attribute: false }) onEscape!: () => void;
   @property({ attribute: false }) onDismissError!: () => void;
   @state() private available = 0;
+  /** The conversation whose pane the operator expanded although the chat columns leave it no room. */
+  @state() private squeezedOpen = "";
   @state() private reopenable: WorkViewResource[] = [];
   @state() private announcement = "";
   @state() private resizing = false;
@@ -120,7 +124,23 @@ export class WorkPane extends HuiElement {
   }
 
   private shown(): boolean {
-    return this.narrow ? this.narrowShown : sessionWorkPane(this.store, this.sessionId).open;
+    if (this.narrow) return this.narrowShown;
+    return sessionWorkPane(this.store, this.sessionId).open && (this.fits() || this.squeezedOpen === this.sessionId);
+  }
+
+  /** An expanded pane at its minimum still leaves every chat column its room. */
+  private fits(): boolean {
+    return workPaneFits(this.available, this.chatColumns);
+  }
+
+  /** The pane is expanded on screen (open, and not collapsed to its rail for lack of room). */
+  get expanded(): boolean {
+    return this.shown();
+  }
+
+  override willUpdate() {
+    // Once there is room again the pane simply fits; a later squeeze collapses it again.
+    if (this.squeezedOpen && (this.fits() || this.squeezedOpen !== this.sessionId)) this.squeezedOpen = "";
   }
 
   private readonly keydown = (event: KeyboardEvent) => {
@@ -133,8 +153,21 @@ export class WorkPane extends HuiElement {
   };
 
   private toggle(open: boolean) {
+    // Without room the operator's expand wins: the pane shows at its minimum and the chat columns narrow.
+    this.squeezedOpen = open && !this.narrow && !this.fits() ? this.sessionId : "";
     this.onToggle(open);
     this.focusPane(open ? "active" : "rail");
+  }
+
+  /** Expands the pane (the toggle shortcut), even when the chat columns leave it no room. */
+  expand() {
+    this.toggle(true);
+  }
+
+  /** A view of `sessionId` was just opened or shown on purpose: if the chat columns leave no room, show the pane
+   * anyway (cleared again as soon as it fits). */
+  reveal(sessionId = this.sessionId) {
+    if (!this.narrow) this.squeezedOpen = sessionId;
   }
 
   private activate(key: string, focus = false) {
@@ -319,7 +352,7 @@ export class WorkPane extends HuiElement {
         const title = view.kind.title(view.ref);
         return html`<button type="button" class="btn btn--ghost btn--icon work-pane__icon-btn" aria-label=${`Show ${title}`} data-hui-tooltip=${title}
           aria-current=${view.key === active ? "true" : nothing}
-          @click=${() => { this.activate(view.key); this.pendingFocus = { tab: view.key }; }}>${view.kind.icon}</button>`;
+          @click=${() => { this.reveal(); this.activate(view.key); this.pendingFocus = { tab: view.key }; }}>${view.kind.icon}</button>`;
       })}
     </div>`;
   }
@@ -363,7 +396,7 @@ export class WorkPane extends HuiElement {
     const pane = sessionWorkPane(this.store, this.sessionId);
     const shown = this.shown();
     const views = entries(pane.views);
-    const width = clampWorkPaneWidth(pane.width, this.available || undefined);
+    const width = clampWorkPaneWidth(pane.width, this.available || undefined, this.chatColumns);
     // Mounted conversations keep their first-seen DOM order; forget the ones that left.
     const sessions = [...new Set(this.retained)].filter((id) => sessionWorkPane(this.store, id).views.length);
     const live = new Set([...sessions, this.sessionId].flatMap((id) => [id, ...sessionWorkPane(this.store, id).views.map((ref) => `${id}\u0000${workViewKey(ref)}`)]));
@@ -372,7 +405,7 @@ export class WorkPane extends HuiElement {
     return html`<aside class="work-pane ${shown ? "work-pane--open" : "work-pane--collapsed"} ${this.narrow ? "work-pane--narrow" : ""} ${this.resizing ? "work-pane--resizing" : ""}"
       style=${!this.narrow && shown ? `width:${width}px` : ""} aria-label="Work pane" @keydown=${this.keydown}>
       ${!this.narrow && shown ? html`<div class="work-pane__resizer" role="separator" aria-orientation="vertical" aria-label="Resize Work pane" tabindex="0"
-        aria-valuenow=${width} aria-valuemin=${WORK_PANE_MIN_WIDTH} aria-valuemax=${clampWorkPaneWidth(Number.POSITIVE_INFINITY, this.available || undefined)}
+        aria-valuenow=${width} aria-valuemin=${WORK_PANE_MIN_WIDTH} aria-valuemax=${clampWorkPaneWidth(Number.POSITIVE_INFINITY, this.available || undefined, this.chatColumns)}
         @pointerdown=${this.resizeStart} @pointermove=${this.resizeMove} @pointerup=${this.resizeEnd} @pointercancel=${this.resizeEnd} @lostpointercapture=${this.resizeEnd}
         @keydown=${this.resizeKey}></div>` : nothing}
       ${!this.narrow && !shown ? this.renderRail(views, pane.active) : nothing}

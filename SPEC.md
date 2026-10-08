@@ -285,7 +285,10 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   local terminal). **Hide Work pane** (Ctrl+Alt+W / ⌥⌘W) collapses it to a rail
   with one button per open view; its left edge resizes with the pointer or the
   arrow keys (Shift for larger steps, Home/End for the limits), keeping at least
-  420px for the chat. Escape inside the pane returns focus to the chat and never
+  420px for each chat column side by side: the pane yields width down to its own
+  320px minimum, and when even that does not fit (say three split chats) it shows
+  as its rail until the operator expands it anyway or a view is opened, then at
+  its minimum with the chat columns narrower. Escape inside the pane returns focus to the chat and never
   stops the agent's turn. Below 1100px the pane is a full-screen destination: the
   panel selector lists the chat panes, the open Work views and the launchers, and
   **Back to chat** or Ctrl+Alt+W returns. Hidden views stay mounted, so terminals

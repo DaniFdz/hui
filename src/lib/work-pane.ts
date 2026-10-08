@@ -92,7 +92,7 @@ export const WORK_PANE_KEY = "hui.work-pane.v1";
 export const WORK_PANE_DEFAULT_WIDTH = 560;
 export const WORK_PANE_MIN_WIDTH = 320;
 export const WORK_PANE_MAX_WIDTH = 1600;
-/** The chat keeps at least this much room beside an expanded Work pane. */
+/** Each chat column beside an expanded Work pane keeps at least this much room. */
 export const WORK_PANE_CHAT_MIN_WIDTH = 420;
 /** Conversations whose Work views stay mounted (hidden) after focus moves away, the focused one included. A view of a
  * conversation pushed out of this set reconnects (terminals replay their snapshot) when it is shown again. */
@@ -186,14 +186,27 @@ export function setWorkPaneOpen(store: WorkPaneStore, sessionId: string, open: b
   return update(store, sessionId, (pane) => pane.open === open ? pane : { ...pane, open });
 }
 
-export function clampWorkPaneWidth(width: number, available = Number.POSITIVE_INFINITY): number {
-  const max = Math.max(WORK_PANE_MIN_WIDTH, Math.min(WORK_PANE_MAX_WIDTH, available - WORK_PANE_CHAT_MIN_WIDTH));
+/** The room the chat keeps beside the pane: `WORK_PANE_CHAT_MIN_WIDTH` per side-by-side chat column. */
+function chatRoom(chatColumns: number): number {
+  return WORK_PANE_CHAT_MIN_WIDTH * Math.max(1, Math.trunc(chatColumns) || 1);
+}
+
+/** Whether an expanded pane at its minimum still leaves every chat column its room. When it does not, the pane
+ * shows as its collapsed rail unless the operator expands it anyway. Unknown room (`available` 0 or absent) fits. */
+export function workPaneFits(available: number | undefined, chatColumns = 1): boolean {
+  return !available || available - chatRoom(chatColumns) >= WORK_PANE_MIN_WIDTH;
+}
+
+/** The pane's width: `width` within its limits, leaving each of `chatColumns` chat columns its room in `available`
+ * (never below the pane's own minimum; `workPaneFits` says when that minimum no longer fits). */
+export function clampWorkPaneWidth(width: number, available = Number.POSITIVE_INFINITY, chatColumns = 1): number {
+  const max = Math.max(WORK_PANE_MIN_WIDTH, Math.min(WORK_PANE_MAX_WIDTH, available - chatRoom(chatColumns)));
   if (Number.isNaN(width)) return Math.min(WORK_PANE_DEFAULT_WIDTH, max);
   return Math.round(Math.max(WORK_PANE_MIN_WIDTH, Math.min(max, width)));
 }
 
-export function setWorkPaneWidth(store: WorkPaneStore, sessionId: string, width: number, available?: number): WorkPaneStore {
-  const clamped = clampWorkPaneWidth(width, available);
+export function setWorkPaneWidth(store: WorkPaneStore, sessionId: string, width: number, available?: number, chatColumns = 1): WorkPaneStore {
+  const clamped = clampWorkPaneWidth(width, available, chatColumns);
   return update(store, sessionId, (pane) => pane.width === clamped ? pane : { ...pane, width: clamped });
 }
 

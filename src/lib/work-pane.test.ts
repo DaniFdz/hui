@@ -4,7 +4,7 @@ import { html } from "lit";
 import {
   activateWorkView, adjacentWorkView, clampWorkPaneWidth, closeWorkView, defaultWorkViewKey, emptyWorkPane, launchableWorkViewKinds, migrateLayoutWorkViews,
   openWorkView, parseWorkPaneStore, pruneWorkPaneStore, registerWorkViewKind, reorderWorkView, retainWorkSessions, serializeWorkPaneStore,
-  sessionWorkPane, setWorkPaneOpen, setWorkPaneWidth, workViewKey, workViewKind, workViewKinds,
+  sessionWorkPane, setWorkPaneOpen, setWorkPaneWidth, workPaneFits, workViewKey, workViewKind, workViewKinds,
   WORK_PANE_CHAT_MIN_WIDTH, WORK_PANE_DEFAULT_WIDTH, WORK_PANE_MAX_WIDTH, WORK_PANE_MIN_WIDTH,
   type WorkPaneStore, type WorkViewKind, type WorkViewRef,
 } from "./work-pane.ts";
@@ -84,6 +84,23 @@ test("reordering moves one tab and clamps the index; adjacent tabs wrap around",
   assert.equal(adjacentWorkView(emptyWorkPane(), 1), undefined);
 });
 
+test("each side-by-side chat column keeps its room; the pane yields width down to its minimum", () => {
+  // 1180px beside the sidebar: one chat column leaves 760px, two leave 340px, three cannot fit the pane at all.
+  assert.equal(clampWorkPaneWidth(700, 1180, 1), 700);
+  assert.equal(clampWorkPaneWidth(700, 1180, 2), 1180 - 2 * WORK_PANE_CHAT_MIN_WIDTH);
+  assert.equal(clampWorkPaneWidth(Number.POSITIVE_INFINITY, 1180, 2), 340, "End reaches the widest two columns allow");
+  assert.equal(clampWorkPaneWidth(700, 1180, 3), WORK_PANE_MIN_WIDTH, "never below its own minimum");
+  assert.equal(workPaneFits(1180, 1), true);
+  assert.equal(workPaneFits(1180, 2), true);
+  assert.equal(workPaneFits(2 * WORK_PANE_CHAT_MIN_WIDTH + WORK_PANE_MIN_WIDTH, 2), true, "exactly enough room");
+  assert.equal(workPaneFits(2 * WORK_PANE_CHAT_MIN_WIDTH + WORK_PANE_MIN_WIDTH - 1, 2), false);
+  assert.equal(workPaneFits(1180, 3), false, "three columns and the pane cannot all fit: the pane collapses to its rail");
+  assert.equal(workPaneFits(0, 3), true, "before the row is measured nothing collapses");
+  assert.equal(workPaneFits(undefined, 3), true);
+  const store = setWorkPaneWidth({}, "s1", 700, 1180, 2);
+  assert.equal(sessionWorkPane(store, "s1").width, 340);
+});
+
 test("widths stay between the minimum and what leaves the chat its room", () => {
   assert.equal(clampWorkPaneWidth(100), WORK_PANE_MIN_WIDTH);
   assert.equal(clampWorkPaneWidth(99_999), WORK_PANE_MAX_WIDTH);
@@ -92,6 +109,7 @@ test("widths stay between the minimum and what leaves the chat its room", () => 
   assert.equal(clampWorkPaneWidth(Number.NaN), WORK_PANE_DEFAULT_WIDTH);
   assert.equal(clampWorkPaneWidth(Number.POSITIVE_INFINITY, 1440), 1440 - WORK_PANE_CHAT_MIN_WIDTH, "End resizes to the widest the chat allows");
   assert.equal(clampWorkPaneWidth(612.4), 612);
+  assert.equal(clampWorkPaneWidth(900, 1200, 0), 1200 - WORK_PANE_CHAT_MIN_WIDTH, "no chat column still counts as one");
   const store = setWorkPaneWidth({}, "s1", 700, 1440);
   assert.equal(sessionWorkPane(store, "s1").width, 700);
   assert.strictEqual(setWorkPaneWidth(store, "s1", 700, 1440), store);

@@ -2049,6 +2049,7 @@ export class HuiApp extends HuiElement {
     this.workError = "";
     this.commitWorkPanes(openWorkView(this.workPanes, sessionId, ref));
     if (this.workNarrow) this.workNarrowShown = true;
+    else this.workPaneElement()?.reveal(sessionId);
     // Views that do not take focus themselves leave it on their tab.
     if (!launched || ref.kind !== "terminal") void this.updateComplete.then(() => this.workPaneElement()?.focusPane("active"));
   }
@@ -2091,6 +2092,7 @@ export class HuiApp extends HuiElement {
   private revealWorkPane(sessionId: string) {
     this.commitWorkPanes(setWorkPaneOpen(this.workPanes, sessionId, true));
     if (this.workNarrow) this.workNarrowShown = true;
+    else this.workPaneElement()?.reveal(sessionId);
   }
 
   private toggleWorkPane() {
@@ -2102,7 +2104,10 @@ export class HuiApp extends HuiElement {
       else this.focusActiveComposer();
       return;
     }
-    const open = !sessionWorkPane(this.workPanes, sessionId).open;
+    // Collapsed to its rail for lack of room counts as hidden: the shortcut shows it anyway.
+    const element = this.workPaneElement();
+    const open = !(element?.expanded ?? sessionWorkPane(this.workPanes, sessionId).open);
+    if (open && element) { element.expand(); return; }
     this.commitWorkPanes(setWorkPaneOpen(this.workPanes, sessionId, open));
     if (open) void this.updateComplete.then(() => this.workPaneElement()?.focusPane("active"));
     else this.focusActiveComposer();
@@ -5905,6 +5910,7 @@ export class HuiApp extends HuiElement {
       .sessionId=${workSessionId}
       .retained=${this.workRetained}
       .narrow=${this.workNarrow}
+      .chatColumns=${this.sessionLayout.columns.length}
       .narrowShown=${this.workNarrowShown}
       .launchedKey=${this.workLaunchedKey}
       .launching=${this.workLaunching}
@@ -5923,7 +5929,7 @@ export class HuiApp extends HuiElement {
       .onReorder=${(key: string, index: number) => this.commitWorkPanes(reorderWorkView(this.workPanes, workSessionId, key, index))}
       .onToggle=${(open: boolean) => this.commitWorkPanes(setWorkPaneOpen(this.workPanes, workSessionId, open))}
       .onResize=${(width: number, available: number, done: boolean) => {
-        this.workPanes = setWorkPaneWidth(this.workPanes, workSessionId, width, available);
+        this.workPanes = setWorkPaneWidth(this.workPanes, workSessionId, width, available, this.sessionLayout?.columns.length ?? 1);
         if (done) this.persistWorkPanes();
       }}
       .onBack=${this.leaveWorkPane}
