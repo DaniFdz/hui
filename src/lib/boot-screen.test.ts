@@ -33,7 +33,11 @@ test("the boot screen remembers each mode's colours and the preference, and drop
 /** Runs index.html's inline head script against a fake page. */
 function bootScript(stored: unknown, systemLight: boolean) {
   const page = readFileSync(new URL("../../index.html", import.meta.url), "utf8");
-  const source = page.match(/<script>([\s\S]*?)<\/script>/u)![1]!;
+  // index.html is our own file with exactly one inline script, opened by a bare
+  // tag in the head: slice it out by position rather than parse HTML.
+  const start = page.indexOf("<script>") + "<script>".length;
+  const source = page.slice(start, page.indexOf("</script>", start));
+  assert(start > "<script>".length - 1 && source.includes("hui.boot-look"), "found the inline boot script");
   const attributes: Record<string, string> = {};
   const properties: Record<string, string> = {};
   const root = { setAttribute: (name: string, value: string) => { attributes[name] = value; }, style: { colorScheme: "", setProperty: (name: string, value: string) => { properties[name] = value; } } };
