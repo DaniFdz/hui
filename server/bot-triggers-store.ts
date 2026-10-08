@@ -3,6 +3,7 @@
  *
  *   ~/.config/hui/bot-triggers.json        { version: 1, triggers, runs, pending, deliveries }
  *   ~/.config/hui/bot-trigger-cursors.json { version: 1, repos }   (GitHub pollers' cursors)
+ *   ~/.config/hui/bot-trigger-slack.json   { version: 1, cursor }  (the Slack poller's cursor)
  *
  * Like `bots.json`: owner-only, every write a temporary file and a rename, every read/modify/write serialized; a record
  * that does not validate is kept in the file untouched and not used (reported once); a file that is not JSON or comes
@@ -19,6 +20,7 @@ import { CONFIG_DIR } from "./paths.ts";
 
 export const TRIGGERS_FILE = join(CONFIG_DIR, "bot-triggers.json");
 export const TRIGGER_CURSORS_FILE = join(CONFIG_DIR, "bot-trigger-cursors.json");
+export const SLACK_TRIGGER_CURSOR_FILE = join(CONFIG_DIR, "bot-trigger-slack.json");
 export const TRIGGERS_VERSION = 1;
 
 /** A store file can't be read or written safely; it is left untouched (500). */
@@ -26,8 +28,12 @@ export class TriggerStoreError extends Error {
   override name = "TriggerStoreError";
 }
 
-/** An event as it waits for a trigger's cooldown: already rendered, so it survives a restart without its source. */
-export type PendingEvent = { summary: string; details: string; at: string };
+/** An event as it waits for a trigger's cooldown: already rendered, so it survives a restart without its source. A
+ * Slack event keeps the pull requests it links to, which its delivery reads when it goes out. */
+export type PendingEvent = { summary: string; details: string; at: string; links?: string[] };
+
+/** The GitHub pull request URLs a pending Slack event keeps, as `pullRequestLinks` makes them. */
+const PULL_LINK = /^https:\/\/github\.com\/[A-Za-z0-9][A-Za-z0-9-]{0,38}\/[A-Za-z0-9._-]{1,100}\/pull\/[1-9]\d{0,8}$/u;
 
 /** Events waiting for a trigger's next delivery; `more` counts those past `BOT_TRIGGER_LIMITS.pending`. */
 export type TriggerPending = { events: PendingEvent[]; more: number; since: string; catchUp?: true };
@@ -68,11 +74,13 @@ function parseRun(raw: unknown): BotTriggerRun | undefined {
   };
 }
 
-function parsePending(raw: unknown): TriggerPending | undefined {
+function parsePending(raw: unknown, detailsLimit: number = BOT_TRIGGER_LIMITS.details): TriggerPending | undefined {
   if (!isRecord(raw) || !Array.isArray(raw["events"]) || typeof raw["since"] !== "string" || !ISO.test(raw["since"])) return undefined;
-  const events = raw["events"].flatMap((event): PendingEvent[] => isRecord(event) && typeof event["summary"] === "string" && typeof event["at"] === "string"
-    ? [{ summary: line(event["summary"], 300), details: line(event["details"], BOT_TRIGGER_LIMITS.details), at: event["at"] }]
-    : []).slice(0, BOT_TRIGGER_LIMITS.pending);
+  const events = raw["events"].flatMap((event): PendingEvent[] => {
+    if (!isRecord(event) || typeof event["summary"] !== "string" || typeof event["at"] !== "string") return [];
+    const links = Array.isArray(event["links"]) ? event["links"].filter((link): link is string => typeof link === "string" && PULL_LINK.test(link)).slice(0, BOT_TRIGGER_LIMITS.slackLinks) : [];
+    return [{ summary: line(event["summary"], 300), details: line(event["details"], detailsLimit), at: event["at"], ...(links.length ? { links } : {}) }];
+  }).slice(0, BOT_TRIGGER_LIMITS.pending);
   const more = Number.isInteger(raw["more"]) && (raw["more"] as number) > 0 ? raw["more"] as number : 0;
   if (!events.length && !more) return undefined;
   return { events, more, since: raw["since"], ...(raw["catchUp"] === true ? { catchUp: true } : {}) };
@@ -94,8 +102,10 @@ function parseTriggerState(raw: Record<string, unknown>): TriggerState {
   }
   const runs = (Array.isArray(raw["runs"]) ? raw["runs"] : []).flatMap((run) => parseRun(run) ?? []);
   // Built with fromEntries, so no key a hand edit puts in the file (`__proto__` included) is more than a key.
+  // A Slack event's details hold the message and its thread parent: they keep more than other sources' do.
+  const slack = new Set(triggers.filter((trigger) => trigger.source === "slack").map((trigger) => trigger.id));
   const pending: Record<string, TriggerPending> = Object.fromEntries(Object.entries(isRecord(raw["pending"]) ? raw["pending"] : {}).flatMap(([id, value]): [string, TriggerPending][] => {
-    const parsed = parsePending(value);
+    const parsed = parsePending(value, slack.has(id) ? BOT_TRIGGER_LIMITS.slackDetails : BOT_TRIGGER_LIMITS.details);
     return parsed && ids.has(id) ? [[id, parsed]] : [];
   }));
   const deliveries: Record<string, string[]> = Object.fromEntries(Object.entries(isRecord(raw["deliveries"]) ? raw["deliveries"] : {}).flatMap(([botId, times]): [string, string[]][] =>
@@ -214,6 +224,16 @@ export function cursorStore(file = TRIGGER_CURSORS_FILE): JsonStateFile<CursorSt
     empty: () => ({ repos: {} }),
     parse: (raw) => ({ repos: isRecord(raw["repos"]) ? { ...raw["repos"] } : {} }),
     serialize: (state) => ({ repos: state.repos }),
+  });
+}
+
+/** `bot-trigger-slack.json`: where the Slack poller stands, read back by `bot-triggers-slack.ts`. */
+export function slackCursorStore(file = SLACK_TRIGGER_CURSOR_FILE): JsonStateFile<{ cursor?: unknown }> {
+  return new JsonStateFile<{ cursor?: unknown }>(file, {
+    label: "Slack trigger cursor",
+    empty: () => ({}),
+    parse: (raw) => (raw["cursor"] === undefined ? {} : { cursor: raw["cursor"] }),
+    serialize: (state) => (state.cursor === undefined ? {} : { cursor: state.cursor }),
   });
 }
 

@@ -3,7 +3,7 @@
  * Triggers section of the Bots tab uses them: list, add, remove and test.
  */
 import {
-  BOT_TRIGGER_SOURCE_LABELS, GITHUB_TRIGGER_EVENTS, SESSION_TRIGGER_EVENTS, botTriggerFilterSummary, cooldownLabel,
+  BOT_TRIGGER_SOURCE_LABELS, GITHUB_TRIGGER_EVENTS, SESSION_TRIGGER_EVENTS, SLACK_TRIGGER_EVENTS, botTriggerFilterSummary, cooldownLabel,
   type BotTrigger, type BotTriggerCreated, type BotTriggerRun, type BotTriggersList,
 } from "../shared/bot-triggers.ts";
 import type { BotView } from "../shared/bots.ts";
@@ -13,11 +13,18 @@ export type TriggerFlags = {
   json?: boolean;
   name?: string;
   prompt?: string;
-  /** `add`: the source, one of these three. */
+  /** `add`: the source, one of these four. */
   github?: string;
   session?: boolean;
   webhook?: boolean;
+  slack?: boolean;
   on?: string;
+  /** `--slack`: only messages with a pull request link, from these people, in these channels, and who else may wake it. */
+  "pr-links"?: boolean;
+  from?: string;
+  in?: string;
+  "allow-bots"?: boolean;
+  "allow-external"?: boolean;
   author?: string;
   label?: string;
   base?: string;
@@ -64,6 +71,16 @@ export function triggerBody(flags: TriggerFlags): Record<string, unknown> {
   } else if (flags.session) {
     body["source"] = "session";
     body["filter"] = { events };
+  } else if (flags.slack) {
+    body["source"] = "slack";
+    body["filter"] = {
+      events,
+      ...(flags["pr-links"] ? { prLinks: true } : {}),
+      ...(flags.from !== undefined ? { from: list(flags.from).map((person) => person.replace(/^@/u, "")) } : {}),
+      ...(flags.in !== undefined ? { in: list(flags.in).map((channel) => channel.replace(/^#/u, "")) } : {}),
+      ...(flags["allow-external"] ? { external: true } : {}),
+      ...(flags["allow-bots"] ? { bots: true } : {}),
+    };
   } else {
     body["source"] = "webhook";
     body["filter"] = flags.match !== undefined ? { match: parseMatch(flags.match) } : {};
@@ -89,7 +106,7 @@ export function formatTrigger(trigger: BotTrigger): string {
     trigger.enabled ? "on" : "off",
     trigger.lastFiredAt ? `last fired ${trigger.lastFiredAt}` : "never fired",
     ...(trigger.pending ? [`${trigger.pending.events} waiting until ${trigger.pending.until}`] : []),
-    ...(trigger.watch?.error ? [`GitHub: ${trigger.watch.error}`] : []),
+    ...(trigger.watch?.error ? [`${BOT_TRIGGER_SOURCE_LABELS[trigger.source]}: ${trigger.watch.error}`] : []),
   ].join(" · ");
 }
 
@@ -133,9 +150,9 @@ export async function triggerCommand(base: string, action: string, operands: rea
 /** What `add` would refuse anyway, refused before a request. */
 export function checkTriggerAdd(values: Record<string, unknown>): void {
   const given = (flag: string) => values[flag] !== undefined && values[flag] !== false;
-  const sources = ["github", "session", "webhook"].filter(given);
+  const sources = ["github", "session", "webhook", "slack"].filter(given);
   if (!values["name"]) throw new Error("bot trigger add needs --name.");
-  if (sources.length !== 1) throw new Error("bot trigger add needs exactly one of --github <owner/name,…>, --session or --webhook.");
+  if (sources.length !== 1) throw new Error("bot trigger add needs exactly one of --github <owner/name,…>, --session, --webhook or --slack.");
   const events = list(values["on"] as string | undefined);
   if (given("github")) {
     if (!list(values["github"] as string).length) throw new Error("--github needs owner/name, comma-separated for several repos.");
@@ -147,6 +164,13 @@ export function checkTriggerAdd(values: Record<string, unknown>): void {
   if (given("session")) {
     const unknown = events.filter((event) => !(SESSION_TRIGGER_EVENTS as readonly string[]).includes(event));
     if (!events.length || unknown.length) throw new Error(`--on takes session events, comma-separated: ${SESSION_TRIGGER_EVENTS.join(", ")}.`);
+  }
+  if (given("slack")) {
+    const unknown = events.filter((event) => !(SLACK_TRIGGER_EVENTS as readonly string[]).includes(event));
+    if (!events.length || unknown.length) throw new Error(`--on takes Slack events, comma-separated: ${SLACK_TRIGGER_EVENTS.join(", ")} (mention: a message that @-mentions you in a channel or group DM; dm: a direct message to you).`);
+    for (const flag of ["from", "in"]) if (given(flag) && !list(values[flag] as string).length) throw new Error(`--${flag} needs comma-separated names.`);
+  } else {
+    for (const flag of ["pr-links", "from", "in", "allow-bots", "allow-external"]) if (given(flag)) throw new Error(`--${flag} only applies to --slack.`);
   }
   if (given("webhook") && given("on")) throw new Error("--on doesn't apply to --webhook: every call wakes it, or those --match lets through.");
   if (given("match") && !given("webhook")) throw new Error("--match only applies to --webhook.");

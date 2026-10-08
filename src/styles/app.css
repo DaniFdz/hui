@@ -391,6 +391,15 @@ hui-session-multiplexer {
 .jira-settings__steps { margin: 0; padding-left: 20px; color: var(--text); font-size: 13px; line-height: 1.6; }
 .jira-settings__steps a { display: inline-flex; align-items: center; gap: 4px; }
 .jira-settings__steps a svg { width: 12px; height: 12px; }
+/* Settings → Integrations → Slack (src/views/settings-slack.ts). */
+.slack-settings__manifest { margin: 4px 0 2px; }
+.slack-settings__copy { display: inline-flex; align-items: center; gap: 4px; }
+.slack-settings__problem { color: var(--warn); }
+.slack-settings__copy svg { width: 12px; height: 12px; }
+.slack-settings__host { color: var(--muted); font-weight: 400; }
+.slack-settings__scopes summary { cursor: var(--cursor-action, pointer); }
+.slack-settings__scope-list { margin: 8px 0 0; padding-left: 18px; color: var(--muted); font-size: 13px; line-height: 1.6; }
+.slack-settings__scope-list code { color: var(--text-strong); }
 .jira-settings__actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .jira-settings__notice { margin: 0 0 12px; color: var(--ok); font-size: 13px; }
 .jira-settings__error { margin-bottom: 12px; }

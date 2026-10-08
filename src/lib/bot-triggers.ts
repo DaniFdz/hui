@@ -1,5 +1,5 @@
 /**
- * A bot's triggers in the Bots tab (HUI-18): the Triggers section of its panel's Routines tab. It reads
+ * A bot's triggers in the Bots tab (HUI-18): the Triggers section of its panel's Routines tab, Slack's included. It reads
  * `GET /__hui/bots/:id/triggers` while the tab shows (again every few seconds, since triggers fire on their own),
  * adds, switches, tests and deletes triggers through the trigger routes, and shows a webhook trigger's URL once, right
  * after it was made or replaced. `BotTriggersController` keeps that state outside `hui-app.ts`, as the Tools tab's
@@ -7,9 +7,9 @@
  */
 import type { ReactiveController, ReactiveControllerHost } from "lit";
 import {
-  BOT_TRIGGER_LIMITS, BOT_TRIGGER_SOURCES, GITHUB_TRIGGER_EVENTS, SESSION_TRIGGER_EVENTS,
+  BOT_TRIGGER_LIMITS, BOT_TRIGGER_SOURCES, GITHUB_TRIGGER_EVENTS, SESSION_TRIGGER_EVENTS, SLACK_TRIGGER_EVENTS,
   type BotTrigger, type BotTriggerCreated, type BotTriggerInput, type BotTriggerPatch, type BotTriggerRun, type BotTriggerRunStatus, type BotTriggersList,
-  type BotTriggerSource, type GitHubTriggerEvent, type SessionTriggerEvent,
+  type BotTriggerSource, type GitHubTriggerEvent, type SessionTriggerEvent, type SlackTriggerEvent,
 } from "../../shared/bot-triggers.ts";
 import type { BotView } from "../../shared/bots.ts";
 import { writeClipboardText } from "./clipboard.ts";
@@ -47,6 +47,18 @@ function parseFilter(source: BotTriggerSource, raw: unknown): BotTrigger["filter
   if (source === "session") {
     const events = strings(raw["events"]).filter((event): event is SessionTriggerEvent => (SESSION_TRIGGER_EVENTS as readonly string[]).includes(event));
     return events.length ? { events } : undefined;
+  }
+  if (source === "slack") {
+    const events = strings(raw["events"]).filter((event): event is SlackTriggerEvent => (SLACK_TRIGGER_EVENTS as readonly string[]).includes(event));
+    if (!events.length) return undefined;
+    return {
+      events,
+      ...(raw["prLinks"] === true ? { prLinks: true as const } : {}),
+      ...(strings(raw["from"]).length ? { from: strings(raw["from"]) } : {}),
+      ...(strings(raw["in"]).length ? { in: strings(raw["in"]) } : {}),
+      ...(raw["external"] === true ? { external: true as const } : {}),
+      ...(raw["bots"] === true ? { bots: true as const } : {}),
+    };
   }
   const match = isRecord(raw["match"]) && (raw["match"]["op"] === "equals" || raw["match"]["op"] === "contains") && str(raw["match"]["value"])
     ? { field: str(raw["match"]["field"]), op: raw["match"]["op"] === "contains" ? "contains" as const : "equals" as const, value: str(raw["match"]["value"]) }
@@ -180,6 +192,20 @@ export type TriggerFormFields = {
   matchField: string;
   matchOp: string;
   matchValue: string;
+  slackEvents: readonly string[];
+  slackPrLinks: boolean;
+  slackFrom: string;
+  slackIn: string;
+  slackExternal: boolean;
+  slackBots: boolean;
+};
+
+/** The form's Review requests preset: mentions and DMs that link a GitHub pull request, reviewed from the delivery. */
+export const REVIEW_REQUESTS_PRESET = {
+  name: "Reviews",
+  events: ["mention", "dm"] as readonly SlackTriggerEvent[],
+  prLinks: true,
+  prompt: "Someone asked me to review this pull request. Review it from the details below: what it changes, what could break, and the comments you'd leave. Don't run commands or change anything; tell me here.",
 };
 
 /** The add form's fields as a `POST /__hui/bots/:id/triggers` body. */
@@ -223,6 +249,23 @@ export function triggerFormInput(fields: TriggerFormFields): BotTriggerInput {
     const events = SESSION_TRIGGER_EVENTS.filter((event) => fields.sessionEvents.includes(event));
     if (!events.length) throw new TriggerFormError("Choose at least one session event.");
     return { ...base, source, filter: { events } };
+  }
+  if (source === "slack") {
+    const events = SLACK_TRIGGER_EVENTS.filter((event) => fields.slackEvents.includes(event));
+    if (!events.length) throw new TriggerFormError("Choose mentions, direct messages or both.");
+    const from = fields.slackFrom.split(",").map((person) => person.trim().replace(/^@/u, "")).filter(Boolean);
+    const channels = splitEntries(fields.slackIn).map((channel) => channel.replace(/^#/u, ""));
+    return {
+      ...base, source,
+      filter: {
+        events,
+        ...(fields.slackPrLinks ? { prLinks: true as const } : {}),
+        ...(from.length ? { from } : {}),
+        ...(channels.length ? { in: channels } : {}),
+        ...(fields.slackExternal ? { external: true as const } : {}),
+        ...(fields.slackBots ? { bots: true as const } : {}),
+      },
+    };
   }
   const value = fields.matchValue.trim();
   if (!value) return { ...base, source, filter: {} };
