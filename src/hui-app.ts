@@ -249,6 +249,7 @@ import type { WorkPane } from "./components/work-pane.ts";
 import { createTerminal, listTerminals } from "./lib/terminals-store.ts";
 import "./components/terminal-pane.ts";
 import "./components/browser-pane.ts";
+import { announceTurnEnd } from "./lib/session-turn-end.ts";
 import { SessionMultiplexer, type PanePresentation } from "./components/session-multiplexer.ts";
 import {
   isRoutablePage,
@@ -2408,6 +2409,8 @@ export class HuiApp extends HuiElement {
       ({ note: this.note, noteLevel: this.noteLevel } = noteAfterRunOutcome({ note: this.note, noteLevel: this.noteLevel }, this.recoveryNotice));
       this.recoveryNotice = "";
     }
+    // Views of what the agent may have changed (the Files view) refresh once its turn is over.
+    if (event.type === "settled" && this.selected) announceTurnEnd(this.selected.id);
     switch (event.type) {
       case "text":
       case "thinking":

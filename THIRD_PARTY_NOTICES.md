@@ -70,7 +70,8 @@ SOFTWARE.
 
 HUI's Work pane (`src/components/work-pane.ts`, `src/lib/work-pane.ts`,
 `src/lib/shortcut-binding.ts`, `src/views/panel-selector.ts`) ports the Work
-pane design of AgentsInTheCloud at commit `6caa5d4`: its vocabulary
+pane design of AgentsInTheCloud at commit
+`6caa5d4c3163a6225ee6f95d0e84dca951eef0aa`: its vocabulary
 (`CONTEXT.md`: Work pane, Work view, Work view reference, More), the pane
 structure of `apps/web/src/server/workspace-presentation.ts` (tab strip of Work
 views with close controls, a launcher menu, an empty state listing launchers
@@ -79,6 +80,21 @@ notation and display of `apps/web/src/shortcut-binding.ts`, and the AltGr rule
 of `apps/web/src/client/workspace-shortcuts.ts`. HUI reimplements them in Lit
 with its own state, registry and styles; no AgentsInTheCloud markup or
 stylesheet is copied.
+
+HUI's Files view ports AgentsInTheCloud's Files feature (`packages/files`) at
+the same commit: its vocabulary
+(`CONTEXT.md`: Files, Files view, File draft, Markdown display mode, Files
+navigator); the File draft's serialized saves, conflict and retained-draft
+rules and its localStorage backup (`src/file-draft.ts`,
+`src/client/file-editor.ts` → `src/lib/file-draft.ts`); the separator-preserving
+editor text helpers, copied with their tests (`src/editable-text.ts` →
+`src/lib/editable-text.ts`); the CodeMirror extension set, highlight mapping
+and language loading (`src/client/file-editor.ts`,
+`src/client/editor-language.ts` → `src/lib/file-editor.ts`); and the read,
+save, upload and delete rules of `src/server/editable-file.ts` and
+`src/server/files.ts` (`server/files.ts`). HUI reimplements the view in Lit,
+the routes in its own gateway with Node's fs, and its own markup and styles; no
+AgentsInTheCloud markup or stylesheet is copied.
 
 Source: https://github.com/lucasmeijer/AgentsInTheCloud
 

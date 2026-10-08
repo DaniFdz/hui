@@ -638,6 +638,59 @@ additive `browser` block in `settings.json`; the browser view is a
 saved earlier marked it with `browser: true` and load into the Work pane). PI
 transcripts and the registry format are unchanged.
 
+## Files
+
+A **Files view** is a Work view (AgentsInTheCloud's term, adopted with the Work
+pane) for navigating the conversation's working directory and viewing or
+editing a file in it. It combines a collapsible **Files navigator** (a lazily
+expanded file tree, a filter, upload, new file or folder) with the selected
+file. A conversation may hold several Files views, each with its own selection,
+including several views of the same file. Until the Work pane lands, the view
+ships as `<hui-files-view>` and the `files` Work view kind; it is not reachable
+from the app on its own.
+
+The root is the conversation's recorded `cwd` (its directory or worktree);
+callers cannot name another. Every path resolves through `realpath` inside that
+root, so neither `..` nor a symlink reaches outside it: links that point outside
+are listed but cannot be opened, and writes never follow them. Git's `.git`
+store is not listed. Conversations on a remote worker show **Files are not
+available** with the reason, because their files live on that machine; the
+gateway never reads its own disk in their place.
+
+Text files up to 2 MB open in a CodeMirror 6 editor themed from HUI's tokens;
+it loads on demand, outside the main bundle. Edits save automatically after a
+short pause, and the header shows **Saved**, **Saving…**, **Conflict**,
+**Not saved: <reason>** (with Retry) or **Read only**. A save names the version it
+edited (the content's hash); when the file changed on disk meanwhile — usually
+the agent — the save is refused and the view shows the disk version beside a
+choice of **Reload from disk** or **Overwrite with mine**, keeping the unsaved
+text until then. A failed save keeps it too. The working text and save state of
+a file (its **File draft**) are shared by every Files view of that file in the
+page, and unsaved text survives a reload in browser storage until it reaches the
+disk. Line endings, BOM and a missing final newline are preserved.
+
+Markdown files have a **Markdown display mode**, **Source** or **Rendered**
+(HUI's chat Markdown renderer); the mode never decides whether the file is
+writable. Images and PDFs show as previews; other binary files and text over
+the limit show their size and modification time with **Download**.
+
+The navigator refreshes open folders and the selected file when the
+conversation's agent turn ends, when the view becomes visible again and on
+**Refresh**. The filter searches paths: Git's tracked and unignored files in a
+repository, a bounded walk elsewhere. Uploads go to the selected file's folder
+(or a folder row they are dropped on) and replace an existing file only after a
+confirmation listing each path. Deleting a file, link or folder asks first,
+listing what goes — a folder with everything inside it, unsaved edits, the open
+file — and states that it does not use the trash; the gateway deletes a
+non-empty folder only with that confirmation, and never the root. On narrow
+screens the navigator is a drawer and the editor takes the full width with a
+16 px font, so iOS does not zoom.
+
+CodeMirror's packages (`@codemirror/*`, `@lezer/highlight`) were authorized
+with this feature. The view's selection, open folders and display mode, and
+unsaved drafts, are browser-local storage; the HUI registry and PI transcripts
+are unchanged.
+
 ## Live chat projection
 
 PI's JSONL remains the durable authority, while the gateway owns a temporary
