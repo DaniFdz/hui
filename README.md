@@ -151,7 +151,7 @@ hui bot list [--archived] [--json]
 hui bot show <bot> [--json]
 hui bot add [--name <name>] [--title <text>] [--soul-file <path|->] [--cwd <dir>]
             [--model <provider/model>] [--thinking <level>] [--utility-model <provider/model>] [--emoji <e>]
-            [--shape <shape>] [--color <name|#rrggbb>] [--language <code>] [--call-voice <voice>] [--json]
+            [--shape <shape>] [--ears <ears>] [--color <name|#rrggbb>] [--language <code>] [--call-voice <voice>] [--json]
 hui bot edit <bot> [same flags as add but --soul-file] [--json]  # --model "" / --thinking "": back to the defaults; --language "": Auto; --call-voice "": Settings' voice
 hui bot import <file|folder|url|-> [--worker <name|id>] [--agent <name>] [--yes] [--json]  # another platform's template
 hui bot export <bot> [--out <file>] [--memory] [--yes] [--json]   # <handle>.hui-bot.zip, which import reads back

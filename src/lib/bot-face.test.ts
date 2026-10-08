@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
-import { BOT_FACE_COLORS, BOT_FACE_SHAPES, botFaceColor, botFaceShape, botLook, botSeed, defaultBotLook } from "../../shared/bots.ts";
+import { BOT_FACE_COLORS, BOT_FACE_EARS, BOT_FACE_SHAPES, botFaceColor, botFaceEars, botFaceShape, botLook, botSeed, defaultBotLook } from "../../shared/bots.ts";
 import {
   BOT_FACE_STATES,
   FACE_EYES,
@@ -12,8 +12,10 @@ import {
   chatFaceState,
   eyesBlink,
   faceBodyColor,
+  faceEars,
   faceInk,
   facePath,
+  faceViewBox,
   faceTone,
   hasRunningTool,
   levelSquash,
@@ -43,7 +45,7 @@ test("a bot without a stored look gets a face its id picks: the same on every ca
   assert.deepEqual(defaultBotLook("scout"), { shape: "triangle", color: "#9b7cf6" });
 });
 
-test("the default look is always a palette shape and color, spread across bots", () => {
+test("the default look is always one of the first five shapes and a palette color, spread across bots", () => {
   const shapes = new Set<string>();
   const colors = new Set<string>();
   for (let index = 0; index < 600; index++) {
@@ -54,7 +56,7 @@ test("the default look is always a palette shape and color, spread across bots",
     shapes.add(look.shape);
     colors.add(look.color);
   }
-  assert.equal(shapes.size, BOT_FACE_SHAPES.length, "every shape is picked");
+  assert.deepEqual([...shapes].sort(), ["blob", "cookie", "heart", "round", "triangle"], "the shapes bots had before the others came, so their faces stay");
   assert.equal(colors.size, BOT_FACE_COLORS.length, "every color is picked");
   const pairs = new Set(Array.from({ length: 400 }, (_, index) => { const look = defaultBotLook(`bot-${index}`); return `${look.shape}${look.color}`; }));
   assert.ok(pairs.size >= 25, `shape and color vary independently (${pairs.size} of 30 pairs)`);
@@ -72,15 +74,20 @@ test("a stored shape and color win over the id's, and an emoji wins over the fac
   assert.equal(emoji.emoji, "🦊");
   assert.equal(emoji.shape, "heart", "the face waits behind the emoji");
   assert.equal(emoji.color, defaultBotLook(id).color, "its tile takes the id's color");
-  // A record edited by hand: an unknown shape or a bad color falls back to the id's.
-  const odd = botLook({ id, avatar: { shape: "star" as never, color: "teal" } });
-  assert.deepEqual({ shape: odd.shape, color: odd.color }, defaultBotLook(id));
+  assert.equal(stored.ears, undefined, "no ears unless chosen; the id never picks any");
+  assert.equal(botLook({ id, avatar: { ears: "bunny" } }).ears, "bunny");
+  // A record edited by hand: an unknown shape, ears or a bad color falls back to the id's face.
+  const odd = botLook({ id, avatar: { shape: "dragon" as never, ears: "wings" as never, color: "teal" } });
+  assert.deepEqual({ shape: odd.shape, ears: odd.ears, color: odd.color }, { ...defaultBotLook(id), ears: undefined });
 });
 
-test("CLI names: shapes by id or label, palette colors by name or hex", () => {
+test("CLI names: shapes and ears by id or label, palette colors by name or hex", () => {
   assert.equal(botFaceShape("Pebble"), "round");
   assert.equal(botFaceShape(" HEART "), "heart");
-  assert.equal(botFaceShape("star"), undefined);
+  assert.equal(botFaceShape("dragon"), undefined);
+  assert.equal(botFaceEars("Cat ears"), "cat");
+  assert.equal(botFaceEars(" BUNNY "), "bunny");
+  assert.equal(botFaceEars("wings"), undefined);
   assert.equal(botFaceColor("Mint")?.hex, "#2fc49a");
   assert.equal(botFaceColor("#FF6B4A")?.label, "Coral");
   assert.equal(botFaceColor("#123456"), undefined);
@@ -176,6 +183,35 @@ test("shapes are closed outlines inside the view box", () => {
   }
   assert.notEqual(facePath("blob", 0), facePath("blob", 1), "the blob morphs with its phase");
   assert.equal(facePath("round", 0), facePath("round", 1), "other shapes hold still");
+});
+
+/** Whether x,y is inside the closed outline through the path's segment ends (even-odd ray cast). */
+function insideOutline(path: string, x: number, y: number): boolean {
+  const ends = [...path.matchAll(/(?:M|\s)(-?[\d.]+),(-?[\d.]+)(?=C|Z)/gu)].map((match) => [Number(match[1]), Number(match[2])] as const);
+  let inside = false;
+  for (let index = 0, previous = ends.length - 1; index < ends.length; previous = index++) {
+    const [x1, y1] = ends[index]!;
+    const [x2, y2] = ends[previous]!;
+    if ((y1 > y) !== (y2 > y) && x < ((x2 - x1) * (y - y1)) / (y2 - y1) + x1) inside = !inside;
+  }
+  return inside;
+}
+
+test("ears sit on every shape: each part's base inside the body, pairs mirrored, the view box grown to show them", () => {
+  for (const shape of BOT_FACE_SHAPES) {
+    const body = facePath(shape);
+    for (const ears of BOT_FACE_EARS) {
+      const placed = faceEars(shape, ears);
+      const bases = placed.parts.map((part) => part.transform.match(/^translate\((-?[\d.]+),(-?[\d.]+)\)/u)!.slice(1).map(Number) as [number, number]);
+      for (const [x, y] of bases) assert.ok(insideOutline(body, x, y), `${ears} on ${shape}: base ${x},${y} sunk into the body`);
+      for (const [x, y] of bases) assert.ok(bases.some(([mx, my]) => Math.abs(mx - (120 - x)) < 0.02 && my === y), `${ears} on ${shape} is symmetric`);
+      const [, boxTop] = faceViewBox([12, 18, 96], placed.top).split(" ").map(Number);
+      assert.ok(boxTop! <= placed.top, `${ears} on ${shape} fit a small face's view box`);
+    }
+  }
+  assert.equal(faceViewBox([12, 18, 96], undefined), "12 18 96 96", "no ears: the view box as it was");
+  assert.equal(faceViewBox([0, 0, 120], 30), "0 0 120 120", "ears that already fit change nothing");
+  assert.equal(faceViewBox([12, 18, 96], 8), "6 6 108 108", "taller ears grow it upward, keeping its bottom and middle");
 });
 
 test("colors: a muted body after an error, almost grey offline, and eyes that stay visible", () => {

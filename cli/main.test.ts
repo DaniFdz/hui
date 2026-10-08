@@ -74,10 +74,12 @@ test("CLI parses bot commands, accepting bot and bots, with their operands and o
   }
   const look = parseCli(["bot", "add", "--name", "Ada", "--shape", "heart", "--color", "mint"]);
   assert.deepEqual([look.values.shape, look.values.color], ["heart", "mint"]);
-  for (const shape of ["blob", "round", "Pebble", "TRIANGLE", "heart", "cookie", ""]) assert.equal(parseCli(["bot", "edit", "ada", "--shape", shape]).values.shape, shape, shape);
+  for (const shape of ["blob", "round", "Pebble", "TRIANGLE", "heart", "cookie", "star", "Ghost", ""]) assert.equal(parseCli(["bot", "edit", "ada", "--shape", shape]).values.shape, shape, shape);
   for (const color of ["blue", "Yellow", "#D23CE0", "#123456", ""]) assert.equal(parseCli(["bot", "edit", "ada", "--color", color]).values.color, color, color);
   assert.equal(parseCli(["bot", "edit", "ada", "--emoji", ""]).values.emoji, "", "\"\" switches the bot to its face");
-  assert.throws(() => parseCli(["bot", "edit", "ada", "--shape", "star"]), /--shape must be one of: blob, round, triangle, heart, cookie; "" goes back to the one its id picks\./u);
+  assert.throws(() => parseCli(["bot", "edit", "ada", "--shape", "dragon"]), /--shape must be one of: blob, round, triangle, heart, cookie, star, flower, cloud, drop, ghost, pill, block, hexagon; "" goes back to the one its id picks\./u);
+  for (const ears of ["cat", "Bunny", "cat ears", ""]) assert.equal(parseCli(["bot", "edit", "ada", "--ears", ears]).values.ears, ears, ears);
+  assert.throws(() => parseCli(["bot", "edit", "ada", "--ears", "wings"]), /--ears must be one of: cat, bear, bunny, antenna, sprout, horns; "" takes them off\./u);
   for (const color of ["red", "#12345", "3a7bfa"]) assert.throws(() => parseCli(["bot", "edit", "ada", "--color", color]), /--color must be one of blue, yellow, magenta, mint, coral, lilac or #rrggbb/u, color);
   assert.throws(() => parseCli(["bot", "show", "ada", "--shape", "heart"]), /--shape is not valid for bot show/u);
   const edit = parseCli(["bot", "edit", "@ada", "--title", "Lead"]);

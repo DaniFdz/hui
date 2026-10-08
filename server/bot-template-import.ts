@@ -16,7 +16,7 @@
  * An export is a zip: bot.json (profile, routines, the tool and skill lists), SOUL.md, the bot's own skills and, when
  * asked for, memory.md (its memory's view). Importing it gives the bot back.
  */
-import { BOT_HANDLE, BOT_LIMITS, BOT_THINKING_LEVELS, handleFromName, isBotFaceShape, type BotAvatar, type BotView } from "../shared/bots.ts";
+import { BOT_HANDLE, BOT_LIMITS, BOT_THINKING_LEVELS, handleFromName, isBotFaceEars, isBotFaceShape, type BotAvatar, type BotView } from "../shared/bots.ts";
 import {
   BOT_EXPORT_FORMAT, BOT_EXPORT_VERSION, BOT_TEMPLATE_FORMATS, BOT_TEMPLATE_LIMITS, botExportFileName, botOpenerKickoffText,
   type BotExportManifest, type BotImportPreview, type BotImportResult, type BotImportRoutine, type BotTemplate,
@@ -281,6 +281,7 @@ export class BotTemplateService {
     const avatar: BotAvatar = {
       ...(template.emoji && isOneGrapheme(template.emoji) ? { emoji: template.emoji } : {}),
       ...(isBotFaceShape(template.avatar?.shape) ? { shape: template.avatar.shape } : {}),
+      ...(isBotFaceEars(template.avatar?.ears) ? { ears: template.avatar.ears } : {}),
       ...(template.avatar?.color && /^#[0-9a-f]{6}$/u.test(template.avatar.color) ? { color: template.avatar.color } : {}),
     };
     if (template.emoji && !avatar.emoji) dropped.push(`Its emoji "${oneLine(template.emoji, 20)}": a HUI bot's emoji is one character.`);
@@ -389,7 +390,9 @@ export class BotTemplateService {
           ...(input["title"] ? { title: input["title"] as string } : {}),
           ...(input["description"] ? { description: input["description"] as string } : {}),
           ...(avatar.emoji ? { emoji: avatar.emoji } : {}),
-          ...(avatar.shape || avatar.color ? { avatar: { ...(avatar.shape ? { shape: avatar.shape } : {}), ...(avatar.color ? { color: avatar.color } : {}) } } : {}),
+          ...(avatar.shape || avatar.ears || avatar.color
+            ? { avatar: { ...(avatar.shape ? { shape: avatar.shape } : {}), ...(avatar.ears ? { ears: avatar.ears } : {}), ...(avatar.color ? { color: avatar.color } : {}) } }
+            : {}),
           ...(worker ? { worker } : {}),
         },
         soul: composed.soul,

@@ -263,17 +263,20 @@ first, and takes the bot's chat, routines, memory and folder. Bot chats never
 appear among your sessions.
 
 **Faces.** Every bot has an animated face, after OpenAI's Dots: a plush shape
-(Blob, Pebble, Triangle, Heart or Cookie) in one of six colors, with two dot
-eyes. It shows what the bot is doing: it breathes while idle, squints and
+(Blob, Pebble, Triangle, Heart, Cookie, Star, Flower, Cloud, Drop, Ghost, Pill,
+Block or Hexagon) in one of six colors, with two dot eyes, and if you like cat,
+bear or bunny ears, an antenna, a sprout or horns on top. It shows what the bot is doing: it breathes while idle, squints and
 ponders while it thinks, bobs while a tool runs, tilts and hops while it waits
 for your answer, gets sleepy while it summarizes its memory, droops after a
 failure and does a little hop when a turn ends. On a call it fills the screen
 in the bot's color, puffs up as it listens to your voice and stretches with its
 own. The large faces (an empty chat, a call) look at your pointer. With
 *reduce motion* on in your system settings the faces keep still and change only
-their expression. The **Look** in a bot's Settings tab chooses **Face** (shape and
-color) or **Emoji**; a bot that already had an emoji keeps it until you choose
-Face. Bots you never styled, new ones included, get a face picked by their id,
+their expression. The **Look** in a bot's Settings tab chooses **Face** (shape, ears
+and color) or **Emoji**; a bot that already had an emoji keeps it until you choose
+Face. You can also just tell the bot ("be a ghost with horns"): it changes its own
+look, but only when you ask in your own message. Bots you never styled, new ones
+included, get a face picked by their id (one of the first five shapes, no ears),
 the same on every screen.
 
 ### Creating and editing
@@ -294,7 +297,7 @@ or the sheet on a phone), and **Ctrl+Shift+,** (**⇧⌘,** on a Mac) shows or h
 it on a bot's chat. It has:
 
 - **Profile**: the **Name** (its handle under it), the **Title** and the
-  **Look**, whose **Change** opens Face (shape and color) or Emoji.
+  **Look**, whose **Change** opens Face (shape, ears and color) or Emoji.
 - **Model**: the **Model**, **Thinking** and **Utility model** (below).
   *Gateway default* (and *Default* for the utility model) clears the bot's own
   choice. A change applies from the bot's next turn.
@@ -333,9 +336,11 @@ model picker, and a new working directory
 is accepted only while the bot is idle (its chat starts again there; should a
 routine start a turn meanwhile, the edit is refused halfway: repeat it once the
 bot is idle).
-`--shape` (blob, round or pebble, triangle, heart, cookie) and `--color` (blue,
-yellow, magenta, mint, coral, lilac or any `#rrggbb`) style the face; `""` goes
-back to the one the bot's id picks. `hui bot show` prints the look.
+`--shape` (blob, round or pebble, triangle, heart, cookie, star, flower, cloud,
+drop, ghost, pill, block, hexagon), `--ears` (cat, bear, bunny, antenna, sprout,
+horns) and `--color` (blue, yellow, magenta, mint, coral, lilac or any `#rrggbb`)
+style the face; `""` goes back to the shape or color the bot's id picks, and
+takes the ears off. `hui bot show` prints the look.
 `--memory-model` picks the model that writes the memory's summaries. An empty
 value clears a choice: `hui bot edit ada --model "" --thinking ""` puts the chat
 back on the model and thinking level a new chat gets (*Gateway default* in the
@@ -405,7 +410,7 @@ sessions acts through a session that has every tool. They are on by default
 like the rest. Asking you for a secret (**Request secret**, under HUI) is not
 powerful: it only shows you a Secret card in the bot's chat, and you decide
 whether to answer. Its own tools are always on and listed at the bottom: writing its
-SOUL.md, changing its name or title, asking for access, loading its skills, and
+SOUL.md, changing its name, title or look, asking for access, loading its skills, and
 its memory.
 
 ```sh

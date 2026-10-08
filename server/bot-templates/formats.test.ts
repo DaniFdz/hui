@@ -90,7 +90,7 @@ test("a marketplace bot that keeps its job in its memories: its creator, empty i
   assert.deepEqual([template.name, template.author, template.description, template.soul], ["Weekly Planner", "Sample Creator", "Plans the week", ""]);
   assert.deepEqual(template.memories, [{ name: "memory 1", text: job }]);
   assert.deepEqual(template.routines, [{ name: "Sunday plan", prompt: "Disabled by default. Draft next week's plan." }]);
-  assert.deepEqual(template.avatar, { shape: "blob", color: BOT_FACE_COLORS.find((color) => color.id === "blue")!.hex });
+  assert.deepEqual(template.avatar, { shape: "cloud", color: BOT_FACE_COLORS.find((color) => color.id === "blue")!.hex });
   assert.match(template.dropped.join("\n"), /Its picture/u);
   assert.deepEqual(template.integrations, [{ name: "Google Calendar" }]);
 });
@@ -276,14 +276,14 @@ test("CrewAI agents.yaml: each agent a candidate, role as title, goal and backst
 test("a HUI export reads back whole: profile, soul, its own skills, exact routines, lists, and the memory after its line", () => {
   const manifest = {
     format: "hui-bot" as const, version: 1 as const, exportedAt: "2026-10-07T10:00:00.000Z",
-    bot: { name: "Ada", handle: "ada", title: "Planner", avatar: { emoji: "🦉", shape: "heart" as const, color: "#2fc49a" }, model: "hui-e2e/fixture", thinking: "high", memoryModel: "hui-e2e/other", voice: { language: "es" as const } },
+    bot: { name: "Ada", handle: "ada", title: "Planner", avatar: { emoji: "🦉", shape: "heart" as const, ears: "bear" as const, color: "#2fc49a" }, model: "hui-e2e/fixture", thinking: "high", memoryModel: "hui-e2e/other", voice: { language: "es" as const } },
     routines: [{ name: "Digest", prompt: "Sum up the day.", schedule: { kind: "cron" as const, expression: "0 18 * * *", timezone: "Europe/Madrid" }, enabled: true }],
     disabledTools: ["bash"], disabledSkills: [{ name: "release-notes", path: "/x/release-notes/SKILL.md" }], skills: ["plans"], memory: "memory.md" as const,
   };
   const zip = writeZip(huiExportEntries({ manifest, soul: "# Who I am\n\nAda plans.", skills: [{ name: "plans", text: "---\nname: plans\ndescription: Plan a week\n---\n\nPlan it." }], memory: "# Memory of @ada (Ada)\n\nIntro for people.\n\n---\n\n<chat>\n0+3|user: plan my week\n</chat>" }));
   const [choice] = readFileTemplates("ada.hui-bot.zip", zip);
   const template = choice!.template;
-  assert.deepEqual([template.format, template.name, template.title, template.emoji, template.avatar, template.model], ["hui", "Ada", "Planner", "🦉", { shape: "heart", color: "#2fc49a" }, "hui-e2e/fixture"]);
+  assert.deepEqual([template.format, template.name, template.title, template.emoji, template.avatar, template.model], ["hui", "Ada", "Planner", "🦉", { shape: "heart", ears: "bear", color: "#2fc49a" }, "hui-e2e/fixture"]);
   assert.deepEqual(template.hui, { handle: "ada", thinking: "high", memoryModel: "hui-e2e/other", voice: { language: "es" }, disabledTools: ["bash"], disabledSkills: ["release-notes"] });
   assert.equal(template.soul, "# Who I am\n\nAda plans.");
   assert.deepEqual(template.skills, [{ name: "plans", description: "Plan a week", content: "Plan it." }]);

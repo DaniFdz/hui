@@ -11,7 +11,7 @@ test("a bot shows its face, or its emoji while it has one, always decorative bes
   assert.match(avatar, /const look = botLook\(bot\);/u);
   assert.match(avatar, /if \(look\.kind === "emoji"\)/u, "an emoji wins until someone switches the bot to its face");
   assert.match(avatar, /class="bot-avatar bot-avatar--\$\{size\} bot-avatar--emoji"[^>]*aria-hidden="true"/u);
-  assert.match(avatar, /class="bot-avatar bot-avatar--\$\{size\} bot-avatar--face" aria-hidden="true"><hui-bot-face size=\$\{size\} shape=\$\{look\.shape\} \.color=\$\{look\.color\}/u);
+  assert.match(avatar, /class="bot-avatar bot-avatar--\$\{size\} bot-avatar--face" aria-hidden="true"><hui-bot-face size=\$\{size\} shape=\$\{look\.shape\} ears=\$\{look\.ears \?\? ""\} \.color=\$\{look\.color\}/u);
   assert.match(avatar, /\.seed=\$\{look\.seed\} state=\$\{options\.state \?\? "idle"\} \.level=\$\{options\.level\}/u);
   assert.doesNotMatch(source, /botAvatar\(|data-tone=|initial/u, "the letter avatar is gone");
 });
@@ -70,7 +70,7 @@ test("a call shows the bot's face listening to the microphone and speaking with 
 test("faces are decorative, pause when unseen and keep still under reduced motion", () => {
   const component = read("../components/bot-face.ts");
   assert.match(component, /this\.setAttribute\("aria-hidden", "true"\);/u);
-  assert.match(component, /<svg class="bot-face" viewBox=\$\{VIEW_BOX\[size\]\} focusable="false" aria-hidden="true"/u);
+  assert.match(component, /<svg class="bot-face" viewBox=\$\{faceViewBox\(VIEW_BOX\[size\], ears\?\.top\)\} focusable="false" aria-hidden="true"/u);
   assert.match(component, /const active = this\.#connected && !prefersReducedMotion\(\) && \(typeof document === "undefined" \|\| !document\.hidden\) && onScreen\.get\(this\) !== false;/u);
   assert.match(component, /this\.toggleAttribute\("data-paused", this\.#connected && !active\);/u);
   assert.match(component, /document\.addEventListener\("visibilitychange", notifyAll\)/u);

@@ -1363,6 +1363,30 @@ The contract is [docs/api.md#bots](docs/api.md#bots).
 
 ## Decisions
 
+### Bot faces get more shapes and ears, and bots can restyle themselves (2026-10-08)
+
+The owner asked for more kinds of bots, after how others do it. OpenAI's Dots
+let you pick a shape, color, eyes, glasses and accessories (makers built on it
+add animals through ears); Grok Bot has one round face, or a generated or
+uploaded picture; Hermes Agent only text personas and terminal skins. From a
+gallery of options he chose "shapes + ears", all eight new shapes, faces that
+stay as they are, and bots that change their own look.
+
+- **Shapes.** Star, Flower, Cloud, Drop, Ghost, Pill, Block and Hexagon join the
+  five, in the same plush style and expressions.
+- **Ears.** `avatar.ears` (optional, no format change: absent means none) puts
+  cat, bear or bunny ears, an antenna, a sprout or horns on any shape. They are
+  placed from each outline (a pair on the shoulders leaning with it, a single one
+  on the top), move with the body and keep the shapes' colors and states; a small
+  face's view box grows only as far as tall ears need.
+- **Faces stay.** A bot's id still picks among the first five shapes and never
+  picks ears, so no bot that was never styled changes.
+- **Bots restyle themselves.** `set_profile` takes the look's keys (a color also
+  by palette name) under the same rule as a name: only in a run with no input from
+  a routine, a trigger or another bot.
+- **Later, if wanted:** Dots' accessories (glasses, headphones, hats), eye styles
+  and a custom color picker.
+
 ### Slack triggers wake bots on review pings (2026-10-08)
 
 The owner: "usually people in my team pings me to review PR's. Getting marked as

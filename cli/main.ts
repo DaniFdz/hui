@@ -12,7 +12,7 @@ import { packageVersion, type Installation } from "./installation.ts";
 import { LOG_FILE, withLifecycleLock } from "./state.ts";
 import { updateRelease } from "./update.ts";
 import { checkNightly, checkRelease } from "./releases.ts";
-import { BOT_FACE_COLORS, BOT_FACE_SHAPES, BOT_THINKING_LEVELS, botFaceColor, botFaceShape } from "../shared/bots.ts";
+import { BOT_FACE_COLORS, BOT_FACE_EARS, BOT_FACE_SHAPES, BOT_THINKING_LEVELS, botFaceColor, botFaceEars, botFaceShape } from "../shared/bots.ts";
 import { VOICE_LANGUAGE_EXAMPLES, voiceLanguage } from "../shared/voice.ts";
 import { GPT_LIVE_VOICES, gptLiveVoice } from "../shared/calls.ts";
 import { checkTriggerAdd } from "./bot-triggers.ts";
@@ -40,7 +40,7 @@ export const HELP = `Usage:
   hui bot show <bot> [--json]
   hui bot add [--name <name>] [--title <text>] [--soul-file <path|->] [--cwd <dir>]
               [--worker <name|id>] [--model <provider/model>] [--thinking <level>] [--utility-model <provider/model>] [--emoji <e>]
-              [--shape <blob|round|triangle|heart|cookie>] [--color <name|#rrggbb>]
+              [--shape <shape>] [--ears <cat|bear|bunny|antenna|sprout|horns>] [--color <name|#rrggbb>]
               [--language <code>] [--call-voice <cove|arbor|breeze|ember|juniper|maple|sol|spruce|vale>]
               [--deny-tools <a,b>] [--deny-skills <a,b>] [--json]
   hui bot edit <bot> [same flags as add but --soul-file, --worker and --deny-*] [--json]
@@ -125,9 +125,11 @@ have; speed does not matter); --utility-model the fastest, ideally cheap, for it
 memory summaries, quick answers on calls and call summaries (--memory-model is
 the same flag); "" goes back to Settings' utility model, then the bot's own.
 A bot shows an animated face, or its --emoji while it has one: --emoji "" switches
-it to its face. --shape is blob, round (or pebble), triangle, heart or cookie;
---color one of blue, yellow, magenta, mint, coral, lilac or any #rrggbb. Without
-them a bot's face is picked by its id, the same everywhere; on edit "" goes back
+it to its face. --shape is blob, round (or pebble), triangle, heart, cookie, star,
+flower, cloud, drop, ghost, pill, block or hexagon; --ears puts cat, bear or bunny
+ears, an antenna, a sprout or horns on top ("" takes them off); --color is one of
+blue, yellow, magenta, mint, coral, lilac or any #rrggbb. Without a shape or
+color a bot's face is picked by its id, the same everywhere; on edit "" goes back
 to that one.
 --call-voice is the bot's GPT-Live voice on calls (Settings → Models → Calls);
 "" goes back to the default voice Settings chose. --language is the language it
@@ -204,7 +206,7 @@ export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {
     name: { type: "string" }, command: { type: "string" }, "extra-path": { type: "string", multiple: true },
     archived: { type: "boolean" }, title: { type: "string" }, "soul-file": { type: "string" }, file: { type: "string" }, yes: { type: "boolean", short: "y" },
     cwd: { type: "string" }, worker: { type: "string" }, model: { type: "string" }, thinking: { type: "string" }, "memory-model": { type: "string" }, "utility-model": { type: "string" },
-    emoji: { type: "string" }, shape: { type: "string" }, color: { type: "string" }, voice: { type: "string" }, "voice-speed": { type: "string" }, language: { type: "string" }, "call-voice": { type: "string" }, wait: { type: "boolean" }, timeout: { type: "string" }, zoom: { type: "string" }, html: { type: "string" },
+    emoji: { type: "string" }, shape: { type: "string" }, ears: { type: "string" }, color: { type: "string" }, voice: { type: "string" }, "voice-speed": { type: "string" }, language: { type: "string" }, "call-voice": { type: "string" }, wait: { type: "boolean" }, timeout: { type: "string" }, zoom: { type: "string" }, html: { type: "string" },
     prompt: { type: "string" }, at: { type: "string" }, every: { type: "string" }, cron: { type: "string" }, timezone: { type: "string" },
     allow: { type: "string" }, deny: { type: "string" }, "deny-tools": { type: "string" }, "deny-skills": { type: "string" },
     bot: { type: "string" }, session: { type: "string" }, description: { type: "string" }, until: { type: "string" }, runs: { type: "string" }, disabled: { type: "boolean" },
@@ -322,7 +324,7 @@ function checkScheduleCommand(command: string, operands: readonly string[], valu
 }
 
 /** The flags `bot add` and `bot edit` share. */
-const BOT_FIELDS = ["name", "title", "cwd", "model", "thinking", "memory-model", "utility-model", "emoji", "shape", "color", "language", "call-voice"];
+const BOT_FIELDS = ["name", "title", "cwd", "model", "thinking", "memory-model", "utility-model", "emoji", "shape", "ears", "color", "language", "call-voice"];
 /** Operands each bot command takes, in order. */
 const BOT_OPERANDS: Record<string, readonly string[]> = {
   "bot list": [], "bot add": [], "bot show": ["bot"], "bot edit": ["bot"], "bot soul": ["bot"], "bot tools": ["bot"], "bot skills": ["bot"],
@@ -354,6 +356,9 @@ function checkBotCommand(command: string, operands: readonly string[], values: R
   if (given("memory-model") && given("utility-model")) throw new Error("Use either --utility-model or --memory-model: they are the same.");
   if (given("shape") && !cleared("shape") && !botFaceShape(String(values["shape"]))) {
     throw new Error(`--shape must be one of: ${BOT_FACE_SHAPES.join(", ")}; "" goes back to the one its id picks.`);
+  }
+  if (given("ears") && !cleared("ears") && !botFaceEars(String(values["ears"]))) {
+    throw new Error(`--ears must be one of: ${BOT_FACE_EARS.join(", ")}; "" takes them off.`);
   }
   if (given("color") && !cleared("color") && !botFaceColor(String(values["color"])) && !/^#[0-9a-f]{6}$/iu.test(String(values["color"]).trim())) {
     throw new Error(`--color must be one of ${BOT_FACE_COLORS.map((color) => color.id).join(", ")} or #rrggbb; "" goes back to the one its id picks.`);

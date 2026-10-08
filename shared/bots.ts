@@ -41,12 +41,26 @@ export const BOT_HANDLE = /^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$/u;
 
 /**
  * A bot's face, after OpenAI's Dots: a plush shape in a color, with two dot
- * eyes and no mouth. Stored in `avatar` beside the emoji, which still wins
- * while set (a bot switches to its face when the emoji is cleared).
+ * eyes and no mouth, and optionally ears (or an antenna, a sprout, horns) on
+ * top. Stored in `avatar` beside the emoji, which still wins while set (a bot
+ * switches to its face when the emoji is cleared).
  */
-export const BOT_FACE_SHAPES = ["blob", "round", "triangle", "heart", "cookie"] as const;
+export const BOT_FACE_SHAPES = ["blob", "round", "triangle", "heart", "cookie", "star", "flower", "cloud", "drop", "ghost", "pill", "block", "hexagon"] as const;
 export type BotFaceShape = (typeof BOT_FACE_SHAPES)[number];
-export const BOT_FACE_SHAPE_LABELS: Readonly<Record<BotFaceShape, string>> = { blob: "Blob", round: "Pebble", triangle: "Triangle", heart: "Heart", cookie: "Cookie" };
+export const BOT_FACE_SHAPE_LABELS: Readonly<Record<BotFaceShape, string>> = {
+  blob: "Blob", round: "Pebble", triangle: "Triangle", heart: "Heart", cookie: "Cookie", star: "Star", flower: "Flower",
+  cloud: "Cloud", drop: "Drop", ghost: "Ghost", pill: "Pill", block: "Block", hexagon: "Hexagon",
+};
+/** The shapes a bot's id picks from without a stored one: the first five, so the faces bots had before the others
+ * came stay as they were. */
+const PICKED_SHAPES = BOT_FACE_SHAPES.slice(0, 5);
+
+/** What sits on top of a face; absent: nothing. Never picked by the id. */
+export const BOT_FACE_EARS = ["cat", "bear", "bunny", "antenna", "sprout", "horns"] as const;
+export type BotFaceEars = (typeof BOT_FACE_EARS)[number];
+export const BOT_FACE_EARS_LABELS: Readonly<Record<BotFaceEars, string>> = {
+  cat: "Cat ears", bear: "Bear ears", bunny: "Bunny ears", antenna: "Antenna", sprout: "Sprout", horns: "Horns",
+};
 
 /** The palette the Bots tab and `hui bot --color` name; the API takes any #rrggbb. */
 export const BOT_FACE_COLORS = [
@@ -59,8 +73,8 @@ export const BOT_FACE_COLORS = [
 ] as const;
 export type BotFaceColor = (typeof BOT_FACE_COLORS)[number];
 
-/** `color`: #rrggbb, lowercase. `shape` and `color` absent: the face derived from the bot's id. */
-export type BotAvatar = { emoji?: string; color?: string; shape?: BotFaceShape };
+/** `color`: #rrggbb, lowercase. `shape` and `color` absent: the face derived from the bot's id; `ears` absent: none. */
+export type BotAvatar = { emoji?: string; color?: string; shape?: BotFaceShape; ears?: BotFaceEars };
 
 /** A skill as a bot's lists name it: its name and source, as Settings' disabled skills do (its SKILL.md path, or a
  * bundled skill's stable `hui:skill:` path). */
@@ -150,8 +164,8 @@ export type BotInput = {
  * (a cleared `model` or `thinking` puts the chat back on what a new chat
  * gets: the gateway's default model and thinking level); an avatar key set to
  * `""` clears that key (`emoji: ""` switches the bot to its face, `shape: ""`
- * and `color: ""` back to the ones its id picks) and `avatar: null` clears all
- * three. A voice `language: ""` (back to Auto) or `live: ""` (back to Settings'
+ * and `color: ""` back to the ones its id picks, `ears: ""` takes them off) and
+ * `avatar: null` clears them all. A voice `language: ""` (back to Auto) or `live: ""` (back to Settings'
  * call voice) clears that key and `voice: null` clears both. `disabledTools` and
  * `disabledSkills` replace the whole list (`[]` turns everything back on),
  * validated against the bot's catalog; they apply from its chat's next request.
@@ -160,7 +174,7 @@ export type BotInput = {
 export type BotPatch = Partial<Omit<BotInput, "avatar" | "voice" | "soul" | "worker">> & { avatar?: BotAvatarPatch | null; voice?: BotVoicePatch | null };
 
 /** A change to a bot's look: given keys replace, `""` clears one. */
-export type BotAvatarPatch = { emoji?: string; color?: string; shape?: BotFaceShape | "" };
+export type BotAvatarPatch = { emoji?: string; color?: string; shape?: BotFaceShape | ""; ears?: BotFaceEars | "" };
 
 /** A change to a bot's voice on calls: given keys replace, `language: ""` and `live: ""` clear one. */
 export type BotVoicePatch = { language?: VoiceLanguage | ""; live?: GptLiveVoice | "" };
@@ -380,6 +394,16 @@ export function botFaceShape(value: string): BotFaceShape | undefined {
   return BOT_FACE_SHAPES.find((shape) => shape === key || BOT_FACE_SHAPE_LABELS[shape].toLowerCase() === key);
 }
 
+export function isBotFaceEars(value: unknown): value is BotFaceEars {
+  return typeof value === "string" && (BOT_FACE_EARS as readonly string[]).includes(value);
+}
+
+/** Ears by their id or their label (`cat ears` is `cat`), any case; undefined for anything else. */
+export function botFaceEars(value: string): BotFaceEars | undefined {
+  const key = value.trim().toLowerCase();
+  return BOT_FACE_EARS.find((ears) => ears === key || BOT_FACE_EARS_LABELS[ears].toLowerCase() === key);
+}
+
 /** A palette color by its name (`mint`, any case) or hex; undefined for anything else. */
 export function botFaceColor(value: string): BotFaceColor | undefined {
   const key = value.trim().toLowerCase();
@@ -403,6 +427,7 @@ export type BotLook = {
   kind: "face" | "emoji";
   emoji?: string;
   shape: BotFaceShape;
+  ears?: BotFaceEars;
   /** #rrggbb: the face's body, the emoji's tile and the call's tint. */
   color: string;
   /** The shape or color comes from the id, not from the record. */
@@ -415,8 +440,8 @@ export type BotLook = {
 export function defaultBotLook(id: string): { shape: BotFaceShape; color: string } {
   const seed = botSeed(id);
   return {
-    shape: BOT_FACE_SHAPES[seed % BOT_FACE_SHAPES.length]!,
-    color: BOT_FACE_COLORS[Math.floor(seed / BOT_FACE_SHAPES.length) % BOT_FACE_COLORS.length]!.hex,
+    shape: PICKED_SHAPES[seed % PICKED_SHAPES.length]!,
+    color: BOT_FACE_COLORS[Math.floor(seed / PICKED_SHAPES.length) % BOT_FACE_COLORS.length]!.hex,
   };
 }
 
@@ -428,6 +453,7 @@ export function botLook(bot: { id: string; avatar?: BotAvatar | undefined }): Bo
     kind: bot.avatar?.emoji ? "emoji" : "face",
     ...(bot.avatar?.emoji ? { emoji: bot.avatar.emoji } : {}),
     shape: shape ?? fallback.shape,
+    ...(isBotFaceEars(bot.avatar?.ears) ? { ears: bot.avatar.ears } : {}),
     color: color ?? fallback.color,
     derived: { shape: !shape, color: !color },
     seed: botSeed(bot.id),

@@ -60,7 +60,7 @@ export function renderBotAvatar(bot: Pick<BotView, "id" | "avatar">, size: BotFa
   if (look.kind === "emoji") {
     return html`<span class="bot-avatar bot-avatar--${size} bot-avatar--emoji" style=${`--bot-avatar-color: ${look.color}`} aria-hidden="true"><span class="bot-avatar__glyph">${look.emoji}</span>${badge}</span>`;
   }
-  return html`<span class="bot-avatar bot-avatar--${size} bot-avatar--face" aria-hidden="true"><hui-bot-face size=${size} shape=${look.shape} .color=${look.color}
+  return html`<span class="bot-avatar bot-avatar--${size} bot-avatar--face" aria-hidden="true"><hui-bot-face size=${size} shape=${look.shape} ears=${look.ears ?? ""} .color=${look.color}
     .seed=${look.seed} state=${options.state ?? "idle"} .level=${options.level}></hui-bot-face>${badge}</span>`;
 }
 

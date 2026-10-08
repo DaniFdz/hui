@@ -342,7 +342,7 @@ test("a bot made on the worker without a soul speaks first there, writes SOUL.md
   // is refused, the operator's renames it.
   const task = (await call("/__hui/automation/tasks", "POST", { name: "Rename", sessionId: fresh.sessionId, prompt: "E2E_SET_PROFILE call yourself Echo", schedule: { kind: "every", everyMs: 3_600_000 } })).body["task"] as { id: string };
   assert.equal((await call(`/__hui/automation/tasks/${task.id}/run`, "POST", {})).status, 202);
-  await settledWith(fresh.sessionId, says("assistant", "Only the operator changes your name or title"), "the routine's set_profile to be refused");
+  await settledWith(fresh.sessionId, says("assistant", "Only the operator changes your name, title or look"), "the routine's set_profile to be refused");
   assert.equal(botOf(await call(`/__hui/bots/${fresh.id}`)).name, "New Bot");
   const named = await call(`/__hui/bots/${fresh.id}/messages`, "POST", { text: "E2E_SET_PROFILE call yourself Echo", wait: true, timeoutSeconds: 120 });
   assert.deepEqual(named.body, { status: "answered", reply: "set_profile answered: Saved: you are Echo (@echo), Fixture tester. Tell the operator." });
@@ -508,7 +508,7 @@ test("on the worker, a gated tool judges the run by every input it took: a trigg
     assert.equal((await call("/__hui/bots/rover/triggers", "POST", { name, source: "session", filter: { events } })).status, 201);
   }
   const refusals = (answer: string, trigger: string) => {
-    assert.match(answer, /Only the operator changes your name or title, and this turn was started by a routine, a trigger or another bot\./u, "set_profile");
+    assert.match(answer, /Only the operator changes your name, title or look, and this turn was started by a routine, a trigger or another bot\./u, "set_profile");
     assert.equal(answer.split(`Only the operator adds or changes your triggers, and this turn was started by the trigger "${trigger}", whose event comes from outside HUI.`).length, 3, "the triggers tool's add and update");
     assert.match(answer, /Only the operator changes your soul, and this turn was started by a routine, a trigger or another bot\./u, "write_soul");
     assert.match(answer, /You have \d+ triggers:/u, "list still works");
@@ -554,7 +554,7 @@ test("on the worker too, another bot's message that joins the operator's turn ma
   await joining(rover.sessionId, "[from @home] ");
   await control("release-replay", { method: "POST" });
   const relayed = await toolAnswer(rover.sessionId, "[from @home] ", "Home's message that joined the operator's turn");
-  assert.match(relayed, /Only the operator changes your name or title/u);
+  assert.match(relayed, /Only the operator changes your name, title or look/u);
   assert.equal(relayed.split("Only the operator adds or changes your triggers, and this turn was started by @home.").length, 3);
   assert.match(relayed, /Only the operator changes your soul/u);
   assert.match(relayed, /You have \d+ triggers?:/u);
@@ -573,7 +573,7 @@ test("on the worker too, another bot's message that joins the operator's turn ma
   await joining(rover.sessionId, "[routine: Survey again] ");
   await control("release-replay", { method: "POST" });
   const routine = await toolAnswer(rover.sessionId, "[routine: Survey again] ", "the routine's message that joined the operator's turn");
-  assert.match(routine, /Only the operator changes your name or title/u, "a routine can't retitle it");
+  assert.match(routine, /Only the operator changes your name, title or look/u, "a routine can't retitle it");
   assert.match(routine, /Added the trigger "Added by a routine"/u, "the triggers tool takes a routine's turn");
   assert.match(routine, /Updated the trigger "Keep": Sessions · Sessions it starts · Waiting/u);
   assert.match(routine, /Only the operator changes your soul/u, "nor rewrite its soul");
@@ -604,7 +604,7 @@ test("on the worker, a run stays tainted to its end: the operator's message afte
   assert.deepEqual((await call("/__hui/bots/rover/messages", "POST", { text: mine("Tainted") })).body, { status: "queued" });
   await control("release-replay", { method: "POST" });
   const tainted = await toolAnswer(rover.sessionId, mine("Tainted"), "the operator's message after the trigger's");
-  assert.match(tainted, /Only the operator changes your name or title/u);
+  assert.match(tainted, /Only the operator changes your name, title or look/u);
   assert.match(tainted, /Only the operator changes your soul/u);
   assert.match(tainted, /Only the operator adds or changes your triggers, and this turn was started by the trigger "Ping"/u);
   assert.deepEqual(await roverProfile(), [rover.name, rover.handle, rover.title]);
