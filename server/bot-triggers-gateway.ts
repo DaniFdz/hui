@@ -91,8 +91,8 @@ export function createGatewayTriggers(deps: GatewayTriggerDeps) {
       stop: () => slackPoller.stop(),
       status: () => slackPoller.status(),
       connected: async () => Boolean(await connector.config()),
-      pullRequests: (urls, diffBudget) => readPullRequests(urls, diffBudget),
     },
+    pullRequests: (urls, diffBudget) => readPullRequests(urls, diffBudget),
     active: deps.active,
     report,
   });
@@ -128,7 +128,7 @@ export function createGatewayTriggers(deps: GatewayTriggerDeps) {
     },
     /** `POST /__hui/hooks/<token>`: only from this machine or the tailnet (403 otherwise), POST only (405). */
     async hook(request: IncomingMessage, path: string): Promise<{ status: number; body: Record<string, unknown> }> {
-      if (!isTailnetOrLoopback(request.socket.remoteAddress)) return { status: 403, body: { error: "Webhook triggers answer only callers on this machine or its tailnet." } };
+      if (!isTailnetOrLoopback(request.socket.remoteAddress)) return { status: 403, body: { error: "Webhook and listener triggers answer only callers on this machine or its tailnet." } };
       if (request.method !== "POST") return { status: 405, body: { error: "method not allowed" } };
       const token = HOOK_ROUTE.exec(path)?.[1];
       if (!token) return { status: 404, body: { error: "No trigger has this URL." } };

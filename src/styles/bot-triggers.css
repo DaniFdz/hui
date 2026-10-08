@@ -107,6 +107,7 @@
 .bot-trigger-form:has(input[name="source"][value="session"]:checked) .bot-trigger-form__when--session,
 .bot-trigger-form:has(input[name="source"][value="webhook"]:checked) .bot-trigger-form__when--webhook { display: flex; }
 .bot-trigger-form:has(input[name="source"][value="slack"]:checked) .bot-trigger-form__when--slack { display: flex; }
+.bot-trigger-form:has(input[name="source"][value="listener"]:checked) .bot-trigger-form__when--listener { display: flex; }
 .bot-trigger-form__preset { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
 .bot-trigger-form__preset-button { display: inline-flex; align-items: center; gap: 6px; }
 .bot-trigger-form__preset-button svg { width: 13px; height: 13px; }

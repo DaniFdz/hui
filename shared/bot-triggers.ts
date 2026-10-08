@@ -1,18 +1,19 @@
 /**
  * Triggers (HUI-18): what wakes a bot when something happens elsewhere, beside its routines, which wake it on a
- * schedule. A trigger watches one source (pull requests on GitHub, the sessions the bot started, a webhook URL, or
- * Slack messages that ping the operator), and when an event matches its filter HUI delivers
+ * schedule. A trigger watches one source (pull requests on GitHub, the sessions the bot started, a webhook URL, Slack
+ * messages that ping the operator, or what a listener the operator runs reports), and when an event matches its filter
+ * HUI delivers
  * `[trigger: <name> · <summary>] <prompt>` plus the event's details into the bot's chat, as a routine's message is (a
  * follow-up while the bot works). Shared by the gateway, the `hui bot trigger` CLI and the browser;
  * docs/api.md#triggers is the contract.
  */
 
-export const BOT_TRIGGER_SOURCES = ["github", "session", "webhook", "slack"] as const;
+export const BOT_TRIGGER_SOURCES = ["github", "session", "webhook", "slack", "listener"] as const;
 export type BotTriggerSource = (typeof BOT_TRIGGER_SOURCES)[number];
-export const BOT_TRIGGER_SOURCE_LABELS: Readonly<Record<BotTriggerSource, string>> = { github: "GitHub", session: "Sessions", webhook: "Webhook", slack: "Slack" };
+export const BOT_TRIGGER_SOURCE_LABELS: Readonly<Record<BotTriggerSource, string>> = { github: "GitHub", session: "Sessions", webhook: "Webhook", slack: "Slack", listener: "Listener" };
 
-/** Sources only the operator adds: a webhook's URL holds a secret, and a Slack trigger reads the operator's messages. */
-export const OPERATOR_ONLY_TRIGGER_SOURCES: ReadonlySet<BotTriggerSource> = new Set(["webhook", "slack"]);
+/** Sources whose triggers have a URL with a secret token: `POST /__hui/hooks/<token>`. */
+export const HOOK_TRIGGER_SOURCES: ReadonlySet<BotTriggerSource> = new Set(["webhook", "listener"]);
 
 /** What a GitHub trigger can wake on, all about pull requests in the repos it names. */
 export const GITHUB_TRIGGER_EVENTS = [
@@ -67,7 +68,7 @@ export const BOT_TRIGGER_LIMITS = {
   value: 100,
   cooldownDefault: 300,
   cooldownMax: 86_400,
-  /** A webhook call's body, in bytes. */
+  /** A webhook call's or a listener's report's body, in bytes. */
   body: 64 * 1024,
   /** One event's details in a delivery, in characters. */
   details: 1_500,
@@ -84,12 +85,16 @@ export const BOT_TRIGGER_LIMITS = {
   match: 500,
   /** A Slack message's text in a delivery, and the thread parent's, in characters. */
   slackText: 2_000,
-  /** One Slack event's details (who, where, the message and its thread parent), in characters. */
+  /** One Slack or listener event's details (for Slack: who, where, the message and its thread parent), in characters. */
   slackDetails: 5_000,
-  /** A Slack delivery's whole text: it carries the pull requests its messages link to, diffs included. */
+  /** A Slack or listener delivery's whole text: it carries the pull requests its events link to, diffs included. */
   slackMessage: 40_000,
-  /** Pull request links read from one Slack message. */
+  /** Pull request links read from one Slack message or listener event. */
   slackLinks: 3,
+  /** Events one listener report holds. */
+  listenerEvents: 50,
+  /** Event ids remembered per listener trigger, so a report sent again never wakes the bot twice. */
+  listenerSeen: 500,
   /** A linked pull request's description in a delivery, in characters. */
   prDescription: 2_000,
   /** A linked pull request's changed files listed in a delivery; the rest are counted. */
@@ -133,6 +138,18 @@ export type SessionTriggerFilter = { events: SessionTriggerEvent[] };
 export type WebhookTriggerMatch = { field: string; op: "equals" | "contains"; value: string };
 export type WebhookTriggerFilter = { match?: WebhookTriggerMatch };
 
+/** A listener's event passes when `match` holds for it, as a webhook's does for a body (`fields.channel`, `summary`,
+ * `""` for the whole event) and, for each switch given, satisfies it. */
+export type ListenerTriggerFilter = {
+  match?: WebhookTriggerMatch;
+  /** Only events that link a GitHub pull request. */
+  prLinks?: true;
+  /** Also events the listener marks as from a bot or an app; left out otherwise. */
+  bots?: true;
+  /** Also events the listener marks as from outside the operator's organization; left out otherwise. */
+  external?: true;
+};
+
 /** A Slack message passes when it is one of `events` and, for each optional key given, satisfies it. */
 export type SlackTriggerFilter = {
   events: SlackTriggerEvent[];
@@ -148,7 +165,7 @@ export type SlackTriggerFilter = {
   bots?: true;
 };
 
-export type BotTriggerFilters = { github: GitHubTriggerFilter; session: SessionTriggerFilter; webhook: WebhookTriggerFilter; slack: SlackTriggerFilter };
+export type BotTriggerFilters = { github: GitHubTriggerFilter; session: SessionTriggerFilter; webhook: WebhookTriggerFilter; slack: SlackTriggerFilter; listener: ListenerTriggerFilter };
 /** A trigger's source and its filter, which always go together. */
 export type BotTriggerSpec = { [S in BotTriggerSource]: { source: S; filter: BotTriggerFilters[S] } }[BotTriggerSource];
 
@@ -168,16 +185,18 @@ type BotTriggerBase = {
   lastFiredAt?: string;
 };
 
-/** One trigger as `bot-triggers.json` stores it; a webhook trigger keeps only its token's SHA-256 and first characters. */
+/** One trigger as `bot-triggers.json` stores it; a webhook or listener trigger keeps only its token's SHA-256 and first
+ * characters. */
 export type BotTriggerRecord = BotTriggerBase & BotTriggerSpec & { tokenHash?: string; tokenHint?: string };
 
 /** One trigger as the routes return it. */
 export type BotTrigger = BotTriggerBase & BotTriggerSpec & {
-  /** A webhook trigger's token, its first four characters: enough to tell two URLs apart, never to call one. */
+  /** A webhook or listener trigger's token, its first four characters: enough to tell two URLs apart, never to call one. */
   tokenHint?: string;
   /** Events waiting for the cooldown or the hourly cap, and when they go out at the earliest. */
   pending?: { events: number; until: string };
-  /** A GitHub or Slack trigger: its source's polling, the newest poll and the latest problem. */
+  /** A GitHub or Slack trigger: its source's polling, the newest poll and the latest problem. A listener trigger: the
+   * listener's latest report and its problem, or how long it has been silent. */
   watch?: { polledAt?: string; error?: string };
 };
 
@@ -210,7 +229,8 @@ export type BotTriggersList = {
   deliveries: { lastHour: number; perHour: number };
 };
 
-/** `POST /__hui/bots/:id/triggers` (201) and `POST …/:trigger/token`: a webhook trigger's token, shown this once. */
+/** `POST /__hui/bots/:id/triggers` (201) and `POST …/:trigger/token`: a webhook or listener trigger's token, shown
+ * this once. */
 export type BotTriggerCreated = { trigger: BotTrigger; hook?: { token: string; path: string } };
 
 /** `POST /__hui/bots/:id/triggers`. Without `cooldownSeconds` it is 300; without `enabled`, on. */
@@ -262,6 +282,15 @@ export function botTriggerFilterSummary(trigger: BotTriggerSpec): string {
       const match = trigger.filter.match;
       if (!match) return "Any call";
       return `${match.field || "body"} ${match.op} "${match.value}"`;
+    }
+    case "listener": {
+      const filter = trigger.filter;
+      return [
+        filter.match ? `${filter.match.field || "event"} ${filter.match.op} "${filter.match.value}"` : "Any event",
+        ...(filter.prLinks ? ["PR links only"] : []),
+        ...(filter.external ? ["outsiders too"] : []),
+        ...(filter.bots ? ["bots too"] : []),
+      ].join(" · ");
     }
     case "slack": {
       const filter = trigger.filter;

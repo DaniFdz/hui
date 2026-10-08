@@ -78,7 +78,23 @@ test("the form offers Slack with the Review requests preset, and a Slack card sa
   assert.match(preset, /REVIEW_REQUESTS_PRESET\.prLinks/u);
   assert.match(preset, /!name\.value\.trim\(\)/u, "a name already typed stays");
   const card = between(source, "function renderTrigger(", "function renderRevealed(");
-  assert.match(card, /trigger\.source === "github" \|\| trigger\.source === "slack"/u);
+  assert.match(card, /\$\{renderWatch\(trigger, props\.now\)\}/u);
   assert.match(card, /Waiting for the first read of/u);
   assert.match(read("../styles/bot-triggers.css"), /\.bot-trigger-form:has\(input\[name="source"\]\[value="slack"\]:checked\) \.bot-trigger-form__when--slack \{ display: flex; \}/u);
+});
+
+test("the form offers a listener's filter, its URL shows once with what to send it, and its card says when it last reported", () => {
+  const source = read("./bot-triggers.ts");
+  const form = between(source, "function renderForm(", "/** The Triggers section");
+  assert.match(form, /bot-trigger-form__when--listener/u);
+  for (const name of ["listenerField", "listenerOp", "listenerValue", "listenerPrLinks", "listenerExternal", "listenerBots"]) assert.match(form, new RegExp(`name="${name}"`, "u"));
+  assert.match(form, /Each event wakes \$\{name\} once, events from before the trigger never do, and an empty report only says the listener is alive\./u);
+  const revealed = between(source, "function renderRevealed(", "function renderRun(");
+  assert.match(revealed, /revealed\.source === "listener"/u, "labelled by the trigger it was made for");
+  assert.match(revealed, /Give it to your listener: after every check it POSTs/u);
+  const card = between(source, "function renderTrigger(", "function renderRevealed(");
+  assert.match(card, /HOOK_TRIGGER_SOURCES\.has\(trigger\.source\)/u, "a listener's URL shows its hint and can be replaced, as a webhook's");
+  assert.match(card, /Listener reported /u);
+  assert.match(card, /bot-trigger__meta--error/u, "silence or the listener's own problem shows as one");
+  assert.match(read("../styles/bot-triggers.css"), /\.bot-trigger-form:has\(input\[name="source"\]\[value="listener"\]:checked\) \.bot-trigger-form__when--listener \{ display: flex; \}/u);
 });

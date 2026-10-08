@@ -39,7 +39,7 @@ export function triggersTool(options: {
       "update and remove name the trigger (its name or id) in trigger; update changes only what you give.",
       "GitHub events: pr_opened, pr_pushed, checks_failed, checks_succeeded, review_approved, review_changes_requested, review_commented, comment, mention (of the operator), pr_merged, pr_closed;",
       "narrow them with authors, labels, base, pullRequests and draft. Session events: finished, failed, waiting.",
-      "Only the operator's own turns may add or change triggers; webhook and Slack triggers are the operator's to add and change.",
+      "Only the operator's own turns may add or change triggers. Webhook triggers are the operator's to add; Slack and listener triggers the operator's to add and change.",
     ].join(" "),
     parameters: Type.Object({
       action: Type.Union(["list", "add", "update", "remove"].map((action) => Type.Literal(action))),

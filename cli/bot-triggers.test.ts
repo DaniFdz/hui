@@ -16,11 +16,17 @@ test("hui bot trigger parses list, add, remove and test with their operands and 
   assert.deepEqual(triggerBody(parseCli(["bot", "trigger", "add", "ada", "--name", "Kids", "--session", "--on", "finished,waiting"]).values), { name: "Kids", source: "session", filter: { events: ["finished", "waiting"] } });
   assert.deepEqual(triggerBody(parseCli(["bot", "trigger", "add", "ada", "--name", "Deploys", "--webhook", "--match", "deploy.status=failed", "--cooldown", "0"]).values),
     { name: "Deploys", cooldownSeconds: 0, source: "webhook", filter: { match: { field: "deploy.status", op: "equals", value: "failed" } } });
+  assert.deepEqual(triggerBody(parseCli(["bot", "trigger", "add", "ada", "--name", "Reviews", "--listener", "--match", "fields.channel=G01M4T1JFLK", "--pr-links", "--allow-external", "--cooldown", "0", "--prompt", "Review these."]).values),
+    { name: "Reviews", prompt: "Review these.", cooldownSeconds: 0, source: "listener", filter: { match: { field: "fields.channel", op: "equals", value: "G01M4T1JFLK" }, prLinks: true, external: true } });
+  assert.deepEqual(triggerBody(parseCli(["bot", "trigger", "add", "ada", "--name", "Anything", "--listener"]).values), { name: "Anything", source: "listener", filter: {} });
   assert.deepEqual(parseCli(["bot", "trigger", "remove", "ada", "CI", "--json"]).operands, ["ada", "CI"]);
   assert.deepEqual(parseCli(["bot", "trigger", "test", "ada", "CI"]).operands, ["ada", "CI"]);
   for (const [args, message] of [
     [["bot", "trigger", "add", "ada", "--github", "a/b", "--on", "pr_opened"], /needs --name/u],
-    [["bot", "trigger", "add", "ada", "--name", "x"], /exactly one of --github <owner\/name,…>, --session, --webhook or --slack/u],
+    [["bot", "trigger", "add", "ada", "--name", "x"], /exactly one of --github <owner\/name,…>, --session, --webhook, --slack or --listener/u],
+    [["bot", "trigger", "add", "ada", "--name", "x", "--listener", "--on", "mention"], /--on doesn't apply to --listener/u],
+    [["bot", "trigger", "add", "ada", "--name", "x", "--listener", "--from", "maria"], /--from only applies to --slack/u],
+    [["bot", "trigger", "add", "ada", "--name", "x", "--session", "--on", "finished", "--allow-bots"], /--allow-bots only applies to --slack or --listener/u],
     [["bot", "trigger", "add", "ada", "--name", "x", "--session", "--webhook"], /exactly one/u],
     [["bot", "trigger", "add", "ada", "--name", "x", "--github", "a/b"], /--on takes GitHub events/u],
     [["bot", "trigger", "add", "ada", "--name", "x", "--github", "a/b", "--on", "pr_teleported"], /--on takes GitHub events/u],

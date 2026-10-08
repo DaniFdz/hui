@@ -602,8 +602,9 @@ sessions' schedules work as always.
 
 Triggers wake a bot when something happens, the way routines wake it on a
 schedule: a pull request changes on GitHub, a session the bot started finishes,
-fails or asks something, another program calls the trigger's webhook URL, or
-someone pings you in Slack ([Slack](#slack), below).
+fails or asks something, another program calls the trigger's webhook URL,
+someone pings you in Slack ([Slack](#slack), below), or a listener you run
+reports something ([Listener](#listener), below).
 They sit in the bot's **Routines** tab, under its routines: each shows what it
 watches, when it last fired, its cooldown and an on/off switch, with **Test**
 (a sample event, now) and **Delete**; **Add trigger** below them. From a
@@ -615,6 +616,7 @@ hui bot trigger add ada --name Deps --github DaniFdz/hui --on pr_opened --author
 hui bot trigger add ada --name Helpers --session --on finished,failed,waiting
 hui bot trigger add ada --name Deploys --webhook --match status=failed --prompt "Tell me why the deploy failed"
 hui bot trigger add ada --name Reviews --slack --on mention,dm --pr-links --prompt "Review the pull request"
+hui bot trigger add ada --name Pings --listener --match fields.channel=G01ABC --pr-links --cooldown 0
 hui bot trigger list ada
 hui bot trigger test ada CI
 hui bot trigger remove ada Deploys
@@ -648,13 +650,52 @@ dropped. Each delivery shows under **Latest trigger runs**.
 A bot can manage its own triggers with its `triggers` tool (Tools tab, under
 Bots): ask it to watch a repo and it adds one. It can't add or change triggers
 in a turn another bot or a trigger started, or that took a message from one
-while it ran, and it can't create webhook triggers, whose token would pass
-through the model.
+while it ran, it can't create webhook triggers, whose token would pass through
+the model, and it can't add or change Slack or listener triggers, which carry
+your messages.
 
 While bots are off nothing fires: GitHub and Slack aren't read, webhook URLs
 answer 409, and a session event is recorded as skipped. When you turn them on
 again, what happened on GitHub, or who pinged you in Slack, meanwhile arrives as
 one summary per trigger, not one message per event.
+
+#### Listener
+
+A listener trigger wakes a bot on what a program you run reports: a listener,
+which watches something HUI doesn't read itself (a Slack you reach only through
+its MCP server, a Jira board, a queue) and, after every check, tells HUI what it
+found. HUI makes the trigger a URL with a secret token and shows it once (Copy
+it then; **New URL** replaces it); the listener POSTs to it from this machine or
+your tailnet:
+
+```sh
+curl -sS -X POST "$URL" -H 'content-type: application/json' -d '{
+  "events": [{
+    "id": "G01ABC:1791481674.389319",
+    "summary": "@rodrigo in #reviews: acme/web#42",
+    "details": "From Rodrigo, in #reviews\n  > could you take a look?",
+    "links": ["https://github.com/acme/web/pull/42"],
+    "fields": { "channel": "G01ABC" }
+  }]
+}'
+```
+
+- **Each event once.** `id` is the event's own (a Slack message's channel and
+  timestamp, an issue key): HUI remembers the last 500 ids it was told, so a
+  report sent again, even after a restart, wakes nobody, and an event from
+  before the trigger never does. Send `{ "events": [] }` after a check that found nothing:
+  it starts no turn, and the trigger shows when the listener last reported.
+- **When it stops.** A listener that hasn't reported for five minutes, or since
+  the gateway started, shows as *No report from the listener…* on its trigger;
+  one that hit a problem says so with `"error": "…"` in its report.
+- **What wakes the bot.** Every event, unless the trigger narrows it: a field
+  (`--match fields.channel=G01ABC`, or `summary~review`), only events that link a
+  GitHub pull request (`--pr-links`; the delivery carries those pull requests, as
+  a Slack trigger's does), and events the listener marks `"bot": true` or
+  `"external": true` only with `--allow-bots` or `--allow-external`.
+- **Its own place.** The listener keeps track of what it already read. While
+  bots are off HUI answers 409 and keeps nothing, so the listener sends those
+  events again later; `"catchUp": true` delivers a backlog as one message.
 
 #### Slack
 

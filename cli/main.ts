@@ -65,7 +65,9 @@ export const HELP = `Usage:
   hui bot trigger add <bot> --name <name> (--github <owner/name,…> --on <events> [--author <a,b>] [--label <a,b>]
               [--base <branch,…>] [--pr <n,…>] [--draft|--ready] | --session --on <finished,failed,waiting>
               | --webhook [--match <field=value|field~value>] | --slack --on <mention,dm> [--pr-links]
-              [--from <people>] [--in <channels>] [--allow-bots] [--allow-external]) [--prompt <text>]
+              [--from <people>] [--in <channels>] [--allow-bots] [--allow-external]
+              | --listener [--match <field=value|field~value>] [--pr-links] [--allow-bots] [--allow-external])
+              [--prompt <text>]
               [--cooldown <0|30s|5m|1h>] [--json]
   hui bot trigger remove <bot> <trigger> [--json]
   hui bot trigger test <bot> <trigger> [--json]
@@ -174,7 +176,15 @@ request (a thread reply counts its thread's), --from and --in name people and
 channels, and bots, apps and people outside your workspace (Slack Connect)
 wake it only with --allow-bots and --allow-external. Its delivery carries the
 linked pull requests (description, files and diff) read through the gateway's
-gh, so a bot can review without a shell. Only you add Slack triggers. Events
+gh, so a bot can review without a shell. Only you add Slack triggers.
+--listener makes a URL, shown once, for a program you run (a listener) that
+watches something HUI doesn't read itself and, after every check, POSTs
+{ "events": [{ "id", "summary", ... }] } to it: each event wakes the bot once,
+an empty list only says the listener is alive, and the trigger says when it
+last reported. --match keeps only events whose field (fields.channel, summary)
+equals or contains a value, --pr-links those linking a GitHub pull request
+(read into the delivery), and events it marks as from bots or from outside
+your organization wake it only with --allow-bots and --allow-external. Events
 within --cooldown (default 5m) of the last delivery arrive together. <trigger>
 is a name or id; test sends a sample event now.
 Slack connects HUI to your workspace with the User OAuth Token (xoxp-…) of a
@@ -210,7 +220,7 @@ export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {
     prompt: { type: "string" }, at: { type: "string" }, every: { type: "string" }, cron: { type: "string" }, timezone: { type: "string" },
     allow: { type: "string" }, deny: { type: "string" }, "deny-tools": { type: "string" }, "deny-skills": { type: "string" },
     bot: { type: "string" }, session: { type: "string" }, description: { type: "string" }, until: { type: "string" }, runs: { type: "string" }, disabled: { type: "boolean" },
-    github: { type: "string" }, webhook: { type: "boolean" }, on: { type: "string" }, author: { type: "string" },
+    github: { type: "string" }, webhook: { type: "boolean" }, listener: { type: "boolean" }, on: { type: "string" }, author: { type: "string" },
     label: { type: "string" }, base: { type: "string" }, pr: { type: "string" }, draft: { type: "boolean" }, ready: { type: "boolean" },
     match: { type: "string" }, cooldown: { type: "string" },
     slack: { type: "boolean" }, "pr-links": { type: "boolean" }, in: { type: "string" }, "allow-bots": { type: "boolean" }, "allow-external": { type: "boolean" },
@@ -257,7 +267,7 @@ export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {
     "bot memory": ["zoom", "html", "json"], "bot routine list": ["json"],
     "bot routine add": ["name", "prompt", "at", "every", "cron", "timezone", "json"], "bot routine run": [], "bot routine remove": ["json"],
     "bot trigger list": ["json"], "bot trigger remove": ["json"], "bot trigger test": ["json"],
-    "bot trigger add": ["name", "prompt", "github", "session", "webhook", "slack", "on", "author", "label", "base", "pr", "draft", "ready", "match", "cooldown", "pr-links", "from", "in", "allow-bots", "allow-external", "json"],
+    "bot trigger add": ["name", "prompt", "github", "session", "webhook", "slack", "listener", "on", "author", "label", "base", "pr", "draft", "ready", "match", "cooldown", "pr-links", "from", "in", "allow-bots", "allow-external", "json"],
     "slack connect": ["json"], "slack status": ["json"], "slack disconnect": ["json"],
     "schedule list": ["bot", "session", "json"], "schedule show": ["json"], "schedule add": [...SCHEDULE_FIELDS, "json"], "schedule edit": [...SCHEDULE_FIELDS, "json"],
     "schedule pause": ["json"], "schedule resume": ["json"], "schedule run": ["json"], "schedule remove": ["json"],

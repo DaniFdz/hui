@@ -108,7 +108,12 @@ export function matchesWebhook(match: WebhookTriggerMatch | undefined, body: Hoo
     if (match.field) return false;
     return match.op === "equals" ? body.value.trim() === match.value : body.value.includes(match.value);
   }
-  const target = match.field ? fieldAt(body.value, match.field) : body.value;
+  return matchesJson(match, body.value);
+}
+
+/** Whether a JSON value passes a match: what is at `field` (`""`, the whole value) equals `value`, or contains it. */
+export function matchesJson(match: WebhookTriggerMatch, value: unknown): boolean {
+  const target = match.field ? fieldAt(value, match.field) : value;
   if (target === undefined) return false;
   if (match.op === "equals") return scalar(target) === match.value;
   if (typeof target === "string") return target.includes(match.value);
@@ -116,7 +121,7 @@ export function matchesWebhook(match: WebhookTriggerMatch | undefined, body: Hoo
   return !match.field && JSON.stringify(target).includes(match.value);
 }
 
-const oneLine = (value: string, max: number) => {
+export const oneLine = (value: string, max: number) => {
   const line = value.replace(/\s+/gu, " ").trim();
   return line.length <= max ? line : `${line.slice(0, max - 1).trimEnd()}…`;
 };

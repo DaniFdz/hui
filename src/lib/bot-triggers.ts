@@ -1,13 +1,13 @@
 /**
  * A bot's triggers in the Bots tab (HUI-18): the Triggers section of its panel's Routines tab, Slack's included. It reads
  * `GET /__hui/bots/:id/triggers` while the tab shows (again every few seconds, since triggers fire on their own),
- * adds, switches, tests and deletes triggers through the trigger routes, and shows a webhook trigger's URL once, right
- * after it was made or replaced. `BotTriggersController` keeps that state outside `hui-app.ts`, as the Tools tab's
+ * adds, switches, tests and deletes triggers through the trigger routes, and shows a webhook or listener trigger's URL
+ * once, right after it was made or replaced. `BotTriggersController` keeps that state outside `hui-app.ts`, as the Tools tab's
  * controller does; the view is `src/views/bot-triggers.ts`.
  */
 import type { ReactiveController, ReactiveControllerHost } from "lit";
 import {
-  BOT_TRIGGER_LIMITS, BOT_TRIGGER_SOURCES, GITHUB_TRIGGER_EVENTS, SESSION_TRIGGER_EVENTS, SLACK_TRIGGER_EVENTS,
+  BOT_TRIGGER_LIMITS, BOT_TRIGGER_SOURCES, GITHUB_TRIGGER_EVENTS, HOOK_TRIGGER_SOURCES, SESSION_TRIGGER_EVENTS, SLACK_TRIGGER_EVENTS,
   type BotTrigger, type BotTriggerCreated, type BotTriggerInput, type BotTriggerPatch, type BotTriggerRun, type BotTriggerRunStatus, type BotTriggersList,
   type BotTriggerSource, type GitHubTriggerEvent, type SessionTriggerEvent, type SlackTriggerEvent,
 } from "../../shared/bot-triggers.ts";
@@ -29,7 +29,7 @@ const strings = (value: unknown): string[] => (Array.isArray(value) ? value.filt
 const RUN_STATUSES: readonly BotTriggerRunStatus[] = ["fired", "coalesced", "skipped", "failed"];
 
 function parseFilter(source: BotTriggerSource, raw: unknown): BotTrigger["filter"] | undefined {
-  if (!isRecord(raw)) return source === "webhook" ? {} : undefined;
+  if (!isRecord(raw)) return HOOK_TRIGGER_SOURCES.has(source) ? {} : undefined;
   if (source === "github") {
     const repos = strings(raw["repos"]);
     const events = strings(raw["events"]).filter((event): event is GitHubTriggerEvent => (GITHUB_TRIGGER_EVENTS as readonly string[]).includes(event));
@@ -63,6 +63,14 @@ function parseFilter(source: BotTriggerSource, raw: unknown): BotTrigger["filter
   const match = isRecord(raw["match"]) && (raw["match"]["op"] === "equals" || raw["match"]["op"] === "contains") && str(raw["match"]["value"])
     ? { field: str(raw["match"]["field"]), op: raw["match"]["op"] === "contains" ? "contains" as const : "equals" as const, value: str(raw["match"]["value"]) }
     : undefined;
+  if (source === "listener") {
+    return {
+      ...(match ? { match } : {}),
+      ...(raw["prLinks"] === true ? { prLinks: true as const } : {}),
+      ...(raw["external"] === true ? { external: true as const } : {}),
+      ...(raw["bots"] === true ? { bots: true as const } : {}),
+    };
+  }
   return match ? { match } : {};
 }
 
@@ -137,7 +145,7 @@ export type BotTriggersApi = {
   test(botId: string, triggerId: string): Promise<BotTriggerRun>;
   rotate(botId: string, triggerId: string): Promise<BotTriggerCreated>;
   copy(text: string): Promise<boolean>;
-  /** The page's origin, which a webhook URL starts with. */
+  /** The page's origin, which a webhook or listener URL starts with. */
   origin(): string;
 };
 
@@ -198,6 +206,12 @@ export type TriggerFormFields = {
   slackIn: string;
   slackExternal: boolean;
   slackBots: boolean;
+  listenerField: string;
+  listenerOp: string;
+  listenerValue: string;
+  listenerPrLinks: boolean;
+  listenerExternal: boolean;
+  listenerBots: boolean;
 };
 
 /** The form's Review requests preset: mentions and DMs that link a GitHub pull request, reviewed from the delivery. */
@@ -267,6 +281,18 @@ export function triggerFormInput(fields: TriggerFormFields): BotTriggerInput {
       },
     };
   }
+  if (source === "listener") {
+    const value = fields.listenerValue.trim();
+    return {
+      ...base, source,
+      filter: {
+        ...(value ? { match: { field: fields.listenerField.trim(), op: fields.listenerOp === "contains" ? "contains" as const : "equals" as const, value } } : {}),
+        ...(fields.listenerPrLinks ? { prLinks: true as const } : {}),
+        ...(fields.listenerExternal ? { external: true as const } : {}),
+        ...(fields.listenerBots ? { bots: true as const } : {}),
+      },
+    };
+  }
   const value = fields.matchValue.trim();
   if (!value) return { ...base, source, filter: {} };
   const op = fields.matchOp === "contains" ? "contains" : "equals";
@@ -275,7 +301,7 @@ export function triggerFormInput(fields: TriggerFormFields): BotTriggerInput {
 
 /* ── the section's state ─────────────────────────────────────────────── */
 
-export type RevealedHook = { triggerId: string; name: string; url: string; copied: boolean };
+export type RevealedHook = { triggerId: string; name: string; source: BotTriggerSource; url: string; copied: boolean };
 
 export type BotTriggersState = {
   botId: string;
@@ -288,7 +314,7 @@ export type BotTriggersState = {
   formError: string;
   /** A note after a test: how its run went. */
   notice: string;
-  /** A webhook trigger's URL, shown once after it was made or replaced. */
+  /** A webhook or listener trigger's URL, shown once after it was made or replaced. */
   revealed?: RevealedHook;
 };
 
@@ -412,7 +438,7 @@ export class BotTriggersController implements ReactiveController {
   }
 
   #reveal(created: BotTriggerCreated): Partial<BotTriggersState> {
-    return created.hook ? { revealed: { triggerId: created.trigger.id, name: created.trigger.name, url: `${this.#api.origin()}${created.hook.path}`, copied: false } } : {};
+    return created.hook ? { revealed: { triggerId: created.trigger.id, name: created.trigger.name, source: created.trigger.source, url: `${this.#api.origin()}${created.hook.path}`, copied: false } } : {};
   }
 
   props(bot: BotView): { state: BotTriggersState } & BotTriggersActions {

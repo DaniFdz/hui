@@ -9,6 +9,7 @@ const FIELDS: TriggerFormFields = {
   name: "PR watch", source: "github", prompt: "  Review it.  ", cooldown: "300", repos: "https://github.com/acme/widgets.git, acme/gadgets", githubEvents: ["pr_opened", "checks_failed", "bogus"],
   authors: "@alice bob", labels: "needs review, ci", base: "main", pulls: "#12, 14", draft: "ready", sessionEvents: [], matchField: "", matchOp: "equals", matchValue: "",
   slackEvents: [], slackPrLinks: false, slackFrom: "", slackIn: "", slackExternal: false, slackBots: false,
+  listenerField: "", listenerOp: "equals", listenerValue: "", listenerPrLinks: false, listenerExternal: false, listenerBots: false,
 };
 
 test("the add form becomes a trigger body, each source with its own fields", () => {
@@ -19,6 +20,9 @@ test("the add form becomes a trigger body, each source with its own fields", () 
   assert.deepEqual(triggerFormInput({ ...FIELDS, source: "session", sessionEvents: ["failed", "waiting"], prompt: "", cooldown: "0" }), { name: "PR watch", cooldownSeconds: 0, source: "session", filter: { events: ["failed", "waiting"] } });
   assert.deepEqual(triggerFormInput({ ...FIELDS, source: "webhook", prompt: "" }), { name: "PR watch", cooldownSeconds: 300, source: "webhook", filter: {} });
   assert.deepEqual(triggerFormInput({ ...FIELDS, source: "webhook", prompt: "", matchField: " deploy.status ", matchOp: "contains", matchValue: "fail" }).filter, { match: { field: "deploy.status", op: "contains", value: "fail" } });
+  assert.deepEqual(triggerFormInput({ ...FIELDS, source: "listener", prompt: "", matchField: "ignored", matchValue: "the webhook's" }), { name: "PR watch", cooldownSeconds: 300, source: "listener", filter: {} });
+  assert.deepEqual(triggerFormInput({ ...FIELDS, source: "listener", listenerField: " fields.channel ", listenerValue: " G01M4T1JFLK ", listenerPrLinks: true, listenerBots: true }).filter,
+    { match: { field: "fields.channel", op: "equals", value: "G01M4T1JFLK" }, prLinks: true, bots: true });
   for (const [change, message] of [
     [{ name: " " }, /Name the trigger/u],
     [{ name: "a [b]" }, /can't hold/u],
@@ -52,6 +56,8 @@ test("the Slack part of the form: mentions and DMs, PR links only, people and ch
   const parsed = parseTrigger({ ...TRIGGER, source: "slack", filter: { events: ["mention", "reaction"], prLinks: true, from: ["maria", 3], external: true } });
   assert.deepEqual(parsed?.source === "slack" && parsed.filter, { events: ["mention"], prLinks: true, from: ["maria"], external: true });
   assert.equal(parseTrigger({ ...TRIGGER, source: "slack", filter: { events: ["reaction"] } }), undefined);
+  const listener = parseTrigger({ ...TRIGGER, source: "listener", filter: { match: { field: "fields.channel", op: "equals", value: "C0" }, prLinks: true, external: "yes" }, tokenHint: "AbCd" });
+  assert.deepEqual(listener?.source === "listener" && [listener.filter, listener.tokenHint], [{ match: { field: "fields.channel", op: "equals", value: "C0" }, prLinks: true }, "AbCd"]);
 });
 
 test("the routes' answers are narrowed: unknown events, bad entries and missing fields don't reach the view", () => {
@@ -112,7 +118,7 @@ test("the section reads the bot's triggers, adds one and shows its webhook URL o
   assert.equal(created, true);
   const revealed = controller.state.revealed;
   assert.equal(revealed?.url, `http://gateway.test/__hui/hooks/${"tok".repeat(14)}x`, "the page's origin and the path");
-  assert.equal(revealed?.copied, false);
+  assert.deepEqual([revealed?.source, revealed?.copied], ["webhook", false]);
   controller.props(BOT).onCopy();
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(controller.state.revealed?.copied, true);
@@ -124,6 +130,15 @@ test("the section reads the bot's triggers, adds one and shows its webhook URL o
   controller.reset("id-bob");
   assert.equal(controller.state.revealed, undefined, "another bot shows nothing of the last one");
   assert.equal(controller.props(BOT).state.loading, true);
+});
+
+test("a new listener's URL is shown as a listener's, before the list is read again", async () => {
+  const controller = new BotTriggersController(host(), { api: api({
+    create: async (_botId, input) => ({ trigger: { ...parseTrigger(TRIGGER)!, id: "t3", name: input.name, source: "listener", filter: {} } as BotTrigger, hook: { token: "lis".repeat(14) + "x", path: `/__hui/hooks/${"lis".repeat(14)}x` } }),
+  }) });
+  await controller.refresh(BOT);
+  assert.equal(await controller.props(BOT).onCreate({ name: "Pings", source: "listener", filter: {} }), true);
+  assert.deepEqual([controller.state.revealed?.name, controller.state.revealed?.source], ["Pings", "listener"]);
 });
 
 test("a refused create keeps the form's input and says why; a refused action shows above the list", async () => {
