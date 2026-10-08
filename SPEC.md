@@ -1313,8 +1313,8 @@ everything the Bots tab can, through the same routes.
   they watch, last fired, cooldown, events waiting, an enable switch, Test,
   Delete and, for a webhook, New URL), shows a new webhook URL once with Copy,
   adds triggers for each source and shows their latest runs, read again every
-  few seconds while it shows. Memory shows messages, the view against its 128 KB budget,
-  its lines, pending summaries, what the summarizer spent since the gateway
+  few seconds while it shows. Memory shows messages, the view against its 128 KB budget
+  (a full view merges back to 64 KB in one batch), its lines, pending summaries, what the summarizer spent since the gateway
   started (calls, tokens, a cost once one is reported), *Summarizing memory…*
   and failures, and lists the view's `id+n|text` lines (a click opens a line
   into its halves, down to a message whole); while open it reads the memory

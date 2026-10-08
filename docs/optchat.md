@@ -4,10 +4,18 @@
 is Victor Taelin's design for an endless chat whose history is its memory: every
 message is kept, word for word, in an append-only log; a cheap model compresses
 the log into a binary tree of one-line summaries; and every turn starts fresh
-from a fixed-size **view** of the whole chat (recent messages one line each,
-older ones many per line) followed by the new message. The agent opens a line
-with `zoom(id, n)`, down to the original message, and asks `date(id)` for its
-time.
+from a bounded **view** of the whole chat (recent messages one line each, older
+ones many per line) followed by the new message. The agent opens a line with
+`zoom(id, n)`, down to the original message, and asks `date(id)` for its time.
+
+HUI was built from the recipe's first revision (`f51fe5c`, 2026-10-04), whose
+section numbers the "spec section" references here and in the code use. How the
+view merges and batches, how it is kept across restarts, the compaction view and
+the cache marks follow the corrected revision
+[`3c190e0`](https://gist.github.com/VictorTaelin/91837951a5ce5b38f341ec1ba1df6449/3c190e06f34aba0c69f49042c526093269604935)
+(2026-10-08), whose author reported that the first one's merge rule kept the
+prompt cache from holding; see [The view](#the-view) and
+[Prompt caching](#prompt-caching).
 
 HUI implements it in two parts:
 
@@ -102,9 +110,9 @@ memory's status says `waiting` meanwhile; Stop ends the wait and the turn), then
 freezes the view's parts before that input and writes them to `runs.jsonl` before
 the request is sent (fsync, first record of a run wins). Every later request of
 the run, a retry and a request Durable resends after a crash or restart carry the
-same view, even when the memory has merged lines meanwhile or folds differently
-after a restart. Node texts never change once built, so the frozen parts always
-render the same bytes.
+same view, even when the memory has merged lines meanwhile or merges them
+differently after a restart (a smaller view budget, say). Node texts never change
+once built, so the frozen parts always render the same bytes.
 
 **Prompt and tools.** The `optchat` prompt section is the spec's MASTER and
 VIEW_DOC for the document's name: no date and no state, so it is byte-identical
@@ -124,23 +132,88 @@ one long run cannot be compacted either: that run fails (Durable section 8.3).
 **The compactor** (spec section 4) runs in the gateway: one model conversation per
 node, at most 8 per memory and 8 across the gateway, through the gateway's models
 with the document's model or the conversation's own, at medium thinking unless
-the document says otherwise. A failed node is retried every 10 seconds; only its
-first failure is reported (`optchat_memory` diagnostic) and shown in the memory's
-status. Its usage (tokens, cache, cost) is counted in the status since the memory
-opened.
+the document says otherwise. Its context is the compaction view's lines before
+the node ([The view](#the-view)). A failed node is retried every 10 seconds;
+only its first failure is reported (`optchat_memory` diagnostic) and shown in the
+memory's status. Its usage (tokens, cache, cost) is counted in the status since
+the memory opened.
+
+## The view
+
+A turn reads the **view**: tree nodes ("parts") tiling the whole chat, oldest
+first, one `id+n|text` line each (`server/optchat/view.ts`). Two rules decide it,
+which lines merge and when, both as revision `3c190e0` has them.
+
+**Which lines merge.** Two adjacent sibling lines `(l, i)` and `(l, i+1)` are due
+according to the time since their last message, in units of their own span:
+`(T - last) / 2^l`, where `last` is their last message and T the number of
+messages. The view merges the most due pair whose parent node is built, the oldest
+of equal ones. The older a stretch of the chat, the fewer lines it gets, the
+levels hold similar numbers of lines, and a line rarely changes once it is old.
+With the length of Taelin's rollback list as the budget, this rule makes exactly
+the merges his `push` makes (`view.test.ts` checks 5,000 steps). The first
+implementation measured a pair's age from its first message, which merges old
+pairs `push` keeps: the view changed near its start at almost every message, and
+every cached prefix with it.
+
+**When.** Between batches the view only appends: a new message adds its line and
+leaves the others as they were, so each turn's view starts with the whole view of
+the turn before. Once the view passes 128,000 bytes, one batch merges the most
+due pairs until it is at most 64,000 bytes: a sawtooth that averages about 96 KB
+and is rewritten once per batch instead of at every message. A batch merges only
+pairs whose parent is built; if those stop it short of 64,000, it goes on as
+messages arrive and nodes are built until it gets there. A line not summarized
+yet counts the bytes of its placeholder.
+
+**The compaction view.** Compactions read a view of their own: the chat view
+merged further, between 16,000 and 32,000 bytes. It gets the chat view's new
+lines and batches the same way, past 32,000 bytes down to 16,000, and also
+whenever the chat view starts a batch. A compaction's context is its lines before
+the node's end (for a merge, through the merge's last message), bare, stopping at
+the first line not built yet. Every compaction shares the start of that view, so
+each reads the others' prefix from the cache.
+
+**Kept across restarts.** Both views are saved in `view.json` ([Storage](#storage))
+whenever they change, and loaded when the memory opens, then caught up with the
+messages logged after the save by the same append as live. A view folded again
+from the log would differ from the live one (nodes built at other moments, batches
+at other messages) and miss the cache, so the memory folds its views from message
+0 only when the file is missing or does not fit the log and the tree: it then
+saves them and reports why (`optchat_memory` diagnostic), which every memory older
+than the file does once. A lost write costs one cache miss, never a wrong view.
 
 ## Prompt caching
 
-Anthropic (`anthropic-messages`): the view block of a turn is cut at the last line
-end before 50,000, 80,000 and 100,000 characters, and each piece gets the
-`cache_control` pi-ai uses for that request, so the next turn reads the longest
-unchanged prefix of the view from the cache. Anthropic allows four breakpoints:
-pi-ai's breakpoint at the request end stays, and those pi-ai puts on the tools and
-the system prompt give way first (a breakpoint after them caches them too). The
-marks are added only when pi-ai caches (its retention is not `none`), with its own
-TTL. The compactor's context block, the same prefix for every call, gets a
-breakpoint too. Other providers cache prefixes implicitly: the view's start is
-stable and Durable forwards a stable session id, so nothing is added there.
+Anthropic (`anthropic-messages`) writes a cache entry only at a block marked with
+`cache_control`, a request finds an earlier entry only by looking back from each
+of its marks, at most 20 blocks with the mark itself, and a request carries at
+most 4 marks ([Anthropic: prompt caching](https://platform.claude.com/docs/en/build-with-claude/prompt-caching),
+read 2026-10-08). So a turn sends its view as text blocks of 4 lines each
+(`<chat>` opens the first; the last, partial one ends with `</chat>`;
+`server/optchat/cache.ts`) and marks, with the `cache_control` pi-ai uses for that
+request:
+
+- its **last whole block**: the last one the next turn's view, grown only at its
+  end, still starts with;
+- the block where **the previous turn's mark** sat, while the view still starts
+  with that prefix: a turn that logged more than 80 lines has moved its own mark
+  past the reach of the previous entry. The previous turn is the run frozen
+  before this one in `runs.jsonl`, so a request resent after a restart carries
+  the same marks.
+
+pi-ai's own mark at the request end stays. Within the 4, the marks pi-ai puts on
+the tools, then on the system prompt, give way first (a mark after them caches
+them too). A compactor request marks its context the same way; its previous mark
+is the one the memory's latest compactor request placed. The marks are added
+only when pi-ai caches (its retention is not `none`), with its own TTL. Every other
+API's payload is left as it is: other providers cache prefixes implicitly, the
+view's start is stable and Durable forwards a stable session id.
+
+`server/optchat/replay.test.ts` replays 3,000 messages through the engine (every
+node built before the next message, a turn every 4 messages) and reads its
+requests as Anthropic's cache would: from message 369 on, each turn's view
+averages 95 KB, 96.5% of it unchanged from the turn before and 95.8% read from
+the cache, and compaction contexts average 24 KB, 95% read from the cache.
 
 ## Storage
 
@@ -152,14 +225,20 @@ Each memory lives in `<HUI_DURABLE_DIR>/optchat/<conversation id>/` (by default
 | `main/YYYY-MM-DD.jsonl` | the log, one message per line: `{i, kind, text, size, date, src}` |
 | `tree/YYYY-MM-DD.jsonl` | the summaries, one node per line: `{l, i, text, size}` |
 | `runs.jsonl` | the frozen view of each run: `{run, entry, t0, parts}` |
+| `view.json` | the chat view and the compaction view: `{version: 1, chat: {parts, batch}, compaction: {parts, batch}}`, parts as `[level, index]`, `batch` true while a batch is under way |
 
 A line goes to the file of the local day it is written on; ids are global. Each
 line is one write and an fsync before the append resolves. A torn line is reported
 and skipped at load, and a file without a final newline gets one before its next
 line. Nothing edits or deletes a line of the log or the tree; `runs.jsonl` starts
-over after 64 runs, since only the current run can need its own record. Directories
-are `0700` and files `0600`, like the Durable store. The single writer is the
-gateway that holds the Durable store lock (`harness.lock`).
+over after 64 runs, keeping only the last record, which the next turn's cache
+marks read. `view.json` is replaced whole whenever a view changes: written to
+`view.json.tmp`, synced, renamed over the old one and the directory synced, one
+write at a time with the latest views. At open it must tile messages `[0, V)`
+without a gap in both views, with V at most the log's length, and every merged
+part must be a built node; the messages after V are appended. Directories are
+`0700` and files `0600`, like the Durable store. The single writer is the gateway
+that holds the Durable store lock (`harness.lock`).
 
 ## Inspecting a memory
 
@@ -208,11 +287,20 @@ grow), for example `jq -r '"\(.i) \(.kind): \(.text)"' main/*.jsonl`.
   memory opened; it is not persisted, nor added to Durable's `pi.usage`.
 - **Subagents and computer use (spec section 9) are not implemented.** MASTER
   keeps its paragraph about them, verbatim.
-- **Refolding.** As in the spec, the view is not saved and is folded again at
-  open; it repeats the live view when the compactor kept up and no new line was
-  shorter than the placeholder it replaced (an unbuilt part counts its placeholder,
-  spec section 5.2). Otherwise the first turn after a restart may start from a
-  slightly coarser or finer view; a run in flight keeps its frozen one.
+- **Turns and compactions keep their own system prompts.** Revision `3c190e0`
+  gives compactions the turns' system prompt and tools, so they read the turns'
+  cache entry. HUI's compactor runs on HUI's utility model by default, usually not
+  the bot's model, and prompt caches are per model, so a shared prompt would gain
+  nothing.
+- **Calls don't wait for each other's cache writes.** The revision has a call
+  whose marked prefix another call is writing wait for that call's response to
+  start, so only one pays the write. It is Anthropic-specific: a follow-up.
+- **Compactions start in the original order.** The revision starts a message's
+  compaction once fewer than 8 lines before it are unbuilt. That changes latency,
+  not what is cached: a follow-up.
+- **The revision's new prompt is not used.** The gist has no license, so this
+  change takes the revision's ideas in HUI's own code and words and copies none of
+  its text.
 
 ## Limits
 

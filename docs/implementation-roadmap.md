@@ -686,7 +686,7 @@ named Durable conversation that never ends, with a role, a SOUL.md persona it
 writes in its first conversation, its own model and directory; its memory is
 [OptChat](optchat.md): every message
 is kept in an append-only log, a cheap model compresses it into a tree of
-one-line summaries, and every turn starts fresh from a fixed-size view of the
+one-line summaries, and every turn starts fresh from a bounded view of the
 whole chat. `hui bot` can do everything the Bots tab can, through the same
 routes. Routines are Automation tasks aimed at a bot's chat; bots message each
 other; you can call them, through GPT-Live. A bot runs on the local gateway or,
@@ -704,7 +704,17 @@ requests:
    `server/runtimes/durable-optchat.test.ts` (deterministic provider: unchanged
    plain requests, fresh turns, a frozen view across a tool loop and a restart,
    zoom and date, declined compaction, catch-up without duplicates, waiting for
-   summaries and Stop).
+   summaries and Stop). Cache fix 2026-10-08, after the recipe's corrected
+   revision (`3c190e0`): the view merges the pair that ended longest ago in its
+   own line size, appends only between batches (past 128 KB one batch merges it
+   down to 64 KB), is saved in `view.json` instead of folded again at every open,
+   compactions read a 16-32 KB view of their own, and both views go to Anthropic
+   in 4-line blocks marked on the last whole one (docs/optchat.md, "The view" and
+   "Prompt caching"). Proof: `server/optchat/view.test.ts` (Taelin's `push` merge
+   for merge, the sawtooth, a batch deferred by unbuilt parents),
+   `view-file.test.ts`, `memory.test.ts`, `cache.test.ts`, `replay.test.ts`
+   (3,000 messages: 96.5% of each turn's view unchanged, 95.8% read from the
+   cache) and `server/runtimes/durable-optchat.test.ts`.
 2. **Bots backend and `hui bot`** (implemented 2026-10-05; browser proof
    with item 3): `bots.json` registry and `shared/bots.ts` types; bot chats as
    ordinary Durable sessions whose conversation is created with its persona,

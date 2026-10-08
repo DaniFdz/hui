@@ -1,17 +1,41 @@
 /**
- * OptChat's view (spec section 5): tree nodes ("parts") tiling the whole chat,
- * oldest first, kept under a byte budget. It only ever appends at its end and
- * coarsens: each new message appends its level-0 part, then `fit()` merges the
- * most due adjacent pair whose parent is built until the view fits. It never
- * splits a part, and passes over pairs whose parent is not built yet, so a line
- * at level l changes about once every 2^l messages and the start of the view
- * stays the same from one call to the next: that is what makes it cacheable.
+ * OptChat's view (docs/optchat.md, "The view"): tree nodes ("parts") tiling the
+ * whole chat, oldest first, that a turn reads in place of its history.
+ *
+ * Between batches the view only appends: a new message adds its level-0 part at
+ * the end and leaves every other part as it was, so each turn's view starts with
+ * the whole view of the turn before, which a prompt cache reads back. Once it passes
+ * its high mark, one batch merges the most due adjacent pair whose parent is
+ * built, again and again, until it is down to its low mark: a sawtooth that is
+ * rewritten once per batch instead of at every message. Parents not built yet can
+ * stop a batch short; it goes on as messages arrive and nodes are built. A part is
+ * never split.
+ *
+ * A pair's urgency is the time since its last message in units of its own span:
+ * (T - last) / 2^l for the siblings (l, i) and (l, i + 1) whose last message is
+ * `last`, with T messages in the chat. The older a stretch of the chat, the fewer
+ * lines it gets, the levels hold similar numbers of lines, and a line rarely
+ * changes once it is old. With the length of Taelin's rollback list as the
+ * budget, these are exactly the merges his `push` makes.
  */
 import { bytes, flatten } from "./text.ts";
 import { endOf, label, PLACEHOLDER, startOf, type Part, type Tree } from "./tree.ts";
 
 /** What the view folds: how many messages exist and the nodes built so far. */
 export type ViewSource = { readonly length: number; readonly tree: Tree };
+
+/** The sawtooth: past `high` bytes a batch starts, and it merges until the view is down to `low`. */
+export type ViewLimits = { readonly high: number; readonly low: number };
+
+/** What a view keeps across restarts: its parts, and whether a batch is still under way. */
+export type ViewState = { readonly parts: readonly Part[]; readonly batch: boolean };
+
+export type ViewHooks = {
+  /** Something a caller of `settle()` may report changed (a waiter came or went). */
+  readonly changed?: () => void;
+  /** The parts or the batch state changed: what `state()` returns is new. */
+  readonly edited?: () => void;
+};
 
 type Waiter = { readonly before: number; done(settled: boolean): void };
 
@@ -27,22 +51,36 @@ function tile(part: Part, before: number, out: Part[]): void {
 }
 
 export class View {
+  /** The sawtooth's marks, read at every fit; a test may change them between steps. */
+  limits: ViewLimits;
   readonly #source: ViewSource;
-  readonly #budget: number;
   readonly #changed: () => void;
+  readonly #edited: () => void;
   #parts: Part[] = [];
   #size = 0;
+  #batch = false;
+  #batches = 0;
   #waiters = new Set<Waiter>();
 
-  constructor(source: ViewSource, budget: number, changed: () => void = () => {}) {
+  constructor(source: ViewSource, limits: ViewLimits, hooks: ViewHooks = {}) {
     this.#source = source;
-    this.#budget = budget;
-    this.#changed = changed;
+    this.limits = limits;
+    this.#changed = hooks.changed ?? (() => {});
+    this.#edited = hooks.edited ?? (() => {});
   }
 
   /** Bytes of the parts' texts; an unbuilt part counts its placeholder. */
   get size(): number { return this.#size; }
   get length(): number { return this.#parts.length; }
+  /** The messages the view covers: the end of its last part. */
+  get end(): number {
+    const last = this.#parts.at(-1);
+    return last ? endOf(last) : 0;
+  }
+  /** A batch is under way: each append and build merges until the view is down to its low mark. */
+  get batching(): boolean { return this.#batch; }
+  /** Batches started so far. */
+  get batches(): number { return this.#batches; }
   /** Callers waiting in `settle()`. */
   get waiting(): number { return this.#waiters.size; }
 
@@ -61,7 +99,22 @@ export class View {
     return out;
   }
 
-  /** The first message whose part is not built (spec 4.1 `first`); the message count when every part is. */
+  /** The parts and the batch state, for `view.json`. */
+  state(): ViewState { return { parts: this.parts(), batch: this.#batch }; }
+
+  /**
+   * Takes over a saved state, or another view's parts. The caller has checked that they tile the first messages
+   * without a gap and that every merged part is built. A batch the state left under way goes on at once, and so does
+   * one a lower mark calls for.
+   */
+  restore(state: ViewState): void {
+    this.#parts = state.parts.map(([l, i]) => [l, i] as const);
+    this.#size = this.#parts.reduce((total, part) => total + this.#bytes(part), 0);
+    this.#batch = state.batch;
+    this.fit();
+  }
+
+  /** The first message whose part is not built; the message count when every part is. */
   first(): number {
     for (const part of this.#parts) if (!this.#built(part)) return startOf(part);
     return this.#source.length;
@@ -72,7 +125,7 @@ export class View {
     return this.first() >= Math.min(before, this.#source.length);
   }
 
-  /** Resolves true once `settled(before)`, or false if `signal` aborts first (spec section 6). */
+  /** Resolves true once `settled(before)`, or false if `signal` aborts first. */
   settle(before: number, signal?: AbortSignal): Promise<boolean> {
     if (this.settled(before)) return Promise.resolve(true);
     if (signal?.aborted) return Promise.resolve(false);
@@ -93,51 +146,92 @@ export class View {
     });
   }
 
-  /** A new message: its level-0 part goes at the end, then the view fits again. */
-  append(i: number): void {
+  /**
+   * A new message: its level-0 part goes at the end and, between batches, nothing else changes. `batch` starts a batch
+   * even under the high mark (the compaction view merges whenever the chat view does).
+   */
+  append(i: number, batch = false): void {
     const part: Part = [0, i];
     this.#parts.push(part);
     this.#size += this.#bytes(part);
-    this.fit();
+    this.#edited();
+    this.fit(batch);
   }
 
-  /** A node was built. A level-0 node was in the view as its placeholder; a parent enters only by a merge. */
-  built(l: number, i: number): void {
-    if (l === 0) this.#size += (this.#source.tree.size(0, i) ?? PLACEHOLDER_BYTES) - PLACEHOLDER_BYTES;
-    this.fit();
+  /** A node was built: a level-0 node replaces its placeholder, and a batch may now merge a pair it could not. */
+  built(l: number, i: number, batch = false): void {
+    if (l === 0 && this.#holds(i)) this.#size += (this.#source.tree.size(0, i) ?? PLACEHOLDER_BYTES) - PLACEHOLDER_BYTES;
+    this.fit(batch);
+  }
+
+  /** Message `i` is in the view as its own level-0 part. */
+  #holds(i: number): boolean {
+    let low = 0;
+    let high = this.#parts.length;
+    while (low < high) {
+      const middle = (low + high) >> 1;
+      if (endOf(this.#parts[middle]!) <= i) low = middle + 1;
+      else high = middle;
+    }
+    const part = this.#parts[low];
+    return part !== undefined && part[0] === 0 && part[1] === i;
   }
 
   /**
-   * While over budget, merge the most due adjacent pair whose parent is built: due = (T - start) / 2^(l+2), OptMem's
-   * age rule, so detail fades with age while each level keeps about as many lines. Ties go to the oldest pair. With no
-   * pair mergeable, the view stays over budget until a parent is built.
+   * The sawtooth. A batch starts once the view passes its high mark (or, with `batch`, its low mark), then merges the
+   * most due pair whose parent is built until the view is down to its low mark. Pairs whose parent is not built wait:
+   * a batch they stop short stays under way and goes on at the next append or build.
    */
-  fit(): void {
-    const count = this.#source.length;
-    while (this.#size > this.#budget) {
-      let best = -1;
-      let bestDue = Number.NEGATIVE_INFINITY;
-      for (let k = 0; k + 1 < this.#parts.length; k++) {
-        const [l, i] = this.#parts[k]!;
-        const [nextL, nextI] = this.#parts[k + 1]!;
-        if (l !== nextL || i % 2 !== 0 || nextI !== i + 1 || !this.#source.tree.has(l + 1, i / 2)) continue;
-        const due = (count - i * 2 ** l) / 2 ** (l + 2);
-        if (due > bestDue) { bestDue = due; best = k; }
+  fit(batch = false): void {
+    const { high, low } = this.limits;
+    if (!this.#batch && (this.#size > high || (batch && this.#size > low))) {
+      this.#batch = true;
+      this.#batches++;
+      this.#edited();
+    }
+    if (this.#batch) {
+      while (this.#size > low && this.#merge()) { /* the most due pair, one at a time */ }
+      if (this.#size <= low) {
+        this.#batch = false;
+        this.#edited();
       }
-      if (best === -1) break;
-      const [l, i] = this.#parts[best]!;
-      const parent: Part = [l + 1, i / 2];
-      this.#size += this.#bytes(parent) - this.#bytes(this.#parts[best]!) - this.#bytes(this.#parts[best + 1]!);
-      this.#parts.splice(best, 2, parent);
     }
     for (const waiter of [...this.#waiters]) if (this.settled(waiter.before)) waiter.done(true);
   }
 
-  /** The compactor's context (spec 4.2): the texts of the parts before `end`, bare, with no ids. */
+  /**
+   * Merges the most due adjacent pair whose parent is built, the oldest of equals; false when no pair can merge. The
+   * siblings (l, i) and (l, i + 1) end at message (i + 2)·2^l - 1, so (T - last) / 2^l = (T + 1) / 2^l - i - 2: the
+   * same order as (T + 1) / 2^l - i, which is exact in floating point.
+   */
+  #merge(): boolean {
+    const count = this.end;
+    let best = -1;
+    let bestDue = Number.NEGATIVE_INFINITY;
+    for (let k = 0; k + 1 < this.#parts.length; k++) {
+      const [l, i] = this.#parts[k]!;
+      const [nextL, nextI] = this.#parts[k + 1]!;
+      if (l !== nextL || i % 2 !== 0 || nextI !== i + 1 || !this.#source.tree.has(l + 1, i / 2)) continue;
+      const due = (count + 1) / 2 ** l - i;
+      if (due > bestDue) { bestDue = due; best = k; }
+    }
+    if (best === -1) return false;
+    const [l, i] = this.#parts[best]!;
+    const parent: Part = [l + 1, i / 2];
+    this.#size += this.#bytes(parent) - this.#bytes(this.#parts[best]!) - this.#bytes(this.#parts[best + 1]!);
+    this.#parts.splice(best, 2, parent);
+    this.#edited();
+    return true;
+  }
+
+  /**
+   * A compaction's context: the texts of the parts before `end`, bare, with no ids, stopping at the first part not
+   * built, so a compaction never reads a placeholder or what follows one.
+   */
   context(end: number): string[] {
     const lines: string[] = [];
     for (const part of this.#parts) {
-      if (startOf(part) >= end) break;
+      if (startOf(part) >= end || !this.#built(part)) break;
       lines.push(flatten(this.#text(part)));
     }
     return lines;

@@ -1,10 +1,12 @@
 /**
- * One OptChat memory: the log, the tree, the view and the compactor of one
+ * One OptChat memory: the log, the tree, the views and the compactor of one
  * endless chat in one directory. It is the engine's only stateful object and
  * imports nothing from HUI or Pi Durable: the model call is injected, so the
- * same code runs in a gateway, a worker or a test. The view is not saved: at
- * open it is folded again from message 0 with the same append and fit, then
- * kept live as messages arrive and nodes are built.
+ * same code runs in a gateway, a worker or a test. It keeps two views: the chat
+ * view turns read, and the compaction view, the chat view merged further, that
+ * compactions read as context. Both are saved in `view.json` whenever they
+ * change and loaded at open, then caught up with the messages logged after
+ * them; only a missing or invalid file folds them again from message 0.
  */
 import { browsePage } from "./html.ts";
 import { Compactor, SYSTEM_TIMERS, type Failing, type Limiter, type Summarize, type SummaryUsage, type Timers } from "./compactor.ts";
@@ -13,13 +15,16 @@ import { Store, type JsonValue, type Kind, type MessageLine } from "./store.ts";
 import { bytes, capText, flatten, localDateTime } from "./text.ts";
 import { label, nodeCount, partAt, PLACEHOLDER, Tree, type Part } from "./tree.ts";
 import { View } from "./view.ts";
+import { checkViews, readViews, ViewFile } from "./view-file.ts";
 
 /** The reference implementation's constants (spec section 1). */
 export const OPTCHAT_DEFAULTS = {
   /** Target bytes of one summary line. */
   node: 512,
-  /** Byte budget of the view, about 62-64k tokens. */
+  /** The chat view's high mark, about 62-64k tokens: past it, one batch merges the view down to half. */
   view: 128_000,
+  /** The compaction view's high mark: past it, or when the chat view batches, it merges down to half. */
+  context: 32_000,
   /** Compactor calls running at once per memory. */
   jobs: 8,
   /** Replies per node to get under `node` bytes. */
@@ -28,8 +33,6 @@ export const OPTCHAT_DEFAULTS = {
   retryMs: 10_000,
   /** Characters kept of one tool result, head and tail. */
   cap: 30_000,
-  /** Cache breakpoints inside the view, in characters. */
-  marks: [50_000, 80_000, 100_000] as readonly number[],
 };
 
 export type OptChatOptions = {
@@ -37,7 +40,10 @@ export type OptChatOptions = {
   /** The agent's display name, for the compactor prompt. */
   readonly name: string;
   readonly node?: number;
+  /** The chat view's high mark in bytes; a batch merges it down to half. */
   readonly view?: number;
+  /** The compaction view's high mark in bytes; a batch merges it down to half. */
+  readonly context?: number;
   readonly jobs?: number;
   readonly tries?: number;
   readonly retryMs?: number;
@@ -48,7 +54,7 @@ export type OptChatOptions = {
   readonly limiter?: Limiter;
   readonly now?: () => Date;
   readonly timers?: Timers;
-  /** Torn lines skipped at load and each node's first failure. */
+  /** Torn lines skipped at load, views folded again, a failing save of them, and each node's first failure. */
   readonly report?: (problem: string, error?: unknown) => void;
 };
 
@@ -71,12 +77,23 @@ export type OptChatStatus = {
 
 const isIndex = (value: number) => Number.isSafeInteger(value) && value >= 0;
 
+/** What `open` read: the log, the tree's nodes, and `view.json` or why it cannot be used. */
+type OpenedContents = {
+  readonly messages: readonly MessageLine[];
+  readonly nodes: readonly { l: number; i: number; text: string }[];
+  readonly saved: { readonly value: unknown } | { readonly problem: string };
+};
+
 export class OptChatMemory {
   readonly dir: string;
   readonly tree = new Tree();
   readonly #store: Store;
   readonly #log: MessageLine[] = [];
+  /** What turns read. */
   readonly #view: View;
+  /** What compactions read: the chat view merged further, with the same new lines. */
+  readonly #context: View;
+  #file: ViewFile | undefined;
   readonly #compactor: Compactor;
   readonly #cap: number;
   readonly #now: () => Date;
@@ -87,26 +104,45 @@ export class OptChatMemory {
   #usage: OptChatUsage = { calls: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 };
   #closed = false;
 
-  private constructor(dir: string, store: Store, contents: { messages: readonly MessageLine[]; nodes: readonly { l: number; i: number; text: string }[] }, options: OptChatOptions) {
+  private constructor(dir: string, store: Store, contents: OpenedContents, options: OptChatOptions) {
     this.dir = dir;
     this.#store = store;
     this.#cap = options.cap ?? OPTCHAT_DEFAULTS.cap;
     this.#now = options.now ?? (() => new Date());
     this.#name = options.name;
     for (const node of contents.nodes) this.tree.set(node.l, node.i, node.text);
-    this.#view = new View(this, options.view ?? OPTCHAT_DEFAULTS.view, () => this.#changed());
-    // The fold sees the message count of each step, as it did live.
-    for (const message of contents.messages) {
-      this.#log.push(message);
-      this.#view.append(message.i);
-    }
+    for (const message of contents.messages) this.#log.push(message);
     const report = options.report ?? (() => {});
+    const view = options.view ?? OPTCHAT_DEFAULTS.view;
+    const context = options.context ?? OPTCHAT_DEFAULTS.context;
+    let edits = 0;
+    const edited = () => { edits++; this.#file?.changed(); };
+    this.#view = new View(this, { high: view, low: view / 2 }, { changed: () => this.#changed(), edited });
+    this.#context = new View(this, { high: context, low: context / 2 }, { edited });
+    const saved = "problem" in contents.saved ? contents.saved.problem : checkViews(contents.saved.value, this.#log.length, this.tree);
+    if (typeof saved === "string") {
+      // Folded from the log, the views differ from the live ones they replace, so the next turn misses the cache once.
+      if (this.#log.length) report(`OptChat folded the views of ${dir} again from message 0: ${saved}`);
+      for (const message of this.#log) this.#view.append(message.i);
+      this.#context.restore({ parts: this.#view.parts(), batch: true });
+    } else {
+      const batches = this.#view.batches;
+      this.#view.restore(saved.chat);
+      this.#context.restore(saved.compaction);
+      // A lower high mark than the views were saved under batches the chat view at once: the compaction view follows.
+      if (this.#view.batches !== batches) this.#context.fit(true);
+      // Messages logged after the last save, appended as they were live.
+      for (let i = this.#view.end; i < this.#log.length; i++) this.#appendViews(i);
+    }
+    this.#file = new ViewFile(dir, () => ({ chat: this.#view.state(), compaction: this.#context.state() }), report);
+    if (typeof saved === "string" ? this.#log.length > 0 : edits > 0) this.#file.changed();
     const log = this.#log;
     this.#compactor = new Compactor({
       get length() { return log.length; },
       message: (i) => log[i]!,
       tree: this.tree,
       view: this.#view,
+      context: (end) => this.#context.context(end),
       persist: (l, i, text) => this.#persist(l, i, text),
       system: () => compactPrompt(this.#name),
       usage: (usage) => this.#spent(usage),
@@ -128,7 +164,7 @@ export class OptChatMemory {
   /** Opens (creating) the memory in `dir` and starts summarizing what is not summarized yet. */
   static async open(dir: string, options: OptChatOptions): Promise<OptChatMemory> {
     const { store, messages, nodes } = await Store.open(dir, { now: options.now ?? (() => new Date()), report: (problem) => options.report?.(problem) });
-    return new OptChatMemory(dir, store, { messages, nodes }, options);
+    return new OptChatMemory(dir, store, { messages, nodes, saved: await readViews(dir) }, options);
   }
 
   get length(): number { return this.#log.length; }
@@ -150,7 +186,7 @@ export class OptChatMemory {
       };
       await this.#store.appendMessage(line);
       this.#log.push(line);
-      this.#view.append(line.i);
+      this.#appendViews(line.i);
       this.#compactor.pump();
       this.#changed();
       return line.i;
@@ -159,10 +195,19 @@ export class OptChatMemory {
     return run;
   }
 
+  /** A message's part goes into both views; the compaction view batches whenever the chat view starts a batch. */
+  #appendViews(i: number): void {
+    const batches = this.#view.batches;
+    this.#view.append(i);
+    this.#context.append(i, this.#view.batches !== batches);
+  }
+
   async #persist(l: number, i: number, text: string): Promise<void> {
     await this.#store.appendNode({ l, i, text, size: bytes(text) });
     if (!this.tree.set(l, i, text)) return;
+    const batches = this.#view.batches;
     this.#view.built(l, i);
+    this.#context.built(l, i, this.#view.batches !== batches);
     this.#changed();
   }
 
@@ -204,6 +249,11 @@ export class OptChatMemory {
   /** Renders a frozen list of parts again: node texts never change once built. */
   renderParts(parts: readonly Part[]): string { return this.#view.render(parts); }
 
+  /** The compaction view: its parts, and its size in bytes (an unbuilt part counts its placeholder). */
+  compaction(): { readonly parts: Part[]; readonly size: number } {
+    return { parts: this.#context.parts(), size: this.#context.size };
+  }
+
   settled(before: number): boolean { return this.#view.settled(before); }
 
   /** Resolves true when every part covering messages before `before` is built, false if `signal` aborts first. */
@@ -240,7 +290,7 @@ export class OptChatMemory {
     return browsePage({ title, log: this.#log, tree: this.tree, view: this.#view.parts() });
   }
 
-  /** Stops summarizing, releases waiters, then closes the files once pending writes land. */
+  /** Stops summarizing, releases waiters, then closes the files once pending writes land, the views' last. */
   async close(): Promise<void> {
     if (this.#closed) return;
     this.#closed = true;
@@ -249,5 +299,6 @@ export class OptChatMemory {
     this.#listeners.clear();
     await this.#appending;
     await this.#store.close();
+    await this.#file?.flush();
   }
 }
