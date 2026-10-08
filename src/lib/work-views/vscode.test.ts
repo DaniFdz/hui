@@ -13,6 +13,9 @@ test("the VS Code kind is one view per conversation with a stable key and title"
   assert.equal(vscodeWorkViewKind.key(first), vscodeWorkViewKind.key(second), "launching again reuses the open view");
   assert.equal(vscodeWorkViewKind.title(first), "VS Code");
   assert.equal(vscodeWorkViewKind.unavailable?.(), undefined, "unknown status never blocks the launcher");
+  assert.equal(vscodeWorkViewKind.settingsLink?.(), undefined, "no reason, no Settings link");
+  assert.equal(vscodeWorkViewKind.single, true, "an open VS Code is listed instead of its launcher");
+  assert.equal(typeof vscodeWorkViewKind.onAvailabilityChange, "function");
 });
 
 test("the launcher's reason comes from the gateway's state", () => {

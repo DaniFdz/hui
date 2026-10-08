@@ -1,10 +1,8 @@
 # VS Code view journey
 
 The Work pane's VS Code view (`<hui-vscode-view>`, `src/lib/work-views/vscode.ts`)
-in the real app with a real openvscode-server. Until the Work pane registers the
-kind, the unshipped harness `e2e/vscode-view-harness.html` lays it out like a
-Work pane: the conversation (the app itself, in a frame) on the left and the
-kind's tab and `render()` on the right. Keep screenshots outside Git.
+in the real app with a real openvscode-server, opened from the conversation's
+Work pane. Keep screenshots outside Git.
 
 ## Setup
 
@@ -16,21 +14,23 @@ kind's tab and `render()` on the right. Keep screenshots outside Git.
    `doctor` with the printed receipt.
 3. Make the receipt's `workspace` a small Git repository (a README, `src/greet.ts`,
    `package.json`, one commit) and create a conversation there with `E2E_RICH`.
-4. Open `<browserUrl>/e2e/vscode-view-harness.html?session=<id>` in an owned tab at
-   1440×900; add `&narrow=1` (or use 390×844) for the narrow layout.
+4. Open `<browserUrl>/sessions/<id>` in an owned tab at 1440×900 (390×844 for the
+   narrow layout) and the Work pane's **+** menu.
 
 ## Journey
 
-1. **Off by default.** The view shows *VS Code is not available* with *VS Code is
-   off. Turn it on in Settings → Tools → VS Code.* and an **Open Settings → Tools →
-   VS Code** link; the harness's launcher note repeats the reason. No
-   openvscode-server process runs.
-2. **Settings.** The link opens Settings → Tools; the VS Code section shows **Off**
+1. **Off by default.** The **+** menu's **VS Code** entry is disabled with *VS Code
+   is off. Turn it on in Settings → Tools → VS Code.* under it and an **Open
+   Settings → Tools → VS Code** entry below; the empty Work pane lists the same
+   reason with the link. No openvscode-server process runs.
+2. **Settings.** The link opens Settings → Tools scrolled to the VS Code section,
+   which stays at the top while the Browser section above it loads; it shows **Off**
    and, with nothing on `PATH`, *openvscode-server was not found on PATH. Install it,
    or set its path in Settings → Tools → VS Code.* Save the executable path: the
    row reads *Using OpenVSCode Server 1.109.5 · <path>*. Turn **VS Code view** on:
    the pill reads **Ready** and the Server row *Starts when a VS Code view opens…*.
-3. **Open.** Back in the harness the view shows *Starting VS Code*, then the
+3. **Open.** Back in the conversation, **+** → **VS Code** (Ctrl+Alt+V / ⌥⌘V)
+   opens one VS Code tab, which shows *Starting VS Code*, then the
    workbench on the fixture folder: Explorer lists `src`, `fixture.txt`,
    `package.json`, `README.md`; clicking `src` → `greet.ts` opens it with
    TypeScript highlighting, and the status bar shows the `main` branch. VS Code's

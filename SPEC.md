@@ -273,17 +273,20 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   the active-pane presentation and do not expose an unusable drag handle.
 - The **Work pane** (after AgentsInTheCloud's) sits to the right of the chat
   panes and shows the Work views of the focused conversation: its terminals and
-  its browser view, its Files views (see *Files*), with the VS Code kind
-  registering through the same contract (`src/lib/work-pane.ts`). Each conversation has its own pane; moving
+  its browser view, its Files views (see *Files*) and its VS Code view (see
+  *VS Code*), each a kind registered through one contract
+  (`src/lib/work-pane.ts`). Each conversation has its own pane; moving
   focus to another chat pane or conversation switches the contents. One view is
   visible at a time, chosen from a tab strip (icon, title, close; drag or
   Alt+Shift+Arrow to reorder, Arrow/Home/End to move, Delete to close). The **+**
   menu launches views (Ctrl+Alt+T / ⌥⌘T new terminal, Ctrl+Alt+B / ⌥⌘B browser,
-  Ctrl+Alt+F / ⌥⌘F a new Files view)
+  Ctrl+Alt+F / ⌥⌘F a new Files view, Ctrl+Alt+V / ⌥⌘V VS Code)
   and reopens running terminals whose tab was closed; with nothing open the pane
   lists the same launchers with their shortcuts. A launcher that cannot act says
-  why (the browser tool turned off, a conversation on a remote worker has no
-  local terminal). **Hide Work pane** (Ctrl+Alt+W / ⌥⌘W) collapses it to a rail
+  why in visible text (the browser tool or VS Code turned off, no VS Code server
+  found, a conversation on a remote worker has no local terminal) and, when a
+  setting changes that, links to its Settings section, which opens scrolled to
+  it. **Hide Work pane** (Ctrl+Alt+W / ⌥⌘W) collapses it to a rail
   with one button per open view; its left edge resizes with the pointer or the
   arrow keys (Shift for larger steps, Home/End for the limits), keeping at least
   420px for each chat column side by side: the pane yields width down to its own
@@ -699,8 +702,8 @@ The Work pane's **VS Code** view opens the conversation's folder (its directory
 or worktree) in a browser VS Code, ported from AgentsInTheCloud's VS Code view.
 It is **off by default**: Settings → Tools → VS Code turns it on, sets or clears
 the executable and shows what the gateway found (name, version and path, or why
-nothing fits) and the server's state, with **Stop**. Off, the launcher entry
-says so, an open view explains it with a link to that section, every frame
+nothing fits) and the server's state, with **Stop**. Off, or with no compatible server found, the launcher entry
+says so with a link to that section, an open view explains it with the same link, every frame
 loses access at once and the server stops.
 
 HUI launches `openvscode-server` (MIT; nixpkgs `openvscode-server`) found on

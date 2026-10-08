@@ -10,6 +10,7 @@ import { writeClipboardText } from "../lib/clipboard.ts";
 import { connectVscode, loadVscodeStatus, onVscodeStatus, readVscodeTheme, VscodeConnectError } from "../lib/vscode-store.ts";
 import { vscodeUnavailableReason, type VscodeConnection, type VscodeStatus } from "../../shared/vscode.ts";
 import { loadViewAssets } from "../lib/view-assets.ts";
+import { requestOpenSettings } from "../lib/open-settings.ts";
 
 loadViewAssets(() => import("../styles/vscode-view.css"));
 
@@ -185,9 +186,8 @@ export class HuiVscodeView extends LitElement {
   }
 
   #openSettings(event: MouseEvent) {
-    const request = new CustomEvent("hui-open-settings", { bubbles: true, composed: true, cancelable: true, detail: { page: "tools", section: "vscode" } });
     // The app navigates in place; without one (a standalone page) the link loads Settings itself.
-    if (!this.dispatchEvent(request)) event.preventDefault();
+    if (requestOpenSettings(this, { page: "tools", section: "vscode" })) event.preventDefault();
   }
 
   #renderOverlay() {

@@ -11,10 +11,11 @@ import { repeat } from "lit/directives/repeat.js";
 import { HuiElement } from "../lit/hui-element.ts";
 import { hasOpenWebAwesomePopup } from "../lib/web-awesome.ts";
 import { ariaShortcut, formatShortcut } from "../lib/shortcut-binding.ts";
+import { requestOpenSettings, settingsHref } from "../lib/open-settings.ts";
 import {
   clampWorkPaneWidth, sessionWorkPane, workPaneFits, workViewKey, workViewKind, workViewKinds,
   WORK_PANE_MIN_WIDTH, WORK_PANE_TOGGLE_SHORTCUT,
-  type WorkPaneStore, type WorkViewKind, type WorkViewRef, type WorkViewResource,
+  type WorkPaneStore, type WorkViewKind, type WorkViewRef, type WorkViewResource, type WorkViewSettingsLink,
 } from "../lib/work-pane.ts";
 
 const VIEW_DRAG_TYPE = "application/x-hui-work-view";
@@ -23,6 +24,7 @@ const VIEW_DRAG_TYPE = "application/x-hui-work-view";
 const stroke16 = (body: ReturnType<typeof svg>) => html`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
 const plusIcon = stroke16(svg`<path d="M5 12h14M12 5v14" />`);
 const closeIcon = html`<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>`;
+const settingsIcon = stroke16(svg`<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" /><circle cx="12" cy="12" r="3" />`);
 const backIcon = stroke16(svg`<path d="m12 19-7-7 7-7" /><path d="M19 12H5" />`);
 const panelOpenIcon = stroke16(svg`<rect x="3" y="3" width="18" height="18" rx="2" /><path d="M15 3v18M10 10l-3 2 3 2" />`);
 const panelCloseIcon = stroke16(svg`<rect x="3" y="3" width="18" height="18" rx="2" /><path d="M15 3v18M8 10l3 2-3 2" />`);
@@ -79,8 +81,12 @@ export class WorkPane extends HuiElement {
   private drag: { startX: number; startWidth: number; width: number } | undefined;
   private draggingKey = "";
 
+  /** Unsubscribes from the kinds' availability changes (a launcher's reason appears or goes away). */
+  private stopAvailability: (() => void)[] = [];
+
   override connectedCallback() {
     super.connectedCallback();
+    this.stopAvailability = workViewKinds().flatMap((kind) => kind.onAvailabilityChange ? [kind.onAvailabilityChange(() => this.requestUpdate())] : []);
     this.resizeObserver = new ResizeObserver(() => {
       const width = this.parentElement?.clientWidth ?? 0;
       if (width !== this.available) this.available = width;
@@ -89,6 +95,8 @@ export class WorkPane extends HuiElement {
   }
 
   override disconnectedCallback() {
+    for (const stop of this.stopAvailability) stop();
+    this.stopAvailability = [];
     this.resizeObserver?.disconnect();
     this.resizeObserver = undefined;
     super.disconnectedCallback();
@@ -216,7 +224,10 @@ export class WorkPane extends HuiElement {
   private readonly selectMenu = (event: CustomEvent<{ item: HTMLElement }>) => {
     const value = event.detail.item.getAttribute("value") ?? "";
     if (value.startsWith("launch:")) this.onLaunch(value.slice(7));
-    else if (value.startsWith("reopen:")) {
+    else if (value.startsWith("settings:")) {
+      const link = workViewKind(value.slice(9))?.settingsLink?.(this.sessionId);
+      if (link && !requestOpenSettings(this, link)) window.location.assign(settingsHref(link));
+    } else if (value.startsWith("reopen:")) {
       const resource = this.reopenable[Number(value.slice(7))];
       if (resource) this.onReopen(resource.ref);
     }
@@ -312,7 +323,8 @@ export class WorkPane extends HuiElement {
           <span slot="icon" class="session-menu__icon" aria-hidden="true">${kind.icon}</span>
           <span class="session-menu__text work-pane__menu-text">${kind.label}${reason ? html`<span class="work-pane__menu-reason">${reason}</span>` : nothing}</span>
           ${kind.shortcut ? html`<kbd slot="details" class="work-pane__shortcut">${formatShortcut(kind.shortcut)}</kbd>` : nothing}
-        </wa-dropdown-item>`;
+        </wa-dropdown-item>
+        ${reason ? this.renderSettingsMenuItem(kind) : nothing}`;
       })}
       ${this.reopenable.length ? html`<div class="session-menu__separator" role="separator"></div>
         <div class="work-pane__menu-label" role="presentation">Running</div>
@@ -321,6 +333,23 @@ export class WorkPane extends HuiElement {
           <span class="session-menu__text">${resource.title}</span>
         </wa-dropdown-item>`)}` : nothing}
     </wa-dropdown>`;
+  }
+
+  /** Beside a launcher that cannot act: the menu entry that opens the Settings section able to change that. */
+  private renderSettingsMenuItem(kind: WorkViewKind) {
+    const link = kind.settingsLink?.(this.sessionId);
+    if (!link) return nothing;
+    return html`<wa-dropdown-item value=${`settings:${kind.kind}`} class="session-menu__item work-pane__menu-item work-pane__menu-settings">
+      <span slot="icon" class="session-menu__icon" aria-hidden="true">${settingsIcon}</span>
+      <span class="session-menu__text">${link.label}</span>
+    </wa-dropdown-item>`;
+  }
+
+  private renderSettingsLink(link: WorkViewSettingsLink | undefined) {
+    if (!link) return nothing;
+    return html` <a class="work-pane__settings-link" href=${settingsHref(link)} @click=${(event: MouseEvent) => {
+      if (requestOpenSettings(this, link)) event.preventDefault();
+    }}>${link.label}</a>`;
   }
 
   private renderEmpty() {
@@ -335,7 +364,7 @@ export class WorkPane extends HuiElement {
             ${kind.icon}<span class="work-pane__empty-label">${this.launching === kind.kind ? `${kind.label}…` : kind.label}</span>
             ${kind.shortcut ? html`<kbd class="work-pane__shortcut">${formatShortcut(kind.shortcut)}</kbd>` : nothing}
           </button>
-          ${reason ? html`<p class="work-pane__unavailable">${reason}</p>` : nothing}
+          ${reason ? html`<p class="work-pane__unavailable">${reason}${this.renderSettingsLink(kind.settingsLink?.(this.sessionId))}</p>` : nothing}
         </li>`;
       })}</ul>
       ${this.narrow ? nothing : html`<p class="work-pane__empty-hint"><kbd class="work-pane__shortcut">${formatShortcut(WORK_PANE_TOGGLE_SHORTCUT)}</kbd> shows or hides this pane.</p>`}

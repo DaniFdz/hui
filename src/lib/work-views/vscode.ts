@@ -1,40 +1,38 @@
 /**
- * The VS Code kind of Work view: its launcher entry (label, icon, shortcut, why it cannot launch), one view per
- * conversation, and rendering <hui-vscode-view>. It is typed against a local structural copy of the Work pane's
- * contract (src/lib/work-pane.ts) until that module lands; registering it is then one line.
+ * The VS Code kind of Work view: its launcher entry (label, icon, shortcut, why it cannot launch and the Settings
+ * section that fixes it), one view per conversation, and rendering <hui-vscode-view>.
  */
-import { html, type TemplateResult } from "lit";
+import { html } from "lit";
 import { vscodeIcon } from "../../components/vscode-view.ts";
-import { knownVscodeUnavailableReason, loadVscodeStatus } from "../vscode-store.ts";
+import { knownVscodeStatus, knownVscodeUnavailableReason, loadVscodeStatus, onVscodeStatus } from "../vscode-store.ts";
+import type { WorkViewKind } from "../work-pane.ts";
 
-/** Structural copy of the Work pane contract's types this kind needs. */
 export type VscodeWorkViewRef = { kind: "vscode" };
-export type VscodeWorkViewContext = { sessionId: string; visible: boolean; narrow: boolean; close(): void };
-export type VscodeWorkViewKind = {
-  kind: "vscode";
-  label: string;
-  icon: TemplateResult;
-  shortcut?: string;
-  unavailable?(): string | undefined;
-  create(sessionId: string): Promise<VscodeWorkViewRef> | VscodeWorkViewRef;
-  key(ref: VscodeWorkViewRef): string;
-  title(ref: VscodeWorkViewRef): string;
-  render(ref: VscodeWorkViewRef, ctx: VscodeWorkViewContext): TemplateResult;
-};
 
-export const vscodeWorkViewKind: VscodeWorkViewKind = {
+export const VSCODE_WORK_VIEW_SHORTCUT = "Mod+Alt+KeyV";
+
+export const vscodeWorkViewKind: WorkViewKind<VscodeWorkViewRef> = {
   kind: "vscode",
   label: "VS Code",
   icon: vscodeIcon,
-  shortcut: "Mod+Alt+KeyV",
+  shortcut: VSCODE_WORK_VIEW_SHORTCUT,
   // Off in Settings or no executable: the launcher says so. A remote conversation is the view's to explain.
   unavailable: () => knownVscodeUnavailableReason(),
+  // Both reasons are fixed in Settings → Tools → VS Code (turn it on, or name the executable).
+  settingsLink: () => knownVscodeUnavailableReason()
+    ? { label: "Open Settings → Tools → VS Code", page: "tools", section: "vscode" }
+    : undefined,
+  onAvailabilityChange: (listener) => onVscodeStatus(() => listener()),
   // One VS Code per conversation: launching it again focuses the open one.
+  single: true,
   create: () => ({ kind: "vscode" }),
   key: () => "vscode",
   title: () => "VS Code",
   render: (_ref, ctx) => html`<hui-vscode-view .sessionId=${ctx.sessionId} .visible=${ctx.visible} .narrow=${ctx.narrow}></hui-vscode-view>`,
 };
 
-// The launcher asks synchronously, so the status is read once as the app loads; Settings and the view refresh it.
-if (typeof document !== "undefined") void loadVscodeStatus().catch(() => undefined);
+/** The launcher asks synchronously, so the status is read once as the app registers the kind; Settings and the view
+ * refresh it. */
+export function loadVscodeAvailability(): void {
+  if (!knownVscodeStatus()) void loadVscodeStatus().catch(() => undefined);
+}
