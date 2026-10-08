@@ -14,10 +14,12 @@ import { SecretFiles, SecretRequests } from "../secret-requests.ts";
 import { completeLines } from "../test-support/json-lines.ts";
 
 // HUI's configuration directory (provider selections, credentials, the default
-// Durable store) is resolved at import time; never read the operator's own.
-const configDir = await mkdtemp(join(tmpdir(), "hui-durable-config-"));
-process.env["XDG_CONFIG_HOME"] = configDir;
-after(() => rm(configDir, { recursive: true, force: true }));
+// Durable store) is resolved at import time, and PI finds skills in
+// ~/.agents/skills: never read the operator's own.
+const root = await mkdtemp(join(tmpdir(), "hui-durable-home-"));
+process.env["HOME"] = root;
+process.env["XDG_CONFIG_HOME"] = join(root, "config");
+after(() => rm(root, { recursive: true, force: true }));
 const { DurableHost, durableContext, registryCaller } = await import("./durable-host.ts");
 // The estimate Durable's compaction thresholds use; the package root does not export it.
 const { estimateContext } = await import(new URL("./harness/compaction.js", import.meta.resolve("@earendil-works/pi-durable")).href) as {
@@ -737,7 +739,7 @@ test("Durable requests give each HUI session its own PI_CLIENT_SESSION_ID for pr
 
 test("a worker row with the same durable:N never becomes the caller of a gateway conversation", async () => {
   const { updateRegistry } = await import("../sessions.ts");
-  const base = { cwd: configDir, tool: "durable", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+  const base = { cwd: root, tool: "durable", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
   await updateRegistry(() => [
     { ...base, id: "remote-row", piSessionFile: "durable:7", worker: "w1" },
     { ...base, id: "local-row", piSessionFile: "durable:7" },

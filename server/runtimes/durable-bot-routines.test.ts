@@ -9,10 +9,11 @@ import { normalizeSettings } from "../../src/lib/settings.ts";
 import type { AgentToolInvocation } from "../agent-tools-bridge.ts";
 import type { BotMemory } from "../bot-memory.ts";
 
-// HUI's configuration directory is resolved at import time; never the operator's own.
-const configDir = await mkdtemp(join(tmpdir(), "hui-bot-routines-tool-config-"));
-process.env["XDG_CONFIG_HOME"] = configDir;
-after(() => rm(configDir, { recursive: true, force: true }));
+// HUI's configuration directory is resolved at import time, and PI finds skills in ~/.agents/skills: never the operator's own.
+const root = await mkdtemp(join(tmpdir(), "hui-bot-routines-tool-home-"));
+process.env["HOME"] = root;
+process.env["XDG_CONFIG_HOME"] = join(root, "config");
+after(() => rm(root, { recursive: true, force: true }));
 const { DurableHost, durableContext } = await import("./durable-host.ts");
 const { startDurable, durableConversationId } = await import("./durable.ts");
 const { BotDoc } = await import("./durable-bots.ts");
