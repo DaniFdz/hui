@@ -273,12 +273,13 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   the active-pane presentation and do not expose an unusable drag handle.
 - The **Work pane** (after AgentsInTheCloud's) sits to the right of the chat
   panes and shows the Work views of the focused conversation: its terminals and
-  its browser view, with Files and VS Code kinds registering through the same
-  contract (`src/lib/work-pane.ts`). Each conversation has its own pane; moving
+  its browser view, its Files views (see *Files*), with the VS Code kind
+  registering through the same contract (`src/lib/work-pane.ts`). Each conversation has its own pane; moving
   focus to another chat pane or conversation switches the contents. One view is
   visible at a time, chosen from a tab strip (icon, title, close; drag or
   Alt+Shift+Arrow to reorder, Arrow/Home/End to move, Delete to close). The **+**
-  menu launches views (Ctrl+Alt+T / ⌥⌘T new terminal, Ctrl+Alt+B / ⌥⌘B browser)
+  menu launches views (Ctrl+Alt+T / ⌥⌘T new terminal, Ctrl+Alt+B / ⌥⌘B browser,
+  Ctrl+Alt+F / ⌥⌘F a new Files view)
   and reopens running terminals whose tab was closed; with nothing open the pane
   lists the same launchers with their shortcuts. A launcher that cannot act says
   why (the browser tool turned off, a conversation on a remote worker has no
@@ -645,9 +646,10 @@ pane) for navigating the conversation's working directory and viewing or
 editing a file in it. It combines a collapsible **Files navigator** (a lazily
 expanded file tree, a filter, upload, new file or folder) with the selected
 file. A conversation may hold several Files views, each with its own selection,
-including several views of the same file. Until the Work pane lands, the view
-ships as `<hui-files-view>` and the `files` Work view kind; it is not reachable
-from the app on its own.
+including several views of the same file. **Files** in the Work pane's **+**
+menu (Ctrl+Alt+F / ⌥⌘F) opens a new one; its tab shows the selected file's name
+(or *Files*). Closing the tab forgets that view's selection and open folders; a
+file's unsaved text stays with its File draft until it is saved.
 
 The root is the conversation's recorded `cwd` (its directory or worktree);
 callers cannot name another. Every path resolves through `realpath` inside that

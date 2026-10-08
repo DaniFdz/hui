@@ -34,7 +34,7 @@ import {
   searchFiles,
   uploadFile,
 } from "../lib/files-store.ts";
-import { readFilesViewState, writeFilesViewState, filesViewTitle, type MarkdownDisplayMode } from "../lib/files-view-state.ts";
+import { readFilesViewState, writeFilesViewState, type MarkdownDisplayMode } from "../lib/files-view-state.ts";
 import { onTurnEnd } from "../lib/session-turn-end.ts";
 import type { FileEditorHandle } from "../lib/file-editor.ts";
 
@@ -105,6 +105,7 @@ export class HuiFilesView extends HuiElement {
     viewId: {},
     visible: { type: Boolean },
     narrow: { type: Boolean },
+    onTitleChange: { attribute: false },
     info: { state: true },
     dirs: { state: true },
     expanded: { state: true },
@@ -129,6 +130,8 @@ export class HuiFilesView extends HuiElement {
   declare viewId: string;
   declare visible: boolean;
   declare narrow: boolean;
+  /** The selected file (and so the tab caption) changed: the Work pane's `ctx.invalidate`. */
+  declare onTitleChange: (() => void) | undefined;
   declare info: FilesInfo | undefined;
   declare dirs: Map<string, DirectoryState>;
   declare expanded: Set<string>;
@@ -172,6 +175,7 @@ export class HuiFilesView extends HuiElement {
     this.viewId = "";
     this.visible = true;
     this.narrow = false;
+    this.onTitleChange = undefined;
     this.info = undefined;
     this.dirs = new Map();
     this.expanded = new Set();
@@ -338,11 +342,7 @@ export class HuiFilesView extends HuiElement {
   }
 
   private announceTitle() {
-    this.dispatchEvent(new CustomEvent("hui-work-view-title", {
-      bubbles: true,
-      composed: true,
-      detail: { kind: "files", id: this.viewId, title: filesViewTitle(this.viewId) },
-    }));
+    this.onTitleChange?.();
   }
 
   private closeFile() {

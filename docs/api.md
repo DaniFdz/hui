@@ -3436,7 +3436,8 @@ where a file is expected, an invalid name, uploading over a folder or link, or
 deleting the root.
 
 The browser keeps each Files view's selection, open folders, navigator state and
-Markdown display mode under `localStorage["hui.files-view.v1:<viewId>"]`, and a
+Markdown display mode under `localStorage["hui.files-view.v1:<viewId>"]` (the
+Work view reference's `id`; removed when its tab closes), and a
 dirty File draft's base etag, base text and unsaved text under
 `localStorage["hui.file-draft.v1:<sessionId>\n<path>"]` until it is saved. A
 restored draft saves over its base etag, so a file that moved on becomes a

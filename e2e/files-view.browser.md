@@ -5,13 +5,12 @@ fixture and HUI's isolated visual-verification launcher. No operator files,
 sessions or credentials were used. Keep screenshots outside Git and put them in
 the PR description.
 
-The Files view is a Work view; until the Work pane (feat/work-pane) is merged,
-the app has no launcher for it. This journey therefore mounted
-`filesWorkViewKind.render(…)` beside the open conversation from a temporary,
-uncommitted harness module imported by `src/main.ts` (a fixed panel over the
-right half on desktop and full screen below 1100 px), standing in for the Work
-pane. Once the view is registered with the Work pane, open it from its launcher
-instead and repeat the same steps.
+The Files view is a Work view, opened from the Work pane's **+** menu (**Files**,
+Ctrl+Alt+F / ⌥⌘F). The results below were first recorded before it was
+registered with the Work pane, mounting `filesWorkViewKind.render(…)` beside the
+conversation from a temporary, uncommitted harness; the integrated journey
+through the real Work pane (launcher, tab title, staying mounted behind other
+tabs) is recorded in `e2e/work-pane.browser.md`.
 
 ## Reproduction
 
@@ -23,7 +22,7 @@ instead and repeat the same steps.
    code block, `docs/design.md`, `assets/logo.png` and a random
    `assets/blob.bin`.
 3. In a labeled Browser-tool tab at 1440×900, create a session in that
-   workspace with `E2E_RICH` and open a Files view for it.
+   workspace with `E2E_RICH` and open **+** → **Files** in its Work pane.
 4. Expand `src` → `lib`, open a `.ts` file and type with real key presses.
    Then change the same file on disk from a shell and type again.
 5. Open `README.md`, switch Source/Rendered; open the PNG and the binary file;

@@ -243,6 +243,7 @@ import {
 } from "./lib/work-pane.ts";
 import { terminalWorkViewKind } from "./lib/work-views/terminal.ts";
 import { browserWorkViewKind } from "./lib/work-views/browser.ts";
+import { filesWorkViewKind } from "./lib/work-views/files.ts";
 import { matchesShortcut } from "./lib/shortcut-binding.ts";
 import "./components/work-pane.ts";
 import type { WorkPane } from "./components/work-pane.ts";
@@ -2010,6 +2011,7 @@ export class HuiApp extends HuiElement {
         : undefined,
     }));
     registerWorkViewKind(browserWorkViewKind({ enabled: () => this.settings.browser.enabled }));
+    registerWorkViewKind(filesWorkViewKind);
     try { this.workPanes = parseWorkPaneStore(JSON.parse(localStorage.getItem(WORK_PANE_KEY) ?? "null")); } catch { this.workPanes = {}; }
     this.workMedia = window.matchMedia(SESSION_SPLIT_MEDIA);
     this.workNarrow = this.workMedia.matches;
@@ -5927,7 +5929,9 @@ export class HuiApp extends HuiElement {
       }}
       .onClose=${(sessionId: string, key: string) => {
         if (this.workLaunchedKey === key) this.workLaunchedKey = "";
+        const ref = sessionWorkPane(this.workPanes, sessionId).views.find((view) => workViewKey(view) === key);
         this.commitWorkPanes(closeWorkView(this.workPanes, sessionId, key));
+        if (ref) workViewKind(ref.kind)?.closed?.(ref, sessionId);
       }}
       .onReorder=${(key: string, index: number) => this.commitWorkPanes(reorderWorkView(this.workPanes, workSessionId, key, index))}
       .onToggle=${(open: boolean) => this.commitWorkPanes(setWorkPaneOpen(this.workPanes, workSessionId, open))}

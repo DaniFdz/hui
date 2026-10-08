@@ -16,7 +16,6 @@ type ViewStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 const PREFIX = "hui.files-view.v1:";
 const MAX_EXPANDED = 200;
 const memory = new Map<string, FilesViewState>();
-const listeners = new Set<(viewId: string) => void>();
 
 export const DEFAULT_FILES_VIEW_STATE: FilesViewState = { selected: undefined, expanded: [], navigatorOpen: true, markdown: "rendered" };
 
@@ -66,7 +65,6 @@ export function writeFilesViewState(viewId: string, patch: Partial<FilesViewStat
   } catch {
     // The view keeps working from memory.
   }
-  for (const listener of listeners) listener(viewId);
   return next;
 }
 
@@ -74,11 +72,6 @@ export function writeFilesViewState(viewId: string, patch: Partial<FilesViewStat
 export function clearFilesViewState(viewId: string, store: ViewStorage | undefined = storage()): void {
   memory.delete(viewId);
   try { store?.removeItem(PREFIX + viewId); } catch { /* nothing stored */ }
-}
-
-export function onFilesViewStateChange(listener: (viewId: string) => void): () => void {
-  listeners.add(listener);
-  return () => listeners.delete(listener);
 }
 
 /** The Work pane tab caption: the selected file's name, or "Files". */

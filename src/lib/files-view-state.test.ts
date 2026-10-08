@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { clearFilesViewState, DEFAULT_FILES_VIEW_STATE, filesViewTitle, normalizeFilesViewState, onFilesViewStateChange, readFilesViewState, writeFilesViewState } from "./files-view-state.ts";
+import { clearFilesViewState, DEFAULT_FILES_VIEW_STATE, filesViewTitle, normalizeFilesViewState, readFilesViewState, writeFilesViewState } from "./files-view-state.ts";
 
 class MemoryStorage {
   values = new Map<string, string>();
@@ -18,12 +18,8 @@ test("malformed stored state falls back to the defaults", () => {
 
 test("each view keeps its own selection and the tab title follows it", () => {
   const storage = new MemoryStorage();
-  const changed: string[] = [];
-  const stop = onFilesViewStateChange((id) => changed.push(id));
   writeFilesViewState("view-a", { selected: "src/a.ts", expanded: ["src"] }, storage);
   writeFilesViewState("view-b", { selected: "README.md", markdown: "source" }, storage);
-  stop();
-  assert.deepEqual(changed, ["view-a", "view-b"]);
   assert.equal(readFilesViewState("view-a", storage).selected, "src/a.ts");
   assert.equal(readFilesViewState("view-b", storage).markdown, "source");
   assert.equal(filesViewTitle("view-a"), "a.ts");

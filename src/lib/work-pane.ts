@@ -48,6 +48,9 @@ export type WorkViewKind<R extends WorkViewRef = WorkViewRef> = {
   /** Tab caption. */
   title(ref: R): string;
   render(ref: R, ctx: WorkViewContext): TemplateResult;
+  /** The view's tab closed (it was unmounted): forget per-view state kept outside the ref. Not called when the
+   * conversation's views are merely hidden or the pane collapses. */
+  closed?(ref: R, sessionId: string): void;
   /** Resources of this kind that exist without a tab and can be reopened from the launcher menu. */
   existing?(sessionId: string): Promise<WorkViewResource<R>[]>;
   /** At most one view of this kind per conversation (its key is constant): once open, the view itself is listed
