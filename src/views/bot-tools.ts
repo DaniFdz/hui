@@ -12,11 +12,9 @@ import type { BotView } from "../lib/bots.ts";
 import { BOT_ACCESS_ANSWERS } from "../../shared/bots.ts";
 import { botToolsSummary, groupBotTools, matchingSkills, SKILL_SEARCH_MIN, type BotToolsActions, type BotToolsState } from "../lib/bot-tools.ts";
 import { renderSettingsToggle } from "./settings-toggle.ts";
+import { loadViewAssets } from "../lib/view-assets.ts";
 
-// Node's focused view tests import this module without a CSS loader.
-if (typeof document !== "undefined") {
-  await import("../styles/bot-tools.css");
-}
+loadViewAssets(() => import("../styles/bot-tools.css"));
 
 export type BotToolsProps = { bot: BotView; state: BotToolsState } & BotToolsActions;
 

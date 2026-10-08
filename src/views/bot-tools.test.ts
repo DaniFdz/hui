@@ -17,7 +17,7 @@ test("Tools is the panel's fourth tab, between Soul and Settings, self-contained
   assert.match(app, /this\.followBotSoul\(\);\n\s+this\.followBotTools\(\);/u, "on every bots frame");
   assert.match(app, /if \(toolsBot\) void this\.botTools\.refresh\(toolsBot\);/u, "on opening the tab");
   assert.match(app, /tools: this\.botTools\.props\(bot\),/u);
-  assert.match(read("./bot-tools.ts"), /await import\("\.\.\/styles\/bot-tools\.css"\);/u);
+  assert.match(read("./bot-tools.ts"), /loadViewAssets\(\(\) => import\("\.\.\/styles\/bot-tools\.css"\)\);/u);
   assert.doesNotMatch(read("./bot-settings.ts"), /disabledTools|disabledSkills|Available tools/u, "Settings gets no tools fields: they are this tab");
 });
 

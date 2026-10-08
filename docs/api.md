@@ -23,7 +23,16 @@ The standalone production gateway and Vite development plugin share the same
 `/__hui/` middleware. Production serves compiled `dist/` assets with GET/HEAD,
 safe route fallbacks (single-segment page routes such as `/skills` or `/kanban`,
 plus `/sessions/…`, `/bots/…` and `/settings/…` deep links) and realpath containment; it never serves source files or
-escaping symlinks. Requests must use an allowed Host (loopback, the selected IP,
+escaping symlinks. Text files of at least 1 KiB (scripts, styles, HTML, JSON,
+SVG) are sent with `Content-Encoding: br`, or `gzip` when that is all the
+client accepts (`Vary: Accept-Encoding`); compressed copies are cached in memory
+per file, size and mtime. Content-hashed `/assets/*` files are
+`Cache-Control: public, max-age=31536000, immutable`; other files are
+`public, max-age=3600` with a weak `ETag` per encoding and answer a matching
+`If-None-Match` with 304; the app page (`index.html` for every route fallback)
+stays `no-store` without an ETag. `/__hui/` JSON bodies of at least 1 KiB are
+compressed the same way (Brotli quality 5 or gzip level 6, off the event loop);
+smaller bodies, and clients that accept neither encoding, get the identity body. Requests must use an allowed Host (loopback, the selected IP,
 its explicitly resolved Tailscale DNS name, or a name granted with `--allow-host`
 or `HUI_GATEWAY_ALLOWED_HOSTS`, or listed in `allowHosts` of `gateway/config.json`). A proxy that connects over loopback but answers
 on a name of its own, such as `tailscale serve`, is the case that needs one;
@@ -2722,7 +2731,10 @@ would otherwise stall every other request. Like terminal and browser streams,
 the upgrade also requires a same-origin `Origin` and an allowed `Host`, and it
 is refused with 403 otherwise. Each text message is
 `{ "event": "snapshot" | "transcript" | "event" | "status" | "model" | "thinking_level" | "closed", "data": … }`
-with the SSE payloads above, beginning with the snapshot. After `closed` the
+with the SSE payloads above, beginning with the snapshot. The server negotiates
+`permessage-deflate` (messages of at least 1 KiB, no context takeover in either
+direction), so the snapshot's transcript crosses a slow link compressed; a
+client that does not offer it gets uncompressed frames. After `closed` the
 server closes normally; a session deleted before the upgrade closes with code
 4404. 429 means too many tickets are pending, so retry later.
 

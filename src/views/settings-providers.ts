@@ -9,8 +9,9 @@ import type { ProviderLogin, ProviderQuota, ProviderSnapshot, ProviderSummary } 
 import { fetchJson } from "../lib/settings-store.ts";
 import { renderProviderBrandIcon } from "../lib/provider-icons.ts";
 import { connectionMethods, connectionName, providerBrand, providerBrands } from "../lib/provider-choices.ts";
+import { loadViewAssets } from "../lib/view-assets.ts";
 
-if (typeof document !== "undefined") await import("../styles/providers.css");
+loadViewAssets(() => import("../styles/providers.css"));
 const API = "/__hui/providers";
 type AccountDrag = { provider: string; id: string; name: string; order: string[]; from: number; to: number; handle: HTMLElement; pointer?: number; y: number; startY: number; moved: boolean };
 type ModelDraft = { models: Set<string>; query: string };

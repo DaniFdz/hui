@@ -7,10 +7,9 @@ import { html, nothing, type TemplateResult } from "lit";
 import { icons } from "../lib/icons.ts";
 import { navigationPath } from "../lib/navigation.ts";
 import { sessionGroupLabel, type SessionGroup, type SessionStatus, type SessionView } from "../lib/sessions-store.ts";
+import { loadViewAssets } from "../lib/view-assets.ts";
 
-if (typeof document !== "undefined") {
-  await import("../styles/openclaw-workspaces.css");
-}
+loadViewAssets(() => import("../styles/openclaw-workspaces.css"));
 
 export type SessionsPageState = "all" | "active" | "archived";
 

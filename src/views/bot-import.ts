@@ -11,11 +11,9 @@ import type { BotImportTab, PickedSource } from "../lib/bot-templates.ts";
 import { icons } from "../lib/icons.ts";
 import { renderBotAvatar, type BotPlace } from "./bots.ts";
 import { describeRoutineSchedule } from "./settings-automation.ts";
+import { loadViewAssets } from "../lib/view-assets.ts";
 
-// Node's focused view tests import this module without a CSS loader.
-if (typeof document !== "undefined") {
-  await import("../styles/bot-import.css");
-}
+loadViewAssets(() => import("../styles/bot-import.css"));
 
 export type BotImportDialogProps = {
   step: "source" | "preview";

@@ -39,11 +39,9 @@ import { renderSettingsToggle } from "./settings-toggle.ts";
 import { renderBotSettings, type BotSettingsProps } from "./bot-settings.ts";
 import { renderBotToolsTab, type BotToolsProps } from "./bot-tools.ts";
 import { renderBotTriggers, type BotTriggersProps } from "./bot-triggers.ts";
+import { loadViewAssets } from "../lib/view-assets.ts";
 
-// Node's focused view tests import this module without a CSS loader.
-if (typeof document !== "undefined") {
-  await import("../styles/bots.css");
-}
+loadViewAssets(() => import("../styles/bots.css"));
 
 /* ── avatar ───────────────────────────────────────────────────────────────── */
 

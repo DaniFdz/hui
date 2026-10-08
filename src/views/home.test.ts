@@ -524,3 +524,13 @@ test("a reachable worker session shows neither notice, and a failed one keeps it
   assert.equal(sendButton(idle), "false");
   assert.match(await renderWorkerSession("error"), /The runtime could not start\./u);
 });
+
+test("a conversation still downloading shows progress, and one that failed to load offers a retry instead of an empty chat", async () => {
+  const loading = await renderWorkerSession("idle", { transcript: [], opening: true });
+  assert.match(loading, /role="status" aria-live="polite"> <span>Loading the conversation…<\/span> <wa-progress-bar label="Loading the conversation" indeterminate>/u);
+  assert.doesNotMatch(loading, /Start a conversation/u);
+
+  const failed = await renderWorkerSession("idle", { transcript: [], openError: "HUI did not answer within 20 s. Check the connection and try again." });
+  assert.match(failed, /<div class="agent-chat__empty" role="alert"> <strong>Could not load this conversation<\/strong> <span>HUI did not answer within 20 s\. Check the connection and try again\.<\/span> <button type="button" class="btn btn--sm retry-session" @click=>Try again<\/button>/u);
+  assert.doesNotMatch(failed, /Start a conversation|Send a message below/u, "a failed load never reads as an empty session");
+});
