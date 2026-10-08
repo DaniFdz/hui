@@ -35,7 +35,7 @@ import { installUiErrorReporting } from "./lib/ui-errors.ts";
 import { applyThemeMode } from "./lib/theme.ts";
 import { loadSettings } from "./lib/settings-store.ts";
 import { applyTheme, loadThemes } from "./lib/theme-store.ts";
-import { finishBoot, showBootFailure } from "./lib/boot-screen.ts";
+import { finishBoot, rememberBootLook, showBootFailure } from "./lib/boot-screen.ts";
 import { viewAssetsLoaded } from "./lib/view-assets.ts";
 
 // First, so failures while the app starts are reported too.
@@ -47,7 +47,12 @@ installUiErrorReporting();
 async function resolveAppearance(): Promise<void> {
   const [, settings] = await Promise.all([loadThemes(), loadSettings()]);
   applyThemeMode(settings.themeMode, (await applyTheme(settings.theme)) ?? "both");
+  rememberBootLook();
 }
+
+// A theme changed in Settings is remembered once the page is left.
+addEventListener("pagehide", () => rememberBootLook());
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") rememberBootLook(); });
 
 // The app's code downloads meanwhile: over a slow link it is the longest wait,
 // and nothing about it depends on the appearance. index.html's boot screen

@@ -6,20 +6,42 @@
     <meta name="color-scheme" content="dark light" />
     <link rel="icon" type="image/png" href="/pi-logo-3d.png" />
     <title>HUI</title>
+    <script>
+      // The boot screen (src/lib/boot-screen.ts) paints in the colours HUI last
+      // showed on this device, or in HUI's own palette for the light or dark
+      // mode the saved preference (or the system) asks for.
+      (function () {
+        var root = document.documentElement, look = null;
+        try { look = JSON.parse(localStorage.getItem("hui.boot-look") || "null"); } catch (error) {}
+        var preference = look && (look.preference === "light" || look.preference === "dark") ? look.preference : "";
+        var mode = preference || (window.matchMedia && matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark");
+        root.setAttribute("data-theme-mode", mode);
+        root.style.colorScheme = mode;
+        var colors = look && look[mode];
+        if (!colors) return;
+        ["bg", "text", "muted", "accent"].forEach(function (key) {
+          var value = colors[key];
+          if (typeof value === "string" && value.length < 200 && (!window.CSS || CSS.supports("color", value))) root.style.setProperty("--hui-boot-" + key, value);
+        });
+      })();
+    </script>
     <style>
-      /* The boot screen (src/lib/boot-screen.ts): the page's only content until
-         the app has painted. Inline, so it needs nothing else to arrive. The
-         saved theme is not known yet, so it follows the system's light or dark. */
-      #hui-boot { position: fixed; inset: 0; z-index: 2147483647; display: grid; place-items: center; padding: 24px;
-        background: Canvas; color: GrayText; font: 13px/1.45 var(--font-body, system-ui, sans-serif); }
-      .hui-boot__card { display: grid; justify-items: center; gap: 14px; width: min(260px, 100%); text-align: center; }
-      .hui-boot__name { color: CanvasText; font-size: 22px; font-weight: 650; letter-spacing: .02em; }
-      .hui-boot__bar { position: relative; width: 100%; height: 3px; overflow: hidden; border-radius: 3px;
-        background: color-mix(in srgb, currentColor 16%, transparent); }
+      /* The page's only content until the app has painted. Inline, so it needs
+         nothing else to arrive. Defaults are HUI's claw palette. */
+      #hui-boot { --boot-bg: #0e1015; --boot-text: #f4f4f5; --boot-muted: #8b8b94; --boot-accent: #ff5c5c;
+        position: fixed; inset: 0; z-index: 2147483647; display: grid; place-items: center; padding: 24px;
+        background: var(--hui-boot-bg, var(--boot-bg)); color: var(--hui-boot-muted, var(--boot-muted));
+        font: 13px/1.45 var(--font-body, system-ui, sans-serif); }
+      :root[data-theme-mode="light"] #hui-boot { --boot-bg: #faf9f7; --boot-text: #211e1a; --boot-muted: #6e6960; --boot-accent: #bd4531; }
+      .hui-boot__card { display: grid; justify-items: center; gap: 12px; width: min(220px, 100%); text-align: center; }
+      .hui-boot__logo { width: 56px; height: 56px; margin-bottom: 2px; }
+      .hui-boot__name { color: var(--hui-boot-text, var(--boot-text)); font-size: 20px; font-weight: 650; letter-spacing: .04em; }
+      .hui-boot__bar { position: relative; width: 100%; height: 3px; margin-top: 6px; overflow: hidden; border-radius: 3px;
+        background: color-mix(in srgb, var(--hui-boot-text, var(--boot-text)) 12%, transparent); }
       .hui-boot__bar::after { content: ""; position: absolute; inset: 0 auto 0 0; width: 40%; border-radius: inherit;
-        background: var(--accent, Highlight); animation: hui-boot-slide 1.1s ease-in-out infinite; }
+        background: var(--hui-boot-accent, var(--boot-accent)); animation: hui-boot-slide 1.1s ease-in-out infinite; }
       .hui-boot__slow { margin: 0; opacity: 0; animation: hui-boot-reveal .3s ease 6s forwards; }
-      .hui-boot__slow a, .hui-boot__failure button { color: var(--accent, LinkText); font: inherit; }
+      .hui-boot__slow a, .hui-boot__failure button { color: var(--hui-boot-accent, var(--boot-accent)); font: inherit; }
       .hui-boot__failure { display: none; margin: 0; }
       .hui-boot__failure button { padding: 0; border: 0; background: none; cursor: pointer; text-decoration: underline; }
       #hui-boot[data-state="failed"] .hui-boot__bar, #hui-boot[data-state="failed"] .hui-boot__slow { display: none; }
@@ -32,6 +54,7 @@
   <body>
     <div id="hui-boot" role="status" aria-live="polite">
       <div class="hui-boot__card">
+        <img class="hui-boot__logo" alt="" width="56" height="56" src="data:image/webp;base64,UklGRpwQAABXRUJQVlA4WAoAAAAQAAAAbwAAbwAAQUxQSD4HAAABsEXbliHb1oxYax/7tN3etW3btm3btm3btm3bts3jtm9FxJofVbsiI2t/vo+ImAD8f3LXss9zzouoqji09iqur3HOeS+qquLR9qBRk002sgsAtNOcc96LqKqKeGQO7J5p4dW2Pey8O557/8c/x4z5/cunT1/ewfkOcF5UVcU7ZPuhk8240Mob73bE+Tc/+s53/zSY/95WgK+XV3Vot//wyWZdcNl1t9372POvu+/ZNz79ZUyDbVuKIcSYkplZiiGR9w6Gr49XBwAj51h5i/1Ouvi2R158/+tfx0XmWoohhBBTMmN+avAlgauJFwAz73jV638kZqYYQwghxpTMjIXtP14GqYVTYJqDX+lhc4ohhBhjMjNjzS2FWeBroMBsV40jGUI0Y0cHHgYtpxh6dg8ZkrHzIx+AlHIeK31DBmNfaIlvo7RzOJBsGPvIxPcBV8Q5nM2U2GdGvgKHooJz2TD2JbdCiigOZMPYhwYeDi2hWI4hsS81LgEp4DDke0b2pYlfd8EVUFzGwI61SgJPgqJ6wQIxWedUajZuKvgCHo8wso7WXI/Ak6CoXrAkE2vCmkZ+3gVX5GaGerA6s/aSNRaAoHqPKcfRylhv1WcEciMoCip2ZWDfmQLHrg1FScEDfYalYOTTM0FR0mHYr7SamKWUrBKLIYRoJPnGVoCiqMf8rKuxZcoy9j72jdOXBJxHWcE6jLRacNLv33/7w1jmG/9+8OYLj91myckBQFFasQWDmZE0K2Ect8qUowYOGDrsRKacyLvRqwrKC1ZlMuamECwn8Su0nqpBywi8Ev1VVRxq6TH1JOakyAoT33XeOSeYtYpToKixxwNstBfJry85dSytvcin4AF4LMjswAPrNk8jpTZS4pdb9QceY2wv8GYIAMFqTDmRW9YLiq3IYC0skBcMALrwUt75UACKrRhzEleH1AqCDcaQIcQQyB/WAtRBP2fKOaKXQxlyjAvB1wuCaa+ZwOYx542COjhMNoaWs0sv52cZe2aoHRSYbufL77p4pykBBSBYhMb2I9eDABDcxZj1bzdc3eAFrdUBgGIbxgzjki0cns9K/G5ABwBeVVQ9WirOYmjPaHPCAw5dXzBlfeg6ItPjCcaccZPDNXX/Q8uIfAEOHe4w9Bdae4k/DWnymD1VcBek0zwWoTHnI9ckWIGJmYGXQTtNsTdDRuSz8AAU2zDmHdt5gnsZs+6GtDicIW+fdpzrCIchvzBlBF4CbXFpXuQWGa4DBMvRmHVMC8GDjDmJK0M6THEGQ96uLYB3mHKMi7WFDv2YKSdyHQjgMPxXGq0tY5oNHoBz6FTB4jTmGhdp8pi+h8b2jeOngENHK85nyDH2zAAPCBalMev3kR3mMOgnpry/RsE1rceYk/jDoA5TbM7I3MTPu5oUezPkfdO/wzxeriDyJTg0nVXFV/06S7A8Eyu4HQJAcDtj3vcD23Oi4mrl8QxjXuDFUAAez+YZfx/ZjlM0i6+PYgNGVnFYk4P/mCnvvxnhexGge+3t1pgckLp49P+aqYLIrVsN+TGPiatDWinklD9JjrmiG1ITxbWMrDBxRUjTZGNpWYGnQlt0YbLXyBgj+eO8kDq4LuzLyGrnhQc8ZosVJH4K19SF6b9lw0izBn8ZDVfOC7ZitCqME6ZqEizEKhM3xgAninl/YmDrBi+GFhNgPyZjlYk/DIJrWp6pCvtpKgDYcDwjezX+2w1XSNH/OiZjpZFvwKFpDcYKmPjd+lMtcTOZ2GbiupAyilk/ZjRWdT+kxTrVMJITSTO2G3gItIhg9j8ZWHXg+dAiTJEW2X7gKWUchn7NwAIH9rIqUzWkMbeY4Do2rLrI9SAtlqJVlR94WBHBIhatADkvPACPuYxWk8itCt3IhrFy4z/dcAAc/vdvEWuLtiB8dQ7d/9JYfeL7aOkgnzEVaDvxx0Fw1Qk2ZGTByDshTRDcz1iPwBshqF5xNkOJwMOgLRRHMtQjcY0iHg8zlkhcAdJCsBytFolfCFwBh1eLGP8aBdfCYdCPTHWI3BWKIq8ViXwAgtaKSxlqEPk+4Ep4PFVoe2gvHvPFVM4il4GgpOJChuqMf46E6wWCuxhoVqbB46AoKtiAsbrAU6Do3WOGiZZYpsHb4FDWYdhvlsyqSfx9BFwbUGzDYCxogfejGBSHssFqrcHNoGhbcDRTrMwCeSHgUdoBb7NRiTV4OgSZHnsnhlSJBfLPLQCP8h5TfMOGZVkgz4JzOU6wxDtkCsnashQi2bhiMohDQdcLBJM/R4ZobVgK5LhdAId8hd/lA5KMIYQYYwghkeRPF8wJKIq2AQEO+pVkCiGERgiJZM8N00McqhTAr3LJx4HtNj69aoNhgHjU1gMj93h+Inuf+MbRswCKip0CkJnXOeD8G+978K6rT99rjZkEgHrU2SmAadc6+ILrb77xooPXng6AeBQURa6IQ92dOrStHoWdF1VpVhXv0JleVEVEVTz+nzhWUDggOAkAAFAqAJ0BKnAAcAA+SR6LRCKhoRsbTVQoBISgYoAQZVm9XCAXC/2/EweOc6f8D0Z+tHbbeZj9mf1g93v0bfr17AH9Q6lz0GvLo9mXyqs1V/gHa3/c/yJ8+fJt7N9vOUo0o/Y8U/AC9k8Hhlziv7lH/ccl/5V7AH8j/tn+Y+5X47v9z7sfdV89/9L3CP5X/Vf9t13P1y9hj9SF3KZnR1DXNIbikY0dBpr+yrL2ViviR/vcbHQZ5Ls1JS6owK4d9zrpSMJSLlkhcJz8x8xn9EMJK7aGJVXfFyQ2TMrCP19EfdmVM7SNJqhy+8BLhKPvq7q6zdZHGwRnXk0UXVJX4gF7gJK6ZvnGBcTA/gsSzkZVTrmwyPciHVJp0j0iWCJ1u3C+k45Xr+3D7oVl+6GNaJ9cX9FSUdSk6ys5wrT49Y9Zs9Gkoh+UKyf7KwZBPSkLPbNWjJavn8uHRzKhDM4AAP7+pTbZnunqAVtQ9iKYC205KkxyxcBrjztha9PCH560iwg5N0JYC2/+YmuSJ6bB3x+lArRHibHG3r66QQ0ud8TGndYAl/fa0Ls1gnicc/ouQOkdmtJlRneEWF5yIFsEAYKqmr5a+0LQss8K6dw3V2a7QafZFk7DiP0x1e2ymv1IsrbBqnD4SsEc26m43xg/GkW86+hD2Uqm2/Bh5jWuFZLlugpmTv7e7E4H4P0k+P25qDbTQJLdG4mksunwM8Un6/9pHAB7jfND5TnFDX36/kFswpp6bqflk9b5oJ0h6Kw5yHH9HNzRHzun8oyvMSODGq6yXyvaHSwfPvwX8IO740Uk+ZHIHe1y34TfH0uZfHgTH4zAvpd7ZJ1c940YaQf4Yk0jKuxfi2GQTyfxpWrRkX0Tsdnzm0tYRjrOpM74stS1Cs4wmwfIE8Xq/eqeunR362DPZrguZdp361tYUSP2m3cdDD284JWpwCVJiLxQ4qoGPonU80cqMrGZqKrGNb8bjP3wOSAmvUVJ6I720te9pbw9uN8CuWiKGjF1M2ccJ5HOn4kE5S89t4e502scSHr2Jwqb/7Lpz+/wA+69lN7ozPW5ILXcjZ4crVPKPchT4OK4v/q43+6s6CFl5WYUsOuyQ4gDg5DPl5S3QqR8d/Qa91DkDV/XmtOr+OSHm8e8XbJOVjijnY4k8DPzie75M7M+uewEa1X7NwxsxuupQX+ZeeVJWn70JeXrFBhV87tUwQ6QWNiBznExn5hxogGD8PH4HBMKAOsnt6hyLHula3HOjr9APmNLdXAQbsui77e8dIiCXCQKnpal3hswRcboMnJUVoC3LaFg3i/eUk9GCRlzGQtSjNnfS+IX33jvRalI96MxBP4M1sapBHzL0vdlTO0IlZl8zo1EMdsF2/a/HnSUA49lu8DBkTQ7bzCkG37Zni8ZX87BxCzOkINcMBFOAQJrnEt12U2eSo3v5K76tC8e13wsXCKGUfE5cwbxvsIMhvKabcgeb7d+AoiYlGcG7JU4Iau+KDEHpL3yOJ1dBEi4kQRJgswsIgUBdwzbBjIdhhWgzT35ZM7Cem+ZMib9zFXUkcw9GHMVWWxEc+Oa0O3RTUwzdReT7DjxDcJEGKy2DZr+OpsxhFi/NHzp3xwFSB89MxYfKBHA5ak4fHHY4JToFlIc2mp3OnIdyJv+VqvErsG+Mbt5RutUlUy3yjBjs3H63H02s5wCBseuThOa+813MsmmviA1HUHD+ZpSu5oABqhA47QKnM8nyE5iRdK4lwd3IKdTdmPeHDx1YynwbtIN5mlExEU7d+PlLaqtWagcNxz5YMk7l4J6OeKEK4Qu08zLLaGNZEqq+InTHRMd/+BnR3VBf10tqqk236AaBbfRpgEYJQwa5v/SnQGaOHyCDj9YQ+rnLKj6odhOwrY3XX+QC6qG+s42Ij+6FvBZj+DavJPdMfvVrqpu6ZDm9l4gr7ePx5T9qmQ4XA50zCmvF9BTffv9OW6AkzLUoPtDH+UeasTb2ESrdAUXEXMO5foXz/v3pFxCs70+01Jnbj4oW0zTdmggABP/aqY0idg/ZRAi3QraFf1XWbmRSbq4fn7p+Qd/IdJW8X7DKwfb6cjEErkFyFuLBdJbrUurf5ONEXd6kMaKa2i0dGmyYfXhHq+VM03KBDu6yX7x3guXhQLTl2a5Zl/uMYferASTBDdijh09HmFSKm9DkSGP2SirC91FHSFTgruocnHS82WJqzp2LdpUy3uUP1fXoI6SlIn1/5S4M5D/lgZ4EysRkflbnLTkC4zSb9v7WtbhFT7anMySlwZEXN8JrpJ7od9K/x/2IeOhaQ4Lw6J5Dy7FtzMxH5BPHNIB1pdzWcqNDiV3yjIeGzMg4D2SDwlvLghUZ+FUuWQ4aln7YFFdkZ72bXfLYpJYLV3D0EEDXPgqnBUTdxrg0lmKqqPB7yXATqJ2KRSfE6Oc8MAX1o0Lw3VLtm9URrOLlspfPA2iMSPG0Twg+gW4az6IRiOB/jMJ4peeIlVxfUI4ezBTaHMWu9QgKEzGNiV1dnbFITG2ynwaeC/Jz8h4nmwi1omp3Gbvpn0+j58krmh9vb0CJFSiqHmws8IVFq5vtGxV3dPmNWFLkjriHd2ZxmG3N5SnuyrIuQIbDkHbbJfRAe1mMukHaOkife2rie22LGsq4PhqmjeYS5NQCxIbkEGMsZapVyK148x/iZ19hz1mscHLvYXkM92osIW71h3n9HDlZRz3geD93X6M6pHPuxvNsQVxjjKHzzikrHKfHwXav4vG+uNfMM8kcRBcphQ0xvY7ucFxEzMQsN0N//RbS/4T+QKzVCkLZkVHWwnH9M0DPszzr+6o+TsqkkLtKUTrfE3oW4WKVOr+qDFDZTxpA/6jWK3VjlFpl8IDhmPwB0/FtgC3jjuDCxPc3EhY6X+vUu3VW73kv2hVz8pVhqxonLbuA3OjHXY6h9zRiSJcOszGbVys3+b/wejO9/dm2UYTJnxBGUrBE0J/PnHyOND+dbnb7YZBUrXV8LBFyvDJsbHHtR9Mzb/7VXj9qsVGjixqBl1UuRrZsx1zTh/NSLsMmYqCI70DB9O07EFyCvt6yX1m6LAoR+fr1KFJe9QMi8pwgD9st95HZUU2/ykPiHjX//XK0YbH3eh/ErUcXmT7x7a3MNHFN8YMXSmVpxogAAAA" />
         <span class="hui-boot__name">HUI</span>
         <span class="hui-boot__bar" role="progressbar" aria-label="Loading HUI"></span>
         <p class="hui-boot__slow">Still loading — the connection is slow. <a href="">Reload</a></p>

@@ -30,7 +30,12 @@ conversation that fails to load says so and offers a retry.
    `performance` paint and resource entries and wait for *Step 160* in the
    transcript. Capture the boot screen early, the conversation loading state and
    the loaded conversation, at 1440×900 and 390×844.
-5. Failure path: with the app loaded on Home, stop the gateway, select *Long
+5. Boot screen colours: on a fresh origin it paints HUI's light (`#faf9f7`)
+   or dark (`#0e1015`) background for the system preference, never bare white.
+   Switch the theme (for example Catppuccin with a custom accent), load the app
+   once, then reload over a slow link: the boot screen paints in that theme's
+   background, text and accent (remembered per device in `localStorage`).
+6. Failure path: with the app loaded on Home, stop the gateway, select *Long
    remote session*: the transcript area shows *Could not load this
    conversation* with the reason and *Try again*, never an empty chat. Start the
    gateway again on the same state and press *Try again*: the conversation loads.
