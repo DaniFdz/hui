@@ -4,9 +4,9 @@
  * what to fix (400); a stored record that does not validate is kept aside in the file, untouched, and not used.
  */
 import {
-  BOT_TRIGGER_LIMITS, BOT_TRIGGER_SOURCES, GITHUB_TRIGGER_EVENTS, SESSION_TRIGGER_EVENTS, SLACK_TRIGGER_EVENTS,
+  BOT_TRIGGER_LIMITS, BOT_TRIGGER_SOURCES, GITHUB_TRIGGER_EVENTS, HOOK_TRIGGER_SOURCES, SESSION_TRIGGER_EVENTS, SLACK_TRIGGER_EVENTS,
   type BotTriggerFilters, type BotTriggerInput, type BotTriggerPatch, type BotTriggerRecord, type BotTriggerSource, type GitHubTriggerEvent,
-  type GitHubTriggerFilter, type SessionTriggerEvent, type SessionTriggerFilter, type SlackTriggerEvent, type SlackTriggerFilter,
+  type GitHubTriggerFilter, type ListenerTriggerFilter, type SessionTriggerEvent, type SessionTriggerFilter, type SlackTriggerEvent, type SlackTriggerFilter,
   type WebhookTriggerFilter, type WebhookTriggerMatch,
 } from "../shared/bot-triggers.ts";
 
@@ -48,7 +48,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function refuseUnknown(value: Record<string, unknown>, allowed: readonly string[], what: string): void {
+export function refuseUnknown(value: Record<string, unknown>, allowed: readonly string[], what: string): void {
   const unknown = Object.keys(value).filter((key) => !allowed.includes(key));
   if (unknown.length) throw new TriggerInputError(`Unknown ${what} field${unknown.length === 1 ? "" : "s"}: ${unknown.join(", ")}.`);
 }
@@ -181,14 +181,24 @@ function slackFilter(raw: Record<string, unknown>): SlackTriggerFilter {
   return filter;
 }
 
+function listenerFilter(raw: Record<string, unknown>): ListenerTriggerFilter {
+  refuseUnknown(raw, ["match", "prLinks", "bots", "external"], "listener filter");
+  const filter: ListenerTriggerFilter = raw["match"] == null ? {} : { match: webhookMatch(raw["match"]) };
+  if (flag(raw["prLinks"], "prLinks")) filter.prLinks = true;
+  if (flag(raw["bots"], "bots")) filter.bots = true;
+  if (flag(raw["external"], "external")) filter.external = true;
+  return filter;
+}
+
 /** A source's filter, every key checked. */
 export function triggerFilter<S extends BotTriggerSource>(source: S, raw: unknown): BotTriggerFilters[S] {
-  if (raw === undefined && source === "webhook") return {} as BotTriggerFilters[S];
+  if (raw === undefined && HOOK_TRIGGER_SOURCES.has(source)) return {} as BotTriggerFilters[S];
   if (!isRecord(raw)) throw new TriggerInputError("filter must be an object.");
   switch (source) {
     case "github": return githubFilter(raw) as BotTriggerFilters[S];
     case "session": return sessionFilter(raw) as BotTriggerFilters[S];
     case "slack": return slackFilter(raw) as BotTriggerFilters[S];
+    case "listener": return listenerFilter(raw) as BotTriggerFilters[S];
     default: return webhookFilter(raw) as BotTriggerFilters[S];
   }
 }
@@ -241,6 +251,7 @@ const FILTER_KEYS: Readonly<Record<BotTriggerSource, readonly string[]>> = {
   session: ["events"],
   webhook: ["match"],
   slack: ["events", "prLinks", "from", "in", "external", "bots"],
+  listener: ["match", "prLinks", "bots", "external"],
 };
 
 /** The filter after a patch's keys: each given key replaces, `null` or an empty list clears an optional one. Only the
@@ -251,8 +262,8 @@ export function patchedFilter<S extends BotTriggerSource>(source: S, current: Bo
   for (const key of FILTER_KEYS[source]) {
     if (!Object.hasOwn(change, key)) continue;
     const value = change[key];
-    // A Slack filter's switches turn off with false too.
-    if (value === null || (value === false && source === "slack") || (Array.isArray(value) && !value.length && key !== "repos" && key !== "events")) entries.delete(key);
+    // A Slack or listener filter's switches turn off with false too.
+    if (value === null || (value === false && (source === "slack" || source === "listener")) || (Array.isArray(value) && !value.length && key !== "repos" && key !== "events")) entries.delete(key);
     else entries.set(key, value);
   }
   return triggerFilter(source, Object.fromEntries(entries));
@@ -275,7 +286,7 @@ export function parseTriggerRecord(raw: unknown): BotTriggerRecord | undefined {
     const updatedAt = String(raw["updatedAt"] ?? "");
     if (!ID.test(id) || !ID.test(botId) || !ISO.test(createdAt) || !ISO.test(updatedAt)) return undefined;
     const source = sourceField(raw["source"]);
-    const filter = triggerFilter(source, raw["filter"] ?? (source === "webhook" ? {} : undefined));
+    const filter = triggerFilter(source, raw["filter"] ?? (HOOK_TRIGGER_SOURCES.has(source) ? {} : undefined));
     if (typeof raw["enabled"] !== "boolean") return undefined;
     const cooldownSeconds = cooldownField(raw["cooldownSeconds"]);
     const createdBy = raw["createdBy"] === "bot" ? "bot" : raw["createdBy"] === "operator" ? "operator" : undefined;
@@ -284,15 +295,15 @@ export function parseTriggerRecord(raw: unknown): BotTriggerRecord | undefined {
     const lastFiredAt = typeof raw["lastFiredAt"] === "string" && ISO.test(raw["lastFiredAt"]) ? raw["lastFiredAt"] : undefined;
     const tokenHash = typeof raw["tokenHash"] === "string" && /^[0-9a-f]{64}$/u.test(raw["tokenHash"]) ? raw["tokenHash"] : undefined;
     const tokenHint = typeof raw["tokenHint"] === "string" && /^[A-Za-z0-9_-]{4}$/u.test(raw["tokenHint"]) ? raw["tokenHint"] : undefined;
-    // A webhook trigger without its token's hash could never be called: it is not a trigger HUI can run.
-    if (source === "webhook" && !tokenHash) return undefined;
+    // A webhook or listener trigger without its token's hash could never be called: it is not a trigger HUI can run.
+    if (HOOK_TRIGGER_SOURCES.has(source) && !tokenHash) return undefined;
     return {
       id, botId, name: triggerName(raw["name"]),
       ...({ source, filter } as Pick<BotTriggerRecord, "source" | "filter">),
       ...(prompt ? { prompt } : {}),
       enabled: raw["enabled"], cooldownSeconds, createdBy, createdAt, updatedAt,
       ...(lastFiredAt ? { lastFiredAt } : {}),
-      ...(source === "webhook" && tokenHash ? { tokenHash, ...(tokenHint ? { tokenHint } : {}) } : {}),
+      ...(HOOK_TRIGGER_SOURCES.has(source) && tokenHash ? { tokenHash, ...(tokenHint ? { tokenHint } : {}) } : {}),
     } as BotTriggerRecord;
   } catch {
     return undefined;

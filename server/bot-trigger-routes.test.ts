@@ -218,6 +218,34 @@ test("a webhook trigger wakes its bot through the gateway; its token, method, si
   assert.equal(after.deliveries.lastHour, 1);
 });
 
+test("a listener trigger: another program's reports reach the bot through the gateway, each event once, and its trigger shows the last report", { timeout: 120_000 }, async () => {
+  const made = await call(`/__hui/bots/${ada.id}/triggers`, "POST", { name: "Pings", source: "listener", prompt: "E2E_LISTENER_PROMPT review it", filter: { match: { field: "fields.channel", op: "equals", value: "G01REVIEWS" } }, cooldownSeconds: 0 });
+  assert.equal(made.status, 201, JSON.stringify(made.body));
+  const { hook: token } = made.body as unknown as BotTriggerCreated;
+  assert.ok(token, "its URL, shown this once");
+  const pings = async () => ((await call(`/__hui/bots/${ada.id}/triggers`)).body as unknown as BotTriggersList).triggers.find((each) => each.name === "Pings");
+  assert.deepEqual((await pings())?.watch, { error: "No report from the listener since the gateway started." });
+  assert.deepEqual(await hook(token.path, JSON.stringify({ events: [] })), { status: 202, body: { status: "ignored" } }, "a check-in");
+  const checked = await pings();
+  assert.ok(checked?.watch?.polledAt && !checked.watch.error, "the trigger shows the listener's last report");
+  const ping = { id: "G01REVIEWS:1791481674.389319", summary: "@rodrigo in #team-reviews: acme/widgets#1", details: "From Rodrigo, in #team-reviews\n  > could you review it?", links: ["https://github.com/acme/widgets/pull/1"], fields: { channel: "G01REVIEWS" } };
+  assert.deepEqual(await hook(token.path, JSON.stringify({ events: [ping, { ...ping, id: "C0RANDOM:1", fields: { channel: "C0RANDOM" } }] })), { status: 202, body: { status: "fired" } });
+  const header = "[trigger: Pings · @rodrigo in #team-reviews: acme/widgets#1] E2E_LISTENER_PROMPT review it";
+  await until("the listener's event in the bot's chat", async () => (await asked(header)) || undefined);
+  assert.deepEqual(await hook(token.path, JSON.stringify({ events: [ping] })), { status: 202, body: { status: "ignored" } }, "the same event again");
+  const bad = await hook(token.path, JSON.stringify({ events: [{ ...ping, id: undefined }] }));
+  assert.equal(bad.status, 400);
+  assert.match(String(bad.body["error"]), /events\[0\]\.id must be/u);
+  assert.equal((await hook(token.path, "not a report", "text/plain")).status, 400);
+  // A run is recorded once the bot's chat took the delivery: wait for it rather than read it once.
+  const runs = await until("the delivery's run", async () => {
+    const listed = ((await call(`/__hui/bots/${ada.id}/triggers`)).body as unknown as BotTriggersList).runs.filter((run) => run.triggerName === "Pings");
+    return listed.length ? listed : undefined;
+  });
+  assert.deepEqual(runs.map((run) => [run.status, run.events, run.summary]), [["fired", 1, "@rodrigo in #team-reviews: acme/widgets#1"]], "one delivery, the other channel's left out");
+  assert.equal((await call(`/__hui/bots/${ada.id}/triggers/Pings`, "DELETE")).status, 200);
+});
+
 test("a GitHub trigger: the fake GitHub's new pull request reaches the bot, after a silent baseline and conditional polls", { timeout: 120_000 }, async () => {
   const made = await call(`/__hui/bots/${ada.id}/triggers`, "POST", { name: "PRs", source: "github", filter: { repos: ["acme/widgets"], events: ["pr_opened"], authors: ["bob"] }, cooldownSeconds: 0 });
   assert.equal(made.status, 201);

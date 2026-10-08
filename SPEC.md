@@ -1245,9 +1245,10 @@ everything the Bots tab can, through the same routes.
 - **Triggers** wake a bot when something happens elsewhere, beside its routines
   (decisions below): pull requests on GitHub, read through the gateway's `gh`
   with one conditional poller per repo; the sessions it started finishing,
-  failing or asking; a webhook URL with a secret token, on the tailnet; or a
+  failing or asking; a webhook URL with a secret token, on the tailnet; a
   Slack message that pings the operator, read as them through a read-only user
-  token, its delivery carrying the pull requests it links to.
+  token, its delivery carrying the pull requests it links to; or what a
+  listener the operator runs reports to a URL of its own, each event once.
   Each delivery is `[trigger: <name> · <summary>] <prompt>` in its chat;
   a cooldown coalesces events into one delivery and an hourly cap holds the
   rest. The Routines tab lists them, `hui bot trigger` manages them, and the
@@ -1362,6 +1363,40 @@ everything the Bots tab can, through the same routes.
 The contract is [docs/api.md#bots](docs/api.md#bots).
 
 ## Decisions
+
+### Listeners report what HUI doesn't read itself (2026-10-08)
+
+The owner can't create a Slack app in his organization, so Slack triggers' own
+connection is closed to him, while the Slack MCP his job gives him (Claude's
+Slack app) reads the same pings. Wiring that MCP into HUI was built and set
+aside before it shipped: "this mcp is only related to my job, so what we want to
+implement is accepting a kind of 'listener' that would allow us to configure
+this mcp". Of the shapes offered he chose a push endpoint, a source any program
+can feed rather than one for Slack, and HUI's side first. The contract is
+[docs/api.md#triggers](docs/api.md#triggers).
+
+- **A source anyone's program feeds.** A listener trigger has a URL with a secret
+  token, made, shown once and replaced like a webhook's and answered by the same
+  route on the tailnet. The program (a listener) watches what it watches, as
+  often as it likes, and after every check posts `{ events }`: each with its own
+  id, one line, details, a time, links and fields. Nothing about any one service
+  is in HUI; the work Slack listener lives with the owner's job setup.
+- **HUI keeps each event once; the listener keeps its place.** HUI remembers the
+  ids a trigger was told in the same write as the delivery they decide, so a
+  report sent again (the listener never heard the answer, or restarted) wakes
+  nobody, and an event older than the trigger never does. The listener tracks
+  what it has read: HUI refusing a report (bots off) records nothing, and the
+  listener sends those events again later.
+- **Slack's safeguards, when the event says so.** A trigger narrows events by a
+  field (`fields.channel`), by a linked pull request, which the delivery carries
+  as a Slack trigger's does, and leaves out events the listener marks as a bot's
+  or from outside the operator's organization unless it allows them.
+- **Silence shows.** An empty report is a check-in: no delivery, no turn. The
+  trigger shows the latest report, the problem a listener reported, and that it
+  has said nothing for five minutes or since the gateway started, so a listener
+  that stopped never looks like one that watches.
+- **Not yet.** The work listener itself, and one listener feeding several
+  triggers (it reports to each URL instead).
 
 ### Bot faces get more shapes and ears, and bots can restyle themselves (2026-10-08)
 
