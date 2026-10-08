@@ -197,9 +197,10 @@ require('node:fs').writeFileSync(process.env.HUI_DESKTOP_PROOF, JSON.stringify({
   const terminalOutput = new Promise<void>((resolve, reject) => {
     let buffer = "";
     const timer = setTimeout(() => reject(new Error("Installed PTY output timed out.")), 5000);
-    socket.on("message", (raw) => {
-      const frame = JSON.parse(raw.toString());
-      if (frame.type === "data") buffer += frame.data;
+    // PTY output arrives as binary messages; text messages are JSON metadata.
+    socket.on("message", (raw, binary) => {
+      if (binary) buffer += raw.toString();
+      else if (JSON.parse(raw.toString()).type === "error") { clearTimeout(timer); reject(new Error("Installed PTY reported an error.")); }
       if (buffer.includes("INSTALLED_PTY")) { clearTimeout(timer); resolve(); }
     });
   });

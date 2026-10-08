@@ -10,10 +10,6 @@ export type TerminalView = {
   exitCode?: number;
   createdAt: string;
 };
+/** A terminal's replay as text, for HTTP reads and the agent's terminal tool. The socket's wire format is in
+ * shared/terminal-stream.ts. */
 export type TerminalSnapshot = { terminal: TerminalView; data: string; sequence: number; truncated: boolean };
-export type TerminalEvent =
-  | ({ type: "snapshot" } & TerminalSnapshot)
-  | { type: "data"; data: string; sequence: number }
-  | { type: "state"; terminal: TerminalView }
-  | { type: "error"; error: string };
-export type TerminalInput = { action: "input"; data: string } | { action: "resize"; cols: number; rows: number };

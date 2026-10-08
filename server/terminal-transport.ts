@@ -1,13 +1,27 @@
 /**
  * The WebSocket transport for terminals. Upgrades are accepted only with a short-lived, single-use ticket
  * minted through a guarded request, from the same origin and an allowed host; the socket then streams terminal
- * events out and input and resize messages in.
+ * output out as binary messages, metadata as JSON text, and takes input and resize messages in
+ * (wire format: shared/terminal-stream.ts).
  */
 import { randomBytes } from "node:crypto";
 import type { IncomingMessage } from "node:http";
 import type { EventEmitter } from "node:events";
 import { WebSocketServer, WebSocket } from "ws";
-import { terminals, TerminalService, TerminalError, TERMINAL_INPUT_BYTES } from "./terminals.ts";
+import { terminals, TerminalService, TerminalError, TERMINAL_INPUT_BYTES, type TerminalStreamEvent } from "./terminals.ts";
+import type { TerminalControlFrame } from "../shared/terminal-stream.ts";
+
+/** A client this far behind is dropped; it reconnects and replays instead of queueing unbounded output. */
+export const TERMINAL_MAX_BUFFERED_BYTES = 1024 * 1024;
+
+/** Sends one service event in the wire format: output as binary, everything else as a JSON text frame. */
+export function sendTerminalEvent(ws: WebSocket, event: TerminalStreamEvent): void {
+  if (event.type === "data") { ws.send(event.data, { binary: true }); return; }
+  if (event.type === "state") { ws.send(JSON.stringify(event satisfies TerminalControlFrame)); return; }
+  const frame: TerminalControlFrame = { type: "snapshot", terminal: event.terminal, sequence: event.sequence, truncated: event.truncated, replayBytes: event.replay.length };
+  ws.send(JSON.stringify(frame));
+  if (event.replay.length) ws.send(event.replay, { binary: true });
+}
 
 const tickets = new Map<string, { owner: string; id: string; expires: number }>();
 export function terminalTicket(owner: string, id: string): string {
@@ -48,8 +62,8 @@ export function attachTerminalTransport(server: EventEmitter, allowedHosts?: Rea
       heartbeat.unref();
       const unsubscribe = service.subscribe(ticket.owner, ticket.id, (event) => {
         if (ws.readyState !== WebSocket.OPEN) return;
-        if (ws.bufferedAmount > 1024 * 1024) { ws.close(1013, "Reconnect for terminal replay"); return; }
-        ws.send(JSON.stringify(event));
+        if (ws.bufferedAmount > TERMINAL_MAX_BUFFERED_BYTES) { ws.close(1013, "Reconnect for terminal replay"); return; }
+        sendTerminalEvent(ws, event);
       });
       ws.on("message", (data, binary) => {
         try {
@@ -59,7 +73,7 @@ export function attachTerminalTransport(server: EventEmitter, allowedHosts?: Rea
           else if (message?.["action"] === "resize") service.resize(ticket.owner, ticket.id, message["cols"], message["rows"]);
           else throw new TerminalError("Unknown terminal message.");
         } catch (error) {
-          ws.send(JSON.stringify({ type: "error", error: error instanceof Error ? error.message : "Terminal request failed." }));
+          ws.send(JSON.stringify({ type: "error", error: error instanceof Error ? error.message : "Terminal request failed." } satisfies TerminalControlFrame));
         }
       });
       ws.on("error", () => ws.terminate());
