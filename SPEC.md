@@ -1243,9 +1243,11 @@ everything the Bots tab can, through the same routes.
   bot asks for it back with `request_access`, which only the operator answers.
   Tools are the boundary, not a sandbox.
 - **Triggers** wake a bot when something happens elsewhere, beside its routines
-  (decision below): pull requests on GitHub, read through the gateway's `gh`
+  (decisions below): pull requests on GitHub, read through the gateway's `gh`
   with one conditional poller per repo; the sessions it started finishing,
-  failing or asking; or a webhook URL with a secret token, on the tailnet.
+  failing or asking; a webhook URL with a secret token, on the tailnet; or a
+  Slack message that pings the operator, read as them through a read-only user
+  token, its delivery carrying the pull requests it links to.
   Each delivery is `[trigger: <name> · <summary>] <prompt>` in its chat;
   a cooldown coalesces events into one delivery and an hourly cap holds the
   rest. The Routines tab lists them, `hui bot trigger` manages them, and the
@@ -1360,6 +1362,63 @@ everything the Bots tab can, through the same routes.
 The contract is [docs/api.md#bots](docs/api.md#bots).
 
 ## Decisions
+
+### Slack triggers wake bots on review pings (2026-10-08)
+
+The owner: "usually people in my team pings me to review PR's. Getting marked as
+reviewer doesn't mean I should review it, but if someone pings me in slack it
+does." So the signal is a teammate @-mentioning the operator, or messaging them
+directly, in Slack, usually with a pull request link, and nobody has to mention a
+bot or change how they work. A Slack trigger wakes a bot on those messages, and
+its delivery carries the linked pull requests, so a bot without a shell can
+review from it alone. The contract is
+[docs/api.md#triggers](docs/api.md#triggers) and
+[docs/api.md#slack](docs/api.md#slack).
+
+- **Read as the operator, through search.** The operator creates a Slack app in
+  their own workspace from HUI's manifest (user token scopes only, every one
+  read-only, no bot user) and connects its User OAuth Token in Settings →
+  Integrations → Slack or with `hui slack connect`. The gateway polls
+  `search.messages` about every minute: `<@me>` for mentions, `is:dm` for
+  direct messages. Only matching messages travel, one token does it, and a poll
+  after a gap reads what was missed, which a gateway on a laptop that sleeps
+  needs. Socket Mode would need an app-level token as well, a connection held
+  open, user events for every kind of conversation and, on every reconnect, a
+  catch-up through each conversation's history. `search.messages` is Slack's
+  Tier 2 (about 20 requests a minute) and a poll makes one or two. Slack labels
+  it legacy and recommends its Real-time Search API, but that API is meant for
+  searches a person starts in an AI app, with per-user limits that steady
+  polling would run into.
+- **Fewest scopes, each for one reason.** `search:read` finds the pings;
+  `users:read` names who asked and tells bots, apps and Slack Connect people
+  apart; the four `*:history` scopes read the parent of a thread reply, whose
+  pull request link often sits in the parent, in each kind of conversation.
+  Nothing lets HUI post, react or edit, and no code path tries.
+- **Never twice, never an edit, never a flood.** The poller's cursor (when the
+  previous poll started, and the messages seen since shortly before) is saved
+  before any event goes out; the first poll is a silent baseline, and a trigger
+  never takes a message older than itself. A message counts once, and only when
+  it is newer than the previous poll, less two minutes for search indexing, so an
+  edit that adds a mention or a link never fires. Bots off, nothing is read; when
+  they come back on, or the machine wakes, what came meanwhile (a day at most)
+  is one catch-up per trigger, through the same cooldown and hourly cap.
+- **The token stays home.** It is stored like Jira's (`slack.json`, mode 0600),
+  goes only to Slack in an Authorization header, and no route, error, diagnostic
+  or log carries it.
+- **What a message says is information.** The delivery says it comes from
+  outside HUI; a turn it starts is a trigger's turn, which the gated tools
+  refuse. Only the operator adds or changes Slack triggers, since they read the
+  operator's messages (like webhook triggers, whose URL is a secret). Pull
+  requests are read through the gateway's `gh` when the delivery goes out, so
+  the bot needs no shell and acts on GitHub as nobody.
+- **Not yet, and what the first real run confirms.** Mentions of a user group
+  are left for later. Slack documents the method, its tier, the `<@id>` form
+  inside `in:` and `from:`, and that results follow the user's search
+  preferences; that `<@id>` alone finds mentions, that `is:dm` works in this
+  method (Slack documents it for the Real-time Search API), how late search
+  indexes a message, and how a match marks edits, threads, bots and Slack
+  Connect people are assumptions the operator's first run with a real workspace
+  confirms.
 
 ### Schedules are a CLI, and bots schedule their own routines (2026-10-07)
 
