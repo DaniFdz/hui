@@ -11,7 +11,7 @@ import { sessionTreeIds } from "./lib/session-tree.ts";
 import { applySessionListUpdate, type SessionListUpdate } from "../shared/session-list.ts";
 import { html, nothing, type PropertyValues } from "lit";
 import { keyed } from "lit/directives/keyed.js";
-import { customElement, property, state } from "lit/decorators.js";
+import { property, state } from "lit/decorators.js";
 import { HuiElement } from "./lit/hui-element.ts";
 import {
   abortSession,
@@ -288,7 +288,8 @@ function withoutSetting<Value>(record: Partial<Record<BotSettingKey, Value>>, ke
 type PaneBot = Omit<HomeBot, "onTogglePanel" | "onAction">;
 const paneBotProperty = { attribute: false, hasChanged: (value: unknown, old: unknown) => JSON.stringify(value) !== JSON.stringify(old) };
 
-@customElement("hui-app")
+/** Defined by `defineHuiApp`, not on import: main.ts loads this module while the
+ * saved appearance is still being read, and the app must not paint before it. */
 export class HuiApp extends HuiElement {
   @state() private view: NavId = "home";
   @state() private activePage: HuiPage | undefined;
@@ -365,6 +366,8 @@ export class HuiApp extends HuiElement {
   /** The watcher log the operator opened; one at a time. */
   @state() private watcherLog: { id: string; lines: readonly string[]; truncated: boolean; loading: boolean } | null = null;
   @state() private opening = false;
+  /** Why the selected session's open request failed; its view offers a retry. */
+  @state() private openError = "";
   @state() private streaming = false;
   /** `sessionId\0errorKey` of run errors the operator dismissed this page load. */
   @state() private dismissedRunErrors: ReadonlySet<string> = new Set();
@@ -883,6 +886,9 @@ export class HuiApp extends HuiElement {
   }
 
   private applySessionStatusSnapshot = (updates: readonly SessionStatusUpdate[]) => {
+    // The status stream has just (re)connected, so the gateway is reachable
+    // again: a list that failed to load earlier is worth asking for once more.
+    if (!this.embeddedPane && this.sessionsError && !this.sessionsLoading) void this.refreshSessions();
     this.sessionStatuses = new Map(updates.map(({ id, status }) => [id, status]));
     const unread = new Map(updates.flatMap((update) =>
       update.unread === undefined ? [] : [[update.id, update.unread] as const]));
@@ -2046,6 +2052,7 @@ export class HuiApp extends HuiElement {
     this.streamStop?.();
     this.streamStop = undefined;
     this.opening = true;
+    this.openError = "";
     this.streaming = false;
     this.transcript = [];
     this.subagents = [];
@@ -2090,8 +2097,9 @@ export class HuiApp extends HuiElement {
       this.requestModelsWhenReady(id, opened.session.status);
     } catch (error) {
       if (isCurrentSessionRequest(id, this.selected?.id, requestToken, this.openRequestToken)) {
-        this.note = error instanceof Error ? error.message : "Could not open that session.";
-        this.noteLevel = "error";
+        // In place of the conversation, which never arrived: an empty transcript
+        // would read as a session with nothing in it.
+        this.openError = error instanceof Error ? error.message : "Could not open that session.";
       }
     } finally {
       if (isCurrentSessionRequest(id, this.selected?.id, requestToken, this.openRequestToken)) {
@@ -3626,6 +3634,7 @@ export class HuiApp extends HuiElement {
     if (this.subagentExpiryTimer !== undefined) window.clearTimeout(this.subagentExpiryTimer);
     this.subagentExpiryTimer = undefined;
     this.opening = empty.opening;
+    this.openError = "";
     this.streaming = empty.streaming;
     this.note = empty.note;
     this.noteLevel = empty.noteLevel;
@@ -5385,6 +5394,7 @@ export class HuiApp extends HuiElement {
       transcript: this.transcript,
       subagents: this.subagents,
       opening: this.opening,
+      openError: this.openError,
       streaming: this.streaming,
       sending: this.sending,
       stopping: this.stopping,
@@ -6049,4 +6059,9 @@ export class HuiApp extends HuiElement {
       )}
     </div>`;
   }
+}
+
+/** Upgrades the page's `<hui-app>`, which renders at once. */
+export function defineHuiApp(): void {
+  if (!customElements.get("hui-app")) customElements.define("hui-app", HuiApp);
 }

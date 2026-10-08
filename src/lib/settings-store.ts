@@ -7,6 +7,7 @@
  */
 import { applyAppearance } from "./appearance.ts";
 import { DEFAULT_SETTINGS, normalizeSettings, type Settings } from "./settings.ts";
+import { fetchWithResponseDeadline } from "./gateway-request.ts";
 import { trackedFetch } from "./ui-errors.ts";
 
 const SETTINGS_URL = "/__hui/settings";
@@ -30,11 +31,10 @@ export function currentSettings(): Settings {
 }
 
 export async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await trackedFetch(url, {
+  const response = await fetchWithResponseDeadline(trackedFetch, url, {
     ...init,
     headers: { ...CLIENT_HEADERS, ...init?.headers },
     cache: "no-store",
-    signal: init?.signal ?? AbortSignal.timeout(5000),
   });
   if (!response.ok) {
     // The backend explains its refusals in the body, and that message is worth

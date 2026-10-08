@@ -24,17 +24,17 @@ import { worktreeProgressLabel } from "../lib/worktree-progress.ts";
 import type { JiraBadgeData } from "../components/jira-hovercard.ts";
 import { renderBotRoster, renderNewBotButton, type BotPlace, type BotRosterProps } from "./bots.ts";
 import { SIDEBAR_TABS, tabAfterKey, type SidebarTab } from "../lib/bot-roster.ts";
+import { loadViewAssets } from "../lib/view-assets.ts";
 
-// Node's focused view tests import this module without a CSS loader. The real
-// browser entry loads the shell sheet before this view can render.
-if (typeof document !== "undefined") {
-  await import("../styles/openclaw-shell.css");
-  await import("../components/openclaw/session-progress-hovercard.runtime.ts");
-  (await import("../components/pull-request-hovercard.ts")).installPullRequestHovercard();
-  await import("../components/pull-request-strip.ts");
-  (await import("../components/jira-hovercard.ts")).installJiraHovercard();
-  (await import("../components/tooltip.ts")).installTooltips();
-}
+// The real browser entry loads these before this view can render.
+loadViewAssets(
+  () => import("../styles/openclaw-shell.css"),
+  () => import("../components/openclaw/session-progress-hovercard.runtime.ts"),
+  () => import("../components/pull-request-hovercard.ts").then((module) => module.installPullRequestHovercard()),
+  () => import("../components/pull-request-strip.ts"),
+  () => import("../components/jira-hovercard.ts").then((module) => module.installJiraHovercard()),
+  () => import("../components/tooltip.ts").then((module) => module.installTooltips()),
+);
 
 /**
  * The app shell, following OpenClaw's Control UI regions:

@@ -6,8 +6,9 @@ import { LitElement, html, nothing } from "lit";
 import type { SessionView } from "../lib/sessions-store.ts";
 import type { SessionTools, ToolsCatalog } from "../lib/tools-types.ts";
 import { inspectSessionTools, loadToolsCatalog } from "../lib/tools-store.ts";
+import { loadViewAssets } from "../lib/view-assets.ts";
 
-if (typeof document !== "undefined") await import("../styles/tools.css");
+loadViewAssets(() => import("../styles/tools.css"));
 
 export class HuiToolsSettings extends LitElement {
   static override properties = { sessions: { attribute: false } };

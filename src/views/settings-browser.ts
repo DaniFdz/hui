@@ -8,8 +8,9 @@ import { browserStatusLabel, browserVersionLabel } from "../lib/browser-status.t
 import { controlBrowser, loadBrowserStatus, previewBrowserTab } from "../lib/browser-store.ts";
 import { DEFAULT_BROWSER_SETTINGS, type BrowserSettings } from "../lib/settings.ts";
 import { renderSettingsToggle } from "./settings-toggle.ts";
+import { loadViewAssets } from "../lib/view-assets.ts";
 
-if (typeof document !== "undefined") await import("../styles/tools.css");
+loadViewAssets(() => import("../styles/tools.css"));
 
 /** Tabs and state change as agents work; this page is the only reader. */
 const POLL_MS = 4_000;

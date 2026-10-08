@@ -11,11 +11,9 @@ import { formatCallTime } from "../lib/voice.ts";
 import { renderBotAvatar } from "./bots.ts";
 import { callFaceState } from "../lib/bot-face.ts";
 import { botLook } from "../../shared/bots.ts";
+import { loadViewAssets } from "../lib/view-assets.ts";
 
-// Node's focused view tests import views without a CSS loader.
-if (typeof document !== "undefined") {
-  await import("../styles/voice.css");
-}
+loadViewAssets(() => import("../styles/voice.css"));
 
 // Lucide geometry (ISC) for controls the pinned OpenClaw icon set lacks.
 function lucide(body: SVGTemplateResult): TemplateResult {
