@@ -5,10 +5,18 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
-import { test } from "node:test";
+import { after, test } from "node:test";
 
 import type { RuntimeEvent } from "./types.ts";
-import { branchHistory, imageFromMessages, PiSession, runtimeCommands, runtimeUsage, toRuntimeEvent, transcriptFrom } from "./pi.ts";
+
+// HUI's provider selections resolve at import time and are read with each model list: never the operator's own.
+const root = await mkdtemp(join(tmpdir(), "hui-pi-home-"));
+process.env["HOME"] = root;
+process.env["XDG_CONFIG_HOME"] = join(root, "config");
+process.env["PI_CODING_AGENT_DIR"] = join(root, "agent");
+after(() => rm(root, { recursive: true, force: true }));
+const { branchHistory, imageFromMessages, PiSession, runtimeCommands, runtimeUsage, toRuntimeEvent, transcriptFrom } = await import("./pi.ts");
+type PiSession = import("./pi.ts").PiSession;
 
 type FakeChild = EventEmitter & {
   stdin: PassThrough;

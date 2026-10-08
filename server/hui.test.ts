@@ -1,12 +1,20 @@
 import assert from "node:assert/strict";
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { test } from "node:test";
+import { after, test } from "node:test";
 
-import { sessionGroupPatch, discoverThemes, mergeThemes, registryUrlFor, waitForAutomationRun, waitForSessionReady, type ThemeEntry } from "./hui.ts";
+import type { ThemeEntry } from "./hui.ts";
 import type { SessionStreamMessage } from "./live-sessions.ts";
 import type { SessionRecord } from "./sessions.ts";
+
+// HUI's directory resolves at import time and hui.ts reads it as it loads: never the operator's own.
+const root = await mkdtemp(join(tmpdir(), "hui-gateway-home-"));
+process.env["HOME"] = root;
+process.env["XDG_CONFIG_HOME"] = join(root, "config");
+process.env["PI_CODING_AGENT_DIR"] = join(root, "agent");
+after(() => rm(root, { recursive: true, force: true }));
+const { sessionGroupPatch, discoverThemes, mergeThemes, registryUrlFor, waitForAutomationRun, waitForSessionReady } = await import("./hui.ts");
 
 async function dirOf(files: Record<string, string>): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), "hui-themes-"));

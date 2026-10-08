@@ -2,8 +2,15 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import test from "node:test";
-import { configuredModels, filterConfiguredModels } from "./pi-models.ts";
+import test, { after } from "node:test";
+
+// HUI's provider selections resolve at import time and are read with each filter: never the operator's own.
+const root = await mkdtemp(join(tmpdir(), "hui-pi-models-home-"));
+process.env["HOME"] = root;
+process.env["XDG_CONFIG_HOME"] = join(root, "config");
+process.env["PI_CODING_AGENT_DIR"] = join(root, "agent");
+after(() => rm(root, { recursive: true, force: true }));
+const { configuredModels, filterConfiguredModels } = await import("./pi-models.ts");
 
 const catalog = [
   { provider: "gateway", id: "anthropic/opus", name: "Opus" },
