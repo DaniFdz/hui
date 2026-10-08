@@ -234,7 +234,7 @@ export class SessionMultiplexer extends HuiElement {
             event.preventDefault();
             activate(next.id, true);
           }}
-        >${tab.terminalId ? icons.squareTerminal : tab.browser ? icons.globe : icons.messageSquare}<span class="hui-pane-tab__label">${label}</span></div>
+        >${icons.messageSquare}<span class="hui-pane-tab__label">${label}</span></div>
         <button type="button" class="hui-pane-tab__close" aria-label=${`Close ${label}`} title="Close tab"
           @click=${(event: Event) => { event.stopPropagation(); this.onClosePane(tab.id); }}>${icons.close}</button>
       </div>`;
@@ -248,7 +248,6 @@ export class SessionMultiplexer extends HuiElement {
     const split = panes.length > 1;
     for (const id of this.retained.keys()) if (!panes.some((pane) => pane.id === id)) this.retained.delete(id);
     const slots = new Map<string, readonly string[]>(panes.map((pane) => {
-      if (pane.terminalId || pane.browser) return [pane.id, []] as const;
       const cache = this.retained.get(pane.id) ?? new SessionViewCache();
       this.retained.set(pane.id, cache);
       if (this.sessionIds) cache.removeMissing(this.sessionIds);
@@ -278,7 +277,7 @@ export class SessionMultiplexer extends HuiElement {
               style=${rectStyle(rect)}
               @pointerdown=${() => this.onFocusPane(pane.id)} @focusin=${() => this.onFocusPane(pane.id)}
             >${!this.narrow && spot?.tabs ? this.renderTabs(spotTabs(spot), pane.id) : nothing}<div class="chat-pane-cache">
-              ${pane.terminalId || pane.browser ? html`<div class="chat-pane-cache__pane chat-pane-cache__pane--visible" ?inert=${!visible} aria-hidden=${String(!visible)}>${this.renderPane(pane, { active, visible, narrow: this.narrow, split })}</div>` : repeat(slots.get(pane.id) ?? [], (id) => id, (id) => {
+              ${repeat(slots.get(pane.id) ?? [], (id) => id, (id) => {
                 const current = id === pane.sessionId;
                 return html`<div class="chat-pane-cache__pane ${current ? "chat-pane-cache__pane--visible" : ""} ${current && active ? "chat-pane-cache__pane--active" : ""}"
                   ?inert=${!visible || !current} aria-hidden=${String(!visible || !current)}

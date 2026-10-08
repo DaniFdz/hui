@@ -13,6 +13,7 @@ import "./styles/openclaw-launch.css";
 import "./styles/web-awesome.css";
 import "./styles/terminal.css";
 import "./styles/browser-pane.css";
+import "./styles/work-pane.css";
 import "./styles/media-viewer.css";
 
 // Pin the original component runtime; avoid the all-components loader and CDN.

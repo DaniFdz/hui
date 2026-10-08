@@ -1,8 +1,9 @@
 /**
- * A panel showing one of a session's shared terminals, drawn with ghostty-web. The PTY lives in the gateway: this
+ * One of a session's shared terminals, drawn with ghostty-web inside a Work pane tab. The PTY lives in the gateway: this
  * element replays its snapshot, writes the socket's binary output straight into Ghostty as bytes, sends input over
  * the terminal socket, reconnects with backoff and resizes the PTY to fit only when its measurable size changes.
- * Hiding the panel leaves the terminal running; only "End terminal" stops it.
+ * Hiding the tab or the pane leaves the terminal running; only "End terminal" stops it. Tabs, closing and launching
+ * belong to the Work pane (`components/work-pane.ts`, `lib/work-views/terminal.ts`).
  */
 import { html, nothing, type PropertyValues } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
@@ -10,16 +11,11 @@ import type { Terminal, FitAddon } from "ghostty-web";
 import { DEFAULT_TERMINAL_FONT, loadTerminalFont, terminalFontStack } from "../lib/terminal-font.ts";
 import { HuiElement } from "../lit/hui-element.ts";
 import { icons } from "../lib/icons.ts";
-import { connectTerminal, createTerminal, endTerminal, listTerminals } from "../lib/terminals-store.ts";
+import { connectTerminal, endTerminal } from "../lib/terminals-store.ts";
 import type { TerminalView } from "../lib/terminal-types.ts";
 import type { TerminalInput } from "../../shared/terminal-stream.ts";
 import { createTerminalStreamReader } from "../lib/terminal-stream.ts";
 import { fittedTerminalSize } from "../lib/terminal-fit.ts";
-import type { SplitDirection } from "../lib/session-multiplexer.ts";
-import { toggleNavigationDrawer } from "../views/shell.ts";
-import { renderPaneMoveHandle } from "../views/pane-move-handle.ts";
-import { renderPicker } from "../views/settings-picker.ts";
-import { terminalPickerOptions } from "../lib/terminal-picker-options.ts";
 import { writeTerminal } from "../lib/terminal-write.ts";
 
 let initialize: Promise<typeof import("ghostty-web")> | undefined;
@@ -34,13 +30,12 @@ export class TerminalPane extends HuiElement {
   @property() ownerSessionId = "";
   @property() terminalId = "";
   @property({ type: Boolean }) visible = true;
+  /** Take keyboard focus when the terminal opens (the operator just launched it). */
   @property({ type: Boolean }) active = true;
-  @property({ type: Boolean }) mobileNav = false;
-  @property({ type: Boolean }) movable = false;
-  @property({ attribute: false }) onClosePane: (() => void) | undefined;
-  @property({ attribute: false }) onSelectTerminal!: (id: string) => void;
-  @property({ attribute: false }) onSplitTerminal!: (direction: SplitDirection) => Promise<void>;
-  @state() private entries: TerminalView[] = [];
+  /** The terminal was ended from this view; its tab should close. */
+  @property({ attribute: false }) onEnded: (() => void) | undefined;
+  /** Reports the gateway's view of the terminal (name, cwd, status) whenever it arrives. */
+  @property({ attribute: false }) onTerminalView: ((view: TerminalView) => void) | undefined;
   @state() private terminalView: TerminalView | undefined;
   @state() private status = "Connecting…";
   @state() private error = "";
@@ -84,8 +79,6 @@ export class TerminalPane extends HuiElement {
     terminal.options.fontFamily = font;
     this.fitTerminal();
   }
-
-  private async refreshList() { this.entries = await listTerminals(this.ownerSessionId); }
 
   private fitTerminal = () => {
     if (!this.visible || !this.ready || !this.fit || !this.terminal) return;
@@ -140,8 +133,6 @@ export class TerminalPane extends HuiElement {
       terminal.onResize(({ cols, rows }) => this.send({ action: "resize", cols, rows }));
       this.resizeObserver = new ResizeObserver(this.fitTerminal);
       this.resizeObserver.observe(surface);
-      await this.refreshList();
-      if (generation !== this.generation) return;
       await this.connect(generation);
     } catch (error) {
       if (generation === this.generation) { this.error = error instanceof Error ? error.message : "Terminal unavailable."; this.status = "Disconnected"; }
@@ -162,6 +153,7 @@ export class TerminalPane extends HuiElement {
         this.terminal.write("\u001bc\u001b[3J\u001b[2J\u001b[H");
         this.terminal.resize(frame.terminal.cols, frame.terminal.rows);
         this.terminalView = frame.terminal;
+        this.onTerminalView?.(frame.terminal);
         this.truncated = frame.truncated;
         writeTerminal(this.terminal, replay, () => {
           if (generation !== this.generation) return;
@@ -176,6 +168,7 @@ export class TerminalPane extends HuiElement {
       state: (terminal) => {
         if (!this.terminal) return;
         this.terminalView = terminal;
+        this.onTerminalView?.(terminal);
         this.status = terminal.status === "running" ? "Connected" : "Exited";
         this.replaying = true;
         this.terminal.resize(terminal.cols, terminal.rows);
@@ -213,51 +206,31 @@ export class TerminalPane extends HuiElement {
     finally { this.busy = false; }
   };
 
+  private end = () => this.run(async () => {
+    await endTerminal(this.ownerSessionId, this.terminalId);
+    this.cleanup();
+    this.status = "Ended";
+    this.onEnded?.();
+  });
+
   override render() {
-    return html`<header class="chat-pane__header hui-terminal-header" tabindex="-1" draggable=${this.movable ? "true" : "false"}>
-      <div class="hui-terminal-title">
-        ${renderPaneMoveHandle(this.movable)}
-        ${this.mobileNav ? html`<button class="btn btn--ghost btn--icon" aria-label="Open navigation" @click=${toggleNavigationDrawer}>${icons.menu}</button>` : nothing}
-        <span aria-hidden="true">${icons.squareTerminal}</span>
-        ${renderPicker({
-          label: "Terminal",
-          value: this.terminalId,
-          options: terminalPickerOptions(this.entries, this.terminalId),
-          className: "hui-terminal-picker",
-          showOptionTooltips: false,
-          onOpen: () => void this.refreshList().catch(() => {}),
-          onChange: (id) => { if (id !== this.terminalId) this.onSelectTerminal(id); },
-        })}
-      </div>
-      <div class="hui-terminal-actions">
-        <button class="btn btn--ghost btn--icon" title="New terminal" aria-label="New terminal" ?disabled=${this.busy} @click=${() => this.run(async () => { const terminal = await createTerminal(this.ownerSessionId); this.onSelectTerminal(terminal.id); })}>${icons.plus}</button>
-        <wa-dropdown placement="bottom-end" @wa-select=${(event: CustomEvent<{ item: HTMLElement }>) => {
-          const action = event.detail.item.getAttribute("value");
-          queueMicrotask(() => {
-            if (action === "down" || action === "right") void this.run(() => this.onSplitTerminal(action));
-            if (action === "end") void this.run(async () => {
-              await endTerminal(this.ownerSessionId, this.terminalId);
-              await this.refreshList();
-              const next = this.entries[0];
-              if (next) this.onSelectTerminal(next.id); else { this.cleanup(); this.status = "Ended"; this.onClosePane?.(); }
-            });
-          });
-        }}>
-          <button slot="trigger" class="btn btn--ghost btn--icon" aria-label="Terminal actions" title="Terminal actions" ?disabled=${this.busy}>${icons.moreHorizontal}</button>
-          <wa-dropdown-item value="right">Split terminal right</wa-dropdown-item>
-          <wa-dropdown-item value="down">Split terminal down</wa-dropdown-item>
-          <wa-dropdown-item value="end">End terminal</wa-dropdown-item>
-        </wa-dropdown>
-        ${this.onClosePane ? html`<button class="btn btn--ghost btn--icon" title="Hide terminal panel (keep running)" aria-label="Hide terminal panel" @click=${this.onClosePane}>${icons.close}</button>` : nothing}
-      </div>
-    </header>
-    <div class="hui-terminal-meta"><span title=${this.terminalView?.cwd ?? ""}>${this.terminalView?.cwd ?? "Terminal"}</span><span role="status" title="Shared with the agent in this conversation">Shared · ${this.status}${this.terminalView?.exitCode !== undefined ? ` · ${this.terminalView.exitCode}` : ""}</span></div>
+    const cwd = this.terminalView?.cwd;
+    return html`<div class="hui-terminal-toolbar">
+      <span class="hui-terminal-cwd" data-hui-tooltip=${cwd || nothing}>${cwd ?? "Terminal"}</span>
+      <span class="hui-terminal-status" role="status" data-hui-tooltip="Shared with the agent in this conversation">Shared · ${this.status}${this.terminalView?.exitCode !== undefined ? ` · ${this.terminalView.exitCode}` : ""}</span>
+      <wa-dropdown placement="bottom-end" @wa-select=${(event: CustomEvent<{ item: HTMLElement }>) => {
+        if (event.detail.item.getAttribute("value") === "end") queueMicrotask(() => void this.end());
+      }}>
+        <button slot="trigger" type="button" class="btn btn--ghost btn--icon" aria-label="Terminal actions" data-hui-tooltip="Terminal actions" ?disabled=${this.busy}>${icons.moreHorizontal}</button>
+        <wa-dropdown-item value="end">End terminal</wa-dropdown-item>
+      </wa-dropdown>
+    </div>
     ${this.error ? html`<div class="hui-terminal-error" role="alert">${this.error}</div>` : nothing}
-    ${this.status === "Disconnected" ? html`<button class="btn" @click=${() => { this.retries = 0; void this.start(); }}>Reconnect terminal</button>` : nothing}
+    ${this.status === "Disconnected" ? html`<button type="button" class="btn hui-terminal-reconnect" @click=${() => { this.retries = 0; void this.start(); }}>Reconnect terminal</button>` : nothing}
     ${this.truncated ? html`<div class="hui-terminal-notice">Older output was trimmed from the replay.</div>` : nothing}
     <div class="hui-terminal-surface" @keydown=${(event: KeyboardEvent) => event.stopPropagation()}></div>
     <div class="hui-terminal-keys" aria-label="Terminal keys">
-      ${[["Esc", "\u001b"], ["Tab", "\t"], ["Ctrl+C", "\u0003"], ["Enter", "\r"]].map(([label, data]) => html`<button class="btn btn--ghost btn--sm" ?disabled=${this.status !== "Connected"} @click=${() => { this.send({ action: "input", data: data! }); this.terminal?.focus(); }}>${label}</button>`)}
+      ${[["Esc", "\u001b"], ["Tab", "\t"], ["Ctrl+C", "\u0003"], ["Enter", "\r"]].map(([label, data]) => html`<button type="button" class="btn btn--ghost btn--sm" ?disabled=${this.status !== "Connected"} @click=${() => { this.send({ action: "input", data: data! }); this.terminal?.focus(); }}>${label}</button>`)}
     </div>`;
   }
 }

@@ -16,7 +16,7 @@ const CHIP_TEXT = { live: "Live", connecting: "Connecting…", closed: "Closed" 
  * What the agent's browser shows, in the chat under its latest browser
  * activity. It streams while the agent's turn runs and the card is on screen,
  * then keeps the last frame; an idle card takes one fresh frame when it first
- * appears. View-only: selecting it opens the larger browser panel.
+ * appears. View-only: selecting it opens the conversation's browser view in the Work pane.
  *
  * No decorators: the chat view (and so this module) also loads in Node tests.
  */
@@ -112,11 +112,11 @@ export class BrowserPreview extends HuiElement {
         </div>
         <span class="chat-assistant-attachment-card__actions">
           ${display.chip ? html`<span class="hui-browser-preview__chip hui-browser-preview__chip--${display.chip}">${display.chip === "live" ? html`<span class="hui-browser-preview__dot" aria-hidden="true"></span>` : nothing}${CHIP_TEXT[display.chip]}</span>` : nothing}
-          ${expand ? html`<button type="button" class="chat-assistant-attachment-card__action hui-browser-preview__expand" aria-label="Open in browser panel" title="Open in browser panel" @click=${expand}>${icons.panelRightOpen}</button>` : nothing}
+          ${expand ? html`<button type="button" class="chat-assistant-attachment-card__action hui-browser-preview__expand" aria-label="Open browser view" data-hui-tooltip="Open browser view" @click=${expand}>${icons.panelRightOpen}</button>` : nothing}
         </span>
       </div>
       ${expand && frame
-        ? html`<button type="button" class="hui-browser-preview__screen" aria-label=${`Open ${display.title} in the browser panel`} @click=${expand}>${screen}</button>`
+        ? html`<button type="button" class="hui-browser-preview__screen" aria-label=${`Open ${display.title} in the browser view`} @click=${expand}>${screen}</button>`
         : html`<div class="hui-browser-preview__screen">${screen}</div>`}
       ${action ? html`<div class="hui-browser-preview__footer">
           <span class="hui-browser-preview__action" title=${action.text}>${action.text}</span>

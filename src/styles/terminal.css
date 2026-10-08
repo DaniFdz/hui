@@ -9,29 +9,20 @@ hui-terminal-pane {
   background: var(--background);
   color: var(--foreground);
 }
-.hui-terminal-header { flex: 0 0 auto; min-width: 0; }
-.hui-terminal-title, .hui-terminal-actions { display: flex; align-items: center; gap: 6px; min-width: 0; }
-.hui-terminal-title { flex: 1; }
-.hui-terminal-title > span { display: flex; }
-.hui-terminal-title svg, .hui-terminal-actions svg { width: 16px; height: 16px; }
-.hui-terminal-title .hui-terminal-picker { flex: 0 1 220px; min-width: 0 !important; width: auto !important; max-width: 220px; }
-.hui-terminal-title .picker-select__trigger { display: flex; align-items: center; width: 100%; min-height: 28px; padding-inline: 6px; border: 0; background: transparent; color: inherit; font: inherit; text-align: start; box-shadow: none; }
-.hui-terminal-title .picker-select__trigger:hover { background: color-mix(in srgb, var(--bg-hover) 84%, transparent); }
-.hui-terminal-title .picker-select__trigger:is(:focus-visible, [aria-expanded="true"]) { box-shadow: var(--focus-ring); }
-.hui-terminal-title .picker-select__trigger .picker-select__copy { flex: 1; }
-.hui-terminal-title .picker-select__trigger .picker-select__label { font-weight: inherit; }
-.hui-terminal-title .picker-select__option { display: flex; align-items: center; gap: 8px; }
-.hui-terminal-title .picker-select__option .picker-select__copy { flex: 1; }
-.hui-terminal-meta { display: flex; justify-content: space-between; gap: 12px; padding: 6px 12px; color: var(--muted-foreground); font-size: 11px; border-bottom: 1px solid var(--border); }
-.hui-terminal-meta > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.hui-terminal-meta > span:last-child { flex-shrink: 0; }
+/* The view's own strip under the Work pane tab: where the shell runs, its state, and End terminal. */
+.hui-terminal-toolbar { display: flex; flex: 0 0 auto; align-items: center; gap: 12px; min-width: 0; min-height: 32px; padding: 0 4px 0 12px; color: var(--muted-foreground, var(--muted)); font-size: 11px; border-bottom: 1px solid var(--border); }
+.hui-terminal-cwd { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono, var(--font-mono)); }
+.hui-terminal-status { flex-shrink: 0; }
+.hui-terminal-toolbar .btn--icon { min-width: 28px; width: 28px; height: 28px; padding: 0; border: 0; background: transparent; box-shadow: none; }
+.hui-terminal-toolbar svg { width: 16px; height: 16px; }
+.hui-terminal-reconnect { margin: 8px 12px 0; align-self: flex-start; }
 .hui-terminal-surface { flex: 1; min-height: 0; min-width: 0; overflow: hidden; padding: 8px; position: relative; }
 .hui-terminal-error, .hui-terminal-notice { padding: 6px 12px; font-size: 12px; overflow-wrap: anywhere; }
 .hui-terminal-error { color: var(--destructive); }
 .hui-terminal-notice { color: var(--muted-foreground); }
 .hui-terminal-keys { display: none; }
 .hui-workspace-panels { display: flex; flex-direction: column; min-height: 0; height: 100%; }
-.hui-workspace-panels > hui-session-multiplexer { flex: 1; min-height: 0; }
+.hui-workspace-panels > .hui-workspace-row { flex: 1; min-height: 0; }
 .hui-panel-selector { display: none; }
 @media (max-width: 1099px) {
   .hui-panel-selector { display: flex; flex-shrink: 0; padding: 8px 12px; border-bottom: 1px solid var(--border); }

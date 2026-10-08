@@ -66,6 +66,44 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
+## AgentsInTheCloud
+
+HUI's Work pane (`src/components/work-pane.ts`, `src/lib/work-pane.ts`,
+`src/lib/shortcut-binding.ts`, `src/views/panel-selector.ts`) ports the Work
+pane design of AgentsInTheCloud at commit `6caa5d4`: its vocabulary
+(`CONTEXT.md`: Work pane, Work view, Work view reference, More), the pane
+structure of `apps/web/src/server/workspace-presentation.ts` (tab strip of Work
+views with close controls, a launcher menu, an empty state listing launchers
+with their shortcuts, a resizer and phone destinations), the shortcut binding
+notation and display of `apps/web/src/shortcut-binding.ts`, and the AltGr rule
+of `apps/web/src/client/workspace-shortcuts.ts`. HUI reimplements them in Lit
+with its own state, registry and styles; no AgentsInTheCloud markup or
+stylesheet is copied.
+
+Source: https://github.com/lucasmeijer/AgentsInTheCloud
+
+MIT License
+
+Copyright (c) 2026 Lucas Meijer
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
 ## Web Awesome
 
 HUI uses `@awesome.me/webawesome` 3.12.0, including its default theme and the
