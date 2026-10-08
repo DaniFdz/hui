@@ -90,6 +90,21 @@ test("the managed browser is on and headless unless explicitly changed", () => {
   assert.equal(normalizeSettings({ browser: { executablePath: `/${"x".repeat(5_000)}` } }).browser.executablePath, "");
 });
 
+test("the VS Code view is off unless explicitly turned on, and its path is kept as typed", () => {
+  assert.deepEqual(DEFAULT_SETTINGS.vscode, { enabled: false, executable: "" });
+  assert.deepEqual(normalizeSettings({}).vscode, DEFAULT_SETTINGS.vscode);
+  assert.deepEqual(normalizeSettings({ vscode: { enabled: "yes", executable: 7 } }).vscode, DEFAULT_SETTINGS.vscode);
+  assert.deepEqual(normalizeSettings({ vscode: { enabled: 1 } }).vscode, DEFAULT_SETTINGS.vscode);
+  assert.deepEqual(
+    normalizeSettings({ vscode: { enabled: true, executable: "  /nix/store/abc-openvscode-server/bin/openvscode-server  " } }).vscode,
+    { enabled: true, executable: "/nix/store/abc-openvscode-server/bin/openvscode-server" },
+  );
+  assert.deepEqual(normalizeSettings({ vscode: { enabled: true } }).vscode, { enabled: true, executable: "" }, "no path auto-detects");
+  assert.equal(normalizeSettings({ vscode: { executable: "/usr/bin/openvscode-server\n--flag" } }).vscode.executable, "");
+  assert.equal(normalizeSettings({ vscode: { executable: `/${"x".repeat(5_000)}` } }).vscode.executable, "");
+  assert.deepEqual(normalizeSettings(normalizeSettings({ vscode: { enabled: true, executable: "/x" } })).vscode, { enabled: true, executable: "/x" }, "round-trips");
+});
+
 test("keeping the Mac awake is opt-out and lid-close prevention is never saved", () => {
   assert.deepEqual(normalizeSettings({}).power, { keepAwake: true });
   assert.deepEqual(normalizeSettings({ power: { keepAwake: "no" } }).power, { keepAwake: true });

@@ -27,6 +27,10 @@ export const WORKTREES_DIR = join(CONFIG_DIR, "worktrees");
  * logins persist here; it is never the operator's personal browser profile. */
 export const BROWSER_PROFILE_DIR = join(CONFIG_DIR, "browser", "profile");
 
+/** The VS Code view's openvscode-server: its server data, user data and
+ * extensions, the connection-token file of the running server and its pid. */
+export const VSCODE_DIR = join(CONFIG_DIR, "vscode");
+
 /** HUI owns scheduled task definitions and their bounded run history. */
 export const AUTOMATION_FILE = join(CONFIG_DIR, "automation.json");
 

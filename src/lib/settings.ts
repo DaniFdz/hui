@@ -34,6 +34,8 @@ export type Settings = {
   branchPrefix: string;
   /** Settings → Tools → Browser: HUI's managed, agent-only browser profile. */
   browser: BrowserSettings;
+  /** Settings → Tools → VS Code: the Work pane's VS Code view, off until the operator turns it on. */
+  vscode: VscodeSettings;
   /** Settings → Gateway → Power (macOS). Lid-close prevention is deliberately not
    * saved: it lasts one gateway run (`/__hui/power`). */
   power: {
@@ -73,8 +75,16 @@ export type BrowserSettings = {
   executablePath: string;
 };
 
+export type VscodeSettings = {
+  /** Opt-in: every release reaches machines where nobody asked for a VS Code server. */
+  enabled: boolean;
+  /** Absolute openvscode-server executable. Empty auto-detects it on PATH. */
+  executable: string;
+};
+
 export const DEFAULT_BRANCH_PREFIX = "feature/";
 export const DEFAULT_BROWSER_SETTINGS: BrowserSettings = { enabled: true, headless: true, executablePath: "" };
+export const DEFAULT_VSCODE_SETTINGS: VscodeSettings = { enabled: false, executable: "" };
 
 export const DEFAULT_SETTINGS: Settings = {
   theme: "claw",
@@ -94,6 +104,7 @@ export const DEFAULT_SETTINGS: Settings = {
   profileHandle: "",
   branchPrefix: DEFAULT_BRANCH_PREFIX,
   browser: DEFAULT_BROWSER_SETTINGS,
+  vscode: DEFAULT_VSCODE_SETTINGS,
   power: { keepAwake: true },
   models: { primary: "", fallback: "", utility: "" },
   calls: { voice: DEFAULT_GPT_LIVE_VOICE },
@@ -126,6 +137,7 @@ export function normalizeSettings(raw: unknown): Settings {
     profileHandle: boundedText(source["profileHandle"], "", 80),
     branchPrefix: normalizeBranchPrefix(source["branchPrefix"]),
     browser: normalizeBrowserSettings(source["browser"]),
+    vscode: normalizeVscodeSettings(source["vscode"]),
     power: normalizePower(source["power"]),
     // VoiceStudio's `voice` (its voice-notes switch) is not read either: the next save leaves it out.
     models: normalizeModels(source["models"]),
@@ -153,6 +165,17 @@ export function normalizeBrowserSettings(value: unknown): BrowserSettings {
     enabled: source["enabled"] !== false,
     headless: source["headless"] !== false,
     executablePath: path.length <= 4_096 && !/[\p{Cc}]/u.test(path) ? path : "",
+  };
+}
+
+/** Opt-in: only an explicit true turns the VS Code view on. The path is kept as typed, like the browser's; the gateway
+ * validates it and reports what it found. */
+export function normalizeVscodeSettings(value: unknown): VscodeSettings {
+  const source = isRecord(value) ? value : {};
+  const path = typeof source["executable"] === "string" ? source["executable"].trim() : "";
+  return {
+    enabled: source["enabled"] === true,
+    executable: path.length <= 4_096 && !/[\p{Cc}]/u.test(path) ? path : "",
   };
 }
 

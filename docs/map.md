@@ -56,6 +56,7 @@ Pi Durable owns conversations, runs, queues and crash recovery.
 | Integrations | `jira*.ts`, `slack.ts` and `slack-routes.ts` (the Slack connection Slack triggers read through), `backlog.ts` (Kanban), `automation.ts` |
 | Terminals and browser | `terminals.ts`, `terminal-replay.ts` (bounded replay bytes), `terminal-transport.ts` (wire format in `shared/terminal-stream.ts`), `browser/` (managed Chromium over a CDP pipe), `browser-transport.ts` |
 | Files view | `files.ts` (list, search, read, save, upload, delete inside a working directory), `file-routes.ts` (`/__hui/sessions/:id/files…`) |
+| VS Code view | `vscode.ts` (finding and running the shared openvscode-server, tickets and cookie secrets), `vscode-proxy.ts` (the cookie-guarded HTTP and WebSocket proxy under `/__hui/vscode/`); contract in `shared/vscode.ts` |
 | Bots and calls (Labs) | `bots.ts`, `bot-*.ts`, `bot-templates/` (other platforms' bot templates, read for import), `calls.ts`, `call-*.ts`, `runtimes/durable-bots.ts` |
 | OptChat memory | `optchat/` (engine, no HUI imports), `runtimes/durable-optchat.ts` (Durable glue); see `docs/optchat.md` |
 | Remote workers | `workers.ts`, `worker-routes.ts` (gateway side), `worker/` (host daemon, protocol, bootstrap, config sync) |
@@ -73,7 +74,7 @@ Pi Durable owns conversations, runs, queues and crash recovery.
 | Pages | `views/*.ts` (settings, automation, kanban, contributions, bots, worktrees) |
 | Reusable components | `components/` (panes, hovercards, dialogs); `components/openclaw/` is a hash-pinned OpenClaw port, do not edit it by hand |
 | Split chats and the Work pane | `lib/session-multiplexer.ts` + `components/session-multiplexer.ts` (chat columns, stacks, tabs); `lib/work-pane.ts` (Work view registry and contract, browser-local per-conversation state, migration of old terminal/browser panes), `components/work-pane.ts` (tab strip, launchers, collapsed rail, narrow destination), `views/panel-selector.ts` (narrow destination chooser) |
-| Work views | `lib/work-views/` (one kind per Work pane view: launch, title, render — terminal, browser, files), `components/files-view.ts` with `lib/file-draft.ts`, `lib/file-editor.ts` (CodeMirror, loaded on demand), `lib/files-store.ts`, `lib/files-view-state.ts` |
+| Work views | `lib/work-views/` (one kind per Work pane view: launch, title, render — terminal, browser, files, vscode), `components/files-view.ts` with `lib/file-draft.ts`, `lib/file-editor.ts` (CodeMirror, loaded on demand), `lib/files-store.ts`, `lib/files-view-state.ts`; `components/vscode-view.ts` through `lib/vscode-store.ts` |
 | Visual tokens | `styles/tokens.css` first, then the per-surface stylesheets |
 
 ## Elsewhere

@@ -221,7 +221,7 @@ import { loadWorkers, workerAction, type WorkerView } from "./lib/workers.ts";
 import { hasOpenWebAwesomePopup } from "./lib/web-awesome.ts";
 import { APP_SHELL_DRAWER_MEDIA, closeDrawerOnEscape, renderMain, renderSidebar, toggleNavigationDrawer, type GroupDropTarget, type GroupMenuAction, type NavId, type SessionCopyAction, type SessionOpenAction, type ShellBotsProps } from "./views/shell.ts";
 import { writeClipboardText } from "./lib/clipboard.ts";
-import { renderSettingsPage, type SettingsPage } from "./views/settings.ts";
+import { renderSettingsPage, SETTINGS_PAGES, type SettingsPage } from "./views/settings.ts";
 import type { JiraCreatedDetail } from "./components/jira-create-dialog.ts";
 import { clampSuggestionIndex, dismissTaskSuggestion, parseTaskSuggestions, startTaskSuggestion, taskSuggestionPrompt, type TaskSuggestion, type TaskSuggestionStartMode } from "./lib/task-suggestions.ts";
 import { dismissWatcher as dismissWatcherRequest, parseWatchers, readWatcherLog, restartWatcher as restartWatcherRequest, stopWatcher as stopWatcherRequest, type Watcher } from "./lib/watchers.ts";
@@ -793,6 +793,7 @@ export class HuiApp extends HuiElement {
       document.addEventListener("keydown", this.onGlobalKeyDown);
       // Capture: a focused terminal swallows keys, and Work pane shortcuts must still work from inside one.
       document.addEventListener("keydown", this.onWorkShortcut, true);
+      this.addEventListener("hui-open-settings", this.onOpenSettingsRequest);
     }
     window.addEventListener("pagehide", this.onPageHide);
     if (!this.embeddedPane) {
@@ -827,6 +828,7 @@ export class HuiApp extends HuiElement {
     if (this.composerTextarea) disconnectTextareaOverflowObserver(this.composerTextarea);
     this.composerTextarea = null;
     window.removeEventListener("popstate", this.onPopState);
+    this.removeEventListener("hui-open-settings", this.onOpenSettingsRequest);
     window.removeEventListener("pagehide", this.onPageHide);
     document.removeEventListener("keydown", this.onGlobalKeyDown);
     document.removeEventListener("keydown", this.onWorkShortcut, true);
@@ -5215,6 +5217,22 @@ export class HuiApp extends HuiElement {
     void this.save(patch);
   };
 
+  /** A component inside the app (the VS Code view's "Open Settings") asks for a Settings page, and optionally the
+   * section to scroll to. Cancelling the event tells it the app navigated, so its link does not load the page. */
+  private onOpenSettingsRequest = (event: Event) => {
+    const detail = (event as CustomEvent<{ page?: unknown; section?: unknown } | undefined>).detail;
+    const page = SETTINGS_PAGES.find((entry) => entry.id === detail?.page)?.id;
+    if (!page) return;
+    event.preventDefault();
+    this.openSurfaceSettings(page);
+    const section = typeof detail?.section === "string" ? detail.section : "";
+    if (section) {
+      void this.updateComplete.then(() => requestAnimationFrame(() => {
+        this.querySelector(`[data-settings-section="${CSS.escape(section)}"]`)?.scrollIntoView({ block: "start" });
+      }));
+    }
+  };
+
   private openSurfaceSettings = (page: SettingsPage) => {
     const current = resolveNavigation(window.location.pathname).target;
     this.settingsReturnTarget = settingsReturnTarget(current);
@@ -6004,6 +6022,7 @@ export class HuiApp extends HuiElement {
           onChangeAppearance: (next) => void this.save(next),
           onChangeChat: (chat) => void this.save({ chat }),
           onChangeBrowser: (browser) => this.save({ browser }),
+          onChangeVscode: (vscode) => this.save({ vscode }),
           onChangeCalls: (calls) => void this.save({ calls }),
           onChangePower: (power) => void this.save({ power }).then(() => this.refreshPower()),
           onSetLidAwake: this.setLidAwakeFromUi,

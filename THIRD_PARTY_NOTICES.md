@@ -96,6 +96,16 @@ save, upload and delete rules of `src/server/editable-file.ts` and
 the routes in its own gateway with Node's fs, and its own markup and styles; no
 AgentsInTheCloud markup or stylesheet is copied.
 
+HUI's VS Code view is adapted from AgentsInTheCloud at the same commit: the
+mapping of HUI's palette onto VS Code's `workbench.colorCustomizations`, the light/dark choice by background
+luminance and the workbench configuration defaults (no workspace-trust prompt,
+no start page, hidden secondary side bar, AI chat off) from
+`packages/vscode/src/server/proxy.ts`, and the frame's "Starting VS Code"
+presentation from `packages/vscode/src/server/render.ts` and
+`packages/vscode/src/client/style.css`. HUI's versions are
+`server/vscode-proxy.ts` and `src/components/vscode-view.ts` with
+`src/styles/vscode-view.css`.
+
 Source: https://github.com/lucasmeijer/AgentsInTheCloud
 
 MIT License

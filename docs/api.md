@@ -3445,6 +3445,85 @@ conflict instead of being overwritten. The chat announces a conversation's
 settled turn as the page event `hui-session-turn-end` (`{ sessionId }`); the view
 refreshes on it.
 
+### VS Code view API
+
+`settings.json` gains `vscode: { enabled, executable }` (defaults `false`,
+`""`). Only an explicit `true` turns it on; the path is kept as typed (bounded,
+no control characters) and validated by the gateway, which expands `~/`. An
+empty path auto-detects `openvscode-server`, then a compatible `code-server`,
+on `PATH` and in `/opt/homebrew/bin`, `/usr/local/bin`, `~/.nix-profile/bin`,
+`/etc/profiles/per-user/$USER/bin`, `/run/current-system/sw/bin` and
+`/nix/var/nix/profiles/default/bin`. A candidate's `--help` must list
+`--server-base-path`, `--connection-token-file`, `--server-data-dir` and
+`--extensions-dir`; its first line gives the name and version. Saving the
+settings with `enabled: false` withdraws every ticket and cookie and stops the
+server; a different `executable` stops a running server so the next open uses it.
+
+| Route | Method | Guard | Result |
+| --- | --- | --- | --- |
+| `/__hui/vscode-server` | GET | `x-hui` | `VscodeStatus` |
+| Same | POST `{ action: "stop" }` | `x-hui` | Stops the server, then `VscodeStatus` |
+| `/__hui/sessions/:id/vscode/connect` | POST `{ theme? }` | `x-hui` | Starts the server if needed; `{ url, folder, label, instance }` |
+| `/__hui/vscode/enter?ticket=…` | GET | the ticket | 303 to `/__hui/vscode/?folder=<cwd>` with the cookie |
+| `/__hui/vscode/…` (HTTP and WebSocket) | any | the cookie | Proxied to openvscode-server |
+
+`VscodeStatus` (`shared/vscode.ts`) holds `enabled`, `configuredExecutable`,
+`executable` (`{ path, name, version, source: "configured" | "detected" }` or
+`null`), `executableError`, `state` (`off`, `unavailable`, `stopped`,
+`starting`, `running`, `failed`), `instance` (starts in this gateway run, so a
+frame knows its server was replaced), `pid`, `startedAt`, `lastError` (the
+last start failure or unexpected exit, with the server's last stderr lines),
+`connections`, `idleMinutes` and `dataDir`.
+
+`connect` uses the conversation's recorded `cwd`; callers cannot choose a
+folder. It answers 404 for an unknown conversation and 409 with a `code` the
+view distinguishes: `disabled` (off in Settings), `not-found` (no compatible
+executable; `error` says why), `remote` (the conversation runs on a remote
+worker) or `folder` (its directory no longer exists). A start failure is 502
+`failed`, too many outstanding tickets 429 `busy`. `theme` is
+`{ background, panel, elevated, text, border?, accent? }`; only `#rrggbb`
+values pass and the four base colors are required, otherwise it is ignored.
+`url` is a one-use ticket valid for 30 seconds (at most 64 outstanding).
+
+`enter` refuses a cross-site request (`Sec-Fetch-Site: cross-site`) and an
+unknown, used or expired ticket (403, no cookie). Otherwise it sets
+`hui-vscode=<random secret>; Path=/__hui/vscode; HttpOnly; SameSite=Strict`
+(plus `Secure` over TLS or `X-Forwarded-Proto: https`) and redirects with
+`Cache-Control: no-store` and `Referrer-Policy: no-referrer`. A secret stays
+valid 12 hours after its last use while the gateway runs (at most 32; the
+oldest goes first); several frames may hold different ones.
+
+The proxy accepts a request only with a valid `hui-vscode` cookie and not
+cross-site, and a WebSocket upgrade additionally only with a same-origin
+`Origin`/`Host` pair and, on the standalone gateway, an allowed hostname
+(at most 64 sockets). It forwards path, query, method, body and `Host` (VS
+Code derives its remote authority from it), drops hop-by-hop and
+`X-Forwarded-*`/`X-Original-Host` headers and HUI's cookie, replaces any
+`vscode-tkn` cookie with the real token, and removes VS Code's `vscode-tkn`
+`Set-Cookie` from responses. The workbench page (a `text/html` GET) is
+buffered and its `vscode-workbench-web-configuration` gains `connectionToken`,
+`enableWorkspaceTrust: false` and configuration defaults: no trust prompt or
+banner, `workbench.startupEditor: none`, the secondary side bar hidden,
+`chat.disableAIFeatures`, and with a theme `workbench.colorTheme` (Default Light
+Modern when the background's luminance exceeds 0.55, otherwise Default Dark
+Modern) plus `workbench.colorCustomizations`; it is served `no-store`.
+Refusals are small HTML pages with `<meta name="hui-vscode-error"
+content="<code>" data-message="…">`: 403 `unauthorized`/`expired`/`cross-site`,
+503 `stopped` when no server runs (the proxy never starts one) and 502
+`failed` when it does not answer.
+
+The server runs as `<executable> --host 127.0.0.1 --port <free port>
+--connection-token-file <dir>/connection-token --server-base-path /__hui/vscode
+--server-data-dir <dir>/server-data --user-data-dir <dir>/user-data
+--extensions-dir <dir>/extensions --accept-server-license-terms
+--telemetry-level off` in its own process group, with the gateway's environment
+minus `HUI_AGENT_*` and `VSCODE_*`; `<dir>` is `$XDG_CONFIG_HOME/hui/vscode`
+(mode 700). It is ready when `/__hui/vscode/version` answers 200 (60-second
+limit). `server.json` there records its process group, which the next start
+stops if a member still names that data directory. Proxied requests and sockets
+count as connections; 15 minutes after the last closes the server stops. Gateway
+stop signals the group and returns; it is killed 2 seconds later if still there.
+
 ### Suggested tasks
 
 Regular PI sessions also receive two HUI tools modeled on OpenClaw's

@@ -693,6 +693,58 @@ with this feature. The view's selection, open folders and display mode, and
 unsaved drafts, are browser-local storage; the HUI registry and PI transcripts
 are unchanged.
 
+## VS Code
+
+The Work pane's **VS Code** view opens the conversation's folder (its directory
+or worktree) in a browser VS Code, ported from AgentsInTheCloud's VS Code view.
+It is **off by default**: Settings → Tools → VS Code turns it on, sets or clears
+the executable and shows what the gateway found (name, version and path, or why
+nothing fits) and the server's state, with **Stop**. Off, the launcher entry
+says so, an open view explains it with a link to that section, every frame
+loses access at once and the server stops.
+
+HUI launches `openvscode-server` (MIT; nixpkgs `openvscode-server`) found on
+`PATH` or in the usual package-manager directories, or an absolute path from
+Settings. It is not an npm dependency and nothing is downloaded. A server is
+accepted only when its `--help` lists `--server-base-path`,
+`--connection-token-file`, `--server-data-dir` and `--extensions-dir`, so
+code-server (whose CLI uses `--bind-addr`/`--auth`) is detected only to say why
+it does not fit.
+
+One server runs per gateway, for every conversation. It starts on the first
+open, listens on 127.0.0.1 on a free port behind a random connection token kept
+in a mode-600 file and rotated on every start, keeps its data under
+`$XDG_CONFIG_HOME/hui/vscode`, and runs in its own process group so a stop
+reaches node and the extension hosts behind the launcher script. It stops with
+the gateway (signalled, never awaited, so a stop or restart does not wait for
+it), 15 minutes after its last connection closes, or when Settings turn it off
+or change its executable. A server a killed gateway left behind is stopped
+before the next one starts. A crash shows in the view with **Retry**; only an
+open from HUI starts the server, so a crashed server is not restarted by its own
+reconnecting workbench.
+
+The browser reaches it only through the gateway, at `/__hui/vscode/…` for HTTP
+and WebSocket. A frame cannot send `x-hui`, so a guarded request mints a
+one-use ticket, `/__hui/vscode/enter` trades it for an HttpOnly, SameSite=Strict
+cookie scoped to `/__hui/vscode`, and the proxy accepts only that cookie and
+adds the connection token upstream. The cookie is no credential anywhere else;
+every other route still requires `x-hui`. VS Code's own token cookie never
+reaches the browser. VS Code's WebSocket handshake carries the token inside its
+own protocol, so the proxied workbench page's configuration includes it; that
+page is served only behind the cookie.
+
+The workbench takes HUI's colors (dark or light Modern plus HUI's background,
+panels, text, borders and accent) as configuration defaults read when a frame
+loads, so a theme change applies on the view's **Reload**; the operator's own
+VS Code settings still win. Workspace trust prompts, the start page and AI chat
+are off by default, as in AgentsInTheCloud: HUI's agents already work in that
+folder with full access. **Open in a new tab** opens the same folder through its
+own ticket. Conversations on a remote worker are refused with the reason: their
+files are not on the gateway's machine.
+
+Settings gain an additive `vscode: { enabled, executable }` block; no registry,
+transcript or PI format changes.
+
 ## Live chat projection
 
 PI's JSONL remains the durable authority, while the gateway owns a temporary
