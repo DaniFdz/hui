@@ -7,7 +7,7 @@
  * Responses are normalized on the way in, like settings: a malformed or newer
  * record is skipped or narrowed rather than reaching the roster as `undefined`.
  */
-import { botLook, isBotFaceShape, type BotAvatar, type BotAvatarPatch, type BotFaceShape, type BotInput, type BotMemoryStatus, type BotMemoryUsage, type BotPatch, type BotSessionStatus, type BotsUpdate, type BotView, type BotVoice } from "../../shared/bots.ts";
+import { botLook, isBotFaceEars, isBotFaceShape, type BotAvatar, type BotAvatarPatch, type BotFaceEars, type BotFaceShape, type BotInput, type BotMemoryStatus, type BotMemoryUsage, type BotPatch, type BotSessionStatus, type BotsUpdate, type BotView, type BotVoice } from "../../shared/bots.ts";
 import { gptLiveVoice } from "../../shared/calls.ts";
 import { voiceLanguage } from "../../shared/voice.ts";
 import { CLIENT_HEADERS, fetchJson } from "./settings-store.ts";
@@ -36,6 +36,8 @@ export type BotDraft = {
    * decides, as before faces. */
   look?: "face" | "emoji";
   shape?: BotFaceShape;
+  /** "" for none. */
+  ears?: BotFaceEars | "";
   /** #rrggbb */
   color?: string;
   model: string;
@@ -80,7 +82,10 @@ function parseAvatar(value: unknown): BotAvatar | undefined {
     ? value["color"].trim().toLowerCase()
     : undefined;
   const shape = isBotFaceShape(value["shape"]) ? value["shape"] : undefined;
-  return emoji || color || shape ? { ...(emoji ? { emoji } : {}), ...(color ? { color } : {}), ...(shape ? { shape } : {}) } : undefined;
+  const ears = isBotFaceEars(value["ears"]) ? value["ears"] : undefined;
+  return emoji || color || shape || ears
+    ? { ...(emoji ? { emoji } : {}), ...(color ? { color } : {}), ...(shape ? { shape } : {}), ...(ears ? { ears } : {}) }
+    : undefined;
 }
 
 /** The compactor's spend; a gateway that reports none spent nothing it can show. */
@@ -346,6 +351,7 @@ function draftAvatar(draft: BotDraft): BotAvatar | undefined {
     ...(draftLook(draft) === "emoji" && emoji ? { emoji } : {}),
     ...(draft.color && /^#[0-9a-f]{6}$/iu.test(draft.color) ? { color: draft.color.toLowerCase() } : {}),
     ...(draft.shape && isBotFaceShape(draft.shape) ? { shape: draft.shape } : {}),
+    ...(isBotFaceEars(draft.ears) ? { ears: draft.ears } : {}),
   };
   return Object.keys(avatar).length ? avatar : undefined;
 }
@@ -391,7 +397,7 @@ export function botPatchFromDraft(bot: BotView, draft: BotDraft): BotPatch {
 
 /** A control of a bot's Settings tab, by what it saves through `PATCH /__hui/bots/:id`: the look's shape, color and
  * emoji are parts of `avatar`, a call's voice and language parts of `voice`. */
-export type BotSettingKey = "name" | "title" | "shape" | "color" | "emoji" | "model" | "thinking" | "memoryModel" | "callVoice" | "voiceLanguage" | "cwd";
+export type BotSettingKey = "name" | "title" | "shape" | "ears" | "color" | "emoji" | "model" | "thinking" | "memoryModel" | "callVoice" | "voiceLanguage" | "cwd";
 export type BotSettingValue = string;
 
 /** What a control shows for the bot as it is: "" for a default, the look as the bot shows it. */
@@ -400,6 +406,7 @@ export function botSettingOf(bot: BotView, key: BotSettingKey): BotSettingValue 
     case "name": return bot.name;
     case "title": return bot.title ?? "";
     case "shape": return botLook(bot).shape;
+    case "ears": return botLook(bot).ears ?? "";
     case "color": return botLook(bot).color;
     case "emoji": return bot.avatar?.emoji ?? "";
     case "model": return bot.model ?? "";
@@ -428,6 +435,7 @@ export function botDraftOf(bot: BotView): BotDraft {
     emoji: bot.avatar?.emoji ?? "",
     look: look.kind,
     shape: look.shape,
+    ears: look.ears ?? "",
     color: look.color,
     model: bot.model ?? "",
     thinking: bot.thinking ?? "",
@@ -453,6 +461,7 @@ function avatarPatch(bot: BotView, draft: BotDraft): BotAvatarPatch | undefined 
   if (emoji !== (bot.avatar?.emoji ?? "")) patch.emoji = emoji;
   const look = botLook(bot);
   if (draft.shape && isBotFaceShape(draft.shape) && draft.shape !== look.shape) patch.shape = draft.shape;
+  if (draft.ears !== undefined && (draft.ears === "" || isBotFaceEars(draft.ears)) && draft.ears !== (look.ears ?? "")) patch.ears = draft.ears;
   const color = draft.color?.toLowerCase();
   if (color && /^#[0-9a-f]{6}$/u.test(color) && color !== look.color) patch.color = color;
   return Object.keys(patch).length ? patch : undefined;

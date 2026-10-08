@@ -2,10 +2,11 @@
  * Bots' animated faces (HUI-18), the pure half: what a face shows for a bot's
  * roster entry, its open chat and its call, and the geometry and colors of
  * the face itself, ported from the prototype the owner approved on
- * 2026-10-06 (OpenAI Dots: a plush shape, two dot eyes, no mouth).
+ * 2026-10-06 (OpenAI Dots: a plush shape, two dot eyes, no mouth), and the
+ * ears, antenna, sprout or horns that may sit on top, placed for each shape.
  * `<hui-bot-face>` (src/components/bot-face.ts) draws it.
  */
-import type { BotFaceShape } from "../../shared/bots.ts";
+import type { BotFaceEars, BotFaceShape } from "../../shared/bots.ts";
 import type { BotView } from "./bots.ts";
 import { botActivity } from "./bot-roster.ts";
 import type { CallView } from "./live-call.ts";
@@ -130,9 +131,13 @@ export function eyesBlink(eyes: FaceEyes): boolean {
   return eyes === "open" || eyes === "squint" || eyes === "wide" || eyes === "sad";
 }
 
+/** A sprout's leaves: green whatever the body's color. */
+export const FACE_LEAF_COLOR = "#3fae5a";
+
 /** Where the eyes sit on each shape, in the 120×120 view box. */
 export const FACE_EYE_POSITION: Readonly<Record<BotFaceShape, readonly [number, number]>> = {
   blob: [60, 63], round: [60, 62], triangle: [60, 77], heart: [60, 56], cookie: [60, 63],
+  star: [60, 68], flower: [60, 67], cloud: [60, 72], drop: [60, 74], ghost: [60, 60], pill: [60, 68], block: [60, 63], hexagon: [60, 64],
 };
 
 /** Where each state rests its gaze (view-box units). */
@@ -179,46 +184,163 @@ function smoothPath(points: readonly (readonly [number, number])[]): string {
   return `${d}Z`;
 }
 
-function polarPath(radius: (angle: number) => number, cy: number, squeeze = 1): string {
-  const points: [number, number][] = [];
-  for (let index = 0; index < 72; index++) {
-    const angle = (index / 72) * Math.PI * 2;
+type Point = readonly [number, number];
+
+function polarPoints(radius: (angle: number) => number, cy: number, squeeze = 1, count = 72): Point[] {
+  const points: Point[] = [];
+  for (let index = 0; index < count; index++) {
+    const angle = (index / count) * Math.PI * 2;
     const r = radius(angle);
     points.push([60 + Math.cos(angle) * r, cy + Math.sin(angle) * r * squeeze]);
   }
-  return smoothPath(points);
+  return points;
+}
+
+/** A regular polygon's polar radius blended with a circle's (a superellipse-style cap), so the corners stay soft. */
+function softPolygon(sides: number, inradius: number, cap: number, start: number, power: number): (angle: number) => number {
+  const sector = (Math.PI * 2) / sides;
+  return (a) => {
+    const offset = (((a - start) % sector) + sector) % sector - sector / 2;
+    const r = inradius / Math.cos(offset);
+    return (r ** -power + cap ** -power) ** (-1 / power);
+  };
+}
+
+/** Points along a closed run of segments, each a function of t in [0, 1), count of them in all. */
+function piecewise(count: number, pieces: readonly [share: number, at: (t: number) => Point][]): Point[] {
+  const points: Point[] = [];
+  for (const [share, at] of pieces) {
+    const steps = Math.round(count * share);
+    for (let index = 0; index < steps; index++) points.push(at(index / steps));
+  }
+  return points;
+}
+
+/** The body's outline as points a spline runs through, in the 120×120 view box. */
+function outline(shape: BotFaceShape, phase: number): Point[] {
+  switch (shape) {
+    case "blob":
+      return polarPoints((a) => 37.5 * (1 + 0.038 * Math.sin(7 * a + phase) + 0.03 * Math.sin(3 * a - phase * 0.7) + 0.012 * Math.sin(11 * a + phase * 1.3)), 67);
+    case "round": return polarPoints(() => 38.5, 66, 0.93);
+    case "cookie": return polarPoints((a) => 37 * (1 + 0.045 * Math.cos(10 * a)), 67);
+    case "triangle": return polarPoints(softPolygon(3, 27.5, 46.5, -Math.PI / 2, 6), 75);
+    case "heart": {
+      const points: Point[] = [];
+      for (let index = 0; index < 72; index++) {
+        const t = (index / 72) * Math.PI * 2;
+        const x = 16 * Math.sin(t) ** 3;
+        const y = -(13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t));
+        // Pulled toward a circle, so the heart reads as plush rather than sharp.
+        const r = Math.hypot(x, y) * 0.78 + 13.5 * 0.22;
+        const angle = Math.atan2(y, x);
+        points.push([60 + Math.cos(angle) * r * 2.55, 61 + Math.sin(angle) * r * 2.45]);
+      }
+      return points;
+    }
+    // Five arms, one up; rounded tips and valleys.
+    case "star": return polarPoints((a) => 30 + 14 * ((Math.cos(5 * (a + Math.PI / 2)) + 1) / 2) ** 1.6, 67, 1, 90);
+    // Five round petals, one up.
+    case "flower": return polarPoints((a) => 29 + 10 * Math.abs(Math.cos(2.5 * (a + Math.PI / 2))) ** 0.5, 68, 1, 90);
+    // Puffs along the top, a flatter bottom.
+    case "cloud": return polarPoints((a) => Math.sin(a) > 0 ? 36 : 36 + 5 * Math.abs(Math.sin(4 * a)) ** 0.6, 76, 1, 120)
+      .map(([x, y]) => [60 + (x - 60) * 1.08, 76 + (y - 76) * (y > 76 ? 0.62 : 0.86)]);
+    // A circle whose top is drawn up into a soft point.
+    case "drop": return polarPoints(() => 1, 70, 1, 96).map(([x, y]) => {
+      const up = Math.max(0, 70 - y);
+      const r = 32 * (1 + 0.5 * up ** 6);
+      return [60 + (x - 60) * r * (1 - 0.45 * up ** 2), 70 + (y - 70) * r];
+    });
+    // A dome over straight sides and a skirt of four points.
+    case "ghost": return piecewise(96, [
+      [0.5, (t) => [60 - Math.cos(t * Math.PI) * 34, 58 - Math.sin(t * Math.PI) * 34]],
+      [0.1, (t) => [94, 58 + t * 44]],
+      [0.3, (t) => [94 - t * 68, 98 + 4 * Math.cos(t * Math.PI * 6)]],
+      [0.1, (t) => [26, 102 - t * 44]],
+    ]);
+    // A wide capsule: a superellipse.
+    case "pill": return polarPoints((a) => (Math.abs(Math.cos(a) / 42) ** 2.6 + Math.abs(Math.sin(a) / 30) ** 2.6) ** (-1 / 2.6), 70);
+    // A squircle.
+    case "block": return polarPoints((a) => 36 / (Math.abs(Math.cos(a)) ** 4 + Math.abs(Math.sin(a)) ** 4) ** 0.25, 67, 0.94);
+    case "hexagon": return polarPoints(softPolygon(6, 33, 40, 0, 7), 66);
+  }
 }
 
 /** The body outline in the 120×120 view box. phase turns the blob's wobble (it morphs slowly on large faces). */
 export function facePath(shape: BotFaceShape, phase = 0): string {
-  if (shape === "blob") {
-    return polarPath((a) => 37.5 * (1 + 0.038 * Math.sin(7 * a + phase) + 0.03 * Math.sin(3 * a - phase * 0.7) + 0.012 * Math.sin(11 * a + phase * 1.3)), 67);
+  return smoothPath(outline(shape, phase));
+}
+
+/** One filled part of what sits on top, drawn behind the body; `leaf` parts are a sprout's green, the rest the body's color. */
+export type FaceEarPart = { d: string; transform: string; leaf?: boolean };
+
+/**
+ * Each kind drawn upright with its base at 0,0, sunk into the body; `height` is how far it reaches above its base. A
+ * pair sits on the `shoulders`, `spread` degrees either side of straight up from the body's middle, leaning out with
+ * the outline by `lean` of its slope; a single one stands on the top.
+ */
+const EARS: Readonly<Record<BotFaceEars, { parts: readonly { d: string; leaf?: boolean }[]; height: number; shoulders?: { spread: number; lean: number } }>> = {
+  cat: { parts: [{ d: "M-12 4C-10 -8 -6 -20 -2.2 -26.5Q0 -29 2.2 -26.5C6 -20 10 -8 12 4Z" }], height: 28, shoulders: { spread: 40, lean: 0.75 } },
+  bear: { parts: [{ d: "M0 -18A11 11 0 1 1 0 4A11 11 0 1 1 0 -18Z" }], height: 18, shoulders: { spread: 46, lean: 1 } },
+  bunny: { parts: [{ d: "M0 -40C5 -40 8 -30 8 -18C8 -6 5 4 0 4C-5 4 -8 -6 -8 -18C-8 -30 -5 -40 0 -40Z" }], height: 40, shoulders: { spread: 20, lean: 0.35 } },
+  horns: { parts: [{ d: "M-7 4C-8 -6 -7 -15 -3 -22Q-1.5 -24 -0.6 -22C1 -14 4 -6 7 4Z" }], height: 23, shoulders: { spread: 32, lean: 0.7 } },
+  antenna: { parts: [{ d: "M-1.6 6L-1.6 -14Q0 -15.6 1.6 -14L1.6 6Z" }, { d: "M0 -25A5.2 5.2 0 1 1 0 -14.6A5.2 5.2 0 1 1 0 -25Z" }], height: 25 },
+  sprout: { parts: [
+    { d: "M-1.4 6C-2 -1 -1.6 -8 -0.2 -13L1.6 -12.6C0.6 -7.6 0.4 -1 1.4 6Z", leaf: true },
+    { d: "M0 -12C-4 -21 -12 -23 -18 -18C-12 -12 -5 -11 0 -12Z", leaf: true },
+    { d: "M0 -12C3 -23 12 -26 19 -21C14 -13 6 -11 0 -12Z", leaf: true },
+  ], height: 25 },
+};
+
+/** How far a base sinks into the body, so a part never floats off a wobbling outline. */
+const EAR_SINK = 5;
+
+/** The parts that sit on a shape's top, placed for its outline, and the highest y they reach (view-box units). */
+export function faceEars(shape: BotFaceShape, ears: BotFaceEars): { parts: FaceEarPart[]; top: number } {
+  const points = outline(shape, 0);
+  const ys = points.map(([, y]) => y);
+  const middle = (Math.min(...ys) + Math.max(...ys)) / 2;
+  const kind = EARS[ears];
+  const place = (x: number, y: number, tilt: number, mirror = false) =>
+    `translate(${round2(x)},${round2(y)}) rotate(${round2(tilt)})${mirror ? " scale(-1,1)" : ""}`;
+  if (!kind.shoulders) {
+    // The top of the outline at the middle, a heart's dip included.
+    const [, top] = points.filter(([, y]) => y < middle).reduce((best, point) => Math.abs(point[0] - 60) < Math.abs(best[0] - 60) ? point : best);
+    const y = top + EAR_SINK;
+    return { parts: kind.parts.map((part) => ({ ...part, transform: place(60, y, 0) })), top: y - kind.height };
   }
-  if (shape === "round") return polarPath(() => 38.5, 66, 0.93);
-  if (shape === "cookie") return polarPath((a) => 37 * (1 + 0.045 * Math.cos(10 * a)), 67);
-  if (shape === "triangle") {
-    // A triangle's polar radius blended with a circle (a superellipse-style cap), so the corners stay soft.
-    const inradius = 27.5;
-    const cap = 46.5;
-    const start = -Math.PI / 2;
-    const sector = (Math.PI * 2) / 3;
-    return polarPath((a) => {
-      const offset = (((a - start) % sector) + sector) % sector - sector / 2;
-      const r = inradius / Math.cos(offset);
-      return (r ** -6 + cap ** -6) ** (-1 / 6);
-    }, 75);
-  }
-  const points: [number, number][] = [];
-  for (let index = 0; index < 72; index++) {
-    const t = (index / 72) * Math.PI * 2;
-    const x = 16 * Math.sin(t) ** 3;
-    const y = -(13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t));
-    // Pulled toward a circle, so the heart reads as plush rather than sharp.
-    const r = Math.hypot(x, y) * 0.78 + 13.5 * 0.22;
-    const angle = Math.atan2(y, x);
-    points.push([60 + Math.cos(angle) * r * 2.55, 61 + Math.sin(angle) * r * 2.45]);
-  }
-  return smoothPath(points);
+  // The outline point on the left shoulder, and the outward lean of the outline there.
+  const target = -Math.PI / 2 - (kind.shoulders.spread * Math.PI) / 180;
+  const gap = (index: number) => {
+    const [x, y] = points[index]!;
+    const delta = Math.atan2(y - middle, x - 60) - target;
+    return Math.abs(Math.atan2(Math.sin(delta), Math.cos(delta)));
+  };
+  let best = 0;
+  for (let index = 1; index < points.length; index++) if (gap(index) < gap(best)) best = index;
+  const [x, y] = points[best]!;
+  const before = points[(best - 1 + points.length) % points.length]!;
+  const after = points[(best + 1) % points.length]!;
+  // The outward normal, from the tangent; its angle from straight up is the slope the ear leans with.
+  let nx = after[1] - before[1];
+  let ny = before[0] - after[0];
+  if (nx * (x - 60) + ny * (y - middle) < 0) { nx = -nx; ny = -ny; }
+  const length = Math.hypot(nx, ny) || 1;
+  const tilt = (Math.atan2(nx, -ny) * 180) / Math.PI * kind.shoulders.lean;
+  const baseX = x - (nx / length) * EAR_SINK;
+  const baseY = y - (ny / length) * EAR_SINK;
+  const parts = kind.parts.flatMap((part) => [
+    { ...part, transform: place(baseX, baseY, tilt) },
+    { ...part, transform: place(120 - baseX, baseY, -tilt, true) },
+  ]);
+  return { parts, top: baseY - kind.height * Math.cos((tilt * Math.PI) / 180) };
+}
+
+/** A view box `[x, y, size]` grown upward (keeping its bottom and center) so parts reaching to `top` fit. */
+export function faceViewBox(box: readonly [number, number, number], top: number | undefined): string {
+  const [x, y, size] = box;
+  if (top === undefined || top - 2 >= y) return `${x} ${y} ${size} ${size}`;
+  const grown = round2(y + size - (top - 2));
+  return `${round2(x + size / 2 - grown / 2)} ${round2(top - 2)} ${grown} ${grown}`;
 }
 
 const HEX = /^#[0-9a-f]{6}$/iu;

@@ -61,7 +61,7 @@ export const POWERFUL_TOOLS: ReadonlySet<string> = new Set([
 /** What the catalog shows as always on: a bot's own tools and OptChat's memory tools, which every bot's chat has. */
 export const BOT_ALWAYS_ON: readonly { name: string; description: string }[] = [
   { name: WRITE_SOUL_TOOL, description: "Rewrite its SOUL.md when you ask" },
-  { name: SET_PROFILE_TOOL, description: "Change its name or title when you ask" },
+  { name: SET_PROFILE_TOOL, description: "Change its name, title or look when you ask" },
   { name: REQUEST_ACCESS_TOOL, description: "Ask you to turn something back on, while anything is off" },
   { name: LOAD_SKILL_TOOL, description: "Load its skills when it has neither read nor bash" },
   { name: "zoom", description: "Open older lines of its memory" },

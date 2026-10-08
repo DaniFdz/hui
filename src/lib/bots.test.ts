@@ -288,10 +288,11 @@ test("the dialog's Look: a new bot keeps the face it showed, or its emoji, with 
   const face: BotDraft = { ...EMPTY_DRAFT, name: "Scout", look: "face", shape: "heart", color: "#2FC49A", emoji: "🦊" };
   assert.deepEqual(botInputFromDraft(face), { name: "Scout", avatar: { color: "#2fc49a", shape: "heart" } }, "Face ignores a typed emoji");
   assert.deepEqual(botInputFromDraft({ ...face, look: "emoji" }), { name: "Scout", avatar: { emoji: "🦊", color: "#2fc49a", shape: "heart" } });
-  assert.deepEqual(botInputFromDraft({ ...face, shape: "star" as never, color: "teal" }), { name: "Scout" }, "nothing invalid reaches the gateway");
+  assert.deepEqual(botInputFromDraft({ ...face, ears: "bunny" }), { name: "Scout", avatar: { color: "#2fc49a", shape: "heart", ears: "bunny" } });
+  assert.deepEqual(botInputFromDraft({ ...face, shape: "dragon" as never, ears: "wings" as never, color: "teal" }), { name: "Scout" }, "nothing invalid reaches the gateway");
 });
 
-test("an edit's Look: Face clears the emoji, and a shape or color goes only when it differs from what the bot shows", () => {
+test("an edit's Look: Face clears the emoji, and a shape, ears or color go only when they differ from what the bot shows", () => {
   const bot = parseBot({ ...RECORD, avatar: { emoji: "🔭" } }) as BotView;
   const base: BotDraft = { name: "Scout", title: "Research assistant", cwd: bot.cwd, emoji: "🔭", model: "anthropic/claude", thinking: "medium", memoryModel: "" };
   // A bot whose id picks its face: the dialog opens on that face, so leaving it alone keeps it derived.
@@ -308,11 +309,16 @@ test("an edit's Look: Face clears the emoji, and a shape or color goes only when
   assert.deepEqual(botPatchFromDraft(stored, storedDraft), {}, "the same face sends nothing");
   assert.deepEqual(botPatchFromDraft(stored, { ...storedDraft, shape: "cookie", color: "#FF6B4A" }), { avatar: { shape: "cookie", color: "#ff6b4a" } });
   assert.deepEqual(botPatchFromDraft(stored, { ...storedDraft, look: "emoji", emoji: "🦉" }), { avatar: { emoji: "🦉" } }, "back to an emoji keeps the face behind it");
+  assert.deepEqual(botPatchFromDraft(stored, { ...storedDraft, ears: "" }), {}, "no ears on a bot without any sends nothing");
+  assert.deepEqual(botPatchFromDraft(stored, { ...storedDraft, ears: "cat" }), { avatar: { ears: "cat" } });
+  const eared = parseBot({ ...RECORD, avatar: { shape: "heart", ears: "cat", color: "#2fc49a" } }) as BotView;
+  assert.deepEqual(botPatchFromDraft(eared, { ...storedDraft, ears: "" }), { avatar: { ears: "" } }, "None takes them off");
 });
 
-test("a bot's look parses its shape and drops an unknown one", () => {
+test("a bot's look parses its shape and ears and drops unknown ones", () => {
   assert.deepEqual(parseBot({ ...RECORD, avatar: { shape: "triangle", color: "#F5C21B" } })?.avatar, { color: "#f5c21b", shape: "triangle" });
-  assert.equal(parseBot({ ...RECORD, avatar: { shape: "star" } })?.avatar, undefined);
+  assert.deepEqual(parseBot({ ...RECORD, avatar: { shape: "star", ears: "sprout" } })?.avatar, { shape: "star", ears: "sprout" });
+  assert.equal(parseBot({ ...RECORD, avatar: { shape: "dragon", ears: "wings" } })?.avatar, undefined);
 });
 
 test("a confirmed record replaces its old copy or joins the list", () => {

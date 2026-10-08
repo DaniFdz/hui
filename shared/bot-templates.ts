@@ -9,7 +9,7 @@
  * disabled, and a model it names is kept only when this gateway resolves it.
  */
 import type { AutomationSchedule } from "../src/lib/automation-types.ts";
-import { BOT_KICKOFF_MARKER, type BotFaceShape, type BotView, type BotVoice } from "./bots.ts";
+import { BOT_KICKOFF_MARKER, type BotFaceEars, type BotFaceShape, type BotView, type BotVoice } from "./bots.ts";
 
 /** The formats HUI reads, by id, with the name the preview shows. */
 export const BOT_TEMPLATE_FORMATS = {
@@ -79,7 +79,7 @@ export type BotTemplate = {
   /** One emoji, its look. */
   emoji?: string;
   /** A HUI export's face. */
-  avatar?: { shape?: BotFaceShape; color?: string };
+  avatar?: { shape?: BotFaceShape; ears?: BotFaceEars; color?: string };
   /** The persona, Markdown: it becomes SOUL.md. */
   soul: string;
   /** The first message the bot sends. */
@@ -145,7 +145,7 @@ export type BotImportPreview = {
     title?: string;
     description?: string;
     emoji?: string;
-    avatar?: { shape?: BotFaceShape; color?: string };
+    avatar?: { shape?: BotFaceShape; ears?: BotFaceEars; color?: string };
     /** The remote worker it will run on; absent: this machine. */
     worker?: { id: string; name: string };
   };
@@ -199,7 +199,7 @@ export type BotExportManifest = {
     handle: string;
     title?: string;
     description?: string;
-    avatar?: { emoji?: string; shape?: BotFaceShape; color?: string };
+    avatar?: { emoji?: string; shape?: BotFaceShape; ears?: BotFaceEars; color?: string };
     model?: string;
     thinking?: string;
     memoryModel?: string;

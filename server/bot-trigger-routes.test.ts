@@ -280,7 +280,7 @@ test("a gated tool judges the run by every input it took: a trigger's message st
   await steerQueued("[trigger: Joiner · ");
   await control("release-replay", { method: "POST" });
   const answer = await answerTo("[trigger: Joiner · ");
-  assert.match(answer, /Only the operator changes your name or title, and this turn was started by a routine, a trigger or another bot\./u, "set_profile");
+  assert.match(answer, /Only the operator changes your name, title or look, and this turn was started by a routine, a trigger or another bot\./u, "set_profile");
   assert.equal(answer.split("Only the operator adds or changes your triggers, and this turn was started by the trigger \"Joiner\", whose event comes from outside HUI.").length, 3, "the triggers tool's add and update");
   assert.match(answer, /Only the operator changes your soul, and this turn was started by a routine, a trigger or another bot\./u, "write_soul");
   assert.match(answer, /You have \d+ triggers:/u, "list still works");
@@ -308,7 +308,7 @@ test("the same for another bot's message steered into the operator's turn, and a
   await steerQueued("[from @bob] ");
   await control("release-replay", { method: "POST" });
   const relayed = await answerTo("[from @bob] ");
-  assert.match(relayed, /Only the operator changes your name or title/u);
+  assert.match(relayed, /Only the operator changes your name, title or look/u);
   assert.equal(relayed.split("Only the operator adds or changes your triggers, and this turn was started by @bob.").length, 3);
   assert.match(relayed, /Only the operator changes your soul/u);
   assert.match(relayed, /You have \d+ triggers?:/u);
@@ -326,7 +326,7 @@ test("the same for another bot's message steered into the operator's turn, and a
   await steerQueued("[routine: Tidy] ");
   await control("release-replay", { method: "POST" });
   const routine = await answerTo("[routine: Tidy] ");
-  assert.match(routine, /Only the operator changes your name or title/u, "a routine's message can't retitle her");
+  assert.match(routine, /Only the operator changes your name, title or look/u, "a routine's message can't retitle her");
   assert.match(routine, /Added the trigger "Added by a routine"/u, "the triggers tool takes a routine's turn");
   assert.match(routine, /Updated the trigger "Keep": Sessions · Sessions it starts · Waiting/u);
   assert.match(routine, /Only the operator changes your soul/u, "nor rewrite her soul");
@@ -356,7 +356,7 @@ test("a run stays tainted to its end: the operator's message after a trigger's i
   assert.equal((await call(`/__hui/sessions/${ada.sessionId}/steer`, "POST", { text: mine("Tainted") })).status, 200);
   await control("release-replay", { method: "POST" });
   const tainted = await answerTo(mine("Tainted"));
-  assert.match(tainted, /Only the operator changes your name or title/u);
+  assert.match(tainted, /Only the operator changes your name, title or look/u);
   assert.match(tainted, /Only the operator changes your soul/u);
   assert.match(tainted, /Only the operator adds or changes your triggers, and this turn was started by the trigger "Ping"/u);
   assert.deepEqual(await profileOf(), before.profile);

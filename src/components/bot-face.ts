@@ -1,8 +1,8 @@
 /**
  * `<hui-bot-face>`: a bot's animated face (HUI-18), after OpenAI's Dots: a
- * plush shape in the bot's color with two dot eyes and no mouth, whose eyes
- * and body show what the bot is doing. Decorative: it is aria-hidden, and the
- * bot's name and status stay in text beside it.
+ * plush shape in the bot's color with two dot eyes, no mouth and maybe ears on
+ * top, whose eyes and body show what the bot is doing. Decorative: it is
+ * aria-hidden, and the bot's name and status stay in text beside it.
  *
  * CSS keyframes carry the motion (src/styles/bot-face.css). This element adds
  * blinks and glances on light timers and, on large faces only, pointer gaze,
@@ -14,17 +14,20 @@
  */
 import { html, svg, type PropertyValues } from "lit";
 import { HuiElement } from "../lit/hui-element.ts";
-import { isBotFaceShape, type BotFaceShape } from "../../shared/bots.ts";
+import { isBotFaceEars, isBotFaceShape, type BotFaceEars, type BotFaceShape } from "../../shared/bots.ts";
 import {
   FACE_EYES,
   FACE_EYE_POSITION,
   FACE_FOLLOWS_POINTER,
   FACE_GAZE,
+  FACE_LEAF_COLOR,
   SyllableLevel,
   eyesBlink,
   faceBodyColor,
+  faceEars,
   faceInk,
   facePath,
+  faceViewBox,
   isBotFaceState,
   isLiveFaceSize,
   levelSquash,
@@ -39,8 +42,8 @@ loadViewAssets(() => import("../styles/bot-face.css"));
 
 /** How long the one-shot "done" hop shows before the face rests. */
 const DONE_MS = 1150;
-/** Small faces crop the view box to the body, so a 32 px face is mostly face. */
-const VIEW_BOX: Record<BotFaceSize, string> = { sm: "12 18 96 96", md: "12 18 96 96", lg: "0 0 120 120", xl: "0 0 120 120" };
+/** Small faces crop the view box to the body, so a 32 px face is mostly face; tall ears grow it upward. */
+const VIEW_BOX: Record<BotFaceSize, readonly [number, number, number]> = { sm: [12, 18, 96], md: [12, 18, 96], lg: [0, 0, 120], xl: [0, 0, 120] };
 
 let instances = 0;
 
@@ -99,6 +102,7 @@ function unobserve(element: Element) {
 export class HuiBotFace extends HuiElement {
   static override properties = {
     shape: { type: String, reflect: true },
+    ears: { type: String },
     color: { type: String },
     state: { type: String, reflect: true },
     size: { type: String, reflect: true },
@@ -106,6 +110,8 @@ export class HuiBotFace extends HuiElement {
     shown: { state: true },
   };
   declare shape: BotFaceShape;
+  /** What sits on top; "" or anything else: nothing. */
+  declare ears: BotFaceEars | "";
   /** #rrggbb */
   declare color: string;
   declare state: BotFaceState;
@@ -138,6 +144,7 @@ export class HuiBotFace extends HuiElement {
   constructor() {
     super();
     this.shape = "blob";
+    this.ears = "";
     this.color = "#3a7bfa";
     this.state = "idle";
     this.size = "md";
@@ -349,6 +356,8 @@ export class HuiBotFace extends HuiElement {
     const body = faceBodyColor(this.color, state);
     const ink = faceInk(body);
     const [x, y] = FACE_EYE_POSITION[shape];
+    const ears = isBotFaceEars(this.ears) ? faceEars(shape, this.ears) : undefined;
+    const leaf = faceBodyColor(FACE_LEAF_COLOR, state);
     const line = { stroke: ink, width: "2.6" };
     const eye = (side: -1 | 1) => svg`<g transform=${"translate(" + side * 11 + ",0)"}>
       <ellipse class="e e-open" rx="4.3" ry="5.6" fill=${ink}></ellipse>
@@ -358,7 +367,7 @@ export class HuiBotFace extends HuiElement {
       <path class="e e-sleepy" d="M-4.8 -1.2 Q0 3.9 4.8 -1.2" stroke=${line.stroke} stroke-width=${line.width} stroke-linecap="round" fill="none"></path>
       <path class="e e-brow" d=${side < 0 ? "M-5.4 -9.2 L3.2 -11.6" : "M-3.2 -11.6 L5.4 -9.2"} stroke=${line.stroke} stroke-width="2.1" stroke-linecap="round" fill="none"></path>
     </g>`;
-    return html`<svg class="bot-face" viewBox=${VIEW_BOX[size]} focusable="false" aria-hidden="true" data-state=${state} data-eyes=${FACE_EYES[state]}>
+    return html`<svg class="bot-face" viewBox=${faceViewBox(VIEW_BOX[size], ears?.top)} focusable="false" aria-hidden="true" data-state=${state} data-eyes=${FACE_EYES[state]}>
       <defs>
         <radialGradient id=${"bot-face-g" + id} cx="36%" cy="28%" r="80%">
           <stop offset="0" stop-color="#fff" stop-opacity=".45"></stop>
@@ -377,6 +386,7 @@ export class HuiBotFace extends HuiElement {
       <ellipse class="bot-face__shadow" cx="60" cy="110" rx="29" ry="4.6" fill="#000" fill-opacity=".16" filter=${"url(#bot-face-b" + id + ")"}></ellipse>
       <g class="bot-face__lean fx"><g class="bot-face__bob fx"><g class="bot-face__tilt fx"><g class="bot-face__squash fx">
         <g filter=${"url(#bot-face-p" + id + ")"}>
+          ${ears?.parts.map((part) => svg`<path class="bot-face__ear" d=${part.d} transform=${part.transform} fill=${part.leaf ? leaf : body}></path>`)}
           <path class="bot-face__body" fill=${body}></path>
           <path class="bot-face__shade" fill=${"url(#bot-face-g" + id + ")"}></path>
         </g>

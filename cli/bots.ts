@@ -9,7 +9,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { createInterface } from "node:readline";
 import {
-  BOT_FACE_SHAPE_LABELS, botColorName, botDisplayCwd, botFaceColor, botFaceShape, botKickoffName, botLook, NEW_BOT_NAME,
+  BOT_FACE_EARS_LABELS, BOT_FACE_SHAPE_LABELS, botColorName, botFaceEars, botDisplayCwd, botFaceColor, botFaceShape, botKickoffName, botLook, NEW_BOT_NAME,
   type BotCatalog, type BotCatalogTool, type BotMessageResult, type BotQuestion, type BotSkillSelector, type BotSoul, type BotsUpdate, type BotView,
 } from "../shared/bots.ts";
 import { voiceLanguage, voiceLanguageName } from "../shared/voice.ts";
@@ -34,6 +34,7 @@ export type BotFlags = {
   "utility-model"?: string;
   emoji?: string;
   shape?: string;
+  ears?: string;
   color?: string;
   language?: string;
   "call-voice"?: string;
@@ -201,11 +202,12 @@ async function botBody(flags: BotFlags, io: BotIO): Promise<Record<string, unkno
   if (flags.thinking !== undefined) body["thinking"] = flags.thinking;
   if (flags["memory-model"] !== undefined) body["memoryModel"] = flags["memory-model"];
   if (flags["utility-model"] !== undefined) body["memoryModel"] = flags["utility-model"];
-  // The look: an emoji, or (with --emoji "") the face, its shape and color; "" clears each.
-  if (flags.emoji !== undefined || flags.shape !== undefined || flags.color !== undefined) {
+  // The look: an emoji, or (with --emoji "") the face, its shape, ears and color; "" clears each.
+  if (flags.emoji !== undefined || flags.shape !== undefined || flags.ears !== undefined || flags.color !== undefined) {
     body["avatar"] = {
       ...(flags.emoji !== undefined ? { emoji: flags.emoji } : {}),
       ...(flags.shape !== undefined ? { shape: flags.shape.trim() ? botFaceShape(flags.shape) ?? flags.shape.trim().toLowerCase() : "" } : {}),
+      ...(flags.ears !== undefined ? { ears: flags.ears.trim() ? botFaceEars(flags.ears) ?? flags.ears.trim().toLowerCase() : "" } : {}),
       ...(flags.color !== undefined ? { color: lookColor(flags.color) } : {}),
     };
   }
@@ -228,14 +230,14 @@ export function lookColor(value: string): string {
   return color ? botFaceColor(color)?.hex ?? color.toLowerCase() : "";
 }
 
-/** `face · heart · Mint`, `emoji 🦊 · Mint`; "(from its id)" marks what the bot's id picked. */
+/** `face · Heart · Mint`, `face · Heart · Cat ears · Mint`, `emoji 🦊 · Mint`; "(from its id)" marks what the bot's id picked. */
 export function formatLook(bot: Pick<BotView, "id" | "avatar">): string {
   const look = botLook(bot);
   const picked = " (from its id)";
   const color = `${botColorName(look.color)}${look.derived.color ? picked : ""}`;
   return look.kind === "emoji"
     ? `emoji ${look.emoji} · ${color}`
-    : `face · ${BOT_FACE_SHAPE_LABELS[look.shape]}${look.derived.shape ? picked : ""} · ${color}`;
+    : `face · ${BOT_FACE_SHAPE_LABELS[look.shape]}${look.derived.shape ? picked : ""}${look.ears ? ` · ${BOT_FACE_EARS_LABELS[look.ears]}` : ""} · ${color}`;
 }
 
 /** Runs one `hui bot` action and returns the exit code. */

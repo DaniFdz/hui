@@ -174,9 +174,11 @@ test("bots are created, read, edited, archived and restored through the guarded 
   assert.deepEqual(botOf(await call("/__hui/bots/bob", "PATCH", { avatar: { emoji: "" } })).avatar, { color: "#2fc49a", shape: "heart" });
   assert.deepEqual(botOf(await call("/__hui/bots/bob")).avatar, { color: "#2fc49a", shape: "heart" }, "kept in bots.json");
   assert.deepEqual(botOf(await call("/__hui/bots/bob", "PATCH", { avatar: { shape: "" } })).avatar, { color: "#2fc49a" });
-  const shapeRefused = await call("/__hui/bots/bob", "PATCH", { avatar: { shape: "star" } });
+  assert.deepEqual(botOf(await call("/__hui/bots/bob", "PATCH", { avatar: { shape: "ghost", ears: "horns" } })).avatar, { color: "#2fc49a", shape: "ghost", ears: "horns" });
+  assert.deepEqual(botOf(await call("/__hui/bots/bob")).avatar, { color: "#2fc49a", shape: "ghost", ears: "horns" }, "ears kept in bots.json");
+  const shapeRefused = await call("/__hui/bots/bob", "PATCH", { avatar: { shape: "dragon" } });
   assert.equal(shapeRefused.status, 400);
-  assert.match(String(shapeRefused.body["error"]), /Avatar shape must be one of: blob, round, triangle, heart, cookie/u);
+  assert.match(String(shapeRefused.body["error"]), /Avatar shape must be one of: blob, round, triangle, heart, cookie, star/u);
   assert.equal(botOf(await call("/__hui/bots/bob", "PATCH", { avatar: null })).avatar, undefined);
   assert.equal((await call("/__hui/bots/ada", "PATCH", { handle: "bob" })).status, 409);
 

@@ -1268,7 +1268,7 @@ type BotRecord = {
   thinking?: string;
   memoryModel?: string;        // "provider/id" of the bot's utility model (memory summaries, call helper, call summaries); `utilityModel` in a patch; absent: Settings' utility model, then the chat's own model
   memoryThinking?: string;
-  avatar?: { emoji?: string /* one grapheme */; color?: string /* #rrggbb */; shape?: "blob" | "round" | "triangle" | "heart" | "cookie" }; // the look, below
+  avatar?: { emoji?: string /* one grapheme */; color?: string /* #rrggbb */; shape?: BotFaceShape; ears?: BotFaceEars }; // the look, below
   voice?: { language?: string; live?: GptLiveVoice }; // on calls: the language it speaks (one of Whisper's codes, below; absent: Auto) and its GPT-Live voice (absent: Settings' call voice)
   hidden?: boolean;
   archived?: boolean;
@@ -1332,14 +1332,18 @@ whose conversation has no OptChat, or a store this process does not own, has no
 memory to read.
 
 **The look.** A bot shows an animated face (a plush `shape` in a `color`, two
-dot eyes, after OpenAI's Dots) or, while it has one, its `emoji` on a tile of
-that color; clearing the emoji switches it to its face. `shape` is one of
-`BOT_FACE_SHAPES` (`round` is labelled Pebble) and `color` any `#rrggbb`; the
+dot eyes, optionally `ears` on top, after OpenAI's Dots) or, while it has one,
+its `emoji` on a tile of that color; clearing the emoji switches it to its face.
+`shape` is one of `BOT_FACE_SHAPES` (blob, round labelled Pebble, triangle,
+heart, cookie, star, flower, cloud, drop, ghost, pill, block, hexagon), `ears`
+one of `BOT_FACE_EARS` (cat, bear, bunny, antenna, sprout, horns; absent: none)
+and `color` any `#rrggbb`; the
 Bots tab and `hui bot --color` offer `BOT_FACE_COLORS` (blue `#3a7bfa`,
 yellow `#f5c21b`, magenta `#d23ce0`, mint `#2fc49a`, coral `#ff6b4a`, lilac
 `#9b7cf6`). A missing `shape` or `color` is not stored: every client derives it
 from the bot's id with `defaultBotLook` (`botSeed`, a 32-bit FNV-1a hash with a
-final mix: shape `seed % 5`, color `floor(seed / 5) % 6`), so the same bot has
+final mix: shape `seed % 5` among the first five shapes, color `floor(seed / 5) % 6`;
+never ears), so the same bot has
 the same face in the roster, its chat, a call and `hui bot show`, across reloads
 and machines. `botLook` resolves the whole look; views never carry it. The
 face's expression (thinking, using tools, waiting, summarizing, failed,
@@ -1448,7 +1452,7 @@ failures; other methods answer 405.
 | `GET /__hui/bots[?archived=1]` | 200 `{ bots: BotView[] }` | Active bots, or with `archived=1` only archived ones, sorted by name |
 | `POST /__hui/bots` | 201 `{ bot }` | `BotInput`: the record fields, all optional (`{}` is enough), `handle`, `disabledTools` and `disabledSkills` (below; tools checked against those every chat has, before an extension's, and skills against its directory's, on the machine it runs on), `worker` (a worker's id or name: [the bot runs there](#bots-on-a-worker), with its home folder and SOUL.md) and `soul` (SOUL.md's text, ≤ 20,000 characters after trimming; given, the bot skips its first conversation and no kickoff runs). Without `name` the bot is `New Bot` (`NEW_BOT_NAME`), which its first conversation replaces (`set_profile`). Without `handle` one is derived from the name (`-2`, `-3`… on collision); an explicit handle that is taken is 409 |
 | `GET /__hui/bots/:id` | 200 `{ bot }` | |
-| `PATCH /__hui/bots/:id` | 200 `{ bot }` | Only what changes (`worker` is 400: a bot stays on the machine it was created on); `""` clears `title`, `description`, `model`, `thinking` (back to the gateway defaults, above), `memoryModel` (also as `utilityModel`, the same field; giving both with different values is 400), `memoryThinking` (back to Settings' utility model, then the chat's model, and OptChat's default level); an avatar key `""` clears it (`emoji: ""` switches the bot to its face, `shape: ""` and `color: ""` go back to the ones its id picks), `avatar: null` clears all three (an unknown `shape` or a color that is not `#rrggbb` is 400); a voice `language: ""` (back to Auto) or `live: ""` (back to Settings' call voice) clears that key, `voice: null` clears both (other voice keys are 400, VoiceStudio's old `profile` and `speed` included, and so is a `language` that is not one of Whisper's codes, a name such as `Spanish` included, or a `live` that is not one of GPT-Live's voices). `disabledTools` and `disabledSkills` replace the whole list (`[]` turns everything back on), checked against the running chat's catalog (below; on its worker for a bot there); they apply from its next request. `soul` is refused (400): SOUL.md has its own route. A given handle replaces the old one (409 if taken); a new `name` without one re-derives the handle while it is still the automatic one, derived from the old name (kept unique), and a handle chosen before stays. `model`/`thinking` go through the live chat (`setModel`/`setThinking`); `name` and the memory fields reconfigure OptChat, `name` also the session title; `cwd` is accepted only while the chat is idle (409 otherwise) and boots its runtime again there; a turn that starts during that edit (a routine, say) makes it answer 409 after the conversation and the chat's session record already moved, with the bot record still naming the old directory, so repeat the edit once the bot is idle to finish it. Archived bots are 409 |
+| `PATCH /__hui/bots/:id` | 200 `{ bot }` | Only what changes (`worker` is 400: a bot stays on the machine it was created on); `""` clears `title`, `description`, `model`, `thinking` (back to the gateway defaults, above), `memoryModel` (also as `utilityModel`, the same field; giving both with different values is 400), `memoryThinking` (back to Settings' utility model, then the chat's model, and OptChat's default level); an avatar key `""` clears it (`emoji: ""` switches the bot to its face, `shape: ""` and `color: ""` go back to the ones its id picks, `ears: ""` takes them off), `avatar: null` clears them all (an unknown `shape` or `ears` or a color that is not `#rrggbb` is 400); a voice `language: ""` (back to Auto) or `live: ""` (back to Settings' call voice) clears that key, `voice: null` clears both (other voice keys are 400, VoiceStudio's old `profile` and `speed` included, and so is a `language` that is not one of Whisper's codes, a name such as `Spanish` included, or a `live` that is not one of GPT-Live's voices). `disabledTools` and `disabledSkills` replace the whole list (`[]` turns everything back on), checked against the running chat's catalog (below; on its worker for a bot there); they apply from its next request. `soul` is refused (400): SOUL.md has its own route. A given handle replaces the old one (409 if taken); a new `name` without one re-derives the handle while it is still the automatic one, derived from the old name (kept unique), and a handle chosen before stays. `model`/`thinking` go through the live chat (`setModel`/`setThinking`); `name` and the memory fields reconfigure OptChat, `name` also the session title; `cwd` is accepted only while the chat is idle (409 otherwise) and boots its runtime again there; a turn that starts during that edit (a routine, say) makes it answer 409 after the conversation and the chat's session record already moved, with the bot record still naming the old directory, so repeat the edit once the bot is idle to finish it. Archived bots are 409 |
 | `DELETE /__hui/bots/:id` | 200 `{ bot }` | Archives, deleting nothing: marks the bot, disables every Automation task aimed at its chat, withdraws messages still in HUI's follow-up queue for it, stops a running turn and archives the chat's session record. Idempotent |
 | `DELETE /__hui/bots/:id?permanent=1` | 200 `{ ok: true }`, plus `queued: true` for a bot whose worker is offline ([then](#bots-on-a-worker) its memory and home there go at the worker's next connection) | Deletes a bot for good, active or archived: withdraws messages still in HUI's follow-up queue for it and stops a running turn; its conversation stops being a bot's chat and its memory goes, in one commit (the `hui.bot` document cleared, OptChat turned off) and then OptChat's files; then every Automation task aimed at its chat, the chat's session record as `DELETE /__hui/sessions/:id` does (its runtime stops), its home folder `CONFIG_DIR/bots/<id>` with everything in it (SOUL.md and every file HUI or the bot put there; only `<BOTS_DIR>/<id>` itself, resolved, never following a link out), then the bot. A working directory the operator chose is never touched (when it lies inside the home folder, only SOUL.md goes). pi-durable cannot delete a conversation yet, so its raw log stays in the Durable store, where nothing reads it back. Each step can run again, so deleting again finishes an interrupted attempt; afterwards the bot is 404 |
 | `POST /__hui/bots/:id/restore` | 200 `{ bot }` | Unarchives the bot and its session record; routines stay disabled |
@@ -1525,12 +1529,16 @@ gives a short summary and says how to change it (the Soul tab of its panel, or
 telling it). Those last details come only in `write_soul`'s result, once the
 file is written, so they stay out of SOUL.md.
 
-`set_profile({ name?, title? })`, beside it, changes the calling bot's own name
-and title in HUI under `PATCH`'s rules (so a derived handle follows the name). It
+`set_profile({ name?, title?, shape?, ears?, color?, emoji? })`, beside it,
+changes the calling bot's own name, title and look in HUI under `PATCH`'s rules
+(so a derived handle follows the name; the look's keys are `avatar`'s, `ears: ""`
+takes them off, `emoji: ""` shows the face, and `color` may also be a palette
+name). Its result says how the bot now looks, and that a face waits behind an
+emoji until the emoji is cleared. It
 goes through HUI's agent-tool handler, as `message_bot` does, and is refused in a
 run that took a message from a routine, a trigger or another bot (one that
 starts with `[routine: `, `[trigger: ` or `[from @`), the one that started it or
-any since (below): only the operator names a bot.
+any since (below): only the operator names a bot or changes its look.
 
 **Every input of the run.** A bot's gated tools (`set_profile`, `write_soul`
 and the `triggers` tool's `add` and `update`) judge the run they are called in

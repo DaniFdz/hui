@@ -4,7 +4,7 @@
  * soul, skills, routines (disabled, as every import's) and tool and skill lists; its memory joins the soul's "What you
  * already know", as every template's memories do.
  */
-import { BOT_FACE_SHAPES, BOT_LIMITS, type BotFaceShape, type BotVoice } from "../../shared/bots.ts";
+import { BOT_LIMITS, isBotFaceEars, isBotFaceShape, type BotVoice } from "../../shared/bots.ts";
 import { BOT_EXPORT_FILES, BOT_EXPORT_FORMAT, BOT_EXPORT_VERSION, type BotExportManifest, type BotTemplate } from "../../shared/bot-templates.ts";
 import type { AutomationSchedule } from "../../src/lib/automation-types.ts";
 import { blankTemplate, fileText, findFile, isRecord, oneLine, skillFromFile, str, TemplateFormatError, unwrapFolder, type ImportFile } from "./common.ts";
@@ -61,9 +61,10 @@ export function parseHuiExport(all: readonly ImportFile[], origin?: string, pars
   if (description) template.description = description;
   const avatar = isRecord(bot["avatar"]) ? bot["avatar"] : {};
   if (str(avatar["emoji"])) template.emoji = str(avatar["emoji"]);
-  const shape = (BOT_FACE_SHAPES as readonly string[]).includes(str(avatar["shape"])) ? str(avatar["shape"]) as BotFaceShape : undefined;
+  const shape = isBotFaceShape(avatar["shape"]) ? avatar["shape"] : undefined;
+  const ears = isBotFaceEars(avatar["ears"]) ? avatar["ears"] : undefined;
   const color = /^#[0-9a-f]{6}$/iu.test(str(avatar["color"])) ? str(avatar["color"]).toLowerCase() : undefined;
-  if (shape || color) template.avatar = { ...(shape ? { shape } : {}), ...(color ? { color } : {}) };
+  if (shape || ears || color) template.avatar = { ...(shape ? { shape } : {}), ...(ears ? { ears } : {}), ...(color ? { color } : {}) };
   if (str(bot["model"])) template.model = str(bot["model"]);
   const voice = isRecord(bot["voice"]) ? bot["voice"] : undefined;
   const extras: NonNullable<BotTemplate["hui"]> = {

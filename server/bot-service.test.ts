@@ -724,7 +724,7 @@ test("a bot without a name is New Bot, new-bot, new-bot-2…; a derived handle f
   assert.deepEqual(h.service.identity(second.id), { id: second.id, handle: "ranger", name: "Ranger II" });
 });
 
-test("set_profile changes the calling bot's own name and title under PATCH's rules, only in turns the operator started", async (t) => {
+test("set_profile changes the calling bot's own name, title and look under PATCH's rules, only in turns the operator started", async (t) => {
   const h = await harness(t);
   const bot = await h.service.create({ soul: SOUL });
   const caller = bot.sessionId;
@@ -735,12 +735,23 @@ test("set_profile changes the calling bot's own name and title under PATCH's rul
   assert.deepEqual(h.memoryCalls.at(-1), ["configure", "durable:1", { name: "Echo" }], "its memory knows the name");
   await h.service.setProfile(caller, { title: "" });
   assert.equal((await h.service.get("echo")).title, undefined, "\"\" clears the title");
+  // Its look: a shape, ears and a color by palette name; an emoji shows instead of the face until it is cleared.
+  const looked = await h.service.setProfile(caller, { shape: "star", ears: "cat", color: "Mint" });
+  assert.equal(looked.text, "Saved: you are Echo (@echo). You look like a mint star with cat ears. Tell the operator.");
+  assert.deepEqual((await h.service.get("echo")).avatar, { shape: "star", ears: "cat", color: "#2fc49a" });
+  assert.match((await h.service.setProfile(caller, { emoji: "🦊" })).text, /You show 🦊\. Tell the operator\./u);
+  assert.match((await h.service.setProfile(caller, { ears: "" })).text, /You show 🦊; your face \(a mint star\) shows once your emoji is cleared \(emoji ""\)\./u);
+  await h.service.setProfile(caller, { emoji: "" });
+  assert.deepEqual((await h.service.get("echo")).avatar, { shape: "star", color: "#2fc49a" });
   for (const [params, pattern] of [
-    [{}, /Give a name, a title or both/u],
+    [{}, /Give a name, a title or a part of your look/u],
     [{ name: "" }, /Bot name must be 1-60/u],
     [{ name: "x".repeat(61) }, /Bot name must be 1-60/u],
     [{ title: "two\nlines" }, /one line/u],
-    [{ handle: "sneaky" }, /takes name and title only/u],
+    [{ shape: "dragon" }, /Avatar shape must be one of/u],
+    [{ ears: "wings" }, /Avatar ears must be one of/u],
+    [{ color: "teal" }, /Avatar color must be #rrggbb/u],
+    [{ handle: "sneaky" }, /takes name, title, shape, ears, color, emoji only/u],
   ] as const) await assert.rejects(h.service.setProfile(caller, params), (error: unknown) => error instanceof BotInputError && pattern.test(error.message), JSON.stringify(params));
   await assert.rejects(h.service.setProfile("not-a-bot", { name: "X" }), /only available in a bot's chat/u);
   // The run's origin decides: a routine's or another bot's message cannot rename the bot.

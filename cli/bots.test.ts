@@ -328,6 +328,10 @@ test("list, show, add, edit, remove, restore and stop talk to the bot routes and
   assert.deepEqual(gateway.calls.at(-1)?.body, { avatar: { emoji: "", color: "#ff6b4a" } });
   await botCommand(gateway.base, "edit", ["ada"], { shape: "", color: "" }, terminal().io);
   assert.deepEqual(gateway.calls.at(-1)?.body, { avatar: { shape: "", color: "" } }, "back to the id's face");
+  await botCommand(gateway.base, "edit", ["ada"], { ears: "Cat ears" }, terminal().io);
+  assert.deepEqual(gateway.calls.at(-1)?.body, { avatar: { ears: "cat" } }, "ears by their label go as the id");
+  await botCommand(gateway.base, "edit", ["ada"], { ears: "" }, terminal().io);
+  assert.deepEqual(gateway.calls.at(-1)?.body, { avatar: { ears: "" } }, "\"\" takes them off");
   await botCommand(gateway.base, "add", [], { name: "Heart", shape: "heart", color: "coral" }, terminal().io);
   assert.deepEqual(gateway.calls.at(-1)?.body, { name: "Heart", avatar: { shape: "heart", color: "#ff6b4a" } });
   await botCommand(gateway.base, "add", [], { name: "Lola", language: "yue" }, terminal().io);
@@ -361,6 +365,7 @@ test("show names the look: the face's shape and color, or the emoji, and what th
   assert.equal(formatLook({ id: "id-ada" }), "face · Cookie (from its id) · Yellow (from its id)");
   assert.equal(formatLook({ id: "id-ada", avatar: { shape: "heart", color: "#2fc49a" } }), "face · Heart · Mint");
   assert.equal(formatLook({ id: "id-ada", avatar: { shape: "round", color: "#123456" } }), "face · Pebble · #123456", "a custom color shows as its hex");
+  assert.equal(formatLook({ id: "id-ada", avatar: { shape: "ghost", ears: "horns", color: "#2fc49a" } }), "face · Ghost · Horns · Mint");
   assert.equal(formatLook({ id: "id-ada", avatar: { emoji: "🦊" } }), "emoji 🦊 · Yellow (from its id)");
   assert.equal(lookColor(" Lilac "), "#9b7cf6");
   assert.equal(lookColor("#ABCDEF"), "#abcdef");

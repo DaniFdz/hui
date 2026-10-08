@@ -30,7 +30,8 @@ import { mkdir, realpath, rmdir, stat } from "node:fs/promises";
 import { isAbsolute, join, relative } from "node:path";
 
 import {
-  BOT_LIMITS, botKickoffName, botKickoffText, handleFromName, isBotAccessQuestion, previewLine, runTurnOrigins,
+  BOT_FACE_EARS_LABELS, BOT_FACE_SHAPE_LABELS, BOT_LIMITS, botColorName, botFaceColor, botKickoffName, botKickoffText, botLook, handleFromName, isBotAccessQuestion,
+  previewLine, runTurnOrigins,
   type BotAccessRequest, type BotCatalog, type BotSkillRef, type BotSkillSelector,
   type BotAccess, type BotCatalogSkill, type BotCatalogTool, type BotLastMessage, type BotMemoryStatus, type BotMessageResult, type BotPatch,
   type BotQuestion, type BotRecord, type BotReply, type BotTurnOrigin, type BotView,
@@ -247,6 +248,9 @@ type RunWatch = {
   queued(item: string | undefined): void;
   dispose(): void;
 };
+
+/** What `set_profile` changes: the profile, and the look's parts as `avatar` takes them (a color also by palette name). */
+const PROFILE_KEYS = ["name", "title", "shape", "ears", "color", "emoji"];
 
 export class BotService {
   readonly #registry: BotRegistry;
@@ -661,8 +665,8 @@ export class BotService {
   }
 
   /**
-   * `set_profile` from the bot whose chat `callerSessionId` is: its own name and/or title, under `PATCH`'s rules
-   * (`update`, so a derived handle follows the name). Only the operator decides them: a run that took any input from a
+   * `set_profile` from the bot whose chat `callerSessionId` is: its own name, title and/or look (shape, ears, color by
+   * palette name or hex, emoji), under `PATCH`'s rules (`update`, so a derived handle follows the name). Only the operator decides them: a run that took any input from a
    * routine, a trigger or another bot is refused, the one that started it (its run's originating input, `runPrompt`)
    * or any since (`runOrigins`, as the host running the chat saw them; none from a host that can't tell).
    */
@@ -673,14 +677,24 @@ export class BotService {
     if (bot.archived) throw new BotConflictError("An archived bot cannot change its profile.");
     const origins = runTurnOrigins((await this.#deps.readSessions()).find((record) => record.id === callerSessionId)?.runPrompt, runOrigins);
     if (origins.some((origin) => origin.kind === "routine" || origin.kind === "trigger" || origin.kind === "bot")) {
-      throw new BotConflictError("Only the operator changes your name or title, and this turn was started by a routine, a trigger or another bot. Ask the operator instead.");
+      throw new BotConflictError("Only the operator changes your name, title or look, and this turn was started by a routine, a trigger or another bot. Ask the operator instead.");
     }
-    const unknown = Object.keys(params).filter((key) => key !== "name" && key !== "title");
-    if (unknown.length) throw new BotInputError(`set_profile takes name and title only, not ${unknown.join(", ")}.`);
-    if (!Object.keys(params).length) throw new BotInputError("Give a name, a title or both.");
-    const view = await this.update(bot.id, params);
+    const unknown = Object.keys(params).filter((key) => !PROFILE_KEYS.includes(key));
+    if (unknown.length) throw new BotInputError(`set_profile takes ${PROFILE_KEYS.join(", ")} only, not ${unknown.join(", ")}.`);
+    if (!Object.keys(params).length) throw new BotInputError("Give a name, a title or a part of your look.");
+    const { name, title, color, ...avatar } = params;
+    if (color !== undefined) avatar["color"] = typeof color === "string" ? botFaceColor(color)?.hex ?? color : color;
+    const view = await this.update(bot.id, {
+      ...(name !== undefined ? { name } : {}), ...(title !== undefined ? { title } : {}), ...(Object.keys(avatar).length ? { avatar } : {}),
+    });
+    // A new look is described as it shows: a face behind an emoji waits until the emoji is cleared.
+    const look = botLook(view);
+    const face = `a ${botColorName(look.color).toLowerCase()} ${BOT_FACE_SHAPE_LABELS[look.shape].toLowerCase()}${look.ears ? ` with ${BOT_FACE_EARS_LABELS[look.ears].toLowerCase()}` : ""}`;
+    const shown = !Object.keys(avatar).length ? ""
+      : look.kind === "face" ? ` You look like ${face}.`
+      : ` You show ${look.emoji}${avatar["emoji"] === undefined ? `; your face (${face}) shows once your emoji is cleared (emoji "")` : ""}.`;
     return {
-      text: `Saved: you are ${view.name} (@${view.handle})${view.title ? `, ${view.title}` : ""}. Tell the operator.`,
+      text: `Saved: you are ${view.name} (@${view.handle})${view.title ? `, ${view.title}` : ""}.${shown} Tell the operator.`,
       name: view.name, handle: view.handle,
     };
   }

@@ -24,7 +24,7 @@ import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join } from "node:path";
 
 import {
-  BOT_FACE_SHAPES, BOT_HANDLE, BOT_LIMITS, BOT_THINKING_LEVELS, BOTS_OFF_MESSAGE, handleFromName, isBotFaceShape, NEW_BOT_NAME,
+  BOT_FACE_EARS, BOT_FACE_SHAPES, BOT_HANDLE, BOT_LIMITS, BOT_THINKING_LEVELS, BOTS_OFF_MESSAGE, handleFromName, isBotFaceEars, isBotFaceShape, NEW_BOT_NAME,
   type BotAccess, type BotAvatar, type BotAvatarPatch, type BotInput, type BotPatch, type BotRecord, type BotSkillRef, type BotSkillSelector, type BotVoice,
   type BotVoicePatch,
 } from "../shared/bots.ts";
@@ -108,7 +108,10 @@ function storedAvatar(raw: unknown): BotAvatar | undefined {
   const emoji = str(raw["emoji"]);
   const color = str(raw["color"]);
   const shape = raw["shape"];
-  const avatar = { ...(isOneGrapheme(emoji) ? { emoji } : {}), ...(COLOR.test(color) ? { color } : {}), ...(isBotFaceShape(shape) ? { shape } : {}) };
+  const ears = raw["ears"];
+  const avatar = {
+    ...(isOneGrapheme(emoji) ? { emoji } : {}), ...(COLOR.test(color) ? { color } : {}), ...(isBotFaceShape(shape) ? { shape } : {}), ...(isBotFaceEars(ears) ? { ears } : {}),
+  };
   return Object.keys(avatar).length ? avatar : undefined;
 }
 
@@ -424,10 +427,10 @@ function handleField(raw: unknown): string {
   return value;
 }
 
-/** `{ emoji?, color?, shape? }`; `""` clears a key (kept as `""` so a patch can tell). */
+/** `{ emoji?, color?, shape?, ears? }`; `""` clears a key (kept as `""` so a patch can tell). */
 function avatarField(raw: unknown): BotAvatarPatch {
-  if (!isRecord(raw)) throw new BotInputError("Avatar must be an object with emoji, color and/or shape.");
-  const unknown = Object.keys(raw).filter((key) => key !== "emoji" && key !== "color" && key !== "shape");
+  if (!isRecord(raw)) throw new BotInputError("Avatar must be an object with emoji, color, shape and/or ears.");
+  const unknown = Object.keys(raw).filter((key) => key !== "emoji" && key !== "color" && key !== "shape" && key !== "ears");
   if (unknown.length) throw new BotInputError(`Unknown avatar field: ${unknown.join(", ")}.`);
   const avatar: BotAvatarPatch = {};
   if ("emoji" in raw) {
@@ -443,6 +446,11 @@ function avatarField(raw: unknown): BotAvatarPatch {
     const shape = raw["shape"];
     if (shape !== "" && !isBotFaceShape(shape)) throw new BotInputError(`Avatar shape must be one of: ${BOT_FACE_SHAPES.join(", ")}.`);
     avatar.shape = shape;
+  }
+  if ("ears" in raw) {
+    const ears = raw["ears"];
+    if (ears !== "" && !isBotFaceEars(ears)) throw new BotInputError(`Avatar ears must be one of: ${BOT_FACE_EARS.join(", ")}, or "" for none.`);
+    avatar.ears = ears;
   }
   return avatar;
 }
@@ -598,10 +606,12 @@ export function patchedVoice(current: BotVoice | undefined, patch: BotVoicePatch
   return Object.keys(voice).length ? voice : undefined;
 }
 
-/** The avatar after a patch: given keys replace, `""` clears a key, `null` clears all three. */
+/** The avatar after a patch: given keys replace, `""` clears a key, `null` clears them all. */
 export function patchedAvatar(current: BotAvatar | undefined, patch: BotAvatarPatch | null): BotAvatar | undefined {
   if (patch === null) return undefined;
   const next = { ...current, ...patch };
-  const avatar: BotAvatar = { ...(next.emoji ? { emoji: next.emoji } : {}), ...(next.color ? { color: next.color } : {}), ...(next.shape ? { shape: next.shape } : {}) };
+  const avatar: BotAvatar = {
+    ...(next.emoji ? { emoji: next.emoji } : {}), ...(next.color ? { color: next.color } : {}), ...(next.shape ? { shape: next.shape } : {}), ...(next.ears ? { ears: next.ears } : {}),
+  };
   return Object.keys(avatar).length ? avatar : undefined;
 }

@@ -3,7 +3,7 @@
  * models this gateway resolves, its memories into SOUL.md, and a template that came back from the browser checked
  * again before anything is created from it. Pure: the service passes what the gateway knows.
  */
-import { BOT_LIMITS, BOT_THINKING_LEVELS, isBotFaceShape } from "../../shared/bots.ts";
+import { BOT_LIMITS, BOT_THINKING_LEVELS, isBotFaceEars, isBotFaceShape } from "../../shared/bots.ts";
 import { BOT_TEMPLATE_FORMATS, BOT_TEMPLATE_LIMITS, type BotTemplate, type BotTemplateFormat, type BotTemplateIntegration } from "../../shared/bot-templates.ts";
 import type { AutomationSchedule } from "../../src/lib/automation-types.ts";
 import { gptLiveVoice } from "../../shared/calls.ts";
@@ -200,8 +200,9 @@ export function normalizeTemplate(value: unknown): BotTemplate {
   if (model) template.model = model;
   if (isRecord(value["avatar"])) {
     const shape = value["avatar"]["shape"];
+    const ears = value["avatar"]["ears"];
     const color = str(value["avatar"]["color"]).toLowerCase();
-    template.avatar = { ...(isBotFaceShape(shape) ? { shape } : {}), ...(/^#[0-9a-f]{6}$/u.test(color) ? { color } : {}) };
+    template.avatar = { ...(isBotFaceShape(shape) ? { shape } : {}), ...(isBotFaceEars(ears) ? { ears } : {}), ...(/^#[0-9a-f]{6}$/u.test(color) ? { color } : {}) };
   }
   if (value["tools"] !== undefined) template.tools = items(value["tools"], "tools", 200).map((tool) => oneLine(text(tool, "tool", 200), 200)).filter(Boolean);
   if (isRecord(value["hui"])) {
