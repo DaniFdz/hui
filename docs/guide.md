@@ -410,7 +410,7 @@ sessions acts through a session that has every tool. They are on by default
 like the rest. Asking you for a secret (**Request secret**, under HUI) is not
 powerful: it only shows you a Secret card in the bot's chat, and you decide
 whether to answer. Its own tools are always on and listed at the bottom: writing its
-SOUL.md, changing its name or title, asking for access, loading its skills, and
+SOUL.md, changing its name, title or look, asking for access, loading its skills, and
 its memory.
 
 ```sh

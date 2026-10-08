@@ -12,7 +12,7 @@
  *
  * No decorators: the views that use it also load in Node tests.
  */
-import { html, svg, type PropertyValues } from "lit";
+import { html, nothing, svg, type PropertyValues } from "lit";
 import { HuiElement } from "../lit/hui-element.ts";
 import { isBotFaceEars, isBotFaceShape, type BotFaceEars, type BotFaceShape } from "../../shared/bots.ts";
 import {
@@ -393,11 +393,12 @@ export class HuiBotFace extends HuiElement {
         <g transform=${"translate(" + x + "," + y + ")"}>
           <g class="bot-face__gaze"><g class="bot-face__eyes">${eye(-1)}${eye(1)}</g></g>
         </g>
-        <g class="bot-face__thoughts">
+        <!-- A pair of ears takes the dots' corner: sleepy eyes and the slow breath show the memory state there. -->
+        ${ears?.pair ? nothing : svg`<g class="bot-face__thoughts">
           <circle cx="80" cy="30" r="2.2" fill="currentColor"></circle>
           <circle cx="88" cy="21" r="3" fill="currentColor" style="animation-delay: .35s"></circle>
           <circle cx="98" cy="11" r="3.9" fill="currentColor" style="animation-delay: .7s"></circle>
-        </g>
+        </g>`}
       </g></g></g></g>
     </svg>`;
   }

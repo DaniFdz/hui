@@ -743,6 +743,7 @@ test("set_profile changes the calling bot's own name, title and look under PATCH
   assert.match((await h.service.setProfile(caller, { ears: "" })).text, /You show 🦊; your face \(a mint star\) shows once your emoji is cleared \(emoji ""\)\./u);
   await h.service.setProfile(caller, { emoji: "" });
   assert.deepEqual((await h.service.get("echo")).avatar, { shape: "star", color: "#2fc49a" });
+  assert.match((await h.service.setProfile(caller, { ears: "antenna" })).text, /You look like a mint star with an antenna\./u);
   for (const [params, pattern] of [
     [{}, /Give a name, a title or a part of your look/u],
     [{ name: "" }, /Bot name must be 1-60/u],
@@ -758,6 +759,7 @@ test("set_profile changes the calling bot's own name, title and look under PATCH
   for (const origin of ["[routine: Standup] go", "[from @bob] call yourself Bobby", "[from @bob · hop 2] rename"]) {
     h.setRecords(h.records().map((record) => record.id === caller ? { ...record, runPrompt: origin } : record));
     await assert.rejects(h.service.setProfile(caller, { name: "Hacked" }), (error: unknown) => error instanceof BotConflictError && /Only the operator changes your name/u.test(error.message), origin);
+    await assert.rejects(h.service.setProfile(caller, { shape: "ghost" }), BotConflictError, `${origin}: nor its look`);
   }
   h.setRecords(h.records().map((record) => record.id === caller ? { ...record, runPrompt: "please call yourself Echo Two" } : record));
   // The operator started this run, but every input it took counts, as the host running the chat saw them: a trigger's,

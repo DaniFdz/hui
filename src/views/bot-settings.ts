@@ -14,7 +14,7 @@ import {
   BOT_FACE_COLORS, BOT_FACE_EARS, BOT_FACE_EARS_LABELS, BOT_FACE_SHAPES, BOT_FACE_SHAPE_LABELS, BOT_LIMITS, BOT_THINKING_LEVELS, botColorName,
   isBotFaceEars, isBotFaceShape, type BotAvatar, type BotFaceEars, type BotFaceShape,
 } from "../../shared/bots.ts";
-import { faceEars, facePath, faceViewBox } from "../lib/bot-face.ts";
+import { FACE_LEAF_COLOR, faceEars, facePath, faceViewBox } from "../lib/bot-face.ts";
 import { GPT_LIVE_VOICES, gptLiveVoiceLabel, type GptLiveVoice } from "../../shared/calls.ts";
 import { languageOptions } from "../lib/voice.ts";
 import { renderPicker } from "./settings-picker.ts";
@@ -116,12 +116,11 @@ function sectionHead(props: BotSettingsProps, section: string, title: string, no
   return html`<div class="bot-settings__head"><h3 class="bot-panel__heading" id=${`${props.id}-settings-${section}`}>${title}</h3>${note ? html`<span class="bot-settings__note">${note}</span>` : nothing}</div>`;
 }
 
-/** A shape's outline, small, for its chip. */
-/** A shape's silhouette, with the ears given on top. */
+/** A shape's silhouette, small, for its chip, with the ears given on top (a sprout green, as on the face). */
 function shapeIcon(shape: BotFaceShape, ears?: BotFaceEars) {
   const parts = ears ? faceEars(shape, ears) : undefined;
   return html`<svg class="bot-look__shape-icon" viewBox=${faceViewBox([16, 22, 88], parts?.top)} aria-hidden="true" focusable="false">
-    ${parts?.parts.map((part) => svg`<path d=${part.d} transform=${part.transform}></path>`)}<path d=${facePath(shape)}></path></svg>`;
+    ${parts?.parts.map((part) => svg`<path d=${part.d} transform=${part.transform} fill=${part.leaf ? FACE_LEAF_COLOR : nothing}></path>`)}<path d=${facePath(shape)}></path></svg>`;
 }
 
 /** The look: a summary row with the face, opening into Face (shape, ears and color) or Emoji. Each choice saves on its
@@ -159,11 +158,13 @@ function renderLook(props: BotSettingsProps) {
             @change=${() => { if (value === "face" && botSettingOf(bot, "emoji")) props.onChange("emoji", ""); }} /><span>${label}</span></label>`)}
       </div>
       <div class="bot-look__face">
+        <span class="settings-row__desc" aria-hidden="true">Shape</span>
         <div class="bot-look__shapes" role="radiogroup" aria-label="Shape">
           ${BOT_FACE_SHAPES.map((option) => html`<label class="bot-look__chip" style=${`--bot-look-color: ${color}`} title=${BOT_FACE_SHAPE_LABELS[option]}>
             <input type="radio" name=${`${id}-shape`} value=${option} aria-label=${BOT_FACE_SHAPE_LABELS[option]} .checked=${face === option}
-              @change=${() => props.onChange("shape", option)} />${shapeIcon(option, ears)}</label>`)}
+              @change=${() => props.onChange("shape", option)} />${shapeIcon(option)}</label>`)}
         </div>
+        <span class="settings-row__desc" aria-hidden="true">Ears</span>
         <div class="bot-look__shapes" role="radiogroup" aria-label="Ears">
           ${(["", ...BOT_FACE_EARS] as const).map((option) => {
             const label = option ? BOT_FACE_EARS_LABELS[option] : "No ears";

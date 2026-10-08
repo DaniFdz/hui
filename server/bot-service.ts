@@ -689,7 +689,8 @@ export class BotService {
     });
     // A new look is described as it shows: a face behind an emoji waits until the emoji is cleared.
     const look = botLook(view);
-    const face = `a ${botColorName(look.color).toLowerCase()} ${BOT_FACE_SHAPE_LABELS[look.shape].toLowerCase()}${look.ears ? ` with ${BOT_FACE_EARS_LABELS[look.ears].toLowerCase()}` : ""}`;
+    const ears = look.ears === "antenna" ? "an antenna" : look.ears === "sprout" ? "a sprout" : look.ears && BOT_FACE_EARS_LABELS[look.ears].toLowerCase();
+    const face = `a ${botColorName(look.color).toLowerCase()} ${BOT_FACE_SHAPE_LABELS[look.shape].toLowerCase()}${ears ? ` with ${ears}` : ""}`;
     const shown = !Object.keys(avatar).length ? ""
       : look.kind === "face" ? ` You look like ${face}.`
       : ` You show ${look.emoji}${avatar["emoji"] === undefined ? `; your face (${face}) shows once your emoji is cleared (emoji "")` : ""}.`;

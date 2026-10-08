@@ -274,28 +274,29 @@ export function facePath(shape: BotFaceShape, phase = 0): string {
 export type FaceEarPart = { d: string; transform: string; leaf?: boolean };
 
 /**
- * Each kind drawn upright with its base at 0,0, sunk into the body; `height` is how far it reaches above its base. A
- * pair sits on the `shoulders`, `spread` degrees either side of straight up from the body's middle, leaning out with
- * the outline by `lean` of its slope; a single one stands on the top.
+ * Each kind drawn upright with its base at 0,0, sunk into the body, inside `box` ([left, top, right]). A pair
+ * sits on the `shoulders`, `spread` degrees either side of straight up from the body's middle, leaning out with the
+ * outline by `lean` of its slope; a single one stands on the top.
  */
-const EARS: Readonly<Record<BotFaceEars, { parts: readonly { d: string; leaf?: boolean }[]; height: number; shoulders?: { spread: number; lean: number } }>> = {
-  cat: { parts: [{ d: "M-12 4C-10 -8 -6 -20 -2.2 -26.5Q0 -29 2.2 -26.5C6 -20 10 -8 12 4Z" }], height: 28, shoulders: { spread: 40, lean: 0.75 } },
-  bear: { parts: [{ d: "M0 -18A11 11 0 1 1 0 4A11 11 0 1 1 0 -18Z" }], height: 18, shoulders: { spread: 46, lean: 1 } },
-  bunny: { parts: [{ d: "M0 -40C5 -40 8 -30 8 -18C8 -6 5 4 0 4C-5 4 -8 -6 -8 -18C-8 -30 -5 -40 0 -40Z" }], height: 40, shoulders: { spread: 20, lean: 0.35 } },
-  horns: { parts: [{ d: "M-7 4C-8 -6 -7 -15 -3 -22Q-1.5 -24 -0.6 -22C1 -14 4 -6 7 4Z" }], height: 23, shoulders: { spread: 32, lean: 0.7 } },
-  antenna: { parts: [{ d: "M-1.6 6L-1.6 -14Q0 -15.6 1.6 -14L1.6 6Z" }, { d: "M0 -25A5.2 5.2 0 1 1 0 -14.6A5.2 5.2 0 1 1 0 -25Z" }], height: 25 },
+const EARS: Readonly<Record<BotFaceEars, { parts: readonly { d: string; leaf?: boolean }[]; box: readonly [number, number, number]; shoulders?: { spread: number; lean: number } }>> = {
+  cat: { parts: [{ d: "M-12 4C-10 -8 -6 -20 -2.2 -26.5Q0 -29 2.2 -26.5C6 -20 10 -8 12 4Z" }], box: [-12, -28, 12], shoulders: { spread: 40, lean: 0.75 } },
+  bear: { parts: [{ d: "M0 -18A11 11 0 1 1 0 4A11 11 0 1 1 0 -18Z" }], box: [-11, -18, 11], shoulders: { spread: 46, lean: 1 } },
+  bunny: { parts: [{ d: "M0 -40C5 -40 8 -30 8 -18C8 -6 5 4 0 4C-5 4 -8 -6 -8 -18C-8 -30 -5 -40 0 -40Z" }], box: [-8, -40, 8], shoulders: { spread: 20, lean: 0.35 } },
+  horns: { parts: [{ d: "M-7 4C-8 -6 -7 -15 -3 -22Q-1.5 -24 -0.6 -22C1 -14 4 -6 7 4Z" }], box: [-8, -23.5, 7], shoulders: { spread: 32, lean: 0.7 } },
+  antenna: { parts: [{ d: "M-1.6 6L-1.6 -14Q0 -15.6 1.6 -14L1.6 6Z" }, { d: "M0 -25A5.2 5.2 0 1 1 0 -14.6A5.2 5.2 0 1 1 0 -25Z" }], box: [-5.2, -25, 5.2] },
   sprout: { parts: [
     { d: "M-1.4 6C-2 -1 -1.6 -8 -0.2 -13L1.6 -12.6C0.6 -7.6 0.4 -1 1.4 6Z", leaf: true },
     { d: "M0 -12C-4 -21 -12 -23 -18 -18C-12 -12 -5 -11 0 -12Z", leaf: true },
     { d: "M0 -12C3 -23 12 -26 19 -21C14 -13 6 -11 0 -12Z", leaf: true },
-  ], height: 25 },
+  ], box: [-18, -25, 19] },
 };
 
 /** How far a base sinks into the body, so a part never floats off a wobbling outline. */
 const EAR_SINK = 5;
 
-/** The parts that sit on a shape's top, placed for its outline, and the highest y they reach (view-box units). */
-export function faceEars(shape: BotFaceShape, ears: BotFaceEars): { parts: FaceEarPart[]; top: number } {
+/** The parts that sit on a shape's top, placed for its outline, the highest y they reach (view-box units), and
+ * whether they come as a pair on the shoulders, where the memory state's thought dots would land. */
+export function faceEars(shape: BotFaceShape, ears: BotFaceEars): { parts: FaceEarPart[]; top: number; pair: boolean } {
   const points = outline(shape, 0);
   const ys = points.map(([, y]) => y);
   const middle = (Math.min(...ys) + Math.max(...ys)) / 2;
@@ -306,7 +307,7 @@ export function faceEars(shape: BotFaceShape, ears: BotFaceEars): { parts: FaceE
     // The top of the outline at the middle, a heart's dip included.
     const [, top] = points.filter(([, y]) => y < middle).reduce((best, point) => Math.abs(point[0] - 60) < Math.abs(best[0] - 60) ? point : best);
     const y = top + EAR_SINK;
-    return { parts: kind.parts.map((part) => ({ ...part, transform: place(60, y, 0) })), top: y - kind.height };
+    return { parts: kind.parts.map((part) => ({ ...part, transform: place(60, y, 0) })), top: y + kind.box[1], pair: false };
   }
   // The outline point on the left shoulder, and the outward lean of the outline there.
   const target = -Math.PI / 2 - (kind.shoulders.spread * Math.PI) / 180;
@@ -332,7 +333,10 @@ export function faceEars(shape: BotFaceShape, ears: BotFaceEars): { parts: FaceE
     { ...part, transform: place(baseX, baseY, tilt) },
     { ...part, transform: place(120 - baseX, baseY, -tilt, true) },
   ]);
-  return { parts, top: baseY - kind.height * Math.cos((tilt * Math.PI) / 180) };
+  // The box's top corners, turned with the ear, bound how high it reaches.
+  const [left, boxTop, right] = kind.box;
+  const [sin, cos] = [Math.sin((tilt * Math.PI) / 180), Math.cos((tilt * Math.PI) / 180)];
+  return { parts, top: baseY + boxTop * cos + Math.min(left * sin, right * sin), pair: true };
 }
 
 /** A view box `[x, y, size]` grown upward (keeping its bottom and center) so parts reaching to `top` fit. */
