@@ -22,7 +22,7 @@ if (args.includes("--help")) {
 const option = (name) => { const index = args.indexOf(name); return index >= 0 ? args[index + 1] : undefined; };
 if (process.env.FAKE_VSCODE_ARGS_FILE) writeFileSync(process.env.FAKE_VSCODE_ARGS_FILE, JSON.stringify({ pid: process.pid, args }));
 if (process.env.FAKE_VSCODE_FAIL) {
-  process.stderr.write(`fake failure: ${process.env.FAKE_VSCODE_FAIL}\n`);
+  process.stderr.write(`fake failure: ${process.env.FAKE_VSCODE_FAIL}\nFile not found: /opt/vscode/node_modules/vsda/rust/web/vsda.js\n`);
   process.exit(7);
 }
 const token = readFileSync(option("--connection-token-file"), "utf8").trim();

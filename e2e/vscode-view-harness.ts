@@ -33,9 +33,9 @@ style.textContent = `
   .harness__chat { border: 0; width: 100%; height: 100%; border-right: 1px solid var(--border); }
   .harness__pane { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
   .harness__tabs { display: flex; align-items: center; gap: 4px; height: 36px; padding: 0 8px; border-bottom: 1px solid var(--border); background: var(--bg); font-size: 12px; }
-  .harness__tab { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: var(--radius-md); background: var(--panel); border: 1px solid var(--border); color: var(--text); }
+  .harness__tab { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 6px; white-space: nowrap; padding: 4px 10px; border-radius: var(--radius-md); background: var(--panel); border: 1px solid var(--border); color: var(--text); }
   .harness__tab svg { width: 16px; height: 16px; }
-  .harness__note { margin-left: auto; color: var(--muted); }
+  .harness__note { margin-left: auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
   .harness__view { flex: 1; display: flex; min-height: 0; }
 `;
 document.head.append(style);

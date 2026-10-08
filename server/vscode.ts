@@ -251,8 +251,9 @@ const MAX_TICKETS = 64;
 const MAX_SESSIONS = 32;
 const OUTPUT_LINES = 20;
 
+/** The end of the server's stderr, without the line VS Code logs for every missing optional static file. */
 function lastLines(output: readonly string[]): string {
-  return output.join("").split(/\r?\n/u).map((line) => line.trim()).filter(Boolean).slice(-3).join(" · ");
+  return output.join("").split(/\r?\n/u).map((line) => line.trim()).filter((line) => line && !line.startsWith("File not found:")).slice(-3).join(" · ");
 }
 
 function exitDescription(code: number | null, signal: NodeJS.Signals | null): string {
