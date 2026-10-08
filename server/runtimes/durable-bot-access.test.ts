@@ -18,10 +18,11 @@ import { completeLines } from "../test-support/json-lines.ts";
 import { waitFor } from "../test-support/wait-for.ts";
 import { QuestionsClosedError } from "./question-box.ts";
 
-// HUI's configuration directory is resolved at import time; never the operator's own.
-const configDir = await mkdtemp(join(tmpdir(), "hui-bot-access-config-"));
-process.env["XDG_CONFIG_HOME"] = configDir;
-after(() => rm(configDir, { recursive: true, force: true }));
+// HUI's configuration directory is resolved at import time, and PI finds skills in ~/.agents/skills: never the operator's own.
+const root = await mkdtemp(join(tmpdir(), "hui-bot-access-home-"));
+process.env["HOME"] = root;
+process.env["XDG_CONFIG_HOME"] = join(root, "config");
+after(() => rm(root, { recursive: true, force: true }));
 const { DurableHost, durableContext } = await import("./durable-host.ts");
 const { startDurable, durableConversationId } = await import("./durable.ts");
 const { BotDoc } = await import("./durable-bots.ts");
