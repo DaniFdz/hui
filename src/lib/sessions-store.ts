@@ -494,16 +494,32 @@ export async function deleteSession(id: string): Promise<void> {
   });
 }
 
+/** What the gateway did with a send: `duplicate` when it had already taken this request id (the send is not repeated). */
+export type SendOutcome = { duplicate: boolean };
+
+/** `requestId` makes a resend after a failure safe: the gateway runs each id once (`server/recent-requests.ts`). */
 export async function sendPrompt(
   id: string,
   text: string,
   attachments: readonly Attachment[] = [],
-): Promise<void> {
-  await fetchJson<{ ok?: boolean }>(`${SESSIONS_URL}/${encodeURIComponent(id)}/prompt`, {
+  requestId?: string,
+): Promise<SendOutcome> {
+  return sendMessage(id, "prompt", text, attachments, requestId);
+}
+
+async function sendMessage(
+  id: string,
+  action: "prompt" | "steer" | "follow-up",
+  text: string,
+  attachments: readonly Attachment[],
+  requestId: string | undefined,
+): Promise<SendOutcome> {
+  const body = await fetchJson<{ ok?: boolean; duplicate?: boolean }>(`${SESSIONS_URL}/${encodeURIComponent(id)}/${action}`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ text, ...(attachments.length ? { attachments } : {}) }),
+    body: JSON.stringify({ text, ...(attachments.length ? { attachments } : {}), ...(requestId ? { requestId } : {}) }),
   });
+  return { duplicate: body.duplicate === true };
 }
 
 export type SideQuestionResult = { question: string; answer: string; model: string };
@@ -556,27 +572,11 @@ export async function clearSession(id: string): Promise<SessionSnapshot> {
   return body.snapshot;
 }
 
-async function sendQueued(
-  id: string,
-  action: "steer" | "follow-up",
-  text: string,
-  attachments: readonly Attachment[] = [],
-): Promise<void> {
-  await fetchJson<{ ok?: boolean }>(
-    `${SESSIONS_URL}/${encodeURIComponent(id)}/${action}`,
-    {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ text, ...(attachments.length ? { attachments } : {}) }),
-    },
-  );
-}
+export const steerSession = (id: string, text: string, attachments: readonly Attachment[] = [], requestId?: string) =>
+  sendMessage(id, "steer", text, attachments, requestId);
 
-export const steerSession = (id: string, text: string, attachments?: readonly Attachment[]) =>
-  sendQueued(id, "steer", text, attachments);
-
-export const followUpSession = (id: string, text: string, attachments?: readonly Attachment[]) =>
-  sendQueued(id, "follow-up", text, attachments);
+export const followUpSession = (id: string, text: string, attachments: readonly Attachment[] = [], requestId?: string) =>
+  sendMessage(id, "follow-up", text, attachments, requestId);
 
 export async function mutateQueuedMessage(
   id: string,

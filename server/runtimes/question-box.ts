@@ -12,7 +12,16 @@ import type { RuntimeQuestion, RuntimeQuestionResponse } from "./types.ts";
 /** A question before the box gives it an id. */
 export type QuestionDraft = RuntimeQuestion extends infer Each ? Each extends RuntimeQuestion ? Omit<Each, "id"> : never : never;
 
-type Pending = { question: RuntimeQuestion; settle(response: RuntimeQuestionResponse | undefined): void };
+type Pending = { question: RuntimeQuestion; settle(response: RuntimeQuestionResponse | undefined): void; close(): void };
+
+/** The chat closed under a waiting question (the gateway stopping, the session reloading): nobody answered or
+ * dismissed it, so whoever asked may ask again where the chat opens next. */
+export class QuestionsClosedError extends Error {
+  override name = "QuestionsClosedError";
+  constructor() {
+    super("The chat closed before the operator answered.");
+  }
+}
 
 export class QuestionBox {
   readonly #emit: (question: RuntimeQuestion) => void;
@@ -23,20 +32,22 @@ export class QuestionBox {
     this.#emit = emit;
   }
 
-  /** Resolves with the operator's answer; undefined when it is dismissed, cancelled, or `signal` aborts first. */
+  /** Resolves with the operator's answer; undefined when it is dismissed, cancelled, or `signal` aborts first.
+   * Rejects with `QuestionsClosedError` when the box closes first. */
   ask(draft: QuestionDraft, signal?: AbortSignal): Promise<RuntimeQuestionResponse | undefined> {
     if (signal?.aborted) return Promise.resolve(undefined);
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       const id = randomUUID();
       const dismiss = () => finish(undefined);
-      const finish = (response: RuntimeQuestionResponse | undefined) => {
-        if (!this.#pending.delete(id)) return;
+      const end = () => {
+        if (!this.#pending.delete(id)) return false;
         signal?.removeEventListener("abort", dismiss);
-        resolve(response);
+        return true;
       };
+      const finish = (response: RuntimeQuestionResponse | undefined) => { if (end()) resolve(response); };
       signal?.addEventListener("abort", dismiss, { once: true });
       const question = { ...draft, id } as RuntimeQuestion;
-      this.#pending.set(id, { question, settle: finish });
+      this.#pending.set(id, { question, settle: finish, close: () => { if (end()) reject(new QuestionsClosedError()); } });
       this.#emit(question);
     });
   }
@@ -65,8 +76,8 @@ export class QuestionBox {
     entry.settle(undefined);
   }
 
-  /** Dismisses every open question, as closing the session does. */
-  cancelAll(): void {
-    for (const entry of [...this.#pending.values()]) entry.settle(undefined);
+  /** Ends every open question without an answer, as closing the session does: not a dismissal, see `QuestionsClosedError`. */
+  close(): void {
+    for (const entry of [...this.#pending.values()]) entry.close();
   }
 }

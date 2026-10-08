@@ -1675,7 +1675,12 @@ dismissal returns a refusal the bot reads, and nothing changes. Names that
 aren't off are refused with the ones that are, without asking; what the bot
 already has is answered as such. One request per bot waits at a time: a second
 one meanwhile is refused. A request needs the chat open on its host; Stop
-dismisses it.
+dismisses it. A chat that closes under the question (a reload, the gateway
+stopping) is no answer: the question is asked again in the chat that opens next.
+`request_access` is replay-safe, so after a crash or restart Durable runs it
+again; the operator's answer is kept with the call (Durable's tool memo), so an
+answer given before the restart is applied rather than asked twice, and a
+question nobody answered is asked again once the chat is open.
 
 **Escalation paths.** The catalog labels as `powerful` the tools that reach past
 whatever else is off: `bash`, `terminal` and `watcher` run commands; `write` and
@@ -2470,12 +2475,25 @@ appears.
   "attachments": [
     { "kind": "image", "name": "shot.png", "mimeType": "image/png", "dataBase64": "..." },
     { "kind": "file", "name": "notes.txt", "dataBase64": "..." }
-  ]
+  ],
+  "requestId": "7c9e6679-7425-40de-944b-e07fc1f90ae7"
 }
 ```
 
 Responds `{ "ok": true }` once pi has *accepted* the prompt, not when the turn
-finishes. Output arrives over the event stream. Prompts are rejected while a turn
+finishes.
+
+`requestId` (optional, 1 to 100 letters, digits or `. : _ -`; anything else is a
+400) makes a resend safe. The gateway remembers, per session, what it did with
+each id for ten minutes: a send with an id it already took, on any of the
+prompt, steer and follow-up routes, waits for that first send and answers
+`{ "ok": true, "duplicate": true }` without sending anything again. A send that
+failed is forgotten, so its resend runs. The browser gives every composer send
+an id and reuses it when the operator sends the same text and attachments to the
+same session again after a failure (the browser stops waiting after five
+seconds, which a gateway that is slow to accept outlasts). On a duplicate it
+drops its local copies of the message. The ids live in the gateway's memory: a
+resend that arrives after a gateway restart is sent again. Output arrives over the event stream. Prompts are rejected while a turn
 is pending or streaming, with a 409 and a message saying so. Images may form a
 prompt by themselves. Other files are stored under HUI's config directory and
 passed to PI as paths; they require prompt text.

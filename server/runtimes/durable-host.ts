@@ -203,6 +203,9 @@ export class DurableHost implements ExtensionHost {
   botAccessRecorded: ((botId: string, access: BotAccess) => Promise<void>) | undefined;
   /** Live sessions that answer for their conversation: a bot's own tools ask the operator through them. */
   #chats = new Set<BotChat & { conversation(): Conversation }>();
+  /** Access requests waiting for a conversation's chat to open again (`whenChat`), and the chats that can take them. */
+  #chatWaiters = new Set<{ conversationId: ConversationId; resolve(chat: BotChat): void }>();
+  #readyChats = new WeakSet<BotChat>();
   #models = new CurrentModels((options) => this.#requestEnv(options), (options) => this.#requestCallbacks(options));
   #registry: Registry = createRegistry();
   /** Each live session's PI extensions, by HUI session. */
@@ -265,6 +268,7 @@ export class DurableHost implements ExtensionHost {
     this.#tools = huiDurableTools({ invoke });
     const access = botAccessParts({
       chat: (conversationId) => this.chatFor(conversationId),
+      whenChat: (conversationId, signal) => this.whenChat(conversationId, signal),
       skills: async (cwd, conversationId) => (await this.prompt.loader(cwd, conversationId === undefined ? [] : await this.skillDirsFor(conversationId))).getSkills().skills,
       agentDir: this.agentDir,
       gatewayOnly: this.gatewayOnlyTools,
@@ -337,6 +341,16 @@ export class DurableHost implements ExtensionHost {
 
   /** A live session answers for its conversation while it is open. */
   trackChat(chat: BotChat & { conversation(): Conversation }): void { this.#chats.add(chat); }
+
+  /** A tracked chat has offered its tools (`applyTools`): it knows what the operator turned off, so an access request
+   * waiting for it (`whenChat`) can ask there now. */
+  chatReady(chat: BotChat & { conversation(): Conversation }): void {
+    if (!this.#chats.has(chat)) return;
+    this.#readyChats.add(chat);
+    for (const waiter of [...this.#chatWaiters]) {
+      if (waiter.conversationId === chat.conversation().id) waiter.resolve(chat);
+    }
+  }
   untrackChat(chat: BotChat & { conversation(): Conversation }): void { this.#chats.delete(chat); }
 
   /** The tools every bot's chat has before extensions that the operator can turn off: what a chat that isn't running
@@ -349,6 +363,25 @@ export class DurableHost implements ExtensionHost {
   chatFor(conversationId: ConversationId): BotChat | undefined {
     for (const chat of this.#chats) if (chat.conversation().id === conversationId) return chat;
     return undefined;
+  }
+
+  /** The conversation's live session once one is open and has offered its tools; rejects once `signal` aborts. */
+  whenChat(conversationId: ConversationId, signal?: AbortSignal): Promise<BotChat> {
+    const open = this.chatFor(conversationId);
+    if (open && this.#readyChats.has(open)) return Promise.resolve(open);
+    return new Promise((resolve, reject) => {
+      const stop = () => {
+        this.#chatWaiters.delete(waiter);
+        reject(signal?.reason instanceof Error ? signal.reason : new Error("Stopped waiting for the chat."));
+      };
+      const waiter = {
+        conversationId,
+        resolve: (chat: BotChat) => { this.#chatWaiters.delete(waiter); signal?.removeEventListener("abort", stop); resolve(chat); },
+      };
+      if (signal?.aborted) return stop();
+      signal?.addEventListener("abort", stop, { once: true });
+      this.#chatWaiters.add(waiter);
+    });
   }
 
   /** HUI tool registrations by name, for per-conversation tool selection. */

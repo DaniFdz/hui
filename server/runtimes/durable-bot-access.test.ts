@@ -16,6 +16,7 @@ import type { RuntimeEvent, RuntimeQuestion, TranscriptEntry } from "./types.ts"
 import { GATEWAY_ONLY_TOOLS } from "../worker/gateway-tools.ts";
 import { completeLines } from "../test-support/json-lines.ts";
 import { waitFor } from "../test-support/wait-for.ts";
+import { QuestionsClosedError } from "./question-box.ts";
 
 // HUI's configuration directory is resolved at import time; never the operator's own.
 const configDir = await mkdtemp(join(tmpdir(), "hui-bot-access-config-"));
@@ -170,16 +171,11 @@ test("request_access lets one request per bot wait for the operator; the next ma
   };
   const tool = access.botAccessParts({ chat: () => chat, skills: async () => [], agentDir: "/nowhere" }).tools.find((each) => each.name === "request_access")!;
   const state = { bot: "bot-a", disabledTools: ["write", "edit"], disabledSkills: [] as BotSkillRef[] };
-  const api = {
-    conversationId: 1 as unknown as ConversationId, callId: "call",
-    snapshot: async () => state,
-    agent: async () => ({ tools: [{ name: "read" }, { name: "request_access" }] }),
-    commit: async (change: (tx: unknown) => unknown) => change({ doc: async () => state }),
-  } as unknown as ToolExecutionApi;
-  const first = tool.execute({ tools: ["write"], reason: "First." } as never, api, BACKGROUND_CONTEXT);
+  // Each call keeps its own memos, as each is a task of its own.
+  const first = tool.execute({ tools: ["write"], reason: "First." } as never, fakeApi(state), BACKGROUND_CONTEXT);
   await waitFor("the access request", () => asked.length > 0, { state: () => asked });
   assert.match(JSON.stringify(asked[0]), /First\.\\n\\nAsked during the routine \\"Morning digest\\"\./u, "a routine's turn may ask; the operator is told");
-  const second = await tool.execute({ tools: ["edit"], reason: "Second." } as never, api, BACKGROUND_CONTEXT);
+  const second = await tool.execute({ tools: ["edit"], reason: "Second." } as never, fakeApi(state), BACKGROUND_CONTEXT);
   assert.equal(second.isError, true);
   assert.match(JSON.stringify(second.content), /Another access request is already waiting for the operator/u);
   assert.equal(asked.length, 1, "the second never reached the operator");
@@ -188,12 +184,92 @@ test("request_access lets one request per bot wait for the operator; the next ma
   assert.deepEqual(done.control, { addTools: ["write"] });
   assert.deepEqual(state.disabledTools, ["edit"], "turned back on");
   assert.equal(applied, 1, "the chat's tools are offered again at once");
-  const again = tool.execute({ tools: ["edit"], reason: "Now." } as never, api, BACKGROUND_CONTEXT);
+  const again = tool.execute({ tools: ["edit"], reason: "Now." } as never, fakeApi(state), BACKGROUND_CONTEXT);
   await waitFor("the second access request", () => asked.length >= 2, { state: () => asked });
   answer({ value: "Deny" });
   assert.match(JSON.stringify((await again).content), /The operator denied the request/u);
   assert.deepEqual(state.disabledTools, ["edit"]);
   assert.equal(applied, 1);
+});
+
+/** A tool call's API over `state`, with Durable's first-writer memos (`memos` holds what an earlier attempt kept). */
+function fakeApi(state: { bot: string; disabledTools: string[]; disabledSkills: BotSkillRef[] }, memos = new Map<string, unknown>()) {
+  return {
+    conversationId: 1 as unknown as ConversationId, callId: "call",
+    snapshot: async () => state,
+    agent: async () => ({ tools: [{ name: "read" }, { name: "request_access" }] }),
+    commit: async (change: (tx: unknown) => unknown) => change({ doc: async () => state }),
+    memo: async (name: string, ...rest: unknown[]) => {
+      if (rest.length > 1 && !memos.has(name)) memos.set(name, rest[0]);
+      return memos.get(name);
+    },
+  } as unknown as ToolExecutionApi;
+}
+
+/** A chat for request_access; `answer` settles what it asks. */
+function fakeChat(offer: ReturnType<typeof access.describeTool>[], answer: () => Promise<{ value: string } | undefined>) {
+  const asked: unknown[] = [];
+  return {
+    asked,
+    botOffer: () => offer,
+    availableSkills: async () => [],
+    ask: (question: unknown) => { asked.push(question); return answer(); },
+    applyTools: async () => {},
+    runInput: () => undefined,
+    latestInput: async () => undefined,
+    runOrigins: async () => [],
+  };
+}
+
+test("request_access applies an answer an interrupted attempt kept instead of asking twice", async () => {
+  const offer = [access.describeTool({ name: "write" }, { kind: "coding" })];
+  const chat = fakeChat(offer, async () => ({ value: "Allow" }));
+  const tool = access.botAccessParts({ chat: () => chat, skills: async () => [], agentDir: "/nowhere" }).tools.find((each) => each.name === "request_access")!;
+  assert.equal(tool.replay, "safe", "a restart reruns it");
+  const denied = { bot: "bot-a", disabledTools: ["write"], disabledSkills: [] as BotSkillRef[] };
+  const kept = await tool.execute({ tools: ["write"], reason: "Notes." } as never, fakeApi(denied, new Map<string, unknown>([["asked", true], ["answer", "Deny"]])), BACKGROUND_CONTEXT);
+  assert.match(JSON.stringify(kept.content), /The operator denied the request/u);
+  const allowed = { bot: "bot-a", disabledTools: ["write"], disabledSkills: [] as BotSkillRef[] };
+  const granted = await tool.execute({ tools: ["write"], reason: "Notes." } as never, fakeApi(allowed, new Map<string, unknown>([["asked", true], ["answer", "Allow"]])), BACKGROUND_CONTEXT);
+  assert.deepEqual(granted.control, { addTools: ["write"] });
+  assert.deepEqual(allowed.disabledTools, []);
+  assert.equal(chat.asked.length, 0, "the operator was never asked again");
+});
+
+test("request_access asks again in the chat that opens after its chat closed, and a rerun waits for the chat", async () => {
+  const offer = [access.describeTool({ name: "write" }, { kind: "coding" })];
+  const closing = fakeChat(offer, async () => { throw new QuestionsClosedError(); });
+  const reopened = fakeChat(offer, async () => ({ value: "Allow" }));
+  let open: typeof closing | undefined = closing;
+  let opened!: (chat: typeof reopened) => void;
+  const deps = {
+    chat: () => open,
+    whenChat: () => new Promise<typeof reopened>((resolve) => { opened = resolve; }),
+    skills: async () => [], agentDir: "/nowhere",
+  };
+  const tool = access.botAccessParts(deps).tools.find((each) => each.name === "request_access")!;
+  const state = { bot: "bot-a", disabledTools: ["write"], disabledSkills: [] as BotSkillRef[] };
+  const memos = new Map<string, unknown>();
+  const running = tool.execute({ tools: ["write"], reason: "Notes." } as never, fakeApi(state, memos), BACKGROUND_CONTEXT);
+  await waitFor("the request to wait for a chat", () => opened, { state: () => closing.asked });
+  assert.equal(closing.asked.length, 1);
+  assert.equal(memos.get("answer"), undefined, "closing is no answer: nothing is kept");
+  opened(reopened);
+  assert.deepEqual((await running).control, { addTools: ["write"] });
+  assert.equal(reopened.asked.length, 1, "asked again where the chat opened");
+  assert.equal(memos.get("answer"), "Allow");
+
+  // A rerun after a restart, before HUI opened the chat: it waits for the chat instead of giving up.
+  open = undefined;
+  opened = undefined as never;
+  const rerunState = { bot: "bot-b", disabledTools: ["write"], disabledSkills: [] as BotSkillRef[] };
+  const rerun = tool.execute({ tools: ["write"], reason: "Notes." } as never, fakeApi(rerunState, new Map<string, unknown>([["asked", true]])), BACKGROUND_CONTEXT);
+  await waitFor("the rerun to wait for a chat", () => opened);
+  opened(reopened);
+  assert.deepEqual((await rerun).control, { addTools: ["write"] });
+  // A first attempt with no chat open still says so at once.
+  const fresh = await tool.execute({ tools: ["write"], reason: "Notes." } as never, fakeApi({ bot: "bot-c", disabledTools: ["write"], disabledSkills: [] }), BACKGROUND_CONTEXT);
+  assert.match(JSON.stringify(fresh.content), /Your chat isn't open in HUI/u);
 });
 
 /* ── a bot's chat in a real harness ──────────────────────────────────── */
@@ -250,14 +326,22 @@ async function fixture(t: TestContext, hostOptions: { gatewayOnlyTools?: readonl
   } } }));
   await writeFile(join(agentDir, "settings.json"), JSON.stringify({ defaultProvider: "hui-e2e", defaultModel: "fixture" }));
   const invocations: AgentToolInvocation[] = [];
-  const host = new DurableHost({
+  const options = {
     dir: join(dir, "store"), agentDir,
     readSettings: async () => normalizeSettings(undefined),
-    invokeTool: async (invocation) => { invocations.push(invocation); return { text: "Queued for @bob." }; },
+    invokeTool: async (invocation: AgentToolInvocation) => { invocations.push(invocation); return { text: "Queued for @bob." }; },
     lookupCaller: async () => undefined,
     ...hostOptions,
-  });
+  };
+  const host = new DurableHost(options);
   hosts.push(host);
+  /** The gateway started again on the same store, after `host` closed. */
+  const reopen = () => {
+    const next = new DurableHost(options);
+    hosts.push(next);
+    durableBotConversations(next, fakeMemory());
+    return next;
+  };
   const port = durableBotConversations(host, fakeMemory());
   /** A bot's chat with these lists, open as a HUI session. */
   const bot = async (lists: BotAccess, huiSessionId = "bot-chat") => {
@@ -273,7 +357,7 @@ async function fixture(t: TestContext, hostOptions: { gatewayOnlyTools?: readonl
   };
   /** How a bot's lists name one of the directory's skills. */
   const ref = async (name: string) => access.skillRef((await host.prompt.loader(cwd)).getSkills().skills.find((skill) => skill.name === name)!);
-  return { dir, agentDir, cwd, log, host, invocations, bot, ref };
+  return { dir, agentDir, cwd, log, host, invocations, bot, ref, reopen };
 }
 
 type ProviderRequest = { system?: unknown; tools?: Array<{ name?: string }>; messages?: Array<{ role: string; content: unknown }> };
@@ -427,6 +511,41 @@ test("request_access: Deny refuses and changes nothing; a typed answer reaches t
   const harness = await f.host.open();
   assert.deepEqual((await harness.snapshot(BotDoc, id, durableContext))?.disabledTools, ["write"]);
   assert.ok((await requests(f.log)).every((request) => !toolNames(request).includes("write")), "never offered");
+});
+
+test("request_access: a gateway restart under the question asks it again, instead of telling the bot it was dismissed", { timeout: 60_000 }, async (t) => {
+  const f = await fixture(t);
+  const { id, reference, session } = await f.bot(off(["write"]));
+  const asked = nextQuestion(session);
+  await session.prompt(calls({ name: "request_access", input: { tools: ["write"], reason: "To save notes." } }));
+  await asked;
+  // The gateway stops as stopBackend does it: its sessions first, then the store.
+  session.dispose();
+  await f.host.close();
+  const host = f.reopen();
+  const again = await startDurable({ cwd: f.cwd, sessionFile: reference, huiSessionId: "bot-chat" }, host);
+  const question = await waitFor("the question asked again", () => again.pendingQuestions()[0], { state: () => again.transcript() });
+  assert.equal(question.title, "Allow access to write (powerful)?");
+  await again.respondQuestion(question.id, { value: "Allow" });
+  await settledWith(again, answered("tool answered: The operator allowed it: you now have write, from your next step."));
+  assert.doesNotMatch(JSON.stringify(again.transcript()), /dismissed|interrupted/u, "the stop was never reported to the bot as an answer");
+  assert.deepEqual((await (await host.open()).snapshot(BotDoc, id, durableContext))?.disabledTools, []);
+});
+
+test("request_access: a chat that closes and opens again under the question (a reload) is asked again, not told it was dismissed", { timeout: 60_000 }, async (t) => {
+  const f = await fixture(t);
+  const { id, reference, session } = await f.bot(off(["write"]));
+  const asked = nextQuestion(session);
+  await session.prompt(calls({ name: "request_access", input: { tools: ["write"], reason: "To save notes." } }));
+  await asked;
+  // The store stays open: only the view closes, and a new one opens on the same conversation.
+  session.dispose();
+  const again = await startDurable({ cwd: f.cwd, sessionFile: reference, huiSessionId: "bot-chat" }, f.host);
+  const question = await waitFor("the question asked again", () => again.pendingQuestions()[0], { state: () => again.transcript() });
+  await again.respondQuestion(question.id, { value: "Allow" });
+  await settledWith(again, answered("tool answered: The operator allowed it: you now have write, from your next step."));
+  assert.doesNotMatch(JSON.stringify(again.transcript()), /dismissed/u);
+  assert.deepEqual((await (await f.host.open()).snapshot(BotDoc, id, durableContext))?.disabledTools, []);
 });
 
 test("request_access refuses unknown names with the ones that are off, and asks nothing for what the bot has", { timeout: 60_000 }, async (t) => {

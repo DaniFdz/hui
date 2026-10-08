@@ -132,6 +132,7 @@ import {
 } from "./lib/composer-drafts.ts";
 import { attachmentPreview } from "./lib/attachments.ts";
 import { appendPendingUser, localTranscriptId, normalizeTranscript, reduceTranscript, settlePendingUser } from "./lib/transcript-state.ts";
+import { SendRequests } from "./lib/send-requests.ts";
 import { CONTINUE_AFTER_ERROR_PROMPT, latestRunError } from "./lib/run-error.ts";
 import {
   emptySessionPresentation,
@@ -368,6 +369,8 @@ export class HuiApp extends HuiElement {
   /** `sessionId\0errorKey` of run errors the operator dismissed this page load. */
   @state() private dismissedRunErrors: ReadonlySet<string> = new Set();
   @state() private sending = false;
+  /** Request ids for composer sends, so resending one the gateway already took never runs it twice. */
+  private readonly sendRequests = new SendRequests();
   @state() private stopping = false;
   @state() private continuing = false;
   @state() private rewindPending = false;
@@ -2868,18 +2871,24 @@ export class HuiApp extends HuiElement {
       this.transcript = appendPendingUser(this.transcript, pendingId, trimmed, attachments.map((item) => ({ name: item.name, kind: item.kind, mimeType: item.mimeType, ...(attachmentPreview(item) ? { url: attachmentPreview(item) } : {}) })));
     }
     const request = mode === "steer" ? steerSession : mode === "followUp" ? followUpSession : sendPrompt;
-    void request(session.id, trimmed, attachments)
-      .then(() => {
+    // A resend of a send that failed on the way keeps its id, whatever the mode is now: a prompt the gateway took
+    // started a run, so its resend comes back as a steer or follow-up.
+    const { requestId, earlierRow } = this.sendRequests.take(session.id, trimmed, attachments);
+    void request(session.id, trimmed, attachments, requestId)
+      .then(({ duplicate }) => {
         if (!isSelectedSession(session.id, this.selected?.id)) return;
-        if (mode === "prompt") this.transcript = settlePendingUser(this.transcript, pendingId, true);
+        // The gateway had the first attempt all along: its message is in the session, so drop the local copies.
+        if (duplicate) this.transcript = this.transcript.filter((item) => item.id !== pendingId && item.id !== earlierRow);
+        else if (mode === "prompt") this.transcript = settlePendingUser(this.transcript, pendingId, true);
         this.streaming = streamingAfterSubmission(
           this.streaming,
           mode,
-          "accepted",
+          duplicate ? "duplicate" : "accepted",
           this.selected?.status ?? session.status,
         );
       })
       .catch(async (error: unknown) => {
+        this.sendRequests.failed(session.id, requestId, trimmed, attachments, mode === "prompt" ? pendingId : undefined);
         const stillSelected = isSelectedSession(session.id, this.selected?.id);
         if (stillSelected && mode === "prompt") this.transcript = settlePendingUser(this.transcript, pendingId, false);
         const stored = stillSelected
