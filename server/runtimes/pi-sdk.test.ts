@@ -15,6 +15,7 @@ import { bundledSkills } from "../bundled-skills.ts";
 import { registerAgentToolHandler } from "../agent-tools-bridge.ts";
 import { SecretFiles, SecretRequests } from "../secret-requests.ts";
 import { completeLines } from "../test-support/json-lines.ts";
+import { waitFor } from "../test-support/wait-for.ts";
 
 // HUI's configuration directory is resolved at import time, and PI finds skills in ~/.agents/skills: never the operator's own.
 const root = await mkdtemp(join(tmpdir(), "hui-sdk-home-"));
@@ -47,6 +48,9 @@ async function fixture(t: TestContext) {
   });
   t.after(async () => {
     for (const session of sessions) session.dispose();
+    // dispose() only signals PI, which still writes under agent/ (auth.json, models-store.json) as it shuts down.
+    const alive = (pid: number | undefined) => { try { return pid !== undefined && process.kill(pid, 0); } catch { return false; } };
+    await waitFor("the PI processes to exit", () => !sessions.some((session) => alive(session.processId)));
     const exit = once(provider, "exit"); provider.kill(); await exit;
     await rm(dir, { recursive: true, force: true });
   });
