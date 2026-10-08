@@ -84,6 +84,33 @@ speaks with the bot's audio: `src/lib/bot-face.test.ts`,
 `src/lib/voice-controller.test.ts` and `src/lib/live-call.test.ts` check it, as
 did the real calls of the calls pull request.
 
+## More shapes and ears (2026-10-08, `f2a2753`, clean checkout; doctor passed before and after)
+
+`visual-verification.mjs launch --pi-sessions`, bots on in Labs, nine bots through
+`POST /__hui/bots`: Nova (star, bunny), Petal (flower, sprout), Nimbus (cloud,
+bear), Dew (drop), Boo (ghost, horns), Capsule (pill, cat), Cubo (block,
+antenna), Hex (hexagon) and Plain (no look). The Browser tool's headless Chrome
+kept losing its tabs on the bot pages, so the journey ran in an owned headless
+Chrome driven through CDP (clicks on the real controls, no DOM changes), and the
+Browser tool only opened the captures to inspect them.
+
+1. Roster: every new shape draws with its ears; Plain shows the face its id
+   picked on `main` too (heart, yellow: `defaultBotLook` on both).
+2. Hex's Settings → **Look**: labelled **Shape** (13 plain chips) and **Ears**
+   (No ears and six, on the current shape) rows. **Bunny ears**, then **Star**:
+   the summary read *Hexagon · Bunny ears · Mint*, then *Star · Bunny ears ·
+   Mint*; `GET /__hui/bots/hex` stored `{ shape: "star", ears: "bunny" }`, and
+   the roster, header and empty-chat faces followed at once.
+3. Memory state (a 667-character message ending in `E2E_HOLD_MEMORY`, then a
+   short one): Cubo (antenna) shows its thought dots beside the antenna; Boo
+   (horns, a pair) shows sleepy eyes without them.
+4. 390×844 (mobile emulation, DPR 2): the empty chat's face, and the Look in the
+   sheet (`scrollWidth` 390, the card 353 px).
+5. Console: Lit's development-mode warnings only, as on `main`.
+
+`set_profile` changing the look is covered by `server/bot-service.test.ts` and
+`server/runtimes/durable-bots.test.ts`; no browser run had the model call it.
+
 ## Limits and gaps
 
 - A roster row knows only the bot's status: a running tool reads *thinking*
