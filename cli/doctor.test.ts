@@ -7,12 +7,14 @@ import { join } from "node:path";
 import { after, test } from "node:test";
 import { normalizeSettings } from "../src/lib/settings.ts";
 
-// HUI's directory, the Durable store and PI's agent directory resolve at import time: never the operator's own.
+// HUI's directory, the Durable store and PI's agent directory resolve at import time, and PI finds skills in
+// ~/.agents/skills: never the operator's own.
 const root = await mkdtemp(join(tmpdir(), "hui-doctor-"));
 const config = join(root, "config", "hui");
 const store = join(root, "durable");
 const agentDir = join(root, "agent");
 const workspace = join(root, "workspace");
+process.env["HOME"] = root;
 process.env["XDG_CONFIG_HOME"] = join(root, "config");
 process.env["HUI_DURABLE_DIR"] = store;
 process.env["PI_CODING_AGENT_DIR"] = agentDir;

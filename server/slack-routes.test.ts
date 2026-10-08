@@ -40,6 +40,7 @@ const slackState: FakeSlackState = {
 const slack = createSlackFake(slackState);
 const slackServer = await startSlackServer(slack);
 
+process.env["HOME"] = dir;
 process.env["XDG_CONFIG_HOME"] = join(dir, "config");
 process.env["PI_CODING_AGENT_DIR"] = agentDir;
 process.env["HUI_GITHUB_CLI"] = fileURLToPath(new URL("../e2e/github-triggers-fixture.mjs", import.meta.url));

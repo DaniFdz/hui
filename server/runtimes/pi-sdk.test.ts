@@ -16,9 +16,12 @@ import { registerAgentToolHandler } from "../agent-tools-bridge.ts";
 import { SecretFiles, SecretRequests } from "../secret-requests.ts";
 import { completeLines } from "../test-support/json-lines.ts";
 
-const configDir = await mkdtemp(join(tmpdir(), "hui-sdk-config-"));
+// HUI's configuration directory is resolved at import time, and PI finds skills in ~/.agents/skills: never the operator's own.
+const root = await mkdtemp(join(tmpdir(), "hui-sdk-home-"));
+const configDir = join(root, "config");
+process.env["HOME"] = root;
 process.env["XDG_CONFIG_HOME"] = configDir;
-after(() => rm(configDir, { recursive: true, force: true }));
+after(() => rm(root, { recursive: true, force: true }));
 const { piRuntime } = await import("./pi.ts");
 
 function nextEvent(session: PiSession, predicate: (event: RuntimeEvent) => boolean): Promise<RuntimeEvent> {

@@ -16,10 +16,11 @@ import type { DurableSession } from "./durable.ts";
 import type { TranscriptEntry } from "./types.ts";
 import { completeLines } from "../test-support/json-lines.ts";
 
-// HUI's configuration directory is resolved at import time; never the operator's own.
-const configDir = await mkdtemp(join(tmpdir(), "hui-durable-bots-config-"));
-process.env["XDG_CONFIG_HOME"] = configDir;
-after(() => rm(configDir, { recursive: true, force: true }));
+// HUI's configuration directory is resolved at import time, and PI finds skills in ~/.agents/skills: never the operator's own.
+const root = await mkdtemp(join(tmpdir(), "hui-durable-bots-home-"));
+process.env["HOME"] = root;
+process.env["XDG_CONFIG_HOME"] = join(root, "config");
+after(() => rm(root, { recursive: true, force: true }));
 const { DurableHost, durableContext } = await import("./durable-host.ts");
 const { startDurable, durableConversationId, durableReference } = await import("./durable.ts");
 const { BotDoc, MESSAGE_BOT_TOOL, SET_PROFILE_TOOL, WRITE_SOUL_TOOL, firstConversationSection, readSoulFile, soulSection, soulToolText } = await import("./durable-bots.ts");

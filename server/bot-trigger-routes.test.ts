@@ -11,8 +11,8 @@ import type { BotTriggerCreated, BotTriggersList } from "../shared/bot-triggers.
 import { BOTS_OFF_MESSAGE, type BotView } from "../shared/bots.ts";
 import type { BotIO } from "../cli/bots.ts";
 
-// One isolated gateway: HUI's directory, PI's agent directory, a deterministic provider and a fake GitHub behind a
-// fake gh, all temporary.
+// One isolated gateway: its home, HUI's directory, PI's agent directory, a deterministic provider and a fake GitHub
+// behind a fake gh, all temporary.
 const dir = await mkdtemp(join(tmpdir(), "hui-check-trigger-routes-"));
 const agentDir = join(dir, "agent");
 const workspace = join(dir, "workspace");
@@ -20,6 +20,7 @@ const ghDir = join(dir, "gh");
 await mkdir(agentDir);
 await mkdir(workspace);
 await mkdir(ghDir);
+process.env["HOME"] = dir;
 process.env["XDG_CONFIG_HOME"] = join(dir, "config");
 process.env["PI_CODING_AGENT_DIR"] = agentDir;
 process.env["HUI_GITHUB_CLI"] = fileURLToPath(new URL("../e2e/github-triggers-fixture.mjs", import.meta.url));

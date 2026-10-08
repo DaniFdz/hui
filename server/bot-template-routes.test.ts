@@ -22,6 +22,7 @@ const agentDir = join(dir, "agent");
 const workspace = join(dir, "workspace");
 await mkdir(agentDir);
 await mkdir(workspace);
+process.env["HOME"] = dir;
 process.env["XDG_CONFIG_HOME"] = join(dir, "config");
 process.env["PI_CODING_AGENT_DIR"] = agentDir;
 const provider = spawn(process.execPath, [fileURLToPath(new URL("../e2e/pi-provider-fixture.mjs", import.meta.url))], {

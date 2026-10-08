@@ -17,10 +17,11 @@ import type { DurableSession } from "./durable.ts";
 import type { RuntimeEvent, TranscriptEntry } from "./types.ts";
 import { completeLines } from "../test-support/json-lines.ts";
 
-// HUI's configuration directory is resolved at import time; never read the operator's own.
-const configDir = await mkdtemp(join(tmpdir(), "hui-optchat-config-"));
-process.env["XDG_CONFIG_HOME"] = configDir;
-after(() => rm(configDir, { recursive: true, force: true }));
+// HUI's configuration directory is resolved at import time, and PI finds skills in ~/.agents/skills: never read the operator's own.
+const root = await mkdtemp(join(tmpdir(), "hui-optchat-home-"));
+process.env["HOME"] = root;
+process.env["XDG_CONFIG_HOME"] = join(root, "config");
+after(() => rm(root, { recursive: true, force: true }));
 const { DurableHost, durableContext } = await import("./durable-host.ts");
 const { durableReference, startDurable } = await import("./durable.ts");
 const {

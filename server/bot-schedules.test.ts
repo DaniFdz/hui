@@ -12,13 +12,14 @@ import type { AutomationSnapshot, AutomationTask } from "../src/lib/automation-t
 import type { BotIO } from "../cli/bots.ts";
 import type { TranscriptEntry } from "./runtimes/types.ts";
 
-// One isolated gateway: HUI's directory, PI's agent directory and a deterministic provider, all temporary. Bots are
-// on, as Settings → Labs → Bots leaves them once the operator turns them on.
+// One isolated gateway: its home, HUI's directory, PI's agent directory and a deterministic provider, all temporary.
+// Bots are on, as Settings → Labs → Bots leaves them once the operator turns them on.
 const dir = await mkdtemp(join(tmpdir(), "hui-bot-schedules-"));
 const agentDir = join(dir, "agent");
 const workspace = join(dir, "workspace");
 await mkdir(agentDir);
 await mkdir(workspace);
+process.env["HOME"] = dir;
 process.env["XDG_CONFIG_HOME"] = join(dir, "config");
 process.env["PI_CODING_AGENT_DIR"] = agentDir;
 const provider = spawn(process.execPath, [fileURLToPath(new URL("../e2e/pi-provider-fixture.mjs", import.meta.url))], {

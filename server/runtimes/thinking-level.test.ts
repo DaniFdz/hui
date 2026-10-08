@@ -65,6 +65,7 @@ test("utility calls send the cheapest level a gateway model accepts", { timeout:
     await rm(dir, { recursive: true, force: true });
   });
   delete process.env["HUI_PI_CLI"];
+  process.env["HOME"] = dir;
   process.env["PI_CODING_AGENT_DIR"] = agentDir;
   process.env["XDG_CONFIG_HOME"] = join(dir, "config");
   process.env["HUI_PI_BACKEND"] = "sdk";

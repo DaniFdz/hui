@@ -9,12 +9,14 @@ import { fileURLToPath } from "node:url";
 import { after, before, test } from "node:test";
 import { waitFor } from "./test-support/wait-for.ts";
 
-// One isolated gateway on Pi Durable: HUI's directory, PI's agent directory and a deterministic provider, all temporary.
+// One isolated gateway on Pi Durable: its home, HUI's directory, PI's agent directory and a deterministic provider,
+// all temporary.
 const dir = await mkdtemp(join(tmpdir(), "hui-prompt-routes-"));
 const agentDir = join(dir, "agent");
 const workspace = join(dir, "workspace");
 await mkdir(agentDir);
 await mkdir(workspace);
+process.env["HOME"] = dir;
 process.env["XDG_CONFIG_HOME"] = join(dir, "config");
 process.env["PI_CODING_AGENT_DIR"] = agentDir;
 const provider = spawn(process.execPath, [fileURLToPath(new URL("../e2e/pi-provider-fixture.mjs", import.meta.url))], {
