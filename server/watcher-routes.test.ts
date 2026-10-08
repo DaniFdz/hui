@@ -9,7 +9,12 @@ import { waitFor } from "./test-support/wait-for.ts";
 
 test("the watcher tool starts HUI-run processes and the guarded routes control them", async (t) => {
   const dir = await mkdtemp(join(tmpdir(), "hui-watcher-routes-"));
+  // The gateway's home, HUI's directory and PI's agent directory: never the operator's own.
+  process.env["HOME"] = dir;
   process.env["XDG_CONFIG_HOME"] = dir;
+  process.env["PI_CODING_AGENT_DIR"] = join(dir, "agent");
+  // No gh: startup would run the operator's in the background, writing into this home while it is removed.
+  process.env["HUI_GITHUB_CLI"] = join(dir, "no-gh");
   await mkdir(join(dir, "hui"));
   const now = new Date().toISOString();
   await writeFile(join(dir, "hui", "sessions.json"), JSON.stringify({ version: 1, sessions: [

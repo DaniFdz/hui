@@ -3,10 +3,17 @@ import { createServer } from "node:http";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { test } from "node:test";
-import { createUpdates, UpdateConflict } from "./updates.ts";
-import { middleware } from "./hui.ts";
+import { after, test } from "node:test";
 import { UPDATE_CHECK_INTERVAL_MS, type UpdateCheck } from "../src/lib/update-types.ts";
+
+// HUI's directory resolves at import time and hui.ts reads it as it loads: never the operator's own.
+const home = await mkdtemp(join(tmpdir(), "hui-updates-home-"));
+process.env["HOME"] = home;
+process.env["XDG_CONFIG_HOME"] = join(home, "config");
+process.env["PI_CODING_AGENT_DIR"] = join(home, "agent");
+after(() => rm(home, { recursive: true, force: true }));
+const { createUpdates, UpdateConflict } = await import("./updates.ts");
+const { middleware } = await import("./hui.ts");
 
 test("development mode reports source ownership and cannot start an updater", async () => {
   const service = createUpdates();
