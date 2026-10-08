@@ -14,11 +14,9 @@ import type { BotView } from "../../shared/bots.ts";
 import { icons } from "../lib/icons.ts";
 import { REVIEW_REQUESTS_PRESET, TriggerFormError, triggerFormInput, type BotTriggersActions, type BotTriggersState, type RevealedHook } from "../lib/bot-triggers.ts";
 import { renderSettingsToggle } from "./settings-toggle.ts";
+import { loadViewAssets } from "../lib/view-assets.ts";
 
-// Node's focused view tests import this module without a CSS loader.
-if (typeof document !== "undefined") {
-  await import("../styles/bot-triggers.css");
-}
+loadViewAssets(() => import("../styles/bot-triggers.css"));
 
 export type BotTriggersProps = { bot: BotView; now: number; state: BotTriggersState } & BotTriggersActions;
 

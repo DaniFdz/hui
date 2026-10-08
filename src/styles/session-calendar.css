@@ -85,13 +85,13 @@ hui-session-calendar {
 
 .session-calendar__grid {
   display: grid;
-  grid-template-columns: 56px repeat(7, minmax(92px, 1fr));
+  grid-template-columns: max-content repeat(7, minmax(92px, 1fr));
   grid-template-rows: 36px calc(var(--hours) * var(--hour-px));
   min-width: 720px;
 }
 
 .session-calendar__grid--day {
-  grid-template-columns: 56px minmax(0, 1fr);
+  grid-template-columns: max-content minmax(0, 1fr);
   min-width: 0;
 }
 
@@ -152,9 +152,17 @@ button.session-calendar__day-head:disabled {
   background: var(--card);
 }
 
+/* One row per hour; the labels stay in flow so the column fits the widest one
+   in any typeface, text size or locale. The last hour's line is a zero row. */
+.session-calendar__hours {
+  display: grid;
+  grid-template-rows: repeat(var(--hours), var(--hour-px));
+  grid-auto-rows: 0;
+  padding: 0 10px 0 6px;
+}
+
 .session-calendar__hour {
-  position: absolute;
-  right: 10px;
+  place-self: start end;
   transform: translateY(-50%);
   color: var(--muted);
   font-size: var(--control-ui-text-xs);

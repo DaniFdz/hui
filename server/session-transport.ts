@@ -34,7 +34,13 @@ export function sessionStreamTicket(id: string): string | undefined {
 }
 
 export function attachSessionTransport(server: EventEmitter, source: SessionEventSource, allowedHosts?: ReadonlySet<string>): () => void {
-  const wss = new WebSocketServer({ noServer: true, maxPayload: 1024, perMessageDeflate: false });
+  // A view's first frame is the whole transcript, megabytes of JSON for a long
+  // session; deflate makes it a fraction of that over a slow link. Small frames
+  // (streamed deltas) go as they are. No context carries between messages:
+  // each frame compresses alone, which keeps a view's memory flat.
+  const wss = new WebSocketServer({ noServer: true, maxPayload: 1024, perMessageDeflate: {
+    threshold: 1024, serverNoContextTakeover: true, clientNoContextTakeover: true, concurrencyLimit: 4,
+  } });
   const onUpgrade = (request: IncomingMessage, socket: Duplex, head: Buffer) => {
     const url = new URL(request.url ?? "/", "http://localhost");
     if (url.pathname !== SESSION_STREAM_PATH) return;

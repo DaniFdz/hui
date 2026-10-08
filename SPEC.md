@@ -1879,10 +1879,13 @@ One harness per gateway owns their conversations, runs, inbox and crash
 recovery in a single SQLite store, `~/.config/hui/durable/harness.sqlite`
 (`HUI_DURABLE_DIR` overrides it), locked to one gateway at a time. Every
 step is checkpointed: after a gateway crash or restart the harness resumes the
-interrupted run by itself. A cut-off model request is sent again; an
-interrupted tool call is reported to the model as interrupted rather than
-rerun, because no HUI or coding tool is marked replay-safe. HUI therefore never
-sends its recovery prompt to a Durable session.
+interrupted run by itself. A cut-off model request is sent again. An
+interrupted tool call is rerun only when its tool is marked replay-safe: HUI's
+read-only `sessions_list` and `sessions_history`, OptChat's memory reads, a
+bot's `write_soul`, `set_profile` and `load_skill`, and `request_access`,
+which keeps the operator's answer with the call so it is never asked twice.
+Every other HUI or coding tool call is reported to the model as interrupted.
+HUI therefore never sends its recovery prompt to a Durable session.
 
 PI still owns configuration: the harness reads PI's `settings.json`,
 `models.json`, credentials, skills, extensions, `AGENTS.md`/`SYSTEM.md`/

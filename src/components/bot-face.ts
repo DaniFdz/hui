@@ -33,11 +33,9 @@ import {
   type BotFaceSize,
   type BotFaceState,
 } from "../lib/bot-face.ts";
+import { loadViewAssets } from "../lib/view-assets.ts";
 
-// Node's focused view tests import this module without a CSS loader.
-if (typeof document !== "undefined") {
-  await import("../styles/bot-face.css");
-}
+loadViewAssets(() => import("../styles/bot-face.css"));
 
 /** How long the one-shot "done" hop shows before the face rests. */
 const DONE_MS = 1150;
@@ -351,7 +349,6 @@ export class HuiBotFace extends HuiElement {
     const body = faceBodyColor(this.color, state);
     const ink = faceInk(body);
     const [x, y] = FACE_EYE_POSITION[shape];
-    const small = size === "sm" || size === "md";
     const line = { stroke: ink, width: "2.6" };
     const eye = (side: -1 | 1) => svg`<g transform=${"translate(" + side * 11 + ",0)"}>
       <ellipse class="e e-open" rx="4.3" ry="5.6" fill=${ink}></ellipse>
@@ -368,13 +365,12 @@ export class HuiBotFace extends HuiElement {
           <stop offset=".42" stop-color="#fff" stop-opacity="0"></stop>
           <stop offset="1" stop-color="#000" stop-opacity=".24"></stop>
         </radialGradient>
-        <filter id=${"bot-face-p" + id} x="-15%" y="-15%" width="130%" height="130%">
-          <feTurbulence type="fractalNoise" baseFrequency="1.15" numOctaves="2" seed=${String((this.seed % 997) * 7 + 7)} result="n"></feTurbulence>
-          <feDisplacementMap in="SourceGraphic" in2="n" scale=${small ? "1.8" : "2.8"} xChannelSelector="R" yChannelSelector="G" result="d"></feDisplacementMap>
+        <!-- Felt speckle inside the outline; the outline itself stays smooth. -->
+        <filter id=${"bot-face-p" + id}>
           <feTurbulence type="fractalNoise" baseFrequency="2.4" numOctaves="1" seed=${String((this.seed % 997) * 3 + 4)} result="f"></feTurbulence>
           <feColorMatrix in="f" type="matrix" values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 .16 0" result="s"></feColorMatrix>
-          <feComposite in="s" in2="d" operator="in" result="si"></feComposite>
-          <feMerge><feMergeNode in="d"></feMergeNode><feMergeNode in="si"></feMergeNode></feMerge>
+          <feComposite in="s" in2="SourceGraphic" operator="in" result="si"></feComposite>
+          <feMerge><feMergeNode in="SourceGraphic"></feMergeNode><feMergeNode in="si"></feMergeNode></feMerge>
         </filter>
         <filter id=${"bot-face-b" + id} x="-30%" y="-200%" width="160%" height="500%"><feGaussianBlur stdDeviation="2.2"></feGaussianBlur></filter>
       </defs>

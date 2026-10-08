@@ -149,6 +149,7 @@ import { MAX_GITHUB_EMBEDS, parseGitHubUrl } from "../shared/github-links.ts";
 import { TaskSuggestionInputError, TaskSuggestionNotFoundError, TaskSuggestionStore } from "./task-suggestions.ts";
 import { WatcherConflictError, WatcherInputError, WatcherNotFoundError, WatcherService } from "./watchers.ts";
 import { SecretFiles, SecretRequests } from "./secret-requests.ts";
+import { REQUEST_ID, RecentRequests } from "./recent-requests.ts";
 import {
   BacklogInputError,
   BacklogJiraFeed,
@@ -165,6 +166,7 @@ import { WATCHER_LIMITS } from "../shared/watchers.ts";
 import { terminals, TerminalError } from "./terminals.ts";
 import { attachSessionTransport, sessionStreamTicket } from "./session-transport.ts";
 import { createSessionListHub } from "./session-list.ts";
+import { COMPRESSION_MIN_BYTES, compressBody, negotiateEncoding } from "./http-compression.ts";
 import { attachTerminalTransport, terminalTicket } from "./terminal-transport.ts";
 import {
   createSessionGroup,
@@ -380,6 +382,8 @@ durableHost().botAccessRecorded = (botId, access) => bots.accessRecorded(botId, 
 /** The bot list every Bots screen shares, recomputed while one listens, like the session list. */
 const botList = createSessionListHub<BotView>(async () => [{ label: "bots", sessions: await bots.list({ archived: "all" }) }]);
 const subagents = new SubagentService(liveSessions);
+/** Prompts, steers and follow-ups by their client request id, so a resend never runs twice. */
+const recentRequests = new RecentRequests();
 const taskSuggestions = new TaskSuggestionStore({ onChange: (id) => liveSessions.notifySnapshot(id) });
 const watchers = new WatcherService({
   file: WATCHERS_FILE,
@@ -834,8 +838,15 @@ export async function importTweakcnTheme(input: string): Promise<string> {
 /** Error text of failed `/__hui/` responses, kept for their request diagnostic. */
 const responseFailures = new WeakMap<ServerResponse, string>();
 
+/** Responses whose body is being compressed: they are answered, just not ended yet. */
+const compressing = new WeakSet<ServerResponse>();
+
+/**
+ * A large body (a session's transcript) is compressed when the client accepts
+ * it, off the event loop. The first answer wins, as when the body is sent at once.
+ */
 function sendJson(response: ServerResponse, status: number, body: unknown): void {
-  if (response.writableEnded) {
+  if (response.writableEnded || compressing.has(response)) {
     return;
   }
   if (status >= 400 && !responseFailures.has(response)) {
@@ -845,7 +856,24 @@ function sendJson(response: ServerResponse, status: number, body: unknown): void
   response.statusCode = status;
   response.setHeader("content-type", "application/json; charset=utf-8");
   response.setHeader("cache-control", "no-store");
-  response.end(JSON.stringify(body));
+  const text = JSON.stringify(body);
+  const encoding = text.length >= COMPRESSION_MIN_BYTES ? negotiateEncoding(response.req?.headers["accept-encoding"]) : undefined;
+  if (!encoding) {
+    response.end(text);
+    return;
+  }
+  response.setHeader("vary", "accept-encoding");
+  compressing.add(response);
+  const raw = Buffer.from(text);
+  void compressBody(raw, encoding, "fast").then((compressed) => {
+    response.setHeader("content-encoding", encoding);
+    return compressed;
+  }, () => raw).then((sent) => {
+    compressing.delete(response);
+    if (response.writableEnded || response.destroyed) return;
+    response.setHeader("content-length", sent.length);
+    response.end(sent);
+  });
 }
 
 /** A page HUI renders itself (a bot's memory). Its text comes from a chat, so it may run nothing, load nothing but its
@@ -3731,6 +3759,11 @@ async function handleRequest(
         return;
       }
       const text = typeof body["text"] === "string" ? body["text"] : "";
+      const requestId = body["requestId"];
+      if (requestId !== undefined && (typeof requestId !== "string" || !REQUEST_ID.test(requestId))) {
+        sendJson(response, 400, { error: "A request id is 1 to 100 letters, digits or . : _ -" });
+        return;
+      }
       if (parseUpdateCommand(text)) {
         sendJson(response, 400, { error: "/update is a HUI command. Use the update dialog, not the model prompt or queue." });
         return;
@@ -3747,27 +3780,32 @@ async function handleRequest(
         sendJson(response, 400, { error: "/compact is a HUI command. Use the compact endpoint, not the model prompt or queue." });
         return;
       }
-      let prepared: PreparedAttachments | undefined;
+      const send = async () => {
+        let prepared: PreparedAttachments | undefined;
+        try {
+          prepared = await readAttachments(id, body["attachments"]);
+          const attachments = prepared.attachments;
+          // An image on its own is a valid prompt; a file on its own is not,
+          // because the agent needs to be told what to do with it.
+          if (!text.trim() && !attachments.some((item) => item.kind === "image")) {
+            throw new AttachmentInputError("A prompt is required.");
+          }
+          if (!liveSessions.ensure(record)) throw new SessionNotFoundError(`unknown session: ${id}`);
+          if (action[2] === "prompt") await liveSessions.prompt(id, text, attachments);
+          else if (action[2] === "steer") await liveSessions.steer(id, text, attachments);
+          else await liveSessions.followUp(id, text, attachments);
+        } catch (error) {
+          await prepared?.cleanupRejected();
+          throw error;
+        }
+      };
       try {
-        prepared = await readAttachments(id, body["attachments"]);
-        const attachments = prepared.attachments;
-        // An image on its own is a valid prompt; a file on its own is not,
-        // because the agent needs to be told what to do with it.
-        if (!text.trim() && !attachments.some((item) => item.kind === "image")) {
-          throw new AttachmentInputError("A prompt is required.");
-        }
-        if (!liveSessions.ensure(record)) {
-          sendJson(response, 404, { error: `unknown session: ${id}` });
-          await prepared.cleanupRejected();
-          return;
-        }
-        if (action[2] === "prompt") await liveSessions.prompt(id, text, attachments);
-        else if (action[2] === "steer") await liveSessions.steer(id, text, attachments);
-        else await liveSessions.followUp(id, text, attachments);
-        sendJson(response, 200, { ok: true });
+        // A resend of a send the gateway already took (the browser stopped waiting) answers with its outcome,
+        // whichever of the three routes it comes back through, and the composer drops its copy.
+        const { duplicate } = await recentRequests.run(id, typeof requestId === "string" ? requestId : undefined, send);
+        sendJson(response, 200, { ok: true, ...(duplicate ? { duplicate: true } : {}) });
       } catch (error) {
-        await prepared?.cleanupRejected();
-        sendJson(response, error instanceof SessionBusyError ? 409 : 400, {
+        sendJson(response, error instanceof SessionNotFoundError ? 404 : error instanceof SessionBusyError ? 409 : 400, {
           error: error instanceof Error ? error.message : "pi refused the message.",
         });
       }
