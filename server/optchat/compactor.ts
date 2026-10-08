@@ -7,7 +7,9 @@
  * parts run alongside, and the compactor never sees a line that is not a summary.
  * A source that already fits is its own node, with no model call. A failed node
  * is retried every `retryMs` forever (the next turn waits on it, so no backoff),
- * and only its first failure is reported.
+ * and only its first failure is reported. A call's context is the compaction
+ * view's lines before the node, a short view every call shares the start of, so
+ * the calls read one another's prefix from the prompt cache.
  */
 import { compressStep, mergeStep, sizeFeedback } from "./prompts.ts";
 import type { MessageLine } from "./store.ts";
@@ -67,8 +69,11 @@ export type CompactorHost = {
   readonly length: number;
   message(i: number): MessageLine;
   readonly tree: Tree;
+  /** The chat view: a node starts once every line of it before the node's end is built. */
   readonly view: View;
-  /** Saves a built node (fsync), adds it to the tree, then refits the view. */
+  /** The compaction view's bare lines before message `end`, up to the first one not built. */
+  context(end: number): readonly string[];
+  /** Saves a built node (fsync), adds it to the tree, then refits the views. */
   persist(l: number, i: number, text: string): Promise<void>;
   /** The compactor's system prompt, for the agent's current name. */
   system(): string;
@@ -83,8 +88,6 @@ export type CompactorOptions = {
   readonly jobs: number;
   readonly tries: number;
   readonly retryMs: number;
-  /** The scale line shown to the model; its byte size is stated with it. */
-  readonly scale: string;
   readonly limiter?: Limiter;
   readonly timers: Timers;
   readonly now: () => Date;
@@ -180,18 +183,18 @@ export class Compactor {
   }
 
   /**
-   * One model conversation per node (spec 4.2-4.3): the view's bare lines before the node's end as context, first, so
-   * it caches across calls; then the step with the scale line. A reply over the limit gets the cut-at-limit feedback
-   * in the same conversation, up to `tries` replies, and the shortest one wins.
+   * One model conversation per node (spec 4.2-4.3): the compaction view's bare lines before the node's end as context,
+   * first, so it caches across calls; then the step, under a ruler as long as the limit. A reply over the limit gets the
+   * cut-at-limit feedback in the same conversation, up to `tries` replies, and the shortest one wins.
    */
   async #compress(l: number, i: number): Promise<string> {
-    const { node, scale, tries: limit } = this.#options;
-    const { tree, view } = this.#host;
+    const { node, tries: limit } = this.#options;
+    const { tree } = this.#host;
     // Read now, in the pump's turn: rule 3 held for this context when the node started.
-    const context = `<chat>\n${view.context(l === 0 ? i : (i + 1) * span(l)).join("\n")}\n</chat>`;
+    const context = `<chat>\n${this.#host.context(l === 0 ? i : (i + 1) * span(l)).join("\n")}\n</chat>`;
     const step = l === 0
-      ? compressStep(scale, node, this.#host.message(i).kind, this.#host.message(i).text)
-      : mergeStep(scale, node, tree.text(l - 1, 2 * i)!, tree.text(l - 1, 2 * i + 1)!);
+      ? compressStep(node, this.#host.message(i).kind, this.#host.message(i).text)
+      : mergeStep(node, tree.text(l - 1, 2 * i)!, tree.text(l - 1, 2 * i + 1)!);
     const messages: SummaryMessage[] = [{ role: "user", content: [context, step] }];
     const tries: string[] = [];
     for (;;) {

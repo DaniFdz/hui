@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { compactPrompt, compressStep, masterPrompt, mergeStep, SCALE_LINE, sizeFeedback, viewDoc } from "./prompts.ts";
+import { compactPrompt, compressStep, masterPrompt, mergeStep, ruler, sizeFeedback, viewDoc } from "./prompts.ts";
 
-test("the scale line is exactly 512 UTF-8 bytes, dense and tagged with kinds", () => {
-  assert.equal(Buffer.byteLength(SCALE_LINE, "utf8"), 512);
-  for (const kind of ["user:", "talk:", "tool:", "echo:", "work:"]) assert(SCALE_LINE.includes(kind), kind);
-  assert(!SCALE_LINE.includes("\n"));
+test("the size reference is a ruler of dashes as many bytes long as the limit, with nothing in it to copy", () => {
+  assert.equal(Buffer.byteLength(ruler(512), "utf8"), 512);
+  assert.match(ruler(512), /^-+$/u);
+  const step = compressStep(512, "user", "hello");
+  assert.equal(step.split("\n")[1], ruler(512), "on a line of its own, under the sentence that gives its size");
+  assert(step.startsWith("For scale, the line of dashes below is exactly 512 bytes:\n"));
 });
 
 test("the prompts are the spec's, for the agent's name, and name no user", () => {
@@ -22,10 +24,10 @@ test("the prompts are the spec's, for the agent's name, and name no user", () =>
   assert.equal(compactPrompt("A$&B").split("A$&B").length - 1, 11, "a name is literal text, never a replacement pattern");
 });
 
-test("compactor steps say what to do with the message or the two lines, under the scale line", () => {
-  assert.equal(compressStep("ab", 512, "user", "line one\nline two"),
-    "For scale, this line is exactly 2 bytes:\nab\n\nCompress this message into one line, in at most 512 bytes:\nuser: line one\nline two");
-  assert.equal(mergeStep("ab", 64, "user: a\nb", "talk: c"),
-    "For scale, this line is exactly 2 bytes:\nab\n\nMerge these two lines into one, in at most 64 bytes:\nuser: a b\ntalk: c");
+test("compactor steps say what to do with the message or the two lines, under the ruler", () => {
+  assert.equal(compressStep(4, "user", "line one\nline two"),
+    "For scale, the line of dashes below is exactly 4 bytes:\n----\n\nCompress this message into one line, in at most 4 bytes:\nuser: line one\nline two");
+  assert.equal(mergeStep(8, "user: a\nb", "talk: c"),
+    "For scale, the line of dashes below is exactly 8 bytes:\n--------\n\nMerge these two lines into one, in at most 8 bytes:\nuser: a b\ntalk: c");
   assert.equal(sizeFeedback(600, 512, "cut"), "That line is 600 bytes; the limit is 512. It must end where it is cut here:\ncut| ← LIMIT");
 });

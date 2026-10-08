@@ -22,6 +22,7 @@ import {
   type CommitPublication, type Conversation, type ConversationId, type Cursor, type EntryId, type EntryRecord, type Extension, type Harness,
   type HookApi, type SubmissionId, type ToolExecutionResult, type Tx,
 } from "@earendil-works/pi-durable";
+import { BLOCK_LINES, blockCuts, blockMarks, markCache, markedPrefix } from "../optchat/cache.ts";
 import { createLimiter, type Limiter, type SummaryReply, type SummaryRequest } from "../optchat/compactor.ts";
 import { OptChatMemory, OPTCHAT_DEFAULTS, type OptChatStatus } from "../optchat/memory.ts";
 import { masterPrompt, viewDoc } from "../optchat/prompts.ts";
@@ -57,11 +58,13 @@ export type OptChatChange = {
 export type OptChatTuning = {
   readonly node?: number;
   readonly view?: number;
+  readonly context?: number;
   readonly jobs?: number;
   readonly tries?: number;
   readonly retryMs?: number;
   readonly cap?: number;
-  readonly marks?: readonly number[];
+  /** Lines per text block of a view or compaction context sent to Anthropic. */
+  readonly blockLines?: number;
 };
 
 const context = BACKGROUND_CONTEXT;
@@ -255,59 +258,17 @@ export function freshTurnRequest(conversationId: ConversationId, messages: reado
   return turn?.messages;
 }
 
-// ── Prompt caching (spec 8) ─────────────────────────────────────────────────
-
-/** Offsets just after the last line end before each mark, skipping marks past the view's end. */
-export function viewCuts(view: string, marks: readonly number[]): number[] {
-  const cuts: number[] = [];
-  for (const mark of [...marks].sort((a, b) => a - b)) {
-    if (mark >= view.length) continue;
-    const cut = view.lastIndexOf("\n", mark - 1) + 1;
-    if (cut > (cuts.at(-1) ?? 0)) cuts.push(cut);
-  }
-  return cuts;
-}
-
-type Block = Record<string, unknown>;
-/** Anthropic's limit of cache breakpoints per request. */
-const MAX_BREAKPOINTS = 4;
-const marked = (blocks: unknown): Block[] => Array.isArray(blocks) ? blocks.filter((block): block is Block => isRecord(block) && block["cache_control"] !== undefined) : [];
+// ── Prompt caching ───────────────────────────────────────────────────────────
 
 /**
- * Anthropic prompt caching for OptChat requests: the text block equal to `block` in the first user message holding it
- * is split at `cuts`, and every piece ending at a cut gets pi-ai's own `cache_control`, so the next request reads the
- * longest unchanged prefix from the cache. Anthropic allows four breakpoints: pi-ai's at the request end stays, and
- * those on the tools and the system prompt give way first, since a breakpoint after them caches them too. Undefined
- * (payload unchanged) for another API, when pi-ai does not cache (no breakpoint of its own), or without the block.
+ * Where an OptChat request's view or context is cut and which blocks get a cache mark (`server/optchat/cache.ts`):
+ * its last whole block, and the one ending `previous`, the prefix the request before it marked, while still shared.
  */
-export function markCache(payload: unknown, model: unknown, block: string, cuts: readonly number[]): unknown {
-  if (!isRecord(model) || model["api"] !== "anthropic-messages" || !cuts.length || !isRecord(payload) || !Array.isArray(payload["messages"])) return undefined;
-  const messages = payload["messages"] as unknown[];
-  const control = [...messages.flatMap((message) => isRecord(message) ? marked(message["content"]) : []), ...marked(payload["system"]), ...marked(payload["tools"])][0]?.["cache_control"];
-  if (!isRecord(control)) return undefined;
-  for (const message of messages) {
-    if (!isRecord(message) || message["role"] !== "user" || !Array.isArray(message["content"])) continue;
-    const content = message["content"] as unknown[];
-    const index = content.findIndex((part) => isRecord(part) && part["type"] === "text" && part["text"] === block);
-    if (index === -1) continue;
-    const original = content[index] as Block;
-    const pieces: Block[] = [];
-    let start = 0;
-    for (const cut of cuts) {
-      pieces.push({ type: "text", text: block.slice(start, cut), cache_control: { ...control } });
-      start = cut;
-    }
-    if (start < block.length) pieces.push({ type: "text", text: block.slice(start), ...(original["cache_control"] === undefined ? {} : { cache_control: original["cache_control"] }) });
-    content.splice(index, 1, ...pieces);
-    let total = messages.flatMap((each) => isRecord(each) ? marked(each["content"]) : []).length + marked(payload["system"]).length + marked(payload["tools"]).length;
-    for (const extra of [...marked(payload["tools"]), ...marked(payload["system"]), ...pieces]) {
-      if (total <= MAX_BREAKPOINTS) break;
-      delete extra["cache_control"];
-      total--;
-    }
-    return payload;
-  }
-  return undefined;
+type Marking = { readonly block: string; readonly cuts: readonly number[]; readonly marks: readonly number[] };
+
+function marking(block: string, lines: number, previous: string | undefined): Marking {
+  const cuts = blockCuts(block, lines);
+  return { block, cuts, marks: blockMarks(block, cuts, previous) };
 }
 
 // ── Frozen views ─────────────────────────────────────────────────────────────
@@ -342,21 +303,34 @@ class RunLog {
 
   get(run: number): Frozen | undefined { return this.#runs.get(run); }
 
+  /** The run frozen just before `run`: the turn before it, whose cache mark `run`'s requests look for. */
+  before(run: number): Frozen | undefined {
+    let previous: Frozen | undefined;
+    for (const [key, frozen] of this.#runs) {
+      if (key === run) return previous;
+      previous = frozen;
+    }
+    return undefined;
+  }
+
   async freeze(frozen: Frozen): Promise<Frozen> {
     const first = this.#runs.get(frozen.run);
     if (first) return first;
     if (this.#runs.size >= RUNS_KEPT) {
-      // A new run starts only after the previous one ended, so no other record can be needed again.
+      // A new run starts only after the previous one ended, so no record but the last (where its cache mark sat) and
+      // the new one can be needed again.
+      const last = [...this.#runs.values()].at(-1);
       await this.#file.close();
       const temp = `${this.#path}.tmp`;
       await rm(temp, { force: true });
       const file = new LineFile(temp);
+      if (last) await file.append(last);
       await file.append(frozen);
       await file.close();
       await rename(temp, this.#path);
       await syncDirectory(dirname(this.#path));
       this.#file = new LineFile(this.#path);
-      this.#runs = new Map();
+      this.#runs = new Map(last ? [[last.run, last]] : []);
     } else {
       await this.#file.append(frozen);
     }
@@ -381,6 +355,9 @@ type Memory = {
   queued: Promise<void> | undefined;
 };
 
+/** The prefix of a compaction context the memory's latest Anthropic compactor request marked. */
+type ContextMark = { prefix: string | undefined };
+
 export type OptChatManagerOptions = {
   /** The Durable store's directory: memories live in `optchat/<conversation>/` inside it. */
   readonly dir: string;
@@ -403,15 +380,15 @@ export class OptChatManager {
   readonly #models: () => Models;
   readonly #utilityModel: (() => Promise<string | undefined>) | undefined;
   readonly #tuning: OptChatTuning;
-  readonly #marks: readonly number[];
+  readonly #blockLines: number;
   /** One compactor limit for every memory of the gateway. */
   readonly #limiter: Limiter;
   #harness: Harness | undefined;
   #unsubscribe: (() => void) | undefined;
   #memories = new Map<ConversationId, Promise<Memory>>();
   #listeners = new Map<ConversationId, Set<(status: OptChatStatus) => void>>();
-  /** The frozen view each in-flight request carries, by its task invocation's signal, for its payload's cache marks. */
-  #views = new WeakMap<AbortSignal, string>();
+  /** The cache marking of each in-flight turn request's frozen view, by its task invocation's signal. */
+  #views = new WeakMap<AbortSignal, Marking>();
   #pending = new Set<ConversationId>();
   #closing = false;
 
@@ -420,7 +397,7 @@ export class OptChatManager {
     this.#models = options.models;
     this.#utilityModel = options.utilityModel;
     this.#tuning = options.tuning ?? {};
-    this.#marks = this.#tuning.marks ?? OPTCHAT_DEFAULTS.marks;
+    this.#blockLines = this.#tuning.blockLines ?? BLOCK_LINES;
     this.#limiter = createLimiter(this.#tuning.jobs ?? OPTCHAT_DEFAULTS.jobs);
     this.extension = defineExtension({
       name: OPTCHAT_EXTENSION,
@@ -509,9 +486,8 @@ export class OptChatManager {
 
   /** The cache marks of an OptChat request's payload, for the request whose task invocation has `signal`. */
   payloadHook(signal: AbortSignal): ((payload: unknown, model: unknown) => unknown) | undefined {
-    const view = this.#views.get(signal);
-    const cuts = view === undefined ? [] : viewCuts(view, this.#marks);
-    return view === undefined || !cuts.length ? undefined : (payload, model) => markCache(payload, model, view, cuts);
+    const turn = this.#views.get(signal);
+    return turn?.marks.length ? (payload, model) => markCache(payload, model, turn.block, turn.cuts, turn.marks) : undefined;
   }
 
   /** Stops following the store and closes every memory once its pending writes land. */
@@ -586,9 +562,10 @@ export class OptChatManager {
     const dir = join(this.#dir, "optchat", String(conversationId));
     await mkdir(dir, { recursive: true, mode: 0o700 });
     const report = (problem: string, error?: unknown) => this.#report("optchat_memory", problem, error);
+    const contextMark: ContextMark = { prefix: undefined };
     const memory = await OptChatMemory.open(dir, {
       ...this.#tuning, name: agentName(state), limiter: this.#limiter, report,
-      summarize: (request, signal) => this.#summarize(conversationId, request, signal),
+      summarize: (request, signal) => this.#summarize(conversationId, request, signal, contextMark),
     });
     let runs: RunLog;
     try {
@@ -704,8 +681,16 @@ export class OptChatManager {
     const view = handle.memory.renderParts(frozen.parts);
     const messages = freshTurnRequest(api.conversationId, request.messages, input.message, view);
     if (!messages) return undefined;
-    if (signal) this.#views.set(signal, view);
+    if (signal) this.#views.set(signal, marking(view, this.#blockLines, this.#previousMark(handle, run)));
     return { messages };
+  }
+
+  /** The prefix the turn before `run` marked: its frozen view up to its last whole block. Node texts never change. */
+  #previousMark(handle: Memory, run: SubmissionId): string | undefined {
+    const previous = handle.runs.before(run);
+    if (!previous) return undefined;
+    const view = handle.memory.renderParts(previous.parts);
+    return markedPrefix(view, blockCuts(view, this.#blockLines));
   }
 
   async #input(handle: Memory, run: SubmissionId, hookContext: Context): Promise<{ readonly entry: EntryId; readonly message: UserMessage } | undefined> {
@@ -743,7 +728,7 @@ export class OptChatManager {
    * One compactor call through the gateway's models: the document's model, else HUI's utility model, else the
    * conversation's own. Without a model of its own, a failing utility model hands over to the conversation's.
    */
-  async #summarize(conversationId: ConversationId, request: SummaryRequest, signal: AbortSignal): Promise<SummaryReply> {
+  async #summarize(conversationId: ConversationId, request: SummaryRequest, signal: AbortSignal, contextMark: ContextMark): Promise<SummaryReply> {
     const harness = this.#harness;
     if (!harness) throw new Error("The Durable store is closed.");
     const state = await harness.snapshot(OptChatDoc, conversationId, context);
@@ -755,7 +740,7 @@ export class OptChatManager {
     let failure: unknown;
     for (const ref of refs) {
       try {
-        return await this.#summarizeWith(ref, state, request, signal);
+        return await this.#summarizeWith(ref, state, request, signal, contextMark);
       } catch (error) {
         if (signal.aborted) throw error;
         failure = error;
@@ -764,7 +749,7 @@ export class OptChatManager {
     throw failure;
   }
 
-  async #summarizeWith(ref: { provider: string; modelId: string }, state: OptChatState | undefined, request: SummaryRequest, signal: AbortSignal): Promise<SummaryReply> {
+  async #summarizeWith(ref: { provider: string; modelId: string }, state: OptChatState | undefined, request: SummaryRequest, signal: AbortSignal, contextMark: ContextMark): Promise<SummaryReply> {
     const models = this.#models();
     const model = models.getModel(ref.provider, ref.modelId);
     if (!model) throw new Error(`Unknown model for OptChat's compactor: ${ref.provider}/${ref.modelId}`);
@@ -779,8 +764,8 @@ export class OptChatManager {
     }, {
       signal,
       ...(thinking === "off" ? {} : { reasoning: thinking }),
-      // The context block is the same prefix across calls: cache it.
-      ...(block === undefined ? {} : { onPayload: (payload: unknown, target: unknown) => markCache(payload, target, block, [block.length]) }),
+      // Compactions share the compaction view's start: cache it in blocks, like a turn's view.
+      ...(block === undefined ? {} : { onPayload: (payload: unknown, target: unknown) => this.#markContext(payload, target, block, contextMark) }),
     });
     if (reply.stopReason === "error" || reply.stopReason === "aborted") throw new Error(reply.errorMessage || `The compactor's model stopped: ${reply.stopReason}`);
     const { usage } = reply;
@@ -788,5 +773,13 @@ export class OptChatManager {
       text: reply.content.flatMap((part) => part.type === "text" ? [part.text] : []).join(""),
       usage: { input: usage.input, output: usage.output, cacheRead: usage.cacheRead, cacheWrite: usage.cacheWrite, cost: usage.cost.total },
     };
+  }
+
+  /** A compactor request's cache marks: its context's last whole block, and the latest marked prefix while shared. */
+  #markContext(payload: unknown, model: unknown, block: string, contextMark: ContextMark): unknown {
+    const { cuts, marks } = marking(block, this.#blockLines, contextMark.prefix);
+    const marked = markCache(payload, model, block, cuts, marks);
+    if (marked !== undefined) contextMark.prefix = markedPrefix(block, cuts);
+    return marked;
   }
 }

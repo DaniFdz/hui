@@ -25,7 +25,7 @@ after(() => rm(root, { recursive: true, force: true }));
 const { DurableHost, durableContext } = await import("./durable-host.ts");
 const { durableReference, startDurable } = await import("./durable.ts");
 const {
-  configureOptChat, enableOptChat, freshTurn, freshTurnRequest, markCache, OPTCHAT_EXTENSION, OPTCHAT_TOOLS_EXTENSION, OptChatDoc, projectEntry, viewCuts,
+  configureOptChat, enableOptChat, freshTurn, freshTurnRequest, OPTCHAT_EXTENSION, OPTCHAT_TOOLS_EXTENSION, OptChatDoc, projectEntry,
 } = await import("./durable-optchat.ts");
 const { readObservability } = await import("../observability.ts");
 const { durableBotConversations } = await import("../bot-conversations.ts");
@@ -109,42 +109,6 @@ test("a fresh turn not found by its timestamp is reported", async () => {
   const events = (await readObservability([])).activity.filter((event) => event.action === "optchat_request_split");
   assert.equal(events.length, before + 1);
   assert.match(events[0]!.summary, /conversation 5's view on the first user message after the last answer/u);
-});
-
-test("cache marks split the view at line ends and keep Anthropic's four breakpoints", () => {
-  const view = "<chat>\n0+1|aaaa\n1+1|bbbb\n2+1|cccc\n</chat>";
-  assert.deepEqual(viewCuts(view, [12, 20, 1_000]), [7, 16]);
-  assert.deepEqual(viewCuts(view, [3]), [], "no line ends before the first mark");
-  const control = { type: "ephemeral" };
-  const payload = () => ({
-    system: [{ type: "text", text: "S", cache_control: { ...control } }],
-    tools: [{ name: "read" }, { name: "zoom", cache_control: { ...control } }],
-    messages: [{ role: "user", content: [{ type: "text", text: view }, { type: "text", text: "input", cache_control: { ...control } }] }],
-  });
-  const anthropic = { api: "anthropic-messages" };
-  assert.equal(markCache(payload(), { api: "openai-responses" }, view, [7]), undefined, "other APIs cache prefixes by themselves");
-  assert.equal(markCache(payload(), anthropic, "other", [7]), undefined);
-  const uncached = payload();
-  delete (uncached.system[0] as { cache_control?: unknown }).cache_control;
-  delete (uncached.tools[1] as { cache_control?: unknown }).cache_control;
-  delete (uncached.messages[0]!.content[1] as { cache_control?: unknown }).cache_control;
-  assert.equal(markCache(uncached, anthropic, view, [7]), undefined, "pi-ai does not cache: neither do the marks");
-  const marked = markCache(payload(), anthropic, view, [7, 16, 25]) as ReturnType<typeof payload>;
-  assert.deepEqual(marked.messages[0]!.content, [
-    { type: "text", text: "<chat>\n", cache_control: control },
-    { type: "text", text: "0+1|aaaa\n", cache_control: control },
-    { type: "text", text: "1+1|bbbb\n", cache_control: control },
-    { type: "text", text: "2+1|cccc\n</chat>" },
-    { type: "text", text: "input", cache_control: control },
-  ]);
-  assert.deepEqual([marked.tools[1], marked.system[0]], [{ name: "zoom" }, { type: "text", text: "S" }], "the tools and the system prompt gave way");
-  const one = markCache(payload(), anthropic, view, [7]) as ReturnType<typeof payload>;
-  assert.deepEqual([one.tools[1]!.cache_control, one.system[0]!.cache_control], [control, control], "four fit: nothing gives way");
-  // The compactor's context block, cached whole.
-  const context = { system: [{ type: "text", text: "COMPACT", cache_control: control }], messages: [{ role: "user", content: [{ type: "text", text: "<chat>\nctx\n</chat>" }, { type: "text", text: "step", cache_control: control }] }] };
-  const cached = markCache(context, anthropic, "<chat>\nctx\n</chat>", ["<chat>\nctx\n</chat>".length]) as typeof context;
-  assert.deepEqual(cached.messages[0]!.content[0], { type: "text", text: "<chat>\nctx\n</chat>", cache_control: control });
-  assert.deepEqual(cached.system[0], { type: "text", text: "COMPACT", cache_control: control });
 });
 
 test("enabling writes the document and selects the tools in the same transaction; it checks what it writes", async () => {
@@ -279,6 +243,8 @@ function viewOf(request: ProviderRequest): { view: string; rest: Block[]; pieces
 }
 const toolNames = (request: ProviderRequest) => (request.tools ?? []).map((tool) => tool.name);
 const breakpoints = (request: ProviderRequest) => [...request.system ?? [], ...request.tools ?? [], ...request.messages.flatMap(blocks)].filter((block) => block.cache_control !== undefined).length;
+/** Each block's text and whether it carries a cache mark. */
+const marks = (pieces: readonly Block[]) => pieces.map((piece) => [piece.text, piece.cache_control !== undefined]);
 
 test("a conversation without OptChat sends Durable's requests unchanged and is never offered zoom or date", { timeout: 45_000 }, async (t) => {
   const f = await fixture(t);
@@ -303,13 +269,15 @@ test("a conversation without OptChat sends Durable's requests unchanged and is n
 });
 
 test("an OptChat turn starts fresh from the view: system messages, then the view and the new message", { timeout: 45_000 }, async (t) => {
-  const f = await fixture(t, { optchat: { marks: [30, 60, 90] } });
+  // One line per cache block, so a view of a few lines shows where the marks go.
+  const f = await fixture(t, { optchat: { blockLines: 1 } });
   const host = f.host();
   const { session, id } = await botSession(f, host, "bot-fresh");
-  await turns(session, [`OPT_ONE${" kept".repeat(150)}`, "OPT_TWO next"]);
+  await turns(session, [`OPT_ONE${" kept".repeat(150)}`, "OPT_TWO next", `OPT_THREE${" kept".repeat(150)}`]);
   const [first] = await turnRequests(f.log, "OPT_ONE kept");
   const [second] = await turnRequests(f.log, "OPT_TWO next");
-  assert(first && second);
+  const [third] = await turnRequests(f.log, "OPT_THREE kept");
+  assert(first && second && third);
   assert.deepEqual([first.messages.length, viewOf(first).view, viewOf(first).rest.map((block) => block.text)], [1, "<chat>\n\n</chat>", [`OPT_ONE${" kept".repeat(150)}`]]);
   assert.equal(second.messages.length, 1, "no earlier message travels raw");
   const { view, rest, pieces } = viewOf(second);
@@ -319,23 +287,32 @@ test("an OptChat turn starts fresh from the view: system messages, then the view
   assert.match(JSON.stringify(second.system), /You are Grok, an AI agent that works for one user in a single chat/u);
   assert.match(JSON.stringify(second.system), /zoom\(id, 1\) gives message id in full/u);
   assert(toolNames(second).includes("zoom") && toolNames(second).includes("date"), JSON.stringify(toolNames(second)));
-  // Cache marks at the last line ends before 30 and 60 characters; the system prompt and the tools gave way.
-  assert.deepEqual(pieces.map((piece) => [piece.text, piece.cache_control !== undefined]), [
-    ["<chat>\n", true], ["0+1|user: FIXTURE_MEMORY OPT_ONE\n", true], ["1+1|talk: Fixture response.\n</chat>", false],
-  ]);
+  // The view goes in blocks, its last whole one marked (the first turn's view was empty: nothing more to find).
+  assert.deepEqual(marks(pieces), [["<chat>\n0+1|user: FIXTURE_MEMORY OPT_ONE", false], ["\n1+1|talk: Fixture response.", true], ["\n</chat>", false]]);
   assert.equal(rest[0]!.cache_control !== undefined, true, "pi-ai's own breakpoint at the request end");
-  assert(breakpoints(second) <= 4, String(breakpoints(second)));
-  // The long message went to the compactor through the gateway's models: context block first, cached.
+  assert.equal(breakpoints(second), 4, "the tools, the system prompt, the view and the request end");
+  // The third turn marks its last whole block, and the block where the second turn's mark sat, which still starts it.
+  assert.deepEqual(marks(viewOf(third).pieces), [
+    ["<chat>\n0+1|user: FIXTURE_MEMORY OPT_ONE", false], ["\n1+1|talk: Fixture response.", true], ["\n2+1|user: OPT_TWO next", false],
+    ["\n3+1|talk: Fixture response.", true], ["\n</chat>", false],
+  ]);
+  assert.deepEqual([breakpoints(third), marks(third.tools ?? []).some(([, on]) => on), marks(third.system ?? []).some(([, on]) => on)], [4, false, true], "the tools' mark gave way");
+  // The long messages went to the compactor through the gateway's models: context first, in blocks like a turn's view.
+  await statusWhere(host, id, (current) => current.messages === 6 && current.pending === 0);
   const compactor = (await providerRequests(f.log)).filter(compacting);
-  assert.equal(compactor.length, 1, "the reply and the merge fit for free");
+  assert.equal(compactor.length, 2, "the replies and the merges fit for free");
   const [context, step] = blocks(compactor[0]!.messages[0]!);
-  assert.deepEqual([context!.text, context!.cache_control !== undefined], ["<chat>\n\n</chat>", true]);
-  assert(step!.text!.startsWith("For scale, this line is exactly 512 bytes:\n"), String(step!.text));
+  assert.deepEqual([context!.text, context!.cache_control, step!.cache_control !== undefined], ["<chat>\n\n</chat>", undefined, true], "an empty context: no block to mark");
+  assert(step!.text!.startsWith(`For scale, the line of dashes below is exactly 512 bytes:\n${"-".repeat(512)}\n\n`), String(step!.text));
   assert.match(JSON.stringify(compactor[0]!.system), /You write the memory of Grok/u);
-  // The log catches up with the second turn beside it: status() does not wait for that, so wait for its report.
-  const status = await statusWhere(host, id, (current) => current.messages === 4);
-  assert.equal(status.messages, 4);
-  assert.equal(status.usage.calls, 1);
+  const later = blocks(compactor[1]!.messages[0]!);
+  assert.deepEqual(marks(later.slice(0, -1)), [
+    ["<chat>\nuser: FIXTURE_MEMORY OPT_ONE", false], ["\ntalk: Fixture response.", false], ["\nuser: OPT_TWO next", false],
+    ["\ntalk: Fixture response.", true], ["\n</chat>", false],
+  ], "the lines before the message, bare, the last whole block marked");
+  assert.match(String(later.at(-1)!.text), /\nuser: OPT_THREE kept/u);
+  const status = await statusWhere(host, id, (current) => current.messages === 6);
+  assert.equal(status.usage.calls, 2);
 });
 
 test("the compactor's size loop runs through the provider and keeps the shortest line", { timeout: 45_000 }, async (t) => {
@@ -448,13 +425,15 @@ test("a restart catches the log up from Durable without duplicates, and a resent
     [0, "user", "OPT_R1 one"], [1, "talk", "Fixture response."], [2, "user", "OPT_R2 two"], [3, "talk", "Fixture response."], [4, "user", "OPT_OFFLINE written while closed"],
   ]);
   assert.equal(new Set(lines.map((line) => `${line.src.entry}:${line.src.part}`)).size, 5, "no entry projected twice");
-  assert(String(await second.optchat.view(id)).startsWith(view!.slice(0, -"\n</chat>".length)), "the view folds again to what it was, plus the new line");
+  assert(existsSync(join(f.store, "optchat", String(id), "view.json")), "the views were saved");
+  assert(String(await second.optchat.view(id)).startsWith(view!.slice(0, -"\n</chat>".length)), "the view loads as it was saved, plus the new line");
 
   // A request cut off mid-response is resent after the restart with the same frozen view: the same request.
   await (await (await second.open()).conversation(id, durableContext))!.submit({ type: "input", content: [{ type: "text", text: "E2E_REPLAY OPT_RERUN" }] }, durableContext);
   assert.equal((await f.control("/control/wait-held?count=1")).status, 200);
   await second.close();
-  // This gateway folds the memory into a much smaller view: only the run's frozen view can make the same request.
+  // This gateway's view is much smaller, so the saved one merges at once: only the run's frozen view can make the same
+  // request.
   const third = f.host({ view: 40 });
   await third.open();
   assert.equal((await f.control("/control/wait-held?count=2")).status, 200, "Durable resent the request");
@@ -462,7 +441,7 @@ test("a restart catches the log up from Durable without duplicates, and a resent
   assert.equal(resent.length, 2);
   assert.deepEqual(resent[1], resent[0]);
   assert.equal(viewOf(resent[0]!).view, `${view!.slice(0, -"\n</chat>".length)}\n4+1|user: OPT_OFFLINE written while closed\n</chat>`);
-  assert.doesNotMatch(String(await third.optchat.view(id)), /\n0\+1\|/u, "the new fold merged those lines");
+  assert.doesNotMatch(String(await third.optchat.view(id)), /\n0\+1\|/u, "the smaller view merged those lines");
   const runs = (await readFile(join(f.store, "optchat", String(id), "runs.jsonl"), "utf8")).trim().split("\n");
   assert.equal(runs.length, 3, "one frozen view per run, written once: two turns and the resent run");
   await f.control("/control/release-replay", "POST");

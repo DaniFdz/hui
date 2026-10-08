@@ -233,8 +233,8 @@ terminal: `hui bot edit ada --model openai-codex/gpt-6.1-sol --utility-model ant
 
 **Memory.** A bot's chat carries [OptChat](optchat.md) memory: every message is
 kept word for word and a cheap model condenses the chat into a tree of one-line
-summaries, so each turn starts fresh from a fixed-size view of the whole history
-and the bot opens a line (`zoom`) when it needs the detail. The chat is never
+summaries, so each turn starts fresh from a bounded view of the whole history
+(64 to 128 KB) and the bot opens a line (`zoom`) when it needs the detail. The chat is never
 compacted or cleared; when a turn has to wait for the newest messages to be
 summarized, `hui bot chat` says "Summarizing memory…".
 
