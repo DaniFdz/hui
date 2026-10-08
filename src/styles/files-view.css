@@ -142,7 +142,8 @@ hui-files-view {
   direction: rtl;
   font-family: var(--mono, var(--font-mono));
   font-size: 12px;
-  text-align: start;
+  /* Physical left: in a wide box an rtl start would push a short path to the right. */
+  text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
 }

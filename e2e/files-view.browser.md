@@ -48,17 +48,25 @@ instead and repeat the same steps.
   copy control); **Source** showed the Markdown in the editor.
 - `logo.png` showed as an image preview from a blob URL; `blob.bin` showed
   "Binary file: it has no text to show here.", its size and modification time
-  and **Download**.
+  and **Download**; a one-page `docs/brief.pdf` rendered in the browser's PDF
+  viewer.
+- With a second disk change under unsaved typing, **Reload from disk** dropped
+  the typed text, showed the disk version and read **Saved**.
 - Filtering "lang" listed `file-languages.ts` with its folder `src/lib`;
   Escape cleared the filter and restored the tree.
-- **New file** in `assets` (the selected file's folder) created `notes.md` and
-  opened it.
-- Deleting `docs` asked "Delete docs?", stating that deleting does not use the
-  trash, and listed "The folder docs and everything inside it."; **Delete**
-  removed it from disk and the tree.
-- Uploading `logo.png` and `new-upload.txt` into `assets` wrote the new file
-  ("Uploaded 1 file to assets") and asked "Replace the existing file?" listing
-  `assets/logo.png`; **Replace** overwrote it.
+- **New folder** and **New file** in the selected file's folder created
+  `drafts/` and `notes.md` and opened the file; the same name again kept the
+  dialog open with "Something with that name already exists."
+- Deleting `docs` while `docs/notes.md` was open asked "Delete docs?", stated
+  that deleting does not use the trash and cannot be undone, and listed "The
+  folder docs and everything inside it." and "The open file docs/notes.md
+  closes."; **Cancel** kept everything, **Delete** removed it from disk and the
+  tree and closed the file.
+- Uploading an existing `README.md` and a new text file with nothing selected
+  wrote the new file to the root ("Uploaded 1 file to workspace") and asked
+  "Replace the existing file?" listing `README.md`; **Replace** overwrote it.
+- With the browser's color scheme set to dark, the view followed HUI's dark
+  theme, editor included, without a reload.
 - At 390×844 the editor took the full width with a 16 px font; the navigator
   opened as a drawer over a dimmed backdrop and closed on selection, on its
   close button or on the backdrop.
@@ -69,8 +77,10 @@ instead and repeat the same steps.
 - Mounted through a temporary harness, not the Work pane; tab title updates,
   keeping the view mounted behind other tabs and the `visible` refresh were
   exercised only by unit tests and code review.
-- Drag and drop onto folder rows, the PDF preview and a remote-worker
-  conversation's "Files are not available" state were not driven in the
-  browser; the route tests cover the remote refusal.
+- Drag and drop onto folder rows and a remote-worker conversation's "Files are
+  not available" state were not driven in the browser; the route tests cover
+  the remote refusal.
+- The Browser tool returns console message counts but not their text; page
+  errors were read (none).
 - The Browser tool's pointer reports `hover: none`, so row delete buttons were
   always visible; on a desktop pointer they appear on hover and focus.
