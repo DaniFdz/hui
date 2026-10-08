@@ -50,6 +50,9 @@ export type WorkViewKind<R extends WorkViewRef = WorkViewRef> = {
   render(ref: R, ctx: WorkViewContext): TemplateResult;
   /** Resources of this kind that exist without a tab and can be reopened from the launcher menu. */
   existing?(sessionId: string): Promise<WorkViewResource<R>[]>;
+  /** At most one view of this kind per conversation (its key is constant): once open, the view itself is listed
+   * instead of its launcher where both would appear side by side (the narrow destination chooser). */
+  single?: boolean;
 };
 
 const kinds = new Map<string, WorkViewKind<any>>();
@@ -65,6 +68,11 @@ export function workViewKind(kind: string): WorkViewKind | undefined {
 
 export function workViewKinds(): WorkViewKind[] {
   return [...kinds.values()];
+}
+
+/** Launchers worth listing beside a conversation's open views: every kind except a single-view kind already open. */
+export function launchableWorkViewKinds(pane: Pick<SessionWorkPane, "views">): WorkViewKind[] {
+  return workViewKinds().filter((kind) => !kind.single || !pane.views.some((view) => view.kind === kind.kind));
 }
 
 /** Used for kinds that are not registered (yet): the same keys the built-in kinds use. */

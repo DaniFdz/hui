@@ -237,7 +237,7 @@ import { isOwnedSurface, renderOwnedSurface } from "./views/hui-owned-surfaces.t
 import { HUI_PAGES, type HuiPage } from "./lib/pages.ts";
 import { activeSessionPane, addSessionTab, closeSessionPane, focusSessionPane, isChatPane, moveSessionPane, parseSessionLayout, replacePaneSession, resizeSessionLayout, SESSION_LAYOUT_KEY, SESSION_SPLIT_MEDIA, sessionPanes, visibleSessionPanes, singleSessionLayout, splitSessionPane, type DropZone, type SessionLayout, type SessionPane, type SplitDirection } from "./lib/session-multiplexer.ts";
 import {
-  activateWorkView, closeWorkView, migrateLayoutWorkViews, openWorkView, parseWorkPaneStore, pruneWorkPaneStore, registerWorkViewKind, reorderWorkView,
+  activateWorkView, closeWorkView, launchableWorkViewKinds, migrateLayoutWorkViews, openWorkView, parseWorkPaneStore, pruneWorkPaneStore, registerWorkViewKind, reorderWorkView,
   retainWorkSessions, serializeWorkPaneStore, sessionWorkPane, setWorkPaneOpen, setWorkPaneWidth, workViewKey, workViewKind, workViewKinds,
   WORK_PANE_KEY, WORK_PANE_TOGGLE_SHORTCUT, type WorkPaneStore, type WorkViewRef,
 } from "./lib/work-pane.ts";
@@ -5873,7 +5873,7 @@ export class HuiApp extends HuiElement {
         const kind = workViewKind(ref.kind);
         return kind ? [{ key: workViewKey(ref), title: kind.title(ref), icon: kind.icon }] : [];
       }),
-      launchers: workViewKinds().map((kind) => ({ kind: kind.kind, label: kind.label, icon: kind.icon, unavailable: kind.unavailable?.(workSessionId) })),
+      launchers: launchableWorkViewKinds(work).map((kind) => ({ kind: kind.kind, label: kind.label, icon: kind.icon, unavailable: kind.unavailable?.(workSessionId) })),
       activeWorkKey: workShown ? work.active ?? "" : undefined,
       workShown,
       onSelectPane: (id) => { this.workNarrowShown = false; this.focusSessionPane(id); },

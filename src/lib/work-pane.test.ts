@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { html } from "lit";
 import {
-  activateWorkView, adjacentWorkView, clampWorkPaneWidth, closeWorkView, defaultWorkViewKey, emptyWorkPane, migrateLayoutWorkViews,
+  activateWorkView, adjacentWorkView, clampWorkPaneWidth, closeWorkView, defaultWorkViewKey, emptyWorkPane, launchableWorkViewKinds, migrateLayoutWorkViews,
   openWorkView, parseWorkPaneStore, pruneWorkPaneStore, registerWorkViewKind, reorderWorkView, retainWorkSessions, serializeWorkPaneStore,
   sessionWorkPane, setWorkPaneOpen, setWorkPaneWidth, workViewKey, workViewKind, workViewKinds,
   WORK_PANE_CHAT_MIN_WIDTH, WORK_PANE_DEFAULT_WIDTH, WORK_PANE_MAX_WIDTH, WORK_PANE_MIN_WIDTH,
@@ -17,7 +17,7 @@ function fakeKind<R extends WorkViewRef>(kind: R["kind"], key: (ref: R) => strin
   return { kind, label: kind, icon: html`<svg width="16" height="16"></svg>`, create: () => { throw new Error("not in tests"); }, key, title: () => kind, render: () => html`` };
 }
 registerWorkViewKind(fakeKind<{ kind: "terminal"; terminalId: string }>("terminal", (ref) => `terminal:${ref.terminalId}`));
-registerWorkViewKind(fakeKind<{ kind: "browser" }>("browser", () => "browser"));
+registerWorkViewKind({ ...fakeKind<{ kind: "browser" }>("browser", () => "browser"), single: true });
 registerWorkViewKind(fakeKind<{ kind: "files"; id: string }>("files", (ref) => `files:${ref.id}`));
 
 test("the registry keeps kinds in registration order and keys refs through their kind", () => {
@@ -29,8 +29,14 @@ test("the registry keeps kinds in registration order and keys refs through their
   assert.equal(workViewKey({ kind: "vscode" }), "vscode");
   assert.equal(defaultWorkViewKey({ kind: "files", id: "a" }), "files:a");
   // Registering again replaces the kind without changing its place.
-  registerWorkViewKind(fakeKind<{ kind: "browser" }>("browser", () => "browser"));
+  registerWorkViewKind({ ...fakeKind<{ kind: "browser" }>("browser", () => "browser"), single: true });
   assert.deepEqual(workViewKinds().map(({ kind }) => kind), ["terminal", "browser", "files"]);
+});
+
+test("a single-view kind stops being offered as a launcher once its view is open; others always are", () => {
+  const kindsOf = (views: WorkViewRef[]) => launchableWorkViewKinds({ views }).map(({ kind }) => kind);
+  assert.deepEqual(kindsOf([]), ["terminal", "browser", "files"]);
+  assert.deepEqual(kindsOf([{ kind: "browser" }, { kind: "terminal", terminalId: T1 }, { kind: "files", id: "a" }]), ["terminal", "files"]);
 });
 
 test("opening adds one tab per key, activates it and expands the pane; reopening only focuses it", () => {
