@@ -146,8 +146,8 @@ A turn reads the **view**: tree nodes ("parts") tiling the whole chat, oldest
 first, one `id+n|text` line each (`server/optchat/view.ts`). Two rules decide it,
 which lines merge and when, both as revision `3c190e0` has them.
 
-**Which lines merge.** Two adjacent sibling lines `(l, i)` and `(l, i+1)` are due
-according to the time since their last message, in units of their own span:
+**Which lines merge.** Two neighbouring lines that share a parent, `(l, i)` and
+`(l, i+1)`, are due according to the time since their last message, in units of their own span:
 `(T - last) / 2^l`, where `last` is their last message and T the number of
 messages. The view merges the most due pair whose parent node is built, the oldest
 of equal ones. The older a stretch of the chat, the fewer lines it gets, the
@@ -160,11 +160,12 @@ every cached prefix with it.
 
 **When.** Between batches the view only appends: a new message adds its line and
 leaves the others as they were, so each turn's view starts with the whole view of
-the turn before. Once the view passes 128,000 bytes, one batch merges the most
-due pairs until it is at most 64,000 bytes: a sawtooth that averages about 96 KB
-and is rewritten once per batch instead of at every message. A batch merges only
-pairs whose parent is built; if those stop it short of 64,000, it goes on as
-messages arrive and nodes are built until it gets there. A line not summarized
+the turn before. Crossing 128,000 bytes starts a batch: the view keeps merging
+its most due pair, as above, until it is down to 64,000 bytes. Its size climbs
+and drops like a sawtooth, about 96 KB on average, and the start of the view is
+rewritten once per batch rather than at every message. Pairs with an unbuilt
+parent are skipped, so a batch can stall above 64,000; it resumes with each new
+message and each finished node until it reaches its mark. A line not summarized
 yet counts the bytes of its placeholder.
 
 **The compaction view.** Compactions read a view of their own: the chat view
@@ -294,12 +295,13 @@ grow), for example `jq -r '"\(.i) \(.kind): \(.text)"' main/*.jsonl`.
   cache entry. HUI's compactor runs on HUI's utility model by default, usually not
   the bot's model, and prompt caches are per model, so a shared prompt would gain
   nothing.
-- **Calls don't wait for each other's cache writes.** The revision has a call
-  whose marked prefix another call is writing wait for that call's response to
-  start, so only one pays the write. It is Anthropic-specific: a follow-up.
-- **Compactions start in the original order.** The revision starts a message's
-  compaction once fewer than 8 lines before it are unbuilt. That changes latency,
-  not what is cached: a follow-up.
+- **Calls don't wait for each other's cache writes.** In the revision, when two
+  calls would write the same marked prefix, the second holds off until the first
+  one's response begins, so the write is paid once. It is Anthropic-specific: a
+  follow-up.
+- **Compactions start in the original order.** The revision lets a message's
+  compaction begin as soon as at most 7 earlier lines still wait for a summary.
+  That changes latency, not what is cached: a follow-up.
 - **The revision's new prompt is not used.** The gist has no license, so this
   change takes the revision's ideas in HUI's own code and words and copies none of
   its text.
