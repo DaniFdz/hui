@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { WebSocket } from "ws";
 import { terminals } from "./terminals.ts";
-import { attachTerminalTransport } from "./terminal-transport.ts";
+import { attachTerminalTransport, createOutputBatcher, TERMINAL_BATCH_BYTES } from "./terminal-transport.ts";
 import type { TerminalControlFrame } from "../shared/terminal-stream.ts";
 
 test("guarded HTTP, one-use same-origin WebSocket tickets and agent bridge share one PTY", { timeout: 20_000 }, async (t) => {
@@ -106,4 +106,34 @@ test("guarded HTTP, one-use same-origin WebSocket tickets and agent bridge share
   await tool({ action: "close", sessionId: terminal.id });
   assert.equal(terminals.activeCount, 0);
   assert.equal((await api(`${path}/${terminal.id}`)).status, 404);
+});
+
+test("output batching sends the first chunk at once and joins a burst into bounded messages", () => {
+  const sent: string[] = [];
+  const timers: (() => void)[] = [];
+  let cancelled = 0;
+  const batcher = createOutputBatcher((bytes) => sent.push(bytes.toString()), (flush) => { timers.push(flush); return () => { cancelled++; }; });
+  batcher.push(Buffer.from("$ "));
+  assert.deepEqual(sent, ["$ "], "echo after a quiet period is not delayed");
+  batcher.push(Buffer.from("a"));
+  batcher.push(Buffer.from("b"));
+  assert.deepEqual(sent, ["$ "]);
+  timers.shift()!();
+  assert.deepEqual(sent, ["$ ", "ab"], "a burst becomes one message");
+  timers.shift()!();
+  assert.equal(timers.length, 0, "a quiet tick stops the timer");
+  batcher.push(Buffer.from("next"));
+  assert.deepEqual(sent, ["$ ", "ab", "next"]);
+  const big = Buffer.alloc(TERMINAL_BATCH_BYTES / 2, "x");
+  batcher.push(big); batcher.push(big); batcher.push(Buffer.from("y"));
+  assert.equal(sent.length, 4, "a full batch is sent without waiting");
+  assert.equal(sent[3]!.length, TERMINAL_BATCH_BYTES);
+  batcher.flush();
+  assert.equal(sent.at(-1), "y", "flush sends what is pending, so a later state frame keeps its order");
+  batcher.flush();
+  assert.equal(sent.length, 5, "flushing nothing sends nothing");
+  batcher.push(Buffer.from("dropped"));
+  batcher.dispose();
+  assert.equal(cancelled, 1);
+  assert.ok(!sent.includes("dropped"), "a closed socket's pending output is discarded");
 });

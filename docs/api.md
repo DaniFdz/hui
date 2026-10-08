@@ -3220,8 +3220,11 @@ messages). JSON **text** messages carry only metadata:
 - `{ type: "snapshot", terminal, sequence, truncated, replayBytes }` is always the
   first message. When `replayBytes` is not zero, the very next message is one
   binary message of exactly that many bytes: the buffered output to replay after
-  resetting the emulator. `sequence` counts output chunks so far; every later
-  binary message is one more chunk.
+  resetting the emulator. `sequence` counts PTY output chunks so far.
+- Later binary messages continue the output. The first chunk after a quiet
+  period is sent at once (keystroke echo is never delayed); chunks read within
+  the next 4 ms are joined into one message of at most 64 KiB, so a fast shell
+  does not cost the browser one message per small read.
 - `{ type: "state", terminal }` after a resize or exit, and
   `{ type: "error", error }` for a rejected client message.
 
