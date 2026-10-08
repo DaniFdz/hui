@@ -92,3 +92,33 @@ test("session views stream over one-use, same-origin WebSocket tickets", { timeo
   await until(() => connections.length === 5);
   assert.deepEqual(connections[4], ["stopped", "gone: This session no longer exists."]);
 });
+
+test("a large session frame is deflated on the wire and arrives intact", { timeout: 10_000 }, async (t) => {
+  const transcript = Array.from({ length: 2_000 }, (_, index) => ({ kind: "message", role: "assistant", text: `Line ${index} of a long session` }));
+  const server = createServer((_request, response) => { response.writeHead(404).end(); });
+  const detach = attachSessionTransport(server, async (_id, send) => {
+    send("snapshot", { transcript, status: "idle" });
+    return () => {};
+  }, new Set(["127.0.0.1"]));
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  t.after(async () => {
+    detach();
+    server.closeAllConnections();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+  let wireBytes = 0;
+  server.on("upgrade", (_request, socket) => {
+    const write = socket.write.bind(socket) as (chunk: Buffer | string, ...rest: unknown[]) => boolean;
+    socket.write = ((chunk: Buffer | string, ...rest: unknown[]) => { wireBytes += Buffer.byteLength(chunk); return write(chunk, ...rest); }) as typeof socket.write;
+  });
+  const socket = new NodeWebSocket(origin.replace("http:", "ws:") + sessionStreamTicket("long")!, { origin });
+  const [message] = await once(socket, "message") as [Buffer];
+  assert.match(socket.extensions, /permessage-deflate/u);
+  const frame = JSON.parse(message.toString("utf8")) as { event: string; data: { transcript: unknown[] } };
+  assert.equal(frame.event, "snapshot");
+  assert.deepEqual(frame.data.transcript, transcript);
+  assert(wireBytes > 0 && wireBytes < message.length / 4, `${wireBytes} bytes on the wire for ${message.length}`);
+  socket.close();
+});

@@ -75,10 +75,11 @@ import {
   renderLocalPathMenu,
   type LocalPathMenuProps,
 } from "./local-path-menu.ts";
+import { loadViewAssets } from "../lib/view-assets.ts";
+
+loadViewAssets(() => import("../styles/openclaw-chat.css"), () => import("../styles/openclaw-launch.css"));
 
 if (typeof document !== "undefined") {
-  await import("../styles/openclaw-chat.css");
-  await import("../styles/openclaw-launch.css");
   document.addEventListener("pointerdown", (event) => {
     document.querySelectorAll<HTMLDetailsElement>(".agent-chat__input details[open]").forEach((picker) => {
       if (event.target instanceof Node && !picker.contains(event.target)) picker.open = false;
@@ -205,6 +206,8 @@ export type HomeProps = {
   subagents: readonly SubagentTaskView[];
   /** Waiting on the server to open or start the runtime. */
   opening: boolean;
+  /** The open request failed, so there is no transcript to show; onRetry asks again. */
+  openError?: string;
   /** A turn is in flight, so the composer is locked. */
   streaming: boolean;
   sending: boolean;
@@ -1189,7 +1192,17 @@ function renderTranscriptBody(props: HomeProps, rows: readonly ChatProjectionRow
     </div>`;
   }
   if (props.opening) {
-    return html`<div class="agent-chat__empty" role="status">Opening the session…</div>`;
+    return html`<div class="agent-chat__empty agent-chat__creating" role="status" aria-live="polite">
+      <span>Loading the conversation…</span>
+      <wa-progress-bar label="Loading the conversation" indeterminate></wa-progress-bar>
+    </div>`;
+  }
+  if (props.openError) {
+    return html`<div class="agent-chat__empty" role="alert">
+      <strong>Could not load this conversation</strong>
+      <span>${props.openError}</span>
+      <button type="button" class="btn btn--sm retry-session" @click=${props.onRetry}>Try again</button>
+    </div>`;
   }
   if (props.session?.status === "starting") {
     return html`<div class="agent-chat__empty" role="status">

@@ -20,8 +20,9 @@ import {
   type CalendarPeriod,
 } from "../lib/session-calendar.ts";
 import type { SessionActivity } from "../../shared/session-activity.ts";
+import { loadViewAssets } from "../lib/view-assets.ts";
 
-if (typeof document !== "undefined") await import("../styles/session-calendar.css");
+loadViewAssets(() => import("../styles/session-calendar.css"));
 
 const HOUR_PX = 40;
 const POPOVER_PX = 340;

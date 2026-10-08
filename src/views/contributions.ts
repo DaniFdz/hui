@@ -18,8 +18,9 @@ import {
 import { icons } from "../lib/icons.ts";
 import { renderPicker } from "./settings-picker.ts";
 import "./session-calendar.ts";
+import { loadViewAssets } from "../lib/view-assets.ts";
 
-if (typeof document !== "undefined") await import("../styles/contributions.css");
+loadViewAssets(() => import("../styles/contributions.css"));
 
 const ALL = "all";
 const CELL = 10;
