@@ -180,7 +180,7 @@ export function setWorkPaneOpen(store: WorkPaneStore, sessionId: string, open: b
 
 export function clampWorkPaneWidth(width: number, available = Number.POSITIVE_INFINITY): number {
   const max = Math.max(WORK_PANE_MIN_WIDTH, Math.min(WORK_PANE_MAX_WIDTH, available - WORK_PANE_CHAT_MIN_WIDTH));
-  if (!Number.isFinite(width)) return Math.min(WORK_PANE_DEFAULT_WIDTH, max);
+  if (Number.isNaN(width)) return Math.min(WORK_PANE_DEFAULT_WIDTH, max);
   return Math.round(Math.max(WORK_PANE_MIN_WIDTH, Math.min(max, width)));
 }
 

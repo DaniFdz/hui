@@ -196,7 +196,9 @@ export class WorkPane extends HuiElement {
     this.drag = { startX: event.clientX, startWidth: width, width };
     this.resizing = true;
     handle.setPointerCapture(event.pointerId);
+    // No text selection while dragging; keep the arrow keys on the handle, as clicking it would.
     event.preventDefault();
+    handle.focus({ preventScroll: true });
   };
 
   private readonly resizeMove = (event: PointerEvent) => {

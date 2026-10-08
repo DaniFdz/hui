@@ -84,6 +84,7 @@ test("widths stay between the minimum and what leaves the chat its room", () => 
   assert.equal(clampWorkPaneWidth(900, 1200), 1200 - WORK_PANE_CHAT_MIN_WIDTH);
   assert.equal(clampWorkPaneWidth(900, 500), WORK_PANE_MIN_WIDTH, "a cramped window still shows a usable pane");
   assert.equal(clampWorkPaneWidth(Number.NaN), WORK_PANE_DEFAULT_WIDTH);
+  assert.equal(clampWorkPaneWidth(Number.POSITIVE_INFINITY, 1440), 1440 - WORK_PANE_CHAT_MIN_WIDTH, "End resizes to the widest the chat allows");
   assert.equal(clampWorkPaneWidth(612.4), 612);
   const store = setWorkPaneWidth({}, "s1", 700, 1440);
   assert.equal(sessionWorkPane(store, "s1").width, 700);
