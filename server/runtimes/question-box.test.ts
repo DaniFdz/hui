@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { QuestionBox } from "./question-box.ts";
+import { QuestionBox, QuestionsClosedError } from "./question-box.ts";
 import type { RuntimeQuestion } from "./types.ts";
 
-test("a question box answers once, refuses the wrong shape, and dismisses on cancel, abort or close", async () => {
+test("a question box answers once, refuses the wrong shape, dismisses on cancel or abort, and closing is no dismissal", async () => {
   const asked: RuntimeQuestion[] = [];
   const box = new QuestionBox((question) => asked.push(question));
   const answer = box.ask({ method: "select", title: "Pick", options: ["Allow", "Deny"] });
@@ -22,8 +22,8 @@ test("a question box answers once, refuses the wrong shape, and dismisses on can
   controller.abort();
   assert.equal(await aborted, undefined);
   const closing = box.ask({ method: "input", title: "Later" });
-  box.cancelAll();
-  assert.equal(await closing, undefined);
+  box.close();
+  await assert.rejects(closing, QuestionsClosedError, "nobody answered it: the asker may ask again elsewhere");
   assert.deepEqual(box.pending(), []);
 });
 

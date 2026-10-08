@@ -26,9 +26,11 @@ Pi Durable owns conversations, runs, queues and crash recovery.
 1. **Composer** (`src/hui-app.ts`, `src/lib/composer-state.ts`) builds the
    prompt with its attachments and draft.
 2. **Client API** (`src/lib/sessions-store.ts`) posts it to
-   `/__hui/sessions/:id/prompt` (or `steer`, `follow-up`, `queue`).
+   `/__hui/sessions/:id/prompt` (or `steer`, `follow-up`, `queue`) with a
+   request id (`src/lib/send-requests.ts`) that a resend after a failure reuses.
 3. **Route** (`server/hui.ts`) validates the request and hands it to the live
-   session.
+   session; `server/recent-requests.ts` answers a resent id with the first
+   send's outcome instead of sending it again.
 4. **Live session** (`server/live-sessions.ts`) keeps exactly one runtime per
    session and forwards the prompt through the generic contract in
    `server/runtimes/types.ts`.

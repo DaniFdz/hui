@@ -39,6 +39,9 @@ test("a late prompt acknowledgement cannot re-lock an already settled turn", () 
   assert.equal(streamingAfterSubmission(false, "prompt", "accepted", "idle"), false);
   assert.equal(streamingAfterSubmission(true, "prompt", "accepted", "running"), true);
   assert.equal(streamingAfterSubmission(true, "prompt", "rejected", "idle"), false);
+  // A resend the gateway recognised started nothing: the session's own status decides, as for a rejection.
+  assert.equal(streamingAfterSubmission(true, "prompt", "duplicate", "idle"), false);
+  assert.equal(streamingAfterSubmission(true, "prompt", "duplicate", "running"), true);
   assert.equal(streamingAfterSubmission(true, "prompt", "rejected", "waiting"), true);
   assert.equal(streamingAfterSubmission(true, "followUp", "accepted", "running"), true);
 });
