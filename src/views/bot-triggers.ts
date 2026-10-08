@@ -1,18 +1,18 @@
 /**
  * The Triggers section of a bot's Routines tab (HUI-18): its triggers with what they watch, when they last fired,
- * their cooldown, an on/off switch, Test and Delete; the latest runs; and the add form. A webhook trigger's URL shows
- * once, right after it was made or replaced. Rendering only: `BotTriggersController` (`src/lib/bot-triggers.ts`) owns
- * the state and every request.
+ * their cooldown, an on/off switch, Test and Delete; the latest runs; and the add form, with a Review requests preset
+ * for Slack. A webhook trigger's URL shows once, right after it was made or replaced. Rendering only:
+ * `BotTriggersController` (`src/lib/bot-triggers.ts`) owns the state and every request.
  */
 import { html, nothing } from "lit";
 import {
-  BOT_TRIGGER_LIMITS, BOT_TRIGGER_SOURCE_LABELS, GITHUB_TRIGGER_EVENT_LABELS, GITHUB_TRIGGER_EVENTS, SESSION_TRIGGER_EVENT_LABELS, SESSION_TRIGGER_EVENTS,
-  botTriggerFilterSummary, cooldownLabel,
+  BOT_TRIGGER_LIMITS, BOT_TRIGGER_SOURCE_LABELS, BOT_TRIGGER_SOURCES, GITHUB_TRIGGER_EVENT_LABELS, GITHUB_TRIGGER_EVENTS, SESSION_TRIGGER_EVENT_LABELS, SESSION_TRIGGER_EVENTS,
+  SLACK_TRIGGER_EVENT_LABELS, SLACK_TRIGGER_EVENTS, botTriggerFilterSummary, cooldownLabel,
   type BotTrigger, type BotTriggerRun, type BotTriggerSource,
 } from "../../shared/bot-triggers.ts";
 import type { BotView } from "../../shared/bots.ts";
 import { icons } from "../lib/icons.ts";
-import { TriggerFormError, triggerFormInput, type BotTriggersActions, type BotTriggersState, type RevealedHook } from "../lib/bot-triggers.ts";
+import { REVIEW_REQUESTS_PRESET, TriggerFormError, triggerFormInput, type BotTriggersActions, type BotTriggersState, type RevealedHook } from "../lib/bot-triggers.ts";
 import { renderSettingsToggle } from "./settings-toggle.ts";
 import { loadViewAssets } from "../lib/view-assets.ts";
 
@@ -20,7 +20,7 @@ loadViewAssets(() => import("../styles/bot-triggers.css"));
 
 export type BotTriggersProps = { bot: BotView; now: number; state: BotTriggersState } & BotTriggersActions;
 
-const SOURCE_ICONS: Record<BotTriggerSource, unknown> = { github: icons.gitBranch, session: icons.squareTerminal, webhook: icons.zap };
+const SOURCE_ICONS: Record<BotTriggerSource, unknown> = { github: icons.gitBranch, session: icons.squareTerminal, webhook: icons.zap, slack: icons.messageSquare };
 const RUN_LABELS: Record<BotTriggerRun["status"], string> = { fired: "Fired", coalesced: "Coalesced", skipped: "Skipped", failed: "Failed" };
 /** The cooldowns the form offers, in seconds. */
 export const COOLDOWN_CHOICES: readonly number[] = [0, 60, 300, 900, 3_600];
@@ -60,8 +60,8 @@ function renderTrigger(trigger: BotTrigger, props: BotTriggersProps) {
     <p class="bot-trigger__filter" title=${botTriggerFilterSummary(trigger)}>${botTriggerFilterSummary(trigger)}</p>
     <p class="bot-trigger__meta">${fired} · cooldown ${cooldownLabel(trigger.cooldownSeconds)}${trigger.createdBy === "bot" ? ` · added by ${props.bot.name}` : ""}</p>
     ${trigger.pending ? html`<p class="bot-trigger__meta bot-trigger__meta--pending">${trigger.pending.events} event${trigger.pending.events === 1 ? "" : "s"} wait${trigger.pending.events === 1 ? "s" : ""}, sent together at ${whenLabel(trigger.pending.until, props.now)}</p>` : nothing}
-    ${trigger.source === "github" && trigger.watch?.error ? html`<p class="bot-trigger__meta bot-trigger__meta--error" role="status">${trigger.watch.error}</p>`
-      : trigger.source === "github" && trigger.enabled ? html`<p class="bot-trigger__meta">${trigger.watch?.polledAt ? `GitHub read ${agoLabel(trigger.watch.polledAt, props.now)}` : "Waiting for the first read of GitHub"}</p>` : nothing}
+    ${(trigger.source === "github" || trigger.source === "slack") && trigger.watch?.error ? html`<p class="bot-trigger__meta bot-trigger__meta--error" role="status">${trigger.watch.error}</p>`
+      : (trigger.source === "github" || trigger.source === "slack") && trigger.enabled ? html`<p class="bot-trigger__meta">${trigger.watch?.polledAt ? `${BOT_TRIGGER_SOURCE_LABELS[trigger.source]} read ${agoLabel(trigger.watch.polledAt, props.now)}` : `Waiting for the first read of ${BOT_TRIGGER_SOURCE_LABELS[trigger.source]}`}</p>` : nothing}
     ${trigger.source === "webhook" ? html`<p class="bot-trigger__meta">URL …/hooks/${trigger.tokenHint ?? ""}… · shown when it was made</p>` : nothing}
     ${trigger.prompt ? html`<p class="bot-trigger__prompt" title=${trigger.prompt}>${trigger.prompt}</p>` : nothing}
     <div class="bot-trigger__actions">
@@ -120,6 +120,12 @@ function submitTrigger(event: SubmitEvent, props: BotTriggersProps) {
       matchField: formText(data, "matchField"),
       matchOp: formText(data, "matchOp"),
       matchValue: formText(data, "matchValue"),
+      slackEvents: data.getAll("slackEvents").map(String),
+      slackPrLinks: data.get("slackPrLinks") !== null,
+      slackFrom: formText(data, "slackFrom"),
+      slackIn: formText(data, "slackIn"),
+      slackExternal: data.get("slackExternal") !== null,
+      slackBots: data.get("slackBots") !== null,
     });
     // Only an accepted trigger clears the form; a refusal keeps what was typed.
     void props.onCreate(input).then((created) => {
@@ -128,6 +134,23 @@ function submitTrigger(event: SubmitEvent, props: BotTriggersProps) {
   } catch (error) {
     props.onFormError(error instanceof TriggerFormError ? error.message : "Could not read the trigger form.");
   }
+}
+
+/** The Review requests preset fills the form: Slack, mentions and DMs, PR links only, and a name and prompt when
+ * those are still empty. Nothing is sent until Add trigger. */
+function applyReviewPreset(event: Event) {
+  const form = (event.currentTarget as HTMLElement).closest("form");
+  if (!form) return;
+  const field = (name: string) => form.elements.namedItem(name);
+  const slack = form.querySelector<HTMLInputElement>('input[name="source"][value="slack"]');
+  if (slack) slack.checked = true;
+  for (const box of form.querySelectorAll<HTMLInputElement>('input[name="slackEvents"]')) box.checked = REVIEW_REQUESTS_PRESET.events.includes(box.value as (typeof REVIEW_REQUESTS_PRESET.events)[number]);
+  const links = field("slackPrLinks");
+  if (links instanceof HTMLInputElement) links.checked = REVIEW_REQUESTS_PRESET.prLinks;
+  const name = field("name");
+  if (name instanceof HTMLInputElement && !name.value.trim()) name.value = REVIEW_REQUESTS_PRESET.name;
+  const prompt = field("prompt");
+  if (prompt instanceof HTMLTextAreaElement && !prompt.value.trim()) prompt.value = REVIEW_REQUESTS_PRESET.prompt;
 }
 
 function renderForm(props: BotTriggersProps, open: boolean) {
@@ -141,7 +164,7 @@ function renderForm(props: BotTriggersProps, open: boolean) {
       <fieldset class="bot-field">
         <legend class="bot-field__label">Watches</legend>
         <div class="settings-segmented bot-trigger-form__sources">
-          ${(["github", "session", "webhook"] as const).map((source) => html`<label class="settings-segmented__btn"><input type="radio" name="source" value=${source} ?checked=${source === "github"} /><span>${BOT_TRIGGER_SOURCE_LABELS[source]}</span></label>`)}
+          ${BOT_TRIGGER_SOURCES.map((source) => html`<label class="settings-segmented__btn"><input type="radio" name="source" value=${source} ?checked=${source === "github"} /><span>${BOT_TRIGGER_SOURCE_LABELS[source]}</span></label>`)}
         </div>
       </fieldset>
       <div class="bot-trigger-form__when bot-trigger-form__when--github">
@@ -185,6 +208,29 @@ function renderForm(props: BotTriggersProps, open: boolean) {
           </div>
         </fieldset>
       </div>
+      <div class="bot-trigger-form__when bot-trigger-form__when--slack">
+        <div class="bot-trigger-form__preset">
+          <button type="button" class="btn btn--sm bot-trigger-form__preset-button" @click=${applyReviewPreset}>${icons.messageSquare}<span>Review requests</span></button>
+          <span class="bot-field__hint">Mentions and DMs that link a GitHub pull request.</span>
+        </div>
+        <fieldset class="bot-field">
+          <legend class="bot-field__label">Slack messages that</legend>
+          <div class="bot-trigger-form__checks">
+            ${SLACK_TRIGGER_EVENTS.map((event) => html`<label class="bot-trigger-form__check"><input type="checkbox" name="slackEvents" value=${event} checked /><span>${SLACK_TRIGGER_EVENT_LABELS[event]}</span></label>`)}
+          </div>
+        </fieldset>
+        <label class="bot-trigger-form__check"><input type="checkbox" name="slackPrLinks" /><span>Only with a GitHub pull request link (a thread's counts)</span></label>
+        <details class="bot-trigger-form__more">
+          <summary class="bot-trigger-form__more-summary">Only some people or channels</summary>
+          <div class="bot-trigger-form__grid">
+            <label class="bot-field"><span class="bot-field__label">From</span><input class="settings-input" name="slackFrom" type="text" placeholder="maria, @bob" autocomplete="off" spellcheck="false" /></label>
+            <label class="bot-field"><span class="bot-field__label">In channels</span><input class="settings-input" name="slackIn" type="text" placeholder="#team-reviews" autocomplete="off" spellcheck="false" /></label>
+            <label class="bot-trigger-form__check"><input type="checkbox" name="slackExternal" /><span>Also people outside your workspace (Slack Connect)</span></label>
+            <label class="bot-trigger-form__check"><input type="checkbox" name="slackBots" /><span>Also bots and apps</span></label>
+          </div>
+        </details>
+        <p class="bot-field__hint">Read as you, through Settings → Integrations → Slack, about once a minute; nothing is ever posted. Your own messages never wake ${name}, and what someone writes reaches ${name} as information, never as instructions. A message mentioning a user group doesn't count.</p>
+      </div>
       <label class="bot-field"><span class="bot-field__label">Prompt</span>
         <textarea class="settings-input" name="prompt" rows="2" maxlength=${BOT_TRIGGER_LIMITS.prompt} placeholder=${`What should ${name} do when it fires?`}></textarea></label>
       <label class="bot-field bot-trigger-form__cooldown"><span class="bot-field__label">Cooldown</span>
@@ -215,7 +261,7 @@ export function renderBotTriggers(props: BotTriggersProps) {
       ${state.revealed ? renderRevealed(state.revealed, props) : nothing}
       ${list.triggers.length
         ? html`<ul class="bot-triggers__list" aria-label="Triggers">${list.triggers.map((trigger) => renderTrigger(trigger, props))}</ul>`
-        : html`<p class="bot-panel__hint">No triggers yet. A trigger wakes ${props.bot.name} when something happens: a pull request changes on GitHub, a session it started finishes, fails or asks something, or a program calls its webhook URL.</p>`}
+        : html`<p class="bot-panel__hint">No triggers yet. A trigger wakes ${props.bot.name} when something happens: a pull request changes on GitHub, a session it started finishes, fails or asks something, a program calls its webhook URL, or someone pings you in Slack.</p>`}
       ${renderForm(props, list.triggers.length === 0)}
       ${list.runs.length ? html`<h4 class="bot-triggers__subheading">Latest trigger runs</h4><ul class="bot-runs">${list.runs.slice(0, 10).map((run) => renderRun(run, props.now))}</ul>` : nothing}
       <p class="bot-panel__hint">${list.deliveries.lastHour} of ${list.deliveries.perHour} trigger deliveries in the last hour.</p>

@@ -10,7 +10,9 @@
  *
  * State: { login, pollInterval?, rateLimited?: { retryAfter }, repos: { "owner/name": { pulls: [GitHub pull objects],
  *   reviews: { "<number>": [reviews] }, issueComments: [...], reviewComments: [...], checkRuns: { "<sha>": [runs] },
- *   statuses: { "<sha>": [statuses] } } } }
+ *   statuses: { "<sha>": [statuses] }, files: { "<number>": [pull request files] }, diffs: { "<number>": "<diff>" } } } }
+ * A pull request asked for with `Accept: application/vnd.github.diff` answers its diff as text (404 without one), as
+ * Slack triggers' deliveries read it.
  */
 import { createHash } from "node:crypto";
 import { appendFileSync, existsSync, readFileSync } from "node:fs";
@@ -35,6 +37,7 @@ function answer(state, path) {
   if (rest[0] === "pulls" && rest[1] === "comments") return { status: 200, body: [...(repo.reviewComments ?? [])].sort(byDate("created_at")).slice(0, perPage) };
   if (rest[0] === "pulls" && /^\d+$/u.test(rest[1] ?? "")) {
     if (rest[2] === "reviews") return { status: 200, body: repo.reviews?.[rest[1]] ?? [] };
+    if (rest[2] === "files") return { status: 200, body: (repo.files?.[rest[1]] ?? []).slice(0, perPage) };
     const pull = (repo.pulls ?? []).find((each) => String(each.number) === rest[1]);
     return pull ? { status: 200, body: pull } : { status: 404, body: { message: "Not Found" } };
   }
@@ -56,12 +59,22 @@ function answer(state, path) {
   return { status: 404, body: { message: "Not Found" } };
 }
 
-/** In-process fake: `respond(path, etag)` answers as gh's parsed output would, and `log` keeps every request. */
+/** In-process fake: `respond(path, etag, accept)` answers as gh's parsed output would, and `log` keeps every request. */
 export function createGitHubFake(initial) {
   const fake = {
     state: initial,
     log: [],
-    respond(path, etag) {
+    respond(path, etag, accept) {
+      if (accept === "application/vnd.github.diff") {
+        const url = new URL(path, "https://api.github.com/");
+        const parts = url.pathname.split("/").filter(Boolean);
+        const repo = fake.state.repos?.[`${parts[1]}/${parts[2]}`];
+        const diff = parts[3] === "pulls" ? repo?.diffs?.[parts[4]] : undefined;
+        fake.log.push({ path, etag: null, status: diff === undefined ? 404 : 200, accept });
+        return diff === undefined
+          ? { status: 404, headers: { date: new Date().toUTCString() }, body: { message: "Not Found" } }
+          : { status: 200, headers: { date: new Date().toUTCString(), "content-type": "text/plain; charset=utf-8" }, body: diff, text: true };
+      }
       const headers = { date: new Date().toUTCString(), "x-ratelimit-limit": "5000", "x-ratelimit-remaining": "4990", "x-ratelimit-reset": String(Math.floor(Date.now() / 1000) + 3600), "x-ratelimit-resource": "core" };
       if (fake.state.pollInterval) headers["x-poll-interval"] = String(fake.state.pollInterval);
       if (fake.state.rateLimited) {
@@ -111,24 +124,26 @@ function main(args) {
   }
   let etag;
   let path;
+  let accept;
   let include = false;
   for (let index = 1; index < args.length; index += 1) {
     const arg = args[index];
     if (arg === "-H" || arg === "--header") {
       const header = args[++index] ?? "";
       if (/^if-none-match:/iu.test(header)) etag = header.slice(header.indexOf(":") + 1).trim();
+      if (/^accept:/iu.test(header)) accept = header.slice(header.indexOf(":") + 1).trim();
     } else if (arg === "--include" || arg === "-i") include = true;
     else if (!arg.startsWith("-")) path = arg;
   }
   const fake = createGitHubFake(state);
-  const result = fake.respond(path ?? "", etag);
+  const result = fake.respond(path ?? "", etag, accept);
   appendFileSync(join(dir, "requests.jsonl"), `${JSON.stringify({ ...fake.log[0], at: new Date().toISOString() })}\n`);
   // Like gh: the status line and headers only with --include (what previews and badges read is the body alone).
   if (include) {
     const head = [`HTTP/1.1 ${result.status} ${REASONS[result.status] ?? ""}`, ...Object.entries(result.headers).map(([name, value]) => `${name.replace(/(^|-)([a-z])/gu, (_, dash, letter) => dash + letter.toUpperCase())}: ${value}\r`)].join("\n");
     process.stdout.write(`${head}\n\r\n`);
   }
-  if (result.status < 300 || include) process.stdout.write(result.body === undefined ? "" : JSON.stringify(result.body));
+  if (result.status < 300 || include) process.stdout.write(result.body === undefined ? "" : result.text ? result.body : JSON.stringify(result.body));
   if (result.status >= 300) {
     process.stderr.write(result.status === 304 ? "gh: HTTP 304\n" : `gh: ${result.body?.message ?? REASONS[result.status] ?? "error"} (HTTP ${result.status})\n`);
     process.exit(1);

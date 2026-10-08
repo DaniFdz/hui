@@ -977,8 +977,8 @@ requests:
    tool (an ordinary Tools switch under Bots) lists, adds, changes and removes its
    own, never adding or changing in a turn another bot or a trigger started, and
    never a webhook. The Routines tab's Triggers section and `hui bot trigger
-   list|add|remove|test`. Slack (Socket Mode) is next, once the owner names a
-   workspace. Proof: `server/bot-triggers*.test.ts` (a fake gh for the pollers,
+   list|add|remove|test`. Slack came next (item 12), read through search rather
+   than Socket Mode. Proof: `server/bot-triggers*.test.ts` (a fake gh for the pollers,
    ETag/304 accounting, cursors across a restart, coalescing, the hourly cap,
    catch-up, the tool's origin checks, the webhook token, filter and size cap,
    bots off), `server/bot-trigger-routes.test.ts` (a real gateway: a webhook and
@@ -990,6 +990,35 @@ requests:
    `cli/bot-triggers.test.ts` and an isolated gateway driven in a browser
    ([`e2e/bot-triggers.browser.md`](../e2e/bot-triggers.browser.md), screens in
    the pull request).
+12. **Slack triggers** (implemented 2026-10-08; the owner's request, SPEC.md,
+   "Slack triggers wake bots on review pings"): a Slack connection per gateway
+   (Settings → Integrations → Slack and `hui slack connect|status|disconnect`: the
+   User OAuth Token of an app the operator creates from HUI's manifest, user
+   scopes only and read-only, verified with `auth.test`, stored like Jira's,
+   never returned or logged) and a `slack` trigger source: mentions of the
+   operator in channels and group DMs and direct messages to them, read through
+   `search.messages` every minute by one poller with a saved cursor (a silent
+   baseline, each message once, edits never, a 24-hour catch-up after bots were
+   off or the machine slept, Retry-After and back-off, a revoked token parked
+   until the operator connects again), filtered by PR links (a thread reply
+   counts its parent's), people, channels, and whether bots or Slack Connect
+   people may wake it. Deliveries carry who and where, the message and its
+   thread parent, the permalink and each linked pull request read through the
+   gateway's `gh` (description, files and diff, bounded), so a bot without a
+   shell reviews from the delivery alone; the Triggers section has a Review
+   requests preset, and only the operator adds or changes Slack triggers.
+   Follow-up: mentions of a user group. Proof: `server/slack.test.ts`,
+   `server/bot-triggers-slack.test.ts` and `server/bot-triggers-slack-prs.test.ts`
+   (a fake Slack Web API, `e2e/slack-fixture.mjs`, and a fake clock: pagination,
+   429, revoked tokens, catch-up after a restart and a sleep, dedupe, edits,
+   threads, DMs, bots, Slack Connect, diff truncation), `server/bot-triggers.test.ts`
+   (filters, delivery, the tool refusing Slack triggers),
+   `server/slack-routes.test.ts` (a real gateway: connecting, a ping with a pull
+   request reaching a bot whose gated tools refuse the turn, bots off and on, the
+   CLI, the token in no route, diagnostic, log or model request), `cli/slack.test.ts`,
+   `src/lib/slack.test.ts` and an isolated gateway driven in a browser
+   ([`e2e/slack-triggers.browser.md`](../e2e/slack-triggers.browser.md), screens
+   in the pull request).
 
 ### HUI-19 — Agent widgets
 

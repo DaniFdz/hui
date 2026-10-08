@@ -86,7 +86,7 @@
 .bot-trigger-form__summary:focus-visible,
 .bot-trigger-form__more-summary:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .bot-trigger-form__body { display: flex; flex-direction: column; gap: 10px; padding: 0 12px 12px; }
-.bot-trigger-form__sources { align-self: flex-start; }
+.bot-trigger-form__sources { align-self: flex-start; flex-wrap: wrap; max-width: 100%; }
 .bot-trigger-form__sources > .settings-segmented__btn { position: relative; padding: 0 10px; }
 .bot-trigger-form__sources input {
   position: absolute;
@@ -106,6 +106,10 @@
 .bot-trigger-form:has(input[name="source"][value="github"]:checked) .bot-trigger-form__when--github,
 .bot-trigger-form:has(input[name="source"][value="session"]:checked) .bot-trigger-form__when--session,
 .bot-trigger-form:has(input[name="source"][value="webhook"]:checked) .bot-trigger-form__when--webhook { display: flex; }
+.bot-trigger-form:has(input[name="source"][value="slack"]:checked) .bot-trigger-form__when--slack { display: flex; }
+.bot-trigger-form__preset { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.bot-trigger-form__preset-button { display: inline-flex; align-items: center; gap: 6px; }
+.bot-trigger-form__preset-button svg { width: 13px; height: 13px; }
 .bot-trigger-form__checks { display: flex; flex-wrap: wrap; gap: 4px 12px; }
 .bot-trigger-form__check { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; color: var(--text); font-size: var(--control-ui-text-sm); }
 .bot-trigger-form__check input { margin: 0; accent-color: var(--accent); }

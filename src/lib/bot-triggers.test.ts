@@ -3,11 +3,12 @@ import test from "node:test";
 import type { ReactiveController, ReactiveControllerHost } from "lit";
 import type { BotTrigger, BotTriggerCreated, BotTriggersList } from "../../shared/bot-triggers.ts";
 import type { BotView } from "../../shared/bots.ts";
-import { BotTriggersController, parseTrigger, parseTriggersList, splitEntries, TriggerFormError, triggerFormInput, type BotTriggersApi, type TriggerFormFields } from "./bot-triggers.ts";
+import { BotTriggersController, parseTrigger, parseTriggersList, REVIEW_REQUESTS_PRESET, splitEntries, TriggerFormError, triggerFormInput, type BotTriggersApi, type TriggerFormFields } from "./bot-triggers.ts";
 
 const FIELDS: TriggerFormFields = {
   name: "PR watch", source: "github", prompt: "  Review it.  ", cooldown: "300", repos: "https://github.com/acme/widgets.git, acme/gadgets", githubEvents: ["pr_opened", "checks_failed", "bogus"],
   authors: "@alice bob", labels: "needs review, ci", base: "main", pulls: "#12, 14", draft: "ready", sessionEvents: [], matchField: "", matchOp: "equals", matchValue: "",
+  slackEvents: [], slackPrLinks: false, slackFrom: "", slackIn: "", slackExternal: false, slackBots: false,
 };
 
 test("the add form becomes a trigger body, each source with its own fields", () => {
@@ -38,6 +39,20 @@ const TRIGGER = {
   enabled: true, cooldownSeconds: 300, createdBy: "bot", createdAt: "2026-10-07T10:00:00.000Z", updatedAt: "2026-10-07T10:00:00.000Z",
   pending: { events: 2, until: "2026-10-07T10:05:00.000Z" }, watch: { polledAt: "2026-10-07T10:01:00.000Z" },
 };
+
+test("the Slack part of the form: mentions and DMs, PR links only, people and channels, and the Review requests preset", () => {
+  const slack = { ...FIELDS, source: "slack", prompt: "", slackEvents: ["mention", "dm", "bogus"], slackPrLinks: true, slackFrom: "maria, @Bob Builder", slackIn: "#team-reviews C0123ABCD", slackExternal: false, slackBots: true };
+  assert.deepEqual(triggerFormInput(slack), {
+    name: "PR watch", cooldownSeconds: 300, source: "slack",
+    filter: { events: ["mention", "dm"], prLinks: true, from: ["maria", "Bob Builder"], in: ["team-reviews", "C0123ABCD"], bots: true },
+  });
+  assert.throws(() => triggerFormInput({ ...slack, slackEvents: [] }), (error: unknown) => error instanceof TriggerFormError && /mentions, direct messages or both/u.test(error.message));
+  assert.deepEqual([REVIEW_REQUESTS_PRESET.name, REVIEW_REQUESTS_PRESET.events, REVIEW_REQUESTS_PRESET.prLinks], ["Reviews", ["mention", "dm"], true]);
+  assert.match(REVIEW_REQUESTS_PRESET.prompt, /Don't run commands or change anything/u);
+  const parsed = parseTrigger({ ...TRIGGER, source: "slack", filter: { events: ["mention", "reaction"], prLinks: true, from: ["maria", 3], external: true } });
+  assert.deepEqual(parsed?.source === "slack" && parsed.filter, { events: ["mention"], prLinks: true, from: ["maria"], external: true });
+  assert.equal(parseTrigger({ ...TRIGGER, source: "slack", filter: { events: ["reaction"] } }), undefined);
+});
 
 test("the routes' answers are narrowed: unknown events, bad entries and missing fields don't reach the view", () => {
   const parsed = parseTrigger(TRIGGER);

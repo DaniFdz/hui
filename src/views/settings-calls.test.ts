@@ -33,6 +33,6 @@ test("Settings → Models → Calls has no engine to choose, and Integrations no
   const settings = read("./settings.ts");
   assert.doesNotMatch(settings, /VoiceStudio|settings-voice|hui-voice-settings|onChangeVoice/u);
   const integrations = settings.slice(settings.indexOf("function renderIntegrationsPage("), settings.indexOf("function renderToolsPage("));
-  assert.deepEqual([...integrations.matchAll(/<hui-([a-z]+)-settings>/gu)].map((match) => match[1]), ["jira", "github"]);
+  assert.deepEqual([...integrations.matchAll(/<hui-([a-z]+)-settings>/gu)].map((match) => match[1]), ["jira", "github", "slack"]);
   assert.equal(existsSync(new URL("./settings-voice.ts", import.meta.url)), false);
 });

@@ -20,7 +20,7 @@ test("hui bot trigger parses list, add, remove and test with their operands and 
   assert.deepEqual(parseCli(["bot", "trigger", "test", "ada", "CI"]).operands, ["ada", "CI"]);
   for (const [args, message] of [
     [["bot", "trigger", "add", "ada", "--github", "a/b", "--on", "pr_opened"], /needs --name/u],
-    [["bot", "trigger", "add", "ada", "--name", "x"], /exactly one of --github <owner\/name,…>, --session or --webhook/u],
+    [["bot", "trigger", "add", "ada", "--name", "x"], /exactly one of --github <owner\/name,…>, --session, --webhook or --slack/u],
     [["bot", "trigger", "add", "ada", "--name", "x", "--session", "--webhook"], /exactly one/u],
     [["bot", "trigger", "add", "ada", "--name", "x", "--github", "a/b"], /--on takes GitHub events/u],
     [["bot", "trigger", "add", "ada", "--name", "x", "--github", "a/b", "--on", "pr_teleported"], /--on takes GitHub events/u],

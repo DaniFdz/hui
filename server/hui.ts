@@ -32,6 +32,7 @@ import { BOT_MEMORY_PAGE, BOTS_EVENTS_ROUTE, BOTS_ROUTE, createBotRoutes, type B
 import { BOT_TRIGGERS_ROUTE } from "./bot-trigger-routes.ts";
 import { createGatewayTriggers } from "./bot-triggers-gateway.ts";
 import { isHookPath } from "./bot-triggers-webhook.ts";
+import { SLACK_ROUTE } from "./slack-routes.ts";
 import { BotTemplateService } from "./bot-template-import.ts";
 import { createBotTemplateRoutes, sendDownload } from "./bot-template-routes.ts";
 import { fetchGrokBotPage } from "./bot-templates/fetch.ts";
@@ -1203,7 +1204,8 @@ export function sessionMutationErrorStatus(error: unknown): 400 | 500 {
  * `gh`; HUI never sees the token. `HUI_GITHUB_CLI` points E2E at a fake executable. */
 const GH_COMMAND = process.env["HUI_GITHUB_CLI"] || "gh";
 const githubCli = new GitHubCli({ command: GH_COMMAND });
-/** Bots' triggers (HUI-18): GitHub pollers through the same `gh`, the sessions bots start, and webhook calls. */
+/** Bots' triggers (HUI-18): GitHub pollers through the same `gh`, the sessions bots start, webhook calls, and the Slack
+ * messages that ping the operator, through the Slack connection of Settings → Integrations (`slack.ts`). */
 const triggers = createGatewayTriggers({
   send: (botId, message) => bots.send(botId, message),
   listBots: () => botRegistry.list(),
@@ -3174,6 +3176,14 @@ async function handleRequest(
     } catch (error) {
       sendJson(response, error instanceof GitHubCliError ? error.status : 500, { error: error instanceof Error ? error.message : "Could not sign in to GitHub." });
     }
+    return;
+  }
+
+  if (path === SLACK_ROUTE) {
+    const verify = new URL(request.url ?? "/", "http://localhost").searchParams.get("verify") === "1";
+    const result = await triggers.slackRoutes.handle({ method: request.method ?? "GET", path, verify, body: (maxBytes) => readBody(request, maxBytes) });
+    if (!result) sendJson(response, 404, { error: `unknown route: ${path}` });
+    else sendJson(response, result.status, result.body);
     return;
   }
 

@@ -59,3 +59,26 @@ test("times read as people say them", () => {
   assert.equal(agoLabel(undefined, now), "");
   assert.match(whenLabel("2026-10-07T12:05:00Z", now), /\d{1,2}:\d{2}/u);
 });
+
+test("the form offers Slack with the Review requests preset, and a Slack card says when Slack was read", () => {
+  const source = read("./bot-triggers.ts");
+  const form = between(source, "function renderForm(", "/** The Triggers section");
+  assert.match(form, /bot-trigger-form__when--slack/u);
+  assert.match(form, /name="slackEvents"/u);
+  assert.match(form, /name="slackPrLinks"/u);
+  assert.match(form, /name="slackFrom"/u);
+  assert.match(form, /name="slackIn"/u);
+  assert.match(form, /name="slackExternal"/u);
+  assert.match(form, /name="slackBots"/u);
+  assert.match(form, /@click=\$\{applyReviewPreset\}>\$\{icons\.messageSquare\}<span>Review requests<\/span>/u);
+  assert.match(form, /nothing is ever posted/u);
+  assert.match(form, /BOT_TRIGGER_SOURCES\.map/u, "every source, Slack included");
+  const preset = between(source, "function applyReviewPreset(", "function renderForm(");
+  assert.match(preset, /input\[name="source"\]\[value="slack"\]/u);
+  assert.match(preset, /REVIEW_REQUESTS_PRESET\.prLinks/u);
+  assert.match(preset, /!name\.value\.trim\(\)/u, "a name already typed stays");
+  const card = between(source, "function renderTrigger(", "function renderRevealed(");
+  assert.match(card, /trigger\.source === "github" \|\| trigger\.source === "slack"/u);
+  assert.match(card, /Waiting for the first read of/u);
+  assert.match(read("../styles/bot-triggers.css"), /\.bot-trigger-form:has\(input\[name="source"\]\[value="slack"\]:checked\) \.bot-trigger-form__when--slack \{ display: flex; \}/u);
+});

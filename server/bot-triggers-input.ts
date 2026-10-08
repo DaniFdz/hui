@@ -4,9 +4,10 @@
  * what to fix (400); a stored record that does not validate is kept aside in the file, untouched, and not used.
  */
 import {
-  BOT_TRIGGER_LIMITS, BOT_TRIGGER_SOURCES, GITHUB_TRIGGER_EVENTS, SESSION_TRIGGER_EVENTS,
+  BOT_TRIGGER_LIMITS, BOT_TRIGGER_SOURCES, GITHUB_TRIGGER_EVENTS, SESSION_TRIGGER_EVENTS, SLACK_TRIGGER_EVENTS,
   type BotTriggerFilters, type BotTriggerInput, type BotTriggerPatch, type BotTriggerRecord, type BotTriggerSource, type GitHubTriggerEvent,
-  type GitHubTriggerFilter, type SessionTriggerEvent, type SessionTriggerFilter, type WebhookTriggerFilter, type WebhookTriggerMatch,
+  type GitHubTriggerFilter, type SessionTriggerEvent, type SessionTriggerFilter, type SlackTriggerEvent, type SlackTriggerFilter,
+  type WebhookTriggerFilter, type WebhookTriggerMatch,
 } from "../shared/bot-triggers.ts";
 
 /** Rejected input (400), with what to fix. */
@@ -37,6 +38,11 @@ const CONTROL = /\p{Cc}/u;
 const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/u;
 const GITHUB_EVENTS: ReadonlySet<string> = new Set(GITHUB_TRIGGER_EVENTS);
 const SESSION_EVENTS: ReadonlySet<string> = new Set(SESSION_TRIGGER_EVENTS);
+const SLACK_EVENTS: ReadonlySet<string> = new Set(SLACK_TRIGGER_EVENTS);
+/** A Slack member as a filter names them: an id, or a handle, display or real name (no `@`). */
+const SLACK_PERSON = /^[^\s<>@#,|][^<>,|\p{Cc}]{0,79}$/u;
+/** A Slack conversation as a filter names it: an id, or a channel name (lowercase letters, digits, `-`, `_`, `.`). */
+const SLACK_CHANNEL = /^(?:[CG][A-Z0-9]{2,39}|[\p{Ll}\p{Lo}\p{N}_.-]{1,80})$/u;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -149,6 +155,32 @@ function webhookFilter(raw: Record<string, unknown>): WebhookTriggerFilter {
   return raw["match"] == null ? {} : { match: webhookMatch(raw["match"]) };
 }
 
+/** An optional switch of a Slack filter: `true` sets it; `false` and `null` leave it out. */
+function flag(raw: unknown, what: string): true | undefined {
+  if (raw == null || raw === false) return undefined;
+  if (raw !== true) throw new TriggerInputError(`${what} must be true or false.`);
+  return true;
+}
+
+function slackFilter(raw: Record<string, unknown>): SlackTriggerFilter {
+  refuseUnknown(raw, ["events", "prLinks", "from", "in", "external", "bots"], "Slack filter");
+  const filter: SlackTriggerFilter = { events: eventList<SlackTriggerEvent>(raw["events"], SLACK_EVENTS, SLACK_TRIGGER_EVENTS, "Slack events") };
+  const from = raw["from"] == null ? [] : textList(raw["from"], "from (Slack people)", (value) => {
+    const person = value.replace(/^@/u, "").trim();
+    return SLACK_PERSON.test(person) ? person : undefined;
+  });
+  const channels = raw["in"] == null ? [] : textList(raw["in"], "in (Slack channels)", (value) => {
+    const channel = value.replace(/^#/u, "").trim();
+    return SLACK_CHANNEL.test(channel) ? channel : undefined;
+  });
+  if (flag(raw["prLinks"], "prLinks")) filter.prLinks = true;
+  if (from.length) filter.from = from;
+  if (channels.length) filter.in = channels;
+  if (flag(raw["external"], "external")) filter.external = true;
+  if (flag(raw["bots"], "bots")) filter.bots = true;
+  return filter;
+}
+
 /** A source's filter, every key checked. */
 export function triggerFilter<S extends BotTriggerSource>(source: S, raw: unknown): BotTriggerFilters[S] {
   if (raw === undefined && source === "webhook") return {} as BotTriggerFilters[S];
@@ -156,6 +188,7 @@ export function triggerFilter<S extends BotTriggerSource>(source: S, raw: unknow
   switch (source) {
     case "github": return githubFilter(raw) as BotTriggerFilters[S];
     case "session": return sessionFilter(raw) as BotTriggerFilters[S];
+    case "slack": return slackFilter(raw) as BotTriggerFilters[S];
     default: return webhookFilter(raw) as BotTriggerFilters[S];
   }
 }
@@ -207,6 +240,7 @@ const FILTER_KEYS: Readonly<Record<BotTriggerSource, readonly string[]>> = {
   github: ["repos", "events", "authors", "labels", "base", "pullRequests", "draft"],
   session: ["events"],
   webhook: ["match"],
+  slack: ["events", "prLinks", "from", "in", "external", "bots"],
 };
 
 /** The filter after a patch's keys: each given key replaces, `null` or an empty list clears an optional one. Only the
@@ -217,7 +251,8 @@ export function patchedFilter<S extends BotTriggerSource>(source: S, current: Bo
   for (const key of FILTER_KEYS[source]) {
     if (!Object.hasOwn(change, key)) continue;
     const value = change[key];
-    if (value === null || (Array.isArray(value) && !value.length && key !== "repos" && key !== "events")) entries.delete(key);
+    // A Slack filter's switches turn off with false too.
+    if (value === null || (value === false && source === "slack") || (Array.isArray(value) && !value.length && key !== "repos" && key !== "events")) entries.delete(key);
     else entries.set(key, value);
   }
   return triggerFilter(source, Object.fromEntries(entries));

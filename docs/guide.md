@@ -594,7 +594,8 @@ sessions' schedules work as always.
 
 Triggers wake a bot when something happens, the way routines wake it on a
 schedule: a pull request changes on GitHub, a session the bot started finishes,
-fails or asks something, or another program calls the trigger's webhook URL.
+fails or asks something, another program calls the trigger's webhook URL, or
+someone pings you in Slack ([Slack](#slack), below).
 They sit in the bot's **Routines** tab, under its routines: each shows what it
 watches, when it last fired, its cooldown and an on/off switch, with **Test**
 (a sample event, now) and **Delete**; **Add trigger** below them. From a
@@ -605,6 +606,7 @@ hui bot trigger add ada --name CI --github DaniFdz/hui --on checks_failed,review
 hui bot trigger add ada --name Deps --github DaniFdz/hui --on pr_opened --author "dependabot[bot]" --label dependencies
 hui bot trigger add ada --name Helpers --session --on finished,failed,waiting
 hui bot trigger add ada --name Deploys --webhook --match status=failed --prompt "Tell me why the deploy failed"
+hui bot trigger add ada --name Reviews --slack --on mention,dm --pr-links --prompt "Review the pull request"
 hui bot trigger list ada
 hui bot trigger test ada CI
 hui bot trigger remove ada Deploys
@@ -641,10 +643,122 @@ in a turn another bot or a trigger started, or that took a message from one
 while it ran, and it can't create webhook triggers, whose token would pass
 through the model.
 
-While bots are off nothing fires: GitHub isn't polled, webhook URLs answer 409,
-and a session event is recorded as skipped. When you turn them on again, what
-happened on GitHub meanwhile arrives as one summary per trigger, not one message
-per event.
+While bots are off nothing fires: GitHub and Slack aren't read, webhook URLs
+answer 409, and a session event is recorded as skipped. When you turn them on
+again, what happened on GitHub, or who pinged you in Slack, meanwhile arrives as
+one summary per trigger, not one message per event.
+
+#### Slack
+
+A Slack trigger wakes a bot when someone pings you in Slack: a message in a
+channel or group DM that @-mentions you, or a direct message to you, usually
+"could you review this?" with a pull request link. Your teammates change
+nothing: HUI reads, as you, the messages that ping you, about once a minute,
+through a Slack app you create in your own workspace. It is read-only: HUI never
+posts, reacts or edits in Slack.
+
+**Create the app** (once):
+
+1. Open [Slack apps](https://api.slack.com/apps), choose **Create New App →
+   From a manifest**, pick your workspace and paste this manifest (Settings →
+   Integrations → Slack has a **Copy manifest** button):
+
+   ```json
+   {
+     "_metadata": {
+       "major_version": 2,
+       "minor_version": 1
+     },
+     "display_information": {
+       "name": "HUI pings",
+       "description": "Lets your own HUI gateway read the Slack messages that mention you or are sent to you. Read-only.",
+       "background_color": "#1f2328"
+     },
+     "settings": {
+       "org_deploy_enabled": false,
+       "socket_mode_enabled": false,
+       "token_rotation_enabled": false
+     },
+     "oauth_config": {
+       "scopes": {
+         "user": [
+           "search:read",
+           "users:read",
+           "channels:history",
+           "groups:history",
+           "im:history",
+           "mpim:history"
+         ]
+       }
+     }
+   }
+   ```
+
+   It asks only for user token scopes, all read-only, and has no bot user:
+
+   - `search:read`: find the messages that mention you and the direct messages
+     sent to you (`search.messages`);
+   - `users:read`: name who asked, and tell bots, apps and people outside your
+     workspace apart (`users.info`);
+   - `channels:history`, `groups:history`, `im:history`, `mpim:history`: read the
+     message a thread reply answers, in public channels, private channels, DMs
+     and group DMs (`conversations.replies`).
+
+   Keep token rotation off: a rotating token expires within a day, HUI doesn't
+   refresh it, and Slack can't turn rotation off again once it is on.
+2. **Install to Workspace** (on the app's Basic Information or OAuth & Permissions
+   page) and allow it. Many company workspaces need a workspace admin to approve
+   apps first; Slack then offers to send them a request
+   ([Slack's guide](https://slack.com/help/articles/222386767-Manage-app-approval-for-your-workspace)).
+3. Copy the **User OAuth Token** (`xoxp-…`) from **OAuth & Permissions** and
+   connect it: Settings → Integrations → Slack, paste it and **Connect**, or
+
+   ```sh
+   hui slack connect      # asks for the token without echoing it; or: pbpaste | hui slack connect
+   hui slack status       # who, which workspace, whether Slack still accepts the token
+   hui slack disconnect   # removes it from this machine
+   ```
+
+HUI checks the token with Slack (`auth.test`), shows who it is and which
+workspace, and keeps it in `~/.config/hui/slack.json`, readable by you only; it
+never reaches the browser, a log or a diagnostic, and goes nowhere but Slack. If
+the token is revoked or expires, or the app is removed, the status says **Token
+revoked or expired: connect again**.
+
+**Review requests, by a bot without a shell.** Give the review to a bot that can't
+run commands, so a Slack message can't make it act on your machine or on GitHub
+as you:
+
+```sh
+hui bot add --name Reviewer --deny-tools bash,terminal,watcher,write,edit,browser,sessions_spawn,sessions_send,subagents
+hui bot trigger add reviewer --name Reviews --slack --on mention,dm --pr-links \
+  --prompt "Someone asked me to review this pull request. Review it from the details below: what it changes, what could break, and the comments you'd leave. Don't run commands or change anything; tell me here."
+```
+
+or, in the bot's Routines tab: **Add trigger → Slack → Review requests**, which
+fills in mentions and DMs, PR links only, a name and that prompt. Each delivery
+says who asked (their display name) and where, quotes the message (and, for a
+thread reply, the message it answers), links to it, and carries every linked pull
+request as the gateway's `gh` reads it: title, author, state, base and head, the
+description, the changed files with their additions and deletions, and the diff,
+each cut at a bound that says so (or what `gh` couldn't read). The bot reviews
+from that alone and answers in its chat; nothing is posted to Slack or GitHub.
+
+- **Filters.** `--on mention,dm`; `--pr-links` keeps only messages linking a
+  GitHub pull request (a thread reply without one counts its thread's);
+  `--from maria,bob` (a handle, display name or member id) and `--in
+  team-reviews` (a channel name or id; DMs aren't channels) narrow it. Bots and
+  apps, and people outside your workspace (Slack Connect), wake it only with
+  `--allow-bots` and `--allow-external`; your own messages never do.
+- **Once each, from now.** A new trigger starts from the moment you add it; an
+  edit or a deletion never fires; each message fires at most once.
+- **Bots off, or the laptop asleep.** While bots are off, nothing is read. When
+  they come back on, or the gateway's machine wakes up, what came meanwhile (the
+  last 24 hours at most) arrives as one catch-up per trigger.
+- **Only you add or change Slack triggers**: they read your messages, so a bot's
+  `triggers` tool can list and remove them but not add or change one.
+- **Not yet**: a mention of a user group (`@team`) doesn't count. Slack's search
+  honours your search preferences, so a channel you left out of search isn't read.
 
 ### Bots talking to bots
 
