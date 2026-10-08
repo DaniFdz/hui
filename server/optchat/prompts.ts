@@ -4,7 +4,7 @@
  * words. They name no user, and hold no date or state, so every request that
  * carries them starts with the same cacheable bytes.
  */
-import { bytes, flatten } from "./text.ts";
+import { flatten } from "./text.ts";
 
 /** The name every prompt below is written for; the agent's own name replaces it. */
 const NAME = "OptChat";
@@ -107,10 +107,11 @@ last reply said, a decision, a past attempt or where a file is, before
 you act, guess or ask. date(id) gives the date and time of message id.`;
 
 /**
- * A real-looking summary line of exactly 512 bytes (asserted in a test): models cannot count bytes, so the compactor
- * is shown how much 512 bytes holds. Dense, several items, each tagged with its kind, like a real line.
+ * The compactor's size reference: models cannot count bytes, so each step shows how long a line may be as this many
+ * dashes, one byte each. A ruler holds nothing a summary could pick up, while a realistic sample line in its place
+ * can end up copied into summaries, as revision 3c190e0 of Taelin's recipe observed.
  */
-export const SCALE_LINE = "user: move the nightly backup from cron to a systemd timer on the NAS, keep 14 daily and 8 weekly snapshots, never touch /srv/media; talk: proposed restic with OnCalendar 04:10 and a healthcheck ping; tool: read /etc/cron.d/backup and nas/backup.nix; echo: cron rsyncs to /mnt/usb, last success 2026-09-28, 3 failures since (disk full, 97%); user: approved, but prune with --keep-within 30d instead of weekly; work: timer and service written, dry run passed (212 GB, 41 min), first real run due tonight at 04:10.";
+export const ruler = (bytes: number): string => "-".repeat(bytes);
 
 /** Split and join, not replaceAll: a name holding "$&" must stay literal. */
 const named = (text: string, name: string) => text.split(NAME).join(name);
@@ -122,16 +123,16 @@ export const masterPrompt = (name: string): string => named(MASTER, name);
 /** How the agent reads its view and uses zoom and date (spec 7.2), including "zoom before you act, guess or ask". */
 export const viewDoc = (name: string): string => named(VIEW_DOC, name);
 
-const scaleIntro = (scale: string) => `For scale, this line is exactly ${bytes(scale)} bytes:\n${scale}\n\n`;
+const scaleIntro = (node: number) => `For scale, the line of dashes below is exactly ${node} bytes:\n${ruler(node)}\n\n`;
 
 /** Step text compressing one message, whole and with its newlines kept: the compactor input is never truncated. */
-export function compressStep(scale: string, node: number, kind: string, text: string): string {
-  return `${scaleIntro(scale)}Compress this message into one line, in at most ${node} bytes:\n${kind}: ${text}`;
+export function compressStep(node: number, kind: string, text: string): string {
+  return `${scaleIntro(node)}Compress this message into one line, in at most ${node} bytes:\n${kind}: ${text}`;
 }
 
 /** Step text merging two lines, written out again whole so the model never has to find them in the context. */
-export function mergeStep(scale: string, node: number, first: string, second: string): string {
-  return `${scaleIntro(scale)}Merge these two lines into one, in at most ${node} bytes:\n${flatten(first)}\n${flatten(second)}`;
+export function mergeStep(node: number, first: string, second: string): string {
+  return `${scaleIntro(node)}Merge these two lines into one, in at most ${node} bytes:\n${flatten(first)}\n${flatten(second)}`;
 }
 
 /** Sent in the same conversation when a line is over the limit: the cut shows exactly how much is over. */

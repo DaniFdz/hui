@@ -303,7 +303,7 @@ test("an OptChat turn starts fresh from the view: system messages, then the view
   assert.equal(compactor.length, 2, "the replies and the merges fit for free");
   const [context, step] = blocks(compactor[0]!.messages[0]!);
   assert.deepEqual([context!.text, context!.cache_control, step!.cache_control !== undefined], ["<chat>\n\n</chat>", undefined, true], "an empty context: no block to mark");
-  assert(step!.text!.startsWith("For scale, this line is exactly 512 bytes:\n"), String(step!.text));
+  assert(step!.text!.startsWith(`For scale, the line of dashes below is exactly 512 bytes:\n${"-".repeat(512)}\n\n`), String(step!.text));
   assert.match(JSON.stringify(compactor[0]!.system), /You write the memory of Grok/u);
   const later = blocks(compactor[1]!.messages[0]!);
   assert.deepEqual(marks(later.slice(0, -1)), [

@@ -10,7 +10,7 @@
  */
 import { browsePage } from "./html.ts";
 import { Compactor, SYSTEM_TIMERS, type Failing, type Limiter, type Summarize, type SummaryUsage, type Timers } from "./compactor.ts";
-import { compactPrompt, SCALE_LINE } from "./prompts.ts";
+import { compactPrompt } from "./prompts.ts";
 import { Store, type JsonValue, type Kind, type MessageLine } from "./store.ts";
 import { bytes, capText, flatten, localDateTime } from "./text.ts";
 import { label, nodeCount, partAt, PLACEHOLDER, Tree, type Part } from "./tree.ts";
@@ -48,8 +48,6 @@ export type OptChatOptions = {
   readonly tries?: number;
   readonly retryMs?: number;
   readonly cap?: number;
-  /** Shown to the compactor as the size reference; defaults to the 512-byte `SCALE_LINE`. */
-  readonly scale?: string;
   /** Shared by every memory of a process to bound model calls overall. */
   readonly limiter?: Limiter;
   readonly now?: () => Date;
@@ -153,7 +151,6 @@ export class OptChatMemory {
       jobs: options.jobs ?? OPTCHAT_DEFAULTS.jobs,
       tries: options.tries ?? OPTCHAT_DEFAULTS.tries,
       retryMs: options.retryMs ?? OPTCHAT_DEFAULTS.retryMs,
-      scale: options.scale ?? SCALE_LINE,
       ...(options.limiter ? { limiter: options.limiter } : {}),
       timers: options.timers ?? SYSTEM_TIMERS,
       now: this.#now,

@@ -221,7 +221,7 @@ const server = createServer(async (request, response) => {
     response.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-store", connection: "keep-alive" });
     messageStart(response);
     if (step.startsWith("That line is ")) { text(response, "FIXTURE_MEMORY retried, now short"); return finish(response); }
-    // After the scale paragraph and the instruction: the message, or the two lines to merge.
+    // After the ruler paragraph and the instruction: the message, or the two lines to merge.
     const input = step.split("\n").slice(4).join("\n");
     const marker = /\b(?:E2E|OPT)_[A-Z0-9_]+/u.exec(input)?.[0] ?? "lines";
     const compress = step.includes("\nCompress this message into one line");

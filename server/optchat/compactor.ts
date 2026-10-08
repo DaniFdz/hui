@@ -88,8 +88,6 @@ export type CompactorOptions = {
   readonly jobs: number;
   readonly tries: number;
   readonly retryMs: number;
-  /** The scale line shown to the model; its byte size is stated with it. */
-  readonly scale: string;
   readonly limiter?: Limiter;
   readonly timers: Timers;
   readonly now: () => Date;
@@ -186,17 +184,17 @@ export class Compactor {
 
   /**
    * One model conversation per node (spec 4.2-4.3): the compaction view's bare lines before the node's end as context,
-   * first, so it caches across calls; then the step with the scale line. A reply over the limit gets the cut-at-limit
-   * feedback in the same conversation, up to `tries` replies, and the shortest one wins.
+   * first, so it caches across calls; then the step, under a ruler as long as the limit. A reply over the limit gets the
+   * cut-at-limit feedback in the same conversation, up to `tries` replies, and the shortest one wins.
    */
   async #compress(l: number, i: number): Promise<string> {
-    const { node, scale, tries: limit } = this.#options;
+    const { node, tries: limit } = this.#options;
     const { tree } = this.#host;
     // Read now, in the pump's turn: rule 3 held for this context when the node started.
     const context = `<chat>\n${this.#host.context(l === 0 ? i : (i + 1) * span(l)).join("\n")}\n</chat>`;
     const step = l === 0
-      ? compressStep(scale, node, this.#host.message(i).kind, this.#host.message(i).text)
-      : mergeStep(scale, node, tree.text(l - 1, 2 * i)!, tree.text(l - 1, 2 * i + 1)!);
+      ? compressStep(node, this.#host.message(i).kind, this.#host.message(i).text)
+      : mergeStep(node, tree.text(l - 1, 2 * i)!, tree.text(l - 1, 2 * i + 1)!);
     const messages: SummaryMessage[] = [{ role: "user", content: [context, step] }];
     const tries: string[] = [];
     for (;;) {

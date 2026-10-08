@@ -133,10 +133,12 @@ one long run cannot be compacted either: that run fails (Durable section 8.3).
 node, at most 8 per memory and 8 across the gateway, through the gateway's models
 with the document's model or the conversation's own, at medium thinking unless
 the document says otherwise. Its context is the compaction view's lines before
-the node ([The view](#the-view)). A failed node is retried every 10 seconds;
-only its first failure is reported (`optchat_memory` diagnostic) and shown in the
-memory's status. Its usage (tokens, cache, cost) is counted in the status since
-the memory opened.
+the node ([The view](#the-view)). Models cannot count bytes, so each step shows
+the limit as a ruler of that many dashes: the realistic sample line it replaces
+could end up copied into summaries, as revision `3c190e0` observed. A failed
+node is retried every 10 seconds; only its first failure is reported
+(`optchat_memory` diagnostic) and shown in the memory's status. Its usage
+(tokens, cache, cost) is counted in the status since the memory opened.
 
 ## The view
 
