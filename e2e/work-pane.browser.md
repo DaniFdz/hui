@@ -82,3 +82,65 @@ Screenshots stay outside Git and go into the PR description.
   system may take `Ctrl+Alt+T` before the page sees it.
 - A theme switch does not recolour an already-open terminal's background (it is
   read when the terminal starts); this predates the Work pane.
+
+## Integrated stack (terminal, Files, VS Code)
+
+Verified on 2026-10-09 on `feat/vscode-view` at `2d0bd2f` (the Work pane, the
+Files view and the VS Code view stacked on the binary terminal stream; that
+commit was later amended only to unsubscribe the app from launcher availability
+changes when it disconnects, as `f9bd9c9`), clean tree, `doctor` passing before and after, driven through the Browser tool in an
+owned headless Brave tab against the real Work pane (no harness). Same launcher
+and fixture as above; the receipt's workspace was made a small Git repository
+(`src/greet.ts`, `README.md`, `package.json`, one commit), and VS Code used a
+real openvscode-server 1.109.5 from
+`NIX_CONFIG='experimental-features = nix-command flakes' nix build nixpkgs#openvscode-server --no-link --print-out-paths`.
+
+- **Launchers.** The empty pane and the **+** menu list **New terminal**
+  `Ctrl+Alt+T`, **Browser** `Ctrl+Alt+B`, **Files** `Ctrl+Alt+F` and **VS Code**
+  `Ctrl+Alt+V`, in that order. With VS Code off (the default) its entry is
+  disabled with *VS Code is off. Turn it on in Settings → Tools → VS Code.* under
+  it, followed by an **Open Settings → Tools → VS Code** entry; the empty pane
+  shows the same reason with the link.
+- **Settings link.** The menu entry opened `/settings/tools` with the VS Code
+  section at the top of the viewport (`top = 0`) and still there 3.5 s later,
+  after the Browser section above it (447 px) had loaded. Saving the
+  openvscode-server path read *Using OpenVSCode Server 1.109.5 · <path>*; turning
+  the view on read **Ready**. Back in the conversation the **VS Code** launcher
+  was enabled without a reload.
+- **Terminal.** **New terminal** opened *Terminal 1* in the workspace
+  (`Shared · Connected`); a typed `printf` with ANSI colours and
+  `ls --color=always` rendered green, blue and red text and a blue `src`.
+- **Files.** `Ctrl+Alt+F` (pressed with focus inside the terminal) opened a
+  Files tab; opening `src` → `greet.ts` changed the tab caption from *Files* to
+  *greet.ts*. Typing a line showed **Saved** within ~2 s and `git diff` held
+  exactly that line. Closing the tab removed its
+  `hui.files-view.v1:<id>` record and left no `hui.file-draft.v1:` entry.
+- **VS Code.** **+** → **VS Code** opened one *VS Code* tab on
+  `/tmp/…/workspace/`: Explorer listed `src`, `fixture.txt`, `package.json`,
+  `README.md`; `greet.ts` opened with the Files edit and an *M* badge, the status
+  bar read `main*`.
+- **Kept mounted.** After switching Terminal 1 → greet.ts → VS Code → Terminal 1,
+  collapsing the pane to its rail (four buttons: expand plus one per view) and
+  reopening it from the rail's VS Code button, the terminal was the same element
+  (a marker set on it survived, status Connected, no replay) and the VS Code frame
+  the same window (a value set on its `contentWindow` survived, `greet.ts` still
+  open).
+- **Split chats.** Splitting the chat right gave two 417 px columns and a 342 px
+  pane (row 1182 px), with no horizontal scroll. A third column collapsed the pane
+  to its 44 px rail with its views still mounted; **Show Work pane** then showed it
+  at its 320 px minimum beside three 320 px columns (multiplexer width equals its
+  client width). Closing the third column gave the pane its 342 px back. The two
+  remaining columns kept the multiplexer's own ratio (514/320 px): the pane
+  reserves 420 px per column in total and leaves their split to the multiplexer.
+- **390×844.** The panel selector listed *Chat*, *Terminal 1 · Work*,
+  *greet.ts · Work*, *VS Code · Work*, then *New terminal*, *Browser* and *Files*
+  as launchers (VS Code's launcher left out while its view is open). Choosing
+  *greet.ts* showed the full-screen destination with the tab strip and the
+  editor at 16 px; document width 390.
+- Page errors: 0. Console errors: 2, VS Code's optional `vsda` files
+  (`vsda_bg.wasm`, `vsda.js`, 404 in every openvscode-server).
+
+Limits of this run: the managed browser view and Files' conflict, upload and
+delete flows were not repeated (see above and `e2e/files-view.browser.md`);
+macOS shortcuts and the Electron window were not run; the VS Code frame's own
+controls were driven with coordinate clicks.
