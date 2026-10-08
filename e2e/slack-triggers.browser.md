@@ -91,4 +91,6 @@ credential, workspace or account is involved.
 8. **390×844**: the Integrations section, the panel sheet with the Slack card and
    the add form (four sources in one row), and the delivered review request show
    without horizontal overflow.
-9. Page errors: none.
+9. Page errors: none (the Browser tool's page error log stayed empty and no
+   resource failed to load); the gateway's UI diagnostics recorded only the event
+   stream failing while the gateway restarted onto the final build.
