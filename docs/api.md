@@ -207,7 +207,9 @@ PI's. `/compact [focus]` and **Compact now** start its compaction task
 `compaction` settings: in the background from 32,768 tokens (Durable's
 `backgroundTokens`) below `contextWindow - reserveTokens`, blocking above that
 threshold, and after a context overflow, always keeping `keepRecentTokens`
-verbatim.
+verbatim. A summary at the conversation's thinking level may use the model's
+whole output cap, not Durable's `0.8 × reserveTokens`: adaptive and
+effort-based models spend their thinking from that cap too.
 
 - Only a blocking compaction (the threshold one above the line, or an overflow
   one) holds anything: its own run waits for the summary, and input meanwhile

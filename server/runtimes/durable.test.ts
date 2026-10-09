@@ -422,6 +422,20 @@ test("Durable compaction keeps the whole history and marks where it summarized",
   assert.doesNotMatch(context, /COMPACT_ONE|COMPACT_TWO/u, "summarized turns leave the model context");
 });
 
+test("a summary on a model that thinks from its output cap gets the model's whole cap", { timeout: 60_000 }, async (t) => {
+  // Durable would cap the summary at 0.8 × 1,000 tokens; adaptive thinking spends from that cap too.
+  const f = await fixture(t, { contextWindow: 200_000, settings: { compaction: { keepRecentTokens: 40, reserveTokens: 1_000 } } });
+  const models = JSON.parse(await readFile(join(f.agentDir, "models.json"), "utf8"));
+  for (const model of models.providers["hui-e2e"].models) model.compat = { forceAdaptiveThinking: true };
+  await writeFile(join(f.agentDir, "models.json"), JSON.stringify(models));
+  const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-summary-cap" }, f.host());
+  await turns(session, ["COMPACT_ONE first turn", "COMPACT_TWO second turn", LONG_TURN]);
+  const end = (await compacted(session)).find((event) => event.type === "compaction_end");
+  assert(end?.type === "compaction_end" && end.outcome === "done", JSON.stringify(end));
+  const summary = (await providerRequests(f.log)).find(summarizing) as { max_tokens?: number; output_config?: unknown };
+  assert.deepEqual([summary.max_tokens, summary.output_config], [4096, { effort: "high" }]);
+});
+
 test("the context meter is Durable's own estimate, system prompt included", { timeout: 60_000 }, async (t) => {
   // A failed answer is no measurement, so right after it Durable estimates the whole context: the summary, the kept
   // turn, the system baseline it rewrote after the summary and the new prompt.
