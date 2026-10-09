@@ -847,12 +847,23 @@ secret-storage cookies on `/`).
 VS Code's WebSocket handshake carries the token inside its own protocol (the
 workbench reads it from its configuration or from the token cookie the browser
 never gets), so the proxied workbench page of either provider includes it,
-served only behind the cookie.
+served only behind the cookie. The configuration tag is found by its id
+whatever its attribute order, quoting or encoding (a compressed page is decoded
+first). A workbench page it cannot be put in is never served as it is, since
+that workbench would sit unconnected without a word: the view shows *VS Code
+could not open* with the reason and **Retry**, and the gateway log records it.
+A refused VS Code WebSocket (wrong origin, no cookie, VS Code's own refusal) is
+logged with its cause, at most once a minute per cause.
 
 The workbench takes HUI's colors (dark or light Modern plus HUI's background,
 panels, text, borders and accent) as configuration defaults read when a frame
 loads, so a theme change applies on the view's **Reload**; the operator's own
-VS Code settings still win. Workspace trust prompts, the start page and AI chat
+VS Code settings still win. Each token is resolved by the page itself before it
+is converted, since custom themes (Catppuccin, Dracula, HUI and every tweakcn
+import) write them as `light-dark(…)` pairs; a token that cannot be read is left
+out, and the gateway refuses a theme whose text does not reach a 3:1 contrast
+on its background and panels, so VS Code then keeps its own theme rather than an
+unreadable one. Workspace trust prompts, the start page and AI chat
 are off by default, as in AgentsInTheCloud: HUI's agents already work in that
 folder with full access. **Open in a new tab** opens the same folder through its
 own ticket.

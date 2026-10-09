@@ -250,9 +250,12 @@ export class VscodeService {
 
   /** The running server, if there is one. The proxy uses only this: a frame's requests never start VS Code, so a
    * crashed server is not restarted by its own reconnecting workbench. */
-  current(): { port: number; token: string; instance: number; flavor: VscodeFlavor } | undefined {
+  current(): { port: number; token: string; instance: number; flavor: VscodeFlavor; label: string } | undefined {
     const running = this.#running;
-    return running && !running.stopping ? { port: running.port, token: running.token, instance: running.instance, flavor: running.provider.flavor } : undefined;
+    return running && !running.stopping ? {
+      port: running.port, token: running.token, instance: running.instance, flavor: running.provider.flavor,
+      label: `${running.provider.name} ${running.provider.version}`,
+    } : undefined;
   }
 
   /** The running server, started now if it is not. Concurrent callers share one start. Refuses with `setup` while

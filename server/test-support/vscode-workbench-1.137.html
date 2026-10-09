@@ -1,0 +1,50 @@
+<!-- Copyright (C) Microsoft Corporation. All rights reserved. -->
+<!-- HUI test fixture: VS Code 1.137.0's workbench page as code serve-web serves it under --server-base-path /__hui/vscode, trimmed (product lists, inline styles). -->
+<!DOCTYPE html>
+<html>
+	<head>
+		<script nonce="NONCE">
+			performance.mark('code/didStartRenderer');
+		</script>
+		<meta charset="utf-8" />
+
+		<!-- Mobile tweaks -->
+		<meta name="mobile-web-app-capable" content="yes" />
+		<meta name="apple-mobile-web-app-capable" content="yes" />
+		<meta name="apple-mobile-web-app-title" content="Code">
+		<link rel="apple-touch-icon" href="/__hui/vscode/stable-645f29cc3176500b4b5762ba887cf2a7f0ffdf2c/static/resources/server/code-192.png" />
+
+		<!-- Disable pinch zooming -->
+		<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no">
+
+		<!-- Workbench Configuration -->
+		<meta id="vscode-workbench-web-configuration" data-settings="{&quot;remoteAuthority&quot;:&quot;gateway.test:7777&quot;,&quot;serverBasePath&quot;:&quot;/__hui/vscode&quot;,&quot;developmentOptions&quot;:{&quot;logLevel&quot;:3},&quot;enableWorkspaceTrust&quot;:true,&quot;productConfiguration&quot;:{&quot;embedderIdentifier&quot;:&quot;server-distro&quot;,&quot;voiceWsUrl&quot;:&quot;wss://falcon-caas.mai.microsoft.com/voice-code/api/v1/realtime/voice&quot;,&quot;extensionsGallery&quot;:{&quot;nlsBaseUrl&quot;:&quot;https://www.vscode-unpkg.net/_lp/&quot;,&quot;serviceUrl&quot;:&quot;https://marketplace.visualstudio.com/_apis/public/gallery&quot;,&quot;itemUrl&quot;:&quot;https://marketplace.visualstudio.com/items&quot;,&quot;publisherUrl&quot;:&quot;https://marketplace.visualstudio.com/publishers&quot;,&quot;resourceUrlTemplate&quot;:&quot;http://gateway.test:7777/__hui/vscode/stable-645f29cc3176500b4b5762ba887cf2a7f0ffdf2c/web-extension-resource/{publisher}.vscode-unpkg.net/{publisher}/{name}/{version}/{path}&quot;,&quot;extensionUrlTemplate&quot;:&quot;https://www.vscode-unpkg.net/_gallery/{publisher}/{name}/latest&quot;,&quot;controlUrl&quot;:&quot;https://main.vscode-cdn.net/extensions/marketplace.json&quot;,&quot;mcpUrl&quot;:&quot;https://main.vscode-cdn.net/mcp/servers.json&quot;}},&quot;callbackRoute&quot;:&quot;/__hui/vscode/stable-645f29cc3176500b4b5762ba887cf2a7f0ffdf2c/callback&quot;}">
+		<meta id="vscode-workbench-web-base-url" data-settings="/__hui/vscode/stable-645f29cc3176500b4b5762ba887cf2a7f0ffdf2c/static">
+
+		<!-- Workbench Auth Session -->
+		<meta id="vscode-workbench-auth-session" data-settings="">
+
+		<!-- Workbench Icon/Manifest/CSS -->
+		<link rel="icon" href="/__hui/vscode/stable-645f29cc3176500b4b5762ba887cf2a7f0ffdf2c/static/resources/server/favicon.ico" type="image/x-icon" />
+		<link rel="manifest" href="/__hui/vscode/stable-645f29cc3176500b4b5762ba887cf2a7f0ffdf2c/static/resources/server/manifest.json" crossorigin="use-credentials" />
+		<link rel="stylesheet" href="/__hui/vscode/stable-645f29cc3176500b4b5762ba887cf2a7f0ffdf2c/static/out/vs/code/browser/workbench/workbench.css">
+
+	</head>
+
+	<body aria-label="">
+	</body>
+
+	<!-- Startup (do not modify order of script tags!) -->
+	<script nonce="NONCE">
+		const baseUrl = new URL(document.getElementById('vscode-workbench-web-base-url').getAttribute('data-settings'), window.location.origin).toString();
+		globalThis._VSCODE_FILE_ROOT = baseUrl + '/out/';
+	</script>
+	<script nonce="NONCE">
+		performance.mark('code/willLoadWorkbenchMain');
+	</script>
+	<!-- always ensure built in english NLS messages -->
+	<script type="module" src="/__hui/vscode/stable-645f29cc3176500b4b5762ba887cf2a7f0ffdf2c/static/out/nls.messages.js"></script>
+	<!-- attempt to load NLS messages in case non-english -->
+	<script type="module" src=""></script>
+	<script type="module" src="/__hui/vscode/stable-645f29cc3176500b4b5762ba887cf2a7f0ffdf2c/static/out/vs/code/browser/workbench/workbench.js"></script>
+</html>
