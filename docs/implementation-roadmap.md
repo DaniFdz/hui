@@ -355,7 +355,8 @@ Validation and responsive proof: [message metadata](../e2e/message-metadata.brow
 ### HUI-04b — Shared terminal panels
 
 **Status:** implemented; validation recorded in
-[`e2e/shared-terminal.browser.md`](../e2e/shared-terminal.browser.md).
+[`e2e/shared-terminal.browser.md`](../e2e/shared-terminal.browser.md). Terminal
+panes moved into the Work pane with HUI-21.
 
 - Ghostty Web + gateway-owned PTYs + same-origin, one-use-ticket WebSockets.
 - Terminal panes use the existing multiplexer, including independent splits,
@@ -1068,6 +1069,23 @@ cleanup. Requests across the connection can now be cancelled (`cancel`), so a
 Stop on the worker closes the card. Proof: `server/worker/protocol.test.ts`,
 `server/worker/host.test.ts`, `server/workers.test.ts` and the worker section of
 `e2e/secret-requests.browser.md`.
+
+### HUI-21 — Work pane
+
+**Status:** implemented on `feat/work-pane`; validation recorded in
+[`e2e/work-pane.browser.md`](../e2e/work-pane.browser.md).
+
+A right-hand Work pane after AgentsInTheCloud's: per conversation, following the
+focused chat pane, a tab strip of Work views with a **+** launcher menu, an empty
+state listing launchers and shortcuts, a collapsed rail, a resizable edge and a
+full-screen destination below 1100px reached from the panel selector. Terminal
+and browser views move out of the chat multiplexer into it (saved layouts migrate
+on load); chat splits and tabs are unchanged. `src/lib/work-pane.ts` is the Work
+view contract that the Files (F) and VS Code (V) views register against. Proof:
+`src/lib/work-pane.test.ts` (state transitions, tolerant loading, retention,
+migration), `src/lib/shortcut-binding.test.ts`, `src/views/panel-selector.test.ts`,
+`src/lib/session-multiplexer.test.ts` (the old format stays readable) and the
+Browser-tool journey.
 
 ## Recommended implementation order
 

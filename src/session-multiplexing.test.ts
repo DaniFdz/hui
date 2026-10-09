@@ -40,7 +40,7 @@ test("the narrow panel selector uses the shared HUI picker instead of a native s
   const app = readFileSync(new URL("./hui-app.ts", import.meta.url), "utf8");
   const selector = readFileSync(new URL("./views/panel-selector.ts", import.meta.url), "utf8");
   const css = readFileSync(new URL("./styles/terminal.css", import.meta.url), "utf8");
-  assert.ok(app.includes("renderPanelSelector(panes, this.sessionLayout.activePaneId"));
+  assert.match(app, /renderPanelSelector\(\{\s*panes,\s*activePaneId: this\.sessionLayout\.activePaneId,/);
   assert.doesNotMatch(app, /aria-label="Active panel"/);
   assert.match(selector, /renderPicker\(\{/);
   assert.match(selector, /label: "Active panel"/);

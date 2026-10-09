@@ -3158,6 +3158,18 @@ pane ID. `/sessions/:id` follows the active pane; query strings are dropped.
 Malformed records are ignored and deleted sessions are removed after registry
 loading.
 
+### Browser-owned Work pane
+
+Also browser presentation state, not an HTTP resource. `hui.work-pane.v1` in
+localStorage is `{ "version": 1, "sessions": { "<sessionId>": { "open", "width",
+"views", "active" } } }`: whether the pane is expanded, its width in CSS pixels,
+the conversation's Work views in tab order and the active view's key. A view is a
+Work view reference: `{ "kind": "terminal", "terminalId" }`, `{ "kind": "browser" }`,
+`{ "kind": "files", "id" }` or `{ "kind": "vscode" }`. Unknown kinds, malformed
+references and duplicate keys are dropped on load, and conversations still at the
+default are not written. Terminal views name gateway terminals
+(`/__hui/sessions/:id/terminals`); the record never creates or ends one.
+
 Each pane renders an independent embedded session application with its own
 detailed event WebSocket, transcript, composer, queue and question state. Visited sessions
 are cached in three stable slots per pane (unsaved queue edits pin their views
@@ -3261,14 +3273,15 @@ the bounded replay with ANSI sequences stripped and a format/truncation label.
 results. Tool guidance requires reading the shared state before writing and
 reserving independent commands for PI's ordinary `bash` tool.
 
-Existing `hui.chat-split-layout.v1` panes may additionally include `terminalId`;
-`sessionId` remains their owning conversation. Old chat-only records still parse.
-Reload restores pane identity, active selection and weights; after gateway
-restart an expired ID displays an error instead of silently creating a shell.
-Center-dropping a chat onto a terminal replaces only the view. A terminal picker
-switches among that conversation's PTYs, **New terminal** creates another, and
-terminal split actions create independent PTYs. Hiding the last terminal view
-returns to its chat. No HUI registry or PI transcript format changes.
+Operator terminals are Work views (`{ "kind": "terminal", "terminalId" }` in
+`hui.work-pane.v1`, see *Browser-owned Work pane*); their conversation is the
+record's session ID. Reload restores the tabs and active view; after a gateway
+restart an expired ID displays an error and a reconnect action instead of
+silently creating a shell. **New terminal** creates another PTY in its own tab;
+closing a tab keeps the PTY, which the **+** menu lists to reopen. `hui.chat-split-layout.v1`
+panes saved before the Work pane may still include `terminalId` (or
+`browser: true`); they still parse, and loading moves them into their
+conversation's Work pane. No HUI registry or PI transcript format changes.
 
 ### Managed browser API and tool
 

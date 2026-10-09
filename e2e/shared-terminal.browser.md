@@ -4,6 +4,12 @@ Verified on 2026-09-25 with the real PI SDK runtime, native PTYs and the local
 deterministic provider. User sessions, credentials and configuration were not
 used. Keep fresh screenshots outside Git and include them in the PR description.
 
+Terminals have since moved from chat panels into the conversation's Work pane:
+the split, picker, panel-separator and hide/reopen steps below describe the
+earlier panel layout. The current tab, launcher and narrow-destination journey
+is recorded in `e2e/work-pane.browser.md`; the sharing, replay, reconnect and
+termination results below still apply.
+
 ## Reproduction
 
 1. Run `npm ci` and `HUI_E2E_PORT=43310 NO_PROXY=localhost,127.0.0.1 npm run e2e:sdk`.

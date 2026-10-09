@@ -1,0 +1,88 @@
+/* The Work pane beside the chat (components/work-pane.ts): tab strip, launcher menu, empty state, collapsed rail,
+ * resizer and the narrow-screen destination. Tokens only; geometry follows the chat header and pane tabs. */
+.hui-workspace-row { display: flex; flex: 1; min-height: 0; min-width: 0; }
+.hui-workspace-row > hui-session-multiplexer { flex: 1; min-width: 0; min-height: 0; }
+hui-work-pane { display: flex; flex: none; min-height: 0; max-width: 100%; }
+
+.work-pane {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  height: 100%;
+  min-height: 0;
+  border-left: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+}
+.work-pane--collapsed { width: 44px; }
+.work-pane svg { flex: none; width: 16px; height: 16px; }
+.work-pane .work-pane__tab-close svg { width: 12px; height: 12px; }
+.work-pane__icon-btn { flex: none; min-width: 28px; width: 28px; height: 28px; padding: 0; border: 0; background: transparent; box-shadow: none; color: var(--muted); }
+.work-pane__icon-btn:hover { color: var(--text); background: var(--bg-hover); }
+
+/* Collapsed: a slim rail with the expand control and one button per open view. */
+.work-pane__rail { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 0; }
+.work-pane__rail .work-pane__expand { margin-bottom: 6px; }
+.work-pane__rail .work-pane__icon-btn[aria-current="true"] { color: var(--text); background: var(--bg-hover); }
+
+.work-pane__header { display: flex; flex: none; align-items: center; gap: 4px; min-height: 48px; padding: 0 8px 0 10px; border-bottom: 1px solid var(--border); }
+.work-pane__title { flex: 1; margin: 0; padding-left: 4px; font-size: 13px; font-weight: 600; }
+.work-pane__tabs { display: flex; flex: 1; align-items: center; gap: 2px; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.work-pane__tab { display: flex; flex: 0 1 auto; align-items: center; gap: 2px; min-width: 64px; max-width: 200px; height: 30px; padding: 0 2px 0 8px; border: 1px solid transparent; border-radius: var(--radius-sm); color: var(--muted); font-size: 12px; user-select: none; }
+.work-pane__tab:hover { color: var(--text); background: color-mix(in srgb, var(--text) 5%, transparent); }
+.work-pane__tab--active { color: var(--text); background: var(--panel); border-color: var(--border); }
+.work-pane__tab-select { display: flex; flex: 1; align-items: center; gap: 6px; min-width: 0; height: 100%; padding: 0; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; }
+.work-pane__tab-select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-radius: 4px; }
+.work-pane__tab-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: start; }
+.work-pane__tab-close { display: inline-flex; flex: none; padding: 4px; border: 0; border-radius: 4px; background: none; color: inherit; cursor: pointer; opacity: 0.55; }
+.work-pane__tab-close:hover { opacity: 1; background: color-mix(in srgb, var(--text) 10%, transparent); }
+.work-pane__tab[draggable="true"] { cursor: grab; }
+
+.work-pane__launcher { flex: none; }
+.work-pane__menu-item { min-width: 240px; }
+.work-pane__menu-text { display: flex; flex-direction: column; gap: 2px; }
+.work-pane__menu-reason { max-width: 260px; color: var(--muted); font-size: 11px; white-space: normal; }
+.work-pane__menu-label { padding: 6px 10px 2px; color: var(--muted); font-size: var(--control-ui-text-xs); font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
+.work-pane__shortcut { padding: 1px 5px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg); color: var(--muted); font-family: var(--font-body); font-size: 11px; line-height: 16px; white-space: nowrap; }
+
+.work-pane__error { display: flex; flex: none; align-items: flex-start; gap: 8px; padding: 8px 8px 8px 12px; border-bottom: 1px solid var(--border); color: var(--danger); font-size: 12px; overflow-wrap: anywhere; }
+.work-pane__error > span { flex: 1; padding-top: 6px; }
+
+/* Every mounted view sits in the same box; only the focused conversation's active view is visible. */
+.work-pane__bodies { position: relative; flex: 1; min-height: 0; min-width: 0; }
+.work-pane--collapsed .work-pane__bodies { display: none; }
+.work-pane--resizing .work-pane__bodies { pointer-events: none; }
+.work-pane__session { position: absolute; inset: 0; visibility: hidden; }
+.work-pane__view { position: absolute; inset: 0; display: flex; flex-direction: column; min-height: 0; min-width: 0; visibility: hidden; }
+.work-pane__session--focused .work-pane__view--active { visibility: visible; }
+
+.work-pane__empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 24px; overflow: auto; }
+.work-pane__empty-lead { margin: 0; color: var(--muted); font-size: 13px; }
+.work-pane__empty-launchers { display: flex; flex-direction: column; gap: 6px; width: min(100%, 320px); margin: 0; padding: 0; list-style: none; }
+.work-pane__empty-launcher { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 40px; padding: 0 12px; border: 1px solid var(--border); border-radius: var(--radius-md, 8px); background: var(--panel); color: var(--text); font: inherit; font-size: 13px; text-align: start; cursor: pointer; }
+.work-pane__empty-launcher:hover:not(:disabled) { background: var(--bg-hover); }
+.work-pane__empty-launcher:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.work-pane__empty-launcher:disabled { color: var(--muted); cursor: not-allowed; }
+.work-pane__empty-label { flex: 1; }
+.work-pane__unavailable { margin: 4px 2px 0; color: var(--muted); font-size: 12px; line-height: 1.4; }
+.work-pane__empty-hint { margin: 0; color: var(--muted); font-size: 12px; }
+
+.work-pane__resizer { position: absolute; z-index: 2; top: 0; bottom: 0; left: -4px; width: 8px; cursor: col-resize; touch-action: none; }
+.work-pane__resizer::after { content: ""; position: absolute; top: 0; bottom: 0; left: 3px; width: 2px; background: transparent; transition: background 150ms ease-out; }
+.work-pane__resizer:hover::after, .work-pane--resizing .work-pane__resizer::after { background: var(--accent); }
+.work-pane__resizer:focus-visible { outline: none; }
+.work-pane__resizer:focus-visible::after { background: var(--accent); }
+.work-pane__announcement { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+/* Below 1100px the pane is a full-screen destination chosen from the panel selector; the chat shows otherwise. */
+@media (max-width: 1099px) {
+  hui-work-pane { display: none; }
+  .hui-workspace-panels--work hui-work-pane { display: flex; flex: 1; width: 100%; }
+  .hui-workspace-panels--work .hui-workspace-row > hui-session-multiplexer { display: none; }
+  .work-pane--narrow { width: 100%; border-left: 0; }
+  .work-pane--narrow .work-pane__header { min-height: 44px; padding-left: 6px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .work-pane__resizer::after { transition: none; }
+}

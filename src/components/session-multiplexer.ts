@@ -11,7 +11,7 @@ import { SessionViewCache } from "../lib/session-view-cache.ts";
 import { HUI_PANE_DRAG_TYPE, HUI_SESSION_DRAG_TYPE, readSessionDragId } from "../lib/session-pane-layout.ts";
 import { SESSION_SPLIT_MEDIA, sessionDropRect, sessionDropZone, sessionPanes, sessionPaneMoveTarget, spotTabs, visibleSessionPanes, type DropZone, type PaneRect, type SessionLayout, type SessionPane, type SplitDirection } from "../lib/session-multiplexer.ts";
 import { icons } from "../lib/icons.ts";
-import { sessionPaneGeometry } from "../lib/session-pane-geometry.ts";
+import { PANE_COLUMN_MIN_WIDTH, sessionPaneGeometry } from "../lib/session-pane-geometry.ts";
 import "./resizable-divider.ts";
 
 export type PanePresentation = { active: boolean; visible: boolean; narrow: boolean; split: boolean };
@@ -33,6 +33,8 @@ export class SessionMultiplexer extends HuiElement {
   @property({ attribute: false }) paneLabel!: (pane: SessionPane) => string;
   @property() draggingSessionId = "";
   @property({ attribute: false }) sessionIds: ReadonlySet<string> | undefined;
+  /** The narrowest a chat column may get while there is room for it (420px beside an open Work pane). */
+  @property({ type: Number }) columnMinimum = PANE_COLUMN_MIN_WIDTH;
   @state() narrow = false;
   @state() private viewportWidth = 0;
   @state() private viewportHeight = 0;
@@ -234,7 +236,7 @@ export class SessionMultiplexer extends HuiElement {
             event.preventDefault();
             activate(next.id, true);
           }}
-        >${tab.terminalId ? icons.squareTerminal : tab.browser ? icons.globe : icons.messageSquare}<span class="hui-pane-tab__label">${label}</span></div>
+        >${icons.messageSquare}<span class="hui-pane-tab__label">${label}</span></div>
         <button type="button" class="hui-pane-tab__close" aria-label=${`Close ${label}`} title="Close tab"
           @click=${(event: Event) => { event.stopPropagation(); this.onClosePane(tab.id); }}>${icons.close}</button>
       </div>`;
@@ -248,7 +250,6 @@ export class SessionMultiplexer extends HuiElement {
     const split = panes.length > 1;
     for (const id of this.retained.keys()) if (!panes.some((pane) => pane.id === id)) this.retained.delete(id);
     const slots = new Map<string, readonly string[]>(panes.map((pane) => {
-      if (pane.terminalId || pane.browser) return [pane.id, []] as const;
       const cache = this.retained.get(pane.id) ?? new SessionViewCache();
       this.retained.set(pane.id, cache);
       if (this.sessionIds) cache.removeMissing(this.sessionIds);
@@ -257,7 +258,7 @@ export class SessionMultiplexer extends HuiElement {
       )].filter((app) => app.hasQueuedMessageEdit).map((app) => app.paneSessionId));
       return [pane.id, cache.retain(pane.sessionId, protectedIds)] as const;
     }));
-    const geometry = sessionPaneGeometry(layout, this.viewportWidth, this.viewportHeight);
+    const geometry = sessionPaneGeometry(layout, this.viewportWidth, this.viewportHeight, this.columnMinimum);
     const canvas = this.narrow ? { width: this.viewportWidth, height: this.viewportHeight } : geometry;
     // DOM order never follows layout order: even Lit's keyed reparenting would
     // disconnect custom elements and tear down their streams/terminal canvases.
@@ -278,7 +279,7 @@ export class SessionMultiplexer extends HuiElement {
               style=${rectStyle(rect)}
               @pointerdown=${() => this.onFocusPane(pane.id)} @focusin=${() => this.onFocusPane(pane.id)}
             >${!this.narrow && spot?.tabs ? this.renderTabs(spotTabs(spot), pane.id) : nothing}<div class="chat-pane-cache">
-              ${pane.terminalId || pane.browser ? html`<div class="chat-pane-cache__pane chat-pane-cache__pane--visible" ?inert=${!visible} aria-hidden=${String(!visible)}>${this.renderPane(pane, { active, visible, narrow: this.narrow, split })}</div>` : repeat(slots.get(pane.id) ?? [], (id) => id, (id) => {
+              ${repeat(slots.get(pane.id) ?? [], (id) => id, (id) => {
                 const current = id === pane.sessionId;
                 return html`<div class="chat-pane-cache__pane ${current ? "chat-pane-cache__pane--visible" : ""} ${current && active ? "chat-pane-cache__pane--active" : ""}"
                   ?inert=${!visible || !current} aria-hidden=${String(!visible || !current)}
@@ -288,7 +289,7 @@ export class SessionMultiplexer extends HuiElement {
           })}
           ${this.narrow ? nothing : repeat(geometry.dividers, (divider) => divider.id, (divider) => html`<resizable-divider
             style=${rectStyle(divider)} orientation=${divider.columnId ? "horizontal" : "vertical"}
-            .splitRatio=${divider.ratio} .resizeExtent=${divider.extent} label="Resize"
+            .splitRatio=${divider.ratio} .resizeExtent=${divider.extent} .minRatio=${divider.minRatio} .maxRatio=${divider.maxRatio} label="Resize"
             @resize=${(event: CustomEvent<{ splitRatio: number }>) => this.onResize(divider.columnId, divider.index, event.detail.splitRatio)}
             @resize-end=${this.onResizeEnd}
           ></resizable-divider>`)}

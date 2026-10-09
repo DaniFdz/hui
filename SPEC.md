@@ -263,14 +263,80 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   data; the URL identifies the active session. Below 1100px only the active pane
   is visible, with the other panes still mounted; sidebar selection changes focus.
   Any pane can close without stopping its runtime or remounting survivors.
-- Existing chat and terminal panes can be repositioned by dragging their header
+- Existing chat panes can be repositioned by dragging their header
   or move handle. Edges relocate the pane into a column or stack; center drops
   swap both panes. Self-drops and cancellation do nothing. Pane identity,
-  cached views, drafts, scroll, streams and terminal connections survive moves;
+  cached views, drafts, scroll and streams survive moves;
   the moved pane keeps focus. Arrow keys on **Move panel** provide a keyboard
   path beside neighboring panes. The layout persists in the existing browser
   format. Moving is desktop-only, like edge splitting; narrow screens retain
   the active-pane presentation and do not expose an unusable drag handle.
+- The **Work pane** (after AgentsInTheCloud's) sits to the right of the chat
+  panes and shows the Work views of the focused conversation: its terminals and
+  its browser view, with Files and VS Code kinds registering through the same
+  contract (`src/lib/work-pane.ts`). Each conversation has its own pane; moving
+  focus to another chat pane or conversation switches the contents. One view is
+  visible at a time, chosen from a tab strip (icon, title, close; drag or
+  Alt+Shift+Arrow to reorder, Arrow/Home/End to move, Delete to close). The **+**
+  menu launches views (Ctrl+Alt+Shift+T / ⌥⇧⌘T new terminal, Ctrl+Alt+Shift+B /
+  ⌥⇧⌘B browser)
+  and reopens running terminals whose tab was closed; with nothing open the pane
+  lists the same launchers with their shortcuts. A launcher that cannot act says
+  why (the browser tool turned off, a conversation on a remote worker has no
+  local terminal). **Hide Work pane** (Ctrl+Alt+Shift+P / ⌥⇧⌘P) collapses it to a rail
+  with one button per open view; its left edge resizes with the pointer or the
+  arrow keys (Shift for larger steps, Home/End for the limits), keeping at least
+  420px for each chat column side by side: the pane yields width down to its own
+  320px minimum, and when even that does not fit (say three split chats) it shows
+  as its rail until the operator expands it anyway or a view is opened, then at
+  its minimum with the chat columns narrower. While the pane is open the chat
+  splitter keeps the same 420px per column: the columns share the room by their
+  weights above it (closing a column rebalances the survivors rather than leaving
+  one at 320px), the divider stops where a column would drop below it, and when
+  420px each does not fit the columns share the room equally, down to the usual
+  320px. Escape inside the pane returns focus to the chat and never
+  stops the agent's turn. Below 1100px the pane is a full-screen destination: the
+  panel selector lists the chat panes, the open Work views and the launchers, and
+  **Back to chat** or Ctrl+Alt+Shift+P returns. Hidden views stay mounted, so terminals
+  and pages keep their state across tab switches, collapsing and focus changes,
+  for the three most recently focused conversations that have views; a view of
+  an older one reconnects (a terminal replays its snapshot) when shown again.
+  Open/closed state, width, views and the active view are browser-local
+  (`localStorage` `hui.work-pane.v1`, keyed by session id); unknown kinds and
+  malformed records are dropped on load, and a removed conversation's record
+  goes with it. Layouts saved before the Work pane load without loss: their
+  terminal and browser panes move into their conversation's Work pane and the
+  chat panes, splits and tabs stay as they were.
+- **Work pane shortcuts** are one scheme: Mod+Alt+Shift plus the initial of what
+  they open (⌥⇧⌘ on macOS, Ctrl+Alt+Shift elsewhere): **T** new terminal, **B**
+  browser and **P** to show or hide the pane. They are listened for on the
+  document in the capture phase, so they work from the composer and inside a
+  terminal. Each one is shown where it acts (launchers, **+** menu, rail and
+  toggle tooltips, `aria-keyshortcuts`). The table and the chords it avoids live
+  in `src/lib/work-shortcuts.ts`, whose test fails if a binding lands on one.
+  Plain ⌥⌘/Ctrl+Alt letters are not used: Apple's standard keys take ⌥⌘T
+  (toolbar), ⌥⌘F (search field), ⌥⌘V (apply style), ⌥⌘W (close all windows;
+  Safari: Close Other Tabs) and ⌥⌘C/D/H/I/M; Chrome takes ⌥⌘B (Bookmark Manager),
+  ⌥⌘F (search the web), ⌥⌘I/J/U/P/N; Safari ⌥⌘B (Edit Bookmarks) and ⌥⌘L/U;
+  Firefox ⌥⌘F/R/U and its developer tools ⌥⌘I/K/C/E/M/J/Z, and Ctrl+Alt+R/X/Z
+  on Linux and Windows; GNOME takes Ctrl+Alt+T before the page sees it, KDE and
+  Xfce Ctrl+Alt+L. With Shift only ⌥⇧⌘Q (log out) and ⌥⇧⌘V (Paste and Match
+  Style) are standard on macOS, so the scheme skips Q and V; W stays out because
+  Safari's Close All Windows is ⌥⇧⌘W. Terminal programs bind no Ctrl+Alt+Shift
+  letters (Emacs and readline use Ctrl+Alt letters, which reach a terminal as
+  Meta+Ctrl).
+  Chrome lets a page cancel every accelerator except new/close tab or window,
+  reopening a tab and tab switching (`IsReservedCommandOrKey`); Firefox reserves
+  only its `reserved="true"` keys. On Windows layouts with AltGr, Ctrl+Alt is
+  AltGr: a chord that types a character there (AltGr+E → €) stays text, one that
+  types nothing is the shortcut. Sources: Apple HIG *Keyboards*
+  (developer.apple.com/design/human-interface-guidelines/keyboards), Chrome
+  keyboard shortcuts (support.google.com/chrome/answer/157179) and
+  `chrome/browser/ui/browser_command_controller.cc`, Safari shortcuts
+  (support.apple.com/guide/safari/cpsh003, ibrw1039, ibrw3ceda9e7), Firefox
+  `browser/base/content/browser-sets.inc` with `browserSets.ftl` and the
+  DevTools shortcut list (firefox-source-docs.mozilla.org/devtools-user/keyboard_shortcuts),
+  GNOME/Ubuntu keyboard settings (help.gnome.org/gnome-help/keyboard-shortcuts-set.html).
 - Settled user messages expose copying in the original context-menu position
   (right-click or keyboard context key/Shift+F10), not an extra footer action.
   Assistant responses retain the footer copy button. Settled user-message
@@ -518,12 +584,15 @@ bundled Symbols Nerd Font Mono face placed after the chosen font, so prompt icon
 work in the browser and the desktop app whether or not the local font matches.
 
 
-The chat header's **Open terminal** opens an interactive shell in the session's
-directory/worktree, in the same resizable column/stack layout as chat. Terminal
-panels can create/select additional shells, split right/down, and hide without
-ending their processes. **End terminal** explicitly terminates the shell and its
-descendants. On narrow screens an active-panel selector switches between chat
-and terminal while preserving hidden views. Opening a terminal does not call PI.
+The chat header's **Open terminal** shows the conversation's terminal in its
+Work pane: its open terminal tab, else its first running shell, else a new
+interactive shell in the session's directory/worktree. Each terminal is its own
+tab; **New terminal** in the pane's **+** menu (Ctrl+Alt+Shift+T / ⌥⇧⌘T) creates another.
+Closing a tab hides the terminal without ending its process; the **+** menu lists
+running terminals without a tab under *Running* to reopen them. **End terminal**
+in the view's ⋯ menu explicitly terminates the shell and its descendants and
+closes its tab. On narrow screens the panel selector switches between chat and
+terminal while preserving hidden views. Opening a terminal does not call PI.
 
 HUI owns these PTYs and their bounded in-memory output, separately from PI's
 RPC/SDK and transcripts. Browser reload and disconnection preserve shell state
@@ -545,8 +614,9 @@ Ghostty Web renders the terminal; `@lydell/node-pty` owns the shell; `ws` carrie
 input/output/size changes. Output streams as raw binary bytes and the replay
 buffer appends in time proportional to each chunk, so heavy output (builds, logs,
 full-screen programs) costs neither JSON encoding nor re-copying the buffer; a
-pane resizes its PTY only when its visible grid actually changes. These dependencies and the additive browser-local
-terminal pane metadata were authorized with the shared-terminal feature. PI
+terminal view resizes its PTY only when its visible grid actually changes. These
+dependencies and the additive browser-local terminal metadata (now the Work pane
+record) were authorized with the shared-terminal feature. PI
 configuration and HUI's durable registry format remain unchanged.
 
 ## Managed browser
@@ -588,19 +658,21 @@ browser activity carries a preview. It streams while the agent's turn runs and
 the preview is on screen, then keeps its last frame; a preview that appears idle
 (a reopened conversation, a reload) takes one fresh frame of the tab if it is
 still open, and nothing is shown when no page is left to show. Selecting the
-preview, or the globe button in the conversation header, opens the **browser
-panel**: a larger live view beside the chat (the same multiplexer as terminal
-panes, and the narrow-screen panel selector) that follows the agent's tab or
-watches another of the conversation's tabs until Follow agent. Both are
+preview, or the globe button in the conversation header, opens the conversation's
+**browser view** in its Work pane (at most one per conversation; also launched
+from the pane's **+** menu, Ctrl+Alt+Shift+B / ⌥⇧⌘B): a larger live view beside the chat
+that follows the agent's tab or watches another of the conversation's tabs until
+Follow agent. Both are
 read-only. Frames come from a CDP screencast that runs only while someone
 watches and only when the page repaints (at most about ten frames a second).
 Headless tabs each get their own window, so conversations never hide each
 other's pages.
 
 No new dependency is added: HUI speaks CDP directly. Browser settings are an
-additive `browser` block in `settings.json`; the browser pane is an additive
-`browser: true` flag in the browser-local split layout. PI transcripts and the
-registry format are unchanged.
+additive `browser` block in `settings.json`; the browser view is a
+`{ "kind": "browser" }` entry in the browser-local Work pane record (layouts
+saved earlier marked it with `browser: true` and load into the Work pane). PI
+transcripts and the registry format are unchanged.
 
 ## Live chat projection
 
