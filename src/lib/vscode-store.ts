@@ -1,8 +1,8 @@
 /**
  * Browser client for the VS Code view: the gateway's VS Code status (what can run here, what a first open must ask,
  * an install's progress), its actions (accept or revoke the VS Code Server license, install or remove
- * openvscode-server, stop), the one-use frame URL for a conversation's folder, and HUI's colors read from its tokens
- * so VS Code can wear them. The gateway runs and guards the server (server/vscode.ts).
+ * openvscode-server, stop) and the one-use frame URL for a conversation's folder; HUI's colors for it come from
+ * vscode-theme.ts. The gateway runs and guards the server (server/vscode.ts).
  */
 import { CLIENT_HEADERS, fetchJson, refreshSettings } from "./settings-store.ts";
 import { fetchWithResponseDeadline } from "./gateway-request.ts";
@@ -79,31 +79,4 @@ export async function connectVscode(sessionId: string, theme: VscodeTheme | unde
   }
   const folder = String(body.folder ?? "");
   return { url: body.url, folder, label: String(body.label ?? folder), instance: Number(body.instance ?? 0) };
-}
-
-/** HUI's tokens as #rrggbb, whatever color syntax the theme uses: a 1×1 canvas converts and composites them. */
-export function readVscodeTheme(root: Element = document.documentElement): VscodeTheme | undefined {
-  const style = getComputedStyle(root);
-  const context = document.createElement("canvas").getContext("2d", { willReadFrequently: true });
-  if (!context) return undefined;
-  const hex = (name: string, over?: string): string | undefined => {
-    const value = style.getPropertyValue(name).trim();
-    if (!value) return undefined;
-    context.clearRect(0, 0, 1, 1);
-    if (over) { context.fillStyle = over; context.fillRect(0, 0, 1, 1); }
-    context.fillStyle = "#000000";
-    context.fillStyle = value;
-    context.fillRect(0, 0, 1, 1);
-    const [r = 0, g = 0, b = 0] = context.getImageData(0, 0, 1, 1).data;
-    return `#${[r, g, b].map((channel) => channel.toString(16).padStart(2, "0")).join("")}`;
-  };
-  const background = hex("--bg");
-  if (!background) return undefined;
-  const panel = hex("--panel", background) ?? background;
-  const elevated = hex("--bg-elevated", background) ?? panel;
-  const text = hex("--text", background);
-  if (!text) return undefined;
-  const border = hex("--border", background);
-  const accent = hex("--accent", background);
-  return { background, panel, elevated, text, ...(border ? { border } : {}), ...(accent ? { accent } : {}) };
 }

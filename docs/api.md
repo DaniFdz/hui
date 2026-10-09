@@ -3534,7 +3534,9 @@ seconds answers 202 and carries on; the view follows the status and calls
 `connect` again once it is `running`. A start failure is 502 `failed`, too many
 outstanding tickets 429 `busy`. `theme` is `{ background, panel, elevated, text,
 border?, accent? }`; only `#rrggbb` values pass and the four base colors are
-required, otherwise it is ignored. `url` is a one-use ticket valid for 30 seconds
+required, otherwise it is ignored. It is also ignored when `text` falls below a
+3:1 WCAG contrast on `background`, `panel` or `elevated` (VS Code then keeps its
+own theme). `url` is a one-use ticket valid for 30 seconds
 (at most 64 outstanding).
 
 `enter` refuses a cross-site request (`Sec-Fetch-Site: cross-site`) and an
@@ -3554,8 +3556,11 @@ Code derives its remote authority from it), drops hop-by-hop and
 `vscode-tkn` cookie with the real token, removes VS Code's `vscode-tkn`
 `Set-Cookie` from responses (the WebSocket's 101 included) and rewrites every other `Set-Cookie` path outside
 `/__hui/vscode` (serve-web's `Path=/` secret-storage cookies) to `/__hui/vscode`.
-The workbench page (a 200 `text/html` GET; serve-web's 202 "downloading" page
-passes unchanged) is buffered and its `vscode-workbench-web-configuration` gains
+The workbench page (a 200 `text/html` GET of `/__hui/vscode/`, or any such
+document naming the configuration tag; serve-web's 202 "downloading" page and
+other documents such as a webview's pass unchanged) is buffered, decoded when
+compressed (gzip, deflate, br), and its `vscode-workbench-web-configuration`
+(found by id whatever its attribute order, quoting or entity encoding) gains
 `enableWorkspaceTrust: false`, configuration defaults (no trust prompt or
 banner, `workbench.startupEditor: none`, the secondary side bar hidden,
 `chat.disableAIFeatures`, and with a theme `workbench.colorTheme` — Default Light
@@ -3566,8 +3571,12 @@ cookie the browser never gets); over TLS an `http://<remoteAuthority>/` web-exte
 `resourceUrlTemplate` becomes `https://`. It is served `no-store`. Refusals are
 small HTML pages with `<meta name="hui-vscode-error" content="<code>"
 data-message="…">`: 403 `unauthorized`/`expired`/`cross-site`, 503 `stopped` when
-no server runs (the proxy never starts one) and 502 `failed` when it does not
-answer.
+no server runs (the proxy never starts one), 502 `failed` when it does not
+answer, and 502 `incompatible` when the workbench page has no configuration the
+token can be put in (also an `error` Logs entry, action `vscode-workbench`, with
+the page's first words). A refused WebSocket upgrade (origin, cookie, VS Code's
+own non-101 answer or no answer) is a `warning` Logs entry, action
+`vscode-socket`, at most once a minute per cause.
 
 A `server` runs as `<executable> --host 127.0.0.1 --port <free port>
 --connection-token-file <dir>/connection-token --server-base-path /__hui/vscode
