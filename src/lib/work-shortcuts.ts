@@ -13,6 +13,9 @@ import { shortcutChord } from "./shortcut-binding.ts";
 export const WORK_SHORTCUTS = {
   /** Show or hide the Work pane: P for pane (W is Safari's Close All Windows with or without Shift). */
   togglePane: "Mod+Alt+Shift+KeyP",
+  /** Maximize the Work pane over the chat, or restore the chat: M for maximize (⌥⌘M, without Shift, is macOS's
+   * minimize all windows and Firefox's Responsive Design Mode). */
+  maximizePane: "Mod+Alt+Shift+KeyM",
   terminal: "Mod+Alt+Shift+KeyT",
   browser: "Mod+Alt+Shift+KeyB",
   files: "Mod+Alt+Shift+KeyF",
@@ -39,7 +42,7 @@ export const AVOIDED_SHORTCUTS: readonly AvoidedShortcut[] = [
   apple("Meta+Alt+KeyF", "macOS: jump to the search field; Chrome: search the web; Firefox: focus web search"),
   apple("Meta+Alt+KeyH", "macOS: hide other apps"),
   apple("Meta+Alt+KeyI", "macOS: inspector; Chrome, Safari and Firefox: developer tools"),
-  apple("Meta+Alt+KeyM", "macOS: minimize all windows"),
+  apple("Meta+Alt+KeyM", "macOS: minimize all windows; Firefox: Responsive Design Mode"),
   apple("Meta+Alt+KeyT", "macOS: show or hide the toolbar"),
   apple("Meta+Alt+KeyV", "macOS: apply style"),
   apple("Meta+Alt+KeyW", "macOS: close all windows; Safari: Close Other Tabs"),

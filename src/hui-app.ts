@@ -241,8 +241,8 @@ import { HUI_PAGES, type HuiPage } from "./lib/pages.ts";
 import { activeSessionPane, addSessionTab, closeSessionPane, focusSessionPane, isChatPane, moveSessionPane, parseSessionLayout, replacePaneSession, resizeSessionLayout, SESSION_LAYOUT_KEY, SESSION_SPLIT_MEDIA, sessionPanes, visibleSessionPanes, singleSessionLayout, splitSessionPane, type DropZone, type SessionLayout, type SessionPane, type SplitDirection } from "./lib/session-multiplexer.ts";
 import {
   activateWorkView, closeWorkView, launchableWorkViewKinds, migrateLayoutWorkViews, openWorkView, parseWorkPaneStore, pruneWorkPaneStore, registerWorkViewKind, reorderWorkView,
-  retainWorkSessions, serializeWorkPaneStore, sessionWorkPane, setWorkPaneOpen, setWorkPaneWidth, workViewKey, workViewKind, workViewKinds,
-  WORK_PANE_CHAT_MIN_WIDTH, WORK_PANE_KEY, WORK_PANE_TOGGLE_SHORTCUT, type WorkPaneStore, type WorkViewRef,
+  retainWorkSessions, serializeWorkPaneStore, sessionWorkPane, setWorkPaneMaximized, setWorkPaneOpen, setWorkPaneWidth, workPaneMaximized, workViewKey, workViewKind, workViewKinds,
+  WORK_PANE_CHAT_MIN_WIDTH, WORK_PANE_KEY, WORK_PANE_MAXIMIZE_SHORTCUT, WORK_PANE_TOGGLE_SHORTCUT, type WorkPaneStore, type WorkViewRef,
 } from "./lib/work-pane.ts";
 import { PANE_COLUMN_MIN_WIDTH } from "./lib/session-pane-geometry.ts";
 import { terminalWorkViewKind } from "./lib/work-views/terminal.ts";
@@ -768,6 +768,9 @@ export class HuiApp extends HuiElement {
       return;
     }
     if (!this.embeddedPane && this.view === "home" && this.selected) {
+      // A maximized Work pane hides the chat: Escape never stops a turn the operator cannot see.
+      const workSessionId = this.workSessionId();
+      if (workSessionId && workPaneMaximized(sessionWorkPane(this.workPanes, workSessionId), this.workNarrow)) return;
       this.activePaneApp()?.handleGlobalEscape(event);
       return;
     }
@@ -2118,9 +2121,29 @@ export class HuiApp extends HuiElement {
     else this.focusActiveComposer();
   }
 
-  /** Escape inside the pane, or **Back to chat**: return to the conversation without touching its turn. */
+  /** Maximizes the focused conversation's Work pane over its chat columns, or restores them (desktop only; narrow
+   * screens already show one panel at a time). The chat stays mounted underneath. */
+  private toggleWorkPaneMaximized(maximized?: boolean) {
+    const sessionId = this.workSessionId();
+    if (!sessionId || this.workNarrow) return;
+    const next = maximized ?? !workPaneMaximized(sessionWorkPane(this.workPanes, sessionId), false);
+    this.commitWorkPanes(setWorkPaneMaximized(this.workPanes, sessionId, next));
+    // Focus left in the now hidden chat moves into the pane; focus already in the pane (a terminal) stays put.
+    if (next) void this.updateComplete.then(() => {
+      const element = this.workPaneElement();
+      if (element && !element.contains(document.activeElement)) element.focusPane("active");
+    });
+  }
+
+  /** Escape inside the pane, or **Back to chat**: return to the conversation without touching its turn. A maximized
+   * pane hides the chat, so Escape goes to the panel selector, the way back to it; it never restores by itself. */
   private leaveWorkPane = () => {
     if (this.workNarrow) this.workNarrowShown = false;
+    const sessionId = this.workSessionId();
+    if (sessionId && workPaneMaximized(sessionWorkPane(this.workPanes, sessionId), this.workNarrow)) {
+      this.renderRoot.querySelector<HTMLElement>(".hui-panel-selector .picker-select__trigger")?.focus({ preventScroll: true });
+      return;
+    }
     this.focusActiveComposer();
   };
 
@@ -2139,6 +2162,12 @@ export class HuiApp extends HuiElement {
       event.preventDefault();
       event.stopPropagation();
       this.toggleWorkPane();
+      return;
+    }
+    if (matchesShortcut(event, WORK_PANE_MAXIMIZE_SHORTCUT)) {
+      event.preventDefault();
+      event.stopPropagation();
+      this.toggleWorkPaneMaximized();
       return;
     }
     const kind = workViewKinds().find((candidate) => candidate.shortcut && matchesShortcut(event, candidate.shortcut));
@@ -5889,7 +5918,10 @@ export class HuiApp extends HuiElement {
     const work = sessionWorkPane(this.workPanes, workSessionId);
     this.workRetained = retainWorkSessions(this.workRetained, workSessionId, this.workPanes);
     const workShown = this.workNarrow && this.workNarrowShown;
-    return html`<div class="hui-workspace-panels ${workShown ? "hui-workspace-panels--work" : ""}">
+    // Maximized on desktop: the Work pane fills the row and the panel selector (the narrow chooser) leads back to
+    // the chat; the chat columns stay mounted, hidden and inert, underneath.
+    const maximized = workPaneMaximized(work, this.workNarrow);
+    return html`<div class="hui-workspace-panels ${workShown ? "hui-workspace-panels--work" : ""} ${maximized ? "hui-workspace-panels--maximized" : ""}">
     ${renderPanelSelector({
       panes,
       activePaneId: this.sessionLayout.activePaneId,
@@ -5899,15 +5931,22 @@ export class HuiApp extends HuiElement {
         return kind ? [{ key: workViewKey(ref), title: kind.title(ref), icon: kind.icon }] : [];
       }),
       launchers: launchableWorkViewKinds(work).map((kind) => ({ kind: kind.kind, label: kind.label, icon: kind.icon, unavailable: kind.unavailable?.(workSessionId) })),
-      activeWorkKey: workShown ? work.active ?? "" : undefined,
-      workShown,
-      onSelectPane: (id) => { this.workNarrowShown = false; this.focusSessionPane(id); },
-      onSelectWork: (key) => { this.commitWorkPanes(activateWorkView(this.workPanes, workSessionId, key, false)); this.workNarrowShown = true; },
-      onShowWork: () => { this.workNarrowShown = true; },
+      activeWorkKey: workShown || maximized ? work.active ?? "" : undefined,
+      workShown: workShown || maximized,
+      onSelectPane: (id) => {
+        this.workNarrowShown = false;
+        // Choosing a chat while maximized restores it beside the pane.
+        if (maximized) this.commitWorkPanes(setWorkPaneMaximized(this.workPanes, workSessionId, false));
+        this.focusSessionPane(id);
+        if (maximized) this.focusActiveComposer();
+      },
+      onSelectWork: (key) => { this.commitWorkPanes(activateWorkView(this.workPanes, workSessionId, key, false)); if (this.workNarrow) this.workNarrowShown = true; },
+      onShowWork: () => { if (this.workNarrow) this.workNarrowShown = true; },
       onLaunch: (kind) => void this.launchWorkView(kind),
     })}
     <div class="hui-workspace-row">
     <hui-session-multiplexer
+      ?inert=${maximized}
       .layout=${this.sessionLayout}
       .sessionIds=${new Set(this.groups.flatMap((group) => group.sessions.map(({ id }) => id)))}
       .draggingSessionId=${this.draggingSessionId}
@@ -5951,6 +5990,7 @@ export class HuiApp extends HuiElement {
       }}
       .onReorder=${(key: string, index: number) => this.commitWorkPanes(reorderWorkView(this.workPanes, workSessionId, key, index))}
       .onToggle=${(open: boolean) => this.commitWorkPanes(setWorkPaneOpen(this.workPanes, workSessionId, open))}
+      .onMaximize=${(next: boolean) => this.toggleWorkPaneMaximized(next)}
       .onResize=${(width: number, available: number, done: boolean) => {
         this.workPanes = setWorkPaneWidth(this.workPanes, workSessionId, width, available, this.sessionLayout?.columns.length ?? 1);
         if (done) this.persistWorkPanes();

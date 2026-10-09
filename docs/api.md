@@ -3171,8 +3171,10 @@ loading.
 ### Browser-owned Work pane
 
 Also browser presentation state, not an HTTP resource. `hui.work-pane.v1` in
-localStorage is `{ "version": 1, "sessions": { "<sessionId>": { "open", "width",
-"views", "active" } } }`: whether the pane is expanded, its width in CSS pixels,
+localStorage is `{ "version": 1, "sessions": { "<sessionId>": { "open", "maximized"?, "width",
+"views", "active" } } }`: whether the pane is expanded, whether it is maximized over
+the chat columns (written only as `true`, and only with `open`; records without
+it load as not maximized), its width in CSS pixels,
 the conversation's Work views in tab order and the active view's key. A view is a
 Work view reference: `{ "kind": "terminal", "terminalId" }`, `{ "kind": "browser" }`,
 `{ "kind": "files", "id" }` or `{ "kind": "vscode" }`. Unknown kinds, malformed
