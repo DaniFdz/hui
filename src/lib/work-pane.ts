@@ -7,6 +7,8 @@
 import type { TemplateResult } from "lit";
 import type { OpenSettingsDetail } from "./open-settings.ts";
 import { closeSessionPane, isChatPane, locateSessionPane, replacePaneSession, sessionPanes, spotTabs, type SessionLayout } from "./session-multiplexer.ts";
+import { PANE_DIVIDER_SIZE } from "./session-pane-geometry.ts";
+import { WORK_SHORTCUTS } from "./work-shortcuts.ts";
 
 export type WorkViewRef =
   | { kind: "terminal"; terminalId: string }
@@ -41,7 +43,7 @@ export type WorkViewKind<R extends WorkViewRef = WorkViewRef> = {
   label: string;
   /** 16px SVG, explicit size. */
   icon: TemplateResult;
-  /** e.g. "Mod+Alt+KeyF" (display + binding). */
+  /** e.g. "Mod+Alt+Shift+KeyF" (display + binding); the entry in `WORK_SHORTCUTS`. */
   shortcut?: string;
   /** Visible reason when it cannot launch (for this conversation, when given). */
   unavailable?(sessionId?: string): string | undefined;
@@ -109,7 +111,7 @@ export const WORK_PANE_CHAT_MIN_WIDTH = 420;
  * conversation pushed out of this set reconnects (terminals replay their snapshot) when it is shown again. */
 export const WORK_PANE_RETAINED_SESSIONS = 3;
 /** Shows or hides the Work pane (on narrow screens: opens it as the destination, or returns to the chat). */
-export const WORK_PANE_TOGGLE_SHORTCUT = "Mod+Alt+KeyW";
+export const WORK_PANE_TOGGLE_SHORTCUT = WORK_SHORTCUTS.togglePane;
 
 export type SessionWorkPane = {
   /** Expanded on desktop. On narrow screens the pane is a destination instead (see the app's narrow state). */
@@ -197,9 +199,11 @@ export function setWorkPaneOpen(store: WorkPaneStore, sessionId: string, open: b
   return update(store, sessionId, (pane) => pane.open === open ? pane : { ...pane, open });
 }
 
-/** The room the chat keeps beside the pane: `WORK_PANE_CHAT_MIN_WIDTH` per side-by-side chat column. */
+/** The room the chat keeps beside the pane: `WORK_PANE_CHAT_MIN_WIDTH` per side-by-side chat column, plus the
+ * dividers between them. */
 function chatRoom(chatColumns: number): number {
-  return WORK_PANE_CHAT_MIN_WIDTH * Math.max(1, Math.trunc(chatColumns) || 1);
+  const columns = Math.max(1, Math.trunc(chatColumns) || 1);
+  return WORK_PANE_CHAT_MIN_WIDTH * columns + PANE_DIVIDER_SIZE * (columns - 1);
 }
 
 /** Whether an expanded pane at its minimum still leaves every chat column its room. When it does not, the pane

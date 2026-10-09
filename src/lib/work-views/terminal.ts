@@ -8,6 +8,7 @@ import { html, svg } from "lit";
 import { createTerminal, listTerminals } from "../terminals-store.ts";
 import type { TerminalView } from "../terminal-types.ts";
 import type { WorkViewKind } from "../work-pane.ts";
+import { WORK_SHORTCUTS } from "../work-shortcuts.ts";
 
 export type TerminalWorkViewRef = { kind: "terminal"; terminalId: string };
 
@@ -18,7 +19,7 @@ export type TerminalWorkViewEnvironment = {
   unavailable?(sessionId?: string): string | undefined;
 };
 
-export const TERMINAL_WORK_VIEW_SHORTCUT = "Mod+Alt+KeyT";
+export const TERMINAL_WORK_VIEW_SHORTCUT = WORK_SHORTCUTS.terminal;
 
 /** Lucide square-terminal, the shape of `icons.squareTerminal`, at 16px. */
 export const terminalWorkViewIcon = html`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${svg`<path d="m7 11 2-2-2-2M11 13h4" /><rect width="18" height="18" x="3" y="3" rx="2" ry="2" />`}</svg>`;

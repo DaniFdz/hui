@@ -8,6 +8,7 @@ import {
   WORK_PANE_CHAT_MIN_WIDTH, WORK_PANE_DEFAULT_WIDTH, WORK_PANE_MAX_WIDTH, WORK_PANE_MIN_WIDTH,
   type WorkPaneStore, type WorkViewKind, type WorkViewRef,
 } from "./work-pane.ts";
+import { PANE_DIVIDER_SIZE } from "./session-pane-geometry.ts";
 import { closeSessionPane, isChatPane, locateSessionPane, parseSessionLayout, sessionPanes, singleSessionLayout, splitSessionPane, visibleSessionPanes, addSessionTab, type SessionLayout } from "./session-multiplexer.ts";
 
 const T1 = "90fa8a65-bef7-4c0c-9e57-38b6f45ca52a";
@@ -85,20 +86,22 @@ test("reordering moves one tab and clamps the index; adjacent tabs wrap around",
 });
 
 test("each side-by-side chat column keeps its room; the pane yields width down to its minimum", () => {
-  // 1180px beside the sidebar: one chat column leaves 760px, two leave 340px, three cannot fit the pane at all.
+  // 1180px beside the sidebar: one chat column leaves 760px, two leave 334px (420px each and the 6px divider
+  // between them), three cannot fit the pane at all.
+  const twoColumns = 2 * WORK_PANE_CHAT_MIN_WIDTH + PANE_DIVIDER_SIZE;
   assert.equal(clampWorkPaneWidth(700, 1180, 1), 700);
-  assert.equal(clampWorkPaneWidth(700, 1180, 2), 1180 - 2 * WORK_PANE_CHAT_MIN_WIDTH);
-  assert.equal(clampWorkPaneWidth(Number.POSITIVE_INFINITY, 1180, 2), 340, "End reaches the widest two columns allow");
+  assert.equal(clampWorkPaneWidth(700, 1180, 2), 1180 - twoColumns);
+  assert.equal(clampWorkPaneWidth(Number.POSITIVE_INFINITY, 1180, 2), 334, "End reaches the widest two columns allow");
   assert.equal(clampWorkPaneWidth(700, 1180, 3), WORK_PANE_MIN_WIDTH, "never below its own minimum");
   assert.equal(workPaneFits(1180, 1), true);
   assert.equal(workPaneFits(1180, 2), true);
-  assert.equal(workPaneFits(2 * WORK_PANE_CHAT_MIN_WIDTH + WORK_PANE_MIN_WIDTH, 2), true, "exactly enough room");
-  assert.equal(workPaneFits(2 * WORK_PANE_CHAT_MIN_WIDTH + WORK_PANE_MIN_WIDTH - 1, 2), false);
+  assert.equal(workPaneFits(twoColumns + WORK_PANE_MIN_WIDTH, 2), true, "exactly enough room");
+  assert.equal(workPaneFits(twoColumns + WORK_PANE_MIN_WIDTH - 1, 2), false);
   assert.equal(workPaneFits(1180, 3), false, "three columns and the pane cannot all fit: the pane collapses to its rail");
   assert.equal(workPaneFits(0, 3), true, "before the row is measured nothing collapses");
   assert.equal(workPaneFits(undefined, 3), true);
   const store = setWorkPaneWidth({}, "s1", 700, 1180, 2);
-  assert.equal(sessionWorkPane(store, "s1").width, 340);
+  assert.equal(sessionWorkPane(store, "s1").width, 334);
 });
 
 test("widths stay between the minimum and what leaves the chat its room", () => {
