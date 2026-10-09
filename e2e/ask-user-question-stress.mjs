@@ -147,6 +147,9 @@ async function start(name) {
   await until(`!!${card}?.querySelector(".chat-question-panel__prompt")`, `card for ${name}`);
   return id;
 }
+/** The last tool result the model got that holds `marker`: the chat renders the reply as Markdown, where a
+ * preview's fence swallows the rest, so read the provider's log. */
+const modelGot = async (marker) => /"content":("User has answered[^"\\]*(?:\\.[^"\\]*)*")/u.exec((await readFile(join(receipt.artifacts, "provider.jsonl"), "utf8")).split("\n").filter((line) => line.includes(marker)).at(-1) ?? "")?.[1] ?? "\"\"";
 const reply = () => until(`${visible(".chat-text")}.map((e) => e.textContent).find((t) => t.includes("tool answered:"))`, "model reply");
 const idle = () => until(`!${card}`, "card gone");
 
@@ -166,7 +169,10 @@ const scenarios = {
     await key("5"); await typeText("Tags"); await key("Enter");
     s = await state();
     check(s.step === "3/4", "Enter in the free text advances", s);
-    await key("ArrowDown"); await key("ArrowDown");
+    await key("2");
+    s = await state();
+    check(JSON.stringify(s.checked) === '["Top bar"]' && s.focused === "Top bar", "a digit right after works on the next question", s);
+    await key("ArrowUp"); await key("ArrowDown"); await key("ArrowDown");
     const preview = await evaluate(`${card}.querySelector(".questionnaire-card__preview")?.textContent`);
     check(preview.includes("⌘K"), "preview follows focus", preview);
     await key("ArrowLeft");
@@ -178,11 +184,12 @@ const scenarios = {
     check(s.step === "4/4", "ArrowRight goes forward", s);
     check(await evaluate(`${button("Submit")}?.disabled === false`), "Submit enabled with answers");
     await key("1"); await key("Enter", 2 /* ctrl */);
-    const text = await reply();
+    await reply();
+    const text = JSON.parse(await modelGot("Search, Tags"));
     check(text.includes('"How should users sign in?"="Email magic link"') && text.includes('"Which features should the first release include?"="Search, Tags"')
-      && !text.includes("dashboard") && text.includes('"When do you need it?"="This week"'), "model gets every answer, skipped one left out", text);
+      && text.includes('"Which layout do you prefer for the dashboard?"="Top bar". selected preview:') && text.includes('"When do you need it?"="This week"'), "model gets every answer", text);
     const summary = await until(`${visible(".chat-question-summary")}[0]?.innerText`, "summary");
-    check(summary.includes("Auth method") && summary.includes("Search, Tags") && !summary.includes("Layout"), "transcript summary", summary);
+    check(summary.includes("Auth method") && summary.includes("Search, Tags") && summary.includes("Top bar"), "transcript summary", summary);
     check(!(await evaluate(`!!${card}`)), "card gone after submit");
   },
 
@@ -211,9 +218,9 @@ const scenarios = {
     await click(option("This month"));
     await click(button("Submit"));
     await reply();
-    // The chat renders the reply as Markdown, where the preview's fence swallows the rest: read what the model got.
-    const text = (await readFile(join(receipt.artifacts, "provider.jsonl"), "utf8")).split("\n").filter((line) => line.includes("Top bar")).at(-1);
-    check(text.includes('=\\"OAuth with Google\\"') && text.includes('=\\"Sharing\\"') && text.includes('=\\"Top bar\\". selected preview:') && text.includes('=\\"This month\\"'), "mouse answers reach the model", text?.slice(-600));
+    const text = await modelGot("Top bar");
+    const got = JSON.parse(text);
+    check(got.includes('="OAuth with Google"') && got.includes('="Sharing"') && got.includes('="Top bar". selected preview:') && got.includes('="This month"'), "mouse answers reach the model", got);
   },
 
   async cancelButton() {
