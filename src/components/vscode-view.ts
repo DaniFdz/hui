@@ -10,7 +10,8 @@
 import { LitElement, html, nothing, svg, type PropertyValues } from "lit";
 import { icons } from "../lib/icons.ts";
 import { writeClipboardText } from "../lib/clipboard.ts";
-import { connectVscode, loadVscodeStatus, onVscodeStatus, readVscodeTheme, vscodeAction, VscodeConnectError } from "../lib/vscode-store.ts";
+import { connectVscode, loadVscodeStatus, onVscodeStatus, vscodeAction, VscodeConnectError } from "../lib/vscode-store.ts";
+import { readVscodeTheme } from "../lib/vscode-theme.ts";
 import {
   formatVscodeBytes, MICROSOFT_PRIVACY_URL, OPENVSCODE_SERVER_LICENSE_URL, OPENVSCODE_SERVER_URL, VSCODE_DOWNLOAD_URL, VSCODE_SERVER_LICENSE_URL,
   type VscodeConnection, type VscodeStatus,

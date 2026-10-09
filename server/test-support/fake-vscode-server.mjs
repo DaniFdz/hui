@@ -8,10 +8,13 @@
  * download (202 from /version with "Downloading server: n/total" lines on stdout for FAKE_SERVE_WEB_DOWNLOAD_MS, or for
  * ever without progress with FAKE_SERVE_WEB_STALL).
  * FAKE_VSCODE_HELP replaces the --help text, FAKE_VSCODE_FAIL makes a start fail, FAKE_VSCODE_ARGS_FILE records its pid
- * and argv. Tests run it behind a launcher script that does not exec, like the real launchers.
+ * and argv. FAKE_VSCODE_PAGE changes the workbench page: `bare` drops its configuration (a page format HUI does not
+ * know), `gzip` compresses it whatever the request accepts. `<base>/webview/index.html` is a document with no
+ * configuration, like a webview's. Tests run it behind a launcher script that does not exec, like the real launchers.
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
+import { gzipSync } from "node:zlib";
 import { WebSocketServer } from "ws";
 
 const args = process.argv.slice(2);
@@ -91,8 +94,18 @@ const server = createServer((request, response) => {
       ? { remoteAuthority: request.headers.host, serverBasePath: base, enableWorkspaceTrust: true, productConfiguration: { extensionsGallery: { resourceUrlTemplate: `http://${request.headers.host}${base}/stable-${FAKE_COMMIT}/web-extension-resource/{publisher}/{name}` } } }
       : { remoteAuthority: request.headers.host, serverBasePath: base, enableWorkspaceTrust: true, productConfiguration: {} };
     const attribute = JSON.stringify(settings).replace(/"/g, "&quot;");
-    response.writeHead(200, { "content-type": "text/html", "set-cookie": serveWeb ? [`vscode-tkn=${token}; Max-Age=604800; SameSite=Lax`, ...serveWebCookies] : [`vscode-tkn=${token}; Max-Age=604800; SameSite=Lax`, "vscode.other=1; Path=/"] });
-    response.end(`<!DOCTYPE html><html><head><meta id="vscode-workbench-web-configuration" data-settings="${attribute}"></head><body>fake ${serveWeb ? "serve-web " : ""}workbench for ${escapeHtml(url.searchParams.get("folder") ?? "")}</body></html>`);
+    const page = process.env.FAKE_VSCODE_PAGE;
+    const meta = page === "bare" ? "" : `<meta id="vscode-workbench-web-configuration" data-settings="${attribute}">`;
+    const body = Buffer.from(`<!DOCTYPE html><html><head>${meta}</head><body>fake ${serveWeb ? "serve-web " : ""}workbench for ${escapeHtml(url.searchParams.get("folder") ?? "")}</body></html>`);
+    response.writeHead(200, {
+      "content-type": "text/html", ...(page === "gzip" ? { "content-encoding": "gzip" } : {}),
+      "set-cookie": serveWeb ? [`vscode-tkn=${token}; Max-Age=604800; SameSite=Lax`, ...serveWebCookies] : [`vscode-tkn=${token}; Max-Age=604800; SameSite=Lax`, "vscode.other=1; Path=/"],
+    });
+    response.end(page === "gzip" ? gzipSync(body) : body);
+    return;
+  }
+  if (url.pathname === `${base}/webview/index.html`) {
+    response.writeHead(200, { "content-type": "text/html" }).end("<!DOCTYPE html><html><head><meta charset=\"utf-8\"></head><body>webview host</body></html>");
     return;
   }
   if (url.pathname.startsWith(`${base}/echo`)) {
