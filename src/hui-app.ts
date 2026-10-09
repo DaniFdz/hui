@@ -11,6 +11,7 @@ import { sessionTreeIds } from "./lib/session-tree.ts";
 import { applySessionListUpdate, type SessionListUpdate } from "../shared/session-list.ts";
 import { html, nothing, type PropertyValues } from "lit";
 import { icons } from "./lib/icons.ts";
+import type { QuestionnaireCard } from "./components/questionnaire-card.ts";
 import { keyed } from "lit/directives/keyed.js";
 import { property, state } from "lit/decorators.js";
 import { HuiElement } from "./lit/hui-element.ts";
@@ -56,6 +57,7 @@ import {
   type RuntimeUsage,
   type RuntimeCompaction,
   type RuntimeQuestion,
+  type QuestionResponse,
   type PromptMode,
   type QueueSnapshot,
   type SessionConnection,
@@ -1171,8 +1173,14 @@ export class HuiApp extends HuiElement {
       if (cancel instanceof HTMLButtonElement) cancel.focus();
     }
     if (changed.has("question") && this.question && (!this.embeddedPane || this.paneVisible)) {
-      const questionControl = this.renderRoot.querySelector?.('.session-question-card [role="radio"][tabindex="0"], .session-question-card input:not([type="hidden"]), .session-question-card textarea');
-      if (questionControl instanceof HTMLElement) questionControl.focus();
+      const focus = () => {
+        const questionControl = this.renderRoot.querySelector?.('.session-question-card :is([role="radio"], [role="checkbox"])[tabindex="0"], .session-question-card input:not([type="hidden"]), .session-question-card textarea');
+        if (questionControl instanceof HTMLElement) questionControl.focus();
+      };
+      // The questionnaire card renders its controls in its own update, after this one.
+      const card = this.renderRoot.querySelector?.<QuestionnaireCard>("hui-questionnaire-card");
+      if (card) void card.updateComplete.then(focus);
+      else focus();
     }
     const groupDialog = this.groupAction ? this.renderRoot.querySelector?.(".group-action-dialog") : null;
     const updateDialog = this.updateOpen ? this.renderRoot.querySelector?.(".hui-update-dialog") : null;
@@ -2350,7 +2358,8 @@ export class HuiApp extends HuiElement {
       ? 0
       : clampSuggestionIndex(this.taskSuggestionIndex, this.taskSuggestions.length);
     if (previousTasks !== nextTasks) void this.refreshSessions();
-    const question = snapshot.questions[0];
+    // The open question stays while it is pending, whatever else arrives meanwhile.
+    const question = snapshot.questions.find(({ id }) => id === this.question?.id) ?? snapshot.questions[0];
     if (question) this.showQuestion(question);
     else if (this.question) {
       this.question = undefined;
@@ -2388,7 +2397,8 @@ export class HuiApp extends HuiElement {
       return;
     }
     if (event.type === "question") {
-      this.showQuestion(event.question);
+      // Another one waits for the snapshot after the open one is answered.
+      if (!this.question) this.showQuestion(event.question);
       return;
     }
     if (event.type === "thinking_level") {
@@ -3347,14 +3357,15 @@ export class HuiApp extends HuiElement {
       });
   };
 
-  private answerQuestion = (answer: { value?: string; confirmed?: boolean; cancelled?: boolean }) => {
+  private answerQuestion = (answer: QuestionResponse) => {
     const session = this.selected;
     const question = this.question;
     if (!session || !question) return;
     this.question = undefined;
     void answerQuestion(session.id, question.id, answer)
       .then(() => {
-        if (isSelectedSession(session.id, this.selected?.id)) this.restoreQuestionFocus();
+        // The next question may already be showing (parallel calls): leave focus in it.
+        if (isSelectedSession(session.id, this.selected?.id) && !this.question) this.restoreQuestionFocus();
       })
       .catch((error: unknown) => {
         if (!isSelectedSession(session.id, this.selected?.id)) return;
@@ -3365,6 +3376,8 @@ export class HuiApp extends HuiElement {
   };
 
   private showQuestion(question: RuntimeQuestion) {
+    // Every snapshot re-sends the open question: keep it, and the operator's focus in it.
+    if (this.question?.id === question.id) return;
     if (!this.question) {
       const composer = this.renderRoot.querySelector?.(".agent-chat__composer-combobox textarea");
       this.questionReturnFocus = composer instanceof HTMLElement

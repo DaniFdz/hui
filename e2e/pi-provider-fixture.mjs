@@ -237,9 +237,14 @@ const server = createServer(async (request, response) => {
 
   // Tool calls a test chooses: E2E_CALL:<base64url JSON of { name, input }, or an array of them> calls them all in one
   // response, and the next answer quotes every result.
+  // E2E_ASK_USER:<name> does the same with ask_user_question and the workspace's `ask-<name>.json`: its input, or an
+  // array of inputs for parallel calls.
   const chosen = /E2E_CALL:([A-Za-z0-9_-]+)/u.exec(source)?.[1];
-  if (chosen) {
-    const calls = [JSON.parse(Buffer.from(chosen, "base64url").toString("utf8"))].flat();
+  const asked = /E2E_ASK_USER:([a-z0-9-]+)/u.exec(source)?.[1];
+  if (chosen || asked) {
+    const calls = asked
+      ? [JSON.parse(await readFile(`${workspace}/ask-${asked}.json`, "utf8"))].flat().map((input) => ({ name: "ask_user_question", input }))
+      : [JSON.parse(Buffer.from(chosen, "base64url").toString("utf8"))].flat();
     calls.forEach((call, index) => toolUse(response, `tool-e2e-call-${index}`, call.name, call.input ?? {}, index));
     return finish(response, "tool_use");
   }

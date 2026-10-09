@@ -87,7 +87,7 @@ test("SDK owns schemas and prompt, executes tools, preserves history, models, th
   const session = await f.start();
   const initial = await session.inspect!();
   assert.deepEqual(initial.tools.map((tool) => tool.name).sort(), shippedTools().map((tool) => tool.name).sort());
-  assert.equal(initial.tools.filter((tool) => tool.active).length, 19);
+  assert.equal(initial.tools.filter((tool) => tool.active).length, 20);
   assert.equal(initial.tools.find((tool) => tool.name === "terminal")?.source, "HUI");
   assert.equal(initial.tools.find((tool) => tool.name === "browser")?.source, "HUI");
   assert.equal(initial.tools.find((tool) => tool.name === "progress_card")?.source, "HUI");

@@ -737,7 +737,9 @@ type RuntimeQuestion =
   | { id: string; method: "editor"; title: string; prefill?: string }
   // HUI's own `secret_request` prompt, never a runtime's: title is the label,
   // message the reason. See Secret requests.
-  | { id: string; method: "secret"; title: string; message: string };
+  | { id: string; method: "secret"; title: string; message: string }
+  // HUI's own `ask_user_question` card: title is the first question. See Structured questions.
+  | { id: string; method: "questionnaire"; title: string; questions: readonly QuestionnaireQuestion[] };
 type SessionSnapshot = {
   transcript: readonly TranscriptEntry[];
   status: SessionStatus;
@@ -2713,6 +2715,7 @@ Answers or cancels a pending PI extension-UI request:
 ```json
 { "id": "question-id", "value": "selected/input/editor value" }
 { "id": "question-id", "confirmed": true }
+{ "id": "question-id", "answers": [{ "selected": ["Option"] }, { "selected": [], "custom": "typed" }] }
 { "id": "question-id", "cancelled": true }
 ```
 
@@ -2720,7 +2723,9 @@ A question is claimed before awaiting PI, so concurrent double-submit cannot
 answer it twice; a rejected runtime response restores it. A `secret` question
 is answered here too, but its `value` (non-empty, kept exactly as typed) goes
 to the gateway's [secret request](#secret-requests), never to the runtime; an
-empty value is a 400 that leaves the request pending.
+empty value is a 400 that leaves the request pending. A `questionnaire` takes
+`answers` (see [Structured questions](#structured-questions)), also settled by
+the gateway.
 
 ### `PATCH /__hui/sessions/:id`
 
@@ -3708,6 +3713,38 @@ longer running. Nothing else persists the value: not
 the transcript, a tool result, PI's or Durable's stores, the registry or
 diagnostics. The question route answers a malformed body with a fixed 400, so
 not even a JSON parse error quotes it into a diagnostic.
+
+### Structured questions
+
+A session asks the operator structured questions with the HUI
+`ask_user_question` tool. It replaces any PI extension tool of the same name.
+
+| Tool | Contract |
+|---|---|
+| `ask_user_question { questions }` | 1–4 questions `{ header ≤16, question ≤500, options, multiSelect? }`, each with 2–4 options `{ label ≤60, description ≤500, preview? ≤2500 }` (so four full questions fit the PI child bridge's 64 KiB request). Text is trimmed; header, question and label are required. Question texts and option labels within a question are unique; `Other`, `Type something.` and `Next` are reserved labels; previews are for single-select questions only. A call breaking these fails with a reason and shows nothing. Waits until the operator answers or cancels, or the call is aborted (Stop, a PI child that went away, a gateway stop, a transport giving up after 24 hours). Returns `QuestionnaireResult`; the tool text reads `User has answered your questions: "<question>"="<answers>". … You can now continue with the user's answers in mind.`, with `selected preview: <markdown>` after a chosen option that has one, or `User declined to answer questions` |
+
+```ts
+type QuestionnaireQuestion = { header: string; question: string; multiSelect: boolean; options: { label: string; description: string; preview?: string }[] };
+// One answered question: chosen labels in option order, then the typed text.
+type QuestionnaireAnswer = { header: string; question: string; selected: string[]; preview?: string };
+// cancelled: the operator declined, or answered nothing.
+type QuestionnaireResult = { cancelled: boolean; answers: QuestionnaireAnswer[] };
+```
+
+A pending questionnaire is gateway memory, scoped to its session, and joins
+the snapshot's `questions` as `{ id, method: "questionnaire", title, questions }`
+after the runtime's questions, making the session report `waiting` like a
+secret request. It is answered through
+[`POST /__hui/sessions/:id/question`](#post-__huisessionsidquestion) with
+`{ id, answers: { selected: string[]; custom?: string }[] }`, index-aligned
+with the questions, or `{ id, cancelled: true }`. `selected` holds option
+labels; `custom` (≤4000) is the operator's own text. A single-select question
+takes one of the two. A blank question is left out of the result. An answer
+the card could not have sent (another length, an unknown label, two answers to
+a single-select question) is refused with a 400 and leaves the card open. A
+bot's chat reports it as `BotQuestion { method: "questionnaire", title,
+options: ["<header>: <question>", …] }`; `hui bot chat` sends only `/cancel`
+for it and asks for the answers in HUI.
 
 ### Kanban backlog
 
