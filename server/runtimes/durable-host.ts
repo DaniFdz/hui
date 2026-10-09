@@ -111,7 +111,7 @@ type RequestCallbacks = {
   onPayload?: (payload: unknown, model: unknown) => unknown;
   onResponse?: (response: ProviderResponse, model: unknown) => void | Promise<void>;
 };
-type RequestOptions = ({ readonly signal?: AbortSignal; readonly env?: Readonly<Record<string, string>> } & RequestCallbacks) | undefined;
+type RequestOptions = ({ readonly signal?: AbortSignal; readonly env?: Readonly<Record<string, string>>; readonly maxTokens?: number; readonly reasoning?: string } & RequestCallbacks) | undefined;
 
 /** Model reads go to the runtime current at each use, so provider changes
  * made in Settings reach running conversations at their next request. Every
@@ -131,7 +131,13 @@ class CurrentModels {
         const call = value as (...args: unknown[]) => unknown;
         if (!REQUEST_CALLS.has(key)) return call.bind(target);
         return (...args: unknown[]) => {
-          const options = args[2] as RequestOptions;
+          const given = args[2] as RequestOptions;
+          const { maxTokens: _cap, ...uncapped } = given ?? {};
+          // Durable caps only its summary request, at 0.8 × reserveTokens, and adaptive and effort-based models spend
+          // their thinking from that cap: at high levels the summary stops on `length` and the compaction fails
+          // (earendil-works/pi#9075). A request that reasons gets the model's output cap, which pi-ai still fits into
+          // the free context window, as an ordinary turn does.
+          const options = given?.reasoning ? uncapped : given;
           // Only Durable's own requests are attributed, and they bring no callbacks of their own.
           args[2] = { ...callbacks(options), ...options, env: { ...requestEnv(options), ...options?.env } };
           return call.apply(target, args);
