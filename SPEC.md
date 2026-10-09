@@ -572,7 +572,7 @@ A HUI selection overrides only the matching provider; an empty HUI model list
 selects nothing. Remaining PI models follow the operator's `models.json`
 provider/model selection using the `model-name` extension's rules. HUI owns three routes over that catalog: **primary** starts
 normal sessions, **fallback** retries a primary failure only when no useful output
-or tool activity has occurred, and **utility** runs cheap, fast, tool-free calls
+or tool activity has occurred, then returns the session to its own model, and **utility** runs cheap, fast, tool-free calls
 for concise (3–6 word, at most 60 character) new-session names in the prompt's language, generated worktree branch names and `/btw`. These settings never rewrite PI files.
 Missing or malformed PI selection files preserve the normal available catalog; see
 `docs/api.md` for empty-list and default-model semantics.

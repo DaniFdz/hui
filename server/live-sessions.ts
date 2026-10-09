@@ -169,6 +169,8 @@ type Live = {
   lastPrompt?: { text: string; attachments?: readonly PromptAttachment[] };
   turnProducedOutput: boolean;
   fallbackAttempted: boolean;
+  /** The session's own model while one turn is retried on the fallback. */
+  fallbackRestore?: RuntimeModel;
   /** A model turn began since the last settlement. Commands settle without
    * one and must not re-report a failure that still ends the transcript. */
   turnStarted?: boolean;
@@ -1471,6 +1473,7 @@ export class LiveSessions {
   }
 
   async #routeSettledTurn(live: Live, runtime: RuntimeSession): Promise<void> {
+    await this.#restoreAfterFallback(live, runtime);
     const retried = await this.#retryWithFallback(live, runtime).catch(() => false);
     if (!retried) {
       if (live.readers === 0) this.#setUnread(live, true);
@@ -1501,6 +1504,7 @@ export class LiveSessions {
     const separator = routes.fallback.indexOf("/");
     if (separator < 1) return false;
     live.fallbackAttempted = true;
+    if (current) live.fallbackRestore = current;
     const prompt = live.lastPrompt;
     this.#broadcast(live, {
       kind: "event",
@@ -1517,6 +1521,7 @@ export class LiveSessions {
       return true;
     } catch (error) {
       live.promptPending = false;
+      await this.#restoreAfterFallback(live, runtime);
       this.#setStatus(live, this.#reported(live));
       recordDiagnosticEvent({ area: "session", level: "error", action: "fallback_failed", summary: "Fallback retry failed", detail: failureDetail(error), sessionId: live.record.id });
       this.#broadcast(live, {
@@ -1524,6 +1529,19 @@ export class LiveSessions {
         event: { type: "error", message: error instanceof Error ? error.message : "The fallback model failed." },
       });
       return false;
+    }
+  }
+
+  /** The fallback answers one failed turn; the session keeps its own model. */
+  async #restoreAfterFallback(live: Live, runtime: RuntimeSession): Promise<void> {
+    const model = live.fallbackRestore;
+    if (!model || live.runtime !== runtime || !runtime.setModel) return;
+    live.fallbackRestore = undefined;
+    try {
+      await runtime.setModel(model.provider, model.id);
+      this.#broadcast(live, { kind: "model", model: runtime.currentModel?.() ?? model });
+    } catch (error) {
+      recordDiagnosticEvent({ area: "session", level: "error", action: "fallback_restore_failed", summary: "Could not switch back from the fallback model", detail: failureDetail(error), sessionId: live.record.id });
     }
   }
 
