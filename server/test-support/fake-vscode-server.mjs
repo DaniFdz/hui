@@ -72,6 +72,11 @@ function downloading() {
 }
 const serveWebCookies = ["vscode-secret-key-path=" + base + "/_vscode-cli/mint-key; SameSite=Strict; Path=/", "vscode-cli-secret-half=half; SameSite=Strict; HttpOnly; Max-Age=2592000; Path=/"];
 
+/** The folder is echoed into the page, so it is escaped like any request-supplied text. */
+function escapeHtml(text) {
+  return text.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+}
+
 const server = createServer((request, response) => {
   const url = new URL(request.url, "http://fake");
   if (serveWeb && downloading()) {
@@ -87,7 +92,7 @@ const server = createServer((request, response) => {
       : { remoteAuthority: request.headers.host, serverBasePath: base, enableWorkspaceTrust: true, productConfiguration: {} };
     const attribute = JSON.stringify(settings).replace(/"/g, "&quot;");
     response.writeHead(200, { "content-type": "text/html", "set-cookie": serveWeb ? [`vscode-tkn=${token}; Max-Age=604800; SameSite=Lax`, ...serveWebCookies] : [`vscode-tkn=${token}; Max-Age=604800; SameSite=Lax`, "vscode.other=1; Path=/"] });
-    response.end(`<!DOCTYPE html><html><head><meta id="vscode-workbench-web-configuration" data-settings="${attribute}"></head><body>fake ${serveWeb ? "serve-web " : ""}workbench for ${url.searchParams.get("folder")}</body></html>`);
+    response.end(`<!DOCTYPE html><html><head><meta id="vscode-workbench-web-configuration" data-settings="${attribute}"></head><body>fake ${serveWeb ? "serve-web " : ""}workbench for ${escapeHtml(url.searchParams.get("folder") ?? "")}</body></html>`);
     return;
   }
   if (url.pathname.startsWith(`${base}/echo`)) {

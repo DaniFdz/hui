@@ -12,7 +12,7 @@ import { VscodeService } from "./vscode.ts";
 import { defaultVscodeProbe } from "./vscode-providers.ts";
 import {
   attachVscodeTransport, downstreamHeaders, isVscodeProxyPath, patchWorkbenchHtml, proxyVscodeHttp, scopeVscodeCookie, serveVscodeEnter,
-  upstreamHeaders, vscodeCookieSecrets, vscodeThemeDefaults,
+  upstreamHeaders, vscodeCookieSessionIds, vscodeThemeDefaults,
 } from "./vscode-proxy.ts";
 import { DEFAULT_VSCODE_SETTINGS } from "../src/lib/settings.ts";
 
@@ -42,7 +42,7 @@ test("upstream headers keep Host, drop HUI's cookie and forwarding headers, and 
   assert.equal(upgrade["connection"], "Upgrade");
   assert.equal(upgrade["upgrade"], "websocket");
   assert.equal(upgrade["sec-websocket-key"], "k");
-  assert.deepEqual(vscodeCookieSecrets("a=1; hui-vscode=one;hui-vscode=two; hui-vscode="), ["one", "two"]);
+  assert.deepEqual(vscodeCookieSessionIds("a=1; hui-vscode=one;hui-vscode=two; hui-vscode="), ["one", "two"]);
 });
 
 test("VS Code's token cookie never reaches the browser; its other cookies keep to the base path", () => {

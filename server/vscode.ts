@@ -14,7 +14,7 @@
  * job; the routes live in hui.ts.
  */
 import { execFile, spawn, type ChildProcess } from "node:child_process";
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { Agent, get as httpGet } from "node:http";
 import { createServer } from "node:net";
@@ -30,6 +30,11 @@ import {
   vscodeEnvironment, vscodeLaunchArguments, type DetectedProvider, type VscodePlan, type VscodeProbe,
 } from "./vscode-providers.ts";
 import type { VscodeInstaller } from "./vscode-install.ts";
+
+/** The key a cookie session is stored under: the id itself never sits in gateway memory. */
+function sessionDigest(sessionId: string): string {
+  return createHash("sha256").update(sessionId).digest("base64url");
+}
 
 export { parseVscodeHelp, vscodeEnvironment, vscodeLaunchArguments, type VscodeProbe } from "./vscode-providers.ts";
 
@@ -483,8 +488,8 @@ export class VscodeService {
     return { url: `${VSCODE_ENTER_PATH}?ticket=${ticket}`, folder, label, instance: server.instance };
   }
 
-  /** Trades a ticket, once, for a cookie secret. */
-  enter(ticket: string): { secret: string; folder: string } | undefined {
+  /** Trades a ticket, once, for a cookie session id. Only its SHA-256 is kept, so the map never holds a usable id. */
+  enter(ticket: string): { sessionId: string; folder: string } | undefined {
     const entry = this.#tickets.get(ticket);
     this.#tickets.delete(ticket);
     const now = this.#now();
@@ -495,18 +500,19 @@ export class VscodeService {
       if (!oldest) break;
       this.#sessions.delete(oldest[0]);
     }
-    const secret = randomBytes(32).toString("base64url");
-    this.#sessions.set(secret, { ...(entry.theme ? { theme: entry.theme } : {}), expires: now + (this.#options.sessionMs ?? 12 * 60 * 60_000) });
-    return { secret, folder: entry.folder };
+    const sessionId = randomBytes(32).toString("base64url");
+    this.#sessions.set(sessionDigest(sessionId), { ...(entry.theme ? { theme: entry.theme } : {}), expires: now + (this.#options.sessionMs ?? 12 * 60 * 60_000) });
+    return { sessionId, folder: entry.folder };
   }
 
-  /** The cookie session one of these secrets names, refreshed; undefined when none is valid. */
-  session(secrets: readonly string[]): CookieSession | undefined {
+  /** The cookie session one of these ids names, refreshed; undefined when none is valid. */
+  session(sessionIds: readonly string[]): CookieSession | undefined {
     const now = this.#now();
-    for (const secret of secrets) {
-      const session = this.#sessions.get(secret);
+    for (const sessionId of sessionIds) {
+      const key = sessionDigest(sessionId);
+      const session = this.#sessions.get(key);
       if (!session) continue;
-      if (session.expires <= now) { this.#sessions.delete(secret); continue; }
+      if (session.expires <= now) { this.#sessions.delete(key); continue; }
       session.expires = now + (this.#options.sessionMs ?? 12 * 60 * 60_000);
       return session;
     }
