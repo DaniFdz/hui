@@ -73,6 +73,31 @@ User-visible changes also need a real Browser-tool E2E check. Documentation-only
 changes need at least `git diff --check` and verification that commands and links
 still match the source.
 
+### Datadog Test Optimization
+
+The Test, Lockfile, Nightly and Release workflows upload Node test results to
+Datadog using JUnit XML. Add a Datadog API key as the repository Actions secret
+`DD_API_KEY`. For a Datadog site other than `datadoghq.com`, set the repository
+Actions variable `DD_SITE` to your site's domain. Results use service `hui` and
+environment `ci`. Authentication and delivery must be confirmed in a CI run;
+fork pull requests do not receive the repository secret. Uploads are skipped
+with an explicit log message when the key is unavailable; tests still run.
+
+`HUI_TEST_JUNIT_REPORT` enables an additional JUnit reporter in the shared test
+runner while keeping readable console output and the original test exit status.
+Each suite writes a separate report under the ignored `test-results/` directory.
+Upload steps run after failures when reports exist, but not after cancellation.
+Local tests require no Datadog credentials and keep their default output unless
+the report variable is set. For example:
+
+```sh
+HUI_TEST_JUNIT_REPORT=test-results/unit.xml npm test
+```
+
+This report-based integration provides test visibility; native instrumentation
+features such as Test Impact Analysis and automatic retries are not enabled.
+Nix's sandboxed package checks are not Node test suites and are not uploaded.
+
 ### Doctor checks for breaking changes
 
 `hui doctor` is how an upgrade changes state earlier versions left behind. A

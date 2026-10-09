@@ -1,8 +1,8 @@
-/** Test runner behind `npm test`: runs the given files, or every *.test file under the source directories, with
- * Node's built-in test runner and passes its exit status through. */
+/** Shared test runner: runs the given files, or every *.test file under the source directories, with
+ * Node's built-in test runner, optionally writes JUnit XML, and passes its exit status through. */
 import { execFileSync } from "node:child_process";
-import { readdir } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdir, readdir } from "node:fs/promises";
+import { dirname, join } from "node:path";
 
 async function tests(directory) {
   const found = [];
@@ -21,5 +21,11 @@ const files = args.length ? args : (await Promise.all(["bin", "cli", "desktop", 
 // every result after it. Node 24 applies the limit to tests only: a file that
 // never finishes loading, or that a handle holds open, still waits for the job's.
 const TEST_TIMEOUT_MS = 300_000;
-try { execFileSync(process.execPath, ["--test", `--test-timeout=${TEST_TIMEOUT_MS}`, ...files], { stdio: "inherit" }); }
+const reporters = [];
+const report = process.env.HUI_TEST_JUNIT_REPORT;
+if (report) {
+  await mkdir(dirname(report), { recursive: true });
+  reporters.push("--test-reporter=spec", "--test-reporter=junit", "--test-reporter-destination=stdout", `--test-reporter-destination=${report}`);
+}
+try { execFileSync(process.execPath, ["--test", `--test-timeout=${TEST_TIMEOUT_MS}`, ...reporters, ...files], { stdio: "inherit" }); }
 catch (error) { process.exitCode = error.status ?? 1; }

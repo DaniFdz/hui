@@ -21,8 +21,23 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "22"
+      - run: npm install -g @datadog/datadog-ci
       - name: Test release planning
-        run: node --test cli/release-workflow.test.mjs
+        run: node scripts/test.mjs cli/release-workflow.test.mjs
+        env:
+          HUI_TEST_JUNIT_REPORT: test-results/release-planning.xml
+      - name: Upload test results to Datadog
+        if: ${{ !cancelled() && hashFiles('test-results/*.xml') != '' }}
+        run: |
+          if [ -z "$DD_API_KEY" ]; then
+            echo "Datadog upload skipped: DD_API_KEY is unavailable in this run."
+            exit 0
+          fi
+          datadog-ci junit upload --service hui test-results
+        env:
+          DD_SITE: ${{ vars.DD_SITE || 'datadoghq.com' }}
+          DD_API_KEY: ${{ secrets.DD_API_KEY }}
+          DD_ENV: ci
       - name: Detect version bump and generate changelog
         id: release
         run: node scripts/release.mjs
@@ -46,8 +61,25 @@ jobs:
       - run: npm install -g npm@11
       - run: npm ci --ignore-scripts
       - run: npm run typecheck
+      - run: npm install -g @datadog/datadog-ci
       - run: npm test
+        env:
+          HUI_TEST_JUNIT_REPORT: test-results/unit.xml
       - run: npm run test:package
+        env:
+          HUI_TEST_JUNIT_REPORT: test-results/package.xml
+      - name: Upload test results to Datadog
+        if: ${{ !cancelled() && hashFiles('test-results/*.xml') != '' }}
+        run: |
+          if [ -z "$DD_API_KEY" ]; then
+            echo "Datadog upload skipped: DD_API_KEY is unavailable in this run."
+            exit 0
+          fi
+          datadog-ci junit upload --service hui test-results
+        env:
+          DD_SITE: ${{ vars.DD_SITE || 'datadoghq.com' }}
+          DD_API_KEY: ${{ secrets.DD_API_KEY }}
+          DD_ENV: ci
       - name: Pack and checksum
         run: |
           npm pack --ignore-scripts

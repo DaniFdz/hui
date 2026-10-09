@@ -28,7 +28,7 @@
     "prepack": "npm run build",
     "preview": "vite preview",
     "test": "node scripts/test.mjs",
-    "test:package": "npm run build && node --test e2e/package.test.ts",
+    "test:package": "npm run build && node scripts/test.mjs e2e/package.test.ts",
     "e2e:sdk": "node e2e/sdk-backend.mjs",
     "e2e:package": "node e2e/package-browser.mjs",
     "eval:jira-draft": "node evals/jira-draft/run.ts",

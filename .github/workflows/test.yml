@@ -33,4 +33,19 @@ jobs:
       - run: npm install -g npm@11
       - run: npm ci --ignore-scripts
       - run: npm run typecheck
+      - run: npm install -g @datadog/datadog-ci
       - run: npm test
+        env:
+          HUI_TEST_JUNIT_REPORT: test-results/unit.xml
+      - name: Upload test results to Datadog
+        if: ${{ !cancelled() && hashFiles('test-results/*.xml') != '' }}
+        run: |
+          if [ -z "$DD_API_KEY" ]; then
+            echo "Datadog upload skipped: DD_API_KEY is unavailable in this run."
+            exit 0
+          fi
+          datadog-ci junit upload --service hui test-results
+        env:
+          DD_SITE: ${{ vars.DD_SITE || 'datadoghq.com' }}
+          DD_API_KEY: ${{ secrets.DD_API_KEY }}
+          DD_ENV: ci
