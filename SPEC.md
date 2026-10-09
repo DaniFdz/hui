@@ -785,7 +785,7 @@ overrides the order while that one is available):
 
 When nothing can run yet, the first open shows a card with what applies to the
 machine: **Use your VS Code** with the license links and **Accept and open**,
-**Install VS Code server (≈77 MB)** on Linux, **Download VS Code** where nothing
+**Install VS Code server (≈73 MB for x64)** on Linux, **Download VS Code** where nothing
 else applies (macOS or Windows without VS Code), and always **Set a path**,
 linking to Settings → Tools → VS Code. Once one is chosen, later opens go
 straight in. Settings → Tools → VS Code shows the VS Code in use (name, version,

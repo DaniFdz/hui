@@ -137,7 +137,7 @@ export class HuiVscodeSettings extends LitElement {
     const preference = status.preference;
     const preferred = preference !== "auto" && !status.providers.some((provider) => provider.kind === preference);
     const detail = active
-      ? html`${vscodeProviderCaption(active)}<code class="browser-settings__path">${active.path}</code>`
+      ? html`${vscodeProviderCaption(active)} · <code class="browser-settings__path">${active.path}</code>`
       : status.activeError
         ? html`<span class="browser-settings__problem" data-vscode-active-error>${status.activeError}</span>`
         : status.setup.desktop
