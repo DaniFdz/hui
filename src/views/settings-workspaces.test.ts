@@ -64,6 +64,14 @@ test("plugins settings can disable packages and direct extensions without removi
   assert.match(pluginsCss, /@media \(pointer: coarse\), \(max-width: 640px\)[\s\S]*\.plugins-item wa-switch\.settings-toggle::part\(base\)[\s\S]*min-height: 44px;/);
 });
 
+test("a touch-sized switch toggles from its whole 44px target", () => {
+  // settings.css grows the host to 44px in touch contexts; the label inside it (part base) is what toggles.
+  assert.match(settingsCss, /@media \(pointer: coarse\), \(max-width: 640px\)[\s\S]*:is\(button, \.btn, summary, wa-switch, \.settings-segmented__btn\) \{\s*min-width: 44px;\s*min-height: 44px;/);
+  assert.match(settingsCss, /\.shell--embed-settings \{[\s\S]*:is\(button, \.btn, summary, wa-switch, \.settings-segmented__btn\) \{\s*min-width: 44px;\s*min-height: 44px;/);
+  // Every switch's label takes the host's minimum, wherever a context sizes the host.
+  assert.match(workspaceCss, /(^|\n)wa-switch::part\(base\) \{ min-width: inherit; min-height: inherit; \}/);
+});
+
 test("new-session styling keeps HUI submission markup inside the OpenClaw composition", () => {
   assert.match(newSessionCss, /\.new-session-page \.agent-chat__welcome/);
   assert.match(newSessionCss, /margin-top: 34px/);
