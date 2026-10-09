@@ -799,9 +799,16 @@ test("a primary failure before output retries once on the configured fallback", 
 
   assert.deepEqual(session.switched, ["anthropic/sonnet"]);
   assert.deepEqual(session.prompts, ["keep working", "keep working"]);
+  const restored = new Promise<void>((resolve) => {
+    const unsubscribe = manager.subscribe("fallback", (message) => {
+      if (message.kind === "model") { unsubscribe(); resolve(); }
+    });
+  });
   session.history.push({ kind: "error", message: "fallback unavailable" });
   session.emit({ type: "settled" });
   assert.deepEqual(session.prompts, ["keep working", "keep working"], "fallback is attempted only once");
+  await restored;
+  assert.deepEqual(session.switched, ["anthropic/sonnet", "openai/gpt"], "the session returns to its own model");
 });
 
 test("the manager closes the prompt race before a runtime reports streaming", async () => {

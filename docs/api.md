@@ -534,7 +534,8 @@ Read-only catalog probes never load bundled skills.
 The same settings document includes `models: { primary, fallback, utility }`.
 Each non-empty value is a canonical `provider/id` from PI's filtered catalog.
 Primary is the default for new sessions; fallback is an automatic one-time retry
-when a primary turn fails before text, thinking, or tool activity; utility is a
+when a primary turn fails before text, thinking, or tool activity, after which
+the session switches back to its own model; utility is a
 cheap, fast, tool-free route for generated session titles and `/btw`. Example:
 
 ```json
