@@ -9,14 +9,23 @@ import { OptChatMemory, type OptChatOptions } from "./memory.ts";
 import { localDateTime } from "./text.ts";
 import { PLACEHOLDER } from "./tree.ts";
 
+/** The memories each test opened, closed before its directory is removed. */
+const opened = new WeakMap<TestContext, OptChatMemory[]>();
+
 async function directory(t: TestContext): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), "hui-optchat-memory-"));
-  t.after(() => rm(dir, { recursive: true, force: true }));
+  // node:test runs after hooks in registration order, so this one, registered first, closes the test's memories
+  // itself: a memory still saving its view while the directory is removed fails the rm with ENOTEMPTY.
+  t.after(async () => {
+    for (const memory of opened.get(t) ?? []) await memory.close();
+    await rm(dir, { recursive: true, force: true });
+  });
   return dir;
 }
 
 async function open(t: TestContext, dir: string, options: Partial<OptChatOptions> = {}): Promise<OptChatMemory> {
   const memory = await OptChatMemory.open(dir, { name: "Grok", summarize: refuse, ...options });
+  opened.set(t, [...(opened.get(t) ?? []), memory]);
   t.after(() => memory.close());
   return memory;
 }

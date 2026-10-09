@@ -79,7 +79,6 @@ const sharedPrefix = (a: string, b: string) => {
 
 test("over a long chat each turn's view starts with the last one's, and the cache reads nearly all of every request", { timeout: 240_000 }, async (t) => {
   const dir = await mkdtemp(join(tmpdir(), "hui-optchat-replay-"));
-  t.after(() => rm(dir, { recursive: true, force: true }));
   const compactions: { context: string; step: string; at: number }[] = [];
   let at = 0;
   const summarize: Summarize = async (request) => {
@@ -88,7 +87,8 @@ test("over a long chat each turn's view starts with the last one's, and the cach
     return `summary ${createHash("sha256").update(step!).digest("hex")} `.repeat(8).slice(0, 512);
   };
   const memory = await OptChatMemory.open(dir, { name: "Grok", summarize });
-  t.after(() => memory.close());
+  // After hooks run in registration order: close the memory before its directory goes, or a final save fails the rm.
+  t.after(async () => { await memory.close(); await rm(dir, { recursive: true, force: true }); });
   const built = () => new Promise<void>((resolve) => {
     if (memory.status().pending === 0) { resolve(); return; }
     const off = memory.onChange(() => { if (memory.status().pending === 0) { off(); resolve(); } });
