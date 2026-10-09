@@ -80,6 +80,8 @@ export type SessionView = {
   };
   /** The previous runtime disappeared before its active run settled. */
   interrupted?: boolean;
+  /** A watcher of this session, or a subagent below it, still runs. */
+  background?: true;
   /** `provider/id` the session is running on, when the tool reports one. */
   model?: string;
   /** Runtime reasoning level persisted with the HUI session. */
