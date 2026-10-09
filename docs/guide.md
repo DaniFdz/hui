@@ -59,13 +59,16 @@ services.hui = {
   openFirewall = false;
   # environment.PI_CODING_AGENT_DIR = "/home/hui/.pi/agent";
   # environmentFile = "/run/secrets/hui-env";
+  # vscode.package = pkgs.openvscode-server;  # VS Code view's server on the service PATH
 };
 ```
 
 `desktop.enable` is independent of `enable`: GUI-only installations do not need
 a service account. Other service options are `package`, `group`,
-`workingDirectory` (defaults to the selected account's home), `environment` and
-`environmentFile`. The service uses the selected user's normal HUI/PI state;
+`workingDirectory` (defaults to the selected account's home), `environment`,
+`environmentFile` and `vscode.package`, which puts a VS Code server (nixpkgs'
+`openvscode-server`) on the service's `PATH` for the Work pane's VS Code view:
+the generic builds that view can download run on NixOS only with nix-ld. The service uses the selected user's normal HUI/PI state;
 no user or transcript directory is created or migrated by the module. Keep
 secrets in a runtime environment file, never literal Nix values. A custom
 `package` is used as supplied; ensure it includes Electron if desktop is enabled.
