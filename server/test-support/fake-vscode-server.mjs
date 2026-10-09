@@ -103,6 +103,8 @@ const server = createServer((request, response) => {
 });
 
 const sockets = new WebSocketServer({ noServer: true });
+// serve-web sets its cookies on the upgrade response too.
+if (serveWeb) sockets.on("headers", (headers) => { for (const cookie of [`vscode-tkn=${token}`, ...serveWebCookies]) headers.push(`Set-Cookie: ${cookie}`); });
 server.on("upgrade", (request, socket, head) => {
   if (tokenOf(request) !== token) { socket.end("HTTP/1.1 403 Forbidden\r\n\r\n"); return; }
   sockets.handleUpgrade(request, socket, head, (ws) => {

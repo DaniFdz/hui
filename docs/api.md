@@ -3547,7 +3547,7 @@ cross-site, and a WebSocket upgrade additionally only with a same-origin
 Code derives its remote authority from it), drops hop-by-hop and
 `X-Forwarded-*`/`X-Original-Host` headers and HUI's cookie, replaces any
 `vscode-tkn` cookie with the real token, removes VS Code's `vscode-tkn`
-`Set-Cookie` from responses and rewrites every other `Set-Cookie` path outside
+`Set-Cookie` from responses (the WebSocket's 101 included) and rewrites every other `Set-Cookie` path outside
 `/__hui/vscode` (serve-web's `Path=/` secret-storage cookies) to `/__hui/vscode`.
 The workbench page (a 200 `text/html` GET; serve-web's 202 "downloading" page
 passes unchanged) is buffered and its `vscode-workbench-web-configuration` gains
@@ -3555,8 +3555,9 @@ passes unchanged) is buffered and its `vscode-workbench-web-configuration` gains
 banner, `workbench.startupEditor: none`, the secondary side bar hidden,
 `chat.disableAIFeatures`, and with a theme `workbench.colorTheme` — Default Light
 Modern when the background's luminance exceeds 0.55, otherwise Default Dark
-Modern — plus `workbench.colorCustomizations`) and, for a `server` only,
-`connectionToken`; over TLS an `http://<remoteAuthority>/` web-extension
+Modern — plus `workbench.colorCustomizations`) and `connectionToken` (both
+providers' handshakes need it; VS Code would otherwise read the `vscode-tkn`
+cookie the browser never gets); over TLS an `http://<remoteAuthority>/` web-extension
 `resourceUrlTemplate` becomes `https://`. It is served `no-store`. Refusals are
 small HTML pages with `<meta name="hui-vscode-error" content="<code>"
 data-message="…">`: 403 `unauthorized`/`expired`/`cross-site`, 503 `stopped` when

@@ -816,12 +816,13 @@ one-use ticket, `/__hui/vscode/enter` trades it for an HttpOnly, SameSite=Strict
 cookie scoped to `/__hui/vscode`, and the proxy accepts only that cookie and
 adds the connection token upstream. The cookie is no credential anywhere else;
 every other route still requires `x-hui`. VS Code's own token cookie never
-reaches the browser, and every other cookie VS Code sets is kept to
-`/__hui/vscode` (serve-web sets its secret-storage cookies on `/`).
-openvscode-server's WebSocket handshake carries the token inside its own
-protocol, so its proxied workbench page includes it, served only behind the
-cookie; serve-web checks the token cookie on every request and socket itself,
-so its page never holds the token.
+reaches the browser, and every other cookie VS Code sets, on any response or
+WebSocket upgrade, is kept to `/__hui/vscode` (serve-web sets its
+secret-storage cookies on `/`).
+VS Code's WebSocket handshake carries the token inside its own protocol (the
+workbench reads it from its configuration or from the token cookie the browser
+never gets), so the proxied workbench page of either provider includes it,
+served only behind the cookie.
 
 The workbench takes HUI's colors (dark or light Modern plus HUI's background,
 panels, text, borders and accent) as configuration defaults read when a frame

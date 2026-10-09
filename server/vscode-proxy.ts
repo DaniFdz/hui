@@ -16,7 +16,7 @@ import type { IncomingHttpHeaders, IncomingMessage, OutgoingHttpHeaders, ServerR
 import { request as httpRequest } from "node:http";
 import type { EventEmitter } from "node:events";
 import type { Duplex } from "node:stream";
-import { VSCODE_BASE_PATH, VSCODE_ENTER_PATH, type VscodeFlavor, type VscodeTheme } from "../shared/vscode.ts";
+import { VSCODE_BASE_PATH, VSCODE_ENTER_PATH, type VscodeTheme } from "../shared/vscode.ts";
 import { validTerminalOrigin } from "./terminal-transport.ts";
 import { vscodeAgent, type VscodeService } from "./vscode.ts";
 
@@ -157,13 +157,13 @@ export function vscodeThemeDefaults(theme: VscodeTheme): ThemeDefaults {
 
 const CONFIG_PATTERN = /(<meta id="vscode-workbench-web-configuration" data-settings=")([^"]*)(">)/u;
 
-/** The workbench page's configuration gains HUI's theme and the quiet defaults AgentsInTheCloud ships: no
- * workspace-trust prompt (HUI already runs agents with full access in this folder), no start page, no AI chat. They
- * are defaults; the operator's own VS Code settings still win. openvscode-server's page also gains the connection
- * token, which its WebSocket handshake carries; serve-web checks the token cookie the proxy adds on every request and
- * socket itself, so its page never holds the token. serve-web builds its web-extension URLs as `http://<host>`, which
- * a page served over TLS cannot load, so they follow the page's scheme. */
-export function patchWorkbenchHtml(html: string, options: { token: string; theme?: VscodeTheme; flavor?: VscodeFlavor; secure?: boolean }): string {
+/** The workbench page's configuration gains the connection token (its WebSocket handshake carries it: VS Code reads it
+ * from the configuration or from the `vscode-tkn` cookie, which never reaches the browser), HUI's theme and the quiet
+ * defaults AgentsInTheCloud ships: no workspace-trust prompt (HUI already runs agents with full access in this
+ * folder), no start page, no AI chat. They are defaults; the operator's own VS Code settings still win. serve-web
+ * builds its web-extension URLs as `http://<host>`, which a page served over TLS cannot load, so they follow the
+ * page's scheme. */
+export function patchWorkbenchHtml(html: string, options: { token: string; theme?: VscodeTheme; secure?: boolean }): string {
   return html.replace(CONFIG_PATTERN, (match, prefix: string, raw: string, suffix: string) => {
     let settings: Record<string, unknown>;
     try {
@@ -173,7 +173,7 @@ export function patchWorkbenchHtml(html: string, options: { token: string; theme
     } catch {
       return match;
     }
-    if (options.flavor !== "serve-web") settings["connectionToken"] = options.token;
+    settings["connectionToken"] = options.token;
     settings["enableWorkspaceTrust"] = false;
     const gallery = (settings["productConfiguration"] as { extensionsGallery?: Record<string, unknown> } | undefined)?.extensionsGallery;
     const authority = typeof settings["remoteAuthority"] === "string" ? settings["remoteAuthority"] : "";
@@ -290,7 +290,7 @@ export function proxyVscodeHttp(request: IncomingMessage, response: ServerRespon
       finished = true;
       if (response.headersSent) return;
       const body = Buffer.from(patchWorkbenchHtml(Buffer.concat(chunks).toString("utf8"), {
-        token: server.token, flavor: server.flavor, secure: secureRequest(request), ...(session.theme ? { theme: session.theme } : {}),
+        token: server.token, secure: secureRequest(request), ...(session.theme ? { theme: session.theme } : {}),
       }));
       delete headers["content-length"];
       response.writeHead(status, incoming.statusMessage, { ...headers, "content-length": body.length, "cache-control": "no-store" });
@@ -303,6 +303,23 @@ export function proxyVscodeHttp(request: IncomingMessage, response: ServerRespon
     if (!finished) upstream.destroy();
   });
   request.pipe(upstream);
+}
+
+/** The upstream 101's headers for the browser: serve-web sets its cookies on the upgrade too, so they get the same
+ * treatment as on any response (no token cookie, the rest kept to the base path). */
+export function upgradeResponseHeaders(rawHeaders: readonly string[]): string[] {
+  const lines: string[] = [];
+  for (let index = 0; index + 1 < rawHeaders.length; index += 2) {
+    const name = rawHeaders[index] ?? "";
+    const value = rawHeaders[index + 1] ?? "";
+    if (name.toLowerCase() === "set-cookie") {
+      if (value.trimStart().startsWith(`${TOKEN_COOKIE}=`)) continue;
+      lines.push(`${name}: ${scopeVscodeCookie(value)}`);
+      continue;
+    }
+    lines.push(`${name}: ${value}`);
+  }
+  return lines;
 }
 
 /** WebSocket upgrades under /__hui/vscode/: same-origin, allowed Host, the cookie, then a byte pipe to VS Code. */
@@ -326,8 +343,7 @@ export function attachVscodeTransport(server: EventEmitter, service: VscodeServi
         headers: upstreamHeaders(request.headers, running.token, { upgrade: true }), agent: false,
       });
       upstream.once("upgrade", (response, upstreamSocket, upstreamHead) => {
-        const lines = ["HTTP/1.1 101 Switching Protocols"];
-        for (let index = 0; index + 1 < response.rawHeaders.length; index += 2) lines.push(`${response.rawHeaders[index]}: ${response.rawHeaders[index + 1]}`);
+        const lines = ["HTTP/1.1 101 Switching Protocols", ...upgradeResponseHeaders(response.rawHeaders)];
         socket.write(`${lines.join("\r\n")}\r\n\r\n`);
         if (upstreamHead.length > 0) socket.write(upstreamHead);
         if (head.length > 0) upstreamSocket.write(head);

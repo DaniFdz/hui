@@ -92,16 +92,16 @@ test("the workbench page gains the token, quiet defaults and HUI's theme without
   assert.equal(patchWorkbenchHtml("<html>no config</html>", { token: "T" }), "<html>no config</html>");
 });
 
-test("serve-web's page never holds the token, and its web-extension URLs follow a TLS page's scheme", () => {
+test("serve-web's page gets the token too, and its web-extension URLs follow a TLS page's scheme", () => {
   const page = workbench({
     remoteAuthority: "gateway.tail:7777", serverBasePath: "/__hui/vscode", enableWorkspaceTrust: true,
     productConfiguration: { extensionsGallery: { resourceUrlTemplate: "http://gateway.tail:7777/__hui/vscode/stable-c/web-extension-resource/{publisher}" } },
   });
-  const plain = configOf(patchWorkbenchHtml(page, { token: "TOKEN", flavor: "serve-web" }));
-  assert.equal(plain["connectionToken"], undefined);
+  const plain = configOf(patchWorkbenchHtml(page, { token: "TOKEN" }));
+  assert.equal(plain["connectionToken"], "TOKEN", "VS Code would otherwise read it from the vscode-tkn cookie, which the browser never gets");
   assert.equal(plain["enableWorkspaceTrust"], false);
   assert.equal(plain["productConfiguration"]["extensionsGallery"]["resourceUrlTemplate"], "http://gateway.tail:7777/__hui/vscode/stable-c/web-extension-resource/{publisher}");
-  const secure = configOf(patchWorkbenchHtml(page, { token: "TOKEN", flavor: "serve-web", secure: true }));
+  const secure = configOf(patchWorkbenchHtml(page, { token: "TOKEN", secure: true }));
   assert.equal(secure["productConfiguration"]["extensionsGallery"]["resourceUrlTemplate"], "https://gateway.tail:7777/__hui/vscode/stable-c/web-extension-resource/{publisher}");
 });
 
@@ -253,7 +253,7 @@ test("the WebSocket passes through for the cookie's holder from the same origin 
   assert.equal((await h.vscode.status()).state, "stopped");
 });
 
-test("code serve-web behind the proxy: same cookie gate, no token in its page, its cookies kept to the base path", { timeout: 60_000 }, async (t) => {
+test("code serve-web behind the proxy: same cookie gate, the token in its page, its cookies kept to the base path", { timeout: 60_000 }, async (t) => {
   const h = await harness(t, "code");
   const { cookie, location } = await enter(h);
   assert.equal(h.vscode.current()?.flavor, "serve-web");
@@ -268,11 +268,17 @@ test("code serve-web behind the proxy: same cookie gate, no token in its page, i
   const html = await page.text();
   assert.match(html, /fake serve-web workbench for \/work\/my repo/u, "the folder arrives as serve-web's ?folder=");
   const config = configOf(html);
-  assert.equal(config["connectionToken"], undefined, "serve-web checks the token cookie itself");
-  assert.doesNotMatch(html, new RegExp(await readFile(h.vscode.tokenFile, "utf8"), "u"));
+  assert.equal(config["connectionToken"], await readFile(h.vscode.tokenFile, "utf8"), "its server checks the handshake's token like openvscode-server");
   assert.equal(config["remoteAuthority"], new URL(h.origin).host);
   const ws = h.origin.replace("http:", "ws:") + "/__hui/vscode/stable-x/?reconnectionToken=abc";
-  const opened = await openSocket(ws, { origin: h.origin, cookie });
-  assert.ok("socket" in opened, "its WebSocket passes with the token cookie the proxy adds");
-  opened.socket.close();
+  const upgrade = await new Promise<{ socket: WebSocket; cookies: string[] }>((resolve, reject) => {
+    const socket = new WebSocket(ws, { headers: { origin: h.origin, cookie } });
+    socket.once("upgrade", (response) => resolve({ socket, cookies: ([] as string[]).concat(response.headers["set-cookie"] ?? []) }));
+    socket.once("error", reject);
+  });
+  assert.deepEqual(upgrade.cookies, [
+    "vscode-secret-key-path=/__hui/vscode/_vscode-cli/mint-key; SameSite=Strict; Path=/__hui/vscode",
+    "vscode-cli-secret-half=half; SameSite=Strict; HttpOnly; Max-Age=2592000; Path=/__hui/vscode",
+  ], "the upgrade's cookies are scoped like any other, and the token cookie stays on the gateway");
+  upgrade.socket.close();
 });
