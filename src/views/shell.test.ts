@@ -155,6 +155,10 @@ test("session accessible names expose live status, tool and pinned state", () =>
     sessionAccessibleName({ ...base, pinned: true, unread: true }),
     "Fix navigation, status running, tool pi, pinned, unread",
   );
+  assert.equal(
+    sessionAccessibleName({ ...base, status: "idle", background: true }),
+    "Fix navigation, status idle, watcher or subagent running, tool pi",
+  );
 });
 
 test("session move targets always include OTHER once and preserve stored group labels", () => {

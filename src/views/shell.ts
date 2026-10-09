@@ -219,6 +219,7 @@ export function sessionAccessibleName(session: SessionView): string {
   return [
     session.title,
     session.creating ? worktreeProgressLabel(session.creating) : `status ${session.status}`,
+    ...(session.background && session.status !== "running" ? ["watcher or subagent running"] : []),
     `tool ${session.tool}`,
     ...(isSessionStage(session.stage) ? [`stage ${SESSION_STAGE_LABELS[session.stage].toLocaleLowerCase()}`] : []),
     ...(session.pinned ? ["pinned"] : []),
