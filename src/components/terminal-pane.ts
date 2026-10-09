@@ -1,7 +1,8 @@
 /**
  * A panel showing one of a session's shared terminals, drawn with ghostty-web. The PTY lives in the gateway: this
- * element replays its snapshot, streams output and input over the terminal socket, reconnects with backoff and resizes
- * the PTY to fit. Hiding the panel leaves the terminal running; only "End terminal" stops it.
+ * element replays its snapshot, writes the socket's binary output straight into Ghostty as bytes, sends input over
+ * the terminal socket, reconnects with backoff and resizes the PTY to fit only when its measurable size changes.
+ * Hiding the panel leaves the terminal running; only "End terminal" stops it.
  */
 import { html, nothing, type PropertyValues } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
@@ -10,7 +11,10 @@ import { DEFAULT_TERMINAL_FONT, loadTerminalFont, terminalFontStack } from "../l
 import { HuiElement } from "../lit/hui-element.ts";
 import { icons } from "../lib/icons.ts";
 import { connectTerminal, createTerminal, endTerminal, listTerminals } from "../lib/terminals-store.ts";
-import type { TerminalEvent, TerminalInput, TerminalView } from "../lib/terminal-types.ts";
+import type { TerminalView } from "../lib/terminal-types.ts";
+import type { TerminalInput } from "../../shared/terminal-stream.ts";
+import { createTerminalStreamReader } from "../lib/terminal-stream.ts";
+import { fittedTerminalSize } from "../lib/terminal-fit.ts";
 import type { SplitDirection } from "../lib/session-multiplexer.ts";
 import { toggleNavigationDrawer } from "../views/shell.ts";
 import { renderPaneMoveHandle } from "../views/pane-move-handle.ts";
@@ -85,8 +89,9 @@ export class TerminalPane extends HuiElement {
 
   private fitTerminal = () => {
     if (!this.visible || !this.ready || !this.fit || !this.terminal) return;
-    const size = this.fit.proposeDimensions();
-    if (size && size.cols >= 2 && size.rows >= 1) this.terminal.resize(Math.min(500, size.cols), Math.min(300, size.rows));
+    const surface = this.querySelector<HTMLElement>(".hui-terminal-surface");
+    const size = surface && fittedTerminalSize(surface, this.fit.proposeDimensions(), this.terminal);
+    if (size) this.terminal.resize(size.cols, size.rows);
   };
 
   private send(input: TerminalInput) {
@@ -147,34 +152,40 @@ export class TerminalPane extends HuiElement {
     const socket = await connectTerminal(this.ownerSessionId, this.terminalId);
     if (generation !== this.generation || !this.isConnected) { socket.close(); return; }
     this.socket = socket;
-    socket.onmessage = (message) => {
-      if (generation !== this.generation || !this.terminal) return;
-      const event = JSON.parse(String(message.data)) as TerminalEvent;
-      if (event.type === "snapshot") {
+    const read = createTerminalStreamReader({
+      snapshot: (frame, replay) => {
+        if (!this.terminal) return;
         this.retries = 0;
         this.replaying = true;
         // RIS resets the existing parser without freeing the handle still
         // referenced by Ghostty's selection manager. Also retire scrollback.
         this.terminal.write("\u001bc\u001b[3J\u001b[2J\u001b[H");
-        this.terminal.resize(event.terminal.cols, event.terminal.rows);
-        this.terminalView = event.terminal;
-        this.truncated = event.truncated;
-        writeTerminal(this.terminal, event.data, () => {
+        this.terminal.resize(frame.terminal.cols, frame.terminal.rows);
+        this.terminalView = frame.terminal;
+        this.truncated = frame.truncated;
+        writeTerminal(this.terminal, replay, () => {
           if (generation !== this.generation) return;
           this.replaying = false;
           this.ready = true;
           this.fitTerminal();
         });
-        this.status = event.terminal.status === "running" ? "Connected" : "Exited";
+        this.status = frame.terminal.status === "running" ? "Connected" : "Exited";
         this.error = "";
-      } else if (event.type === "data") writeTerminal(this.terminal, event.data);
-      else if (event.type === "state") {
-        this.terminalView = event.terminal;
-        this.status = event.terminal.status === "running" ? "Connected" : "Exited";
+      },
+      output: (bytes) => { if (this.terminal) writeTerminal(this.terminal, bytes); },
+      state: (terminal) => {
+        if (!this.terminal) return;
+        this.terminalView = terminal;
+        this.status = terminal.status === "running" ? "Connected" : "Exited";
         this.replaying = true;
-        this.terminal.resize(event.terminal.cols, event.terminal.rows);
+        this.terminal.resize(terminal.cols, terminal.rows);
         this.replaying = false;
-      } else this.error = event.error;
+      },
+      error: (message) => { this.error = message; },
+    });
+    socket.onmessage = (message) => {
+      if (generation !== this.generation || !this.terminal) return;
+      read(message.data);
     };
     socket.onclose = () => {
       if (generation !== this.generation) return;

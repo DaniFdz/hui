@@ -79,3 +79,44 @@ the API rather than claimed as terminal screen-state persistence. No tmux,
 cross-conversation terminal access or agent-created hidden terminals were added.
 The real native/browser proof ran on Linux; Windows/macOS native PTYs and a
 physical mobile keyboard were not exercised.
+
+## Rendering benchmark
+
+`e2e/terminal-benchmark.mjs` measures the terminal's streaming path in a real
+app. It takes any visual-verification receipt, so the same script measures a
+baseline checkout (for example a detached `origin/main` worktree) and a branch:
+
+```sh
+node e2e/visual-verification.mjs launch --branch "$(git branch --show-current)"   # keep it running
+node e2e/terminal-benchmark.mjs --receipt <receipt.json> --runs 5 --label branch --out /tmp/branch.json
+```
+
+It starts its own headless Chromium-family browser (`--browser <path>`, default
+`brave`) with a throwaway profile, creates a session through the API, opens its
+terminal with **Open terminal**, and runs, in that PTY: an idle period, 20
+keystrokes through the real keyboard path (echo latency), `seq 1 300000`, a
+5 MiB coloured `cat`, 400 full-screen redraw frames, wheel-scrolling the
+scrollback, and a dropped socket's 256 KiB replay. Each output run ends when a
+marker line is in the emulator on an animation frame. It records renderer
+main-thread and script time (DevTools `Performance` metrics), long tasks,
+frame gaps, socket messages and bytes, and the gateway process's CPU time.
+
+Measured on 2026-10-09, Linux host shared with other builds, headless Brave 153
+without a GPU (SwiftShader), a 69×57 pane beside the chat, medians of five runs:
+
+| Median of 5 | `origin/main` 1e50833 | binary stream + batching |
+| --- | ---: | ---: |
+| `cat` 5 MiB: until painted / renderer main thread | 691 / 685 ms | 389 / 396 ms |
+| `cat` 5 MiB: gateway CPU / socket bytes / messages | 790 ms / 6.40 MB / 1,292 | 50 ms / 5.29 MB / 85 |
+| Redraw: until painted / gateway CPU | 355 / 410 ms | 172 / 20 ms |
+| `seq 1 300000`: until painted / gateway CPU / messages | 210 / 270 ms / 314 | 208 / 190 ms / 52 |
+| Keystroke echo (median, p90) | 31, 31 ms | 30, 31 ms |
+| Scrolling: renderer main thread over ~8 s | 3.4–4.5 s | 3.4–4.0 s |
+
+The gateway no longer re-encodes the replay buffer per chunk, output skips
+JSON, and batching keeps a fast shell from costing the browser one message per
+small read. Without batching, `seq` arrived as ~4,500 messages and was slower
+than `main`; joining a whole frame's output into one browser write instead made
+`cat` faster still but produced 50–100 ms frames, so it was not kept. Echo
+latency and scrolling are bound by Ghostty Web parsing and painting on the main
+thread (about half of it while scrolling), which this change does not alter.

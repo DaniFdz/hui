@@ -3209,19 +3209,38 @@ a same-origin `Origin`/`Host` pair and, on the standalone gateway, an allowed
 hostname. Browser sockets cannot set `x-hui`; the guarded ticket request is the
 only exception mechanism, not an unguarded create/input route. Tickets are not
 stored in browser layout, logs or tool output. Production and Vite share the
-same transport. Binary or malformed messages never execute input.
+same transport. Binary or malformed client messages never execute input.
 
-The first frame is `{ type: "snapshot", terminal, data, sequence, truncated }`.
-Subsequent frames are `{ type: "data", data, sequence }`,
-`{ type: "state", terminal }`, or `{ type: "error", error }`. Subscribing and
-replaying are atomic. Clients send `{ action: "input", data }` and
-`{ action: "resize", cols, rows }`. Disconnect detaches only the client.
+The wire format is defined in `shared/terminal-stream.ts`. PTY output travels as
+**binary** messages holding the raw UTF-8 bytes the shell wrote, in order, with
+no JSON envelope or escaping; the browser sets `binaryType = "arraybuffer"` and
+hands the bytes to Ghostty, which decodes UTF-8 itself (a code point may span
+messages). JSON **text** messages carry only metadata:
+
+- `{ type: "snapshot", terminal, sequence, truncated, replayBytes }` is always the
+  first message. When `replayBytes` is not zero, the very next message is one
+  binary message of exactly that many bytes: the buffered output to replay after
+  resetting the emulator. `sequence` counts PTY output chunks so far.
+- Later binary messages continue the output. The first chunk after a quiet
+  period is sent at once (keystroke echo is never delayed); chunks read within
+  the next 4 ms are joined into one message of at most 64 KiB, so a fast shell
+  does not cost the browser one message per small read.
+- `{ type: "state", terminal }` after a resize or exit, and
+  `{ type: "error", error }` for a rejected client message.
+
+Subscribing and replaying are atomic. Clients send JSON text
+`{ action: "input", data }` and `{ action: "resize", cols, rows }`; the browser
+sends a resize only when its measurable (non-zero) pane yields a grid different
+from the current one. Disconnect detaches only the client.
 The browser reconnects with a fresh ticket and resets/replays its emulator;
 input while disconnected is not queued or silently replayed. Slow clients are
 disconnected at 1 MiB of pending output. Heartbeats detect dead connections.
+The HTTP read and the agent's `read` action return the same replay as text.
 
 Limits: 8 PTYs per conversation, 32 total (including retained exited terminals),
-64 connected sockets, 128 outstanding tickets, 256 KiB UTF-8 replay per PTY,
+64 connected sockets, 128 outstanding tickets, 256 KiB UTF-8 replay per PTY
+(kept as a chunk list: appending costs the chunk, the oldest bytes are trimmed on
+a code point boundary),
 16 KiB per input message, 2–500 columns and 1–300 rows. The renderer retains
 5,000 scrollback lines. Old output may be trimmed, with an explicit notice;
 raw replay is not a durable log or a resize-history-perfect screen snapshot.

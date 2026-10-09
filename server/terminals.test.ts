@@ -4,8 +4,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { IPty, spawn } from "@lydell/node-pty";
-import { TerminalService, TERMINAL_BUFFER_BYTES, terminalSize } from "./terminals.ts";
-import type { TerminalEvent } from "../src/lib/terminal-types.ts";
+import { TerminalService, TERMINAL_BUFFER_BYTES, terminalSize, type TerminalStreamEvent } from "./terminals.ts";
 
 function fixture() {
   const written: string[] = [];
@@ -33,7 +32,7 @@ test("shared terminals scope IDs to the owner and preserve exact input", () => {
 test("reconnect replays atomically, detach keeps PTY, bounded UTF-8 output is explicit", () => {
   const f = fixture();
   const terminal = f.service.create("alpha", "/tmp");
-  const events: TerminalEvent[] = [];
+  const events: TerminalStreamEvent[] = [];
   const off = f.service.subscribe("alpha", terminal.id, (event) => events.push(event));
   assert.equal(events[0]?.type, "snapshot");
   f.data("first");
@@ -41,15 +40,21 @@ test("reconnect replays atomically, detach keeps PTY, bounded UTF-8 output is ex
   f.data(" while detached");
   assert.equal(f.service.activeCount, 1);
   assert.equal(events.length, 2);
-  const replay: TerminalEvent[] = [];
+  const replay: TerminalStreamEvent[] = [];
   f.service.subscribe("alpha", terminal.id, (event) => replay.push(event));
-  assert.equal(replay[0]?.type === "snapshot" && replay[0].data, "first while detached");
+  assert.equal(replay[0]?.type === "snapshot" && replay[0].replay.toString(), "first while detached");
+  assert.equal(f.service.read("alpha", terminal.id).data, "first while detached", "HTTP and tool reads see the same replay as text");
+  f.data("é");
+  const live = replay.at(-1);
+  assert.ok(live?.type === "data" && Buffer.isBuffer(live.data), "subscribers receive output as UTF-8 bytes");
+  assert.deepEqual(live.type === "data" && [...live.data], [0xc3, 0xa9]);
+  assert.equal(live.type === "data" && live.sequence, 3);
   f.data("😀".repeat(TERMINAL_BUFFER_BYTES));
   const snapshot = f.service.read("alpha", terminal.id);
   assert.equal(snapshot.truncated, true);
   assert.ok(Buffer.byteLength(snapshot.data) <= TERMINAL_BUFFER_BYTES);
   assert.ok(!snapshot.data.includes("�"));
-  assert.equal(snapshot.sequence, 3);
+  assert.equal(snapshot.sequence, 4);
   f.service.dispose();
 });
 

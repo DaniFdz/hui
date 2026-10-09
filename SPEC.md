@@ -542,7 +542,10 @@ bounded ANSI-stripped output replay, not screenshots or an emulated screen grid.
 The existing Full Access contract applies, without a new approval surface.
 
 Ghostty Web renders the terminal; `@lydell/node-pty` owns the shell; `ws` carries
-input/output/size changes. These dependencies and the additive browser-local
+input/output/size changes. Output streams as raw binary bytes and the replay
+buffer appends in time proportional to each chunk, so heavy output (builds, logs,
+full-screen programs) costs neither JSON encoding nor re-copying the buffer; a
+pane resizes its PTY only when its visible grid actually changes. These dependencies and the additive browser-local
 terminal pane metadata were authorized with the shared-terminal feature. PI
 configuration and HUI's durable registry format remain unchanged.
 

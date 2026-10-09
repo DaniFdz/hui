@@ -7,8 +7,8 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { WebSocket } from "ws";
 import { terminals } from "./terminals.ts";
-import { attachTerminalTransport } from "./terminal-transport.ts";
-import type { TerminalEvent } from "../src/lib/terminal-types.ts";
+import { attachTerminalTransport, createOutputBatcher, TERMINAL_BATCH_BYTES } from "./terminal-transport.ts";
+import type { TerminalControlFrame } from "../shared/terminal-stream.ts";
 
 test("guarded HTTP, one-use same-origin WebSocket tickets and agent bridge share one PTY", { timeout: 20_000 }, async (t) => {
   const dir = await mkdtemp(join(tmpdir(), "hui-terminal-api-"));
@@ -50,8 +50,13 @@ test("guarded HTTP, one-use same-origin WebSocket tickets and agent bridge share
   await rejected("/__hui/terminal-stream?ticket=invalid", origin);
   const capability = await ticket();
   const ws = connect(capability);
-  const frames: TerminalEvent[] = [];
-  ws.on("message", (data) => frames.push(JSON.parse(data.toString()) as TerminalEvent));
+  // Metadata arrives as JSON text, PTY output as raw binary bytes.
+  const frames: TerminalControlFrame[] = [];
+  const output: Buffer[] = [];
+  const text = () => Buffer.concat(output).toString("utf8");
+  ws.on("message", (data, binary) => {
+    if (binary) output.push(data as Buffer); else frames.push(JSON.parse(data.toString()) as TerminalControlFrame);
+  });
   await once(ws, "open");
   const waitFrame = (check: () => boolean) => new Promise<void>((resolve, reject) => {
     const done = () => { if (check()) { clearTimeout(timer); ws.off("message", done); resolve(); } };
@@ -70,18 +75,65 @@ test("guarded HTTP, one-use same-origin WebSocket tickets and agent bridge share
   assert.equal((await tool({ action: "list" })).terminals[0].id, terminal.id);
   assert.match((await tool({ action: "read", sessionId: terminal.id })).data, /BROWSER_INPUT/);
   await tool({ action: "input", sessionId: terminal.id, data: "printf '%s%s\\n' AGENT_ INPUT\r" });
-  await waitFrame(() => frames.some((frame) => frame.type === "data" && frame.data.includes("AGENT_INPUT")));
+  await waitFrame(() => text().includes("AGENT_INPUT"));
+  ws.send(JSON.stringify({ action: "input", data: "printf '\\033[31m%s\\033[0m\\n' RED_OUTPUT\r" }));
+  await waitFrame(() => text().includes("RED_OUTPUT\u001b[0m"));
+  assert.ok(text().includes("\u001b[31mRED_OUTPUT"), "control bytes travel unescaped");
   ws.send(JSON.stringify({ action: "resize", cols: 118, rows: 33 }));
   await waitFrame(() => frames.some((frame) => frame.type === "state" && frame.terminal.cols === 118));
   ws.send("not-json");
   await waitFrame(() => frames.some((frame) => frame.type === "error"));
+  const errors = () => frames.filter((frame) => frame.type === "error").length;
+  const before = errors();
+  ws.send(Buffer.from("printf NEVER_RUN\r"), { binary: true });
+  await waitFrame(() => errors() > before);
+  assert.ok(!terminals.read("alpha", terminal.id).data.includes("NEVER_RUN"), "binary client messages never execute input");
   ws.close(); await once(ws, "close");
   assert.equal(terminals.activeCount, 1);
   const reconnected = connect(await ticket());
-  const [replay] = await once(reconnected, "message");
-  assert.match(JSON.parse(replay.toString()).data, /AGENT_INPUT/);
+  type Message = [Buffer, boolean];
+  const replayed = new Promise<[Message, Message]>((resolve) => {
+    const messages: Message[] = [];
+    reconnected.on("message", (data, binary) => { messages.push([data as Buffer, binary]); if (messages.length === 2) resolve([messages[0]!, messages[1]!]); });
+  });
+  const [[snapshotData, snapshotBinary], [replayData, replayBinary]] = await replayed;
+  const snapshot = JSON.parse(snapshotData.toString()) as TerminalControlFrame;
+  assert.equal(snapshotBinary, false);
+  assert.ok(snapshot.type === "snapshot" && snapshot.replayBytes === replayData.length, "the snapshot announces its replay's exact size");
+  assert.equal(replayBinary, true);
+  assert.match(replayData.toString("utf8"), /AGENT_INPUT/);
   reconnected.close(); await once(reconnected, "close");
   await tool({ action: "close", sessionId: terminal.id });
   assert.equal(terminals.activeCount, 0);
   assert.equal((await api(`${path}/${terminal.id}`)).status, 404);
+});
+
+test("output batching sends the first chunk at once and joins a burst into bounded messages", () => {
+  const sent: string[] = [];
+  const timers: (() => void)[] = [];
+  let cancelled = 0;
+  const batcher = createOutputBatcher((bytes) => sent.push(bytes.toString()), (flush) => { timers.push(flush); return () => { cancelled++; }; });
+  batcher.push(Buffer.from("$ "));
+  assert.deepEqual(sent, ["$ "], "echo after a quiet period is not delayed");
+  batcher.push(Buffer.from("a"));
+  batcher.push(Buffer.from("b"));
+  assert.deepEqual(sent, ["$ "]);
+  timers.shift()!();
+  assert.deepEqual(sent, ["$ ", "ab"], "a burst becomes one message");
+  timers.shift()!();
+  assert.equal(timers.length, 0, "a quiet tick stops the timer");
+  batcher.push(Buffer.from("next"));
+  assert.deepEqual(sent, ["$ ", "ab", "next"]);
+  const big = Buffer.alloc(TERMINAL_BATCH_BYTES / 2, "x");
+  batcher.push(big); batcher.push(big); batcher.push(Buffer.from("y"));
+  assert.equal(sent.length, 4, "a full batch is sent without waiting");
+  assert.equal(sent[3]!.length, TERMINAL_BATCH_BYTES);
+  batcher.flush();
+  assert.equal(sent.at(-1), "y", "flush sends what is pending, so a later state frame keeps its order");
+  batcher.flush();
+  assert.equal(sent.length, 5, "flushing nothing sends nothing");
+  batcher.push(Buffer.from("dropped"));
+  batcher.dispose();
+  assert.equal(cancelled, 1);
+  assert.ok(!sent.includes("dropped"), "a closed socket's pending output is discarded");
 });
