@@ -918,7 +918,10 @@ from separate HUI state.
 
 Failed chat actions, including rejected continuation requests, show a dismissible
 error toast instead of an inline page note. Session-launch validation remains
-inline in its form.
+inline in its form. Outcomes of sidebar, Kanban, Sessions and bot actions (copying
+an ID or link, moving or reordering, Jira create/link, bulk delete, bot changes)
+use the same dismissible toast: successes clear after 6 seconds, while failures
+and in-progress messages stay until replaced or dismissed.
 
 Busy composer actions are explicit: **Steer** enters PI's steering queue before
 the next model call; **Follow up** runs only after the current agent run settles.

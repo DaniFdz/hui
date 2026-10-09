@@ -46,7 +46,6 @@ export type SessionsPageProps = {
   confirmingDelete: boolean;
   deleting: boolean;
   /** Outcome of the last bulk delete. */
-  deleteNotice: string;
   onDeleteSelected: () => void;
   onCancelDelete: () => void;
   onConfirmDelete: (ids: readonly string[], removeWorktrees: boolean) => void;
@@ -444,13 +443,10 @@ export function renderSessionsPage(props: SessionsPageProps): TemplateResult {
                 ${archivedIds.length ? html`<button type="button" class="btn btn--sm"
                   @click=${() => { props.onState("archived"); props.onSelect(archivedIds, true); }}>Select archived (${archivedIds.length})</button>` : nothing}
               </div>
-              ${selectedIds.length || props.deleteNotice ? html`<div class="sessions-bulk-bar">
-                ${selectedIds.length ? html`
-                  <span class="sessions-bulk-bar__count">${selectedIds.length} selected</span>
-                  <button type="button" class="btn btn--sm danger" @click=${props.onDeleteSelected}>${icons.trash} Delete…</button>
-                  <button type="button" class="btn btn--sm" @click=${() => props.onSelect(selectedIds, false)}>Clear selection</button>
-                ` : nothing}
-                ${props.deleteNotice ? html`<span class="sessions-bulk-bar__notice" role="status">${props.deleteNotice}</span>` : nothing}
+              ${selectedIds.length ? html`<div class="sessions-bulk-bar">
+                <span class="sessions-bulk-bar__count">${selectedIds.length} selected</span>
+                <button type="button" class="btn btn--sm danger" @click=${props.onDeleteSelected}>${icons.trash} Delete…</button>
+                <button type="button" class="btn btn--sm" @click=${() => props.onSelect(selectedIds, false)}>Clear selection</button>
               </div>` : nothing}
               <div class="data-table-container">
                 <table class="data-table sessions-table">

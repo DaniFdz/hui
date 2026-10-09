@@ -10,6 +10,7 @@ import { renderDirectoryPicker } from "./views/directory-picker.ts";
 import { sessionTreeIds } from "./lib/session-tree.ts";
 import { applySessionListUpdate, type SessionListUpdate } from "../shared/session-list.ts";
 import { html, nothing, type PropertyValues } from "lit";
+import { icons } from "./lib/icons.ts";
 import { keyed } from "lit/directives/keyed.js";
 import { property, state } from "lit/decorators.js";
 import { HuiElement } from "./lit/hui-element.ts";
@@ -315,7 +316,6 @@ export class HuiApp extends HuiElement {
   @state() private sessionsSelected: ReadonlySet<string> = new Set();
   @state() private sessionsDeleteConfirm = false;
   @state() private sessionsDeleting = false;
-  @state() private sessionsDeleteNotice = "";
   @state() private worktreeInventory: WorktreeInventory | undefined;
   @state() private worktreesLoading = false;
   @state() private worktreesError = "";
@@ -334,14 +334,13 @@ export class HuiApp extends HuiElement {
   @state() private kanbanOptions: KanbanOptions = readKanbanOptions();
   @state() private kanbanQuery = "";
   @state() private kanbanMovePendingId = "";
-  @state() private kanbanNotice = "";
-  @state() private kanbanNoticeFailed = false;
   @state() private kanbanDraggingId = "";
   @state() private kanbanDropTarget = "";
   @state() private draggingSessionId = "";
   @state() private sessionDropTarget = "";
   @state() private sessionMovePendingId = "";
-  @state() private sessionMoveNotice = "";
+  /** Outcome of a sidebar, Kanban, Sessions or bot action, shown as the shell toast. */
+  @state() private actionToast: { message: string; failed: boolean } | undefined;
   @state() private archiveToast: { session: SessionView; restoring: boolean; error?: string } | undefined;
   /** Session whose "Create Jira work item" dialog is open. */
   @state() private jiraCreateSession: SessionView | undefined;
@@ -364,7 +363,7 @@ export class HuiApp extends HuiElement {
   /** Whether Jira is connected, for the suggestion card's actions; unknown until loaded. */
   @state() private jiraConfigured: boolean | undefined;
   private archiveToastTimer: ReturnType<typeof setTimeout> | undefined;
-  @state() private sessionMoveFailed = false;
+  private actionToastTimer: ReturnType<typeof setTimeout> | undefined;
   @state() private draggingGroup = "";
   @state() private groupDropTarget: GroupDropTarget | undefined;
   @state() private groupReorderPending = false;
@@ -556,8 +555,6 @@ export class HuiApp extends HuiElement {
   @state() private showHiddenBots = false;
   @state() private showArchivedBots = false;
   @state() private botMenuFor = "";
-  @state() private botNotice = "";
-  @state() private botNoticeFailed = false;
   @state() private botPendingId = "";
   /** The bot whose chat the bot route shows. */
   @state() private activeBotId = "";
@@ -586,8 +583,7 @@ export class HuiApp extends HuiElement {
     workers: () => this.launchWorkers,
     imported: (bot, warnings) => {
       this.bots = upsertBot(this.bots, bot);
-      this.botNotice = warnings.length ? `Imported ${bot.name}. ${warnings.join(" ")}` : "";
-      this.botNoticeFailed = warnings.length > 0;
+      if (warnings.length) this.notify(`Imported ${bot.name}. ${warnings.join(" ")}`, true);
       void this.refreshBots();
       void this.refreshSessions(true);
       this.navigate({ kind: "bot", id: bot.id });
@@ -853,6 +849,7 @@ export class HuiApp extends HuiElement {
     this.subagentExpiryTimer = undefined;
     this.stopAutomationPolling();
     if (this.botArchiveToastTimer) clearTimeout(this.botArchiveToastTimer);
+    clearTimeout(this.actionToastTimer);
     if (this.piResourceCopyTimer !== undefined) window.clearTimeout(this.piResourceCopyTimer);
     this.piResourceCopyTimer = undefined;
     if (this.updatePollTimer !== undefined) window.clearTimeout(this.updatePollTimer);
@@ -1502,8 +1499,7 @@ export class HuiApp extends HuiElement {
     void renameSession(session.id, patch)
       .then((updated) => {
         if (this.selected?.id === updated.id) this.selected = updated;
-        this.sessionMoveNotice = patch.archived === true ? "" : success;
-        this.sessionMoveFailed = false;
+        this.notify(patch.archived === true ? "" : success);
         if (patch.archived === true) {
           this.archiveToast = { session: updated, restoring: false };
           this.scheduleArchiveToast();
@@ -1522,10 +1518,17 @@ export class HuiApp extends HuiElement {
         return this.refreshSessions();
       })
       .catch((error: unknown) => {
-        this.sessionMoveNotice = error instanceof Error ? error.message : "Could not update that session.";
-        this.sessionMoveFailed = true;
+        this.notify(error instanceof Error ? error.message : "Could not update that session.", true);
       });
   };
+
+  /** Replaces the action toast; an empty message clears it. Successes clear
+   * after 6 s, while failures and progress ("…") stay until replaced or dismissed. */
+  private notify(message: string, failed = false) {
+    clearTimeout(this.actionToastTimer);
+    this.actionToast = message ? { message, failed } : undefined;
+    if (message && !failed && !message.endsWith("…")) this.actionToastTimer = setTimeout(() => this.notify(""), 6_000);
+  }
 
   private pauseArchiveToast = () => {
     if (this.archiveToastTimer) clearTimeout(this.archiveToastTimer);
@@ -1553,8 +1556,7 @@ export class HuiApp extends HuiElement {
     try {
       await renameSession(toast.session.id, { archived: false });
       if (this.archiveToast?.session.id === toast.session.id) this.dismissArchiveToast();
-      this.sessionMoveNotice = "Session restored.";
-      this.sessionMoveFailed = false;
+      this.notify("Session restored.");
       await this.refreshSessions();
     } catch (error) {
       if (this.archiveToast?.session.id === toast.session.id) {
@@ -1580,17 +1582,14 @@ export class HuiApp extends HuiElement {
           ? transcriptAsMarkdown(this.transcript)
           : "";
     if (!text) {
-      this.sessionMoveNotice = "Open the conversation before copying it as Markdown.";
-      this.sessionMoveFailed = true;
+      this.notify("Open the conversation before copying it as Markdown.", true);
       return;
     }
     void writeClipboardText(text).then((copied) => {
       if (!copied) throw new Error("Clipboard write failed");
-      this.sessionMoveNotice = action === "id" ? "Session ID copied." : action === "jira" ? "Jira link copied." : action === "link" ? "Session link copied." : "Conversation copied as Markdown.";
-      this.sessionMoveFailed = false;
+      this.notify(action === "id" ? "Session ID copied." : action === "jira" ? "Jira link copied." : action === "link" ? "Session link copied." : "Conversation copied as Markdown.");
     }).catch(() => {
-      this.sessionMoveNotice = "Could not copy to the clipboard.";
-      this.sessionMoveFailed = true;
+      this.notify("Could not copy to the clipboard.", true);
     });
   };
 
@@ -1625,8 +1624,7 @@ export class HuiApp extends HuiElement {
     this.jiraCreateSuggestion = undefined;
     if (detail.backlogItemId) {
       this.jiraCreateBacklogItem = undefined;
-      this.kanbanNotice = detail.warning ?? `Created Jira work item ${detail.key} for the backlog task.`;
-      this.kanbanNoticeFailed = Boolean(detail.warning);
+      this.notify(detail.warning ?? `Created Jira work item ${detail.key} for the backlog task.`, Boolean(detail.warning));
       void this.refreshBacklog();
       return;
     }
@@ -1634,12 +1632,9 @@ export class HuiApp extends HuiElement {
       // Filing resolves the card now; the server snapshot confirms it.
       this.taskSuggestions = this.taskSuggestions.filter(({ id }) => id !== detail.suggestionId);
       this.taskSuggestionIndex = clampSuggestionIndex(this.taskSuggestionIndex, this.taskSuggestions.length);
-      this.note = detail.warning ?? `Created Jira work item ${detail.key}.`;
-      this.noteLevel = detail.warning ? "warning" : "info";
       void this.onPaneRegistryChange?.();
     }
-    this.sessionMoveNotice = detail.warning ?? `Created Jira work item ${detail.key}.`;
-    this.sessionMoveFailed = Boolean(detail.warning);
+    this.notify(detail.warning ?? `Created Jira work item ${detail.key}.`, Boolean(detail.warning));
     void this.refreshSessions(true);
   };
 
@@ -1657,18 +1652,15 @@ export class HuiApp extends HuiElement {
     this.jiraLinkSession = undefined;
     if (detail.backlogItemId) {
       this.jiraLinkBacklogItem = undefined;
-      this.kanbanNotice = `Linked Jira work item ${detail.key} to the backlog task.`;
-      this.kanbanNoticeFailed = false;
+      this.notify(`Linked Jira work item ${detail.key} to the backlog task.`);
       void this.refreshBacklog();
       return;
     }
     if (this.view === "kanban") {
-      this.kanbanNotice = `Linked Jira work item ${detail.key}.`;
-      this.kanbanNoticeFailed = false;
+      this.notify(`Linked Jira work item ${detail.key}.`);
       void this.refreshBacklog();
     }
-    this.sessionMoveNotice = `Linked Jira work item ${detail.key}.`;
-    this.sessionMoveFailed = false;
+    this.notify(`Linked Jira work item ${detail.key}.`);
     void this.refreshSessions(true);
   };
 
@@ -1701,17 +1693,15 @@ export class HuiApp extends HuiElement {
     this.draggingSessionId = "";
     this.sessionDropTarget = "";
     this.sessionMovePendingId = session.id;
-    this.sessionMoveNotice = `Moving ${session.title}…`;
-    this.sessionMoveFailed = false;
+    this.notify(`Moving ${session.title}…`);
     void renameSession(session.id, { group })
       .then((updated) => {
         if (this.selected?.id === updated.id) this.selected = { ...this.selected, group: updated.group };
-        this.sessionMoveNotice = `Moved ${updated.title} to ${sessionGroupLabel(updated.group)}.`;
+        this.notify(`Moved ${updated.title} to ${sessionGroupLabel(updated.group)}.`);
         return this.refreshSessions();
       })
       .catch((error: unknown) => {
-        this.sessionMoveNotice = error instanceof Error ? error.message : "Could not move that session.";
-        this.sessionMoveFailed = true;
+        this.notify(error instanceof Error ? error.message : "Could not move that session.", true);
       })
       .finally(() => {
         this.sessionMovePendingId = "";
@@ -1727,21 +1717,19 @@ export class HuiApp extends HuiElement {
       ...(stage ? [SESSION_STAGE_LABELS[stage]] : []),
     ].join(" · ");
     this.kanbanMovePendingId = session.id;
-    this.kanbanNotice = move.stage === null ? `Handing ${session.title} back to the agent…` : `Moving ${session.title} to ${target(move.stage, move.group)}…`;
-    this.kanbanNoticeFailed = false;
+    this.notify(move.stage === null ? `Handing ${session.title} back to the agent…` : `Moving ${session.title} to ${target(move.stage, move.group)}…`);
     // One PATCH, so a stage and group change land together or not at all.
     void renameSession(session.id, move)
       .then((updated) => {
         const label = SESSION_STAGE_LABELS[updated.stage ?? DEFAULT_SESSION_STAGE];
-        this.kanbanNotice = move.stage === null
+        this.notify(move.stage === null
           ? `${updated.title} follows its agent again (${label}).`
-          : `Moved ${updated.title} to ${target(move.stage ? updated.stage : undefined, move.group !== undefined ? updated.group : undefined)}.`;
+          : `Moved ${updated.title} to ${target(move.stage ? updated.stage : undefined, move.group !== undefined ? updated.group : undefined)}.`);
         if (this.selected?.id === updated.id) this.selected = { ...this.selected, group: updated.group, stage: updated.stage, stageOrigin: updated.stageOrigin };
         return this.refreshSessions(true);
       })
       .catch((error: unknown) => {
-        this.kanbanNotice = error instanceof Error ? error.message : "Could not move that session.";
-        this.kanbanNoticeFailed = true;
+        this.notify(error instanceof Error ? error.message : "Could not move that session.", true);
       })
       .finally(() => {
         this.kanbanMovePendingId = "";
@@ -1774,17 +1762,15 @@ export class HuiApp extends HuiElement {
     const current = !item.group || item.group === "ungrouped" ? "" : item.group;
     if (this.backlogPendingId || current === group) return;
     this.backlogPendingId = item.id;
-    this.kanbanNotice = `Moving ${item.title} to ${sessionGroupLabel(group)}…`;
-    this.kanbanNoticeFailed = false;
+    this.notify(`Moving ${item.title} to ${sessionGroupLabel(group)}…`);
     void setBacklogItemGroup(item.id, group)
       .then((view) => {
         this.backlog = view.items;
         this.backlogJira = view.jira;
-        this.kanbanNotice = `Moved ${item.title} to ${sessionGroupLabel(group)}.`;
+        this.notify(`Moved ${item.title} to ${sessionGroupLabel(group)}.`);
       })
       .catch((error: unknown) => {
-        this.kanbanNotice = error instanceof Error ? error.message : "Could not move that backlog item.";
-        this.kanbanNoticeFailed = true;
+        this.notify(error instanceof Error ? error.message : "Could not move that backlog item.", true);
       })
       .finally(() => { this.backlogPendingId = ""; });
   };
@@ -1796,8 +1782,7 @@ export class HuiApp extends HuiElement {
 
   private backlogStarted = (session: SessionView, item: BacklogItem) => {
     this.backlogStart = undefined;
-    this.kanbanNotice = `Started “${session.title}” from the backlog in ${SESSION_STAGE_LABELS[session.stage ?? DEFAULT_SESSION_STAGE]}.`;
-    this.kanbanNoticeFailed = false;
+    this.notify(`Started “${session.title}” from the backlog in ${SESSION_STAGE_LABELS[session.stage ?? DEFAULT_SESSION_STAGE]}.`);
     this.backlog = this.backlog.filter(({ id }) => id !== item.id);
     void this.refreshSessions(true);
     void this.refreshBacklog();
@@ -1819,8 +1804,7 @@ export class HuiApp extends HuiElement {
       if (item.jira) window.open(item.jira.url, "_blank", "noopener,noreferrer");
     } else if (action === "copy") {
       void writeClipboardText(backlogItemMarkdown(item)).then((copied) => {
-        this.kanbanNotice = copied ? `Copied “${item.title}”.` : "Could not copy to the clipboard.";
-        this.kanbanNoticeFailed = !copied;
+        this.notify(copied ? `Copied “${item.title}”.` : "Could not copy to the clipboard.", !copied);
       });
     } else if (action === "remove") {
       this.backlogRemove = item;
@@ -1840,13 +1824,11 @@ export class HuiApp extends HuiElement {
       .then((view) => {
         this.backlog = view.items;
         this.backlogJira = view.jira;
-        this.kanbanNotice = `Removed “${item.title}” from the backlog.`;
-        this.kanbanNoticeFailed = false;
+        this.notify(`Removed “${item.title}” from the backlog.`);
         this.backlogRemove = undefined;
       })
       .catch((error: unknown) => {
-        this.kanbanNotice = error instanceof Error ? error.message : "Could not remove that task.";
-        this.kanbanNoticeFailed = true;
+        this.notify(error instanceof Error ? error.message : "Could not remove that task.", true);
         this.backlogRemove = undefined;
       })
       .finally(() => { this.backlogPendingId = ""; });
@@ -1874,8 +1856,7 @@ export class HuiApp extends HuiElement {
     else if (action === "copy:jira") {
       const url = session.jiraIssues?.at(-1)?.url;
       void (url ? writeClipboardText(url) : Promise.resolve(false)).then((copied) => {
-        this.kanbanNotice = copied ? "Jira link copied." : "Could not copy to the clipboard.";
-        this.kanbanNoticeFailed = !copied;
+        this.notify(copied ? "Jira link copied." : "Could not copy to the clipboard.", !copied);
       });
     } else if (action === "jira:create") this.openJiraCreate(session);
     else this.openJiraLink(session);
@@ -1926,16 +1907,14 @@ export class HuiApp extends HuiElement {
     if (!next) return;
     this.groupMenuFor = "";
     this.groupReorderPending = true;
-    this.sessionMoveNotice = `Moving ${sessionGroupLabel(group)}…`;
-    this.sessionMoveFailed = false;
+    this.notify(`Moving ${sessionGroupLabel(group)}…`);
     void reorderSessionGroups(next)
       .then(({ revision, groups }) => {
         this.receiveSessionList(revision, groups);
-        this.sessionMoveNotice = `Moved ${sessionGroupLabel(group)}.`;
+        this.notify(`Moved ${sessionGroupLabel(group)}.`);
       })
       .catch((error: unknown) => {
-        this.sessionMoveNotice = error instanceof Error ? error.message : "Could not reorder the groups.";
-        this.sessionMoveFailed = true;
+        this.notify(error instanceof Error ? error.message : "Could not reorder the groups.", true);
         return this.refreshSessions(true);
       })
       .finally(() => {
@@ -4090,8 +4069,6 @@ export class HuiApp extends HuiElement {
         showArchived: this.showArchivedBots,
         activeBotId: this.view === "bot" ? this.activeBotId : "",
         menuFor: this.botMenuFor,
-        notice: this.botNotice,
-        noticeFailed: this.botNoticeFailed,
         pendingId: this.botPendingId,
         now: Date.now(),
         onSelect: this.selectBot,
@@ -4126,22 +4103,19 @@ export class HuiApp extends HuiElement {
     this.botCreating = true;
     // A worker can take a moment: the roster says where the bot is being made.
     if (worker) {
-      this.botNotice = `Creating a bot on ${this.launchWorkers.find((candidate) => candidate.id === worker)?.name ?? "the worker"}…`;
-      this.botNoticeFailed = false;
+      this.notify(`Creating a bot on ${this.launchWorkers.find((candidate) => candidate.id === worker)?.name ?? "the worker"}…`);
     }
     void createBot(worker ? { worker } : {})
       .then((bot) => {
         this.bots = upsertBot(this.bots, bot);
-        this.botNotice = "";
-        this.botNoticeFailed = false;
+        this.notify("");
         void this.refreshBots();
         // The new chat is a new session; open the bot once the list has it.
         void this.refreshSessions(true);
         this.navigate({ kind: "bot", id: bot.id });
       })
       .catch((error: unknown) => {
-        this.botNotice = error instanceof Error ? error.message : "Could not create a bot.";
-        this.botNoticeFailed = true;
+        this.notify(error instanceof Error ? error.message : "Could not create a bot.", true);
       })
       .finally(() => {
         this.botCreating = false;
@@ -4246,12 +4220,10 @@ export class HuiApp extends HuiElement {
         this.bots = upsertBot(this.bots, updated);
         // With nothing hidden any more, the next hidden bot starts out of sight again.
         if (!hiddenBotCount(this.bots)) this.showHiddenBots = false;
-        this.botNotice = hidden ? `${updated.name} is hidden. Show hidden lists it again.` : `${updated.name} is back in the roster.`;
-        this.botNoticeFailed = false;
+        this.notify(hidden ? `${updated.name} is hidden. Show hidden lists it again.` : `${updated.name} is back in the roster.`);
       })
       .catch((error: unknown) => {
-        this.botNotice = error instanceof Error ? error.message : "Could not change that bot.";
-        this.botNoticeFailed = true;
+        this.notify(error instanceof Error ? error.message : "Could not change that bot.", true);
       })
       .finally(() => {
         this.botPendingId = "";
@@ -4280,7 +4252,7 @@ export class HuiApp extends HuiElement {
       .then((archived) => {
         this.closeBotArchive();
         this.bots = upsertBot(this.bots, archived);
-        this.botNotice = "";
+        this.notify("");
         this.botArchiveToast = { bot: archived, restoring: false };
         this.scheduleBotArchiveToast();
         if (this.view === "bot" && this.activeBotId === bot.id) this.navigate({ kind: "home" }, true);
@@ -4322,8 +4294,7 @@ export class HuiApp extends HuiElement {
         this.bots = this.bots.filter((each) => each.id !== bot.id);
         if (!archivedBotCount(this.bots)) this.showArchivedBots = false;
         if (this.botArchiveToast?.bot.id === bot.id) this.dismissBotArchiveToast();
-        this.botNotice = `Deleted ${bot.name}.`;
-        this.botNoticeFailed = false;
+        this.notify(`Deleted ${bot.name}.`);
         // Its chat is gone: the open bot view goes with it, as after archiving.
         if (this.view === "bot" && this.activeBotId === bot.id) this.navigate({ kind: "home" }, true);
         void this.refreshBots();
@@ -4348,13 +4319,11 @@ export class HuiApp extends HuiElement {
         // With nothing archived any more, the next archived bot starts out of sight again.
         if (!archivedBotCount(this.bots)) this.showArchivedBots = false;
         if (this.botArchiveToast?.bot.id === restored.id) this.dismissBotArchiveToast();
-        this.botNotice = `Restored ${restored.name}. Its routines stay paused until you turn them on.`;
-        this.botNoticeFailed = false;
+        this.notify(`Restored ${restored.name}. Its routines stay paused until you turn them on.`);
         void this.refreshBots();
       })
       .catch((error: unknown) => {
-        this.botNotice = error instanceof Error ? error.message : "Could not restore that bot.";
-        this.botNoticeFailed = true;
+        this.notify(error instanceof Error ? error.message : "Could not restore that bot.", true);
       })
       .finally(() => {
         this.botPendingId = "";
@@ -4389,8 +4358,7 @@ export class HuiApp extends HuiElement {
       const restored = await restoreBot(toast.bot.id);
       this.bots = upsertBot(this.bots, restored);
       if (this.botArchiveToast?.bot.id === toast.bot.id) this.dismissBotArchiveToast();
-      this.botNotice = `Restored ${restored.name}. Its routines stay paused until you turn them on.`;
-      this.botNoticeFailed = false;
+      this.notify(`Restored ${restored.name}. Its routines stay paused until you turn them on.`);
       void this.refreshBots();
       void this.refreshSessions(true);
     } catch (error) {
@@ -4781,8 +4749,7 @@ export class HuiApp extends HuiElement {
   /** Calls a bot (or returns to its call) and shows its view. One call at a time, on GPT-Live. */
   private openCall = (bot: BotView) => {
     if (!this.voice.startCall({ id: bot.id, sessionId: bot.sessionId, name: bot.name })) {
-      this.botNotice = `Hang up the call with ${this.voice.call?.bot.name ?? "the other bot"} first.`;
-      this.botNoticeFailed = true;
+      this.notify(`Hang up the call with ${this.voice.call?.bot.name ?? "the other bot"} first.`, true);
       return;
     }
     if (this.view !== "bot" || this.activeBotId !== bot.id || this.settingsOpen) this.navigate({ kind: "bot", id: bot.id });
@@ -5308,7 +5275,6 @@ export class HuiApp extends HuiElement {
   };
 
   private selectSessions = (ids: readonly string[], checked: boolean) => {
-    this.sessionsDeleteNotice = "";
     const next = new Set(this.sessionsSelected);
     for (const id of ids) {
       if (checked) next.add(id);
@@ -5328,7 +5294,6 @@ export class HuiApp extends HuiElement {
   private deleteSelectedSessions = async (ids: readonly string[], withWorktrees: boolean) => {
     if (this.sessionsDeleting || ids.length === 0) return;
     this.sessionsDeleting = true;
-    this.sessionsDeleteNotice = "";
     const all = this.groups.flatMap((group) => group.sessions);
     const deleted = new Set<string>();
     const failures: string[] = [];
@@ -5362,7 +5327,7 @@ export class HuiApp extends HuiElement {
       failures.push(error instanceof Error ? error.message : "Could not read worktrees.");
     } finally {
       const count = ids.filter((id) => deleted.has(id)).length;
-      this.sessionsDeleteNotice = `Deleted ${count} session${count === 1 ? "" : "s"}.${worktreeNote}${failures.length ? ` Failed: ${failures.join("; ")}` : ""}`;
+      this.notify(`Deleted ${count} session${count === 1 ? "" : "s"}.${worktreeNote}${failures.length ? ` Failed: ${failures.join("; ")}` : ""}`, failures.length > 0);
       this.sessionsSelected = new Set([...this.sessionsSelected].filter((id) => !deleted.has(id)));
       this.sessionsDeleting = false;
       this.closeSessionsDeleteDialog();
@@ -5842,6 +5807,11 @@ export class HuiApp extends HuiElement {
         onDismiss: () => { this.powerNoticeDismissed = true; this.composerTextarea?.focus(); },
       })}
       <div class="hui-workspace">${this.renderWorkspace()}</div>
+      ${this.actionToast ? html`<div class="app-toast action-toast" data-level=${this.actionToast.failed ? "error" : "info"}>
+        ${this.actionToast.failed ? html`<span class="app-toast__icon" aria-hidden="true">${icons.alertTriangle}</span>` : nothing}
+        <span class="app-toast__message" role=${this.actionToast.failed ? "alert" : "status"}>${this.actionToast.message}</span>
+        <button type="button" class="app-toast__dismiss" aria-label="Dismiss notification" @click=${() => this.notify("")}>${icons.close}</button>
+      </div>` : null}
       ${this.archiveToast ? html`<div class="app-toast session-archive-toast"
         @pointerenter=${this.pauseArchiveToast} @pointerleave=${this.scheduleArchiveToast}
         @focusin=${this.pauseArchiveToast} @focusout=${this.scheduleArchiveToast}>
@@ -6088,8 +6058,6 @@ export class HuiApp extends HuiElement {
       draggingSessionId: this.draggingSessionId,
       sessionDropTarget: this.sessionDropTarget,
       sessionMovePendingId: this.sessionMovePendingId,
-      sessionMoveNotice: this.sessionMoveNotice,
-      sessionMoveFailed: this.sessionMoveFailed,
       draggingGroup: this.draggingGroup,
       groupDropTarget: this.groupDropTarget,
       groupReorderPending: this.groupReorderPending,
@@ -6192,8 +6160,6 @@ export class HuiApp extends HuiElement {
                 query: this.kanbanQuery,
                 options: this.kanbanOptions,
                 movePendingId: this.kanbanMovePendingId,
-                notice: this.kanbanNotice,
-                noticeFailed: this.kanbanNoticeFailed,
                 draggingId: this.kanbanDraggingId,
                 dropTarget: this.kanbanDropTarget,
                 onQuery: (value) => { this.kanbanQuery = value; },
@@ -6239,7 +6205,6 @@ export class HuiApp extends HuiElement {
                       onSelect: this.selectSessions,
                       confirmingDelete: this.sessionsDeleteConfirm,
                       deleting: this.sessionsDeleting,
-                      deleteNotice: this.sessionsDeleteNotice,
                       onDeleteSelected: () => { this.sessionsDeleteConfirm = true; },
                       onCancelDelete: this.closeSessionsDeleteDialog,
                       onConfirmDelete: (ids, withWorktrees) => void this.deleteSelectedSessions(ids, withWorktrees),

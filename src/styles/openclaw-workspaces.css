@@ -646,7 +646,6 @@ wa-switch::part(base) { min-width: inherit; min-height: inherit; }
 }
 
 .sessions-bulk-bar__count { font-weight: 600; }
-.sessions-bulk-bar__notice { color: var(--muted); overflow-wrap: anywhere; }
 
 .sessions-delete-dialog__option {
   display: flex;
