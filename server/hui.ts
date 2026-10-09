@@ -1114,6 +1114,8 @@ type SessionView = {
   };
   /** A prompt was active when its owning runtime disappeared. */
   interrupted?: true;
+  /** A watcher of this session, or a subagent below it, still runs. */
+  background?: true;
   model?: string;
   thinking?: string;
   pinned?: true;
@@ -1460,6 +1462,22 @@ export async function setAgentStage(
   return result;
 }
 
+/** Flags sessions whose own turn may be idle while work they started goes on:
+ * a running watcher, or a running subagent anywhere below them. */
+export function markBackgroundWork(views: SessionView[], watching: (id: string) => boolean): void {
+  const byId = new Map(views.map((view) => [view.id, view]));
+  for (const view of views) {
+    if (watching(view.id)) view.background = true;
+    if (view.status !== "running" && !watching(view.id)) continue;
+    // `seen` stops a corrupt parent cycle from looping forever.
+    const seen = new Set([view.id]);
+    for (let parent = byId.get(view.parentId ?? ""); parent && !seen.has(parent.id); parent = byId.get(parent.parentId ?? "")) {
+      seen.add(parent.id);
+      parent.background = true;
+    }
+  }
+}
+
 /** The stored record has no idea whether a runtime is booting, so the live
  * status is layered on at read time. */
 async function listSessionViews(): Promise<{ label: string; sessions: SessionView[] }[]> {
@@ -1488,7 +1506,9 @@ async function listSessionViews(): Promise<{ label: string; sessions: SessionVie
       return entry ? pendingView(entry) : toView(record, liveSessions.status(record.id), runtimeViews.get(record.id));
     }),
   }));
-  persistInferredStages(registry.sessions, views.flatMap((group) => group.sessions));
+  const all = views.flatMap((group) => group.sessions);
+  markBackgroundWork(all, (id) => watchers.list(id).some((watcher) => watcher.state === "running"));
+  persistInferredStages(registry.sessions, all);
   return views;
 }
 

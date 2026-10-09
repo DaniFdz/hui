@@ -155,6 +155,10 @@ test("session accessible names expose live status, tool and pinned state", () =>
     sessionAccessibleName({ ...base, pinned: true, unread: true }),
     "Fix navigation, status running, tool pi, pinned, unread",
   );
+  assert.equal(
+    sessionAccessibleName({ ...base, status: "idle", background: true }),
+    "Fix navigation, status idle, watcher or subagent running, tool pi",
+  );
 });
 
 test("session move targets always include OTHER once and preserve stored group labels", () => {
@@ -241,7 +245,9 @@ test("session rows mirror OpenClaw run and attention states", () => {
 
   assert.match(source, /session\.status === "waiting"[\s\S]*?Waiting for your answer/);
   assert.match(source, /session\.status === "error"[\s\S]*?Session failed/);
-  assert.match(source, /session\.status === "running" \|\| session\.creating \? html`<span class="session-glyph session-glyph--running session-glyph--bare"/);
+  // A watcher or a subagent below it keeps an idle session spinning.
+  assert.match(source, /const busy = session\.status === "running" \|\| background;/);
+  assert.match(source, /busy \|\| session\.creating \? html`<span class="session-glyph session-glyph--running session-glyph--bare"/);
   assert.match(source, /class="session-glyph__ring"/);
   assert.match(components, /\.session-glyph__ring[\s\S]*?animation: session-run-spin 1\.6s linear infinite/);
   assert.match(styles, /\.sidebar-session-attention__icon--question \{ color: var\(--warn\)/);

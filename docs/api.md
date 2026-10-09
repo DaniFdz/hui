@@ -2811,7 +2811,9 @@ the just-completed turn does not disappear.
 The stream stays open across turns, sends a comment heartbeat so proxies do not
 close it, and ends with `event: closed` when the runtime exits.
 
-Session views can include `"interrupted": true` and `"unread": true`. Before submitting a normal
+Session views can include `"interrupted": true` and `"unread": true`. `"background": true` means a running watcher of that session, or a running
+subagent anywhere below it, is still working; the sidebar shows such a session as running
+even while its own turn is idle. Before submitting a normal
 prompt, HUI writes `runStartedAt` plus a temporary `runPrompt` recovery journal
 to its private registry. A terminal runtime event or explicit abort clears both.
 The prompt is never returned in session views, and raw attachment payloads are
