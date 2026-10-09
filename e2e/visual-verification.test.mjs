@@ -18,8 +18,10 @@ test("fixture environment isolates config and drops credential/startup injection
     HOME: "/operator/home", PATH: "/usr/bin", OPENAI_API_KEY: "secret", GH_TOKEN: "secret",
     NODE_OPTIONS: "--import unsafe.mjs", HTTPS_PROXY: "https://secret@proxy", BASH_ENV: "unsafe.sh",
     HUI_PI_BACKEND: "operator", PI_CODING_AGENT_DIR: "/operator/pi", XDG_CONFIG_HOME: "/operator/config",
+    HUI_OPENVSCODE_SERVER_MIRROR: "http://127.0.0.1:9/releases",
   });
   assert.equal(env.HOME, "/operator/home");
+  assert.equal(env.HUI_OPENVSCODE_SERVER_MIRROR, "http://127.0.0.1:9/releases", "the VS Code journey's local release");
   assert.equal(env.PI_CODING_AGENT_DIR, "/tmp/fixture/agent");
   assert.equal(env.PI_CODING_AGENT_SESSION_DIR, "/tmp/fixture/sessions");
   assert.equal(env.XDG_CONFIG_HOME, "/tmp/fixture/config");
