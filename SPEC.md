@@ -280,7 +280,8 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   visible at a time, chosen from a tab strip (icon, title, close; drag or
   Alt+Shift+Arrow to reorder, Arrow/Home/End to move, Delete to close). The **+**
   menu launches views (Ctrl+Alt+Shift+T / ⌥⇧⌘T new terminal, Ctrl+Alt+Shift+B /
-  ⌥⇧⌘B browser, Ctrl+Alt+Shift+F / ⌥⇧⌘F a new Files view, Ctrl+Alt+V / ⌥⌘V VS Code)
+  ⌥⇧⌘B browser, Ctrl+Alt+Shift+F / ⌥⇧⌘F a new Files view, Ctrl+Alt+Shift+C /
+  ⌥⇧⌘C VS Code)
   and reopens running terminals whose tab was closed; with nothing open the pane
   lists the same launchers with their shortcuts. A launcher that cannot act says
   why in visible text (the browser tool or VS Code turned off, no VS Code server
@@ -312,11 +313,14 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   chat panes, splits and tabs stay as they were.
 - **Work pane shortcuts** are one scheme: Mod+Alt+Shift plus the initial of what
   they open (⌥⇧⌘ on macOS, Ctrl+Alt+Shift elsewhere): **T** new terminal, **B**
-  browser, **F** Files and **P** to show or hide the pane. They are listened for
-  on the document in the capture phase, so they work from the composer, inside a
-  terminal and inside the Files editor (CodeMirror's own Alt chords, ⌥⌘G go to
-  line and ⌥⌘\ indent, never include Shift). Each one is shown where it acts (launchers, **+** menu, rail and
-  toggle tooltips, `aria-keyshortcuts`). The table and the chords it avoids live
+  browser, **F** Files, **C** VS Code ("Code": ⌥⇧⌘V is Paste and Match Style)
+  and **P** to show or hide the pane. They are listened for on the document in
+  the capture phase, so they work from the composer, inside a terminal and inside
+  the Files editor (CodeMirror's own Alt chords, ⌥⌘G go to line and ⌥⌘\ indent,
+  never include Shift). The VS Code view is a cross-origin frame: while focus is
+  inside it every key, these included, belongs to VS Code; click the tab strip
+  or the chat to use them again. Each one is shown where it acts (launchers,
+  **+** menu, rail and toggle tooltips, `aria-keyshortcuts`). The table and the chords it avoids live
   in `src/lib/work-shortcuts.ts`, whose test fails if a binding lands on one.
   Plain ⌥⌘/Ctrl+Alt letters are not used: Apple's standard keys take ⌥⌘T
   (toolbar), ⌥⌘F (search field), ⌥⌘V (apply style), ⌥⌘W (close all windows;

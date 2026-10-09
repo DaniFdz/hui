@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { vscodeWorkViewKind } from "./vscode.ts";
+import { WORK_SHORTCUTS } from "../work-shortcuts.ts";
 import { vscodeUnavailableReason } from "../../../shared/vscode.ts";
 
 test("the VS Code kind is one view per conversation with a stable key and title", async () => {
   assert.equal(vscodeWorkViewKind.kind, "vscode");
   assert.equal(vscodeWorkViewKind.label, "VS Code");
-  assert.equal(vscodeWorkViewKind.shortcut, "Mod+Alt+KeyV");
+  assert.equal(vscodeWorkViewKind.shortcut, WORK_SHORTCUTS.vscode);
   const first = await vscodeWorkViewKind.create("alpha");
   const second = await vscodeWorkViewKind.create("alpha");
   assert.deepEqual(first, { kind: "vscode" });

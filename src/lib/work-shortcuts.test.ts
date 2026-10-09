@@ -5,6 +5,7 @@ import { AVOIDED_SHORTCUTS, avoidedShortcut, WORK_SHORTCUTS } from "./work-short
 import { WORK_PANE_TOGGLE_SHORTCUT } from "./work-pane.ts";
 import { BROWSER_WORK_VIEW_SHORTCUT } from "./work-views/browser.ts";
 import { FILES_WORK_VIEW_SHORTCUT, filesWorkViewKind } from "./work-views/files.ts";
+import { VSCODE_WORK_VIEW_SHORTCUT } from "./work-views/vscode.ts";
 import { TERMINAL_WORK_VIEW_SHORTCUT } from "./work-views/terminal.ts";
 
 const bindings = Object.entries(WORK_SHORTCUTS);
@@ -40,6 +41,7 @@ test("the views and the pane toggle read their binding from the table", () => {
   assert.equal(BROWSER_WORK_VIEW_SHORTCUT, WORK_SHORTCUTS.browser);
   assert.equal(FILES_WORK_VIEW_SHORTCUT, WORK_SHORTCUTS.files);
   assert.equal(filesWorkViewKind.shortcut, WORK_SHORTCUTS.files);
+  assert.equal(VSCODE_WORK_VIEW_SHORTCUT, WORK_SHORTCUTS.vscode);
 });
 
 test("the scheme reads as each platform writes it", () => {
@@ -47,6 +49,7 @@ test("the scheme reads as each platform writes it", () => {
   assert.equal(formatShortcut(WORK_SHORTCUTS.terminal, false), "Ctrl+Alt+Shift+T");
   assert.equal(formatShortcut(WORK_SHORTCUTS.togglePane, true), "⌥⇧⌘P");
   assert.equal(formatShortcut(WORK_SHORTCUTS.files, false), "Ctrl+Alt+Shift+F");
+  assert.equal(formatShortcut(WORK_SHORTCUTS.vscode, true), "⌥⇧⌘C");
   assert.equal(ariaShortcut(WORK_SHORTCUTS.browser, true), "Meta+Alt+Shift+B");
   assert.equal(ariaShortcut(WORK_SHORTCUTS.browser, false), "Control+Alt+Shift+B");
   assert.equal(shortcutChord(WORK_SHORTCUTS.browser, false), "Control+Alt+Shift+KeyB");
