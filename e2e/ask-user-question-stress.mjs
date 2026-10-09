@@ -105,8 +105,10 @@ const click = async (selector) => {
   const box = await until(`(() => { const e = ${selector}; if (!e) return; e.scrollIntoView({ block: "nearest" }); const r = e.getBoundingClientRect(); return r.width ? { x: r.x + r.width / 2, y: r.y + r.height / 2 } : undefined; })()`, `click ${selector}`);
   for (const type of ["mouseMoved", "mousePressed", "mouseReleased"]) await cdp("Input.dispatchMouseEvent", { type, x: box.x, y: box.y, button: "left", clickCount: 1 });
 };
+/** A value as a JavaScript literal for the page's code, safe inside any context (CodeQL js/bad-code-sanitization). */
+const literal = (value) => JSON.stringify(value).replace(/[<>/\u2028\u2029]/gu, (char) => `\\u${char.charCodeAt(0).toString(16).padStart(4, "0")}`);
 // HUI keeps recently opened sessions mounted in hidden panes: only the visible one counts.
-const visible = (selector) => `[...document.querySelectorAll(${JSON.stringify(selector)})].filter((e) => !e.closest('[aria-hidden="true"]'))`;
+const visible = (selector) => `[...document.querySelectorAll(${literal(selector)})].filter((e) => !e.closest('[aria-hidden="true"]'))`;
 const card = `${visible("hui-questionnaire-card")}[0]`;
 const state = () => evaluate(`(() => { const c = ${card}; if (!c) return null; return {
   step: c.querySelector(".chat-question-panel__progress")?.textContent,
@@ -114,8 +116,8 @@ const state = () => evaluate(`(() => { const c = ${card}; if (!c) return null; r
   checked: [...c.querySelectorAll('[aria-checked="true"]')].map((e) => e.dataset.option),
   focused: document.activeElement?.dataset?.option ?? document.activeElement?.getAttribute("aria-label") ?? document.activeElement?.tagName,
 }; })()`);
-const option = (label) => `[...${card}.querySelectorAll("[data-option]")].find((e) => e.dataset.option === ${JSON.stringify(label)})`;
-const button = (text) => `[...${card}.querySelectorAll("button")].find((e) => e.textContent.trim() === ${JSON.stringify(text)})`;
+const option = (label) => `[...${card}.querySelectorAll("[data-option]")].find((e) => e.dataset.option === ${literal(label)})`;
+const button = (text) => `[...${card}.querySelectorAll("button")].find((e) => e.textContent.trim() === ${literal(text)})`;
 const api = (path, body) => fetch(`${base}/__hui${path}`, { method: body ? "POST" : "GET", headers: { "x-hui": "1", "content-type": "application/json" }, body: body && JSON.stringify(body) }).then(async (r) => ({ status: r.status, body: await r.json().catch(() => null) }));
 
 let passed = 0;
@@ -266,7 +268,7 @@ const scenarios = {
     await start("parallel");
     const first = (await state()).question;
     await key("1"); await key("Enter");
-    await until(`${card}?.querySelector(".chat-question-panel__prompt")?.textContent && ${card}.querySelector(".chat-question-panel__prompt").textContent !== ${JSON.stringify(first)}`, "second card");
+    await until(`${card}?.querySelector(".chat-question-panel__prompt")?.textContent && ${card}.querySelector(".chat-question-panel__prompt").textContent !== ${literal(first)}`, "second card");
     const s = await state();
     check(s.checked.length === 0 && s.focused !== "BODY", "the next card starts fresh and focused", s);
     await key("1"); await key("Enter");
