@@ -9,7 +9,8 @@ export const PANE_DIVIDER_SIZE = 6;
 /** The narrowest chat column, and the shortest stacked pane. */
 export const PANE_COLUMN_MIN_WIDTH = 320;
 export const PANE_ROW_MIN_HEIGHT = 200;
-/** `minRatio`/`maxRatio`: how far the divider may move so that neither side drops below its minimum. */
+/** `minRatio`/`maxRatio`: how far the divider may move so that neither side drops below its minimum; `ratio` is the
+ * current split within that range. */
 export type PaneDivider = PaneRect & { id: string; columnId?: string; index: number; ratio: number; extent: number; minRatio: number; maxRatio: number };
 
 /** The narrowest each of `columns` chat columns may be in `width`: `preferred` (420px beside an open Work pane) when
@@ -22,11 +23,14 @@ export function paneColumnMinimum(width: number, columns: number, preferred = PA
   return Math.max(base, Math.min(preferred, share));
 }
 
-/** The ratio range a divider between two tracks spanning `extent` may be dragged across, keeping each at `minimum`
- * (within the divider's usual 15–85% limits; a pair too narrow for both minimums stays at the middle). */
-function dividerRange(extent: number, minimum: number): { minRatio: number; maxRatio: number } {
+/** A divider between two tracks spanning `extent` whose weights split `weightRatio`: the range it may be dragged across,
+ * keeping each track at `minimum` (within the divider's usual 15–85% limits; a pair too narrow for both minimums stays
+ * at the middle), and its ratio within that range, since a track held at its minimum is wider than its weight says. */
+function dividerSplit(weightRatio: number, extent: number, minimum: number) {
   const edge = extent > 0 ? minimum / extent : 0.5;
-  return { minRatio: Math.min(0.5, Math.max(0.15, edge)), maxRatio: Math.max(0.5, Math.min(0.85, 1 - edge)) };
+  const minRatio = Math.min(0.5, Math.max(0.15, edge));
+  const maxRatio = Math.max(0.5, Math.min(0.85, 1 - edge));
+  return { ratio: Math.min(maxRatio, Math.max(minRatio, weightRatio)), extent, minRatio, maxRatio };
 }
 
 /** Flex-like allocation, honoring the original 320px columns / 200px rows.
@@ -70,8 +74,8 @@ export function sessionPaneGeometry(layout: SessionLayout, width: number, height
       top += paneHeight;
       if (paneIndex < column.panes.length - 1) {
         dividers.push({ id: `${column.id}:${paneIndex}`, columnId: column.id, index: paneIndex,
-          ratio: column.paneWeights[paneIndex]! / (column.paneWeights[paneIndex]! + column.paneWeights[paneIndex + 1]!),
-          extent: paneHeight + heights[paneIndex + 1]!, ...dividerRange(paneHeight + heights[paneIndex + 1]!, PANE_ROW_MIN_HEIGHT),
+          ...dividerSplit(column.paneWeights[paneIndex]! / (column.paneWeights[paneIndex]! + column.paneWeights[paneIndex + 1]!),
+            paneHeight + heights[paneIndex + 1]!, PANE_ROW_MIN_HEIGHT),
           left, top, width: columnWidth, height: PANE_DIVIDER_SIZE });
         top += PANE_DIVIDER_SIZE;
       }
@@ -80,8 +84,8 @@ export function sessionPaneGeometry(layout: SessionLayout, width: number, height
     left += columnWidth;
     if (columnIndex < layout.columns.length - 1) {
       dividers.push({ id: `columns:${columnIndex}`, index: columnIndex,
-        ratio: layout.columnWeights[columnIndex]! / (layout.columnWeights[columnIndex]! + layout.columnWeights[columnIndex + 1]!),
-        extent: columnWidth + widths[columnIndex + 1]!, ...dividerRange(columnWidth + widths[columnIndex + 1]!, minimumWidth),
+        ...dividerSplit(layout.columnWeights[columnIndex]! / (layout.columnWeights[columnIndex]! + layout.columnWeights[columnIndex + 1]!),
+          columnWidth + widths[columnIndex + 1]!, minimumWidth),
         left, top: 0, width: PANE_DIVIDER_SIZE, height });
       left += PANE_DIVIDER_SIZE;
     }
