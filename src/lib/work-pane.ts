@@ -6,6 +6,7 @@
  */
 import type { TemplateResult } from "lit";
 import { closeSessionPane, isChatPane, locateSessionPane, replacePaneSession, sessionPanes, spotTabs, type SessionLayout } from "./session-multiplexer.ts";
+import { PANE_DIVIDER_SIZE } from "./session-pane-geometry.ts";
 import { WORK_SHORTCUTS } from "./work-shortcuts.ts";
 
 export type WorkViewRef =
@@ -187,9 +188,11 @@ export function setWorkPaneOpen(store: WorkPaneStore, sessionId: string, open: b
   return update(store, sessionId, (pane) => pane.open === open ? pane : { ...pane, open });
 }
 
-/** The room the chat keeps beside the pane: `WORK_PANE_CHAT_MIN_WIDTH` per side-by-side chat column. */
+/** The room the chat keeps beside the pane: `WORK_PANE_CHAT_MIN_WIDTH` per side-by-side chat column, plus the
+ * dividers between them. */
 function chatRoom(chatColumns: number): number {
-  return WORK_PANE_CHAT_MIN_WIDTH * Math.max(1, Math.trunc(chatColumns) || 1);
+  const columns = Math.max(1, Math.trunc(chatColumns) || 1);
+  return WORK_PANE_CHAT_MIN_WIDTH * columns + PANE_DIVIDER_SIZE * (columns - 1);
 }
 
 /** Whether an expanded pane at its minimum still leaves every chat column its room. When it does not, the pane

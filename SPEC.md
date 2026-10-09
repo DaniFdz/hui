@@ -289,7 +289,12 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   420px for each chat column side by side: the pane yields width down to its own
   320px minimum, and when even that does not fit (say three split chats) it shows
   as its rail until the operator expands it anyway or a view is opened, then at
-  its minimum with the chat columns narrower. Escape inside the pane returns focus to the chat and never
+  its minimum with the chat columns narrower. While the pane is open the chat
+  splitter keeps the same 420px per column: the columns share the room by their
+  weights above it (closing a column rebalances the survivors rather than leaving
+  one at 320px), the divider stops where a column would drop below it, and when
+  420px each does not fit the columns share the room equally, down to the usual
+  320px. Escape inside the pane returns focus to the chat and never
   stops the agent's turn. Below 1100px the pane is a full-screen destination: the
   panel selector lists the chat panes, the open Work views and the launchers, and
   **Back to chat** or Ctrl+Alt+Shift+P returns. Hidden views stay mounted, so terminals
