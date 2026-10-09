@@ -72,7 +72,7 @@ Pi Durable owns conversations, runs, queues and crash recovery.
 | Sidebar and sessions | `lib/sidebar-sessions.ts`, `lib/session-tree.ts`, `views/sessions.ts`, `views/sidebar-session-options.ts` |
 | Pages | `views/*.ts` (settings, automation, kanban, contributions, bots, worktrees) |
 | Reusable components | `components/` (panes, hovercards, dialogs); `components/openclaw/` is a hash-pinned OpenClaw port, do not edit it by hand |
-| Split chats and the Work pane | `lib/session-multiplexer.ts` + `components/session-multiplexer.ts` (chat columns, stacks, tabs); `lib/work-pane.ts` (Work view registry and contract, browser-local per-conversation state, migration of old terminal/browser panes), `components/work-pane.ts` (tab strip, launchers, collapsed rail, narrow destination), `views/panel-selector.ts` (narrow destination chooser) |
+| Split chats and the Work pane | `lib/session-multiplexer.ts` + `components/session-multiplexer.ts` (chat columns, stacks, tabs); `lib/work-pane.ts` (Work view registry and contract, browser-local per-conversation state, migration of old terminal/browser panes), `components/work-pane.ts` (tab strip, launchers, collapsed rail, narrow destination), `lib/work-shortcuts.ts` (the Work pane's shortcut table and the chords it avoids), `views/panel-selector.ts` (narrow destination chooser) |
 | Work views | `lib/work-views/` (one kind per Work pane view: launch, title, render — terminal, browser, files), `components/files-view.ts` with `lib/file-draft.ts`, `lib/file-editor.ts` (CodeMirror, loaded on demand), `lib/files-store.ts`, `lib/files-view-state.ts` |
 | Visual tokens | `styles/tokens.css` first, then the per-surface stylesheets |
 

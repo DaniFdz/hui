@@ -239,8 +239,9 @@ import { activeSessionPane, addSessionTab, closeSessionPane, focusSessionPane, i
 import {
   activateWorkView, closeWorkView, launchableWorkViewKinds, migrateLayoutWorkViews, openWorkView, parseWorkPaneStore, pruneWorkPaneStore, registerWorkViewKind, reorderWorkView,
   retainWorkSessions, serializeWorkPaneStore, sessionWorkPane, setWorkPaneOpen, setWorkPaneWidth, workViewKey, workViewKind, workViewKinds,
-  WORK_PANE_KEY, WORK_PANE_TOGGLE_SHORTCUT, type WorkPaneStore, type WorkViewRef,
+  WORK_PANE_CHAT_MIN_WIDTH, WORK_PANE_KEY, WORK_PANE_TOGGLE_SHORTCUT, type WorkPaneStore, type WorkViewRef,
 } from "./lib/work-pane.ts";
+import { PANE_COLUMN_MIN_WIDTH } from "./lib/session-pane-geometry.ts";
 import { terminalWorkViewKind } from "./lib/work-views/terminal.ts";
 import { browserWorkViewKind } from "./lib/work-views/browser.ts";
 import { filesWorkViewKind } from "./lib/work-views/files.ts";
@@ -5902,6 +5903,7 @@ export class HuiApp extends HuiElement {
       .onMovePane=${this.movePane}
       .onClosePane=${this.closePane}
       .paneLabel=${this.paneLabel}
+      .columnMinimum=${!this.workNarrow && work.open ? WORK_PANE_CHAT_MIN_WIDTH : PANE_COLUMN_MIN_WIDTH}
       .onResize=${(columnId: string | undefined, index: number, ratio: number) => {
         if (this.sessionLayout) this.sessionLayout = resizeSessionLayout(this.sessionLayout, columnId, index, ratio);
       }}

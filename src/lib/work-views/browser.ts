@@ -5,6 +5,7 @@
  */
 import { html, svg } from "lit";
 import type { WorkViewKind } from "../work-pane.ts";
+import { WORK_SHORTCUTS } from "../work-shortcuts.ts";
 
 export type BrowserWorkViewRef = { kind: "browser" };
 
@@ -13,7 +14,7 @@ export type BrowserWorkViewEnvironment = {
   enabled(): boolean;
 };
 
-export const BROWSER_WORK_VIEW_SHORTCUT = "Mod+Alt+KeyB";
+export const BROWSER_WORK_VIEW_SHORTCUT = WORK_SHORTCUTS.browser;
 
 /** Lucide globe, the shape of `icons.globe`, at 16px. */
 export const browserWorkViewIcon = html`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${svg`<circle cx="12" cy="12" r="10" /><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20" /><path d="M2 12h20" />`}</svg>`;
