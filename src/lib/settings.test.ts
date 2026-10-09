@@ -90,19 +90,24 @@ test("the managed browser is on and headless unless explicitly changed", () => {
   assert.equal(normalizeSettings({ browser: { executablePath: `/${"x".repeat(5_000)}` } }).browser.executablePath, "");
 });
 
-test("the VS Code view is off unless explicitly turned on, and its path is kept as typed", () => {
-  assert.deepEqual(DEFAULT_SETTINGS.vscode, { enabled: false, executable: "" });
-  assert.deepEqual(normalizeSettings({}).vscode, DEFAULT_SETTINGS.vscode);
-  assert.deepEqual(normalizeSettings({ vscode: { enabled: "yes", executable: 7 } }).vscode, DEFAULT_SETTINGS.vscode);
-  assert.deepEqual(normalizeSettings({ vscode: { enabled: 1 } }).vscode, DEFAULT_SETTINGS.vscode);
+test("VS Code settings: the old opt-in switch is kept as saved, the path as typed, a provider and a license time", () => {
+  const empty = { enabled: false, executable: "", provider: "auto", licenseAcceptedAt: "" };
+  assert.deepEqual(DEFAULT_SETTINGS.vscode, empty);
+  assert.deepEqual(normalizeSettings({}).vscode, empty);
+  assert.deepEqual(normalizeSettings({ vscode: { enabled: "yes", executable: 7, provider: "vim", licenseAcceptedAt: "yesterday" } }).vscode, empty);
+  // A file saved by the opt-in VS Code view: read unchanged, with the new fields at their defaults.
   assert.deepEqual(
     normalizeSettings({ vscode: { enabled: true, executable: "  /nix/store/abc-openvscode-server/bin/openvscode-server  " } }).vscode,
-    { enabled: true, executable: "/nix/store/abc-openvscode-server/bin/openvscode-server" },
+    { enabled: true, executable: "/nix/store/abc-openvscode-server/bin/openvscode-server", provider: "auto", licenseAcceptedAt: "" },
   );
-  assert.deepEqual(normalizeSettings({ vscode: { enabled: true } }).vscode, { enabled: true, executable: "" }, "no path auto-detects");
   assert.equal(normalizeSettings({ vscode: { executable: "/usr/bin/openvscode-server\n--flag" } }).vscode.executable, "");
   assert.equal(normalizeSettings({ vscode: { executable: `/${"x".repeat(5_000)}` } }).vscode.executable, "");
-  assert.deepEqual(normalizeSettings(normalizeSettings({ vscode: { enabled: true, executable: "/x" } })).vscode, { enabled: true, executable: "/x" }, "round-trips");
+  for (const provider of ["auto", "configured", "desktop", "managed", "path"]) {
+    assert.equal(normalizeSettings({ vscode: { provider } }).vscode.provider, provider);
+  }
+  assert.equal(normalizeSettings({ vscode: { licenseAcceptedAt: "2026-10-09T08:00:00.000Z" } }).vscode.licenseAcceptedAt, "2026-10-09T08:00:00.000Z");
+  const saved = { enabled: true, executable: "/x", provider: "desktop", licenseAcceptedAt: "2026-10-09T08:00:00.000Z" };
+  assert.deepEqual(normalizeSettings(normalizeSettings({ vscode: saved })).vscode, saved, "round-trips");
 });
 
 test("keeping the Mac awake is opt-out and lid-close prevention is never saved", () => {

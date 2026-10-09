@@ -31,6 +31,10 @@ export const BROWSER_PROFILE_DIR = join(CONFIG_DIR, "browser", "profile");
  * extensions, the connection-token file of the running server and its pid. */
 export const VSCODE_DIR = join(CONFIG_DIR, "vscode");
 
+/** openvscode-server releases HUI downloaded for the VS Code view on a Linux machine with no VS Code: one directory
+ * per version and architecture, removable from Settings → Tools → VS Code. */
+export const VSCODE_SERVER_DIR = join(CONFIG_DIR, "vscode-server");
+
 /** HUI owns scheduled task definitions and their bounded run history. */
 export const AUTOMATION_FILE = join(CONFIG_DIR, "automation.json");
 

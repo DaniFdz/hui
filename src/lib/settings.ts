@@ -7,6 +7,7 @@ import { DEFAULT_GPT_LIVE_VOICE, gptLiveVoice, type GptLiveVoice } from "../../s
 import { normalizeAppearance, DEFAULT_APPEARANCE, type Appearance } from "./appearance.ts";
 import { DEFAULT_TERMINAL_FONT, normalizeTerminalFont } from "./terminal-font.ts";
 import { normalizeThemeMode, type ThemeMode } from "./theme.ts";
+import type { VscodeProviderPreference } from "../../shared/vscode.ts";
 
 /** The whole of what the app remembers. Written to `~/.config/hui/settings.json`
  * as flat, hand-editable JSON, and normalised on the way in and out so a stale
@@ -34,7 +35,7 @@ export type Settings = {
   branchPrefix: string;
   /** Settings → Tools → Browser: HUI's managed, agent-only browser profile. */
   browser: BrowserSettings;
-  /** Settings → Tools → VS Code: the Work pane's VS Code view, off until the operator turns it on. */
+  /** Settings → Tools → VS Code: how the Work pane's VS Code view runs VS Code on this machine. */
   vscode: VscodeSettings;
   /** Settings → Gateway → Power (macOS). Lid-close prevention is deliberately not
    * saved: it lasts one gateway run (`/__hui/power`). */
@@ -75,16 +76,25 @@ export type BrowserSettings = {
   executablePath: string;
 };
 
+/** Which VS Code the view runs: `auto` takes the first that can run, in the order of the other values. */
+export type { VscodeProviderPreference };
+
 export type VscodeSettings = {
-  /** Opt-in: every release reaches machines where nobody asked for a VS Code server. */
+  /** The opt-in switch of the first VS Code view. Kept as saved so an older HUI reading this file still works; it no
+   * longer gates anything (the launcher is always there and nothing starts before it is used). */
   enabled: boolean;
-  /** Absolute openvscode-server executable. Empty auto-detects it on PATH. */
+  /** Absolute VS Code server (or VS Code `code` CLI) executable. Empty finds one. */
   executable: string;
+  provider: VscodeProviderPreference;
+  /** When the operator accepted Microsoft's VS Code Server license for `code serve-web`, ISO time; empty: not
+   * accepted, and HUI never runs serve-web. */
+  licenseAcceptedAt: string;
 };
 
 export const DEFAULT_BRANCH_PREFIX = "feature/";
 export const DEFAULT_BROWSER_SETTINGS: BrowserSettings = { enabled: true, headless: true, executablePath: "" };
-export const DEFAULT_VSCODE_SETTINGS: VscodeSettings = { enabled: false, executable: "" };
+export const DEFAULT_VSCODE_SETTINGS: VscodeSettings = { enabled: false, executable: "", provider: "auto", licenseAcceptedAt: "" };
+const VSCODE_PROVIDERS: readonly VscodeProviderPreference[] = ["auto", "configured", "desktop", "managed", "path"];
 
 export const DEFAULT_SETTINGS: Settings = {
   theme: "claw",
@@ -173,9 +183,13 @@ export function normalizeBrowserSettings(value: unknown): BrowserSettings {
 export function normalizeVscodeSettings(value: unknown): VscodeSettings {
   const source = isRecord(value) ? value : {};
   const path = typeof source["executable"] === "string" ? source["executable"].trim() : "";
+  const provider = VSCODE_PROVIDERS.find((value) => value === source["provider"]) ?? "auto";
+  const accepted = typeof source["licenseAcceptedAt"] === "string" ? source["licenseAcceptedAt"].trim() : "";
   return {
     enabled: source["enabled"] === true,
     executable: path.length <= 4_096 && !/[\p{Cc}]/u.test(path) ? path : "",
+    provider,
+    licenseAcceptedAt: accepted.length <= 64 && !Number.isNaN(Date.parse(accepted)) ? accepted : "",
   };
 }
 

@@ -13,6 +13,10 @@ const FAKE = fileURLToPath(new URL("./test-support/fake-vscode-server.mjs", impo
 test("VS Code routes: x-hui still guards every other route, the cookie opens only the proxy", { timeout: 90_000 }, async (t) => {
   const dir = await mkdtemp(join(tmpdir(), "hui-vscode-routes-"));
   process.env["XDG_CONFIG_HOME"] = dir;
+  // An empty PATH and home, so only a VS Code installed system-wide could be found.
+  process.env["PATH"] = join(dir, "no-bin");
+  process.env["HOME"] = dir;
+  process.env["USER"] = "hui-test-nobody";
   await mkdir(join(dir, "hui"));
   await mkdir(join(dir, "repo"));
   const executable = join(dir, "openvscode-server");
@@ -45,20 +49,38 @@ test("VS Code routes: x-hui still guards every other route, the cookie opens onl
   };
   const connect = (id: string) => api(`/__hui/sessions/${id}/vscode/connect`, { method: "POST", body: JSON.stringify({ theme: { background: "#ffffff", panel: "#f4f4f4", elevated: "#eeeeee", text: "#222222", border: "javascript:alert(1)" } }) });
 
-  // Off by default: the view says so, and nothing starts.
+  // Nothing is set up: the status says what this machine offers, an open asks for a choice, and nothing starts.
   assert.equal((await fetch(`${origin}/__hui/vscode-server`)).status, 403);
-  const off = await api("/__hui/vscode-server");
-  assert.equal(off.status, 200);
-  assert.equal(off.body["state"], "off");
-  assert.equal(off.body["enabled"], false);
-  const refused = await connect("alpha");
-  assert.equal(refused.status, 409);
-  assert.deepEqual(refused.body, { error: "VS Code is off. Turn it on in Settings → Tools → VS Code.", code: "disabled" });
+  const fresh = await api("/__hui/vscode-server");
+  assert.equal(fresh.status, 200);
+  assert.equal(fresh.body["enabled"], false);
+  assert.deepEqual(fresh.body["license"], { accepted: false, acceptedAt: "" });
+  assert.equal(fresh.body["install"]["dir"], join(dir, "hui", "vscode-server"), "HUI's own install lives beside its VS Code data");
+  // A machine with a VS Code server installed system-wide opens straight away; everywhere else an open asks first.
+  if (!fresh.body["active"]) {
+    assert.equal(fresh.body["state"], "setup");
+    assert.equal(fresh.body["setup"]["needed"], true);
+    const refused = await connect("alpha");
+    assert.equal(refused.status, 409);
+    assert.equal(refused.body["code"], "setup");
+    assert.equal((await api("/__hui/vscode-server")).body["instance"], 0, "nothing started");
+  }
 
+  // The license acceptance lands in HUI's settings, and revoking clears it.
+  const accepted = await api("/__hui/vscode-server", { method: "POST", body: JSON.stringify({ action: "accept-license" }) });
+  assert.equal(accepted.body["license"]["accepted"], true);
+  assert.ok(!Number.isNaN(Date.parse((await api("/__hui/settings")).body["vscode"]["licenseAcceptedAt"])));
+  const revoked = await api("/__hui/vscode-server", { method: "POST", body: JSON.stringify({ action: "revoke-license" }) });
+  assert.deepEqual(revoked.body["license"], { accepted: false, acceptedAt: "" });
+  assert.equal((await api("/__hui/settings")).body["vscode"]["licenseAcceptedAt"], "");
+
+  // A settings file from the opt-in era keeps working: enabled and a path.
   const saved = await api("/__hui/settings", { method: "PUT", body: JSON.stringify({ vscode: { enabled: true, executable } }) });
   assert.equal(saved.status, 200);
-  assert.deepEqual(saved.body["vscode"], { enabled: true, executable });
-  assert.equal((await api("/__hui/vscode-server")).body["state"], "stopped");
+  assert.deepEqual(saved.body["vscode"], { enabled: true, executable, provider: "auto", licenseAcceptedAt: "" });
+  const configured = await api("/__hui/vscode-server");
+  assert.equal(configured.body["state"], "stopped");
+  assert.equal(configured.body["active"]["kind"], "configured");
 
   assert.equal((await fetch(`${origin}/__hui/sessions/alpha/vscode/connect`, { method: "POST", body: "{}" })).status, 403, "minting a ticket needs x-hui");
   assert.equal((await api("/__hui/sessions/alpha/vscode/connect")).status, 405);
@@ -106,15 +128,19 @@ test("VS Code routes: x-hui still guards every other route, the cookie opens onl
   const stopped = await api("/__hui/vscode-server", { method: "POST", body: JSON.stringify({ action: "stop" }) });
   assert.equal(stopped.body["state"], "stopped");
   assert.equal((await api("/__hui/vscode-server", { method: "POST", body: JSON.stringify({ action: "explode" }) })).status, 400);
+  assert.equal((await api("/__hui/vscode-server", { method: "POST", body: JSON.stringify({ action: "cancel-install" }) })).status, 200, "nothing to cancel is no error");
   assert.equal((await fetch(`${origin}/__hui/vscode/echo`, { headers: { cookie } })).status, 503);
   assert.equal((await connect("alpha")).status, 200);
   const restarted = await fetch(`${origin}/__hui/vscode/echo`, { headers: { cookie } });
   assert.equal(restarted.status, 200);
   assert.equal((await api("/__hui/vscode-server")).body["instance"], 2);
 
-  // Turning it off withdraws the cookie at once.
-  await api("/__hui/settings", { method: "PUT", body: JSON.stringify({ vscode: { enabled: false, executable } }) });
+  // A path that no longer runs stops the server: frames get a notice and the view asks for setup again.
+  await api("/__hui/settings", { method: "PUT", body: JSON.stringify({ vscode: { executable: join(dir, "missing") } }) });
   const after = await fetch(`${origin}/__hui/vscode/echo`, { headers: { cookie } });
-  assert.equal(after.status, 403);
-  assert.equal((await api("/__hui/vscode-server")).body["state"], "off");
+  assert.equal(after.status, 503);
+  const broken = await api("/__hui/vscode-server");
+  assert.equal(broken.body["state"], "setup");
+  assert.equal(broken.body["activeError"], `No executable was found at ${join(dir, "missing")}.`);
+  assert.equal((await connect("alpha")).body["code"], "setup");
 });

@@ -15,6 +15,7 @@
  * A theme file carries both modes, so there is no pairing to describe and no
  * manifest to keep in step.
  */
+import { existsSync } from "node:fs";
 import { mkdir, readFile, readdir, realpath, stat, unlink, writeFile } from "node:fs/promises";
 import type { ServerResponse } from "node:http";
 import { randomUUID } from "node:crypto";
@@ -59,10 +60,12 @@ import {
 import { PullRequestStatuses, pullRequestsFromTranscript } from "./pull-requests.ts";
 
 
-import { CONFIG_DIR, ATTACHMENTS_DIR, AUTOMATION_FILE, BROWSER_PROFILE_DIR, USER_THEME_DIR, VSCODE_DIR, WATCHERS_FILE, WATCHER_LOG_DIR } from "./paths.ts";
+import { CONFIG_DIR, ATTACHMENTS_DIR, AUTOMATION_FILE, BROWSER_PROFILE_DIR, USER_THEME_DIR, VSCODE_DIR, VSCODE_SERVER_DIR, WATCHERS_FILE, WATCHER_LOG_DIR } from "./paths.ts";
 import { VscodeError, VscodeService } from "./vscode.ts";
+import { VscodeInstaller } from "./vscode-install.ts";
+import { verifyVscodeServer } from "./vscode-providers.ts";
 import { attachVscodeTransport, isVscodeProxyPath, proxyVscodeHttp, serveVscodeEnter } from "./vscode-proxy.ts";
-import { normalizeVscodeTheme, VSCODE_ENTER_PATH, VSCODE_STATUS_ROUTE } from "../shared/vscode.ts";
+import { normalizeVscodeTheme, VSCODE_ACTIONS, VSCODE_ENTER_PATH, VSCODE_STATUS_ROUTE, type VscodeAction } from "../shared/vscode.ts";
 import { BrowserToolError, ManagedBrowser } from "./browser/manager.ts";
 import { MacPower } from "./power.ts";
 import { attachBrowserTransport, browserViewTicket } from "./browser-transport.ts";
@@ -400,8 +403,23 @@ const managedBrowser = new ManagedBrowser({
   profileDir: BROWSER_PROFILE_DIR,
   readSettings: async () => (await readSettings()).browser,
 });
-/** One openvscode-server per gateway for every VS Code view, started on the first open (`vscode.ts`). */
-const vscode = new VscodeService({ dir: VSCODE_DIR, settings: async () => (await readSettings()).vscode });
+/** One VS Code server per gateway for every VS Code view, started on the first open (`vscode.ts`). Nothing runs or
+ * downloads before that; an openvscode-server install happens only when the operator asks for it. */
+const vscode = new VscodeService({
+  dir: VSCODE_DIR,
+  settings: async () => (await readSettings()).vscode,
+  saveLicense: async (licenseAcceptedAt) => {
+    const current = await readSettings();
+    await writeSettings({ ...current, vscode: { ...current.vscode, licenseAcceptedAt } });
+  },
+  installer: new VscodeInstaller({
+    dir: VSCODE_SERVER_DIR,
+    verify: verifyVscodeServer,
+    nixos: existsSync("/etc/NIXOS"),
+    // A mirror serving the same release files; the pinned checksums still decide what installs.
+    ...(process.env["HUI_OPENVSCODE_SERVER_MIRROR"] ? { downloads: process.env["HUI_OPENVSCODE_SERVER_MIRROR"] } : {}),
+  }),
+});
 /** macOS sleep prevention lives and dies with this gateway process. */
 const macPower = process.platform === "darwin" ? new MacPower() : undefined;
 liveSessions.setTaskSuggestionProvider((id) => taskSuggestions.list(id));
@@ -2719,7 +2737,10 @@ async function handleRequest(
       const folder = await stat(session.cwd).then((info) => info.isDirectory(), () => false);
       if (!folder) throw new VscodeError(`The conversation's folder no longer exists: ${session.cwd}`, 409, "folder");
       const theme = body && typeof body === "object" && !Array.isArray(body) ? normalizeVscodeTheme((body as Record<string, unknown>)["theme"]) : undefined;
-      sendJson(response, 200, await vscode.connect(session.cwd, theme));
+      const connection = await vscode.connect(session.cwd, theme);
+      // Still starting (serve-web downloading its first build): the view follows the status and asks again.
+      if ("pending" in connection) sendJson(response, 202, { pending: true, status: await vscode.status() });
+      else sendJson(response, 200, connection);
     } catch (error) {
       sendJson(response, error instanceof VscodeError ? error.status : 500, {
         error: error instanceof Error ? error.message : "VS Code could not open.",
@@ -2739,8 +2760,15 @@ async function handleRequest(
       let body: unknown;
       try { body = await readBody(request); } catch { throw new VscodeError("VS Code request body must be JSON.", 400); }
       const action = body && typeof body === "object" && !Array.isArray(body) ? (body as Record<string, unknown>)["action"] : undefined;
-      if (action !== "stop") throw new VscodeError("action must be stop.", 400);
-      await vscode.stop();
+      if (!VSCODE_ACTIONS.includes(action as VscodeAction)) throw new VscodeError(`action must be one of ${VSCODE_ACTIONS.join(", ")}.`, 400);
+      switch (action as VscodeAction) {
+        case "stop": await vscode.stop(); break;
+        case "accept-license": await vscode.acceptLicense(); break;
+        case "revoke-license": await vscode.revokeLicense(); break;
+        case "install": vscode.startInstall(); break;
+        case "cancel-install": await vscode.cancelInstall(); break;
+        case "uninstall": await vscode.uninstall(); break;
+      }
       sendJson(response, 200, await vscode.status());
     } catch (error) {
       sendJson(response, error instanceof VscodeError ? error.status : 500, {

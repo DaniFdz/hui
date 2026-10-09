@@ -1,6 +1,8 @@
 /**
- * Carries the VS Code view's browser traffic to the gateway's openvscode-server under /__hui/vscode/: plain HTTP,
- * the workbench page, and the WebSocket its remote connection needs.
+ * Carries the VS Code view's browser traffic to the gateway's VS Code server under /__hui/vscode/: plain HTTP,
+ * the workbench page, and the WebSocket its remote connection needs. Both providers sit behind it: openvscode-server
+ * (and compatible servers) and `code serve-web`, whose page and cookies differ slightly (see patchWorkbenchHtml and
+ * downstreamHeaders).
  *
  * A frame cannot send x-hui, so access is a capability: a guarded POST mints a one-use ticket, /__hui/vscode/enter
  * trades it for an HttpOnly, SameSite=Strict cookie scoped to /__hui/vscode bound to a random server-side secret, and
@@ -14,7 +16,7 @@ import type { IncomingHttpHeaders, IncomingMessage, OutgoingHttpHeaders, ServerR
 import { request as httpRequest } from "node:http";
 import type { EventEmitter } from "node:events";
 import type { Duplex } from "node:stream";
-import { VSCODE_BASE_PATH, VSCODE_ENTER_PATH, type VscodeTheme } from "../shared/vscode.ts";
+import { VSCODE_BASE_PATH, VSCODE_ENTER_PATH, type VscodeFlavor, type VscodeTheme } from "../shared/vscode.ts";
 import { validTerminalOrigin } from "./terminal-transport.ts";
 import { vscodeAgent, type VscodeService } from "./vscode.ts";
 
@@ -67,12 +69,28 @@ export function upstreamHeaders(headers: IncomingHttpHeaders, token: string, mod
   return result;
 }
 
+/** A cookie VS Code sets keeps to the base path: serve-web sets its secret-storage cookies on `Path=/`, which would
+ * put them on every HUI route. */
+export function scopeVscodeCookie(cookie: string): string {
+  const parts = cookie.split(";");
+  let scoped = false;
+  const rewritten = parts.map((part, index) => {
+    if (index === 0) return part;
+    const match = /^\s*path\s*=\s*(.*)$/iu.exec(part);
+    if (!match) return part;
+    scoped = true;
+    const path = (match[1] ?? "").trim();
+    return path === VSCODE_BASE_PATH || path.startsWith(`${VSCODE_BASE_PATH}/`) ? part : ` Path=${VSCODE_BASE_PATH}`;
+  });
+  return scoped ? rewritten.join(";") : `${cookie}; Path=${VSCODE_BASE_PATH}`;
+}
+
 export function downstreamHeaders(headers: IncomingHttpHeaders): OutgoingHttpHeaders {
   const result: OutgoingHttpHeaders = {};
   for (const [name, value] of Object.entries(headers)) {
     if (value === undefined || DROPPED_RESPONSE_HEADERS.has(name)) continue;
     if (name === "set-cookie") {
-      const kept = (Array.isArray(value) ? value : [value]).filter((cookie) => !cookie.trimStart().startsWith(`${TOKEN_COOKIE}=`));
+      const kept = (Array.isArray(value) ? value : [value]).filter((cookie) => !cookie.trimStart().startsWith(`${TOKEN_COOKIE}=`)).map(scopeVscodeCookie);
       if (kept.length > 0) result[name] = kept;
       continue;
     }
@@ -139,10 +157,13 @@ export function vscodeThemeDefaults(theme: VscodeTheme): ThemeDefaults {
 
 const CONFIG_PATTERN = /(<meta id="vscode-workbench-web-configuration" data-settings=")([^"]*)(">)/u;
 
-/** The workbench page's configuration gains the connection token (for the WebSocket handshake), HUI's theme and the
- * quiet defaults AgentsInTheCloud ships: no workspace-trust prompt (HUI already runs agents with full access in this
- * folder), no start page, no AI chat. They are defaults; the operator's own VS Code settings still win. */
-export function patchWorkbenchHtml(html: string, options: { token: string; theme?: VscodeTheme }): string {
+/** The workbench page's configuration gains HUI's theme and the quiet defaults AgentsInTheCloud ships: no
+ * workspace-trust prompt (HUI already runs agents with full access in this folder), no start page, no AI chat. They
+ * are defaults; the operator's own VS Code settings still win. openvscode-server's page also gains the connection
+ * token, which its WebSocket handshake carries; serve-web checks the token cookie the proxy adds on every request and
+ * socket itself, so its page never holds the token. serve-web builds its web-extension URLs as `http://<host>`, which
+ * a page served over TLS cannot load, so they follow the page's scheme. */
+export function patchWorkbenchHtml(html: string, options: { token: string; theme?: VscodeTheme; flavor?: VscodeFlavor; secure?: boolean }): string {
   return html.replace(CONFIG_PATTERN, (match, prefix: string, raw: string, suffix: string) => {
     let settings: Record<string, unknown>;
     try {
@@ -152,8 +173,13 @@ export function patchWorkbenchHtml(html: string, options: { token: string; theme
     } catch {
       return match;
     }
-    settings["connectionToken"] = options.token;
+    if (options.flavor !== "serve-web") settings["connectionToken"] = options.token;
     settings["enableWorkspaceTrust"] = false;
+    const gallery = (settings["productConfiguration"] as { extensionsGallery?: Record<string, unknown> } | undefined)?.extensionsGallery;
+    const authority = typeof settings["remoteAuthority"] === "string" ? settings["remoteAuthority"] : "";
+    if (options.secure && gallery && authority && typeof gallery["resourceUrlTemplate"] === "string" && gallery["resourceUrlTemplate"].startsWith(`http://${authority}/`)) {
+      gallery["resourceUrlTemplate"] = `https://${gallery["resourceUrlTemplate"].slice("http://".length)}`;
+    }
     const existing = settings["configurationDefaults"];
     const defaults: Record<string, unknown> = typeof existing === "object" && existing !== null && !Array.isArray(existing) ? { ...existing } : {};
     Object.assign(defaults, {
@@ -263,7 +289,9 @@ export function proxyVscodeHttp(request: IncomingMessage, response: ServerRespon
     incoming.once("end", () => {
       finished = true;
       if (response.headersSent) return;
-      const body = Buffer.from(patchWorkbenchHtml(Buffer.concat(chunks).toString("utf8"), { token: server.token, ...(session.theme ? { theme: session.theme } : {}) }));
+      const body = Buffer.from(patchWorkbenchHtml(Buffer.concat(chunks).toString("utf8"), {
+        token: server.token, flavor: server.flavor, secure: secureRequest(request), ...(session.theme ? { theme: session.theme } : {}),
+      }));
       delete headers["content-length"];
       response.writeHead(status, incoming.statusMessage, { ...headers, "content-length": body.length, "cache-control": "no-store" });
       response.end(body);

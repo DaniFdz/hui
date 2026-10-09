@@ -178,3 +178,95 @@ hui-vscode-view {
 @media (prefers-reduced-motion: reduce) {
   .hui-vscode-view__spinner { animation-duration: 2.4s; }
 }
+
+/* The first-open card: the choices this machine offers, each in its own section. */
+.hui-vscode-view__overlay--scroll {
+  place-items: start center;
+  overflow-y: auto;
+}
+
+.hui-vscode-view__card--setup {
+  width: min(520px, 100%);
+  margin-block: auto;
+  gap: 12px;
+}
+
+.hui-vscode-view__option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  width: 100%;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.hui-vscode-view__option > strong {
+  font-size: var(--control-ui-text-sm, 12px);
+}
+
+.hui-vscode-view__option code {
+  font-family: var(--mono);
+  font-size: var(--control-ui-text-xs, 11px);
+}
+
+.hui-vscode-view__link {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.hui-vscode-view__problem {
+  margin: 0;
+  color: var(--danger, var(--text));
+  font-size: var(--control-ui-text-sm, 12px);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.hui-vscode-view__hint,
+.hui-vscode-view__fineprint {
+  font-size: var(--control-ui-text-xs, 11px);
+}
+
+.hui-vscode-view__fineprint {
+  margin: 0;
+  color: var(--muted);
+}
+
+.hui-vscode-view__progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  color: var(--muted);
+  font-size: var(--control-ui-text-sm, 12px);
+}
+
+.hui-vscode-view__bar-track {
+  flex: 1 1 auto;
+  min-width: 60px;
+  height: 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text) 12%, transparent);
+  overflow: hidden;
+}
+
+.hui-vscode-view__bar-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width 0.3s ease;
+}
+
+.hui-vscode-view__copy .hui-vscode-view__copy-wrap {
+  white-space: normal;
+}
+
+.hui-vscode-view--narrow .hui-vscode-view__overlay {
+  padding: 12px;
+}
+
+.hui-vscode-view--narrow .hui-vscode-view__progress {
+  flex-wrap: wrap;
+}

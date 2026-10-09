@@ -56,7 +56,7 @@ Pi Durable owns conversations, runs, queues and crash recovery.
 | Integrations | `jira*.ts`, `slack.ts` and `slack-routes.ts` (the Slack connection Slack triggers read through), `backlog.ts` (Kanban), `automation.ts` |
 | Terminals and browser | `terminals.ts`, `terminal-replay.ts` (bounded replay bytes), `terminal-transport.ts` (wire format in `shared/terminal-stream.ts`), `browser/` (managed Chromium over a CDP pipe), `browser-transport.ts` |
 | Files view | `files.ts` (list, search, read, save, upload, delete inside a working directory), `file-routes.ts` (`/__hui/sessions/:id/files…`) |
-| VS Code view | `vscode.ts` (finding and running the shared openvscode-server, tickets and cookie secrets), `vscode-proxy.ts` (the cookie-guarded HTTP and WebSocket proxy under `/__hui/vscode/`); contract in `shared/vscode.ts` |
+| VS Code view | `vscode.ts` (running the shared VS Code server, license consent, tickets and cookie secrets), `vscode-providers.ts` (finding VS Code desktop's `code serve-web`, servers on PATH or a configured path; launch flags), `vscode-install.ts` (the pinned, checksum-verified openvscode-server install on Linux), `vscode-proxy.ts` (the cookie-guarded HTTP and WebSocket proxy under `/__hui/vscode/`); contract in `shared/vscode.ts` |
 | Bots and calls (Labs) | `bots.ts`, `bot-*.ts`, `bot-templates/` (other platforms' bot templates, read for import), `calls.ts`, `call-*.ts`, `runtimes/durable-bots.ts` |
 | OptChat memory | `optchat/` (engine, no HUI imports), `runtimes/durable-optchat.ts` (Durable glue); see `docs/optchat.md` |
 | Remote workers | `workers.ts`, `worker-routes.ts` (gateway side), `worker/` (host daemon, protocol, bootstrap, config sync) |
