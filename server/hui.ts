@@ -156,6 +156,7 @@ import { TaskSuggestionInputError, TaskSuggestionNotFoundError, TaskSuggestionSt
 import { WatcherConflictError, WatcherInputError, WatcherNotFoundError, WatcherService } from "./watchers.ts";
 import { SecretFiles, SecretRequests } from "./secret-requests.ts";
 import { REQUEST_ID, RecentRequests } from "./recent-requests.ts";
+import { Questionnaires } from "./questionnaires.ts";
 import {
   BacklogInputError,
   BacklogJiraFeed,
@@ -426,7 +427,8 @@ liveSessions.setTaskSuggestionProvider((id) => taskSuggestions.list(id));
 liveSessions.setWatcherProvider((id) => watchers.list(id));
 const secretRequests = new SecretRequests({ onChange: (id) => liveSessions.notifySnapshot(id) });
 const secretFiles = new SecretFiles();
-liveSessions.setSecretRequestProvider((id) => secretRequests.questions(id));
+const questionnaires = new Questionnaires({ onChange: (id) => liveSessions.notifySnapshot(id) });
+liveSessions.setHuiQuestionProvider((id) => [...secretRequests.questions(id), ...questionnaires.questions(id)]);
 // A stopped turn must not leave its pages running in the headless browser.
 liveSessions.setAbortListener((id) => managedBrowser.closeOwner(id));
 registerAgentToolHandler(async (invocation) => {
@@ -454,6 +456,10 @@ registerAgentToolHandler(async (invocation) => {
     if (caller.worker !== invocation.fromWorker) throw new Error("A secret request must come from the machine its session runs on.");
     const answer = await secretRequests.request(caller.id, invocation.params, invocation.signal);
     return invocation.fromWorker ? answer : secretFiles.deliver(answer);
+  }
+  if (invocation.action === "ask_user_question") {
+    if (!(await readRegistry()).some(({ id }) => id === invocation.callerSessionId)) throw new Error("Conversation no longer exists.");
+    return questionnaires.request(invocation.callerSessionId, invocation.params, invocation.signal);
   }
   if (invocation.action === "watcher") {
     const caller = (await readRegistry()).find(({ id }) => id === invocation.callerSessionId);
@@ -4229,7 +4235,7 @@ async function handleRequest(
       }
       try {
         // A secret goes to the gateway's own request, never to the runtime.
-        if (secretRequests.answer(id, questionId, body)) {
+        if (secretRequests.answer(id, questionId, body) || questionnaires.answer(id, questionId, body)) {
           sendJson(response, 200, { ok: true });
           return;
         }
@@ -4389,6 +4395,7 @@ export async function stopBackend(): Promise<void> {
   subagents.dispose();
   watchers.dispose();
   secretRequests.dispose();
+  questionnaires.dispose();
   secretFiles.dispose();
   stopAgentToolBridge();
   // Closed first: remote sessions then keep running on their hosts instead of

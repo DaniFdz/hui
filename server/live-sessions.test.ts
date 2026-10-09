@@ -2047,7 +2047,7 @@ test("a pending secret request is shown as a question and leaves the session wai
   const started: FakeSession[] = [];
   const manager = new LiveSessions(factory(started));
   let pending: SecretQuestion[] = [];
-  manager.setSecretRequestProvider((id) => id === "secret" ? pending : []);
+  manager.setHuiQuestionProvider((id) => id === "secret" ? pending : []);
   manager.ensure(recordFor("secret"));
   await waitForBoot(manager, "secret");
   await manager.prompt("secret", "log the workspace in");

@@ -4,6 +4,10 @@
  * the registry and the contract is fixed in `docs/api.md`; this module holds no session state of its own.
  */
 import type { TranscriptMetrics } from "../../server/runtimes/transcript-metrics.ts";
+import type { QuestionnaireQuestion } from "../../server/questionnaires.ts";
+
+/** One question's answer from the questionnaire card: chosen labels and typed text. */
+export type QuestionnaireReply = { selected: readonly string[]; custom?: string };
 import { callMinutes, callTranscriptText, type CallRecord } from "../../shared/calls.ts";
 import type { ProgressCard } from "./progress-card.ts";
 import type { SessionPullRequest } from "../../shared/pull-requests.ts";
@@ -251,17 +255,23 @@ export type TranscriptItem = { metrics?: TranscriptMetrics } & (
 
 export type PromptMode = "prompt" | "steer" | "followUp";
 /** `secret` is HUI's own `secret_request` prompt: `title` is the label and
- * `message` the reason. Its answer goes to the gateway, never to the runtime. */
+ * `message` the reason. `questionnaire` is HUI's `ask_user_question` card,
+ * `title` its first question. Their answers go to the gateway, never to the runtime. */
 export type RuntimeQuestion = {
   id: string;
-  method: "select" | "confirm" | "input" | "editor" | "secret";
+  method: "select" | "confirm" | "input" | "editor" | "secret" | "questionnaire";
   title?: string;
   message?: string;
   options?: readonly string[];
   placeholder?: string;
   value?: string;
   prefill?: string;
+  questions?: readonly QuestionnaireQuestion[];
 };
+
+/** What answering a question sends: a value, a confirmation, a questionnaire's
+ * answers (index-aligned with its questions) or a cancel. */
+export type QuestionResponse = { value?: string; confirmed?: boolean; cancelled?: boolean; answers?: readonly QuestionnaireReply[] };
 
 export type QueuedMessage = { id: string; text: string; mode: "followUp" };
 export type QueueSnapshot = {
@@ -607,7 +617,7 @@ export async function setSessionThinking(id: string, level: string): Promise<str
 export async function answerQuestion(
   id: string,
   questionId: string,
-  answer: { value?: string; confirmed?: boolean; cancelled?: boolean },
+  answer: QuestionResponse,
 ): Promise<void> {
   await fetchJson<{ ok?: boolean }>(`${SESSIONS_URL}/${encodeURIComponent(id)}/question`, {
     method: "POST",

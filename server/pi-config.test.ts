@@ -67,7 +67,7 @@ test("reports shipped definitions separately from configured sources", async () 
   assert.deepEqual(builtin, ["read", "bash", "edit", "write", "grep", "find", "ls", "powershell"]);
   assert.deepEqual(
     snapshot.tools.filter((tool) => tool.kind === "hui").map((t) => t.name),
-    ["progress_card", "terminal", "sessions_spawn", "present_media", "secret_request", "sessions_list", "sessions_history", "sessions_send", "suggest_task", "dismiss_task", "set_stage", "subagents", "watcher", "show_widget", "browser"],
+    ["progress_card", "ask_user_question", "terminal", "sessions_spawn", "present_media", "secret_request", "sessions_list", "sessions_history", "sessions_send", "suggest_task", "dismiss_task", "set_stage", "subagents", "watcher", "show_widget", "browser"],
   );
   assert.deepEqual(snapshot.settings.extensions, ["team-tools.ts"]);
   assert.deepEqual(snapshot.settings.packages, ["@acme/pi-pack", "other"]);

@@ -1209,6 +1209,47 @@ worker's connection drops, the card closes too and the call fails, as other
 HUI tools do there. Pending requests live in gateway memory and do not survive
 a restart.
 
+## Structured questions
+
+An agent that cannot go on without decisions from the operator asks for them
+with HUI's `ask_user_question` tool: one to four questions in a single call,
+each with a short header, the question and two to four options with a label
+and a description. A question may allow several answers (`multiSelect`), and
+the options of a single-select question may carry a Markdown preview (a
+mockup, a snippet, a config) to compare. HUI's tool takes the place of any PI
+extension tool of the same name, such as `@juicesharp/rpiv-ask-user-question`,
+whose plain select and input dialogs it replaces.
+
+The open conversation shows the questions in one card in the question dock
+above the composer, and the session reads *Waiting*. With several questions a
+row of header chips leads the card, ticked once answered; one question shows at
+a time with its progress (*2/4*). Options are radio rows, or checkbox rows for
+a multi-select question, each with its label, description and number; every
+question ends with a *Type something…* row for the operator's own answer, which
+replaces a single-select choice or adds to a multi-select one. When options
+carry previews, the focused option's preview shows beside them, or under them
+on a narrow screen. Picks are kept while moving between questions.
+
+The keyboard drives the whole card: number keys choose a row, arrows move
+between rows (↑/↓) and questions (←/→), Space toggles a checkbox, Enter moves
+to the next question (choosing the focused single-select option first) and on
+the last one submits, Ctrl/⌘+Enter always moves on, and Escape cancels the
+card (the first Escape in typed text only leaves the field). The pointer does
+the same with the chips, rows, *Back*, *Next*, *Submit* and *Cancel*; the
+actions stay in reach when the card scrolls. *Submit* needs at least one
+answer; a question left blank is left out.
+
+The agent learns each answer as `"question"="answer"` (several joined by
+commas, a chosen option's preview after it), or that the operator declined:
+*Cancel*, Escape, Stop and a gateway stop all decline. Once answered, the
+transcript keeps a short summary of the answers by header in place of the card.
+A call the card could not show (more than four questions, a reserved label such
+as *Other*, duplicate labels, a header over 16 characters, a preview on a
+multi-select question) fails back to the agent with the reason, and no card
+opens. Questions from parallel calls show one after another. A reload shows a
+pending card again from its first question. Pending questionnaires live in
+gateway memory and do not survive a restart.
+
 ## Kanban
 
 **Kanban** sits directly below Automations in the sidebar (`/kanban`). It has

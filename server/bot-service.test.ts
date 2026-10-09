@@ -1067,7 +1067,7 @@ test("messages prompt an idle bot, queue behind a busy one, and a wait reports t
 
   // HUI's own secret prompt (secret_request) waits for the operator too: what it is for, never a value.
   let secrets: SecretQuestion[] = [];
-  h.sessions.setSecretRequestProvider((id) => id === bot.sessionId ? secrets : []);
+  h.sessions.setHuiQuestionProvider((id) => id === bot.sessionId ? secrets : []);
   prompted = chat.nextPrompt();
   const secret = h.service.send(bot.id, { text: "log in" }, { timeoutMs: 10_000 });
   await prompted;

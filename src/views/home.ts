@@ -15,6 +15,7 @@ import type {
   RuntimeModel,
   RuntimeUsage,
   RuntimeQuestion,
+  QuestionResponse,
   PromptMode,
   QueueSnapshot,
   RewindTarget,
@@ -43,6 +44,8 @@ import { renderMarkdown } from "../lib/markdown.ts";
 import "../components/github-embeds.ts";
 import "../components/browser-preview.ts";
 import "../components/widget-card.ts";
+import "../components/questionnaire-card.ts";
+import type { QuestionnaireResult } from "../../server/questionnaires.ts";
 import { handleCodeBlockDisclosure, markdownBlocks } from "../lib/markdown-blocks.ts";
 import { openMessageContextMenu } from "../lib/message-context-menu.ts";
 import { progressCardFromTranscript } from "../lib/progress-card.ts";
@@ -312,7 +315,7 @@ export type HomeProps = {
   onRemoveAttachment: (index: number) => void;
   onCopy: (text: string, id: string) => Promise<boolean>;
   onActivityExpanded: (id: string, expanded: boolean) => void;
-  onAnswerQuestion: (answer: { value?: string; confirmed?: boolean; cancelled?: boolean }) => void;
+  onAnswerQuestion: (answer: QuestionResponse) => void;
   onTranscriptScroll: (element: HTMLElement) => void;
   onTranscriptNavigate: (thread: HTMLElement, top: number) => void;
   onScrollToBottom: () => void;
@@ -995,6 +998,29 @@ function widgetActivity(items: readonly ChatActivity[]): WidgetView | undefined 
   return view?.state === "failed" ? undefined : view;
 }
 
+/** An answered `ask_user_question` call: what the operator chose, kept in sight
+ * like the card it replaced. A running or failed one stays an ordinary tool row. */
+function questionnaireSummary(items: readonly ChatActivity[]): QuestionnaireResult | undefined {
+  const item = items.length === 1 ? items[0] : undefined;
+  if (item?.kind !== "tool" || item.name !== "ask_user_question" || item.status !== "succeeded") return undefined;
+  const details = item.details as Partial<QuestionnaireResult> | undefined;
+  // Only HUI's own result: a PI extension's call of the same name (older transcripts) has another shape.
+  const answers = details?.answers;
+  return Array.isArray(answers) && answers.every((answer) => typeof answer?.header === "string" && Array.isArray(answer.selected))
+    ? { cancelled: details?.cancelled === true, answers }
+    : undefined;
+}
+
+function renderQuestionnaireSummary(id: string, result: QuestionnaireResult): TemplateResult {
+  return html`<div class="chat-group tool chat-group--with-footer" data-chat-row-key=${id}>
+    <div class="chat-group-messages"><div class="chat-question-summary" role="note" aria-label="Your answers">
+      ${result.cancelled || !result.answers.length
+        ? html`<div class="chat-question-summary__line"><span>You declined to answer.</span></div>`
+        : result.answers.map((answer) => html`<div class="chat-question-summary__line" title=${answer.question}><strong>${answer.header}</strong><span>${answer.selected.join(", ")}</span></div>`)}
+    </div></div>
+  </div>`;
+}
+
 function renderWidgetRow(id: string, widget: WidgetView): TemplateResult {
   return html`<div class="chat-group assistant chat-group--with-footer chat-group--widget" data-chat-row-key=${id}>
     <div class="chat-group-messages"><hui-widget-card
@@ -1115,6 +1141,8 @@ function renderTranscriptRows(props: HomeProps, rows: readonly ChatProjectionRow
       }
       const widget = widgetActivity(row.items);
       if (widget) return renderWidgetRow(row.id, widget);
+      const answers = questionnaireSummary(row.items);
+      if (answers) return renderQuestionnaireSummary(row.id, answers);
       const expansionId = `${props.session?.id ?? "session"}:${row.id}`;
       return html`<div class="chat-group tool chat-group--activity chat-group--with-footer" data-chat-row-key=${row.id}>
         <div class="chat-group-messages">
@@ -2035,6 +2063,12 @@ function selectQuestionOption(form: HTMLFormElement, value: string) {
 function renderQuestion(props: HomeProps) {
   const question = props.question;
   if (!question) return nothing;
+  if (question.method === "questionnaire") {
+    // Its previews' code blocks copy and wrap as the transcript's do.
+    return html`<div class="agent-chat__question-dock" aria-live="polite" @click=${(event: Event) => { void copyCodeBlock(event, props); }}>
+      <hui-questionnaire-card .prompt=${question} .onAnswer=${props.onAnswerQuestion} .idPrefix=${sessionControlId(props, "questionnaire")}></hui-questionnaire-card>
+    </div>`;
+  }
   const submit = (event: SubmitEvent) => {
     event.preventDefault();
     const form = event.currentTarget as HTMLFormElement;
