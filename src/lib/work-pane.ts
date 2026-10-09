@@ -6,6 +6,7 @@
  */
 import type { TemplateResult } from "lit";
 import { closeSessionPane, isChatPane, locateSessionPane, replacePaneSession, sessionPanes, spotTabs, type SessionLayout } from "./session-multiplexer.ts";
+import { WORK_SHORTCUTS } from "./work-shortcuts.ts";
 
 export type WorkViewRef =
   | { kind: "terminal"; terminalId: string }
@@ -37,7 +38,7 @@ export type WorkViewKind<R extends WorkViewRef = WorkViewRef> = {
   label: string;
   /** 16px SVG, explicit size. */
   icon: TemplateResult;
-  /** e.g. "Mod+Alt+KeyF" (display + binding). */
+  /** e.g. "Mod+Alt+Shift+KeyF" (display + binding); the entry in `WORK_SHORTCUTS`. */
   shortcut?: string;
   /** Visible reason when it cannot launch (for this conversation, when given). */
   unavailable?(sessionId?: string): string | undefined;
@@ -98,7 +99,7 @@ export const WORK_PANE_CHAT_MIN_WIDTH = 420;
  * conversation pushed out of this set reconnects (terminals replay their snapshot) when it is shown again. */
 export const WORK_PANE_RETAINED_SESSIONS = 3;
 /** Shows or hides the Work pane (on narrow screens: opens it as the destination, or returns to the chat). */
-export const WORK_PANE_TOGGLE_SHORTCUT = "Mod+Alt+KeyW";
+export const WORK_PANE_TOGGLE_SHORTCUT = WORK_SHORTCUTS.togglePane;
 
 export type SessionWorkPane = {
   /** Expanded on desktop. On narrow screens the pane is a destination instead (see the app's narrow state). */

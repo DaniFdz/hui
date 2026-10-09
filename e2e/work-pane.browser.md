@@ -77,8 +77,12 @@ Screenshots stay outside Git and go into the PR description.
 - Pointer dragging of the resizer and of tabs (reorder) was not driven: the
   Browser tool here offers coordinate clicks but no coordinate drag. Keyboard
   resize and tab movement were verified; reorder logic is unit-tested.
-- macOS shortcuts (⌥⌘T/⌥⌘B/⌥⌘W) and the Electron window were not run here
-  (Linux headless browser); only `Ctrl+Alt` was pressed. On GNOME desktops the
-  system may take `Ctrl+Alt+T` before the page sees it.
+- The journey above pressed the first scheme's chords (`Ctrl+Alt+T/B/W`). They
+  have since moved to `Ctrl+Alt+Shift+T/B/P` (⌥⇧⌘ on macOS) because GNOME takes
+  `Ctrl+Alt+T` before the page sees it and macOS, Safari and Chrome take
+  ⌥⌘T/⌥⌘W/⌥⌘B (SPEC.md, *Work pane shortcuts*); read the steps with the new
+  chords. The new ones were pressed again on the integrated stack (Files and VS
+  Code), whose journey records them. macOS and the Electron window were not run
+  here (Linux headless browser).
 - A theme switch does not recolour an already-open terminal's background (it is
   read when the terminal starts); this predates the Work pane.
