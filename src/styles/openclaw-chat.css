@@ -681,7 +681,10 @@ hui-math.markdown-math--inline .markdown-rich-embed__error {
 .chat-operation-toast[data-level="error"] .app-toast__icon { color: var(--danger); }
 /* HUI's icons carry no intrinsic size; match the 16px glyph of the other toast variants. */
 .chat-operation-toast .app-toast__dismiss svg { width: 16px; height: 16px; }
-/* Sidebar, Kanban, Sessions and bot action outcomes share the same toast. */
+/* Sidebar, Kanban, Sessions and bot action outcomes share the chat toast's place. */
+.action-toast {
+  top: var(--app-toast-shell-top, calc(64px + var(--safe-area-top)));
+}
 .action-toast[data-level="error"] .app-toast__icon { color: var(--danger); }
 .action-toast .app-toast__dismiss svg { width: 16px; height: 16px; }
 
