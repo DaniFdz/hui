@@ -41,6 +41,11 @@ let
     host = "tailnet";
   };
   missingUser = evaluate { enable = true; };
+  vscode = evaluate {
+    enable = true;
+    user = "operator";
+    vscode.package = pkgs.hello;
+  };
   valid = cfg: lib.all (x: x.assertion || !(lib.hasPrefix "services.hui." x.message)) cfg.assertions;
 in
 assert !(disabled.systemd.services ? hui);
@@ -59,7 +64,9 @@ assert service.systemd.services.hui.wantedBy == [ ];
 assert builtins.elem 5180 service.networking.firewall.allowedTCPPorts;
 assert builtins.elem "tailscaled.service" tailnet.systemd.services.hui.after;
 assert !(builtins.elem 4173 tailnet.networking.firewall.allowedTCPPorts);
+assert builtins.elem pkgs.hello vscode.systemd.services.hui.path;
+assert !(builtins.elem pkgs.hello service.systemd.services.hui.path);
 pkgs.runCommand "hui-module-check" { } ''
-  echo "NixOS module: disabled, desktop-only, configured service and tailnet options passed."
+  echo "NixOS module: disabled, desktop-only, configured service, tailnet and VS Code server options passed."
   touch "$out"
 ''

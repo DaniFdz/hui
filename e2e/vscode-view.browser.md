@@ -1,60 +1,94 @@
 # VS Code view journey
 
 The Work pane's VS Code view (`<hui-vscode-view>`, `src/lib/work-views/vscode.ts`)
-in the real app with a real openvscode-server, opened from the conversation's
-Work pane. Keep screenshots outside Git.
+in the real app, opened from a conversation's Work pane, with each provider:
+the openvscode-server HUI installs (Linux), VS Code desktop through
+`code serve-web`, and Settings switching between them. Keep screenshots outside Git.
 
 ## Setup
 
-1. Build openvscode-server without installing it:
-   `NIX_CONFIG='experimental-features = nix-command flakes' nix build nixpkgs#openvscode-server --no-link --print-out-paths`
-   (1.109.5 at the time of writing). Its executable is `<out>/bin/openvscode-server`.
-2. `npm ci`, then, without an ambient HTTP proxy for loopback,
-   `node e2e/visual-verification.mjs launch --branch "$(git branch --show-current)"` and
-   `doctor` with the printed receipt.
-3. Make the receipt's `workspace` a small Git repository (a README, `src/greet.ts`,
-   `package.json`, one commit) and create a conversation there with `E2E_RICH`.
+1. Real programs, never installed into a profile or the system:
+   - openvscode-server: Gitpod's release tarball for this machine
+     (`openvscode-server-v1.109.5-linux-x64.tar.gz`, the asset whose SHA-256 is
+     pinned in `server/vscode-install.ts`), served from a local mirror: a small
+     HTTP server answering `/releases/openvscode-server-v1.109.5/<asset>` from a
+     directory holding it. A throttle (about 40 MB/s) keeps the progress visible.
+   - VS Code: `NIXPKGS_ALLOW_UNFREE=1 NIX_CONFIG='experimental-features = nix-command flakes' nix build --impure nixpkgs#vscode --no-link --print-out-paths`
+     (1.137.0 at the time of writing); its `bin/code` goes first on `PATH` only
+     for the run that proves serve-web.
+   - On NixOS both generic builds (the release's `node` and the VS Code server
+     serve-web downloads) need an FHS environment: build one with
+     `nix build --impure --expr '(builtins.getFlake "nixpkgs").legacyPackages.x86_64-linux.buildFHSEnv { name = "hui-fhs"; targetPkgs = p: [ p.stdenv.cc.cc.lib p.glibc p.zlib p.openssl p.krb5 p.libsecret ]; runScript = ""; }'`
+     and run the launcher inside it (`<fhs>/bin/hui-fhs bash -c '…'`), so the
+     gateway's children inherit it. Elsewhere run the launcher directly.
+2. `npm ci`, then, without an ambient HTTP proxy for loopback and with
+   `HUI_OPENVSCODE_SERVER_MIRROR=http://127.0.0.1:<port>/releases` (the launcher
+   passes it to the gateway), `node e2e/visual-verification.mjs launch --branch "$(git branch --show-current)"`
+   and `doctor` with the printed receipt.
+3. Make the receipt's `workspace` a small Git repository (a README,
+   `src/greet.ts`, `package.json`, one commit) and create a worktree conversation
+   there (`POST /__hui/sessions` with `worktree: true` is setup, not proof).
 4. Open `<browserUrl>/sessions/<id>` in an owned tab at 1440×900 (390×844 for the
-   narrow layout) and the Work pane's **+** menu.
+   narrow layout).
 
 ## Journey
 
-1. **Off by default.** The **+** menu's **VS Code** entry is disabled with *VS Code
-   is off. Turn it on in Settings → Tools → VS Code.* under it and an **Open
-   Settings → Tools → VS Code** entry below; the empty Work pane lists the same
-   reason with the link. No openvscode-server process runs.
-2. **Settings.** The link opens Settings → Tools scrolled to the VS Code section,
-   which stays at the top while the Browser section above it loads; it shows **Off**
-   and, with nothing on `PATH`, *openvscode-server was not found on PATH. Install it,
-   or set its path in Settings → Tools → VS Code.* Save the executable path: the
-   row reads *Using OpenVSCode Server 1.109.5 · <path>*. Turn **VS Code view** on:
-   the pill reads **Ready** and the Server row *Starts when a VS Code view opens…*.
-3. **Open.** Back in the conversation, **+** → **VS Code** (now Ctrl+Alt+Shift+C / ⌥⇧⌘C; Ctrl+Alt+V when recorded)
-   opens one VS Code tab, which shows *Starting VS Code*, then the
-   workbench on the fixture folder: Explorer lists `src`, `fixture.txt`,
-   `package.json`, `README.md`; clicking `src` → `greet.ts` opens it with
-   TypeScript highlighting, and the status bar shows the `main` branch. VS Code's
-   chrome takes HUI's colors (Default Light Modern on a light theme). The bar shows
-   the folder (`~` for home), Copy, Reload and Open in a new tab. Neither the page
-   nor the frame can read a cookie (`document.cookie` is empty in both: HUI's
-   cookie is HttpOnly and VS Code's token cookie is stripped). The only failed
-   requests are VS Code's optional `vsda` files (404 in every openvscode-server).
-4. **Crash.** Kill the openvscode-server node process. Within 10 seconds the view
-   shows *VS Code stopped unexpectedly* with the exit reason and **Retry**; nothing
-   restarts the server meanwhile, even while the workbench tries to reconnect.
-   **Retry** starts a new server and reloads the frame.
-5. **New tab.** **Open in a new tab** opens the same folder in a new browser tab
-   through its own ticket.
-6. **Narrow.** At 390×844 the view fills the width; the bar keeps the icon, the
-   folder truncated from the start and its three actions.
-7. **Off again.** Turning VS Code off in Settings replaces an open view with the
-   unavailable state and stops the server.
+1. **Always there, nothing running.** With no VS Code anywhere, the Work pane's
+   empty state and **+** menu list **VS Code** (Ctrl+Alt+Shift+C / ⌥⇧⌘C) with no
+   reason under it. No VS Code process runs, and none starts until it is opened.
+2. **Install card (Linux, no VS Code).** The shortcut opens the view on *Choose
+   how to run VS Code*: **Install VS Code server** (openvscode-server 1.109.5,
+   MIT, about 73 MB, with a link to its license) and **Set a path** (Settings →
+   Tools → VS Code). **Install VS Code server (≈73 MB)** shows *Downloading… n MB
+   of 73 MB* with **Cancel**, then *Checking the download…*, *Unpacking…*, and the
+   view opens by itself: the workbench on the conversation's worktree (Explorer
+   lists `src`, `fixture.txt`, `package.json`, `README.md`; the status bar shows its
+   branch). The mirror logged one GET of the asset; the install directory holds
+   only `openvscode-server-v1.109.5-linux-x64`. Neither the page nor the frame can
+   read a cookie (`document.cookie` is empty in both).
+3. **Settings.** Settings → Tools → VS Code shows *OpenVSCode Server 1.109.5 ·
+   installed by HUI* with its path, *The only VS Code found here*, the installed
+   server with **Remove**, the custom path, the running server with **Stop** and
+   the data directory. **Remove** opens a confirmation listing *Deletes the
+   server* and, while it runs, *Stops VS Code*; **Remove server** stops it and
+   the row returns to *Not installed* with **Install (≈73 MB)**.
+4. **Consent card (VS Code desktop).** Relaunch with VS Code's `bin/code` first on
+   `PATH`. **+** → **VS Code** shows **Use your VS Code** (*Visual Studio Code
+   1.137.0 is installed here…*, links to the VS Code Server License Terms and the
+   Privacy Statement, **Accept and open**) above the install and path options.
+   No `code serve-web` process exists yet. **Accept and open** records the
+   acceptance and shows *Preparing VS Code — Downloading the VS Code server from
+   Microsoft: n% of 223 MB (first start only)*, then Microsoft's workbench on the
+   worktree. Its secret-storage cookie reaches only the frame
+   (`document.cookie` is empty in the page).
+5. **Switch.** In Settings, **Install (≈73 MB)** adds HUI's server; the picker
+   offers *Automatic*, *Visual Studio Code 1.137.0 · your VS Code* and
+   *OpenVSCode Server 1.109.5 · installed by HUI*, and the license row shows
+   *Accepted <date>* with **Revoke**. Choosing openvscode-server stops serve-web
+   (the pill reads **Ready**); the conversation's view reopens on
+   openvscode-server.
+6. **Narrow.** At 390×844 the panel selector's *VS Code · Work* shows the view
+   full width with the folder truncated from the start and its three actions.
+   Settings stacks each row's control under its text. **Revoke** and **Remove**
+   leave nothing that can run: the view shows the card with all three options,
+   which fits the width and scrolls on its own.
+7. **Offline.** With no route to update.code.visualstudio.com, serve-web's first
+   start fails after 60 seconds without a byte with *VS Code could not download
+   its web server from Microsoft…* and **Retry** (covered by
+   `server/vscode.test.ts`; not repeated in the browser).
 
 ## Automated coverage
 
-`server/vscode.test.ts` (detection, launch flags, lazy start, idle stop, crash,
-process-group stop, stale-server reaping, tickets and cookie secrets),
-`server/vscode-proxy.test.ts` (path and header rewriting, workbench patch, cookie
-and WebSocket guards against a fake openvscode-server) and
-`server/vscode-routes.test.ts` (the routes through HUI's middleware: x-hui still
-guards every other route when only the VS Code cookie is present).
+`server/vscode.test.ts` (provider detection per platform, serve-web help and
+version parsing, the provider order, consent gating: no spawn and no
+`--accept-server-license-terms` before consent, the flag with it; serve-web's
+download progress, stall and cancel; lazy start, idle stop, crash, process-group
+stop, stale-server reaping, tickets and cookie secrets),
+`server/vscode-install.test.ts` (architecture mapping, a fake release host with a
+redirect, checksum and size mismatches rejected, a cut-off download cleaned up,
+staging then atomic rename, a server that does not run left uninstalled,
+cancel, the gateway's HTTP proxy honoured), `server/vscode-proxy.test.ts` (path
+and header rewriting, cookie scoping including the WebSocket's 101, the
+workbench patch for both providers, cookie and WebSocket guards against fake
+servers) and `server/vscode-routes.test.ts` (the routes through HUI's middleware,
+the license actions, a legacy settings file).

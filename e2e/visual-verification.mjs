@@ -53,7 +53,9 @@ export function fixtureEnvironment(dir, inherited = process.env) {
   const env = {};
   // An allowlist avoids inheriting cloud keys, proxy credentials, NODE_OPTIONS,
   // shell startup hooks or the operator's HUI/PI overrides. HOME is not changed.
-  for (const name of ["PATH", "HOME", "USER", "LOGNAME", "SHELL", "LANG", "LC_ALL", "SystemRoot"]) {
+  // HUI_OPENVSCODE_SERVER_MIRROR points the VS Code view's server install at a local release (the checksums stay
+  // pinned), so its journey never downloads from GitHub.
+  for (const name of ["PATH", "HOME", "USER", "LOGNAME", "SHELL", "LANG", "LC_ALL", "SystemRoot", "HUI_OPENVSCODE_SERVER_MIRROR"]) {
     if (inherited[name] !== undefined) env[name] = inherited[name];
   }
   return {

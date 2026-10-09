@@ -3447,43 +3447,90 @@ refreshes on it.
 
 ### VS Code view API
 
-`settings.json` gains `vscode: { enabled, executable }` (defaults `false`,
-`""`). Only an explicit `true` turns it on; the path is kept as typed (bounded,
-no control characters) and validated by the gateway, which expands `~/`. An
-empty path auto-detects `openvscode-server`, then a compatible `code-server`,
-on `PATH` and in `/opt/homebrew/bin`, `/usr/local/bin`, `~/.nix-profile/bin`,
-`/etc/profiles/per-user/$USER/bin`, `/run/current-system/sw/bin` and
-`/nix/var/nix/profiles/default/bin`. A candidate's `--help` must list
-`--server-base-path`, `--connection-token-file`, `--server-data-dir` and
-`--extensions-dir`; its first line gives the name and version. Saving the
-settings with `enabled: false` withdraws every ticket and cookie and stops the
-server; a different `executable` stops a running server so the next open uses it.
+`settings.json` gains `vscode: { enabled, executable, provider, licenseAcceptedAt }`
+(defaults `false`, `""`, `"auto"`, `""`). `enabled` is the first view's opt-in switch,
+read and saved unchanged for compatibility; it gates nothing. `executable` is kept
+as typed (bounded, no control characters) and validated by the gateway, which
+expands `~/`. `provider` is `auto`, `configured`, `desktop`, `managed` or `path` (any
+other value reads as `auto`). `licenseAcceptedAt` is the ISO time the operator
+accepted Microsoft's VS Code Server license through the `accept-license` action
+(an unparsable value reads as empty); empty means not accepted.
+
+**Providers.** The gateway detects, by running each candidate:
+
+- `configured`: `executable`, when set. Its `--help` either lists the server flags
+  below (a `server`) or names `serve-web` (VS Code's CLI, checked like `desktop`).
+- `desktop` (flavor `serve-web`): the first `code` on `PATH` or in the standard
+  locations (macOS `/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code`
+  and the same under `~/Applications`; Linux `/usr/share/code/bin/code`,
+  `/usr/bin/code`, `/snap/bin/code`, `/opt/visual-studio-code/bin/code`; Windows
+  `…\Microsoft VS Code\bin\code-tunnel.exe` in `PATH` entries naming Microsoft VS
+  Code, `%LOCALAPPDATA%\Programs`, `%ProgramFiles%` and `%ProgramFiles(x86)%`)
+  whose `--version` gives a version and a 40-hex commit (three lines, or the
+  standalone CLI's `code 1.137.0 (commit …)`) and whose `serve-web --help` lists
+  `--host`, `--port`, `--connection-token-file`, `--server-base-path`,
+  `--server-data-dir`, `--accept-server-license-terms` and `--cli-data-dir`.
+- `managed`: `$XDG_CONFIG_HOME/hui/vscode-server/openvscode-server-v<version>-linux-<arch>/bin/openvscode-server`
+  (the pinned version first, then any other complete one).
+- `path`: `openvscode-server`, then a compatible `code-server`, on `PATH` and in
+  `/opt/homebrew/bin`, `/usr/local/bin`, `~/.nix-profile/bin`,
+  `/etc/profiles/per-user/$USER/bin`, `/run/current-system/sw/bin` and
+  `/nix/var/nix/profiles/default/bin`.
+
+A `server` must list `--server-base-path`, `--connection-token-file`,
+`--server-data-dir` and `--extensions-dir` in its `--help`, whose first line gives
+the name and version. Probes run with the gateway's environment minus
+`HUI_AGENT_*` and `VSCODE_*` and are cached per executable, size and mtime.
+
+**Choice.** An explicit `provider` wins while detected. Otherwise a set
+`executable` decides alone (a broken one is `activeError`, never replaced);
+without one the order is `desktop`, `managed`, `path`. A `serve-web` provider is
+usable only with `licenseAcceptedAt` set; before that it is offered as
+`setup.desktop` and skipped in favour of the next usable one. Saving settings that
+change the chosen provider (or revoke the license of a running serve-web) stops
+the running server; a revoked license also withdraws every ticket and cookie.
 
 | Route | Method | Guard | Result |
 | --- | --- | --- | --- |
 | `/__hui/vscode-server` | GET | `x-hui` | `VscodeStatus` |
-| Same | POST `{ action: "stop" }` | `x-hui` | Stops the server, then `VscodeStatus` |
-| `/__hui/sessions/:id/vscode/connect` | POST `{ theme? }` | `x-hui` | Starts the server if needed; `{ url, folder, label, instance }` |
+| Same | POST `{ action }` | `x-hui` | Runs the action, then `VscodeStatus` |
+| `/__hui/sessions/:id/vscode/connect` | POST `{ theme? }` | `x-hui` | Starts the server if needed; 200 `{ url, folder, label, instance }`, or 202 `{ pending: true, status }` while it still starts |
 | `/__hui/vscode/enter?ticket=…` | GET | the ticket | 303 to `/__hui/vscode/?folder=<cwd>` with the cookie |
-| `/__hui/vscode/…` (HTTP and WebSocket) | any | the cookie | Proxied to openvscode-server |
+| `/__hui/vscode/…` (HTTP and WebSocket) | any | the cookie | Proxied to the running server |
 
-`VscodeStatus` (`shared/vscode.ts`) holds `enabled`, `configuredExecutable`,
-`executable` (`{ path, name, version, source: "configured" | "detected" }` or
-`null`), `executableError`, `state` (`off`, `unavailable`, `stopped`,
-`starting`, `running`, `failed`), `instance` (starts in this gateway run, so a
-frame knows its server was replaced), `pid`, `startedAt`, `lastError` (the
-last start failure or unexpected exit, with the server's last stderr lines),
-`connections`, `idleMinutes` and `dataDir`.
+Actions: `stop`; `accept-license` (writes `licenseAcceptedAt` now) and
+`revoke-license` (clears it and stops a running serve-web); `install` (starts the
+openvscode-server install and answers at once), `cancel-install`, `uninstall`
+(stops a running managed server, then deletes every install directory and
+leftover). Any other action is 400.
+
+`VscodeStatus` (`shared/vscode.ts`) holds `platform`, `enabled`,
+`configuredExecutable`, `preference`, `providers` (`{ kind, flavor, path, name,
+version, commit? }` in preference order), `problems` (visible reasons for
+candidates that do not fit), `active` (what the next open runs, or `null`),
+`activeError`, `setup` (`{ needed, desktop, install, download }`: the first-open
+card's choices), `license` (`{ accepted, acceptedAt }`), `install` (`{ supported,
+reason, version, arch, size, dir, installed: { version, path } | null, task:
+{ phase: downloading | verifying | extracting, received, total } | null, error,
+hint }`), `state` (`setup`, `stopped`, `starting`, `running`, `failed`), `running` (the
+provider of the running or starting server), `preparing` (serve-web's first
+download: `{ received, total }`, `total` 0 until known), `instance` (starts in this
+gateway run, so a frame knows its server was replaced), `pid`, `startedAt`,
+`lastError` (the last start failure or unexpected exit, with the server's last
+output lines minus routine and token-bearing ones), `connections`, `idleMinutes`
+and `dataDir`.
 
 `connect` uses the conversation's recorded `cwd`; callers cannot choose a
 folder. It answers 404 for an unknown conversation and 409 with a `code` the
-view distinguishes: `disabled` (off in Settings), `not-found` (no compatible
-executable; `error` says why), `remote` (the conversation runs on a remote
-worker) or `folder` (its directory no longer exists). A start failure is 502
-`failed`, too many outstanding tickets 429 `busy`. `theme` is
-`{ background, panel, elevated, text, border?, accent? }`; only `#rrggbb`
-values pass and the four base colors are required, otherwise it is ignored.
-`url` is a one-use ticket valid for 30 seconds (at most 64 outstanding).
+view distinguishes: `remote` (the conversation runs on a remote worker),
+`folder` (its directory no longer exists) or `setup` (nothing can run yet; the
+view then reads the status for its card). A start that has not finished within 8
+seconds answers 202 and carries on; the view follows the status and calls
+`connect` again once it is `running`. A start failure is 502 `failed`, too many
+outstanding tickets 429 `busy`. `theme` is `{ background, panel, elevated, text,
+border?, accent? }`; only `#rrggbb` values pass and the four base colors are
+required, otherwise it is ignored. `url` is a one-use ticket valid for 30 seconds
+(at most 64 outstanding).
 
 `enter` refuses a cross-site request (`Sec-Fetch-Site: cross-site`) and an
 unknown, used or expired ticket (403, no cookie). Otherwise it sets
@@ -3499,30 +3546,63 @@ cross-site, and a WebSocket upgrade additionally only with a same-origin
 (at most 64 sockets). It forwards path, query, method, body and `Host` (VS
 Code derives its remote authority from it), drops hop-by-hop and
 `X-Forwarded-*`/`X-Original-Host` headers and HUI's cookie, replaces any
-`vscode-tkn` cookie with the real token, and removes VS Code's `vscode-tkn`
-`Set-Cookie` from responses. The workbench page (a `text/html` GET) is
-buffered and its `vscode-workbench-web-configuration` gains `connectionToken`,
-`enableWorkspaceTrust: false` and configuration defaults: no trust prompt or
+`vscode-tkn` cookie with the real token, removes VS Code's `vscode-tkn`
+`Set-Cookie` from responses (the WebSocket's 101 included) and rewrites every other `Set-Cookie` path outside
+`/__hui/vscode` (serve-web's `Path=/` secret-storage cookies) to `/__hui/vscode`.
+The workbench page (a 200 `text/html` GET; serve-web's 202 "downloading" page
+passes unchanged) is buffered and its `vscode-workbench-web-configuration` gains
+`enableWorkspaceTrust: false`, configuration defaults (no trust prompt or
 banner, `workbench.startupEditor: none`, the secondary side bar hidden,
-`chat.disableAIFeatures`, and with a theme `workbench.colorTheme` (Default Light
+`chat.disableAIFeatures`, and with a theme `workbench.colorTheme` — Default Light
 Modern when the background's luminance exceeds 0.55, otherwise Default Dark
-Modern) plus `workbench.colorCustomizations`; it is served `no-store`.
-Refusals are small HTML pages with `<meta name="hui-vscode-error"
-content="<code>" data-message="…">`: 403 `unauthorized`/`expired`/`cross-site`,
-503 `stopped` when no server runs (the proxy never starts one) and 502
-`failed` when it does not answer.
+Modern — plus `workbench.colorCustomizations`) and `connectionToken` (both
+providers' handshakes need it; VS Code would otherwise read the `vscode-tkn`
+cookie the browser never gets); over TLS an `http://<remoteAuthority>/` web-extension
+`resourceUrlTemplate` becomes `https://`. It is served `no-store`. Refusals are
+small HTML pages with `<meta name="hui-vscode-error" content="<code>"
+data-message="…">`: 403 `unauthorized`/`expired`/`cross-site`, 503 `stopped` when
+no server runs (the proxy never starts one) and 502 `failed` when it does not
+answer.
 
-The server runs as `<executable> --host 127.0.0.1 --port <free port>
+A `server` runs as `<executable> --host 127.0.0.1 --port <free port>
 --connection-token-file <dir>/connection-token --server-base-path /__hui/vscode
 --server-data-dir <dir>/server-data --user-data-dir <dir>/user-data
 --extensions-dir <dir>/extensions --accept-server-license-terms
---telemetry-level off` in its own process group, with the gateway's environment
-minus `HUI_AGENT_*` and `VSCODE_*`; `<dir>` is `$XDG_CONFIG_HOME/hui/vscode`
-(mode 700). It is ready when `/__hui/vscode/version` answers 200 (60-second
-limit). `server.json` there records its process group, which the next start
-stops if a member still names that data directory. Proxied requests and sockets
-count as connections; 15 minutes after the last closes the server stops. Gateway
-stop signals the group and returns; it is killed 2 seconds later if still there.
+--telemetry-level off`. serve-web runs, only with `licenseAcceptedAt` set, as
+`<code> serve-web --host 127.0.0.1 --port <free port> --connection-token-file
+<dir>/connection-token --server-base-path /__hui/vscode --server-data-dir
+<dir>/serve-web/server-data --cli-data-dir <dir>/serve-web/cli
+--accept-server-license-terms` plus `--disable-telemetry`, `--commit-id <desktop
+commit>` and `--log trace` when its help lists them. Both run in their own process
+group with the gateway's environment minus `HUI_AGENT_*` and `VSCODE_*`, plus
+`DONT_PROMPT_WSL_INSTALL=1`; `<dir>` is `$XDG_CONFIG_HOME/hui/vscode` (mode 700). A
+server is ready when `/__hui/vscode/version` answers 200 (60-second limit).
+serve-web answers 202 there while it downloads its build; the gateway reads
+`Downloading server: <bytes>/<total>` from its log into `preparing`, fails the start
+when no byte arrived for 60 seconds or after 15 minutes, and when the downloaded
+build's process exits (its stderr lines become the reason). `server.json` there
+records the process group, which the next start stops if a member still names
+that data directory. Proxied requests and sockets count as connections; 15
+minutes after the last closes the server stops. A stop during a start ends it at
+once (state `stopped`, no error). Gateway stop signals the group and returns; it is
+killed 2 seconds later if still there.
+
+**openvscode-server install.** Linux only, for `process.arch` `x64`, `arm64` or
+`arm` (asset `armhf`). HUI pins one release (`OPENVSCODE_SERVER_RELEASE` in
+`server/vscode-install.ts`: 1.109.5, with the size and SHA-256 of each asset) and
+downloads
+`https://github.com/gitpod-io/openvscode-server/releases/download/openvscode-server-v<v>/openvscode-server-v<v>-linux-<arch>.tar.gz`
+(`HUI_OPENVSCODE_SERVER_MIRROR` replaces the base for a mirror serving the same
+files) with Node's HTTP client and an agent built from the gateway's
+`HTTP_PROXY`/`HTTPS_PROXY`/`NO_PROXY` (Node 22.21+ and 24.5+), following up to five
+redirects, into `<install dir>/.download-<id>.tar.gz`. A body larger or shorter
+than the pinned size, or with another SHA-256, is refused. `tar -xzf
+--no-same-owner` unpacks it into `.staging-<id>`; the executable must exist and
+answer `--help` with the server flags; only then is
+`openvscode-server-v<v>-linux-<arch>` renamed into place (an older copy is moved
+aside first and deleted). The archive and staging directory are removed on
+success, failure and cancel. On NixOS the status carries a hint that the generic
+build needs nix-ld.
 
 ### Suggested tasks
 

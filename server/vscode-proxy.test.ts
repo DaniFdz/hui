@@ -9,10 +9,12 @@ import { fileURLToPath } from "node:url";
 import { WebSocket } from "ws";
 import { waitFor } from "./test-support/wait-for.ts";
 import { VscodeService } from "./vscode.ts";
+import { defaultVscodeProbe } from "./vscode-providers.ts";
 import {
-  attachVscodeTransport, downstreamHeaders, isVscodeProxyPath, patchWorkbenchHtml, proxyVscodeHttp, serveVscodeEnter,
+  attachVscodeTransport, downstreamHeaders, isVscodeProxyPath, patchWorkbenchHtml, proxyVscodeHttp, scopeVscodeCookie, serveVscodeEnter,
   upstreamHeaders, vscodeCookieSecrets, vscodeThemeDefaults,
 } from "./vscode-proxy.ts";
+import { DEFAULT_VSCODE_SETTINGS } from "../src/lib/settings.ts";
 
 const FAKE = fileURLToPath(new URL("./test-support/fake-vscode-server.mjs", import.meta.url));
 const DARK = { background: "#101114", panel: "#17181c", elevated: "#202127", text: "#e6e6e6", border: "#2a2b31", accent: "#ff5c5c" };
@@ -43,12 +45,19 @@ test("upstream headers keep Host, drop HUI's cookie and forwarding headers, and 
   assert.deepEqual(vscodeCookieSecrets("a=1; hui-vscode=one;hui-vscode=two; hui-vscode="), ["one", "two"]);
 });
 
-test("VS Code's token cookie never reaches the browser; its other headers do", () => {
+test("VS Code's token cookie never reaches the browser; its other cookies keep to the base path", () => {
   assert.deepEqual(downstreamHeaders({
     "content-type": "text/html", connection: "keep-alive", "transfer-encoding": "chunked",
     "set-cookie": ["vscode-tkn=TOKEN; Max-Age=604800; SameSite=Lax", "vscode.nls.locale=en; Path=/"],
-  }), { "content-type": "text/html", "set-cookie": ["vscode.nls.locale=en; Path=/"] });
+  }), { "content-type": "text/html", "set-cookie": ["vscode.nls.locale=en; Path=/__hui/vscode"] });
   assert.deepEqual(downstreamHeaders({ "set-cookie": ["vscode-tkn=T"] }), {});
+  // serve-web's secret-storage cookies, as VS Code 1.137 sets them.
+  assert.equal(scopeVscodeCookie("vscode-secret-key-path=/__hui/vscode/_vscode-cli/mint-key; SameSite=Strict; Path=/"),
+    "vscode-secret-key-path=/__hui/vscode/_vscode-cli/mint-key; SameSite=Strict; Path=/__hui/vscode");
+  assert.equal(scopeVscodeCookie("vscode-cli-secret-half=x; SameSite=Strict; HttpOnly; Max-Age=2592000; path=/"),
+    "vscode-cli-secret-half=x; SameSite=Strict; HttpOnly; Max-Age=2592000; Path=/__hui/vscode");
+  assert.equal(scopeVscodeCookie("a=1; Path=/__hui/vscode/stable-x"), "a=1; Path=/__hui/vscode/stable-x", "a path inside stays");
+  assert.equal(scopeVscodeCookie("a=1"), "a=1; Path=/__hui/vscode");
 });
 
 function workbench(settings: Record<string, unknown>): string {
@@ -78,18 +87,39 @@ test("the workbench page gains the token, quiet defaults and HUI's theme without
   assert.equal(vscodeThemeDefaults(LIGHT).colorTheme, "Default Light Modern");
   assert.equal(vscodeThemeDefaults(LIGHT).colorCustomizations["sideBar.border"], undefined, "no border color, no border override");
   const plain = configOf(patchWorkbenchHtml(workbench({ remoteAuthority: "g" }), { token: "T" }));
+  assert.equal(plain["connectionToken"], "T");
   assert.equal(plain["configurationDefaults"]["workbench.colorTheme"], undefined, "no theme, VS Code's own default");
   assert.equal(patchWorkbenchHtml("<html>no config</html>", { token: "T" }), "<html>no config</html>");
 });
 
+test("serve-web's page gets the token too, and its web-extension URLs follow a TLS page's scheme", () => {
+  const page = workbench({
+    remoteAuthority: "gateway.tail:7777", serverBasePath: "/__hui/vscode", enableWorkspaceTrust: true,
+    productConfiguration: { extensionsGallery: { resourceUrlTemplate: "http://gateway.tail:7777/__hui/vscode/stable-c/web-extension-resource/{publisher}" } },
+  });
+  const plain = configOf(patchWorkbenchHtml(page, { token: "TOKEN" }));
+  assert.equal(plain["connectionToken"], "TOKEN", "VS Code would otherwise read it from the vscode-tkn cookie, which the browser never gets");
+  assert.equal(plain["enableWorkspaceTrust"], false);
+  assert.equal(plain["productConfiguration"]["extensionsGallery"]["resourceUrlTemplate"], "http://gateway.tail:7777/__hui/vscode/stable-c/web-extension-resource/{publisher}");
+  const secure = configOf(patchWorkbenchHtml(page, { token: "TOKEN", secure: true }));
+  assert.equal(secure["productConfiguration"]["extensionsGallery"]["resourceUrlTemplate"], "https://gateway.tail:7777/__hui/vscode/stable-c/web-extension-resource/{publisher}");
+});
+
 type Harness = { origin: string; vscode: VscodeService; server: Server; dir: string };
 
-async function harness(t: TestContext): Promise<Harness> {
+async function harness(t: TestContext, kind: "server" | "code" = "server"): Promise<Harness> {
   const dir = await mkdtemp(join(tmpdir(), "hui-vscode-proxy-"));
-  const executable = join(dir, "openvscode-server");
-  await writeFile(executable, `#!/bin/sh\n"${process.execPath}" "${FAKE}" "$@"\n`);
+  const executable = join(dir, kind === "code" ? "code" : "openvscode-server");
+  await writeFile(executable, `#!/bin/sh\n${kind === "code" ? "FAKE_VSCODE_KIND=code " : ""}"${process.execPath}" "${FAKE}" "$@"\n`);
   await chmod(executable, 0o755);
-  const vscode = new VscodeService({ dir: join(dir, "state"), settings: async () => ({ enabled: true, executable }), readyTimeoutMs: 15_000 });
+  const base = defaultVscodeProbe();
+  const vscode = new VscodeService({
+    dir: join(dir, "state"), readyTimeoutMs: 15_000,
+    settings: async () => ({ ...DEFAULT_VSCODE_SETTINGS, ...(kind === "code" ? { licenseAcceptedAt: "2026-10-09T08:00:00.000Z" } : { executable }) }),
+    // Only this test's executables exist, so the machine's own VS Code never answers.
+    probe: { ...base, env: { PATH: dir }, home: dir, isExecutable: async (path) => path.startsWith(`${dir}/`) && base.isExecutable(path) },
+    env: () => ({ ...process.env, ...(kind === "code" ? { FAKE_VSCODE_KIND: "code" } : {}) }),
+  });
   const server = createServer((request, response) => {
     const path = new URL(request.url ?? "/", "http://h").pathname;
     if (path === "/__hui/vscode/enter") serveVscodeEnter(request, response, vscode);
@@ -114,6 +144,7 @@ async function harness(t: TestContext): Promise<Harness> {
 /** connect → enter: the cookie a frame ends up with. */
 async function enter(h: Harness, theme = DARK): Promise<{ cookie: string; location: string; setCookie: string }> {
   const connection = await h.vscode.connect("/work/my repo", theme);
+  assert.ok("url" in connection);
   const response = await fetch(h.origin + connection.url, { redirect: "manual" });
   assert.equal(response.status, 303);
   const setCookie = response.headers.get("set-cookie") ?? "";
@@ -134,6 +165,7 @@ test("the proxy refuses frames without a valid cookie and never starts VS Code f
   assert.match(await bad.text(), /content="expired"/u);
 
   const connection = await h.vscode.connect("/work", DARK);
+  assert.ok("url" in connection);
   const crossSite = await fetch(h.origin + connection.url, { redirect: "manual", headers: { "sec-fetch-site": "cross-site" } });
   assert.equal(crossSite.status, 403, "a ticket cannot be redeemed from another site");
 });
@@ -153,7 +185,7 @@ test("the workbench page arrives patched, and VS Code's token cookie stays on th
   const page = await fetch(h.origin + location, { headers: { cookie, accept: "text/html" } });
   assert.equal(page.status, 200);
   assert.equal(page.headers.get("cache-control"), "no-store");
-  assert.deepEqual(page.headers.getSetCookie(), ["vscode.other=1; Path=/"]);
+  assert.deepEqual(page.headers.getSetCookie(), ["vscode.other=1; Path=/__hui/vscode"]);
   const html = await page.text();
   assert.match(html, /fake workbench for \/work\/my repo/u);
   const config = configOf(html);
@@ -219,4 +251,34 @@ test("the WebSocket passes through for the cookie's holder from the same origin 
   assert.equal(page.status, 503);
   assert.match(await page.text(), /content="stopped"/u);
   assert.equal((await h.vscode.status()).state, "stopped");
+});
+
+test("code serve-web behind the proxy: same cookie gate, the token in its page, its cookies kept to the base path", { timeout: 60_000 }, async (t) => {
+  const h = await harness(t, "code");
+  const { cookie, location } = await enter(h);
+  assert.equal(h.vscode.current()?.flavor, "serve-web");
+  const refused = await fetch(h.origin + location, { headers: { accept: "text/html" } });
+  assert.equal(refused.status, 403, "no cookie, no serve-web");
+  const page = await fetch(h.origin + location, { headers: { cookie, accept: "text/html" } });
+  assert.equal(page.status, 200);
+  assert.deepEqual(page.headers.getSetCookie(), [
+    "vscode-secret-key-path=/__hui/vscode/_vscode-cli/mint-key; SameSite=Strict; Path=/__hui/vscode",
+    "vscode-cli-secret-half=half; SameSite=Strict; HttpOnly; Max-Age=2592000; Path=/__hui/vscode",
+  ]);
+  const html = await page.text();
+  assert.match(html, /fake serve-web workbench for \/work\/my repo/u, "the folder arrives as serve-web's ?folder=");
+  const config = configOf(html);
+  assert.equal(config["connectionToken"], await readFile(h.vscode.tokenFile, "utf8"), "its server checks the handshake's token like openvscode-server");
+  assert.equal(config["remoteAuthority"], new URL(h.origin).host);
+  const ws = h.origin.replace("http:", "ws:") + "/__hui/vscode/stable-x/?reconnectionToken=abc";
+  const upgrade = await new Promise<{ socket: WebSocket; cookies: string[] }>((resolve, reject) => {
+    const socket = new WebSocket(ws, { headers: { origin: h.origin, cookie } });
+    socket.once("upgrade", (response) => resolve({ socket, cookies: ([] as string[]).concat(response.headers["set-cookie"] ?? []) }));
+    socket.once("error", reject);
+  });
+  assert.deepEqual(upgrade.cookies, [
+    "vscode-secret-key-path=/__hui/vscode/_vscode-cli/mint-key; SameSite=Strict; Path=/__hui/vscode",
+    "vscode-cli-secret-half=half; SameSite=Strict; HttpOnly; Max-Age=2592000; Path=/__hui/vscode",
+  ], "the upgrade's cookies are scoped like any other, and the token cookie stays on the gateway");
+  upgrade.socket.close();
 });

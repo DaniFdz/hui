@@ -77,6 +77,12 @@ in
       };
       description = "Non-secret service environment, including optional XDG and PI directory overrides. Values enter the Nix store.";
     };
+    vscode.package = mkOption {
+      type = types.nullOr types.package;
+      default = null;
+      example = lib.literalExpression "pkgs.openvscode-server";
+      description = "A VS Code server for the Work pane's VS Code view, put on the service's PATH, where HUI finds openvscode-server. Null leaves the view to a path set in HUI's Settings, an installed VS Code, or the openvscode-server HUI downloads on request.";
+    };
     environmentFile = mkOption {
       type = types.nullOr types.str;
       default = null;
@@ -113,7 +119,8 @@ in
           pkgs.gh
           pkgs.bash
         ]
-        ++ lib.optional (cfg.host == "tailnet") pkgs.tailscale;
+        ++ lib.optional (cfg.host == "tailnet") pkgs.tailscale
+        ++ lib.optional (cfg.vscode.package != null) cfg.vscode.package;
         environment = {
           HOME = home;
         }

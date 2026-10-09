@@ -1,28 +1,37 @@
 /**
- * The VS Code view's process side: finding a compatible openvscode-server, running one shared instance for the
- * gateway, and the capabilities a browser frame trades for access to it.
+ * The VS Code view's process side: which VS Code this machine runs (the provider chain in vscode-providers.ts and
+ * the optional openvscode-server install in vscode-install.ts), running one shared instance for the gateway, the
+ * operator's license consent for `code serve-web`, and the capabilities a browser frame trades for access to it.
  *
- * The server starts on the first open, listens on 127.0.0.1 on a free port behind a random connection token that is
- * rotated on every start, keeps its data under HUI's config directory and stops with the gateway, after an idle
- * period with no open connections, or when Settings turn it off. It runs in its own process group (openvscode-server
- * is a shell script around node, with extension hosts below it), and every stop signals the whole group. A crash is
- * reported and only an explicit open starts it again; nothing restarts it in a loop. Nothing here blocks a gateway
- * stop. Carrying HTTP and WebSocket traffic to it is vscode-proxy.ts's job; the routes live in hui.ts.
+ * Nothing runs or downloads until a view opens. The server then listens on 127.0.0.1 on a free port behind a random
+ * connection token that is rotated on every start, keeps its data under HUI's config directory and stops with the
+ * gateway, after an idle period with no open connections, or when Settings change what it runs. It runs in its own
+ * process group (openvscode-server is a shell script around node, `code` a launcher around the VS Code CLI, with
+ * servers and extension hosts below them), and every stop signals the whole group. serve-web is started only after
+ * the operator accepted Microsoft's license in HUI; its first start downloads the matching VS Code server build,
+ * whose progress the status reports. A crash is reported and only an explicit open starts it again; nothing restarts
+ * it in a loop. Nothing here blocks a gateway stop. Carrying HTTP and WebSocket traffic to it is vscode-proxy.ts's
+ * job; the routes live in hui.ts.
  */
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { constants } from "node:fs";
-import { access, chmod, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { Agent, get as httpGet } from "node:http";
 import { createServer } from "node:net";
-import { homedir, userInfo } from "node:os";
-import { delimiter, isAbsolute, join } from "node:path";
+import { join } from "node:path";
 import { promisify } from "node:util";
 import {
-  VSCODE_BASE_PATH, VSCODE_ENTER_PATH, VSCODE_OFF_REASON,
-  type VscodeConnection, type VscodeErrorCode, type VscodeExecutableInfo, type VscodeState, type VscodeStatus, type VscodeTheme,
+  VSCODE_BASE_PATH, VSCODE_ENTER_PATH,
+  type VscodeConnection, type VscodeErrorCode, type VscodeFlavor, type VscodeProvider, type VscodeState, type VscodeStatus, type VscodeTheme,
 } from "../shared/vscode.ts";
 import type { VscodeSettings } from "../src/lib/settings.ts";
+import {
+  defaultVscodeProbe, detectVscodeProviders, parseServeWebProgress, planVscode, publicProvider, serveWebLaunchArguments,
+  vscodeEnvironment, vscodeLaunchArguments, type DetectedProvider, type VscodePlan, type VscodeProbe,
+} from "./vscode-providers.ts";
+import type { VscodeInstaller } from "./vscode-install.ts";
+
+export { parseVscodeHelp, vscodeEnvironment, vscodeLaunchArguments, type VscodeProbe } from "./vscode-providers.ts";
 
 export class VscodeError extends Error {
   status: number;
@@ -32,140 +41,6 @@ export class VscodeError extends Error {
     this.status = status;
     this.code = code;
   }
-}
-
-// ── Finding an executable ──────────────────────────────────────────────────────────────────────────────────────
-
-export type VscodeProbe = {
-  platform: NodeJS.Platform;
-  env: NodeJS.ProcessEnv;
-  home: string;
-  isExecutable: (path: string) => Promise<boolean>;
-  /** The executable's `--help` output; throws when it cannot run. */
-  help: (path: string) => Promise<string>;
-};
-
-export type VscodeResolution =
-  | { executable: VscodeExecutableInfo; error?: undefined }
-  | { executable: null; error: string };
-
-/** The flags HUI launches with. A server without them (code-server's `--bind-addr`/`--auth` CLI) cannot sit behind
- * HUI's proxy, so it is reported, never launched. */
-export const REQUIRED_VSCODE_FLAGS = ["--server-base-path", "--connection-token-file", "--server-data-dir", "--extensions-dir"] as const;
-/** Auto-detection order. code-server is tried only to say why it does not fit, or to use a build whose CLI does. */
-const COMMANDS = ["openvscode-server", "code-server"] as const;
-
-/** A server's banner is its first non-empty line, "OpenVSCode Server 1.109.5". */
-export function parseVscodeHelp(path: string, help: string): { name: string; version: string } | { error: string } {
-  const banner = help.split(/\r?\n/u).map((line) => line.trim()).find(Boolean) ?? "";
-  const match = /^(.*?)\s+v?(\d+\.\d+\.\d+[\w.+-]*)\b/u.exec(banner);
-  const name = match?.[1]?.trim() || banner || "This program";
-  const missing = REQUIRED_VSCODE_FLAGS.filter((flag) => !help.includes(flag));
-  if (missing.length > 0) {
-    return { error: `${name}${match ? ` ${match[2]}` : ""} at ${path} cannot run behind HUI: it has no ${missing.join(", ")}. Install openvscode-server.` };
-  }
-  return { name, version: match?.[2] ?? "unknown version" };
-}
-
-async function isExecutableFile(path: string): Promise<boolean> {
-  try {
-    const info = await stat(path);
-    if (!info.isFile()) return false;
-    await access(path, constants.X_OK);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/** One `--help` run per executable version: Settings and every launcher poll the status. */
-const helpCache = new Map<string, Promise<string>>();
-async function cachedHelp(path: string): Promise<string> {
-  const info = await stat(path);
-  const key = `${path}\0${info.mtimeMs}\0${info.size}`;
-  let pending = helpCache.get(key);
-  if (!pending) {
-    pending = promisify(execFile)(path, ["--help"], { timeout: 20_000, maxBuffer: 1024 * 1024, env: vscodeEnvironment(process.env) })
-      .then(({ stdout, stderr }) => `${stdout}\n${stderr}`);
-    pending.catch(() => helpCache.delete(key));
-    if (helpCache.size > 16) helpCache.clear();
-    helpCache.set(key, pending);
-  }
-  return pending;
-}
-
-export function defaultVscodeProbe(): VscodeProbe {
-  return { platform: process.platform, env: process.env, home: homedir(), isExecutable: isExecutableFile, help: cachedHelp };
-}
-
-/** PATH first, then the places a package manager puts binaries that a launchd or systemd PATH often lacks. */
-export function vscodeSearchPath(probe: Pick<VscodeProbe, "env" | "home">): string[] {
-  let user = probe.env["USER"] ?? "";
-  if (!user) { try { user = userInfo().username; } catch { user = ""; } }
-  const directories = [
-    ...(probe.env["PATH"] ?? "").split(delimiter),
-    "/opt/homebrew/bin", "/usr/local/bin",
-    join(probe.home, ".nix-profile", "bin"),
-    ...(user ? [`/etc/profiles/per-user/${user}/bin`] : []),
-    "/run/current-system/sw/bin", "/nix/var/nix/profiles/default/bin",
-  ];
-  return [...new Set(directories.filter((directory) => directory && isAbsolute(directory)))];
-}
-
-export async function resolveVscodeExecutable(configured: string, probe: VscodeProbe = defaultVscodeProbe()): Promise<VscodeResolution> {
-  const inspect = async (path: string, source: VscodeExecutableInfo["source"]): Promise<VscodeResolution> => {
-    let help: string;
-    try { help = await probe.help(path); } catch (error) {
-      return { executable: null, error: `${path} did not run: ${error instanceof Error ? error.message.split("\n")[0] : String(error)}` };
-    }
-    const parsed = parseVscodeHelp(path, help);
-    return "error" in parsed ? { executable: null, error: parsed.error } : { executable: { path, ...parsed, source } };
-  };
-  const raw = configured.trim();
-  if (raw) {
-    const path = raw === "~" || raw.startsWith("~/") ? join(probe.home, raw.slice(2)) : raw;
-    if (!isAbsolute(path)) return { executable: null, error: "The VS Code executable must be an absolute path." };
-    if (!(await probe.isExecutable(path))) return { executable: null, error: `No executable was found at ${path}.` };
-    return inspect(path, "configured");
-  }
-  const rejected: string[] = [];
-  for (const command of COMMANDS) {
-    for (const directory of vscodeSearchPath(probe)) {
-      const path = join(directory, command);
-      if (!(await probe.isExecutable(path))) continue;
-      const resolution = await inspect(path, "detected");
-      if (resolution.executable) return resolution;
-      rejected.push(resolution.error);
-      break;
-    }
-  }
-  return {
-    executable: null,
-    error: rejected.length > 0
-      ? `No compatible VS Code server was found. ${rejected.join(" ")}`
-      : "openvscode-server was not found on PATH. Install it, or set its path in Settings → Tools → VS Code.",
-  };
-}
-
-// ── Running it ─────────────────────────────────────────────────────────────────────────────────────────────────
-
-/** The gateway's environment without what belongs to it: agent bridge credentials and a parent VS Code's hooks. */
-export function vscodeEnvironment(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
-  return Object.fromEntries(Object.entries(env).filter(([key, value]) => value !== undefined && !key.startsWith("HUI_AGENT_") && !key.startsWith("VSCODE_")));
-}
-
-export function vscodeLaunchArguments(options: { port: number; tokenFile: string; dir: string }): string[] {
-  return [
-    "--host", "127.0.0.1",
-    "--port", String(options.port),
-    "--connection-token-file", options.tokenFile,
-    "--server-base-path", VSCODE_BASE_PATH,
-    "--server-data-dir", join(options.dir, "server-data"),
-    "--user-data-dir", join(options.dir, "user-data"),
-    "--extensions-dir", join(options.dir, "extensions"),
-    "--accept-server-license-terms",
-    "--telemetry-level", "off",
-  ];
 }
 
 function freePort(): Promise<number> {
@@ -182,14 +57,15 @@ function freePort(): Promise<number> {
 /** Loopback requests never go through an ambient HTTP proxy. */
 export const vscodeAgent = new Agent({ keepAlive: true, maxSockets: 64 });
 
-function probeVersion(port: number): Promise<boolean> {
+/** `/version`'s status: 200 once a server answers; serve-web answers 202 while it downloads its build; 0 for no answer. */
+function probeVersion(port: number): Promise<number> {
   return new Promise((resolve) => {
-    const request = httpGet({ host: "127.0.0.1", port, path: `${VSCODE_BASE_PATH}/version`, agent: vscodeAgent, timeout: 1_000 }, (response) => {
+    const request = httpGet({ host: "127.0.0.1", port, path: `${VSCODE_BASE_PATH}/version`, agent: vscodeAgent, timeout: 2_000 }, (response) => {
       response.resume();
-      resolve(response.statusCode === 200);
+      resolve(response.statusCode ?? 0);
     });
     request.once("timeout", () => request.destroy());
-    request.once("error", () => resolve(false));
+    request.once("error", () => resolve(0));
   });
 }
 
@@ -217,13 +93,17 @@ function trackGroup(child: ChildProcess) {
   process.once("exit", () => { for (const group of liveGroups) signalGroup(group, "SIGTERM"); });
 }
 
+function providerKey(provider: Pick<VscodeProvider, "kind" | "path" | "flavor">): string {
+  return `${provider.kind}\0${provider.flavor}\0${provider.path}`;
+}
+
 type Running = {
   child: ChildProcess;
   port: number;
   token: string;
   instance: number;
   startedAt: string;
-  configured: string;
+  provider: DetectedProvider;
   stopping: boolean;
   exited: Promise<void>;
   output: string[];
@@ -233,13 +113,23 @@ type Ticket = { folder: string; theme?: VscodeTheme; expires: number };
 type CookieSession = { theme?: VscodeTheme; expires: number };
 
 export type VscodeServiceOptions = {
-  /** HUI's VS Code directory: server data, extensions, the token file and the pid file. */
+  /** HUI's VS Code directory: server data, extensions, serve-web's data, the token file and the pid file. */
   dir: string;
   settings: () => Promise<VscodeSettings>;
+  /** Saves the license acceptance (an ISO time, or empty to revoke) in HUI's settings. */
+  saveLicense?: (acceptedAt: string) => Promise<void>;
+  /** The openvscode-server HUI can install; without one no install is offered. */
+  installer?: VscodeInstaller;
   probe?: VscodeProbe;
   /** Stop after this long without a connection; 15 minutes by default. */
   idleMs?: number;
   readyTimeoutMs?: number;
+  /** serve-web's first start may download a VS Code server build for this long; 15 minutes by default. */
+  prepareTimeoutMs?: number;
+  /** ...and gives up when no byte of it arrived for this long; 60 seconds by default. */
+  stallMs?: number;
+  /** How long an open waits for a start before answering that it is still starting; 8 seconds by default. */
+  connectWaitMs?: number;
   ticketMs?: number;
   /** A frame's cookie stays valid this long after its last request. */
   sessionMs?: number;
@@ -249,15 +139,24 @@ export type VscodeServiceOptions = {
 
 const MAX_TICKETS = 64;
 const MAX_SESSIONS = 32;
-const OUTPUT_LINES = 20;
+const OUTPUT_LINES = 40;
 
-/** The end of the server's stderr, without the line VS Code logs for every missing optional static file. */
+/** The end of a server's output that explains a failure: no routine missing-file lines, nothing holding the token. */
 function lastLines(output: readonly string[]): string {
-  return output.join("").split(/\r?\n/u).map((line) => line.trim()).filter((line) => line && !line.startsWith("File not found:")).slice(-3).join(" · ");
+  return output.join("").split(/\r?\n/u).map((line) => line.trim())
+    .filter((line) => line && !line.startsWith("File not found:") && !line.includes("tkn=") && !/^\*/u.test(line) && !/\] (trace|debug) /u.test(line))
+    .slice(-3).join(" · ");
 }
 
 function exitDescription(code: number | null, signal: NodeJS.Signals | null): string {
   return signal ? signal : `exit code ${code ?? "unknown"}`;
+}
+
+/** serve-web logs what its downloaded server prints as "[645f29c stderr]: …"; those lines say why it cannot run. */
+function serveWebServerErrors(output: readonly string[]): string {
+  return output.join("").split(/\r?\n/u)
+    .map((line) => /\[[0-9a-f]{7} stderr\]:\s*(.*)$/u.exec(line)?.[1]?.trim() ?? "")
+    .filter(Boolean).slice(-3).join(" ");
 }
 
 export class VscodeService {
@@ -267,12 +166,16 @@ export class VscodeService {
   #probe: VscodeProbe;
   #running: Running | undefined;
   #starting: Promise<Running> | undefined;
-  #state: Exclude<VscodeState, "off" | "unavailable"> = "stopped";
+  #startingProvider: DetectedProvider | undefined;
+  #state: Exclude<VscodeState, "setup"> = "stopped";
   #lastError = "";
   #instance = 0;
   #connections = 0;
+  #preparing: { received: number; total: number } | null = null;
+  /** The process of a start in progress, so a stop does not wait out serve-web's download. */
+  #startingChild: ChildProcess | undefined;
+  #cancelStart = false;
   #idle: ReturnType<typeof setTimeout> | undefined;
-  #enabled: boolean | undefined;
   #reaped = false;
   #disposed = false;
   readonly #tickets = new Map<string, Ticket>();
@@ -289,19 +192,47 @@ export class VscodeService {
 
   get tokenFile(): string { return join(this.dir, "connection-token"); }
   get #pidFile(): string { return join(this.dir, "server.json"); }
+  /** serve-web's data: Microsoft's server builds and the marketplace's extensions stay apart from openvscode-server's. */
+  get serveWebDir(): string { return join(this.dir, "serve-web"); }
+
+  async #plan(settings: VscodeSettings) {
+    const managed = (await this.#options.installer?.installed())?.path ?? null;
+    const detection = await detectVscodeProviders({ configured: settings.executable, managed }, this.#probe);
+    const plan = planVscode(detection, { preference: settings.provider, configured: settings.executable, licenseAccepted: Boolean(settings.licenseAcceptedAt) });
+    return { detection, plan };
+  }
 
   async status(): Promise<VscodeStatus> {
     const settings = await this.#options.settings();
-    this.#enabled = settings.enabled;
-    const resolution = await resolveVscodeExecutable(settings.executable, this.#probe);
+    const { detection, plan } = await this.#plan(settings);
+    const install = this.#options.installer
+      ? await this.#options.installer.status()
+      : { supported: false, reason: "This gateway cannot install a VS Code server.", version: "", arch: "", size: 0, dir: "", installed: null, task: null, error: "", hint: "" };
     const running = this.#running;
-    const state: VscodeState = !settings.enabled ? "off" : running || this.#starting ? this.#state : resolution.executable ? this.#state : "unavailable";
+    const busy = running ?? (this.#starting ? { provider: this.#startingProvider } : undefined);
+    const desktop = plan.consent ?? null;
+    const needed = !plan.active;
+    const state: VscodeState = busy ? this.#state : plan.active ? this.#state : "setup";
     return {
+      platform: this.#probe.platform,
       enabled: settings.enabled,
       configuredExecutable: settings.executable,
-      executable: resolution.executable,
-      executableError: resolution.error ?? "",
+      preference: settings.provider,
+      providers: detection.providers.map(publicProvider),
+      problems: detection.problems,
+      active: plan.active ? publicProvider(plan.active) : null,
+      activeError: plan.error,
+      setup: {
+        needed,
+        desktop: needed && desktop ? publicProvider(desktop) : null,
+        install: needed && !plan.error && install.supported && !install.installed,
+        download: needed && !plan.error && !desktop && !install.supported,
+      },
+      license: { accepted: Boolean(settings.licenseAcceptedAt), acceptedAt: settings.licenseAcceptedAt },
+      install,
       state,
+      running: busy?.provider ? publicProvider(busy.provider) : null,
+      preparing: this.#preparing,
       instance: this.#instance,
       ...(running?.child.pid ? { pid: running.child.pid } : {}),
       ...(running ? { startedAt: running.startedAt } : {}),
@@ -314,84 +245,152 @@ export class VscodeService {
 
   /** The running server, if there is one. The proxy uses only this: a frame's requests never start VS Code, so a
    * crashed server is not restarted by its own reconnecting workbench. */
-  current(): { port: number; token: string; instance: number } | undefined {
+  current(): { port: number; token: string; instance: number; flavor: VscodeFlavor } | undefined {
     const running = this.#running;
-    return running && !running.stopping ? running : undefined;
+    return running && !running.stopping ? { port: running.port, token: running.token, instance: running.instance, flavor: running.provider.flavor } : undefined;
   }
 
-  /** The running server, started now if it is not. Concurrent callers share one start. */
+  /** The running server, started now if it is not. Concurrent callers share one start. Refuses with `setup` while
+   * nothing can run: no provider, or only a VS Code whose license the operator has not accepted. */
   async ensure(): Promise<{ port: number; token: string; instance: number }> {
     if (this.#disposed) throw new VscodeError("The gateway is stopping.", 503, "failed");
-    const settings = await this.#options.settings();
-    this.#enabled = settings.enabled;
-    if (!settings.enabled) throw new VscodeError(VSCODE_OFF_REASON, 409, "disabled");
     const running = this.#running;
     if (running && !running.stopping) return running;
-    this.#starting ??= this.#start(settings).finally(() => { this.#starting = undefined; });
+    if (this.#starting) return this.#starting;
+    const settings = await this.#options.settings();
+    const { plan } = await this.#plan(settings);
+    if (this.#running && !this.#running.stopping) return this.#running;
+    if (this.#starting) return this.#starting;
+    const provider = plan.active;
+    if (!provider) throw new VscodeError(this.#setupReason(plan), 409, "setup");
+    this.#startingProvider = provider;
+    this.#starting = this.#start(provider, settings).finally(() => { this.#starting = undefined; this.#startingProvider = undefined; });
     return this.#starting;
   }
 
-  async #start(settings: VscodeSettings): Promise<Running> {
+  #setupReason(plan: VscodePlan): string {
+    if (plan.error) return plan.error;
+    if (plan.consent) return "VS Code needs you to accept the VS Code Server license before HUI runs it.";
+    return "No VS Code was found on this machine. Choose how to run it in the VS Code view.";
+  }
+
+  async #start(provider: DetectedProvider, settings: VscodeSettings): Promise<Running> {
     if (this.#running) await this.#running.exited;
-    const resolution = await resolveVscodeExecutable(settings.executable, this.#probe);
-    if (!resolution.executable) throw new VscodeError(resolution.error, 409, "not-found");
-    const executable = resolution.executable;
     this.#state = "starting";
     this.#lastError = "";
+    this.#preparing = null;
     try {
       await this.#reapStale();
-      for (const sub of ["server-data", "user-data", "extensions"]) await mkdir(join(this.dir, sub), { recursive: true, mode: 0o700 });
+      const serveWeb = provider.flavor === "serve-web";
+      const subdirectories = serveWeb ? [join("serve-web", "server-data"), join("serve-web", "cli")] : ["server-data", "user-data", "extensions"];
+      for (const sub of subdirectories) await mkdir(join(this.dir, sub), { recursive: true, mode: 0o700 });
       await chmod(this.dir, 0o700);
       const token = randomBytes(32).toString("base64url");
       await writeFile(this.tokenFile, token, { mode: 0o600 });
       await chmod(this.tokenFile, 0o600);
       const port = await freePort();
-      const child = spawn(executable.path, vscodeLaunchArguments({ port, tokenFile: this.tokenFile, dir: this.dir }), {
-        env: vscodeEnvironment(this.#options.env?.() ?? process.env),
+      const args = serveWeb
+        ? serveWebLaunchArguments({
+          port, tokenFile: this.tokenFile, dir: this.serveWebDir, licenseAcceptedAt: settings.licenseAcceptedAt,
+          ...(provider.commit ? { commit: provider.commit } : {}), ...(provider.features ? { features: provider.features } : {}),
+        })
+        : vscodeLaunchArguments({ port, tokenFile: this.tokenFile, dir: this.dir });
+      const child = spawn(provider.path, args, {
+        env: { ...vscodeEnvironment(this.#options.env?.() ?? process.env), DONT_PROMPT_WSL_INSTALL: "1" },
         stdio: ["ignore", "pipe", "pipe"],
-        // Its own process group, so a stop reaches node and the extension hosts behind the launcher script.
+        windowsHide: true,
+        // Its own process group, so a stop reaches what the launcher script started.
         detached: process.platform !== "win32",
       });
       trackGroup(child);
-      // stdout is VS Code's routine log; only stderr explains a failure.
+      this.#startingChild = child;
+      // openvscode-server's stdout is its routine log and only stderr explains a failure; serve-web logs everything,
+      // its download's progress included, to stdout.
       const output: string[] = [];
-      child.stdout?.resume();
-      child.stderr?.on("data", (chunk: Buffer) => { output.push(chunk.toString("utf8")); if (output.length > OUTPUT_LINES) output.shift(); });
+      const keep = (chunk: Buffer) => { output.push(chunk.toString("utf8")); if (output.length > OUTPUT_LINES) output.shift(); };
+      let pending = "";
+      if (serveWeb) {
+        child.stdout?.on("data", (chunk: Buffer) => {
+          keep(chunk);
+          const lines = (pending + chunk.toString("utf8")).split(/\r?\n/u);
+          pending = lines.pop() ?? "";
+          for (const line of lines) {
+            const progress = parseServeWebProgress(line);
+            if (progress) this.#preparing = progress;
+          }
+        });
+      } else {
+        child.stdout?.resume();
+      }
+      child.stderr?.on("data", keep);
       const exited = new Promise<void>((resolve) => child.once("exit", () => {
-        // The launcher script is gone; whatever is left of its group follows it.
+        // The launcher is gone; whatever is left of its group follows it.
         void this.#reapGroup(child).finally(() => { liveGroups.delete(child); resolve(); });
       }));
       const running: Running = {
         child, port, token, instance: ++this.#instance, startedAt: new Date(this.#now()).toISOString(),
-        configured: settings.executable, stopping: false, exited, output,
+        provider, stopping: false, exited, output,
       };
       let spawnError: Error | undefined;
       child.once("error", (error) => { spawnError = error; });
-      const deadline = Date.now() + (this.#options.readyTimeoutMs ?? 60_000);
+      const fail = (message: string): never => { signalGroup(child, "SIGKILL"); throw new VscodeError(message, 502); };
+      const readyMs = this.#options.readyTimeoutMs ?? 60_000;
+      const deadline = Date.now() + readyMs;
+      let prepareDeadline = 0;
+      let lastProgress = { received: -1, at: Date.now() };
       for (;;) {
-        if (spawnError) throw new VscodeError(`${executable.name} could not be started: ${spawnError.message}`, 502);
+        if (spawnError) throw new VscodeError(`${provider.name} could not be started: ${spawnError.message}`, 502);
         if (child.exitCode !== null || child.signalCode !== null) {
           const detail = lastLines(output);
-          throw new VscodeError(`${executable.name} exited while starting (${exitDescription(child.exitCode, child.signalCode)})${detail ? `: ${detail}` : "."}`, 502);
+          throw new VscodeError(`${provider.name} exited while starting (${exitDescription(child.exitCode, child.signalCode)})${detail ? `: ${detail}` : "."}`, 502);
         }
-        if (await probeVersion(port)) break;
-        if (Date.now() > deadline) {
-          signalGroup(child, "SIGKILL");
-          throw new VscodeError(`${executable.name} did not answer on 127.0.0.1:${port} within ${Math.round((this.#options.readyTimeoutMs ?? 60_000) / 1000)} seconds.`, 502);
+        if (this.#cancelStart) fail("VS Code was stopped while it started.");
+        const answer = await probeVersion(port);
+        if (answer === 200) break;
+        if (serveWeb) {
+          if (answer === 202) {
+            // Up, and fetching the VS Code server build that matches this desktop: wait for it, with progress.
+            prepareDeadline ||= Date.now() + (this.#options.prepareTimeoutMs ?? 15 * 60_000);
+            this.#preparing ??= { received: 0, total: 0 };
+            if (this.#preparing.received !== lastProgress.received) lastProgress = { received: this.#preparing.received, at: Date.now() };
+            const stallMs = this.#options.stallMs ?? 60_000;
+            if (Date.now() - lastProgress.at > stallMs) {
+              fail(`VS Code could not download its web server from Microsoft (update.code.visualstudio.com): nothing arrived for ${Math.round(stallMs / 1000)} seconds. The first open needs an internet connection; check it, or the gateway's HTTPS_PROXY, then retry.`);
+            }
+          } else if (answer !== 0) {
+            const detail = serveWebServerErrors(output) || lastLines(output);
+            fail(`VS Code's web server did not start (HTTP ${answer})${detail ? `: ${detail}` : "."}`);
+          }
+          if (prepareDeadline && /\[[0-9a-f]{7} process\]: exited/u.test(output.join(""))) {
+            // The downloaded build ran and died (on NixOS it cannot run without nix-ld); serve-web would retry forever.
+            const detail = serveWebServerErrors(output);
+            fail(`VS Code's web server exited while starting${detail ? `: ${detail}` : "."}`);
+          }
+          if (prepareDeadline && Date.now() > prepareDeadline) fail("VS Code's web server download did not finish within 15 minutes. Check the connection, then retry.");
         }
-        await new Promise((resolve) => setTimeout(resolve, 100));
+        if (!prepareDeadline && Date.now() > deadline) {
+          fail(`${provider.name} did not answer on 127.0.0.1:${port} within ${Math.round(readyMs / 1000)} seconds.`);
+        }
+        await new Promise((resolve) => setTimeout(resolve, 200));
       }
+      this.#preparing = null;
       if (this.#disposed) { signalGroup(child, "SIGTERM"); throw new VscodeError("The gateway is stopping.", 503); }
       this.#running = running;
       this.#state = "running";
       child.once("exit", (code, signal) => this.#exited(running, code, signal));
-      void writeFile(this.#pidFile, JSON.stringify({ pid: child.pid, dataDir: join(this.dir, "server-data") }), { mode: 0o600 }).catch(() => undefined);
+      void writeFile(this.#pidFile, JSON.stringify({ pid: child.pid, dataDir: serveWeb ? this.serveWebDir : join(this.dir, "server-data") }), { mode: 0o600 }).catch(() => undefined);
       this.#scheduleIdle();
       return running;
     } catch (error) {
-      this.#state = "failed";
-      this.#lastError = error instanceof Error ? error.message : String(error);
-      throw error instanceof VscodeError ? error : new VscodeError(this.#lastError, 502);
+      this.#preparing = null;
+      const cancelled = this.#cancelStart;
+      this.#state = cancelled ? "stopped" : "failed";
+      const message = error instanceof Error ? error.message : String(error);
+      this.#lastError = cancelled ? "" : message;
+      throw error instanceof VscodeError ? error : new VscodeError(message, 502);
+    } finally {
+      this.#startingChild = undefined;
+      this.#cancelStart = false;
     }
   }
 
@@ -464,8 +463,16 @@ export class VscodeService {
     this.#idle.unref();
   }
 
-  async connect(folder: string, theme: VscodeTheme | undefined): Promise<VscodeConnection> {
-    const server = await this.ensure();
+  /** A one-use frame URL on `folder`, starting VS Code if needed. A start that takes longer than the wait (serve-web
+   * downloading its first build) answers `{ pending: true }` and carries on; the view follows the status and asks
+   * again once it runs. */
+  async connect(folder: string, theme: VscodeTheme | undefined): Promise<VscodeConnection | { pending: true }> {
+    const start = this.ensure();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const waited = new Promise<undefined>((resolve) => { timer = setTimeout(() => resolve(undefined), this.#options.connectWaitMs ?? 8_000); });
+    let server: { instance: number } | undefined;
+    try { server = await Promise.race([start, waited]); } finally { clearTimeout(timer); }
+    if (!server) { start.catch(() => undefined); return { pending: true }; }
     const now = this.#now();
     for (const [key, ticket] of this.#tickets) if (ticket.expires <= now) this.#tickets.delete(key);
     if (this.#tickets.size >= MAX_TICKETS) throw new VscodeError("Too many pending VS Code connections.", 429, "busy");
@@ -481,7 +488,7 @@ export class VscodeService {
     const entry = this.#tickets.get(ticket);
     this.#tickets.delete(ticket);
     const now = this.#now();
-    if (!entry || entry.expires <= now || this.#enabled === false) return undefined;
+    if (!entry || entry.expires <= now) return undefined;
     for (const [key, session] of this.#sessions) if (session.expires <= now) this.#sessions.delete(key);
     while (this.#sessions.size >= MAX_SESSIONS) {
       const oldest = [...this.#sessions].sort(([, a], [, b]) => a.expires - b.expires)[0];
@@ -506,20 +513,67 @@ export class VscodeService {
     return undefined;
   }
 
-  /** Turning the view off withdraws every capability and stops the server; a new executable applies to the next start. */
+  #withdraw() {
+    this.#tickets.clear();
+    this.#sessions.clear();
+  }
+
+  /** Settings changed: a server that is no longer what an open would run (another provider or path, a revoked
+   * license) stops, and a revoked license also withdraws every frame's access. The next open runs the new choice. */
   async applySettings(next: VscodeSettings): Promise<void> {
-    this.#enabled = next.enabled;
-    if (!next.enabled) {
-      this.#tickets.clear();
-      this.#sessions.clear();
+    const running = this.#running;
+    if (!running && !this.#starting) return;
+    const provider = running?.provider ?? this.#startingProvider;
+    if (provider?.flavor === "serve-web" && !next.licenseAcceptedAt) {
+      this.#withdraw();
       await this.stop();
-    } else if (this.#running && this.#running.configured !== next.executable) {
+      return;
+    }
+    const { plan } = await this.#plan(next);
+    if (provider && (!plan.active || providerKey(plan.active) !== providerKey(provider))) await this.stop();
+  }
+
+  /** The operator accepted Microsoft's VS Code Server license in HUI; serve-web may run from now on. */
+  async acceptLicense(): Promise<void> {
+    if (!this.#options.saveLicense) throw new VscodeError("This gateway cannot record the license acceptance.", 500);
+    await this.#options.saveLicense(new Date(this.#now()).toISOString());
+  }
+
+  /** Revoking stops a running serve-web (through applySettings) and HUI never starts it again until accepted. */
+  async revokeLicense(): Promise<void> {
+    if (!this.#options.saveLicense) throw new VscodeError("This gateway cannot record the license acceptance.", 500);
+    await this.#options.saveLicense("");
+    if (this.#running?.provider.flavor === "serve-web" || this.#startingProvider?.flavor === "serve-web") {
+      this.#withdraw();
       await this.stop();
     }
   }
 
+  /** Starts installing openvscode-server and returns at once; the status reports its progress. */
+  startInstall(): void {
+    const installer = this.#options.installer;
+    if (!installer) throw new VscodeError("This gateway cannot install a VS Code server.", 409, "failed");
+    void installer.install().catch(() => undefined);
+  }
+
+  async cancelInstall(): Promise<void> {
+    await this.#options.installer?.cancel();
+  }
+
+  /** Removes the openvscode-server HUI installed, stopping it first when it is what runs. */
+  async uninstall(): Promise<void> {
+    const installer = this.#options.installer;
+    if (!installer) return;
+    if (this.#running?.provider.kind === "managed" || this.#startingProvider?.kind === "managed") await this.stop();
+    await installer.uninstall();
+  }
+
   async stop(): Promise<void> {
-    if (this.#starting) await this.#starting.catch(() => undefined);
+    if (this.#starting) {
+      this.#cancelStart = true;
+      if (this.#startingChild) signalGroup(this.#startingChild, "SIGTERM");
+      await this.#starting.catch(() => undefined);
+    }
     const running = this.#running;
     this.#clearIdle();
     if (!running) {
@@ -538,8 +592,9 @@ export class VscodeService {
   dispose(): void {
     this.#disposed = true;
     this.#clearIdle();
-    this.#tickets.clear();
-    this.#sessions.clear();
+    this.#withdraw();
+    void this.#options.installer?.cancel();
+    if (this.#startingChild) { this.#cancelStart = true; signalGroup(this.#startingChild, "SIGTERM"); }
     const running = this.#running;
     if (!running) return;
     running.stopping = true;
