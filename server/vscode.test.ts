@@ -340,7 +340,7 @@ test("VS Code desktop: no consent means no spawn and no setup bypass; consent pa
   assert.ok(entered);
   await vscode.revokeLicense();
   assert.deepEqual(saved.at(-1), "");
-  assert.equal(vscode.session([entered.secret]), undefined);
+  assert.equal(vscode.session([entered.sessionId]), undefined);
   assert.equal((await vscode.status()).state, "setup");
   await assert.rejects(vscode.ensure(), (error: unknown) => error instanceof VscodeError && error.code === "setup");
 });
@@ -419,18 +419,18 @@ test("tickets are single-use and short-lived; cookie secrets expire and forged o
   assert.ok(entered);
   assert.equal(entered.folder, "/work/repo");
   assert.equal(vscode.enter(ticket), undefined, "a ticket works once");
-  assert.deepEqual(vscode.session([entered.secret])?.theme, theme);
-  assert.equal(vscode.session(["forged", entered.secret.replace(/^./u, (c) => (c === "A" ? "B" : "A"))]), undefined);
-  assert.ok(vscode.session(["forged", entered.secret]), "any valid secret among several cookies is enough");
+  assert.deepEqual(vscode.session([entered.sessionId])?.theme, theme);
+  assert.equal(vscode.session(["forged", entered.sessionId.replace(/^./u, (c) => (c === "A" ? "B" : "A"))]), undefined);
+  assert.ok(vscode.session(["forged", entered.sessionId]), "any valid secret among several cookies is enough");
 
   const late = new URL((await open("/work/repo")).url, "http://h").searchParams.get("ticket") ?? "";
   now += 30_001;
   assert.equal(vscode.enter(late), undefined, "an expired ticket fails");
-  assert.ok(vscode.session([entered.secret]), "30 seconds later the cookie session is still valid");
+  assert.ok(vscode.session([entered.sessionId]), "30 seconds later the cookie session is still valid");
   now += 59_000;
-  assert.ok(vscode.session([entered.secret]), "use refreshes a cookie session");
+  assert.ok(vscode.session([entered.sessionId]), "use refreshes a cookie session");
   now += 60_001;
-  assert.equal(vscode.session([entered.secret]), undefined, "an unused cookie session expires");
+  assert.equal(vscode.session([entered.sessionId]), undefined, "an unused cookie session expires");
 });
 
 test("a new executable stops the running server; disposing returns at once and the server exits", { timeout: 60_000 }, async (t) => {

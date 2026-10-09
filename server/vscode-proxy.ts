@@ -39,7 +39,7 @@ function cookiePairs(header: string | undefined): Array<[string, string]> {
 }
 
 /** Every value of HUI's cookie: a frame of another conversation may have set a newer one beside it. */
-export function vscodeCookieSecrets(header: string | undefined): string[] {
+export function vscodeCookieSessionIds(header: string | undefined): string[] {
   return cookiePairs(header).filter(([name]) => name === VSCODE_COOKIE).map(([, value]) => value).filter(Boolean);
 }
 
@@ -238,7 +238,7 @@ export function serveVscodeEnter(request: IncomingMessage, response: ServerRespo
   const ticket = new URL(request.url ?? "/", "http://localhost").searchParams.get("ticket") ?? "";
   const entry = service.enter(ticket);
   if (!entry) { sendNotice(response, 403, "expired", "This VS Code link has expired or was already used. Open VS Code again from HUI."); return; }
-  const cookie = [`${VSCODE_COOKIE}=${entry.secret}`, `Path=${VSCODE_BASE_PATH}`, "HttpOnly", "SameSite=Strict", ...(secureRequest(request) ? ["Secure"] : [])].join("; ");
+  const cookie = [`${VSCODE_COOKIE}=${entry.sessionId}`, `Path=${VSCODE_BASE_PATH}`, "HttpOnly", "SameSite=Strict", ...(secureRequest(request) ? ["Secure"] : [])].join("; ");
   response.writeHead(303, {
     location: `${VSCODE_BASE_PATH}/?folder=${encodeURIComponent(entry.folder)}`,
     "set-cookie": cookie,
@@ -249,7 +249,7 @@ export function serveVscodeEnter(request: IncomingMessage, response: ServerRespo
 }
 
 function authorize(request: IncomingMessage, service: VscodeService) {
-  return crossSite(request) ? undefined : service.session(vscodeCookieSecrets(request.headers.cookie));
+  return crossSite(request) ? undefined : service.session(vscodeCookieSessionIds(request.headers.cookie));
 }
 
 function wantsDocument(request: IncomingMessage): boolean {
