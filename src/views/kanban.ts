@@ -55,8 +55,6 @@ export type KanbanPageProps = {
   options: KanbanOptions;
   /** Session whose stage change is in flight; its card is inert meanwhile. */
   movePendingId: string;
-  notice: string;
-  noticeFailed: boolean;
   draggingId: string;
   dropTarget: string;
   onQuery: (value: string) => void;
@@ -456,7 +454,6 @@ export function renderKanbanPage(props: KanbanPageProps): TemplateResult {
           <button type="button" class="btn btn--sm" @click=${props.onRefresh}>${icons.refresh} Refresh</button>
         </div>
       </header>
-      ${props.notice ? html`<p class="kanban-notice ${props.noticeFailed ? "is-error" : ""}" role=${props.noticeFailed ? "alert" : "status"}>${props.notice}</p>` : nothing}
       ${backlogNote(props)}
       ${board(props)}
     </section>`;

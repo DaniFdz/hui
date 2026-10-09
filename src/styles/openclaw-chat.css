@@ -681,6 +681,9 @@ hui-math.markdown-math--inline .markdown-rich-embed__error {
 .chat-operation-toast[data-level="error"] .app-toast__icon { color: var(--danger); }
 /* HUI's icons carry no intrinsic size; match the 16px glyph of the other toast variants. */
 .chat-operation-toast .app-toast__dismiss svg { width: 16px; height: 16px; }
+/* Sidebar, Kanban, Sessions and bot action outcomes share the same toast. */
+.action-toast[data-level="error"] .app-toast__icon { color: var(--danger); }
+.action-toast .app-toast__dismiss svg { width: 16px; height: 16px; }
 
 /* Suggested task card (OpenClaw task-suggestion port). HUI adds a secondary
    Jira action beside the primary start action instead of a split button.

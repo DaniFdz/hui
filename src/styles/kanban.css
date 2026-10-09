@@ -28,13 +28,6 @@
 .kanban-options__trigger svg { width: 14px; height: 14px; }
 .kanban-options__trigger.is-active { color: var(--accent); border-color: var(--accent); }
 
-.kanban-notice {
-  margin: 0;
-  color: var(--muted);
-  font-size: var(--control-ui-text-sm);
-}
-.kanban-notice.is-error { color: var(--danger); }
-
 .kanban-empty { margin: var(--space-6) auto; color: var(--muted); }
 .kanban-empty.is-error { color: var(--danger); }
 

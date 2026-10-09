@@ -188,8 +188,6 @@ export type ShellProps = {
   draggingSessionId: string;
   sessionDropTarget: string;
   sessionMovePendingId: string;
-  sessionMoveNotice: string;
-  sessionMoveFailed: boolean;
   onSessionDragStart: (session: SessionView) => void;
   onSessionDragEnd: () => void;
   onSessionDragOver: (group: string) => void;
@@ -928,7 +926,6 @@ export function renderSidebar(props: ShellProps) {
               dialog: (event) => closeContainingDrawer(event),
             })}
           </div>` : html`<div class="sidebar-list sidebar-recent-sessions" aria-label="Sessions">
-        ${props.sessionMoveNotice ? html`<p class="sidebar-list__note sidebar-session-move-note ${props.sessionMoveFailed ? "is-error" : ""}" role=${props.sessionMoveFailed ? "alert" : "status"} aria-live="polite">${props.sessionMoveNotice}</p>` : nothing}
         ${
           props.error
             ? html`<p class="sidebar-list__note is-error">${props.error}</p>`
