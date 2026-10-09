@@ -16,8 +16,8 @@ test("encoding negotiation prefers brotli, honours q-values and falls back to id
   assert.equal(negotiateEncoding("deflate, GZIP"), "gzip");
 });
 
-test("only text is worth compressing", () => {
-  for (const type of ["text/javascript; charset=utf-8", "text/css; charset=utf-8", "text/html; charset=utf-8", "application/json", "application/json; charset=utf-8", "image/svg+xml", "application/manifest+json"]) {
+test("only text and WebAssembly are worth compressing", () => {
+  for (const type of ["text/javascript; charset=utf-8", "text/css; charset=utf-8", "text/html; charset=utf-8", "application/json", "application/json; charset=utf-8", "image/svg+xml", "application/manifest+json", "application/wasm"]) {
     assert.equal(isCompressible(type), true, type);
   }
   for (const type of ["image/png", "font/woff2", "application/octet-stream"]) assert.equal(isCompressible(type), false, type);

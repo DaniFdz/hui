@@ -39,6 +39,9 @@ test("built files are compressed, hashed assets cached for good and the rest rev
   await writeFile(join(root, "assets", "app-abc123.js"), script);
   await writeFile(join(root, "assets", "tiny-abc123.js"), "export {};");
   await writeFile(join(root, "logo.png"), Buffer.alloc(4096, 7));
+  // A stand-in module: the magic number and version, then repetitive bytes like real code sections.
+  const wasm = Buffer.concat([Buffer.from([0, 0x61, 0x73, 0x6d, 1, 0, 0, 0]), Buffer.alloc(8192, 0x41)]);
+  await writeFile(join(root, "assets", "ghostty-vt-abc123.wasm"), wasm);
   const server = createServer((request, response) => { void serveStatic(root, request, response); });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address(); assert(address && typeof address !== "string");
@@ -73,6 +76,14 @@ test("built files are compressed, hashed assets cached for good and the rest rev
   const revalidated = await raw("/assets/app-abc123.js", { "accept-encoding": "br", "if-none-match": String(br.headers["etag"]) });
   assert.equal(revalidated.status, 304);
   assert.equal(revalidated.body.length, 0);
+
+  // The terminal's WebAssembly is served as such (streaming compilation requires the type) and compressed.
+  const module = await raw("/assets/ghostty-vt-abc123.wasm", { "accept-encoding": "br" });
+  assert.equal(module.status, 200);
+  assert.equal(module.headers["content-type"], "application/wasm");
+  assert.equal(module.headers["content-encoding"], "br");
+  assert.equal(module.headers["cache-control"], "public, max-age=31536000, immutable");
+  assert.deepEqual(brotliDecompressSync(module.body), wasm);
 
   const tiny = await raw("/assets/tiny-abc123.js", { "accept-encoding": "br" });
   assert.equal(tiny.headers["content-encoding"], undefined, "too small to be worth it");

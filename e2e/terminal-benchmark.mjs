@@ -13,7 +13,10 @@
  *   node e2e/terminal-benchmark.mjs --receipt <receipt.json> [--browser <chromium>] [--runs 3] [--label name] [--out result.json]
  *
  * The receipt may come from any checkout (for example a detached origin/main
- * worktree), so the same script measures a baseline and a branch.
+ * worktree), so the same script measures a baseline and a branch. The screen is
+ * read through Gespenst's public API (its worker answers once the pending frame
+ * is painted); checkouts that still draw with ghostty-web are read from its grid,
+ * so older baselines stay measurable.
  */
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -186,17 +189,23 @@ const environment = await evaluate(() => {
   return { gpu: info ? gl.getParameter(info.UNMASKED_RENDERER_WEBGL) : "unknown", userAgent: navigator.userAgent, cols: pane.terminalView?.cols, rows: pane.terminalView?.rows };
 });
 
-/** Page-side: whether the marker sits in the last rows above the cursor. */
-const markerProbe = String((marker) => {
-  const term = document.querySelector("hui-terminal-pane")?.terminal?.wasmTerm;
-  if (!term) return false;
-  const cursor = term.getCursor().y;
+/** Page-side: the painted screen's rows as text (Gespenst), or the rows around the cursor (ghostty-web baselines). */
+const screenRows = String(async () => {
+  const term = document.querySelector("hui-terminal-pane")?.terminal;
+  if (!term) return [];
+  if (term.readViewport) return (await term.readViewport()).viewportRows.map((row) => row.text);
+  const grid = term.wasmTerm;
+  if (!grid) return [];
+  const cursor = grid.getCursor().y;
+  const rows = [];
   for (let y = Math.max(0, cursor - 6); y <= cursor; y++) {
-    const cells = term.getLine(y);
-    if (cells && String.fromCodePoint(...cells.map((cell) => cell.codepoint || 32)).includes(marker)) return true;
+    const cells = grid.getLine(y);
+    rows.push(cells ? String.fromCodePoint(...cells.map((cell) => cell.codepoint || 32)) : "");
   }
-  return false;
+  return rows;
 });
+/** Page-side: whether the marker is on the painted screen. */
+const markerProbe = "async (marker) => (await (" + screenRows + ")()).some((row) => row.includes(marker))";
 
 /** Renderer main-thread busy time (all tasks) and script time, in ms, from the DevTools Performance domain. */
 async function mainThread() {
@@ -216,20 +225,20 @@ async function measureOutput(command, marker) {
     const pane = document.querySelector("hui-terminal-pane");
     const socket = bench.sockets.at(-1);
     const startMessages = socket.messages, startBytes = socket.bytes;
+    // Gespenst keeps a scrolled-back viewport in place while output arrives; start each run at the bottom.
+    pane.terminal.scrollToBottom?.();
     const gaps = [];
     const start = performance.now();
     let last = start;
     await fetch("/__hui/sessions/" + encodeURIComponent(pane.ownerSessionId) + "/terminals/" + encodeURIComponent(pane.terminalId), { method: "POST", headers: { "x-hui": "1", "content-type": "application/json" }, body: JSON.stringify({ action: "input", data: input + String.fromCharCode(13) }) });
-    const end = await new Promise((resolve, reject) => {
-      const deadline = start + 180_000;
-      const frame = (now) => {
-        gaps.push(now - last); last = now;
-        if (probe(mark)) resolve(now);
-        else if (now > deadline) reject(new Error("Marker " + mark + " never painted"));
-        else requestAnimationFrame(frame);
-      };
-      requestAnimationFrame(frame);
-    });
+    const deadline = start + 180_000;
+    let end;
+    for (;;) {
+      const now = await new Promise((done) => requestAnimationFrame(done));
+      gaps.push(now - last); last = now;
+      if (await probe(mark)) { end = performance.now(); break; }
+      if (now > deadline) throw new Error("Marker " + mark + " never painted");
+    }
     const tasks = bench.longTasks.filter((task) => task.start >= start && task.start <= end);
     return {
       wallMs: Math.round(end - start),
@@ -254,21 +263,18 @@ async function measureTyping(count = 20) {
   for (const type of ["mousePressed", "mouseReleased"]) await cdp("Input.dispatchMouseEvent", { type, x: box.x, y: box.y, button: "left", clickCount: 1 });
   const latencies = [];
   for (let n = 1; n <= count; n++) {
-    const painted = evaluate(async (expected) => {
+    const painted = evaluate(async (rowsSource, expected) => {
+      const rows = (0, eval)(rowsSource);
       const start = performance.now();
-      return new Promise((resolve, reject) => {
-        const frame = (now) => {
-          const term = document.querySelector("hui-terminal-pane")?.terminal?.wasmTerm;
-          // The echo may wrap: join the cursor row with the row above it.
-          const y = term?.getCursor().y ?? 0;
-          const text = [y - 1, y].map((row) => term?.getLine(row)).filter(Boolean).map((cells) => String.fromCodePoint(...cells.map((cell) => cell.codepoint || 32))).join("");
-          if (text.includes("q".repeat(expected))) resolve(now - start);
-          else if (now - start > 5000) reject(new Error("Echo " + expected + " never painted"));
-          else requestAnimationFrame(frame);
-        };
-        requestAnimationFrame(frame);
-      });
-    }, n);
+      for (;;) {
+        // The echo may wrap: join the rows.
+        const text = (await rows()).join("");
+        const now = performance.now();
+        if (text.includes("q".repeat(expected))) return now - start;
+        if (now - start > 5000) throw new Error("Echo " + expected + " never painted");
+        await new Promise((done) => requestAnimationFrame(done));
+      }
+    }, screenRows, n);
     await cdp("Input.dispatchKeyEvent", { type: "keyDown", key: "q", code: "KeyQ", text: "q", unmodifiedText: "q", windowsVirtualKeyCode: 81 });
     await cdp("Input.dispatchKeyEvent", { type: "keyUp", key: "q", code: "KeyQ", windowsVirtualKeyCode: 81 });
     latencies.push(await painted);
@@ -323,10 +329,11 @@ async function measureReplay(marker) {
     pane.socket.close();
     while (bench.sockets[count]?.first === undefined) await new Promise((resolve) => setTimeout(resolve, 5));
     const record = bench.sockets[count];
-    const end = await new Promise((resolve) => {
-      const frame = (now) => { if (pane.ready && probe(mark)) resolve(now); else requestAnimationFrame(frame); };
-      requestAnimationFrame(frame);
-    });
+    let end;
+    for (;;) {
+      await new Promise((done) => requestAnimationFrame(done));
+      if (pane.ready && await probe(mark)) { end = performance.now(); break; }
+    }
     const tasks = bench.longTasks.filter((task) => task.start >= record.first);
     return { replayMs: Math.round(end - record.first), longTaskMs: Math.round(tasks.reduce((sum, task) => sum + task.duration, 0)), maxLongTaskMs: Math.round(Math.max(0, ...tasks.map((task) => task.duration))), socketBytes: record.bytes, socketMessages: record.messages };
   }, markerProbe, marker);

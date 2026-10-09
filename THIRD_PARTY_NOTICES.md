@@ -106,11 +106,58 @@ presentation from `packages/vscode/src/server/render.ts` and
 `server/vscode-proxy.ts` and `src/components/vscode-view.ts` with
 `src/styles/vscode-view.css`.
 
+HUI's shared terminal adapts AgentsInTheCloud's Gespenst terminal client at the
+same commit: the web-link lookup over Gespenst's buffer cells
+(`packages/observable-terminal/src/client/links.ts` → `src/lib/terminal-links.ts`,
+limited to http and https links); the key bar's keys, Control mapping and
+Control latch (`src/client/key-bar.ts` and `src/server/key-bar.ts` →
+`src/lib/terminal-keys.ts`); touch scrolling with its glide and tap focus
+(`packages/cli-agent/src/client/index.ts` and `TerminalTouchFocus` in
+`src/client/index.ts` → `src/lib/terminal-touch.ts`); the 16px input font that
+keeps iOS from zooming (`src/client/style.css`); and, in
+`src/components/terminal-pane.ts`, measuring only visible hosts before a PTY
+resize, the serialized theme updates that repaint by reapplying the theme, the
+link pointer handling, the selection clearing on a plain click and the native
+Ctrl+V paste. Its Gespenst patch (`patches/@gespenst%2Fcore@0.1.1.patch`, skip
+fits of a 0×0 host) is reimplemented in HUI as `skipHiddenFits` in
+`src/lib/terminal-fit.ts` instead of patching the package.
+
 Source: https://github.com/lucasmeijer/AgentsInTheCloud
 
 MIT License
 
 Copyright (c) 2026 Lucas Meijer
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+## Gespenst
+
+HUI draws its shared terminals with `@gespenst/core` 0.1.2, a browser terminal
+around Ghostty's VT parser compiled to WebAssembly (`ghostty-vt.wasm`, MIT,
+Copyright (c) 2024 Mitchell Hashimoto, Ghostty contributors; its notice is in
+the package's `THIRD_PARTY_NOTICES.md`).
+
+Source: https://github.com/tobilg/gespenst
+
+MIT License
+
+Copyright (c) 2026 TobiLG <github@tobilg.com>
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

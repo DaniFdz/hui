@@ -1,7 +1,8 @@
 /**
  * Response compression for the gateway. A phone on mobile data reaches HUI
  * through Tailscale at a fraction of the LAN's bandwidth, and the app's
- * scripts, styles and transcripts are text that shrinks four to twenty times.
+ * scripts, styles and transcripts are text that shrinks four to twenty times,
+ * and the terminal's WebAssembly about three times.
  *
  * Brotli is preferred, gzip is the fallback, and a client that offers neither
  * (or refuses both with q=0) gets the identity body. Small bodies are sent as
@@ -36,11 +37,11 @@ export function negotiateEncoding(header: IncomingHttpHeaders["accept-encoding"]
   return undefined;
 }
 
-/** Whether a `Content-Type` is text worth compressing (images and fonts already are). */
+/** Whether a `Content-Type` is worth compressing: text and WebAssembly (images and fonts already are compressed). */
 export function isCompressible(contentType: string): boolean {
   const type = contentType.split(";")[0]!.trim().toLowerCase();
   return type.startsWith("text/") || type === "application/json" || type === "application/javascript"
-    || type === "image/svg+xml" || type.endsWith("+json");
+    || type === "image/svg+xml" || type.endsWith("+json") || type === "application/wasm";
 }
 
 /**

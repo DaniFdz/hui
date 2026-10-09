@@ -578,14 +578,39 @@ wrapper; successful submission does not mean the command has finished. Reads are
 bounded ANSI-stripped output replay, not screenshots or an emulated screen grid.
 The existing Full Access contract applies, without a new approval surface.
 
-Ghostty Web renders the terminal; `@lydell/node-pty` owns the shell; `ws` carries
-input/output/size changes. Output streams as raw binary bytes and the replay
-buffer appends in time proportional to each chunk, so heavy output (builds, logs,
-full-screen programs) costs neither JSON encoding nor re-copying the buffer; a
-terminal view resizes its PTY only when its visible grid actually changes. These
-dependencies and the additive browser-local terminal metadata (now the Work pane
-record) were authorized with the shared-terminal feature. PI
-configuration and HUI's durable registry format remain unchanged.
+Gespenst (`@gespenst/core`, Ghostty's VT parser in WebAssembly) renders the
+terminal: it parses and paints in a dedicated worker with WebGL2, falling back to
+Canvas 2D, so heavy output and scrolling leave the page's main thread free.
+`@lydell/node-pty` owns the shell; `ws` carries input/output/size changes.
+Output streams as raw binary bytes written straight into the emulator, and the
+replay buffer appends in time proportional to each chunk, so heavy output
+(builds, logs, full-screen programs) costs neither JSON encoding nor re-copying
+the buffer. A terminal view never refits its grid while the Work pane hides it
+(a collapsed pane or the narrow chat destination), and it resizes its PTY only
+once a measurable size has held for 150 ms and its grid actually changed. Before
+a width change reaches the shell, the reflowed line under the cursor (normally
+the prompt) is cleared, so the shell's redraw does not leave a broken copy.
+
+The terminal follows HUI's theme: background and text from the pane, the accent
+for the cursor and selection, and an ANSI palette readable on that background (a
+light palette on light themes). Changing the theme, mode or accent recolors open
+terminals at once. Scrollback keeps 10,000 lines; a scrolled-back view keeps its
+place while output arrives and offers **Jump to bottom**, typing returns to the
+prompt, and a view at the bottom follows new output. OSC 8 hyperlinks and plain
+http(s) URLs open in a new browser tab on click; other link schemes are ignored.
+Mouse selection copies with ⌘C (Ctrl+Shift+C elsewhere), including over plain
+HTTP; ⌘V, Ctrl+Shift+V and, off Apple platforms, Ctrl+V paste (bracketed when
+the program asks). On touch screens a drag scrolls (full-screen programs with
+mouse reporting receive it as wheel input), a tap focuses the terminal and opens
+the soft keyboard, and a key bar adds Esc, Tab, a Ctrl latch (one tap for the
+next key, a double tap to lock) and the arrow keys; it also shows below 1100px.
+A Work view in the background never takes keyboard focus; a terminal takes it
+only when the operator launches it.
+
+These dependencies and the additive browser-local terminal metadata (now the
+Work pane record) were authorized with the shared-terminal feature; Gespenst
+replaced Ghostty Web with the owner's approval (2026-10-09). PI configuration
+and HUI's durable registry format remain unchanged.
 
 ## Managed browser
 
