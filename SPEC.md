@@ -299,14 +299,22 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   weights above it (closing a column rebalances the survivors rather than leaving
   one at 320px), the divider stops where a column would drop below it, and when
   420px each does not fit the columns share the room equally, down to the usual
-  320px. Escape inside the pane returns focus to the chat and never
+  320px. **Maximize Work pane** (header button beside **+**, Ctrl+Alt+Shift+M / ⌥⇧⌘M) lets the pane take the
+  whole content area beside the sidebar, for a full-size terminal, browser, Files editor or VS Code: the chat
+  columns are hidden but stay mounted (streams, scroll and drafts survive; no view is re-created and no terminal
+  replays) and the views refit to the new size. While maximized, the narrow layout's panel selector shows above the
+  pane, listing the chat panes, the open Work views and the launchers: choosing a chat pane restores the chat beside
+  the pane, choosing a view switches to it. **Restore Work pane** (the same button and shortcut) or hiding the pane
+  also restores. Escape is not bound to restoring: it keeps going to the terminal or VS Code that has focus, and
+  elsewhere in the pane moves focus to the panel selector (it never stops the hidden chat's turn). Maximized is per
+  conversation and desktop only; narrow screens, already one panel at a time, ignore it. Escape inside the pane returns focus to the chat and never
   stops the agent's turn. Below 1100px the pane is a full-screen destination: the
   panel selector lists the chat panes, the open Work views and the launchers, and
   **Back to chat** or Ctrl+Alt+Shift+P returns. Hidden views stay mounted, so terminals
   and pages keep their state across tab switches, collapsing and focus changes,
   for the three most recently focused conversations that have views; a view of
   an older one reconnects (a terminal replays its snapshot) when shown again.
-  Open/closed state, width, views and the active view are browser-local
+  Open/closed and maximized state, width, views and the active view are browser-local
   (`localStorage` `hui.work-pane.v1`, keyed by session id); unknown kinds and
   malformed records are dropped on load, and a removed conversation's record
   goes with it. Layouts saved before the Work pane load without loss: their
@@ -314,8 +322,8 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   chat panes, splits and tabs stay as they were.
 - **Work pane shortcuts** are one scheme: Mod+Alt+Shift plus the initial of what
   they open (⌥⇧⌘ on macOS, Ctrl+Alt+Shift elsewhere): **T** new terminal, **B**
-  browser, **F** Files, **C** VS Code ("Code": ⌥⇧⌘V is Paste and Match Style)
-  and **P** to show or hide the pane. They are listened for on the document in
+  browser, **F** Files, **C** VS Code ("Code": ⌥⇧⌘V is Paste and Match Style),
+  **P** to show or hide the pane and **M** to maximize or restore it. They are listened for on the document in
   the capture phase, so they work from the composer, inside a terminal and inside
   the Files editor (CodeMirror's own Alt chords, ⌥⌘G go to line and ⌥⌘\ indent,
   never include Shift). The VS Code view is a cross-origin frame: while focus is

@@ -4,7 +4,7 @@ import { html } from "lit";
 import {
   activateWorkView, adjacentWorkView, clampWorkPaneWidth, closeWorkView, defaultWorkViewKey, emptyWorkPane, launchableWorkViewKinds, migrateLayoutWorkViews,
   openWorkView, parseWorkPaneStore, pruneWorkPaneStore, registerWorkViewKind, reorderWorkView, retainWorkSessions, serializeWorkPaneStore,
-  sessionWorkPane, setWorkPaneOpen, setWorkPaneWidth, workPaneFits, workViewKey, workViewKind, workViewKinds,
+  sessionWorkPane, setWorkPaneMaximized, setWorkPaneOpen, setWorkPaneWidth, workPaneFits, workPaneMaximized, workViewKey, workViewKind, workViewKinds,
   WORK_PANE_CHAT_MIN_WIDTH, WORK_PANE_DEFAULT_WIDTH, WORK_PANE_MAX_WIDTH, WORK_PANE_MIN_WIDTH,
   type WorkPaneStore, type WorkViewKind, type WorkViewRef,
 } from "./work-pane.ts";
@@ -156,6 +156,41 @@ test("the stored shape round-trips and leaves untouched conversations out", () =
   assert.deepEqual(Object.keys(saved.sessions), ["s1", "s2"]);
   assert.equal(saved.version, 1);
   assert.deepEqual(parseWorkPaneStore(JSON.parse(JSON.stringify(saved))), { s1: store.s1, s2: store.s2 });
+});
+
+test("maximizing expands the pane over the chat; restoring keeps it open; hiding it also restores", () => {
+  let store: WorkPaneStore = openWorkView({}, "s1", { kind: "terminal", terminalId: T1 }, false);
+  store = setWorkPaneMaximized(store, "s1", true);
+  assert.deepEqual(sessionWorkPane(store, "s1"), { open: true, maximized: true, width: WORK_PANE_DEFAULT_WIDTH, views: [{ kind: "terminal", terminalId: T1 }], active: `terminal:${T1}` });
+  assert.strictEqual(setWorkPaneMaximized(store, "s1", true), store);
+  assert.equal(workPaneMaximized(sessionWorkPane(store, "s1"), false), true);
+  assert.equal(workPaneMaximized(sessionWorkPane(store, "s1"), true), false, "narrow screens show one panel at a time and ignore it");
+  // Other conversations keep their own state.
+  assert.equal(sessionWorkPane(store, "s2").maximized, undefined);
+  const restored = setWorkPaneMaximized(store, "s1", false);
+  assert.deepEqual(sessionWorkPane(restored, "s1"), { open: true, width: WORK_PANE_DEFAULT_WIDTH, views: [{ kind: "terminal", terminalId: T1 }], active: `terminal:${T1}` });
+  assert.strictEqual(setWorkPaneMaximized(restored, "s1", false), restored);
+  const hidden = setWorkPaneOpen(store, "s1", false);
+  assert.equal(sessionWorkPane(hidden, "s1").open, false);
+  assert.equal("maximized" in sessionWorkPane(hidden, "s1"), false, "showing it again brings the chat back beside it");
+  assert.equal(workPaneMaximized(sessionWorkPane(setWorkPaneOpen(hidden, "s1", true), "s1"), false), false);
+  // Tab changes keep the pane maximized.
+  const tabbed = openWorkView(store, "s1", { kind: "browser" });
+  assert.equal(sessionWorkPane(closeWorkView(tabbed, "s1", "browser"), "s1").maximized, true);
+});
+
+test("the maximized flag persists, and records without it (or collapsed ones with it) load as not maximized", () => {
+  const store = setWorkPaneMaximized(openWorkView({}, "s1", { kind: "terminal", terminalId: T1 }), "s1", true);
+  const saved = JSON.parse(JSON.stringify(serializeWorkPaneStore(store)));
+  assert.equal(saved.sessions.s1.maximized, true);
+  assert.deepEqual(parseWorkPaneStore(saved), { s1: store.s1 });
+  const older = parseWorkPaneStore({ version: 1, sessions: { s1: { open: true, width: 600, views: [], active: "x" } } });
+  assert.deepEqual(older.s1, { open: true, width: 600, views: [] });
+  const odd = parseWorkPaneStore({ version: 1, sessions: { s1: { open: false, maximized: true, width: 600, views: [] }, s2: { open: true, maximized: "yes", width: 600, views: [] } } });
+  assert.equal("maximized" in odd.s1!, false);
+  assert.equal("maximized" in odd.s2!, false);
+  // Not maximized is the default and is not written.
+  assert.equal("maximized" in serializeWorkPaneStore(setWorkPaneMaximized(store, "s1", false)).sessions.s1!, false);
 });
 
 test("removed conversations are forgotten and only recently focused ones with views stay mounted", () => {

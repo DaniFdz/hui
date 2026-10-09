@@ -1,7 +1,7 @@
 /**
  * The Work pane beside the chat: the focused conversation's Work views as a tab strip with a "+" launcher menu, an
- * empty state listing the launchers with their shortcuts, a collapsed rail, a resizable left edge and, below 1100px,
- * a full-screen destination. It renders each kind's view and keeps the views of recently focused conversations
+ * empty state listing the launchers with their shortcuts, a collapsed rail, a resizable left edge, a maximized
+ * presentation over the chat columns and, below 1100px, a full-screen destination. It renders each kind's view and keeps the views of recently focused conversations
  * mounted but hidden, in a stable DOM order, so terminals and frames keep their state. The state and its transitions
  * belong to the caller (`lib/work-pane.ts`, applied by hui-app); each view belongs to its kind.
  */
@@ -14,7 +14,7 @@ import { ariaShortcut, formatShortcut } from "../lib/shortcut-binding.ts";
 import { requestOpenSettings, settingsHref } from "../lib/open-settings.ts";
 import {
   clampWorkPaneWidth, sessionWorkPane, workPaneFits, workViewKey, workViewKind, workViewKinds,
-  WORK_PANE_MIN_WIDTH, WORK_PANE_TOGGLE_SHORTCUT,
+  workPaneMaximized, WORK_PANE_MAXIMIZE_SHORTCUT, WORK_PANE_MIN_WIDTH, WORK_PANE_TOGGLE_SHORTCUT,
   type WorkPaneStore, type WorkViewKind, type WorkViewRef, type WorkViewResource, type WorkViewSettingsLink,
 } from "../lib/work-pane.ts";
 
@@ -28,6 +28,9 @@ const settingsIcon = stroke16(svg`<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0
 const backIcon = stroke16(svg`<path d="m12 19-7-7 7-7" /><path d="M19 12H5" />`);
 const panelOpenIcon = stroke16(svg`<rect x="3" y="3" width="18" height="18" rx="2" /><path d="M15 3v18M10 10l-3 2 3 2" />`);
 const panelCloseIcon = stroke16(svg`<rect x="3" y="3" width="18" height="18" rx="2" /><path d="M15 3v18M8 10l3 2-3 2" />`);
+/** Lucide maximize-2 / minimize-2. */
+const maximizeIcon = stroke16(svg`<path d="M15 3h6v6" /><path d="m21 3-7 7" /><path d="m3 21 7-7" /><path d="M9 21H3v-6" />`);
+const restoreIcon = stroke16(svg`<path d="m14 10 7-7" /><path d="M20 10h-6V4" /><path d="m3 21 7-7" /><path d="M4 14h6v6" />`);
 
 type ViewEntry = { ref: WorkViewRef; kind: WorkViewKind; key: string };
 type FocusTarget = "active" | "rail" | { tab: string };
@@ -62,6 +65,8 @@ export class WorkPane extends HuiElement {
   @property({ attribute: false }) onClose!: (sessionId: string, key: string) => void;
   @property({ attribute: false }) onReorder!: (key: string, index: number) => void;
   @property({ attribute: false }) onToggle!: (open: boolean) => void;
+  /** Maximize over the chat columns (true) or restore them beside the pane (false). */
+  @property({ attribute: false }) onMaximize!: (maximized: boolean) => void;
   @property({ attribute: false }) onResize!: (width: number, available: number, done: boolean) => void;
   @property({ attribute: false }) onBack!: () => void;
   @property({ attribute: false }) onEscape!: () => void;
@@ -133,7 +138,12 @@ export class WorkPane extends HuiElement {
 
   private shown(): boolean {
     if (this.narrow) return this.narrowShown;
-    return sessionWorkPane(this.store, this.sessionId).open && (this.fits() || this.squeezedOpen === this.sessionId);
+    return sessionWorkPane(this.store, this.sessionId).open && (this.maximized || this.fits() || this.squeezedOpen === this.sessionId);
+  }
+
+  /** The focused conversation's pane fills the content area instead of sitting beside the chat (desktop only). */
+  get maximized(): boolean {
+    return workPaneMaximized(sessionWorkPane(this.store, this.sessionId), this.narrow);
   }
 
   /** An expanded pane at its minimum still leaves every chat column its room. */
@@ -367,7 +377,8 @@ export class WorkPane extends HuiElement {
           ${reason ? html`<p class="work-pane__unavailable">${reason}${this.renderSettingsLink(kind.settingsLink?.(this.sessionId))}</p>` : nothing}
         </li>`;
       })}</ul>
-      ${this.narrow ? nothing : html`<p class="work-pane__empty-hint"><kbd class="work-pane__shortcut">${formatShortcut(WORK_PANE_TOGGLE_SHORTCUT)}</kbd> shows or hides this pane.</p>`}
+      ${this.narrow ? nothing : html`<p class="work-pane__empty-hint"><kbd class="work-pane__shortcut">${formatShortcut(WORK_PANE_TOGGLE_SHORTCUT)}</kbd> shows or hides this pane;
+        <kbd class="work-pane__shortcut">${formatShortcut(WORK_PANE_MAXIMIZE_SHORTCUT)}</kbd> ${this.maximized ? "restores the chat beside it" : "maximizes it"}.</p>`}
     </div>`;
   }
 
@@ -392,10 +403,25 @@ export class WorkPane extends HuiElement {
       ${this.narrow ? html`<button type="button" class="btn btn--ghost btn--icon work-pane__icon-btn" aria-label="Back to chat" data-hui-tooltip="Back to chat" @click=${this.onBack}>${backIcon}</button>` : nothing}
       ${views.length ? this.renderTabs(views, active) : html`<h2 class="work-pane__title">Work</h2>`}
       ${this.renderLauncherMenu()}
+      ${this.narrow ? nothing : this.renderMaximize()}
       ${this.narrow ? nothing : html`<button type="button" class="btn btn--ghost btn--icon work-pane__icon-btn work-pane__collapse" aria-label="Hide Work pane" aria-expanded="true"
         aria-keyshortcuts=${ariaShortcut(WORK_PANE_TOGGLE_SHORTCUT)} data-hui-tooltip=${`Hide Work pane (${shortcut})`}
         @click=${() => this.toggle(false)}>${panelCloseIcon}</button>`}
     </div>`;
+  }
+
+  private renderMaximize() {
+    const maximized = this.maximized;
+    const label = maximized ? "Restore Work pane" : "Maximize Work pane";
+    return html`<button type="button" class="btn btn--ghost btn--icon work-pane__icon-btn work-pane__maximize" aria-label=${label}
+      aria-pressed=${String(maximized)} aria-keyshortcuts=${ariaShortcut(WORK_PANE_MAXIMIZE_SHORTCUT)}
+      data-hui-tooltip=${`${label} (${formatShortcut(WORK_PANE_MAXIMIZE_SHORTCUT)})`}
+      @click=${() => { this.onMaximize(!maximized); this.focusMaximize(); }}>${maximized ? restoreIcon : maximizeIcon}</button>`;
+  }
+
+  /** Keeps keyboard focus on the maximize control across the re-render that swaps its icon and label. */
+  private focusMaximize() {
+    void this.updateComplete.then(() => this.querySelector<HTMLElement>(".work-pane__maximize")?.focus({ preventScroll: true }));
   }
 
   private renderSession(sessionId: string, shown: boolean) {
@@ -424,6 +450,7 @@ export class WorkPane extends HuiElement {
   override render() {
     const pane = sessionWorkPane(this.store, this.sessionId);
     const shown = this.shown();
+    const maximized = shown && this.maximized;
     const views = entries(pane.views);
     const width = clampWorkPaneWidth(pane.width, this.available || undefined, this.chatColumns);
     // Mounted conversations keep their first-seen DOM order; forget the ones that left.
@@ -431,9 +458,9 @@ export class WorkPane extends HuiElement {
     const live = new Set([...sessions, this.sessionId].flatMap((id) => [id, ...sessionWorkPane(this.store, id).views.map((ref) => `${id}\u0000${workViewKey(ref)}`)]));
     for (const id of this.mountOrder.keys()) if (!live.has(id)) this.mountOrder.delete(id);
     sessions.sort((a, b) => this.order(a) - this.order(b));
-    return html`<aside class="work-pane ${shown ? "work-pane--open" : "work-pane--collapsed"} ${this.narrow ? "work-pane--narrow" : ""} ${this.resizing ? "work-pane--resizing" : ""}"
-      style=${!this.narrow && shown ? `width:${width}px` : ""} aria-label="Work pane" @keydown=${this.keydown}>
-      ${!this.narrow && shown ? html`<div class="work-pane__resizer" role="separator" aria-orientation="vertical" aria-label="Resize Work pane" tabindex="0"
+    return html`<aside class="work-pane ${shown ? "work-pane--open" : "work-pane--collapsed"} ${this.narrow ? "work-pane--narrow" : ""} ${this.resizing ? "work-pane--resizing" : ""} ${maximized ? "work-pane--maximized" : ""}"
+      style=${!this.narrow && shown && !maximized ? `width:${width}px` : ""} aria-label="Work pane" @keydown=${this.keydown}>
+      ${!this.narrow && shown && !maximized ? html`<div class="work-pane__resizer" role="separator" aria-orientation="vertical" aria-label="Resize Work pane" tabindex="0"
         aria-valuenow=${width} aria-valuemin=${WORK_PANE_MIN_WIDTH} aria-valuemax=${clampWorkPaneWidth(Number.POSITIVE_INFINITY, this.available || undefined, this.chatColumns)}
         @pointerdown=${this.resizeStart} @pointermove=${this.resizeMove} @pointerup=${this.resizeEnd} @pointercancel=${this.resizeEnd} @lostpointercapture=${this.resizeEnd}
         @keydown=${this.resizeKey}></div>` : nothing}

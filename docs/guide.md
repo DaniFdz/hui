@@ -937,6 +937,21 @@ helper and the summary use the bot's utility model like any other request. The
 ChatGPT credential stays in the gateway. HUI stores no audio: what stays is each
 call's card (its summary and transcript) in the bot's chat.
 
+## The Work pane
+
+The Work pane to the right of a conversation holds its terminals, browser view,
+Files views and VS Code. Its shortcuts are Ctrl+Alt+Shift (⌥⇧⌘ on a Mac) plus a
+letter, and work from the composer and inside a terminal (not while VS Code has
+focus: click the tab strip first):
+
+- **T** new terminal, **B** browser, **F** Files, **C** VS Code.
+- **P** shows or hides the pane.
+- **M** maximizes the pane over the chat, or restores the chat beside it. The
+  **Maximize** button beside **+** does the same. While maximized, the selector
+  above the pane switches between the views and back to the chat (choosing a
+  chat restores it); the chat keeps running underneath. Each conversation
+  remembers its own choice in this browser.
+
 ## Interactive widgets in the chat
 
 Agents and bots can show a small interactive HTML or SVG widget right in the
