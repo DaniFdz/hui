@@ -7,6 +7,7 @@
 import { html } from "lit";
 import { clearFilesViewState, filesViewTitle } from "../files-view-state.ts";
 import type { WorkViewKind } from "../work-pane.ts";
+import { WORK_SHORTCUTS } from "../work-shortcuts.ts";
 
 export type FilesWorkViewRef = { kind: "files"; id: string };
 
@@ -26,7 +27,7 @@ function loadFilesView(): void {
   loading ??= import("../../components/files-view.ts").catch((error: unknown) => { loading = undefined; throw error; });
 }
 
-export const FILES_WORK_VIEW_SHORTCUT = "Mod+Alt+KeyF";
+export const FILES_WORK_VIEW_SHORTCUT = WORK_SHORTCUTS.files;
 
 export const filesWorkViewKind: WorkViewKind<FilesWorkViewRef> = {
   kind: "files",

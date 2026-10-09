@@ -279,7 +279,7 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   visible at a time, chosen from a tab strip (icon, title, close; drag or
   Alt+Shift+Arrow to reorder, Arrow/Home/End to move, Delete to close). The **+**
   menu launches views (Ctrl+Alt+Shift+T / ⌥⇧⌘T new terminal, Ctrl+Alt+Shift+B /
-  ⌥⇧⌘B browser, Ctrl+Alt+F / ⌥⌘F a new Files view)
+  ⌥⇧⌘B browser, Ctrl+Alt+Shift+F / ⌥⇧⌘F a new Files view)
   and reopens running terminals whose tab was closed; with nothing open the pane
   lists the same launchers with their shortcuts. A launcher that cannot act says
   why (the browser tool turned off, a conversation on a remote worker has no
@@ -309,9 +309,10 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   chat panes, splits and tabs stay as they were.
 - **Work pane shortcuts** are one scheme: Mod+Alt+Shift plus the initial of what
   they open (⌥⇧⌘ on macOS, Ctrl+Alt+Shift elsewhere): **T** new terminal, **B**
-  browser and **P** to show or hide the pane. They are listened for on the
-  document in the capture phase, so they work from the composer and inside a
-  terminal. Each one is shown where it acts (launchers, **+** menu, rail and
+  browser, **F** Files and **P** to show or hide the pane. They are listened for
+  on the document in the capture phase, so they work from the composer, inside a
+  terminal and inside the Files editor (CodeMirror's own Alt chords, ⌥⌘G go to
+  line and ⌥⌘\ indent, never include Shift). Each one is shown where it acts (launchers, **+** menu, rail and
   toggle tooltips, `aria-keyshortcuts`). The table and the chords it avoids live
   in `src/lib/work-shortcuts.ts`, whose test fails if a binding lands on one.
   Plain ⌥⌘/Ctrl+Alt letters are not used: Apple's standard keys take ⌥⌘T
@@ -682,7 +683,7 @@ editing a file in it. It combines a collapsible **Files navigator** (a lazily
 expanded file tree, a filter, upload, new file or folder) with the selected
 file. A conversation may hold several Files views, each with its own selection,
 including several views of the same file. **Files** in the Work pane's **+**
-menu (Ctrl+Alt+F / ⌥⌘F) opens a new one; its tab shows the selected file's name
+menu (Ctrl+Alt+Shift+F / ⌥⇧⌘F) opens a new one; its tab shows the selected file's name
 (or *Files*). Closing the tab forgets that view's selection and open folders; a
 file's unsaved text stays with its File draft until it is saved.
 

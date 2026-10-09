@@ -15,6 +15,7 @@ export const WORK_SHORTCUTS = {
   togglePane: "Mod+Alt+Shift+KeyP",
   terminal: "Mod+Alt+Shift+KeyT",
   browser: "Mod+Alt+Shift+KeyB",
+  files: "Mod+Alt+Shift+KeyF",
 } as const;
 
 export type AvoidedShortcut = {
