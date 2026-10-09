@@ -61,6 +61,10 @@ test("the chat splitter cannot drag a column below its minimum", () => {
   assert.deepEqual([wide.minRatio, wide.maxRatio], [0.15, 0.85], "the divider's usual limits still hold");
   const tight = sessionPaneGeometry(layout, 806, 600, 420).dividers.find(({ columnId }) => !columnId)!;
   assert.deepEqual([tight.minRatio, tight.maxRatio], [0.5, 0.5], "no room to move keeps the middle");
+  // Weights of 2:1 held at 420/420 report the split the columns show, inside the range (aria-valuenow too).
+  const uneven = sessionPaneGeometry({ ...layout, columnWeights: [2 / 3, 1 / 3] }, 846, 600, 420).dividers.find(({ columnId }) => !columnId)!;
+  assert.equal(uneven.ratio, 0.5);
+  assert.equal(sessionPaneGeometry({ ...layout, columnWeights: [2 / 3, 1 / 3] }, 1406, 600).dividers[0]!.ratio, 2 / 3, "a free split keeps its weights");
   const rows = sessionPaneGeometry(splitSessionPane(singleSessionLayout("a"), "p1", "b", "down"), 800, 1006).dividers.find(({ columnId }) => columnId)!;
   assert.equal(rows.minRatio, 0.2, "stacked panes keep 200px");
 });
