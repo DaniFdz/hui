@@ -101,7 +101,7 @@ export class TerminalPane extends HuiElement {
   private rows: readonly TerminalBufferRow[] = [];
   private rowsReading = false;
   private rowsDirty = false;
-  private pointerInside = false;
+  private rowsStale = true;
   private linkPress: { id: number; x: number; y: number; url: string } | undefined;
   private latch = new ControlLatch();
   private touch = new TerminalTouchGesture({
@@ -278,7 +278,8 @@ export class TerminalPane extends HuiElement {
     terminal.on("resize", this.scheduleResize);
     terminal.on("viewportChange", ({ state }) => {
       this.atBottom = state.screen === "alternate" || state.viewportY + state.viewportLength >= state.totalRows;
-      if (this.pointerInside) void this.readRows();
+      // Rows for link lookups are read lazily on the next pointer move, not on every frame of output or scrolling.
+      this.rowsStale = true;
     });
     terminal.on("selectionChange", () => {
       void terminal.getSelection().then((text) => { if (this.terminal === terminal) this.selection = text; }).catch(() => {});
@@ -286,9 +287,12 @@ export class TerminalPane extends HuiElement {
     const element = terminal.element;
     element.addEventListener("keydown", this.keydown, { capture: true });
     // Links: Gespenst paints into canvases, so read its cells under the pointer.
-    element.addEventListener("pointerenter", () => { this.pointerInside = true; void this.readRows(); });
-    element.addEventListener("pointerleave", () => { this.pointerInside = false; element.style.cursor = ""; this.linkPress = undefined; });
-    element.addEventListener("pointermove", (event) => { element.style.cursor = this.linkAt(event.clientX, event.clientY) ? "pointer" : ""; });
+    element.addEventListener("pointerenter", () => void this.readRows());
+    element.addEventListener("pointerleave", () => { element.style.cursor = ""; this.linkPress = undefined; });
+    element.addEventListener("pointermove", (event) => {
+      if (this.rowsStale) void this.readRows();
+      element.style.cursor = this.linkAt(event.clientX, event.clientY) ? "pointer" : "";
+    });
     element.addEventListener("pointerdown", (event) => {
       if (event.pointerType === "touch" || event.button !== 0) return;
       const url = this.linkAt(event.clientX, event.clientY);
@@ -318,6 +322,7 @@ export class TerminalPane extends HuiElement {
     try {
       while (this.rowsDirty && this.terminal) {
         this.rowsDirty = false;
+        this.rowsStale = false;
         this.rows = (await this.terminal.readBuffer()).rows;
       }
     } catch { /* Disposed while reading. */ } finally { this.rowsReading = false; }
