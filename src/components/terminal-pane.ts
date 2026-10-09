@@ -21,7 +21,7 @@ import { connectTerminal, endTerminal } from "../lib/terminals-store.ts";
 import type { TerminalView } from "../lib/terminal-types.ts";
 import type { TerminalInput } from "../../shared/terminal-stream.ts";
 import { createTerminalStreamReader } from "../lib/terminal-stream.ts";
-import { clearWrappedLine, ptyResize, skipHiddenFits, wrappedRowsAbove } from "../lib/terminal-fit.ts";
+import { prepareReflow, ptyResize, skipHiddenFits, wrappedRowsAbove } from "../lib/terminal-fit.ts";
 import { parseRgb, terminalTheme, type Rgb } from "../lib/terminal-theme.ts";
 import { terminalLinkAt } from "../lib/terminal-links.ts";
 import { clipboardKey, ControlLatch, controlModifiedText, TERMINAL_BAR_KEYS, type ControlState, type TerminalBarKey } from "../lib/terminal-keys.ts";
@@ -194,18 +194,22 @@ export class TerminalPane extends HuiElement {
     if (!terminal || this.replaying || !this.ready) return;
     const size = ptyResize(this.surface, terminal.geometry, this.sentSize);
     if (!size) return;
-    const reflowed = size.cols !== this.sentSize.cols;
+    const oldCols = this.sentSize.cols;
     this.sentSize = size;
-    if (reflowed) {
-      // The shell redraws its prompt at the cursor for the new width; clear the reflowed copy first.
+    if (size.cols !== oldCols) {
+      // The shell redraws its prompt for the new width from where it began in the old layout; the emulator has
+      // already reflowed it, so erase that copy and put the cursor where the shell's redraw will expect it.
       try {
         const { state } = await terminal.readBuffer({ start: 0, end: 0 });
         if (state.screen === "normal") {
           const cursor = state.scrollbackRows + state.cursorY;
-          const { rows } = await terminal.readBuffer({ start: Math.max(0, cursor - 32), end: cursor + 1 });
-          if (this.terminal === terminal) terminal.write(clearWrappedLine(wrappedRowsAbove(rows, cursor)));
+          const { rows } = await terminal.readBuffer({ start: Math.max(0, cursor - 64), end: cursor + 1 });
+          const rowsAbove = wrappedRowsAbove(rows, cursor);
+          const line = rows.filter((row) => row.index >= cursor - rowsAbove && row.index <= cursor);
+          const text = line.map((row, index) => index < line.length - 1 ? row.text : row.text.trimEnd()).join("");
+          if (this.terminal === terminal) terminal.write(prepareReflow({ rowsAbove, cursorColumn: state.cursorX, cols: terminal.geometry.cols, text }, oldCols));
         }
-      } catch { /* Disposed while reading: nothing to clear. */ }
+      } catch { /* Disposed while reading: nothing to prepare. */ }
     }
     if (this.terminal === terminal && this.sentSize === size) this.send({ action: "resize", ...size });
   }

@@ -2,8 +2,9 @@
  * Keeps a terminal pane's grid and its PTY size honest while the Work pane hides it: the emulator must never fit
  * itself to a hidden (0×0) host, and the pane sends the PTY a new size only when its host is measurable, the grid
  * is valid and within the gateway's limits, and the size differs from the last one the PTY was given. Before a
- * width change reaches the shell, the reflowed line under the cursor (normally the prompt) is cleared locally, so the
- * shell's redraw after SIGWINCH does not leave a broken copy of it behind.
+ * width change reaches the shell, the reflowed line under the cursor (normally the prompt) is erased locally and the
+ * cursor put where the shell's redraw after SIGWINCH expects it, so the redraw neither leaves a broken copy of the
+ * prompt behind nor overwrites the output above it.
  */
 export type TerminalGrid = { cols: number; rows: number };
 export type MeasurableHost = { clientWidth: number; clientHeight: number };
@@ -51,11 +52,26 @@ export function wrappedRowsAbove(rows: readonly WrapRow[], cursorIndex: number):
   return above;
 }
 
+/** The cursor's soft-wrapped line in the emulator, already reflowed to `cols`. */
+export type WrappedLine = { rowsAbove: number; cursorColumn: number; cols: number; text: string };
+
+function cursorUp(rows: number): string {
+  return rows > 0 ? `\u001b[${rows}A` : "";
+}
+
 /**
- * Local output that erases the cursor's soft-wrapped line and everything below it, leaving the cursor at its start.
- * Shells redraw their prompt for the new width after SIGWINCH starting at the cursor's row (bash clears only that
- * row), so a prompt the emulator already reflowed onto several rows would otherwise stay behind half-erased.
+ * Local output that prepares the cursor's line for a PTY width change from `oldCols`. After SIGWINCH a shell moves
+ * up to where its line began in its old layout (the cursor's row within it) and writes the line again; bash first
+ * moves down to the line's last old row. The emulator has already reflowed the line to the new width, so that move
+ * would land too low (leaving a broken copy of the prompt) or too high (overwriting output above it). This erases
+ * the reflowed line and everything below, then leaves the cursor as many rows below the line's start as the shell
+ * will move up, with room below for bash's move down.
  */
-export function clearWrappedLine(rowsAbove: number): string {
-  return `\r${rowsAbove > 0 ? `\u001b[${rowsAbove}A` : ""}\u001b[J`;
+export function prepareReflow(line: WrappedLine, oldCols: number): string {
+  const offset = line.rowsAbove * line.cols + line.cursorColumn;
+  const length = Math.max([...line.text].length, offset);
+  const width = Math.max(1, oldCols);
+  const oldCursorRow = Math.floor(offset / width);
+  const oldLastRow = Math.max(Math.floor(Math.max(0, length - 1) / width), oldCursorRow);
+  return `\r${cursorUp(line.rowsAbove)}\u001b[J${"\n".repeat(oldLastRow)}${cursorUp(oldLastRow - oldCursorRow)}`;
 }
