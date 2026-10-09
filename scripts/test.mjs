@@ -3,6 +3,7 @@
 import { execFileSync } from "node:child_process";
 import { mkdir, readdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 async function tests(directory) {
   const found = [];
@@ -25,7 +26,8 @@ const reporters = [];
 const report = process.env.HUI_TEST_JUNIT_REPORT;
 if (report) {
   await mkdir(dirname(report), { recursive: true });
-  reporters.push("--test-reporter=spec", "--test-reporter=junit", "--test-reporter-destination=stdout", `--test-reporter-destination=${report}`);
+  const junitReporter = fileURLToPath(new URL("./junit-reporter.mjs", import.meta.url));
+  reporters.push("--test-reporter=spec", `--test-reporter=${junitReporter}`, "--test-reporter-destination=stdout", `--test-reporter-destination=${report}`);
 }
 try { execFileSync(process.execPath, ["--test", `--test-timeout=${TEST_TIMEOUT_MS}`, ...reporters, ...files], { stdio: "inherit" }); }
 catch (error) { process.exitCode = error.status ?? 1; }

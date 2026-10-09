@@ -85,6 +85,9 @@ with an explicit log message when the key is unavailable; tests still run.
 
 `HUI_TEST_JUNIT_REPORT` enables an additional JUnit reporter in the shared test
 runner while keeping readable console output and the original test exit status.
+The reporter adds a `testsuite` container around Node's output so JUnit importers
+can discover standalone tests, which Node otherwise places directly under
+`testsuites`.
 Each suite writes a separate report under the ignored `test-results/` directory.
 Upload steps run after failures when reports exist, but not after cancellation.
 Local tests require no Datadog credentials and keep their default output unless
