@@ -16,6 +16,8 @@ export const WORK_SHORTCUTS = {
   terminal: "Mod+Alt+Shift+KeyT",
   browser: "Mod+Alt+Shift+KeyB",
   files: "Mod+Alt+Shift+KeyF",
+  /** C for Code: ⌥⇧⌘V is Paste and Match Style in every Mac browser. */
+  vscode: "Mod+Alt+Shift+KeyC",
 } as const;
 
 export type AvoidedShortcut = {

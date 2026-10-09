@@ -26,6 +26,7 @@ export function browserWorkViewKind(env: BrowserWorkViewEnvironment): WorkViewKi
     icon: browserWorkViewIcon,
     shortcut: BROWSER_WORK_VIEW_SHORTCUT,
     unavailable: () => env.enabled() ? undefined : "The managed browser is off in Settings → Tools → Browser.",
+    settingsLink: () => env.enabled() ? undefined : { label: "Open Settings → Tools → Browser", page: "tools", section: "browser" },
     single: true,
     create: () => ({ kind: "browser" }),
     key: () => "browser",

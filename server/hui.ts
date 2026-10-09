@@ -15,6 +15,7 @@
  * A theme file carries both modes, so there is no pairing to describe and no
  * manifest to keep in step.
  */
+import { existsSync } from "node:fs";
 import { mkdir, readFile, readdir, realpath, stat, unlink, writeFile } from "node:fs/promises";
 import type { ServerResponse } from "node:http";
 import { randomUUID } from "node:crypto";
@@ -59,7 +60,12 @@ import {
 import { PullRequestStatuses, pullRequestsFromTranscript } from "./pull-requests.ts";
 
 
-import { CONFIG_DIR, ATTACHMENTS_DIR, AUTOMATION_FILE, BROWSER_PROFILE_DIR, USER_THEME_DIR, WATCHERS_FILE, WATCHER_LOG_DIR } from "./paths.ts";
+import { CONFIG_DIR, ATTACHMENTS_DIR, AUTOMATION_FILE, BROWSER_PROFILE_DIR, USER_THEME_DIR, VSCODE_DIR, VSCODE_SERVER_DIR, WATCHERS_FILE, WATCHER_LOG_DIR } from "./paths.ts";
+import { VscodeError, VscodeService } from "./vscode.ts";
+import { VscodeInstaller } from "./vscode-install.ts";
+import { verifyVscodeServer } from "./vscode-providers.ts";
+import { attachVscodeTransport, isVscodeProxyPath, proxyVscodeHttp, serveVscodeEnter } from "./vscode-proxy.ts";
+import { normalizeVscodeTheme, VSCODE_ACTIONS, VSCODE_ENTER_PATH, VSCODE_STATUS_ROUTE, type VscodeAction } from "../shared/vscode.ts";
 import { BrowserToolError, ManagedBrowser } from "./browser/manager.ts";
 import { MacPower } from "./power.ts";
 import { attachBrowserTransport, browserViewTicket } from "./browser-transport.ts";
@@ -397,6 +403,23 @@ const managedBrowser = new ManagedBrowser({
   profileDir: BROWSER_PROFILE_DIR,
   readSettings: async () => (await readSettings()).browser,
 });
+/** One VS Code server per gateway for every VS Code view, started on the first open (`vscode.ts`). Nothing runs or
+ * downloads before that; an openvscode-server install happens only when the operator asks for it. */
+const vscode = new VscodeService({
+  dir: VSCODE_DIR,
+  settings: async () => (await readSettings()).vscode,
+  saveLicense: async (licenseAcceptedAt) => {
+    const current = await readSettings();
+    await writeSettings({ ...current, vscode: { ...current.vscode, licenseAcceptedAt } });
+  },
+  installer: new VscodeInstaller({
+    dir: VSCODE_SERVER_DIR,
+    verify: verifyVscodeServer,
+    nixos: existsSync("/etc/NIXOS"),
+    // A mirror serving the same release files; the pinned checksums still decide what installs.
+    ...(process.env["HUI_OPENVSCODE_SERVER_MIRROR"] ? { downloads: process.env["HUI_OPENVSCODE_SERVER_MIRROR"] } : {}),
+  }),
+});
 /** macOS sleep prevention lives and dies with this gateway process. */
 const macPower = process.platform === "darwin" ? new MacPower() : undefined;
 liveSessions.setTaskSuggestionProvider((id) => taskSuggestions.list(id));
@@ -614,6 +637,8 @@ async function writeSettings(raw: unknown): Promise<Settings> {
   await writeFile(SETTINGS_FILE, `${JSON.stringify(settings, null, 2)}\n`, "utf8");
   // A changed browser mode or executable must not leave the old process running.
   await managedBrowser.applySettings(settings.browser);
+  // Off withdraws every VS Code frame's access and stops the server; a new executable applies to the next start.
+  await vscode.applySettings(settings.vscode);
   macPower?.setKeepAwake(settings.power.keepAwake);
   if (botsWereOn && !botsEnabled(settings)) quietBots();
   // Triggers' pollers stop while bots are off and resume from their cursors once they are on again.
@@ -2613,6 +2638,17 @@ async function handleRequest(
     return;
   }
 
+  // A VS Code frame cannot send x-hui either. Its one-use ticket (minted below, behind x-hui) becomes a cookie scoped
+  // to /__hui/vscode, which only the proxy accepts; no other route reads it (`vscode-proxy.ts`).
+  if (path === VSCODE_ENTER_PATH) {
+    serveVscodeEnter(request, response, vscode);
+    return;
+  }
+  if (isVscodeProxyPath(path)) {
+    proxyVscodeHttp(request, response, vscode);
+    return;
+  }
+
   // A webhook trigger's caller is another program: its token is the credential, not x-hui (`bot-triggers-webhook.ts`).
   if (isHookPath(path)) {
     const result = await triggers.hook(request, path);
@@ -2683,6 +2719,62 @@ async function handleRequest(
     } else {
       if (result.etag) response.setHeader("etag", `"${result.etag}"`);
       sendJson(response, result.status, result.body);
+    }
+    return;
+  }
+
+  // A VS Code view on the conversation's folder: starts the shared server and mints the frame's one-use ticket.
+  const vscodeRoute = path.match(/^\/__hui\/sessions\/([^/]+)\/vscode\/connect$/u);
+  if (vscodeRoute) {
+    try {
+      if (request.method !== "POST") throw new VscodeError("Method not allowed.", 405);
+      let body: unknown;
+      try { body = await readBody(request); } catch { throw new VscodeError("VS Code request body must be JSON.", 400); }
+      const owner = decodeURIComponent(vscodeRoute[1] ?? "");
+      const session = (await readRegistry()).find((record) => record.id === owner);
+      if (!session) throw new VscodeError("Conversation not found.", 404);
+      if (session.worker) throw new VscodeError("This conversation runs on a remote worker. VS Code runs on the gateway's machine, which does not have its files.", 409, "remote");
+      const folder = await stat(session.cwd).then((info) => info.isDirectory(), () => false);
+      if (!folder) throw new VscodeError(`The conversation's folder no longer exists: ${session.cwd}`, 409, "folder");
+      const theme = body && typeof body === "object" && !Array.isArray(body) ? normalizeVscodeTheme((body as Record<string, unknown>)["theme"]) : undefined;
+      const connection = await vscode.connect(session.cwd, theme);
+      // Still starting (serve-web downloading its first build): the view follows the status and asks again.
+      if ("pending" in connection) sendJson(response, 202, { pending: true, status: await vscode.status() });
+      else sendJson(response, 200, connection);
+    } catch (error) {
+      sendJson(response, error instanceof VscodeError ? error.status : 500, {
+        error: error instanceof Error ? error.message : "VS Code could not open.",
+        code: error instanceof VscodeError ? error.code : "failed",
+      });
+    }
+    return;
+  }
+
+  if (path === VSCODE_STATUS_ROUTE) {
+    try {
+      if (request.method === "GET") {
+        sendJson(response, 200, await vscode.status());
+        return;
+      }
+      if (request.method !== "POST") throw new VscodeError("Method not allowed.", 405);
+      let body: unknown;
+      try { body = await readBody(request); } catch { throw new VscodeError("VS Code request body must be JSON.", 400); }
+      const action = body && typeof body === "object" && !Array.isArray(body) ? (body as Record<string, unknown>)["action"] : undefined;
+      if (!VSCODE_ACTIONS.includes(action as VscodeAction)) throw new VscodeError(`action must be one of ${VSCODE_ACTIONS.join(", ")}.`, 400);
+      switch (action as VscodeAction) {
+        case "stop": await vscode.stop(); break;
+        case "accept-license": await vscode.acceptLicense(); break;
+        case "revoke-license": await vscode.revokeLicense(); break;
+        case "install": vscode.startInstall(); break;
+        case "cancel-install": await vscode.cancelInstall(); break;
+        case "uninstall": await vscode.uninstall(); break;
+      }
+      sendJson(response, 200, await vscode.status());
+    } catch (error) {
+      sendJson(response, error instanceof VscodeError ? error.status : 500, {
+        error: error instanceof Error ? error.message : "The VS Code request failed.",
+        code: error instanceof VscodeError ? error.code : "failed",
+      });
     }
     return;
   }
@@ -4267,6 +4359,8 @@ export function recoverInterruptedSessions(
 export async function stopBackend(): Promise<void> {
   macPower?.dispose();
   managedBrowser.dispose();
+  // Signals openvscode-server and returns: a gateway stop never waits for it.
+  vscode.dispose();
   terminals.dispose();
   githubCli.dispose();
   // Before the sessions close: a delivery still going out reaches its bot, and every trigger write has settled.
@@ -4289,12 +4383,13 @@ export async function stopBackend(): Promise<void> {
  * servers attach them next to terminals. */
 export function attachLiveStreams(server: EventEmitter, allowedHosts?: ReadonlySet<string>): () => void {
   const detachBrowser = attachBrowserTransport(server, managedBrowser, allowedHosts);
+  const detachVscode = attachVscodeTransport(server, vscode, allowedHosts);
   const detachSessions = attachSessionTransport(server, async (id, send) => {
     const record = (await readRegistry()).find((session) => session.id === id);
     if (!record || await isDormantBotChat(record)) return undefined;
     return liveSessions.ensure(record) ? watchSessionEvents(id, send) : undefined;
   }, allowedHosts);
-  return () => { detachBrowser(); detachSessions(); };
+  return () => { detachBrowser(); detachVscode(); detachSessions(); };
 }
 
 export function huiConfig(): Plugin {

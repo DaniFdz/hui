@@ -221,7 +221,7 @@ import { loadWorkers, workerAction, type WorkerView } from "./lib/workers.ts";
 import { hasOpenWebAwesomePopup } from "./lib/web-awesome.ts";
 import { APP_SHELL_DRAWER_MEDIA, closeDrawerOnEscape, renderMain, renderSidebar, toggleNavigationDrawer, type GroupDropTarget, type GroupMenuAction, type NavId, type SessionCopyAction, type SessionOpenAction, type ShellBotsProps } from "./views/shell.ts";
 import { writeClipboardText } from "./lib/clipboard.ts";
-import { renderSettingsPage, type SettingsPage } from "./views/settings.ts";
+import { renderSettingsPage, SETTINGS_PAGES, type SettingsPage } from "./views/settings.ts";
 import type { JiraCreatedDetail } from "./components/jira-create-dialog.ts";
 import { clampSuggestionIndex, dismissTaskSuggestion, parseTaskSuggestions, startTaskSuggestion, taskSuggestionPrompt, type TaskSuggestion, type TaskSuggestionStartMode } from "./lib/task-suggestions.ts";
 import { dismissWatcher as dismissWatcherRequest, parseWatchers, readWatcherLog, restartWatcher as restartWatcherRequest, stopWatcher as stopWatcherRequest, type Watcher } from "./lib/watchers.ts";
@@ -245,6 +245,9 @@ import { PANE_COLUMN_MIN_WIDTH } from "./lib/session-pane-geometry.ts";
 import { terminalWorkViewKind } from "./lib/work-views/terminal.ts";
 import { browserWorkViewKind } from "./lib/work-views/browser.ts";
 import { filesWorkViewKind } from "./lib/work-views/files.ts";
+import { vscodeWorkViewKind } from "./lib/work-views/vscode.ts";
+import { OPEN_SETTINGS_EVENT, type OpenSettingsDetail } from "./lib/open-settings.ts";
+import { scrollSettingsSection } from "./lib/settings-section-scroll.ts";
 import { matchesShortcut } from "./lib/shortcut-binding.ts";
 import "./components/work-pane.ts";
 import type { WorkPane } from "./components/work-pane.ts";
@@ -794,6 +797,7 @@ export class HuiApp extends HuiElement {
       document.addEventListener("keydown", this.onGlobalKeyDown);
       // Capture: a focused terminal swallows keys, and Work pane shortcuts must still work from inside one.
       document.addEventListener("keydown", this.onWorkShortcut, true);
+      this.addEventListener(OPEN_SETTINGS_EVENT, this.onOpenSettingsRequest);
     }
     window.addEventListener("pagehide", this.onPageHide);
     if (!this.embeddedPane) {
@@ -828,11 +832,14 @@ export class HuiApp extends HuiElement {
     if (this.composerTextarea) disconnectTextareaOverflowObserver(this.composerTextarea);
     this.composerTextarea = null;
     window.removeEventListener("popstate", this.onPopState);
+    this.removeEventListener(OPEN_SETTINGS_EVENT, this.onOpenSettingsRequest);
     window.removeEventListener("pagehide", this.onPageHide);
     document.removeEventListener("keydown", this.onGlobalKeyDown);
     document.removeEventListener("keydown", this.onWorkShortcut, true);
     this.workMedia?.removeEventListener("change", this.onWorkMediaChange);
     this.workMedia = undefined;
+    for (const stop of this.stopWorkAvailability) stop();
+    this.stopWorkAvailability = [];
     document.removeEventListener("visibilitychange", this.onUpdateVisibility);
     window.removeEventListener("online", this.onUpdateVisibility);
     window.removeEventListener("offline", this.onUpdateVisibility);
@@ -2003,6 +2010,9 @@ export class HuiApp extends HuiElement {
 
   /* ── Work pane ────────────────────────────────────────────────────────── */
 
+  /** Unsubscribes the narrow chooser from the Work view kinds' availability changes. */
+  private stopWorkAvailability: (() => void)[] = [];
+
   /** Registers the built-in Work view kinds, reads the browser-local record and follows the narrow breakpoint. */
   private setupWorkPane() {
     registerWorkViewKind(terminalWorkViewKind({
@@ -2013,6 +2023,10 @@ export class HuiApp extends HuiElement {
     }));
     registerWorkViewKind(browserWorkViewKind({ enabled: () => this.settings.browser.enabled }));
     registerWorkViewKind(filesWorkViewKind);
+    registerWorkViewKind(vscodeWorkViewKind);
+    // A launcher's reason can change outside this app's state (VS Code's gateway status): redraw the narrow chooser.
+    for (const stop of this.stopWorkAvailability) stop();
+    this.stopWorkAvailability = workViewKinds().flatMap((kind) => kind.onAvailabilityChange ? [kind.onAvailabilityChange(() => this.requestUpdate())] : []);
     try { this.workPanes = parseWorkPaneStore(JSON.parse(localStorage.getItem(WORK_PANE_KEY) ?? "null")); } catch { this.workPanes = {}; }
     this.workMedia = window.matchMedia(SESSION_SPLIT_MEDIA);
     this.workNarrow = this.workMedia.matches;
@@ -5216,6 +5230,23 @@ export class HuiApp extends HuiElement {
     void this.save(patch);
   };
 
+  /** A component inside the app (a Work pane launcher's or the VS Code view's Settings link) asks for a Settings page,
+   * and optionally the section to scroll to. Cancelling the event tells it the app navigated, so its link does not
+   * load the page. The section is scrolled to once it renders and kept there while sections above it load. */
+  private stopSettingsScroll: (() => void) | undefined;
+  private onOpenSettingsRequest = (event: Event) => {
+    const detail = (event as CustomEvent<Partial<Record<keyof OpenSettingsDetail, unknown>> | undefined>).detail;
+    const page = SETTINGS_PAGES.find((entry) => entry.id === detail?.page)?.id;
+    if (!page) return;
+    event.preventDefault();
+    this.stopSettingsScroll?.();
+    this.stopSettingsScroll = undefined;
+    if (this.workNarrow) this.workNarrowShown = false;
+    this.openSurfaceSettings(page);
+    const section = typeof detail?.section === "string" ? detail.section : "";
+    if (section) this.stopSettingsScroll = scrollSettingsSection(this, section);
+  };
+
   private openSurfaceSettings = (page: SettingsPage) => {
     const current = resolveNavigation(window.location.pathname).target;
     this.settingsReturnTarget = settingsReturnTarget(current);
@@ -6006,6 +6037,7 @@ export class HuiApp extends HuiElement {
           onChangeAppearance: (next) => void this.save(next),
           onChangeChat: (chat) => void this.save({ chat }),
           onChangeBrowser: (browser) => this.save({ browser }),
+          onChangeVscode: (vscode) => this.save({ vscode }),
           onChangeCalls: (calls) => void this.save({ calls }),
           onChangePower: (power) => void this.save({ power }).then(() => this.refreshPower()),
           onSetLidAwake: this.setLidAwakeFromUi,

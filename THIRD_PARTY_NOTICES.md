@@ -96,6 +96,16 @@ save, upload and delete rules of `src/server/editable-file.ts` and
 the routes in its own gateway with Node's fs, and its own markup and styles; no
 AgentsInTheCloud markup or stylesheet is copied.
 
+HUI's VS Code view is adapted from AgentsInTheCloud at the same commit: the
+mapping of HUI's palette onto VS Code's `workbench.colorCustomizations`, the light/dark choice by background
+luminance and the workbench configuration defaults (no workspace-trust prompt,
+no start page, hidden secondary side bar, AI chat off) from
+`packages/vscode/src/server/proxy.ts`, and the frame's "Starting VS Code"
+presentation from `packages/vscode/src/server/render.ts` and
+`packages/vscode/src/client/style.css`. HUI's versions are
+`server/vscode-proxy.ts` and `src/components/vscode-view.ts` with
+`src/styles/vscode-view.css`.
+
 Source: https://github.com/lucasmeijer/AgentsInTheCloud
 
 MIT License
@@ -119,6 +129,23 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+## VS Code servers HUI runs but does not ship
+
+The VS Code view runs software that is not part of HUI's package and is not
+redistributed by it:
+
+- **openvscode-server** (Gitpod, MIT License,
+  https://github.com/gitpod-io/openvscode-server). On Linux, and only when the
+  operator asks for it, HUI downloads the pinned release from Gitpod's GitHub
+  releases into `$XDG_CONFIG_HOME/hui/vscode-server`, verifies its SHA-256 and
+  runs it. Its license travels inside the downloaded archive (`LICENSE.txt`);
+  the view and Settings link to it.
+- **Visual Studio Code Server** (Microsoft, VS Code Server License Terms,
+  https://aka.ms/vscode-server-license). When the operator's own VS Code is
+  used, its `code serve-web` downloads Microsoft's server build. HUI starts it
+  only after the operator accepted those terms (and Microsoft's Privacy
+  Statement) in the view, and records that acceptance in its settings.
 
 ## Web Awesome
 

@@ -1,5 +1,7 @@
 hui-tools-settings { display: block; min-width: 0; }
 hui-tools-settings .settings-section { margin: 28px 0; }
+/* A section a Settings link scrolls to (lib/settings-section-scroll.ts) stops short of the top edge. */
+[data-settings-section] { scroll-margin-top: var(--space-6); }
 .tools-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 24px; }
 .tools-toolbar select { flex: 1; min-width: 0; max-width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 6px; color: var(--text); background: var(--bg); font: inherit; }
 .tools-definition { padding: 14px 16px; border-bottom: 1px solid var(--border); }

@@ -5,6 +5,7 @@
  * `components/work-pane.ts`; each kind renders its own view; the conversations themselves stay PI/HUI-owned.
  */
 import type { TemplateResult } from "lit";
+import type { OpenSettingsDetail } from "./open-settings.ts";
 import { closeSessionPane, isChatPane, locateSessionPane, replacePaneSession, sessionPanes, spotTabs, type SessionLayout } from "./session-multiplexer.ts";
 import { PANE_DIVIDER_SIZE } from "./session-pane-geometry.ts";
 import { WORK_SHORTCUTS } from "./work-shortcuts.ts";
@@ -30,6 +31,9 @@ export type WorkViewContext = {
   invalidate(): void;
 };
 
+/** Where the operator can fix what `unavailable` reports: shown as a link beside the reason. */
+export type WorkViewSettingsLink = OpenSettingsDetail & { label: string };
+
 /** An existing resource a launcher can show again, such as a running terminal whose tab was closed. */
 export type WorkViewResource<R extends WorkViewRef = WorkViewRef> = { ref: R; title: string };
 
@@ -43,6 +47,10 @@ export type WorkViewKind<R extends WorkViewRef = WorkViewRef> = {
   shortcut?: string;
   /** Visible reason when it cannot launch (for this conversation, when given). */
   unavailable?(sessionId?: string): string | undefined;
+  /** When `unavailable` answers, the Settings page that changes it (e.g. "Open Settings → Tools → VS Code"). */
+  settingsLink?(sessionId?: string): WorkViewSettingsLink | undefined;
+  /** Calls `listener` whenever `unavailable` may answer differently; returns the unsubscribe. */
+  onAvailabilityChange?(listener: () => void): () => void;
   /** Launcher action → new (or reused) ref. */
   create(sessionId: string): Promise<R> | R;
   /** Stable identity within a session. */

@@ -90,6 +90,26 @@ test("the managed browser is on and headless unless explicitly changed", () => {
   assert.equal(normalizeSettings({ browser: { executablePath: `/${"x".repeat(5_000)}` } }).browser.executablePath, "");
 });
 
+test("VS Code settings: the old opt-in switch is kept as saved, the path as typed, a provider and a license time", () => {
+  const empty = { enabled: false, executable: "", provider: "auto", licenseAcceptedAt: "" };
+  assert.deepEqual(DEFAULT_SETTINGS.vscode, empty);
+  assert.deepEqual(normalizeSettings({}).vscode, empty);
+  assert.deepEqual(normalizeSettings({ vscode: { enabled: "yes", executable: 7, provider: "vim", licenseAcceptedAt: "yesterday" } }).vscode, empty);
+  // A file saved by the opt-in VS Code view: read unchanged, with the new fields at their defaults.
+  assert.deepEqual(
+    normalizeSettings({ vscode: { enabled: true, executable: "  /nix/store/abc-openvscode-server/bin/openvscode-server  " } }).vscode,
+    { enabled: true, executable: "/nix/store/abc-openvscode-server/bin/openvscode-server", provider: "auto", licenseAcceptedAt: "" },
+  );
+  assert.equal(normalizeSettings({ vscode: { executable: "/usr/bin/openvscode-server\n--flag" } }).vscode.executable, "");
+  assert.equal(normalizeSettings({ vscode: { executable: `/${"x".repeat(5_000)}` } }).vscode.executable, "");
+  for (const provider of ["auto", "configured", "desktop", "managed", "path"]) {
+    assert.equal(normalizeSettings({ vscode: { provider } }).vscode.provider, provider);
+  }
+  assert.equal(normalizeSettings({ vscode: { licenseAcceptedAt: "2026-10-09T08:00:00.000Z" } }).vscode.licenseAcceptedAt, "2026-10-09T08:00:00.000Z");
+  const saved = { enabled: true, executable: "/x", provider: "desktop", licenseAcceptedAt: "2026-10-09T08:00:00.000Z" };
+  assert.deepEqual(normalizeSettings(normalizeSettings({ vscode: saved })).vscode, saved, "round-trips");
+});
+
 test("keeping the Mac awake is opt-out and lid-close prevention is never saved", () => {
   assert.deepEqual(normalizeSettings({}).power, { keepAwake: true });
   assert.deepEqual(normalizeSettings({ power: { keepAwake: "no" } }).power, { keepAwake: true });

@@ -273,17 +273,22 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   the active-pane presentation and do not expose an unusable drag handle.
 - The **Work pane** (after AgentsInTheCloud's) sits to the right of the chat
   panes and shows the Work views of the focused conversation: its terminals and
-  its browser view, its Files views (see *Files*), with the VS Code kind
-  registering through the same contract (`src/lib/work-pane.ts`). Each conversation has its own pane; moving
+  its browser view, its Files views (see *Files*) and its VS Code view (see
+  *VS Code*), each a kind registered through one contract
+  (`src/lib/work-pane.ts`). Each conversation has its own pane; moving
   focus to another chat pane or conversation switches the contents. One view is
   visible at a time, chosen from a tab strip (icon, title, close; drag or
   Alt+Shift+Arrow to reorder, Arrow/Home/End to move, Delete to close). The **+**
   menu launches views (Ctrl+Alt+Shift+T / ⌥⇧⌘T new terminal, Ctrl+Alt+Shift+B /
-  ⌥⇧⌘B browser, Ctrl+Alt+Shift+F / ⌥⇧⌘F a new Files view)
+  ⌥⇧⌘B browser, Ctrl+Alt+Shift+F / ⌥⇧⌘F a new Files view, Ctrl+Alt+Shift+C /
+  ⌥⇧⌘C VS Code)
   and reopens running terminals whose tab was closed; with nothing open the pane
   lists the same launchers with their shortcuts. A launcher that cannot act says
-  why (the browser tool turned off, a conversation on a remote worker has no
-  local terminal). **Hide Work pane** (Ctrl+Alt+Shift+P / ⌥⇧⌘P) collapses it to a rail
+  why in visible text (the browser tool turned off, a conversation on a remote
+  worker has no local terminal) and, when a setting changes that, links to its
+  Settings section, which opens scrolled to it with a little room (`--space-6`)
+  above its heading. The VS Code launcher is always available; its view explains
+  what it needs on first open (see *VS Code*). **Hide Work pane** (Ctrl+Alt+Shift+P / ⌥⇧⌘P) collapses it to a rail
   with one button per open view; its left edge resizes with the pointer or the
   arrow keys (Shift for larger steps, Home/End for the limits), keeping at least
   420px for each chat column side by side: the pane yields width down to its own
@@ -309,11 +314,14 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   chat panes, splits and tabs stay as they were.
 - **Work pane shortcuts** are one scheme: Mod+Alt+Shift plus the initial of what
   they open (⌥⇧⌘ on macOS, Ctrl+Alt+Shift elsewhere): **T** new terminal, **B**
-  browser, **F** Files and **P** to show or hide the pane. They are listened for
-  on the document in the capture phase, so they work from the composer, inside a
-  terminal and inside the Files editor (CodeMirror's own Alt chords, ⌥⌘G go to
-  line and ⌥⌘\ indent, never include Shift). Each one is shown where it acts (launchers, **+** menu, rail and
-  toggle tooltips, `aria-keyshortcuts`). The table and the chords it avoids live
+  browser, **F** Files, **C** VS Code ("Code": ⌥⇧⌘V is Paste and Match Style)
+  and **P** to show or hide the pane. They are listened for on the document in
+  the capture phase, so they work from the composer, inside a terminal and inside
+  the Files editor (CodeMirror's own Alt chords, ⌥⌘G go to line and ⌥⌘\ indent,
+  never include Shift). The VS Code view is a cross-origin frame: while focus is
+  inside it every key, these included, belongs to VS Code; click the tab strip
+  or the chat to use them again. Each one is shown where it acts (launchers,
+  **+** menu, rail and toggle tooltips, `aria-keyshortcuts`). The table and the chords it avoids live
   in `src/lib/work-shortcuts.ts`, whose test fails if a binding lands on one.
   Plain ⌥⌘/Ctrl+Alt letters are not used: Apple's standard keys take ⌥⌘T
   (toolbar), ⌥⌘F (search field), ⌥⌘V (apply style), ⌥⌘W (close all windows;
@@ -728,6 +736,108 @@ CodeMirror's packages (`@codemirror/*`, `@lezer/highlight`) were authorized
 with this feature. The view's selection, open folders and display mode, and
 unsaved drafts, are browser-local storage; the HUI registry and PI transcripts
 are unchanged.
+
+## VS Code
+
+The Work pane's **VS Code** view opens the conversation's folder (its directory
+or worktree) in a browser VS Code, ported from AgentsInTheCloud's VS Code view.
+Its launcher is **always available** in the Work pane (**+** menu, empty pane,
+⌥⇧⌘C / Ctrl+Alt+Shift+C), and nothing is probed, started or downloaded until a
+view is opened.
+
+HUI runs one of these, in this order of preference (a choice in Settings
+overrides the order while that one is available):
+
+1. **A path saved in Settings**: an openvscode-server-compatible server, or VS
+   Code's own `code` CLI installed somewhere unusual. A path that does not run
+   is reported, never replaced by a detected one.
+2. **The installed VS Code desktop**, run as `code serve-web`, Microsoft's own
+   web server that ships with VS Code on macOS, Linux and Windows. HUI looks
+   for `code` on `PATH` and in the standard install locations (macOS
+   `/Applications` and `~/Applications`; Linux `/usr/share/code`, `/usr/bin`,
+   `/snap/bin`, `/opt/visual-studio-code`; Windows `bin\code-tunnel.exe` beside
+   `code.cmd` under `%LOCALAPPDATA%\Programs` and Program Files) and accepts it
+   only when `code --version` names a version and commit and `code serve-web
+   --help` lists the flags HUI needs. serve-web is Microsoft-licensed: HUI runs it
+   only after the operator accepted the VS Code Server License Terms in the
+   view's consent card, records that acceptance in its settings, and passes
+   `--accept-server-license-terms` only then; Settings can revoke it, which stops
+   a running serve-web. Its first start downloads the VS Code server build
+   matching the desktop's commit (about 230 MB for 1.137) from Microsoft into
+   HUI's directory, which needs internet once; the view shows the download's
+   progress, and a download that stalls fails with a clear reason.
+3. **The openvscode-server HUI installed** (Linux only). On a Linux machine
+   without VS Code, the view offers to install Gitpod's openvscode-server (MIT),
+   pinned to one release whose per-architecture SHA-256 sums are in the code,
+   downloaded (x64, arm64, armhf) through the gateway's outbound path and its
+   `HTTP(S)_PROXY`, verified, unpacked with the system `tar` into a staging
+   directory, checked to run and only then renamed into
+   `$XDG_CONFIG_HOME/hui/vscode-server`; it shows progress, can be cancelled, and
+   Settings removes it. It is downloaded on request, never bundled.
+4. **openvscode-server on `PATH`** (or in the usual package-manager
+   directories), or a code-server whose CLI is compatible. A candidate is
+   accepted only when its `--help` lists `--server-base-path`,
+   `--connection-token-file`, `--server-data-dir` and `--extensions-dir`, so
+   code-server (whose CLI uses `--bind-addr`/`--auth`) is detected only to say
+   why it does not fit. On NixOS this stays the native path: nixpkgs'
+   `openvscode-server` on the service's `PATH` (`services.hui.vscode.package`),
+   because the generic downloaded builds run there only with nix-ld.
+
+When nothing can run yet, the first open shows a card with what applies to the
+machine: **Use your VS Code** with the license links and **Accept and open**,
+**Install VS Code server (≈73 MB for x64)** on Linux, **Download VS Code** where nothing
+else applies (macOS or Windows without VS Code), and always **Set a path**,
+linking to Settings → Tools → VS Code. Once one is chosen, later opens go
+straight in. Settings → Tools → VS Code shows the VS Code in use (name, version,
+path), a picker when several are available, problems with the candidates found,
+the license consent with **Revoke**, the HUI-installed server with **Install** or
+**Remove** (behind a confirmation listing what it deletes and whether it stops a
+running VS Code), the custom path, and the server's state with **Stop**.
+Conversations on a remote worker are refused with the reason: their files are
+not on the gateway's machine.
+
+One server runs per gateway, for every conversation. It starts on the first
+open, listens on 127.0.0.1 on a free port behind a random connection token kept
+in a mode-600 file and rotated on every start, keeps its data under
+`$XDG_CONFIG_HOME/hui/vscode` (serve-web's in its own `serve-web` directory
+there, never in the operator's `~/.vscode`), and runs in its own process group
+so a stop reaches node, serve-web's server and the extension hosts behind the
+launcher script. It stops with the gateway (signalled, never awaited, so a stop
+or restart does not wait for it), 15 minutes after its last connection closes,
+or when Settings change what an open would run (another provider or path, a
+revoked license, a removed install). A server a killed gateway left behind is
+stopped before the next one starts. A crash shows in the view with **Retry**;
+only an open from HUI starts the server, so a crashed server is not restarted by
+its own reconnecting workbench.
+
+The browser reaches it only through the gateway, at `/__hui/vscode/…` for HTTP
+and WebSocket. A frame cannot send `x-hui`, so a guarded request mints a
+one-use ticket, `/__hui/vscode/enter` trades it for an HttpOnly, SameSite=Strict
+cookie scoped to `/__hui/vscode`, and the proxy accepts only that cookie and
+adds the connection token upstream. The cookie is no credential anywhere else;
+every other route still requires `x-hui`. VS Code's own token cookie never
+reaches the browser, and every other cookie VS Code sets, on any response or
+WebSocket upgrade, is kept to `/__hui/vscode` (serve-web sets its
+secret-storage cookies on `/`).
+VS Code's WebSocket handshake carries the token inside its own protocol (the
+workbench reads it from its configuration or from the token cookie the browser
+never gets), so the proxied workbench page of either provider includes it,
+served only behind the cookie.
+
+The workbench takes HUI's colors (dark or light Modern plus HUI's background,
+panels, text, borders and accent) as configuration defaults read when a frame
+loads, so a theme change applies on the view's **Reload**; the operator's own
+VS Code settings still win. Workspace trust prompts, the start page and AI chat
+are off by default, as in AgentsInTheCloud: HUI's agents already work in that
+folder with full access. **Open in a new tab** opens the same folder through its
+own ticket.
+
+Settings gain an additive `vscode: { enabled, executable, provider,
+licenseAcceptedAt }` block. `enabled` was the first view's opt-in switch: it is
+still read and saved unchanged for compatibility (a file with `enabled: true`
+and a path keeps working), but it no longer gates the launcher or anything else.
+No registry, transcript or PI format changes; the only new state is the
+openvscode-server install directory, which only an explicit install creates.
 
 ## Live chat projection
 

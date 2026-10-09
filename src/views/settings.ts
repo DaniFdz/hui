@@ -21,6 +21,7 @@ import { renderPicker, renderSettingsPicker } from "./settings-picker.ts";
 import { renderSettingsToggle } from "./settings-toggle.ts";
 import "./settings-tools.ts";
 import "./settings-browser.ts";
+import "./settings-vscode.ts";
 import "./settings-jira.ts";
 import "./settings-calls.ts";
 import "./settings-github.ts";
@@ -117,6 +118,8 @@ export type SettingsProps = AutomationProps & {
   onChangeChat: (next: Settings["chat"]) => void;
   /** Resolves once the settings write lands, so the Browser section can re-read status. */
   onChangeBrowser: (next: Settings["browser"]) => Promise<unknown> | void;
+  /** Resolves once the settings write lands, so the VS Code section can re-read status. */
+  onChangeVscode: (next: Settings["vscode"]) => Promise<unknown> | void;
   onChangeModels: (next: Settings["models"]) => void;
   onChangeCalls: (next: Settings["calls"]) => void;
   onChangePower: (next: Settings["power"]) => void;
@@ -657,8 +660,9 @@ function renderIntegrationsPage() {
 
 function renderToolsPage(props: SettingsProps) {
   return html`
-    <p class="settings-page__intro">HUI owns the tools, the managed browser and the default prompt. Inspect the shipped catalog without opening a session, or inspect an already-running session.</p>
+    <p class="settings-page__intro">HUI owns the tools, the managed browser, the VS Code server and the default prompt. Inspect the shipped catalog without opening a session, or inspect an already-running session.</p>
     <hui-browser-settings .settings=${props.settings.browser} .onChange=${props.onChangeBrowser}></hui-browser-settings>
+    <hui-vscode-settings .settings=${props.settings.vscode} .onChange=${props.onChangeVscode}></hui-vscode-settings>
     <hui-tools-settings .sessions=${props.sessions.filter((session) => !session.bot)}></hui-tools-settings>`;
 }
 
