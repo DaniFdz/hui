@@ -360,10 +360,10 @@
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--gateway-tone) 12%, transparent);
 }
 
-/* Touch sizing makes switches 44px tall; center the track beside its status. */
-@media (pointer: coarse), (max-width: 640px) {
-  .power-row wa-switch.settings-toggle::part(base) { min-height: 44px; }
-}
+/* Touch sizing (settings.css) gives a switch a 44px host, but Web Awesome lays the host out as a column, so the label
+   that toggles it kept its ~18px height at the top and the rest of the target did nothing. The label takes whatever
+   minimum the host has, so the whole target toggles and the track sits centred in it, next to a status pill too. */
+wa-switch::part(base) { min-width: inherit; min-height: inherit; }
 
 .gateway-metric {
   color: var(--text);
