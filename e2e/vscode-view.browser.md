@@ -29,7 +29,7 @@ Work pane. Keep screenshots outside Git.
    or set its path in Settings → Tools → VS Code.* Save the executable path: the
    row reads *Using OpenVSCode Server 1.109.5 · <path>*. Turn **VS Code view** on:
    the pill reads **Ready** and the Server row *Starts when a VS Code view opens…*.
-3. **Open.** Back in the conversation, **+** → **VS Code** (Ctrl+Alt+V / ⌥⌘V)
+3. **Open.** Back in the conversation, **+** → **VS Code** (now Ctrl+Alt+Shift+C / ⌥⇧⌘C; Ctrl+Alt+V when recorded)
    opens one VS Code tab, which shows *Starting VS Code*, then the
    workbench on the fixture folder: Explorer lists `src`, `fixture.txt`,
    `package.json`, `README.md`; clicking `src` → `greet.ts` opens it with

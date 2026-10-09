@@ -6,7 +6,7 @@ sessions or credentials were used. Keep screenshots outside Git and put them in
 the PR description.
 
 The Files view is a Work view, opened from the Work pane's **+** menu (**Files**,
-Ctrl+Alt+F / ⌥⌘F). The results below were first recorded before it was
+Ctrl+Alt+Shift+F / ⌥⇧⌘F; Ctrl+Alt+F when this was first recorded). The results below were first recorded before it was
 registered with the Work pane, mounting `filesWorkViewKind.render(…)` beside the
 conversation from a temporary, uncommitted harness; the integrated journey
 through the real Work pane (launcher, tab title, staying mounted behind other

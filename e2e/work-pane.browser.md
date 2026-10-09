@@ -77,9 +77,13 @@ Screenshots stay outside Git and go into the PR description.
 - Pointer dragging of the resizer and of tabs (reorder) was not driven: the
   Browser tool here offers coordinate clicks but no coordinate drag. Keyboard
   resize and tab movement were verified; reorder logic is unit-tested.
-- macOS shortcuts (⌥⌘T/⌥⌘B/⌥⌘W) and the Electron window were not run here
-  (Linux headless browser); only `Ctrl+Alt` was pressed. On GNOME desktops the
-  system may take `Ctrl+Alt+T` before the page sees it.
+- The journey above pressed the first scheme's chords (`Ctrl+Alt+T/B/W`). They
+  have since moved to `Ctrl+Alt+Shift+T/B/P` (⌥⇧⌘ on macOS) because GNOME takes
+  `Ctrl+Alt+T` before the page sees it and macOS, Safari and Chrome take
+  ⌥⌘T/⌥⌘W/⌥⌘B (SPEC.md, *Work pane shortcuts*); read the steps with the new
+  chords. The new ones were pressed again on the integrated stack (Files and VS
+  Code), whose journey records them. macOS and the Electron window were not run
+  here (Linux headless browser).
 - A theme switch does not recolour an already-open terminal's background (it is
   read when the terminal starts); this predates the Work pane.
 
@@ -132,6 +136,7 @@ real openvscode-server 1.109.5 from
   client width). Closing the third column gave the pane its 342 px back. The two
   remaining columns kept the multiplexer's own ratio (514/320 px): the pane
   reserves 420 px per column in total and leaves their split to the multiplexer.
+  (Since fixed: the splitter keeps 420 px per column too; see the next section.)
 - **390×844.** The panel selector listed *Chat*, *Terminal 1 · Work*,
   *greet.ts · Work*, *VS Code · Work*, then *New terminal*, *Browser* and *Files*
   as launchers (VS Code's launcher left out while its view is open). Choosing
@@ -144,3 +149,50 @@ Limits of this run: the managed browser view and Files' conflict, upload and
 delete flows were not repeated (see above and `e2e/files-view.browser.md`);
 macOS shortcuts and the Electron window were not run; the VS Code frame's own
 controls were driven with coordinate clicks.
+
+## Shortcut scheme, chat rebalance and Settings link
+
+Verified on 2026-10-09 on `feat/vscode-view` at `d5115e6` (clean tree, `doctor`
+passing before and after; this section was written afterwards), same launcher and
+fixture, the workspace a small Git repository, driven through the Browser tool in
+an owned headless Brave tab at 1440×900 and 390×844. Keys were sent with the
+Browser tool's key presses (CDP), so desktop and browser grabs (GNOME, macOS,
+Safari) are not exercised here; SPEC.md, *Work pane shortcuts*, has the research.
+A capture-phase `keydown` recorder on `window` read `defaultPrevented` after
+each press.
+
+- **Matrix.** Each of `Ctrl+Alt+Shift+T/B/F/C` was pressed with focus in the chat
+  composer, inside Terminal 1 and inside the Files editor (`greet.ts`), 12
+  presses: every one was `defaultPrevented`, T added a terminal tab, B showed the
+  single Browser tab, F added a Files tab, and C (VS Code off) showed *VS Code is
+  off. Turn it on in Settings → Tools → VS Code.* with no tab. The composer stayed
+  empty and `git status` in the workspace stayed clean (no key reached the
+  editor or the file). `Ctrl+Alt+Shift+P` from each of the three hid the pane
+  (focus to the composer) and showed it again (focus on the active tab), all
+  `defaultPrevented`. The old `Ctrl+Alt+T` no longer opens anything.
+- **VS Code on** (run on `1fb8f0e`, the same shortcut code, with
+  openvscode-server 1.109.5): C from the composer opened the VS Code tab; from
+  the terminal and from Files it showed that one tab again. With focus inside the
+  VS Code frame, `Ctrl+Alt+Shift+P` never reached HUI's document (the recorder
+  saw nothing) and the pane stayed open, as SPEC.md describes.
+- **Labels.** The **+** menu lists *New terminal* `Ctrl+Alt+Shift+T`, *Browser*
+  `Ctrl+Alt+Shift+B`, *Files* `Ctrl+Alt+Shift+F`, *VS Code* `Ctrl+Alt+Shift+C`;
+  **Hide Work pane** reads *Hide Work pane (Ctrl+Alt+Shift+P)* with
+  `aria-keyshortcuts="Control+Alt+Shift+P"`.
+- **Rebalance.** One chat beside the pane: 622 px chat, 560 px pane (row 1182 px).
+  **Open split view**: two 420 px columns and a 336 px pane, no horizontal
+  scroll. **Split right** to three columns: the pane collapsed to its 44 px rail
+  and the columns shared the room equally (376/375/375 px). Closing the third
+  column left weights 2:1 (the case that gave 514/320 px before) and showed two
+  420 px columns, the pane back at 336 px and the divider at
+  `aria-valuemin/now/max` 50/50/50. With the pane hidden the same divider moved
+  between 320 px columns (Home: 320/812, End: 812/320); showing the pane again
+  rebalanced them to 420/420.
+- **Settings link.** **Open Settings → Tools → VS Code** landed with the VS Code
+  section 24 px below the top of the settings scroller (`scroll-margin-top`
+  24 px, `--space-6`), at 1440×900 and at 390×844 (there below the sticky
+  header).
+- Page errors: 0. While the split was created the columns showed 320/320 px for
+  well under a second before 420/420: the multiplexer still measured its old
+  width until its ResizeObserver frame ran (the same frame showed 320 px columns
+  before this change).

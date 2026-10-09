@@ -279,23 +279,29 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   focus to another chat pane or conversation switches the contents. One view is
   visible at a time, chosen from a tab strip (icon, title, close; drag or
   Alt+Shift+Arrow to reorder, Arrow/Home/End to move, Delete to close). The **+**
-  menu launches views (Ctrl+Alt+T / ⌥⌘T new terminal, Ctrl+Alt+B / ⌥⌘B browser,
-  Ctrl+Alt+F / ⌥⌘F a new Files view, Ctrl+Alt+V / ⌥⌘V VS Code)
+  menu launches views (Ctrl+Alt+Shift+T / ⌥⇧⌘T new terminal, Ctrl+Alt+Shift+B /
+  ⌥⇧⌘B browser, Ctrl+Alt+Shift+F / ⌥⇧⌘F a new Files view, Ctrl+Alt+Shift+C /
+  ⌥⇧⌘C VS Code)
   and reopens running terminals whose tab was closed; with nothing open the pane
   lists the same launchers with their shortcuts. A launcher that cannot act says
   why in visible text (the browser tool or VS Code turned off, no VS Code server
   found, a conversation on a remote worker has no local terminal) and, when a
   setting changes that, links to its Settings section, which opens scrolled to
-  it. **Hide Work pane** (Ctrl+Alt+W / ⌥⌘W) collapses it to a rail
+  it with a little room (`--space-6`) above its heading. **Hide Work pane** (Ctrl+Alt+Shift+P / ⌥⇧⌘P) collapses it to a rail
   with one button per open view; its left edge resizes with the pointer or the
   arrow keys (Shift for larger steps, Home/End for the limits), keeping at least
   420px for each chat column side by side: the pane yields width down to its own
   320px minimum, and when even that does not fit (say three split chats) it shows
   as its rail until the operator expands it anyway or a view is opened, then at
-  its minimum with the chat columns narrower. Escape inside the pane returns focus to the chat and never
+  its minimum with the chat columns narrower. While the pane is open the chat
+  splitter keeps the same 420px per column: the columns share the room by their
+  weights above it (closing a column rebalances the survivors rather than leaving
+  one at 320px), the divider stops where a column would drop below it, and when
+  420px each does not fit the columns share the room equally, down to the usual
+  320px. Escape inside the pane returns focus to the chat and never
   stops the agent's turn. Below 1100px the pane is a full-screen destination: the
   panel selector lists the chat panes, the open Work views and the launchers, and
-  **Back to chat** or Ctrl+Alt+W returns. Hidden views stay mounted, so terminals
+  **Back to chat** or Ctrl+Alt+Shift+P returns. Hidden views stay mounted, so terminals
   and pages keep their state across tab switches, collapsing and focus changes,
   for the three most recently focused conversations that have views; a view of
   an older one reconnects (a terminal replays its snapshot) when shown again.
@@ -305,6 +311,40 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   goes with it. Layouts saved before the Work pane load without loss: their
   terminal and browser panes move into their conversation's Work pane and the
   chat panes, splits and tabs stay as they were.
+- **Work pane shortcuts** are one scheme: Mod+Alt+Shift plus the initial of what
+  they open (⌥⇧⌘ on macOS, Ctrl+Alt+Shift elsewhere): **T** new terminal, **B**
+  browser, **F** Files, **C** VS Code ("Code": ⌥⇧⌘V is Paste and Match Style)
+  and **P** to show or hide the pane. They are listened for on the document in
+  the capture phase, so they work from the composer, inside a terminal and inside
+  the Files editor (CodeMirror's own Alt chords, ⌥⌘G go to line and ⌥⌘\ indent,
+  never include Shift). The VS Code view is a cross-origin frame: while focus is
+  inside it every key, these included, belongs to VS Code; click the tab strip
+  or the chat to use them again. Each one is shown where it acts (launchers,
+  **+** menu, rail and toggle tooltips, `aria-keyshortcuts`). The table and the chords it avoids live
+  in `src/lib/work-shortcuts.ts`, whose test fails if a binding lands on one.
+  Plain ⌥⌘/Ctrl+Alt letters are not used: Apple's standard keys take ⌥⌘T
+  (toolbar), ⌥⌘F (search field), ⌥⌘V (apply style), ⌥⌘W (close all windows;
+  Safari: Close Other Tabs) and ⌥⌘C/D/H/I/M; Chrome takes ⌥⌘B (Bookmark Manager),
+  ⌥⌘F (search the web), ⌥⌘I/J/U/P/N; Safari ⌥⌘B (Edit Bookmarks) and ⌥⌘L/U;
+  Firefox ⌥⌘F/R/U and its developer tools ⌥⌘I/K/C/E/M/J/Z, and Ctrl+Alt+R/X/Z
+  on Linux and Windows; GNOME takes Ctrl+Alt+T before the page sees it, KDE and
+  Xfce Ctrl+Alt+L. With Shift only ⌥⇧⌘Q (log out) and ⌥⇧⌘V (Paste and Match
+  Style) are standard on macOS, so the scheme skips Q and V; W stays out because
+  Safari's Close All Windows is ⌥⇧⌘W. Terminal programs bind no Ctrl+Alt+Shift
+  letters (Emacs and readline use Ctrl+Alt letters, which reach a terminal as
+  Meta+Ctrl).
+  Chrome lets a page cancel every accelerator except new/close tab or window,
+  reopening a tab and tab switching (`IsReservedCommandOrKey`); Firefox reserves
+  only its `reserved="true"` keys. On Windows layouts with AltGr, Ctrl+Alt is
+  AltGr: a chord that types a character there (AltGr+E → €) stays text, one that
+  types nothing is the shortcut. Sources: Apple HIG *Keyboards*
+  (developer.apple.com/design/human-interface-guidelines/keyboards), Chrome
+  keyboard shortcuts (support.google.com/chrome/answer/157179) and
+  `chrome/browser/ui/browser_command_controller.cc`, Safari shortcuts
+  (support.apple.com/guide/safari/cpsh003, ibrw1039, ibrw3ceda9e7), Firefox
+  `browser/base/content/browser-sets.inc` with `browserSets.ftl` and the
+  DevTools shortcut list (firefox-source-docs.mozilla.org/devtools-user/keyboard_shortcuts),
+  GNOME/Ubuntu keyboard settings (help.gnome.org/gnome-help/keyboard-shortcuts-set.html).
 - Settled user messages expose copying in the original context-menu position
   (right-click or keyboard context key/Shift+F10), not an extra footer action.
   Assistant responses retain the footer copy button. Settled user-message
@@ -555,7 +595,7 @@ work in the browser and the desktop app whether or not the local font matches.
 The chat header's **Open terminal** shows the conversation's terminal in its
 Work pane: its open terminal tab, else its first running shell, else a new
 interactive shell in the session's directory/worktree. Each terminal is its own
-tab; **New terminal** in the pane's **+** menu (Ctrl+Alt+T / ⌥⌘T) creates another.
+tab; **New terminal** in the pane's **+** menu (Ctrl+Alt+Shift+T / ⌥⇧⌘T) creates another.
 Closing a tab hides the terminal without ending its process; the **+** menu lists
 running terminals without a tab under *Running* to reopen them. **End terminal**
 in the view's ⋯ menu explicitly terminates the shell and its descendants and
@@ -653,7 +693,7 @@ the preview is on screen, then keeps its last frame; a preview that appears idle
 still open, and nothing is shown when no page is left to show. Selecting the
 preview, or the globe button in the conversation header, opens the conversation's
 **browser view** in its Work pane (at most one per conversation; also launched
-from the pane's **+** menu, Ctrl+Alt+B / ⌥⌘B): a larger live view beside the chat
+from the pane's **+** menu, Ctrl+Alt+Shift+B / ⌥⇧⌘B): a larger live view beside the chat
 that follows the agent's tab or watches another of the conversation's tabs until
 Follow agent. Both are
 read-only. Frames come from a CDP screencast that runs only while someone
@@ -675,7 +715,7 @@ editing a file in it. It combines a collapsible **Files navigator** (a lazily
 expanded file tree, a filter, upload, new file or folder) with the selected
 file. A conversation may hold several Files views, each with its own selection,
 including several views of the same file. **Files** in the Work pane's **+**
-menu (Ctrl+Alt+F / ⌥⌘F) opens a new one; its tab shows the selected file's name
+menu (Ctrl+Alt+Shift+F / ⌥⇧⌘F) opens a new one; its tab shows the selected file's name
 (or *Files*). Closing the tab forgets that view's selection and open folders; a
 file's unsaved text stays with its File draft until it is saved.
 

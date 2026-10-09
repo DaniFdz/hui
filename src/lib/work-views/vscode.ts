@@ -6,10 +6,11 @@ import { html } from "lit";
 import { vscodeIcon } from "../../components/vscode-view.ts";
 import { knownVscodeStatus, knownVscodeUnavailableReason, loadVscodeStatus, onVscodeStatus } from "../vscode-store.ts";
 import type { WorkViewKind } from "../work-pane.ts";
+import { WORK_SHORTCUTS } from "../work-shortcuts.ts";
 
 export type VscodeWorkViewRef = { kind: "vscode" };
 
-export const VSCODE_WORK_VIEW_SHORTCUT = "Mod+Alt+KeyV";
+export const VSCODE_WORK_VIEW_SHORTCUT = WORK_SHORTCUTS.vscode;
 
 export const vscodeWorkViewKind: WorkViewKind<VscodeWorkViewRef> = {
   kind: "vscode",

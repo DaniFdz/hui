@@ -11,7 +11,7 @@ import { SessionViewCache } from "../lib/session-view-cache.ts";
 import { HUI_PANE_DRAG_TYPE, HUI_SESSION_DRAG_TYPE, readSessionDragId } from "../lib/session-pane-layout.ts";
 import { SESSION_SPLIT_MEDIA, sessionDropRect, sessionDropZone, sessionPanes, sessionPaneMoveTarget, spotTabs, visibleSessionPanes, type DropZone, type PaneRect, type SessionLayout, type SessionPane, type SplitDirection } from "../lib/session-multiplexer.ts";
 import { icons } from "../lib/icons.ts";
-import { sessionPaneGeometry } from "../lib/session-pane-geometry.ts";
+import { PANE_COLUMN_MIN_WIDTH, sessionPaneGeometry } from "../lib/session-pane-geometry.ts";
 import "./resizable-divider.ts";
 
 export type PanePresentation = { active: boolean; visible: boolean; narrow: boolean; split: boolean };
@@ -33,6 +33,8 @@ export class SessionMultiplexer extends HuiElement {
   @property({ attribute: false }) paneLabel!: (pane: SessionPane) => string;
   @property() draggingSessionId = "";
   @property({ attribute: false }) sessionIds: ReadonlySet<string> | undefined;
+  /** The narrowest a chat column may get while there is room for it (420px beside an open Work pane). */
+  @property({ type: Number }) columnMinimum = PANE_COLUMN_MIN_WIDTH;
   @state() narrow = false;
   @state() private viewportWidth = 0;
   @state() private viewportHeight = 0;
@@ -256,7 +258,7 @@ export class SessionMultiplexer extends HuiElement {
       )].filter((app) => app.hasQueuedMessageEdit).map((app) => app.paneSessionId));
       return [pane.id, cache.retain(pane.sessionId, protectedIds)] as const;
     }));
-    const geometry = sessionPaneGeometry(layout, this.viewportWidth, this.viewportHeight);
+    const geometry = sessionPaneGeometry(layout, this.viewportWidth, this.viewportHeight, this.columnMinimum);
     const canvas = this.narrow ? { width: this.viewportWidth, height: this.viewportHeight } : geometry;
     // DOM order never follows layout order: even Lit's keyed reparenting would
     // disconnect custom elements and tear down their streams/terminal canvases.
@@ -287,7 +289,7 @@ export class SessionMultiplexer extends HuiElement {
           })}
           ${this.narrow ? nothing : repeat(geometry.dividers, (divider) => divider.id, (divider) => html`<resizable-divider
             style=${rectStyle(divider)} orientation=${divider.columnId ? "horizontal" : "vertical"}
-            .splitRatio=${divider.ratio} .resizeExtent=${divider.extent} label="Resize"
+            .splitRatio=${divider.ratio} .resizeExtent=${divider.extent} .minRatio=${divider.minRatio} .maxRatio=${divider.maxRatio} label="Resize"
             @resize=${(event: CustomEvent<{ splitRatio: number }>) => this.onResize(divider.columnId, divider.index, event.detail.splitRatio)}
             @resize-end=${this.onResizeEnd}
           ></resizable-divider>`)}
