@@ -1,7 +1,7 @@
 /**
  * Serves the built web app from the package's dist directory: app routes get an uncached index.html and every
  * other path the matching file. Only GET and HEAD are served, and dot segments, backslashes, control
- * characters or paths resolving outside the root are 404s. Text is sent compressed (cached per file),
+ * characters or paths resolving outside the root are 404s. Text and WebAssembly are sent compressed (cached per file),
  * content-hashed assets are cached by the browser for good and other files revalidate by ETag.
  */
 import { readFile, realpath, stat } from "node:fs/promises";
@@ -14,6 +14,8 @@ const MIME: Record<string, string> = {
   ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
   ".json": "application/json", ".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg",
   ".jpeg": "image/jpeg", ".webp": "image/webp", ".ico": "image/x-icon", ".woff2": "font/woff2", ".woff": "font/woff",
+  // The terminal's Ghostty VT; browsers compile WebAssembly while it streams only when served with this type.
+  ".wasm": "application/wasm",
 };
 
 /** Vite names everything under `assets/` by content hash, so a URL there never

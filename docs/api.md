@@ -3226,7 +3226,7 @@ same transport. Binary or malformed client messages never execute input.
 The wire format is defined in `shared/terminal-stream.ts`. PTY output travels as
 **binary** messages holding the raw UTF-8 bytes the shell wrote, in order, with
 no JSON envelope or escaping; the browser sets `binaryType = "arraybuffer"` and
-hands the bytes to Ghostty, which decodes UTF-8 itself (a code point may span
+hands the bytes to Gespenst (Ghostty's VT), which decodes UTF-8 itself (a code point may span
 messages). JSON **text** messages carry only metadata:
 
 - `{ type: "snapshot", terminal, sequence, truncated, replayBytes }` is always the

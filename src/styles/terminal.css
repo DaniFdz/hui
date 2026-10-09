@@ -16,11 +16,18 @@ hui-terminal-pane {
 .hui-terminal-toolbar .btn--icon { min-width: 28px; width: 28px; height: 28px; padding: 0; border: 0; background: transparent; box-shadow: none; }
 .hui-terminal-toolbar svg { width: 16px; height: 16px; }
 .hui-terminal-reconnect { margin: 8px 12px 0; align-self: flex-start; }
-.hui-terminal-surface { flex: 1; min-height: 0; min-width: 0; overflow: hidden; padding: 8px; position: relative; }
+/* Gespenst's host: it fills the box, measures it and fits its grid; touch is scrolling and taps (terminal-pane.ts). */
+.hui-terminal-surface { flex: 1; min-height: 0; min-width: 0; overflow: hidden; padding: 8px; position: relative; touch-action: none; }
+.hui-terminal-surface .gespenst { background: var(--background); }
+/* Above the canvases, below nothing else: the zero-height anchor keeps the button out of the terminal's measured box. */
+.hui-terminal-jump { z-index: 3; }
 .hui-terminal-error, .hui-terminal-notice { padding: 6px 12px; font-size: 12px; overflow-wrap: anywhere; }
 .hui-terminal-error { color: var(--destructive); }
 .hui-terminal-notice { color: var(--muted-foreground); }
+/* Keys a soft keyboard lacks; shown on narrow or touch screens only. */
 .hui-terminal-keys { display: none; }
+.hui-terminal-key { min-width: 0; padding: 0 4px; font-family: var(--mono, var(--font-mono)); touch-action: manipulation; user-select: none; -webkit-user-select: none; }
+.hui-terminal-key--on { color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); }
 .hui-workspace-panels { display: flex; flex-direction: column; min-height: 0; height: 100%; }
 .hui-workspace-panels > .hui-workspace-row { flex: 1; min-height: 0; }
 .hui-panel-selector { display: none; }
@@ -34,5 +41,11 @@ hui-terminal-pane {
   .hui-panel-selector .picker-select__option .picker-select__copy { flex: 1; }
   .hui-panel-selector .picker-select__leading { color: var(--muted); }
   .hui-panel-selector .picker-select__leading svg { width: 16px; height: 16px; }
-  .hui-terminal-keys { display: flex; flex-shrink: 0; gap: 8px; padding: 4px 8px; border-top: 1px solid var(--border); }
+}
+@media (max-width: 1099px), (hover: none) and (pointer: coarse) {
+  .hui-terminal-keys { display: grid; flex-shrink: 0; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; padding: 6px 8px; border-top: 1px solid var(--border); }
+}
+@media (hover: none) and (pointer: coarse) {
+  /* Keeps iOS from zooming into the focused input without changing the drawn font. */
+  .hui-terminal-surface .gespenst__input { font-size: 16px !important; }
 }

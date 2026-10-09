@@ -4392,9 +4392,25 @@ export function attachLiveStreams(server: EventEmitter, allowedHosts?: ReadonlyS
   return () => { detachBrowser(); detachVscode(); detachSessions(); };
 }
 
+const GESPENST_NODE_STUB = "\0hui:gespenst-node-builtin";
+
 export function huiConfig(): Plugin {
   return {
     name: "hui-config",
+    // Gespenst (the terminal renderer) loads its worker and WebAssembly relative to its own module; pre-bundling
+    // would move the module away from them. Every entry point (vite.config.ts, hui-dev, the visual-verification
+    // server) shares this plugin.
+    config: () => ({ optimizeDeps: { exclude: ["@gespenst/core"] }, worker: { format: "es" as const } }),
+    // Its WebAssembly loader reads file: URLs through node:fs/promises and node:url when it runs under Node; the
+    // browser only fetches. An empty module replaces those two imports instead of Vite's externalization warning.
+    resolveId: {
+      order: "pre",
+      handler(id, importer) {
+        if ((id === "node:fs/promises" || id === "node:url") && importer?.includes("/node_modules/@gespenst/core/")) return GESPENST_NODE_STUB;
+        return undefined;
+      },
+    },
+    load(id) { return id === GESPENST_NODE_STUB ? "export {};" : undefined; },
     configureServer(server) {
       void startBackend();
       if (server.httpServer) {

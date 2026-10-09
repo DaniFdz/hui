@@ -151,6 +151,15 @@ require('node:fs').writeFileSync(process.env.HUI_DESKTOP_PROOF, JSON.stringify({
     }
   };
   assert.match(await (await fetch(new URL("/settings/tools", status.url))).text(), /hui-app/u);
+  // The installed gateway serves the terminal's Gespenst worker and Ghostty WebAssembly from the package.
+  const terminalAssets = packed.files.map((file: { path: string }) => file.path).filter((path: string) => /^dist\/assets\/(?:terminal-worker-.+\.js|ghostty-vt-.+\.wasm)$/u.test(path));
+  assert.equal(terminalAssets.length, 2, "Package contains the terminal worker and WebAssembly");
+  for (const path of terminalAssets) {
+    const asset = await fetch(new URL(path.slice("dist".length), status.url));
+    assert.equal(asset.status, 200, path);
+    assert.match(asset.headers.get("content-type") ?? "", path.endsWith(".wasm") ? /^application\/wasm$/u : /javascript/u, path);
+    await asset.arrayBuffer();
+  }
   assert.equal((await fetch(new URL("/__hui/tools", status.url))).status, 403);
   const deniedHost = await new Promise<number | undefined>((resolve, reject) => {
     const request = get(status.url, { headers: { host: "untrusted.example" } }, (response) => { response.resume(); resolve(response.statusCode); });
