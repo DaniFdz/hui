@@ -83,9 +83,11 @@ function signalGroup(child: ChildProcess, signal: NodeJS.Signals): void {
   } catch { /* already gone */ }
 }
 
+/** Whether anything of a process group is left. EPERM says so too: for another user's members, and on macOS for members
+ * that exited but are not yet reaped, where Linux answers success. */
 function groupAlive(pid: number): boolean {
   if (process.platform === "win32") return false;
-  try { process.kill(-pid, 0); return true; } catch { return false; }
+  try { process.kill(-pid, 0); return true; } catch (error) { return (error as NodeJS.ErrnoException).code === "EPERM"; }
 }
 
 /** Process groups of servers this gateway runs, signalled if the gateway exits without stopping them. */
