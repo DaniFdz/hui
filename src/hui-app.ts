@@ -583,8 +583,7 @@ export class HuiApp extends HuiElement {
     workers: () => this.launchWorkers,
     imported: (bot, warnings) => {
       this.bots = upsertBot(this.bots, bot);
-      this.botNotice = warnings.length ? `Imported ${bot.name}. ${warnings.join(" ")}` : "";
-      this.botNoticeFailed = warnings.length > 0;
+      if (warnings.length) this.notify(`Imported ${bot.name}. ${warnings.join(" ")}`, true);
       void this.refreshBots();
       void this.refreshSessions(true);
       this.navigate({ kind: "bot", id: bot.id });
