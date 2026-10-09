@@ -1,0 +1,263 @@
+/* The Files view (src/components/files-view.ts): navigator beside the editor, both from HUI's tokens. */
+hui-files-view {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  background: var(--bg);
+  color: var(--text);
+}
+.hui-files {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+.hui-files--message { align-items: center; justify-content: center; padding: 24px; }
+.hui-files svg { width: 16px; height: 16px; flex: 0 0 auto; }
+.hui-files .btn--icon {
+  min-width: 28px;
+  width: 28px;
+  height: 28px;
+  padding: 5px;
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  color: var(--muted);
+}
+.hui-files .btn--icon:hover { color: var(--text); background: color-mix(in srgb, var(--bg-hover) 84%, transparent); border-color: transparent; }
+.hui-files .btn--icon:focus-visible { box-shadow: var(--focus-ring); }
+.hui-files .btn--icon svg { width: 16px; height: 16px; }
+.hui-files .btn--sm svg { width: 14px; height: 14px; }
+
+/* ── Files navigator ── */
+.hui-files-nav {
+  display: flex;
+  flex: 0 0 260px;
+  flex-direction: column;
+  width: 260px;
+  min-height: 0;
+  border-right: 1px solid var(--border);
+  background: var(--panel, var(--bg));
+}
+.hui-files-nav__header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 40px;
+  padding: 4px 6px 4px 10px;
+  border-bottom: 1px solid var(--border);
+}
+.hui-files-nav__root { display: flex; flex: 1; align-items: center; gap: 6px; min-width: 0; font-weight: 600; font-size: 13px; }
+.hui-files-nav__root-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hui-files-nav__actions { display: flex; flex: 0 0 auto; gap: 0; }
+.hui-files-nav__filter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 8px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 6px);
+  background: var(--bg);
+  color: var(--muted);
+}
+.hui-files-nav__filter:focus-within { border-color: var(--border-strong, var(--border)); box-shadow: var(--focus-ring); }
+.hui-files-nav__filter-input {
+  flex: 1;
+  min-width: 0;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+}
+.hui-files-tree { flex: 1; min-height: 0; overflow: auto; padding: 0 0 12px; outline: none; }
+.hui-files-tree.is-drop-target, .hui-files-row.is-drop-target { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.hui-files-tree__list { margin: 0; padding: 0; list-style: none; }
+.hui-files-tree__note { margin: 6px 12px; color: var(--muted); font-size: 12px; line-height: 1.45; }
+.hui-files-tree__note.is-error { color: var(--danger); }
+.hui-files-node { margin: 0; padding: 0; }
+.hui-files-row { position: relative; display: flex; align-items: center; min-width: 0; }
+.hui-files-row:hover { background: color-mix(in srgb, var(--bg-hover) 70%, transparent); }
+.hui-files-row.is-selected { background: color-mix(in srgb, var(--accent) 16%, transparent); }
+.hui-files-row__main {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  height: 26px;
+  padding-inline-end: 8px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  text-align: start;
+  cursor: pointer;
+}
+.hui-files-row__main:focus-visible { outline: none; box-shadow: inset var(--focus-ring); }
+.hui-files-row__main--inert { cursor: default; color: var(--muted); }
+.hui-files-row__main--result { padding-inline-start: 12px; gap: 6px; }
+.hui-files-row__chevron { display: inline-flex; flex: 0 0 16px; width: 16px; color: var(--muted); }
+.hui-files-row__chevron svg { width: 14px; height: 14px; }
+.hui-files-row__icon { display: inline-flex; flex: 0 0 auto; color: var(--muted); }
+.hui-files-row__icon svg { width: 15px; height: 15px; }
+.hui-files-row__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hui-files-row__folder, .hui-files-row__reason { flex: 1 1 auto; min-width: 0; overflow: hidden; color: var(--muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.hui-files-row__folder { direction: rtl; text-align: start; }
+.hui-files-row__badge { padding: 0 4px; border: 1px solid var(--border); border-radius: var(--radius-sm, 4px); color: var(--muted); font-size: 10px; }
+.hui-files .hui-files-row__delete { position: absolute; right: 4px; width: 24px; min-width: 24px; height: 24px; padding: 4px; opacity: 0; }
+.hui-files .hui-files-row__delete svg { width: 14px; height: 14px; }
+.hui-files-row:hover .hui-files-row__delete, .hui-files-row:focus-within .hui-files-row__delete { opacity: 1; }
+.hui-files-row:hover .hui-files-row__main, .hui-files-row:focus-within .hui-files-row__main { padding-inline-end: 32px; }
+.hui-files-nav__status { margin: 0; padding: 8px 12px; border-top: 1px solid var(--border); color: var(--muted); font-size: 12px; line-height: 1.4; }
+
+/* ── editor side ── */
+.hui-files-main { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; }
+.hui-files-main__header {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  min-height: 40px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+}
+.hui-files-main__spacer { flex: 1; }
+/* Long paths keep their end (the file name) and lose their start. */
+.hui-files-path {
+  min-width: 0;
+  overflow: hidden;
+  direction: rtl;
+  font-family: var(--mono, var(--font-mono));
+  font-size: 12px;
+  /* Physical left: in a wide box an rtl start would push a short path to the right. */
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hui-files-path--empty { direction: ltr; color: var(--muted); font-family: inherit; }
+.hui-files-status { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; white-space: nowrap; }
+.hui-files-status__text { max-width: 320px; overflow: hidden; text-overflow: ellipsis; }
+.hui-files-status__dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok, #1a7f37); }
+.hui-files-status[data-state="saving"] .hui-files-status__dot { background: var(--warn, #b7791f); }
+.hui-files-status[data-state="conflict"], .hui-files-status[data-state="error"] { color: var(--danger); }
+.hui-files-status[data-state="conflict"] .hui-files-status__dot, .hui-files-status[data-state="error"] .hui-files-status__dot { background: var(--danger); }
+.hui-files-status[data-state="read-only"] .hui-files-status__dot { background: var(--muted); }
+.hui-files-segmented { display: inline-flex; flex: 0 0 auto; padding: 2px; border: 1px solid var(--border); border-radius: var(--radius-md, 6px); background: var(--bg); }
+.hui-files-segmented__option {
+  height: 24px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--radius-sm, 4px);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.hui-files-segmented__option[aria-pressed="true"] { background: var(--bg-hover); color: var(--text-strong, var(--text)); }
+.hui-files-segmented__option:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.hui-files-conflict {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  padding: 10px 12px;
+  border-bottom: 1px solid color-mix(in srgb, var(--danger) 40%, var(--border));
+  background: color-mix(in srgb, var(--danger) 10%, var(--bg));
+  font-size: 13px;
+}
+.hui-files-conflict__text { display: flex; flex: 1 1 280px; flex-direction: column; gap: 2px; }
+.hui-files-conflict__text span { color: var(--muted); }
+.hui-files-conflict__actions { display: flex; gap: 6px; }
+.hui-files-conflict__details { flex: 1 0 100%; }
+.hui-files-conflict__details summary { color: var(--muted); font-size: 12px; cursor: pointer; }
+.hui-files-conflict__details pre {
+  max-height: 200px;
+  margin: 6px 0 0;
+  padding: 8px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 4px);
+  background: var(--bg);
+  font-family: var(--mono, var(--font-mono));
+  font-size: 12px;
+  white-space: pre;
+}
+.hui-files-body { position: relative; display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; }
+.hui-files-editor { flex: 1; min-height: 0; }
+.hui-files-editor[hidden] { display: none; }
+.hui-files-markdown { flex: 1; min-height: 0; overflow: auto; padding: 16px 24px 32px; }
+.hui-files-markdown > :first-child { margin-top: 0; }
+.hui-files-empty { display: flex; flex: 1; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 24px; color: var(--muted); font-size: 13px; text-align: center; }
+.hui-files-empty p { margin: 0; max-width: 420px; line-height: 1.5; }
+.hui-files-empty strong { color: var(--text); }
+.hui-files-meta dl { display: grid; grid-template-columns: auto auto; gap: 2px 12px; margin: 8px 0 12px; text-align: start; }
+.hui-files-meta dt { color: var(--muted); }
+.hui-files-meta dd { margin: 0; color: var(--text); }
+.hui-files-meta .btn { display: inline-flex; align-items: center; gap: 6px; }
+.hui-files-preview {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  overflow: auto;
+  padding: 16px;
+  background: color-mix(in srgb, var(--bg-hover, var(--border)) 45%, var(--bg));
+}
+.hui-files-preview img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: var(--radius-sm, 4px); box-shadow: 0 0 0 1px var(--border); background: repeating-conic-gradient(color-mix(in srgb, var(--text) 6%, transparent) 0 25%, transparent 0 50%) 0 0 / 16px 16px; }
+.hui-files-pdf { flex: 1; width: 100%; min-height: 0; border: 0; background: var(--bg); }
+.hui-files-dialog__risks { margin: 4px 0 12px; padding-inline-start: 20px; font-size: 13px; line-height: 1.5; }
+.hui-files-dialog__risks code { font-size: 12px; word-break: break-all; }
+
+/* ── narrow: the navigator is a drawer and the editor takes the full width ── */
+.hui-files--narrow .hui-files-nav {
+  position: absolute;
+  z-index: 3;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: min(86%, 320px);
+  box-shadow: var(--shadow-lg, 0 8px 32px rgb(0 0 0 / 25%));
+}
+.hui-files-backdrop {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  border: 0;
+  background: rgb(0 0 0 / 35%);
+  cursor: default;
+}
+/* iOS zooms into anything focused below 16px. */
+.hui-files--narrow { --hui-files-editor-font-size: 16px; }
+.hui-files--narrow .hui-files-nav__filter-input,
+.hui-files--narrow .hui-files-dialog__input,
+.hui-files-dialog .hui-files-dialog__input { font-size: 16px; }
+.hui-files--narrow .hui-files-row__main { height: 36px; font-size: 15px; }
+.hui-files--narrow .hui-files-row__delete { opacity: 1; }
+.hui-files--narrow .hui-files-row__main { padding-inline-end: 32px; }
+.hui-files--narrow .btn--icon { width: 36px; min-width: 36px; height: 36px; padding: 9px; }
+.hui-files--narrow .hui-files-markdown { padding: 12px 14px 24px; font-size: 16px; }
+/* Path on the first row; status, display mode and actions on the second. */
+.hui-files--narrow .hui-files-main__header { flex-wrap: wrap; row-gap: 2px; }
+.hui-files--narrow .hui-files-path { flex: 1 1 0; }
+.hui-files--narrow .hui-files-main__spacer { flex: 1 0 100%; height: 0; }
+.hui-files--narrow .hui-files-main__spacer + .hui-files-status { margin-inline-start: 6px; }
+.hui-files--narrow .hui-files-segmented { margin-inline-start: auto; }
+@media (hover: none) {
+  .hui-files .hui-files-row__delete { opacity: 1; }
+}

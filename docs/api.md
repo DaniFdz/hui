@@ -3377,6 +3377,74 @@ model-facing text, a PNG image for `screenshot`, and small `details` (`action`,
 tab id/title/URL and outcome flags) in PI's transcript; no route or registry
 format changes.
 
+### Files view API
+
+The Files view reads and writes the conversation's working directory through
+these routes. They use the existing `x-hui: 1` guard (the raw route included:
+previews are fetched as blobs, never pointed at by an element) and a registered
+HUI session; the gateway chooses the session's recorded `cwd`. Every `path` is
+relative to it, `/`-separated, with `""` for the root. Shapes live in
+`shared/files.ts`.
+
+| Route | Method | Result |
+| --- | --- | --- |
+| `/__hui/sessions/:id/files` | GET | `FilesInfo`: `{ available: true, root, name }` (`root` with `~` for home) or `{ available: false, reason }` |
+| `/__hui/sessions/:id/files/list?path=` | GET | `{ path, entries: FileEntry[], truncated }`: one folder, folders first, at most 2,000 entries |
+| `/__hui/sessions/:id/files/search?q=` | GET | `{ query, entries, truncated, source: "git" \| "walk" }`, at most 100 files |
+| `/__hui/sessions/:id/files/file?path=` | GET | `FileRead` and an `ETag` header |
+| Same | PUT | `{ content }` with `If-Match: "<etag>"` → `FileSaved` `{ path, etag, size, mtime }` |
+| `/__hui/sessions/:id/files/raw?path=` | GET | The file's bytes, at most 64 MiB |
+| `/__hui/sessions/:id/files/entry` | POST | `{ path, kind: "file" \| "directory" }` → 201 `{ entry }`, empty and never replacing |
+| `/__hui/sessions/:id/files/entry?path=[&recursive=1]` | DELETE | `{ deleted: { path, kind } }` |
+| `/__hui/sessions/:id/files/upload?dir=&name=[&overwrite=1]` | POST | Raw body, at most 64 MiB → 201 `{ entry }` |
+
+`FileEntry` is `{ name, path, kind: "directory" | "file" | "symlink" | "other",
+size, symlink? }`. A link whose target stays inside the root reports its target's
+kind with `symlink: true`; one that leaves it, or dangles, stays `symlink` and
+cannot be opened. `.git` is never listed. `FileRead` is `{ path, name, size,
+mtime, etag, writable, kind, mimeType, content? }` where `kind` is `text` (valid
+UTF-8 without NUL, at most 2,000,000 bytes, `content` verbatim with separators
+and BOM), `image` (PNG, JPEG, GIF, WebP, AVIF, BMP, ICO by extension), `pdf`,
+`binary` or `too-large`. A text etag is the content's SHA-256 prefix; others are
+modification time plus size, and only text is writable. SVG is text.
+
+A save is optimistic. Without `If-Match` it answers 428. When the file's current
+etag differs it answers 409 `{ error, code: "conflict", current: FileRead }` and
+writes nothing; overwriting means saving again with `current.etag`. A save
+writes a temporary file beside the target, keeps its mode and renames it over
+the target, following a link only to a file inside the root. Saves and uploads
+to one file are serialized in the gateway.
+
+Search lists `git ls-files --cached --others --exclude-standard` inside a
+repository (cached for 3 seconds) and otherwise walks at most 20,000 files and
+16 levels, skipping `.git`, `node_modules` and similar folders. Every word of the
+query must appear in the path; names that start with it rank first.
+
+The raw route sends `content-type` by extension (`application/octet-stream`
+otherwise), `x-content-type-options: nosniff`, `content-security-policy:
+default-src 'none'; sandbox`, and `content-disposition: attachment` for anything
+that is not an image or PDF.
+
+Refusals: 400 for malformed input, absolute paths or NUL bytes; 403 for a path
+that leaves the root (`code: "outside"`), a permission error or a read-only file
+(`code: "read_only"`); 404 for an unknown session or missing entry; 409 for an
+existing name on create or upload (`code: "exists"`), a non-empty folder deleted
+without `recursive=1` (`code: "not_empty"`), a save conflict, or a conversation on
+a remote worker (`code: "remote"`, where `GET …/files` answers `available: false`);
+413 past the size limits; 415 for saving over a non-text file; 422 for a folder
+where a file is expected, an invalid name, uploading over a folder or link, or
+deleting the root.
+
+The browser keeps each Files view's selection, open folders, navigator state and
+Markdown display mode under `localStorage["hui.files-view.v1:<viewId>"]` (the
+Work view reference's `id`; removed when its tab closes), and a
+dirty File draft's base etag, base text and unsaved text under
+`localStorage["hui.file-draft.v1:<sessionId>\n<path>"]` until it is saved. A
+restored draft saves over its base etag, so a file that moved on becomes a
+conflict instead of being overwritten. The chat announces a conversation's
+settled turn as the page event `hui-session-turn-end` (`{ sessionId }`); the view
+refreshes on it.
+
 ### Suggested tasks
 
 Regular PI sessions also receive two HUI tools modeled on OpenClaw's

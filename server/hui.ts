@@ -168,6 +168,7 @@ import { attachSessionTransport, sessionStreamTicket } from "./session-transport
 import { createSessionListHub } from "./session-list.ts";
 import { COMPRESSION_MIN_BYTES, compressBody, negotiateEncoding } from "./http-compression.ts";
 import { attachTerminalTransport, terminalTicket } from "./terminal-transport.ts";
+import { createFileRoutes, FILES_ROUTE, parseIfMatch } from "./file-routes.ts";
 import {
   createSessionGroup,
   deleteSessionGroup,
@@ -261,6 +262,7 @@ const PRESENTED_MEDIA_ROUTE = /^\/__hui\/media\/([0-9a-f-]+)\/([^/]+)$/u;
 const HEARTBEAT_MS = 15_000;
 const piMutations = new PiMutationService();
 const workerRoutes = createWorkerRoutes({ service: workers, readRegistry });
+const fileRoutes = createFileRoutes({ session: async (id) => (await readRegistry()).find((record) => record.id === id) });
 // Sessions a lost connection interrupted reattach once their worker is back,
 // and stop showing a reconnect once HUI no longer tries.
 function forWorkerSessions(workerId: string, act: (record: SessionRecord) => void): void {
@@ -906,6 +908,19 @@ async function readBody(
     chunks.push(buffer);
   }
   return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+}
+
+/** A request body as bytes (an upload), refusing anything past `maxBytes`. */
+async function readBytes(request: Connect.IncomingMessage, maxBytes: number): Promise<Buffer> {
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const chunk of request) {
+    const buffer = chunk as Buffer;
+    size += buffer.length;
+    if (size > maxBytes) throw new Error("request body too large");
+    chunks.push(buffer);
+  }
+  return Buffer.concat(chunks);
 }
 
 /** Writes an uploaded file under the config dir and returns its absolute path. */
@@ -2640,6 +2655,34 @@ async function handleRequest(
       } else throw new TerminalError("Method not allowed.", 405);
     } catch (error) {
       sendJson(response, error instanceof TerminalError ? error.status : 500, { error: error instanceof Error ? error.message : "Terminal request failed." });
+    }
+    return;
+  }
+
+  // The Files view: the conversation's working directory, never another path (`file-routes.ts`).
+  if (FILES_ROUTE.test(path)) {
+    const result = await fileRoutes.handle({
+      method: request.method ?? "GET",
+      path,
+      query: new URL(request.url ?? "/", "http://localhost").searchParams,
+      ifMatch: parseIfMatch(request.headers["if-match"]),
+      json: (maxBytes) => readBody(request, maxBytes),
+      bytes: (maxBytes) => readBytes(request, maxBytes),
+    });
+    if (!result) sendJson(response, 404, { error: `unknown route: ${path}` });
+    else if ("file" in result) {
+      response.statusCode = result.status;
+      response.setHeader("content-type", result.file.mimeType);
+      response.setHeader("content-length", String(result.file.data.length));
+      response.setHeader("cache-control", "no-store");
+      response.setHeader("x-content-type-options", "nosniff");
+      response.setHeader("cross-origin-resource-policy", "same-origin");
+      response.setHeader("content-security-policy", "default-src 'none'; sandbox");
+      if (result.file.download) response.setHeader("content-disposition", `attachment; filename*=UTF-8''${encodeURIComponent(result.file.name)}`);
+      response.end(result.file.data);
+    } else {
+      if (result.etag) response.setHeader("etag", `"${result.etag}"`);
+      sendJson(response, result.status, result.body);
     }
     return;
   }

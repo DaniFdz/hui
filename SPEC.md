@@ -273,13 +273,13 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   the active-pane presentation and do not expose an unusable drag handle.
 - The **Work pane** (after AgentsInTheCloud's) sits to the right of the chat
   panes and shows the Work views of the focused conversation: its terminals and
-  its browser view, with Files and VS Code kinds registering through the same
-  contract (`src/lib/work-pane.ts`). Each conversation has its own pane; moving
+  its browser view, its Files views (see *Files*), with the VS Code kind
+  registering through the same contract (`src/lib/work-pane.ts`). Each conversation has its own pane; moving
   focus to another chat pane or conversation switches the contents. One view is
   visible at a time, chosen from a tab strip (icon, title, close; drag or
   Alt+Shift+Arrow to reorder, Arrow/Home/End to move, Delete to close). The **+**
   menu launches views (Ctrl+Alt+Shift+T / ⌥⇧⌘T new terminal, Ctrl+Alt+Shift+B /
-  ⌥⇧⌘B browser)
+  ⌥⇧⌘B browser, Ctrl+Alt+Shift+F / ⌥⇧⌘F a new Files view)
   and reopens running terminals whose tab was closed; with nothing open the pane
   lists the same launchers with their shortcuts. A launcher that cannot act says
   why (the browser tool turned off, a conversation on a remote worker has no
@@ -309,9 +309,10 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   chat panes, splits and tabs stay as they were.
 - **Work pane shortcuts** are one scheme: Mod+Alt+Shift plus the initial of what
   they open (⌥⇧⌘ on macOS, Ctrl+Alt+Shift elsewhere): **T** new terminal, **B**
-  browser and **P** to show or hide the pane. They are listened for on the
-  document in the capture phase, so they work from the composer and inside a
-  terminal. Each one is shown where it acts (launchers, **+** menu, rail and
+  browser, **F** Files and **P** to show or hide the pane. They are listened for
+  on the document in the capture phase, so they work from the composer, inside a
+  terminal and inside the Files editor (CodeMirror's own Alt chords, ⌥⌘G go to
+  line and ⌥⌘\ indent, never include Shift). Each one is shown where it acts (launchers, **+** menu, rail and
   toggle tooltips, `aria-keyshortcuts`). The table and the chords it avoids live
   in `src/lib/work-shortcuts.ts`, whose test fails if a binding lands on one.
   Plain ⌥⌘/Ctrl+Alt letters are not used: Apple's standard keys take ⌥⌘T
@@ -673,6 +674,60 @@ additive `browser` block in `settings.json`; the browser view is a
 `{ "kind": "browser" }` entry in the browser-local Work pane record (layouts
 saved earlier marked it with `browser: true` and load into the Work pane). PI
 transcripts and the registry format are unchanged.
+
+## Files
+
+A **Files view** is a Work view (AgentsInTheCloud's term, adopted with the Work
+pane) for navigating the conversation's working directory and viewing or
+editing a file in it. It combines a collapsible **Files navigator** (a lazily
+expanded file tree, a filter, upload, new file or folder) with the selected
+file. A conversation may hold several Files views, each with its own selection,
+including several views of the same file. **Files** in the Work pane's **+**
+menu (Ctrl+Alt+Shift+F / ⌥⇧⌘F) opens a new one; its tab shows the selected file's name
+(or *Files*). Closing the tab forgets that view's selection and open folders; a
+file's unsaved text stays with its File draft until it is saved.
+
+The root is the conversation's recorded `cwd` (its directory or worktree);
+callers cannot name another. Every path resolves through `realpath` inside that
+root, so neither `..` nor a symlink reaches outside it: links that point outside
+are listed but cannot be opened, and writes never follow them. Git's `.git`
+store is not listed. Conversations on a remote worker show **Files are not
+available** with the reason, because their files live on that machine; the
+gateway never reads its own disk in their place.
+
+Text files up to 2 MB open in a CodeMirror 6 editor themed from HUI's tokens;
+it loads on demand, outside the main bundle. Edits save automatically after a
+short pause, and the header shows **Saved**, **Saving…**, **Conflict**,
+**Not saved: <reason>** (with Retry) or **Read only**. A save names the version it
+edited (the content's hash); when the file changed on disk meanwhile — usually
+the agent — the save is refused and the view shows the disk version beside a
+choice of **Reload from disk** or **Overwrite with mine**, keeping the unsaved
+text until then. A failed save keeps it too. The working text and save state of
+a file (its **File draft**) are shared by every Files view of that file in the
+page, and unsaved text survives a reload in browser storage until it reaches the
+disk. Line endings, BOM and a missing final newline are preserved.
+
+Markdown files have a **Markdown display mode**, **Source** or **Rendered**
+(HUI's chat Markdown renderer); the mode never decides whether the file is
+writable. Images and PDFs show as previews; other binary files and text over
+the limit show their size and modification time with **Download**.
+
+The navigator refreshes open folders and the selected file when the
+conversation's agent turn ends, when the view becomes visible again and on
+**Refresh**. The filter searches paths: Git's tracked and unignored files in a
+repository, a bounded walk elsewhere. Uploads go to the selected file's folder
+(or a folder row they are dropped on) and replace an existing file only after a
+confirmation listing each path. Deleting a file, link or folder asks first,
+listing what goes — a folder with everything inside it, unsaved edits, the open
+file — and states that it does not use the trash; the gateway deletes a
+non-empty folder only with that confirmation, and never the root. On narrow
+screens the navigator is a drawer and the editor takes the full width with a
+16 px font, so iOS does not zoom.
+
+CodeMirror's packages (`@codemirror/*`, `@lezer/highlight`) were authorized
+with this feature. The view's selection, open folders and display mode, and
+unsaved drafts, are browser-local storage; the HUI registry and PI transcripts
+are unchanged.
 
 ## Live chat projection
 
