@@ -287,7 +287,7 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   why in visible text (the browser tool or VS Code turned off, no VS Code server
   found, a conversation on a remote worker has no local terminal) and, when a
   setting changes that, links to its Settings section, which opens scrolled to
-  it. **Hide Work pane** (Ctrl+Alt+Shift+P / ⌥⇧⌘P) collapses it to a rail
+  it with a little room (`--space-6`) above its heading. **Hide Work pane** (Ctrl+Alt+Shift+P / ⌥⇧⌘P) collapses it to a rail
   with one button per open view; its left edge resizes with the pointer or the
   arrow keys (Shift for larger steps, Home/End for the limits), keeping at least
   420px for each chat column side by side: the pane yields width down to its own
