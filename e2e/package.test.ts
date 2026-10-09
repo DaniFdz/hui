@@ -130,7 +130,10 @@ require('node:fs').writeFileSync(process.env.HUI_DESKTOP_PROOF, JSON.stringify({
     return response.json();
   };
   const waitIdle = (id: string, label = "session") => waitStatus(id, "idle", label);
+  // A failure names what the stream showed and why it ended, with the gateway's
+  // log: the TAP report carries only the message, and the log is deleted after.
   const waitStatus = async (id: string, wanted: "idle" | "running", label: string) => {
+    const seen: string[] = [];
     try {
       const response = await fetch(new URL(`/__hui/sessions/${id}/events`, status.url), { headers: { "x-hui": "1" }, signal: AbortSignal.timeout(20_000) });
       const reader = response.body!.getReader(); const decoder = new TextDecoder(); let buffer = "";
@@ -140,14 +143,20 @@ require('node:fs').writeFileSync(process.env.HUI_DESKTOP_PROOF, JSON.stringify({
           buffer += decoder.decode(result.value, { stream: true });
           while (buffer.includes("\n\n")) {
             const end = buffer.indexOf("\n\n"); const frame = buffer.slice(0, end); buffer = buffer.slice(end + 2);
+            const event = frame.split("\n").find((line) => line.startsWith("event: "))?.slice(7);
             const data = frame.split("\n").find((line) => line.startsWith("data: "))?.slice(6);
-            if (data && JSON.parse(data).status === wanted) return;
-            if (data && JSON.parse(data).status === "error") throw new Error("SDK session boot failed");
+            const parsed = data ? JSON.parse(data) as { status?: unknown; type?: unknown; message?: unknown } : undefined;
+            if (parsed?.status !== undefined) seen.push(`${event}:${String(parsed.status)}`);
+            else if (event === "event" && parsed?.type === "error") seen.push(`error:${String(parsed.message)}`);
+            if (parsed?.status === wanted) return;
+            if (parsed?.status === "error") throw new Error("SDK session boot failed");
           }
         }
       } finally { await reader.cancel(); }
     } catch (error) {
-      throw new Error(`${label} did not reach ${wanted}.`, { cause: error });
+      const reason = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+      const log = await command("gateway", "logs", "--lines", "40").catch((logError: unknown) => `gateway logs unavailable: ${String(logError)}`);
+      throw new Error(`${label} did not reach ${wanted} (${reason}; stream: ${seen.join(", ") || "nothing"}).\nGateway log:\n${log}`, { cause: error });
     }
   };
   assert.match(await (await fetch(new URL("/settings/tools", status.url))).text(), /hui-app/u);
@@ -307,6 +316,10 @@ require('node:fs').writeFileSync(process.env.HUI_DESKTOP_PROOF, JSON.stringify({
   const checked = JSON.parse(await command("update", "--check", "--json"));
   assert.equal(checked.canInstall, true); assert.equal(checked.latest.version, nextVersion);
   assert.equal(await command("--version"), baseline, "check never installs");
+  // The replay interrupted by the forced restart above resumes when this gateway
+  // starts. Count the provider's holds first, so the release below waits for this
+  // gateway's own resend rather than for any hold the provider has seen.
+  const heldBeforeReopen = (await (await fetch(`${providerUrl}/control/wait-held?count=0`)).json() as { held: number }).held;
   status = JSON.parse(await command("gateway", "start", "--port", "0", "--json"));
   assert.equal((await api("update/check", {})).check.canInstall, true);
   assert.equal((await fetch(new URL("/__hui/update", status.url))).status, 403);
@@ -319,7 +332,8 @@ require('node:fs').writeFileSync(process.env.HUI_DESKTOP_PROOF, JSON.stringify({
     assert.equal((await post(`sessions/${session.id}/${verb}`, { text: "/update --force" })).status, 400);
   }
   await api(`sessions/${session.id}/open`, {});
-  await fetch(`${providerUrl}/control/wait-replay-ready`, { signal: AbortSignal.timeout(20_000) });
+  assert.equal((await fetch(`${providerUrl}/control/wait-held?count=${heldBeforeReopen + 1}`, { signal: AbortSignal.timeout(20_000) })).status, 200);
+  await waitStatus(session.id, "running", "remote update reopen resend");
   await fetch(`${providerUrl}/control/release-replay`, { method: "POST" });
   await waitIdle(session.id, "remote update reopen");
   await api(`sessions/${session.id}/prompt`, { text: "E2E_REPLAY" });
