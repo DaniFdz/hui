@@ -21,6 +21,8 @@ export const WORK_SHORTCUTS = {
   files: "Mod+Alt+Shift+KeyF",
   /** C for Code: ⌥⇧⌘V is Paste and Match Style in every Mac browser. */
   vscode: "Mod+Alt+Shift+KeyC",
+  /** D for Diff: ⌥⌘D, without Shift, shows or hides the Dock on macOS and Xfce shows the desktop on Ctrl+Alt+D. */
+  diff: "Mod+Alt+Shift+KeyD",
 } as const;
 
 export type AvoidedShortcut = {

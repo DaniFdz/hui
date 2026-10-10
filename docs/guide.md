@@ -940,17 +940,27 @@ call's card (its summary and transcript) in the bot's chat.
 ## The Work pane
 
 The Work pane to the right of a conversation holds its terminals, browser view,
-Files views and VS Code. Its shortcuts are Ctrl+Alt+Shift (⌥⇧⌘ on a Mac) plus a
+Files views, VS Code and Diff views. Its shortcuts are Ctrl+Alt+Shift (⌥⇧⌘ on a Mac) plus a
 letter, and work from the composer and inside a terminal (not while VS Code has
 focus: click the tab strip first):
 
-- **T** new terminal, **B** browser, **F** Files, **C** VS Code.
+- **T** new terminal, **B** browser, **F** Files, **C** VS Code, **D** Diff.
 - **P** shows or hides the pane.
 - **M** maximizes the pane over the chat, or restores the chat beside it. The
   **Maximize** button beside **+** does the same. While maximized, the selector
   above the pane switches between the views and back to the chat (choosing a
   chat restores it); the chat keeps running underneath. Each conversation
   remembers its own choice in this browser.
+
+A **Diff** view shows what changed in the conversation's Git checkout. Choose
+what to compare at the top: **Uncommitted changes** (what the agent just changed,
+new files included; it opens on this when there are any), **Last commit**,
+**Against the previous branch** (the branch this one is stacked on; HUI finds it
+and you can pick another) or **Against the default branch** (everything the
+branch adds on top of main). The last two include uncommitted changes unless you
+untick **Include uncommitted**. Pick a file on the left to see its diff, unified
+or **Side by side** when the pane is wide enough; click its name to open it in
+Files. The view refreshes by itself when the agent's turn ends.
 
 ## Interactive widgets in the chat
 
