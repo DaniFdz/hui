@@ -13,13 +13,15 @@ export type TriggerFlags = {
   json?: boolean;
   name?: string;
   prompt?: string;
-  /** `add`: the source, one of these four. */
+  /** `add`: the source, one of these five. */
   github?: string;
   session?: boolean;
   webhook?: boolean;
   slack?: boolean;
+  listener?: boolean;
   on?: string;
-  /** `--slack`: only messages with a pull request link, from these people, in these channels, and who else may wake it. */
+  /** `--slack`: only messages with a pull request link, from these people, in these channels, and who else may wake it;
+   * `--listener`: the same switches, for the events a listener marks. */
   "pr-links"?: boolean;
   from?: string;
   in?: string;
@@ -44,7 +46,7 @@ export function parseCooldown(value: string): number {
   return Number(match[1]) * { s: 1, m: 60, h: 3_600, d: 86_400 }[(match[2] ?? "s") as "s" | "m" | "h" | "d"];
 }
 
-/** `field=value` (equals) or `field~value` (contains); no field matches the whole body. */
+/** `field=value` (equals) or `field~value` (contains); no field matches the whole body (a listener's: the whole event). */
 export function parseMatch(value: string): { field: string; op: "equals" | "contains"; value: string } {
   const match = /^([^=~]*)([=~])(.+)$/u.exec(value);
   if (!match) throw new Error("--match takes field=value (equals) or field~value (contains), such as action=opened.");
@@ -78,6 +80,14 @@ export function triggerBody(flags: TriggerFlags): Record<string, unknown> {
       ...(flags["pr-links"] ? { prLinks: true } : {}),
       ...(flags.from !== undefined ? { from: list(flags.from).map((person) => person.replace(/^@/u, "")) } : {}),
       ...(flags.in !== undefined ? { in: list(flags.in).map((channel) => channel.replace(/^#/u, "")) } : {}),
+      ...(flags["allow-external"] ? { external: true } : {}),
+      ...(flags["allow-bots"] ? { bots: true } : {}),
+    };
+  } else if (flags.listener) {
+    body["source"] = "listener";
+    body["filter"] = {
+      ...(flags.match !== undefined ? { match: parseMatch(flags.match) } : {}),
+      ...(flags["pr-links"] ? { prLinks: true } : {}),
       ...(flags["allow-external"] ? { external: true } : {}),
       ...(flags["allow-bots"] ? { bots: true } : {}),
     };
@@ -127,8 +137,9 @@ export async function triggerCommand(base: string, action: string, operands: rea
     case "add": {
       const created = await request<BotTriggerCreated>(base, path, { method: "POST", body: triggerBody(flags), timeoutMs: 30_000 });
       const url = created.hook ? new URL(created.hook.path, base).href : undefined;
+      const listener = created.trigger.source === "listener";
       print(created, url
-        ? `Added the webhook trigger ${created.trigger.name} to @${bot.handle}. Its URL, shown this once (POST JSON or text to it from this machine or your tailnet; use the gateway's tailnet name from elsewhere):\n${url}`
+        ? `Added the ${listener ? "listener" : "webhook"} trigger ${created.trigger.name} to @${bot.handle}. Its URL, shown this once (${listener ? "your listener POSTs { \"events\": [...] } to it after every check" : "POST JSON or text to it"} from this machine or your tailnet; use the gateway's tailnet name from elsewhere):\n${url}`
         : `Added the trigger ${created.trigger.name} to @${bot.handle}: ${botTriggerFilterSummary(created.trigger)}.`);
       return 0;
     }
@@ -150,9 +161,9 @@ export async function triggerCommand(base: string, action: string, operands: rea
 /** What `add` would refuse anyway, refused before a request. */
 export function checkTriggerAdd(values: Record<string, unknown>): void {
   const given = (flag: string) => values[flag] !== undefined && values[flag] !== false;
-  const sources = ["github", "session", "webhook", "slack"].filter(given);
+  const sources = ["github", "session", "webhook", "slack", "listener"].filter(given);
   if (!values["name"]) throw new Error("bot trigger add needs --name.");
-  if (sources.length !== 1) throw new Error("bot trigger add needs exactly one of --github <owner/name,…>, --session, --webhook or --slack.");
+  if (sources.length !== 1) throw new Error("bot trigger add needs exactly one of --github <owner/name,…>, --session, --webhook, --slack or --listener.");
   const events = list(values["on"] as string | undefined);
   if (given("github")) {
     if (!list(values["github"] as string).length) throw new Error("--github needs owner/name, comma-separated for several repos.");
@@ -170,10 +181,12 @@ export function checkTriggerAdd(values: Record<string, unknown>): void {
     if (!events.length || unknown.length) throw new Error(`--on takes Slack events, comma-separated: ${SLACK_TRIGGER_EVENTS.join(", ")} (mention: a message that @-mentions you in a channel or group DM; dm: a direct message to you).`);
     for (const flag of ["from", "in"]) if (given(flag) && !list(values[flag] as string).length) throw new Error(`--${flag} needs comma-separated names.`);
   } else {
-    for (const flag of ["pr-links", "from", "in", "allow-bots", "allow-external"]) if (given(flag)) throw new Error(`--${flag} only applies to --slack.`);
+    for (const flag of ["from", "in"]) if (given(flag)) throw new Error(`--${flag} only applies to --slack.`);
+    if (!given("listener")) for (const flag of ["pr-links", "allow-bots", "allow-external"]) if (given(flag)) throw new Error(`--${flag} only applies to --slack or --listener.`);
   }
   if (given("webhook") && given("on")) throw new Error("--on doesn't apply to --webhook: every call wakes it, or those --match lets through.");
-  if (given("match") && !given("webhook")) throw new Error("--match only applies to --webhook.");
+  if (given("listener") && given("on")) throw new Error("--on doesn't apply to --listener: every event it reports wakes it, or those --match lets through.");
+  if (given("match") && !given("webhook") && !given("listener")) throw new Error("--match only applies to --webhook or --listener.");
   if (given("match")) parseMatch(String(values["match"]));
   if (given("draft") && given("ready")) throw new Error("Use either --draft (only drafts) or --ready (only ready pull requests).");
   if (given("pr") && list(values["pr"] as string).some((number) => !/^#?\d{1,10}$/u.test(number))) throw new Error("--pr takes pull request numbers, comma-separated.");

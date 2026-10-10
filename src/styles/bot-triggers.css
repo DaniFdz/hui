@@ -86,8 +86,9 @@
 .bot-trigger-form__summary:focus-visible,
 .bot-trigger-form__more-summary:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .bot-trigger-form__body { display: flex; flex-direction: column; gap: 10px; padding: 0 12px 12px; }
-.bot-trigger-form__sources { align-self: flex-start; flex-wrap: wrap; max-width: 100%; }
-.bot-trigger-form__sources > .settings-segmented__btn { position: relative; padding: 0 10px; }
+/* Five sources fill the row evenly (the Sessions filter's segment does the same); at large text sizes they wrap. */
+.bot-trigger-form__sources { align-self: stretch; flex-wrap: wrap; max-width: 100%; }
+.bot-trigger-form__sources > .settings-segmented__btn { position: relative; flex: 1 1 auto; justify-content: center; padding: 0 6px; }
 .bot-trigger-form__sources input {
   position: absolute;
   width: 1px;
@@ -107,6 +108,7 @@
 .bot-trigger-form:has(input[name="source"][value="session"]:checked) .bot-trigger-form__when--session,
 .bot-trigger-form:has(input[name="source"][value="webhook"]:checked) .bot-trigger-form__when--webhook { display: flex; }
 .bot-trigger-form:has(input[name="source"][value="slack"]:checked) .bot-trigger-form__when--slack { display: flex; }
+.bot-trigger-form:has(input[name="source"][value="listener"]:checked) .bot-trigger-form__when--listener { display: flex; }
 .bot-trigger-form__preset { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
 .bot-trigger-form__preset-button { display: inline-flex; align-items: center; gap: 6px; }
 .bot-trigger-form__preset-button svg { width: 13px; height: 13px; }

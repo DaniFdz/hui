@@ -1,7 +1,7 @@
 /**
  * Where triggers live (HUI-18), beside `bots.json` and only written by HUI:
  *
- *   ~/.config/hui/bot-triggers.json        { version: 1, triggers, runs, pending, deliveries }
+ *   ~/.config/hui/bot-triggers.json        { version: 1, triggers, runs, pending, deliveries, seen }
  *   ~/.config/hui/bot-trigger-cursors.json { version: 1, repos }   (GitHub pollers' cursors)
  *   ~/.config/hui/bot-trigger-slack.json   { version: 1, cursor }  (the Slack poller's cursor)
  *
@@ -29,7 +29,7 @@ export class TriggerStoreError extends Error {
 }
 
 /** An event as it waits for a trigger's cooldown: already rendered, so it survives a restart without its source. A
- * Slack event keeps the pull requests it links to, which its delivery reads when it goes out. */
+ * Slack or listener event keeps the pull requests it links to, which its delivery reads when it goes out. */
 export type PendingEvent = { summary: string; details: string; at: string; links?: string[] };
 
 /** The GitHub pull request URLs a pending Slack event keeps, as `pullRequestLinks` makes them. */
@@ -46,6 +46,9 @@ export type TriggerState = {
   pending: Record<string, TriggerPending>;
   /** Bot id → its deliveries in the last hour, for the hourly cap. */
   deliveries: Record<string, string[]>;
+  /** Listener trigger id → the event ids its listener reported, newest last, so one reported again never wakes the bot
+   * twice. Written with the delivery they decide. */
+  seen: Record<string, string[]>;
   /** Records that did not validate, written back untouched. */
   invalid: unknown[];
 };
@@ -102,15 +105,19 @@ function parseTriggerState(raw: Record<string, unknown>): TriggerState {
   }
   const runs = (Array.isArray(raw["runs"]) ? raw["runs"] : []).flatMap((run) => parseRun(run) ?? []);
   // Built with fromEntries, so no key a hand edit puts in the file (`__proto__` included) is more than a key.
-  // A Slack event's details hold the message and its thread parent: they keep more than other sources' do.
-  const slack = new Set(triggers.filter((trigger) => trigger.source === "slack").map((trigger) => trigger.id));
+  // A Slack event's details hold the message and its thread parent, and a listener's what it found: they keep more
+  // than other sources' do.
+  const long = new Set(triggers.filter((trigger) => trigger.source === "slack" || trigger.source === "listener").map((trigger) => trigger.id));
   const pending: Record<string, TriggerPending> = Object.fromEntries(Object.entries(isRecord(raw["pending"]) ? raw["pending"] : {}).flatMap(([id, value]): [string, TriggerPending][] => {
-    const parsed = parsePending(value, slack.has(id) ? BOT_TRIGGER_LIMITS.slackDetails : BOT_TRIGGER_LIMITS.details);
+    const parsed = parsePending(value, long.has(id) ? BOT_TRIGGER_LIMITS.slackDetails : BOT_TRIGGER_LIMITS.details);
     return parsed && ids.has(id) ? [[id, parsed]] : [];
   }));
+  const listeners = new Set(triggers.filter((trigger) => trigger.source === "listener").map((trigger) => trigger.id));
+  const seen: Record<string, string[]> = Object.fromEntries(Object.entries(isRecord(raw["seen"]) ? raw["seen"] : {}).flatMap(([id, events]): [string, string[]][] =>
+    listeners.has(id) && Array.isArray(events) ? [[id, events.filter((event): event is string => typeof event === "string" && event.length > 0 && event.length <= 200).slice(-BOT_TRIGGER_LIMITS.listenerSeen)]] : []));
   const deliveries: Record<string, string[]> = Object.fromEntries(Object.entries(isRecord(raw["deliveries"]) ? raw["deliveries"] : {}).flatMap(([botId, times]): [string, string[]][] =>
     /^[A-Za-z0-9_-]{1,100}$/u.test(botId) && Array.isArray(times) ? [[botId, times.filter((time): time is string => typeof time === "string" && ISO.test(time)).slice(-100)]] : []));
-  return { triggers, runs, pending, deliveries, invalid };
+  return { triggers, runs, pending, deliveries, seen, invalid };
 }
 
 /**
@@ -204,7 +211,7 @@ export function triggerStore(file = TRIGGERS_FILE, onInvalid: (count: number) =>
   let reported = 0;
   return new JsonStateFile<TriggerState>(file, {
     label: "triggers",
-    empty: () => ({ triggers: [], runs: [], pending: {}, deliveries: {}, invalid: [] }),
+    empty: () => ({ triggers: [], runs: [], pending: {}, deliveries: {}, seen: {}, invalid: [] }),
     parse: (raw) => {
       const state = parseTriggerState(raw);
       if (state.invalid.length !== reported) {
@@ -213,7 +220,7 @@ export function triggerStore(file = TRIGGERS_FILE, onInvalid: (count: number) =>
       }
       return state;
     },
-    serialize: (state) => ({ triggers: [...state.triggers, ...state.invalid], runs: state.runs, pending: state.pending, deliveries: state.deliveries }),
+    serialize: (state) => ({ triggers: [...state.triggers, ...state.invalid], runs: state.runs, pending: state.pending, deliveries: state.deliveries, seen: state.seen }),
   });
 }
 
