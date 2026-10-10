@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { DEFAULT_SETTINGS, normalizeSettings } from "./settings.ts";
 import { readFileSync } from "node:fs";
-import { DEFAULT_TERMINAL_FONT, loadTerminalFont, NERD_FONT_SYMBOLS, normalizeTerminalFont, terminalFontStack } from "./terminal-font.ts";
+import { DEFAULT_TERMINAL_FONT, loadTerminalFont, NERD_FONT_SYMBOLS, normalizeTerminalFont, terminalFontFaces, terminalFontStack, type FontRule, type FontSheet } from "./terminal-font.ts";
 
 test("terminal fonts migrate independently and round-trip custom local families", () => {
   assert.equal(normalizeSettings({ fontUi: "geist" }).fontTerminal, DEFAULT_TERMINAL_FONT);
@@ -47,4 +47,27 @@ test("terminal font loading requests the icon face with Nerd Font sample text", 
   await loadTerminalFont("FiraCode Nerd Font Mono", { load: async (font, text) => { calls.push([font, text]); return []; } });
   assert.deepEqual(calls, [[`13px ${terminalFontStack("FiraCode Nerd Font Mono")}`, "M\u{E0B0}\u{F0001}"]]);
   await loadTerminalFont("x", { load: async () => { throw new Error("blocked"); } });
+});
+
+const face = (declarations: Record<string, string>): FontRule => ({
+  cssText: "@font-face { … }",
+  style: { getPropertyValue: (name) => declarations[name] ?? "" },
+});
+
+test("the worker gets the stack's bundled faces with absolute sources, not other web fonts", () => {
+  const fonts: FontSheet = { href: "/fonts/jetbrains-mono.css", cssRules: [
+    face({ "font-family": '"JetBrains Mono"', "font-style": "normal", "font-weight": "400 700", src: 'url("jetbrains-mono-latin.woff2?v=1") format("woff2")', "unicode-range": "U+0000-00FF" }),
+    face({ "font-family": '"Geist"', src: 'url("geist.woff2")' }),
+  ] };
+  const symbols: FontSheet = { href: "/fonts/symbols-nerd-font-mono.css", cssRules: [face({ "font-family": `"${NERD_FONT_SYMBOLS}"`, src: "url(symbols-nerd-font-mono.woff2)" })] };
+  const app: FontSheet = { href: null, cssRules: [
+    { cssText: '@import url("/fonts/jetbrains-mono.css");', styleSheet: fonts },
+    { cssText: "@media (min-width: 1px) { … }", cssRules: [{ cssText: '@import url("/fonts/symbols-nerd-font-mono.css");', styleSheet: symbols }] },
+    { cssText: ".x { color: red }", style: { getPropertyValue: () => "" } },
+  ] };
+  const unreadable = { href: "https://cdn.example/x.css", get cssRules(): ArrayLike<FontRule> { throw new Error("SecurityError"); } };
+  assert.deepEqual(terminalFontFaces("MesloLGS NF", [app, unreadable, fonts], "http://hui.local/sessions/a"), [
+    { family: "JetBrains Mono", source: 'url("http://hui.local/fonts/jetbrains-mono-latin.woff2?v=1") format("woff2")', descriptors: { style: "normal", weight: "400 700", unicodeRange: "U+0000-00FF" } },
+    { family: NERD_FONT_SYMBOLS, source: 'url("http://hui.local/fonts/symbols-nerd-font-mono.woff2")', descriptors: {} },
+  ]);
 });

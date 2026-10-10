@@ -1,12 +1,20 @@
 import assert from "node:assert/strict";
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { test } from "node:test";
+import { after, test } from "node:test";
 
-import { sessionGroupPatch, discoverThemes, mergeThemes, registryUrlFor, waitForAutomationRun, waitForSessionReady, type ThemeEntry } from "./hui.ts";
+import type { ThemeEntry } from "./hui.ts";
 import type { SessionStreamMessage } from "./live-sessions.ts";
 import type { SessionRecord } from "./sessions.ts";
+
+// HUI's directory resolves at import time and hui.ts reads it as it loads: never the operator's own.
+const root = await mkdtemp(join(tmpdir(), "hui-gateway-home-"));
+process.env["HOME"] = root;
+process.env["XDG_CONFIG_HOME"] = join(root, "config");
+process.env["PI_CODING_AGENT_DIR"] = join(root, "agent");
+after(() => rm(root, { recursive: true, force: true }));
+const { sessionGroupPatch, discoverThemes, markBackgroundWork, mergeThemes, registryUrlFor, waitForAutomationRun, waitForSessionReady } = await import("./hui.ts");
 
 async function dirOf(files: Record<string, string>): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), "hui-themes-"));
@@ -164,4 +172,11 @@ test("a new session HUI is disconnected from fails at once instead of taking its
   await assert.rejects(ready, /disconnected/u);
   const already = waitForSessionReady("target", 2_000, watchedSession("disconnected").sessions);
   await assert.rejects(already, /disconnected/u);
+});
+
+test("a running watcher or subagent marks its session and every ancestor as busy", () => {
+  const view = (id: string, status: string, parentId?: string) => ({ id, status, ...(parentId ? { parentId } : {}) }) as never as Parameters<typeof markBackgroundWork>[0][number];
+  const views = [view("root", "idle"), view("child", "idle", "root"), view("grandchild", "running", "child"), view("watched", "idle"), view("calm", "idle"), view("loop", "running", "loop")];
+  markBackgroundWork(views, (id) => id === "watched");
+  assert.deepEqual(views.filter((v) => v.background).map((v) => v.id), ["root", "child", "watched"]);
 });

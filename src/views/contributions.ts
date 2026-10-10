@@ -1,3 +1,7 @@
+/**
+ * The Contributions page element. It charts the GitHub activity the gateway reads through `gh` and hosts the session
+ * calendar as its second tab; only the chosen metric, account and view persist, in localStorage.
+ */
 import { LitElement, html, nothing, svg } from "lit";
 
 import type { GitHubContributions } from "../../shared/github.ts";
@@ -14,8 +18,9 @@ import {
 import { icons } from "../lib/icons.ts";
 import { renderPicker } from "./settings-picker.ts";
 import "./session-calendar.ts";
+import { loadViewAssets } from "../lib/view-assets.ts";
 
-if (typeof document !== "undefined") await import("../styles/contributions.css");
+loadViewAssets(() => import("../styles/contributions.css"));
 
 const ALL = "all";
 const CELL = 10;

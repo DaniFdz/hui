@@ -40,6 +40,7 @@ test("a utility call that only reasons says so instead of reporting an empty ans
     await rm(dir, { recursive: true, force: true });
   });
   delete process.env["HUI_PI_CLI"];
+  process.env["HOME"] = dir;
   process.env["PI_CODING_AGENT_DIR"] = join(dir, "agent");
   process.env["XDG_CONFIG_HOME"] = join(dir, "config");
   process.env["HUI_PI_BACKEND"] = "sdk";
@@ -69,6 +70,7 @@ test("a utility call reports the provider's error instead of an empty answer", {
     await rm(dir, { recursive: true, force: true });
   });
   delete process.env["HUI_PI_CLI"];
+  process.env["HOME"] = dir;
   process.env["PI_CODING_AGENT_DIR"] = agentDir;
   process.env["XDG_CONFIG_HOME"] = join(dir, "config");
   process.env["HUI_PI_BACKEND"] = "sdk";

@@ -1,3 +1,7 @@
+/**
+ * The environment each PI worker process starts with: the gateway's own, plus a client session ID that belongs
+ * to that one job.
+ */
 import { randomUUID } from "node:crypto";
 
 /** Provider header interpolation must also work in extension-free PI workers.

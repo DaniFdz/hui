@@ -12,6 +12,9 @@ if (!workspace || !logFile) throw new Error("HUI_E2E_WORKSPACE and HUI_E2E_PROVI
 
 const replayWaiters = new Set();
 const replayReadyWaiters = new Set();
+/** Responses held so far, and who waits for a count of them: a resent request held again is told apart by count. */
+let heldCount = 0;
+const heldCountWaiters = new Set();
 const signalReplayReady = () => {
   for (const ready of replayReadyWaiters) ready();
   replayReadyWaiters.clear();
@@ -43,6 +46,14 @@ const toolUse = (response, id, name, input, index = 0) => {
   event(response, { type: "content_block_stop", index });
 };
 const flattenedText = (value) => JSON.stringify(value ?? []);
+/** An OptChat turn opens its first user message with the memory's view (one text block, or several where cache marks
+ * split it); fixtures answer what follows it, never the summaries of earlier turns. */
+const withoutView = (message) => {
+  const content = Array.isArray(message?.content) ? message.content : undefined;
+  if (content?.[0]?.type !== "text" || !String(content[0].text).startsWith("<chat>\n")) return message;
+  const end = content.findIndex((block) => block?.type === "text" && String(block.text).endsWith("\n</chat>"));
+  return end === -1 ? message : { ...message, content: content.slice(end + 1) };
+};
 /** Plain text of every tool result so far, so a multi-step fixture can reuse
  * refs from an earlier browser snapshot without JSON escaping. */
 const toolResultTexts = (messages) => (Array.isArray(messages) ? messages : []).flatMap((message) =>
@@ -118,6 +129,8 @@ const toolResultFrom = (message) => {
 /** True once POST /control/release-replay frees the response, false if the
  * client disconnected first (an abort). */
 const heldUntilRelease = (response) => new Promise((resolve) => {
+  heldCount += 1;
+  for (const waiter of heldCountWaiters) waiter();
   const release = () => {
     replayWaiters.delete(release);
     response.off("close", disconnected);
@@ -162,6 +175,17 @@ const server = createServer(async (request, response) => {
     request.on("close", () => replayReadyWaiters.delete(ready));
     return;
   }
+  if (request.method === "GET" && url.pathname === "/control/wait-held") {
+    const count = Number(url.searchParams.get("count") ?? 1);
+    const check = () => {
+      if (heldCount < count) return;
+      heldCountWaiters.delete(check);
+      json(response, 200, { held: heldCount });
+    };
+    heldCountWaiters.add(check);
+    request.on("close", () => heldCountWaiters.delete(check));
+    return check();
+  }
   if (request.method === "POST" && url.pathname === "/control/release-replay") {
     for (const release of replayWaiters) release();
     replayWaiters.clear();
@@ -186,12 +210,120 @@ const server = createServer(async (request, response) => {
   // And one with an x-e2e-token header logs that, e.g. to prove a remote worker got it.
   const header = request.headers["x-e2e-token"];
   await appendFile(logFile, `${JSON.stringify({ ...body, ...(clientSessionId === undefined ? {} : { clientSessionId }), ...(header === undefined ? {} : { header }) })}\n`, "utf8");
-  const source = flattenedText(body.messages?.at(-1));
+  const source = flattenedText(withoutView(body.messages?.at(-1)));
   const latestToolResult = toolResultFrom(body.messages?.at(-1));
+
+  // OptChat's compactor: one short kind-tagged line per step, naming the step's first marker. A message holding
+  // E2E_HOLD_MEMORY waits for POST /control/release-replay; E2E_OVERSIZE_MEMORY gets one line over the limit first.
+  if (flattenedText(body.system).includes("You write the memory of")) {
+    const blocks = Array.isArray(body.messages?.at(-1)?.content) ? body.messages.at(-1).content : [];
+    const step = String(blocks.at(-1)?.text ?? "");
+    response.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-store", connection: "keep-alive" });
+    messageStart(response);
+    if (step.startsWith("That line is ")) { text(response, "FIXTURE_MEMORY retried, now short"); return finish(response); }
+    // After the ruler paragraph and the instruction: the message, or the two lines to merge.
+    const input = step.split("\n").slice(4).join("\n");
+    const marker = /\b(?:E2E|OPT)_[A-Z0-9_]+/u.exec(input)?.[0] ?? "lines";
+    const compress = step.includes("\nCompress this message into one line");
+    if (compress && input.includes("E2E_HOLD_MEMORY") && !(await heldUntilRelease(response))) return;
+    if (compress && input.includes("E2E_OVERSIZE_MEMORY")) { text(response, `FIXTURE_MEMORY ${"oversize ".repeat(70)}`); return finish(response); }
+    text(response, compress ? `${input.slice(0, input.indexOf(":"))}: FIXTURE_MEMORY ${marker}` : `FIXTURE_MEMORY merged ${marker}`);
+    return finish(response);
+  }
   if (source.includes("E2E_ERROR")) return json(response, 500, { type: "error", error: { type: "api_error", message: "fixture provider error" } });
 
   response.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-store", connection: "keep-alive" });
   messageStart(response);
+
+  // Tool calls a test chooses: E2E_CALL:<base64url JSON of { name, input }, or an array of them> calls them all in one
+  // response, and the next answer quotes every result.
+  // E2E_ASK_USER:<name> does the same with ask_user_question and the workspace's `ask-<name>.json`: its input, or an
+  // array of inputs for parallel calls.
+  const chosen = /E2E_CALL:([A-Za-z0-9_-]+)/u.exec(source)?.[1];
+  const asked = /E2E_ASK_USER:([a-z0-9-]+)/u.exec(source)?.[1];
+  if (chosen || asked) {
+    const calls = asked
+      ? [JSON.parse(await readFile(`${workspace}/ask-${asked}.json`, "utf8"))].flat().map((input) => ({ name: "ask_user_question", input }))
+      : [JSON.parse(Buffer.from(chosen, "base64url").toString("utf8"))].flat();
+    calls.forEach((call, index) => toolUse(response, `tool-e2e-call-${index}`, call.name, call.input ?? {}, index));
+    return finish(response, "tool_use");
+  }
+  if (String(latestToolResult?.id ?? "").startsWith("tool-e2e-call-")) {
+    text(response, `tool answered: ${toolResultTexts([body.messages?.at(-1)]).join(" | ")}`);
+    return finish(response);
+  }
+
+  // A bot asking the operator for the shell through request_access; its reply is the tool's answer.
+  if (source.includes("E2E_REQUEST_ACCESS")) {
+    toolUse(response, "tool-e2e-request-access", "request_access", { tools: ["bash"], reason: "I need the shell to run the test suite before I report back." });
+    return finish(response, "tool_use");
+  }
+  if (latestToolResult?.id === "tool-e2e-request-access") {
+    text(response, typeof latestToolResult.result === "string" ? latestToolResult.result : JSON.stringify(latestToolResult.result));
+    return finish(response);
+  }
+
+  // A bot messaging another bot through HUI's message_bot tool: @bob, or the handle after it (E2E_MESSAGE_BOT @home).
+  if (source.includes("E2E_MESSAGE_BOT")) {
+    const to = /E2E_MESSAGE_BOT (@[a-z0-9-]+)/u.exec(source)?.[1] ?? "@bob";
+    toolUse(response, "tool-e2e-message-bot", "message_bot", { to, message: "hello from the fixture" });
+    return finish(response, "tool_use");
+  }
+  if (latestToolResult?.id === "tool-e2e-message-bot") {
+    text(response, `message_bot answered: ${typeof latestToolResult.result === "string" ? latestToolResult.result : JSON.stringify(latestToolResult.result)}`);
+    return finish(response);
+  }
+  // An imported bot's first turn, which HUI starts to send its template's opener: the opener, as written.
+  if (source.includes("[HUI bot created]") && source.includes("Your template opens with the message below")) {
+    const opener = "and reply with that message only.";
+    const blocks = Array.isArray(body.messages?.at(-1)?.content) ? body.messages.at(-1).content : [];
+    const said = blocks.filter((block) => block?.type === "text").map((block) => block.text).join("\n");
+    text(response, said.slice(said.lastIndexOf(opener) + opener.length).trim());
+    return finish(response);
+  }
+  // A new bot's first turn, which HUI starts: the first conversation's opening question. A bot still called
+  // "New Bot", whose soul section says it has no name yet, asks what to call it first, as its prompt tells it to.
+  if (source.includes("[HUI bot created]")) {
+    text(response, flattenedText(body.system).includes("You have no name yet")
+      ? "Hi, I'm new here and I don't have a name yet. What would you like to call me?"
+      : "Hi, I'm new here. What would you like me to look after for you?");
+    return finish(response);
+  }
+  // A bot saving its own SOUL.md with its write_soul tool.
+  if (source.includes("E2E_WRITE_SOUL")) {
+    toolUse(response, "tool-e2e-write-soul", "write_soul", { soul: "# Who I am\nE2E_SOUL_TEXT: a terse fixture bot.\n" });
+    return finish(response, "tool_use");
+  }
+  if (latestToolResult?.id === "tool-e2e-write-soul") {
+    text(response, "I wrote my SOUL.md. Change it in the Soul tab, or just tell me.");
+    return finish(response);
+  }
+  // A bot naming itself with set_profile, as the operator said.
+  if (source.includes("E2E_SET_PROFILE")) {
+    toolUse(response, "tool-e2e-set-profile", "set_profile", { name: "Echo", title: "Fixture tester" });
+    return finish(response, "tool_use");
+  }
+  if (latestToolResult?.id === "tool-e2e-set-profile") {
+    text(response, `set_profile answered: ${typeof latestToolResult.result === "string" ? latestToolResult.result : JSON.stringify(latestToolResult.result)}`);
+    return finish(response);
+  }
+  // A bot scheduling itself with its routines tool, "every 5 minutes until #82 is green": a temporary routine, every 5
+  // minutes for at most 3 runs or 3 hours. That routine's own turn (its prompt carries E2E_ROUTINE_DONE) removes it.
+  if (String(latestToolResult?.id ?? "").startsWith("tool-e2e-routine-")) {
+    text(response, `routines answered: ${typeof latestToolResult.result === "string" ? latestToolResult.result : JSON.stringify(latestToolResult.result)}`);
+    return finish(response);
+  }
+  if (source.includes("E2E_ROUTINE_DONE")) {
+    toolUse(response, "tool-e2e-routine-remove", "routines", { action: "remove", routine: "Watch #82" });
+    return finish(response, "tool_use");
+  }
+  if (source.includes("E2E_ROUTINE_ADD")) {
+    toolUse(response, "tool-e2e-routine-add", "routines", {
+      action: "add", name: "Watch #82", prompt: "E2E_ROUTINE_DONE Check whether PR #82 is green, and remove this routine once it is.",
+      every: "5m", until: new Date(Date.now() + 3 * 3_600_000).toISOString(), runs: 3,
+    });
+    return finish(response, "tool_use");
+  }
 
   if (source.includes("E2E_SHARED_TERMINAL")) {
     toolUse(response, "tool-terminal-list", "terminal", { action: "list" });
@@ -518,6 +650,14 @@ const server = createServer(async (request, response) => {
     event(response, { type: "content_block_start", index: 0, content_block: { type: "tool_use", id: "tool-e2e-command", name: "bash", input: {} } });
     event(response, { type: "content_block_delta", index: 0, delta: { type: "input_json_delta", partial_json: JSON.stringify(input) } });
     event(response, { type: "content_block_stop", index: 0 });
+    return finish(response, "tool_use");
+  }
+  // OptChat's own tools on the conversation's first two messages, and on a line that does not exist.
+  if (source.includes("E2E_ZOOM")) {
+    toolUse(response, "tool-e2e-zoom-message", "zoom", { id: 0, n: 1 }, 0);
+    toolUse(response, "tool-e2e-zoom-lines", "zoom", { id: 0, n: 2 }, 1);
+    toolUse(response, "tool-e2e-zoom-missing", "zoom", { id: 1, n: 2 }, 2);
+    toolUse(response, "tool-e2e-date", "date", { id: 0 }, 3);
     return finish(response, "tool_use");
   }
   if (latestToolResult?.id?.startsWith("tool-e2e-watcher-")) {

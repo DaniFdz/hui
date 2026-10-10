@@ -13,6 +13,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { after, before, test } from "node:test";
 import { fileURLToPath } from "node:url";
+import { completeLines } from "./test-support/json-lines.ts";
 
 const repo = fileURLToPath(new URL("../", import.meta.url));
 const root = await mkdtemp(join(tmpdir(), "hui-workers-"));
@@ -32,6 +33,7 @@ const { remoteRuntime } = await import("./runtimes/remote.ts");
 const piRuntime = remoteRuntime("pi");
 const { workerRelease } = await import("./worker/release.ts");
 const { registerAgentToolHandler } = await import("./agent-tools-bridge.ts");
+const { GATEWAY_ONLY_TOOLS } = await import("./worker/gateway-tools.ts");
 const { readRegistry, writeRegistry } = await import("./sessions.ts");
 const { SecretRequests } = await import("./secret-requests.ts");
 const durable = remoteRuntime("durable");
@@ -71,6 +73,22 @@ async function remoteFiles(dir = remoteHome): Promise<string[]> {
     else if (entry.isFile()) out.push(path);
   }
   return out;
+}
+
+/** Every remote file with its text, from one pass that no file vanished from. The host replaces its state files
+ * (pi-runs.json) through temporary ones it renames, so a file listed can be gone when it is read, and what it became
+ * may have been read before the rename: that pass is read again. */
+async function remoteContents(): Promise<Array<[file: string, text: string]>> {
+  return waitFor(async () => {
+    try {
+      const contents: Array<[string, string]> = [];
+      for (const file of await remoteFiles()) contents.push([file, await readFile(file, "utf8")]);
+      return contents;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+      throw error;
+    }
+  }, "one pass over the remote files that none was replaced during");
 }
 
 before(async () => {
@@ -160,8 +178,8 @@ test("a remote session runs with gateway credentials and mirrored resources, lea
     await session.prompt("hello from the gateway");
     await done;
     assert.deepEqual(session.transcript().filter((entry) => entry.kind === "message").map((entry) => entry.kind === "message" && entry.text), ["hello from the gateway", "Fixture response."]);
-    for (const file of await remoteFiles()) {
-      assert.ok(!(await readFile(file, "utf8")).includes(KEY), `${file} holds the provider key`);
+    for (const [file, text] of await remoteContents()) {
+      assert.ok(!text.includes(KEY), `${file} holds the provider key`);
     }
     const view = (await workers.list()).find((worker) => worker.id === workerId)!;
     assert.equal(view.state, "connected");
@@ -430,8 +448,8 @@ test("a Durable session on the worker honors HUI's settings and providers, whose
     assert.match(prompt, /git-selective-staging/u);
     assert.ok(!tools.some((tool) => tool.name === "browser"), "the gateway's browser is not offered remotely");
     assert.ok((await session.listModels!()).some((model) => model.provider === "openai" && model.id === "gpt-4o"), "the HUI-managed model is available with its brokered key");
-    for (const file of await remoteFiles()) {
-      assert.ok(!(await readFile(file, "utf8")).includes(managedKey), `${file} holds the HUI provider key`);
+    for (const [file, text] of await remoteContents()) {
+      assert.ok(!text.includes(managedKey), `${file} holds the HUI provider key`);
     }
   } finally {
     session.dispose();
@@ -514,6 +532,27 @@ test("a Durable session on the worker calls HUI tools on the gateway as itself, 
   }
 });
 
+test("the gateway refuses a worker session's calls to the tools that stay on its machine, before HUI's tool handler sees them", async () => {
+  // The list a bot's chat on a worker isn't offered, too. The browser is already off there (Settings mirrored to the
+  // worker turn it off), so the model can't call it; terminal and watcher are still offered to an ordinary session.
+  assert.deepEqual(GATEWAY_ONLY_TOOLS, ["terminal", "browser", "watcher"]);
+  const key = "remote-durable-gateway-only";
+  await registerRemote(key);
+  const calls: string[] = [];
+  registerAgentToolHandler(async ({ action }) => { calls.push(action); return { ok: true }; });
+  const session = await durable.start({ cwd: project, worker: workerId, huiSessionId: key });
+  try {
+    const done = settled(session);
+    await session.prompt(`E2E_CALL:${Buffer.from(JSON.stringify([{ name: "terminal", input: { action: "list" } }, { name: "watcher", input: { action: "list" } }])).toString("base64url")}`);
+    await done;
+    const answer = lastAnswer(session) ?? "";
+    for (const name of ["terminal", "watcher"]) assert.ok(answer.includes(`The ${name} tool is not available to sessions on a remote worker yet.`), answer);
+    assert.deepEqual(calls, [], "refused at the bridge");
+  } finally {
+    session.dispose();
+  }
+});
+
 test("a worker session's secret request is answered on the gateway and read from a private file on the worker", async () => {
   const key = "remote-durable-secret";
   const value = "worker-only-SECRET-61";
@@ -538,7 +577,7 @@ test("a worker session's secret request is answered on the gateway and read from
     assert.equal(lastAnswer(session), "I used the secret in a command without seeing it, then deleted its file.");
     assert.ok(!JSON.stringify(session.transcript()).includes(value));
     assert.ok(!(await readFile(join(root, "provider.jsonl"), "utf8")).includes(value), "the model never sees it");
-    for (const file of await remoteFiles()) assert.ok(!(await readFile(file, "utf8")).includes(value), `${file} holds the secret`);
+    for (const [file, text] of await remoteContents()) assert.ok(!text.includes(value), `${file} holds the secret`);
 
     await session.prompt("E2E_SECRET_REQUEST again");
     await waitFor(() => requests.questions(key)[0], "a second card");
@@ -654,7 +693,7 @@ test("a follow-up queued before the gateway leaves runs on the worker with the c
   try {
     assert.deepEqual(second.transcript().filter((entry) => entry.kind === "message").map((entry) => entry.kind === "message" && entry.text),
       ["E2E_REPLAY please", "Replay prefix — replay suffix", "queued while away", "Fixture response."]);
-    for (const file of await remoteFiles()) assert.ok(!(await readFile(file, "utf8")).includes(KEY), `${file} holds the provider key`);
+    for (const [file, text] of await remoteContents()) assert.ok(!text.includes(KEY), `${file} holds the provider key`);
   } finally {
     second.dispose();
   }
@@ -678,13 +717,12 @@ test("a key and header written literally in the gateway's models.json reach the 
   await waitFor(async () => (await log()).includes("literal key without the gateway") || undefined, "the follow-up to reach the provider");
   const second = await reattach(key, first.sessionFile!, (session) => session.transcript().some((entry) => entry.kind === "message" && entry.text === "literal key without the gateway") && lastAnswer(session) === "Fixture response.", "the follow-up to run");
   try {
-    const requests = (await log()).trim().split("\n").map((line) => JSON.parse(line) as { messages: unknown; header?: string });
+    const requests = completeLines(await log()).map((line) => JSON.parse(line) as { messages: unknown; header?: string });
     for (const prompt of ["literal key with the gateway", "literal key without the gateway"]) {
       const request = requests.find((entry) => JSON.stringify(entry.messages).includes(prompt));
       assert.equal(request?.header, HEADER_SECRET, `the request for "${prompt}" carried the literal header`);
     }
-    for (const file of await remoteFiles()) {
-      const text = await readFile(file, "utf8");
+    for (const [file, text] of await remoteContents()) {
       assert.ok(!text.includes(KEY) && !text.includes(HEADER_SECRET), `${file} holds a models.json secret`);
     }
   } finally {
@@ -694,7 +732,7 @@ test("a key and header written literally in the gateway's models.json reach the 
 
 test("a literal header of a provider whose key resolves on the remote reaches the worker from memory, with the gateway or without it", async () => {
   const log = () => readFile(join(root, "provider.jsonl"), "utf8");
-  const headerOf = async (prompt: string) => (await log()).trim().split("\n").map((line) => JSON.parse(line) as { messages: unknown; header?: string })
+  const headerOf = async (prompt: string) => completeLines(await log()).map((line) => JSON.parse(line) as { messages: unknown; header?: string })
     .find((entry) => JSON.stringify(entry.messages).includes(prompt))?.header;
   // A PI worker gets the values from the host when it starts.
   const pi = await piRuntime.start({ cwd: project, worker: workerId, huiSessionId: "remote-header-pi", model: "fx-remote-key/fixture" });
@@ -723,8 +761,7 @@ test("a literal header of a provider whose key resolves on the remote reaches th
   try {
     assert.equal(await headerOf("remote key with the gateway"), HEADER_SECRET);
     assert.equal(await headerOf("remote key without the gateway"), HEADER_SECRET);
-    for (const file of await remoteFiles()) {
-      const text = await readFile(file, "utf8");
+    for (const [file, text] of await remoteContents()) {
       assert.ok(!text.includes(KEY) && !text.includes(HEADER_SECRET), `${file} holds a models.json secret`);
     }
   } finally {

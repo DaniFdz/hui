@@ -1,3 +1,7 @@
+/**
+ * A working-directory field with a suggestion list, used wherever a session's directory is chosen. It owns the list's
+ * open/close, keyboard and focus handling on the DOM; the value and the suggestions belong to the caller.
+ */
 import { html, nothing } from "lit";
 
 function openDirectorySuggestions(event: FocusEvent | InputEvent, onInput: (value: string) => void) {
@@ -72,6 +76,10 @@ export type DirectoryPickerProps = {
   inputClass: string;
   required?: boolean;
   externalLabel?: boolean;
+  /** Shown while empty; the launch form's empty value means the home directory. */
+  placeholder?: string;
+  /** A bot's directory cannot move while it works. */
+  disabled?: boolean;
 };
 
 /** Shared themed directory completion for launch and group defaults. */
@@ -79,8 +87,8 @@ export function renderDirectoryPicker(props: DirectoryPickerProps) {
   return html`
   <div class="new-session-page__target-input new-session-page__directory-picker">
     ${props.externalLabel ? nothing : html`<label class="sr-only" for=${props.id}>${props.label}</label>`}
-    <input id=${props.id} name="cwd" class=${props.inputClass} type="text" role="combobox" ?required=${props.required} spellcheck="false" autocomplete="off"
-      aria-autocomplete="list" aria-controls=${`${props.id}-options`} aria-expanded="false" placeholder="~/"
+    <input id=${props.id} name="cwd" class=${props.inputClass} type="text" role="combobox" ?required=${props.required} ?disabled=${props.disabled} spellcheck="false" autocomplete="off"
+      aria-autocomplete="list" aria-controls=${`${props.id}-options`} aria-expanded="false" placeholder=${props.placeholder ?? "~/"}
       .value=${props.value}
       @focus=${(event: FocusEvent) => openDirectorySuggestions(event, props.onInput)}
       @blur=${closeDirectorySuggestions}

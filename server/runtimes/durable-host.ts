@@ -10,7 +10,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { closeSync, openSync, readFileSync, unlinkSync, writeSync } from "node:fs";
-import { mkdir } from "node:fs/promises";
+import { mkdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { Models } from "@earendil-works/pi-ai";
@@ -27,6 +27,11 @@ import { createSessionModelRuntime } from "./hui-models.ts";
 import { DurablePrompt, type PromptSettings } from "./durable-prompt.ts";
 import { huiDurableTools, type DurableToolInvoker } from "./durable-tools.ts";
 import type { Contribution, DurableExtensions, ExtensionHost } from "./durable-extensions.ts";
+import { OptChatManager, type OptChatTuning } from "./durable-optchat.ts";
+import { conversationBot, conversationBotState, huiBotsExtensions, type BotAccess, type BotSoulHost, type BotState } from "./durable-bots.ts";
+import { botAccessParts, botMayCall, builtinOffer, type BotChat, type OfferedTool } from "./durable-bot-access.ts";
+import { botRoutinesTool } from "./durable-bot-routines.ts";
+import { botSkillsDir } from "../bot-skills.ts";
 import { invokeAgentTool } from "../agent-tools-bridge.ts";
 
 /** Durable APIs take a cancellation context; HUI's own calls are not scoped. */
@@ -106,7 +111,7 @@ type RequestCallbacks = {
   onPayload?: (payload: unknown, model: unknown) => unknown;
   onResponse?: (response: ProviderResponse, model: unknown) => void | Promise<void>;
 };
-type RequestOptions = ({ readonly signal?: AbortSignal; readonly env?: Readonly<Record<string, string>> } & RequestCallbacks) | undefined;
+type RequestOptions = ({ readonly signal?: AbortSignal; readonly env?: Readonly<Record<string, string>>; readonly maxTokens?: number; readonly reasoning?: string } & RequestCallbacks) | undefined;
 
 /** Model reads go to the runtime current at each use, so provider changes
  * made in Settings reach running conversations at their next request. Every
@@ -126,7 +131,13 @@ class CurrentModels {
         const call = value as (...args: unknown[]) => unknown;
         if (!REQUEST_CALLS.has(key)) return call.bind(target);
         return (...args: unknown[]) => {
-          const options = args[2] as RequestOptions;
+          const given = args[2] as RequestOptions;
+          const { maxTokens: _cap, ...uncapped } = given ?? {};
+          // Durable caps only its summary request, at 0.8 × reserveTokens, and adaptive and effort-based models spend
+          // their thinking from that cap: at high levels the summary stops on `length` and the compaction fails
+          // (earendil-works/pi#9075). A request that reasons gets the model's output cap, which pi-ai still fits into
+          // the free context window, as an ordinary turn does.
+          const options = given?.reasoning ? uncapped : given;
           // Only Durable's own requests are attributed, and they bring no callbacks of their own.
           args[2] = { ...callbacks(options), ...options, env: { ...requestEnv(options), ...options?.env } };
           return call.apply(target, args);
@@ -148,6 +159,20 @@ export type DurableHostOptions = {
   lookupCaller?: (conversationId: ConversationId) => Promise<string | undefined>;
   /** Resume interrupted runs when the store opens (default). `hui doctor` opens it without running any work. */
   resume?: boolean;
+  /** OptChat constants a test changes (docs/optchat.md). */
+  optchat?: OptChatTuning;
+  /**
+   * HUI's utility model (Settings → Models), the memory compactor's model where a memory names none: a bot's utility
+   * model defaults to it (HUI-18). Defaults to HUI's settings unless `readSettings` is given.
+   */
+  utilityModel?: () => Promise<string | undefined>;
+  /**
+   * HUI tools that act on another machine, which this host's sessions reach through a bridge that refuses them: a
+   * worker host passes `GATEWAY_ONLY_TOOLS`, the gateway none. A bot's chat here isn't offered them, so its model never
+   * calls them, `request_access` can't ask for them and the operator's catalog doesn't list them. Other sessions here
+   * are offered them as before, and the bridge refuses them.
+   */
+  gatewayOnlyTools?: readonly string[];
 };
 
 /** Registry fallback: the HUI session whose resume reference names this conversation. */
@@ -163,9 +188,30 @@ export class DurableHost implements ExtensionHost {
   readonly agentDir: string;
   readonly prompt: DurablePrompt;
   readonly settings: () => Promise<PromptSettings>;
+  /** HUI tools a bot's chat here is never offered: they act on another machine (`DurableHostOptions.gatewayOnlyTools`). */
+  readonly gatewayOnlyTools: readonly string[];
+  /** OptChat memories of the conversations that enable it; a no-op for every other conversation. */
+  readonly optchat: OptChatManager;
   #invokeTool: DurableToolInvoker;
   #lookupCaller: (conversationId: ConversationId) => Promise<string | undefined>;
   #tools: Extension;
+  /** The `bots`, `bot_access` and `soul` sections (inert outside bots' chats), and the tools only bots' chats select:
+   * `message_bot`, `write_soul`, `set_profile`, `request_access`, `load_skill` and `routines` (`durable-bots.ts`,
+   * `durable-bot-access.ts`, `durable-bot-routines.ts`). */
+  #bots: { section: Extension; tools: Extension };
+  /** The `bots` section of a bot's chat; the gateway sets it, a worker host leaves it unset. */
+  botSection: ((botId: string) => Promise<string | undefined>) | undefined;
+  /** Where bots' SOUL.md files are on this host, for the `soul` section; the gateway sets it (each bot's home folder in
+   * HUI's configuration), a host without one leaves the section out. */
+  botSouls: BotSoulHost | undefined;
+  /** Mirrors a bot's lists into the gateway's roster after the operator allowed one of its requests; a worker host
+   * leaves it unset. */
+  botAccessRecorded: ((botId: string, access: BotAccess) => Promise<void>) | undefined;
+  /** Live sessions that answer for their conversation: a bot's own tools ask the operator through them. */
+  #chats = new Set<BotChat & { conversation(): Conversation }>();
+  /** Access requests waiting for a conversation's chat to open again (`whenChat`), and the chats that can take them. */
+  #chatWaiters = new Set<{ conversationId: ConversationId; resolve(chat: BotChat): void }>();
+  #readyChats = new WeakSet<BotChat>();
   #models = new CurrentModels((options) => this.#requestEnv(options), (options) => this.#requestCallbacks(options));
   #registry: Registry = createRegistry();
   /** Each live session's PI extensions, by HUI session. */
@@ -209,6 +255,14 @@ export class DurableHost implements ExtensionHost {
     this.agentDir = options.agentDir;
     this.#resume = options.resume !== false;
     this.settings = options.readSettings ?? readHuiSettings;
+    this.gatewayOnlyTools = options.gatewayOnlyTools ?? [];
+    this.optchat = new OptChatManager({
+      dir: options.dir, models: () => this.models,
+      // A bot's utility model defaults to Settings' (HUI-18): memory summaries are quick work.
+      ...(options.utilityModel ? { utilityModel: options.utilityModel }
+        : options.readSettings ? {} : { utilityModel: async () => (await readHuiSettings()).models.utility || undefined }),
+      ...(options.optchat ? { tuning: options.optchat } : {}),
+    });
     this.prompt = new DurablePrompt(options.agentDir, this.settings);
     this.prompt.extras = (conversationId) => {
       const extensions = this.#extensionsOf(conversationId);
@@ -218,19 +272,125 @@ export class DurableHost implements ExtensionHost {
     };
     this.#invokeTool = options.invokeTool ?? invokeAgentTool;
     this.#lookupCaller = options.lookupCaller ?? registryCaller;
-    this.#tools = huiDurableTools({
-      invoke: async (conversationId, action, params, signal) => {
-        const callerSessionId = this.#callers.get(conversationId) ?? await this.#lookupCaller(conversationId);
-        if (!callerSessionId) throw new Error("HUI agent tools are unavailable for this conversation.");
-        this.#callers.set(conversationId, callerSessionId);
-        return this.#invokeTool({ callerSessionId, action, params, ...(signal ? { signal } : {}) });
-      },
+    const invoke = (conversationId: ConversationId, action: string, params: Record<string, unknown>, signal?: AbortSignal) =>
+      this.#invokeAs(conversationId, action, params, signal);
+    this.#tools = huiDurableTools({ invoke });
+    const access = botAccessParts({
+      chat: (conversationId) => this.chatFor(conversationId),
+      whenChat: (conversationId, signal) => this.whenChat(conversationId, signal),
+      skills: async (cwd, conversationId) => (await this.prompt.loader(cwd, conversationId === undefined ? [] : await this.skillDirsFor(conversationId))).getSkills().skills,
+      agentDir: this.agentDir,
+      gatewayOnly: this.gatewayOnlyTools,
+      recorded: async (botId, lists) => { await this.botAccessRecorded?.(botId, lists); },
+      report: (step, error) => recordDiagnosticEvent({
+        area: "runtime", level: "warning", action: step === "roster" ? "bot_access_mirror_failed" : "bot_access_offer_failed",
+        summary: step === "roster"
+          ? "A bot's chat turned tools back on that HUI's roster does not show yet"
+          : "A bot's chat turned tools back on, but its tool offer was not refreshed",
+        detail: error instanceof Error ? error.message : String(error),
+      }),
     });
+    this.#bots = huiBotsExtensions({
+      chat: (conversationId) => this.chatFor(conversationId),
+      invoke, section: async (botId) => this.botSection?.(botId), souls: () => this.botSouls,
+      tools: [...access.tools, botRoutinesTool({ invoke })], sections: access.sections,
+    });
+    // A bot's chat lists only the skills the operator left on, its own among them.
+    this.prompt.disabledSkillsFor = async (conversationId) => (await this.botStateFor(conversationId))?.disabledSkills;
+    this.prompt.skillDirsFor = (conversationId) => this.skillDirsFor(conversationId);
+  }
+
+  /** HUI's agent-tool handler, called as the HUI session bound to the conversation. A bot's chat may not call a HUI tool
+   * the operator turned off, whatever it was offered: the bridge checks the bot's document itself. `signal` is the tool
+   * call's own abort (Stop), which the handler sees as a PI child's dropped call. A call from a bot's chat carries who
+   * brought each input of its run, as the live chat here saw them (`runOrigins`): the gateway's gated tools judge the
+   * run by all of them. Without a live chat here, or when its store can't be read, it carries none, and they judge the
+   * message that started the run alone. */
+  async #invokeAs(conversationId: ConversationId, action: string, params: Record<string, unknown>, signal?: AbortSignal): Promise<unknown> {
+    const bot = await this.botStateFor(conversationId);
+    if (bot && !botMayCall(bot, action)) {
+      throw new Error(`The operator turned off ${action} in this bot's chat. Ask for it with request_access if the job needs it.`);
+    }
+    const callerSessionId = this.#callers.get(conversationId) ?? await this.#lookupCaller(conversationId);
+    if (!callerSessionId) throw new Error("HUI agent tools are unavailable for this conversation.");
+    this.#callers.set(conversationId, callerSessionId);
+    const runOrigins = bot ? await this.chatFor(conversationId)?.runOrigins().catch(() => undefined) : undefined;
+    return this.#invokeTool({ callerSessionId, action, params, ...(signal ? { signal } : {}), ...(runOrigins ? { runOrigins } : {}) });
   }
 
   /** Names of the HUI-owned tools, for inspection labels. */
   get huiToolNames(): readonly string[] {
-    return (this.#tools.tools ?? []).map((tool) => tool.name);
+    return [...this.#tools.tools ?? [], ...this.#bots.tools.tools ?? []].map((tool) => tool.name);
+  }
+
+  /** Tools only bots' chats are offered. */
+  get botTools(): readonly ToolRegistration[] { return this.#bots.tools.tools ?? []; }
+
+  /** The extension carrying `message_bot` and a bot's own tools when the conversation is a bot's chat; its session
+   * selects it. */
+  async botToolsFor(conversationId: ConversationId): Promise<Extension | undefined> {
+    const harness = this.#harness;
+    return harness && await conversationBot(harness, conversationId, durableContext) ? this.#bots.tools : undefined;
+  }
+
+  /** The bot document of a bot's chat; undefined for every other conversation, or before the store opens. */
+  async botStateFor(conversationId: ConversationId): Promise<BotState | undefined> {
+    const harness = this.#harness;
+    return harness ? conversationBotState(harness, conversationId, durableContext) : undefined;
+  }
+
+  /** A bot's own skill folder (`skills/` in its home on this host, `bot-skills.ts`), which only its chat loads, once it exists
+   * (PI's loader warns about a missing one); none for every other conversation, or on a host that keeps no bots' homes. */
+  async skillDirsFor(conversationId: ConversationId): Promise<readonly string[]> {
+    const bot = await this.botStateFor(conversationId);
+    const home = bot ? this.botSouls?.home(bot.bot) : undefined;
+    const dir = home ? botSkillsDir(home) : undefined;
+    return dir && await stat(dir).then((info) => info.isDirectory(), () => false) ? [dir] : [];
+  }
+
+  /** A live session answers for its conversation while it is open. */
+  trackChat(chat: BotChat & { conversation(): Conversation }): void { this.#chats.add(chat); }
+
+  /** A tracked chat has offered its tools (`applyTools`): it knows what the operator turned off, so an access request
+   * waiting for it (`whenChat`) can ask there now. */
+  chatReady(chat: BotChat & { conversation(): Conversation }): void {
+    if (!this.#chats.has(chat)) return;
+    this.#readyChats.add(chat);
+    for (const waiter of [...this.#chatWaiters]) {
+      if (waiter.conversationId === chat.conversation().id) waiter.resolve(chat);
+    }
+  }
+  untrackChat(chat: BotChat & { conversation(): Conversation }): void { this.#chats.delete(chat); }
+
+  /** The tools every bot's chat has before extensions that the operator can turn off: what a chat that isn't running
+   * here is checked against. Never the ones that act on another machine (`gatewayOnlyTools`). */
+  builtinBotOffer(): OfferedTool[] {
+    return builtinOffer(this.codingTools, this.huiTools.filter((tool) => !this.gatewayOnlyTools.includes(tool.name)), this.botTools);
+  }
+
+  /** The live session following the conversation now; a rewind moves a session to its fork. */
+  chatFor(conversationId: ConversationId): BotChat | undefined {
+    for (const chat of this.#chats) if (chat.conversation().id === conversationId) return chat;
+    return undefined;
+  }
+
+  /** The conversation's live session once one is open and has offered its tools; rejects once `signal` aborts. */
+  whenChat(conversationId: ConversationId, signal?: AbortSignal): Promise<BotChat> {
+    const open = this.chatFor(conversationId);
+    if (open && this.#readyChats.has(open)) return Promise.resolve(open);
+    return new Promise((resolve, reject) => {
+      const stop = () => {
+        this.#chatWaiters.delete(waiter);
+        reject(signal?.reason instanceof Error ? signal.reason : new Error("Stopped waiting for the chat."));
+      };
+      const waiter = {
+        conversationId,
+        resolve: (chat: BotChat) => { this.#chatWaiters.delete(waiter); signal?.removeEventListener("abort", stop); resolve(chat); },
+      };
+      if (signal?.aborted) return stop();
+      signal?.addEventListener("abort", stop, { once: true });
+      this.#chatWaiters.add(waiter);
+    });
   }
 
   /** HUI tool registrations by name, for per-conversation tool selection. */
@@ -302,8 +462,11 @@ export class DurableHost implements ExtensionHost {
     try {
       const settings = SettingsManager.create(this.agentDir, this.agentDir);
       this.#models.target = await createSessionModelRuntime(this.agentDir);
-      const base = [CodingTools, this.#tools, this.prompt.extension, this.#identity];
-      for (const extension of base) this.#registry.install(extension);
+      // OptChat's hooks come before every session's PI extensions: its compaction decline is the first decision, and its
+      // request is what their context handlers see. OptChat's tools and bots' tools are installed but not in the default
+      // selection: only an OptChat conversation, or a bot's chat, adds them.
+      const base = [CodingTools, this.#tools, this.prompt.extension, this.#identity, this.optchat.extension, this.#bots.section];
+      for (const extension of [...base, this.optchat.toolsExtension, this.#bots.tools]) this.#registry.install(extension);
       const harness = await Harness.open(await openNodeSqliteStorage(join(this.dir, "harness.sqlite")), {
         models: this.#models.view,
         registry: this.#registry,
@@ -315,6 +478,7 @@ export class DurableHost implements ExtensionHost {
           detail: error instanceof Error ? error.message : String(error),
         }),
       }, durableContext);
+      this.optchat.attach(harness, { follow: this.#resume });
       this.#harness = harness;
       // Unfinished generations and tool calls continue even before any browser
       // reopens their session. Without it, nothing is scheduled: the store is
@@ -374,10 +538,20 @@ export class DurableHost implements ExtensionHost {
     return undefined;
   }
 
-  /** `before_provider_request` and `after_provider_response` of the request's session. */
+  /** `before_provider_request` and `after_provider_response` of the request's session; an OptChat turn's cache marks go
+   * on the payload those handlers leave. */
   #requestCallbacks(options: RequestOptions): RequestCallbacks {
     const caller = options?.signal ? this.#requestSessions.get(options.signal) : undefined;
-    return (caller === undefined ? undefined : this.#extensions.get(caller)?.requestCallbacks()) ?? {};
+    const callbacks = (caller === undefined ? undefined : this.#extensions.get(caller)?.requestCallbacks()) ?? {};
+    const marks = options?.signal ? this.optchat.payloadHook(options.signal) : undefined;
+    if (!marks) return callbacks;
+    return {
+      ...callbacks,
+      onPayload: async (payload, model) => {
+        const replaced = await callbacks.onPayload?.(payload);
+        return marks(replaced === undefined ? payload : replaced, model) ?? replaced;
+      },
+    };
   }
 
   #clientSession(key: string): string {
@@ -443,6 +617,8 @@ export class DurableHost implements ExtensionHost {
       this.#envs.clear();
       for (const env of envs) await env.cleanup(durableContext);
     } finally {
+      // Its files are covered by the store lock: closed before the lock is released.
+      await this.optchat.close().catch(() => undefined);
       this.#release?.();
       this.#release = undefined;
       this.#callers.clear();

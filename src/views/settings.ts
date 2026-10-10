@@ -1,8 +1,13 @@
+/**
+ * The Settings shell: its page list, drawer and search, and the render functions for the built-in pages. Edits leave
+ * through prop callbacks to the app; the pi-backed pages only report pi's configuration, and self-contained sections
+ * (providers, integrations, tools, browser, workers, calls) are their own elements.
+ */
 import { html, nothing, type TemplateResult } from "lit";
 import { TERMINAL_FONTS, normalizeTerminalFont, terminalFontStack } from "../lib/terminal-font.ts";
 import { TEXT_SCALE_STOPS, TYPEFACES, type TextScaleStop } from "../lib/appearance.ts";
 import { modeIsSelectable, THEME_MODES, type ThemeMode, type ThemeVariant } from "../lib/theme.ts";
-import type { Settings } from "../lib/settings.ts";
+import { botsEnabled, type Settings } from "../lib/settings.ts";
 import type { PowerState, PowerStatus } from "../../shared/power.ts";
 import type { ThemePreview } from "../lib/theme-store.ts";
 import type { ThemeSwatches } from "../lib/shadcn-theme.ts";
@@ -16,8 +21,11 @@ import { renderPicker, renderSettingsPicker } from "./settings-picker.ts";
 import { renderSettingsToggle } from "./settings-toggle.ts";
 import "./settings-tools.ts";
 import "./settings-browser.ts";
+import "./settings-vscode.ts";
 import "./settings-jira.ts";
+import "./settings-calls.ts";
 import "./settings-github.ts";
+import "./settings-slack.ts";
 import "./settings-providers.ts";
 import "./settings-workers.ts";
 import { renderAutomationPage, type AutomationProps } from "./settings-automation.ts";
@@ -28,10 +36,9 @@ import {
   APP_SHELL_DRAWER_MEDIA,
   unbindDrawerMedia,
 } from "./shell.ts";
+import { loadViewAssets } from "../lib/view-assets.ts";
 
-if (typeof document !== "undefined") {
-  await import("../styles/openclaw-workspaces.css");
-}
+loadViewAssets(() => import("../styles/openclaw-workspaces.css"));
 
 const MODE_LABELS: Record<ThemeMode, string> = {
   system: "System",
@@ -111,7 +118,10 @@ export type SettingsProps = AutomationProps & {
   onChangeChat: (next: Settings["chat"]) => void;
   /** Resolves once the settings write lands, so the Browser section can re-read status. */
   onChangeBrowser: (next: Settings["browser"]) => Promise<unknown> | void;
+  /** Resolves once the settings write lands, so the VS Code section can re-read status. */
+  onChangeVscode: (next: Settings["vscode"]) => Promise<unknown> | void;
   onChangeModels: (next: Settings["models"]) => void;
+  onChangeCalls: (next: Settings["calls"]) => void;
   onChangePower: (next: Settings["power"]) => void;
   onSetLidAwake: (on: boolean) => void;
   onImportTheme: (url: string) => void;
@@ -638,26 +648,35 @@ function renderSkillsPage(props: SettingsProps) {
   `;
 }
 
-/** One section per external service: Jira, then GitHub. */
+/** One section per external service: Jira, GitHub, then Slack. */
 function renderIntegrationsPage() {
   return html`
     <p class="settings-page__intro">Connect HUI to external services. Credentials stay on this machine and are never sent to the browser.</p>
     <hui-jira-settings></hui-jira-settings>
     <hui-github-settings></hui-github-settings>
+    <hui-slack-settings></hui-slack-settings>
   `;
 }
 
 function renderToolsPage(props: SettingsProps) {
   return html`
-    <p class="settings-page__intro">HUI owns the tools, the managed browser and the default prompt. Inspect the shipped catalog without opening a session, or inspect an already-running session.</p>
+    <p class="settings-page__intro">HUI owns the tools, the managed browser, the VS Code server and the default prompt. Inspect the shipped catalog without opening a session, or inspect an already-running session.</p>
     <hui-browser-settings .settings=${props.settings.browser} .onChange=${props.onChangeBrowser}></hui-browser-settings>
-    <hui-tools-settings .sessions=${props.sessions}></hui-tools-settings>`;
+    <hui-vscode-settings .settings=${props.settings.vscode} .onChange=${props.onChangeVscode}></hui-vscode-settings>
+    <hui-tools-settings .sessions=${props.sessions.filter((session) => !session.bot)}></hui-tools-settings>`;
+}
+
+/** Settings → Models → Calls: GPT-Live through the ChatGPT login above (HUI-18). Calls are with bots only, so the
+ * section goes with them while Settings → Labs → Bots is off. */
+function renderCallsSection(props: SettingsProps) {
+  if (!botsEnabled(props.settings)) return nothing;
+  return html`<hui-call-settings .calls=${props.settings.calls} .onChange=${props.onChangeCalls}></hui-call-settings>`;
 }
 
 function renderModelsPage(props: SettingsProps) {
   const pi = props.pi;
   if (!pi) {
-    return html`<hui-provider-settings @providers-changed=${props.onRetryPi}></hui-provider-settings>${renderPiMissing(props)}`;
+    return html`<hui-provider-settings @providers-changed=${props.onRetryPi}></hui-provider-settings>${renderCallsSection(props)}${renderPiMissing(props)}`;
   }
   const model = pi.model;
   const modelOptions = [
@@ -668,10 +687,13 @@ function renderModelsPage(props: SettingsProps) {
     renderSettingsPicker(label, props.settings.models[key], modelOptions, (value) => {
       props.onChangeModels({ ...props.settings.models, [key]: value });
     });
+  // Bots and their calls are named only while Settings → Labs → Bots is on.
+  const bots = botsEnabled(props.settings);
   return html`
     <p class="settings-page__intro">
-      Connect providers and choose models without changing PI's configuration. Primary handles normal turns,
-      fallback recovers a turn when the primary provider fails, and utility handles short internal work.
+      ${bots
+        ? "Connect providers and choose models without changing PI's configuration. Three roles: the primary model does the real work, the utility model the quick work, and GPT-Live (Calls, below) talks on calls."
+        : "Connect providers and choose models without changing PI's configuration. Two roles: the primary model does the real work and the utility model the quick work."}
     </p>
     <hui-provider-settings @providers-changed=${props.onRetryPi}></hui-provider-settings>
     ${renderSection(
@@ -680,7 +702,7 @@ function renderModelsPage(props: SettingsProps) {
       html`
         ${renderRow(
           "Primary model",
-          "The normal session model. Example: OpenAI Astra for coding and longer tasks.",
+          `The smartest model you have. Speed doesn't matter: it does the real work of new sessions${bots ? " and bots" : ""}.`,
           routePicker("Primary model", "primary"),
         )}
         ${renderRow(
@@ -690,11 +712,12 @@ function renderModelsPage(props: SettingsProps) {
         )}
         ${renderRow(
           "Utility model",
-          "Choose a cheap, fast model for short session names and /btw side questions. Examples: GPT-5.6 Luna or Claude Haiku.",
+          `The fastest model you have, ideally a cheap one. It names sessions and branches, drafts Jira items and answers /btw${bots ? "; for bots without their own, it writes memory summaries, answers quick questions on calls and writes call summaries" : ""}.`,
           routePicker("Utility model", "utility"),
         )}
       `,
     )}
+    ${renderCallsSection(props)}
     ${renderSection(
       "PI defaults",
       "Read-only fallbacks used when HUI has no primary route.",
@@ -933,7 +956,13 @@ function renderSessionsSettingsPage(props: SettingsProps) {
     ${renderSection("Retention", "Deleting HUI metadata never deletes PI conversation files.", html`
       ${renderRow("Transcript authority", "History is resumed directly from the runtime-owned session file.", html`<span class="settings-row__value">PI</span>`)}
       ${renderRow("Remove from HUI", "Stops tracking the row and runtime without deleting the transcript.", html`<span class="settings-row__value">Metadata only</span>`)}
-    `)}`;
+    `)}
+    ${botsEnabled(props.settings) ? renderSection("Bots", "Named agents with one permanent chat, their own model and a memory that summarizes older messages by itself. Settings → Labs → Bots turns them on and off.", html`
+      ${renderRow("Command line", "Everything the Bots tab does is also available from a terminal on this machine.", html`<code>hui bot list</code>`)}
+    `) : nothing}
+    <p class="settings-page__note settings-page__intro">
+      ${props.saveFailed ? "Could not write settings.json — changes apply now but will not be remembered." : "Saved to ~/.config/hui/settings.json"}
+    </p>`;
 }
 
 function renderWorktreesSettingsPage(props: SettingsProps) {

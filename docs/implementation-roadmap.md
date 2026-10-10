@@ -233,8 +233,9 @@ The menu-parity follow-up replaces the flattened row actions with OpenClaw
 icon, group placement, copy link/Markdown/ID, open in tab/window/editor
 and delete. Archive/read/appearance are durable HUI metadata; archived rows are
 restorable from Sessions. `Assign to` remains excluded because PI has no owner
-model, and transcript fork remains excluded because PI exposes no fork RPC and
-its JSONL is externally owned. Desktop/mobile Browser proof is recorded in
+model, and the row menu's fork remains excluded: PI exposes no fork RPC and
+its JSONL is externally owned. Pi Durable sessions later gained a fork from a
+reply in the transcript instead (SPEC Part 1). Desktop/mobile Browser proof is recorded in
 [`e2e/session-menu-parity.browser.md`](../e2e/session-menu-parity.browser.md).
 The picker follow-up restores OpenClaw's custom-emoji entry and uses centered
 SVG reset controls for both color and icon instead of typographic crosses.
@@ -354,7 +355,8 @@ Validation and responsive proof: [message metadata](../e2e/message-metadata.brow
 ### HUI-04b — Shared terminal panels
 
 **Status:** implemented; validation recorded in
-[`e2e/shared-terminal.browser.md`](../e2e/shared-terminal.browser.md).
+[`e2e/shared-terminal.browser.md`](../e2e/shared-terminal.browser.md). Terminal
+panes moved into the Work pane with HUI-21.
 
 - Ghostty Web + gateway-owned PTYs + same-origin, one-use-ticket WebSockets.
 - Terminal panes use the existing multiplexer, including independent splits,
@@ -676,6 +678,359 @@ and dismiss controls. The registry survives gateway
 restarts. Proof: `server/watchers.test.ts`, `server/watcher-routes.test.ts`,
 `src/views/chat/watcher-activity.test.ts` and `e2e/watchers.browser.md`.
 
+### HUI-18 — Bots with OptChat memory
+
+Product decision approved by the owner on 2026-10-05 (SPEC.md, "Bots are named
+chats, not an agent selector"): GrokBot/Hermes-style bots beside sessions. The
+sidebar splits into **Agents | Bots**; sessions stay as they are. A bot is a
+named Durable conversation that never ends, with a role, a SOUL.md persona it
+writes in its first conversation, its own model and directory; its memory is
+[OptChat](optchat.md): every message
+is kept in an append-only log, a cheap model compresses it into a tree of
+one-line summaries, and every turn starts fresh from a bounded view of the
+whole chat. `hui bot` can do everything the Bots tab can, through the same
+routes. Routines are Automation tasks aimed at a bot's chat; bots message each
+other; you can call them, through GPT-Live. A bot runs on the local gateway or,
+chosen when it is created, on a remote worker (item 6). It lands as stacked pull
+requests:
+
+1. **OptChat memory for Pi Durable conversations** — done 2026-10-05. The engine
+   (`server/optchat/`) and its Durable integration
+   (`server/runtimes/durable-optchat.ts`): a conversation whose `hui.optchat`
+   document is enabled projects its entries into the log, starts every request
+   fresh from a view frozen per run, offers `zoom` and `date`, declines Durable's
+   compactions and marks Anthropic cache breakpoints in its view; every other
+   conversation is unchanged. No UI, route or CLI yet, so no Browser-tool proof
+   applies. Proof: `server/optchat/*.test.ts` and
+   `server/runtimes/durable-optchat.test.ts` (deterministic provider: unchanged
+   plain requests, fresh turns, a frozen view across a tool loop and a restart,
+   zoom and date, declined compaction, catch-up without duplicates, waiting for
+   summaries and Stop). Cache fix 2026-10-08, after the recipe's corrected
+   revision (`3c190e0`): the view merges the pair that ended longest ago in its
+   own line size, appends only between batches (past 128 KB one batch merges it
+   down to 64 KB), is saved in `view.json` instead of folded again at every open,
+   compactions read a 16-32 KB view of their own, and both views go to Anthropic
+   in 4-line blocks marked on the last whole one (docs/optchat.md, "The view" and
+   "Prompt caching"). Proof: `server/optchat/view.test.ts` (Taelin's `push` merge
+   for merge, the sawtooth, a batch deferred by unbuilt parents),
+   `view-file.test.ts`, `memory.test.ts`, `cache.test.ts`, `replay.test.ts`
+   (3,000 messages: 96.5% of each turn's view unchanged, 95.8% read from the
+   cache) and `server/runtimes/durable-optchat.test.ts`.
+2. **Bots backend and `hui bot`** (implemented 2026-10-05; browser proof
+   with item 3): `bots.json` registry and `shared/bots.ts` types; bot chats as
+   ordinary Durable sessions whose conversation is created with its persona,
+   `hui.bot` document and OptChat in one commit; edit (an empty model or
+   thinking level goes back to the gateway defaults), archive (routines
+   disabled, nothing deleted) and restore; `/__hui/bots` routes with messages
+   (prompt or follow-up, optional wait for the answering run), stop, memory and
+   an events stream; forever-chat refusals of clear, compact, rewind and
+   delete; routines marked `[routine: <name>]` and queued behind a busy bot;
+   `message_bot` and a byte-stable `bots` section only in bots' chats, with a
+   three-hop loop guard and an hourly limit; the `hui bot` CLI with streamed
+   `chat` (what the bot gets from elsewhere shown before its reply, since the
+   chat's stream announces each prompt it accepts), `send --wait` exit codes
+   and routines. OptChat reaches bots through the `BotMemory` port only, whose
+   adapter (`optChatBotMemory`) maps it onto the engine: a bot's chat has its
+   memory from its creating commit, and the memory routes and `hui bot memory`
+   read its status (with view lines and the compactor's usage), view, zoom and
+   browse page, which a same-origin link opens. Proof: `server/bots.test.ts`,
+   `server/bot-service.test.ts`, `server/bot-routes.test.ts` (a real gateway
+   with a deterministic provider: routes, guards, a waited reply, a bot-to-bot
+   message, a routine, the events stream, real OptChat memory with built
+   summaries, the view, zoom down to a whole message and the page under its
+   same-origin rule, clearing the model and thinking, and `hui bot chat`
+   showing a message from elsewhere and a routine before their replies),
+   `server/runtimes/durable-bots.test.ts` (requests of plain conversations
+   unchanged; a bot conversation's commit, persona, section and tool; with the
+   real adapter, OptChat on in the creating commit, zoom and date beside
+   `message_bot`, a fresh second turn and every read),
+   `server/live-sessions.test.ts`, `cli/main.test.ts` and `cli/bots.test.ts`
+   (a fake gateway and a scripted terminal).
+   **After review (2026-10-06):** instructions became SOUL.md plus a first
+   conversation (SPEC.md, "Bots write their own SOUL.md in a first
+   conversation"). Every bot has a home folder with its SOUL.md, rendered as
+   the last prompt section (`soul`) on every request through a resolver the
+   host provides; without it the section is the first conversation, and a bot
+   created without a soul gets a kickoff turn so it speaks first. `soul` on
+   create, `GET`/`PUT /__hui/bots/:id/soul`, `BotView.soul` (cached per chat
+   state), the `BotSouls` port, delete removing SOUL.md, a one-time migration
+   of existing instructions, and `hui bot add --soul-file` / `hui bot soul`.
+   The bot saves SOUL.md with a bot-only `write_soul` tool (no file tools
+   needed), and a bot without its own model starts on Settings' primary model,
+   as new sessions do, instead of PI's catalog default. Then (owner's
+   answers): a bot created without a name is *New Bot* and names itself in its
+   first conversation with a bot-only `set_profile` (a derived handle follows
+   the name), and delete works on active bots too and removes the bot's whole
+   folder and its OptChat memory (the raw Durable log stays: pi-durable cannot
+   delete conversations), `hui bot delete` asking first or taking `--yes`.
+   Proof: `server/bots.test.ts`, `server/bot-service.test.ts` (kickoff,
+   soul routes, cache, migration, delete), `server/runtimes/durable-bots.test.ts`
+   (the section in real requests, the first conversation's text, truncation, a
+   host without a resolver), `server/bot-routes.test.ts` (a real gateway: the
+   first turn starts by itself, the bot writes SOUL.md with its write tool and
+   the next request carries it, the routes and guards), `cli/*.test.ts`.
+3. **Bots tab** (UI; done 2026-10-05): Settings → Sessions → *Show the Bots
+   tab* (off by default); the Agents | Bots switch in the sidebar's top row
+   (renamed from Sessions | Bots and moved there on 2026-10-06, beside the
+   collapse toggle; Bots shows only the roster); bot chats filtered from
+   every session list and picker; the roster (activity order, search, unread,
+   badges, New bot, Edit, Hide/Unhide, Archive with Restore, *Show archived*
+   with Restore and Delete) fed by `/__hui/bots/events`; the dialog's *Gateway default*
+   for the model and thinking level (clearing them on edit); `/bots/<id>`
+   rendering the bot's chat in the ordinary session pane without `/clear`,
+   `/compact` or rewind; the Routines | Memory panel (a sheet on narrow
+   screens), whose Memory tab shows the memory's stats and summarizer spend,
+   follows the bots stream while open, zooms a line down to its message and
+   links the memory page; bot routines' schedules worded on the Automations
+   page as in the panel. Proof: `src/lib/bots.test.ts`,
+   `src/lib/bot-roster.test.ts`, `src/lib/bot-routines.test.ts`,
+   `src/lib/bot-memory.test.ts`, `src/lib/navigation.test.ts`,
+   `src/lib/settings.test.ts`, `src/lib/slash-commands.test.ts`,
+   `src/views/settings-automation.test.ts` and the Browser-tool journey
+   `e2e/bots.browser.md` (create, chat, routine with Run now, real OptChat
+   memory live in the panel with *Summarizing memory…*, zoom to a message, the
+   memory page, Gateway default, hide, archive, Show archived and Restore, lists
+   without the bot chat, desktop, mobile and landscape).
+   **After review (2026-10-06):** the dialog lost Instructions (New bot says
+   the bot starts by asking what you expect), the panel became Routines |
+   Memory | Soul (SOUL.md as Markdown with Edit, *Write it yourself* before the
+   bot wrote one, followed live from the bots stream), and HUI's kickoff of a
+   new bot shows as a note, *<name> was created*. Proof:
+   `src/views/bot-soul.test.ts`, `src/views/chat/projection.test.ts`,
+   `src/lib/bots.test.ts`, `src/lib/bot-roster.test.ts` and the Browser-tool
+   journey in `e2e/bots.browser.md` (screens in PR #69).
+4. **Voice through VoiceStudio** — dropped on 2026-10-06 before it merged: the
+   owner removed VoiceStudio, so calls run on GPT-Live only (item 5) and voice
+   notes, Read aloud and VoiceStudio voices are gone. The call screen it built
+   (the call view, its minimized bar and the app's one call) moved to item 5,
+   with Durable streaming the text it sends whole to the live view.
+5. **Calls with GPT-Live** (implemented 2026-10-06; tested with real calls
+   through a ChatGPT login): the bot header's Call, offered with a ChatGPT
+   login; the call view (the bot's face listening and speaking, a timer,
+   captions, Mute, Speaker, Hang up) and its minimized bar; Settings → Models →
+   Calls (the default voice, the ChatGPT login calls use) and a per-bot call
+   voice and language (`voice.live` and `voice.language`, `--call-voice` and
+   `--language`). The gateway's broker
+   (`server/calls.ts`, `server/call-routes.ts`) sets each WebRTC call up over
+   the ChatGPT login without the browser seeing a token, picking accounts as
+   model turns do. The browser's `LiveCall` (`src/lib/live-call.ts`) carries
+   the audio and data channel. OpenDots-style: GPT-Live's one tool asks the bot's
+   call helper on its utility model (`server/call-helper.ts`). The helper hands
+   real work to the chat as `[call task]` messages, whose replies are spoken
+   while the call lasts. Each call ends as one card with a summary and the whole
+   transcript, which the bot's memory keeps. The bot's Memory model became its
+   Utility model, defaulting to Settings' utility model. Settings and `bots.json`
+   saved while VoiceStudio was there keep loading, and the next write leaves its
+   fields out. Proof: `server/call*.test.ts`, `server/calls.test.ts`,
+   `server/bot-service.test.ts`, `server/bot-routes.test.ts`, `server/bots.test.ts`,
+   `server/runtimes/durable-optchat.test.ts`, `server/runtimes/durable.test.ts`,
+   `src/lib/live-call.test.ts`, `src/lib/voice*.test.ts`, `src/lib/settings.test.ts`,
+   `src/lib/bots.test.ts`, `src/views/bots.test.ts`, `src/views/settings-calls.test.ts`,
+   `cli/*.test.ts` and a real call run (both calls of the e2e in the pull request).
+6. **Bots on remote workers** (implemented 2026-10-06; the owner's request, SPEC.md
+   "Bots run on remote workers"): `BotInput.worker` (an id or name, at creation
+   only; a `PATCH` naming one is 400), views name the worker, and the bot's
+   conversation, folder and OptChat memory are created in the worker's Durable
+   store by its host (`server/worker/host-bots.ts`, reusing `bot-conversations.ts`
+   and `bot-memory.ts` against the host's own `DurableHost`). `BotService`
+   picks the gateway's ports or the worker's (`server/bot-remote.ts`) per bot;
+   lists read a remote memory's last reported status and never wait on a
+   worker; an offline worker fails creates, memory reads and messages with a
+   503 that names it, and a host from before bots is told apart (409). The
+   worker's host asks the gateway for its bots' `bots` section, so
+   `message_bot` crosses both ways. While a worker exists the roster's + is a
+   menu, *New bot on Local* or on each worker, that creates *New Bot* there at
+   once; the machine shows beside a remote bot in its row and header, read-only
+   in its Settings tab (item 7); and `hui bot add --worker`. With SOUL.md (merged 2026-10-07) every
+   bot on a worker has its home there, where its SOUL.md, first conversation and
+   `write_soul` live; the Soul tab and calls read it through the host, and
+   deleting removes that home there, or queues the removal on the gateway's
+   machine (`~/.config/hui/bot-cleanup.json`) until the worker reconnects. A
+   remote session's limits apply: no terminal,
+   browser or watcher tools, no worktrees. Proof: `server/worker/host.test.ts`
+   (the host's bot operations on a real host), `server/bot-remote.test.ts`,
+   `server/bot-service.test.ts` (fake remote ports: routing, offline paths, a
+   list that never waits), `server/bots.test.ts`, `server/bot-routes.test.ts`,
+   `server/bot-workers.test.ts` (a real local worker with the fixture provider:
+   the remote store, a reply with the bots section, the utility-model compactor,
+   `message_bot` both ways, a routine, a queued message, steering, a question,
+   Stop, a call's record, archive, restore, delete and a disconnected worker),
+   `src/lib/bots.test.ts`, `src/views/bots.test.ts`, `cli/*.test.ts` and the
+   browser journey `e2e/bots-workers.browser.md` (a built gateway with a local
+   worker, headless Chromium through CDP; screenshots in the pull request).
+7. **Bot setup like Grok Bot** (2026-10-06; SPEC.md, "Bots are set up like
+   Grok Bot"): no form; + creates a bot at once, without a name, and opens its
+   chat, where the bot (*New Bot* until then) asks what to call it; while a
+   worker exists + is item 6's menu, and the bot is made on the machine chosen.
+   The New bot and Edit dialogs are gone. A Settings tab in the bot's panel
+   holds Profile (name, title and look, edited in place), Model, Calls (call
+   voice and language; its head says when calls need a ChatGPT login) and
+   Workspace (Runs on, the machine read-only while a worker exists, and the
+   directory, with that machine's folder suggestions), each change saved on its
+   own through the existing `PATCH`; Edit bot… in either ⋯ menu opens it, as
+   does Ctrl+Shift+,; the panel's tabs moved to a row of their own under a
+   header with the bot's name, with room for five. No API or CLI change. Proof:
+   `src/lib/bots.test.ts`, `src/lib/bot-roster.test.ts`,
+   `src/views/bots.test.ts`, `server/bot-routes.test.ts` (a New Bot's
+   opener) and the Browser journey `e2e/bot-setup.browser.md` (built gateway,
+   fixture provider, a local worker, 1440×900, 1280×720 and 390×844, dark).
+8. **Tools and skills per bot** (implemented 2026-10-07; SPEC.md, "A bot has
+   every tool and skill until the operator turns some off"): every bot has
+   every tool and skill a session in its directory has until the operator
+   turns some off. `disabledTools` and `disabledSkills` live in the chat's
+   `hui.bot` document (optional fields of version 1, mirrored in `bots.json`),
+   so the host that runs the chat enforces them: its tool offer leaves them out,
+   extension tools included, and its HUI tool bridge refuses them, with a second
+   check in HUI's agent-tool handler. The prompt and `/skill:` list only the
+   skills that are on, and `load_skill` loads them for a bot without `read` or
+   `bash`. The bot asks for something that is off with `request_access`, a
+   session question with Allow and Deny only the operator answers, which says
+   when a routine or another bot started the turn. `POST`/`PATCH` take the lists,
+   `GET /__hui/bots/:id/catalog` lists what can be turned off (powerful tools
+   labelled) and a pending request; the panel's Tools tab (between Soul and
+   Settings) and `hui bot tools` / `hui bot skills` / `hui bot add --deny-tools
+   --deny-skills` use them. A bot on a worker (item 6) keeps its lists in its
+   document there, which the worker's host enforces; the gateway reaches them
+   through new host operations (`bot.access.read`, `bot.access.write`,
+   `bot.offer`: the catalog and creation's check computed there, skills by their
+   mirrored paths), a grant there comes back in a `bot.access` frame, and each
+   connection reconciles that worker's bots; offline, 503 naming it. Its chat
+   there isn't offered `terminal`, `browser` or `watcher`, which the gateway's
+   bridge refuses for any remote session (one list, `GATEWAY_ONLY_TOOLS`), so the
+   catalog leaves them out and a list can't name them. Proof:
+   `server/runtimes/durable-bot-access.test.ts` (real requests: offers, the
+   bridge, prompts, `/skill:`, `load_skill`, requests allowed, denied, refused
+   and one at a time, the port, documents from before the lists),
+   `server/runtimes/question-box.test.ts`, `server/bot-service.test.ts`,
+   `server/bot-routes.test.ts` (a real gateway: what is off leaves the
+   provider's request, a granted tool is on the next one, a skill that is off
+   is not in the prompt, the roster follows), `server/bots.test.ts`,
+   `src/lib/bot-tools.test.ts`, `src/views/bot-tools.test.ts`,
+   `cli/*.test.ts`, for workers `server/worker/host.test.ts` (the host's list
+   operations and offer), `server/bot-remote.test.ts`, `server/bot-service.test.ts`,
+   `server/runtimes/durable-bot-access.test.ts` (a host with `gatewayOnlyTools`: a
+   bot's chat never offered them nor able to ask for them, an ordinary session
+   keeping them), `server/workers.test.ts` (the bridge still refuses them) and
+   `server/bot-workers.test.ts` (a real local worker: created with lists,
+   its catalog with a mirrored skill and without the gateway's own tools, what is
+   off gone from its requests, a request allowed here and its grant reaching the
+   roster, a skill named by the gateway's path, lists naming the gateway's own
+   tools refused, offline answers), and an isolated gateway driven in a browser
+   (screens in the pull request).
+9. **Bots behind Labs while they are a preview** (implemented 2026-10-07; the
+   owner's request, SPEC.md, "Bots stay behind an opt-in Labs setting while they
+   are a preview"): the stack lands on `main` with bots off until Settings →
+   Labs → *Bots* (`settings.labs.bots`) turns them on. Off, they are dormant
+   everywhere: every bot route, call route and bot chat's session route answers
+   409 naming the setting, routines are skipped (kept, never failed), nothing
+   starts a bot's turn and turning them off stops what they were doing; the UI
+   shows nothing of them; nothing is deleted, and on again restores everything
+   live. It is the one switch: item 3's Settings → Sessions → *Show the Bots
+   tab* folds into it (a file where that was on keeps bots on). **Bots stay
+   behind Labs until HUI-18 is done**: the flag (and this
+   item's refusals) go only once the owner calls bots finished, in their own
+   change. Proof: `src/lib/settings.test.ts`, `server/bot-service.test.ts`,
+   `server/bot-routes.test.ts` (a real gateway: every refusal while off, toggled
+   live through `PUT /__hui/settings`, a routine skipped then run, a bot stream
+   ended), `src/views/hui-owned-surfaces.test.ts`, `src/views/bots.test.ts`,
+   `src/views/settings-automation.test.ts`, `src/lib/bots.test.ts`,
+   `src/lib/live-call.test.ts`, `cli/*.test.ts`, and an isolated gateway driven
+   in a browser ([`e2e/bots-labs.browser.md`](../e2e/bots-labs.browser.md),
+   screens in the pull request).
+10. **Schedules as a CLI, and bots that schedule their own routines**
+    (implemented 2026-10-07; the owner's request, SPEC.md, "Schedules are a CLI,
+    and bots schedule their own routines"): `hui schedule` (alias `schedules`)
+    lists, shows, adds, edits, pauses, resumes, runs and removes every
+    Automation task, attached to a session or a bot (`--session`/`--bot`, which
+    also move a task on edit), and `hui bot routine` runs on its code. A bot's
+    `routines` tool (the bot tools' extension, *Manage its own routines* in the
+    Tools tab, on by default, not powerful) lists, adds, changes and removes its
+    own chat's routines, behind the gateway's guards: its own chat only, 20
+    active at most, once a minute at most, and no adding or changing in a turn
+    another bot started (set_profile's origin check). Temporary tasks take
+    `until` and/or `runs` and are deleted after either, across a restart too;
+    a bot can remove its routine from that routine's own turn. Tasks record who
+    made them (`createdBy`) and their limits as optional fields, shown in the
+    Routines tab and on Automations (*made by @bot*, *until 18:00*, *3 runs
+    left*). Bots off, every bot-facing part refuses and `hui schedule` prints
+    the gateway's refusal; sessions' schedules work regardless. Proof:
+    `server/automation.test.ts` (makers, limits, expiry by `until` and by runs,
+    a skipped run given back, across a restart), `server/bot-routines.test.ts`
+    (own tasks only, the cap, the minimum interval, names, the origin check,
+    removal from a routine's own turn), `server/runtimes/durable-bot-routines.test.ts`
+    (the tool in the bot tools' extension, the catalog entry, turned off and
+    refused by the bridge), `server/bot-schedules.test.ts` (a real gateway: a
+    bot adds a temporary routine through a real turn, that routine's turn
+    removes it, another bot's message can't add one, `hui schedule` with bots
+    off), `server/bot-workers.test.ts` (the tool from a bot on a worker),
+    `cli/schedules.test.ts`, `cli/*.test.ts`, `src/lib/bot-routines.test.ts`
+    and an isolated gateway driven in a browser
+    ([`e2e/bot-schedules.browser.md`](../e2e/bot-schedules.browser.md), screens
+    in the pull request).
+11. **Triggers** (implemented 2026-10-07; the owner's request, SPEC.md, "Triggers
+   wake bots on GitHub, session and webhook events"): per-bot triggers beside its
+   routines in `bot-triggers.json` (owner-only, atomic, like `bots.json`), the
+   GitHub pollers' cursors in `bot-trigger-cursors.json`. Three sources: GitHub
+   (one poller per repo through the gateway's `gh api --include`, conditional on
+   ETags so quiet polls are free 304s, `X-Poll-Interval` and `Retry-After`
+   honoured, a silent baseline and cursors saved before events go out; pull
+   requests opened, pushed, merged and closed, checks failed or passed, reviews,
+   comments and mentions of the operator, filtered by author, label, base, number
+   and draft), sessions the bot started (finished, failed, waiting; one check,
+   `sessionWatchable`), and webhooks (`POST /__hui/hooks/<token>`, tailnet and
+   loopback only, a token shown once and stored hashed, a 64 KiB body, an optional
+   equals/contains field filter). Deliveries are `[trigger: <name> · <summary>]
+   <prompt>` with the event's details through the bot's message path (its remote
+   session for a bot on a worker), recorded as runs; a cooldown coalesces events
+   into one delivery, and a bot takes at most 12 deliveries an hour and has at
+   most 20 triggers. Bots off: pollers stop, webhooks answer 409, session events
+   are skipped; on again, a catch-up delivery per trigger. The bot's `triggers`
+   tool (an ordinary Tools switch under Bots) lists, adds, changes and removes its
+   own, never adding or changing in a turn another bot or a trigger started, and
+   never a webhook. The Routines tab's Triggers section and `hui bot trigger
+   list|add|remove|test`. Slack came next (item 12), read through search rather
+   than Socket Mode. Proof: `server/bot-triggers*.test.ts` (a fake gh for the pollers,
+   ETag/304 accounting, cursors across a restart, coalescing, the hourly cap,
+   catch-up, the tool's origin checks, the webhook token, filter and size cap,
+   bots off), `server/bot-trigger-routes.test.ts` (a real gateway: a webhook and
+   a fake GitHub's pull request reaching the bot through the fixture provider,
+   the bot's tool, the CLI, bots off), `server/bot-workers.test.ts` (a real local
+   worker: a webhook's delivery runs on the worker, and the bot's tool there
+   reaches the gateway), `server/runtimes/durable-bot-access.test.ts`,
+   `src/lib/bot-triggers.test.ts`, `src/views/bot-triggers.test.ts`,
+   `cli/bot-triggers.test.ts` and an isolated gateway driven in a browser
+   ([`e2e/bot-triggers.browser.md`](../e2e/bot-triggers.browser.md), screens in
+   the pull request).
+12. **Slack triggers** (implemented 2026-10-08; the owner's request, SPEC.md,
+   "Slack triggers wake bots on review pings"): a Slack connection per gateway
+   (Settings → Integrations → Slack and `hui slack connect|status|disconnect`: the
+   User OAuth Token of an app the operator creates from HUI's manifest, user
+   scopes only and read-only, verified with `auth.test`, stored like Jira's,
+   never returned or logged) and a `slack` trigger source: mentions of the
+   operator in channels and group DMs and direct messages to them, read through
+   `search.messages` every minute by one poller with a saved cursor (a silent
+   baseline, each message once, edits never, a 24-hour catch-up after bots were
+   off or the machine slept, Retry-After and back-off, a revoked token parked
+   until the operator connects again), filtered by PR links (a thread reply
+   counts its parent's), people, channels, and whether bots or Slack Connect
+   people may wake it. Deliveries carry who and where, the message and its
+   thread parent, the permalink and each linked pull request read through the
+   gateway's `gh` (description, files and diff, bounded), so a bot without a
+   shell reviews from the delivery alone; the Triggers section has a Review
+   requests preset, and only the operator adds or changes Slack triggers.
+   Follow-up: mentions of a user group. Proof: `server/slack.test.ts`,
+   `server/bot-triggers-slack.test.ts` and `server/bot-triggers-slack-prs.test.ts`
+   (a fake Slack Web API, `e2e/slack-fixture.mjs`, and a fake clock: pagination,
+   429, revoked tokens, catch-up after a restart and a sleep, dedupe, edits,
+   threads, DMs, bots, Slack Connect, diff truncation), `server/bot-triggers.test.ts`
+   (filters, delivery, the tool refusing Slack triggers),
+   `server/slack-routes.test.ts` (a real gateway: connecting, a ping with a pull
+   request reaching a bot whose gated tools refuse the turn, bots off and on, the
+   CLI, the token in no route, diagnostic, log or model request), `cli/slack.test.ts`,
+   `src/lib/slack.test.ts` and an isolated gateway driven in a browser
+   ([`e2e/slack-triggers.browser.md`](../e2e/slack-triggers.browser.md), screens
+   in the pull request).
+
 ### HUI-19 — Agent widgets
 
 Done 2026-10-06. Agents and bots show interactive HTML/SVG widgets inline in the
@@ -714,6 +1069,23 @@ cleanup. Requests across the connection can now be cancelled (`cancel`), so a
 Stop on the worker closes the card. Proof: `server/worker/protocol.test.ts`,
 `server/worker/host.test.ts`, `server/workers.test.ts` and the worker section of
 `e2e/secret-requests.browser.md`.
+
+### HUI-21 — Work pane
+
+**Status:** implemented on `feat/work-pane`; validation recorded in
+[`e2e/work-pane.browser.md`](../e2e/work-pane.browser.md).
+
+A right-hand Work pane after AgentsInTheCloud's: per conversation, following the
+focused chat pane, a tab strip of Work views with a **+** launcher menu, an empty
+state listing launchers and shortcuts, a collapsed rail, a resizable edge and a
+full-screen destination below 1100px reached from the panel selector. Terminal
+and browser views move out of the chat multiplexer into it (saved layouts migrate
+on load); chat splits and tabs are unchanged. `src/lib/work-pane.ts` is the Work
+view contract that the Files (F) and VS Code (V) views register against. Proof:
+`src/lib/work-pane.test.ts` (state transitions, tolerant loading, retention,
+migration), `src/lib/shortcut-binding.test.ts`, `src/views/panel-selector.test.ts`,
+`src/lib/session-multiplexer.test.ts` (the old format stays readable) and the
+Browser-tool journey.
 
 ## Recommended implementation order
 

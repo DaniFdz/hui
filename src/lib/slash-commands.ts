@@ -1,3 +1,8 @@
+/**
+ * The composer's slash commands: HUI's own commands, the runtime's commands merged under them, discovery and
+ * completion at the caret, and parsers that reserve HUI's command names so a malformed variant is never sent to
+ * the model as a prompt.
+ */
 import { commandReference } from "./command-references.ts";
 import type { RuntimeCommand } from "./sessions-store.ts";
 
@@ -10,10 +15,20 @@ export const HUI_SESSION_COMMANDS: readonly ComposerCommand[] = [
   { name: "btw", description: "Ask a quick side question without changing session context", source: "hui" },
   { name: "side", description: "Alias for /btw", source: "hui" },
 ];
-export function composerCommands(commands: readonly RuntimeCommand[], includeSessionCommands = false): ComposerCommand[] {
+/** A bot's chat is permanent: the gateway refuses to reset or compact it. */
+export const BOT_CHAT_REFUSED_COMMANDS: readonly string[] = ["clear", "compact"];
+/** `botChat` leaves out the commands a bot's permanent chat refuses; their
+ * names stay reserved so a runtime command cannot take their place. */
+export function composerCommands(commands: readonly RuntimeCommand[], includeSessionCommands = false, botChat = false): ComposerCommand[] {
   const huiCommands = includeSessionCommands ? [...HUI_COMMANDS, ...HUI_SESSION_COMMANDS] : HUI_COMMANDS;
   const names = new Set(huiCommands.map((command) => command.name));
-  return [...huiCommands, ...commands.filter((command) => !names.has(command.name))];
+  const offered = botChat ? huiCommands.filter((command) => !BOT_CHAT_REFUSED_COMMANDS.includes(command.name)) : huiCommands;
+  return [...offered, ...commands.filter((command) => !names.has(command.name))];
+}
+/** Why a bot's chat does not run this text as a command, or undefined when it may. */
+export function botChatCommandRefusal(text: string): string | undefined {
+  const command = parseClearCommand(text) ? "clear" : parseCompactCommand(text) ? "compact" : undefined;
+  return command ? `A bot keeps one permanent chat, so /${command} is not available here. Its memory summarizes older messages by itself.` : undefined;
 }
 /** Reserve the entire /update namespace, including invalid arguments, so an
  * operational command can never accidentally become a model prompt. */

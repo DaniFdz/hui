@@ -5,6 +5,7 @@ import { once } from "node:events";
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { waitFor } from "./test-support/wait-for.ts";
 
 test("a failed worktree launch stays listed with its prompt until dismissed", { timeout: 20_000 }, async (t) => {
   const dir = await mkdtemp(join(tmpdir(), "hui-worktree-routes-"));
@@ -44,11 +45,9 @@ test("a failed worktree launch stays listed with its prompt until dismissed", { 
   assert.equal(started.body.session?.status, "starting");
   assert.ok(started.body.session?.creating);
 
-  let failed: View | undefined;
-  while (!failed) {
-    failed = (await listed()).find((session) => session.id === id && session.status === "error");
-    if (!failed) await new Promise((resolve) => setTimeout(resolve, 10));
-  }
+  const failed = await waitFor("the worktree session to fail", async () => (await listed()).find((session) => session.id === id && session.status === "error"), {
+    state: listed,
+  });
   assert.equal(failed.creating, undefined);
   assert.match(failed.creationError ?? "", /requires a Git repository/);
   assert.equal(failed.initialPrompt, "keep this prompt");

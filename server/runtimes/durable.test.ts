@@ -12,12 +12,15 @@ import type { DurableSession } from "./durable.ts";
 import type { AgentToolInvocation } from "../agent-tools-bridge.ts";
 import type { RuntimeEvent, TranscriptEntry } from "./types.ts";
 import { SecretFiles, SecretRequests } from "../secret-requests.ts";
+import { completeLines } from "../test-support/json-lines.ts";
 
 // HUI's configuration directory (provider selections, credentials, the default
-// Durable store) is resolved at import time; never read the operator's own.
-const configDir = await mkdtemp(join(tmpdir(), "hui-durable-config-"));
-process.env["XDG_CONFIG_HOME"] = configDir;
-after(() => rm(configDir, { recursive: true, force: true }));
+// Durable store) is resolved at import time, and PI finds skills in
+// ~/.agents/skills: never read the operator's own.
+const root = await mkdtemp(join(tmpdir(), "hui-durable-home-"));
+process.env["HOME"] = root;
+process.env["XDG_CONFIG_HOME"] = join(root, "config");
+after(() => rm(root, { recursive: true, force: true }));
 const { DurableHost, durableContext, registryCaller } = await import("./durable-host.ts");
 // The estimate Durable's compaction thresholds use; the package root does not export it.
 const { estimateContext } = await import(new URL("./harness/compaction.js", import.meta.resolve("@earendil-works/pi-durable")).href) as {
@@ -133,7 +136,7 @@ function userEntryId(session: DurableSession, prefix: string): string {
 
 type ProviderRequest = { system?: unknown; messages?: unknown };
 async function providerRequests(log: string): Promise<ProviderRequest[]> {
-  return (await readFile(log, "utf8")).trim().split("\n").map((line) => JSON.parse(line) as ProviderRequest);
+  return completeLines(await readFile(log, "utf8")).map((line) => JSON.parse(line) as ProviderRequest);
 }
 const summarizing = (request: ProviderRequest) => JSON.stringify(request.system ?? "").includes("context summarization assistant");
 /** The messages of the newest model request that was not a summary. */
@@ -178,6 +181,19 @@ test("resume references round-trip Durable's integer conversation IDs only", () 
   }
 });
 
+test("the live view streams an answer Durable sends whole, exactly once", { timeout: 45_000 }, async (t) => {
+  const f = await fixture(t);
+  const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-whole-answer" }, f.host());
+  const streamed: string[] = [];
+  session.subscribe((event) => { if (event.type === "text") streamed.push(event.delta); });
+  const settled = nextEvent(session, (event) => event.type === "settled");
+  await session.prompt("hello there");
+  await settled;
+  // The fixture's short reply reaches Durable's stream as one partial; the live view shows it from these events.
+  assert.equal(streamed.join(""), "Fixture response.");
+  await transcriptWhere(session, answered("Fixture response."));
+});
+
 test("Durable runs a real tool turn and reopens the conversation from its store", { timeout: 45_000 }, async (t) => {
   const f = await fixture(t);
   const host = f.host();
@@ -198,7 +214,7 @@ test("Durable runs a real tool turn and reopens the conversation from its store"
   assert.deepEqual(shape, ["user", "tool", "assistant"]);
   const read = live.find((entry) => entry.kind === "tool");
   assert(read?.kind === "tool" && read.name === "read" && read.failed === false, JSON.stringify(read));
-  const requests = (await readFile(f.log, "utf8")).trim().split("\n").map((line) => JSON.parse(line) as { system?: unknown });
+  const requests = completeLines(await readFile(f.log, "utf8")).map((line) => JSON.parse(line) as { system?: unknown });
   const system = JSON.stringify(requests[0]!.system);
   assert.match(system, /You are the coding assistant in HUI/u, "HUI's default preamble");
   assert.match(system, /hui_tools/u, "HUI's active-tool section");
@@ -336,6 +352,41 @@ test("rewinding forks the conversation and keeps the abandoned branch", { timeou
   assert(answered("Tool complete")(kept.transcript()), "the abandoned branch is still stored");
 });
 
+test("a fork copies the history up to a reply into a new conversation and leaves the source untouched", { timeout: 60_000 }, async (t) => {
+  const f = await fixture(t);
+  const host = f.host();
+  const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-fork-source" }, host);
+  await turns(session, ["FORK_ONE first turn", "FORK_TWO second turn"]);
+  const messages = (entries: TranscriptEntry[]) => entries.flatMap((entry) => entry.kind === "message" ? [`${entry.role}:${entry.text}`] : []);
+  const before = session.transcript();
+  const firstAnswer = before.find((entry) => entry.kind === "message" && entry.role === "assistant");
+  assert(firstAnswer?.kind === "message" && firstAnswer.entryId, "replies carry their Durable entry ID");
+
+  const reference = await session.fork(firstAnswer.entryId);
+  assert(durableConversationId(reference), reference);
+  assert.notEqual(reference, session.sessionFile, "the copy is a conversation of its own");
+  assert.deepEqual(session.transcript(), before, "the source keeps its whole history");
+  const copy = await startDurable({ cwd: f.cwd, sessionFile: reference, huiSessionId: "durable-fork-copy" }, host);
+  assert.deepEqual(messages(copy.transcript()), messages(before).slice(0, 2), "the copy ends at the reply it was forked from");
+  await turns(copy, ["FORK_THREE in the copy"]);
+  const context = await lastTurnRequest(f.log);
+  assert.match(context, /FORK_ONE/u, "the model reads the copied history");
+  assert.doesNotMatch(context, /FORK_TWO/u, "nothing after the fork point reaches the copy");
+  assert.deepEqual(messages(session.transcript()), messages(before), "the copy's turn stays out of the source");
+
+  const latest = await startDurable({ cwd: f.cwd, sessionFile: await session.fork(), huiSessionId: "durable-fork-latest" }, host);
+  assert.deepEqual(messages(latest.transcript()), messages(before), "without an entry the fork copies everything");
+  await assert.rejects(session.fork("missing-entry"), /no longer available/u);
+
+  // A fork into a worktree moves the copy's agent there; the source keeps its directory.
+  const elsewhere = join(f.cwd, "..", "worktree");
+  await mkdir(elsewhere);
+  const moved = durableConversationId(await session.fork(firstAnswer.entryId, { cwd: elsewhere }))!;
+  const harness = await host.open();
+  assert.equal((await (await harness.conversation(moved, durableContext))!.agent(durableContext)).cwd, elsewhere);
+  assert.equal((await (await harness.conversation(durableConversationId(session.sessionFile)!, durableContext))!.agent(durableContext)).cwd, f.cwd);
+});
+
 test("Durable compaction keeps the whole history and marks where it summarized", { timeout: 60_000 }, async (t) => {
   const f = await fixture(t, KEPT_WINDOW);
   const host = f.host();
@@ -370,6 +421,20 @@ test("Durable compaction keeps the whole history and marks where it summarized",
   assert.match(context, /FIXTURE_SUMMARY/u);
   assert.match(context, /COMPACT_THREE/u, "the kept window stays verbatim");
   assert.doesNotMatch(context, /COMPACT_ONE|COMPACT_TWO/u, "summarized turns leave the model context");
+});
+
+test("a summary on a model that thinks from its output cap gets the model's whole cap", { timeout: 60_000 }, async (t) => {
+  // Durable would cap the summary at 0.8 × 1,000 tokens; adaptive thinking spends from that cap too.
+  const f = await fixture(t, { contextWindow: 200_000, settings: { compaction: { keepRecentTokens: 40, reserveTokens: 1_000 } } });
+  const models = JSON.parse(await readFile(join(f.agentDir, "models.json"), "utf8"));
+  for (const model of models.providers["hui-e2e"].models) model.compat = { forceAdaptiveThinking: true };
+  await writeFile(join(f.agentDir, "models.json"), JSON.stringify(models));
+  const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-summary-cap" }, f.host());
+  await turns(session, ["COMPACT_ONE first turn", "COMPACT_TWO second turn", LONG_TURN]);
+  const end = (await compacted(session)).find((event) => event.type === "compaction_end");
+  assert(end?.type === "compaction_end" && end.outcome === "done", JSON.stringify(end));
+  const summary = (await providerRequests(f.log)).find(summarizing) as { max_tokens?: number; output_config?: unknown };
+  assert.deepEqual([summary.max_tokens, summary.output_config], [4096, { effort: "high" }]);
 });
 
 test("the context meter is Durable's own estimate, system prompt included", { timeout: 60_000 }, async (t) => {
@@ -711,7 +776,7 @@ test("Durable requests give each HUI session its own PI_CLIENT_SESSION_ID for pr
 
 test("a worker row with the same durable:N never becomes the caller of a gateway conversation", async () => {
   const { updateRegistry } = await import("../sessions.ts");
-  const base = { cwd: configDir, tool: "durable", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+  const base = { cwd: root, tool: "durable", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
   await updateRegistry(() => [
     { ...base, id: "remote-row", piSessionFile: "durable:7", worker: "w1" },
     { ...base, id: "local-row", piSessionFile: "durable:7" },
@@ -791,7 +856,7 @@ export default function (pi) {
 
 async function extensionLog(log: string): Promise<Record<string, unknown>[]> {
   const text = await readFile(log, "utf8").catch(() => "");
-  return text.trim().split("\n").filter(Boolean).map((line) => JSON.parse(line) as Record<string, unknown>);
+  return completeLines(text).map((line) => JSON.parse(line) as Record<string, unknown>);
 }
 
 const logged = async (log: string, event: string) => (await extensionLog(log)).filter((entry) => entry["event"] === event);

@@ -12,17 +12,21 @@ import { huiToolDefinitions } from "./hui-tools.ts";
 export type DurableToolInvoker = (invocation: AgentToolInvocation) => Promise<unknown>;
 type ConversationInvoker = (conversationId: ConversationId, action: string, params: Record<string, unknown>, signal?: AbortSignal) => Promise<unknown>;
 
-/** Whether an interrupted call may rerun after a crash. HUI actions can have
- * taken effect (a spawned child, a typed terminal line), so none are replayed:
- * the model is told the call was interrupted and decides what to do. */
-const REPLAY: "unsafe" = "unsafe";
+/** HUI tools an interrupted call may simply run again after a crash: they only read. Every other HUI action can have
+ * taken effect (a spawned child, a typed terminal line), so it is not replayed: the model is told the call was
+ * interrupted and decides what to do. */
+const READ_ONLY = new Set(["sessions_list", "sessions_history"]);
+
+export function replayPolicy(name: string): "safe" | "unsafe" {
+  return READ_ONLY.has(name) ? "safe" : "unsafe";
+}
 
 function durableTool(tool: ToolDefinition, invoke: ConversationInvoker): ToolRegistration {
   return defineTool({
     name: tool.name,
     description: tool.description,
     parameters: tool.parameters as never,
-    replay: REPLAY,
+    replay: replayPolicy(tool.name),
     execute: async (args, api, context) => {
       const result = await directHuiBridge.run(
         (action, params, signal) => invoke(api.conversationId, action, params, signal),

@@ -1,5 +1,3 @@
-import { piEnvironment } from "./pi-environment.ts";
-import { RuntimeTimings, sanitizeMetrics } from "./transcript-metrics.ts";
 /**
  * PI adapter. The HUI-owned SDK worker and opt-in CLI fallback share PI's RPC
  * transport. Both live outside the gateway; only the SDK exposes inspection.
@@ -9,6 +7,9 @@ import { RuntimeTimings, sanitizeMetrics } from "./transcript-metrics.ts";
  * `readline` is explicitly not compliant, because it also splits on U+2028 and
  * U+2029, which are legal inside JSON strings.
  */
+import { piEnvironment } from "./pi-environment.ts";
+import { RuntimeTimings, sanitizeMetrics } from "./transcript-metrics.ts";
+import { parseCallRecord } from "../../shared/calls.ts";
 import { resolveCommandReference } from "../../src/lib/command-references.ts";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { relayCredentials, secretEnv } from "../worker/credentials.ts";
@@ -337,6 +338,12 @@ export function transcriptFrom(messages: readonly unknown[], timings = new Runti
     const role = message.role;
     if (role === "compaction") {
       entries.push({ kind: "compaction", summary: typeof raw["summary"] === "string" ? raw["summary"] : "", tokensBefore: finiteNumber(raw["tokensBefore"]) });
+      continue;
+    }
+    // The record of a call with a bot (Durable's `hui.call` entry): one card, its summary and transcript.
+    if ((role as string) === "call") {
+      const record = parseCallRecord(raw["record"]);
+      if (record) entries.push({ kind: "call", ...record });
       continue;
     }
     if (role === "toolResult") {

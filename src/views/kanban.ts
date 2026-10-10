@@ -36,11 +36,12 @@ import {
 import { sessionGroupLabel, storedSessionGroup, type SessionGroup, type SessionView } from "../lib/sessions-store.ts";
 import { formatUpdated } from "./sessions.ts";
 import { taskSuggestionLocation, taskSuggestionPreview } from "../../shared/task-suggestions.ts";
+import { loadViewAssets } from "../lib/view-assets.ts";
 
-if (typeof document !== "undefined") {
-  await import("../styles/kanban.css");
-  (await import("../components/jira-hovercard.ts")).installJiraHovercard();
-}
+loadViewAssets(
+  () => import("../styles/kanban.css"),
+  () => import("../components/jira-hovercard.ts").then((module) => module.installJiraHovercard()),
+);
 
 /** Local: the shared icon set is pinned to upstream geometry. */
 const kanbanIcon = html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${svg`<rect width="18" height="18" x="3" y="3" rx="2" /><path d="M8 7v7M12 7v4M16 7v9" />`}</svg>`;
@@ -54,8 +55,6 @@ export type KanbanPageProps = {
   options: KanbanOptions;
   /** Session whose stage change is in flight; its card is inert meanwhile. */
   movePendingId: string;
-  notice: string;
-  noticeFailed: boolean;
   draggingId: string;
   dropTarget: string;
   onQuery: (value: string) => void;
@@ -455,7 +454,6 @@ export function renderKanbanPage(props: KanbanPageProps): TemplateResult {
           <button type="button" class="btn btn--sm" @click=${props.onRefresh}>${icons.refresh} Refresh</button>
         </div>
       </header>
-      ${props.notice ? html`<p class="kanban-notice ${props.noticeFailed ? "is-error" : ""}" role=${props.noticeFailed ? "alert" : "status"}>${props.notice}</p>` : nothing}
       ${backlogNote(props)}
       ${board(props)}
     </section>`;

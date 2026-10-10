@@ -9,12 +9,11 @@ hui-browser-pane {
   background: var(--background);
   color: var(--foreground);
 }
-.hui-browser-header { flex: 0 0 auto; min-width: 0; }
+/* The view's own strip under the Work pane tab: which browser tab is watched, and Follow agent. */
+.hui-browser-toolbar { display: flex; flex: 0 0 auto; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; min-height: 36px; padding: 2px 8px; border-bottom: 1px solid var(--border); }
 .hui-browser-title, .hui-browser-actions { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .hui-browser-title { flex: 1; }
-.hui-browser-title > span { display: flex; }
 .hui-browser-title svg, .hui-browser-actions svg { width: 16px; height: 16px; }
-.hui-browser-heading { font-weight: 600; font-size: 13px; }
 .hui-browser-title .hui-browser-picker { flex: 0 1 320px; min-width: 0 !important; width: auto !important; max-width: 320px; }
 .hui-browser-title .picker-select__trigger { display: flex; align-items: center; width: 100%; min-height: 28px; padding-inline: 6px; border: 0; background: transparent; color: inherit; font: inherit; text-align: start; box-shadow: none; }
 .hui-browser-title .picker-select__trigger:hover { background: color-mix(in srgb, var(--bg-hover) 84%, transparent); }

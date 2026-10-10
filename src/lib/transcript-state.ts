@@ -1,5 +1,11 @@
+/**
+ * Client-side transcript reducer: normalising transcript entries from the gateway and folding streamed
+ * runtime events into rows, including optimistic user messages until the runtime accepts them. The runtime's
+ * transcript stays authoritative; these rows are a projection for rendering.
+ */
 import { sanitizeMetrics } from "../../server/runtimes/transcript-metrics.ts";
 import type { RuntimeEvent, TranscriptAttachment, TranscriptItem } from "./sessions-store.ts";
+import { parseCallRecord } from "../../shared/calls.ts";
 
 let localSequence = 0;
 
@@ -80,6 +86,12 @@ export function normalizeTranscript(
     }
     if (entry.kind === "compaction" && typeof entry.summary === "string") {
       result.push({ kind: "compaction", id, summary: entry.summary, tokensBefore: typeof entry.tokensBefore === "number" ? entry.tokensBefore : 0 });
+      return;
+    }
+    // A GPT-Live call's record: one card (chat-call.ts).
+    if (entry.kind === "call") {
+      const record = parseCallRecord(entry);
+      if (record) result.push({ kind: "call", id, ...record });
       return;
     }
     if (entry.kind === "error" && (typeof entry.text === "string" || typeof entry.message === "string")) {

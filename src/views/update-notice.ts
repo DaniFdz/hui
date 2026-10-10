@@ -1,3 +1,7 @@
+/**
+ * The banner announcing a newer HUI release. It renders only; the app decides when a release is shown and opens the
+ * update dialog from it.
+ */
 import { html, nothing } from "lit";
 import { icons } from "../lib/icons.ts";
 import type { ReleaseInfo } from "../lib/update-types.ts";

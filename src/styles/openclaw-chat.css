@@ -681,6 +681,12 @@ hui-math.markdown-math--inline .markdown-rich-embed__error {
 .chat-operation-toast[data-level="error"] .app-toast__icon { color: var(--danger); }
 /* HUI's icons carry no intrinsic size; match the 16px glyph of the other toast variants. */
 .chat-operation-toast .app-toast__dismiss svg { width: 16px; height: 16px; }
+/* Sidebar, Kanban, Sessions and bot action outcomes share the chat toast's place. */
+.action-toast {
+  top: var(--app-toast-shell-top, calc(64px + var(--safe-area-top)));
+}
+.action-toast[data-level="error"] .app-toast__icon { color: var(--danger); }
+.action-toast .app-toast__dismiss svg { width: 16px; height: 16px; }
 
 /* Suggested task card (OpenClaw task-suggestion port). HUI adds a secondary
    Jira action beside the primary start action instead of a split button.
@@ -774,4 +780,122 @@ wa-dropdown.session-menu.task-suggestion__start-menu { --menu-item-height: 26px;
 @media (max-width: 640px) {
   .chat-watcher > summary { grid-template-columns: 16px minmax(0, 1fr) auto; }
   .chat-watcher > summary .chat-subagents__snippet { display: none; }
+}
+
+/* HUI's `ask_user_question` card (components/questionnaire-card.ts): OpenClaw's
+   question panel with a question strip and a preview of the focused option. */
+.questionnaire-card__tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.questionnaire-card__tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 26px;
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: var(--control-ui-text-sm);
+  cursor: var(--cursor-action);
+}
+
+.questionnaire-card__tab:hover,
+.questionnaire-card__tab:focus-visible {
+  background: var(--panel-hover);
+  color: var(--text);
+  outline: none;
+}
+
+.questionnaire-card__tab:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+
+.questionnaire-card__tab[aria-selected="true"] {
+  border-color: color-mix(in srgb, var(--accent) 58%, var(--border));
+  background: color-mix(in srgb, var(--accent-subtle) 55%, var(--panel));
+  color: var(--text-strong);
+  font-weight: 600;
+}
+
+.questionnaire-card__tab-check {
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.questionnaire-card__tab-check:empty {
+  display: none;
+}
+
+.questionnaire-card__hint {
+  margin-top: -6px;
+  color: var(--muted);
+  font-size: var(--control-ui-text-sm);
+}
+
+.questionnaire-card__body--preview {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+  align-items: start;
+  gap: 10px;
+}
+
+.questionnaire-card__preview {
+  min-width: 0;
+  max-height: 22rem;
+  overflow: auto;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: calc(11px * var(--openclaw-corner-radius-scale));
+  background: color-mix(in srgb, var(--panel) 72%, transparent);
+  font-size: var(--control-ui-text-sm);
+}
+
+.questionnaire-card__preview .chat-text > :first-child { margin-top: 0; }
+.questionnaire-card__preview .chat-text > :last-child { margin-bottom: 0; }
+
+/* The question card dock is as wide as the composer: a wide card makes room
+   for its preview, a narrow one stacks it under the options. */
+@media (max-width: 720px) {
+  .questionnaire-card__body--preview {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .questionnaire-card__preview {
+    max-height: 14rem;
+  }
+}
+
+.questionnaire-card__options[role="radiogroup"] .chat-question-panel__option--other .chat-question-panel__option-marker {
+  border-radius: var(--radius-full);
+}
+
+/* Four options, a preview or a phone's height can make the card scroll: its
+   actions stay in reach at the bottom, and never cover the focused row. */
+.questionnaire-card {
+  scroll-padding-bottom: 64px;
+}
+
+.questionnaire-card > .chat-question-panel__footer {
+  position: sticky;
+  bottom: -14px;
+  z-index: 1;
+  margin: 0 -14px -14px;
+  padding: 10px 14px 14px;
+  background: var(--chat-composer-surface, var(--popover));
+}
+
+@media (max-width: 640px) {
+  .questionnaire-card > .chat-question-panel__footer {
+    bottom: -12px;
+    margin: 0 -12px -12px;
+    padding: 10px 12px 12px;
+  }
 }

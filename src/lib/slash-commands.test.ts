@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { completeCommandReference, completeSlashCommand, composerCommands, filterSlashCommands, parseClearCommand, parseReloadCommand, parseUpdateCommand, slashCommandQuery, parseCompactCommand } from "./slash-commands.ts";
+import { botChatCommandRefusal, completeCommandReference, completeSlashCommand, composerCommands, filterSlashCommands, parseClearCommand, parseReloadCommand, parseUpdateCommand, slashCommandQuery, parseCompactCommand } from "./slash-commands.ts";
 import type { RuntimeCommand } from "./sessions-store.ts";
 
 test("slash suggestions are limited to the leading token and current caret", () => {
@@ -21,6 +21,22 @@ test("HUI commands add btw and side without duplicating runtime names", () => {
     { name: "review", description: "Review", source: "skill" },
   ], true);
   assert.deepEqual(commands.map((command) => command.name), ["update", "clear", "reload", "compact", "btw", "side", "review"]);
+});
+
+test("a bot's permanent chat offers no /clear or /compact, and runtime copies cannot take their names", () => {
+  const commands = composerCommands([
+    { name: "clear", description: "runtime copy", source: "extension" },
+    { name: "compact", description: "runtime copy", source: "prompt" },
+    { name: "review", description: "Review", source: "skill" },
+  ], true, true);
+  assert.deepEqual(commands.map((command) => command.name), ["update", "reload", "btw", "side", "review"]);
+  assert.deepEqual(composerCommands([], true).map((command) => command.name), ["update", "clear", "reload", "compact", "btw", "side"]);
+  for (const text of ["/clear", " /clear ", "/clear now", "/compact", "/compact keep the plan"]) {
+    assert.match(botChatCommandRefusal(text) ?? "", /permanent chat/u, text);
+  }
+  for (const text of ["Explain /clear", "/clearly", "/reload", "/btw what now?", "hello"]) {
+    assert.equal(botChatCommandRefusal(text), undefined, text);
+  }
 });
 
 test("search accepts skill names without their prefix and matches descriptions and sources", () => {

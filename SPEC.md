@@ -32,10 +32,14 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   remain absent; HUI never estimates per-fragment tokens or historical duration.
   Live timings survive browser reconnects, not a PI runtime/gateway restart.
 
-- Session search lives in the fixed sidebar header, including the mobile drawer.
-  Search expands directly below the header and filters the session list; it is
-  not duplicated in the Sessions toolbar or a bottom footer. Settings is the last
-  primary-navigation destination, not a header button.
+- Session search is the field directly below the sidebar header; it filters the
+  session list and is not duplicated in the Sessions toolbar or a bottom footer.
+  The mobile top bar's Search opens it, and Ctrl+K (⌘K) finds sessions in the
+  command palette. The header holds only the collapse toggle, at its top-left,
+  where the restore control appears while the sidebar is collapsed, so toggling
+  needs no mouse travel (the owner dropped the header's New session and Search
+  buttons on 2026-10-06; new sessions start from a group's +). Settings is the
+  last primary-navigation destination, not a header button.
 - Appearance includes the native OpenClaw Miami palette in light, dark and
   system modes. Theme, accent, interface-font and chat-prose-font preferences
   persist in HUI settings. The two font selectors expose OpenClaw's ten choices
@@ -89,8 +93,9 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   custom values use the same bounded session-icon metadata contract.
   Project grouping remains a read-only projection and never becomes a drop target.
 - OpenClaw's **Assign to** is absent because PI has no multi-user ownership
-  model. **Fork conversation** is absent until PI exposes a transcript-branching
-  RPC; HUI never copies or rewrites PI's JSONL to imitate a fork.
+  model. **Fork conversation** is absent from the row menu: a Pi Durable session
+  forks from a reply in its transcript instead (below). A session still on PI
+  never forks; HUI never copies or rewrites PI's JSONL to imitate a fork.
 - In custom-group mode, custom groups are reordered by dragging a group header
   above or below another group, or with the group menu's keyboard-accessible
   **Move group up** / **Move group down** actions. The order persists in the HUI
@@ -258,14 +263,97 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   data; the URL identifies the active session. Below 1100px only the active pane
   is visible, with the other panes still mounted; sidebar selection changes focus.
   Any pane can close without stopping its runtime or remounting survivors.
-- Existing chat and terminal panes can be repositioned by dragging their header
+- Existing chat panes can be repositioned by dragging their header
   or move handle. Edges relocate the pane into a column or stack; center drops
   swap both panes. Self-drops and cancellation do nothing. Pane identity,
-  cached views, drafts, scroll, streams and terminal connections survive moves;
+  cached views, drafts, scroll and streams survive moves;
   the moved pane keeps focus. Arrow keys on **Move panel** provide a keyboard
   path beside neighboring panes. The layout persists in the existing browser
   format. Moving is desktop-only, like edge splitting; narrow screens retain
   the active-pane presentation and do not expose an unusable drag handle.
+- The **Work pane** (after AgentsInTheCloud's) sits to the right of the chat
+  panes and shows the Work views of the focused conversation: its terminals and
+  its browser view, its Files views (see *Files*) and its VS Code view (see
+  *VS Code*), each a kind registered through one contract
+  (`src/lib/work-pane.ts`). Each conversation has its own pane; moving
+  focus to another chat pane or conversation switches the contents. One view is
+  visible at a time, chosen from a tab strip (icon, title, close; drag or
+  Alt+Shift+Arrow to reorder, Arrow/Home/End to move, Delete to close). The **+**
+  menu launches views (Ctrl+Alt+Shift+T / ⌥⇧⌘T new terminal, Ctrl+Alt+Shift+B /
+  ⌥⇧⌘B browser, Ctrl+Alt+Shift+F / ⌥⇧⌘F a new Files view, Ctrl+Alt+Shift+C /
+  ⌥⇧⌘C VS Code)
+  and reopens running terminals whose tab was closed; with nothing open the pane
+  lists the same launchers with their shortcuts. A launcher that cannot act says
+  why in visible text (the browser tool turned off, a conversation on a remote
+  worker has no local terminal) and, when a setting changes that, links to its
+  Settings section, which opens scrolled to it with a little room (`--space-6`)
+  above its heading. The VS Code launcher is always available; its view explains
+  what it needs on first open (see *VS Code*). **Hide Work pane** (Ctrl+Alt+Shift+P / ⌥⇧⌘P) collapses it to a rail
+  with one button per open view; its left edge resizes with the pointer or the
+  arrow keys (Shift for larger steps, Home/End for the limits), keeping at least
+  420px for each chat column side by side: the pane yields width down to its own
+  320px minimum, and when even that does not fit (say three split chats) it shows
+  as its rail until the operator expands it anyway or a view is opened, then at
+  its minimum with the chat columns narrower. While the pane is open the chat
+  splitter keeps the same 420px per column: the columns share the room by their
+  weights above it (closing a column rebalances the survivors rather than leaving
+  one at 320px), the divider stops where a column would drop below it, and when
+  420px each does not fit the columns share the room equally, down to the usual
+  320px. **Maximize Work pane** (header button beside **+**, Ctrl+Alt+Shift+M / ⌥⇧⌘M) lets the pane take the
+  whole content area beside the sidebar, for a full-size terminal, browser, Files editor or VS Code: the chat
+  columns are hidden but stay mounted (streams, scroll and drafts survive; no view is re-created and no terminal
+  replays) and the views refit to the new size. While maximized, the narrow layout's panel selector shows above the
+  pane, listing the chat panes, the open Work views and the launchers: choosing a chat pane restores the chat beside
+  the pane, choosing a view switches to it. **Restore Work pane** (the same button and shortcut) or hiding the pane
+  also restores. Escape is not bound to restoring: it keeps going to the terminal or VS Code that has focus, and
+  elsewhere in the pane moves focus to the panel selector (it never stops the hidden chat's turn). Maximized is per
+  conversation and desktop only; narrow screens, already one panel at a time, ignore it. Escape inside the pane returns focus to the chat and never
+  stops the agent's turn. Below 1100px the pane is a full-screen destination: the
+  panel selector lists the chat panes, the open Work views and the launchers, and
+  **Back to chat** or Ctrl+Alt+Shift+P returns. Hidden views stay mounted, so terminals
+  and pages keep their state across tab switches, collapsing and focus changes,
+  for the three most recently focused conversations that have views; a view of
+  an older one reconnects (a terminal replays its snapshot) when shown again.
+  Open/closed and maximized state, width, views and the active view are browser-local
+  (`localStorage` `hui.work-pane.v1`, keyed by session id); unknown kinds and
+  malformed records are dropped on load, and a removed conversation's record
+  goes with it. Layouts saved before the Work pane load without loss: their
+  terminal and browser panes move into their conversation's Work pane and the
+  chat panes, splits and tabs stay as they were.
+- **Work pane shortcuts** are one scheme: Mod+Alt+Shift plus the initial of what
+  they open (⌥⇧⌘ on macOS, Ctrl+Alt+Shift elsewhere): **T** new terminal, **B**
+  browser, **F** Files, **C** VS Code ("Code": ⌥⇧⌘V is Paste and Match Style),
+  **P** to show or hide the pane and **M** to maximize or restore it. They are listened for on the document in
+  the capture phase, so they work from the composer, inside a terminal and inside
+  the Files editor (CodeMirror's own Alt chords, ⌥⌘G go to line and ⌥⌘\ indent,
+  never include Shift). The VS Code view is a cross-origin frame: while focus is
+  inside it every key, these included, belongs to VS Code; click the tab strip
+  or the chat to use them again. Each one is shown where it acts (launchers,
+  **+** menu, rail and toggle tooltips, `aria-keyshortcuts`). The table and the chords it avoids live
+  in `src/lib/work-shortcuts.ts`, whose test fails if a binding lands on one.
+  Plain ⌥⌘/Ctrl+Alt letters are not used: Apple's standard keys take ⌥⌘T
+  (toolbar), ⌥⌘F (search field), ⌥⌘V (apply style), ⌥⌘W (close all windows;
+  Safari: Close Other Tabs) and ⌥⌘C/D/H/I/M; Chrome takes ⌥⌘B (Bookmark Manager),
+  ⌥⌘F (search the web), ⌥⌘I/J/U/P/N; Safari ⌥⌘B (Edit Bookmarks) and ⌥⌘L/U;
+  Firefox ⌥⌘F/R/U and its developer tools ⌥⌘I/K/C/E/M/J/Z, and Ctrl+Alt+R/X/Z
+  on Linux and Windows; GNOME takes Ctrl+Alt+T before the page sees it, KDE and
+  Xfce Ctrl+Alt+L. With Shift only ⌥⇧⌘Q (log out) and ⌥⇧⌘V (Paste and Match
+  Style) are standard on macOS, so the scheme skips Q and V; W stays out because
+  Safari's Close All Windows is ⌥⇧⌘W. Terminal programs bind no Ctrl+Alt+Shift
+  letters (Emacs and readline use Ctrl+Alt letters, which reach a terminal as
+  Meta+Ctrl).
+  Chrome lets a page cancel every accelerator except new/close tab or window,
+  reopening a tab and tab switching (`IsReservedCommandOrKey`); Firefox reserves
+  only its `reserved="true"` keys. On Windows layouts with AltGr, Ctrl+Alt is
+  AltGr: a chord that types a character there (AltGr+E → €) stays text, one that
+  types nothing is the shortcut. Sources: Apple HIG *Keyboards*
+  (developer.apple.com/design/human-interface-guidelines/keyboards), Chrome
+  keyboard shortcuts (support.google.com/chrome/answer/157179) and
+  `chrome/browser/ui/browser_command_controller.cc`, Safari shortcuts
+  (support.apple.com/guide/safari/cpsh003, ibrw1039, ibrw3ceda9e7), Firefox
+  `browser/base/content/browser-sets.inc` with `browserSets.ftl` and the
+  DevTools shortcut list (firefox-source-docs.mozilla.org/devtools-user/keyboard_shortcuts),
+  GNOME/Ubuntu keyboard settings (help.gnome.org/gnome-help/keyboard-shortcuts-set.html).
 - Settled user messages expose copying in the original context-menu position
   (right-click or keyboard context key/Shift+F10), not an extra footer action.
   Assistant responses retain the footer copy button. Settled user-message
@@ -292,7 +380,19 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   context meter's Compact now start one. Continue invokes PI's native
   prompt-free continuation primitive; only when the branch already ends with a
   completed assistant response does HUI send an explicit continuation prompt.
-  Reply and fork remain absent rather than simulated.
+  A finished reply in a Durable session offers **Fork from here**, which first
+  asks where the fork works. In a Git checkout the dialog offers **New worktree**
+  (the default: a separate checkout on a new branch from the checkout's HEAD,
+  suffix `<title>-fork` unless typed; uncommitted changes stay behind) or
+  **Same checkout** (both sessions edit the same files). Outside Git, or on a
+  remote worker, it forks into the same folder. Durable then copies the history
+  up to that reply into a new conversation, which opens at once as a new session
+  in the same group, titled `<title> (fork)`, on the source's model and
+  reasoning. The source keeps its history and any run in flight. The copy starts
+  unpinned and read, without an icon, Jira links, a Kanban stage or OptChat. A
+  failure keeps the dialog open with its reason and removes a worktree it had
+  made. A reply followed by its tool calls, a bot's chat and sessions still on
+  PI offer no fork.
 - Markdown code fences retain the reference's reveal and word-wrap controls;
   copying remains a confirmed clipboard operation with a retryable failure. All
   HUI copy actions prefer the Clipboard API and fall back to a temporary native
@@ -480,7 +580,7 @@ A HUI selection overrides only the matching provider; an empty HUI model list
 selects nothing. Remaining PI models follow the operator's `models.json`
 provider/model selection using the `model-name` extension's rules. HUI owns three routes over that catalog: **primary** starts
 normal sessions, **fallback** retries a primary failure only when no useful output
-or tool activity has occurred, and **utility** runs cheap, fast, tool-free calls
+or tool activity has occurred, then returns the session to its own model, and **utility** runs cheap, fast, tool-free calls
 for concise (3–6 word, at most 60 character) new-session names in the prompt's language, generated worktree branch names and `/btw`. These settings never rewrite PI files.
 Missing or malformed PI selection files preserve the normal available catalog; see
 `docs/api.md` for empty-list and default-model semantics.
@@ -501,12 +601,15 @@ bundled Symbols Nerd Font Mono face placed after the chosen font, so prompt icon
 work in the browser and the desktop app whether or not the local font matches.
 
 
-The chat header's **Open terminal** opens an interactive shell in the session's
-directory/worktree, in the same resizable column/stack layout as chat. Terminal
-panels can create/select additional shells, split right/down, and hide without
-ending their processes. **End terminal** explicitly terminates the shell and its
-descendants. On narrow screens an active-panel selector switches between chat
-and terminal while preserving hidden views. Opening a terminal does not call PI.
+The chat header's **Open terminal** shows the conversation's terminal in its
+Work pane: its open terminal tab, else its first running shell, else a new
+interactive shell in the session's directory/worktree. Each terminal is its own
+tab; **New terminal** in the pane's **+** menu (Ctrl+Alt+Shift+T / ⌥⇧⌘T) creates another.
+Closing a tab hides the terminal without ending its process; the **+** menu lists
+running terminals without a tab under *Running* to reopen them. **End terminal**
+in the view's ⋯ menu explicitly terminates the shell and its descendants and
+closes its tab. On narrow screens the panel selector switches between chat and
+terminal while preserving hidden views. Opening a terminal does not call PI.
 
 HUI owns these PTYs and their bounded in-memory output, separately from PI's
 RPC/SDK and transcripts. Browser reload and disconnection preserve shell state
@@ -524,10 +627,39 @@ wrapper; successful submission does not mean the command has finished. Reads are
 bounded ANSI-stripped output replay, not screenshots or an emulated screen grid.
 The existing Full Access contract applies, without a new approval surface.
 
-Ghostty Web renders the terminal; `@lydell/node-pty` owns the shell; `ws` carries
-input/output/size changes. These dependencies and the additive browser-local
-terminal pane metadata were authorized with the shared-terminal feature. PI
-configuration and HUI's durable registry format remain unchanged.
+Gespenst (`@gespenst/core`, Ghostty's VT parser in WebAssembly) renders the
+terminal: it parses and paints in a dedicated worker with WebGL2, falling back to
+Canvas 2D, so heavy output and scrolling leave the page's main thread free.
+`@lydell/node-pty` owns the shell; `ws` carries input/output/size changes.
+Output streams as raw binary bytes written straight into the emulator, and the
+replay buffer appends in time proportional to each chunk, so heavy output
+(builds, logs, full-screen programs) costs neither JSON encoding nor re-copying
+the buffer. A terminal view never refits its grid while the Work pane hides it
+(a collapsed pane or the narrow chat destination), and it resizes its PTY only
+once a measurable size has held for 150 ms and its grid actually changed. Before
+a width change reaches the shell, the reflowed line under the cursor (normally
+the prompt) is cleared, so the shell's redraw does not leave a broken copy.
+
+The terminal follows HUI's theme: background and text from the pane, the accent
+for the cursor and selection, and an ANSI palette readable on that background (a
+light palette on light themes). Changing the theme, mode or accent recolors open
+terminals at once. Scrollback keeps 10,000 lines; a scrolled-back view keeps its
+place while output arrives and offers **Jump to bottom**, typing returns to the
+prompt, and a view at the bottom follows new output. OSC 8 hyperlinks and plain
+http(s) URLs open in a new browser tab on click; other link schemes are ignored.
+Mouse selection copies with ⌘C (Ctrl+Shift+C elsewhere), including over plain
+HTTP; ⌘V, Ctrl+Shift+V and, off Apple platforms, Ctrl+V paste (bracketed when
+the program asks). On touch screens a drag scrolls (full-screen programs with
+mouse reporting receive it as wheel input), a tap focuses the terminal and opens
+the soft keyboard, and a key bar adds Esc, Tab, a Ctrl latch (one tap for the
+next key, a double tap to lock) and the arrow keys; it also shows below 1100px.
+A Work view in the background never takes keyboard focus; a terminal takes it
+only when the operator launches it.
+
+These dependencies and the additive browser-local terminal metadata (now the
+Work pane record) were authorized with the shared-terminal feature; Gespenst
+replaced Ghostty Web with the owner's approval (2026-10-09). PI configuration
+and HUI's durable registry format remain unchanged.
 
 ## Managed browser
 
@@ -568,19 +700,188 @@ browser activity carries a preview. It streams while the agent's turn runs and
 the preview is on screen, then keeps its last frame; a preview that appears idle
 (a reopened conversation, a reload) takes one fresh frame of the tab if it is
 still open, and nothing is shown when no page is left to show. Selecting the
-preview, or the globe button in the conversation header, opens the **browser
-panel**: a larger live view beside the chat (the same multiplexer as terminal
-panes, and the narrow-screen panel selector) that follows the agent's tab or
-watches another of the conversation's tabs until Follow agent. Both are
+preview, or the globe button in the conversation header, opens the conversation's
+**browser view** in its Work pane (at most one per conversation; also launched
+from the pane's **+** menu, Ctrl+Alt+Shift+B / ⌥⇧⌘B): a larger live view beside the chat
+that follows the agent's tab or watches another of the conversation's tabs until
+Follow agent. Both are
 read-only. Frames come from a CDP screencast that runs only while someone
 watches and only when the page repaints (at most about ten frames a second).
 Headless tabs each get their own window, so conversations never hide each
 other's pages.
 
 No new dependency is added: HUI speaks CDP directly. Browser settings are an
-additive `browser` block in `settings.json`; the browser pane is an additive
-`browser: true` flag in the browser-local split layout. PI transcripts and the
-registry format are unchanged.
+additive `browser` block in `settings.json`; the browser view is a
+`{ "kind": "browser" }` entry in the browser-local Work pane record (layouts
+saved earlier marked it with `browser: true` and load into the Work pane). PI
+transcripts and the registry format are unchanged.
+
+## Files
+
+A **Files view** is a Work view (AgentsInTheCloud's term, adopted with the Work
+pane) for navigating the conversation's working directory and viewing or
+editing a file in it. It combines a collapsible **Files navigator** (a lazily
+expanded file tree, a filter, upload, new file or folder) with the selected
+file. A conversation may hold several Files views, each with its own selection,
+including several views of the same file. **Files** in the Work pane's **+**
+menu (Ctrl+Alt+Shift+F / ⌥⇧⌘F) opens a new one; its tab shows the selected file's name
+(or *Files*). Closing the tab forgets that view's selection and open folders; a
+file's unsaved text stays with its File draft until it is saved.
+
+The root is the conversation's recorded `cwd` (its directory or worktree);
+callers cannot name another. Every path resolves through `realpath` inside that
+root, so neither `..` nor a symlink reaches outside it: links that point outside
+are listed but cannot be opened, and writes never follow them. Git's `.git`
+store is not listed. Conversations on a remote worker show **Files are not
+available** with the reason, because their files live on that machine; the
+gateway never reads its own disk in their place.
+
+Text files up to 2 MB open in a CodeMirror 6 editor themed from HUI's tokens;
+it loads on demand, outside the main bundle. Edits save automatically after a
+short pause, and the header shows **Saved**, **Saving…**, **Conflict**,
+**Not saved: <reason>** (with Retry) or **Read only**. A save names the version it
+edited (the content's hash); when the file changed on disk meanwhile — usually
+the agent — the save is refused and the view shows the disk version beside a
+choice of **Reload from disk** or **Overwrite with mine**, keeping the unsaved
+text until then. A failed save keeps it too. The working text and save state of
+a file (its **File draft**) are shared by every Files view of that file in the
+page, and unsaved text survives a reload in browser storage until it reaches the
+disk. Line endings, BOM and a missing final newline are preserved.
+
+Markdown files have a **Markdown display mode**, **Source** or **Rendered**
+(HUI's chat Markdown renderer); the mode never decides whether the file is
+writable. Images and PDFs show as previews; other binary files and text over
+the limit show their size and modification time with **Download**.
+
+The navigator refreshes open folders and the selected file when the
+conversation's agent turn ends, when the view becomes visible again and on
+**Refresh**. The filter searches paths: Git's tracked and unignored files in a
+repository, a bounded walk elsewhere. Uploads go to the selected file's folder
+(or a folder row they are dropped on) and replace an existing file only after a
+confirmation listing each path. Deleting a file, link or folder asks first,
+listing what goes — a folder with everything inside it, unsaved edits, the open
+file — and states that it does not use the trash; the gateway deletes a
+non-empty folder only with that confirmation, and never the root. On narrow
+screens the navigator is a drawer and the editor takes the full width with a
+16 px font, so iOS does not zoom.
+
+CodeMirror's packages (`@codemirror/*`, `@lezer/highlight`) were authorized
+with this feature. The view's selection, open folders and display mode, and
+unsaved drafts, are browser-local storage; the HUI registry and PI transcripts
+are unchanged.
+
+## VS Code
+
+The Work pane's **VS Code** view opens the conversation's folder (its directory
+or worktree) in a browser VS Code, ported from AgentsInTheCloud's VS Code view.
+Its launcher is **always available** in the Work pane (**+** menu, empty pane,
+⌥⇧⌘C / Ctrl+Alt+Shift+C), and nothing is probed, started or downloaded until a
+view is opened.
+
+HUI runs one of these, in this order of preference (a choice in Settings
+overrides the order while that one is available):
+
+1. **A path saved in Settings**: an openvscode-server-compatible server, or VS
+   Code's own `code` CLI installed somewhere unusual. A path that does not run
+   is reported, never replaced by a detected one.
+2. **The installed VS Code desktop**, run as `code serve-web`, Microsoft's own
+   web server that ships with VS Code on macOS, Linux and Windows. HUI looks
+   for `code` on `PATH` and in the standard install locations (macOS
+   `/Applications` and `~/Applications`; Linux `/usr/share/code`, `/usr/bin`,
+   `/snap/bin`, `/opt/visual-studio-code`; Windows `bin\code-tunnel.exe` beside
+   `code.cmd` under `%LOCALAPPDATA%\Programs` and Program Files) and accepts it
+   only when `code --version` names a version and commit and `code serve-web
+   --help` lists the flags HUI needs. serve-web is Microsoft-licensed: HUI runs it
+   only after the operator accepted the VS Code Server License Terms in the
+   view's consent card, records that acceptance in its settings, and passes
+   `--accept-server-license-terms` only then; Settings can revoke it, which stops
+   a running serve-web. Its first start downloads the VS Code server build
+   matching the desktop's commit (about 230 MB for 1.137) from Microsoft into
+   HUI's directory, which needs internet once; the view shows the download's
+   progress, and a download that stalls fails with a clear reason.
+3. **The openvscode-server HUI installed** (Linux only). On a Linux machine
+   without VS Code, the view offers to install Gitpod's openvscode-server (MIT),
+   pinned to one release whose per-architecture SHA-256 sums are in the code,
+   downloaded (x64, arm64, armhf) through the gateway's outbound path and its
+   `HTTP(S)_PROXY`, verified, unpacked with the system `tar` into a staging
+   directory, checked to run and only then renamed into
+   `$XDG_CONFIG_HOME/hui/vscode-server`; it shows progress, can be cancelled, and
+   Settings removes it. It is downloaded on request, never bundled.
+4. **openvscode-server on `PATH`** (or in the usual package-manager
+   directories), or a code-server whose CLI is compatible. A candidate is
+   accepted only when its `--help` lists `--server-base-path`,
+   `--connection-token-file`, `--server-data-dir` and `--extensions-dir`, so
+   code-server (whose CLI uses `--bind-addr`/`--auth`) is detected only to say
+   why it does not fit. On NixOS this stays the native path: nixpkgs'
+   `openvscode-server` on the service's `PATH` (`services.hui.vscode.package`),
+   because the generic downloaded builds run there only with nix-ld.
+
+When nothing can run yet, the first open shows a card with what applies to the
+machine: **Use your VS Code** with the license links and **Accept and open**,
+**Install VS Code server (≈73 MB for x64)** on Linux, **Download VS Code** where nothing
+else applies (macOS or Windows without VS Code), and always **Set a path**,
+linking to Settings → Tools → VS Code. Once one is chosen, later opens go
+straight in. Settings → Tools → VS Code shows the VS Code in use (name, version,
+path), a picker when several are available, problems with the candidates found,
+the license consent with **Revoke**, the HUI-installed server with **Install** or
+**Remove** (behind a confirmation listing what it deletes and whether it stops a
+running VS Code), the custom path, and the server's state with **Stop**.
+Conversations on a remote worker are refused with the reason: their files are
+not on the gateway's machine.
+
+One server runs per gateway, for every conversation. It starts on the first
+open, listens on 127.0.0.1 on a free port behind a random connection token kept
+in a mode-600 file and rotated on every start, keeps its data under
+`$XDG_CONFIG_HOME/hui/vscode` (serve-web's in its own `serve-web` directory
+there, never in the operator's `~/.vscode`), and runs in its own process group
+so a stop reaches node, serve-web's server and the extension hosts behind the
+launcher script. It stops with the gateway (signalled, never awaited, so a stop
+or restart does not wait for it), 15 minutes after its last connection closes,
+or when Settings change what an open would run (another provider or path, a
+revoked license, a removed install). A server a killed gateway left behind is
+stopped before the next one starts. A crash shows in the view with **Retry**;
+only an open from HUI starts the server, so a crashed server is not restarted by
+its own reconnecting workbench.
+
+The browser reaches it only through the gateway, at `/__hui/vscode/…` for HTTP
+and WebSocket. A frame cannot send `x-hui`, so a guarded request mints a
+one-use ticket, `/__hui/vscode/enter` trades it for an HttpOnly, SameSite=Strict
+cookie scoped to `/__hui/vscode`, and the proxy accepts only that cookie and
+adds the connection token upstream. The cookie is no credential anywhere else;
+every other route still requires `x-hui`. VS Code's own token cookie never
+reaches the browser, and every other cookie VS Code sets, on any response or
+WebSocket upgrade, is kept to `/__hui/vscode` (serve-web sets its
+secret-storage cookies on `/`).
+VS Code's WebSocket handshake carries the token inside its own protocol (the
+workbench reads it from its configuration or from the token cookie the browser
+never gets), so the proxied workbench page of either provider includes it,
+served only behind the cookie. The configuration tag is found by its id
+whatever its attribute order, quoting or encoding (a compressed page is decoded
+first). A workbench page it cannot be put in is never served as it is, since
+that workbench would sit unconnected without a word: the view shows *VS Code
+could not open* with the reason and **Retry**, and the gateway log records it.
+A refused VS Code WebSocket (wrong origin, no cookie, VS Code's own refusal) is
+logged with its cause, at most once a minute per cause.
+
+The workbench takes HUI's colors (dark or light Modern plus HUI's background,
+panels, text, borders and accent) as configuration defaults read when a frame
+loads, so a theme change applies on the view's **Reload**; the operator's own
+VS Code settings still win. Each token is resolved by the page itself before it
+is converted, since custom themes (Catppuccin, Dracula, HUI and every tweakcn
+import) write them as `light-dark(…)` pairs; a token that cannot be read is left
+out, and the gateway refuses a theme whose text does not reach a 3:1 contrast
+on its background and panels, so VS Code then keeps its own theme rather than an
+unreadable one. Workspace trust prompts, the start page and AI chat
+are off by default, as in AgentsInTheCloud: HUI's agents already work in that
+folder with full access. **Open in a new tab** opens the same folder through its
+own ticket.
+
+Settings gain an additive `vscode: { enabled, executable, provider,
+licenseAcceptedAt }` block. `enabled` was the first view's opt-in switch: it is
+still read and saved unchanged for compatibility (a file with `enabled: true`
+and a path keeps working), but it no longer gates the launcher or anything else.
+No registry, transcript or PI format changes; the only new state is the
+openvscode-server install directory, which only an explicit install creates.
 
 ## Live chat projection
 
@@ -636,7 +937,10 @@ from separate HUI state.
 
 Failed chat actions, including rejected continuation requests, show a dismissible
 error toast instead of an inline page note. Session-launch validation remains
-inline in its form.
+inline in its form. Outcomes of sidebar, Kanban, Sessions and bot actions (copying
+an ID or link, moving or reordering, Jira create/link, bulk delete, bot changes)
+use the same dismissible toast: successes clear after 6 seconds, while failures
+and in-progress messages stay until replaced or dismissed.
 
 Busy composer actions are explicit: **Steer** enters PI's steering queue before
 the next model call; **Follow up** runs only after the current agent run settles.
@@ -913,6 +1217,47 @@ worker's connection drops, the card closes too and the call fails, as other
 HUI tools do there. Pending requests live in gateway memory and do not survive
 a restart.
 
+## Structured questions
+
+An agent that cannot go on without decisions from the operator asks for them
+with HUI's `ask_user_question` tool: one to four questions in a single call,
+each with a short header, the question and two to four options with a label
+and a description. A question may allow several answers (`multiSelect`), and
+the options of a single-select question may carry a Markdown preview (a
+mockup, a snippet, a config) to compare. HUI's tool takes the place of any PI
+extension tool of the same name, such as `@juicesharp/rpiv-ask-user-question`,
+whose plain select and input dialogs it replaces.
+
+The open conversation shows the questions in one card in the question dock
+above the composer, and the session reads *Waiting*. With several questions a
+row of header chips leads the card, ticked once answered; one question shows at
+a time with its progress (*2/4*). Options are radio rows, or checkbox rows for
+a multi-select question, each with its label, description and number; every
+question ends with a *Type something…* row for the operator's own answer, which
+replaces a single-select choice or adds to a multi-select one. When options
+carry previews, the focused option's preview shows beside them, or under them
+on a narrow screen. Picks are kept while moving between questions.
+
+The keyboard drives the whole card: number keys choose a row, arrows move
+between rows (↑/↓) and questions (←/→), Space toggles a checkbox, Enter moves
+to the next question (choosing the focused single-select option first) and on
+the last one submits, Ctrl/⌘+Enter always moves on, and Escape cancels the
+card (the first Escape in typed text only leaves the field). The pointer does
+the same with the chips, rows, *Back*, *Next*, *Submit* and *Cancel*; the
+actions stay in reach when the card scrolls. *Submit* needs at least one
+answer; a question left blank is left out.
+
+The agent learns each answer as `"question"="answer"` (several joined by
+commas, a chosen option's preview after it), or that the operator declined:
+*Cancel*, Escape, Stop and a gateway stop all decline. Once answered, the
+transcript keeps a short summary of the answers by header in place of the card.
+A call the card could not show (more than four questions, a reserved label such
+as *Other*, duplicate labels, a header over 16 characters, a preview on a
+multi-select question) fails back to the agent with the reason, and no card
+opens. Questions from parallel calls show one after another. A reload shows a
+pending card again from its first question. Pending questionnaires live in
+gateway memory and do not survive a restart.
+
 ## Kanban
 
 **Kanban** sits directly below Automations in the sidebar (`/kanban`). It has
@@ -1171,7 +1516,713 @@ leaves worker records unchanged.
   browser, New worktree and branch checkouts, and multi-account quota rotation
   (the default account is used). Usage totals skip remote transcripts.
 
+## Bots
+
+A **bot** is a named, persistent agent: a role, a persona it writes itself
+(SOUL.md), its own model, a working directory and **one chat that never ends**,
+whose memory is OptChat (HUI-18). Sessions keep everything they have (worktrees, rewind,
+`/compact`); bots are for assistants the operator returns to every day. The
+sidebar splits into **Agents | Bots**, and the `hui bot` CLI can do
+everything the Bots tab can, through the same routes.
+
+- **A chat is a session.** A bot's chat is an ordinary Durable session on this
+  gateway, created through New Session's path, so the chat view, streaming,
+  steering, follow-ups, questions and model switching are the session's own.
+  Its record names the bot; the bot registry (`bots.json`) holds the rest.
+  Chosen when it is created, a bot can run on a remote worker instead, whose
+  Durable store then keeps its conversation and memory, and its HUI data
+  directory its home folder with SOUL.md (decision below).
+- **Before the first word.** OptChat is switched on, and the conversation
+  marked as the bot's, in the commit that creates it.
+- **A soul, not instructions.** A bot's persona is the SOUL.md in its home
+  folder, read on every request. A new bot speaks first: HUI starts its first
+  turn, in which it asks the operator what they expect, a question or two at a
+  time (their real request always comes first), and then writes SOUL.md itself
+  with its `write_soul` tool, which only bots' chats have (no file tools
+  needed). It changes SOUL.md when the operator asks, and says so. Only the
+  operator's turns (and HUI's kickoff) can rewrite it: SOUL.md steers every
+  later turn, so a turn that took a message from a routine, a trigger or
+  another bot (the one that started it, or one that joined it while it ran)
+  can't, as it can't rename the bot. The operator can also edit it in the
+  Soul tab or with `hui bot soul`. A bot without a
+  model of its own runs on Settings' primary model, like a new session.
+- **Named by talking.** A bot created without a name is *New Bot*; its first
+  conversation asks what to call it, and it renames itself with a bot-only
+  `set_profile` tool (only in turns the operator started that took no message
+  from a routine, a trigger or another bot). A handle derived
+  from the old name follows the new one; a chosen handle stays.
+- **Forever, until deleted.** Clearing, compacting, rewinding or deleting a bot's chat is
+  refused; archiving the bot deletes nothing, disables its routines and stops a
+  running turn, and restoring it brings it back with its routines still off.
+- **Messages.** A message to a bot is a prompt when it is idle and a follow-up
+  when it is busy; a caller may wait for the reply of the turn that answers it,
+  and learns at once when that turn asks a question. Every screen and terminal
+  on a bot's chat sees a message another one sent (a routine, a bot, the Bots
+  tab) before the reply to it.
+- **Routines** are Automation tasks aimed at a bot's chat, marked
+  `[routine: <name>]`, queued behind a busy bot instead of skipped. A bot
+  schedules its own with a `routines` tool, temporary ones included, which end
+  by themselves at a time or after a number of runs; `hui schedule` manages
+  every scheduled task from a terminal (decision below).
+- **Tools and skills.** A bot has every tool and skill a session in its
+  directory has, new ones included, until the operator turns some off in its
+  panel's Tools tab or with `hui bot tools` / `hui bot skills`. The host that
+  runs its chat enforces what is off (a worker's host for a bot on a worker); the
+  bot asks for it back with `request_access`, which only the operator answers.
+  Tools are the boundary, not a sandbox.
+- **Triggers** wake a bot when something happens elsewhere, beside its routines
+  (decisions below): pull requests on GitHub, read through the gateway's `gh`
+  with one conditional poller per repo; the sessions it started finishing,
+  failing or asking; a webhook URL with a secret token, on the tailnet; or a
+  Slack message that pings the operator, read as them through a read-only user
+  token, its delivery carrying the pull requests it links to.
+  Each delivery is `[trigger: <name> · <summary>] <prompt>` in its chat;
+  a cooldown coalesces events into one delivery and an hourly cap holds the
+  rest. The Routines tab lists them, `hui bot trigger` manages them, and the
+  bot can manage its own with a `triggers` tool.
+- **Bots talk to bots** with a `message_bot` tool only bots' chats have,
+  beside a byte-stable list of the other bots in their system prompt. A message
+  arrives as `[from @handle] …`; chains stop after three hops and each bot sends
+  at most 30 bot messages an hour.
+- **Memory** is OptChat's ([docs/optchat.md](docs/optchat.md)): every message
+  kept word for word and condensed into a summary tree a fresh turn reads, so
+  the chat is never compacted. Bots reach it only through one interface, so its
+  engine stays separate; `hui bot memory` and the memory routes show its
+  status, its view, any line zoomed down to a message, and a browse page.
+- **A preview behind Labs.** Bots are off until Settings → Labs → *Bots*
+  turns them on (decision below). Off, they are dormant everywhere and nothing
+  is deleted: no screen shows them, the gateway refuses their routes, calls and
+  chats, skips their routines and starts none of their turns; turning them on
+  brings everything back as it was, without a restart.
+- **The Bots tab** comes with them: while Labs → *Bots* (their one switch) is
+  on, an **Agents | Bots** switch fills the sidebar's top row after the collapse
+  toggle (arrow keys, Home/End; the browser remembers the tab): Agents is the
+  sidebar as before, and Bots shows only the roster, without the navigation.
+  Bot chats never
+  appear in the Sessions list, its search, Kanban, the Sessions page, the
+  command palette or session pickers; Automations labels their routines
+  *Bot · name* and words
+  their schedules as the bot's panel does (*Daily at 08:00*), and shows who
+  made a task when a bot did and a temporary one's limits. The roster
+  lists bots by latest activity: the bot's animated face (or its emoji), the
+  name, the latest message or role, a short time, an activity badge (active,
+  waiting for an answer, summarizing memory, failed), an unread dot (also on the
+  Bots tab while Agents shows) and a warning while memory summaries keep
+  failing. Search matches name, handle and title. The toolbar's + (and an
+  empty roster's New bot) creates a bot at once, with no form and no name: the
+  gateway calls it *New Bot* until its first conversation asks for one, its
+  chat opens once the gateway has created it, everything else starts on the
+  defaults, and a refusal shows in the roster's notice. While a remote worker
+  exists the toolbar's + is a menu, *New bot on Local* or on each worker, and
+  the bot is created on the machine chosen. A row's menu offers
+  Edit (the bot's chat on its Settings tab), Hide/Unhide (*Show hidden* while
+  any are hidden), Archive, confirmed, with a Restore toast, and Delete…;
+  *Show archived* (while any are archived) lists archived bots with Restore and
+  Delete (an icon that shows on the row under the pointer or keyboard, and
+  always on touch screens). Delete, from either, asks first in a dialog that
+  says what goes (its chat leaves HUI; its routines, memory and folder go) and
+  what stays (a workspace the operator chose); deleting the open bot returns
+  home. An archived bot's chat opens again only once restored. A bot opens at
+  `/bots/<id>` as its one chat in the ordinary session pane, its header
+  showing face, name, role, the worker it runs on (if any) and status and a ⋯
+  menu with Edit bot…, Archive… and Delete…;
+  assistant turns carry the bot's name, `/clear`, `/compact`, Compact now and
+  rewind are not offered. A new bot speaks first: its chat opens on a small
+  centered note, *<name> was created*, where HUI started its first turn, then
+  the bot's questions (an empty chat says *Say hi to <name>*). Opening it
+  marks it read. A **Routines | Memory | Soul | Tools | Settings** panel docks beside
+  the chat (open or closed and the tab are remembered; on narrow screens it
+  opens on request as a sheet over the chat); its header names the bot beside
+  Close and its tabs fill a row of their own under it. Routines lists the bot's Automation tasks with schedule,
+  next run, who made one when the bot did and a temporary one's limits (*made by
+  @ada*, *until 18:00*, *3 runs left*), an enable switch, Run now and Delete, adds routines every N
+  minutes/hours/days, daily, weekly or once in the browser's time zone, and shows
+  the latest runs; under them, Triggers lists the bot's triggers (source, what
+  they watch, last fired, cooldown, events waiting, an enable switch, Test,
+  Delete and, for a webhook, New URL), shows a new webhook URL once with Copy,
+  adds triggers for each source and shows their latest runs, read again every
+  few seconds while it shows. Memory shows messages, the view against its 128 KB budget
+  (a full view merges back to 64 KB in one batch), its lines, pending summaries, what the summarizer spent since the gateway
+  started (calls, tokens, a cost once one is reported), *Summarizing memory…*
+  and failures, and lists the view's `id+n|text` lines (a click opens a line
+  into its halves, down to a message whole); while open it reads the memory
+  again whenever the bots stream reports it changed, with no timer. *Open memory
+  page* is a plain link to OptChat's browse page, opened in a new tab. Soul
+  shows SOUL.md as Markdown, through the chat's renderer, with **Edit**: a
+  textarea with Save and Cancel (Escape), the count against 20,000 characters
+  and the gateway's refusal inline; saving it empty removes SOUL.md. Before the
+  bot has one it says *<name> writes its soul in your first conversation* and
+  offers **Write it yourself**. While open it reads SOUL.md again when the bots
+  stream says the bot or HUI may have written it (its soul flag, its
+  `updatedAt`, or its latest message once a turn is over), with no timer.
+  Tools shows *Available tools*, one switch per tool with what it does, grouped
+  as Files, Shell, HUI, each extension by its source and Bots (powerful ones
+  labelled), the bot's skills with a search once there are eight or more, what
+  is always on, and an access request its chat waits on, with Allow and Deny;
+  each switch saves the whole list and waits for it, and the tab reads the
+  catalog again when the bots stream shows the bot changed.
+  Settings holds the rest of the bot as compact rows: Profile (name with its
+  handle, title, and the look, a row that opens into Face or Emoji),
+  Model (model, thinking and utility model; *Gateway default* leaves the model
+  and thinking level to the gateway, and choosing it clears the bot's own),
+  Calls (call voice and language; without a ChatGPT login its head says calls
+  need one) and Workspace (the directory, locked while the bot works, with
+  folder suggestions from the machine it runs on, and, while a worker exists,
+  Runs on, that machine read-only). Each change is its own `PATCH`, sent in
+  order, with the row's pending state and refusal inline and no Save button;
+  typed text saves on Enter or blur.
+  Ctrl+Shift+, (⇧⌘,) shows or hides it on a bot's chat.
+- **Calls** talk through GPT-Live (see the decisions below): the header's
+  **Call** shows whenever HUI has a ChatGPT login. A bot has a call voice, its
+  own or Settings → Models → Calls' default, and a language it speaks on calls
+  (its Settings tab, or `--call-voice`/`--language`): one of Whisper's
+  languages, never a translation, or Auto to answer in the language spoken. The
+  call view takes the bot's color and shows its face listening to the
+  microphone and speaking with the bot's audio, a timer, both sides' captions,
+  Mute, Speaker and Hang up, and minimizes to a bar; hanging up deletes
+  nothing. The microphone opens only for a call and closes with it; HUI stores
+  no audio, only the call's card in the chat.
+- **Import and export**: + → **Import bot…** makes a bot from another platform's
+  template (Grok Bot, OpenClaw, Claude Code, Letta, character cards, CrewAI) or a
+  HUI export, after a preview of everything it would get; a bot's ⋯ →
+  **Export…** saves it as a zip that import reads back (decision below).
+
+The contract is [docs/api.md#bots](docs/api.md#bots).
+
 ## Decisions
+
+### Bot faces get more shapes and ears, and bots can restyle themselves (2026-10-08)
+
+The owner asked for more kinds of bots, after how others do it. OpenAI's Dots
+let you pick a shape, color, eyes, glasses and accessories (makers built on it
+add animals through ears); Grok Bot has one round face, or a generated or
+uploaded picture; Hermes Agent only text personas and terminal skins. From a
+gallery of options he chose "shapes + ears", all eight new shapes, faces that
+stay as they are, and bots that change their own look.
+
+- **Shapes.** Star, Flower, Cloud, Drop, Ghost, Pill, Block and Hexagon join the
+  five, in the same plush style and expressions.
+- **Ears.** `avatar.ears` (optional, no format change: absent means none) puts
+  cat, bear or bunny ears, an antenna, a sprout or horns on any shape. They are
+  placed from each outline (a pair on the shoulders leaning with it, a single one
+  on the top), move with the body and keep the shapes' colors and states; a small
+  face's view box grows only as far as tall ears need.
+- **Faces stay.** A bot's id still picks among the first five shapes and never
+  picks ears, so no bot that was never styled changes.
+- **Bots restyle themselves.** `set_profile` takes the look's keys (a color also
+  by palette name) under the same rule as a name: only in a run with no input from
+  a routine, a trigger or another bot.
+- **Later, if wanted:** Dots' accessories (glasses, headphones, hats), eye styles
+  and a custom color picker.
+
+### Slack triggers wake bots on review pings (2026-10-08)
+
+The owner: "usually people in my team pings me to review PR's. Getting marked as
+reviewer doesn't mean I should review it, but if someone pings me in slack it
+does." So the signal is a teammate @-mentioning the operator, or messaging them
+directly, in Slack, usually with a pull request link, and nobody has to mention a
+bot or change how they work. A Slack trigger wakes a bot on those messages, and
+its delivery carries the linked pull requests, so a bot without a shell can
+review from it alone. The contract is
+[docs/api.md#triggers](docs/api.md#triggers) and
+[docs/api.md#slack](docs/api.md#slack).
+
+- **Read as the operator, through search.** The operator creates a Slack app in
+  their own workspace from HUI's manifest (user token scopes only, every one
+  read-only, no bot user) and connects its User OAuth Token in Settings →
+  Integrations → Slack or with `hui slack connect`. The gateway polls
+  `search.messages` about every minute: `<@me>` for mentions, `is:dm` for
+  direct messages. Only matching messages travel, one token does it, and a poll
+  after a gap reads what was missed, which a gateway on a laptop that sleeps
+  needs. Socket Mode would need an app-level token as well, a connection held
+  open, user events for every kind of conversation and, on every reconnect, a
+  catch-up through each conversation's history. `search.messages` is Slack's
+  Tier 2 (about 20 requests a minute) and a poll makes one or two. Slack labels
+  it legacy and recommends its Real-time Search API, but that API is meant for
+  searches a person starts in an AI app, with per-user limits that steady
+  polling would run into.
+- **Fewest scopes, each for one reason.** `search:read` finds the pings;
+  `users:read` names who asked and tells bots, apps and Slack Connect people
+  apart; the four `*:history` scopes read the parent of a thread reply, whose
+  pull request link often sits in the parent, in each kind of conversation.
+  Nothing lets HUI post, react or edit, and no code path tries.
+- **Never twice, never an edit, never a flood.** The poller's cursor (when the
+  previous poll started, and the messages seen since shortly before) is saved
+  before any event goes out; the first poll is a silent baseline, and a trigger
+  never takes a message older than itself. A message counts once, and only when
+  it is newer than the previous poll, less two minutes for search indexing, so an
+  edit that adds a mention or a link never fires. Bots off, nothing is read; when
+  they come back on, or the machine wakes, what came meanwhile (a day at most)
+  is one catch-up per trigger, through the same cooldown and hourly cap.
+- **The token stays home.** It is stored like Jira's (`slack.json`, mode 0600),
+  goes only to Slack in an Authorization header, and no route, error, diagnostic
+  or log carries it.
+- **What a message says is information.** The delivery says it comes from
+  outside HUI; a turn it starts is a trigger's turn, which the gated tools
+  refuse. Only the operator adds or changes Slack triggers, since they read the
+  operator's messages (like webhook triggers, whose URL is a secret). Pull
+  requests are read through the gateway's `gh` when the delivery goes out, so
+  the bot needs no shell and acts on GitHub as nobody.
+- **Not yet, and what the first real run confirms.** Mentions of a user group
+  are left for later. Slack documents the method, its tier, the `<@id>` form
+  inside `in:` and `from:`, and that results follow the user's search
+  preferences; that `<@id>` alone finds mentions, that `is:dm` works in this
+  method (Slack documents it for the Real-time Search API), how late search
+  indexes a message, and how a match marks edits, threads, bots and Slack
+  Connect people are assumptions the operator's first run with a real workspace
+  confirms.
+
+### Schedules are a CLI, and bots schedule their own routines (2026-10-07)
+
+With the Bots stack on `main` behind Labs, the owner asked: "Schedules should be a
+cli as well, and can be attached to bots, so they can create them themselves."
+Schedules are HUI's Automation tasks, so nothing new schedules anything: the
+scheduler gains a terminal and bots gain a tool over the same tasks.
+
+- **`hui schedule`** (alias `schedules`) lists, shows, adds, edits, pauses,
+  resumes, runs and removes every task through the Automation routes, attached
+  to a session (`--session`, by id or exact title) or a bot (`--bot`, which aims
+  it at the bot's chat: one of its routines). Edit changes only the flags given,
+  and `--bot`/`--session` moves a task. `hui bot routine …` runs on the same
+  code. While bots are off, anything that names a bot, its chat or one of its
+  routines prints the gateway's refusal and `list` leaves bots' routines out;
+  sessions' schedules work regardless.
+- **A bot's `routines` tool** lists, adds, changes and removes the routines of
+  its own chat, beside `write_soul`, `set_profile` and `request_access` in the
+  bot tools' extension. It is a normal switch in the Tools tab, *Manage its own
+  routines*, on by default and not powerful: unlike a bot's own tools the
+  operator can turn it off, and it schedules nothing but prompts to the bot
+  itself.
+- **Temporary routines** end by themselves: `until` (an end time) and/or `runs`
+  (a run count), after either of which HUI deletes the routine. That is the
+  "every 5 minutes until #82 is green" pattern; the bot can also remove the
+  routine itself, from that routine's own turn too, which then finishes. Every
+  run HUI starts counts, by hand or scheduled, except a skipped one, and a run
+  still going at the end finishes on its own. The operator can make temporary
+  schedules too (`--until`, `--runs`).
+- **Guardrails**, at the gateway, for bots on workers too: only its own chat's
+  tasks (another bot's or session's are never seen or touched); at most 20
+  enabled routines per bot's chat once it adds or resumes one, and Automation's
+  one-minute minimum; and adding or changing one is refused in a turn that took
+  a message from another bot (`[from @…]`) or anything but the operator, its
+  routines and HUI's kickoff, the one that started it or one that joined it,
+  judged by every input of the run as `set_profile` judges it, while the
+  operator's turns, its routines' turns and HUI's kickoff may. Listing and
+  removing work in any turn, since they never make more work. Changing is
+  refused with adding because a change can make a routine more frequent or
+  longer-lived; the operator's own routes have no cap.
+- **Who made it** (the operator or a bot, by id and handle) and the limits are
+  optional fields of the task, so the store keeps its version and tasks from
+  before load unchanged; a route body never names a maker. The bot's Routines
+  tab and Automations show *made by @bot*, *until 18:00* and *3 runs left*.
+
+### Triggers wake bots on GitHub, session and webhook events (2026-10-07)
+
+Looking at Grok Bot's triggers ("a bot can listen for events from other apps,
+watch a Slack thread or a GitHub PR"), the owner asked: "This is nice, and fits
+really good some of my use cases. Listening on PR's, listening on slack
+messages, etc. Is that possible?" So bots get triggers beside their routines:
+what wakes them when something happens, where a routine wakes them on a
+schedule. GitHub, session and webhook sources land first; Slack waits until the
+owner names a workspace, and its Socket Mode connection fits the same source
+contract (events in, matched against a filter, delivered through the same
+cooldown and cap), since it needs no public endpoint either.
+
+- **No public endpoint.** HUI runs on the operator's machine behind Tailscale.
+  GitHub is polled, never a GitHub webhook; the webhook route answers only
+  loopback and Tailscale's addresses, and Tailscale Funnel stays the
+  operator's own choice.
+- **Per-repo listing, not the notifications API.** Notifications would be one
+  request for every repo, but they only cover the threads the operator watches
+  or takes part in, under their GitHub notification settings; their reason is
+  sticky per thread (one stays `mention` after the first mention), so a new
+  mention or review can't be told from an old one; checks come only for
+  workflow runs the operator started; and what happened (which check failed,
+  who approved, merged or closed) needs a request per thread anyway. A repo's
+  pull requests, sorted by their last update, answer most of it in one
+  request, the rest only for what the repo's triggers want. Every request
+  carries the last ETag, so a quiet repo costs 304s, which GitHub doesn't count
+  against the rate limit.
+- **Never twice, never a flood.** A repo's first poll is a silent baseline and
+  its cursor is saved before any event goes out, so a restart never repeats
+  one. Turning bots on again (or a gateway restart) collapses what happened
+  while HUI wasn't watching into one catch-up delivery per trigger rather than
+  skipping it: the bot learns what it missed in one message. Session events
+  while bots are off are skipped (recorded), and webhooks are refused with 409
+  so their sender knows.
+- **Bounded turns.** Events within a trigger's cooldown (5 minutes by default)
+  coalesce into one delivery that lists them; a bot takes at most 12 trigger
+  deliveries an hour and at most 20 triggers; what comes past the cap waits
+  rather than being dropped.
+- **Only the operator widens what wakes a bot.** The bot's `triggers` tool adds
+  and changes its own triggers only in turns that took no message from another
+  bot or a trigger, neither the one that started them nor one that joined them
+  while they ran (a trigger's event is text from outside HUI, a PR comment or a
+  webhook body, which must not be able to add more triggers); it can't make
+  webhook triggers, whose token would pass through the model. The operator's
+  own comments and reviews never wake a bot, since a bot that comments through
+  `gh` posts as the operator and would wake itself.
+- **Sessions: only the bot's own, for now.** A bot watches the sessions it
+  started; the owner is still deciding how far bots may reach into other
+  sessions, so that rule is one function (`sessionWatchable`).
+
+### Bots import other platforms' templates and export their own (2026-10-07)
+
+The owner asked: "Would it be possible to import other platform templates, that
+would be nice". So **+ → Import bot…** (and `hui bot import`) makes a bot from a
+Grok Bot marketplace link, an OpenClaw workspace, a Claude Code subagent, a Letta
+agent file, a character card, a CrewAI `agents.yaml` or a HUI export, and a bot's
+**⋯ → Export…** (`hui bot export`) saves it as a zip HUI imports again. Every
+source becomes one normalized template; the gateway previews what creating it
+would do before anything exists, then creates exactly that. The contract is
+[docs/api.md#importing-and-exporting-bots](docs/api.md#importing-and-exporting-bots).
+
+- **Imported text is untrusted, so the preview shows all of it** (SOUL.md, the
+  first message, every skill and routine prompt) as plain text, and **an import
+  never turns on more than a new bot has**: a Claude Code tools list or a HUI
+  export's list only turns tools off, routines start disabled, and a model is
+  kept only when this gateway resolves it.
+- **Memories go into SOUL.md**, under *What you already know*. OptChat's memory is
+  the chat's own log, so nothing else can seed it; SOUL.md is read on every
+  request and the operator edits it in the Soul tab. What doesn't fit its 20,000
+  characters is listed as left out.
+- **The opener is the bot's first turn**, a kickoff that asks it to send the
+  opener, rather than a message HUI writes into the chat: that would never reach
+  OptChat's log, so the bot would not remember saying it. It costs one turn.
+- **Skills are the bot's own**: `skills/<name>/SKILL.md` in its home folder, loaded
+  only by its chat, beside its directory's skills and listed with them in its
+  Tools tab. They are **on**, like every skill of a bot (they are text the operator
+  read, they widen no tool, and each can be turned off); routines are the only part
+  that acts unattended, so they are the part that starts off.
+- **OpenClaw's AGENTS.md is left out**, with the reason in the preview: it is
+  OpenClaw's operating manual (memory files, heartbeats, group chats), which
+  describes OpenClaw's runtime, not the bot, and would contradict HUI's.
+- **Grok Bot pages are read best effort**: the bot is in the page's Next.js
+  server-components payload, which x.ai can change. HUI fetches it only when the
+  operator asks, from x.ai over https, bounded; when it can't read it, it says so
+  and suggests pasting the bot's instructions instead.
+- **Export is a zip** (`bot.json`, `SOUL.md`, `skills/`, optionally `memory.md`) rather
+  than one JSON file: the soul and skills stay files a person can read and edit,
+  as in an OpenClaw workspace, and importing it round-trips. Like everything of
+  bots, all of this exists only while Labs → Bots is on.
+
+### Bots stay behind an opt-in Labs setting while they are a preview (2026-10-07)
+
+As the bots stack was about to be squash-merged into `main`, the owner asked:
+"make sure that there is an optin config (like a feature flag, but in
+settings) for bots while theyre wip". So bots are a preview behind
+`settings.labs.bots`, a Bots switch on the Labs page ("Experimental and opt-in
+features"), off by default; a settings file from before it has bots off, so
+`main` never shows bots unless the operator turns them on.
+
+- **One switch.** Settings → Sessions → *Show the Bots tab*, the sidebar's
+  earlier opt-in, folds into Labs → Bots, which the owner asked to be the one
+  opt-in: the sidebar's Agents | Bots switch shows exactly while bots are on. A
+  settings file where the tab was on and Labs → Bots is absent reads as bots on,
+  so nobody who had the tab loses bots, and the next save writes only
+  `labs.bots`.
+
+- **Off means dormant everywhere, and nothing is deleted.** The browser shows
+  nothing of them: no Agents | Bots switch, `/bots` addresses land home (a
+  remembered Bots tab shows Agents meanwhile), no unread marks, no Sessions →
+  Bots or Models → Calls settings, no routines in Automations and no bot chats
+  in the calendar. The gateway
+  refuses every bot route and call and the session routes of a bot's chat, and
+  starts none of their turns: messages, routines, `message_bot`, calls'
+  hand-offs and a new bot's first turn are refused, and a chat that starts a
+  turn anyway (Durable resuming an interrupted run) is stopped. Turning them off
+  stops what bots were doing, as archiving does but without archiving them.
+- **Turning them on restores everything as it was**, live, without a restart:
+  their chats, memory, SOUL.md, routines and settings never changed.
+- **409, not 404.** The refusal names the setting: "Bots are off on this
+  gateway: they are a preview. Turn them on in Settings → Labs → Bots." It is a
+  409 because the gateway's settings refuse the request while the bots exist; a
+  404 would read as a bot that is gone, which clients already treat as such.
+- **Routines are skipped, never failed or deleted.** A routine's run while bots
+  are off ends *Skipped* with that reason. That is the scheduler's existing rule
+  for a run its target can't take: the time is not run later, and once bots are
+  on the routine runs at its next time.
+- **Workers need no flag:** the gateway's refusals cover the bots on them. The
+  clean-up queue of bots deleted while their worker was offline and the
+  one-time migration of instructions to SOUL.md keep running, since neither
+  starts a turn.
+
+### A bot has every tool and skill until the operator turns some off (2026-10-06)
+
+Reviewing the Bots stack, the owner asked to choose which tools and skills a
+bot has, so it can use only those, and for the bot to extend them while it
+iterates. The first design gave each bot allow-lists: new bots would start with
+nothing but their own tools and ask for what they need. Later the same evening
+the owner chose the opposite default: an "Available tools" selector with
+everything active, powerful tools included. So every bot, new or existing, has
+every tool and skill a session in its directory has, and HUI stores only what
+the operator turned off. Tools and skills that appear later are on too; the
+trade-off, stated in the guide, is that a bot restricted by hand gains newly
+installed tools.
+
+The lists live in the chat's `hui.bot` conversation document, so whatever host
+runs the conversation (a worker host too) enforces them: its tool offer leaves
+out what is off, extension tools included, and its HUI tool bridge refuses a
+call to a tool that is off. The prompt lists only the skills that are on, and a
+bot with neither `read` nor `bash` loads them with `load_skill`. A bot's own
+tools (`write_soul`, `set_profile`, `request_access`, `load_skill`) and OptChat's
+memory tools can't be turned off. The bot asks for something that is off with
+`request_access`, a session question with Allow and Deny that only the operator
+answers; a routine's or another bot's turn may ask too, and the question says who
+started it. The bot panel gets a Tools tab between Soul and Settings, and the CLI
+`hui bot tools` and `hui bot skills`. A bot on a worker keeps its lists in its
+document there, which that worker's host enforces; the gateway reads and writes
+them through the host, asks it what can be turned off (skills by their mirrored
+paths there), and hears of the grants made there. Its chat there isn't offered the
+tools that stay on the gateway's machine (the terminal, the browser, watchers),
+which the gateway refuses for every remote session from the same list, so its Tools
+tab leaves them out rather than showing switches that could do nothing.
+
+Tools are the boundary, not a sandbox: with `bash` or `read` a bot reaches
+whatever the user's account can, and `message_bot` lets it ask a better-equipped
+bot to act (turning `message_bot` off prevents that). Isolation means running the
+bot on a worker in a container.
+
+### Bots write their own SOUL.md in a first conversation (2026-10-06)
+
+Reviewing the Bots stack, the owner asked for bots to have a SOUL.md "like
+OpenClaw", and for the first conversation to be proactive: the bot asks what he
+expects from it, instead of an Instructions field. OpenClaw's `SOUL.md` and
+`BOOTSTRAP.md` are the model. A bot's persona is its SOUL.md, in a home folder
+HUI keeps for every bot (never a directory the operator chose), rendered as the
+last prompt section on every request and bounded at 20,000 characters. Without
+it, that section is the first conversation: short and conversational, never a
+questionnaire, and a ritual rather than a gate, since the operator's request
+always comes first. The bot writes the file itself with a `write_soul` tool of
+its own (bots may have no file tools), mentions any change it makes, and the
+operator can edit or clear it (clearing
+brings the first conversation back). Right after a create without a soul HUI
+starts the bot's first turn with a kickoff message that clients show as a note,
+so the bot's opener is waiting when the operator opens the chat. Name and look
+stay in the dialog, so the bot never asks for them. The `instructions` field
+and Durable instructions are gone; the gateway turns existing instructions into
+SOUL.md once.
+
+Later that day the owner chose Grok-style creation, with no New bot dialog: a
+bot created without a name is *New Bot*, asks what to call it in its first
+conversation and renames itself with `set_profile` (the no-dialog flow and a
+bot Settings tab follow on top of the calls branch). He also asked that
+deleting a bot delete its folder ("so SOUL, MEMORY, configs...") and work from
+the ⋯ menu on active bots too: delete now stops its turn, clears what HUI owns
+of its conversation (the bot document and OptChat, whose files go) and removes
+its routines, its chat's session record and its whole home folder, never a
+workspace the operator chose. pi-durable cannot delete a conversation, so the
+raw log stays in the store, unread.
+
+### Bots are named chats, not an agent selector (2026-10-05)
+
+The owner approved GrokBot/Hermes-style bots on 2026-10-05: a **Sessions | Bots**
+sidebar split, bots as named Durable conversations with OptChat memory, `hui bot`
+CLI parity with the Bots tab, routines through Automation and voice through
+VoiceStudio later. This satisfies the rule against new Agents or Approvals
+surfaces without a product decision: a bot is a chat with a name and a persona,
+not an Agents page or a global agent identity, and it adds no
+approval layer. Bots run with the same Full Access as every session, on this
+gateway only (remote workers are a later follow-up).
+
+On 2026-10-06 the owner asked for Hermes's layout: the switch moved to the top
+of the sidebar and its first tab is named **Agents**. Agents is the same session
+sidebar, not an Agents page or agent selector; Bots shows only the roster.
+Later that day he asked for it above everything else, the header buttons
+included, because the two tabs work differently: it is now a full-width tab bar
+over a divider in the sidebar's top row. He then dropped the header's New
+session and Search buttons, which he never used, and asked for the collapse
+toggle to stay put: it now starts that top row, and the restore control appears
+on the same spot while the sidebar is collapsed.
+
+### Bots have animated faces (2026-10-06)
+
+The owner asked for faces "like OpenAI Dots" instead of letter and emoji
+avatars and approved the prototype (`bot-face-prototype.html`, outside the
+repository) with "Okay, implement this"; the prototype is the spec. Each bot
+gets a plush SVG shape (Blob, Pebble, Triangle, Heart, Cookie) in one of six
+colors, with two dot eyes and no mouth, drawn by `<hui-bot-face>` with no new
+dependency. Expressions come from the eyes (blinks, glances, squints, closed
+arcs) and the body (breathing, sway, squash and stretch, hops), for ten
+states: idle, thinking, working (a tool runs), speaking, listening, waiting (a
+question), memory (summarizing), error, done (a hop when a turn ends) and
+offline (unreachable or archived).
+
+- **Look on the record, defaults from the id.** `avatar` gains `shape` beside
+  `emoji` and `color` (no format change: absent keys stay absent). A bot without
+  them gets the face its id picks, the same everywhere, a new bot included. The
+  emoji stays an alternative: a bot
+  with one shows it until someone switches it to its face (clearing the emoji),
+  and its tile takes the bot's color. The CLI has `--shape`, `--color` and
+  `--emoji ""`, and `hui bot show` prints the look.
+- **Real states only.** Roster rows follow the bot's status (a running turn is
+  thinking); its open chat adds a running tool, a pending question, memory
+  waits and a failed turn; a call listens with the microphone's level and
+  speaks with the level of the bot's audio as it plays (analysers on both
+  streams, without rerouting the audio). Text badges and status lines stay;
+  faces are `aria-hidden`.
+- **Cheap.** CSS keyframes carry the motion; small faces only blink and glance
+  on timers. Large faces (empty chat, call) also follow
+  the pointer and morph on animation frames. Faces pause while hidden or off
+  screen, and prefers-reduced-motion leaves a still expression per state.
+- **Later, if wanted:** accessories (Dots' glasses, hats), more shapes, a custom
+  color picker, and sprite-sheet pets.
+
+### Calls talk through GPT-Live, OpenDots-style (2026-10-06)
+
+The owner asked for calls through GPT-Live over the ChatGPT subscription, with a
+section under Settings → Models to select it ("I think GPT-Live via chatgpt
+subscription should work, I guess we need settings for bots as well, lets add a
+section under models in which we can select this"), and approved the call design
+on 2026-10-06 after OpenDots (CopilotKit/OpenDots, MIT): "I like the
+implementation of OpenDots, I think it makes the most sense. Giving a hang-up
+what happened is the proper way to go, and having a tool to ask the main agent
+sounds really good, I would just add that it should use a different model that is
+faster."
+
+- **A realtime conversation model with one tool.** GPT-Live
+  (`gpt-live-1-codex`) on the route ChatGPT's own voice mode uses, through HUI's
+  ChatGPT login: the gateway keeps the credential and sets each call up, the
+  browser carries the audio and the call's data channel. GPT-Live's one tool
+  (client delegation) asks the bot.
+- **The tool runs on a faster model.** A call helper on the bot's utility model,
+  at low thinking, answers from the bot's soul (its SOUL.md), its memory and the call
+  so far. It never queues behind the bot's own turn. What needs tools goes to the
+  bot's chat as a `[call task]` message on the bot's own model; its reply is
+  spoken if the call is still up and stays in the chat either way. The limits
+  follow OpenDots': 25 s per question (then GPT-Live offers to hand it off), six
+  questions and four hand-offs per call, and calls of at most 15 minutes. The
+  helper has no tools yet: a restricted tool set would need new runtime
+  plumbing, so it hands off anything that needs one.
+- **What happened, at hang-up.** No chat message per utterance. When a call
+  ends (hang-up, 90 s without a heartbeat, or 15 minutes), the utility model
+  writes a summary in the bot's language: what was discussed, confirmed
+  decisions, facts to remember and tasks handed off. The chat gets one card with
+  the duration, the summary and the whole transcript. The bot's memory logs both,
+  so later turns and calls recall the call. A failed summary leaves the
+  transcript.
+- **Three model roles, in the owner's words.** "The main model should be the
+  most clever one, doesn't matter how fast it is; the utility one should be the
+  fastest possible and ideally cheap, and for conversation describe that it
+  should be model focused on phone calls, that is fast to respond." Settings →
+  Models describes the primary and utility models that way, and its Calls section
+  GPT-Live, the conversation model, as made for phone calls. A bot's Memory
+  model became its **Utility model**. `memoryModel` and `--memory-model` keep
+  working. Its default is Settings' utility model, then the bot's own model.
+
+### VoiceStudio is gone: calls are GPT-Live only (2026-10-06)
+
+The owner dropped VoiceStudio on 2026-10-06, before it merged: "Lets remove
+VoiceStudio dependency, I don't need that feature, I only want gpt live for
+calls", then "delete everything related to VoiceStudio". This supersedes voice
+through VoiceStudio in [Bots are named chats](#bots-are-named-chats-not-an-agent-selector-2026-10-05)
+and everything built on it.
+
+- **What went.** The VoiceStudio connection (Settings → Integrations →
+  VoiceStudio, `/__hui/voice` and its routes, `voicestudio.json`), voice notes and
+  their `[voice] ` messages, Read aloud, calls through VoiceStudio's speech
+  chain with the choice of conversation model, and a bot's VoiceStudio voice
+  and speed. The CLI refuses `--voice` and `--voice-speed` and says what
+  replaced them.
+- **What stays.** Calls with GPT-Live: the header's Call whenever a ChatGPT
+  login is there, the call view and its bar, the bot's call voice (its own,
+  else Settings') and language, the call helper, hand-offs and call cards. The
+  faces listen and speak on calls.
+- **Stored data.** `settings.json` and `bots.json` written while VoiceStudio was
+  there keep loading: `calls.engine`, `voice.sendNotesImmediately` and a bot's
+  voice `profile` and `speed` are no longer read, and the next write leaves them
+  out. A leftover `voicestudio.json` is ignored. No release ever had VoiceStudio,
+  so no `hui doctor` check is needed.
+
+### Bots run on remote workers (2026-10-06)
+
+The owner asked: "We should allow running bots in workers". A bot can be created
+on a remote worker (Settings → Workers) instead of this machine; its chat is a
+session on that worker, as any remote session's.
+
+- **Its store is the worker's.** The bot's conversation and OptChat memory are
+  created in the worker's Durable store, in the same one commit as a local
+  bot's (`hui.bot` document, OptChat): the worker's host runs the gateway's
+  own adapters against its store, not a copy of them. Its home folder, HUI's
+  private folder for it, is under HUI's data directory there, and works as its
+  folder unless it names one. The registry, routines, the roster and message
+  limits stay with the gateway, which also checks models and picks defaults.
+- **Its soul is the worker's too** (2026-10-07, merging SOUL.md): SOUL.md is in
+  that home on the worker, never in a folder chosen for the bot. The host's
+  `soul` section and `write_soul` use the gateway's own resolver there (the
+  operator's name from the mirrored Settings, the bot's name from the gateway),
+  so a new bot's first turn, started through its remote session, and its
+  first conversation run there; the Soul tab and calls read SOUL.md through the
+  host; `set_profile` reaches the gateway as the bot's session, whose record
+  holds the turn's origin. The migration from instructions skips bots on
+  workers, which never had any.
+- **Deleting leaves nothing there.** The host forgets the conversation and
+  removes the home with everything in it, under the same guard as the
+  gateway's (never through a link, only the bots directory's folder for that
+  id). With the worker offline the bot still goes at once: those steps wait
+  in a small file on the gateway's machine, run at the worker's next
+  connection, and are dropped if the worker is removed.
+- **Chosen once.** The worker is set at creation, by id or name; an edit naming
+  one is refused: "A bot stays on the machine it was created on." Moving a bot
+  between machines is out of scope. Creating one needs a live connection to the
+  worker. The owner chose Grok-style creation the same day: while a worker
+  exists, the roster's **+** is a small menu, *New bot on Local* or on each
+  worker, whose choice creates the bot there at once and opens its chat
+  (`hui bot add --worker` from a terminal); the machine then shows read-only.
+- **One roster.** A bot on a worker gets the same `bots` prompt section from
+  the gateway, and `message_bot` crosses between machines both ways through
+  the agent-tool bridge. With no gateway attached the section is left out.
+- **Never waiting on a worker.** Lists show a remote bot's memory from what the
+  worker last reported and its newest message from the live chat or one read
+  per connection, so an offline worker never slows or fails the roster. Offline,
+  a bot shows its session's state; its memory and messages fail with a reason
+  naming the worker; a worker host from before bots is told apart.
+- **A remote session's limits.** The terminal, the managed browser and
+  watchers act on the gateway's machine, so a bot on a worker has none of them,
+  and no worktrees. Its secret requests work as a worker session's: the card is
+  answered on the gateway and the worker host writes the file.
+
+### Bots are set up like Grok Bot (2026-10-06)
+
+The owner, reviewing the bots stack: "the modal to configure the model looks
+really bad, needing to scroll in a PC is not the best experience tbh, how does
+grok bot do this?" The bot dialog held every field (name, look, title,
+instructions, model and thinking, utility model, voices, language, workspace)
+and was far taller than the screen: 1,381 px at 1440×900 without VoiceStudio,
+1,516 px with it. Grok Bot
+([bots](https://docs.x.ai/grok-bot/bots),
+[overview](https://docs.x.ai/grok-bot/overview),
+[chat and collaboration](https://docs.x.ai/grok-bot/chat-and-collaboration),
+[design](https://x.ai/news/designing-grok-bot)) creates a bot from its name and
+opens it ("Setup is a message, not a workflow builder"), edits name, label,
+description and avatar in Edit Profile, and keeps per-bot settings in a Bot
+settings panel toggled with Ctrl/Cmd+Shift+, beside the conversation, with
+models "beneath the interface".
+
+- **No form.** The owner chose Grok Bot's way outright: + creates a bot at
+  once, without a name, and opens its chat; the gateway calls it *New Bot*, and
+  its first conversation asks what to call it and renames it with
+  `set_profile`. The New bot and Edit dialogs are gone. Everything starts on
+  the defaults: the model and thinking level a new session gets, Settings'
+  utility model, Settings' call voice, Auto, a private folder and the
+  face its id picks. While a remote worker exists, + is the workers' menu (*New
+  bot on Local* or on each worker, [above](#bots-run-on-remote-workers-2026-10-06)),
+  and the bot is created where it is chosen, still without a name.
+- **A Settings tab in the bot's panel** holds the rest, after Grok Bot's Bot
+  settings: Profile (name, title and look, edited in place), Model, Calls and
+  Workspace (the machine it runs on, read-only while a worker exists, and its
+  directory, whose suggestions come from that machine), as Settings-page rows. Every change saves on its own through the
+  existing `PATCH /__hui/bots/:id`; the API and CLI do not change. Edit bot…
+  in the bot's ⋯ menus opens it, and so does Ctrl+Shift+,. It fits a 1440×900
+  screen with its look editor closed.
+- **The panel's tabs get a row of their own** under a header with the bot's name
+  and Close, as the sidebar's Agents | Bots do, so the soul and tools tabs fit
+  in 344 px beside Routines, Memory and Settings.
+- **Calls only.** With VoiceStudio gone
+  ([above](#voicestudio-is-gone-calls-are-gpt-live-only-2026-10-06)), the
+  tab's Calls section is GPT-Live's call voice and the language, and it always
+  shows. Without a ChatGPT login its head says calls need one, so the missing
+  Call button has a reason; the voice and language still save.
 
 ### New sessions run on Pi Durable
 
@@ -1180,10 +2231,13 @@ One harness per gateway owns their conversations, runs, inbox and crash
 recovery in a single SQLite store, `~/.config/hui/durable/harness.sqlite`
 (`HUI_DURABLE_DIR` overrides it), locked to one gateway at a time. Every
 step is checkpointed: after a gateway crash or restart the harness resumes the
-interrupted run by itself. A cut-off model request is sent again; an
-interrupted tool call is reported to the model as interrupted rather than
-rerun, because no HUI or coding tool is marked replay-safe. HUI therefore never
-sends its recovery prompt to a Durable session.
+interrupted run by itself. A cut-off model request is sent again. An
+interrupted tool call is rerun only when its tool is marked replay-safe: HUI's
+read-only `sessions_list` and `sessions_history`, OptChat's memory reads, a
+bot's `write_soul`, `set_profile` and `load_skill`, and `request_access`,
+which keeps the operator's answer with the call so it is never asked twice.
+Every other HUI or coding tool call is reported to the model as interrupted.
+HUI therefore never sends its recovery prompt to a Durable session.
 
 PI still owns configuration: the harness reads PI's `settings.json`,
 `models.json`, credentials, skills, extensions, `AGENTS.md`/`SYSTEM.md`/
@@ -1405,7 +2459,8 @@ there is no PNG export.
 - A global agent identity/selector surface and approval queues. HUI runs the
   installed PI configuration in Full Access, subject only to HUI-owned resource
   enablement; session-born subagents share that runtime configuration and do not
-  add an approval interception layer.
+  add an approval interception layer. Bots (above) are named chats under that
+  same configuration, not an agent selector.
 - Attaching to tmux panes, accounts and MCP plumbing.
 - Restoring Git worktrees, or bulk-removing or bulk-forcing worktrees. See
   Worktrees for the confirmed per-row removal HUI does own.

@@ -5,8 +5,10 @@ import test from "node:test";
 import {
   AutomationFormError,
   automationState,
+  describeRoutineSchedule,
   describeSchedule,
   formatTimestamp,
+  listedAutomation,
   runIsActive,
   scheduleFromForm,
   taskInputFromForm,
@@ -37,6 +39,27 @@ function run(status: AutomationRun["status"]): AutomationRun {
   };
 }
 
+test("while bots are off, Automations leaves their routines and those routines' runs out; on, it lists them again", () => {
+  const routine = { ...run("skipped"), id: "run-bot", taskId: "task-bot", sessionId: "bot-chat" };
+  const snapshot = {
+    scheduler: { enabled: true as const, activeRuns: 0, nextWakeAt: "2026-10-07T09:00:00.000Z" },
+    tasks: [
+      { id: "task-1", sessionId: "session-1", enabled: true, nextRunAt: "2026-10-07T12:00:00.000Z" },
+      { id: "task-off", sessionId: "session-1", enabled: false, nextRunAt: null },
+      { id: "task-bot", sessionId: "bot-chat", enabled: true, nextRunAt: "2026-10-07T09:00:00.000Z" },
+    ] as AutomationSnapshot["tasks"],
+    runs: [run("completed"), routine],
+  };
+  const sessions = [{ id: "session-1" }, { id: "bot-chat", bot: { id: "b1", handle: "kim", name: "Kim" } }];
+  const off = listedAutomation(snapshot, sessions, false);
+  assert.deepEqual([off.tasks.map((task) => task.id), off.runs.map((each) => each.id)], [["task-1", "task-off"], ["run-1"]]);
+  assert.equal(off.nextWakeAt, "2026-10-07T12:00:00.000Z", "the next wake a listed task needs, not the hidden routine's");
+  assert.equal(listedAutomation({ ...snapshot, tasks: snapshot.tasks.slice(1) }, sessions, false).nextWakeAt, null);
+  for (const bots of [true, undefined]) {
+    assert.deepEqual(listedAutomation(snapshot, sessions, bots), { tasks: snapshot.tasks, runs: snapshot.runs, nextWakeAt: snapshot.scheduler.nextWakeAt });
+  }
+});
+
 test("automation distinguishes loading, failure and ready states", () => {
   assert.equal(automationState({ automation: undefined, automationError: "" }), "loading");
   assert.equal(automationState({ automation: undefined, automationError: "boom" }), "error");
@@ -55,6 +78,13 @@ test("schedules read as the cadence the scheduler will actually use", () => {
     describeSchedule({ kind: "cron", expression: "0 9 * * 1-5", timezone: "Europe/Madrid" }),
     "Cron 0 9 * * 1-5 (Europe/Madrid)",
   );
+});
+
+test("bot routines read as their panel wrote them, with the generic summary for anything else", () => {
+  assert.equal(describeRoutineSchedule({ kind: "cron", expression: "0 8 * * *", timezone: "Europe/Madrid" }), "Daily at 08:00");
+  assert.equal(describeRoutineSchedule({ kind: "cron", expression: "30 9 * * 1", timezone: "Europe/Madrid" }), "Mondays at 09:30");
+  assert.equal(describeRoutineSchedule({ kind: "cron", expression: "0 9 * * 1-5", timezone: "Europe/Madrid" }), "Cron 0 9 * * 1-5 (Europe/Madrid)");
+  assert.equal(describeRoutineSchedule({ kind: "every", everyMs: 2 * 60 * 60_000 }), "Every 2 hours");
 });
 
 test("missing and unparseable timestamps stay honest instead of rendering as a date", () => {

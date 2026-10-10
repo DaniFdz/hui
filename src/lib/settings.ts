@@ -1,6 +1,13 @@
+/**
+ * Shape, defaults and normalisation of HUI's user settings. Every value passes through here on the way in and
+ * out, so a stale or hand-edited file degrades to defaults instead of reaching CSS or the gateway. Loading
+ * and saving them through the gateway is `settings-store.ts`'s job.
+ */
+import { DEFAULT_GPT_LIVE_VOICE, gptLiveVoice, type GptLiveVoice } from "../../shared/calls.ts";
 import { normalizeAppearance, DEFAULT_APPEARANCE, type Appearance } from "./appearance.ts";
 import { DEFAULT_TERMINAL_FONT, normalizeTerminalFont } from "./terminal-font.ts";
 import { normalizeThemeMode, type ThemeMode } from "./theme.ts";
+import type { VscodeProviderPreference } from "../../shared/vscode.ts";
 
 /** The whole of what the app remembers. Written to `~/.config/hui/settings.json`
  * as flat, hand-editable JSON, and normalised on the way in and out so a stale
@@ -28,6 +35,8 @@ export type Settings = {
   branchPrefix: string;
   /** Settings → Tools → Browser: HUI's managed, agent-only browser profile. */
   browser: BrowserSettings;
+  /** Settings → Tools → VS Code: how the Work pane's VS Code view runs VS Code on this machine. */
+  vscode: VscodeSettings;
   /** Settings → Gateway → Power (macOS). Lid-close prevention is deliberately not
    * saved: it lasts one gateway run (`/__hui/power`). */
   power: {
@@ -40,11 +49,22 @@ export type Settings = {
     fallback: string;
     utility: string;
   };
+  /** Settings → Models → Calls: calls with bots talk through GPT-Live over the ChatGPT login saved in Settings → Models.
+   * `voice` is the GPT-Live voice of a bot that has none of its own. */
+  calls: { voice: GptLiveVoice };
   /** PI skills hidden from HUI-owned runtimes without changing PI's installation. */
   disabledSkills: readonly { name: string; path: string }[];
   /** PI packages/extensions excluded before HUI's SDK worker discovers resources. */
   disabledPlugins: readonly { id: string; name: string; kind: "package" | "extension" }[];
-  labs: { denseObservability: boolean; detailedDebug: boolean };
+  labs: {
+    denseObservability: boolean;
+    detailedDebug: boolean;
+    /** Settings → Labs → Bots, the one switch for bots (HUI-18), a preview: off until the operator turns it on. On, the
+     * sidebar gets its Agents | Bots switch. Off, bots are dormant everywhere: the gateway refuses their routes and
+     * calls, skips their routines and starts none of their turns, and no screen shows them. Nothing is deleted, and
+     * turning it on brings them back as they were, without a restart. */
+    bots: boolean;
+  };
 };
 
 export type BrowserSettings = {
@@ -56,8 +76,25 @@ export type BrowserSettings = {
   executablePath: string;
 };
 
+/** Which VS Code the view runs: `auto` takes the first that can run, in the order of the other values. */
+export type { VscodeProviderPreference };
+
+export type VscodeSettings = {
+  /** The opt-in switch of the first VS Code view. Kept as saved so an older HUI reading this file still works; it no
+   * longer gates anything (the launcher is always there and nothing starts before it is used). */
+  enabled: boolean;
+  /** Absolute VS Code server (or VS Code `code` CLI) executable. Empty finds one. */
+  executable: string;
+  provider: VscodeProviderPreference;
+  /** When the operator accepted Microsoft's VS Code Server license for `code serve-web`, ISO time; empty: not
+   * accepted, and HUI never runs serve-web. */
+  licenseAcceptedAt: string;
+};
+
 export const DEFAULT_BRANCH_PREFIX = "feature/";
 export const DEFAULT_BROWSER_SETTINGS: BrowserSettings = { enabled: true, headless: true, executablePath: "" };
+export const DEFAULT_VSCODE_SETTINGS: VscodeSettings = { enabled: false, executable: "", provider: "auto", licenseAcceptedAt: "" };
+const VSCODE_PROVIDERS: readonly VscodeProviderPreference[] = ["auto", "configured", "desktop", "managed", "path"];
 
 export const DEFAULT_SETTINGS: Settings = {
   theme: "claw",
@@ -77,12 +114,20 @@ export const DEFAULT_SETTINGS: Settings = {
   profileHandle: "",
   branchPrefix: DEFAULT_BRANCH_PREFIX,
   browser: DEFAULT_BROWSER_SETTINGS,
+  vscode: DEFAULT_VSCODE_SETTINGS,
   power: { keepAwake: true },
   models: { primary: "", fallback: "", utility: "" },
+  calls: { voice: DEFAULT_GPT_LIVE_VOICE },
   disabledSkills: [],
   disabledPlugins: [],
-  labs: { denseObservability: false, detailedDebug: false },
+  labs: { denseObservability: false, detailedDebug: false, bots: false },
 };
+
+/** Settings → Labs → Bots: whether bots exist at all, on the gateway and on every screen (the sidebar's Agents | Bots
+ * switch included). */
+export function botsEnabled(settings: Pick<Settings, "labs">): boolean {
+  return settings.labs.bots;
+}
 
 export function normalizeSettings(raw: unknown): Settings {
   const source = isRecord(raw) ? raw : {};
@@ -102,12 +147,22 @@ export function normalizeSettings(raw: unknown): Settings {
     profileHandle: boundedText(source["profileHandle"], "", 80),
     branchPrefix: normalizeBranchPrefix(source["branchPrefix"]),
     browser: normalizeBrowserSettings(source["browser"]),
+    vscode: normalizeVscodeSettings(source["vscode"]),
     power: normalizePower(source["power"]),
+    // VoiceStudio's `voice` (its voice-notes switch) is not read either: the next save leaves it out.
     models: normalizeModels(source["models"]),
+    calls: normalizeCalls(source["calls"]),
     disabledSkills: normalizeDisabledSkills(source["disabledSkills"]),
     disabledPlugins: normalizeDisabledPlugins(source["disabledPlugins"]),
-    labs: normalizeLabs(source["labs"]),
+    labs: normalizeLabs(source["labs"], source["bots"]),
   };
+}
+
+/** An unknown voice is GPT-Live's default. A file saved while VoiceStudio could run calls also holds an `engine` here:
+ * it is not read, so the next save leaves it out. */
+export function normalizeCalls(value: unknown): Settings["calls"] {
+  const source = isRecord(value) ? value : {};
+  return { voice: gptLiveVoice(source["voice"]) ?? DEFAULT_GPT_LIVE_VOICE };
 }
 
 /** Both switches are opt-out: only an explicit false changes the default. The
@@ -120,6 +175,21 @@ export function normalizeBrowserSettings(value: unknown): BrowserSettings {
     enabled: source["enabled"] !== false,
     headless: source["headless"] !== false,
     executablePath: path.length <= 4_096 && !/[\p{Cc}]/u.test(path) ? path : "",
+  };
+}
+
+/** Opt-in: only an explicit true turns the VS Code view on. The path is kept as typed, like the browser's; the gateway
+ * validates it and reports what it found. */
+export function normalizeVscodeSettings(value: unknown): VscodeSettings {
+  const source = isRecord(value) ? value : {};
+  const path = typeof source["executable"] === "string" ? source["executable"].trim() : "";
+  const provider = VSCODE_PROVIDERS.find((value) => value === source["provider"]) ?? "auto";
+  const accepted = typeof source["licenseAcceptedAt"] === "string" ? source["licenseAcceptedAt"].trim() : "";
+  return {
+    enabled: source["enabled"] === true,
+    executable: path.length <= 4_096 && !/[\p{Cc}]/u.test(path) ? path : "",
+    provider,
+    licenseAcceptedAt: accepted.length <= 64 && !Number.isNaN(Date.parse(accepted)) ? accepted : "",
   };
 }
 
@@ -218,11 +288,15 @@ function boundedText(value: unknown, fallback: string, maximum: number): string 
   return value.trim().slice(0, maximum);
 }
 
-function normalizeLabs(value: unknown): Settings["labs"] {
+/** Every Labs flag is opt-in: only an explicit true turns one on. Bots also stay on for a file from before Labs →
+ * Bots that had Settings → Sessions → Show the Bots tab on (`bots.showTab`, `legacyBots` here) while it has no
+ * `labs.bots`: an operator who had the tab keeps bots. The next save writes only `labs.bots`. */
+function normalizeLabs(value: unknown, legacyBots: unknown): Settings["labs"] {
   const source = isRecord(value) ? value : {};
   return {
     denseObservability: source["denseObservability"] === true,
     detailedDebug: source["detailedDebug"] === true,
+    bots: source["bots"] === true || (source["bots"] === undefined && isRecord(legacyBots) && legacyBots["showTab"] === true),
   };
 }
 

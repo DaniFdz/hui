@@ -12,6 +12,7 @@ import type {
   AutomationTaskInput,
 } from "../lib/automation-types.ts";
 import type { SessionView } from "../lib/sessions-store.ts";
+import { routineCadenceSummary, routineFacts } from "../lib/bot-routines.ts";
 import { icons } from "../lib/icons.ts";
 import { labelDropdown, closeDropdownOnEscape } from "../lib/web-awesome.ts";
 import { renderSettingsToggle } from "./settings-toggle.ts";
@@ -25,7 +26,12 @@ export type AutomationProps = {
   automationFormError: string;
   /** A refused task or run action, reported next to the list that owns it. */
   automationActionError: string;
+  /** Every registered session. Bot chats label their routines but are not
+   * offered as targets: a bot's routines are added from its own panel. */
   sessions: readonly SessionView[];
+  /** Settings → Labs → Bots. `false` (bots off) leaves bots' routines and their runs out, like every other trace of
+   * bots; the scheduler keeps them, skipping their runs. */
+  bots?: boolean;
   onRetryAutomation: () => void;
   /** Resolves `true` once the scheduler accepted the task, so the form clears. */
   onCreateAutomationTask: (input: AutomationTaskInput) => Promise<boolean>;
@@ -78,6 +84,12 @@ export function describeSchedule(schedule: AutomationSchedule): string {
     return `Every ${minutes === 1 ? "minute" : `${minutes} minutes`}`;
   }
   return `Cron ${schedule.expression} (${schedule.timezone})`;
+}
+
+/** A bot routine's schedule as its panel wrote it ("Daily at 08:00",
+ * "Mondays at 09:30"); anything else as the scheduler's own kinds. */
+export function describeRoutineSchedule(schedule: AutomationSchedule): string {
+  return routineCadenceSummary(schedule) ?? describeSchedule(schedule);
 }
 
 export function formatTimestamp(value: string | null | undefined): string {
@@ -156,20 +168,25 @@ export function localTimezone(): string {
 function sessionLabel(props: AutomationProps, sessionId: string): string {
   const session = props.sessions.find((item) => item.id === sessionId);
   if (!session) return `${sessionId} (missing)`;
+  if (session.bot) return `Bot · ${session.bot.name}`;
   return session.group ? `${session.group} — ${session.title}` : session.title;
 }
 
 function renderTask(props: AutomationProps, task: AutomationTask) {
   const lastRun = props.automation?.runs.find((run) => run.taskId === task.id);
+  // Bot routines read as their bot's panel shows them; other tasks keep the generic summary.
+  const routine = props.sessions.some((session) => session.id === task.sessionId && session.bot);
+  // Who made it when a bot did, by its handle now, and a temporary task's limits.
+  const facts = routineFacts(task, { handle: (botId) => props.sessions.find((session) => session.bot?.id === botId)?.bot?.handle });
   return html`
     <article class="cron-table__row ${task.enabled ? "" : "cron-table__row--paused"}" data-task=${task.id}>
       <button type="button" class="cron-table__name" @click=${() => props.onEditAutomationTask(task)} aria-label=${`Edit ${task.name}`}>
         <span class="cron-table__state" aria-hidden="true"><span class="cron-table__state-dot"></span></span>
         <span class="cron-table__name-copy"><span class="cron-table__name-line"><span class="cron-table__name-text">${task.name}</span></span>
-          <span class="cron-table__name-meta"><span class="cron-table__description">${task.description || sessionLabel(props, task.sessionId)}</span></span>
+          <span class="cron-table__name-meta"><span class="cron-table__description">${task.description || sessionLabel(props, task.sessionId)}</span>${facts.map((fact) => html`<span class="cron-table__meta-separator" aria-hidden="true">·</span><span class="cron-table__fact">${fact}</span>`)}</span>
         </span>
       </button>
-      <span class="cron-table__cell cron-table__schedule"><span class="cron-table__cell-label">Schedule</span><span class="cron-table__cell-value">${describeSchedule(task.schedule)}</span></span>
+      <span class="cron-table__cell cron-table__schedule"><span class="cron-table__cell-label">Schedule</span><span class="cron-table__cell-value">${routine ? describeRoutineSchedule(task.schedule) : describeSchedule(task.schedule)}</span></span>
       <span class="cron-table__cell cron-table__next"><span class="cron-table__cell-label">Next run</span><span class="cron-table__cell-value">${formatTimestamp(task.nextRunAt)}</span></span>
       <span class="cron-table__cell cron-table__last"><span class="cron-table__cell-label">Last run</span><span class="cron-table__cell-value">${lastRun ? RUN_STATUS_LABELS[lastRun.status] : "—"}</span></span>
       <span class="cron-table__actions">
@@ -236,6 +253,8 @@ function scheduleValue(task: AutomationTask | undefined, kind: AutomationSchedul
 
 function renderTaskForm(props: AutomationProps, renderSection: SectionRenderer) {
   const editing = props.automation?.tasks.find((task) => task.id === props.automationEditingId);
+  // Bot chats are not offered as targets, except the one a bot routine being edited already uses.
+  const targets = props.sessions.filter((session) => !session.bot || session.id === editing?.sessionId);
   const initialKind = editing?.schedule.kind ?? "cron";
   const submit = (event: SubmitEvent) => {
     event.preventDefault();
@@ -279,7 +298,7 @@ function renderTaskForm(props: AutomationProps, renderSection: SectionRenderer) 
   };
   return renderSection(
     editing ? "Edit task" : "New task",
-    props.sessions.length
+    targets.length
       ? "The task sends its prompt to an existing session on the schedule you pick."
       : "Start a session first: automation runs inside a session HUI already owns.",
     html`
@@ -291,9 +310,9 @@ function renderTaskForm(props: AutomationProps, renderSection: SectionRenderer) 
           <input class="settings-input" name="description" type="text" maxlength="500" placeholder="Optional" .value=${editing?.description ?? ""} />
         </span></span></label>
         <label class="settings-row automation-field"><span class="settings-row__text"><span class="settings-row__title">Session</span></span><span class="settings-row__control"><span class="cron-control">
-          <wa-select class="settings-select" size="s" placeholder="Choose a session" name="sessionId" ?disabled=${!props.sessions.length} .value=${editing?.sessionId ?? ""}>
+          <wa-select class="settings-select" size="s" placeholder="Choose a session" name="sessionId" ?disabled=${!targets.length} .value=${editing?.sessionId ?? ""}>
             <span slot="label" class="settings-control__sr-label">Session</span>
-            ${props.sessions.map(
+            ${targets.map(
               (session) => html`<wa-option value=${session.id}>${sessionLabel(props, session.id)}</wa-option>`,
             )}
           </wa-select>
@@ -325,7 +344,7 @@ function renderTaskForm(props: AutomationProps, renderSection: SectionRenderer) 
           <input class="settings-input" name="timeoutSeconds" type="number" min="10" max="86400" step="1" .value=${String(editing?.timeoutSeconds ?? 900)} />
         </span></span></label>
         <div class="automation-actions cron-editor-actions">
-          <button type="submit" class="btn" ?disabled=${props.automationPending || !props.sessions.length}>${editing ? "Update task" : "Create task"}</button>
+          <button type="submit" class="btn" ?disabled=${props.automationPending || !targets.length}>${editing ? "Update task" : "Create task"}</button>
           ${editing ? html`<button type="button" class="btn" ?disabled=${props.automationPending} @click=${props.onCancelAutomationEdit}>Cancel edit</button>` : nothing}
         </div>
         ${props.automationFormError
@@ -346,6 +365,23 @@ function syncScheduleVisibility(form: HTMLFormElement, kind: string) {
   }
 }
 
+/** What the page lists: every task and run, or, while bots are off (Settings → Labs → Bots), all but bots' routines and
+ * their runs, which the scheduler keeps and skips; its next wake is then the next time of a task the page lists. */
+export function listedAutomation(
+  snapshot: Pick<AutomationSnapshot, "tasks" | "runs" | "scheduler">,
+  sessions: readonly Pick<SessionView, "id" | "bot">[],
+  bots: boolean | undefined,
+): Pick<AutomationSnapshot, "tasks" | "runs"> & { nextWakeAt: string | null } {
+  if (bots !== false) return { tasks: snapshot.tasks, runs: snapshot.runs, nextWakeAt: snapshot.scheduler.nextWakeAt };
+  const chats = new Set(sessions.filter((session) => session.bot).map((session) => session.id));
+  const tasks = snapshot.tasks.filter((task) => !chats.has(task.sessionId));
+  return {
+    tasks,
+    runs: snapshot.runs.filter((run) => !chats.has(run.sessionId)),
+    nextWakeAt: tasks.flatMap((task) => task.enabled && task.nextRunAt ? [task.nextRunAt] : []).toSorted()[0] ?? null,
+  };
+}
+
 export function renderAutomationPage(props: AutomationProps, renderSection: SectionRenderer) {
   const state = automationState(props);
   if (state !== "ready") {
@@ -360,8 +396,7 @@ export function renderAutomationPage(props: AutomationProps, renderSection: Sect
     `;
   }
   const snapshot = props.automation as AutomationSnapshot;
-  const tasks = snapshot.tasks;
-  const runs = snapshot.runs;
+  const { tasks, runs, nextWakeAt } = listedAutomation(snapshot, props.sessions, props.bots);
   return html`<div class="cron-page settings-stack">
     <p class="settings-page__intro">Scheduled tasks, manual runs and run history owned by HUI.</p>
     ${renderSection(
@@ -376,7 +411,7 @@ export function renderAutomationPage(props: AutomationProps, renderSection: Sect
             <span class="settings-row__desc">When the scheduler next checks for due tasks.</span>
           </div>
           <div class="settings-row__control">
-            <span class="settings-row__muted">${formatTimestamp(snapshot.scheduler.nextWakeAt)}</span>
+            <span class="settings-row__muted">${formatTimestamp(nextWakeAt)}</span>
           </div>
         </div>
       `,

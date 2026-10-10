@@ -1,3 +1,6 @@
+/** The agent's progress card, shared by gateway and browser. It turns a `progress_card` tool call's arguments into
+ * bounded markdown and plan steps, treats the latest call in a transcript as the current card, and derives the
+ * compact sidebar summary. */
 export type ProgressStepStatus = "pending" | "in_progress" | "completed";
 export type ProgressStep = { step: string; status: ProgressStepStatus };
 export type ProgressCard = {

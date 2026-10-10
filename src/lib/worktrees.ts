@@ -1,3 +1,7 @@
+/**
+ * Browser client for the worktree inventory in Settings: loading it, removing worktrees with acknowledged
+ * risks, and helpers for sizes and for worktrees only the given sessions use. Git work happens in the gateway.
+ */
 import type { WorktreeInventory, WorktreeRemovalMode, WorktreeRemovalResult, WorktreeRisk, WorktreeRow } from "../../shared/worktrees.ts";
 import { fetchJson } from "./settings-store.ts";
 

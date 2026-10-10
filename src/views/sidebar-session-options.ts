@@ -1,3 +1,7 @@
+/**
+ * The sidebar's Filter & sort menu for the session list. It renders the choices and reports the normalized result;
+ * the options themselves and how they are applied belong to the sidebar.
+ */
 import { html, nothing } from "lit";
 import { live } from "lit/directives/live.js";
 import { icons } from "../lib/icons.ts";

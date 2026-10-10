@@ -20,6 +20,7 @@ import type {
 } from "./runtimes/types.ts";
 import { DEFAULT_SETTINGS } from "../src/lib/settings.ts";
 import { RuntimeOutputError, RuntimeUnreachableError } from "./runtimes/types.ts";
+import { waitFor } from "./test-support/wait-for.ts";
 
 // The registry path is read once, at import time, so the throwaway home has to
 // be in place before the module is loaded.
@@ -27,12 +28,13 @@ process.env["XDG_CONFIG_HOME"] = await mkdtemp(join(tmpdir(), "hui-live-"));
 
 const { LiveSessions, SessionBusyError } = await import("./live-sessions.ts");
 const { deleteSession } = await import("./hui.ts");
-const { readRegistry, SessionRegistryError } = await import("./sessions.ts");
+const { readRegistry, SessionRegistryError, updateRegistry } = await import("./sessions.ts");
 const { readObservability } = await import("./observability.ts");
 const { workers } = await import("./workers.ts");
 type SessionRecord = import("./sessions.ts").SessionRecord;
 type SessionStreamMessage = import("./live-sessions.ts").SessionStreamMessage;
 type SessionSnapshot = import("./live-sessions.ts").SessionSnapshot;
+type SessionStatusUpdate = import("./live-sessions.ts").SessionStatusUpdate;
 type SecretQuestion = import("./secret-requests.ts").SecretQuestion;
 
 /** Stands in for a pi subprocess, so the state machine can be driven event by
@@ -275,6 +277,64 @@ function recordFor(id: string): SessionRecord {
   return { id, title: id, group: "", cwd: tmpdir(), tool: "pi", createdAt: now, updatedAt: now };
 }
 
+/** A session's row in the registry, as a restarted gateway would read it. */
+async function stored(id: string): Promise<SessionRecord | undefined> {
+  return (await readRegistry()).find((session) => session.id === id);
+}
+
+/** What the manager itself holds for a session: its status and unread mark. */
+function managerView(manager: InstanceType<typeof LiveSessions>, id: string): SessionStatusUpdate | undefined {
+  const { statuses, unsubscribe } = manager.watchStatuses(() => {});
+  unsubscribe();
+  return statuses.find((entry) => entry.id === id);
+}
+
+/** Waits until a session's registry row passes `done`; a timeout shows the row and the manager's view. */
+function waitForStored(
+  manager: InstanceType<typeof LiveSessions>,
+  id: string,
+  label: string,
+  done: (record: SessionRecord | undefined) => boolean,
+): Promise<boolean> {
+  return waitFor(label, async () => done(await stored(id)), {
+    state: async () => ({ registry: await stored(id), manager: managerView(manager, id) }),
+  });
+}
+
+/**
+ * The real registry, whose writes can be acknowledged late: each one is in the
+ * file, but its caller hears back only when the test says so, as on a busy
+ * machine. Later writes go on meanwhile, in order.
+ */
+function lateRegistry() {
+  let holding = false;
+  const waiting: Array<() => void> = [];
+  const update: typeof updateRegistry = async (mutate) => {
+    const sessions = await updateRegistry(mutate);
+    if (holding) await new Promise<void>((resolve) => waiting.push(resolve));
+    return sessions;
+  };
+  // What a caller does once it hears back is promise callbacks, all run before the next macrotask.
+  const resumed = () => new Promise((resolve) => setImmediate(resolve));
+  return {
+    update,
+    /** Holds back the acknowledgement of every write from now on. */
+    hold: () => { holding = true; },
+    /** Writes in the file whose callers have not heard back yet. */
+    get waiting(): number { return waiting.length; },
+    /** Acknowledges the oldest write held back; resolves once its caller has resumed. */
+    async acknowledgeOldest(): Promise<void> {
+      waiting.shift()?.();
+      await resumed();
+    },
+    async acknowledgeAll(): Promise<void> {
+      holding = false;
+      for (const resolve of waiting.splice(0)) resolve();
+      await resumed();
+    },
+  };
+}
+
 test("tool inspection never boots cold sessions and marks unsupported runtimes honestly", async () => {
   const started: FakeSession[] = [];
   const manager = new LiveSessions(factory(started));
@@ -288,6 +348,72 @@ test("tool inspection never boots cold sessions and marks unsupported runtimes h
   assert.equal((await manager.inspect("inspect")).status, "live");
   runtime.inspect = async () => { throw new Error("worker failed"); };
   await assert.rejects(manager.inspect("inspect"), /worker failed/u);
+  manager.disposeAll();
+});
+
+test("a follow-up reports its queue item, which leaves the queue when HUI sends it", async () => {
+  const started: FakeSession[] = [];
+  const manager = new LiveSessions(factory(started));
+  manager.ensure(recordFor("queued-id"));
+  await waitForBoot(manager, "queued-id");
+  await manager.prompt("queued-id", "first");
+  const item = await manager.followUp("queued-id", "second");
+  assert.equal(typeof item, "string");
+  assert.deepEqual(manager.snapshot("queued-id").queue.items?.map((entry) => entry.id), [item]);
+  const runtime = started[0]!;
+  const original = runtime.prompt.bind(runtime);
+  const sent = new Promise<string>((resolve) => {
+    runtime.prompt = async (text, attachments) => { await original(text, attachments); resolve(text); };
+  });
+  runtime.emit({ type: "settled" });
+  assert.equal(await sent, "second", "HUI sends it once the run settles");
+  assert.equal(manager.snapshot("queued-id").queue.items, undefined, "and it left the queue");
+  manager.disposeAll();
+});
+
+test("a bot's chat announces each prompt it accepts with a snapshot; other sessions' streams stay as they were", async () => {
+  const started: FakeSession[] = [];
+  const manager = new LiveSessions(factory(started));
+  const framesOf = async (record: SessionRecord): Promise<string[]> => {
+    manager.ensure(record);
+    await waitForBoot(manager, record.id);
+    const frames: string[] = [];
+    const unsubscribe = manager.subscribe(record.id, (message) => {
+      if (message.kind === "status") frames.push(message.status);
+      else if (message.kind === "snapshot") frames.push(`snapshot: ${message.snapshot.transcript.map((entry) => entry.kind === "message" ? `${entry.role} ${entry.text}` : entry.kind).join(" | ")}`);
+    });
+    await manager.prompt(record.id, "[routine: Morning] check");
+    unsubscribe();
+    return frames;
+  };
+  assert.deepEqual(await framesOf({ ...recordFor("bot-chat"), bot: "bot-1" }), ["running", "snapshot: user hello | user [routine: Morning] check"],
+    "every screen and terminal sees a message another client sent, before its reply");
+  assert.deepEqual(await framesOf(recordFor("plain-chat")), ["running"], "an ordinary session gets no extra frame");
+  manager.disposeAll();
+});
+
+test("restart boots an idle session again from a new record and keeps its listeners", async () => {
+  const started: FakeSession[] = [];
+  const options: StartOptions[] = [];
+  const manager = new LiveSessions(factory(started, options));
+  const record = recordFor("moved");
+  manager.ensure(record);
+  await waitForBoot(manager, "moved");
+  const seen: string[] = [];
+  manager.subscribe("moved", (message) => {
+    if (message.kind === "status") seen.push(message.status);
+    else if (message.kind === "snapshot") seen.push(`snapshot:${message.snapshot.status}`);
+  });
+  await manager.restart({ ...record, cwd: "/srv/elsewhere" });
+  assert.equal(started.length, 2);
+  assert.equal(started[0]!.disposed, true);
+  assert.equal(options[1]!.cwd, "/srv/elsewhere");
+  assert.equal(manager.status("moved"), "idle");
+  assert.deepEqual(seen, ["starting", "snapshot:idle"], "listeners see the restart and the fresh snapshot");
+  await manager.prompt("moved", "work");
+  await assert.rejects(manager.restart(record), SessionBusyError);
+  await manager.restart(recordFor("cold"));
+  assert.equal(started.length, 2, "a cold session has nothing to restart");
   manager.disposeAll();
 });
 
@@ -454,13 +580,7 @@ test("a prompt flips running and idle, and a second one while streaming is refus
 
   started[0]?.emit({ type: "settled" });
   assert.equal(manager.status("prompt"), "idle");
-  await new Promise<void>((resolve) => {
-    const inspect = async () => {
-      if (!(await readRegistry()).find((session) => session.id === "prompt")?.runStartedAt) resolve();
-      else setImmediate(() => void inspect());
-    };
-    void inspect();
-  });
+  await waitForStored(manager, "prompt", "the run marker to be cleared", (record) => !record?.runStartedAt);
 });
 
 test("a gateway restart automatically continues the journaled request", async () => {
@@ -479,12 +599,8 @@ test("a gateway restart automatically continues the journaled request", async ()
   const replacement = new LiveSessions(factory(resumed));
   replacement.ensure(durable!);
   await waitForStatus(replacement, "interrupted", "running");
-  await new Promise<void>((resolve) => {
-    const inspect = () => {
-      if (resumed[0]?.prompts.length) resolve();
-      else setImmediate(inspect);
-    };
-    inspect();
+  await waitFor("the recovery prompt", () => resumed[0]?.prompts.length, {
+    state: () => ({ status: replacement.status("interrupted"), prompts: resumed[0]?.prompts }),
   });
   assert.match(resumed[0]?.prompts.at(-1) ?? "", /long task/u);
   assert.equal((await readRegistry()).find((session) => session.id === "interrupted")?.runRecoveryAttempts, 1);
@@ -507,13 +623,7 @@ test("a runtime that resumes its own runs is never replayed after a restart", as
     runPrompt: "the original task",
   });
   await waitForBoot(manager, "self-resuming");
-  await new Promise<void>((resolve) => {
-    const inspect = async () => {
-      if (!(await readRegistry()).find((session) => session.id === "self-resuming")?.runStartedAt) resolve();
-      else setImmediate(() => void inspect());
-    };
-    void inspect();
-  });
+  await waitForStored(manager, "self-resuming", "the run marker to be cleared", (record) => !record?.runStartedAt);
   assert.deepEqual(started[0]?.prompts, [], "no recovery prompt is sent");
   const record = (await readRegistry()).find((session) => session.id === "self-resuming");
   assert.equal(record?.runPrompt, undefined);
@@ -585,29 +695,78 @@ test("settled background activity becomes unread and a reader clears it", async 
 
   await manager.prompt("unread", "finish in background");
   started[0]?.emit({ type: "settled" });
-  await new Promise<void>((resolve) => {
-    const inspect = async () => {
-      if ((await readRegistry()).find((session) => session.id === "unread")?.unread) resolve();
-      else setImmediate(() => void inspect());
-    };
-    void inspect();
-  });
+  await waitForStored(manager, "unread", "the unread mark to be saved", (record) => record?.unread === true);
   assert.equal(updates.at(-1)?.unread, true);
 
   const reader = manager.watch("unread", () => {}, { reader: true });
-  await new Promise<void>((resolve) => {
-    const inspect = async () => {
-      if (!(await readRegistry()).find((session) => session.id === "unread")?.unread) resolve();
-      else setImmediate(() => void inspect());
-    };
-    void inspect();
-  });
+  await waitForStored(manager, "unread", "the reader to clear the unread mark", (record) => !record?.unread);
   assert.equal(updates.at(-1)?.unread, false);
 
   await manager.prompt("unread", "finish while visible");
   started[0]?.emit({ type: "settled" });
   assert.equal((await readRegistry()).find((session) => session.id === "unread")?.unread, undefined);
   reader.unsubscribe();
+});
+
+test("opening a session whose unread mark is still being saved clears the mark", async () => {
+  const registry = lateRegistry();
+  const started: FakeSession[] = [];
+  const updates: SessionStatusUpdate[] = [];
+  const manager = new LiveSessions(factory(started), registry.update);
+  manager.watchStatuses((update) => updates.push(update));
+  manager.ensure(recordFor("unread-late"));
+  await waitForBoot(manager, "unread-late");
+  await manager.prompt("unread-late", "finish in background");
+
+  // Settling unwatched queues two writes: the cleared run marker, then the
+  // unread mark. Both reach the file before the manager hears back from either.
+  registry.hold();
+  started[0]!.emit({ type: "settled" });
+  await waitForStored(manager, "unread-late", "the unread mark in the file", (record) => record?.unread === true && registry.waiting === 2);
+  // The run marker's write read the registry before the mark was in it.
+  await registry.acknowledgeOldest();
+  assert.equal(managerView(manager, "unread-late")?.unread, true, "an older write landing does not take the mark back");
+
+  const reader = manager.watch("unread-late", () => {}, { reader: true });
+  assert.equal(updates.at(-1)?.unread, false, "opening it clears the mark at once");
+  await registry.acknowledgeAll();
+  await waitForStored(manager, "unread-late", "the reader's read to be saved", (record) => !record?.unread);
+  assert.equal(managerView(manager, "unread-late")?.unread, undefined);
+  reader.unsubscribe();
+  manager.disposeAll();
+});
+
+test("a turn that settles unwatched while a read is still being saved is marked unread", async () => {
+  const registry = lateRegistry();
+  const started: FakeSession[] = [];
+  const updates: SessionStatusUpdate[] = [];
+  const manager = new LiveSessions(factory(started), registry.update);
+  manager.watchStatuses((update) => updates.push(update));
+  manager.ensure(recordFor("unread-missed"));
+  await waitForBoot(manager, "unread-missed");
+  await manager.prompt("unread-missed", "first run");
+  started[0]!.emit({ type: "settled" });
+  await waitForStored(manager, "unread-missed", "the first run's unread mark", (record) => record?.unread === true);
+  // Every write queued so far has landed and been acknowledged.
+  await updateRegistry((sessions) => sessions);
+
+  // A write that reads the registry while the mark is still in it, then a reader's read behind it.
+  registry.hold();
+  const thinking = manager.setThinking("unread-missed", "high");
+  await waitForStored(manager, "unread-missed", "the thinking level in the file", (record) => record?.thinking === "high" && registry.waiting === 1);
+  const reader = manager.watch("unread-missed", () => {}, { reader: true });
+  await waitForStored(manager, "unread-missed", "the read in the file", (record) => !record?.unread && registry.waiting === 2);
+  await registry.acknowledgeOldest();
+  assert.equal(managerView(manager, "unread-missed")?.unread, undefined, "an older write landing does not bring the mark back");
+
+  // The reader leaves and another turn finishes unwatched.
+  reader.unsubscribe();
+  started[0]!.emit({ type: "settled" });
+  await waitFor("the new unread mark to be announced", () => updates.at(-1)?.unread === true, { state: () => updates.slice(-3) });
+  await registry.acknowledgeAll();
+  await thinking;
+  await waitForStored(manager, "unread-missed", "the new unread mark to be saved", (record) => record?.unread === true);
+  manager.disposeAll();
 });
 
 test("a primary failure before output retries once on the configured fallback", async () => {
@@ -640,9 +799,16 @@ test("a primary failure before output retries once on the configured fallback", 
 
   assert.deepEqual(session.switched, ["anthropic/sonnet"]);
   assert.deepEqual(session.prompts, ["keep working", "keep working"]);
+  const restored = new Promise<void>((resolve) => {
+    const unsubscribe = manager.subscribe("fallback", (message) => {
+      if (message.kind === "model") { unsubscribe(); resolve(); }
+    });
+  });
   session.history.push({ kind: "error", message: "fallback unavailable" });
   session.emit({ type: "settled" });
   assert.deepEqual(session.prompts, ["keep working", "keep working"], "fallback is attempted only once");
+  await restored;
+  assert.deepEqual(session.switched, ["anthropic/sonnet", "openai/gpt"], "the session returns to its own model");
 });
 
 test("the manager closes the prompt race before a runtime reports streaming", async () => {
@@ -1341,6 +1507,27 @@ test("rewind refreshes the authoritative transcript and broadcasts a snapshot", 
   if (snapshot?.kind === "snapshot") assert.deepEqual(snapshot.snapshot.transcript, manager.transcript(record.id));
 });
 
+test("a fork leaves the session running and its history as it was, and only runtimes that copy history fork", async () => {
+  const started: FakeSession[] = [];
+  const manager = new LiveSessions(factory(started));
+  const record = recordFor("fork-source");
+  manager.ensure(record);
+  await waitForBoot(manager, record.id);
+  await manager.prompt(record.id, "long job");
+  const runtime = started[0]!;
+  const asked: (string | undefined)[] = [];
+  Object.assign(runtime, { fork: async (entryId?: string) => { asked.push(entryId); return "durable:copy"; } });
+
+  assert.equal(await manager.fork(record.id, "assistant-3"), "durable:copy");
+  assert.equal(await manager.fork(record.id), "durable:copy");
+  assert.deepEqual(asked, ["assistant-3", undefined]);
+  assert.equal(runtime.aborts, 0, "the source's run goes on");
+  assert.equal(manager.status(record.id), "running");
+
+  Object.assign(runtime, { fork: undefined });
+  await assert.rejects(manager.fork(record.id, "assistant-3"), /only Pi Durable sessions can/u);
+});
+
 test("rewind aborts active work before changing the session tree", async () => {
   const started: FakeSession[] = [];
   const manager = new LiveSessions(factory(started));
@@ -1860,7 +2047,7 @@ test("a pending secret request is shown as a question and leaves the session wai
   const started: FakeSession[] = [];
   const manager = new LiveSessions(factory(started));
   let pending: SecretQuestion[] = [];
-  manager.setSecretRequestProvider((id) => id === "secret" ? pending : []);
+  manager.setHuiQuestionProvider((id) => id === "secret" ? pending : []);
   manager.ensure(recordFor("secret"));
   await waitForBoot(manager, "secret");
   await manager.prompt("secret", "log the workspace in");
@@ -1903,12 +2090,8 @@ test("HUI-owned follow-ups can be edited, reordered, removed and steered before 
   ]);
 
   started[0]?.emit({ type: "settled" });
-  await new Promise<void>((resolve) => {
-    const inspect = () => {
-      if ((started[0]?.prompts.length ?? 0) >= 2) resolve();
-      else setImmediate(inspect);
-    };
-    inspect();
+  await waitFor("the edited follow-up to be sent", () => (started[0]?.prompts.length ?? 0) >= 2, {
+    state: () => ({ prompts: started[0]?.prompts, queue: manager.snapshot("editable-queue").queue }),
   });
   assert.deepEqual(started[0]?.prompts, ["active turn", "second edited"]);
   assert.equal(manager.snapshot("editable-queue").queue.items, undefined);
@@ -1975,13 +2158,6 @@ function scriptedWorker(t: TestContext) {
   });
 }
 
-async function until(done: () => boolean, label: string): Promise<void> {
-  for (const deadline = Date.now() + 5_000; !done();) {
-    if (Date.now() > deadline) throw new Error(`Timed out waiting for ${label}.`);
-    await new Promise((resolve) => setImmediate(resolve));
-  }
-}
-
 test("a worker session hands a follow-up to its runtime only while a run streams there and none waits in HUI's queue", async (t) => {
   const worker = scriptedWorker(t);
   const id = "remote-follow-up";
@@ -2005,9 +2181,9 @@ test("a worker session hands a follow-up to its runtime only while a run streams
   await manager.followUp(id, "B");
   assert.deepEqual(manager.snapshot(id).queue.items?.map((item) => item.text), ["A", "B"]);
   worker.settle();
-  await until(() => worker.calls.length === 4, "the first held follow-up");
+  await waitFor("the first held follow-up", () => worker.calls.length === 4, { state: () => worker.calls });
   worker.settle();
-  await until(() => worker.calls.length === 5, "the second held follow-up");
+  await waitFor("the second held follow-up", () => worker.calls.length === 5, { state: () => worker.calls });
   assert.deepEqual(worker.calls.slice(2), ["prompt:second turn", "prompt:A", "prompt:B"]);
   manager.disposeAll();
 });
@@ -2031,7 +2207,7 @@ test("follow-ups HUI holds for an unreachable worker session hold up a gateway r
   assert.equal(manager.status(id), "disconnected");
   assert.equal(manager.blockingWorkCount, 1);
   manager.ensure(record, true);
-  await until(() => worker.calls.length === 2, "the held follow-up");
+  await waitFor("the held follow-up", () => worker.calls.length === 2, { state: () => worker.calls });
   assert.deepEqual(worker.calls, ["prompt:turn", "prompt:held here"]);
   manager.disposeAll();
 });
@@ -2126,7 +2302,7 @@ test("a run that finished on the worker while HUI was away settles for what wait
   reattach();
   await waitForBoot(manager, id);
   const settled = () => seen.filter((message) => message.kind === "event" && message.event.type === "settled").length;
-  await until(() => settled() === 1, "the settled event");
+  await waitFor("the settled event", () => settled() === 1, { state: () => seen.map((message) => message.kind) });
   assert.equal(records[0]!.runStartedAt, undefined, "the run is no longer unfinished work");
   // Reattaching to a session with no run in flight settles nothing.
   worker.lose(true);

@@ -1,3 +1,8 @@
+/**
+ * The pages that report PI's own setup: connection, model providers and setup, config, skills, plugins and memory
+ * import. PI owns the data; these views show the snapshot and route installs, removals and enable switches back to
+ * the app, which asks the gateway to apply them.
+ */
 import { html, nothing, type TemplateResult } from "lit";
 
 import type { GatewayHealth, WorkspaceInspection } from "../lib/control-surfaces.ts";

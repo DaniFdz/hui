@@ -1,3 +1,8 @@
+/**
+ * Keeps a Mac awake for the gateway: idle-sleep prevention and the opt-in lid-close mode, both bounded by the
+ * gateway process's lifetime. It owns the reported power state and the flag files a root watcher polls;
+ * MacPower describes each mechanism.
+ */
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { renameSync, rmSync, statSync } from "node:fs";

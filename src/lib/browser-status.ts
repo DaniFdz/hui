@@ -1,3 +1,7 @@
+/**
+ * Operator-facing labels for the managed browser's status in Settings. Pure presentation over the gateway's
+ * `BrowserStatus`; it never queries or controls the browser.
+ */
 import type { BrowserStatus } from "../../shared/browser.ts";
 
 export type BrowserStatusKind = "ok" | "warn" | "danger" | "accent" | "muted";

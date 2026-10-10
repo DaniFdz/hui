@@ -34,7 +34,9 @@ import type { Settings } from "../src/lib/settings.ts";
 import type { HostInfo, RemoteLaunch, RemoteState } from "./worker/host.ts";
 import { RuntimeUnreachableError, type RuntimeEvent, type TranscriptEntry } from "./runtimes/types.ts";
 import { formatCommand, parseCommand, type WorkerInput, type WorkerView } from "../shared/workers.ts";
+import { parseRunOrigins } from "../shared/bots.ts";
 import { invokeAgentTool } from "./agent-tools-bridge.ts";
+import { GATEWAY_ONLY_TOOLS } from "./worker/gateway-tools.ts";
 import { readRegistry } from "./sessions.ts";
 
 export const WORKERS_FILE = join(CONFIG_DIR, "workers.json");
@@ -55,6 +57,19 @@ export type WorkerConfig = {
 
 export class WorkerInputError extends Error {}
 export class WorkerNotFoundError extends Error {}
+/** HUI holds no live connection to the worker; nothing was sent. */
+export class WorkerOfflineError extends Error {}
+
+/** A request a worker host may send the gateway beyond credentials and tools (`bot.section`), by worker. */
+export type HostRequestHandler = (workerId: string, params: Record<string, unknown>) => Promise<unknown>;
+
+/** What every connection shares with the service that owns it. */
+type ConnectionHooks = {
+  /** The requests registered with `WorkerService.serve`. */
+  served(): Iterable<[string, HostRequestHandler]>;
+  /** A frame that belongs to no session (`bot.memory.status`). */
+  onHostFrame(frame: Frame): void;
+};
 
 function normalizeInput(value: unknown, existing?: WorkerConfig): Omit<WorkerConfig, "id" | "createdAt" | "updatedAt"> {
   if (!isRecord(value)) throw new WorkerInputError("A worker is required.");
@@ -180,10 +195,12 @@ class WorkerConnection {
   lostSessions = false;
   /** Closed on purpose (a disconnect), so nothing reconnects by itself. */
   #closing = false;
+  #hooks: ConnectionHooks;
 
-  constructor(worker: WorkerConfig, onPhase: (phase: string) => void) {
+  constructor(worker: WorkerConfig, onPhase: (phase: string) => void, hooks: ConnectionHooks) {
     this.worker = worker;
     this.#onPhase = onPhase;
+    this.#hooks = hooks;
   }
 
   get closed(): boolean {
@@ -266,6 +283,7 @@ class WorkerConnection {
       peer.handle("credential", (params) => this.#credential(params));
       peer.handle("bridge", (params, signal) => this.#bridge(params, signal));
       peer.handle("secret-request", (params, signal) => this.#secretRequest(params, signal));
+      for (const [op, handler] of this.#hooks.served()) this.serve(op, handler);
       peer.onFrame((frame) => this.#frame(frame));
       transport.on("error", (error) => fail(`Could not run ${command[0]}: ${error.message}`));
       transport.on("exit", (code, signal) => {
@@ -292,6 +310,11 @@ class WorkerConnection {
 
   request<T>(op: string, params: Record<string, unknown> = {}, timeoutMs?: number): Promise<T> {
     return this.#peer.request<T>(op, params, timeoutMs);
+  }
+
+  /** Answers `op` from the host with `handler`, as this worker. */
+  serve(op: string, handler: HostRequestHandler): void {
+    this.#peer?.handle(op, (params) => handler(this.worker.id, params));
   }
 
   /** Sync if the mirror may be stale; concurrent callers share one run. */
@@ -352,35 +375,34 @@ class WorkerConnection {
     return this.#sync;
   }
 
+  /** How the host names a skill this machine has at `path`: a bundled skill by its stable preference, which any release
+   * matches, any other by its mirrored path there. Settings' disabled skills and bots' lists (`skillPath`) alike. */
+  skillPath(path: string): string {
+    if (isBundledSkillPreference({ path })) return bundledSkills.find((bundled) => bundled.path === path)?.preferencePath ?? path;
+    return `${this.host.mirrorDir}/${mirrorPath(path, { agentDir: resolvePiAgentDir(), home: homedir() })}`;
+  }
+
   /** HUI's settings as the host reads them: skills and plugins named by their
    * mirrored paths, and no managed browser, which runs on this machine. */
   async #remoteSettings(pluginIds: Map<string, string>): Promise<Settings> {
     const settings = await readHuiSettings();
-    const source = { agentDir: resolvePiAgentDir(), home: homedir() };
     return {
       ...settings,
       browser: { ...settings.browser, enabled: false },
-      disabledSkills: settings.disabledSkills.map((skill) => ({
-        ...skill,
-        // Bundled skills by their stable preference, which any release matches.
-        path: isBundledSkillPreference(skill)
-          ? bundledSkills.find((bundled) => bundled.path === skill.path)?.preferencePath ?? skill.path
-          : `${this.host.mirrorDir}/${mirrorPath(skill.path, source)}`,
-      })),
+      disabledSkills: settings.disabledSkills.map((skill) => ({ ...skill, path: this.skillPath(skill.path) })),
       disabledPlugins: settings.disabledPlugins.map((plugin) => ({ ...plugin, id: pluginIds.get(plugin.id) ?? plugin.id })),
     };
   }
 
   async #launchDefaults(pluginIds: Map<string, string>): Promise<Record<string, unknown>> {
     const settings = await sessionSettings();
-    const source = { agentDir: resolvePiAgentDir(), home: homedir() };
     return {
       disabledPluginIds: settings.disabledPluginIds.map((id) => pluginIds.get(id) ?? id),
       bundledSkillPaths: settings.bundledSkillPaths.flatMap((path) => remoteReleasePath(this.release, this.host.releaseDir, path) ?? []),
       // The managed browser runs on the gateway machine; remote sessions
       // cannot hand it their files yet.
       browserTool: false,
-      disabledSkills: settings.disabledSkills.map((skill) => ({ name: skill.name, path: `${this.host.mirrorDir}/${mirrorPath(skill.path, source)}` })),
+      disabledSkills: settings.disabledSkills.map((skill) => ({ name: skill.name, path: this.skillPath(skill.path) })),
     };
   }
 
@@ -423,6 +445,10 @@ class WorkerConnection {
   }
 
   #frame(frame: Frame): void {
+    if (frame.t.startsWith("bot.")) {
+      this.#hooks.onHostFrame(frame);
+      return;
+    }
     const sink = typeof frame["key"] === "string" ? this.#sessions.get(frame["key"]) : undefined;
     if (!sink) return;
     if (frame.t === "session.event") sink.receive(frame as Parameters<RemoteSessionSink["receive"]>[0]);
@@ -466,14 +492,17 @@ class WorkerConnection {
   async #bridge(params: Record<string, unknown>, signal: AbortSignal): Promise<unknown> {
     const action = typeof params["action"] === "string" ? params["action"] : "";
     const toolParams = isRecord(params["params"]) ? params["params"] : {};
+    // Beside the tool's own parameters, which its model chose: who brought each input of the run, as the host saw them.
+    const runOrigins = parseRunOrigins(params["runOrigins"]);
     const caller = await this.#caller(params);
     const key = caller.id;
     if (!action) throw new Error("That conversation does not run on this worker.");
-    // These act on the gateway's machine, not the worker's.
-    if (action === "terminal" || action === "browser" || action === "watcher") throw new Error(`The ${action} tool is not available to sessions on a remote worker yet.`);
-    // A host that asks through the bridge predates `secret-request`.
+    // These act on the gateway's machine, not the worker's (a bot's chat there isn't even offered them).
+    if (GATEWAY_ONLY_TOOLS.includes(action)) throw new Error(`The ${action} tool is not available to sessions on a remote worker yet.`);
+    // Not one of them: a secret's file is written where the session's commands run, so a current host asks with
+    // `secret-request`, and one that asks through the bridge predates it.
     if (action === "secret_request") throw new Error("This worker runs an older HUI release without secret requests; it updates once its sessions are idle.");
-    if (action !== "present_media") return invokeAgentTool({ callerSessionId: key, action, params: toolParams, signal });
+    if (action !== "present_media") return invokeAgentTool({ callerSessionId: key, action, params: toolParams, signal, ...(runOrigins ? { runOrigins } : {}) });
     // Media lives on the remote: copy it here, then present it as usual.
     const paths = Array.isArray(toolParams["paths"]) ? toolParams["paths"].filter((path): path is string => typeof path === "string").slice(0, 8) : [];
     const dir = await mkdtemp(join(tmpdir(), "hui-remote-media-"));
@@ -514,6 +543,9 @@ export class WorkerService {
   #names = new Map<string, string>();
   /** Workers the user disconnected: opening a session never reconnects them. */
   #disconnectedByUser = new Set<string>();
+  #served = new Map<string, HostRequestHandler>();
+  #hostFrameListeners = new Set<(workerId: string, frame: Frame) => void>();
+  #closedListeners = new Set<(workerId: string) => void>();
 
   async #read(): Promise<WorkerConfig[]> {
     const list = await readWorkers();
@@ -534,6 +566,14 @@ export class WorkerService {
     return () => this.#connectedListeners.delete(listener);
   }
 
+  #removedListeners = new Set<(workerId: string) => void>();
+
+  /** A worker deleted from Settings → Workers, once it is gone from the list. */
+  onRemoved(listener: (workerId: string) => void): () => void {
+    this.#removedListeners.add(listener);
+    return () => this.#removedListeners.delete(listener);
+  }
+
   #stoppedListeners = new Set<(workerId: string) => void>();
 
   /** HUI stopped trying to reach a worker: a disconnect, a removal, or a
@@ -546,6 +586,50 @@ export class WorkerService {
   onChange(listener: () => void): () => void {
     this.#listeners.add(listener);
     return () => this.#listeners.delete(listener);
+  }
+
+  /** Every connection that ends: a disconnect, a removal, or a lost link HUI may reconnect. */
+  onClosed(listener: (workerId: string) => void): () => void {
+    this.#closedListeners.add(listener);
+    return () => this.#closedListeners.delete(listener);
+  }
+
+  /** Frames hosts send that belong to no session, such as `bot.memory.status`. */
+  onHostFrame(listener: (workerId: string, frame: Frame) => void): () => void {
+    this.#hostFrameListeners.add(listener);
+    return () => this.#hostFrameListeners.delete(listener);
+  }
+
+  /** Answers a request worker hosts send, on every connection, now and later. */
+  serve(op: string, handler: HostRequestHandler): void {
+    this.#served.set(op, handler);
+    for (const connection of this.#connections.values()) if (!connection.closed) connection.serve(op, handler);
+  }
+
+  /** How a connected worker's host names a skill this machine has at `path` (`WorkerConnection.skillPath`): its
+   * mirrored path there, or a bundled skill's stable preference; undefined while HUI is not connected to it. */
+  skillPath(id: string, path: string): string | undefined {
+    const connection = this.#connections.get(id);
+    return connection && !connection.closed ? connection.skillPath(path) : undefined;
+  }
+
+  /** Whether HUI holds a live connection to the worker. */
+  connected(id: string): boolean {
+    const connection = this.#connections.get(id);
+    return Boolean(connection && !connection.closed);
+  }
+
+  /** What the connected worker's host offers beyond sessions (`bots`): empty for an older host, undefined while not connected. */
+  features(id: string): readonly string[] | undefined {
+    const connection = this.#connections.get(id);
+    return connection && !connection.closed ? connection.host.features ?? [] : undefined;
+  }
+
+  /** One request to the host of a connected worker. Never connects: without a live connection it fails at once. */
+  hostRequest<T>(id: string, op: string, params: Record<string, unknown> = {}, timeoutMs?: number): Promise<T> {
+    const connection = this.#connections.get(id);
+    if (!connection || connection.closed) return Promise.reject(new WorkerOfflineError(`HUI is not connected to ${this.nameOf(id) ?? "that worker"}.`));
+    return connection.request<T>(op, params, timeoutMs);
   }
 
   #changed(): void {
@@ -608,6 +692,7 @@ export class WorkerService {
     await writeWorkers(workers.filter((item) => item.id !== id));
     this.#status.delete(id);
     this.#changed();
+    for (const listener of this.#removedListeners) listener(id);
   }
 
   /** The live connection, opening (and if needed installing) it first. */
@@ -625,6 +710,9 @@ export class WorkerService {
       const connection = new WorkerConnection(worker, (phase) => {
         this.#status.set(id, { state: "connecting", phase });
         this.#changed();
+      }, {
+        served: () => this.#served.entries(),
+        onHostFrame: (frame) => { for (const listener of this.#hostFrameListeners) listener(id, frame); },
       });
       try {
         await connection.open();
@@ -644,6 +732,7 @@ export class WorkerService {
       this.#connections.set(id, connection);
       this.#status.set(id, { state: "connected" });
       this.#reconnect.delete(id);
+      connection.onClose(() => { for (const listener of this.#closedListeners) listener(id); });
       connection.onClose((reason) => {
         if (this.#connections.get(id) !== connection) return;
         this.#connections.delete(id);

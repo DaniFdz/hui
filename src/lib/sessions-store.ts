@@ -1,8 +1,14 @@
-import type { TranscriptMetrics } from "../../server/runtimes/transcript-metrics.ts";
 /**
- * Client half of the session API. HUI owns the registry; the contract is fixed
- * in `docs/api.md`.
+ * Client half of the session API: the session, transcript and runtime types the views share, the
+ * `/__hui/sessions` requests, and the status and per-session event streams with their reconnects. HUI owns
+ * the registry and the contract is fixed in `docs/api.md`; this module holds no session state of its own.
  */
+import type { TranscriptMetrics } from "../../server/runtimes/transcript-metrics.ts";
+import type { QuestionnaireQuestion } from "../../server/questionnaires.ts";
+
+/** One question's answer from the questionnaire card: chosen labels and typed text. */
+export type QuestionnaireReply = { selected: readonly string[]; custom?: string };
+import { callMinutes, callTranscriptText, type CallRecord } from "../../shared/calls.ts";
 import type { ProgressCard } from "./progress-card.ts";
 import type { SessionPullRequest } from "../../shared/pull-requests.ts";
 import type { SessionJiraIssue } from "../../shared/jira.ts";
@@ -78,6 +84,8 @@ export type SessionView = {
   };
   /** The previous runtime disappeared before its active run settled. */
   interrupted?: boolean;
+  /** A watcher of this session, or a subagent below it, still runs. */
+  background?: true;
   /** `provider/id` the session is running on, when the tool reports one. */
   model?: string;
   /** Runtime reasoning level persisted with the HUI session. */
@@ -90,6 +98,9 @@ export type SessionView = {
   icon?: string;
   /** Parent session for a child created through `sessions_spawn`. */
   parentId?: string;
+  /** Set when this session is a bot's one permanent chat. Bot chats belong to
+   * the Bots tab and never appear in session lists or pickers. */
+  bot?: { id: string; handle: string; name: string };
   subagent?: {
     taskId: string;
     task: string;
@@ -167,6 +178,8 @@ export type TranscriptEntry = { metrics?: TranscriptMetrics } & (
       pending?: boolean;
       failed?: boolean;
     }
+  /** The record of a GPT-Live call with a bot: one card with its summary and transcript. */
+  | ({ kind: "call"; id?: string } & CallRecord)
   | { kind: "compaction"; id?: string; summary: string; tokensBefore: number }
   | { kind: "thinking"; id?: string; text: string }
   | {
@@ -234,6 +247,7 @@ export type RuntimeEvent =
  */
 export type TranscriptItem = { metrics?: TranscriptMetrics } & (
   | { kind: "message"; id: string; entryId?: string; role: "user" | "assistant"; text: string; attachments?: readonly (string | TranscriptAttachment)[]; pending?: boolean; failed?: boolean }
+  | ({ kind: "call"; id: string } & CallRecord)
   | { kind: "compaction"; id: string; summary: string; tokensBefore: number }
   | { kind: "thinking"; id: string; text: string }
   | { kind: "tool"; id: string; name: string; args?: unknown; output?: string; details?: unknown; failed?: boolean; status?: "running" | "succeeded" | "failed" }
@@ -241,17 +255,23 @@ export type TranscriptItem = { metrics?: TranscriptMetrics } & (
 
 export type PromptMode = "prompt" | "steer" | "followUp";
 /** `secret` is HUI's own `secret_request` prompt: `title` is the label and
- * `message` the reason. Its answer goes to the gateway, never to the runtime. */
+ * `message` the reason. `questionnaire` is HUI's `ask_user_question` card,
+ * `title` its first question. Their answers go to the gateway, never to the runtime. */
 export type RuntimeQuestion = {
   id: string;
-  method: "select" | "confirm" | "input" | "editor" | "secret";
+  method: "select" | "confirm" | "input" | "editor" | "secret" | "questionnaire";
   title?: string;
   message?: string;
   options?: readonly string[];
   placeholder?: string;
   value?: string;
   prefill?: string;
+  questions?: readonly QuestionnaireQuestion[];
 };
+
+/** What answering a question sends: a value, a confirmation, a questionnaire's
+ * answers (index-aligned with its questions) or a cancel. */
+export type QuestionResponse = { value?: string; confirmed?: boolean; cancelled?: boolean; answers?: readonly QuestionnaireReply[] };
 
 export type QueuedMessage = { id: string; text: string; mode: "followUp" };
 export type QueueSnapshot = {
@@ -300,6 +320,7 @@ export function transcriptAsMarkdown(items: readonly TranscriptItem[]): string {
     if (item.kind === "thinking") return `### Thinking\n\n${item.text}`;
     if (item.kind === "error") return `### Error\n\n${item.text}`;
     if (item.kind === "compaction") return `### Context compacted\n\n${item.summary}`;
+    if (item.kind === "call") return `### Call · ${callMinutes(item)} min\n\n${item.summary ?? "Summary unavailable."}\n\n${callTranscriptText(item.lines, item.bot ?? "Bot", "You")}`;
     const details = item.output || (item.args === undefined ? "" : JSON.stringify(item.args, null, 2));
     return `### Tool: ${item.name}${details ? `\n\n\`\`\`\n${details}\n\`\`\`` : ""}`;
   }).join("\n\n").trim();
@@ -485,16 +506,32 @@ export async function deleteSession(id: string): Promise<void> {
   });
 }
 
+/** What the gateway did with a send: `duplicate` when it had already taken this request id (the send is not repeated). */
+export type SendOutcome = { duplicate: boolean };
+
+/** `requestId` makes a resend after a failure safe: the gateway runs each id once (`server/recent-requests.ts`). */
 export async function sendPrompt(
   id: string,
   text: string,
   attachments: readonly Attachment[] = [],
-): Promise<void> {
-  await fetchJson<{ ok?: boolean }>(`${SESSIONS_URL}/${encodeURIComponent(id)}/prompt`, {
+  requestId?: string,
+): Promise<SendOutcome> {
+  return sendMessage(id, "prompt", text, attachments, requestId);
+}
+
+async function sendMessage(
+  id: string,
+  action: "prompt" | "steer" | "follow-up",
+  text: string,
+  attachments: readonly Attachment[],
+  requestId: string | undefined,
+): Promise<SendOutcome> {
+  const body = await fetchJson<{ ok?: boolean; duplicate?: boolean }>(`${SESSIONS_URL}/${encodeURIComponent(id)}/${action}`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ text, ...(attachments.length ? { attachments } : {}) }),
+    body: JSON.stringify({ text, ...(attachments.length ? { attachments } : {}), ...(requestId ? { requestId } : {}) }),
   });
+  return { duplicate: body.duplicate === true };
 }
 
 export type SideQuestionResult = { question: string; answer: string; model: string };
@@ -547,27 +584,11 @@ export async function clearSession(id: string): Promise<SessionSnapshot> {
   return body.snapshot;
 }
 
-async function sendQueued(
-  id: string,
-  action: "steer" | "follow-up",
-  text: string,
-  attachments: readonly Attachment[] = [],
-): Promise<void> {
-  await fetchJson<{ ok?: boolean }>(
-    `${SESSIONS_URL}/${encodeURIComponent(id)}/${action}`,
-    {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ text, ...(attachments.length ? { attachments } : {}) }),
-    },
-  );
-}
+export const steerSession = (id: string, text: string, attachments: readonly Attachment[] = [], requestId?: string) =>
+  sendMessage(id, "steer", text, attachments, requestId);
 
-export const steerSession = (id: string, text: string, attachments?: readonly Attachment[]) =>
-  sendQueued(id, "steer", text, attachments);
-
-export const followUpSession = (id: string, text: string, attachments?: readonly Attachment[]) =>
-  sendQueued(id, "follow-up", text, attachments);
+export const followUpSession = (id: string, text: string, attachments: readonly Attachment[] = [], requestId?: string) =>
+  sendMessage(id, "follow-up", text, attachments, requestId);
 
 export async function mutateQueuedMessage(
   id: string,
@@ -596,7 +617,7 @@ export async function setSessionThinking(id: string, level: string): Promise<str
 export async function answerQuestion(
   id: string,
   questionId: string,
-  answer: { value?: string; confirmed?: boolean; cancelled?: boolean },
+  answer: QuestionResponse,
 ): Promise<void> {
   await fetchJson<{ ok?: boolean }>(`${SESSIONS_URL}/${encodeURIComponent(id)}/question`, {
     method: "POST",
@@ -648,6 +669,24 @@ export async function abortSession(id: string): Promise<void> {
 
 /** A PI entry id, or a user message not yet shown with one, counted from the end. */
 export type RewindTarget = string | { userFromEnd: number };
+
+/** Copies the history up to `entryId` (the latest settled point when absent) into a new session and returns it,
+ * optionally in a new worktree on a new branch. The source session is left as it is. */
+export async function forkSession(
+  id: string,
+  entryId?: string,
+  options: { worktree?: boolean; branchName?: string } = {},
+): Promise<SessionView> {
+  const body = await fetchJson<{ session?: SessionView }>(`${SESSIONS_URL}/${encodeURIComponent(id)}/fork`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ ...(entryId === undefined ? {} : { entryId }), ...options }),
+    // Creating a worktree runs Git first, like New Session's.
+    signal: AbortSignal.timeout(CREATE_SESSION_TIMEOUT_MS),
+  });
+  if (!body.session) throw new Error("The fork was created but could not be read back.");
+  return body.session;
+}
 
 export async function rewindSession(id: string, target: RewindTarget, excludeUserMessage = false): Promise<void> {
   await fetchJson<{ ok?: boolean }>(`${SESSIONS_URL}/${encodeURIComponent(id)}/rewind`, {
@@ -941,7 +980,8 @@ function dispatch(name: string, payload: unknown, handlers: SessionStreamHandler
   return false;
 }
 
-function decodeSseFrame(chunk: string): { name: string; payload: unknown } | undefined {
+/** One SSE frame; shared with other HUI event streams (bots). */
+export function decodeSseFrame(chunk: string): { name: string; payload: unknown } | undefined {
   let name = "message";
   const data: string[] = [];
   for (const line of chunk.split("\n")) {

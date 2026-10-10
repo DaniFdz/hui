@@ -1,3 +1,7 @@
+/**
+ * Browser client for a session's terminals: listing, opening and closing them, and connecting to one over a
+ * WebSocket. The gateway owns the PTYs; the browser only holds the socket.
+ */
 import { fetchJson } from "./settings-store.ts";
 import type { TerminalView } from "./terminal-types.ts";
 
@@ -16,5 +20,8 @@ export async function connectTerminal(owner: string, id: string): Promise<WebSoc
   const result = await fetchJson<{ url: string }>(`${url(owner, id)}/connect`, post());
   const address = new URL(result.url, location.href);
   address.protocol = address.protocol === "https:" ? "wss:" : "ws:";
-  return new WebSocket(address);
+  const socket = new WebSocket(address);
+  // PTY output arrives as binary messages (shared/terminal-stream.ts); take them as bytes, not Blobs.
+  socket.binaryType = "arraybuffer";
+  return socket;
 }

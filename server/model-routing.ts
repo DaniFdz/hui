@@ -1,3 +1,8 @@
+/**
+ * One-off utility-model prompts that sit beside a session rather than in its conversation: naming a new
+ * session and its worktree branch, suggesting a branch for a backlog task, and answering /btw side questions.
+ * Naming always has a deterministic fallback, so a missing model or failed call never blocks session creation.
+ */
 import type { Settings } from "../src/lib/settings.ts";
 import type { BacklogItem } from "../shared/backlog.ts";
 import { fallbackBranchName, normalizeSuggestedBranchName } from "../shared/branch-names.ts";

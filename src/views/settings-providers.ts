@@ -1,11 +1,17 @@
+/**
+ * Settings → Models → Providers: the model providers the gateway can sign in to, their login prompts, the models
+ * chosen per provider, account priority and quotas, all through `/__hui/providers`. A sign-in or sign-out is
+ * announced with a `providers-changed` event so sections that depend on a login can refresh.
+ */
 import { LitElement, html, nothing } from "lit";
 import { repeat } from "lit/directives/repeat.js";
 import type { ProviderLogin, ProviderQuota, ProviderSnapshot, ProviderSummary } from "../../shared/providers.ts";
 import { fetchJson } from "../lib/settings-store.ts";
 import { renderProviderBrandIcon } from "../lib/provider-icons.ts";
 import { connectionMethods, connectionName, providerBrand, providerBrands } from "../lib/provider-choices.ts";
+import { loadViewAssets } from "../lib/view-assets.ts";
 
-if (typeof document !== "undefined") await import("../styles/providers.css");
+loadViewAssets(() => import("../styles/providers.css"));
 const API = "/__hui/providers";
 type AccountDrag = { provider: string; id: string; name: string; order: string[]; from: number; to: number; handle: HTMLElement; pointer?: number; y: number; startY: number; moved: boolean };
 type ModelDraft = { models: Set<string>; query: string };

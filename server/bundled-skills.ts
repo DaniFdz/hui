@@ -1,3 +1,8 @@
+/**
+ * The skills HUI ships inside its own package, offered next to the ones PI discovers. Their on/off choice
+ * lives in PI's disabledSkills list under stable `hui:skill:` keys rather than file paths, so it survives
+ * upgrades, checkout moves and rollbacks.
+ */
 import { fileURLToPath } from "node:url";
 
 /** Relative to server/ in source and build/server/ in a packaged install. */

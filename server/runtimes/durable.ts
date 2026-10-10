@@ -8,19 +8,22 @@
  * events through it.
  */
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
 import { clampThinkingLevel, type ImageContent, type Message, type ModelThinkingLevel, type TextContent } from "@earendil-works/pi-ai";
 import {
-  CompactionEntry, InboxDoc, ResetEntry, SystemEntry, watchEvents,
+  CompactionEntry, InboxDoc, ResetEntry, SystemEntry, UserEntry, watchEvents,
   type AgentEvent, type AgentState, type CompactionResult, type Conversation, type ConversationId, type Cursor,
-  type EntryId, type EntryRecord, type Harness, type TaskId,
+  type EntryId, type EntryRecord, type Harness, type TaskId, type ToolRegistration,
 } from "@earendil-works/pi-durable";
 // The estimators Durable's own compaction uses, so the meter matches its thresholds.
 import { calculateContextTokens, estimateMessageTokens } from "@earendil-works/pi-ai/utils/estimate";
-import { SettingsManager } from "@earendil-works/pi-coding-agent";
+import { SettingsManager, type Skill } from "@earendil-works/pi-coding-agent";
+import { botTurnOrigin, type BotTurnOrigin } from "../../shared/bots.ts";
 import { resolveCommandReference } from "../../src/lib/command-references.ts";
 import type { RuntimeInspection } from "../../src/lib/tools-types.ts";
 import { durableContext as context, durableHost, type DurableHost } from "./durable-host.ts";
+import { CallEntry } from "./durable-bots.ts";
+import { botSkills, describeTool, planBotTools, skillBlock, type BotChat, type OfferedTool, type ToolOrigin } from "./durable-bot-access.ts";
+import { QuestionBox, type QuestionDraft } from "./question-box.ts";
 import { DurableExtensions, ExtensionMessageEntry, isCustomInput, type CustomMessage, type ExtensionSession } from "./durable-extensions.ts";
 import { filterConfiguredModels } from "./pi-models.ts";
 import {
@@ -91,7 +94,7 @@ const internal = async <T>(path: string): Promise<T> =>
   await import(new URL(path, import.meta.resolve("@earendil-works/pi-coding-agent")).href) as T;
 const { expandPromptTemplate } = await internal<{ expandPromptTemplate(text: string, templates: unknown[]): string }>("./core/prompt-templates.js");
 
-/** PI's `/skill:name args` expansion, verbatim, for skills PI's loader found. */
+/** PI's `/skill:name args` expansion, verbatim, for the skills this conversation may use. */
 function expandSkill(text: string, skills: readonly { name: string; filePath: string; baseDir: string }[]): string {
   if (!text.startsWith("/skill:")) return text;
   const space = text.indexOf(" ");
@@ -99,8 +102,7 @@ function expandSkill(text: string, skills: readonly { name: string; filePath: st
   const args = space === -1 ? "" : text.slice(space + 1).trim();
   const skill = skills.find((candidate) => candidate.name === name);
   if (!skill) return text;
-  const body = readFileSync(skill.filePath, "utf8").replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/u, "").trim();
-  const block = `<skill name="${skill.name}" location="${skill.filePath}">\nReferences are relative to ${skill.baseDir}.\n\n${body}\n</skill>`;
+  const block = skillBlock(skill);
   return args ? `${block}\n\n${args}` : block;
 }
 
@@ -134,6 +136,45 @@ function inContext(message: Message): boolean {
 
 const role = (message: unknown): unknown => (message as { role?: unknown } | null)?.role;
 
+/** A point a fork can carry on from: a prompt, or an answer that ends its turn. An answer asking for tools, or a tool
+ * result, would leave the copy waiting on a turn that never finishes there. */
+function forkable(message: unknown): boolean {
+  if (role(message) === "user") return true;
+  if (role(message) !== "assistant") return false;
+  const content = (message as { content?: unknown }).content;
+  return !Array.isArray(content) || !content.some((part) => (part as { type?: unknown } | null)?.type === "toolCall");
+}
+
+/** The text of an input someone sent the conversation (an entry Durable placed for a submission); undefined for any
+ * other entry, and for an extension's custom message, which isn't anyone's input. */
+function inputText(entry: EntryRecord): string | undefined {
+  if (!UserEntry.is(entry)) return undefined;
+  const message = entry.model?.find((each) => each.role === "user");
+  return message && !isCustomInput(message) ? textOf(message) : undefined;
+}
+
+/** Each origin once, in the order they first came. */
+function distinct(origins: readonly BotTurnOrigin[]): BotTurnOrigin[] {
+  const seen = new Set<string>();
+  return origins.filter((origin) => {
+    const key = JSON.stringify(origin);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+/** The run going now, as the stream shows it batch by batch (one batch per commit). */
+type RunFollow = {
+  /** Durable runs one: several chained ones too, since a follow-up starts the next in the commit that ends the last,
+   * and the conversation never goes idle in between. */
+  going: boolean;
+  /** Who brought each input the stream showed it take: its first message, then each steer and follow-up. */
+  origins: BotTurnOrigin[];
+  /** The newest entry the stream reported; what came after is read from the store. */
+  reported: EntryId | undefined;
+};
+
 /** PI's default thinking level for a new conversation without an explicit one. */
 export function defaultThinking(host: DurableHost, cwd: string): string | undefined {
   return SettingsManager.create(cwd, host.agentDir).getDefaultThinkingLevel();
@@ -154,7 +195,7 @@ export async function initialModel(host: DurableHost, cwd: string, requested: st
   return first ? { provider: first.provider, modelId: first.id } : undefined;
 }
 
-export class DurableSession implements RuntimeSession, ExtensionSession {
+export class DurableSession implements RuntimeSession, ExtensionSession, BotChat {
   readonly #host: DurableHost;
   readonly #harness: Harness;
   readonly #cwd: string;
@@ -184,6 +225,9 @@ export class DurableSession implements RuntimeSession, ExtensionSession {
   #agent: AgentState = {};
   #queue: RuntimeQueue = { steering: [], followUp: [] };
   #toolOutput = new Map<string, string>();
+  /** Text each block of the in-flight answer has streamed, per content index: Durable sends a first partial, a
+   * short answer or a replaced block whole, and the live view gets what it adds. */
+  #streamedText = new Map<number, string>();
   /** A run is going: from the submit of its input to its end. */
   #streaming = false;
   /** Prompts passing their extension handlers before anything is submitted. */
@@ -197,6 +241,15 @@ export class DurableSession implements RuntimeSession, ExtensionSession {
   #extensions: DurableExtensions | undefined;
   #extensionFailure: string | undefined;
   #huiSessionId: string | undefined;
+  /** What the session asks the operator itself: a bot's access requests. */
+  #questions = new QuestionBox((question) => this.#emit({ type: "question", question }));
+  /** The tools the operator can turn off in a bot's chat, as the latest `applyTools` found them; empty for every other
+   * conversation. */
+  #botOffer: readonly OfferedTool[] = [];
+  /** The message that started the latest run this view started; who started the turn (`runInput`). */
+  #runInput: string | undefined;
+  /** Every input of the run going now (`runOrigins`); unset until this view follows the conversation. */
+  #run: RunFollow | undefined;
   readonly resumesInterruptedRuns = true;
 
   constructor(host: DurableHost, harness: Harness, conversation: Conversation, cwd: string) {
@@ -219,6 +272,7 @@ export class DurableSession implements RuntimeSession, ExtensionSession {
    * setup that fails to load leaves the session without extensions, and says why in its inspection. */
   async loadExtensions(huiSessionId: string): Promise<void> {
     this.#huiSessionId = huiSessionId;
+    this.#host.trackChat(this);
     this.#extensionFailure = undefined;
     try {
       const settings = await this.#host.settings();
@@ -238,16 +292,163 @@ export class DurableSession implements RuntimeSession, ExtensionSession {
     await this.#extensions?.start(reason);
   }
 
-  /** Offers the conversation its extensions and the tools they keep active, and drops the browser when Settings turns it
-   * off. Applies per conversation, at start and on every change. */
+  /** Offers the conversation its extensions and the tools they keep active, OptChat's zoom and date when the
+   * conversation has OptChat, `message_bot` and a bot's own tools when it is a bot's chat, and drops the browser when
+   * Settings turns it off. A bot's chat goes without the tools the operator turned off, without its own tools while
+   * it has no use for them (`durable-bot-access.ts`), and without the HUI tools that act on another machine than this
+   * host's (`gatewayOnlyTools`, on a worker), which it is never offered. Applies per conversation, at start and on
+   * every change. */
   async applyTools(): Promise<void> {
     const browserEnabled = (await this.#host.settings()).browser.enabled !== false;
-    const inactive = new Map([...(browserEnabled ? [] : this.#host.toolsNamed(["browser"])), ...(this.#extensions?.inactiveTools() ?? [])].map((tool) => [tool.name, tool]));
+    const bot = await this.#host.botStateFor(this.#conversation.id);
+    const inactive = new Map([
+      ...(browserEnabled ? [] : this.#host.toolsNamed(["browser"])),
+      ...(bot ? this.#host.toolsNamed(this.#host.gatewayOnlyTools) : []),
+      ...(this.#extensions?.inactiveTools() ?? []),
+    ].map((tool) => [tool.name, tool]));
+    // After the session's extensions, so OptChat's zoom and date win over same-named extension tools where OptChat is
+    // on, and only there. Each is selected per conversation; every other conversation's selection stays as it was.
+    const optchat = await this.#host.optchat.toolsFor(this.#conversation.id);
+    const botTools = bot ? await this.#host.botToolsFor(this.#conversation.id) : undefined;
+    const added = [...(this.#extensions ? [this.#extensions.extension] : []), ...(optchat ? [optchat] : []), ...(botTools ? [botTools] : [])];
+    const remove = [...inactive.values()];
+    this.#botOffer = [];
+    if (bot) {
+      // What a session here is offered, in Durable's order: the coding tools, HUI's, the extensions' and the added ones.
+      const offered = this.#composed([
+        [this.#host.codingTools, () => ({ kind: "coding" })],
+        [this.#host.huiTools, () => ({ kind: "hui" })],
+        [this.#extensions?.extension.tools ?? [], (tool) => ({ kind: "extension", ...this.#extensions!.describe(tool.name) })],
+        [optchat?.tools ?? [], () => ({ kind: "hui" })],
+        [botTools?.tools ?? [], () => ({ kind: "bot" })],
+      ]).filter(({ name }) => !inactive.has(name));
+      const skills = await this.availableSkills();
+      const on = botSkills(skills, bot.disabledSkills).length;
+      const plan = planBotTools(offered, bot, { memory: (optchat?.tools ?? []).map((tool) => tool.name), skillsOn: on, skillsOff: skills.length - on });
+      this.#botOffer = plan.listable.map(({ tool, origin }) => describeTool(tool, origin));
+      // Removed by name, so a tool that appears later is on until the operator turns it off.
+      remove.push(...plan.removed.map(({ tool }) => tool));
+    }
     await this.#conversation.configure({
       // A view with no HUI session (a probe) leaves the selection of the session that owns the conversation alone.
-      ...(this.#huiSessionId === undefined ? {} : { extensions: this.#extensions ? { add: [this.#extensions.extension] } : null }),
-      tools: inactive.size ? { remove: [...inactive.values()] } : null,
+      ...(this.#huiSessionId === undefined ? {} : { extensions: added.length ? { add: added } : null }),
+      tools: remove.length ? { remove } : null,
     }, context);
+    this.#host.chatReady(this);
+  }
+
+  /** Tools composed as Durable composes the selected extensions: by name, in order, a later one replacing an earlier
+   * one of the same name in its place. Each keeps where it comes from. */
+  #composed(sources: readonly (readonly [readonly ToolRegistration[], (tool: ToolRegistration) => ToolOrigin])[]): { name: string; tool: ToolRegistration; origin: ToolOrigin }[] {
+    const composed = new Map<string, { name: string; tool: ToolRegistration; origin: ToolOrigin }>();
+    for (const [tools, origin] of sources) for (const tool of tools) composed.set(tool.name, { name: tool.name, tool, origin: origin(tool) });
+    return [...composed.values()];
+  }
+
+  botOffer(): readonly OfferedTool[] {
+    return this.#botOffer;
+  }
+
+  async availableSkills(): Promise<readonly Skill[]> {
+    return (await this.#loader()).getSkills().skills;
+  }
+
+  /** PI's resources for this conversation: its directory's, and for a bot's chat its own skills too. */
+  async #loader() {
+    return this.#host.prompt.loader(this.#cwd, await this.#host.skillDirsFor(this.#conversation.id));
+  }
+
+  /** Asks the operator in this chat (a bot's access request); resolves with the answer, or undefined once dismissed. */
+  ask(question: QuestionDraft, signal?: AbortSignal): Promise<RuntimeQuestionResponse | undefined> {
+    return this.#questions.ask(question, signal);
+  }
+
+  /** The message that started the run going now: the one this view started, or, for a run that resumed after a restart,
+   * the latest user message in the history. */
+  runInput(): string | undefined {
+    if (this.#runInput !== undefined) return this.#runInput;
+    const rows = this.rows();
+    for (let index = rows.length - 1; index >= 0; index--) {
+      const message = [...rows[index]!.model ?? []].reverse().find((each) => each.role === "user" && !isCustomInput(each));
+      if (message) return textOf(message);
+    }
+    return undefined;
+  }
+
+  /** The newest message in the history since the latest reset, read from the store rather than this view, so a tool sees
+   * the one its model answers: a follow-up placed into the running turn after the message that started it. */
+  async latestInput(): Promise<string | undefined> {
+    let cursor: Cursor | undefined;
+    do {
+      const page = await this.#conversation.entries({}, HISTORY_PAGE, cursor, context);
+      for (const entry of page.items) {
+        const message = [...entry.model ?? []].reverse().find((each) => each.role === "user" && !isCustomInput(each));
+        if (message) return textOf(message);
+        if (ResetEntry.is(entry)) return undefined;
+      }
+      cursor = page.next;
+    } while (cursor);
+    return undefined;
+  }
+
+  /**
+   * Who brought each input of the run going now, each once, oldest first: the message that started it and every one it
+   * took since, the steers placed after a tool round and the follow-ups Durable answers in the runs it chains until the
+   * conversation goes idle, which ends the run. A bot's gated tools refuse when any came from an origin they refuse. The
+   * stream reports them; those committed since its latest batch are read from the store, so a tool call never misses
+   * the one its model answers. A view that started following during the run (after a restart) knows only those since;
+   * the message that started it is still `runInput`, and the gateway's `runPrompt`.
+   */
+  async runOrigins(): Promise<readonly BotTurnOrigin[]> {
+    const run = this.#run;
+    if (!run) return [];
+    const origins = [...run.origins];
+    const after = run.reported;
+    const fresh: BotTurnOrigin[] = [];
+    let cursor: Cursor | undefined;
+    scan: do {
+      const page = await this.#conversation.entries(after === undefined ? {} : { minEntryId: after }, HISTORY_PAGE, cursor, context);
+      for (const entry of page.items) {
+        if (after !== undefined && entry.id <= after) break scan;
+        const text = inputText(entry);
+        if (text !== undefined) fresh.push(botTurnOrigin(text));
+      }
+      cursor = page.next;
+    } while (cursor);
+    return distinct([...origins, ...fresh.reverse()]);
+  }
+
+  /** Follows the run going now through one batch of the stream: each input it takes, and its end once a commit leaves
+   * the conversation idle. */
+  #follow(events: readonly AgentEvent[]): void {
+    const run = this.#run;
+    if (!run) return;
+    const saw = (entry: EntryRecord) => {
+      if (run.reported !== undefined && entry.id <= run.reported) return;
+      run.reported = entry.id;
+      const text = inputText(entry);
+      if (text !== undefined) run.origins.push(botTurnOrigin(text));
+    };
+    for (const event of events) {
+      if (event.type === "run_start") run.going = true;
+      else if (event.type === "run_end") run.going = false;
+      else if (event.type === "message_end" || event.type === "entry_appended") saw(event.entry);
+      else if (event.type === "tool_execution_end" && event.entry) saw(event.entry);
+      else if (event.type === "snapshot") {
+        // The stream fell behind: what it skipped and the run still has is in the newest view.
+        run.going = event.run !== undefined;
+        for (const entry of [...event.entries].sort((a, b) => a.id - b.id)) saw(entry);
+      }
+    }
+    if (!run.going) run.origins = [];
+  }
+
+  /** The skills this conversation may use: those of its directory, less the ones the operator turned off in a bot's
+   * chat. */
+  async #skills(loader: { getSkills(): { skills: Skill[] } }): Promise<readonly Skill[]> {
+    const all = loader.getSkills().skills;
+    const bot = await this.#host.botStateFor(this.#conversation.id);
+    return bot ? botSkills(all, bot.disabledSkills) : all;
   }
 
   /** Entries since the latest reset, oldest first: what the extensions' PI session view holds. */
@@ -277,9 +478,13 @@ export class DurableSession implements RuntimeSession, ExtensionSession {
     this.#lastStart = undefined;
     this.#compactions = new Map(stream.snapshot.compactions.map((status) => [status.taskId, compactionOf(status)]));
     this.#syncSnapshot(stream.snapshot);
+    // A run already going started before this view: only the inputs it takes from now on can be told.
+    const newest = stream.snapshot.entries.reduce<EntryId | undefined>((max, entry) => max === undefined || entry.id > max ? entry.id : max, undefined);
+    this.#run = { going: stream.snapshot.run !== undefined, origins: [], reported: newest };
     await this.#read();
     await this.#refreshQueue();
     stream.start(async (events) => {
+      this.#follow(events);
       for (const event of events) await this.#onEvent(event);
       // Extensions' failures are theirs: they must never stop this view from following the conversation.
       try {
@@ -326,9 +531,11 @@ export class DurableSession implements RuntimeSession, ExtensionSession {
     this.#ids.add(entry.id);
     let index = this.#history.length;
     while (index > 0 && this.#history[index - 1]!.entry.id > entry.id) index--;
-    // An extension's custom message is context only; PI sessions do not show it either.
+    // An extension's custom message is context only; PI sessions do not show it either. A call's record shows as one
+    // card, without an entry id: no turn ran for it, so nothing rewinds to it.
     const shown = SystemEntry.is(entry) || ExtensionMessageEntry.is(entry) || isCustomInput(entry.model?.[0]) ? []
       : CompactionEntry.is(entry) ? [{ role: "compaction", summary: compactionSummary(entry), tokensBefore: this.#contextTokens(index) }]
+      : CallEntry.is(entry) ? [{ role: "call", record: entry.data }]
       : (entry.model ?? []).map((message) => ({ ...message, entryId: String(entry.id) }));
     this.#history.splice(index, 0, { entry, shown });
     this.#changed();
@@ -422,15 +629,26 @@ export class DurableSession implements RuntimeSession, ExtensionSession {
       case "turn_end":
         this.#emit({ type: event.type });
         return;
+      case "message_start":
+        this.#streamedText.clear();
+        if (event.message.role === "assistant") event.message.content.forEach((block, index) => this.#streamBlock(index, block));
+        return;
       case "message_update":
         for (const change of event.changes) {
-          if (change.type === "text_delta" && change.delta) this.#emit({ type: "text", delta: change.delta });
-          else if (change.type === "thinking_delta" && change.delta) this.#emit({ type: "thinking", delta: change.delta });
+          if (change.type === "text_delta" && change.delta) {
+            this.#streamedText.set(change.contentIndex, (this.#streamedText.get(change.contentIndex) ?? "") + change.delta);
+            this.#emit({ type: "text", delta: change.delta });
+          } else if (change.type === "thinking_delta" && change.delta) this.#emit({ type: "thinking", delta: change.delta });
+          else if (change.type === "text_start" || change.type === "block") this.#streamBlock(change.contentIndex, change.block);
+          else if (change.type === "message") change.message.content.forEach((block, index) => this.#streamBlock(index, block));
         }
         return;
       case "message_end":
       case "entry_appended":
+        if (event.type === "message_end") this.#streamedText.clear();
         this.#add(event.entry);
+        // A call's record, written while no run streams: the chat shows it now rather than at the next settle.
+        if (event.type === "entry_appended" && CallEntry.is(event.entry) && !this.#streaming) this.#emit({ type: "history" });
         return;
       case "tool_execution_start":
         this.#toolOutput.set(event.toolCallId, "");
@@ -488,6 +706,16 @@ export class DurableSession implements RuntimeSession, ExtensionSession {
       default:
         return;
     }
+  }
+
+  /** Streams what a text block adds to what it showed. A block that no longer extends it is left to the history
+   * refresh that ends the run (streamed text cannot be taken back). */
+  #streamBlock(index: number, block: { type: string; text?: unknown }): void {
+    if (block.type !== "text" || typeof block.text !== "string") return;
+    const before = this.#streamedText.get(index) ?? "";
+    if (!block.text.startsWith(before)) return;
+    if (block.text.length > before.length) this.#emit({ type: "text", delta: block.text.slice(before.length) });
+    this.#streamedText.set(index, block.text);
   }
 
   /** After a run, or a compaction outside one: read what the store committed, then report the settle. */
@@ -641,8 +869,8 @@ export class DurableSession implements RuntimeSession, ExtensionSession {
   }
 
   async #expand(text: string): Promise<string> {
-    const loader = await this.#host.prompt.loader(this.#cwd);
-    return expandPromptTemplate(expandSkill(text, loader.getSkills().skills), loader.getPrompts().prompts);
+    const loader = await this.#loader();
+    return expandPromptTemplate(expandSkill(text, text.startsWith("/skill:") ? await this.#skills(loader) : []), loader.getPrompts().prompts);
   }
 
   /**
@@ -698,6 +926,8 @@ export class DurableSession implements RuntimeSession, ExtensionSession {
    */
   async #start(text: string, sending: Sending): Promise<void> {
     this.#starting += 1;
+    // As HUI records a run's prompt: a routine's or another bot's marker leads it.
+    this.#runInput = text;
     const start = () => this.#send(text, "reject", sending).then((sent) => {
       if (!sent && !this.#streaming && this.#starting === 1) this.#emit({ type: "settled" });
     }).finally(() => {
@@ -855,10 +1085,10 @@ export class DurableSession implements RuntimeSession, ExtensionSession {
   }
 
   async listCommands(): Promise<readonly RuntimeCommand[]> {
-    const loader = await this.#host.prompt.loader(this.#cwd);
+    const loader = await this.#loader();
     return [
       ...(this.#extensions?.commands() ?? []),
-      ...loader.getSkills().skills.map((skill) => ({ name: `skill:${skill.name}`, description: skill.description, source: "skill" as const })),
+      ...(await this.#skills(loader)).map((skill) => ({ name: `skill:${skill.name}`, description: skill.description, source: "skill" as const })),
       ...loader.getPrompts().prompts.map((prompt) => ({ name: prompt.name, description: prompt.description ?? "", source: "prompt" as const })),
     ];
   }
@@ -888,17 +1118,19 @@ export class DurableSession implements RuntimeSession, ExtensionSession {
     return { steering: [...this.#queue.steering], followUp: [...this.#queue.followUp] };
   }
 
-  /** Questions the session's extensions are waiting on. */
+  /** Questions the session's extensions are waiting on, and its own. */
   pendingQuestions(): readonly RuntimeQuestion[] {
-    return this.#extensions?.pendingQuestions() ?? [];
+    return [...this.#extensions?.pendingQuestions() ?? [], ...this.#questions.pending()];
   }
 
   async respondQuestion(id: string, response: RuntimeQuestionResponse): Promise<void> {
+    if (this.#questions.has(id)) return this.#questions.respond(id, response);
     if (!this.#extensions) throw new Error(`Unknown question: ${id}`);
     this.#extensions.respondQuestion(id, response);
   }
 
   async cancelQuestion(id: string): Promise<void> {
+    if (this.#questions.has(id)) return this.#questions.cancel(id);
     if (!this.#extensions) throw new Error(`Unknown question: ${id}`);
     this.#extensions.cancelQuestion(id);
   }
@@ -941,7 +1173,7 @@ export class DurableSession implements RuntimeSession, ExtensionSession {
 
   async reload(): Promise<void> {
     this.#host.prompt.reload(this.#cwd);
-    await this.#host.prompt.loader(this.#cwd);
+    await this.#loader();
     if (this.#extensions) {
       await this.#extensions.restart("reload");
     } else if (this.#huiSessionId) {
@@ -973,6 +1205,7 @@ export class DurableSession implements RuntimeSession, ExtensionSession {
       before--;
     }
     const at = options?.excludeUserMessage === true && isUser ? this.#history[before - 1]?.entry.id : row.entry.id;
+    const optchat = await this.#host.optchat.enabled(this.#conversation.id);
     const next = at
       ? await this.#conversation.fork(at, { ownership: { kind: "ownerless" } }, context)
       : await this.#harness.createConversation({ ownership: { kind: "ownerless" }, agent: {
@@ -985,9 +1218,30 @@ export class DurableSession implements RuntimeSession, ExtensionSession {
     this.#conversation = next;
     this.#toolOutput.clear();
     await this.attach();
-    // A fork keeps its parent's agent; a conversation started over needs the session's extensions and tools again.
-    if (!at) await this.applyTools();
+    // A fork keeps its parent's agent; a conversation started over needs the session's extensions and tools again, and
+    // a fork of an OptChat conversation, which starts without OptChat, gives up its tools.
+    if (!at || optchat) await this.applyTools();
     this.#extensions?.rewound();
+  }
+
+  /** A fork into another session: the history up to one entry (the latest point a fork can carry on from when absent)
+   * copied into a new conversation of the same harness. This conversation is not touched and may keep running. The
+   * copy keeps the agent (model, thinking, tools) as of that entry and, like a rewind's fork, starts without OptChat.
+   * `cwd` moves the copy's agent to another directory, such as a worktree made for it. */
+  async fork(entryId?: string, options?: { cwd?: string }): Promise<string> {
+    await this.#read();
+    const visible = this.#history.slice(this.#resetIndex())
+      .filter((candidate) => !CompactionEntry.is(candidate.entry) && candidate.shown.length > 0);
+    const isPoint = (candidate: Row) => candidate.shown.every(forkable);
+    // A remote worker's relay sends an absent entry as null.
+    const row = !entryId ? visible.filter(isPoint).at(-1) : visible.find((candidate) => String(candidate.entry.id) === entryId);
+    if (!row) throw new Error(!entryId ? "There is nothing to fork yet." : "That fork point is no longer available.");
+    if (!isPoint(row)) throw new Error("A fork starts from a prompt or a finished reply, not one still waiting on its tools.");
+    const next = await this.#conversation.fork(row.entry.id, {
+      ownership: { kind: "ownerless" },
+      ...(options?.cwd ? { agent: { cwd: options.cwd } } : {}),
+    }, context);
+    return durableReference(next.id);
   }
 
   async attachmentImage(message: number, image: number): Promise<{ mimeType: string; data: Buffer } | undefined> {
@@ -1014,7 +1268,7 @@ export class DurableSession implements RuntimeSession, ExtensionSession {
     const data = {
       status: "live" as const, backend: "durable", version: DURABLE_VERSION, tools, prompt,
       promptPhase: this.#streaming ? "current-turn" as const : "initialized" as const,
-      promptSource: (await this.#host.prompt.loader(this.#cwd)).getSystemPromptSource() ? "SYSTEM.md override" : "hui-v4",
+      promptSource: (await this.#loader()).getSystemPromptSource() ? "SYSTEM.md override" : "hui-v4",
       diagnostics: [...(this.#extensionFailure ? [this.#extensionFailure] : []), ...(this.#extensions?.diagnostics ?? [])],
     };
     return { ...data, revision: createHash("sha256").update(JSON.stringify(data)).digest("hex").slice(0, 16) };
@@ -1024,6 +1278,8 @@ export class DurableSession implements RuntimeSession, ExtensionSession {
   dispose(): void {
     if (this.#disposed) return;
     this.#disposed = true;
+    this.#host.untrackChat(this);
+    this.#questions.close();
     this.#listeners.clear();
     for (const waiter of [...this.#waiters]) waiter.resolve();
     void this.#stop?.().catch(() => {});

@@ -1,4 +1,3 @@
-import type { TranscriptMetrics } from "./transcript-metrics.ts";
 /**
  * The contract every tool adapter implements.
  *
@@ -12,6 +11,8 @@ import type { TranscriptMetrics } from "./transcript-metrics.ts";
  * and `pi` (PI's SDK worker, kept for existing sessions and as a fallback).
  * Another harness can slot in beside them without any of the UI changing.
  */
+import type { TranscriptMetrics } from "./transcript-metrics.ts";
+import type { CallRecord } from "../../shared/calls.ts";
 
 export type RuntimeQueue = {
   steering: readonly string[];
@@ -32,6 +33,8 @@ export type RuntimeQuestion =
       id: string;
       method: "select";
       title: string;
+      /** Shown under the title, as a confirmation's message is (a bot's reason for an access request). */
+      message?: string;
       options: readonly string[];
       timeout?: number;
     }
@@ -97,6 +100,9 @@ export type RuntimeEvent =
   /** The agent stopped entirely. Distinct from `turn_end`: a turn can end while
    * the agent is still working, and the prompt guard follows this one. */
   | { type: "settled"; historyRefreshed?: boolean }
+  /** Entries written outside a run (a call's lines) changed the history. Never sent to a browser: an idle session
+   * answers it with a fresh snapshot, a busy one shows them when its turn settles. */
+  | { type: "history" }
   /** `output` holds the last lines the runtime process wrote to stderr before
    * it failed. It feeds diagnostics only and is never sent to a browser. */
   | { type: "error"; message: string; output?: string };
@@ -219,6 +225,11 @@ export type RuntimeSession = {
   cancelCompaction?(): Promise<void>;
   /** Move the active leaf without deleting the branch being left. */
   rewind?(target: RuntimeRewindTarget, options?: RuntimeRewindOptions): Promise<void>;
+  /** Copy the history up to a history entry (the latest one when absent) into a
+   * new conversation and return its resume reference. This session is unchanged
+   * and may keep running; the copy starts idle, working in `cwd` when given
+   * (a new worktree) and in this session's directory otherwise. */
+  fork?(entryId?: string, options?: { cwd?: string }): Promise<string>;
   /** Resume the model from the current non-assistant tail without a user prompt. */
   continueRun?(): Promise<void>;
   /** Fires when the tool's process ends on its own, so a gateway can mark the
@@ -257,6 +268,8 @@ export type TranscriptEntry = { metrics?: TranscriptMetrics } & (
       /** Files or images the user attached to that turn. */
       attachments?: readonly TranscriptAttachment[];
     }
+  /** The record of a GPT-Live call with a bot: one card with its summary and transcript. No turn ran for it. */
+  | ({ kind: "call" } & CallRecord)
   /** Where PI summarized everything before its kept window. */
   | { kind: "compaction"; summary: string; tokensBefore: number }
   | { kind: "thinking"; text: string }

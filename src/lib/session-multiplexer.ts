@@ -1,10 +1,12 @@
 /** Port of OpenClaw 2026.9.5's chat split layout (MIT, ec9c1a13).
  * Columns contain vertical stacks, not a recursive binary docking tree. */
 export type SplitDirection = "left" | "right" | "up" | "down";
-/** A pane shows its session's chat, one of its shared terminals, or (with
- * `browser`) the live view of its managed-browser tabs. Each entry of a
- * column is one spot and holds its visible pane; the spot's hidden `tabs` ride
- * along on it, with `tabIndex` giving the visible pane's own tab position. */
+/** A pane shows its session's chat. Layouts saved before the Work pane can also
+ * hold a shared terminal (`terminalId`) or the managed-browser view
+ * (`browser`); loading moves those into the Work pane (`migrateLayoutWorkViews`
+ * in `work-pane.ts`), so the format stays readable. Each entry of a column is
+ * one spot and holds its visible pane; the spot's hidden `tabs` ride along on
+ * it, with `tabIndex` giving the visible pane's own tab position. */
 export type SessionPane = { id: string; sessionId: string; terminalId?: string; browser?: true; tabs?: SessionPane[]; tabIndex?: number };
 export type SessionColumn = { id: string; panes: SessionPane[]; paneWeights: number[] };
 export type SessionLayout = { columns: SessionColumn[]; columnWeights: number[]; activePaneId: string };
@@ -226,31 +228,6 @@ export function replacePaneSession(layout: SessionLayout, paneId: string, sessio
   const pane = locateSessionPane(next, paneId)?.pane;
   if (pane) { pane.sessionId = sessionId; delete pane.terminalId; delete pane.browser; }
   return next;
-}
-
-export function replacePaneTerminal(layout: SessionLayout, paneId: string, terminalId: string): SessionLayout {
-  const next = copyLayout(layout);
-  const pane = locateSessionPane(next, paneId)?.pane;
-  if (pane) pane.terminalId = terminalId;
-  return next;
-}
-
-export function splitTerminalPane(layout: SessionLayout, paneId: string, ownerSessionId: string, terminalId: string, direction: SplitDirection): SessionLayout {
-  const next = splitSessionPane(layout, paneId, ownerSessionId, direction);
-  return next === layout ? layout : replacePaneTerminal(next, next.activePaneId, terminalId);
-}
-
-/** A session has at most one browser view; it follows the agent across tabs. */
-export function splitBrowserPane(layout: SessionLayout, paneId: string, ownerSessionId: string, direction: SplitDirection): SessionLayout {
-  const next = splitSessionPane(layout, paneId, ownerSessionId, direction);
-  if (next === layout) return layout;
-  const pane = locateSessionPane(next, next.activePaneId)?.pane;
-  if (pane) pane.browser = true;
-  return next;
-}
-
-export function browserPaneFor(layout: SessionLayout, sessionId: string): SessionPane | undefined {
-  return sessionPanes(layout).find((pane) => pane.browser && pane.sessionId === sessionId);
 }
 
 export function resizeSessionWeights(weights: readonly number[], index: number, ratio: number): number[] {

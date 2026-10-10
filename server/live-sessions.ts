@@ -19,6 +19,10 @@ import type { SessionRecord } from "./sessions.ts";
 import type { TaskSuggestion } from "../shared/task-suggestions.ts";
 import type { Watcher } from "../shared/watchers.ts";
 import type { SecretQuestion } from "./secret-requests.ts";
+import type { QuestionnairePrompt } from "./questionnaires.ts";
+
+/** A question HUI itself asks: a `secret_request` or an `ask_user_question` card. */
+export type HuiQuestion = SecretQuestion | QuestionnairePrompt;
 import { SessionRegistryError, updateRegistry } from "./sessions.ts";
 import { piRuntime } from "./runtimes/pi.ts";
 import { durableRuntime } from "./runtimes/durable.ts";
@@ -80,8 +84,8 @@ export type SessionSnapshot = {
   usage?: RuntimeUsage;
   thinking?: string;
   queue: RuntimeQueue;
-  /** The runtime's questions, then HUI's pending `secret_request` prompts. */
-  questions: readonly (RuntimeQuestion | SecretQuestion)[];
+  /** The runtime's questions, then HUI's own pending ones. */
+  questions: readonly (RuntimeQuestion | HuiQuestion)[];
   subagents: readonly SubagentTaskView[];
   /** Pending `suggest_task` cards; omitted when there are none. */
   suggestions?: readonly TaskSuggestion[];
@@ -132,6 +136,12 @@ function failureDetail(error: unknown): string {
 
 type Live = {
   record: SessionRecord;
+  /** Changes already made to `record` whose registry writes are still queued.
+   * A write that lands before them read the registry without them, so the
+   * record it hands back keeps them: an unread mark set or cleared here must
+   * not flicker back while its write waits, or a read or a settle that checks
+   * it would skip its own write. */
+  unsaved: Set<Partial<SessionRecord>>;
   status: SessionStatus;
   /** Set before invoking `runtime.prompt`, closing the gap before the runtime
    * reports `agent_start` or flips its own streaming flag. */
@@ -163,6 +173,8 @@ type Live = {
   lastPrompt?: { text: string; attachments?: readonly PromptAttachment[] };
   turnProducedOutput: boolean;
   fallbackAttempted: boolean;
+  /** The session's own model while one turn is retried on the fallback. */
+  fallbackRestore?: RuntimeModel;
   /** A model turn began since the last settlement. Commands settle without
    * one and must not re-report a failure that still ends the transcript. */
   turnStarted?: boolean;
@@ -242,7 +254,7 @@ export class LiveSessions {
   #subagentSnapshot: (parentId: string) => readonly SubagentTaskView[] = () => [];
   #suggestionSnapshot: (sessionId: string) => readonly TaskSuggestion[] = () => [];
   #watcherSnapshot: (sessionId: string) => readonly Watcher[] = () => [];
-  #secretQuestions: (sessionId: string) => readonly SecretQuestion[] = () => [];
+  #huiQuestions: (sessionId: string) => readonly HuiQuestion[] = () => [];
   #aborted: (sessionId: string) => void = () => {};
 
   /** Injectable so the state machine can be exercised without waiting to boot a
@@ -293,7 +305,7 @@ export class LiveSessions {
       // on the same live session, not a replacement that silently strands SSE.
       existing.closed = false;
       existing.promptPending = false;
-      existing.record = record;
+      existing.record = this.#withUnsaved(existing, record);
       existing.bootStartedAt = Date.now();
       existing.bootDurationMs = undefined;
       existing.reattaching = unreachable;
@@ -303,6 +315,7 @@ export class LiveSessions {
     }
     const live: Live = {
       record,
+      unsaved: new Set(),
       status: "starting",
       promptPending: false,
       submissions: 0,
@@ -349,10 +362,10 @@ export class LiveSessions {
     this.#watcherSnapshot = provider;
   }
 
-  /** HUI's own pending `secret_request` prompts: shown and answered like the
-   * runtime's questions, and like them they leave the session waiting. */
-  setSecretRequestProvider(provider: (sessionId: string) => readonly SecretQuestion[]): void {
-    this.#secretQuestions = provider;
+  /** HUI's own pending questions (`secret_request`, `ask_user_question`): shown and
+   * answered like the runtime's, and like them they leave the session waiting. */
+  setHuiQuestionProvider(provider: (sessionId: string) => readonly HuiQuestion[]): void {
+    this.#huiQuestions = provider;
   }
 
   /** Every stop (the Stop button, rewind, automations, subagents) passes here. */
@@ -365,7 +378,7 @@ export class LiveSessions {
   notifySnapshot(id: string): void {
     const live = this.#live.get(id);
     if (!live) return;
-    // A secret prompt starts or ends a wait, which the session list shows.
+    // A HUI question starts or ends a wait, which the session list shows.
     this.#setStatus(live, this.#reported(live));
     this.#broadcast(live, { kind: "snapshot", snapshot: this.snapshot(id) });
   }
@@ -405,7 +418,7 @@ export class LiveSessions {
     if (["starting", "error", "reconnecting", "disconnected"].includes(live.status)) {
       return live.status;
     }
-    if (live.questions.size > 0 || this.#secretQuestions(live.record.id).length > 0) {
+    if (live.questions.size > 0 || this.#huiQuestions(live.record.id).length > 0) {
       return "waiting";
     }
     return live.promptPending || live.runtime?.isStreaming || this.#compactionBlocks(live) ? "running" : "idle";
@@ -446,7 +459,7 @@ export class LiveSessions {
       ...(usage ? { usage } : {}),
       ...(live.thinking ? { thinking: live.thinking } : {}),
       queue: this.#queueSnapshot(live),
-      questions: [...live.questions.values(), ...this.#secretQuestions(id)],
+      questions: [...live.questions.values(), ...this.#huiQuestions(id)],
       subagents: [...this.#subagentSnapshot(id)],
       ...this.#suggestionField(id),
       ...this.#watcherField(id),
@@ -540,7 +553,10 @@ export class LiveSessions {
     if (!live?.runtime) {
       throw this.#unavailable(live);
     }
-    if (this.#holdWhileCompacting(live)) return this.followUp(id, text, attachments);
+    if (this.#holdWhileCompacting(live)) {
+      await this.followUp(id, text, attachments);
+      return;
+    }
     if (live.promptPending || live.runtime.isStreaming) {
       throw new SessionBusyError("That session is already working on a prompt.");
     }
@@ -588,6 +604,10 @@ export class LiveSessions {
         text,
         ...(attachments?.length ? { attachments: attachments.map((item) => ({ name: item.name, kind: item.kind, ...(item.kind === "image" ? { mimeType: item.mimeType } : {}) })) } : {}),
       });
+      // A bot's chat has many writers (its routines, other bots, every Bots
+      // screen and `hui bot chat`): each sees a message another one sent before
+      // the reply it starts. Other sessions keep their stream as it was.
+      if (live.record.bot) this.#broadcast(live, { kind: "snapshot", snapshot: this.snapshot(id) });
     }
     // Activity is what orders the sidebar, and the write is one small record on
     // a prompt rather than one per token; a failed save must not fail a prompt
@@ -615,13 +635,12 @@ export class LiveSessions {
     const live = this.#live.get(id);
     if (!live) throw new Error(`Unknown live session: ${id}`);
     if (live.record.unread !== true) return live.record;
-    const previous = live.record;
     live.record = { ...live.record, unread: undefined };
     this.#publishStatus(live, this.#reported(live), true, false);
     try {
-      await this.#save(live, { unread: undefined });
+      await this.#save(live, { unread: undefined }, true);
     } catch (error) {
-      live.record = previous;
+      live.record = { ...live.record, unread: true };
       this.#publishStatus(live, this.#reported(live), true, true);
       throw error;
     }
@@ -815,6 +834,15 @@ export class LiveSessions {
     this.#broadcast(live, { kind: "snapshot", snapshot: this.snapshot(id) });
   }
 
+  /** Copies the session's history up to `entryId` (its latest settled point when absent) into a new runtime
+   * conversation and returns that conversation's resume reference. The session itself is untouched, running or
+   * not; registering the copy as a session of its own is the caller's job. */
+  async fork(id: string, entryId?: string, options?: { cwd?: string }): Promise<string> {
+    const live = this.#ready(id);
+    if (!live.runtime?.fork) throw new Error(`${live.record.tool} sessions cannot be forked; only Pi Durable sessions can.`);
+    return options ? live.runtime.fork(entryId, options) : live.runtime.fork(entryId);
+  }
+
   async continueRun(id: string): Promise<void> {
     const live = this.#ready(id);
     if (this.#reported(live) !== "idle" || live.followUps.length || live.questions.size) {
@@ -843,7 +871,10 @@ export class LiveSessions {
 
   async steer(id: string, text: string, attachments?: readonly PromptAttachment[]): Promise<void> {
     const live = this.#ready(id);
-    if (this.#holdWhileCompacting(live)) return this.followUp(id, text, attachments);
+    if (this.#holdWhileCompacting(live)) {
+      await this.followUp(id, text, attachments);
+      return;
+    }
     // A runtime that compacts beside the conversation (Durable) takes input
     // meanwhile. With no run to steer, the message starts one, through the
     // prompt path so it is recorded and shown like any prompt.
@@ -856,7 +887,9 @@ export class LiveSessions {
     await live.runtime.steer(text, attachments);
   }
 
-  async followUp(id: string, text: string, attachments?: readonly PromptAttachment[]): Promise<void> {
+  /** Queues work for after the current run. Returns the id of HUI's queue item, which leaves the queue when HUI sends
+   * it; undefined when the runtime queued it itself (a worker's streaming run). */
+  async followUp(id: string, text: string, attachments?: readonly PromptAttachment[]): Promise<string | undefined> {
     const live = this.#ready(id);
     // HUI's queue drains only while this gateway runs; a worker keeps going
     // without it, so a follow-up to a run streaming there queues in its
@@ -868,16 +901,18 @@ export class LiveSessions {
       await live.runtime.followUp(text, attachments);
       live.queue = live.runtime.pendingQueue?.() ?? live.queue;
       this.#broadcastQueue(live);
-      return;
+      return undefined;
     }
+    const item = crypto.randomUUID();
     live.followUps.push({
-      id: crypto.randomUUID(),
+      id: item,
       text,
       mode: "followUp",
       ...(attachments?.length ? { attachments: [...attachments] } : {}),
     });
     this.#broadcastQueue(live);
     if (this.#reported(live) === "idle") void this.#drainFollowUp(live);
+    return item;
   }
 
   /** PI refuses a prompt while it compacts outside a run, and a steer would wait
@@ -1054,6 +1089,30 @@ export class LiveSessions {
       disconnected: "HUI is disconnected from the machine this session runs on. Reconnect it to continue.",
     };
     return new SessionBusyError((live && why[live.status]) ?? "That session is still starting.");
+  }
+
+  /**
+   * Boots an idle session's runtime again from `record` (a bot whose chat moved to another directory), keeping its
+   * listeners: they see `starting`, then the fresh snapshot. A cold session has nothing to restart.
+   */
+  async restart(record: SessionRecord): Promise<void> {
+    const live = this.#live.get(record.id);
+    if (!live) return;
+    if (this.#reported(live) !== "idle" || live.followUps.length || live.questions.size) {
+      throw new SessionBusyError("Finish or stop active work before restarting the session.");
+    }
+    live.unsubscribe?.();
+    live.unsubscribe = undefined;
+    live.unsubscribeExit?.();
+    live.unsubscribeExit = undefined;
+    live.runtime?.dispose();
+    live.runtime = undefined;
+    live.record = this.#withUnsaved(live, record);
+    live.bootStartedAt = Date.now();
+    live.bootDurationMs = undefined;
+    this.#setStatus(live, "starting");
+    live.boot = this.#boot(live);
+    await live.boot;
   }
 
   /** HUI stopped retrying the host of sessions it was reconnecting to. */
@@ -1273,6 +1332,15 @@ export class LiveSessions {
     if (live.closed || live.runtime !== runtime) {
       return;
     }
+    if (event.type === "history") {
+      // A call's lines written beside the conversation: an idle chat shows them now; a turn's settle does otherwise,
+      // since replacing the projection mid-turn would drop what it streamed.
+      if (!live.promptPending && !runtime.isStreaming && !live.turnStarted) {
+        live.transcript = [...runtime.transcript()];
+        this.#broadcast(live, { kind: "snapshot", snapshot: this.snapshot(live.record.id) });
+      }
+      return;
+    }
     let refreshed = false;
     if (event.type === "compaction_start") {
       live.compaction = {
@@ -1409,6 +1477,7 @@ export class LiveSessions {
   }
 
   async #routeSettledTurn(live: Live, runtime: RuntimeSession): Promise<void> {
+    await this.#restoreAfterFallback(live, runtime);
     const retried = await this.#retryWithFallback(live, runtime).catch(() => false);
     if (!retried) {
       if (live.readers === 0) this.#setUnread(live, true);
@@ -1439,6 +1508,7 @@ export class LiveSessions {
     const separator = routes.fallback.indexOf("/");
     if (separator < 1) return false;
     live.fallbackAttempted = true;
+    if (current) live.fallbackRestore = current;
     const prompt = live.lastPrompt;
     this.#broadcast(live, {
       kind: "event",
@@ -1455,6 +1525,7 @@ export class LiveSessions {
       return true;
     } catch (error) {
       live.promptPending = false;
+      await this.#restoreAfterFallback(live, runtime);
       this.#setStatus(live, this.#reported(live));
       recordDiagnosticEvent({ area: "session", level: "error", action: "fallback_failed", summary: "Fallback retry failed", detail: failureDetail(error), sessionId: live.record.id });
       this.#broadcast(live, {
@@ -1462,6 +1533,19 @@ export class LiveSessions {
         event: { type: "error", message: error instanceof Error ? error.message : "The fallback model failed." },
       });
       return false;
+    }
+  }
+
+  /** The fallback answers one failed turn; the session keeps its own model. */
+  async #restoreAfterFallback(live: Live, runtime: RuntimeSession): Promise<void> {
+    const model = live.fallbackRestore;
+    if (!model || live.runtime !== runtime || !runtime.setModel) return;
+    live.fallbackRestore = undefined;
+    try {
+      await runtime.setModel(model.provider, model.id);
+      this.#broadcast(live, { kind: "model", model: runtime.currentModel?.() ?? model });
+    } catch (error) {
+      recordDiagnosticEvent({ area: "session", level: "error", action: "fallback_restore_failed", summary: "Could not switch back from the fallback model", detail: failureDetail(error), sessionId: live.record.id });
     }
   }
 
@@ -1545,12 +1629,12 @@ export class LiveSessions {
 
   #setUnread(live: Live, unread: boolean): void {
     if ((live.record.unread === true) === unread) return;
-    const previous = live.record;
+    const previous = live.record.unread;
     live.record = { ...live.record, unread: unread ? true : undefined };
     this.#publishStatus(live, this.#reported(live));
-    void this.#save(live, { unread: unread ? true : undefined }).catch((error) => {
-      live.record = previous;
-      this.#publishStatus(live, this.#reported(live), true, previous.unread === true);
+    void this.#save(live, { unread: unread ? true : undefined }, true).catch((error) => {
+      live.record = { ...live.record, unread: previous };
+      this.#publishStatus(live, this.#reported(live), true, previous === true);
       this.#broadcast(live, {
         kind: "event",
         event: {
@@ -1572,7 +1656,7 @@ export class LiveSessions {
     const runPrompt = live.record.runPrompt;
     const runRecoveryAttempts = live.record.runRecoveryAttempts;
     live.record = { ...live.record, runStartedAt: undefined, runPrompt: undefined, runRecoveryAttempts: undefined };
-    void this.#save(live, { runStartedAt: undefined, runPrompt: undefined, runRecoveryAttempts: undefined }).catch((error) => {
+    void this.#save(live, { runStartedAt: undefined, runPrompt: undefined, runRecoveryAttempts: undefined }, true).catch((error) => {
       live.record = { ...live.record, runStartedAt, runPrompt, runRecoveryAttempts };
       this.#broadcast(live, {
         kind: "event",
@@ -1630,30 +1714,43 @@ export class LiveSessions {
   }
 
   /** Patches the newest record through the registry's serialized mutation
-   * queue, preserving metadata written by overlapping HTTP requests. */
-  async #save(live: Live, patch: Partial<SessionRecord>): Promise<void> {
+   * queue, preserving metadata written by overlapping HTTP requests. An
+   * `optimistic` patch is in `live.record` already and stays there while its
+   * write waits behind others (see `Live.unsaved`). */
+  async #save(live: Live, patch: Partial<SessionRecord>, optimistic = false): Promise<void> {
     let saved: SessionRecord | undefined;
-    await this.#updateRegistry((sessions) => {
-      const next = sessions.map((record) => {
-        if (record.id !== live.record.id) {
-          return record;
+    if (optimistic) live.unsaved.add(patch);
+    try {
+      await this.#updateRegistry((sessions) => {
+        const next = sessions.map((record) => {
+          if (record.id !== live.record.id) {
+            return record;
+          }
+          saved = { ...record, ...patch };
+          return saved;
+        });
+        // `ensure` is public and useful in isolated runtime tests, so it may be
+        // given a record not written by the HTTP layer. A closed boot is the one
+        // case where appending would resurrect a deliberately deleted row.
+        if (!saved && !live.closed && !this.#isDeleted(live.record.id)) {
+          saved = { ...live.record, ...patch };
+          next.push(saved);
         }
-        saved = { ...record, ...patch };
-        return saved;
+        return next;
       });
-      // `ensure` is public and useful in isolated runtime tests, so it may be
-      // given a record not written by the HTTP layer. A closed boot is the one
-      // case where appending would resurrect a deliberately deleted row.
-      if (!saved && !live.closed && !this.#isDeleted(live.record.id)) {
-        saved = { ...live.record, ...patch };
-        next.push(saved);
-      }
-      return next;
-    });
+    } finally {
+      // Not `.finally()` on the promise: that would resume callers a tick later.
+      live.unsaved.delete(patch);
+    }
     // If the row was deleted while pi booted, do not recreate it.
     if (saved) {
-      live.record = saved;
+      live.record = this.#withUnsaved(live, saved);
     }
+  }
+
+  /** `record` with this process's changes whose writes are still queued. */
+  #withUnsaved(live: Live, record: SessionRecord): SessionRecord {
+    return live.unsaved.size ? Object.assign({ ...record }, ...live.unsaved) : record;
   }
 
   #isDeleted(id: string): boolean {

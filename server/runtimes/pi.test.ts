@@ -5,10 +5,18 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
-import { test } from "node:test";
+import { after, test } from "node:test";
 
 import type { RuntimeEvent } from "./types.ts";
-import { branchHistory, imageFromMessages, PiSession, runtimeCommands, runtimeUsage, toRuntimeEvent, transcriptFrom } from "./pi.ts";
+
+// HUI's provider selections resolve at import time and are read with each model list: never the operator's own.
+const root = await mkdtemp(join(tmpdir(), "hui-pi-home-"));
+process.env["HOME"] = root;
+process.env["XDG_CONFIG_HOME"] = join(root, "config");
+process.env["PI_CODING_AGENT_DIR"] = join(root, "agent");
+after(() => rm(root, { recursive: true, force: true }));
+const { branchHistory, imageFromMessages, PiSession, runtimeCommands, runtimeUsage, toRuntimeEvent, transcriptFrom } = await import("./pi.ts");
+type PiSession = import("./pi.ts").PiSession;
 
 type FakeChild = EventEmitter & {
   stdin: PassThrough;
@@ -808,4 +816,20 @@ test("disabled skills cannot resolve dollar references", async (t) => {
   t.after(() => session.dispose());
   await session.prompt("$review args");
   assert.equal(message, "$review args");
+});
+
+
+test("a call's record shows as one card with its summary and transcript, without an entry id to rewind to", () => {
+  const record = {
+    call: "c1", bot: "Juno", startedAt: 1_791_295_200_000, endedAt: 1_791_295_320_000, summary: "**To remember**: teal.",
+    lines: [{ role: "user", text: "Remember teal.", at: 1_791_295_200_000 }, { role: "assistant", text: "Teal it is.", at: 1_791_295_203_000 }],
+  };
+  assert.deepEqual(transcriptFrom([
+    { role: "user", content: "typed", entryId: "4", timestamp: 1 },
+    { role: "call", record },
+    { role: "call", record: { call: "broken" } },
+  ]), [
+    { kind: "message", role: "user", text: "typed", entryId: "4", metrics: { timestamp: 1 } },
+    { kind: "call", ...record },
+  ]);
 });

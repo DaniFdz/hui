@@ -1,21 +1,33 @@
+/**
+ * Turns PI's transcript items into the rows the chat renders: message groups, folded activity, compactions, calls,
+ * subagent events and bot kickoffs, plus the working labels and where the live browser preview goes. Presentation
+ * only; PI's transcript keeps the order and the data.
+ */
 import type { TranscriptItem } from "../../lib/sessions-store.ts";
 import { parseSubagentCompletionEvent, type SubagentCompletionItem } from "../../lib/subagent-completion.ts";
+import { botKickoffName } from "../../../shared/bots.ts";
 
 export type ChatMessage = Extract<TranscriptItem, { kind: "message" }>;
 export type ChatCompaction = Extract<TranscriptItem, { kind: "compaction" }>;
-export type ChatActivity = Exclude<TranscriptItem, { kind: "message" | "compaction" }> | ChatMessage;
+export type ChatCall = Extract<TranscriptItem, { kind: "call" }>;
+export type ChatActivity = Exclude<TranscriptItem, { kind: "message" | "compaction" | "call" }> | ChatMessage;
 
 /** Tool calls that present something to the user get a row of their own, so
  * they stay visible after the turn's other activity folds into a disclosure. */
-const PRESENTATION_TOOLS = new Set(["present_media", "show_widget"]);
+const PRESENTATION_TOOLS = new Set(["present_media", "show_widget", "ask_user_question"]);
 
 export type ChatProjectionRow =
   | { kind: "messages"; id: string; role: ChatMessage["role"]; messages: readonly ChatMessage[] }
   | { kind: "activity"; id: string; items: readonly ChatActivity[] }
   /** Where PI summarized the history above; it stays visible and rewindable. */
   | { kind: "compaction"; id: string; item: ChatCompaction }
+  /** A GPT-Live call with a bot: one card (chat-call.ts). */
+  | { kind: "call"; id: string; item: ChatCall }
   /** A HUI-injected subagent completion: a system event, never a user turn. */
-  | { kind: "subagentEvent"; id: string; items: readonly SubagentCompletionItem[] };
+  | { kind: "subagentEvent"; id: string; items: readonly SubagentCompletionItem[] }
+  /** HUI's kickoff of a new bot (`[HUI bot created]`): a note where its first turn began, never the operator's words.
+   * `name` is the bot's name when the message carries one. */
+  | { kind: "botCreated"; id: string; name: string };
 
 /**
  * Presentation-only projection of PI's durable transcript. OpenClaw groups
@@ -92,6 +104,11 @@ export function projectChatTranscript(
         rows.push({ kind: "subagentEvent", id: item.id, items: event });
         continue;
       }
+      const created = botKickoffName(item.text);
+      if (created !== undefined) {
+        rows.push({ kind: "botCreated", id: item.id, name: created });
+        continue;
+      }
       const previous = rows.at(-1);
       if (previous?.kind === "messages" && previous.role === "user") {
         rows[rows.length - 1] = { ...previous, messages: [...previous.messages, item] };
@@ -103,6 +120,11 @@ export function projectChatTranscript(
     if (item.kind === "compaction") {
       flushCompletedAssistantTurn();
       rows.push({ kind: "compaction", id: item.id, item });
+      continue;
+    }
+    if (item.kind === "call") {
+      flushCompletedAssistantTurn();
+      rows.push({ kind: "call", id: item.id, item });
       continue;
     }
     assistantTurn.push(item);

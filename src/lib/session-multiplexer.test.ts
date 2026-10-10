@@ -1,7 +1,29 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { addSessionTab, browserPaneFor, isChatPane, moveSessionPane, visibleSessionPanes, sessionPaneMoveTarget, replacePaneTerminal, splitBrowserPane, splitTerminalPane } from "./session-multiplexer.ts";
-import { activeSessionPane, closeSessionPane, focusSessionPane, locateSessionPane, parseSessionLayout, replacePaneSession, resizeSessionLayout, resizeSessionWeights, SESSION_SPLIT_MEDIA, sessionDropRect, sessionDropZone, sessionPanes, singleSessionLayout, splitSessionPane, type SessionLayout } from "./session-multiplexer.ts";
+import { addSessionTab, isChatPane, moveSessionPane, visibleSessionPanes, sessionPaneMoveTarget } from "./session-multiplexer.ts";
+import { activeSessionPane, closeSessionPane, focusSessionPane, locateSessionPane, parseSessionLayout, replacePaneSession, resizeSessionLayout, resizeSessionWeights, SESSION_SPLIT_MEDIA, sessionDropRect, sessionDropZone, sessionPanes, singleSessionLayout, splitSessionPane, type SessionLayout, type SessionPane, type SplitDirection } from "./session-multiplexer.ts";
+
+// Terminal and browser panes are no longer created (they live in the Work pane), but layouts saved before it hold
+// them; these build that stored shape so the format stays readable and movable until loading migrates it.
+function replacePaneTerminal(layout: SessionLayout, paneId: string, terminalId: string): SessionLayout {
+  const next = structuredClone(layout);
+  const pane = locateSessionPane(next, paneId)?.pane;
+  if (pane) pane.terminalId = terminalId;
+  return next;
+}
+function splitTerminalPane(layout: SessionLayout, paneId: string, owner: string, terminalId: string, direction: SplitDirection): SessionLayout {
+  const next = splitSessionPane(layout, paneId, owner, direction);
+  return next === layout ? layout : replacePaneTerminal(next, next.activePaneId, terminalId);
+}
+function splitBrowserPane(layout: SessionLayout, paneId: string, owner: string, direction: SplitDirection): SessionLayout {
+  const next = structuredClone(splitSessionPane(layout, paneId, owner, direction));
+  const pane = locateSessionPane(next, next.activePaneId)?.pane;
+  if (next.activePaneId !== layout.activePaneId && pane) pane.browser = true;
+  return next.activePaneId === layout.activePaneId ? layout : next;
+}
+function browserPaneFor(layout: SessionLayout, sessionId: string): SessionPane | undefined {
+  return sessionPanes(layout).find((pane) => pane.browser && pane.sessionId === sessionId);
+}
 
 test("all four edges insert alongside the targeted column or within its stack", () => {
   const initial = singleSessionLayout("alpha");

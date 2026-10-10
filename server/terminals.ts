@@ -1,9 +1,16 @@
+/**
+ * Interactive shells the operator opens inside a conversation. Owns the PTY processes, their bounded replay
+ * buffers (server/terminal-replay.ts), the byte stream subscribers receive and the per-session and global limits,
+ * and lets that conversation's agent use the same terminals through the terminal tool. Terminals live only in this
+ * gateway process; closing one kills its whole process tree.
+ */
 import { randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { userInfo } from "node:os";
 import { stripVTControlCharacters } from "node:util";
 import { spawn, type IPty } from "@lydell/node-pty";
-import type { TerminalEvent, TerminalSnapshot, TerminalView } from "../src/lib/terminal-types.ts";
+import type { TerminalSnapshot, TerminalView } from "../src/lib/terminal-types.ts";
+import { ReplayBuffer } from "./terminal-replay.ts";
 
 export const TERMINAL_BUFFER_BYTES = 256 * 1024;
 export const TERMINAL_INPUT_BYTES = 16 * 1024;
@@ -22,13 +29,19 @@ export function terminalSize(cols: unknown, rows: unknown): { cols: number; rows
   return { cols: cols as number, rows: rows as number };
 }
 
+/** What a subscriber receives. Output is UTF-8 bytes, encoded once per PTY chunk and shared by every subscriber
+ * and the replay buffer; never mutate it. `sequence` counts output chunks. */
+export type TerminalStreamEvent =
+  | { type: "snapshot"; terminal: TerminalView; replay: Buffer; sequence: number; truncated: boolean }
+  | { type: "data"; data: Buffer; sequence: number }
+  | { type: "state"; terminal: TerminalView };
+
 type Entry = {
   view: TerminalView;
   pty: IPty;
-  buffer: string;
+  replay: ReplayBuffer;
   sequence: number;
-  truncated: boolean;
-  listeners: Set<(event: TerminalEvent) => void>;
+  listeners: Set<(event: TerminalStreamEvent) => void>;
 };
 
 /** PTYs have job-control process groups: killing only the shell's group can
@@ -69,17 +82,14 @@ export class TerminalService {
     const env = Object.fromEntries(Object.entries(process.env).filter(([key, value]) => value !== undefined && !key.startsWith("HUI_AGENT_"))) as Record<string, string>;
     const pty = this.spawnPty(shell, process.platform === "win32" ? [] : ["-i"], { cwd, ...size, name: "xterm-256color", env: { ...env, TERM: "xterm-256color", COLORTERM: "truecolor" } });
     const view: TerminalView = { id: randomUUID(), ownerSessionId, title: typeof title === "string" ? title.trim() : `Terminal ${this.list(ownerSessionId).length + 1}`, cwd, ...size, status: "running", createdAt: new Date().toISOString() };
-    const entry: Entry = { view, pty, buffer: "", sequence: 0, truncated: false, listeners: new Set() };
+    const entry: Entry = { view, pty, replay: new ReplayBuffer(TERMINAL_BUFFER_BYTES), sequence: 0, listeners: new Set() };
     this.entries.set(view.id, entry);
     pty.onData((data) => {
-      const bytes = Buffer.from(entry.buffer + data);
-      if (bytes.length > TERMINAL_BUFFER_BYTES) {
-        let start = bytes.length - TERMINAL_BUFFER_BYTES;
-        while ((bytes[start]! & 0xc0) === 0x80) start++;
-        entry.buffer = bytes.subarray(start).toString("utf8");
-        entry.truncated = true;
-      } else entry.buffer += data;
-      this.emit(entry, { type: "data", data, sequence: ++entry.sequence });
+      // node-pty emits whole code points, so each chunk can be trimmed and replayed on its own.
+      const bytes = Buffer.from(data, "utf8");
+      if (!bytes.length) return;
+      entry.replay.append(bytes);
+      this.emit(entry, { type: "data", data: bytes, sequence: ++entry.sequence });
     });
     pty.onExit(({ exitCode }) => {
       entry.view = { ...entry.view, status: "exited", exitCode };
@@ -96,7 +106,7 @@ export class TerminalService {
 
   read(owner: string, id: string): TerminalSnapshot {
     const entry = this.get(owner, id);
-    return { terminal: { ...entry.view }, data: entry.buffer, sequence: entry.sequence, truncated: entry.truncated };
+    return { terminal: { ...entry.view }, data: entry.replay.text(), sequence: entry.sequence, truncated: entry.replay.truncated };
   }
 
   input(owner: string, id: string, data: unknown): void {
@@ -127,15 +137,15 @@ export class TerminalService {
     entry.listeners.clear();
   }
 
-  subscribe(owner: string, id: string, listener: (event: TerminalEvent) => void): () => void {
+  subscribe(owner: string, id: string, listener: (event: TerminalStreamEvent) => void): () => void {
     const entry = this.get(owner, id);
     entry.listeners.add(listener);
     // No await between subscribing and replay: a reconnect cannot miss output.
-    listener({ type: "snapshot", ...this.read(owner, id) });
+    listener({ type: "snapshot", terminal: { ...entry.view }, replay: entry.replay.bytes(), sequence: entry.sequence, truncated: entry.replay.truncated });
     return () => { entry.listeners.delete(listener); };
   }
 
-  private emit(entry: Entry, event: TerminalEvent): void {
+  private emit(entry: Entry, event: TerminalStreamEvent): void {
     for (const listener of entry.listeners) listener(event);
   }
 

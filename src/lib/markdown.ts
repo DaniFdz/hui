@@ -1,3 +1,9 @@
+/**
+ * HUI's Markdown renderer for chat. It configures markdown-it with HUI's extensions (details, math, alerts,
+ * task lists, rich embeds, Mermaid and chart fences) and its safety rules: raw HTML is escaped, links are
+ * limited to safe schemes and remote images are never loaded. Output is memoised per source because Lit
+ * re-renders the whole transcript on every update.
+ */
 import MarkdownIt, { type MarkdownIt as MarkdownItParser, type StateBlock, type StateInline, type Token } from "markdown-it";
 import markdownItCjkFriendly from "markdown-it-cjk-friendly";
 import markdownItTaskLists from "markdown-it-task-lists";

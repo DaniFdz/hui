@@ -1,3 +1,7 @@
+/**
+ * The Update HUI dialog: what the release check found and how an install is going. Checking, installing and the
+ * update job itself run in the gateway; the dialog shows the snapshot and sends the operator's choices to the app.
+ */
 import { html, nothing } from "lit";
 import type { UpdateSnapshot } from "../lib/update-types.ts";
 

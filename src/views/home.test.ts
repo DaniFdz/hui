@@ -325,8 +325,10 @@ test("the composer exposes PI context usage beside the model", () => {
   const source = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
   const styles = readStyles("../styles/openclaw-chat.css");
 
-  // Compact now waits while the session runs or a compaction already works.
-  assert.match(source, /renderContextPicker\(props\.usage, props\.streaming \|\| props\.compaction\?\.status === "running" \? undefined : props\.onCompact\)/);
+  // Compact now waits while the session runs or a compaction already works,
+  // and is not offered at all in a bot's permanent chat (the gateway refuses it).
+  assert.match(source, /renderContextPicker\(props\.usage, props\.streaming \|\| props\.compaction\?\.status === "running" \? undefined : props\.onCompact, !props\.session\?\.bot\)/);
+  assert.match(source, /\$\{compactable \? html`<button type="button" class="btn btn--ghost btn--sm context-usage__compact"/);
   assert.match(source, />Compact now<\/button>/);
   assert.match(source, /Context window/);
   assert.match(source, /Latest run tokens/);
@@ -430,7 +432,8 @@ test("session actions live in the sidebar instead of the chat header", () => {
   assert.doesNotMatch(homeSource, /aria-label="Session actions"/);
   assert.match(shellSource, /<wa-dropdown-item value="rename"[\s\S]*?Rename/);
   assert.match(shellSource, /<wa-dropdown-item value="delete"[\s\S]*?Delete/);
-  assert.match(shellSource, /aria-label="New session"/);
+  // New sessions start from each group's +; the sidebar header has no New session button.
+  assert.match(shellSource, /aria-label=\$\{`New session in /);
 });
 
 test("the chat header exposes original same-session split controls and pane-local close", () => {
@@ -520,4 +523,14 @@ test("a reachable worker session shows neither notice, and a failed one keeps it
   assert.doesNotMatch(idle, /Reconnecting to|Disconnected from|reconnect-session/u);
   assert.equal(sendButton(idle), "false");
   assert.match(await renderWorkerSession("error"), /The runtime could not start\./u);
+});
+
+test("a conversation still downloading shows progress, and one that failed to load offers a retry instead of an empty chat", async () => {
+  const loading = await renderWorkerSession("idle", { transcript: [], opening: true });
+  assert.match(loading, /role="status" aria-live="polite"> <span>Loading the conversation…<\/span> <wa-progress-bar label="Loading the conversation" indeterminate>/u);
+  assert.doesNotMatch(loading, /Start a conversation/u);
+
+  const failed = await renderWorkerSession("idle", { transcript: [], openError: "HUI did not answer within 20 s. Check the connection and try again." });
+  assert.match(failed, /<div class="agent-chat__empty" role="alert"> <strong>Could not load this conversation<\/strong> <span>HUI did not answer within 20 s\. Check the connection and try again\.<\/span> <button type="button" class="btn btn--sm retry-session" @click=>Try again<\/button>/u);
+  assert.doesNotMatch(failed, /Start a conversation|Send a message below/u, "a failed load never reads as an empty session");
 });

@@ -1,10 +1,19 @@
+/**
+ * The root application element, also reused as the embedded chat pane inside splits and bot views. As the shell it
+ * holds the browser-side state (route, session list, layout, drafts, bots, settings and the polls that refresh them)
+ * and passes it to the view render functions as props. Durable state lives behind the gateway's `/__hui/` routes;
+ * this element mirrors it and sends requests, it never reads files or runs processes.
+ */
 import { renderPicker } from "./views/settings-picker.ts";
 import { groupCheckoutDefaults } from "./lib/group-session-defaults.ts";
 import { renderDirectoryPicker } from "./views/directory-picker.ts";
 import { sessionTreeIds } from "./lib/session-tree.ts";
 import { applySessionListUpdate, type SessionListUpdate } from "../shared/session-list.ts";
-import { html, type PropertyValues } from "lit";
-import { customElement, property, state } from "lit/decorators.js";
+import { html, nothing, type PropertyValues } from "lit";
+import { icons } from "./lib/icons.ts";
+import type { QuestionnaireCard } from "./components/questionnaire-card.ts";
+import { keyed } from "lit/directives/keyed.js";
+import { property, state } from "lit/decorators.js";
 import { HuiElement } from "./lit/hui-element.ts";
 import {
   abortSession,
@@ -48,6 +57,7 @@ import {
   type RuntimeUsage,
   type RuntimeCompaction,
   type RuntimeQuestion,
+  type QuestionResponse,
   type PromptMode,
   type QueueSnapshot,
   type SessionConnection,
@@ -63,7 +73,37 @@ import {
 } from "./lib/sessions-store.ts";
 import { readAttachment, readTranscriptAttachments, validateAttachmentTotal } from "./lib/attachments.ts";
 import { resolveLaunchModel } from "./lib/model-selection.ts";
-import { completeCommandReference, composerCommands, filterSlashCommands, parseClearCommand, parseCompactCommand, parseReloadCommand, parseUpdateCommand, slashCommandQuery, type ComposerCommand } from "./lib/slash-commands.ts";
+import { botChatCommandRefusal, completeCommandReference, composerCommands, filterSlashCommands, parseClearCommand, parseCompactCommand, parseReloadCommand, parseUpdateCommand, slashCommandQuery, type ComposerCommand } from "./lib/slash-commands.ts";
+import {
+  applyBotsUpdate,
+  archiveBot,
+  deleteBot,
+  botChangePatch,
+  botMemoryPageUrl,
+  botSettingChange,
+  isNewBotsFrame,
+  createBot,
+  botSoulKey,
+  loadBotMemory,
+  loadBotSoul,
+  loadBots,
+  restoreBot,
+  saveBotSoul,
+  subscribeBots,
+  updateBot,
+  upsertBot,
+  withoutBotSessions,
+  zoomBotMemory,
+  type BotView,
+} from "./lib/bots.ts";
+import { archivedBotCount, hiddenBotCount, isBotSettingsShortcut, readBotPanel, readSidebarTab, writeBotPanel, writeSidebarTab, type BotPanelState, type BotPanelTab, type SidebarTab } from "./lib/bot-roster.ts";
+import { BotToolsController } from "./lib/bot-tools.ts";
+import { BotTriggersController } from "./lib/bot-triggers.ts";
+import { memoryStatusChanged, parseMemoryView, parseMemoryZoom, type MemoryLine } from "./lib/bot-memory.ts";
+import { renderBotArchiveDialog, renderBotDeleteDialog, renderBotPanel, renderBotPlaceholder, type BotMemoryState, type BotSoulState, type MemoryZoomState } from "./views/bots.ts";
+import { renderBotExportDialog, renderBotImportDialog } from "./views/bot-import.ts";
+import { BotImportController } from "./lib/bot-import-controller.ts";
+import { NO_BOT_SETTINGS_SAVES, type BotSettingKey, type BotSettingsProps, type BotSettingsSaves, type BotSettingValue } from "./views/bot-settings.ts";
 import { checkUpdate, checkUpdateInBackground, installUpdate, loadUpdate } from "./lib/update-store.ts";
 import { availableUpdate, watchUpdateAvailability } from "./lib/update-notice.ts";
 import type { UpdateSnapshot } from "./lib/update-types.ts";
@@ -95,6 +135,7 @@ import {
 } from "./lib/composer-drafts.ts";
 import { attachmentPreview } from "./lib/attachments.ts";
 import { appendPendingUser, localTranscriptId, normalizeTranscript, reduceTranscript, settlePendingUser } from "./lib/transcript-state.ts";
+import { SendRequests } from "./lib/send-requests.ts";
 import { CONTINUE_AFTER_ERROR_PROMPT, latestRunError } from "./lib/run-error.ts";
 import {
   emptySessionPresentation,
@@ -111,8 +152,8 @@ import {
 } from "./lib/session-ui-state.ts";
 import { closeModal, ensureModal } from "./lib/modal-dialog.ts";
 import { documentTitle } from "./lib/document-title.ts";
-import type { Settings } from "./lib/settings.ts";
-import { currentSettings, patchSettings } from "./lib/settings-store.ts";
+import { botsEnabled, type Settings } from "./lib/settings.ts";
+import { currentSettings, patchSettings, refreshSettings, settingsWritten } from "./lib/settings-store.ts";
 import type { ThemeMode, ThemeVariant } from "./lib/theme.ts";
 import {
   applyAccent,
@@ -159,7 +200,7 @@ import {
 } from "./lib/control-surfaces.ts";
 import type { PowerStatus } from "../shared/power.ts";
 import { downloadDiagnostics, loadObservability, type ObservabilitySnapshot } from "./lib/observability.ts";
-import { renderHome, renderNewSession, type HomeProps } from "./views/home.ts";
+import { renderHome, renderNewSession, type BotHeaderAction, type HomeBot, type HomeProps } from "./views/home.ts";
 import { DEFAULT_SESSIONS_PAGE_FILTERS, renderSessionsPage, type SessionsPageFilters, type SessionsPageState } from "./views/sessions.ts";
 import type { WorktreeFilter } from "./views/worktrees.ts";
 import "./views/contributions.ts";
@@ -171,14 +212,19 @@ import { readKanbanOptions, writeKanbanOptions, type KanbanMove, type KanbanOpti
 import { DEFAULT_SESSION_STAGE, SESSION_STAGE_LABELS, type SessionStage } from "../shared/session-stages.ts";
 import type { BacklogCardAction, SessionCardAction } from "./views/kanban.ts";
 import type { BacklogStartTarget } from "./components/backlog-start-dialog.ts";
+import type { ForkTarget } from "./components/fork-dialog.ts";
 import { addSuggestionToBacklog, backlogItemMarkdown, loadBacklog, removeBacklogItem, setBacklogItemGroup, type BacklogItem, type BacklogJiraState } from "./lib/backlog.ts";
 import { loadJiraConnection } from "./lib/jira.ts";
-import type { AutomationProps } from "./views/settings-automation.ts";
+import { VoiceController } from "./lib/voice-controller.ts";
+import { renderCallBar, renderCallView, type CallViewProps } from "./views/bot-voice.ts";
+import { liveCallPlatform, loadCallsStatus } from "./lib/live-call-platform.ts";
+import { callsReady, type CallsStatus } from "../shared/calls.ts";
+import { localTimezone, type AutomationProps } from "./views/settings-automation.ts";
 import { loadWorkers, workerAction, type WorkerView } from "./lib/workers.ts";
 import { hasOpenWebAwesomePopup } from "./lib/web-awesome.ts";
-import { APP_SHELL_DRAWER_MEDIA, closeDrawerOnEscape, renderMain, renderSidebar, type GroupDropTarget, type GroupMenuAction, type NavId, type SessionCopyAction, type SessionOpenAction } from "./views/shell.ts";
+import { APP_SHELL_DRAWER_MEDIA, closeDrawerOnEscape, renderMain, renderSidebar, toggleNavigationDrawer, type GroupDropTarget, type GroupMenuAction, type NavId, type SessionCopyAction, type SessionOpenAction, type ShellBotsProps } from "./views/shell.ts";
 import { writeClipboardText } from "./lib/clipboard.ts";
-import { renderSettingsPage, type SettingsPage } from "./views/settings.ts";
+import { renderSettingsPage, SETTINGS_PAGES, type SettingsPage } from "./views/settings.ts";
 import type { JiraCreatedDetail } from "./components/jira-create-dialog.ts";
 import { clampSuggestionIndex, dismissTaskSuggestion, parseTaskSuggestions, startTaskSuggestion, taskSuggestionPrompt, type TaskSuggestion, type TaskSuggestionStartMode } from "./lib/task-suggestions.ts";
 import { dismissWatcher as dismissWatcherRequest, parseWatchers, readWatcherLog, restartWatcher as restartWatcherRequest, stopWatcher as stopWatcherRequest, type Watcher } from "./lib/watchers.ts";
@@ -192,10 +238,26 @@ import { renderPiResourceReader, type PiResourceReaderState } from "./views/pi-r
 import { isObservabilitySurface, renderObservabilitySurface } from "./views/observability.ts";
 import { isOwnedSurface, renderOwnedSurface } from "./views/hui-owned-surfaces.ts";
 import { HUI_PAGES, type HuiPage } from "./lib/pages.ts";
-import { activeSessionPane, addSessionTab, browserPaneFor, closeSessionPane, focusSessionPane, isChatPane, moveSessionPane, parseSessionLayout, replacePaneSession, replacePaneTerminal, resizeSessionLayout, SESSION_LAYOUT_KEY, sessionPanes, visibleSessionPanes, singleSessionLayout, splitBrowserPane, splitSessionPane, splitTerminalPane, type DropZone, type SessionLayout, type SessionPane, type SplitDirection } from "./lib/session-multiplexer.ts";
+import { activeSessionPane, addSessionTab, closeSessionPane, focusSessionPane, isChatPane, moveSessionPane, parseSessionLayout, replacePaneSession, resizeSessionLayout, SESSION_LAYOUT_KEY, SESSION_SPLIT_MEDIA, sessionPanes, visibleSessionPanes, singleSessionLayout, splitSessionPane, type DropZone, type SessionLayout, type SessionPane, type SplitDirection } from "./lib/session-multiplexer.ts";
+import {
+  activateWorkView, closeWorkView, launchableWorkViewKinds, migrateLayoutWorkViews, openWorkView, parseWorkPaneStore, pruneWorkPaneStore, registerWorkViewKind, reorderWorkView,
+  retainWorkSessions, serializeWorkPaneStore, sessionWorkPane, setWorkPaneMaximized, setWorkPaneOpen, setWorkPaneWidth, workPaneMaximized, workViewKey, workViewKind, workViewKinds,
+  WORK_PANE_CHAT_MIN_WIDTH, WORK_PANE_KEY, WORK_PANE_MAXIMIZE_SHORTCUT, WORK_PANE_TOGGLE_SHORTCUT, type WorkPaneStore, type WorkViewRef,
+} from "./lib/work-pane.ts";
+import { PANE_COLUMN_MIN_WIDTH } from "./lib/session-pane-geometry.ts";
+import { terminalWorkViewKind } from "./lib/work-views/terminal.ts";
+import { browserWorkViewKind } from "./lib/work-views/browser.ts";
+import { filesWorkViewKind } from "./lib/work-views/files.ts";
+import { vscodeWorkViewKind } from "./lib/work-views/vscode.ts";
+import { OPEN_SETTINGS_EVENT, type OpenSettingsDetail } from "./lib/open-settings.ts";
+import { scrollSettingsSection } from "./lib/settings-section-scroll.ts";
+import { matchesShortcut } from "./lib/shortcut-binding.ts";
+import "./components/work-pane.ts";
+import type { WorkPane } from "./components/work-pane.ts";
 import { createTerminal, listTerminals } from "./lib/terminals-store.ts";
 import "./components/terminal-pane.ts";
 import "./components/browser-pane.ts";
+import { announceTurnEnd } from "./lib/session-turn-end.ts";
 import { SessionMultiplexer, type PanePresentation } from "./components/session-multiplexer.ts";
 import {
   isRoutablePage,
@@ -229,7 +291,24 @@ function readCollapsed(): Set<string> {
  * button may keep an older one: capture only the pane/session id and the parent. */
 const paneCallback = { attribute: false, hasChanged: (value: unknown, old: unknown) => !value !== !old };
 
-@customElement("hui-app")
+/** A bot pane's Call button (HUI-18): offered while calls can run (GPT-Live, with a ChatGPT login). Compared by value. */
+type PaneCall = { botId: string; inCall: boolean };
+const paneCallProperty = { attribute: false, hasChanged: (value: unknown, old: unknown) => JSON.stringify(value) !== JSON.stringify(old) };
+
+/** A bot's Settings tab: a row's saves or refusals without that row's. */
+function withoutSetting<Value>(record: Partial<Record<BotSettingKey, Value>>, key: BotSettingKey): Partial<Record<BotSettingKey, Value>> {
+  const next = { ...record };
+  delete next[key];
+  return next;
+}
+
+/** The bot pane's header data, without its callback (passed separately as a
+ * pane callback). Compared by value: the parent rebuilds it on every render. */
+type PaneBot = Omit<HomeBot, "onTogglePanel" | "onAction">;
+const paneBotProperty = { attribute: false, hasChanged: (value: unknown, old: unknown) => JSON.stringify(value) !== JSON.stringify(old) };
+
+/** Defined by `defineHuiApp`, not on import: main.ts loads this module while the
+ * saved appearance is still being read, and the app must not paint before it. */
 export class HuiApp extends HuiElement {
   @state() private view: NavId = "home";
   @state() private activePage: HuiPage | undefined;
@@ -239,7 +318,6 @@ export class HuiApp extends HuiElement {
   @state() private sessionsSelected: ReadonlySet<string> = new Set();
   @state() private sessionsDeleteConfirm = false;
   @state() private sessionsDeleting = false;
-  @state() private sessionsDeleteNotice = "";
   @state() private worktreeInventory: WorktreeInventory | undefined;
   @state() private worktreesLoading = false;
   @state() private worktreesError = "";
@@ -258,14 +336,13 @@ export class HuiApp extends HuiElement {
   @state() private kanbanOptions: KanbanOptions = readKanbanOptions();
   @state() private kanbanQuery = "";
   @state() private kanbanMovePendingId = "";
-  @state() private kanbanNotice = "";
-  @state() private kanbanNoticeFailed = false;
   @state() private kanbanDraggingId = "";
   @state() private kanbanDropTarget = "";
   @state() private draggingSessionId = "";
   @state() private sessionDropTarget = "";
   @state() private sessionMovePendingId = "";
-  @state() private sessionMoveNotice = "";
+  /** Outcome of a sidebar, Kanban, Sessions or bot action, shown as the shell toast. */
+  @state() private actionToast: { message: string; failed: boolean } | undefined;
   @state() private archiveToast: { session: SessionView; restoring: boolean; error?: string } | undefined;
   /** Session whose "Create Jira work item" dialog is open. */
   @state() private jiraCreateSession: SessionView | undefined;
@@ -288,7 +365,7 @@ export class HuiApp extends HuiElement {
   /** Whether Jira is connected, for the suggestion card's actions; unknown until loaded. */
   @state() private jiraConfigured: boolean | undefined;
   private archiveToastTimer: ReturnType<typeof setTimeout> | undefined;
-  @state() private sessionMoveFailed = false;
+  private actionToastTimer: ReturnType<typeof setTimeout> | undefined;
   @state() private draggingGroup = "";
   @state() private groupDropTarget: GroupDropTarget | undefined;
   @state() private groupReorderPending = false;
@@ -306,13 +383,19 @@ export class HuiApp extends HuiElement {
   /** The watcher log the operator opened; one at a time. */
   @state() private watcherLog: { id: string; lines: readonly string[]; truncated: boolean; loading: boolean } | null = null;
   @state() private opening = false;
+  /** Why the selected session's open request failed; its view offers a retry. */
+  @state() private openError = "";
   @state() private streaming = false;
   /** `sessionId\0errorKey` of run errors the operator dismissed this page load. */
   @state() private dismissedRunErrors: ReadonlySet<string> = new Set();
   @state() private sending = false;
+  /** Request ids for composer sends, so resending one the gateway already took never runs it twice. */
+  private readonly sendRequests = new SendRequests();
   @state() private stopping = false;
   @state() private continuing = false;
   @state() private rewindPending = false;
+  /** The Fork from here dialog: the session and reply it forks from. While it is open, the chat's fork buttons rest. */
+  @state() private forkTarget: ForkTarget | undefined;
   @state() private sideChat: HomeProps["sideChat"];
   /** The composer's live text, deliberately not reactive: a keystroke only
    * changes what its own textarea already shows, so typing must not re-render
@@ -358,6 +441,9 @@ export class HuiApp extends HuiElement {
   @state() private launchModel = "";
   @state() private launchThinking = "";
   @state() private directorySuggestions: readonly string[] = [];
+  /** The machine `directorySuggestions` came from: "" for this one, else a worker's id. A bot's Settings tab shows only
+   * its own machine's, so a bot on a worker is never offered this machine's folders. */
+  private directorySuggestionsFrom = "";
   private directorySuggestionRequest = 0;
   private gitCheckoutRequest = 0;
   private inspectedCheckoutDirectory = "";
@@ -451,8 +537,100 @@ export class HuiApp extends HuiElement {
   @state() private commandPaletteQuery = "";
   @state() private commandPaletteActiveIndex = 0;
   @state() private mobileNavLayout = false;
+  /* ── bots (top-level app only; panes never read bots) ── */
+  @state() private bots: readonly BotView[] = [];
+  @state() private botsLoading = false;
+  @state() private botsLoaded = false;
+  @state() private botsError = "";
+  private botsInFlight: Promise<void> | undefined;
+  private botsAgain = false;
+  /** The gateway pushes the bot list; reads by GET are only its fallback. */
+  private botsStreamStop: (() => void) | undefined;
+  private botsStreamLive = false;
+  private botsStreamUnsupported = false;
+  /** The stream was asked again after a 409 whose settings still said bots are on; once is enough. */
+  private botsStreamRetried = false;
+  private botsRevision = 0;
+  @state() private botSearch = "";
+  /** The sidebar's Agents | Bots choice, remembered by the browser. */
+  @state() private sidebarTab: SidebarTab = readSidebarTab();
+  @state() private showHiddenBots = false;
+  @state() private showArchivedBots = false;
+  @state() private botMenuFor = "";
+  @state() private botPendingId = "";
+  /** The bot whose chat the bot route shows. */
+  @state() private activeBotId = "";
+  @state() private botPanel: BotPanelState = readBotPanel();
+  /** Narrow layouts open the panel as a sheet only on request; never remembered. */
+  @state() private botSheetOpen = false;
+  /** + is creating a bot; another press waits for it. */
+  @state() private botCreating = false;
+  /** The Settings tab's saves, per bot: each change is one PATCH, sent in order, and a newer change to the same row
+   * replaces a value still waiting. Kept per bot, so leaving a bot never drops a change on its way. */
+  @state() private botSettingsSaves: ReadonlyMap<string, BotSettingsSaves> = new Map();
+  private botSettingsQueue: Promise<void> = Promise.resolve();
+  /** The ChatGPT login GPT-Live calls use (`/__hui/calls`), read on a bot's page. */
+  @state() private callsStatus: CallsStatus | undefined;
+  private callsStatusLoading: Promise<void> | undefined;
+  @state() private botArchive: BotView | undefined;
+  @state() private botArchivePending = false;
+  @state() private botArchiveError = "";
+  /** The archived bot whose Delete asks for confirmation. */
+  @state() private botDelete: BotView | undefined;
+  @state() private botDeletePending = false;
+  @state() private botDeleteError = "";
+  @state() private botArchiveToast: { bot: BotView; restoring: boolean; error?: string } | undefined;
+  /** Import bot… (+) and Export… (a bot's ⋯): their dialogs' state. An imported bot opens like a new one. */
+  private botImports = new BotImportController(this, {
+    workers: () => this.launchWorkers,
+    imported: (bot, warnings) => {
+      this.bots = upsertBot(this.bots, bot);
+      if (warnings.length) this.notify(`Imported ${bot.name}. ${warnings.join(" ")}`, true);
+      void this.refreshBots();
+      void this.refreshSessions(true);
+      this.navigate({ kind: "bot", id: bot.id });
+    },
+  });
+  private botArchiveToastTimer: ReturnType<typeof setTimeout> | undefined;
+  @state() private botMemory: BotMemoryState & { botId: string } = { botId: "", loading: false, error: "" };
+  @state() private botMemoryZoom: ReadonlyMap<string, MemoryZoomState> = new Map();
+  private botMemoryRequest = 0;
+  private botMemoryInFlight = false;
+  /** A change arrived while a read was on its way: read once more after it. */
+  private botMemoryAgain = false;
+  /** The Soul tab: the active bot's SOUL.md as last read, and its editor (undefined while only shown). */
+  @state() private botSoul: BotSoulState & { botId: string } = { botId: "", loading: false, error: "" };
+  @state() private botSoulDraft: string | undefined;
+  @state() private botSoulSaving = false;
+  @state() private botSoulSaveError = "";
+  private botSoulRequest = 0;
+  /** `botSoulKey` of the bot when SOUL.md was last read: another key, once its turn is over, means read it again. */
+  private botSoulSeen = "";
+  /** The Tools tab: what the operator can turn off in the bot's chat, kept in its own controller. */
+  private botTools = new BotToolsController(this);
+  /** The Routines tab's Triggers section, read while it shows. */
+  private botTriggers = new BotTriggersController(this, { visible: () => this.botPanelVisible() && this.botPanel.tab === "routines" });
+  private botRosterTick = 0;
+  /** Set on the bot route's embedded pane: header identity and panel state. */
+  @property(paneBotProperty) paneBot: PaneBot | undefined;
+  @property(paneCallback) onPaneBotPanel: (() => void) | undefined;
+  /** The bot header's ⋯ menu, handled by the app that owns the bot dialogs. */
+  @property(paneCallback) onPaneBotAction: ((action: BotHeaderAction) => void) | undefined;
   /** Browser-owned presentation state; each pane still owns its own runtime state. */
   @state() private sessionLayout: SessionLayout | undefined;
+  /** Browser-local Work pane record per conversation (`lib/work-pane.ts`); top-level app only. */
+  @state() private workPanes: WorkPaneStore = {};
+  /** Below 1100px the Work pane is a full-screen destination instead of a side pane. */
+  @state() private workNarrow = false;
+  @state() private workNarrowShown = false;
+  @state() private workLaunching = "";
+  @state() private workError = "";
+  /** The view the operator launched last; it may take focus once it opens. */
+  private workLaunchedKey = "";
+  /** Conversations whose Work views stay mounted, most recently focused first. */
+  private workRetained: string[] = [];
+  private workMedia: MediaQueryList | undefined;
+  private readonly onWorkMediaChange = (event: MediaQueryListEvent) => { this.workNarrow = event.matches; };
   @property({ type: Boolean, attribute: "embedded-pane" }) embeddedPane = false;
   @property({ attribute: "pane-session-id" }) paneSessionId = "";
   /** The shell's registry entry, so a pane opens without waiting for (or
@@ -466,7 +644,7 @@ export class HuiApp extends HuiElement {
   @property(paneCallback) onPaneClose: (() => void) | undefined;
   @property(paneCallback) onPaneSplit: ((direction: SplitDirection) => void) | undefined;
   @property(paneCallback) onPaneTerminal: (() => Promise<void>) | undefined;
-  /** Opens this session's browser panel: the larger live view beside the chat. */
+  /** Opens this session's browser view in the Work pane: the larger live view beside the chat. */
   @property(paneCallback) onPaneBrowser: (() => void) | undefined;
   @state() private terminalOpening = false;
   @state() private terminalError = "";
@@ -484,10 +662,21 @@ export class HuiApp extends HuiElement {
   /** Embedded panes own the composer but not the sidebar; report draft
    * presence so the shell can project the pencil onto the session row. */
   @property(paneCallback) onPaneDraftChange: ((sessionId: string, hasDraft: boolean) => void) | undefined;
+  /** Set on the bot route's pane while the bot can be called. */
+  @property(paneCallProperty) paneCall: PaneCall | undefined;
+  @property(paneCallback) onPaneCall: (() => void) | undefined;
+  /** The app's calls (top-level only): the one call with a bot, on GPT-Live. */
+  private readonly voice = new VoiceController(this, {
+    platform: liveCallPlatform,
+    now: () => Date.now(),
+    setInterval: (callback, ms) => { const timer = window.setInterval(callback, ms); return () => window.clearInterval(timer); },
+  });
   private mobileNavMedia: MediaQueryList | undefined;
   private composerTextarea: HTMLTextAreaElement | null = null;
   private readonly onMobileNavChange = (event: MediaQueryListEvent) => {
     this.mobileNavLayout = event.matches;
+    // The bot panel moves between the side and a sheet; what it reads follows.
+    this.syncBotPanelData();
   };
 
   /** Ends the current event stream; replaced on every session switch. */
@@ -541,6 +730,12 @@ export class HuiApp extends HuiElement {
       this.handleGlobalEscape(event);
       return;
     }
+    if (isBotSettingsShortcut(event)) {
+      if (this.view !== "bot" || this.settingsOpen || this.commandPaletteOpen || document.querySelector("dialog[open]")) return;
+      event.preventDefault();
+      this.toggleBotSettings();
+      return;
+    }
     if (!isCommandPaletteShortcut(event)) return;
     event.preventDefault();
     this.commandPaletteOpen ? this.closeCommandPalette() : this.openCommandPalette();
@@ -563,7 +758,19 @@ export class HuiApp extends HuiElement {
       this.closeSettings();
       return;
     }
+    if (!this.embeddedPane && this.view === "bot") {
+      if (this.mobileNavLayout && this.botSheetOpen) {
+        event.preventDefault();
+        this.closeBotPanel();
+        return;
+      }
+      this.botPaneApp()?.handleGlobalEscape(event);
+      return;
+    }
     if (!this.embeddedPane && this.view === "home" && this.selected) {
+      // A maximized Work pane hides the chat: Escape never stops a turn the operator cannot see.
+      const workSessionId = this.workSessionId();
+      if (workSessionId && workPaneMaximized(sessionWorkPane(this.workPanes, workSessionId), this.workNarrow)) return;
       this.activePaneApp()?.handleGlobalEscape(event);
       return;
     }
@@ -582,12 +789,16 @@ export class HuiApp extends HuiElement {
     if (this.embeddedPane) {
       if (this.paneSessionId) this.applyNavigation({ kind: "session", id: this.paneSessionId });
     } else {
+      this.setupWorkPane();
       this.syncFromLocation();
       this.mobileNavMedia = window.matchMedia(APP_SHELL_DRAWER_MEDIA);
       this.mobileNavLayout = this.mobileNavMedia.matches;
       this.mobileNavMedia.addEventListener("change", this.onMobileNavChange);
       window.addEventListener("popstate", this.onPopState);
       document.addEventListener("keydown", this.onGlobalKeyDown);
+      // Capture: a focused terminal swallows keys, and Work pane shortcuts must still work from inside one.
+      document.addEventListener("keydown", this.onWorkShortcut, true);
+      this.addEventListener(OPEN_SETTINGS_EVENT, this.onOpenSettingsRequest);
     }
     window.addEventListener("pagehide", this.onPageHide);
     if (!this.embeddedPane) {
@@ -596,6 +807,7 @@ export class HuiApp extends HuiElement {
         onStatus: this.applySessionStatusUpdate,
         onSessions: this.applySessionListChange,
       });
+      this.syncBotsStream();
       this.updateMonitor = watchUpdateAvailability({
         check: checkUpdateInBackground,
         receive: (snapshot) => {
@@ -621,24 +833,36 @@ export class HuiApp extends HuiElement {
     if (this.composerTextarea) disconnectTextareaOverflowObserver(this.composerTextarea);
     this.composerTextarea = null;
     window.removeEventListener("popstate", this.onPopState);
+    this.removeEventListener(OPEN_SETTINGS_EVENT, this.onOpenSettingsRequest);
     window.removeEventListener("pagehide", this.onPageHide);
     document.removeEventListener("keydown", this.onGlobalKeyDown);
+    document.removeEventListener("keydown", this.onWorkShortcut, true);
+    this.workMedia?.removeEventListener("change", this.onWorkMediaChange);
+    this.workMedia = undefined;
+    for (const stop of this.stopWorkAvailability) stop();
+    this.stopWorkAvailability = [];
     document.removeEventListener("visibilitychange", this.onUpdateVisibility);
     window.removeEventListener("online", this.onUpdateVisibility);
     window.removeEventListener("offline", this.onUpdateVisibility);
     window.removeEventListener("focus", this.onUpdateVisibility);
     this.updateMonitor?.stop();
     this.updateMonitor = undefined;
+    if (!this.embeddedPane) this.voice.dispose();
     this.streamStop?.();
     this.streamStop = undefined;
     if (this.subagentExpiryTimer !== undefined) window.clearTimeout(this.subagentExpiryTimer);
     this.subagentExpiryTimer = undefined;
     this.stopAutomationPolling();
+    if (this.botArchiveToastTimer) clearTimeout(this.botArchiveToastTimer);
+    clearTimeout(this.actionToastTimer);
     if (this.piResourceCopyTimer !== undefined) window.clearTimeout(this.piResourceCopyTimer);
     this.piResourceCopyTimer = undefined;
     if (this.updatePollTimer !== undefined) window.clearTimeout(this.updatePollTimer);
     this.statusStreamStop?.();
     this.statusStreamStop = undefined;
+    this.botsStreamStop?.();
+    this.botsStreamStop = undefined;
+    this.botsStreamLive = false;
   }
 
   private sessionProgressPoll?: number;
@@ -684,6 +908,10 @@ export class HuiApp extends HuiElement {
       if (!this.embeddedPane && !document.hidden && this.settingsOpen && this.settingsPage === "connection") {
         void this.refreshGatewayHealth();
       }
+      // Roster times ("2m") age while nothing else re-renders the sidebar.
+      if (!this.embeddedPane && !document.hidden && botsEnabled(this.settings) && this.sidebarTab === "bots" && ++this.botRosterTick % 10 === 0) {
+        this.requestUpdate();
+      }
     }, 3000);
     this.switchComposerDraft(NEW_SESSION_DRAFT_KEY);
     this.refreshDraftIndicators();
@@ -699,6 +927,9 @@ export class HuiApp extends HuiElement {
   }
 
   private applySessionStatusSnapshot = (updates: readonly SessionStatusUpdate[]) => {
+    // The status stream has just (re)connected, so the gateway is reachable
+    // again: a list that failed to load earlier is worth asking for once more.
+    if (!this.embeddedPane && this.sessionsError && !this.sessionsLoading) void this.refreshSessions();
     this.sessionStatuses = new Map(updates.map(({ id, status }) => [id, status]));
     const unread = new Map(updates.flatMap((update) =>
       update.unread === undefined ? [] : [[update.id, update.unread] as const]));
@@ -717,6 +948,15 @@ export class HuiApp extends HuiElement {
         return { ...session, status, unread: isUnread || undefined };
       }),
     }));
+    // Bot chats are sessions too: their roster rows follow the same stream.
+    if (this.bots.length) {
+      this.bots = this.bots.map((bot) => {
+        const status = this.sessionStatuses.get(bot.sessionId);
+        const isUnread = unread.get(bot.sessionId);
+        if (status === undefined && isUnread === undefined) return bot;
+        return { ...bot, ...(status ? { status } : {}), ...(isUnread !== undefined ? { unread: isUnread && !this.isSessionPresented(bot.sessionId) } : {}) };
+      });
+    }
   };
 
   private applySessionStatusUpdate = ({ id, status, unread, creating, creationError, title }: SessionStatusUpdate) => {
@@ -740,6 +980,20 @@ export class HuiApp extends HuiElement {
         : session),
     }));
     if (created) void this.refreshSessions(true);
+    const bot = this.bots.find((candidate) => candidate.sessionId === id);
+    if (bot) {
+      this.bots = this.bots.map((candidate) => candidate.sessionId === id
+        ? { ...candidate, status, unread: presented ? false : unread === undefined ? candidate.unread : unread }
+        : candidate);
+      // A turn started or settled: its latest message moved. The bot stream
+      // pushes that itself; without it (an older gateway) read the list again,
+      // and the open Memory and Soul tabs read again.
+      if (bot.status !== status && !this.botsStreamLive) {
+        void this.refreshBots();
+        if (bot.id === this.activeBotId && this.botMemoryTabVisible()) void this.refreshBotMemory();
+        if (bot.id === this.activeBotId && this.botSoulTabVisible() && status !== "running" && status !== "waiting") void this.refreshBotSoul();
+      }
+    }
     if (!this.embeddedPane && this.selected?.id === id) {
       this.reopenIfRestarted(id, status);
       this.selected = { ...this.selected, status, ...(title ? { title } : {}) };
@@ -795,8 +1049,10 @@ export class HuiApp extends HuiElement {
     if (revision < this.sessionListRevision) return;
     this.sessionListRevision = revision;
     this.groups = groups;
-    if (!this.sessionLayout) return;
     const ids = new Set(groups.flatMap((group) => group.sessions.map(({ id }) => id)));
+    // Removed conversations take their Work pane record with them (their terminals end with them).
+    if (!this.embeddedPane) this.commitWorkPanes(pruneWorkPaneStore(this.workPanes, ids));
+    if (!this.sessionLayout) return;
     for (const pane of sessionPanes(this.sessionLayout)) {
       if (!ids.has(pane.sessionId)) this.sessionLayout = closeSessionPane(this.sessionLayout, pane.id);
     }
@@ -853,7 +1109,8 @@ export class HuiApp extends HuiElement {
   /** Lit cannot autofocus a field that appears on a later render, and typing
    * straight into a rename is the whole point of an inline field. */
   override updated(changed: PropertyValues) {
-    const textarea = !this.embeddedPane && this.view === "home" && this.selected
+    // Session and bot panes measure their own composers.
+    const textarea = !this.embeddedPane && ((this.view === "home" && this.selected) || this.view === "bot")
       ? null : this.renderRoot.querySelector<HTMLTextAreaElement>(".agent-chat__composer-combobox > textarea");
     if (textarea !== this.composerTextarea) {
       if (this.composerTextarea) disconnectTextareaOverflowObserver(this.composerTextarea);
@@ -873,12 +1130,31 @@ export class HuiApp extends HuiElement {
       textarea.setSelectionRange(this.draft.length, this.draft.length);
       this.setCommandQuery(slashCommandQuery(this.draft, this.draft.length));
     }
-    if (changed.has("selected") || changed.has("view") || changed.has("settingsOpen")) {
-      const activeSessionTitle = this.view === "home" && !this.settingsOpen
-        ? this.selected?.title
-        : undefined;
+    // Bots turned on or off, here or (through the bot stream) on another screen.
+    if (changed.has("settings")) {
+      const before = changed.get("settings") as Settings | undefined;
+      if (before && botsEnabled(before) !== botsEnabled(this.settings)) this.followBotsSetting();
+    }
+    // A bot's chat offers GPT-Live calls once the gateway says a ChatGPT login is there.
+    if (!this.embeddedPane && this.view === "bot" && !this.callsStatus) void this.loadCallsStatus();
+    if (changed.has("selected") || changed.has("view") || changed.has("settingsOpen") || changed.has("activeBotId") || changed.has("bots")) {
+      const activeSessionTitle = this.settingsOpen ? undefined
+        : this.view === "home" ? this.selected?.title
+          : this.view === "bot" ? this.activeBot()?.name
+            : undefined;
       if (!this.embeddedPane) document.title = documentTitle(activeSessionTitle);
     }
+    const botArchiveDialog = this.botArchive ? this.renderRoot.querySelector?.(".bot-archive-dialog") : null;
+    if (botArchiveDialog instanceof HTMLDialogElement && !botArchiveDialog.open) {
+      ensureModal(botArchiveDialog);
+      botArchiveDialog.querySelector<HTMLButtonElement>(".bot-archive-cancel")?.focus();
+    }
+    const botDeleteDialog = this.botDelete ? this.renderRoot.querySelector?.(".bot-delete-dialog") : null;
+    if (botDeleteDialog instanceof HTMLDialogElement && !botDeleteDialog.open) {
+      ensureModal(botDeleteDialog);
+      botDeleteDialog.querySelector<HTMLButtonElement>(".bot-delete-cancel")?.focus();
+    }
+    this.botImports.showDialogs(this.renderRoot);
     // A selector that matches nothing walks the whole open transcript, and
     // this runs on every keystroke: query a dialog only while its state shows it.
     const worktreeDialog = this.worktreeConfirm && this.worktreeConfirm !== "merged" ? this.renderRoot.querySelector?.(".worktree-remove-dialog") : null;
@@ -900,8 +1176,14 @@ export class HuiApp extends HuiElement {
       if (cancel instanceof HTMLButtonElement) cancel.focus();
     }
     if (changed.has("question") && this.question && (!this.embeddedPane || this.paneVisible)) {
-      const questionControl = this.renderRoot.querySelector?.('.session-question-card [role="radio"][tabindex="0"], .session-question-card input:not([type="hidden"]), .session-question-card textarea');
-      if (questionControl instanceof HTMLElement) questionControl.focus();
+      const focus = () => {
+        const questionControl = this.renderRoot.querySelector?.('.session-question-card :is([role="radio"], [role="checkbox"])[tabindex="0"], .session-question-card input:not([type="hidden"]), .session-question-card textarea');
+        if (questionControl instanceof HTMLElement) questionControl.focus();
+      };
+      // The questionnaire card renders its controls in its own update, after this one.
+      const card = this.renderRoot.querySelector?.<QuestionnaireCard>("hui-questionnaire-card");
+      if (card) void card.updateComplete.then(focus);
+      else focus();
     }
     const groupDialog = this.groupAction ? this.renderRoot.querySelector?.(".group-action-dialog") : null;
     const updateDialog = this.updateOpen ? this.renderRoot.querySelector?.(".hui-update-dialog") : null;
@@ -934,6 +1216,18 @@ export class HuiApp extends HuiElement {
     if (resolved.target.kind === "session") {
       let saved = parseSessionLayout(window.history.state?.huiSessionLayout);
       if (!saved) try { saved = parseSessionLayout(JSON.parse(localStorage.getItem(SESSION_LAYOUT_KEY) ?? "null")); } catch { /* Use a single view. */ }
+      if (saved) {
+        // Terminal and browser panes saved before the Work pane move into it, without losing any.
+        const migrated = migrateLayoutWorkViews(saved, this.workPanes);
+        if (migrated.moved) {
+          saved = migrated.layout;
+          this.workPanes = migrated.store;
+          this.sessionLayout = saved;
+          this.persistSessionLayout();
+          this.persistWorkPanes();
+          window.history.replaceState({ ...window.history.state, huiSessionLayout: saved }, "");
+        }
+      }
       this.sessionLayout = saved ?? singleSessionLayout(resolved.target.id);
       if (activeSessionPane(this.sessionLayout).sessionId !== resolved.target.id) this.sessionLayout = replacePaneSession(this.sessionLayout, this.sessionLayout.activePaneId, resolved.target.id);
     }
@@ -969,6 +1263,7 @@ export class HuiApp extends HuiElement {
    * detailed stream. */
   private isSessionPresented(id: string): boolean {
     if (this.embeddedPane) return this.paneVisible && this.paneSessionId === id;
+    if (this.view === "bot") return !this.settingsOpen && this.activeBot()?.sessionId === id;
     if (this.view === "home" && !this.settingsOpen && this.sessionLayout) {
       const narrow = this.renderRoot.querySelector<SessionMultiplexer>("hui-session-multiplexer")?.narrow;
       return visibleSessionPanes(this.sessionLayout).some((pane) => isChatPane(pane) && pane.sessionId === id && (!narrow || pane.id === this.sessionLayout?.activePaneId));
@@ -1004,6 +1299,30 @@ export class HuiApp extends HuiElement {
 
     this.settingsOpen = false;
     this.stopAutomationPolling();
+    if (target.kind === "bot") {
+      // Bots exist in the UI only while Settings → Labs → Bots is on; a bot's address lands on the normal home otherwise.
+      if (this.embeddedPane || !botsEnabled(this.settings)) {
+        this.navigate({ kind: "home" }, true);
+        return;
+      }
+      this.suspendSelectedSessionView();
+      this.resetSessionEphemeral();
+      this.pendingSessionId = "";
+      this.activePage = undefined;
+      if (this.activeBotId !== target.id) {
+        this.botSheetOpen = false;
+        this.resetBotMemory(target.id);
+        this.resetBotSoul(target.id);
+        this.botTools.reset(target.id);
+        this.botTriggers.reset(target.id);
+      }
+      this.activeBotId = target.id;
+      this.view = "bot";
+      this.setSidebarTab("bots");
+      this.ensureBots();
+      this.syncBotPanelData();
+      return;
+    }
     if (target.kind === "kanban") {
       this.suspendSelectedSessionView();
       this.resetSessionEphemeral();
@@ -1065,6 +1384,16 @@ export class HuiApp extends HuiElement {
       ?? (this.paneSession?.id === id ? this.paneSession : undefined);
     if (session) {
       this.pendingSessionId = "";
+      // While bots are off a bot's chat opens nowhere, like a session that is gone (the gateway refuses it too).
+      if (session.bot && !botsEnabled(this.settings)) {
+        this.navigate({ kind: "home" }, true);
+        return;
+      }
+      // A bot's chat opens as the bot (with its panel) wherever it is linked from.
+      if (!this.embeddedPane && session.bot) {
+        this.navigate({ kind: "bot", id: session.bot.id }, true);
+        return;
+      }
       this.activateSession(session);
       return;
     }
@@ -1124,7 +1453,7 @@ export class HuiApp extends HuiElement {
       query: this.commandPaletteQuery,
       activeIndex: this.commandPaletteActiveIndex,
       pages: HUI_PAGES,
-      groups: this.groups,
+      groups: this.listedGroups,
       onQuery: (query) => {
         this.commandPaletteQuery = query;
         this.commandPaletteActiveIndex = 0;
@@ -1181,8 +1510,7 @@ export class HuiApp extends HuiElement {
     void renameSession(session.id, patch)
       .then((updated) => {
         if (this.selected?.id === updated.id) this.selected = updated;
-        this.sessionMoveNotice = patch.archived === true ? "" : success;
-        this.sessionMoveFailed = false;
+        this.notify(patch.archived === true ? "" : success);
         if (patch.archived === true) {
           this.archiveToast = { session: updated, restoring: false };
           this.scheduleArchiveToast();
@@ -1201,10 +1529,17 @@ export class HuiApp extends HuiElement {
         return this.refreshSessions();
       })
       .catch((error: unknown) => {
-        this.sessionMoveNotice = error instanceof Error ? error.message : "Could not update that session.";
-        this.sessionMoveFailed = true;
+        this.notify(error instanceof Error ? error.message : "Could not update that session.", true);
       });
   };
+
+  /** Replaces the action toast; an empty message clears it. Successes clear
+   * after 6 s, while failures and progress ("…") stay until replaced or dismissed. */
+  private notify(message: string, failed = false) {
+    clearTimeout(this.actionToastTimer);
+    this.actionToast = message ? { message, failed } : undefined;
+    if (message && !failed && !message.endsWith("…")) this.actionToastTimer = setTimeout(() => this.notify(""), 6_000);
+  }
 
   private pauseArchiveToast = () => {
     if (this.archiveToastTimer) clearTimeout(this.archiveToastTimer);
@@ -1232,8 +1567,7 @@ export class HuiApp extends HuiElement {
     try {
       await renameSession(toast.session.id, { archived: false });
       if (this.archiveToast?.session.id === toast.session.id) this.dismissArchiveToast();
-      this.sessionMoveNotice = "Session restored.";
-      this.sessionMoveFailed = false;
+      this.notify("Session restored.");
       await this.refreshSessions();
     } catch (error) {
       if (this.archiveToast?.session.id === toast.session.id) {
@@ -1259,17 +1593,14 @@ export class HuiApp extends HuiElement {
           ? transcriptAsMarkdown(this.transcript)
           : "";
     if (!text) {
-      this.sessionMoveNotice = "Open the conversation before copying it as Markdown.";
-      this.sessionMoveFailed = true;
+      this.notify("Open the conversation before copying it as Markdown.", true);
       return;
     }
     void writeClipboardText(text).then((copied) => {
       if (!copied) throw new Error("Clipboard write failed");
-      this.sessionMoveNotice = action === "id" ? "Session ID copied." : action === "jira" ? "Jira link copied." : action === "link" ? "Session link copied." : "Conversation copied as Markdown.";
-      this.sessionMoveFailed = false;
+      this.notify(action === "id" ? "Session ID copied." : action === "jira" ? "Jira link copied." : action === "link" ? "Session link copied." : "Conversation copied as Markdown.");
     }).catch(() => {
-      this.sessionMoveNotice = "Could not copy to the clipboard.";
-      this.sessionMoveFailed = true;
+      this.notify("Could not copy to the clipboard.", true);
     });
   };
 
@@ -1304,8 +1635,7 @@ export class HuiApp extends HuiElement {
     this.jiraCreateSuggestion = undefined;
     if (detail.backlogItemId) {
       this.jiraCreateBacklogItem = undefined;
-      this.kanbanNotice = detail.warning ?? `Created Jira work item ${detail.key} for the backlog task.`;
-      this.kanbanNoticeFailed = Boolean(detail.warning);
+      this.notify(detail.warning ?? `Created Jira work item ${detail.key} for the backlog task.`, Boolean(detail.warning));
       void this.refreshBacklog();
       return;
     }
@@ -1313,12 +1643,9 @@ export class HuiApp extends HuiElement {
       // Filing resolves the card now; the server snapshot confirms it.
       this.taskSuggestions = this.taskSuggestions.filter(({ id }) => id !== detail.suggestionId);
       this.taskSuggestionIndex = clampSuggestionIndex(this.taskSuggestionIndex, this.taskSuggestions.length);
-      this.note = detail.warning ?? `Created Jira work item ${detail.key}.`;
-      this.noteLevel = detail.warning ? "warning" : "info";
       void this.onPaneRegistryChange?.();
     }
-    this.sessionMoveNotice = detail.warning ?? `Created Jira work item ${detail.key}.`;
-    this.sessionMoveFailed = Boolean(detail.warning);
+    this.notify(detail.warning ?? `Created Jira work item ${detail.key}.`, Boolean(detail.warning));
     void this.refreshSessions(true);
   };
 
@@ -1336,18 +1663,15 @@ export class HuiApp extends HuiElement {
     this.jiraLinkSession = undefined;
     if (detail.backlogItemId) {
       this.jiraLinkBacklogItem = undefined;
-      this.kanbanNotice = `Linked Jira work item ${detail.key} to the backlog task.`;
-      this.kanbanNoticeFailed = false;
+      this.notify(`Linked Jira work item ${detail.key} to the backlog task.`);
       void this.refreshBacklog();
       return;
     }
     if (this.view === "kanban") {
-      this.kanbanNotice = `Linked Jira work item ${detail.key}.`;
-      this.kanbanNoticeFailed = false;
+      this.notify(`Linked Jira work item ${detail.key}.`);
       void this.refreshBacklog();
     }
-    this.sessionMoveNotice = `Linked Jira work item ${detail.key}.`;
-    this.sessionMoveFailed = false;
+    this.notify(`Linked Jira work item ${detail.key}.`);
     void this.refreshSessions(true);
   };
 
@@ -1380,17 +1704,15 @@ export class HuiApp extends HuiElement {
     this.draggingSessionId = "";
     this.sessionDropTarget = "";
     this.sessionMovePendingId = session.id;
-    this.sessionMoveNotice = `Moving ${session.title}…`;
-    this.sessionMoveFailed = false;
+    this.notify(`Moving ${session.title}…`);
     void renameSession(session.id, { group })
       .then((updated) => {
         if (this.selected?.id === updated.id) this.selected = { ...this.selected, group: updated.group };
-        this.sessionMoveNotice = `Moved ${updated.title} to ${sessionGroupLabel(updated.group)}.`;
+        this.notify(`Moved ${updated.title} to ${sessionGroupLabel(updated.group)}.`);
         return this.refreshSessions();
       })
       .catch((error: unknown) => {
-        this.sessionMoveNotice = error instanceof Error ? error.message : "Could not move that session.";
-        this.sessionMoveFailed = true;
+        this.notify(error instanceof Error ? error.message : "Could not move that session.", true);
       })
       .finally(() => {
         this.sessionMovePendingId = "";
@@ -1406,21 +1728,19 @@ export class HuiApp extends HuiElement {
       ...(stage ? [SESSION_STAGE_LABELS[stage]] : []),
     ].join(" · ");
     this.kanbanMovePendingId = session.id;
-    this.kanbanNotice = move.stage === null ? `Handing ${session.title} back to the agent…` : `Moving ${session.title} to ${target(move.stage, move.group)}…`;
-    this.kanbanNoticeFailed = false;
+    this.notify(move.stage === null ? `Handing ${session.title} back to the agent…` : `Moving ${session.title} to ${target(move.stage, move.group)}…`);
     // One PATCH, so a stage and group change land together or not at all.
     void renameSession(session.id, move)
       .then((updated) => {
         const label = SESSION_STAGE_LABELS[updated.stage ?? DEFAULT_SESSION_STAGE];
-        this.kanbanNotice = move.stage === null
+        this.notify(move.stage === null
           ? `${updated.title} follows its agent again (${label}).`
-          : `Moved ${updated.title} to ${target(move.stage ? updated.stage : undefined, move.group !== undefined ? updated.group : undefined)}.`;
+          : `Moved ${updated.title} to ${target(move.stage ? updated.stage : undefined, move.group !== undefined ? updated.group : undefined)}.`);
         if (this.selected?.id === updated.id) this.selected = { ...this.selected, group: updated.group, stage: updated.stage, stageOrigin: updated.stageOrigin };
         return this.refreshSessions(true);
       })
       .catch((error: unknown) => {
-        this.kanbanNotice = error instanceof Error ? error.message : "Could not move that session.";
-        this.kanbanNoticeFailed = true;
+        this.notify(error instanceof Error ? error.message : "Could not move that session.", true);
       })
       .finally(() => {
         this.kanbanMovePendingId = "";
@@ -1453,17 +1773,15 @@ export class HuiApp extends HuiElement {
     const current = !item.group || item.group === "ungrouped" ? "" : item.group;
     if (this.backlogPendingId || current === group) return;
     this.backlogPendingId = item.id;
-    this.kanbanNotice = `Moving ${item.title} to ${sessionGroupLabel(group)}…`;
-    this.kanbanNoticeFailed = false;
+    this.notify(`Moving ${item.title} to ${sessionGroupLabel(group)}…`);
     void setBacklogItemGroup(item.id, group)
       .then((view) => {
         this.backlog = view.items;
         this.backlogJira = view.jira;
-        this.kanbanNotice = `Moved ${item.title} to ${sessionGroupLabel(group)}.`;
+        this.notify(`Moved ${item.title} to ${sessionGroupLabel(group)}.`);
       })
       .catch((error: unknown) => {
-        this.kanbanNotice = error instanceof Error ? error.message : "Could not move that backlog item.";
-        this.kanbanNoticeFailed = true;
+        this.notify(error instanceof Error ? error.message : "Could not move that backlog item.", true);
       })
       .finally(() => { this.backlogPendingId = ""; });
   };
@@ -1475,8 +1793,7 @@ export class HuiApp extends HuiElement {
 
   private backlogStarted = (session: SessionView, item: BacklogItem) => {
     this.backlogStart = undefined;
-    this.kanbanNotice = `Started “${session.title}” from the backlog in ${SESSION_STAGE_LABELS[session.stage ?? DEFAULT_SESSION_STAGE]}.`;
-    this.kanbanNoticeFailed = false;
+    this.notify(`Started “${session.title}” from the backlog in ${SESSION_STAGE_LABELS[session.stage ?? DEFAULT_SESSION_STAGE]}.`);
     this.backlog = this.backlog.filter(({ id }) => id !== item.id);
     void this.refreshSessions(true);
     void this.refreshBacklog();
@@ -1498,8 +1815,7 @@ export class HuiApp extends HuiElement {
       if (item.jira) window.open(item.jira.url, "_blank", "noopener,noreferrer");
     } else if (action === "copy") {
       void writeClipboardText(backlogItemMarkdown(item)).then((copied) => {
-        this.kanbanNotice = copied ? `Copied “${item.title}”.` : "Could not copy to the clipboard.";
-        this.kanbanNoticeFailed = !copied;
+        this.notify(copied ? `Copied “${item.title}”.` : "Could not copy to the clipboard.", !copied);
       });
     } else if (action === "remove") {
       this.backlogRemove = item;
@@ -1519,13 +1835,11 @@ export class HuiApp extends HuiElement {
       .then((view) => {
         this.backlog = view.items;
         this.backlogJira = view.jira;
-        this.kanbanNotice = `Removed “${item.title}” from the backlog.`;
-        this.kanbanNoticeFailed = false;
+        this.notify(`Removed “${item.title}” from the backlog.`);
         this.backlogRemove = undefined;
       })
       .catch((error: unknown) => {
-        this.kanbanNotice = error instanceof Error ? error.message : "Could not remove that task.";
-        this.kanbanNoticeFailed = true;
+        this.notify(error instanceof Error ? error.message : "Could not remove that task.", true);
         this.backlogRemove = undefined;
       })
       .finally(() => { this.backlogPendingId = ""; });
@@ -1553,8 +1867,7 @@ export class HuiApp extends HuiElement {
     else if (action === "copy:jira") {
       const url = session.jiraIssues?.at(-1)?.url;
       void (url ? writeClipboardText(url) : Promise.resolve(false)).then((copied) => {
-        this.kanbanNotice = copied ? "Jira link copied." : "Could not copy to the clipboard.";
-        this.kanbanNoticeFailed = !copied;
+        this.notify(copied ? "Jira link copied." : "Could not copy to the clipboard.", !copied);
       });
     } else if (action === "jira:create") this.openJiraCreate(session);
     else this.openJiraLink(session);
@@ -1605,16 +1918,14 @@ export class HuiApp extends HuiElement {
     if (!next) return;
     this.groupMenuFor = "";
     this.groupReorderPending = true;
-    this.sessionMoveNotice = `Moving ${sessionGroupLabel(group)}…`;
-    this.sessionMoveFailed = false;
+    this.notify(`Moving ${sessionGroupLabel(group)}…`);
     void reorderSessionGroups(next)
       .then(({ revision, groups }) => {
         this.receiveSessionList(revision, groups);
-        this.sessionMoveNotice = `Moved ${sessionGroupLabel(group)}.`;
+        this.notify(`Moved ${sessionGroupLabel(group)}.`);
       })
       .catch((error: unknown) => {
-        this.sessionMoveNotice = error instanceof Error ? error.message : "Could not reorder the groups.";
-        this.sessionMoveFailed = true;
+        this.notify(error instanceof Error ? error.message : "Could not reorder the groups.", true);
         return this.refreshSessions(true);
       })
       .finally(() => {
@@ -1643,6 +1954,8 @@ export class HuiApp extends HuiElement {
       this.onPaneNavigate(session.id);
       return;
     }
+    // Choosing a conversation shows its chat; its Work pane stays one selector choice away on narrow screens.
+    this.workNarrowShown = false;
     const existing = this.sessionLayout && sessionPanes(this.sessionLayout).find((pane) => isChatPane(pane) && pane.sessionId === session.id);
     if (existing && this.sessionLayout) this.sessionLayout = focusSessionPane(this.sessionLayout, existing.id);
     this.navigate({ kind: "session", id: session.id });
@@ -1685,24 +1998,183 @@ export class HuiApp extends HuiElement {
     if (this.sessionLayout) this.commitSessionLayout(splitSessionPane(this.sessionLayout, pane.id, pane.sessionId, direction));
   };
 
-  private openTerminalPane = async (pane: SessionPane, direction: SplitDirection = "right", create = false) => {
-    if (!this.sessionLayout) return;
-    const existing = create ? undefined : (await listTerminals(pane.sessionId)).find(({ status }) => status === "running");
-    const terminal = existing ?? await createTerminal(pane.sessionId);
-    if (!this.sessionLayout) return;
-    const openPane = sessionPanes(this.sessionLayout).find(({ terminalId }) => terminalId === terminal.id);
-    this.commitSessionLayout(openPane
-      ? focusSessionPane(this.sessionLayout, openPane.id)
-      : splitTerminalPane(this.sessionLayout, pane.id, pane.sessionId, terminal.id, direction));
+  /* ── Work pane ────────────────────────────────────────────────────────── */
+
+  /** Unsubscribes the narrow chooser from the Work view kinds' availability changes. */
+  private stopWorkAvailability: (() => void)[] = [];
+
+  /** Registers the built-in Work view kinds, reads the browser-local record and follows the narrow breakpoint. */
+  private setupWorkPane() {
+    registerWorkViewKind(terminalWorkViewKind({
+      fontFamily: () => this.settings.fontTerminal,
+      unavailable: (sessionId) => sessionId && this.listedSession(sessionId)?.worker
+        ? "Terminals run on this gateway's machine; this conversation runs on a remote worker."
+        : undefined,
+    }));
+    registerWorkViewKind(browserWorkViewKind({ enabled: () => this.settings.browser.enabled }));
+    registerWorkViewKind(filesWorkViewKind);
+    registerWorkViewKind(vscodeWorkViewKind);
+    // A launcher's reason can change outside this app's state (VS Code's gateway status): redraw the narrow chooser.
+    for (const stop of this.stopWorkAvailability) stop();
+    this.stopWorkAvailability = workViewKinds().flatMap((kind) => kind.onAvailabilityChange ? [kind.onAvailabilityChange(() => this.requestUpdate())] : []);
+    try { this.workPanes = parseWorkPaneStore(JSON.parse(localStorage.getItem(WORK_PANE_KEY) ?? "null")); } catch { this.workPanes = {}; }
+    this.workMedia = window.matchMedia(SESSION_SPLIT_MEDIA);
+    this.workNarrow = this.workMedia.matches;
+    this.workMedia.addEventListener("change", this.onWorkMediaChange);
+  }
+
+  private persistWorkPanes() {
+    try { localStorage.setItem(WORK_PANE_KEY, JSON.stringify(serializeWorkPaneStore(this.workPanes))); }
+    catch { /* The pane still works for this page if browser storage is unavailable. */ }
+  }
+
+  private commitWorkPanes(store: WorkPaneStore) {
+    if (store === this.workPanes) return;
+    this.workPanes = store;
+    this.persistWorkPanes();
+  }
+
+  /** The conversation the Work pane follows: the focused chat pane's. */
+  private workSessionId(): string | undefined {
+    if (this.embeddedPane || this.view !== "home" || this.settingsOpen || !this.selected || !this.sessionLayout) return undefined;
+    return activeSessionPane(this.sessionLayout).sessionId;
+  }
+
+  private workPaneElement(): WorkPane | null {
+    return this.renderRoot.querySelector<WorkPane>("hui-work-pane");
+  }
+
+  /** Shows `ref` in its conversation's Work pane, focusing that conversation's chat pane and expanding the pane (or,
+   * on narrow screens, opening the Work destination). */
+  private showWorkView(sessionId: string, ref: WorkViewRef, launched = false) {
+    const layout = this.sessionLayout;
+    if (layout && activeSessionPane(layout).sessionId !== sessionId) {
+      const chat = sessionPanes(layout).find((pane) => isChatPane(pane) && pane.sessionId === sessionId);
+      if (chat) this.commitSessionLayout(focusSessionPane(layout, chat.id));
+    }
+    const key = workViewKey(ref);
+    if (launched) this.workLaunchedKey = key;
+    this.workError = "";
+    this.commitWorkPanes(openWorkView(this.workPanes, sessionId, ref));
+    if (this.workNarrow) this.workNarrowShown = true;
+    else this.workPaneElement()?.reveal(sessionId);
+    // Views that do not take focus themselves leave it on their tab.
+    if (!launched || ref.kind !== "terminal") void this.updateComplete.then(() => this.workPaneElement()?.focusPane("active"));
+  }
+
+  /** The chat header's **Open terminal**: the conversation's open terminal tab, else its first running terminal,
+   * else a new one. */
+  private openTerminalWorkView = async (pane: SessionPane) => {
+    const open = sessionWorkPane(this.workPanes, pane.sessionId).views.find((view) => view.kind === "terminal");
+    if (open) { this.showWorkView(pane.sessionId, open); return; }
+    const running = (await listTerminals(pane.sessionId)).find(({ status }) => status === "running");
+    const terminal = running ?? await createTerminal(pane.sessionId);
+    this.showWorkView(pane.sessionId, { kind: "terminal", terminalId: terminal.id }, !running);
   };
 
-  /** The chat's inline preview and header button open (or focus) one browser
-   * panel per session, beside the chat that owns it. */
-  private openBrowserPane = (pane: SessionPane) => {
-    const layout = this.sessionLayout;
-    if (!layout) return;
-    const existing = browserPaneFor(layout, pane.sessionId);
-    this.commitSessionLayout(existing ? focusSessionPane(layout, existing.id) : splitBrowserPane(layout, pane.id, pane.sessionId, "right"));
+  /** The chat's inline browser preview and header globe open (or focus) the conversation's one browser view. */
+  private openBrowserWorkView = (pane: SessionPane) => {
+    this.showWorkView(pane.sessionId, { kind: "browser" });
+  };
+
+  /** A launcher in the Work pane ("+" menu, empty state, shortcut) for the focused conversation. */
+  private launchWorkView = async (kindName: string) => {
+    const sessionId = this.workSessionId();
+    const kind = workViewKind(kindName);
+    if (!sessionId || !kind || this.workLaunching) return;
+    const reason = kind.unavailable?.(sessionId);
+    if (reason) { this.workError = reason; this.revealWorkPane(sessionId); return; }
+    this.workLaunching = kindName;
+    this.workError = "";
+    try {
+      const ref = await kind.create(sessionId);
+      this.showWorkView(sessionId, ref, true);
+    } catch (error) {
+      this.workError = error instanceof Error ? error.message : `Could not open ${kind.label}.`;
+      this.revealWorkPane(sessionId);
+    } finally {
+      this.workLaunching = "";
+    }
+  };
+
+  private revealWorkPane(sessionId: string) {
+    this.commitWorkPanes(setWorkPaneOpen(this.workPanes, sessionId, true));
+    if (this.workNarrow) this.workNarrowShown = true;
+    else this.workPaneElement()?.reveal(sessionId);
+  }
+
+  private toggleWorkPane() {
+    const sessionId = this.workSessionId();
+    if (!sessionId) return;
+    if (this.workNarrow) {
+      this.workNarrowShown = !this.workNarrowShown;
+      if (this.workNarrowShown) void this.updateComplete.then(() => this.workPaneElement()?.focusPane("active"));
+      else this.focusActiveComposer();
+      return;
+    }
+    // Collapsed to its rail for lack of room counts as hidden: the shortcut shows it anyway.
+    const element = this.workPaneElement();
+    const open = !(element?.expanded ?? sessionWorkPane(this.workPanes, sessionId).open);
+    if (open && element) { element.expand(); return; }
+    this.commitWorkPanes(setWorkPaneOpen(this.workPanes, sessionId, open));
+    if (open) void this.updateComplete.then(() => this.workPaneElement()?.focusPane("active"));
+    else this.focusActiveComposer();
+  }
+
+  /** Maximizes the focused conversation's Work pane over its chat columns, or restores them (desktop only; narrow
+   * screens already show one panel at a time). The chat stays mounted underneath. */
+  private toggleWorkPaneMaximized(maximized?: boolean) {
+    const sessionId = this.workSessionId();
+    if (!sessionId || this.workNarrow) return;
+    const next = maximized ?? !workPaneMaximized(sessionWorkPane(this.workPanes, sessionId), false);
+    this.commitWorkPanes(setWorkPaneMaximized(this.workPanes, sessionId, next));
+    // Focus left in the now hidden chat moves into the pane; focus already in the pane (a terminal) stays put.
+    if (next) void this.updateComplete.then(() => {
+      const element = this.workPaneElement();
+      if (element && !element.contains(document.activeElement)) element.focusPane("active");
+    });
+  }
+
+  /** Escape inside the pane, or **Back to chat**: return to the conversation without touching its turn. A maximized
+   * pane hides the chat, so Escape goes to the panel selector, the way back to it; it never restores by itself. */
+  private leaveWorkPane = () => {
+    if (this.workNarrow) this.workNarrowShown = false;
+    const sessionId = this.workSessionId();
+    if (sessionId && workPaneMaximized(sessionWorkPane(this.workPanes, sessionId), this.workNarrow)) {
+      this.renderRoot.querySelector<HTMLElement>(".hui-panel-selector .picker-select__trigger")?.focus({ preventScroll: true });
+      return;
+    }
+    this.focusActiveComposer();
+  };
+
+  private focusActiveComposer() {
+    void this.updateComplete.then(() => {
+      const app = this.activePaneApp();
+      const target = app?.querySelector<HTMLElement>("textarea") ?? app?.querySelector<HTMLElement>(".chat-pane__header");
+      target?.focus({ preventScroll: true });
+    });
+  }
+
+  /** Launcher shortcuts and the pane toggle, while a conversation is shown and nothing modal is open. */
+  private readonly onWorkShortcut = (event: KeyboardEvent) => {
+    if (!event.altKey || !this.workSessionId() || this.commandPaletteOpen || document.querySelector("dialog[open]")) return;
+    if (matchesShortcut(event, WORK_PANE_TOGGLE_SHORTCUT)) {
+      event.preventDefault();
+      event.stopPropagation();
+      this.toggleWorkPane();
+      return;
+    }
+    if (matchesShortcut(event, WORK_PANE_MAXIMIZE_SHORTCUT)) {
+      event.preventDefault();
+      event.stopPropagation();
+      this.toggleWorkPaneMaximized();
+      return;
+    }
+    const kind = workViewKinds().find((candidate) => candidate.shortcut && matchesShortcut(event, candidate.shortcut));
+    if (!kind) return;
+    event.preventDefault();
+    event.stopPropagation();
+    void this.launchWorkView(kind.kind);
   };
 
   private openTerminal = async () => {
@@ -1784,6 +2256,7 @@ export class HuiApp extends HuiElement {
     this.streamStop?.();
     this.streamStop = undefined;
     this.opening = true;
+    this.openError = "";
     this.streaming = false;
     this.transcript = [];
     this.subagents = [];
@@ -1828,8 +2301,9 @@ export class HuiApp extends HuiElement {
       this.requestModelsWhenReady(id, opened.session.status);
     } catch (error) {
       if (isCurrentSessionRequest(id, this.selected?.id, requestToken, this.openRequestToken)) {
-        this.note = error instanceof Error ? error.message : "Could not open that session.";
-        this.noteLevel = "error";
+        // In place of the conversation, which never arrived: an empty transcript
+        // would read as a session with nothing in it.
+        this.openError = error instanceof Error ? error.message : "Could not open that session.";
       }
     } finally {
       if (isCurrentSessionRequest(id, this.selected?.id, requestToken, this.openRequestToken)) {
@@ -1913,7 +2387,8 @@ export class HuiApp extends HuiElement {
       ? 0
       : clampSuggestionIndex(this.taskSuggestionIndex, this.taskSuggestions.length);
     if (previousTasks !== nextTasks) void this.refreshSessions();
-    const question = snapshot.questions[0];
+    // The open question stays while it is pending, whatever else arrives meanwhile.
+    const question = snapshot.questions.find(({ id }) => id === this.question?.id) ?? snapshot.questions[0];
     if (question) this.showQuestion(question);
     else if (this.question) {
       this.question = undefined;
@@ -1951,7 +2426,8 @@ export class HuiApp extends HuiElement {
       return;
     }
     if (event.type === "question") {
-      this.showQuestion(event.question);
+      // Another one waits for the snapshot after the open one is answered.
+      if (!this.question) this.showQuestion(event.question);
       return;
     }
     if (event.type === "thinking_level") {
@@ -1968,6 +2444,8 @@ export class HuiApp extends HuiElement {
       ({ note: this.note, noteLevel: this.noteLevel } = noteAfterRunOutcome({ note: this.note, noteLevel: this.noteLevel }, this.recoveryNotice));
       this.recoveryNotice = "";
     }
+    // Views of what the agent may have changed (the Files view) refresh once its turn is over.
+    if (event.type === "settled" && this.selected) announceTurnEnd(this.selected.id);
     switch (event.type) {
       case "text":
       case "thinking":
@@ -2110,6 +2588,20 @@ export class HuiApp extends HuiElement {
     this.setDraft(draft);
     void this.persistComposerDraft();
   };
+
+  /** The ChatGPT login GPT-Live calls use; a read under way is shared. A failed read leaves Call hidden. */
+  private loadCallsStatus(): Promise<void> {
+    this.callsStatusLoading ??= loadCallsStatus().then(
+      (status) => { this.callsStatus = status; },
+      () => { this.callsStatus = undefined; },
+    ).finally(() => { this.callsStatusLoading = undefined; });
+    return this.callsStatusLoading;
+  }
+
+  /** Call shows whenever GPT-Live can run: with a ChatGPT login. */
+  private callsAvailable(): boolean {
+    return callsReady(this.callsStatus);
+  }
 
   private isUpdateSession(session: SessionView | undefined): boolean {
     return session?.title === HUI_UPDATE_SESSION_TITLE && session.group === "";
@@ -2335,7 +2827,7 @@ export class HuiApp extends HuiElement {
 
   private commandKeydown = (event: KeyboardEvent) => {
     if (this.slashQuery === null || event.isComposing || !(event.target instanceof HTMLTextAreaElement)) return;
-    const commands = filterSlashCommands(this.slashQuery?.startsWith("$") ? this.commands : composerCommands(this.selected ? this.commands : [], !!this.selected), this.slashQuery);
+    const commands = filterSlashCommands(this.slashQuery?.startsWith("$") ? this.commands : composerCommands(this.selected ? this.commands : [], !!this.selected, Boolean(this.selected?.bot)), this.slashQuery);
     const paths = this.localPathQuery ? this.localPaths : [];
     const count = commands.length + paths.length;
     if (event.key === "Escape") {
@@ -2480,6 +2972,13 @@ export class HuiApp extends HuiElement {
     if (!session || (!trimmed && !hasImage) || this.opening || this.sending || this.connection !== "live") {
       return;
     }
+    // The gateway refuses these for a bot's permanent chat; say why without a round trip.
+    const botRefusal = session.bot ? botChatCommandRefusal(trimmed) : undefined;
+    if (botRefusal) {
+      this.note = botRefusal;
+      this.noteLevel = "error";
+      return;
+    }
     const clearCommand = parseClearCommand(trimmed);
     const reloadCommand = parseReloadCommand(trimmed);
     const command = clearCommand ? "clear" : reloadCommand ? "reload" : undefined;
@@ -2588,18 +3087,24 @@ export class HuiApp extends HuiElement {
       this.transcript = appendPendingUser(this.transcript, pendingId, trimmed, attachments.map((item) => ({ name: item.name, kind: item.kind, mimeType: item.mimeType, ...(attachmentPreview(item) ? { url: attachmentPreview(item) } : {}) })));
     }
     const request = mode === "steer" ? steerSession : mode === "followUp" ? followUpSession : sendPrompt;
-    void request(session.id, trimmed, attachments)
-      .then(() => {
+    // A resend of a send that failed on the way keeps its id, whatever the mode is now: a prompt the gateway took
+    // started a run, so its resend comes back as a steer or follow-up.
+    const { requestId, earlierRow } = this.sendRequests.take(session.id, trimmed, attachments);
+    void request(session.id, trimmed, attachments, requestId)
+      .then(({ duplicate }) => {
         if (!isSelectedSession(session.id, this.selected?.id)) return;
-        if (mode === "prompt") this.transcript = settlePendingUser(this.transcript, pendingId, true);
+        // The gateway had the first attempt all along: its message is in the session, so drop the local copies.
+        if (duplicate) this.transcript = this.transcript.filter((item) => item.id !== pendingId && item.id !== earlierRow);
+        else if (mode === "prompt") this.transcript = settlePendingUser(this.transcript, pendingId, true);
         this.streaming = streamingAfterSubmission(
           this.streaming,
           mode,
-          "accepted",
+          duplicate ? "duplicate" : "accepted",
           this.selected?.status ?? session.status,
         );
       })
       .catch(async (error: unknown) => {
+        this.sendRequests.failed(session.id, requestId, trimmed, attachments, mode === "prompt" ? pendingId : undefined);
         const stillSelected = isSelectedSession(session.id, this.selected?.id);
         if (stillSelected && mode === "prompt") this.transcript = settlePendingUser(this.transcript, pendingId, false);
         const stored = stillSelected
@@ -2806,6 +3311,30 @@ export class HuiApp extends HuiElement {
       });
   };
 
+  /** Asks where the fork works (same checkout or a new worktree); the dialog copies the history and `forked` opens
+   * the copy. The source session is left running or idle as it was. */
+  private forkFromMessage = (entryId: string) => {
+    const session = this.selected;
+    if (!session || this.opening || this.forkTarget) return;
+    void import("./components/fork-dialog.ts").then(() => { this.forkTarget = { session, entryId }; });
+  };
+
+  private forked = async (forked: SessionView) => {
+    this.forkTarget = undefined;
+    await this.refreshSessions();
+    this.selectSession(this.groups.flatMap((group) => group.sessions).find((candidate) => candidate.id === forked.id) ?? forked);
+  };
+
+  private renderForkDialog() {
+    if (!this.forkTarget) return null;
+    return html`<hui-fork-dialog
+      .target=${this.forkTarget}
+      .branchPrefix=${this.settings.branchPrefix}
+      .onClose=${() => { this.forkTarget = undefined; }}
+      .onForked=${this.forked}
+    ></hui-fork-dialog>`;
+  }
+
   private continueRun = () => {
     const session = this.selected;
     if (!session || this.streaming || this.opening || this.continuing) return;
@@ -2857,14 +3386,15 @@ export class HuiApp extends HuiElement {
       });
   };
 
-  private answerQuestion = (answer: { value?: string; confirmed?: boolean; cancelled?: boolean }) => {
+  private answerQuestion = (answer: QuestionResponse) => {
     const session = this.selected;
     const question = this.question;
     if (!session || !question) return;
     this.question = undefined;
     void answerQuestion(session.id, question.id, answer)
       .then(() => {
-        if (isSelectedSession(session.id, this.selected?.id)) this.restoreQuestionFocus();
+        // The next question may already be showing (parallel calls): leave focus in it.
+        if (isSelectedSession(session.id, this.selected?.id) && !this.question) this.restoreQuestionFocus();
       })
       .catch((error: unknown) => {
         if (!isSelectedSession(session.id, this.selected?.id)) return;
@@ -2875,6 +3405,8 @@ export class HuiApp extends HuiElement {
   };
 
   private showQuestion(question: RuntimeQuestion) {
+    // Every snapshot re-sends the open question: keep it, and the operator's focus in it.
+    if (this.question?.id === question.id) return;
     if (!this.question) {
       const composer = this.renderRoot.querySelector?.(".agent-chat__composer-combobox textarea");
       this.questionReturnFocus = composer instanceof HTMLElement
@@ -3256,7 +3788,9 @@ export class HuiApp extends HuiElement {
   private loadDirectorySuggestions(input: string, worker?: string) {
     const marker = ++this.directorySuggestionRequest;
     void loadWorkingDirectorySuggestions(input, worker).then((directories) => {
-      if (marker === this.directorySuggestionRequest) this.directorySuggestions = directories;
+      if (marker !== this.directorySuggestionRequest) return;
+      this.directorySuggestionsFrom = worker ?? "";
+      this.directorySuggestions = directories;
     }).catch(() => {
       if (marker === this.directorySuggestionRequest) this.directorySuggestions = [];
     });
@@ -3311,6 +3845,7 @@ export class HuiApp extends HuiElement {
     if (this.subagentExpiryTimer !== undefined) window.clearTimeout(this.subagentExpiryTimer);
     this.subagentExpiryTimer = undefined;
     this.opening = empty.opening;
+    this.openError = "";
     this.streaming = empty.streaming;
     this.note = empty.note;
     this.noteLevel = empty.noteLevel;
@@ -3380,6 +3915,944 @@ export class HuiApp extends HuiElement {
     this.collapsed = next;
     localStorage.setItem(COLLAPSED_KEY, JSON.stringify([...next]));
   };
+
+  /* ── bots ─────────────────────────────────────────────────────────────── */
+
+  /** Session lists never show bot chats; the Bots tab lists their bots. The
+   * unfiltered registry stays in `groups` so a bot pane can open its chat. */
+  private listedGroupsSource: readonly SessionGroup[] | undefined;
+  private listedGroupsCache: readonly SessionGroup[] = [];
+  private get listedGroups(): readonly SessionGroup[] {
+    if (this.listedGroupsSource !== this.groups) {
+      this.listedGroupsSource = this.groups;
+      this.listedGroupsCache = withoutBotSessions(this.groups);
+    }
+    return this.listedGroupsCache;
+  }
+
+  private activeBot(): BotView | undefined {
+    return this.bots.find((bot) => bot.id === this.activeBotId);
+  }
+
+  private botPaneApp(): HuiApp | undefined {
+    return this.renderRoot.querySelector<HuiApp>(".bot-workspace__pane") ?? undefined;
+  }
+
+  /** Session statuses arrive on their own stream and win over a list's
+   * snapshot; the bot on screen is read, as its detailed stream says. */
+  private withLiveBotState(bots: readonly BotView[]): BotView[] {
+    return bots.map((bot) => {
+      const status = this.sessionStatuses.get(bot.sessionId);
+      const presented = bot.unread && this.isSessionPresented(bot.sessionId);
+      return status || presented ? { ...bot, ...(status ? { status } : {}), ...(presented ? { unread: false } : {}) } : bot;
+    });
+  }
+
+  /** The gateway's bot stream while the Bots tab is enabled. It starts with the
+   * whole list, then sends what changed; a gateway without it falls back to
+   * reading the list whenever a bot's session changes status. */
+  private syncBotsStream() {
+    if (this.embeddedPane) return;
+    const wanted = botsEnabled(this.settings) && !this.botsStreamUnsupported;
+    if (wanted && !this.botsStreamStop) {
+      this.botsStreamStop = subscribeBots({
+        onUpdate: (update, first) => {
+          if (!isNewBotsFrame(update.revision, first, this.botsRevision)) return;
+          this.botsRevision = update.revision;
+          this.bots = this.withLiveBotState(applyBotsUpdate(this.bots, update));
+          this.botsLoaded = true;
+          this.botsError = "";
+          this.followBotMemory();
+          this.followBotSoul();
+          this.followBotTools();
+          this.followBotTriggers();
+        },
+        onConnection: (state) => {
+          this.botsStreamLive = state === "live";
+          if (state === "live") this.botsStreamRetried = false;
+          if (state === "reconnecting" && !this.botsLoaded) this.botsError = "Could not reach the gateway for the bot list. Retrying…";
+          if (state === "unsupported") {
+            this.botsStreamUnsupported = true;
+            this.botsStreamStop = undefined;
+            void this.refreshBots();
+          }
+          // A 409: bots are off on the gateway, turned off on another screen (which ends this stream) or not on there
+          // yet. Once this screen's own writes have landed the settings are read again and followed; if they still say
+          // bots are on, the stream is asked once more.
+          if (state === "off") {
+            this.botsStreamStop = undefined;
+            const retry = !this.botsStreamRetried;
+            void settingsWritten().then(refreshSettings).then((settings) => {
+              if (!settings) return;
+              this.settings = settings;
+              if (retry && botsEnabled(settings)) {
+                this.botsStreamRetried = true;
+                this.syncBotsStream();
+              }
+            });
+          }
+        },
+      });
+    } else if (!wanted && this.botsStreamStop) {
+      this.botsStreamStop();
+      this.botsStreamStop = undefined;
+      this.botsStreamLive = false;
+    }
+  }
+
+  /** The list is current when the stream runs; otherwise it is read now. */
+  private ensureBots() {
+    if (this.botsStreamUnsupported) void this.refreshBots();
+    else this.syncBotsStream();
+    // The roster's + offers the workers a new bot can run on.
+    this.loadLaunchWorkers();
+  }
+
+  /** Retry from an error state: restart a stopped stream or read the list. */
+  private retryBots = () => {
+    this.botsError = "";
+    if (this.botsStreamUnsupported || this.botsStreamLive) {
+      void this.refreshBots();
+      return;
+    }
+    this.botsStreamStop?.();
+    this.botsStreamStop = undefined;
+    this.syncBotsStream();
+  };
+
+  /** One read at a time; a change that lands meanwhile reads once more after it.
+   * Only used without a live stream, whose newer frames a read could overwrite. */
+  private refreshBots(): Promise<void> {
+    if (this.embeddedPane || this.botsStreamLive) return Promise.resolve();
+    if (this.botsInFlight) {
+      this.botsAgain = true;
+      return this.botsInFlight;
+    }
+    this.botsLoading = true;
+    this.botsInFlight = (async () => {
+      try {
+        do {
+          this.botsAgain = false;
+          try {
+            const bots = await loadBots();
+            // A stream that went live meanwhile is newer than this read.
+            if (!this.botsStreamLive) this.bots = this.withLiveBotState(bots);
+            this.botsLoaded = true;
+            this.botsError = "";
+          } catch (error) {
+            this.botsError = error instanceof Error ? error.message : "Could not read bots.";
+          }
+        } while (this.botsAgain);
+      } finally {
+        this.botsLoading = false;
+        this.botsInFlight = undefined;
+      }
+    })();
+    return this.botsInFlight;
+  }
+
+  private setSidebarTab = (tab: SidebarTab) => {
+    this.botMenuFor = "";
+    if (this.sidebarTab === tab) return;
+    this.sidebarTab = tab;
+    writeSidebarTab(tab);
+    if (tab === "bots") this.ensureBots();
+  };
+
+  private selectBot = (bot: BotView) => {
+    this.botMenuFor = "";
+    this.navigate({ kind: "bot", id: bot.id });
+  };
+
+  /**
+   * Bots were turned on or off (Settings → Labs → Bots): the bot stream follows, and with bots off a bot's page goes
+   * home and a call hangs up. Nothing is forgotten here: the roster, the remembered Agents | Bots choice and the panel
+   * come back with them.
+   */
+  private followBotsSetting() {
+    if (this.embeddedPane) return;
+    // The gateway refuses the bot stream until it has the setting too: with bots on, the stream starts once this
+    // screen's own write has landed; with them off, it stops at once.
+    if (botsEnabled(this.settings)) {
+      void settingsWritten().then(() => this.syncBotsStream());
+      return;
+    }
+    this.syncBotsStream();
+    this.botMenuFor = "";
+    this.botSheetOpen = false;
+    this.botImports.close();
+    if (this.voice.call) this.voice.hangUp();
+    // A bot's page goes home, and so does a bot's chat open as a session.
+    if (this.view === "bot" || (this.view === "home" && this.selected?.bot)) this.navigate({ kind: "home" }, true);
+  }
+
+  /** The Agents | Bots switch shows exactly while Settings → Labs → Bots is on. Without it the sidebar is the one it
+   * was before bots, and a remembered Bots choice shows Agents until the switch is back. */
+  private shellBotsProps(): ShellBotsProps | undefined {
+    if (!botsEnabled(this.settings)) return undefined;
+    return {
+      tab: this.sidebarTab,
+      onTab: this.setSidebarTab,
+      search: this.botSearch,
+      onSearch: (value) => { this.botSearch = value; },
+      onNew: () => this.createNewBot(),
+      workers: this.launchWorkers,
+      onCreate: (worker) => this.createNewBot(worker),
+      onImport: this.botImports.openImport,
+      onWorkersMenu: () => this.loadLaunchWorkers(),
+      creating: this.botCreating,
+      unread: this.bots.some((bot) => bot.unread && !bot.archived && !bot.hidden),
+      roster: {
+        bots: this.bots,
+        loading: this.botsLoading || !this.botsLoaded,
+        error: this.botsError,
+        query: this.botSearch,
+        showHidden: this.showHiddenBots,
+        showArchived: this.showArchivedBots,
+        activeBotId: this.view === "bot" ? this.activeBotId : "",
+        menuFor: this.botMenuFor,
+        pendingId: this.botPendingId,
+        now: Date.now(),
+        onSelect: this.selectBot,
+        onNew: () => this.createNewBot(),
+        creating: this.botCreating,
+        onEdit: this.openEditBot,
+        onSetHidden: this.setBotHidden,
+        onArchive: this.requestArchiveBot,
+        onToggleShowHidden: () => { this.showHiddenBots = !this.showHiddenBots; },
+        onToggleShowArchived: () => { this.showArchivedBots = !this.showArchivedBots; },
+        onRestore: this.restoreBotFromRoster,
+        onDelete: this.requestDeleteBot,
+        onExport: (bot) => { this.botMenuFor = ""; this.botImports.openExport(bot); },
+        onImport: this.botImports.openImport,
+        onRetry: this.retryBots,
+        onToggleMenu: (id) => { this.botMenuFor = this.botMenuFor === id ? "" : id; },
+        onCloseMenu: () => { this.botMenuFor = ""; },
+      },
+    };
+  }
+
+  /**
+   * + (and the empty roster's New bot), as in Grok Bot: no form. The bot is created at once, on this machine or, from
+   * +'s menu while a remote worker exists, on the worker chosen, where it stays. It has no name, so the gateway calls it
+   * "New Bot", and everything else starts on the defaults with the face its id picks; its chat opens, where its first
+   * turn has already started asking what to call it, and its Settings tab changes the rest. A refusal (a worker HUI is
+   * not connected to, say) shows in the roster's notice.
+   */
+  private createNewBot = (worker?: string) => {
+    this.botMenuFor = "";
+    if (this.botCreating) return;
+    this.botCreating = true;
+    // A worker can take a moment: the roster says where the bot is being made.
+    if (worker) {
+      this.notify(`Creating a bot on ${this.launchWorkers.find((candidate) => candidate.id === worker)?.name ?? "the worker"}…`);
+    }
+    void createBot(worker ? { worker } : {})
+      .then((bot) => {
+        this.bots = upsertBot(this.bots, bot);
+        this.notify("");
+        void this.refreshBots();
+        // The new chat is a new session; open the bot once the list has it.
+        void this.refreshSessions(true);
+        this.navigate({ kind: "bot", id: bot.id });
+      })
+      .catch((error: unknown) => {
+        this.notify(error instanceof Error ? error.message : "Could not create a bot.", true);
+      })
+      .finally(() => {
+        this.botCreating = false;
+      });
+  };
+
+  /** The roster's Edit: the bot's chat with its Settings tab, docked beside it on wide screens, as the sheet on
+   * narrow ones. */
+  private openEditBot = (bot: BotView) => {
+    this.botMenuFor = "";
+    this.showBotSettings(bot.id);
+  };
+
+  /** Opens a bot's Settings tab, on its chat (navigating there first) with the focus on the tab. */
+  private showBotSettings(botId: string) {
+    if (this.view !== "bot" || this.activeBotId !== botId || this.settingsOpen) this.navigate({ kind: "bot", id: botId });
+    // Without the Bots tab the bot route goes home instead.
+    if (this.view !== "bot" || this.activeBotId !== botId) return;
+    this.botPanel = { open: this.mobileNavLayout ? this.botPanel.open : true, tab: "settings" };
+    writeBotPanel(this.botPanel);
+    if (this.mobileNavLayout) this.botSheetOpen = true;
+    this.automationFormError = "";
+    this.automationActionError = "";
+    this.syncBotPanelData();
+    void this.updateComplete.then(() => this.renderRoot.querySelector<HTMLElement>('.bot-panel [role="tab"][aria-selected="true"]')?.focus());
+  }
+
+  /** Ctrl+Shift+, (⇧⌘,) on a bot's chat, as in Grok Bot: its Settings tab when that is not showing, closed when it is. */
+  private toggleBotSettings() {
+    const bot = this.activeBot();
+    if (!bot || bot.archived || !this.listedSession(bot.sessionId)) return;
+    if (this.botPanelVisible() && this.botPanel.tab === "settings") this.closeBotPanel();
+    else this.showBotSettings(bot.id);
+  }
+
+  /** Settings' utility model by its catalog name, the default of a bot's utility model. */
+  private utilityModelName(): string | undefined {
+    const ref = this.settings.models.utility;
+    if (!ref) return undefined;
+    return this.pi?.model.catalog.find((entry) => `${entry.provider}/${entry.id}` === ref)?.name ?? ref;
+  }
+
+  /** The Calls section: GPT-Live's default voice, which a bot's "Default" follows, and whether a ChatGPT login lets
+   * calls run. That is left out until the gateway has said, so a signed-in operator never sees the hint flash. */
+  private botSettingsCall(): BotSettingsProps["call"] {
+    return { defaultVoice: this.settings.calls.voice, ...(this.callsStatus ? { ready: callsReady(this.callsStatus) } : {}) };
+  }
+
+  private botSettingsSavesOf(botId: string): BotSettingsSaves {
+    return this.botSettingsSaves.get(botId) ?? NO_BOT_SETTINGS_SAVES;
+  }
+
+  private updateBotSettingsSaves(botId: string, update: (saves: BotSettingsSaves) => BotSettingsSaves) {
+    this.botSettingsSaves = new Map(this.botSettingsSaves).set(botId, update(this.botSettingsSavesOf(botId)));
+  }
+
+  /** A Settings tab change: shown at once as saving, then sent as its own PATCH after the ones before it. */
+  private changeBotSetting(botId: string, key: BotSettingKey, value: BotSettingValue) {
+    if (this.botSettingsSavesOf(botId).pending[key] === value) return;
+    this.updateBotSettingsSaves(botId, (saves) => ({ pending: { ...saves.pending, [key]: value }, errors: withoutSetting(saves.errors, key) }));
+    this.botSettingsQueue = this.botSettingsQueue.then(() => this.sendBotSetting(botId, key));
+  }
+
+  /** Sends the newest value a row waits on. The gateway's answer replaces the bot; a refusal stays on the row. A value
+   * already sent, or replaced by a newer change meanwhile, is not sent again. */
+  private async sendBotSetting(botId: string, key: BotSettingKey) {
+    const value = this.botSettingsSavesOf(botId).pending[key];
+    if (value === undefined) return;
+    const settle = (error?: string) => this.updateBotSettingsSaves(botId, (saves) => saves.pending[key] !== value ? saves : {
+      pending: withoutSetting(saves.pending, key),
+      errors: error ? { ...saves.errors, [key]: error } : withoutSetting(saves.errors, key),
+    });
+    const bot = this.bots.find((candidate) => candidate.id === botId);
+    if (!bot) {
+      settle("This bot is gone.");
+      return;
+    }
+    const patch = botChangePatch(bot, botSettingChange(key, value));
+    if (!patch) {
+      settle();
+      return;
+    }
+    try {
+      this.bots = upsertBot(this.bots, await updateBot(botId, patch));
+      settle();
+    } catch (error) {
+      settle(error instanceof Error ? error.message : "Could not save that change.");
+    }
+  }
+
+  private dismissBotSetting(botId: string, key: BotSettingKey) {
+    if (!this.botSettingsSavesOf(botId).errors[key]) return;
+    this.updateBotSettingsSaves(botId, (saves) => ({ ...saves, errors: withoutSetting(saves.errors, key) }));
+  }
+
+  private setBotHidden = (bot: BotView, hidden: boolean) => {
+    this.botMenuFor = "";
+    if (this.botPendingId) return;
+    this.botPendingId = bot.id;
+    void updateBot(bot.id, { hidden })
+      .then((updated) => {
+        this.bots = upsertBot(this.bots, updated);
+        // With nothing hidden any more, the next hidden bot starts out of sight again.
+        if (!hiddenBotCount(this.bots)) this.showHiddenBots = false;
+        this.notify(hidden ? `${updated.name} is hidden. Show hidden lists it again.` : `${updated.name} is back in the roster.`);
+      })
+      .catch((error: unknown) => {
+        this.notify(error instanceof Error ? error.message : "Could not change that bot.", true);
+      })
+      .finally(() => {
+        this.botPendingId = "";
+      });
+  };
+
+  private requestArchiveBot = (bot: BotView) => {
+    this.botMenuFor = "";
+    this.botArchive = bot;
+    this.botArchiveError = "";
+  };
+
+  private closeBotArchive = () => {
+    const dialog = this.renderRoot.querySelector?.(".bot-archive-dialog");
+    if (dialog instanceof HTMLDialogElement) closeModal(dialog);
+    this.botArchive = undefined;
+    this.botArchiveError = "";
+  };
+
+  private confirmArchiveBot = () => {
+    const bot = this.botArchive;
+    if (!bot || this.botArchivePending) return;
+    this.botArchivePending = true;
+    this.botArchiveError = "";
+    void archiveBot(bot.id)
+      .then((archived) => {
+        this.closeBotArchive();
+        this.bots = upsertBot(this.bots, archived);
+        this.notify("");
+        this.botArchiveToast = { bot: archived, restoring: false };
+        this.scheduleBotArchiveToast();
+        if (this.view === "bot" && this.activeBotId === bot.id) this.navigate({ kind: "home" }, true);
+        void this.refreshBots();
+        void this.refreshSessions(true);
+      })
+      .catch((error: unknown) => {
+        this.botArchiveError = error instanceof Error ? error.message : "Could not archive that bot.";
+      })
+      .finally(() => {
+        this.botArchivePending = false;
+      });
+  };
+
+  /** Delete (the ⋯ menus, or Show archived's trash icon) asks first: deleting cannot be undone. */
+  private requestDeleteBot = (bot: BotView) => {
+    if (this.botPendingId) return;
+    this.botDelete = bot;
+    this.botDeleteError = "";
+  };
+
+  private closeBotDelete = () => {
+    const dialog = this.renderRoot.querySelector?.(".bot-delete-dialog");
+    if (dialog instanceof HTMLDialogElement) closeModal(dialog);
+    this.botDelete = undefined;
+    this.botDeleteError = "";
+  };
+
+  /** The row stays until the gateway confirms; a failure stays in the dialog. */
+  private confirmDeleteBot = () => {
+    const bot = this.botDelete;
+    if (!bot || this.botDeletePending) return;
+    this.botDeletePending = true;
+    this.botDeleteError = "";
+    this.botPendingId = bot.id;
+    void deleteBot(bot.id)
+      .then(() => {
+        this.closeBotDelete();
+        this.bots = this.bots.filter((each) => each.id !== bot.id);
+        if (!archivedBotCount(this.bots)) this.showArchivedBots = false;
+        if (this.botArchiveToast?.bot.id === bot.id) this.dismissBotArchiveToast();
+        this.notify(`Deleted ${bot.name}.`);
+        // Its chat is gone: the open bot view goes with it, as after archiving.
+        if (this.view === "bot" && this.activeBotId === bot.id) this.navigate({ kind: "home" }, true);
+        void this.refreshBots();
+        void this.refreshSessions(true);
+      })
+      .catch((error: unknown) => {
+        this.botDeleteError = error instanceof Error ? error.message : "Could not delete that bot.";
+      })
+      .finally(() => {
+        this.botDeletePending = false;
+        this.botPendingId = "";
+      });
+  };
+
+  /** Restore from Show archived: the row stays until the gateway confirms. */
+  private restoreBotFromRoster = (bot: BotView) => {
+    if (this.botPendingId) return;
+    this.botPendingId = bot.id;
+    void restoreBot(bot.id)
+      .then((restored) => {
+        this.bots = upsertBot(this.bots, restored);
+        // With nothing archived any more, the next archived bot starts out of sight again.
+        if (!archivedBotCount(this.bots)) this.showArchivedBots = false;
+        if (this.botArchiveToast?.bot.id === restored.id) this.dismissBotArchiveToast();
+        this.notify(`Restored ${restored.name}. Its routines stay paused until you turn them on.`);
+        void this.refreshBots();
+      })
+      .catch((error: unknown) => {
+        this.notify(error instanceof Error ? error.message : "Could not restore that bot.", true);
+      })
+      .finally(() => {
+        this.botPendingId = "";
+      });
+  };
+
+  private pauseBotArchiveToast = () => {
+    if (this.botArchiveToastTimer) clearTimeout(this.botArchiveToastTimer);
+    this.botArchiveToastTimer = undefined;
+  };
+
+  private dismissBotArchiveToast = () => {
+    this.pauseBotArchiveToast();
+    this.botArchiveToast = undefined;
+  };
+
+  /** Same lifetime as the session archive toast: 15 s without hover or focus. */
+  private scheduleBotArchiveToast = () => {
+    this.pauseBotArchiveToast();
+    if (!this.botArchiveToast || this.botArchiveToast.restoring || this.botArchiveToast.error) return;
+    const element = this.querySelector(".bot-archive-toast");
+    if (element?.matches(":hover") || element?.contains(document.activeElement)) return;
+    this.botArchiveToastTimer = setTimeout(this.dismissBotArchiveToast, 15_000);
+  };
+
+  private restoreArchivedBot = async () => {
+    const toast = this.botArchiveToast;
+    if (!toast || toast.restoring) return;
+    this.pauseBotArchiveToast();
+    this.botArchiveToast = { bot: toast.bot, restoring: true };
+    try {
+      const restored = await restoreBot(toast.bot.id);
+      this.bots = upsertBot(this.bots, restored);
+      if (this.botArchiveToast?.bot.id === toast.bot.id) this.dismissBotArchiveToast();
+      this.notify(`Restored ${restored.name}. Its routines stay paused until you turn them on.`);
+      void this.refreshBots();
+      void this.refreshSessions(true);
+    } catch (error) {
+      if (this.botArchiveToast?.bot.id === toast.bot.id) {
+        this.botArchiveToast = { bot: toast.bot, restoring: false, error: error instanceof Error ? error.message : "Could not restore that bot." };
+      }
+    }
+  };
+
+  private botPanelVisible(): boolean {
+    return this.view === "bot" && !this.settingsOpen && (this.mobileNavLayout ? this.botSheetOpen : this.botPanel.open);
+  }
+
+  private botMemoryTabVisible(): boolean {
+    return this.botPanelVisible() && this.botPanel.tab === "memory";
+  }
+
+  private botSoulTabVisible(): boolean {
+    return this.botPanelVisible() && this.botPanel.tab === "soul";
+  }
+
+  private botToolsTabVisible(): boolean {
+    return this.botPanelVisible() && this.botPanel.tab === "tools";
+  }
+
+  /** The open Tools tab follows the bots stream: a request that waits, or lists a grant changed, reads it again. */
+  private followBotTools() {
+    const bot = this.botToolsTabVisible() ? this.activeBot() : undefined;
+    if (bot) this.botTools.follow(bot);
+  }
+
+  /** The Routines tab's Triggers section starts reading once the bot is known (a `/bots/<id>` load), and reads again
+   * when the bot's chat changes state: a trigger may just have woken it. */
+  private followBotTriggers() {
+    const bot = this.botPanelVisible() && this.botPanel.tab === "routines" ? this.activeBot() : undefined;
+    if (bot) this.botTriggers.follow(bot);
+  }
+
+  /** The panel's visible tab decides what is read: Routines polls Automation
+   * like its page; Memory reads once, then follows the bots stream. */
+  private syncBotPanelData() {
+    if (this.embeddedPane) return;
+    const visible = this.botPanelVisible();
+    if (visible && this.botPanel.tab === "routines") {
+      this.loadAutomationData();
+      this.startAutomationPolling();
+    } else if (this.view === "bot") {
+      this.stopAutomationPolling();
+    }
+    this.botTriggers.sync(visible && this.botPanel.tab === "routines" ? this.activeBot() : undefined);
+    if (this.botMemoryTabVisible()) void this.refreshBotMemory();
+    if (this.botSoulTabVisible()) void this.refreshBotSoul();
+    const toolsBot = this.botToolsTabVisible() ? this.activeBot() : undefined;
+    if (toolsBot) void this.botTools.refresh(toolsBot);
+    // The Settings tab's model pickers read PI's catalog, as New Session does.
+    if (visible && this.botPanel.tab === "settings") this.loadLaunchPreferences();
+  }
+
+  /** The open Memory tab stays live without a timer: the bots stream carries
+   * each bot's memory status, and a status other than the one on screen means
+   * the memory moved (a message joined, a summary was built, a turn waits). */
+  private followBotMemory() {
+    if (!this.botMemoryTabVisible()) return;
+    const bot = this.activeBot();
+    if (bot && this.botMemory.botId === bot.id && memoryStatusChanged(this.botMemory.status, bot.memory)) void this.refreshBotMemory();
+  }
+
+  private toggleBotPanel = () => {
+    if (this.mobileNavLayout) {
+      this.botSheetOpen = !this.botSheetOpen;
+    } else {
+      this.botPanel = { ...this.botPanel, open: !this.botPanel.open };
+      writeBotPanel(this.botPanel);
+    }
+    this.automationFormError = "";
+    this.automationActionError = "";
+    this.syncBotPanelData();
+    if (this.botPanelVisible()) {
+      void this.updateComplete.then(() => this.renderRoot.querySelector<HTMLElement>('.bot-panel [role="tab"][aria-selected="true"]')?.focus());
+    }
+  };
+
+  private closeBotPanel = () => {
+    if (this.mobileNavLayout) this.botSheetOpen = false;
+    else {
+      this.botPanel = { ...this.botPanel, open: false };
+      writeBotPanel(this.botPanel);
+    }
+    this.syncBotPanelData();
+    void this.updateComplete.then(() => this.botPaneApp()?.updateComplete).then(() => {
+      this.renderRoot.querySelector<HTMLElement>(".bot-panel-toggle")?.focus();
+    });
+  };
+
+  private selectBotPanelTab = (tab: BotPanelTab) => {
+    this.botPanel = { ...this.botPanel, tab };
+    writeBotPanel(this.botPanel);
+    this.syncBotPanelData();
+  };
+
+  /** The open Soul tab follows SOUL.md without a timer: a new `botSoulKey` on the bots stream, once the bot's turn is
+   * over, means the bot or HUI may have written it. */
+  private followBotSoul() {
+    if (!this.botSoulTabVisible()) return;
+    const bot = this.activeBot();
+    if (!bot || this.botSoul.botId !== bot.id || bot.status === "running" || bot.status === "waiting") return;
+    if (botSoulKey(bot) !== this.botSoulSeen) void this.refreshBotSoul();
+  }
+
+  private resetBotSoul(botId: string) {
+    this.botSoulRequest += 1;
+    this.botSoul = { botId, loading: false, error: "" };
+    this.botSoulDraft = undefined;
+    this.botSoulSaving = false;
+    this.botSoulSaveError = "";
+    this.botSoulSeen = "";
+  }
+
+  /** Reads SOUL.md; an open editor keeps its text, and a failed read keeps what was shown. */
+  private refreshBotSoul = async () => {
+    const bot = this.activeBot();
+    if (!bot) return;
+    if (this.botSoul.botId !== bot.id) this.resetBotSoul(bot.id);
+    const request = ++this.botSoulRequest;
+    this.botSoulSeen = botSoulKey(bot);
+    this.botSoul = { ...this.botSoul, loading: true };
+    try {
+      const soul = await loadBotSoul(bot.id);
+      if (request !== this.botSoulRequest) return;
+      this.botSoul = { botId: bot.id, loading: false, error: "", soul };
+    } catch (error) {
+      if (request !== this.botSoulRequest) return;
+      this.botSoul = { ...this.botSoul, loading: false, error: error instanceof Error ? error.message : "Could not read the bot's soul." };
+    }
+  };
+
+  /** Opens the editor on SOUL.md, or empty for Write it yourself. */
+  private editBotSoul = () => {
+    this.botSoulSaveError = "";
+    this.botSoulDraft = this.botSoul.soul ?? "";
+    void this.updateComplete.then(() => this.renderRoot.querySelector<HTMLTextAreaElement>(".bot-soul__textarea")?.focus());
+  };
+
+  private cancelBotSoulEdit = () => {
+    this.botSoulDraft = undefined;
+    this.botSoulSaveError = "";
+    void this.updateComplete.then(() => this.renderRoot.querySelector<HTMLElement>(".bot-soul__edit, .bot-soul__write")?.focus());
+  };
+
+  /** Nothing changes until the gateway stored it; a refusal stays in the editor with its text. */
+  private saveBotSoulDraft = () => {
+    const bot = this.activeBot();
+    const draft = this.botSoulDraft;
+    if (!bot || draft === undefined || this.botSoulSaving) return;
+    this.botSoulSaving = true;
+    this.botSoulSaveError = "";
+    void saveBotSoul(bot.id, draft)
+      .then((soul) => {
+        if (this.botSoul.botId !== bot.id) return;
+        // A read already on its way must not put back what this save replaced.
+        this.botSoulRequest += 1;
+        this.botSoul = { botId: bot.id, loading: false, error: "", soul };
+        this.botSoulDraft = undefined;
+        void this.updateComplete.then(() => this.renderRoot.querySelector<HTMLElement>(".bot-soul__edit, .bot-soul__write")?.focus());
+      })
+      .catch((error: unknown) => {
+        this.botSoulSaveError = error instanceof Error ? error.message : "Could not save the soul.";
+      })
+      .finally(() => {
+        this.botSoulSaving = false;
+      });
+  };
+
+  private resetBotMemory(botId: string) {
+    this.botMemoryRequest += 1;
+    this.botMemoryInFlight = false;
+    this.botMemoryAgain = false;
+    this.botMemory = { botId, loading: false, error: "" };
+    this.botMemoryZoom = new Map();
+  }
+
+  /** A manual refresh shows itself; a live one only replaces what changed. */
+  private refreshBotMemory = async (manual = false) => {
+    const bot = this.activeBot();
+    if (!bot) return;
+    if (this.botMemory.botId !== bot.id) this.resetBotMemory(bot.id);
+    if (this.botMemoryInFlight) {
+      this.botMemoryAgain = true;
+      return;
+    }
+    this.botMemoryInFlight = true;
+    const request = ++this.botMemoryRequest;
+    if (manual || !this.botMemory.status) this.botMemory = { ...this.botMemory, loading: true };
+    try {
+      const memory = await loadBotMemory(bot.id);
+      if (request !== this.botMemoryRequest) return;
+      this.botMemory = { botId: bot.id, loading: false, error: "", status: memory.status, lines: parseMemoryView(memory.view) };
+    } catch (error) {
+      if (request !== this.botMemoryRequest) return;
+      this.botMemory = { ...this.botMemory, loading: false, error: error instanceof Error ? error.message : "Could not read the bot's memory." };
+    } finally {
+      if (request === this.botMemoryRequest) {
+        this.botMemoryInFlight = false;
+        if (this.botMemoryAgain) {
+          this.botMemoryAgain = false;
+          if (this.botMemoryTabVisible()) void this.refreshBotMemory();
+        }
+      }
+    }
+  };
+
+  /** Opens a line into its two halves (or a message whole); again folds it. */
+  private zoomBotMemoryLine = (line: MemoryLine) => {
+    const bot = this.activeBot();
+    if (!bot) return;
+    const next = new Map(this.botMemoryZoom);
+    if (next.delete(line.address)) {
+      this.botMemoryZoom = next;
+      return;
+    }
+    next.set(line.address, { loading: true, error: "", lines: [] });
+    this.botMemoryZoom = next;
+    const settle = (state: MemoryZoomState) => {
+      if (this.botMemory.botId !== bot.id || !this.botMemoryZoom.has(line.address)) return;
+      this.botMemoryZoom = new Map(this.botMemoryZoom).set(line.address, state);
+    };
+    void zoomBotMemory(bot.id, line)
+      .then((text) => settle({ loading: false, error: "", lines: parseMemoryZoom(text, line) }))
+      .catch((error: unknown) => settle({ loading: false, error: error instanceof Error ? error.message : "Could not open that line.", lines: [] }));
+  };
+
+  private renderBotWorkspace() {
+    const bot = this.activeBot();
+    const placeholder = (title: string, message: string, tone: "status" | "alert", onRetry?: () => void, actionLabel?: string) => renderBotPlaceholder({
+      title, message, tone, mobileNav: this.mobileNavLayout, onToggleNavigation: toggleNavigationDrawer, ...(onRetry ? { onRetry } : {}), ...(actionLabel ? { actionLabel } : {}),
+    });
+    if (!bot) {
+      if (!this.botsLoaded) {
+        return this.botsError
+          ? placeholder("Bot", this.botsError, "alert", this.retryBots)
+          : placeholder("Bot", "Loading bot…", "status");
+      }
+      return placeholder("Bot not found", "This bot does not exist or has been archived.", "alert");
+    }
+    // Its chat opens again once it is restored; until then it takes no messages from here.
+    if (bot.archived) {
+      return placeholder(bot.name, `${bot.name} is archived. Its chat and memory are kept; restore it to open the chat again.`, "status",
+        () => this.restoreBotFromRoster(bot), this.botPendingId === bot.id ? "Restoring…" : "Restore");
+    }
+    const session = this.listedSession(bot.sessionId);
+    if (!session) {
+      return this.sessionsError
+        ? placeholder(bot.name, this.sessionsError, "alert", () => void this.refreshSessions())
+        : placeholder(bot.name, `Opening ${bot.name}'s chat…`, "status");
+    }
+    const sheet = this.mobileNavLayout;
+    const panelOpen = sheet ? this.botSheetOpen : this.botPanel.open;
+    const panelId = `bot-panel-${bot.id.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+    const paneBot: PaneBot = {
+      bot: {
+        id: bot.id, name: bot.name, ...(bot.title ? { title: bot.title } : {}), ...(bot.avatar ? { avatar: bot.avatar } : {}),
+        ...(bot.memory ? { memory: bot.memory } : {}), ...(bot.worker ? { worker: bot.worker } : {}),
+      },
+      panelOpen,
+      panelId,
+    };
+    const call = this.voice.call?.bot.id === bot.id ? this.voice.call : undefined;
+    const settingsCall = this.botSettingsCall();
+    const utilityDefault = this.utilityModelName();
+    // A call under way stays reachable even if the ChatGPT login went meanwhile.
+    const paneCall: PaneCall | undefined = call || this.callsAvailable() ? { botId: bot.id, inCall: Boolean(call) } : undefined;
+    return html`<div class="bot-workspace ${panelOpen && !sheet ? "bot-workspace--panel" : ""}" data-bot-id=${bot.id}>
+      <div class="bot-workspace__chat">
+        ${call?.minimized ? renderCallBar({ ...this.callViewProps(bot, call), floating: false }) : nothing}
+        ${keyed(bot.id, html`<hui-app
+          class="hui-session-pane-app bot-workspace__pane"
+          embedded-pane
+          pane-session-id=${bot.sessionId}
+          .paneSession=${session}
+          .paneId=${`bot-${bot.id}`}
+          .paneActive=${true}
+          .paneVisible=${true}
+          .paneNarrow=${sheet}
+          .paneMobileNav=${this.mobileNavLayout}
+          .paneBot=${paneBot}
+          .onPaneBotPanel=${this.toggleBotPanel}
+          .onPaneBotAction=${(action: BotHeaderAction) => {
+            if (action === "edit") this.openEditBot(bot);
+            else if (action === "archive") this.requestArchiveBot(bot);
+            else this.requestDeleteBot(bot);
+          }}
+          .onPaneNavigate=${(id: string) => {
+            const target = this.listedSession(id);
+            if (target && id !== bot.sessionId) this.selectSession(target);
+          }}
+          .onPaneRegistryChange=${() => this.refreshSessions(true).then(() => this.updateComplete).then(() => {})}
+          .paneGroups=${this.sessionListRevision ? this.groups : undefined}
+          .onPaneUpdate=${(text: string, attachments: readonly Attachment[]) => this.handleUpdateCommand(text, attachments)}
+          .onPaneDraftChange=${(sessionId: string, hasDraft: boolean) => this.markSessionDraft(sessionId, hasDraft)}
+          .paneCall=${paneCall}
+          .onPaneCall=${paneCall ? this.paneCallAction(bot) : undefined}
+        ></hui-app>`)}
+        ${call && !call.minimized ? renderCallView(this.callViewProps(bot, call)) : nothing}
+      </div>
+      ${panelOpen ? renderBotPanel({
+        bot,
+        id: panelId,
+        tab: this.botPanel.tab,
+        sheet,
+        timezone: localTimezone(),
+        onTab: this.selectBotPanelTab,
+        onClose: this.closeBotPanel,
+        routines: {
+          automation: this.automation,
+          error: this.automationError,
+          pending: this.automationPending,
+          formError: this.automationFormError,
+          actionError: this.automationActionError,
+          onCreate: this.createAutomationTask,
+          onFormError: this.reportAutomationFormError,
+          onSetEnabled: this.setAutomationEnabled,
+          onRun: this.runAutomationTaskNow,
+          onDelete: this.deleteAutomationTask,
+          onRetry: this.loadAutomationData,
+        },
+        memory: {
+          state: this.botMemory.botId === bot.id ? this.botMemory : { loading: true, error: "" },
+          zoom: this.botMemoryZoom,
+          onZoom: this.zoomBotMemoryLine,
+          onRefresh: () => void this.refreshBotMemory(true),
+          pageUrl: botMemoryPageUrl(bot.id),
+        },
+        soul: {
+          state: this.botSoul.botId === bot.id ? this.botSoul : { loading: true, error: "" },
+          draft: this.botSoul.botId === bot.id ? this.botSoulDraft : undefined,
+          saving: this.botSoulSaving,
+          saveError: this.botSoulSaveError,
+          onEdit: this.editBotSoul,
+          onDraft: (text) => { this.botSoulDraft = text; },
+          onSave: this.saveBotSoulDraft,
+          onCancel: this.cancelBotSoulEdit,
+          onRetry: () => void this.refreshBotSoul(),
+        },
+        tools: this.botTools.props(bot),
+        triggers: this.botTriggers.props(bot),
+        settings: {
+          models: this.pi?.model.catalog ?? [],
+          ...(utilityDefault ? { utilityDefault } : {}),
+          saves: this.botSettingsSavesOf(bot.id),
+          onChange: (key, value) => this.changeBotSetting(bot.id, key, value),
+          onDismiss: (key) => this.dismissBotSetting(bot.id, key),
+          call: settingsCall,
+          workersExist: this.launchWorkers.length > 0,
+          // A bot on a worker works in a folder there: its folders come from that worker, never from this machine.
+          directory: {
+            suggestions: this.directorySuggestionsFrom === (bot.worker?.id ?? "") ? this.directorySuggestions : [],
+            onInput: (value) => this.loadDirectorySuggestions(value, bot.worker?.id),
+          },
+        },
+      }) : nothing}
+    </div>`;
+  }
+
+  private renderBotDialogs() {
+    if (this.embeddedPane) return nothing;
+    return html`${this.botArchive ? renderBotArchiveDialog(this.botArchive, this.botArchivePending, this.botArchiveError, this.confirmArchiveBot, this.closeBotArchive) : nothing}
+    ${this.botDelete ? renderBotDeleteDialog(this.botDelete, this.botDeletePending, this.botDeleteError, this.confirmDeleteBot, this.closeBotDelete) : nothing}
+    ${this.renderBotTemplateDialogs()}`;
+  }
+
+  private renderBotTemplateDialogs() {
+    const importing = this.botImports.importProps();
+    const exporting = this.botImports.exportProps();
+    return html`${importing ? renderBotImportDialog(importing) : nothing}${exporting ? renderBotExportDialog(exporting) : nothing}`;
+  }
+
+  /* ── calls with bots (HUI-18) ─────────────────────────────────────────── */
+
+  /** Captures only the bot's id: a rendered button may keep an older closure, and the bot is read again when used. */
+  private paneCallAction(bot: BotView): () => void {
+    const botId = bot.id;
+    return () => {
+      const current = this.bots.find((candidate) => candidate.id === botId);
+      if (current) this.openCall(current);
+    };
+  }
+
+  /** Calls a bot (or returns to its call) and shows its view. One call at a time, on GPT-Live. */
+  private openCall = (bot: BotView) => {
+    if (!this.voice.startCall({ id: bot.id, sessionId: bot.sessionId, name: bot.name })) {
+      this.notify(`Hang up the call with ${this.voice.call?.bot.name ?? "the other bot"} first.`, true);
+      return;
+    }
+    if (this.view !== "bot" || this.activeBotId !== bot.id || this.settingsOpen) this.navigate({ kind: "bot", id: bot.id });
+    void this.updateComplete.then(() => this.renderRoot.querySelector<HTMLElement>(".bot-call__control--hangup, .bot-call__close")?.focus());
+  };
+
+  /** After the call view closes, focus returns to the chat it covered. */
+  private focusBotChat() {
+    void this.updateComplete.then(() => this.botPaneApp()?.updateComplete).then(() => {
+      this.botPaneApp()?.renderRoot.querySelector<HTMLElement>(".bot-call-toggle, .agent-chat__composer-combobox > textarea")?.focus();
+    });
+  }
+
+  private callViewProps(bot: Pick<BotView, "id" | "name" | "title" | "avatar" | "sessionId" | "memory">, call: NonNullable<VoiceController["call"]>): CallViewProps {
+    return {
+      bot: { id: bot.id, name: bot.name, ...(bot.title ? { title: bot.title } : {}), ...(bot.avatar ? { avatar: bot.avatar } : {}) },
+      state: call.state,
+      now: this.voice.now,
+      summarizing: Boolean(bot.memory?.waiting),
+      // Read every animation frame by the face, never rendered: the bot's voice while it speaks, else the microphone.
+      level: this.callLevel,
+      onToggleMic: () => this.voice.toggleMic(),
+      onToggleSpeaker: () => this.voice.toggleSpeaker(),
+      onMinimize: () => {
+        this.voice.minimize();
+        void this.updateComplete.then(() => this.renderRoot.querySelector<HTMLElement>(".bot-call-bar__open")?.focus());
+      },
+      onExpand: () => {
+        if (this.view !== "bot" || this.activeBotId !== bot.id || this.settingsOpen) this.navigate({ kind: "bot", id: bot.id });
+        this.voice.expand();
+        void this.updateComplete.then(() => this.renderRoot.querySelector<HTMLElement>(".bot-call__control--hangup")?.focus());
+      },
+      onHangUp: () => {
+        this.voice.hangUp();
+        this.focusBotChat();
+      },
+      onClose: () => {
+        this.voice.closeCall();
+        this.focusBotChat();
+      },
+    };
+  }
+
+  private readonly callLevel = (): number | undefined =>
+    this.voice.call?.state.phase === "speaking" ? this.voice.voiceLevel() : this.voice.micLevel();
+
+  /** The call, while the operator is elsewhere in HUI (another page, another bot, Settings). */
+  private floatingCall() {
+    const call = this.voice.call;
+    if (this.embeddedPane || !call) return undefined;
+    if (this.view === "bot" && this.activeBotId === call.bot.id && !this.settingsOpen) return undefined;
+    return call;
+  }
+
+  /** That call stays in sight in a band above the page's content (`shell--call-bar` makes room), never over it. */
+  private renderFloatingCallBar() {
+    const call = this.floatingCall();
+    if (!call) return nothing;
+    const bot = this.bots.find((candidate) => candidate.id === call.bot.id) ?? { id: call.bot.id, name: call.bot.name, sessionId: call.bot.sessionId };
+    return renderCallBar({ ...this.callViewProps(bot, call), floating: true });
+  }
 
   /* ── settings ─────────────────────────────────────────────────────────── */
 
@@ -3766,6 +5239,23 @@ export class HuiApp extends HuiElement {
     void this.save(patch);
   };
 
+  /** A component inside the app (a Work pane launcher's or the VS Code view's Settings link) asks for a Settings page,
+   * and optionally the section to scroll to. Cancelling the event tells it the app navigated, so its link does not
+   * load the page. The section is scrolled to once it renders and kept there while sections above it load. */
+  private stopSettingsScroll: (() => void) | undefined;
+  private onOpenSettingsRequest = (event: Event) => {
+    const detail = (event as CustomEvent<Partial<Record<keyof OpenSettingsDetail, unknown>> | undefined>).detail;
+    const page = SETTINGS_PAGES.find((entry) => entry.id === detail?.page)?.id;
+    if (!page) return;
+    event.preventDefault();
+    this.stopSettingsScroll?.();
+    this.stopSettingsScroll = undefined;
+    if (this.workNarrow) this.workNarrowShown = false;
+    this.openSurfaceSettings(page);
+    const section = typeof detail?.section === "string" ? detail.section : "";
+    if (section) this.stopSettingsScroll = scrollSettingsSection(this, section);
+  };
+
   private openSurfaceSettings = (page: SettingsPage) => {
     const current = resolveNavigation(window.location.pathname).target;
     this.settingsReturnTarget = settingsReturnTarget(current);
@@ -3827,7 +5317,6 @@ export class HuiApp extends HuiElement {
   };
 
   private selectSessions = (ids: readonly string[], checked: boolean) => {
-    this.sessionsDeleteNotice = "";
     const next = new Set(this.sessionsSelected);
     for (const id of ids) {
       if (checked) next.add(id);
@@ -3847,7 +5336,6 @@ export class HuiApp extends HuiElement {
   private deleteSelectedSessions = async (ids: readonly string[], withWorktrees: boolean) => {
     if (this.sessionsDeleting || ids.length === 0) return;
     this.sessionsDeleting = true;
-    this.sessionsDeleteNotice = "";
     const all = this.groups.flatMap((group) => group.sessions);
     const deleted = new Set<string>();
     const failures: string[] = [];
@@ -3881,7 +5369,7 @@ export class HuiApp extends HuiElement {
       failures.push(error instanceof Error ? error.message : "Could not read worktrees.");
     } finally {
       const count = ids.filter((id) => deleted.has(id)).length;
-      this.sessionsDeleteNotice = `Deleted ${count} session${count === 1 ? "" : "s"}.${worktreeNote}${failures.length ? ` Failed: ${failures.join("; ")}` : ""}`;
+      this.notify(`Deleted ${count} session${count === 1 ? "" : "s"}.${worktreeNote}${failures.length ? ` Failed: ${failures.join("; ")}` : ""}`, failures.length > 0);
       this.sessionsSelected = new Set([...this.sessionsSelected].filter((id) => !deleted.has(id)));
       this.sessionsDeleting = false;
       this.closeSessionsDeleteDialog();
@@ -4111,15 +5599,22 @@ export class HuiApp extends HuiElement {
       session: this.selected,
       mobileNavLayout: this.embeddedPane ? this.paneMobileNav && this.paneActive : this.mobileNavLayout,
       controlScope: this.embeddedPane ? this.paneId : undefined,
-      groups: this.groups,
+      groups: this.listedGroups,
+      ...(this.paneBot && this.onPaneBotPanel ? { bot: {
+        ...this.paneBot,
+        onTogglePanel: () => this.onPaneBotPanel?.(),
+        ...(this.onPaneBotAction ? { onAction: (action: BotHeaderAction) => this.onPaneBotAction?.(action) } : {}),
+      } } : {}),
       transcript: this.transcript,
       subagents: this.subagents,
       opening: this.opening,
+      openError: this.openError,
       streaming: this.streaming,
       sending: this.sending,
       stopping: this.stopping,
       continuing: this.continuing,
       rewindPending: this.rewindPending,
+      forkPending: Boolean(this.forkTarget),
       draft: this.draft,
       chatPreferences: this.settings.chat,
       queue: this.queue,
@@ -4127,6 +5622,7 @@ export class HuiApp extends HuiElement {
       question: this.question,
       connection: this.connection,
       copiedId: this.copiedId,
+      ...(this.paneCall && this.onPaneCall ? { call: { inCall: this.paneCall.inCall, onCall: this.onPaneCall } } : {}),
       expandedActivityIds: this.expandedActivityIds,
       showScrollToBottom: this.showScrollToBottom,
       models: this.models,
@@ -4191,7 +5687,7 @@ export class HuiApp extends HuiElement {
       onDraftInput: this.typeDraft,
       commandMenu: {
         open: this.slashQuery !== null && !this.sending && !this.opening && !this.launching && (!this.selected || this.connection === "live"),
-        commands: filterSlashCommands(this.slashQuery?.startsWith("$") ? this.commands : composerCommands(this.selected ? this.commands : [], !!this.selected), this.slashQuery ?? ""),
+        commands: filterSlashCommands(this.slashQuery?.startsWith("$") ? this.commands : composerCommands(this.selected ? this.commands : [], !!this.selected, Boolean(this.selected?.bot)), this.slashQuery ?? ""),
         catalog: this.commands,
         paths: this.localPathQuery ? this.localPaths : undefined,
         pathsLoading: this.localPathsLoading,
@@ -4253,6 +5749,7 @@ export class HuiApp extends HuiElement {
       onAbort: this.abort,
       onContinue: this.continueRun,
       onRewind: this.rewindToMessage,
+      onFork: this.forkFromMessage,
       onCompact: () => this.compactNow(),
       onCancelCompaction: () => this.cancelCompactionNow(),
       onAddAttachments: this.addAttachments,
@@ -4317,6 +5814,7 @@ export class HuiApp extends HuiElement {
       automationFormError: this.automationFormError,
       automationActionError: this.automationActionError,
       sessions: this.groups.flatMap((group) => group.sessions),
+      bots: botsEnabled(this.settings),
       onRetryAutomation: this.loadAutomationData,
       onCreateAutomationTask: this.createAutomationTask,
       automationEditingId: this.automationEditingId,
@@ -4351,6 +5849,11 @@ export class HuiApp extends HuiElement {
         onDismiss: () => { this.powerNoticeDismissed = true; this.composerTextarea?.focus(); },
       })}
       <div class="hui-workspace">${this.renderWorkspace()}</div>
+      ${this.actionToast ? html`<div class="app-toast action-toast" data-level=${this.actionToast.failed ? "error" : "info"}>
+        ${this.actionToast.failed ? html`<span class="app-toast__icon" aria-hidden="true">${icons.alertTriangle}</span>` : nothing}
+        <span class="app-toast__message" role=${this.actionToast.failed ? "alert" : "status"}>${this.actionToast.message}</span>
+        <button type="button" class="app-toast__dismiss" aria-label="Dismiss notification" @click=${() => this.notify("")}>${icons.close}</button>
+      </div>` : null}
       ${this.archiveToast ? html`<div class="app-toast session-archive-toast"
         @pointerenter=${this.pauseArchiveToast} @pointerleave=${this.scheduleArchiveToast}
         @focusin=${this.pauseArchiveToast} @focusout=${this.scheduleArchiveToast}>
@@ -4362,32 +5865,22 @@ export class HuiApp extends HuiElement {
         <button type="button" class="app-toast__dismiss" aria-label="Dismiss archive notification"
           @click=${this.dismissArchiveToast}><span aria-hidden="true">×</span></button>
       </div>` : null}
+      ${this.botArchiveToast ? html`<div class="app-toast session-archive-toast bot-archive-toast"
+        @pointerenter=${this.pauseBotArchiveToast} @pointerleave=${this.scheduleBotArchiveToast}
+        @focusin=${this.pauseBotArchiveToast} @focusout=${this.scheduleBotArchiveToast}>
+        <span class="app-toast__message" role=${this.botArchiveToast.error ? "alert" : "status"}>
+          ${this.botArchiveToast.error ?? `Archived “${this.botArchiveToast.bot.name}”. Its chat and memory are kept.`}
+        </span>
+        <button type="button" class="app-toast__action" ?disabled=${this.botArchiveToast.restoring}
+          @click=${this.restoreArchivedBot}>${this.botArchiveToast.restoring ? "Restoring…" : "Restore"}</button>
+        <button type="button" class="app-toast__dismiss" aria-label="Dismiss archive notification"
+          @click=${this.dismissBotArchiveToast}><span aria-hidden="true">×</span></button>
+      </div>` : null}
     </div>`;
   }
 
-  private renderSessionPane = (pane: SessionPane, state: PanePresentation) => pane.browser ? html`
-    <hui-browser-pane
-      .ownerSessionId=${pane.sessionId}
-      .enabled=${this.settings.browser.enabled}
-      .visible=${state.visible} .active=${state.active} .mobileNav=${this.mobileNavLayout && state.active}
-      .movable=${state.split && !state.narrow}
-      .onClosePane=${() => {
-        if (this.sessionLayout && sessionPanes(this.sessionLayout).length === 1) this.commitSessionLayout(replacePaneSession(this.sessionLayout, pane.id, pane.sessionId));
-        else this.closePane(pane.id);
-      }}
-    ></hui-browser-pane>` : pane.terminalId ? html`
-    <hui-terminal-pane
-      .fontFamily=${this.settings.fontTerminal}
-      .ownerSessionId=${pane.sessionId} .terminalId=${pane.terminalId}
-      .visible=${state.visible} .active=${state.active} .mobileNav=${this.mobileNavLayout && state.active}
-      .movable=${state.split && !state.narrow}
-      .onClosePane=${() => {
-        if (this.sessionLayout && sessionPanes(this.sessionLayout).length === 1) this.commitSessionLayout(replacePaneSession(this.sessionLayout, pane.id, pane.sessionId));
-        else this.closePane(pane.id);
-      }}
-      .onSelectTerminal=${(id: string) => { if (this.sessionLayout) this.commitSessionLayout(replacePaneTerminal(this.sessionLayout, pane.id, id)); }}
-      .onSplitTerminal=${(direction: SplitDirection) => this.openTerminalPane(pane, direction, true)}
-    ></hui-terminal-pane>` : html`
+  /** Chat panes only: terminals and the browser view live in the Work pane. */
+  private renderSessionPane = (pane: SessionPane, state: PanePresentation) => html`
     <hui-app
       class="chat-split-view__pane hui-session-pane-app"
       embedded-pane
@@ -4400,8 +5893,8 @@ export class HuiApp extends HuiElement {
       .paneMobileNav=${this.mobileNavLayout}
       .onPaneClose=${state.split ? () => this.closePane(pane.id) : undefined}
       .onPaneSplit=${!state.narrow ? (direction: SplitDirection) => this.splitPane(pane, direction) : undefined}
-      .onPaneTerminal=${() => this.openTerminalPane(pane)}
-      .onPaneBrowser=${() => this.openBrowserPane(pane)}
+      .onPaneTerminal=${() => this.openTerminalWorkView(pane)}
+      .onPaneBrowser=${() => this.openBrowserWorkView(pane)}
       .onPaneNavigate=${(id: string) => this.changePaneSession(pane.id, id)}
       .onPaneRegistryChange=${() => this.refreshSessions(true).then(() => this.updateComplete).then(() => {})}
       .paneCreating=${this.listedSession(pane.sessionId)?.creating}
@@ -4412,10 +5905,7 @@ export class HuiApp extends HuiElement {
       .onPaneDraftChange=${(sessionId: string, hasDraft: boolean) => this.markSessionDraft(sessionId, hasDraft)}
     ></hui-app>`;
 
-  private paneLabel = (pane: SessionPane) => {
-    const title = this.listedSession(pane.sessionId)?.title ?? "Session";
-    return pane.terminalId ? `Terminal · ${title}` : pane.browser ? `Browser · ${title}` : title;
-  };
+  private paneLabel = (pane: SessionPane) => this.listedSession(pane.sessionId)?.title ?? "Session";
 
   private listedSession(id: string): SessionView | undefined {
     return this.groups.flatMap((group) => group.sessions).find((session) => session.id === id);
@@ -4424,11 +5914,39 @@ export class HuiApp extends HuiElement {
   private renderSessionMultiplex() {
     if (!this.selected || !this.sessionLayout) return renderHome(this.homeProps());
     const panes = sessionPanes(this.sessionLayout);
-    return html`<div class="hui-workspace-panels">
-    ${renderPanelSelector(panes, this.sessionLayout.activePaneId,
-      (sessionId) => this.groups.flatMap((group) => group.sessions).find(({ id }) => id === sessionId)?.title,
-      this.focusSessionPane)}
+    const workSessionId = activeSessionPane(this.sessionLayout).sessionId;
+    const work = sessionWorkPane(this.workPanes, workSessionId);
+    this.workRetained = retainWorkSessions(this.workRetained, workSessionId, this.workPanes);
+    const workShown = this.workNarrow && this.workNarrowShown;
+    // Maximized on desktop: the Work pane fills the row and the panel selector (the narrow chooser) leads back to
+    // the chat; the chat columns stay mounted, hidden and inert, underneath.
+    const maximized = workPaneMaximized(work, this.workNarrow);
+    return html`<div class="hui-workspace-panels ${workShown ? "hui-workspace-panels--work" : ""} ${maximized ? "hui-workspace-panels--maximized" : ""}">
+    ${renderPanelSelector({
+      panes,
+      activePaneId: this.sessionLayout.activePaneId,
+      sessionTitle: (sessionId) => this.groups.flatMap((group) => group.sessions).find(({ id }) => id === sessionId)?.title,
+      workViews: work.views.flatMap((ref) => {
+        const kind = workViewKind(ref.kind);
+        return kind ? [{ key: workViewKey(ref), title: kind.title(ref), icon: kind.icon }] : [];
+      }),
+      launchers: launchableWorkViewKinds(work).map((kind) => ({ kind: kind.kind, label: kind.label, icon: kind.icon, unavailable: kind.unavailable?.(workSessionId) })),
+      activeWorkKey: workShown || maximized ? work.active ?? "" : undefined,
+      workShown: workShown || maximized,
+      onSelectPane: (id) => {
+        this.workNarrowShown = false;
+        // Choosing a chat while maximized restores it beside the pane.
+        if (maximized) this.commitWorkPanes(setWorkPaneMaximized(this.workPanes, workSessionId, false));
+        this.focusSessionPane(id);
+        if (maximized) this.focusActiveComposer();
+      },
+      onSelectWork: (key) => { this.commitWorkPanes(activateWorkView(this.workPanes, workSessionId, key, false)); if (this.workNarrow) this.workNarrowShown = true; },
+      onShowWork: () => { if (this.workNarrow) this.workNarrowShown = true; },
+      onLaunch: (kind) => void this.launchWorkView(kind),
+    })}
+    <div class="hui-workspace-row">
     <hui-session-multiplexer
+      ?inert=${maximized}
       .layout=${this.sessionLayout}
       .sessionIds=${new Set(this.groups.flatMap((group) => group.sessions.map(({ id }) => id)))}
       .draggingSessionId=${this.draggingSessionId}
@@ -4438,6 +5956,7 @@ export class HuiApp extends HuiElement {
       .onMovePane=${this.movePane}
       .onClosePane=${this.closePane}
       .paneLabel=${this.paneLabel}
+      .columnMinimum=${!this.workNarrow && work.open ? WORK_PANE_CHAT_MIN_WIDTH : PANE_COLUMN_MIN_WIDTH}
       .onResize=${(columnId: string | undefined, index: number, ratio: number) => {
         if (this.sessionLayout) this.sessionLayout = resizeSessionLayout(this.sessionLayout, columnId, index, ratio);
       }}
@@ -4445,16 +5964,51 @@ export class HuiApp extends HuiElement {
         this.persistSessionLayout();
         window.history.replaceState({ ...window.history.state, huiSessionLayout: this.sessionLayout }, "");
       }}
-    ></hui-session-multiplexer></div>`;
+    ></hui-session-multiplexer>
+    <hui-work-pane
+      .store=${this.workPanes}
+      .sessionId=${workSessionId}
+      .retained=${this.workRetained}
+      .narrow=${this.workNarrow}
+      .chatColumns=${this.sessionLayout.columns.length}
+      .narrowShown=${this.workNarrowShown}
+      .launchedKey=${this.workLaunchedKey}
+      .launching=${this.workLaunching}
+      .error=${this.workError}
+      .onLaunch=${(kind: string) => void this.launchWorkView(kind)}
+      .onReopen=${(ref: WorkViewRef) => this.showWorkView(workSessionId, ref)}
+      .onActivate=${(key: string) => {
+        // Only a view just launched may take focus; switching tabs never refocuses an older one.
+        if (key !== this.workLaunchedKey) this.workLaunchedKey = "";
+        this.commitWorkPanes(activateWorkView(this.workPanes, workSessionId, key));
+      }}
+      .onClose=${(sessionId: string, key: string) => {
+        if (this.workLaunchedKey === key) this.workLaunchedKey = "";
+        const ref = sessionWorkPane(this.workPanes, sessionId).views.find((view) => workViewKey(view) === key);
+        this.commitWorkPanes(closeWorkView(this.workPanes, sessionId, key));
+        if (ref) workViewKind(ref.kind)?.closed?.(ref, sessionId);
+      }}
+      .onReorder=${(key: string, index: number) => this.commitWorkPanes(reorderWorkView(this.workPanes, workSessionId, key, index))}
+      .onToggle=${(open: boolean) => this.commitWorkPanes(setWorkPaneOpen(this.workPanes, workSessionId, open))}
+      .onMaximize=${(next: boolean) => this.toggleWorkPaneMaximized(next)}
+      .onResize=${(width: number, available: number, done: boolean) => {
+        this.workPanes = setWorkPaneWidth(this.workPanes, workSessionId, width, available, this.sessionLayout?.columns.length ?? 1);
+        if (done) this.persistWorkPanes();
+      }}
+      .onBack=${this.leaveWorkPane}
+      .onEscape=${this.leaveWorkPane}
+      .onDismissError=${() => { this.workError = ""; }}
+    ></hui-work-pane>
+    </div></div>`;
   }
 
   private renderWorkspace() {
     if (this.embeddedPane) {
-      return html`<div class="hui-embedded-session">${this.selected ? renderHome(this.homeProps()) : html`<p role="status">Opening session…</p>`}${this.renderJiraCreateDialog()}</div>`;
+      return html`<div class="hui-embedded-session">${this.selected ? renderHome(this.homeProps()) : html`<p role="status">Opening session…</p>`}${this.renderJiraCreateDialog()}${this.renderForkDialog()}</div>`;
     }
 
     if (this.settingsOpen) {
-      return html`<div class="shell shell--settings settings-shell ${this.mobileNavLayout ? "shell--mobile-nav" : ""}">
+      return html`<div class="shell shell--settings settings-shell ${this.mobileNavLayout ? "shell--mobile-nav" : ""} ${this.floatingCall() ? "shell--call-bar" : ""}">
         ${renderSettingsPage({
           page: this.settingsPage,
           worktrees: {
@@ -4506,6 +6060,8 @@ export class HuiApp extends HuiElement {
           onChangeAppearance: (next) => void this.save(next),
           onChangeChat: (chat) => void this.save({ chat }),
           onChangeBrowser: (browser) => this.save({ browser }),
+          onChangeVscode: (vscode) => this.save({ vscode }),
+          onChangeCalls: (calls) => void this.save({ calls }),
           onChangePower: (power) => void this.save({ power }).then(() => this.refreshPower()),
           onSetLidAwake: this.setLidAwakeFromUi,
           onChangeModels: (models) => {
@@ -4527,6 +6083,7 @@ export class HuiApp extends HuiElement {
           onReadPlugin: (resource) => this.readPiResource("plugin", resource),
           ...this.automationProps(),
         })}
+        ${this.renderFloatingCallBar()}
         ${this.commandPalette()}
         ${this.updateDialog()}
         ${renderPiResourceReader(this.piResourceReader, this.closePiResourceReader, this.copyPiResource)}
@@ -4536,10 +6093,11 @@ export class HuiApp extends HuiElement {
     const props = {
       view: this.view,
       activePage: this.activePage,
-      selectedSessionId: this.selected?.id ?? "",
+      selectedSessionId: this.view === "bot" ? "" : this.selected?.id ?? "",
       splitSessionId: "",
       openSessionIds: new Set(this.sessionLayout && sessionPanes(this.sessionLayout).length > 1 ? sessionPanes(this.sessionLayout).map(({ sessionId }) => sessionId) : []),
-      groups: this.groups,
+      groups: this.listedGroups,
+      bots: this.shellBotsProps(),
       draftSessionIds: this.draftSessionIds,
       collapsed: this.collapsed,
       loading: this.sessionsLoading,
@@ -4553,8 +6111,6 @@ export class HuiApp extends HuiElement {
       draggingSessionId: this.draggingSessionId,
       sessionDropTarget: this.sessionDropTarget,
       sessionMovePendingId: this.sessionMovePendingId,
-      sessionMoveNotice: this.sessionMoveNotice,
-      sessionMoveFailed: this.sessionMoveFailed,
       draggingGroup: this.draggingGroup,
       groupDropTarget: this.groupDropTarget,
       groupReorderPending: this.groupReorderPending,
@@ -4624,10 +6180,11 @@ export class HuiApp extends HuiElement {
 
     const chatLikeRoute =
       (this.view === "home" && Boolean(this.selected)) ||
+      this.view === "bot" ||
       (this.view === "surface" && this.activePage?.id === "new-session");
 
     return html`<div
-      class="shell app-shell ${this.mobileNavLayout ? "shell--mobile-nav" : ""} ${chatLikeRoute ? "shell--chat" : ""} ${chatLikeRoute && this.mobileNavLayout ? "shell--merged-chat-chrome" : ""}"
+      class="shell app-shell ${this.mobileNavLayout ? "shell--mobile-nav" : ""} ${chatLikeRoute ? "shell--chat" : ""} ${chatLikeRoute && this.mobileNavLayout ? "shell--merged-chat-chrome" : ""} ${this.floatingCall() ? "shell--call-bar" : ""}"
       @keydown=${closeDrawerOnEscape}
     >
       ${renderSidebar(props)}
@@ -4636,6 +6193,9 @@ export class HuiApp extends HuiElement {
       ${this.renderJiraLinkDialog()}
       ${this.renderBacklogStartDialog()}
       ${this.renderBacklogRemoveDialog()}
+      ${this.renderForkDialog()}
+      ${this.renderBotDialogs()}
+      ${this.renderFloatingCallBar()}
       ${this.commandPalette()}
       ${this.updateDialog()}
       ${renderPiResourceReader(this.piResourceReader, this.closePiResourceReader, this.copyPiResource)}
@@ -4643,16 +6203,16 @@ export class HuiApp extends HuiElement {
         props,
         this.view === "home"
           ? this.renderSessionMultiplex()
+          : this.view === "bot"
+            ? this.renderBotWorkspace()
           : this.view === "kanban"
             ? renderKanbanPage({
-                groups: this.groups,
+                groups: this.listedGroups,
                 loading: this.sessionsLoading,
                 error: this.sessionsError,
                 query: this.kanbanQuery,
                 options: this.kanbanOptions,
                 movePendingId: this.kanbanMovePendingId,
-                notice: this.kanbanNotice,
-                noticeFailed: this.kanbanNoticeFailed,
                 draggingId: this.kanbanDraggingId,
                 dropTarget: this.kanbanDropTarget,
                 onQuery: (value) => { this.kanbanQuery = value; },
@@ -4680,7 +6240,7 @@ export class HuiApp extends HuiElement {
                   ? renderAutomationSurface(this.automationProps(), this.activePage.id === "cron" ? "Automations" : "Tasks")
                 : this.activePage.id === "sessions"
                   ? renderSessionsPage({
-                      groups: this.groups,
+                      groups: this.listedGroups,
                       loading: this.sessionsLoading,
                       error: this.sessionsError,
                       query: this.search,
@@ -4698,7 +6258,6 @@ export class HuiApp extends HuiElement {
                       onSelect: this.selectSessions,
                       confirmingDelete: this.sessionsDeleteConfirm,
                       deleting: this.sessionsDeleting,
-                      deleteNotice: this.sessionsDeleteNotice,
                       onDeleteSelected: () => { this.sessionsDeleteConfirm = true; },
                       onCancelDelete: this.closeSessionsDeleteDialog,
                       onConfirmDelete: (ids, withWorktrees) => void this.deleteSelectedSessions(ids, withWorktrees),
@@ -4755,4 +6314,9 @@ export class HuiApp extends HuiElement {
       )}
     </div>`;
   }
+}
+
+/** Upgrades the page's `<hui-app>`, which renders at once. */
+export function defineHuiApp(): void {
+  if (!customElements.get("hui-app")) customElements.define("hui-app", HuiApp);
 }

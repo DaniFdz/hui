@@ -7,6 +7,7 @@
  */
 import { applyAppearance } from "./appearance.ts";
 import { DEFAULT_SETTINGS, normalizeSettings, type Settings } from "./settings.ts";
+import { fetchWithResponseDeadline } from "./gateway-request.ts";
 import { trackedFetch } from "./ui-errors.ts";
 
 const SETTINGS_URL = "/__hui/settings";
@@ -30,11 +31,10 @@ export function currentSettings(): Settings {
 }
 
 export async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await trackedFetch(url, {
+  const response = await fetchWithResponseDeadline(trackedFetch, url, {
     ...init,
     headers: { ...CLIENT_HEADERS, ...init?.headers },
     cache: "no-store",
-    signal: init?.signal ?? AbortSignal.timeout(5000),
   });
   if (!response.ok) {
     // The backend explains its refusals in the body, and that message is worth
@@ -50,6 +50,24 @@ export async function loadSettings(): Promise<Settings> {
     settings = normalizeSettings(await fetchJson<unknown>(SETTINGS_URL));
   } catch {
     settings = DEFAULT_SETTINGS;
+  }
+  applyAppearance(settings);
+  applyUiPreferences(settings);
+  return settings;
+}
+
+/** Resolves once every settings write this screen has started has landed or failed: the gateway has what it shows. */
+export function settingsWritten(): Promise<void> {
+  return settingsWriteQueue;
+}
+
+/** Reads the settings again, for a change another screen made (bots turned off there, say). Unlike `loadSettings`, a
+ * failed read changes nothing and resolves undefined. */
+export async function refreshSettings(): Promise<Settings | undefined> {
+  try {
+    settings = normalizeSettings(await fetchJson<unknown>(SETTINGS_URL));
+  } catch {
+    return undefined;
   }
   applyAppearance(settings);
   applyUiPreferences(settings);

@@ -1,3 +1,8 @@
+/**
+ * Lit controller behind every live view of a conversation's browser tabs. It owns the live-view socket and
+ * its reconnects, the decoded frames as object URLs, and a small cross-view cache of each conversation's newest
+ * frame so a remounted view paints at once. Layout and wording stay in `browser-view.ts`.
+ */
 import type { ReactiveController, ReactiveControllerHost } from "lit";
 import { decodeBrowserFrame, parseBrowserViewMessage, type BrowserViewAction, type BrowserViewState } from "../../shared/browser.ts";
 import { pointPosition, type BrowserViewConnection, type PreviewFrame } from "./browser-view.ts";

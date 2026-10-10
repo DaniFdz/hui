@@ -15,6 +15,7 @@
  * A theme file carries both modes, so there is no pairing to describe and no
  * manifest to keep in step.
  */
+import { existsSync } from "node:fs";
 import { mkdir, readFile, readdir, realpath, stat, unlink, writeFile } from "node:fs/promises";
 import type { ServerResponse } from "node:http";
 import { randomUUID } from "node:crypto";
@@ -25,6 +26,26 @@ import { fileURLToPath } from "node:url";
 import type { Connect, Plugin } from "vite";
 import { workers } from "./workers.ts";
 import { createWorkerRoutes, WORKERS_ROUTE } from "./worker-routes.ts";
+import { BOT_CLEANUP_FILE, BOTS_DIR, BotInputError, BotRegistry, BotsOffError, BotStoreError } from "./bots.ts";
+import { BotService } from "./bot-service.ts";
+import { remoteBots } from "./bot-remote.ts";
+import { BOT_MEMORY_PAGE, BOTS_EVENTS_ROUTE, BOTS_ROUTE, createBotRoutes, type BotRouteRequest } from "./bot-routes.ts";
+import { BOT_TRIGGERS_ROUTE } from "./bot-trigger-routes.ts";
+import { createGatewayTriggers } from "./bot-triggers-gateway.ts";
+import { isHookPath } from "./bot-triggers-webhook.ts";
+import { SLACK_ROUTE } from "./slack-routes.ts";
+import { BotTemplateService } from "./bot-template-import.ts";
+import { createBotTemplateRoutes, sendDownload } from "./bot-template-routes.ts";
+import { fetchGrokBotPage } from "./bot-templates/fetch.ts";
+import { localBotSkills } from "./bot-skills.ts";
+import { durableBotConversations } from "./bot-conversations.ts";
+import { CallBroker, providerCallAccounts } from "./calls.ts";
+import { CALLS_ROUTE, createCallRoutes } from "./call-routes.ts";
+import { buildCallRecord, createCallDelegate, operatorName, type CallCompletion } from "./call-helper.ts";
+import { optChatBotMemory } from "./bot-memory.ts";
+import { botHome, localBotSouls, operatorName as soulOperatorName } from "./bot-souls.ts";
+import { BOTS_OFF_MESSAGE, BOTS_OFF_ROUTINE_MESSAGE, type BotReply, type BotsUpdate, type BotView } from "../shared/bots.ts";
+import { clampThinkingLevel } from "@earendil-works/pi-ai";
 import { progressCardFromTranscript, type ProgressCard } from "../shared/progress-card.ts";
 import type { SessionPullRequest } from "../shared/pull-requests.ts";
 import {
@@ -39,13 +60,18 @@ import {
 import { PullRequestStatuses, pullRequestsFromTranscript } from "./pull-requests.ts";
 
 
-import { CONFIG_DIR, ATTACHMENTS_DIR, AUTOMATION_FILE, BROWSER_PROFILE_DIR, USER_THEME_DIR, WATCHERS_FILE, WATCHER_LOG_DIR } from "./paths.ts";
+import { CONFIG_DIR, ATTACHMENTS_DIR, AUTOMATION_FILE, BROWSER_PROFILE_DIR, USER_THEME_DIR, VSCODE_DIR, VSCODE_SERVER_DIR, WATCHERS_FILE, WATCHER_LOG_DIR } from "./paths.ts";
+import { VscodeError, VscodeService } from "./vscode.ts";
+import { VscodeInstaller } from "./vscode-install.ts";
+import { verifyVscodeServer } from "./vscode-providers.ts";
+import { attachVscodeTransport, isVscodeProxyPath, proxyVscodeHttp, serveVscodeEnter } from "./vscode-proxy.ts";
+import { normalizeVscodeTheme, VSCODE_ACTIONS, VSCODE_ENTER_PATH, VSCODE_STATUS_ROUTE, type VscodeAction } from "../shared/vscode.ts";
 import { BrowserToolError, ManagedBrowser } from "./browser/manager.ts";
 import { MacPower } from "./power.ts";
 import { attachBrowserTransport, browserViewTicket } from "./browser-transport.ts";
 import type { EventEmitter } from "node:events";
 import type { BrowserStatus } from "../shared/browser.ts";
-import { normalizeSettings, type Settings } from "../src/lib/settings.ts";
+import { botsEnabled, normalizeSettings, type Settings } from "../src/lib/settings.ts";
 import { mapTheme, type ShadcnTheme } from "../src/lib/shadcn-theme.ts";
 import { ProviderService, ProviderInputError } from "./providers.ts";
 import { readPiConfig, invalidateModelCatalog } from "./pi-config.ts";
@@ -75,9 +101,12 @@ import {
   AutomationInputError,
   AutomationNotFoundError,
   AutomationService,
+  AutomationStoreError,
   type AutomationExecution,
 } from "./automation.ts";
 import type { AutomationTask } from "../src/lib/automation-types.ts";
+import { BotRoutines } from "./bot-routines.ts";
+import { ROUTINES_TOOL } from "./runtimes/durable-bot-routines.ts";
 import { completeLocalPaths, completeWorkingDirectories, displayPath, resolveWorkingDirectory } from "./working-directories.ts";
 import { diagnosticPath, mirrorDiagnosticLogs, readObservability, recordDiagnosticEvent } from "./observability.ts";
 import { durableHost } from "./runtimes/durable-host.ts";
@@ -126,6 +155,8 @@ import { MAX_GITHUB_EMBEDS, parseGitHubUrl } from "../shared/github-links.ts";
 import { TaskSuggestionInputError, TaskSuggestionNotFoundError, TaskSuggestionStore } from "./task-suggestions.ts";
 import { WatcherConflictError, WatcherInputError, WatcherNotFoundError, WatcherService } from "./watchers.ts";
 import { SecretFiles, SecretRequests } from "./secret-requests.ts";
+import { REQUEST_ID, RecentRequests } from "./recent-requests.ts";
+import { Questionnaires } from "./questionnaires.ts";
 import {
   BacklogInputError,
   BacklogJiraFeed,
@@ -142,7 +173,9 @@ import { WATCHER_LIMITS } from "../shared/watchers.ts";
 import { terminals, TerminalError } from "./terminals.ts";
 import { attachSessionTransport, sessionStreamTicket } from "./session-transport.ts";
 import { createSessionListHub } from "./session-list.ts";
+import { COMPRESSION_MIN_BYTES, compressBody, negotiateEncoding } from "./http-compression.ts";
 import { attachTerminalTransport, terminalTicket } from "./terminal-transport.ts";
+import { createFileRoutes, FILES_ROUTE, parseIfMatch } from "./file-routes.ts";
 import {
   createSessionGroup,
   deleteSessionGroup,
@@ -203,7 +236,7 @@ const SESSION_GROUP_MAX = 200;
 const SESSION_GROUP_ORDER_MAX = 1_000;
 /** Session actions and live catalogs, all addressed by HUI's own session id. */
 const SESSION_ACTION =
-  /^\/__hui\/sessions\/([^/]+)\/(open|prompt|continue|resume|steer|follow-up|btw|queue|events|connect|models|commands|tools|model|thinking|question|abort|clear|reload|compact|rewind)$/;
+  /^\/__hui\/sessions\/([^/]+)\/(open|prompt|continue|resume|steer|follow-up|btw|queue|events|connect|models|commands|tools|model|thinking|question|abort|clear|reload|compact|rewind|fork)$/;
 /** The session itself, for changing it rather than acting on it. */
 const SESSION_ONE = /^\/__hui\/sessions\/([^/]+)$/;
 const GITHUB_ROUTE = `${PREFIX}github`;
@@ -236,6 +269,7 @@ const PRESENTED_MEDIA_ROUTE = /^\/__hui\/media\/([0-9a-f-]+)\/([^/]+)$/u;
 const HEARTBEAT_MS = 15_000;
 const piMutations = new PiMutationService();
 const workerRoutes = createWorkerRoutes({ service: workers, readRegistry });
+const fileRoutes = createFileRoutes({ session: async (id) => (await readRegistry()).find((record) => record.id === id) });
 // Sessions a lost connection interrupted reattach once their worker is back,
 // and stop showing a reconnect once HUI no longer tries.
 function forWorkerSessions(workerId: string, act: (record: SessionRecord) => void): void {
@@ -245,7 +279,120 @@ function forWorkerSessions(workerId: string, act: (record: SessionRecord) => voi
 }
 workers.onConnected((workerId) => forWorkerSessions(workerId, (record) => liveSessions.ensure(record, true)));
 workers.onStopped((workerId) => forWorkerSessions(workerId, (record) => liveSessions.stopReconnecting(record.id)));
+/** Bots (HUI-18): their registry, and the service that runs each one's forever chat as an ordinary Durable session
+ * whose memory is OptChat's (docs/optchat.md). */
+const botMemory = optChatBotMemory(durableHost());
+const botRegistry = new BotRegistry(undefined, (count) => recordDiagnosticEvent({
+  area: "session", level: "warning", action: "bots_invalid_records",
+  summary: `bots.json holds ${count} invalid bot record${count === 1 ? "" : "s"}; HUI keeps them in the file but does not show them.`,
+}));
+/** The Durable side of bots' chats here, and their remote workers' half: the bot service's, and what a bot import
+ * checks a new bot against. */
+const botConversations = durableBotConversations(durableHost(), botMemory, { primaryModel: async () => (await readSettings()).models.primary || undefined });
+const botWorkers = remoteBots(workers, {
+  cleanupFile: BOT_CLEANUP_FILE,
+  report: (action, summary, error) => recordDiagnosticEvent({
+    area: "session", level: "warning", action, summary, detail: error instanceof Error ? error.message : String(error),
+  }),
+});
+const bots = new BotService({
+  registry: botRegistry,
+  sessions: liveSessions,
+  readSessions: readRegistry,
+  updateSessions: updateRegistry,
+  createSession: (body, bot) => createSession(body, liveSessions, updateRegistry, undefined, { bot }),
+  removeSession: (id) => deleteSession(id),
+  // A bot without a model of its own starts on Settings' primary model, as a new session does.
+  conversations: botConversations,
+  memory: botMemory,
+  // A bot made on a worker keeps its conversation, memory and SOUL.md there, where its chat runs; what deleting one
+  // leaves there while it is offline waits in BOT_CLEANUP_FILE for its next connection.
+  workers: botWorkers,
+  souls: localBotSouls(),
+  routines: {
+    // A broken automation store is a storage failure (500), not the caller's.
+    tasks: async () => (await automation.snapshot().catch(automationStoreFailure)).tasks,
+    disable: async (task) => {
+      await automation.update(task.id, {
+        name: task.name, description: task.description, sessionId: task.sessionId, prompt: task.prompt,
+        schedule: task.schedule, enabled: false, timeoutSeconds: task.timeoutSeconds,
+      }).catch(automationStoreFailure);
+    },
+    remove: async (task) => {
+      await automation.remove(task.id).catch(automationStoreFailure);
+    },
+  },
+  // Bots are a preview: off (Settings → Labs → Bots), nothing starts a bot's turn, and a chat that starts one anyway
+  // (Durable resuming an interrupted run, a worker reattaching) goes quiet again.
+  active: botsOn,
+  statuses: liveSessions,
+  report: (event) => recordDiagnosticEvent({ area: "session", ...event }),
+});
+/** Settings → Labs → Bots, read at each use, so turning bots on or off applies without a restart. */
+async function botsOn(): Promise<boolean> {
+  return botsEnabled(await readSettings());
+}
+/** Open `GET /__hui/bots/events` streams, ended as bots are turned off so every screen hears it. */
+const botStreams = new Set<ServerResponse>();
+const botRoutes = createBotRoutes({
+  service: bots,
+  readAttachments: async (sessionId, raw) => {
+    try {
+      return await readAttachments(sessionId, raw);
+    } catch (error) {
+      throw error instanceof AttachmentInputError ? new BotInputError(error.message) : error;
+    }
+  },
+});
+/** Bots imported from other platforms' templates, and exported (`bot-template-import.ts`): under `/__hui/bots`, so Labs →
+ * Bots gates them too. */
+const localSkills = localBotSkills();
+const botTemplateRoutes = createBotTemplateRoutes({
+  service: new BotTemplateService({
+    bots,
+    // What a new bot would be offered: the tools every chat has and the skills of a new home folder, here or there.
+    offer: (worker) => worker ? botWorkers.conversations(worker).offer(undefined, undefined, randomUUID()) : botConversations.offer(undefined, BOTS_DIR),
+    models: async () => {
+      const host = durableHost();
+      await host.open();
+      await host.refreshModels();
+      return (await host.models.getAvailable()).map((model) => ({ provider: model.provider, id: model.id }));
+    },
+    routines: { tasks: async () => (await automation.snapshot()).tasks, create: (input) => automation.create(input) },
+    skills: (worker) => worker ? (botWorkers.keepsSkills(worker) ? botWorkers.skills(worker) : undefined) : localSkills,
+    findWorker: (target) => botWorkers.find(target),
+    operator: async () => soulOperatorName((await readSettings()).profileName),
+    timezone: () => Intl.DateTimeFormat().resolvedOptions().timeZone,
+    fetchPage: (url) => fetchGrokBotPage(url),
+    skillsWritten: (cwd) => durableHost().prompt.reload(cwd),
+    report: (event) => recordDiagnosticEvent({ area: "session", ...event }),
+  }),
+});
+function automationStoreFailure(error: unknown): never {
+  throw error instanceof AutomationStoreError ? new BotStoreError(error.message, { cause: error }) : error;
+}
+// A bot's chat lists the other bots in its `bots` prompt section (a worker's host asks for those of the bots there, and
+// learns each bot's name with it), and reads its SOUL.md (or has its first conversation) in its `soul` section, from
+// its home folder in HUI's configuration; a worker's host reads the home folders it keeps itself.
+durableHost().botSection = (botId) => bots.section(botId);
+workers.serve("bot.section", async (workerId, params) => {
+  const botId = String(params["botId"] ?? "");
+  const section = await bots.workerSection(workerId, botId);
+  return { section: section ?? null, name: bots.identity(botId)?.name ?? null };
+});
+durableHost().botSouls = {
+  home: (botId) => botHome(botId),
+  operator: async () => soulOperatorName((await readSettings()).profileName),
+  // From the last registry read: a bot still called "New Bot" asks for a name first.
+  name: (botId) => bots.identity(botId)?.name,
+};
+// A bot's chat that turns tools back on (the operator allowed a request there) updates the roster's copy of its lists.
+durableHost().botAccessRecorded = (botId, access) => bots.accessRecorded(botId, access);
+/** The bot list every Bots screen shares, recomputed while one listens, like the session list. */
+const botList = createSessionListHub<BotView>(async () => [{ label: "bots", sessions: await bots.list({ archived: "all" }) }]);
 const subagents = new SubagentService(liveSessions);
+/** Prompts, steers and follow-ups by their client request id, so a resend never runs twice. */
+const recentRequests = new RecentRequests();
 const taskSuggestions = new TaskSuggestionStore({ onChange: (id) => liveSessions.notifySnapshot(id) });
 const watchers = new WatcherService({
   file: WATCHERS_FILE,
@@ -257,16 +404,42 @@ const managedBrowser = new ManagedBrowser({
   profileDir: BROWSER_PROFILE_DIR,
   readSettings: async () => (await readSettings()).browser,
 });
+/** One VS Code server per gateway for every VS Code view, started on the first open (`vscode.ts`). Nothing runs or
+ * downloads before that; an openvscode-server install happens only when the operator asks for it. */
+const vscode = new VscodeService({
+  dir: VSCODE_DIR,
+  settings: async () => (await readSettings()).vscode,
+  saveLicense: async (licenseAcceptedAt) => {
+    const current = await readSettings();
+    await writeSettings({ ...current, vscode: { ...current.vscode, licenseAcceptedAt } });
+  },
+  installer: new VscodeInstaller({
+    dir: VSCODE_SERVER_DIR,
+    verify: verifyVscodeServer,
+    nixos: existsSync("/etc/NIXOS"),
+    // A mirror serving the same release files; the pinned checksums still decide what installs.
+    ...(process.env["HUI_OPENVSCODE_SERVER_MIRROR"] ? { downloads: process.env["HUI_OPENVSCODE_SERVER_MIRROR"] } : {}),
+  }),
+});
 /** macOS sleep prevention lives and dies with this gateway process. */
 const macPower = process.platform === "darwin" ? new MacPower() : undefined;
 liveSessions.setTaskSuggestionProvider((id) => taskSuggestions.list(id));
 liveSessions.setWatcherProvider((id) => watchers.list(id));
 const secretRequests = new SecretRequests({ onChange: (id) => liveSessions.notifySnapshot(id) });
 const secretFiles = new SecretFiles();
-liveSessions.setSecretRequestProvider((id) => secretRequests.questions(id));
+const questionnaires = new Questionnaires({ onChange: (id) => liveSessions.notifySnapshot(id) });
+liveSessions.setHuiQuestionProvider((id) => [...secretRequests.questions(id), ...questionnaires.questions(id)]);
 // A stopped turn must not leave its pages running in the headless browser.
 liveSessions.setAbortListener((id) => managedBrowser.closeOwner(id));
 registerAgentToolHandler(async (invocation) => {
+  // Behind the check where a bot's chat runs: HUI's own refusal of a tool the operator turned off in that chat.
+  await bots.checkToolAllowed(invocation.callerSessionId, invocation.action);
+  // A bot's chat only: the service refuses every other caller.
+  if (invocation.action === "message_bot") return bots.messageBot(invocation.callerSessionId, invocation.params);
+  // A bot's gated tools judge its run by every input it took, as the host running the chat saw them (`runOrigins`).
+  if (invocation.action === "set_profile") return bots.setProfile(invocation.callerSessionId, invocation.params, invocation.runOrigins);
+  if (invocation.action === ROUTINES_TOOL) return botRoutines.handle(invocation.callerSessionId, invocation.params, invocation.runOrigins);
+  if (invocation.action === "triggers") return triggers.service.tool(invocation.callerSessionId, invocation.params, invocation.runOrigins);
   if (invocation.action === "suggest_task" || invocation.action === "dismiss_task") {
     const caller = (await readRegistry()).find(({ id }) => id === invocation.callerSessionId);
     if (!caller) throw new TaskSuggestionInputError("Conversation no longer exists.");
@@ -283,6 +456,10 @@ registerAgentToolHandler(async (invocation) => {
     if (caller.worker !== invocation.fromWorker) throw new Error("A secret request must come from the machine its session runs on.");
     const answer = await secretRequests.request(caller.id, invocation.params, invocation.signal);
     return invocation.fromWorker ? answer : secretFiles.deliver(answer);
+  }
+  if (invocation.action === "ask_user_question") {
+    if (!(await readRegistry()).some(({ id }) => id === invocation.callerSessionId)) throw new Error("Conversation no longer exists.");
+    return questionnaires.request(invocation.callerSessionId, invocation.params, invocation.signal);
   }
   if (invocation.action === "watcher") {
     const caller = (await readRegistry()).find(({ id }) => id === invocation.callerSessionId);
@@ -367,6 +544,64 @@ const THEME_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
 
 const providerService = new ProviderService(undefined, invalidateModelCatalog);
 
+/** One completion through the gateway's models (HUI's provider accounts included), at low thinking: the call's helper
+ * and its record use the bot's utility model. */
+const callCompletion: CallCompletion = async (ref, { system, prompt, signal }) => {
+  const host = durableHost();
+  await host.open();
+  const slash = ref.indexOf("/");
+  let model = host.models.getModel(ref.slice(0, slash), ref.slice(slash + 1));
+  if (!model) {
+    await host.refreshModels();
+    model = host.models.getModel(ref.slice(0, slash), ref.slice(slash + 1));
+  }
+  if (!model) throw new Error(`Unknown model: ${ref}`);
+  const level = clampThinkingLevel(model, "low");
+  const reply = await host.models.completeSimple(model, {
+    systemPrompt: system,
+    messages: [{ role: "user", content: [{ type: "text", text: prompt }], timestamp: Date.now() }],
+  }, { signal, ...(level === "off" ? {} : { reasoning: level }) });
+  if (reply.stopReason === "error" || reply.stopReason === "aborted") throw new Error(reply.errorMessage || `The model stopped: ${reply.stopReason}`);
+  return reply.content.flatMap((part) => part.type === "text" ? [part.text] : []).join("");
+};
+const callSettings = async () => {
+  const settings = await readSettings();
+  return { utility: settings.models.utility, operator: operatorName(settings.profileName) };
+};
+const reportCall = (summary: string, detail?: string) => recordDiagnosticEvent({ area: "runtime", level: "warning", action: "call_helper", summary, ...(detail ? { detail } : {}) });
+
+/** GPT-Live calls with bots over the ChatGPT login (HUI-18): the credential stays here, audio goes browser ↔ ChatGPT.
+ * A call's quick questions go to the bot's helper (its utility model); its record goes to the bot's chat at the end. */
+const callBroker = new CallBroker({
+  accounts: providerCallAccounts(providerService.accounts),
+  report: ({ status, detail }) => recordDiagnosticEvent({
+    area: "runtime", level: "warning", action: "call_refused", summary: `ChatGPT refused a GPT-Live call (${status})`, ...(detail ? { detail } : {}),
+  }),
+  // A call's record is one passive entry in the bot's chat (no turn runs for it), so it is written even when the call
+  // ended because bots were turned off.
+  onEnd: (call, endedAt) => void (async () => {
+    const bot = await bots.resolve(call.botId);
+    const record = await buildCallRecord({ bot, call, endedAt, settings: await callSettings(), completion: callCompletion, report: reportCall });
+    if (record) await bots.recordCall(bot.id, record);
+  })().catch((error: unknown) => reportCall("A call's record could not be written", error instanceof Error ? error.message : String(error))),
+});
+const callRoutes = createCallRoutes({
+  broker: callBroker,
+  bots,
+  delegate: createCallDelegate({
+    view: async (botId) => (await bots.callContext(botId)).view,
+    soul: async (botId) => (await bots.soul(botId)) ?? undefined,
+    settings: callSettings,
+    completion: callCompletion,
+    // Real work goes to the bot's own chat, as any message: a prompt, or a follow-up behind its running turn.
+    handOff: async (botId, text) => await bots.send(botId, { text }, { timeoutMs: 600_000 }) as BotReply,
+    report: reportCall,
+  }),
+  settings: () => readSettings(),
+  timeZone: () => Intl.DateTimeFormat().resolvedOptions().timeZone,
+});
+const BOT_CALLS = /^\/__hui\/bots\/[^/]+\/calls(?:\/|$)/u;
+
 const SETTINGS_FILE = join(CONFIG_DIR, "settings.json");
 const BUILTIN_THEME_DIR = fileURLToPath(new URL("../themes/", import.meta.url));
 
@@ -403,12 +638,43 @@ async function ensureConfigDir(): Promise<void> {
 
 async function writeSettings(raw: unknown): Promise<Settings> {
   const settings = normalizeSettings(raw);
+  const botsWereOn = botsEnabled(await readSettings());
   await ensureConfigDir();
   await writeFile(SETTINGS_FILE, `${JSON.stringify(settings, null, 2)}\n`, "utf8");
   // A changed browser mode or executable must not leave the old process running.
   await managedBrowser.applySettings(settings.browser);
+  // Off withdraws every VS Code frame's access and stops the server; a new executable applies to the next start.
+  await vscode.applySettings(settings.vscode);
   macPower?.setKeepAwake(settings.power.keepAwake);
+  if (botsWereOn && !botsEnabled(settings)) quietBots();
+  // Triggers' pollers stop while bots are off and resume from their cursors once they are on again.
+  if (botsWereOn !== botsEnabled(settings)) {
+    void triggers.service.setActive(botsEnabled(settings)).catch((error: unknown) => recordDiagnosticEvent({
+      area: "session", level: "warning", action: "triggers_toggle_failed", summary: "Triggers could not follow bots being turned on or off",
+      detail: error instanceof Error ? error.message : String(error),
+    }));
+  }
   return settings;
+}
+
+/**
+ * Bots were just turned off (Settings → Labs → Bots). Their routes already refuse, as each reads the setting; what
+ * they were doing stops too: every bot goes quiet (queued messages withdrawn, a running turn stopped), calls end and
+ * are recorded, and open bot streams end, so each screen learns it. Nothing is deleted: turning bots on again finds
+ * them as they were.
+ */
+function quietBots(): void {
+  for (const response of botStreams) response.end();
+  const calls = callBroker.endAll();
+  recordDiagnosticEvent({
+    area: "session", level: "info", action: "bots_turned_off",
+    summary: `Bots were turned off in Settings → Labs${calls ? `; ${calls} call${calls === 1 ? "" : "s"} ended` : ""}`,
+  });
+  void bots.quietAll().catch((error: unknown) => recordDiagnosticEvent({
+    area: "session", level: "warning", action: "bots_off_stop_failed",
+    summary: "Bots were turned off, but HUI could not read them all to stop their turns",
+    detail: error instanceof Error ? error.message : String(error),
+  }));
 }
 
 async function browserStatus(): Promise<BrowserStatus> {
@@ -605,8 +871,15 @@ export async function importTweakcnTheme(input: string): Promise<string> {
 /** Error text of failed `/__hui/` responses, kept for their request diagnostic. */
 const responseFailures = new WeakMap<ServerResponse, string>();
 
+/** Responses whose body is being compressed: they are answered, just not ended yet. */
+const compressing = new WeakSet<ServerResponse>();
+
+/**
+ * A large body (a session's transcript) is compressed when the client accepts
+ * it, off the event loop. The first answer wins, as when the body is sent at once.
+ */
 function sendJson(response: ServerResponse, status: number, body: unknown): void {
-  if (response.writableEnded) {
+  if (response.writableEnded || compressing.has(response)) {
     return;
   }
   if (status >= 400 && !responseFailures.has(response)) {
@@ -616,7 +889,39 @@ function sendJson(response: ServerResponse, status: number, body: unknown): void
   response.statusCode = status;
   response.setHeader("content-type", "application/json; charset=utf-8");
   response.setHeader("cache-control", "no-store");
-  response.end(JSON.stringify(body));
+  const text = JSON.stringify(body);
+  const encoding = text.length >= COMPRESSION_MIN_BYTES ? negotiateEncoding(response.req?.headers["accept-encoding"]) : undefined;
+  if (!encoding) {
+    response.end(text);
+    return;
+  }
+  response.setHeader("vary", "accept-encoding");
+  compressing.add(response);
+  const raw = Buffer.from(text);
+  void compressBody(raw, encoding, "fast").then((compressed) => {
+    response.setHeader("content-encoding", encoding);
+    return compressed;
+  }, () => raw).then((sent) => {
+    compressing.delete(response);
+    if (response.writableEnded || response.destroyed) return;
+    response.setHeader("content-length", sent.length);
+    response.end(sent);
+  });
+}
+
+/** A page HUI renders itself (a bot's memory). Its text comes from a chat, so it may run nothing, load nothing but its
+ * inline styles, submit nothing, and be framed by no page, HUI's own included. */
+const BOT_PAGE_POLICY = "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
+
+function sendHtml(response: ServerResponse, status: number, html: string): void {
+  if (response.writableEnded) return;
+  response.statusCode = status;
+  response.setHeader("content-type", "text/html; charset=utf-8");
+  response.setHeader("cache-control", "no-store");
+  response.setHeader("x-content-type-options", "nosniff");
+  response.setHeader("content-security-policy", BOT_PAGE_POLICY);
+  response.setHeader("cross-origin-resource-policy", "same-origin");
+  response.end(html);
 }
 
 async function readBody(
@@ -634,6 +939,19 @@ async function readBody(
     chunks.push(buffer);
   }
   return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+}
+
+/** A request body as bytes (an upload), refusing anything past `maxBytes`. */
+async function readBytes(request: Connect.IncomingMessage, maxBytes: number): Promise<Buffer> {
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const chunk of request) {
+    const buffer = chunk as Buffer;
+    size += buffer.length;
+    if (size > maxBytes) throw new Error("request body too large");
+    chunks.push(buffer);
+  }
+  return Buffer.concat(chunks);
 }
 
 /** Writes an uploaded file under the config dir and returns its absolute path. */
@@ -802,6 +1120,8 @@ type SessionView = {
   };
   /** A prompt was active when its owning runtime disappeared. */
   interrupted?: true;
+  /** A watcher of this session, or a subagent below it, still runs. */
+  background?: true;
   model?: string;
   thinking?: string;
   pinned?: true;
@@ -810,6 +1130,8 @@ type SessionView = {
   icon?: string;
   parentId?: string;
   subagent?: NonNullable<SessionRecord["subagent"]>;
+  /** The bot whose forever chat this is; the Sessions list leaves these to the Bots tab. */
+  bot?: { id: string; handle: string; name: string };
   /** Effective Kanban stage; see `effectiveSessionStage`. */
   stage: SessionStage;
   stageOrigin: SessionStageOrigin;
@@ -819,6 +1141,19 @@ type SessionView = {
 
 export class SessionNotFoundError extends Error {
   override name = "SessionNotFoundError";
+}
+
+/** Why a bot's chat refuses an operation that would end, shorten or fork it (409). Without a handle (an unreadable
+ * bot registry), the record's `bot` field alone refuses. */
+function foreverChatRefusal(handle: string | undefined, operation: "clear" | "compact" | "rewind" | "fork" | "delete"): string {
+  const chat = handle ? `@${handle}'s` : "a bot's";
+  return {
+    clear: `This is ${chat} forever chat: it cannot be cleared. Its memory keeps everything; archive the bot when you are done with it.`,
+    compact: `This is ${chat} forever chat: its memory condenses it by itself, so it is not compacted by hand.`,
+    rewind: `This is ${chat} forever chat: it cannot be rewound or forked.`,
+    fork: `This is ${chat} forever chat: it cannot be rewound or forked.`,
+    delete: `This is ${chat} forever chat: archive the bot instead${handle ? ` (hui bot remove ${handle})` : ""}, which keeps its chat and memory, or delete the bot${handle ? ` (hui bot delete ${handle})` : ""} with its chat, memory and folder.`,
+  }[operation];
 }
 
 function sessionText(
@@ -917,6 +1252,17 @@ export function sessionMutationErrorStatus(error: unknown): 400 | 500 {
  * `gh`; HUI never sees the token. `HUI_GITHUB_CLI` points E2E at a fake executable. */
 const GH_COMMAND = process.env["HUI_GITHUB_CLI"] || "gh";
 const githubCli = new GitHubCli({ command: GH_COMMAND });
+/** Bots' triggers (HUI-18): GitHub pollers through the same `gh`, the sessions bots start, webhook calls, and the Slack
+ * messages that ping the operator, through the Slack connection of Settings → Integrations (`slack.ts`). */
+const triggers = createGatewayTriggers({
+  send: (botId, message) => bots.send(botId, message),
+  listBots: () => botRegistry.list(),
+  readSessions: readRegistry,
+  sessions: liveSessions,
+  active: botsOn,
+  ghCommand: GH_COMMAND,
+  report: (event) => recordDiagnosticEvent({ area: "session", ...event }),
+});
 const githubPreviews = new GitHubPreviews(ghApi(GH_COMMAND));
 const githubContributions = new GitHubContributionsReader(GH_COMMAND);
 const pullRequestStatuses = new PullRequestStatuses(previewPullRequestFetcher(githubPreviews));
@@ -1024,6 +1370,7 @@ function toView(
   const transcript = liveSessions.transcript(record.id);
   const pullRequests = pullRequestsFromTranscript(transcript).map((ref) => pullRequestStatuses.view(ref));
   const jiraIssues = sessionJiraIssues(record, transcript);
+  const bot = record.bot ? bots.identity(record.bot) : undefined;
   return {
     id: record.id,
     progress: progressCardFromTranscript(transcript),
@@ -1048,6 +1395,7 @@ function toView(
     ...(record.icon ? { icon: record.icon } : {}),
     ...(record.parentId ? { parentId: record.parentId } : {}),
     ...(record.subagent ? { subagent: record.subagent } : {}),
+    ...(bot ? { bot } : {}),
     ...effectiveSessionStage(record, pullRequests),
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
@@ -1120,12 +1468,30 @@ export async function setAgentStage(
   return result;
 }
 
+/** Flags sessions whose own turn may be idle while work they started goes on:
+ * a running watcher, or a running subagent anywhere below them. */
+export function markBackgroundWork(views: SessionView[], watching: (id: string) => boolean): void {
+  const byId = new Map(views.map((view) => [view.id, view]));
+  for (const view of views) {
+    if (watching(view.id)) view.background = true;
+    if (view.status !== "running" && !watching(view.id)) continue;
+    // `seen` stops a corrupt parent cycle from looping forever.
+    const seen = new Set([view.id]);
+    for (let parent = byId.get(view.parentId ?? ""); parent && !seen.has(parent.id); parent = byId.get(parent.parentId ?? "")) {
+      seen.add(parent.id);
+      parent.background = true;
+    }
+  }
+}
+
 /** The stored record has no idea whether a runtime is booting, so the live
  * status is layered on at read time. */
 async function listSessionViews(): Promise<{ label: string; sessions: SessionView[] }[]> {
   // Taken before the registry read: a record is persisted before its pending
   // entry is dropped, so every list contains a finishing session once.
   const pendingSnapshot = [...pendingSessions.values()];
+  // Refreshes the bot names session views show; a broken bots.json leaves them plain sessions.
+  await botRegistry.list().catch(() => undefined);
   const registry = await readSessionRegistry();
   const runtimes = liveSessions.runtimeTelemetry();
   const memoryByPid = await runtimeMemoryByPid([...runtimes.values()].flatMap(({ pid }) => pid ? [pid] : []));
@@ -1146,7 +1512,9 @@ async function listSessionViews(): Promise<{ label: string; sessions: SessionVie
       return entry ? pendingView(entry) : toView(record, liveSessions.status(record.id), runtimeViews.get(record.id));
     }),
   }));
-  persistInferredStages(registry.sessions, views.flatMap((group) => group.sessions));
+  const all = views.flatMap((group) => group.sessions);
+  markBackgroundWork(all, (id) => watchers.list(id).some((watcher) => watcher.state === "running"));
+  persistInferredStages(registry.sessions, all);
   return views;
 }
 
@@ -1245,6 +1613,16 @@ async function executeAutomationTask(
 ): Promise<AutomationExecution> {
   const record = (await readRegistry()).find((session) => session.id === task.sessionId);
   if (!record) throw new AutomationNotFoundError("The target session no longer exists.");
+  // A bot's routine: marked as such, and queued behind a busy bot instead of skipped. While bots are off it is skipped
+  // (409, never a failure) and kept: its next time runs once they are on, and a skipped time is not run again.
+  const bot = record.bot ? await bots.botForSession(record.id) : undefined;
+  if (bot) {
+    if (!await botsOn()) throw new AutomationConflictError(BOTS_OFF_ROUTINE_MESSAGE);
+    return bots.runRoutine(bot, record, task, signal).catch((error: unknown) => {
+      // Turned off as it started: skipped all the same.
+      throw error instanceof BotsOffError ? new AutomationConflictError(BOTS_OFF_ROUTINE_MESSAGE) : error;
+    });
+  }
   if (liveSessions.status(record.id) === "running") {
     throw new AutomationConflictError("The target session is already running.");
   }
@@ -1266,6 +1644,13 @@ async function executeAutomationTask(
 }
 
 const automation = new AutomationService(AUTOMATION_FILE, executeAutomationTask);
+/** A bot's `routines` tool: its own chat's Automation tasks, behind its guards. */
+const botRoutines = new BotRoutines({
+  botForSession: (sessionId) => bots.botForSession(sessionId),
+  readSessions: readRegistry,
+  automation,
+  active: botsOn,
+});
 
 /** Registers a session and starts it. The directory is checked before anything
  * is written: a bad cwd would otherwise fail minutes later, inside pi. */
@@ -1297,6 +1682,10 @@ export async function createSession(
     stage?: SessionStage;
     onPending?: (record: SessionRecord) => void;
     nameSession?: typeof generateSessionNames;
+    /** A bot's chat: its bot, and the Durable conversation already created for it (bot-service.ts). */
+    bot?: { id: string; piSessionFile: string };
+    /** A fork: the resume reference of the conversation copy it continues (`liveSessions.fork`). */
+    piSessionFile?: string;
   } = {},
 ): Promise<SessionRecord> {
   if (typeof body["cwd"] !== "string") throw new Error("Working directory must be text.");
@@ -1390,6 +1779,8 @@ export async function createSession(
     ...(model ? { model } : {}),
     ...(thinking ? { thinking } : {}),
     ...(seed.stage ? { stage: seed.stage, stageSource: "operator" as const } : {}),
+    ...(seed.bot ? { bot: seed.bot.id, piSessionFile: seed.bot.piSessionFile } : {}),
+    ...(seed.piSessionFile ? { piSessionFile: seed.piSessionFile } : {}),
     createdAt: now,
     updatedAt: now,
     source: "hui",
@@ -1454,6 +1845,87 @@ export async function createSession(
     void renameWithGeneratedTitle(record, () => nameSession({ cwd: namingCwd, prompt: initialPrompt, settings }), registryUpdater);
   }
   return record;
+}
+
+const FORK_SUFFIX = " (fork)";
+const forkTitle = (title: string) => `${title.slice(0, SESSION_TITLE_MAX - FORK_SUFFIX.length)}${FORK_SUFFIX}`;
+
+export type ForkRequest = { entryId?: string; worktree?: boolean; branchName?: string };
+
+/** Validates a fork route body; unknown fields are ignored like every other session route. */
+export function forkRequest(body: Record<string, unknown>): ForkRequest {
+  if (body["entryId"] !== undefined && (typeof body["entryId"] !== "string" || !body["entryId"].trim())) {
+    throw new Error("A fork point must be a history entry id.");
+  }
+  if (body["worktree"] !== undefined && typeof body["worktree"] !== "boolean") throw new Error("Worktree must be true or false.");
+  const branchName = sessionText(body, "branchName", SESSION_TITLE_MAX, { optional: true, allowEmpty: false });
+  if (branchName && body["worktree"] !== true) throw new Error("A branch name requires a new worktree.");
+  return {
+    ...(typeof body["entryId"] === "string" ? { entryId: body["entryId"].trim() } : {}),
+    ...(body["worktree"] === true ? { worktree: true } : {}),
+    ...(branchName ? { branchName } : {}),
+  };
+}
+
+/**
+ * A fork from a session, start to finish: the optional worktree first (from the source checkout's HEAD, on a new
+ * branch, as New Session makes one), then the conversation copy moved into it, then the record. A failure after the
+ * worktree exists removes it again. Uncommitted changes in the source checkout stay there.
+ */
+export async function forkFromSession(
+  source: SessionRecord,
+  request: ForkRequest,
+  fork: (entryId: string | undefined, options?: { cwd: string }) => Promise<string>,
+  sessions: Pick<typeof liveSessions, "accept" | "ensure"> = liveSessions,
+  registryUpdater: typeof updateRegistry = updateRegistry,
+  worktreesRoot?: string,
+): Promise<SessionRecord> {
+  if (!request.worktree) return forkSession(source, await fork(request.entryId), sessions, registryUpdater);
+  if (source.worker) throw new Error("Worktrees are not available on remote workers yet.");
+  const settings = await readSettings();
+  const worktree = await createSessionWorktree({
+    sourceDirectory: source.cwd,
+    title: forkTitle(source.title),
+    branchName: request.branchName ?? `${fallbackBranchName(source.title)}-fork`,
+    branchPrefix: settings.branchPrefix,
+    ...(worktreesRoot ? { root: worktreesRoot } : {}),
+  });
+  try {
+    const reference = await fork(request.entryId, { cwd: worktree.cwd });
+    return await forkSession(source, reference, sessions, registryUpdater, worktree.cwd);
+  } catch (error) {
+    try {
+      await worktree.rollback();
+    } catch (rollbackError) {
+      throw new Error(`${error instanceof Error ? error.message : String(error)} Rollback failed: ${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}`);
+    }
+    throw error;
+  }
+}
+
+/**
+ * Registers a fork's conversation copy as a session of its own. It takes what runs the work from the source (its
+ * directory, worker, group, runtime, model and reasoning) and none of the operator's marks: it starts unpinned, read,
+ * without an icon, Jira links or a Kanban stage. Pull request marks come from the transcript, so pull requests the
+ * source opened before the fork point show on the copy too. It shares the source's checkout; nothing in Git changes.
+ */
+export async function forkSession(
+  source: SessionRecord,
+  piSessionFile: string,
+  sessions: Pick<typeof liveSessions, "accept" | "ensure"> = liveSessions,
+  registryUpdater: typeof updateRegistry = updateRegistry,
+  /** A worktree made for the fork: the session works there instead of in the source's directory. */
+  cwd: string = source.cwd,
+): Promise<SessionRecord> {
+  return createSession({
+    cwd,
+    ...(source.worker ? { worker: source.worker } : {}),
+    group: source.group,
+    title: forkTitle(source.title),
+    tool: source.tool,
+    ...(source.model ? { model: source.model } : {}),
+    ...(source.thinking ? { thinking: source.thinking } : {}),
+  }, sessions, registryUpdater, undefined, { piSessionFile });
 }
 
 /**
@@ -2039,6 +2511,85 @@ export function streamSessionStatuses(
   });
 }
 
+/** `GET /__hui/bots/events`: the complete bot list first, then only the bots whose views changed. */
+export function streamBots(response: ServerResponse, list: Pick<typeof botList, "subscribe"> = botList): void {
+  botStreams.add(response);
+  response.writeHead(200, {
+    "content-type": "text/event-stream; charset=utf-8",
+    "cache-control": "no-store",
+    connection: "keep-alive",
+    "x-accel-buffering": "no",
+  });
+  response.flushHeaders();
+  const unlist = list.subscribe((update) => writeEvent(response, "bots", {
+    revision: update.revision,
+    ...(update.groups ? { ids: update.groups.flatMap((group) => group.ids) } : {}),
+    upserts: update.upserts,
+  } satisfies BotsUpdate));
+  const heartbeat = setInterval(() => {
+    if (!response.writableEnded) response.write(": heartbeat\n\n");
+  }, HEARTBEAT_MS);
+  heartbeat.unref();
+  response.on("close", () => {
+    botStreams.delete(response);
+    clearInterval(heartbeat);
+    unlist();
+  });
+}
+
+/** Bots off: every bot route, call route and bot chat's session route answers 409 with `BOTS_OFF_MESSAGE`, which names
+ * the setting. 409, not 404: the gateway's settings refuse the request, and the bots and their data are all still
+ * there (404 is a bot that does not exist). True when it answered. */
+async function refusedWhileBotsOff(response: ServerResponse): Promise<boolean> {
+  if (await botsOn()) return false;
+  sendJson(response, 409, { error: BOTS_OFF_MESSAGE });
+  return true;
+}
+
+/** A bot's chat while bots are off: no session route reaches it, since opening or prompting it would resume it. The
+ * bot registry decides, as for its forever chat; a registry that cannot be read refuses. */
+async function isDormantBotChat(record: SessionRecord): Promise<boolean> {
+  if (!record.bot || await botsOn()) return false;
+  return bots.botForSession(record.id).then((bot) => Boolean(bot), () => true);
+}
+
+/** `/__hui/calls` and `/__hui/bots/:id/calls…` (`call-routes.ts`). */
+async function serveCallRoute(request: Connect.IncomingMessage, response: ServerResponse, path: string): Promise<void> {
+  // A browser that leaves abandons a call being set up, and ends a task's wait (never the bot's turn).
+  const gone = new AbortController();
+  response.once("close", () => gone.abort());
+  const result = await callRoutes.handle({ method: request.method ?? "GET", path, body: (maxBytes) => readBody(request, maxBytes), signal: gone.signal });
+  if (!result) sendJson(response, 404, { error: `unknown route: ${path}` });
+  else sendJson(response, result.status, result.body);
+}
+
+/** `/__hui/bots` and everything under it but the events stream (`bot-routes.ts`). */
+async function serveBotRoute(request: Connect.IncomingMessage, response: ServerResponse, path: string): Promise<void> {
+  // A client that leaves ends its wait for a reply, never the bot's turn.
+  const gone = new AbortController();
+  response.once("close", () => gone.abort());
+  const routed: BotRouteRequest = {
+    method: request.method ?? "GET",
+    path,
+    query: new URL(request.url ?? "/", "http://localhost").searchParams,
+    body: (maxBytes) => readBody(request, maxBytes),
+    signal: gone.signal,
+  };
+  // Importing and exporting first: `import` is a reserved handle, and `export` no bot route's action.
+  const result = await botTemplateRoutes.handle(routed) ?? await botRoutes.handle(routed);
+  if (!result) sendJson(response, 404, { error: `unknown route: ${path}` });
+  else if ("file" in result) sendDownload(response, result.status, result.file);
+  else if ("html" in result) sendHtml(response, result.status, result.html);
+  else sendJson(response, result.status, result.body);
+}
+
+/** `/__hui/bots/:id/triggers…` (`bot-trigger-routes.ts`). */
+async function serveTriggerRoute(request: Connect.IncomingMessage, response: ServerResponse, path: string): Promise<void> {
+  const result = await triggers.routes.handle({ method: request.method ?? "GET", path, body: (maxBytes) => readBody(request, maxBytes) });
+  if (!result) sendJson(response, 404, { error: `unknown route: ${path}` });
+  else sendJson(response, result.status, result.body);
+}
+
 async function handleRequest(
   request: Connect.IncomingMessage,
   response: ServerResponse,
@@ -2100,6 +2651,37 @@ async function handleRequest(
     return;
   }
 
+  if (BOT_MEMORY_PAGE.test(path)) {
+    // A link (a bot's memory in a new tab) cannot send x-hui either: like an
+    // attachment, accept it or a browser-attested same-origin load, and refuse
+    // everything cross-site.
+    if (request.headers[CLIENT_HEADER] !== "1" && request.headers["sec-fetch-site"] !== "same-origin") {
+      sendJson(response, 403, { error: `missing ${CLIENT_HEADER} header` });
+      return;
+    }
+    if (await refusedWhileBotsOff(response)) return;
+    await serveBotRoute(request, response, path);
+    return;
+  }
+
+  // A VS Code frame cannot send x-hui either. Its one-use ticket (minted below, behind x-hui) becomes a cookie scoped
+  // to /__hui/vscode, which only the proxy accepts; no other route reads it (`vscode-proxy.ts`).
+  if (path === VSCODE_ENTER_PATH) {
+    serveVscodeEnter(request, response, vscode);
+    return;
+  }
+  if (isVscodeProxyPath(path)) {
+    proxyVscodeHttp(request, response, vscode);
+    return;
+  }
+
+  // A webhook trigger's caller is another program: its token is the credential, not x-hui (`bot-triggers-webhook.ts`).
+  if (isHookPath(path)) {
+    const result = await triggers.hook(request, path);
+    sendJson(response, result.status, result.body);
+    return;
+  }
+
   if (request.method === "OPTIONS") {
     sendJson(response, 403, { error: "cross-origin requests are not accepted" });
     return;
@@ -2135,6 +2717,90 @@ async function handleRequest(
       } else throw new TerminalError("Method not allowed.", 405);
     } catch (error) {
       sendJson(response, error instanceof TerminalError ? error.status : 500, { error: error instanceof Error ? error.message : "Terminal request failed." });
+    }
+    return;
+  }
+
+  // The Files view: the conversation's working directory, never another path (`file-routes.ts`).
+  if (FILES_ROUTE.test(path)) {
+    const result = await fileRoutes.handle({
+      method: request.method ?? "GET",
+      path,
+      query: new URL(request.url ?? "/", "http://localhost").searchParams,
+      ifMatch: parseIfMatch(request.headers["if-match"]),
+      json: (maxBytes) => readBody(request, maxBytes),
+      bytes: (maxBytes) => readBytes(request, maxBytes),
+    });
+    if (!result) sendJson(response, 404, { error: `unknown route: ${path}` });
+    else if ("file" in result) {
+      response.statusCode = result.status;
+      response.setHeader("content-type", result.file.mimeType);
+      response.setHeader("content-length", String(result.file.data.length));
+      response.setHeader("cache-control", "no-store");
+      response.setHeader("x-content-type-options", "nosniff");
+      response.setHeader("cross-origin-resource-policy", "same-origin");
+      response.setHeader("content-security-policy", "default-src 'none'; sandbox");
+      if (result.file.download) response.setHeader("content-disposition", `attachment; filename*=UTF-8''${encodeURIComponent(result.file.name)}`);
+      response.end(result.file.data);
+    } else {
+      if (result.etag) response.setHeader("etag", `"${result.etag}"`);
+      sendJson(response, result.status, result.body);
+    }
+    return;
+  }
+
+  // A VS Code view on the conversation's folder: starts the shared server and mints the frame's one-use ticket.
+  const vscodeRoute = path.match(/^\/__hui\/sessions\/([^/]+)\/vscode\/connect$/u);
+  if (vscodeRoute) {
+    try {
+      if (request.method !== "POST") throw new VscodeError("Method not allowed.", 405);
+      let body: unknown;
+      try { body = await readBody(request); } catch { throw new VscodeError("VS Code request body must be JSON.", 400); }
+      const owner = decodeURIComponent(vscodeRoute[1] ?? "");
+      const session = (await readRegistry()).find((record) => record.id === owner);
+      if (!session) throw new VscodeError("Conversation not found.", 404);
+      if (session.worker) throw new VscodeError("This conversation runs on a remote worker. VS Code runs on the gateway's machine, which does not have its files.", 409, "remote");
+      const folder = await stat(session.cwd).then((info) => info.isDirectory(), () => false);
+      if (!folder) throw new VscodeError(`The conversation's folder no longer exists: ${session.cwd}`, 409, "folder");
+      const theme = body && typeof body === "object" && !Array.isArray(body) ? normalizeVscodeTheme((body as Record<string, unknown>)["theme"]) : undefined;
+      const connection = await vscode.connect(session.cwd, theme);
+      // Still starting (serve-web downloading its first build): the view follows the status and asks again.
+      if ("pending" in connection) sendJson(response, 202, { pending: true, status: await vscode.status() });
+      else sendJson(response, 200, connection);
+    } catch (error) {
+      sendJson(response, error instanceof VscodeError ? error.status : 500, {
+        error: error instanceof Error ? error.message : "VS Code could not open.",
+        code: error instanceof VscodeError ? error.code : "failed",
+      });
+    }
+    return;
+  }
+
+  if (path === VSCODE_STATUS_ROUTE) {
+    try {
+      if (request.method === "GET") {
+        sendJson(response, 200, await vscode.status());
+        return;
+      }
+      if (request.method !== "POST") throw new VscodeError("Method not allowed.", 405);
+      let body: unknown;
+      try { body = await readBody(request); } catch { throw new VscodeError("VS Code request body must be JSON.", 400); }
+      const action = body && typeof body === "object" && !Array.isArray(body) ? (body as Record<string, unknown>)["action"] : undefined;
+      if (!VSCODE_ACTIONS.includes(action as VscodeAction)) throw new VscodeError(`action must be one of ${VSCODE_ACTIONS.join(", ")}.`, 400);
+      switch (action as VscodeAction) {
+        case "stop": await vscode.stop(); break;
+        case "accept-license": await vscode.acceptLicense(); break;
+        case "revoke-license": await vscode.revokeLicense(); break;
+        case "install": vscode.startInstall(); break;
+        case "cancel-install": await vscode.cancelInstall(); break;
+        case "uninstall": await vscode.uninstall(); break;
+      }
+      sendJson(response, 200, await vscode.status());
+    } catch (error) {
+      sendJson(response, error instanceof VscodeError ? error.status : 500, {
+        error: error instanceof Error ? error.message : "The VS Code request failed.",
+        code: error instanceof VscodeError ? error.code : "failed",
+      });
     }
     return;
   }
@@ -2347,6 +3013,23 @@ async function handleRequest(
     const result = await workerRoutes.handle(request.method ?? "GET", path, () => readBody(request));
     if (result) sendJson(response, result.status, result.body);
     else sendJson(response, 404, { error: "not found" });
+    return;
+  }
+
+  if (path === BOTS_EVENTS_ROUTE) {
+    if (request.method !== "GET") sendJson(response, 405, { error: "method not allowed" });
+    else if (!await refusedWhileBotsOff(response)) streamBots(response);
+    return;
+  }
+
+  // Calls are with bots only, so their status route goes with them.
+  if (path === CALLS_ROUTE || BOT_CALLS.test(path)) {
+    if (!await refusedWhileBotsOff(response)) await serveCallRoute(request, response, path);
+    return;
+  }
+
+  if (path === BOTS_ROUTE || path.startsWith(`${BOTS_ROUTE}/`)) {
+    if (!await refusedWhileBotsOff(response)) await (BOT_TRIGGERS_ROUTE.test(path) ? serveTriggerRoute(request, response, path) : serveBotRoute(request, response, path));
     return;
   }
 
@@ -2613,7 +3296,10 @@ async function handleRequest(
       return;
     }
     try {
-      sendJson(response, 200, await readSessionActivity(await readRegistry(), range.from, range.to));
+      // Bots off: their chats' activity stays out of the calendar too (a record whose bot is gone is a session).
+      const records = await readRegistry();
+      const listed = await botsOn() ? records : records.filter((record) => !record.bot || !bots.identity(record.bot));
+      sendJson(response, 200, await readSessionActivity(listed, range.from, range.to));
     } catch (error) {
       sendJson(response, 500, { error: error instanceof Error ? error.message : "Session activity could not be read." });
     }
@@ -2651,6 +3337,14 @@ async function handleRequest(
     } catch (error) {
       sendJson(response, error instanceof GitHubCliError ? error.status : 500, { error: error instanceof Error ? error.message : "Could not sign in to GitHub." });
     }
+    return;
+  }
+
+  if (path === SLACK_ROUTE) {
+    const verify = new URL(request.url ?? "/", "http://localhost").searchParams.get("verify") === "1";
+    const result = await triggers.slackRoutes.handle({ method: request.method ?? "GET", path, verify, body: (maxBytes) => readBody(request, maxBytes) });
+    if (!result) sendJson(response, 404, { error: `unknown route: ${path}` });
+    else sendJson(response, result.status, result.body);
     return;
   }
 
@@ -3129,7 +3823,19 @@ async function handleRequest(
       return;
     }
 
+    const owned = (await readRegistry()).find((session) => session.id === id);
+    if (owned && await isDormantBotChat(owned)) {
+      sendJson(response, 409, { error: BOTS_OFF_MESSAGE });
+      return;
+    }
+
     if (request.method === "DELETE") {
+      // A bot owns its chat: deleting the row would orphan the bot. Archiving keeps both.
+      const bot = await bots.botForSession(id).catch(() => undefined);
+      if (bot) {
+        sendJson(response, 409, { error: foreverChatRefusal(bot.handle, "delete") });
+        return;
+      }
       // Block stale opens first, but keep the runtime and streams alive until
       // registry removal commits. A storage failure rolls the tombstone back.
       try {
@@ -3175,6 +3881,20 @@ async function handleRequest(
       });
       return;
     }
+    // Bots off: nothing reaches a bot's chat this way, so nothing resumes it.
+    if (await isDormantBotChat(record)) {
+      sendJson(response, 409, { error: BOTS_OFF_MESSAGE });
+      return;
+    }
+    // A bot's chat never ends: what would reset, shorten or fork it is refused here; the model stays switchable.
+    if (record.bot && request.method === "POST" && (action[2] === "clear" || action[2] === "compact" || action[2] === "rewind" || action[2] === "fork")) {
+      // The bot registry decides; one that cannot be read refuses rather than risk the chat.
+      const owner = await bots.botForSession(record.id).then((bot) => bot ? { handle: bot.handle } : undefined, () => ({ handle: undefined }));
+      if (owner) {
+        sendJson(response, 409, { error: foreverChatRefusal(owner.handle, action[2]) });
+        return;
+      }
+    }
     if (action[2] === "open" && request.method === "POST") {
       if (!liveSessions.ensure(record)) {
         sendJson(response, 404, { error: `unknown session: ${id}` });
@@ -3200,6 +3920,11 @@ async function handleRequest(
         return;
       }
       const text = typeof body["text"] === "string" ? body["text"] : "";
+      const requestId = body["requestId"];
+      if (requestId !== undefined && (typeof requestId !== "string" || !REQUEST_ID.test(requestId))) {
+        sendJson(response, 400, { error: "A request id is 1 to 100 letters, digits or . : _ -" });
+        return;
+      }
       if (parseUpdateCommand(text)) {
         sendJson(response, 400, { error: "/update is a HUI command. Use the update dialog, not the model prompt or queue." });
         return;
@@ -3216,27 +3941,32 @@ async function handleRequest(
         sendJson(response, 400, { error: "/compact is a HUI command. Use the compact endpoint, not the model prompt or queue." });
         return;
       }
-      let prepared: PreparedAttachments | undefined;
+      const send = async () => {
+        let prepared: PreparedAttachments | undefined;
+        try {
+          prepared = await readAttachments(id, body["attachments"]);
+          const attachments = prepared.attachments;
+          // An image on its own is a valid prompt; a file on its own is not,
+          // because the agent needs to be told what to do with it.
+          if (!text.trim() && !attachments.some((item) => item.kind === "image")) {
+            throw new AttachmentInputError("A prompt is required.");
+          }
+          if (!liveSessions.ensure(record)) throw new SessionNotFoundError(`unknown session: ${id}`);
+          if (action[2] === "prompt") await liveSessions.prompt(id, text, attachments);
+          else if (action[2] === "steer") await liveSessions.steer(id, text, attachments);
+          else await liveSessions.followUp(id, text, attachments);
+        } catch (error) {
+          await prepared?.cleanupRejected();
+          throw error;
+        }
+      };
       try {
-        prepared = await readAttachments(id, body["attachments"]);
-        const attachments = prepared.attachments;
-        // An image on its own is a valid prompt; a file on its own is not,
-        // because the agent needs to be told what to do with it.
-        if (!text.trim() && !attachments.some((item) => item.kind === "image")) {
-          throw new AttachmentInputError("A prompt is required.");
-        }
-        if (!liveSessions.ensure(record)) {
-          sendJson(response, 404, { error: `unknown session: ${id}` });
-          await prepared.cleanupRejected();
-          return;
-        }
-        if (action[2] === "prompt") await liveSessions.prompt(id, text, attachments);
-        else if (action[2] === "steer") await liveSessions.steer(id, text, attachments);
-        else await liveSessions.followUp(id, text, attachments);
-        sendJson(response, 200, { ok: true });
+        // A resend of a send the gateway already took (the browser stopped waiting) answers with its outcome,
+        // whichever of the three routes it comes back through, and the composer drops its copy.
+        const { duplicate } = await recentRequests.run(id, typeof requestId === "string" ? requestId : undefined, send);
+        sendJson(response, 200, { ok: true, ...(duplicate ? { duplicate: true } : {}) });
       } catch (error) {
-        await prepared?.cleanupRejected();
-        sendJson(response, error instanceof SessionBusyError ? 409 : 400, {
+        sendJson(response, error instanceof SessionNotFoundError ? 404 : error instanceof SessionBusyError ? 409 : 400, {
           error: error instanceof Error ? error.message : "pi refused the message.",
         });
       }
@@ -3442,6 +4172,21 @@ async function handleRequest(
       }
       return;
     }
+    if (action[2] === "fork" && request.method === "POST") {
+      try {
+        const fork = forkRequest((await readBody(request)) as Record<string, unknown>);
+        if (!liveSessions.ensure(record)) {
+          sendJson(response, 404, { error: `unknown session: ${id}` });
+          return;
+        }
+        await liveSessions.booted(id);
+        const forked = await forkFromSession(record, fork, (entryId, options) => liveSessions.fork(id, entryId, options));
+        sendJson(response, 201, { session: toView(forked, liveSessions.status(forked.id)) });
+      } catch (error) {
+        sendJson(response, 400, { error: error instanceof Error ? error.message : "Could not fork that session." });
+      }
+      return;
+    }
     if (action[2] === "resume" && request.method === "POST") {
       try {
         await liveSessions.continueRun(id);
@@ -3490,7 +4235,7 @@ async function handleRequest(
       }
       try {
         // A secret goes to the gateway's own request, never to the runtime.
-        if (secretRequests.answer(id, questionId, body)) {
+        if (secretRequests.answer(id, questionId, body) || questionnaires.answer(id, questionId, body)) {
           sendJson(response, 200, { ok: true });
           return;
         }
@@ -3561,8 +4306,41 @@ export async function startBackend(): Promise<void> {
   await ensureConfigDir();
   void macPower?.start((await readSettings()).power.keepAwake);
   await automation.start();
+  // Session views name bots' chats from this list; a broken bots.json is reported by the bot routes.
+  await botRegistry.list().catch(() => undefined);
+  // Bots from before SOUL.md: their instructions become SOUL.md once (bots.json keeps them until then).
+  void bots.migrate().then((moved) => {
+    if (moved.souls || moved.cleared) {
+      recordDiagnosticEvent({
+        area: "session", level: "info", action: "bots_souls_migrated",
+        summary: `${moved.souls} bot${moved.souls === 1 ? "" : "s"} got their instructions as SOUL.md; ${moved.cleared} conversation${moved.cleared === 1 ? "" : "s"} no longer carry instructions`,
+      });
+    }
+  }, (error: unknown) => recordDiagnosticEvent({
+    area: "session", level: "warning", action: "bots_souls_migration_failed",
+    summary: "Bots' instructions could not become SOUL.md; HUI tries again at its next start",
+    detail: error instanceof Error ? error.message : String(error),
+  }));
+  // The roster's copy of each bot's tool and skill lists follows its chat's document, which may have moved without it.
+  void bots.reconcileAccess().then((repaired) => {
+    if (repaired) {
+      recordDiagnosticEvent({
+        area: "session", level: "info", action: "bots_access_reconciled",
+        summary: `${repaired} bot${repaired === 1 ? "'s" : "s'"} tool and skill lists were copied again from their chats`,
+      });
+    }
+  }, (error: unknown) => recordDiagnosticEvent({
+    area: "session", level: "warning", action: "bots_access_reconcile_failed",
+    summary: "Bots' tool and skill lists could not be checked against their chats; HUI tries again at its next start",
+    detail: error instanceof Error ? error.message : String(error),
+  }));
   initializeWatchers();
   initializeSubagents();
+  // Triggers: what waited for a cooldown across the restart, the session watch and, while bots are on, the pollers.
+  void triggers.start().catch((error: unknown) => recordDiagnosticEvent({
+    area: "session", level: "warning", action: "triggers_start_failed", summary: "Bots' triggers did not start",
+    detail: error instanceof Error ? error.message : String(error),
+  }));
   void secretFiles.sweep();
   await workers.list().catch(() => undefined);
   // Opening the Durable store resumes its interrupted runs, including those of
@@ -3610,12 +4388,17 @@ export async function stopBackend(): Promise<void> {
   try {
     macPower?.dispose();
     managedBrowser.dispose();
+    // Signals openvscode-server and returns: a gateway stop never waits for it.
+    vscode.dispose();
     terminals.dispose();
     githubCli.dispose();
+    // Before the sessions close: a delivery still going out reaches its bot, and every trigger write has settled.
+    await triggers.stop();
     automation.dispose();
     subagents.dispose();
     watchers.dispose();
     secretRequests.dispose();
+    questionnaires.dispose();
     secretFiles.dispose();
     stopAgentToolBridge();
     // Closed first: remote sessions then keep running on their hosts instead of
@@ -3624,7 +4407,7 @@ export async function stopBackend(): Promise<void> {
     liveSessions.disposeAll();
   } finally {
     // Closing records no outcome: running Durable work resumes on the next start.
-    // A failed disposal above must not leave the store locked.
+    // A failed step above must not leave the store locked.
     await durableHost().close();
   }
 }
@@ -3633,16 +4416,34 @@ export async function stopBackend(): Promise<void> {
  * servers attach them next to terminals. */
 export function attachLiveStreams(server: EventEmitter, allowedHosts?: ReadonlySet<string>): () => void {
   const detachBrowser = attachBrowserTransport(server, managedBrowser, allowedHosts);
+  const detachVscode = attachVscodeTransport(server, vscode, allowedHosts);
   const detachSessions = attachSessionTransport(server, async (id, send) => {
     const record = (await readRegistry()).find((session) => session.id === id);
-    return record && liveSessions.ensure(record) ? watchSessionEvents(id, send) : undefined;
+    if (!record || await isDormantBotChat(record)) return undefined;
+    return liveSessions.ensure(record) ? watchSessionEvents(id, send) : undefined;
   }, allowedHosts);
-  return () => { detachBrowser(); detachSessions(); };
+  return () => { detachBrowser(); detachVscode(); detachSessions(); };
 }
+
+const GESPENST_NODE_STUB = "\0hui:gespenst-node-builtin";
 
 export function huiConfig(): Plugin {
   return {
     name: "hui-config",
+    // Gespenst (the terminal renderer) loads its worker and WebAssembly relative to its own module; pre-bundling
+    // would move the module away from them. Every entry point (vite.config.ts, hui-dev, the visual-verification
+    // server) shares this plugin.
+    config: () => ({ optimizeDeps: { exclude: ["@gespenst/core"] }, worker: { format: "es" as const } }),
+    // Its WebAssembly loader reads file: URLs through node:fs/promises and node:url when it runs under Node; the
+    // browser only fetches. An empty module replaces those two imports instead of Vite's externalization warning.
+    resolveId: {
+      order: "pre",
+      handler(id, importer) {
+        if ((id === "node:fs/promises" || id === "node:url") && importer?.includes("/node_modules/@gespenst/core/")) return GESPENST_NODE_STUB;
+        return undefined;
+      },
+    },
+    load(id) { return id === GESPENST_NODE_STUB ? "export {};" : undefined; },
     configureServer(server) {
       if (server.httpServer) {
         // Vite restarts by creating this server, closing the previous one (its

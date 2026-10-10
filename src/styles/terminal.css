@@ -9,39 +9,45 @@ hui-terminal-pane {
   background: var(--background);
   color: var(--foreground);
 }
-.hui-terminal-header { flex: 0 0 auto; min-width: 0; }
-.hui-terminal-title, .hui-terminal-actions { display: flex; align-items: center; gap: 6px; min-width: 0; }
-.hui-terminal-title { flex: 1; }
-.hui-terminal-title > span { display: flex; }
-.hui-terminal-title svg, .hui-terminal-actions svg { width: 16px; height: 16px; }
-.hui-terminal-title .hui-terminal-picker { flex: 0 1 220px; min-width: 0 !important; width: auto !important; max-width: 220px; }
-.hui-terminal-title .picker-select__trigger { display: flex; align-items: center; width: 100%; min-height: 28px; padding-inline: 6px; border: 0; background: transparent; color: inherit; font: inherit; text-align: start; box-shadow: none; }
-.hui-terminal-title .picker-select__trigger:hover { background: color-mix(in srgb, var(--bg-hover) 84%, transparent); }
-.hui-terminal-title .picker-select__trigger:is(:focus-visible, [aria-expanded="true"]) { box-shadow: var(--focus-ring); }
-.hui-terminal-title .picker-select__trigger .picker-select__copy { flex: 1; }
-.hui-terminal-title .picker-select__trigger .picker-select__label { font-weight: inherit; }
-.hui-terminal-title .picker-select__option { display: flex; align-items: center; gap: 8px; }
-.hui-terminal-title .picker-select__option .picker-select__copy { flex: 1; }
-.hui-terminal-meta { display: flex; justify-content: space-between; gap: 12px; padding: 6px 12px; color: var(--muted-foreground); font-size: 11px; border-bottom: 1px solid var(--border); }
-.hui-terminal-meta > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.hui-terminal-meta > span:last-child { flex-shrink: 0; }
-.hui-terminal-surface { flex: 1; min-height: 0; min-width: 0; overflow: hidden; padding: 8px; position: relative; }
+/* The view's own strip under the Work pane tab: where the shell runs, its state, and End terminal. */
+.hui-terminal-toolbar { display: flex; flex: 0 0 auto; align-items: center; gap: 12px; min-width: 0; min-height: 32px; padding: 0 4px 0 12px; color: var(--muted-foreground, var(--muted)); font-size: 11px; border-bottom: 1px solid var(--border); }
+.hui-terminal-cwd { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono, var(--font-mono)); }
+.hui-terminal-status { flex-shrink: 0; }
+.hui-terminal-toolbar .btn--icon { min-width: 28px; width: 28px; height: 28px; padding: 0; border: 0; background: transparent; box-shadow: none; }
+.hui-terminal-toolbar svg { width: 16px; height: 16px; }
+.hui-terminal-reconnect { margin: 8px 12px 0; align-self: flex-start; }
+/* Gespenst's host: it fills the box, measures it and fits its grid; touch is scrolling and taps (terminal-pane.ts). */
+.hui-terminal-surface { flex: 1; min-height: 0; min-width: 0; overflow: hidden; padding: 8px; position: relative; touch-action: none; }
+.hui-terminal-surface .gespenst { background: var(--background); }
+/* Above the canvases, below nothing else: the zero-height anchor keeps the button out of the terminal's measured box. */
+.hui-terminal-jump { z-index: 3; }
 .hui-terminal-error, .hui-terminal-notice { padding: 6px 12px; font-size: 12px; overflow-wrap: anywhere; }
 .hui-terminal-error { color: var(--destructive); }
 .hui-terminal-notice { color: var(--muted-foreground); }
+/* Keys a soft keyboard lacks; shown on narrow or touch screens only. */
 .hui-terminal-keys { display: none; }
+.hui-terminal-key { min-width: 0; padding: 0 4px; font-family: var(--mono, var(--font-mono)); touch-action: manipulation; user-select: none; -webkit-user-select: none; }
+.hui-terminal-key--on { color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); }
 .hui-workspace-panels { display: flex; flex-direction: column; min-height: 0; height: 100%; }
-.hui-workspace-panels > hui-session-multiplexer { flex: 1; min-height: 0; }
-.hui-panel-selector { display: none; }
+.hui-workspace-panels > .hui-workspace-row { flex: 1; min-height: 0; }
+/* The panel selector shows below 1100px and, on wide screens, above a maximized Work pane (the way back to the chat). */
+.hui-panel-selector { display: none; flex-shrink: 0; padding: 8px 12px; border-bottom: 1px solid var(--border); }
+.hui-workspace-panels--maximized > .hui-panel-selector { display: flex; }
+.hui-panel-selector__picker { flex: 1; }
+.hui-panel-selector .picker-select__trigger { width: 100%; display: flex; align-items: center; gap: 8px; text-align: start; }
+.hui-panel-selector .picker-select__trigger .picker-select__copy { flex: 1; display: flex; align-items: baseline; gap: 8px; }
+.hui-panel-selector .picker-select__trigger .picker-select__description { white-space: nowrap; }
+.hui-panel-selector .picker-select__option { display: flex; align-items: center; gap: 8px; }
+.hui-panel-selector .picker-select__option .picker-select__copy { flex: 1; }
+.hui-panel-selector .picker-select__leading { color: var(--muted); }
+.hui-panel-selector .picker-select__leading svg { width: 16px; height: 16px; }
 @media (max-width: 1099px) {
-  .hui-panel-selector { display: flex; flex-shrink: 0; padding: 8px 12px; border-bottom: 1px solid var(--border); }
-  .hui-panel-selector__picker { flex: 1; }
-  .hui-panel-selector .picker-select__trigger { width: 100%; display: flex; align-items: center; gap: 8px; text-align: start; }
-  .hui-panel-selector .picker-select__trigger .picker-select__copy { flex: 1; display: flex; align-items: baseline; gap: 8px; }
-  .hui-panel-selector .picker-select__trigger .picker-select__description { white-space: nowrap; }
-  .hui-panel-selector .picker-select__option { display: flex; align-items: center; gap: 8px; }
-  .hui-panel-selector .picker-select__option .picker-select__copy { flex: 1; }
-  .hui-panel-selector .picker-select__leading { color: var(--muted); }
-  .hui-panel-selector .picker-select__leading svg { width: 16px; height: 16px; }
-  .hui-terminal-keys { display: flex; flex-shrink: 0; gap: 8px; padding: 4px 8px; border-top: 1px solid var(--border); }
+  .hui-panel-selector { display: flex; }
+}
+@media (max-width: 1099px), (hover: none) and (pointer: coarse) {
+  .hui-terminal-keys { display: grid; flex-shrink: 0; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; padding: 6px 8px; border-top: 1px solid var(--border); }
+}
+@media (hover: none) and (pointer: coarse) {
+  /* Keeps iOS from zooming into the focused input without changing the drawn font. */
+  .hui-terminal-surface .gespenst__input { font-size: 16px !important; }
 }

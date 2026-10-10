@@ -7,6 +7,8 @@ surface coverage. Product direction remains in `SPEC.md`; onboarding stays in
 - `guide.md` holds user reference too long for the README landing page (Nix,
   desktop, remote access, providers). `assets/banner.html` is the README banner
   source; regenerate both PNGs with the command in its header comment.
+- `map.md` is the short code map: areas, their owning modules and the path of a
+  message. Update it when ownership moves or a source directory is added.
 - `api.md` is the normative browser/server session contract. Update it with any route,
   event, ownership, status, or lifecycle change.
 - `implementation-roadmap.md` tracks iterative work and dependencies. Mark work done
