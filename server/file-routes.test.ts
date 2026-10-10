@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import { once } from "node:events";
 import { createServer } from "node:http";
-import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { createFileRoutes, REMOTE_FILES_REASON, type FilesRouteRequest } from "./file-routes.ts";
-import type { FileRead } from "../shared/files.ts";
+import { MAX_RESOLVE_PATHS, type FileRead } from "../shared/files.ts";
 
 async function workspace() {
   const dir = await realpath(await mkdtemp(join(tmpdir(), "hui-file-routes-")));
@@ -85,6 +85,57 @@ test("file routes scope every request to the conversation's directory and explai
   assert.equal((await call("PATCH", "/__hui/sessions/local/files/file", { query: { path: "x" } })).status, 405);
 });
 
+test("resolve answers which chat paths exist inside the conversation's directory, and nothing outside it", async (t) => {
+  const { dir, cwd } = await workspace();
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  await writeFile(join(cwd, "README.md"), "# readme\n");
+  await symlink(join(dir, "secret.txt"), join(cwd, "escape.txt"));
+  await symlink(join(cwd, "src"), join(cwd, "linked"));
+  // The registry may record the directory through a link; absolute paths under either spelling resolve.
+  await symlink(cwd, join(dir, "alias"));
+  const sessions: Record<string, { cwd: string; worker?: string }> = {
+    local: { cwd: join(dir, "alias") },
+    remote: { cwd: "/srv/elsewhere", worker: "w1" },
+    gone: { cwd: join(dir, "missing") },
+  };
+  const routes = createFileRoutes({ session: async (id) => sessions[id] });
+  const resolve = async (id: string, body: unknown) => {
+    const result = await routes.handle(request("POST", `/__hui/sessions/${id}/files/resolve`, { body }));
+    assert(result && "body" in result, "expected a JSON result");
+    return result as { status: number; body: Record<string, unknown> };
+  };
+  const asked = [
+    "src/a.ts", "./src/a.ts", "src/", "src", "README.md", "src/../README.md", `${cwd}/src/a.ts`, `${join(dir, "alias")}/README.md`,
+    "linked/a.ts", "missing.ts", "../secret.txt", "src/../../secret.txt", join(dir, "secret.txt"), "/etc/hosts", "escape.txt",
+    "~/definitely-not-a-hui-test-file.ts", "", "\0",
+  ];
+  const answer = await resolve("local", { paths: asked });
+  assert.equal(answer.status, 200);
+  assert.deepEqual(answer.body["entries"], [
+    { path: "src/a.ts", kind: "file" },
+    { path: "src/a.ts", kind: "file" },
+    { path: "src", kind: "directory" },
+    { path: "src", kind: "directory" },
+    { path: "README.md", kind: "file" },
+    { path: "README.md", kind: "file" },
+    { path: "src/a.ts", kind: "file" },
+    { path: "README.md", kind: "file" },
+    { path: "linked/a.ts", kind: "file" },
+    null, null, null, null, null, null, null, null, null,
+  ]);
+
+  assert.equal((await resolve("local", { paths: "src/a.ts" })).status, 400);
+  assert.equal((await resolve("local", { paths: [1] })).status, 400);
+  assert.equal((await resolve("local", { paths: ["x".repeat(2000)] })).status, 400);
+  assert.equal((await resolve("local", { paths: Array.from({ length: MAX_RESOLVE_PATHS + 1 }, () => "src/a.ts") })).status, 400);
+  assert.equal((await resolve("local", ["src/a.ts"])).status, 400);
+  const remote = await resolve("remote", { paths: ["src/a.ts"] });
+  assert.equal(remote.status, 409);
+  assert.equal(remote.body["code"], "remote");
+  assert.equal((await resolve("gone", { paths: ["src/a.ts"] })).status, 404);
+  assert.equal((await routes.handle(request("GET", "/__hui/sessions/local/files/resolve")))?.status, 405);
+});
+
 test("the gateway guards file routes with x-hui and serves previews as inert bytes", async (t) => {
   const { dir, cwd } = await workspace();
   process.env["XDG_CONFIG_HOME"] = join(dir, "config");
@@ -107,6 +158,11 @@ test("the gateway guards file routes with x-hui and serves previews as inert byt
 
   assert.equal((await fetch(`${origin}/list`)).status, 403);
   assert.equal((await fetch(`${origin}/raw?path=logo.png`)).status, 403);
+  const resolveBody = { method: "POST", body: JSON.stringify({ paths: ["src/a.ts", "../secret.txt"] }) };
+  assert.equal((await fetch(`${origin}/resolve`, { ...resolveBody, headers: { "content-type": "application/json" } })).status, 403);
+  const resolved = await fetch(`${origin}/resolve`, { ...resolveBody, headers: { ...guarded, "content-type": "application/json" } });
+  assert.equal(resolved.status, 200);
+  assert.deepEqual(await resolved.json(), { entries: [{ path: "src/a.ts", kind: "file" }, null] });
   assert.equal((await fetch(`${origin}/file?path=..%2Fsecret.txt`, { headers: guarded })).status, 403);
   const read = await fetch(`${origin}/file?path=src%2Fa.ts`, { headers: guarded });
   assert.equal(read.status, 200);

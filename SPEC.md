@@ -765,6 +765,29 @@ non-empty folder only with that confirmation, and never the root. On narrow
 screens the navigator is a drawer and the editor takes the full width with a
 16 px font, so iOS does not zoom.
 
+**File references in the chat.** When the agent names a file in its reply —
+an inline code span or a Markdown link whose text or target is a path such as
+`src/lib/x.ts`, `./a/b.md`, an absolute path or `~/…`, optionally with
+`:line`, `:line:column`, `:line-line` or `#L42` — and that path exists
+inside the conversation's Files root, it becomes a link; so does the path
+header of a read, edit or write tool card. Prose, fenced code, URLs, user
+messages and code that is not a single path (`npm test`, `foo()`, `1.2.3`,
+`--flag`, globs) never do, and a path that does not exist, or lies outside
+the root, stays plain text. The chat asks the gateway once per render for all
+of a conversation's new candidates (`POST …/files/resolve`, the Files routes'
+own path rules) and caches the answers in the page; confirming a link changes
+only its colour and cursor, so the transcript does not reflow. Missing answers
+are asked again after the agent's turn ends. Clicking a link (or Enter on it;
+it is a link named *Open src/x.ts at line 42 in Files*) opens that
+conversation's Files view in the Work pane — its active Files tab, else its
+first, else a new one — expanding a hidden or collapsed pane and, on narrow
+screens, switching the panel selector to that view.
+A file opens with its folders expanded in the navigator; with a line, the
+editor scrolls to it, places the cursor and highlights it (a Markdown file
+switches to Source for that). A folder opens expanded in the navigator.
+Conversations on a remote worker, and a bot's chat, which has no Work pane,
+show no links.
+
 CodeMirror's packages (`@codemirror/*`, `@lezer/highlight`) were authorized
 with this feature. The view's selection, open folders and display mode, and
 unsaved drafts, are browser-local storage; the HUI registry and PI transcripts

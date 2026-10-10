@@ -55,7 +55,7 @@ Pi Durable owns conversations, runs, queues and crash recovery.
 | Git and GitHub | `worktrees.ts`, `worktree-inventory.ts`, `github*.ts`, `pull-requests.ts` |
 | Integrations | `jira*.ts`, `slack.ts` and `slack-routes.ts` (the Slack connection Slack triggers read through), `backlog.ts` (Kanban), `automation.ts` |
 | Terminals and browser | `terminals.ts`, `terminal-replay.ts` (bounded replay bytes), `terminal-transport.ts` (wire format in `shared/terminal-stream.ts`), `browser/` (managed Chromium over a CDP pipe), `browser-transport.ts` |
-| Files view | `files.ts` (list, search, read, save, upload, delete inside a working directory), `file-routes.ts` (`/__hui/sessions/:id/files…`) |
+| Files view | `files.ts` (list, search, read, save, upload, delete inside a working directory; which chat paths exist there), `file-routes.ts` (`/__hui/sessions/:id/files…`) |
 | VS Code view | `vscode.ts` (running the shared VS Code server, license consent, tickets and cookie secrets), `vscode-providers.ts` (finding VS Code desktop's `code serve-web`, servers on PATH or a configured path; launch flags), `vscode-install.ts` (the pinned, checksum-verified openvscode-server install on Linux), `vscode-proxy.ts` (the cookie-guarded HTTP and WebSocket proxy under `/__hui/vscode/`); contract in `shared/vscode.ts` |
 | Bots and calls (Labs) | `bots.ts`, `bot-*.ts`, `bot-templates/` (other platforms' bot templates, read for import), `calls.ts`, `call-*.ts`, `runtimes/durable-bots.ts` |
 | OptChat memory | `optchat/` (engine, no HUI imports), `runtimes/durable-optchat.ts` (Durable glue); see `docs/optchat.md` |
@@ -69,7 +69,7 @@ Pi Durable owns conversations, runs, queues and crash recovery.
 | App shell | `main.ts` (styles, boot, mount), `lib/boot-screen.ts` (index.html's boot screen), `lib/view-assets.ts` (view stylesheets loaded together before the first paint), `hui-app.ts` (navigation and cross-view state), `lit/hui-element.ts` |
 | Client stores and API | `lib/sessions-store.ts` (session API), `lib/settings-store.ts` (fetch boundary, `x-hui` header), `lib/gateway-request.ts` (response deadline), other `lib/*-store.ts` |
 | Pure logic | `lib/` (normalizers, parsers, layout and menu rules; tested beside each file) |
-| Chat | `views/chat/` (projection, tool cards, position rail), `lib/markdown*.ts`, `lib/composer-*.ts` |
+| Chat | `views/chat/` (projection, tool cards, position rail), `lib/markdown*.ts`, `lib/composer-*.ts`; file references that open in the Files view: `lib/file-references.ts` (which text is a path), `lib/file-link-store.ts` (batched, cached existence checks), `components/file-link.ts` (`<hui-file-ref>`) |
 | Sidebar and sessions | `lib/sidebar-sessions.ts`, `lib/session-tree.ts`, `views/sessions.ts`, `views/sidebar-session-options.ts` |
 | Pages | `views/*.ts` (settings, automation, kanban, contributions, bots, worktrees) |
 | Reusable components | `components/` (panes, hovercards, dialogs); `components/openclaw/` is a hash-pinned OpenClaw port, do not edit it by hand |

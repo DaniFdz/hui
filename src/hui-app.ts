@@ -247,7 +247,9 @@ import {
 import { PANE_COLUMN_MIN_WIDTH } from "./lib/session-pane-geometry.ts";
 import { terminalWorkViewKind } from "./lib/work-views/terminal.ts";
 import { browserWorkViewKind } from "./lib/work-views/browser.ts";
-import { filesWorkViewKind } from "./lib/work-views/files.ts";
+import { filesViewToReveal, filesWorkViewKind, type FilesWorkViewRef } from "./lib/work-views/files.ts";
+import { requestFilesViewReveal } from "./lib/files-view-state.ts";
+import { OPEN_FILE_EVENT, type OpenFileDetail } from "./lib/file-link-store.ts";
 import { vscodeWorkViewKind } from "./lib/work-views/vscode.ts";
 import { OPEN_SETTINGS_EVENT, type OpenSettingsDetail } from "./lib/open-settings.ts";
 import { scrollSettingsSection } from "./lib/settings-section-scroll.ts";
@@ -799,6 +801,7 @@ export class HuiApp extends HuiElement {
       // Capture: a focused terminal swallows keys, and Work pane shortcuts must still work from inside one.
       document.addEventListener("keydown", this.onWorkShortcut, true);
       this.addEventListener(OPEN_SETTINGS_EVENT, this.onOpenSettingsRequest);
+      this.addEventListener(OPEN_FILE_EVENT, this.onOpenFileRequest);
     }
     window.addEventListener("pagehide", this.onPageHide);
     if (!this.embeddedPane) {
@@ -834,6 +837,7 @@ export class HuiApp extends HuiElement {
     this.composerTextarea = null;
     window.removeEventListener("popstate", this.onPopState);
     this.removeEventListener(OPEN_SETTINGS_EVENT, this.onOpenSettingsRequest);
+    this.removeEventListener(OPEN_FILE_EVENT, this.onOpenFileRequest);
     window.removeEventListener("pagehide", this.onPageHide);
     document.removeEventListener("keydown", this.onGlobalKeyDown);
     document.removeEventListener("keydown", this.onWorkShortcut, true);
@@ -2071,6 +2075,42 @@ export class HuiApp extends HuiElement {
     const terminal = running ?? await createTerminal(pane.sessionId);
     this.showWorkView(pane.sessionId, { kind: "terminal", terminalId: terminal.id }, !running);
   };
+
+  /**
+   * A file reference clicked in a conversation's chat (`components/file-link.ts`): show it in that conversation's
+   * Files view — the active one, else its first, else a new one — opening the Work pane (or, on narrow screens, the
+   * Work destination) the way any Work view does.
+   */
+  private readonly onOpenFileRequest = (event: Event) => {
+    const detail = (event as CustomEvent<OpenFileDetail>).detail;
+    if (this.embeddedPane || !detail?.sessionId || !this.sessionLayout) return;
+    if (!sessionPanes(this.sessionLayout).some((pane) => isChatPane(pane) && pane.sessionId === detail.sessionId)) return;
+    event.stopPropagation();
+    void this.openFileInFiles(detail);
+  };
+
+  private async openFileInFiles(detail: OpenFileDetail) {
+    const kind = workViewKind("files");
+    if (!kind) return;
+    const { sessionId } = detail;
+    let ref = filesViewToReveal(sessionWorkPane(this.workPanes, sessionId));
+    if (!ref) {
+      try {
+        ref = await kind.create(sessionId) as FilesWorkViewRef;
+      } catch (error) {
+        this.workError = error instanceof Error ? error.message : "Could not open Files.";
+        this.revealWorkPane(sessionId);
+        return;
+      }
+    }
+    requestFilesViewReveal(ref.id, {
+      path: detail.path,
+      kind: detail.kind,
+      ...(detail.line ? { line: detail.line } : {}),
+      ...(detail.column ? { column: detail.column } : {}),
+    });
+    this.showWorkView(sessionId, ref);
+  }
 
   /** The chat's inline browser preview and header globe open (or focus) the conversation's one browser view. */
   private openBrowserWorkView = (pane: SessionPane) => {
@@ -5597,6 +5637,8 @@ export class HuiApp extends HuiElement {
     );
     return {
       session: this.selected,
+      // File references open in the Work pane, which only multiplexed chat panes have (not a bot's chat).
+      fileLinks: this.embeddedPane && !this.paneBot,
       mobileNavLayout: this.embeddedPane ? this.paneMobileNav && this.paneActive : this.mobileNavLayout,
       controlScope: this.embeddedPane ? this.paneId : undefined,
       groups: this.listedGroups,

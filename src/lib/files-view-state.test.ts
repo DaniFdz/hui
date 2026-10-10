@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { clearFilesViewState, DEFAULT_FILES_VIEW_STATE, filesViewTitle, normalizeFilesViewState, readFilesViewState, writeFilesViewState } from "./files-view-state.ts";
+import { clearFilesViewState, DEFAULT_FILES_VIEW_STATE, filesViewTitle, normalizeFilesViewState, readFilesViewState, writeFilesViewState, onFilesViewReveal, requestFilesViewReveal, takeFilesViewReveal } from "./files-view-state.ts";
 
 class MemoryStorage {
   values = new Map<string, string>();
@@ -34,4 +34,21 @@ test("a fresh page reads what an earlier one stored", () => {
   const storage = new MemoryStorage();
   storage.setItem("hui.files-view.v1:view-c", JSON.stringify({ selected: "docs/x.md", expanded: ["docs"], navigatorOpen: false, markdown: "source" }));
   assert.deepEqual(readFilesViewState("view-c", storage), { selected: "docs/x.md", expanded: ["docs"], navigatorOpen: false, markdown: "source" });
+});
+
+test("a reveal request waits for its view, selects a file right away and is taken once", () => {
+  const seen: string[] = [];
+  const stop = onFilesViewReveal("reveal-view", () => seen.push("notified"));
+  requestFilesViewReveal("reveal-view", { path: "src/a.ts", kind: "file", line: 12 }, undefined);
+  assert.deepEqual(seen, ["notified"]);
+  assert.equal(readFilesViewState("reveal-view", undefined).selected, "src/a.ts");
+  assert.equal(filesViewTitle("reveal-view"), "a.ts");
+  assert.deepEqual(takeFilesViewReveal("reveal-view"), { path: "src/a.ts", kind: "file", line: 12 });
+  assert.equal(takeFilesViewReveal("reveal-view"), undefined);
+  stop();
+  requestFilesViewReveal("reveal-view", { path: "docs", kind: "directory" }, undefined);
+  assert.deepEqual(seen, ["notified"], "an unsubscribed view is not notified, but its request still waits");
+  assert.equal(readFilesViewState("reveal-view", undefined).selected, "src/a.ts", "a folder does not change the selection");
+  clearFilesViewState("reveal-view", undefined);
+  assert.equal(takeFilesViewReveal("reveal-view"), undefined, "closing the view drops its request");
 });
