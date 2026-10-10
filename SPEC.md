@@ -273,15 +273,15 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   the active-pane presentation and do not expose an unusable drag handle.
 - The **Work pane** (after AgentsInTheCloud's) sits to the right of the chat
   panes and shows the Work views of the focused conversation: its terminals and
-  its browser view, its Files views (see *Files*) and its VS Code view (see
-  *VS Code*), each a kind registered through one contract
+  its browser view, its Files views (see *Files*), its VS Code view (see
+  *VS Code*) and its Diff views (see *Diff*), each a kind registered through one contract
   (`src/lib/work-pane.ts`). Each conversation has its own pane; moving
   focus to another chat pane or conversation switches the contents. One view is
   visible at a time, chosen from a tab strip (icon, title, close; drag or
   Alt+Shift+Arrow to reorder, Arrow/Home/End to move, Delete to close). The **+**
   menu launches views (Ctrl+Alt+Shift+T / ⌥⇧⌘T new terminal, Ctrl+Alt+Shift+B /
   ⌥⇧⌘B browser, Ctrl+Alt+Shift+F / ⌥⇧⌘F a new Files view, Ctrl+Alt+Shift+C /
-  ⌥⇧⌘C VS Code)
+  ⌥⇧⌘C VS Code, Ctrl+Alt+Shift+D / ⌥⇧⌘D a new Diff view)
   and reopens running terminals whose tab was closed; with nothing open the pane
   lists the same launchers with their shortcuts. A launcher that cannot act says
   why in visible text (the browser tool turned off, a conversation on a remote
@@ -322,7 +322,7 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   chat panes, splits and tabs stay as they were.
 - **Work pane shortcuts** are one scheme: Mod+Alt+Shift plus the initial of what
   they open (⌥⇧⌘ on macOS, Ctrl+Alt+Shift elsewhere): **T** new terminal, **B**
-  browser, **F** Files, **C** VS Code ("Code": ⌥⇧⌘V is Paste and Match Style),
+  browser, **F** Files, **C** VS Code ("Code": ⌥⇧⌘V is Paste and Match Style), **D** Diff,
   **P** to show or hide the pane and **M** to maximize or restore it. They are listened for on the document in
   the capture phase, so they work from the composer, inside a terminal and inside
   the Files editor (CodeMirror's own Alt chords, ⌥⌘G go to line and ⌥⌘\ indent,
@@ -792,6 +792,64 @@ CodeMirror's packages (`@codemirror/*`, `@lezer/highlight`) were authorized
 with this feature. The view's selection, open folders and display mode, and
 unsaved drafts, are browser-local storage; the HUI registry and PI transcripts
 are unchanged.
+
+## Diff
+
+A **Diff view** is a Work view that shows what changed in the conversation's Git
+checkout: what the agent just did, and what the branch adds for review. **Diff**
+in the Work pane's **+** menu (Ctrl+Alt+Shift+D / ⌥⇧⌘D) opens a new one; like
+Files views, a conversation may hold several, each remembering (browser-local,
+forgotten when its tab closes) its comparison, picked branch, the *Include
+uncommitted* choice, layout and selected file.
+
+The header chooses the comparison:
+
+- **Uncommitted changes**: the working tree and index against HEAD, untracked
+  files included (against nothing before the first commit). A view opens on it
+  when there are any; otherwise on the previous branch, the default branch, the
+  last commit, in that order of availability.
+- **Last commit**: HEAD against its first parent.
+- **Against the previous branch**: the merge base of HEAD and the branch this one
+  is stacked on, for stacked pull requests. HUI looks for it without network
+  calls: gh's `gh-merge-base` or git-town's parent for the branch, then its
+  upstream when that is another branch than its own remote copy, else the nearest
+  local or remote branch whose tip is an ancestor of HEAD (fewest commits
+  between), never the branch itself or a remote copy of it. The picked branch and
+  how it was found are shown, and a searchable list (ancestors first, with how far
+  behind HEAD each is) picks another. Hidden on a detached HEAD or when no branch
+  qualifies.
+- **Against the default branch**: the merge base of HEAD and `origin/HEAD`'s
+  target (else `origin/main`, `origin/master`, `main`, `master`): three dots,
+  so commits that reached main later are not shown as removals.
+
+The last two include uncommitted changes while **Include uncommitted** is ticked
+(the default). A line under the header names both sides (`merge base with
+feature-a 7817169 → feature-b + working tree`) and, when the conversation runs in
+a subfolder, that only its changes are shown.
+
+On the left a filterable list of changed files shows each one's status (A, M, D,
+R with its old path, C, T, U), its added and removed line counts and the totals;
+on the right the selected file's diff, unified, or **Side by side** when the view
+is at least 900px wide (narrower, the toggle is disabled and says *Side by side
+needs a wider pane*). Lines are coloured with the file's CodeMirror language from
+the Files editor, hunk by hunk. A rename reads *old → new*; binary files say so;
+a patch over 1,500 lines opens collapsed with **Show diff**; a missing final
+newline and, in files that mix them, CRLF endings are marked. Clicking the file's
+name (or its open button) opens it in the conversation's Files view at its first
+changed line, through the same path as a file named in the chat; a deleted file
+says there is nothing to open. The view refreshes when the conversation's agent
+turn ends (or, if hidden then, when it is shown again), when it becomes visible,
+and on **Refresh**. Below 640px of width, and on narrow screens, the list and the
+diff take turns, with **Back to changed files**.
+
+Not a Git repository, a missing directory, and conversations on a remote worker
+(their files live on that machine) show why instead. The gateway runs Git
+read-only (see docs/api.md, *Diff view API*): argument arrays without a shell,
+no external diff or textconv programs, no fsmonitor, `GIT_OPTIONAL_LOCKS=0` so it
+never takes the index lock while the agent works, a timeout, and caps per file and
+per response that it states. Untracked files enter through a temporary copy of
+the index; the repository is never written and no hook runs. A branch a request
+names must be one the gateway offered.
 
 ## VS Code
 
