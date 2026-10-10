@@ -240,7 +240,7 @@ import { isOwnedSurface, renderOwnedSurface } from "./views/hui-owned-surfaces.t
 import { HUI_PAGES, type HuiPage } from "./lib/pages.ts";
 import { activeSessionPane, addSessionTab, closeSessionPane, focusSessionPane, isChatPane, moveSessionPane, parseSessionLayout, replacePaneSession, resizeSessionLayout, SESSION_LAYOUT_KEY, SESSION_SPLIT_MEDIA, sessionPanes, visibleSessionPanes, singleSessionLayout, splitSessionPane, type DropZone, type SessionLayout, type SessionPane, type SplitDirection } from "./lib/session-multiplexer.ts";
 import {
-  activateWorkView, closeWorkView, launchableWorkViewKinds, migrateLayoutWorkViews, openWorkView, parseWorkPaneStore, pruneWorkPaneStore, registerWorkViewKind, reorderWorkView,
+  activateWorkView, closeWorkView, closingLastWorkView, launchableWorkViewKinds, migrateLayoutWorkViews, openWorkView, parseWorkPaneStore, pruneWorkPaneStore, registerWorkViewKind, reorderWorkView,
   retainWorkSessions, serializeWorkPaneStore, sessionWorkPane, setWorkPaneMaximized, setWorkPaneOpen, setWorkPaneWidth, workPaneMaximized, workViewKey, workViewKind, workViewKinds,
   WORK_PANE_CHAT_MIN_WIDTH, WORK_PANE_KEY, WORK_PANE_MAXIMIZE_SHORTCUT, WORK_PANE_TOGGLE_SHORTCUT, type WorkPaneStore, type WorkViewRef,
 } from "./lib/work-pane.ts";
@@ -2188,6 +2188,17 @@ export class HuiApp extends HuiElement {
     }
     this.focusActiveComposer();
   };
+
+  /** The focused conversation's last Work view closed, which hid its pane (`closeWorkView`): as **Hide Work pane**
+   * does, narrow screens go back to the chat and focus moves to the composer — unless it is elsewhere already (a view
+   * that removes itself never takes focus from, say, the sidebar). */
+  private workPaneEmptied(wasOpen: boolean) {
+    const shown = this.workNarrow ? this.workNarrowShown : wasOpen;
+    this.workNarrowShown = false;
+    const focused = document.activeElement;
+    const inPane = !focused || focused === document.body || Boolean(this.workPaneElement()?.contains(focused));
+    if (shown && inPane) this.focusActiveComposer();
+  }
 
   private focusActiveComposer() {
     void this.updateComplete.then(() => {
@@ -6028,9 +6039,12 @@ export class HuiApp extends HuiElement {
       }}
       .onClose=${(sessionId: string, key: string) => {
         if (this.workLaunchedKey === key) this.workLaunchedKey = "";
-        const ref = sessionWorkPane(this.workPanes, sessionId).views.find((view) => workViewKey(view) === key);
+        const before = sessionWorkPane(this.workPanes, sessionId);
+        const ref = before.views.find((view) => workViewKey(view) === key);
+        const last = closingLastWorkView(this.workPanes, sessionId, key);
         this.commitWorkPanes(closeWorkView(this.workPanes, sessionId, key));
         if (ref) workViewKind(ref.kind)?.closed?.(ref, sessionId);
+        if (last && sessionId === workSessionId) this.workPaneEmptied(before.open);
       }}
       .onReorder=${(key: string, index: number) => this.commitWorkPanes(reorderWorkView(this.workPanes, workSessionId, key, index))}
       .onToggle=${(open: boolean) => this.commitWorkPanes(setWorkPaneOpen(this.workPanes, workSessionId, open))}

@@ -288,7 +288,11 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   worker has no local terminal) and, when a setting changes that, links to its
   Settings section, which opens scrolled to it with a little room (`--space-6`)
   above its heading. The VS Code launcher is always available; its view explains
-  what it needs on first open (see *VS Code*). **Hide Work pane** (Ctrl+Alt+Shift+P / ⌥⇧⌘P) collapses it to a rail
+  what it needs on first open (see *VS Code*). Closing the last view (its tab's close button or Delete, or a view
+  that removes itself, such as a terminal ended from its menu) hides the pane just as **Hide Work pane** does: the
+  chat returns to full width, a maximized pane is restored, narrow screens return to the chat and focus left in the
+  pane moves to the composer; showing the pane again lists the launchers. Only that removal hides it: a pane loaded,
+  restored or switched to without views stays as it was. **Hide Work pane** (Ctrl+Alt+Shift+P / ⌥⇧⌘P) collapses it to a rail
   with one button per open view; its left edge resizes with the pointer or the
   arrow keys (Shift for larger steps, Home/End for the limits), keeping at least
   420px for each chat column side by side: the pane yields width down to its own

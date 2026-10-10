@@ -158,7 +158,8 @@ export function openWorkView(store: WorkPaneStore, sessionId: string, ref: WorkV
   }));
 }
 
-/** Removes a tab. The previous tab (or else the next) becomes active; the pane stays open on its empty state. */
+/** Removes a tab. The previous tab (or else the next) becomes active. Closing the last one hides the pane as **Hide
+ * Work pane** does (collapsed, no longer maximized); toggling it open again shows the empty launchers. */
 export function closeWorkView(store: WorkPaneStore, sessionId: string, key: string): WorkPaneStore {
   return update(store, sessionId, (pane) => {
     const index = pane.views.findIndex((view) => workViewKey(view) === key);
@@ -168,8 +169,18 @@ export function closeWorkView(store: WorkPaneStore, sessionId: string, key: stri
     const active = pane.active === key ? neighbour && workViewKey(neighbour) : pane.active;
     const next: SessionWorkPane = { ...pane, views };
     if (active) next.active = active; else delete next.active;
+    if (!views.length) {
+      next.open = false;
+      delete next.maximized;
+    }
     return next;
   });
+}
+
+/** Whether closing `key` removes the conversation's last Work view, so the pane hides. */
+export function closingLastWorkView(store: WorkPaneStore, sessionId: string, key: string): boolean {
+  const { views } = sessionWorkPane(store, sessionId);
+  return views.length === 1 && workViewKey(views[0]!) === key;
 }
 
 export function activateWorkView(store: WorkPaneStore, sessionId: string, key: string, expand = true): WorkPaneStore {
