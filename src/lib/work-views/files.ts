@@ -3,10 +3,12 @@
  * view (a new id) with its own selection; the tab shows the selected file's name. The `<hui-files-view>` element
  * loads the first time a Files view renders, so neither it nor its editor weighs on the main bundle. Closing the tab
  * forgets the view's remembered selection; a file's unsaved text is kept by its File draft (`lib/file-draft.ts`).
+ * A file reference clicked in the chat reveals its file in the conversation's active Files view, else its first one
+ * (`filesViewToReveal`), else a new one.
  */
 import { html } from "lit";
 import { clearFilesViewState, filesViewTitle } from "../files-view-state.ts";
-import type { WorkViewKind } from "../work-pane.ts";
+import { workViewKey, type SessionWorkPane, type WorkViewKind } from "../work-pane.ts";
 import { WORK_SHORTCUTS } from "../work-shortcuts.ts";
 
 export type FilesWorkViewRef = { kind: "files"; id: string };
@@ -28,6 +30,13 @@ function loadFilesView(): void {
 }
 
 export const FILES_WORK_VIEW_SHORTCUT = WORK_SHORTCUTS.files;
+
+/** The Files view a file reference opens in: the active tab when it is a Files view, else the first Files tab;
+ * `undefined` means a new one. */
+export function filesViewToReveal(pane: Pick<SessionWorkPane, "views" | "active">): FilesWorkViewRef | undefined {
+  const files = pane.views.filter((view): view is FilesWorkViewRef => view.kind === "files");
+  return files.find((view) => workViewKey(view) === pane.active) ?? files[0];
+}
 
 export const filesWorkViewKind: WorkViewKind<FilesWorkViewRef> = {
   kind: "files",

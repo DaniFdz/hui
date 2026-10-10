@@ -5,10 +5,10 @@
  */
 import { displayPath } from "./working-directories.ts";
 import { FilesError, FilesRoot, parseIfMatch } from "./files.ts";
-import { MAX_EDITABLE_FILE_BYTES, MAX_RAW_FILE_BYTES, type FilesInfo } from "../shared/files.ts";
+import { MAX_EDITABLE_FILE_BYTES, MAX_RAW_FILE_BYTES, MAX_RESOLVE_PATH_LENGTH, MAX_RESOLVE_PATHS, type FilesInfo, type FilesResolve } from "../shared/files.ts";
 import { basename } from "node:path";
 
-export const FILES_ROUTE = /^\/__hui\/sessions\/([^/]+)\/files(?:\/(list|search|file|raw|entry|upload))?$/u;
+export const FILES_ROUTE = /^\/__hui\/sessions\/([^/]+)\/files(?:\/(list|search|file|raw|entry|upload|resolve))?$/u;
 
 export const REMOTE_FILES_REASON = "Files are not available for conversations on a remote worker yet: their files live on that machine.";
 
@@ -99,6 +99,17 @@ export function createFileRoutes(deps: { session(id: string): Promise<SessionLoc
       if (action === "entry" && method === "DELETE") {
         const recursive = request.query.get("recursive") === "1";
         return { status: 200, body: { deleted: await root.remove(path, recursive) } };
+      }
+      if (action === "resolve" && method === "POST") {
+        const usage = `Send { "paths": ["…"] }: at most ${MAX_RESOLVE_PATHS} paths of at most ${MAX_RESOLVE_PATH_LENGTH} characters.`;
+        let body: unknown;
+        try { body = await request.json(MAX_RESOLVE_PATHS * (MAX_RESOLVE_PATH_LENGTH * 6 + 8) + 1024); } catch { throw new FilesError(usage, 400); }
+        const paths = object(body)["paths"];
+        if (!Array.isArray(paths) || paths.length > MAX_RESOLVE_PATHS || paths.some((path) => typeof path !== "string" || path.length > MAX_RESOLVE_PATH_LENGTH)) {
+          throw new FilesError(usage, 400);
+        }
+        const entries = await Promise.all((paths as string[]).map(async (path) => (await root.locate(path)) ?? null));
+        return { status: 200, body: { entries } satisfies FilesResolve };
       }
       if (action === "upload" && method === "POST") {
         const name = request.query.get("name") ?? "";

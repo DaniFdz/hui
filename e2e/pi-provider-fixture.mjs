@@ -383,6 +383,21 @@ const server = createServer(async (request, response) => {
     return finish(response);
   }
 
+  if (source.includes("E2E_FILE_LINKS")) {
+    text(response, [
+      "I looked at `src/lib/greeting.ts:3`, `README.md` and the folder `docs/`; the filler ends at `src/lib/greeting.ts#L58`.",
+      "",
+      "`src/lib/missing.ts` and `notes/todo.md:12` do not exist; run `npm test`, call `greet()` and keep version `1.2.3`.",
+      "",
+      "See [the design notes](docs/design.md#L2), [a missing page](docs/missing.md) and [the website](https://example.com/docs/design.md).",
+      "",
+      "```ts",
+      "import { greet } from \"./src/lib/greeting.ts\";",
+      "```",
+    ].join("\n"));
+    return finish(response);
+  }
+
   if (source.includes("E2E_MARKDOWN_PARITY")) {
     text(response, "# Markdown parity\n\nParagraph with **bold**, *emphasis*, ~~removed~~, `inline code` and [a link](https://example.com).\n\n## Subheading\n\n- First item\n- Second item\n\n1. First ordered\n2. Second ordered\n\n> A quoted paragraph.\n> Its second line.\n\n---\n\n```text\nfixture code\nsecond line\n```\n\nFinal paragraph.");
     return finish(response);

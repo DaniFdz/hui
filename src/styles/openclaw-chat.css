@@ -379,6 +379,29 @@ hui-widget-card { display: block; width: 100%; }
   hui-widget-card .session-run-spinner { animation: none; }
 }
 
+/* A file the agent named that exists in the conversation's working directory
+   (components/file-link.ts). Until the gateway confirms it, it is plain text or
+   a plain code chip; confirming changes only colour and cursor, so the
+   transcript never reflows. The hover underline follows OpenClaw's file links. */
+hui-file-ref.is-linked,
+hui-file-ref.is-linked > code {
+  color: var(--link);
+  cursor: pointer;
+}
+
+hui-file-ref.is-linked:hover,
+hui-file-ref.is-linked:hover > code {
+  color: var(--link-hover, var(--link));
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+}
+
+hui-file-ref.is-linked:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
 /* Rich Markdown embeds stay bounded by the transcript and fail locally: one
    malformed diagram or blocked provider must not blank the assistant turn. */
 hui-mermaid,

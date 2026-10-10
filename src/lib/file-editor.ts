@@ -10,8 +10,8 @@ import { autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap } 
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { bracketMatching, foldGutter, foldKeymap, HighlightStyle, indentOnInput, StreamLanguage, syntaxHighlighting, type StreamParser } from "@codemirror/language";
 import { highlightSelectionMatches, searchKeymap } from "@codemirror/search";
-import { Compartment, EditorState, type Extension } from "@codemirror/state";
-import { drawSelection, dropCursor, EditorView, highlightActiveLine, highlightActiveLineGutter, keymap, lineNumbers } from "@codemirror/view";
+import { Compartment, EditorState, StateEffect, StateField, type Extension } from "@codemirror/state";
+import { Decoration, drawSelection, dropCursor, EditorView, highlightActiveLine, highlightActiveLineGutter, keymap, lineNumbers, type DecorationSet } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
 import type { FileTextChange } from "./editable-text.ts";
 import { fileLanguage, type FileLanguage } from "./file-languages.ts";
@@ -96,6 +96,24 @@ const theme = EditorView.theme({
   ".cm-tooltip": { backgroundColor: "var(--popover, var(--bg-elevated))", color: "var(--popover-foreground, var(--text))", border: "1px solid var(--border)", borderRadius: "var(--radius-md, 6px)" },
   ".cm-tooltip-autocomplete > ul > li[aria-selected]": { backgroundColor: "var(--menu-selected, var(--bg-hover))", color: "var(--text-strong, var(--text))" },
   ".cm-foldPlaceholder": { backgroundColor: "var(--bg-hover)", border: "1px solid var(--border)", color: "var(--muted)" },
+  ".cm-line.cm-hui-target-line": { backgroundColor: "color-mix(in srgb, var(--accent) 16%, transparent)", boxShadow: "inset 2px 0 0 var(--accent)" },
+});
+
+/** The line a file reference in the chat pointed at, highlighted until the text changes or another line is shown. */
+const setTargetLine = StateEffect.define<number | null>();
+const targetLine = StateField.define<DecorationSet>({
+  create: () => Decoration.none,
+  update(decorations, transaction) {
+    let next = transaction.docChanged ? Decoration.none : decorations;
+    for (const effect of transaction.effects) {
+      if (!effect.is(setTargetLine)) continue;
+      next = effect.value === null
+        ? Decoration.none
+        : Decoration.set([Decoration.line({ class: "cm-hui-target-line" }).range(transaction.state.doc.line(effect.value).from)]);
+    }
+    return next;
+  },
+  provide: (field) => EditorView.decorations.from(field),
 });
 
 export type FileEditorOptions = {
@@ -117,6 +135,8 @@ export type FileEditorHandle = {
   focus(): void;
   /** Re-measures after the editor was hidden. */
   refresh(): void;
+  /** Scrolls to a 1-based line (clamped to the file), puts the cursor there and highlights the line. */
+  revealLine(line: number, column?: number): void;
   destroy(): void;
 };
 
@@ -142,6 +162,7 @@ export async function createFileEditor(options: FileEditorOptions): Promise<File
         autocompletion(),
         highlightActiveLine(),
         highlightSelectionMatches(),
+        targetLine,
         syntaxHighlighting(highlightStyle),
         theme,
         language,
@@ -185,6 +206,16 @@ export async function createFileEditor(options: FileEditorOptions): Promise<File
     },
     focus: () => view.focus(),
     refresh: () => view.requestMeasure(),
+    revealLine(line, column) {
+      const doc = view.state.doc;
+      const number = Math.min(Math.max(1, Math.trunc(line)), doc.lines);
+      const target = doc.line(number);
+      const position = Math.min(target.from + Math.max(0, Math.trunc(column ?? 1) - 1), target.to);
+      view.dispatch({
+        selection: { anchor: position },
+        effects: [setTargetLine.of(number), EditorView.scrollIntoView(position, { y: "center" })],
+      });
+    },
     destroy: () => view.destroy(),
   };
 }
