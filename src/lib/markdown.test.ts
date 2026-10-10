@@ -269,7 +269,7 @@ test("agent replies wrap path-shaped code spans and link targets as file referen
   ].join("\n"));
   assert.match(html, /<hui-file-ref data-path="src\/lib\/x\.ts" data-line="42"><code>src\/lib\/x\.ts:42<\/code><\/hui-file-ref>/u);
   assert.match(html, /<hui-file-ref data-path="README\.md"><code>README\.md<\/code><\/hui-file-ref>/u);
-  for (const text of ["npm test", "foo()", "1.2.3", "--flag"]) assert.match(html, new RegExp(`(?<!data-path=")<code>${text.replace(/[.()]/gu, "\\$&")}</code>`, "u"));
+  for (const text of ["npm test", "foo()", "1.2.3", "--flag"]) assert.match(html, new RegExp(`(?<!data-path=")<code>${text.replace(/[\\^$.*+?()[\]{}|]/gu, "\\$&")}</code>`, "u"));
   assert.equal(html.match(/<hui-file-ref /gu)?.length, 4, "x.ts, README.md, the guide link and the code link");
   assert.match(html, /<hui-file-ref data-path="docs\/guide\.md" data-line="7">the guide<\/hui-file-ref>/u);
   assert.match(html, /<hui-file-ref data-path="src\/y\.ts"><code>code<\/code><\/hui-file-ref>/u, "a link's own code span is not wrapped twice");
