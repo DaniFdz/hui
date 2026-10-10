@@ -13,7 +13,7 @@ import { hasOpenWebAwesomePopup } from "../lib/web-awesome.ts";
 import { ariaShortcut, formatShortcut } from "../lib/shortcut-binding.ts";
 import { requestOpenSettings, settingsHref } from "../lib/open-settings.ts";
 import {
-  clampWorkPaneWidth, sessionWorkPane, workPaneFits, workViewKey, workViewKind, workViewKinds,
+  clampWorkPaneWidth, closingLastWorkView, sessionWorkPane, workPaneFits, workViewKey, workViewKind, workViewKinds,
   workPaneMaximized, WORK_PANE_MAXIMIZE_SHORTCUT, WORK_PANE_MIN_WIDTH, WORK_PANE_TOGGLE_SHORTCUT,
   type WorkPaneStore, type WorkViewKind, type WorkViewRef, type WorkViewResource, type WorkViewSettingsLink,
 } from "../lib/work-pane.ts";
@@ -195,8 +195,10 @@ export class WorkPane extends HuiElement {
 
   private close(sessionId: string, key: string) {
     const focusInside = this.contains(document.activeElement);
+    // Closing the last view hides the pane; the caller returns focus to the conversation's composer.
+    const hides = closingLastWorkView(this.store, sessionId, key);
     this.onClose(sessionId, key);
-    if (focusInside && sessionId === this.sessionId) this.focusPane("active");
+    if (focusInside && sessionId === this.sessionId && !hides) this.focusPane("active");
   }
 
   private tabKeydown(event: KeyboardEvent, views: ViewEntry[], index: number) {

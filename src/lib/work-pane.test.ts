@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { html } from "lit";
 import {
-  activateWorkView, adjacentWorkView, clampWorkPaneWidth, closeWorkView, defaultWorkViewKey, emptyWorkPane, launchableWorkViewKinds, migrateLayoutWorkViews,
+  activateWorkView, adjacentWorkView, clampWorkPaneWidth, closeWorkView, closingLastWorkView, defaultWorkViewKey, emptyWorkPane, launchableWorkViewKinds, migrateLayoutWorkViews,
   openWorkView, parseWorkPaneStore, pruneWorkPaneStore, registerWorkViewKind, reorderWorkView, retainWorkSessions, serializeWorkPaneStore,
   sessionWorkPane, setWorkPaneMaximized, setWorkPaneOpen, setWorkPaneWidth, workPaneFits, workPaneMaximized, workViewKey, workViewKind, workViewKinds,
   WORK_PANE_CHAT_MIN_WIDTH, WORK_PANE_DEFAULT_WIDTH, WORK_PANE_MAX_WIDTH, WORK_PANE_MIN_WIDTH,
@@ -54,7 +54,7 @@ test("opening adds one tab per key, activates it and expands the pane; reopening
   assert.equal(sessionWorkPane(quiet, "s1").open, false, "expand=false keeps a collapsed pane collapsed");
 });
 
-test("closing activates the previous tab, else the next, and leaves the pane open on its empty state", () => {
+test("closing activates the previous tab, else the next, and keeps the pane open while views remain", () => {
   let store: WorkPaneStore = {};
   for (const ref of [{ kind: "terminal", terminalId: T1 }, { kind: "browser" }, { kind: "terminal", terminalId: T2 }] as WorkViewRef[]) store = openWorkView(store, "s1", ref);
   store = activateWorkView(store, "s1", "browser");
@@ -65,10 +65,46 @@ test("closing activates the previous tab, else the next, and leaves the pane ope
   // Closing a background tab keeps the active one.
   const other = openWorkView(store, "s1", { kind: "browser" });
   assert.equal(sessionWorkPane(closeWorkView(other, "s1", `terminal:${T2}`), "s1").active, "browser");
-  store = closeWorkView(store, "s1", `terminal:${T2}`);
-  assert.deepEqual(sessionWorkPane(store, "s1"), { open: true, width: WORK_PANE_DEFAULT_WIDTH, views: [] });
+  assert.equal(sessionWorkPane(closeWorkView(other, "s1", `terminal:${T2}`), "s1").open, true, "a remaining view keeps the pane open");
+  assert.equal(closingLastWorkView(other, "s1", "browser"), false);
+  assert.equal(closingLastWorkView(store, "s1", `terminal:${T2}`), true);
+  assert.equal(closingLastWorkView(store, "s1", "missing"), false);
   assert.strictEqual(closeWorkView(store, "s1", "missing"), store);
   assert.strictEqual(activateWorkView(store, "s1", "missing"), store);
+});
+
+test("closing the last view hides the pane like Hide Work pane; showing it again lists the launchers", () => {
+  let store: WorkPaneStore = openWorkView({}, "s1", { kind: "terminal", terminalId: T1 });
+  store = setWorkPaneWidth(openWorkView(store, "s2", { kind: "browser" }), "s1", 700);
+  const hidden = closeWorkView(store, "s1", `terminal:${T1}`);
+  assert.deepEqual(sessionWorkPane(hidden, "s1"), { open: false, width: 700, views: [] }, "collapsed, its width kept");
+  assert.strictEqual(hidden.s2, store.s2, "other conversations' panes are untouched");
+  // Stored as closed, in the same format.
+  assert.deepEqual(serializeWorkPaneStore(hidden).sessions.s1, { open: false, width: 700, views: [] });
+  assert.deepEqual(parseWorkPaneStore(JSON.parse(JSON.stringify(serializeWorkPaneStore(hidden)))).s1, { open: false, width: 700, views: [] });
+  // The toggle is not a no-op: it opens the empty pane, with its launchers.
+  assert.deepEqual(sessionWorkPane(setWorkPaneOpen(hidden, "s1", true), "s1"), { open: true, width: 700, views: [] });
+  // A view that ends by itself while the pane is collapsed leaves it collapsed.
+  const collapsed = setWorkPaneOpen(store, "s1", false);
+  assert.equal(sessionWorkPane(closeWorkView(collapsed, "s1", `terminal:${T1}`), "s1").open, false);
+});
+
+test("closing the last view of a maximized pane hides it and restores the chat", () => {
+  const store = setWorkPaneMaximized(openWorkView({}, "s1", { kind: "files", id: "a" }), "s1", true);
+  const hidden = closeWorkView(store, "s1", "files:a");
+  assert.equal(sessionWorkPane(hidden, "s1").open, false);
+  assert.equal("maximized" in sessionWorkPane(hidden, "s1"), false);
+  assert.equal(workPaneMaximized(sessionWorkPane(setWorkPaneOpen(hidden, "s1", true), "s1"), false), false, "showing it again does not maximize it");
+});
+
+test("an open pane restored without views stays open: only closing a view hides it", () => {
+  const restored = parseWorkPaneStore({ version: 1, sessions: { s1: { open: true, width: 600, views: [] }, s2: { open: true, width: 600, views: [{ kind: "vscode" }] } } });
+  assert.deepEqual(restored.s1, { open: true, width: 600, views: [] });
+  // A record whose only view is of an unknown kind loads empty, and still open.
+  assert.deepEqual(restored.s2, { open: true, width: 600, views: [] });
+  // Re-creating views (opening one already open) never closes anything.
+  const store = openWorkView(restored, "s1", { kind: "browser" });
+  assert.equal(sessionWorkPane(openWorkView(store, "s1", { kind: "browser" }), "s1").open, true);
 });
 
 test("reordering moves one tab and clamps the index; adjacent tabs wrap around", () => {
