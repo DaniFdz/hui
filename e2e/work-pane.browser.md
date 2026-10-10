@@ -196,3 +196,33 @@ each press.
   well under a second before 420/420: the multiplexer still measured its old
   width until its ResizeObserver frame ran (the same frame showed 320 px columns
   before this change).
+
+## Closing the last view hides the pane
+
+Verified on 2026-10-10 on `feat/work-pane-close-last` at `587a415` (clean tree,
+`doctor` passing before and after; this section was written afterwards), same
+launcher and fixture, driven through the Browser tool in an owned headless Brave
+tab at 1440×900 and 390×844 (resize, no touch emulation). The terminal's prompt
+was set to `$ ` before capture.
+
+- **Two views, close one.** `Ctrl+Alt+Shift+T` then `Ctrl+Alt+Shift+F` gave
+  *Terminal 1* and *Files*. Closing *Files* with its × left the pane open at
+  560 px on *Terminal 1*, focus on its tab.
+- **Close the last.** Closing *Terminal 1* with its × collapsed the pane to its
+  44 px rail (only **Show Work pane**), the chat column grew to 1138 px and focus
+  moved to the composer (`Send a message…`). `hui.work-pane.v1` held no record
+  for the conversation (closed, no views, default width: the stored default).
+- **Reload** kept it collapsed. `Ctrl+Alt+Shift+P` then showed the empty pane
+  with its five launchers, focus on **New terminal**; a reload with that empty
+  pane open kept it open (`open: true, views: []`).
+- **Maximized.** A Files view, **Maximize Work pane**, then its × (and, on the
+  first run at `6edf2af`, Delete on the focused tab): the pane collapsed to its
+  rail, the maximized layout and the chat's `inert` were gone and focus was in
+  the composer.
+- **A view that removes itself.** **Terminal actions → End terminal** on the
+  only tab hid the pane the same way (focus to the composer). A shell that exits
+  by itself (`exit`) keeps its tab (*Exited · 0*), as before.
+- **390×844.** The panel selector's **Files · Open** showed the Files destination
+  (selector *Files · Work*); its × returned to the chat with the selector on
+  *Chat*, focus in the composer and document width 390.
+- Page errors: 0. Console messages were not read on this run.
