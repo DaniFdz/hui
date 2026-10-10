@@ -17,8 +17,12 @@ const agentDir = join(dir, "agent");
 const workspace = join(dir, "workspace");
 await mkdir(agentDir);
 await mkdir(workspace);
+// The gateway's home, HUI's directory and PI's agent directory: never the operator's own.
+process.env["HOME"] = dir;
 process.env["XDG_CONFIG_HOME"] = join(dir, "config");
 process.env["PI_CODING_AGENT_DIR"] = agentDir;
+// No gh: startup would run the operator's in the background, writing into this home while it is removed.
+process.env["HUI_GITHUB_CLI"] = join(dir, "no-gh");
 for (const name of ["HUI_CONFIG_DIR", "HUI_DURABLE_DIR", "HUI_SESSION_RUNTIME"]) delete process.env[name];
 
 const { middleware, startBackend, stopBackend } = await import("./hui.ts");
