@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, stat, symlink, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -95,5 +95,28 @@ test("diff routes stay inside the conversation's directory and explain remote an
   for (const verb of verbs) assert.ok(["rev-parse", "symbolic-ref", "for-each-ref", "remote", "status", "log", "config", "diff", "ls-files", "add", "merge-base", "rev-list"].includes(verb!), String(verb));
   for (const args of seen.filter((args) => args[0] === "diff")) {
     for (const flag of ["--no-ext-diff", "--no-textconv", "--no-color"]) assert.ok(args.includes(flag), flag);
+  }
+});
+
+test("a same-size edit made in the second of the last index write still shows", async (t) => {
+  // Racy Git: with ctime ignored, the edited file and the index share one mtime, so only the index's own time tells
+  // Git to compare a.txt by content. The temporary index HUI diffs with must keep that time.
+  const { dir, cwd } = await workspace();
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  git(cwd, "config", "core.trustctime", "false");
+  const recorded = await stat(join(cwd, "a.txt"));
+  const committed = new Date(Math.floor(recorded.mtimeMs / 1000) * 1000);
+  await utimes(join(cwd, "a.txt"), committed, committed);
+  await utimes(join(cwd, ".git", "index"), committed, committed);
+  const { runGit } = await import("./git-diff.ts");
+  const routes = createDiffRoutes({
+    session: async () => ({ cwd }),
+    git: (where, args, options) => runGit(where, args, { ...options, env: { ...options?.env, GIT_CEILING_DIRECTORIES: dir } }),
+  });
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const changes = await routes.handle({ method: "GET", path: "/__hui/sessions/s/diff/changes", query: new URLSearchParams({ compare: "uncommitted" }) });
+    assert.deepEqual(((changes as { body: { files: { path: string }[] } }).body.files).map((file) => file.path), ["a.txt"]);
+    const one = await routes.handle({ method: "GET", path: "/__hui/sessions/s/diff/file", query: new URLSearchParams({ compare: "uncommitted", path: "a.txt" }) });
+    assert.match(String(((one as { body: { file: { patch: string } | null } }).body.file)?.patch), /^\+two$/mu);
   }
 });

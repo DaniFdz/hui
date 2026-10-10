@@ -9,7 +9,7 @@
  * offered. Paths are relative to the conversation's working directory (`--relative`), the Files view's root.
  */
 import { spawn } from "node:child_process";
-import { copyFile, mkdir, mkdtemp, rm } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, rm, stat, utimes } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { DiffBranch, DiffChanges, DiffComparison, DiffEndpoint, DiffFile, DiffFileStatus, DiffInfo, DiffParentSource } from "../shared/diff.ts";
@@ -658,7 +658,13 @@ async function withUntracked<T>(git: GitRunner, repository: Repository, only: re
     await mkdir(join(temporary, "objects"));
     const index = join(temporary, "index");
     try {
+      // The copy keeps the index's own modification time. Git trusts an entry's cached stat only when the file is
+      // older than the index ("racy Git"); a fresh mtime on the copy would hide a same-size edit made in the same
+      // second as the last index write. The time is read before copying, so a concurrent rewrite only makes more
+      // entries racy (compared by content), never fewer.
+      const before = await stat(repository.indexPath);
       await copyFile(repository.indexPath, index);
+      await utimes(index, before.atime, before.mtime);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
