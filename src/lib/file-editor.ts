@@ -1,49 +1,22 @@
 /**
  * The Files view's text editor: CodeMirror 6 themed from HUI's tokens, with the file's language loaded on demand.
  * The Files view imports this module dynamically, so CodeMirror stays out of the main bundle until a text file
- * opens. Colors are CSS variables, so the editor follows theme and light/dark changes without being rebuilt.
+ * opens; the languages themselves are in `code-languages.ts`, shared with the Diff view's highlighting. Colors are
+ * CSS variables, so the editor follows theme and light/dark changes without being rebuilt.
  *
  * The extension set and highlight mapping follow AgentsInTheCloud's file editor (packages/files/src/client,
  * MIT, see THIRD_PARTY_NOTICES.md).
  */
 import { autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap } from "@codemirror/autocomplete";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
-import { bracketMatching, foldGutter, foldKeymap, HighlightStyle, indentOnInput, StreamLanguage, syntaxHighlighting, type StreamParser } from "@codemirror/language";
+import { bracketMatching, foldGutter, foldKeymap, HighlightStyle, indentOnInput, syntaxHighlighting } from "@codemirror/language";
 import { highlightSelectionMatches, searchKeymap } from "@codemirror/search";
-import { Compartment, EditorState, StateEffect, StateField, type Extension } from "@codemirror/state";
+import { Compartment, EditorState, StateEffect, StateField } from "@codemirror/state";
 import { Decoration, drawSelection, dropCursor, EditorView, highlightActiveLine, highlightActiveLineGutter, keymap, lineNumbers, type DecorationSet } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
 import type { FileTextChange } from "./editable-text.ts";
-import { fileLanguage, type FileLanguage } from "./file-languages.ts";
-
-const legacy = (load: () => Promise<StreamParser<unknown>>) => async (): Promise<Extension> => StreamLanguage.define(await load());
-
-const LANGUAGES: Record<FileLanguage, () => Promise<Extension>> = {
-  javascript: async () => (await import("@codemirror/lang-javascript")).javascript(),
-  jsx: async () => (await import("@codemirror/lang-javascript")).javascript({ jsx: true }),
-  typescript: async () => (await import("@codemirror/lang-javascript")).javascript({ typescript: true }),
-  tsx: async () => (await import("@codemirror/lang-javascript")).javascript({ typescript: true, jsx: true }),
-  json: async () => (await import("@codemirror/lang-json")).json(),
-  css: async () => (await import("@codemirror/lang-css")).css(),
-  html: async () => (await import("@codemirror/lang-html")).html(),
-  markdown: async () => (await import("@codemirror/lang-markdown")).markdown(),
-  python: async () => (await import("@codemirror/lang-python")).python(),
-  shell: legacy(async () => (await import("@codemirror/legacy-modes/mode/shell")).shell as StreamParser<unknown>),
-  yaml: legacy(async () => (await import("@codemirror/legacy-modes/mode/yaml")).yaml as StreamParser<unknown>),
-  toml: legacy(async () => (await import("@codemirror/legacy-modes/mode/toml")).toml as StreamParser<unknown>),
-  dockerfile: legacy(async () => (await import("@codemirror/legacy-modes/mode/dockerfile")).dockerFile as StreamParser<unknown>),
-  go: legacy(async () => (await import("@codemirror/legacy-modes/mode/go")).go as StreamParser<unknown>),
-  rust: legacy(async () => (await import("@codemirror/legacy-modes/mode/rust")).rust as StreamParser<unknown>),
-  ruby: legacy(async () => (await import("@codemirror/legacy-modes/mode/ruby")).ruby as StreamParser<unknown>),
-  lua: legacy(async () => (await import("@codemirror/legacy-modes/mode/lua")).lua as StreamParser<unknown>),
-  sql: legacy(async () => (await import("@codemirror/legacy-modes/mode/sql")).standardSQL as StreamParser<unknown>),
-  diff: legacy(async () => (await import("@codemirror/legacy-modes/mode/diff")).diff as StreamParser<unknown>),
-  properties: legacy(async () => (await import("@codemirror/legacy-modes/mode/properties")).properties as StreamParser<unknown>),
-  nginx: legacy(async () => (await import("@codemirror/legacy-modes/mode/nginx")).nginx as StreamParser<unknown>),
-  xml: legacy(async () => (await import("@codemirror/legacy-modes/mode/xml")).xml as StreamParser<unknown>),
-  swift: legacy(async () => (await import("@codemirror/legacy-modes/mode/swift")).swift as StreamParser<unknown>),
-  plain: async () => [],
-};
+import { loadLanguage } from "./code-languages.ts";
+import { fileLanguage } from "./file-languages.ts";
 
 /** Token colors come from the same variables that color Markdown code blocks in the chat. */
 const highlightStyle = HighlightStyle.define([
@@ -141,7 +114,7 @@ export type FileEditorHandle = {
 };
 
 export async function createFileEditor(options: FileEditorOptions): Promise<FileEditorHandle> {
-  const language = await LANGUAGES[fileLanguage(options.path)]().catch((): Extension => []);
+  const language = await loadLanguage(fileLanguage(options.path));
   const editable = new Compartment();
   let applying = false;
   const editableState = (readOnly: boolean) => [EditorState.readOnly.of(readOnly), EditorView.editable.of(!readOnly)];

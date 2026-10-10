@@ -1,5 +1,5 @@
 /**
- * The Work pane's contract and state: the registry of Work view kinds (terminal, browser, files, VS Code…), the
+ * The Work pane's contract and state: the registry of Work view kinds (terminal, browser, files, VS Code, diff…), the
  * browser-local per-conversation record (open, maximized, width, views, active view) and the pure transitions on it, plus the
  * one-time move of terminal and browser panes out of the chat multiplexer's saved layout. Rendering belongs to
  * `components/work-pane.ts`; each kind renders its own view; the conversations themselves stay PI/HUI-owned.
@@ -14,7 +14,8 @@ export type WorkViewRef =
   | { kind: "terminal"; terminalId: string }
   | { kind: "browser" }
   | { kind: "files"; id: string }
-  | { kind: "vscode" };
+  | { kind: "vscode" }
+  | { kind: "diff"; id: string };
 
 export type WorkViewContext = {
   /** The conversation owning the Work pane. */
@@ -92,6 +93,7 @@ export function launchableWorkViewKinds(pane: Pick<SessionWorkPane, "views">): W
 export function defaultWorkViewKey(ref: WorkViewRef): string {
   if (ref.kind === "terminal") return `terminal:${ref.terminalId}`;
   if (ref.kind === "files") return `files:${ref.id}`;
+  if (ref.kind === "diff") return `diff:${ref.id}`;
   return ref.kind;
 }
 
@@ -279,7 +281,9 @@ export function parseWorkViewRef(value: unknown, isKnown: (kind: string) => bool
   const raw = value as Record<string, unknown>;
   if (typeof raw.kind !== "string" || !isKnown(raw.kind)) return undefined;
   if (raw.kind === "terminal") return typeof raw.terminalId === "string" && TERMINAL_ID.test(raw.terminalId) ? { kind: "terminal", terminalId: raw.terminalId } : undefined;
-  if (raw.kind === "files") return typeof raw.id === "string" && raw.id.trim() && raw.id.length <= 128 && !CONTROL.test(raw.id) ? { kind: "files", id: raw.id } : undefined;
+  if (raw.kind === "files" || raw.kind === "diff") {
+    return typeof raw.id === "string" && raw.id.trim() && raw.id.length <= 128 && !CONTROL.test(raw.id) ? { kind: raw.kind, id: raw.id } : undefined;
+  }
   if (raw.kind === "browser" || raw.kind === "vscode") return { kind: raw.kind };
   return undefined;
 }

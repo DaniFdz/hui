@@ -248,6 +248,7 @@ import { PANE_COLUMN_MIN_WIDTH } from "./lib/session-pane-geometry.ts";
 import { terminalWorkViewKind } from "./lib/work-views/terminal.ts";
 import { browserWorkViewKind } from "./lib/work-views/browser.ts";
 import { filesViewToReveal, filesWorkViewKind, type FilesWorkViewRef } from "./lib/work-views/files.ts";
+import { diffWorkViewKind } from "./lib/work-views/diff.ts";
 import { requestFilesViewReveal } from "./lib/files-view-state.ts";
 import { OPEN_FILE_EVENT, type OpenFileDetail } from "./lib/file-link-store.ts";
 import { vscodeWorkViewKind } from "./lib/work-views/vscode.ts";
@@ -2018,6 +2019,7 @@ export class HuiApp extends HuiElement {
     registerWorkViewKind(browserWorkViewKind({ enabled: () => this.settings.browser.enabled }));
     registerWorkViewKind(filesWorkViewKind);
     registerWorkViewKind(vscodeWorkViewKind);
+    registerWorkViewKind(diffWorkViewKind);
     // A launcher's reason can change outside this app's state (VS Code's gateway status): redraw the narrow chooser.
     for (const stop of this.stopWorkAvailability) stop();
     this.stopWorkAvailability = workViewKinds().flatMap((kind) => kind.onAvailabilityChange ? [kind.onAvailabilityChange(() => this.requestUpdate())] : []);

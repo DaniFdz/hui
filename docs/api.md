@@ -3472,6 +3472,59 @@ conflict instead of being overwritten. The chat announces a conversation's
 settled turn as the page event `hui-session-turn-end` (`{ sessionId }`); the view
 refreshes on it.
 
+### Diff view API
+
+The Diff view reads the conversation's Git checkout through these routes, with
+the same guard, session lookup and root as the Files view (the recorded `cwd`,
+opened through `realpath`; a remote worker's conversation answers 409 `code:
+"remote"`). Shapes live in `shared/diff.ts`; Git runs in `server/git-diff.ts`.
+
+| Route | Method | Result |
+| --- | --- | --- |
+| `/__hui/sessions/:id/diff` | GET | `DiffInfo`: `{ available: false, reason, code: "remote" \| "not-repo" \| "missing" \| "git" }` or `{ available: true, root, subdirectory, branch?, detached, unborn, head?, uncommitted, lastCommit?, parent?, branches, defaultBranch?, comparisons }` |
+| `/__hui/sessions/:id/diff/changes?compare=[&parent=][&uncommitted=0]` | GET | `DiffChanges`: `{ comparison, base, head, includesUncommitted, files: DiffFile[], additions, deletions, truncated, filesOmitted, untrackedOmitted }` |
+| `/__hui/sessions/:id/diff/file?compare=…&path=[&from=]` | GET | `{ file: DiffFile \| null }`: one file of the same comparison (`from` is a rename's old path) |
+
+`compare` is one of `uncommitted` (working tree and index against HEAD, untracked
+files included; against the empty tree before the first commit), `last-commit`
+(HEAD's first parent to HEAD), `parent` (the merge base of HEAD and the previous
+branch) and `default` (the merge base of HEAD and the default branch: three dots,
+so commits that reached the default branch later are not shown as removals).
+`parent` and `default` compare that merge base with HEAD, or with the working tree
+unless `uncommitted=0`. `parent=` is a full ref (`refs/heads/…` or
+`refs/remotes/…`) and must be one `DiffInfo.branches` (or `parent`) offered;
+anything else answers 400 `code: "unknown-ref"`. A comparison that does not apply
+answers 409 (`detached`, `unborn`, `no-parent`, `no-default`), unrelated histories
+422 `no-merge-base`. `path` and `from` follow the Files path rules (400 for an
+absolute path, 403 for `..`) and are literal pathspecs.
+
+The previous branch (`DiffInfo.parent`, with `source`) is, in order: the branch's
+`branch.<name>.gh-merge-base` (gh), `git-town-branch.<name>.parent` (git-town),
+its configured upstream when that is another branch than its own remote copy,
+else the nearest branch whose tip is an ancestor of HEAD (fewest commits between;
+ties to a local branch, then not the default branch, then by name), never the
+branch itself or a remote copy of it, and never on a detached HEAD. Nothing is
+fetched. `branches` lists at most 300 local and remote-tracking branches, ancestors
+first with their `distance` (commits HEAD has beyond them). The default branch is
+`origin/HEAD`'s target, else `origin/main`, `origin/master`, `main`, `master`; not
+offered while it is the checked-out branch itself.
+
+Diffs cover the working directory only (`--relative`, paths relative to it, like
+the Files view) and run with `--no-ext-diff --no-textconv --no-color`, rename
+detection, `core.quotepath=off`, `core.fsmonitor=false`, literal pathspecs,
+`GIT_OPTIONAL_LOCKS=0` and a 20 s timeout per command. Untracked files (at most
+2,000; the rest are counted in `untrackedOmitted`) join the diff as intent-to-add
+entries of a temporary copy of the index, whose empty blob goes to a temporary
+object directory: the repository's index, objects and refs are never written, and
+no hook runs. A `DiffFile` is `{ path, oldPath?, status: "A" \| "M" \| "D" \| "R" \|
+"C" \| "T" \| "U", similarity?, additions, deletions, binary, oldMode?, newMode?,
+patch?, truncated? }`; `patch` holds the file's hunks from its first `@@` (`""`
+for a rename or mode change without content changes; absent for binary files).
+One file's patch stops after 15,000 lines or 768 KiB (`truncated: "file"`); all
+patches together stop at 6 MiB, after which files are listed without a patch
+(`truncated: "total"`) for `…/diff/file` to load one at a time. At most 3,000
+files are listed (`filesOmitted` counts the rest).
+
 ### VS Code view API
 
 `settings.json` gains `vscode: { enabled, executable, provider, licenseAcceptedAt }`

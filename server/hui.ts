@@ -176,6 +176,7 @@ import { createSessionListHub } from "./session-list.ts";
 import { COMPRESSION_MIN_BYTES, compressBody, negotiateEncoding } from "./http-compression.ts";
 import { attachTerminalTransport, terminalTicket } from "./terminal-transport.ts";
 import { createFileRoutes, FILES_ROUTE, parseIfMatch } from "./file-routes.ts";
+import { createDiffRoutes, DIFF_ROUTE } from "./diff-routes.ts";
 import {
   createSessionGroup,
   deleteSessionGroup,
@@ -270,6 +271,7 @@ const HEARTBEAT_MS = 15_000;
 const piMutations = new PiMutationService();
 const workerRoutes = createWorkerRoutes({ service: workers, readRegistry });
 const fileRoutes = createFileRoutes({ session: async (id) => (await readRegistry()).find((record) => record.id === id) });
+const diffRoutes = createDiffRoutes({ session: async (id) => (await readRegistry()).find((record) => record.id === id) });
 // Sessions a lost connection interrupted reattach once their worker is back,
 // and stop showing a reconnect once HUI no longer tries.
 function forWorkerSessions(workerId: string, act: (record: SessionRecord) => void): void {
@@ -2746,6 +2748,18 @@ async function handleRequest(
       if (result.etag) response.setHeader("etag", `"${result.etag}"`);
       sendJson(response, result.status, result.body);
     }
+    return;
+  }
+
+  // The Diff view: Git comparisons of the conversation's working directory, read-only (`diff-routes.ts`).
+  if (DIFF_ROUTE.test(path)) {
+    const result = await diffRoutes.handle({
+      method: request.method ?? "GET",
+      path,
+      query: new URL(request.url ?? "/", "http://localhost").searchParams,
+    });
+    if (!result) sendJson(response, 404, { error: `unknown route: ${path}` });
+    else sendJson(response, result.status, result.body);
     return;
   }
 
