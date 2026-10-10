@@ -132,7 +132,10 @@ The browser never connects to the harness either. New sessions use the
 `durable` runtime: one Pi Durable harness inside the gateway, over the SQLite
 store `~/.config/hui/durable/harness.sqlite` (`HUI_DURABLE_DIR` overrides the
 directory). A lock file refuses a second gateway on the same store; Durable has
-no cross-process locking of its own. Each HUI session is one Durable
+no cross-process locking of its own. Stopping the backend settles only once the
+store is closed and unlocked. The development server restarts the backend in
+its own process when a server file changes, and starts the new backend only
+after the previous one has stopped. Each HUI session is one Durable
 conversation and stores `durable:<conversationId>` in `piSessionFile`.
 
 Opening the store resumes every unfinished run, once the gateway has reopened

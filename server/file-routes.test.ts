@@ -153,7 +153,7 @@ test("the gateway guards file routes with x-hui and serves previews as inert byt
   const address = server.address();
   assert.ok(address && typeof address !== "string");
   const origin = `http://127.0.0.1:${address.port}/__hui/sessions/alpha/files`;
-  t.after(async () => { stopBackend(); server.closeAllConnections(); await new Promise<void>((r) => server.close(() => r())); await rm(dir, { recursive: true, force: true }); });
+  t.after(async () => { await stopBackend(); server.closeAllConnections(); await new Promise<void>((r) => server.close(() => r())); await rm(dir, { recursive: true, force: true }); });
   const guarded = { "x-hui": "1" };
 
   assert.equal((await fetch(`${origin}/list`)).status, 403);

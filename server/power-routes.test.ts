@@ -17,7 +17,7 @@ test("the power route reports the platform and rejects a malformed lid switch", 
   assert.ok(address && typeof address !== "string");
   const url = `http://127.0.0.1:${address.port}/__hui/power`;
   t.after(async () => {
-    stopBackend();
+    await stopBackend();
     server.closeAllConnections();
     await new Promise<void>((resolve) => server.close(() => resolve()));
     await rm(dir, { recursive: true, force: true });

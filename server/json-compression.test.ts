@@ -37,7 +37,7 @@ test("large JSON answers are compressed for clients that accept it and identical
   assert.ok(address && typeof address !== "string");
   const url = `http://127.0.0.1:${address.port}/__hui/sessions`;
   t.after(async () => {
-    stopBackend();
+    await stopBackend();
     server.closeAllConnections();
     await new Promise<void>((resolve) => server.close(() => resolve()));
     await rm(dir, { recursive: true, force: true });

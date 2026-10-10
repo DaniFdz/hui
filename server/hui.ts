@@ -4396,28 +4396,34 @@ export function recoverInterruptedSessions(
   return started;
 }
 
+/** Settles once the Durable store is released, so a backend started next in
+ * this process (a development server restart) can open it. */
 export async function stopBackend(): Promise<void> {
-  macPower?.dispose();
-  managedBrowser.dispose();
-  // Signals openvscode-server and returns: a gateway stop never waits for it.
-  vscode.dispose();
-  terminals.dispose();
-  githubCli.dispose();
-  // Before the sessions close: a delivery still going out reaches its bot, and every trigger write has settled.
-  await triggers.stop();
-  automation.dispose();
-  subagents.dispose();
-  watchers.dispose();
-  secretRequests.dispose();
-  questionnaires.dispose();
-  secretFiles.dispose();
-  stopAgentToolBridge();
-  // Closed first: remote sessions then keep running on their hosts instead of
-  // receiving a kill from the disposal below.
-  workers.disconnectAll();
-  liveSessions.disposeAll();
-  // Closing records no outcome: running Durable work resumes on the next start.
-  void durableHost().close();
+  try {
+    macPower?.dispose();
+    managedBrowser.dispose();
+    // Signals openvscode-server and returns: a gateway stop never waits for it.
+    vscode.dispose();
+    terminals.dispose();
+    githubCli.dispose();
+    // Before the sessions close: a delivery still going out reaches its bot, and every trigger write has settled.
+    await triggers.stop();
+    automation.dispose();
+    subagents.dispose();
+    watchers.dispose();
+    secretRequests.dispose();
+    questionnaires.dispose();
+    secretFiles.dispose();
+    stopAgentToolBridge();
+    // Closed first: remote sessions then keep running on their hosts instead of
+    // receiving a kill from the disposal below.
+    workers.disconnectAll();
+    liveSessions.disposeAll();
+  } finally {
+    // Closing records no outcome: running Durable work resumes on the next start.
+    // A failed step above must not leave the store locked.
+    await durableHost().close();
+  }
 }
 
 /** Upgrade handlers for browser panes and session views; the gateway and Vite
@@ -4453,11 +4459,16 @@ export function huiConfig(): Plugin {
     },
     load(id) { return id === GESPENST_NODE_STUB ? "export {};" : undefined; },
     configureServer(server) {
-      void startBackend();
       if (server.httpServer) {
+        // Vite restarts by creating this server, closing the previous one (its
+        // `closeBundle` stops that backend and releases the Durable store) and
+        // only then listening. Starting here keeps the two backends apart.
+        server.httpServer.once("listening", () => { void startBackend(); });
         const detach = attachTerminalTransport(server.httpServer);
         const detachStreams = attachLiveStreams(server.httpServer);
         server.httpServer.once("close", () => { detach(); detachStreams(); });
+      } else {
+        void startBackend();
       }
       server.middlewares.use(middleware);
     },
@@ -4468,8 +4479,14 @@ export function huiConfig(): Plugin {
       server.httpServer.once("close", () => { detach(); detachStreams(); });
       server.middlewares.use(middleware);
     },
-    closeBundle() {
-      return stopBackend();
+    // Called once per Vite environment; the calls share one store close. Vite
+    // discards a failed hook, so the failure is reported instead.
+    async closeBundle() {
+      await stopBackend().catch((error: unknown) => recordDiagnosticEvent({
+        area: "gateway", level: "error", action: "stop_failed",
+        summary: "The development backend did not stop cleanly",
+        detail: error instanceof Error ? error.message : String(error),
+      }));
     },
   };
 }
