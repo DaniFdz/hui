@@ -3412,6 +3412,18 @@ relative to it, `/`-separated, with `""` for the root. Shapes live in
 | `/__hui/sessions/:id/files/entry` | POST | `{ path, kind: "file" \| "directory" }` → 201 `{ entry }`, empty and never replacing |
 | `/__hui/sessions/:id/files/entry?path=[&recursive=1]` | DELETE | `{ deleted: { path, kind } }` |
 | `/__hui/sessions/:id/files/upload?dir=&name=[&overwrite=1]` | POST | Raw body, at most 64 MiB → 201 `{ entry }` |
+| `/__hui/sessions/:id/files/resolve` | POST | `{ paths: string[] }` (at most 100, each at most 1,024 characters) → `{ entries: ({ path, kind: "file" \| "directory" } \| null)[] }`, one per path in order |
+
+`resolve` answers which paths the agent wrote in the chat exist inside the root,
+so the chat can link them to the Files view. A path may be relative (`./` and
+inner `..` resolve lexically and may not climb above the root), absolute under
+the root's real or recorded location, or start with `~/`; a line suffix is the
+browser's to strip. Each existing path answers its clean root-relative `path`
+through the same `realpath` rule as every other route, so a link that leaves the
+root, an absolute path elsewhere or anything that is not a regular file or a
+folder answers `null`; absolute paths outside the root are refused without
+touching the disk. A malformed body answers 400; a remote worker's conversation
+409 `code: "remote"`, like the other actions.
 
 `FileEntry` is `{ name, path, kind: "directory" | "file" | "symlink" | "other",
 size, symlink? }`. A link whose target stays inside the root reports its target's

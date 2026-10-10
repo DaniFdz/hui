@@ -3,7 +3,7 @@
  * disk and resolves every path inside the conversation's working directory; this only sends requests with the
  * local-client header and turns refusals into errors, except a save conflict, which is an answer.
  */
-import type { FileEntry, FileRead, FileSaved, FilesInfo, FilesListing, FilesSearch } from "../../shared/files.ts";
+import type { FileEntry, FileRead, FileSaved, FilesInfo, FilesListing, FilesResolve, FilesSearch } from "../../shared/files.ts";
 import { CLIENT_HEADERS, fetchJson } from "./settings-store.ts";
 import { trackedFetch } from "./ui-errors.ts";
 
@@ -44,6 +44,17 @@ export async function searchFiles(sessionId: string, query: string, signal?: Abo
   const response = await request(withQuery(base(sessionId, "search"), { q: query }), signal ? { signal } : {});
   if (!response.ok) throw await failure(response);
   return await response.json() as FilesSearch;
+}
+
+/** Which of `paths` (as the agent wrote them in the chat) exist inside the working directory. */
+export async function resolveFilePaths(sessionId: string, paths: string[]): Promise<FilesResolve> {
+  const response = await request(base(sessionId, "resolve"), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ paths }),
+  });
+  if (!response.ok) throw await failure(response);
+  return await response.json() as FilesResolve;
 }
 
 export async function readFile(sessionId: string, path: string): Promise<FileRead> {

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createMarkdownCache, markdownToHtml } from "./markdown.ts";
+import { agentMarkdownToHtml, createMarkdownCache, markdownToHtml } from "./markdown.ts";
 
 test("renders the Markdown used by agent replies", () => {
   const html = markdownToHtml("# Heading\n\n**bold** and `code`\n\n- one\n- two");
@@ -252,4 +252,37 @@ test("the Markdown cache stays bounded and still renders evicted sources", () =>
   // The oldest entries were dropped, and re-rendering one is still correct.
   assert.equal(render("value 0"), "<p>value 0</p>");
   assert.equal(render("value 2000"), "<p>value 2000</p>");
+});
+
+
+test("agent replies wrap path-shaped code spans and link targets as file references, nothing else", () => {
+  const html = agentMarkdownToHtml([
+    "Edited `src/lib/x.ts:42` and `README.md`; run `npm test`, call `foo()`, bump `1.2.3`, pass `--flag`.",
+    "",
+    "See [the guide](docs/guide.md#L7), [site](https://example.com/a.ts) and [`code`](src/y.ts).",
+    "",
+    "Plain prose src/lib/x.ts stays prose.",
+    "",
+    "```ts",
+    "import x from \"src/lib/x.ts\";",
+    "```",
+  ].join("\n"));
+  assert.match(html, /<hui-file-ref data-path="src\/lib\/x\.ts" data-line="42"><code>src\/lib\/x\.ts:42<\/code><\/hui-file-ref>/u);
+  assert.match(html, /<hui-file-ref data-path="README\.md"><code>README\.md<\/code><\/hui-file-ref>/u);
+  for (const text of ["npm test", "foo()", "1.2.3", "--flag"]) assert.match(html, new RegExp(`(?<!data-path=")<code>${text.replace(/[\\^$.*+?()[\]{}|]/gu, "\\$&")}</code>`, "u"));
+  assert.equal(html.match(/<hui-file-ref /gu)?.length, 4, "x.ts, README.md, the guide link and the code link");
+  assert.match(html, /<hui-file-ref data-path="docs\/guide\.md" data-line="7">the guide<\/hui-file-ref>/u);
+  assert.match(html, /<hui-file-ref data-path="src\/y\.ts"><code>code<\/code><\/hui-file-ref>/u, "a link's own code span is not wrapped twice");
+  assert.match(html, /<a href="https:\/\/example\.com\/a\.ts" target="_blank"/u);
+  assert.match(html, /Plain prose src\/lib\/x\.ts stays prose\./u);
+  assert.match(html, /import x from &quot;src\/lib\/x\.ts&quot;;/u);
+  assert.doesNotMatch(html, /<a href="docs\/guide\.md/u, "a file link is never a relative page link");
+});
+
+test("file references are escaped and absent from other Markdown", () => {
+  assert.doesNotMatch(markdownToHtml("Edited `src/lib/x.ts`."), /hui-file-ref/u, "hovercards, previews and user text keep plain code");
+  const html = agentMarkdownToHtml("Read [x](file:///srv/app/main.go:3) and [y](javascript:alert(1)).");
+  assert.match(html, /<hui-file-ref data-path="\/srv\/app\/main\.go" data-line="3">x<\/hui-file-ref>/u);
+  assert.doesNotMatch(html, /javascript:/u);
+  assert.match(agentMarkdownToHtml("`a/<b>.ts`"), /<code>a\/&lt;b&gt;\.ts<\/code>/u);
 });
