@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test } from "vitest";
 import { DEFAULT_SETTINGS, normalizeSettings } from "./settings.ts";
 import { readFileSync } from "node:fs";
 import { DEFAULT_TERMINAL_FONT, loadTerminalFont, NERD_FONT_SYMBOLS, normalizeTerminalFont, terminalFontFaces, terminalFontStack, type FontRule, type FontSheet } from "./terminal-font.ts";

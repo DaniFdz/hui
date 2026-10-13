@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test } from "vitest";
 
 import { parseGitHubUrl, type GitHubPreviewResult } from "../../shared/github-links.ts";
 import { clearGitHubPreviewCache, compactCount, loadGitHubPreviews, previewErrorLabel } from "./github-previews.ts";

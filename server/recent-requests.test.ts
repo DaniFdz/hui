@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test } from "vitest";
 import { REQUEST_ID, RecentRequests } from "./recent-requests.ts";
 
 test("a resent request id waits for the first send and is reported, not sent again", async () => {

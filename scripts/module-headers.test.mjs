@@ -6,7 +6,7 @@
 import assert from "node:assert/strict";
 import { readdir, readFile } from "node:fs/promises";
 import { basename, dirname, join, relative } from "node:path";
-import { test } from "node:test";
+import { test } from "vitest";
 import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");

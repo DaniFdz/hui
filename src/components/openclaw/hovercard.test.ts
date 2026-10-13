@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import test from "node:test";
+import { test } from "vitest";
 import { progressCardHeadsUp } from "./session-progress-card.ts";
 import { huiHovercardRow } from "./hui-hovercard-adapter.ts";
 import { toSanitizedMarkdownHtml } from "./progress-markdown.ts";

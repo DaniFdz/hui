@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 
 import type { WorktreeRow } from "../../shared/worktrees.ts";
 import { isMergedCleanupCandidate } from "../../shared/worktrees.ts";

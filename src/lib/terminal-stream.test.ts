@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import { createTerminalStreamReader } from "./terminal-stream.ts";
 import type { TerminalView } from "./terminal-types.ts";
 

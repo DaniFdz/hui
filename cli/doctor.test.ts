@@ -4,7 +4,7 @@ import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { after, test } from "node:test";
+import { afterAll, test } from "vitest";
 import { normalizeSettings } from "../src/lib/settings.ts";
 
 // HUI's directory, the Durable store and PI's agent directory resolve at import time, and PI finds skills in
@@ -18,7 +18,7 @@ process.env["HOME"] = root;
 process.env["XDG_CONFIG_HOME"] = join(root, "config");
 process.env["HUI_DURABLE_DIR"] = store;
 process.env["PI_CODING_AGENT_DIR"] = agentDir;
-after(() => rm(root, { recursive: true, force: true }));
+afterAll(() => rm(root, { recursive: true, force: true }));
 await mkdir(agentDir, { recursive: true });
 await mkdir(workspace, { recursive: true });
 await writeFile(join(agentDir, "models.json"), JSON.stringify({ providers: { "hui-e2e": {
@@ -151,7 +151,7 @@ test("a rerun after a fix that never reached the registry reuses the earlier cop
 test("--fix refuses a store another gateway owns and changes nothing", async (t) => {
   await setup();
   const owner = spawn(process.execPath, ["-e", "setTimeout(() => {}, 60_000)"], { stdio: "ignore" });
-  t.after(() => { owner.kill(); });
+  t.onTestFinished(() => { owner.kill(); });
   await mkdir(store, { recursive: true });
   await writeFile(join(store, "harness.lock"), String(owner.pid));
   const registry = await readFile(registryFile, "utf8");

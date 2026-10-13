@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test } from "vitest";
 import { BOT_TRIGGER_LIMITS } from "../shared/bot-triggers.ts";
 import { createGitHubFake, type FakeGitHubState } from "../e2e/github-triggers-fixture.mjs";
 import { boundedDiff, GhReadError, parseGhInclude, pullRequestReader, readPullRequest, type GhRaw } from "./bot-triggers-prs.ts";

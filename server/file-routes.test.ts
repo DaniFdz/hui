@@ -4,7 +4,7 @@ import { createServer } from "node:http";
 import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { test } from "node:test";
+import { test } from "vitest";
 import { createFileRoutes, REMOTE_FILES_REASON, type FilesRouteRequest } from "./file-routes.ts";
 import { MAX_RESOLVE_PATHS, type FileRead } from "../shared/files.ts";
 
@@ -30,7 +30,7 @@ function request(method: string, path: string, options: { query?: Record<string,
 
 test("file routes scope every request to the conversation's directory and explain remote sessions", async (t) => {
   const { dir, cwd } = await workspace();
-  t.after(() => rm(dir, { recursive: true, force: true }));
+  t.onTestFinished(() => rm(dir, { recursive: true, force: true }));
   const sessions: Record<string, { cwd: string; worker?: string }> = { local: { cwd }, remote: { cwd: "/srv/elsewhere", worker: "w1" }, gone: { cwd: join(dir, "missing") } };
   const routes = createFileRoutes({ session: async (id) => sessions[id] });
   const call = async (...args: Parameters<typeof request>) => {
@@ -87,7 +87,7 @@ test("file routes scope every request to the conversation's directory and explai
 
 test("resolve answers which chat paths exist inside the conversation's directory, and nothing outside it", async (t) => {
   const { dir, cwd } = await workspace();
-  t.after(() => rm(dir, { recursive: true, force: true }));
+  t.onTestFinished(() => rm(dir, { recursive: true, force: true }));
   await writeFile(join(cwd, "README.md"), "# readme\n");
   await symlink(join(dir, "secret.txt"), join(cwd, "escape.txt"));
   await symlink(join(cwd, "src"), join(cwd, "linked"));
@@ -153,7 +153,7 @@ test("the gateway guards file routes with x-hui and serves previews as inert byt
   const address = server.address();
   assert.ok(address && typeof address !== "string");
   const origin = `http://127.0.0.1:${address.port}/__hui/sessions/alpha/files`;
-  t.after(async () => { await stopBackend(); server.closeAllConnections(); await new Promise<void>((r) => server.close(() => r())); await rm(dir, { recursive: true, force: true }); });
+  t.onTestFinished(async () => { await stopBackend(); server.closeAllConnections(); await new Promise<void>((r) => server.close(() => r())); await rm(dir, { recursive: true, force: true }); });
   const guarded = { "x-hui": "1" };
 
   assert.equal((await fetch(`${origin}/list`)).status, 403);

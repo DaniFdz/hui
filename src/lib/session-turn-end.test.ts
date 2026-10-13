@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test } from "vitest";
 import { announceTurnEnd, onTurnEnd } from "./session-turn-end.ts";
 
 test("only the named conversation's listeners hear its turn end", () => {

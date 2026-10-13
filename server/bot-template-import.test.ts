@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import type { BotView } from "../shared/bots.ts";
 import type { AutomationTask, AutomationTaskInput } from "../src/lib/automation-types.ts";
 import { BotTemplateService, type BotTemplateDeps } from "./bot-template-import.ts";

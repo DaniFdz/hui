@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test } from "vitest";
 import { botChatCommandRefusal, completeCommandReference, completeSlashCommand, composerCommands, filterSlashCommands, parseClearCommand, parseReloadCommand, parseUpdateCommand, slashCommandQuery, parseCompactCommand } from "./slash-commands.ts";
 import type { RuntimeCommand } from "./sessions-store.ts";
 

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import test from "node:test";
+import { test } from "vitest";
 
 test("pane views are keyed independently of session and retain hidden session views", () => {
   const app = readFileSync(new URL("./hui-app.ts", import.meta.url), "utf8");

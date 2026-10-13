@@ -4,7 +4,7 @@ import { existsSync } from "node:fs";
 import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { test, type TestContext } from "node:test";
+import { test, type TestContext } from "vitest";
 
 import { BOT_KICKOFF_MARKER, botDisplayCwd, botKickoffName, type BotAccess, type BotMemoryStatus } from "../shared/bots.ts";
 import { GATEWAY_ONLY_TOOLS } from "./worker/gateway-tools.ts";
@@ -129,7 +129,7 @@ const MEMORY: BotMemoryStatus = {
  * the chats' statuses, as the gateway's does. */
 async function harness(t: TestContext, options: { messagesPerHour?: number; memoryReadable?: boolean; bots?: { on: boolean } } = {}) {
   const dir = await mkdtemp(join(tmpdir(), "hui-bot-service-"));
-  t.after(() => rm(dir, { recursive: true, force: true }));
+  t.onTestFinished(() => rm(dir, { recursive: true, force: true }));
   const botsDir = join(dir, "bots");
   let records: SessionRecord[] = [];
   const updateSessions = async (mutate: (current: readonly SessionRecord[]) => readonly SessionRecord[]) => {
@@ -147,7 +147,7 @@ async function harness(t: TestContext, options: { messagesPerHour?: number; memo
     },
   };
   const sessions = new LiveSessions(runtime, updateSessions, async () => DEFAULT_SETTINGS);
-  t.after(() => sessions.disposeAll());
+  t.onTestFinished(() => sessions.disposeAll());
   const conversations = {
     created: [] as BotConversationInput[],
     configured: [] as Array<[string, unknown]>,
@@ -1272,7 +1272,7 @@ test("a delegation while a turn runs: a task handed off from a call queues behin
   // A task this test leaves waiting (an assertion failed first) ends with it, rather than wait out its ten minutes.
   const ended = new AbortController();
   const waiting: Promise<unknown>[] = [];
-  t.after(async () => {
+  t.onTestFinished(async () => {
     ended.abort();
     await Promise.all(waiting);
   });

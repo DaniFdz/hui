@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { test, type TestContext } from "node:test";
+import { test, type TestContext } from "vitest";
 import { BOT_TRIGGER_LIMITS, BOTS_OFF_TRIGGER_REASON, type BotTriggerRun } from "../shared/bot-triggers.ts";
 import { BOTS_OFF_MESSAGE, botTurnOrigin, type BotRecord } from "../shared/bots.ts";
 import { TriggerConflictError, TriggerInputError, TriggerNotFoundError } from "./bot-triggers-input.ts";
@@ -38,7 +38,7 @@ function cleanupOf(t: TestContext): { services: BotTriggerService[]; dirs: strin
   if (known) return known;
   const cleanup = { services: [] as BotTriggerService[], dirs: [] as string[] };
   cleanups.set(t, cleanup);
-  t.after(async () => {
+  t.onTestFinished(async () => {
     await Promise.all(cleanup.services.map((service) => service.stop()));
     await Promise.all(cleanup.dirs.map((dir) => rm(dir, { recursive: true, force: true, maxRetries: 3 })));
   });

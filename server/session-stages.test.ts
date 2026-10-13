@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test } from "vitest";
 import { effectiveSessionStage, isKanbanColumn, isSessionStage, pullRequestStage } from "../shared/session-stages.ts";
 
 test("pull requests prove testing while any is open and done only once merged", () => {

@@ -3,7 +3,7 @@ import { createServer } from "node:http";
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { test, type TestContext } from "node:test";
+import { test, type TestContext } from "vitest";
 import { BOTS_OFF_MESSAGE, type BotView } from "../shared/bots.ts";
 import type { BotImportPreview } from "../shared/bot-templates.ts";
 import { exportCommand, formatImportPreview, importCommand, importSource } from "./bot-templates.ts";
@@ -61,7 +61,7 @@ async function fakeGateway(t: TestContext, replies: Record<string, (call: Call) 
     response.end(reply.raw ?? JSON.stringify(reply.body));
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  t.after(() => new Promise<void>((resolve) => server.close(() => resolve())));
+  t.onTestFinished(() => new Promise<void>((resolve) => server.close(() => resolve())));
   const address = server.address();
   assert.ok(address && typeof address !== "string");
   return { base: `http://127.0.0.1:${address.port}`, calls };
@@ -82,7 +82,7 @@ test("the preview prints every imported text in full and says what maps, what is
 
 test("hui bot import sends a folder (without .git), shows the preview, and creates only after a yes", async (t) => {
   const dir = await mkdtemp(join(tmpdir(), "hui-cli-import-"));
-  t.after(() => rm(dir, { recursive: true, force: true }));
+  t.onTestFinished(() => rm(dir, { recursive: true, force: true }));
   await mkdir(join(dir, "nova", ".git"), { recursive: true });
   await writeFile(join(dir, "nova", "SOUL.md"), "You are Nova.");
   await writeFile(join(dir, "nova", ".git", "HEAD"), "ref");
@@ -124,7 +124,7 @@ test("a file with several agents needs --agent where nobody can be asked; a link
 
 test("hui bot export saves the zip owner-only, never over a file without --yes; --memory asks for its memory", async (t) => {
   const dir = await mkdtemp(join(tmpdir(), "hui-cli-export-"));
-  t.after(() => rm(dir, { recursive: true, force: true }));
+  t.onTestFinished(() => rm(dir, { recursive: true, force: true }));
   const zip = Buffer.from("PK\u0005\u0006" + "\0".repeat(18), "latin1");
   const gateway = await fakeGateway(t, { "GET /__hui/bots/b1/export": () => ({ body: null, raw: zip, headers: { "content-disposition": "attachment; filename=\"nova.hui-bot.zip\"" } }) });
   const saved = terminal({ cwd: dir });

@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
-import { test, type TestContext } from "node:test";
+import { test, type TestContext, vi } from "vitest";
 
 import { SECRET_FILE_TTL_MS, SECRET_REQUEST_TIMEOUT_MS, SecretFiles, SecretRequests } from "./secret-requests.ts";
 
@@ -12,7 +12,7 @@ async function fixture(t: TestContext) {
   const changes: string[] = [];
   const requests = new SecretRequests({ onChange: (id) => changes.push(id) });
   const files = new SecretFiles(root);
-  t.after(async () => {
+  t.onTestFinished(async () => {
     requests.dispose();
     files.dispose();
     await rm(root, { recursive: true, force: true });
@@ -49,12 +49,13 @@ test("a provided secret reaches the agent as a private file path, never as its v
 
 test("a delivered file is deleted when its time is up", async (t) => {
   const { files } = await fixture(t);
-  t.mock.timers.enable({ apis: ["setTimeout"] });
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  t.onTestFinished(() => { vi.useRealTimers(); });
   const provided = await files.deliver({ status: "provided", label: "Token", value: "token" });
   assert(provided.status === "provided");
-  t.mock.timers.tick(SECRET_FILE_TTL_MS - 1);
+  vi.advanceTimersByTime(SECRET_FILE_TTL_MS - 1);
   assert(existsSync(provided.path));
-  t.mock.timers.tick(1);
+  vi.advanceTimersByTime(1);
   assert(!existsSync(dirname(provided.path)));
 });
 
@@ -71,9 +72,10 @@ test("cancel, Stop and expiry end a request without writing anything", async (t)
   assert.deepEqual(await stopped, { status: "cancelled", label: "GitHub token" });
   assert.deepEqual(await requests.request("s1", ask, AbortSignal.abort()), { status: "cancelled", label: "GitHub token" });
 
-  t.mock.timers.enable({ apis: ["setTimeout"] });
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  t.onTestFinished(() => { vi.useRealTimers(); });
   const expiring = requests.request("s1", ask);
-  t.mock.timers.tick(SECRET_REQUEST_TIMEOUT_MS);
+  vi.advanceTimersByTime(SECRET_REQUEST_TIMEOUT_MS);
   const expired = await expiring;
   assert.deepEqual(expired, { status: "expired", label: "GitHub token" });
   assert.deepEqual(await files.deliver(expired), expired);

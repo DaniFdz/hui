@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import test from "node:test";
+import { test } from "vitest";
 import { messageContextMenuPosition } from "./message-context-menu.ts";
 
 test("message context actions clamp to the viewport, including short landscape", () => {

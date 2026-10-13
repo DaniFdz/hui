@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import { completeLocalPath, localPathQuery } from "./local-paths.ts";
 
 test("local path queries follow the caret and also expose leading absolute prefixes", () => {

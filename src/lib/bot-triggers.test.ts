@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import type { ReactiveController, ReactiveControllerHost } from "lit";
 import type { BotTriggerCreated, BotTriggersList } from "../../shared/bot-triggers.ts";
 import type { BotView } from "../../shared/bots.ts";

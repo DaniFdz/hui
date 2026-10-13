@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { createServer, request as httpRequest, type IncomingHttpHeaders } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { test } from "node:test";
+import { test } from "vitest";
 import { brotliDecompressSync, gunzipSync } from "node:zlib";
 import { serveStatic } from "./static-files.ts";
 
@@ -19,7 +19,7 @@ test("static production server serves deep links/assets but not private files, s
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address(); assert(address && typeof address !== "string");
   const base = `http://127.0.0.1:${address.port}`;
-  t.after(async () => { await new Promise<void>((resolve) => { server.close(() => resolve()); server.closeAllConnections(); }); await rm(temporary, { recursive: true, force: true }); });
+  t.onTestFinished(async () => { await new Promise<void>((resolve) => { server.close(() => resolve()); server.closeAllConnections(); }); await rm(temporary, { recursive: true, force: true }); });
   for (const path of ["/", "/settings/tools", "/sessions/fixture", "/bots/4f0c2d9e-7a1b-4c3d-9e8f-0a1b2c3d4e5f", "/bots/scout", "/skills", "/kanban", "/model-providers"]) {
     const response = await fetch(base + path); assert.equal(response.status, 200); assert.match(await response.text(), /hui-app/u);
   }
@@ -46,7 +46,7 @@ test("built files are compressed, hashed assets cached for good and the rest rev
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address(); assert(address && typeof address !== "string");
   const base = `http://127.0.0.1:${address.port}`;
-  t.after(async () => { await new Promise<void>((resolve) => { server.close(() => resolve()); server.closeAllConnections(); }); await rm(temporary, { recursive: true, force: true }); });
+  t.onTestFinished(async () => { await new Promise<void>((resolve) => { server.close(() => resolve()); server.closeAllConnections(); }); await rm(temporary, { recursive: true, force: true }); });
   const raw = (path: string, headers: Record<string, string> = {}) => new Promise<{ status: number; headers: IncomingHttpHeaders; body: Buffer }>((resolve, reject) => {
     httpRequest(base + path, { headers }, (response) => {
       const chunks: Buffer[] = [];

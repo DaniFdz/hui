@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import test from "node:test";
+import { test } from "vitest";
 
 import { readPiConfigAt } from "./pi-config.ts";
 import { PiResourceNotFoundError, readPiResourceDocumentAt } from "./pi-resource-reader.ts";
@@ -39,7 +39,7 @@ test("reads an inventoried skill by opaque id", async () => {
 
 test("the bundled generator is readable through its stable inventory id", async (t) => {
   const agentDir = await fixture();
-  t.after(() => rm(agentDir, { recursive: true, force: true }));
+  t.onTestFinished(() => rm(agentDir, { recursive: true, force: true }));
   const skill = (await readPiConfigAt(agentDir)).skills.find((entry) => entry.origin === "hui");
   assert(skill);
   const document = await readPiResourceDocumentAt(agentDir, "skill", skill.id);

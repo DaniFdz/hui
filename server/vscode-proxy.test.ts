@@ -4,7 +4,7 @@ import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { test, type TestContext } from "node:test";
+import { test, type TestContext } from "vitest";
 import { fileURLToPath } from "node:url";
 import { WebSocket } from "ws";
 import { readObservability } from "./observability.ts";
@@ -193,7 +193,7 @@ async function harness(t: TestContext, kind: "server" | "code" = "server", fakeE
   await once(server, "listening");
   const address = server.address();
   assert.ok(address && typeof address === "object");
-  t.after(async () => {
+  t.onTestFinished(async () => {
     detach();
     await vscode.stop();
     server.closeAllConnections();

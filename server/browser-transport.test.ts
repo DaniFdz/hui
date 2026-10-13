@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { once } from "node:events";
 import { createServer } from "node:http";
-import { test } from "node:test";
+import { test } from "vitest";
 import { WebSocket } from "ws";
 import { decodeBrowserFrame } from "../shared/browser.ts";
 import type { BrowserViewListener } from "./browser/manager.ts";
@@ -28,7 +28,7 @@ test("one-use, same-origin tickets bind a view-only stream to one conversation",
   const address = server.address();
   assert.ok(address && typeof address !== "string");
   const origin = `http://127.0.0.1:${address.port}`;
-  t.after(async () => { detach(); server.closeAllConnections(); await new Promise<void>((resolve) => server.close(() => resolve())); });
+  t.onTestFinished(async () => { detach(); server.closeAllConnections(); await new Promise<void>((resolve) => server.close(() => resolve())); });
   const connect = (url: string, pageOrigin = origin) => new WebSocket(origin.replace("http:", "ws:") + url, { origin: pageOrigin });
   const rejected = async (url: string, pageOrigin = origin) => {
     const [error] = await once(connect(url, pageOrigin), "error");

@@ -14,7 +14,7 @@ import { createServer } from "node:http";
 import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { after, before, test, type TestContext } from "node:test";
+import { afterAll, beforeAll, test, type TestContext } from "vitest";
 import { fileURLToPath } from "node:url";
 import { botKickoffName, type BotCatalog, type BotMemoryStatus, type BotView } from "../shared/bots.ts";
 import type { TranscriptEntry } from "./runtimes/types.ts";
@@ -72,7 +72,7 @@ const server = createServer((request, response) => middleware(request, response,
 let origin = "";
 let workerId = "";
 
-before(async () => {
+beforeAll(async () => {
   // Pre-install this checkout as the remote release (the container E2E covers the real npm install): no network.
   const release = await workerRelease();
   const dir = join(remoteData, "releases", release.id);
@@ -95,7 +95,7 @@ before(async () => {
   await workers.connect(workerId);
 });
 
-after(async () => {
+afterAll(async () => {
   // The backend first: its triggers' last writes settle before their directory goes.
   await stopBackend();
   server.closeAllConnections();
@@ -198,7 +198,7 @@ async function roverListener(name: string, prompt: string): Promise<(summary?: s
 async function standingRoutine(t: TestContext, sessionId: string, ...names: string[]): Promise<void> {
   const made = await call("/__hui/automation/tasks", "POST", { name: "Standing", sessionId, prompt: "E2E_STANDING look", schedule: { kind: "every", everyMs: 3_600_000 } });
   assert.equal(made.status, 201, JSON.stringify(made.body));
-  t.after(async () => {
+  t.onTestFinished(async () => {
     const { tasks } = (await call("/__hui/automation")).body as { tasks: Array<{ id: string; name: string; sessionId: string }> };
     for (const task of tasks.filter((each) => each.sessionId === sessionId && ["Standing", ...names].includes(each.name))) {
       await call(`/__hui/automation/tasks/${task.id}`, "DELETE");
@@ -210,7 +210,7 @@ const routineOf = async (sessionId: string, name: string) => ((await call("/__hu
 async function restoreRoverAfter(t: TestContext, ...triggers: string[]): Promise<void> {
   const [, , title] = await roverProfile();
   const soul = (await call("/__hui/bots/rover/soul")).body["soul"];
-  t.after(async () => {
+  t.onTestFinished(async () => {
     for (const name of triggers) await call(`/__hui/bots/rover/triggers/${encodeURIComponent(name)}`, "DELETE");
     await call("/__hui/bots/rover", "PATCH", { title: title ?? "" });
     await call("/__hui/bots/rover/soul", "PUT", { soul });
@@ -546,7 +546,7 @@ test("on the worker too, another bot's message that joins the operator's turn ma
 
   // A routine's message joins it the same way.
   const task = (await call("/__hui/automation/tasks", "POST", { name: "Survey again", sessionId: rover.sessionId, prompt: callsOf(gatedCalls("a routine")), schedule: { kind: "every", everyMs: 3_600_000 } })).body["task"] as { id: string };
-  t.after(async () => {
+  t.onTestFinished(async () => {
     await waitFor(async () => ((await call("/__hui/automation")).body as { runs: Array<{ taskId: string; finishedAt?: string }> }).runs.every((run) => run.taskId !== task.id || run.finishedAt !== undefined) || undefined, "the routine's run to end");
     await call(`/__hui/automation/tasks/${task.id}`, "DELETE");
   });

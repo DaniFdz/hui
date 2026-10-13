@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test } from "vitest";
 import type { ActivityBlock, ActivitySession } from "../../shared/session-activity.ts";
 import { addDays, calendarPeriod, dayStart, formatDuration, weekStart } from "./session-calendar.ts";
 

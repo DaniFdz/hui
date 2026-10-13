@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test } from "vitest";
 import { binding, HELP, parseCli } from "./main.ts";
 
 test("CLI parses doctor with only --fix and --json", () => {

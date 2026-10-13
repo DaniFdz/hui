@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import test from "node:test";
+import { test } from "vitest";
 import { agoLabel, COOLDOWN_CHOICES, whenLabel } from "./bot-triggers.ts";
 
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");

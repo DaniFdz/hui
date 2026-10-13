@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test } from "vitest";
 import { clearFilesViewState, DEFAULT_FILES_VIEW_STATE, filesViewTitle, normalizeFilesViewState, readFilesViewState, writeFilesViewState, onFilesViewReveal, requestFilesViewReveal, takeFilesViewReveal } from "./files-view-state.ts";
 
 class MemoryStorage {

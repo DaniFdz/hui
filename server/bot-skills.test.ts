@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { lstat, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import test from "node:test";
+import { test } from "vitest";
 import { localBotSkills } from "./bot-skills.ts";
 
 const BOT = "0f8fad5b-d9cb-469f-a165-70867728950e";

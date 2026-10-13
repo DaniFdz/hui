@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test } from "vitest";
 import { createServer } from "node:http";
 import { once } from "node:events";
 import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
@@ -23,7 +23,7 @@ test("suggest_task bridge calls feed guarded dismiss and start routes", async (t
   const address = server.address();
   assert.ok(address && typeof address !== "string");
   const origin = `http://127.0.0.1:${address.port}`;
-  t.after(async () => { await stopBackend(); server.closeAllConnections(); await new Promise<void>((r) => server.close(() => r())); await rm(dir, { recursive: true, force: true }); });
+  t.onTestFinished(async () => { await stopBackend(); server.closeAllConnections(); await new Promise<void>((r) => server.close(() => r())); await rm(dir, { recursive: true, force: true }); });
 
   const env = await agentToolEnvironment("alpha");
   const tool = async (action: string, params: Record<string, unknown>) => {

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { test, type TestContext } from "node:test";
+import { test, type TestContext } from "vitest";
 import { botKickoffText, type BotRecord, type BotTurnOrigin } from "../shared/bots.ts";
 import type { AutomationTask } from "../src/lib/automation-types.ts";
 import { AutomationService } from "./automation.ts";
@@ -30,7 +30,7 @@ async function eventually(check: () => Promise<boolean>, label: string): Promise
 /** A real scheduler on a temporary file, whose runs wait until the test lets them go, and two bots. */
 async function harness(t: TestContext) {
   const dir = await mkdtemp(join(tmpdir(), "hui-bot-routines-"));
-  t.after(() => rm(dir, { recursive: true, force: true }));
+  t.onTestFinished(() => rm(dir, { recursive: true, force: true }));
   const held = new Map<string, () => void>();
   const automation = new AutomationService(join(dir, "automation.json"), (task, signal) => new Promise((resolve, reject) => {
     const cancelled = () => reject(new DOMException("Run cancelled.", "AbortError"));
@@ -38,7 +38,7 @@ async function harness(t: TestContext) {
     held.set(task.id, () => resolve({ summary: "done" }));
     signal.addEventListener("abort", cancelled, { once: true });
   }));
-  t.after(() => automation.dispose());
+  t.onTestFinished(() => automation.dispose());
   const ada = bot("bot-ada", "ada");
   const bob = bot("bot-bob", "bob");
   const bots = [ada, bob];

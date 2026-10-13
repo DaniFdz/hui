@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test } from "vitest";
 import { highlightBlock, highlightHunks } from "./diff-highlight.ts";
 import { loadLanguageParser } from "./code-languages.ts";
 import { parseHunks } from "./diff-hunks.ts";

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 
 import { HUI_PAGES } from "../lib/pages.ts";
 import type { SessionGroup } from "../lib/sessions-store.ts";

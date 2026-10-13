@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdir, mkdtemp, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import test from "node:test";
+import { test } from "vitest";
 import { completeLocalPaths, completeWorkingDirectories, displayPath, resolveWorkingDirectory } from "./working-directories.ts";
 
 test("working directories accept home, relative and absolute paths", () => {

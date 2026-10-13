@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { test } from "node:test";
+import { test } from "vitest";
 import vm from "node:vm";
 import { buildWidgetDocument, isCompleteHtmlDocument, WIDGET_SANDBOX_PATH, widgetContentSecurityPolicy, widgetMode, widgetTokenValue } from "../shared/widgets.ts";
 import { WIDGET_SANDBOX_HTML, widgetSandboxHeaders } from "./widget-sandbox.ts";
@@ -66,7 +66,7 @@ test("the gateway serves the sandbox page without x-hui and keeps every other ro
   const address = server.address();
   assert.ok(address && typeof address !== "string");
   const origin = `http://127.0.0.1:${address.port}`;
-  t.after(async () => { await stopBackend(); server.closeAllConnections(); await new Promise<void>((done) => server.close(() => done())); await rm(dir, { recursive: true, force: true }); });
+  t.onTestFinished(async () => { await stopBackend(); server.closeAllConnections(); await new Promise<void>((done) => server.close(() => done())); await rm(dir, { recursive: true, force: true }); });
 
   const page = await fetch(origin + WIDGET_SANDBOX_PATH);
   assert.equal(page.status, 200);

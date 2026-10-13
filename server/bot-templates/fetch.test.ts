@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import { TemplateFormatError } from "./common.ts";
 import { fetchGrokBotPage, TemplateFetchError } from "./fetch.ts";
 

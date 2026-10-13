@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import { SessionViewCache } from "./session-view-cache.ts";
 
 test("focus changes touch recency without moving render slots or reconnecting views", () => {

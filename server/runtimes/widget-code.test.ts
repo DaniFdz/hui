@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { findWidgetScriptSyntaxError, validateWidget, WIDGET_CODE_MAX_BYTES, WIDGET_TITLE_MAX_LENGTH, WidgetInputError } from "./widget-code.mjs";
 import showWidgetExtension from "./show-widget-extension.mjs";

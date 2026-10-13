@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { test } from "node:test";
+import { test } from "vitest";
 import { fileURLToPath } from "node:url";
 import { waitFor } from "./test-support/wait-for.ts";
 import { parseVscodeHelp, vscodeEnvironment, vscodeLaunchArguments, VscodeError, VscodeService, type VscodeProbe } from "./vscode.ts";
@@ -191,7 +191,7 @@ test("the server starts lazily, once, and reports what it runs", { timeout: 60_0
   const executable = await fakeExecutable(dir);
   const argsFile = join(dir, "args.json");
   const vscode = service(dir, () => settingsWith({ executable }), { env: () => ({ ...process.env, FAKE_VSCODE_ARGS_FILE: argsFile }) });
-  t.after(async () => { await vscode.stop(); await rm(dir, { recursive: true, force: true }); });
+  t.onTestFinished(async () => { await vscode.stop(); await rm(dir, { recursive: true, force: true }); });
 
   const before = await vscode.status();
   assert.equal(before.state, "stopped", "nothing runs until a view opens");
@@ -223,7 +223,7 @@ test("a server with no connections stops after the idle period; a connection hol
   const dir = await mkdtemp(join(tmpdir(), "hui-vscode-idle-"));
   const executable = await fakeExecutable(dir);
   const vscode = service(dir, () => settingsWith({ executable }), { idleMs: 150 });
-  t.after(async () => { await vscode.stop(); await rm(dir, { recursive: true, force: true }); });
+  t.onTestFinished(async () => { await vscode.stop(); await rm(dir, { recursive: true, force: true }); });
 
   await vscode.ensure();
   const release = vscode.acquire();
@@ -240,7 +240,7 @@ test("a crash is reported, not restarted, and the next open starts a new instanc
   const executable = await fakeExecutable(dir);
   const argsFile = join(dir, "args.json");
   const vscode = service(dir, () => settingsWith({ executable }), { env: () => ({ ...process.env, FAKE_VSCODE_ARGS_FILE: argsFile }) });
-  t.after(async () => { await vscode.stop(); await rm(dir, { recursive: true, force: true }); });
+  t.onTestFinished(async () => { await vscode.stop(); await rm(dir, { recursive: true, force: true }); });
 
   await vscode.ensure();
   const { pid: node } = JSON.parse(await readFile(argsFile, "utf8")) as { pid: number };
@@ -271,7 +271,7 @@ test("a start that fails says why; with nothing to run an open asks for setup an
   const executable = await fakeExecutable(join(dir, "opt"));
   let settings = settingsWith({ executable });
   const vscode = service(dir, () => settings, { env: () => ({ ...process.env, FAKE_VSCODE_FAIL: "no display of extensions" }) });
-  t.after(async () => { await vscode.stop(); await rm(dir, { recursive: true, force: true }); });
+  t.onTestFinished(async () => { await vscode.stop(); await rm(dir, { recursive: true, force: true }); });
 
   await assert.rejects(vscode.ensure(), (error: unknown) => error instanceof VscodeError && error.status === 502
     && /^OpenVSCode Server exited while starting \(exit code 7\): fake failure: no display of extensions$/u.test(error.message));
@@ -294,7 +294,7 @@ test("the legacy opt-in switch no longer gates anything", { timeout: 60_000 }, a
   const executable = await fakeExecutable(dir);
   // A settings file from the opt-in era, saved while the view was off: it still opens now.
   const vscode = service(dir, () => ({ enabled: false, executable, provider: "auto", licenseAcceptedAt: "" }));
-  t.after(async () => { await vscode.stop(); await rm(dir, { recursive: true, force: true }); });
+  t.onTestFinished(async () => { await vscode.stop(); await rm(dir, { recursive: true, force: true }); });
   assert.equal((await vscode.status()).enabled, false);
   assert.equal((await vscode.ensure()).instance, 1);
 });
@@ -309,7 +309,7 @@ test("VS Code desktop: no consent means no spawn and no setup bypass; consent pa
     env: () => ({ ...process.env, FAKE_VSCODE_KIND: "code", FAKE_VSCODE_ARGS_FILE: argsFile }),
     saveLicense: async (acceptedAt) => { saved.push(acceptedAt); settings = { ...settings, licenseAcceptedAt: acceptedAt }; await vscode.applySettings(settings); },
   });
-  t.after(async () => { await vscode.stop(); await rm(dir, { recursive: true, force: true }); });
+  t.onTestFinished(async () => { await vscode.stop(); await rm(dir, { recursive: true, force: true }); });
 
   const before = await vscode.status();
   assert.equal(before.state, "setup");
@@ -351,7 +351,7 @@ test("serve-web's first start reports its download, and an open answers pending 
   const vscode = service(dir, () => settingsWith({ licenseAcceptedAt: "2026-10-09T08:00:00.000Z" }), {
     env: () => ({ ...process.env, FAKE_VSCODE_KIND: "code", FAKE_SERVE_WEB_DOWNLOAD_MS: "1500" }), connectWaitMs: 200,
   });
-  t.after(async () => { await vscode.stop(); await rm(dir, { recursive: true, force: true }); });
+  t.onTestFinished(async () => { await vscode.stop(); await rm(dir, { recursive: true, force: true }); });
 
   assert.deepEqual(await vscode.connect("/work", undefined), { pending: true });
   const preparing = await waitFor("download progress", async () => { const status = await vscode.status(); return status.preparing?.total ? status : undefined; });
@@ -370,7 +370,7 @@ test("serve-web that cannot download says so, and its processes go", { timeout: 
   const vscode = service(dir, () => settingsWith({ licenseAcceptedAt: "2026-10-09T08:00:00.000Z" }), {
     env: () => ({ ...process.env, FAKE_VSCODE_KIND: "code", FAKE_SERVE_WEB_STALL: "1", FAKE_VSCODE_ARGS_FILE: argsFile }), stallMs: 600,
   });
-  t.after(async () => { await vscode.stop(); await rm(dir, { recursive: true, force: true }); });
+  t.onTestFinished(async () => { await vscode.stop(); await rm(dir, { recursive: true, force: true }); });
 
   await assert.rejects(vscode.ensure(), /could not download its web server from Microsoft \(update\.code\.visualstudio\.com\): nothing arrived for 1 seconds\. The first open needs an internet connection/u);
   const status = await vscode.status();
@@ -386,7 +386,7 @@ test("a stop while serve-web downloads ends the start at once, without an error"
   const vscode = service(dir, () => settingsWith({ licenseAcceptedAt: "2026-10-09T08:00:00.000Z" }), {
     env: () => ({ ...process.env, FAKE_VSCODE_KIND: "code", FAKE_SERVE_WEB_STALL: "1" }), stallMs: 60_000,
   });
-  t.after(async () => { await vscode.stop(); await rm(dir, { recursive: true, force: true }); });
+  t.onTestFinished(async () => { await vscode.stop(); await rm(dir, { recursive: true, force: true }); });
   const start = vscode.ensure();
   start.catch(() => undefined);
   await waitFor("the download to begin", async () => (await vscode.status()).preparing !== null);
@@ -403,7 +403,7 @@ test("tickets are single-use and short-lived; cookie secrets expire and forged o
   const executable = await fakeExecutable(dir);
   let now = 1_000_000;
   const vscode = service(dir, () => settingsWith({ executable }), { now: () => now, ticketMs: 30_000, sessionMs: 60_000 });
-  t.after(async () => { await vscode.stop(); await rm(dir, { recursive: true, force: true }); });
+  t.onTestFinished(async () => { await vscode.stop(); await rm(dir, { recursive: true, force: true }); });
   const open = async (folder: string, theme?: Parameters<VscodeService["connect"]>[1]) => {
     const connection = await vscode.connect(folder, theme);
     assert.ok("url" in connection);
@@ -439,7 +439,7 @@ test("a new executable stops the running server; disposing returns at once and t
   const other = await fakeExecutable(dir, "other-openvscode-server");
   let settings = settingsWith({ executable });
   const vscode = service(dir, () => settings);
-  t.after(() => rm(dir, { recursive: true, force: true }));
+  t.onTestFinished(() => rm(dir, { recursive: true, force: true }));
 
   await vscode.ensure();
   await vscode.applySettings(settings);
@@ -464,7 +464,7 @@ test("switching the provider in Settings stops the one that runs", { timeout: 60
   await fakeExecutable(dir, "code", "code");
   let settings = settingsWith({ licenseAcceptedAt: "2026-10-09T08:00:00.000Z" });
   const vscode = service(dir, () => settings, { probe: sandboxProbe(dir, { PATH: `${dir}:${join(dir, "bin")}` }), env: () => ({ ...process.env, FAKE_VSCODE_KIND: "code" }) });
-  t.after(async () => { await vscode.stop(); await rm(dir, { recursive: true, force: true }); });
+  t.onTestFinished(async () => { await vscode.stop(); await rm(dir, { recursive: true, force: true }); });
   const status = await vscode.status();
   assert.deepEqual(status.providers.map((provider) => provider.kind), ["desktop", "path"]);
   assert.equal(status.active?.kind, "desktop", "after consent VS Code comes before PATH");
@@ -483,7 +483,7 @@ test("a server a killed gateway left behind is stopped before the next start", {
   const { pid } = await first.status();
   assert.ok(pid);
   const second = service(dir, () => settingsWith({ executable }));
-  t.after(async () => { await second.stop(); try { process.kill(-pid, "SIGKILL"); } catch { /* gone */ } await rm(dir, { recursive: true, force: true }); });
+  t.onTestFinished(async () => { await second.stop(); try { process.kill(-pid, "SIGKILL"); } catch { /* gone */ } await rm(dir, { recursive: true, force: true }); });
   await waitFor("the pid file", () => readFile(join(dir, "state", "server.json"), "utf8").then(() => true, () => false));
   await second.ensure();
   await waitFor("the orphaned server to exit", () => !alive(pid));

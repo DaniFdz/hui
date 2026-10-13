@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test } from "vitest";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -85,7 +85,7 @@ test("real PTY supports shell state, Unicode, resize and Ctrl+C without terminat
   const service = new TerminalService();
   const terminal = service.create("real", cwd);
   if (previousShell === undefined) delete process.env["SHELL"]; else process.env["SHELL"] = previousShell;
-  t.after(async () => { service.dispose(); await rm(cwd, { recursive: true, force: true }); });
+  t.onTestFinished(async () => { service.dispose(); await rm(cwd, { recursive: true, force: true }); });
   const waitOutput = (expected: string, from = 0) => new Promise<void>((resolve, reject) => {
     let off: (() => void) | undefined;
     const timeout = setTimeout(() => { off?.(); reject(new Error(`Missing terminal output: ${expected}`)); }, 5000);

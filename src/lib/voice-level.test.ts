@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test } from "vitest";
 import { LEVEL_CEILING_DB, LEVEL_FLOOR_DB, frameLevel, frameLevelDb, levelFromDb } from "./voice-level.ts";
 
 const tone = (amplitude: number, samples: number) => Float32Array.from({ length: samples }, (_, index) => amplitude * Math.sin((2 * Math.PI * 220 * index) / 16_000));

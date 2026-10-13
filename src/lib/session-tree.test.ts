@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test } from "vitest";
 import { sessionTreeIds } from "./session-tree.ts";
 
 test("subtree traversal includes nested descendants regardless of order, without looping on cycles", () => {

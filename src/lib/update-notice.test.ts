@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test, vi } from "vitest";
 import { availableUpdate, watchUpdateAvailability } from "./update-notice.ts";
 import { UPDATE_CHECK_INTERVAL_MS, type UpdateSnapshot } from "./update-types.ts";
 
@@ -28,35 +28,37 @@ test("a running update or the installed version suppresses stale offers", () => 
 });
 
 test("background checks are bounded across focus events, pause while hidden and resume when due", async (t) => {
-  t.mock.timers.enable({ apis: ["Date", "setTimeout"], now: 1000 });
+  vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"], now: 1000 });
+  t.onTestFinished(() => { vi.useRealTimers(); });
   let enabled = true;
   let checks = 0;
   const received: UpdateSnapshot[] = [];
   const watcher = watchUpdateAvailability({ check: async () => { checks++; return available; },
     receive: (snapshot) => received.push(snapshot), enabled: () => enabled });
-  t.after(watcher.stop);
+  t.onTestFinished(watcher.stop);
   await Promise.resolve();
   assert.equal(checks, 1);
   assert.equal(received.length, 1);
   watcher.refresh(); watcher.refresh();
-  t.mock.timers.tick(UPDATE_CHECK_INTERVAL_MS - 1);
+  vi.advanceTimersByTime(UPDATE_CHECK_INTERVAL_MS - 1);
   assert.equal(checks, 1);
   enabled = false;
   watcher.refresh();
-  t.mock.timers.tick(UPDATE_CHECK_INTERVAL_MS * 2);
+  vi.advanceTimersByTime(UPDATE_CHECK_INTERVAL_MS * 2);
   assert.equal(checks, 1);
   enabled = true;
   watcher.refresh(); watcher.refresh();
   await Promise.resolve();
   assert.equal(checks, 2);
   watcher.stop();
-  t.mock.timers.tick(UPDATE_CHECK_INTERVAL_MS * 2);
+  vi.advanceTimersByTime(UPDATE_CHECK_INTERVAL_MS * 2);
   watcher.refresh();
   assert.equal(checks, 2);
 });
 
 test("errors stay quiet and retry on cadence; disposal ignores late responses", async (t) => {
-  t.mock.timers.enable({ apis: ["Date", "setTimeout"], now: 1000 });
+  vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"], now: 1000 });
+  t.onTestFinished(() => { vi.useRealTimers(); });
   let checks = 0;
   let resolve!: (snapshot: UpdateSnapshot) => void;
   const received: UpdateSnapshot[] = [];
@@ -65,12 +67,12 @@ test("errors stay quiet and retry on cadence; disposal ignores late responses", 
     if (checks === 1) throw new Error("offline");
     return new Promise<UpdateSnapshot>((done) => { resolve = done; });
   }, receive: (snapshot) => received.push(snapshot), enabled: () => true });
-  t.after(watcher.stop);
+  t.onTestFinished(watcher.stop);
   await Promise.resolve();
   assert.equal(received.length, 0);
   watcher.refresh();
   assert.equal(checks, 1);
-  t.mock.timers.tick(UPDATE_CHECK_INTERVAL_MS);
+  vi.advanceTimersByTime(UPDATE_CHECK_INTERVAL_MS);
   assert.equal(checks, 2);
   watcher.refresh();
   assert.equal(checks, 2);

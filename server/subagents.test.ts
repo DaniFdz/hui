@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test, type TestContext } from "node:test";
+import { test, vi } from "vitest";
 
 import { LiveSessions, type SessionStreamMessage } from "./live-sessions.ts";
 import type { SessionRecord } from "./sessions.ts";
@@ -270,7 +270,7 @@ for (const scenario of ["accepted", "accepted while waiting", "rejected", "unsup
   test(`child completion steering: ${scenario}`, async (t) => {
     const parent = record("parent");
     const state = harness([parent], { manualSessionId: parent.id });
-    t.after(() => {
+    t.onTestFinished(() => {
       state.service.dispose();
       state.manager.disposeAll();
     });
@@ -287,7 +287,7 @@ for (const scenario of ["accepted", "accepted while waiting", "rejected", "unsup
     let resolveDelivery!: () => void;
     const delivered = new Promise<void>((resolve) => { resolveDelivery = resolve; });
     const queued: string[] = [];
-    t.mock.method(state.manager, "followUp", async (id: string, message: string) => {
+    vi.spyOn(state.manager, "followUp").mockImplementation(async (id: string, message: string) => {
       assert.equal(id, parent.id);
       queued.push(message);
       resolveDelivery();
@@ -295,7 +295,7 @@ for (const scenario of ["accepted", "accepted while waiting", "rejected", "unsup
     if (scenario === "unsupported") {
       Object.defineProperty(runtime, "steer", { value: undefined });
     } else {
-      t.mock.method(runtime, "steer", async (message: string) => {
+      vi.spyOn(runtime, "steer").mockImplementation(async (message: string) => {
         if (scenario === "settled during rejection") runtime.finish("Parent finished");
         if (!acceptsSteering) throw new Error("Steering refused");
         runtime.steered.push(message);
@@ -532,11 +532,11 @@ function pendingChild(id = "done", patch: Partial<SessionRecord> = {}): SessionR
 
 test("a refused completion remains durable and retries without changing the child result", async (t) => {
   const state = harness([record("parent"), pendingChild()]);
-  t.after(() => { state.service.dispose(); state.manager.disposeAll(); });
+  t.onTestFinished(() => { state.service.dispose(); state.manager.disposeAll(); });
   await state.service.initialize();
   const original = state.manager.prompt.bind(state.manager);
   let reject = true;
-  t.mock.method(state.manager, "prompt", async (id: string, message: string) => {
+  vi.spyOn(state.manager, "prompt").mockImplementation(async (id: string, message: string) => {
     if (reject) throw new Error("Temporary transport failure");
     await original(id, message);
   });
@@ -557,7 +557,7 @@ test("restart replays pending results but never legacy or acknowledged results",
   const acknowledged = pendingChild("acknowledged");
   acknowledged.subagent!.completionDelivery = "delivered";
   const state = harness([record("parent"), pendingChild(), legacy, acknowledged]);
-  t.after(() => { state.service.dispose(); state.manager.disposeAll(); });
+  t.onTestFinished(() => { state.service.dispose(); state.manager.disposeAll(); });
   await state.service.initialize();
   await state.service.flushCompletions();
   await waitForStatus(state.manager, "parent", "idle");
@@ -569,7 +569,7 @@ test("restart replays pending results but never legacy or acknowledged results",
   assert.equal(state.records()[1]?.subagent?.completionDelivery, "pending");
   state.service.dispose();
   const restarted = new SubagentService(state.manager, async () => state.records(), state.update);
-  t.after(() => restarted.dispose());
+  t.onTestFinished(() => restarted.dispose());
   await restarted.initialize();
   await restarted.flushCompletions();
   assert.equal(state.records()[1]?.subagent?.completionDelivery, "delivered");
@@ -578,7 +578,7 @@ test("restart replays pending results but never legacy or acknowledged results",
 
 test("volatile steering is pending until consumed and survives a service restart", async (t) => {
   const state = harness([record("parent"), pendingChild()], { manualSessionId: "parent" });
-  t.after(() => { state.service.dispose(); state.manager.disposeAll(); });
+  t.onTestFinished(() => { state.service.dispose(); state.manager.disposeAll(); });
   state.manager.ensure(record("parent"));
   await waitForStatus(state.manager, "parent", "idle");
   await state.manager.prompt("parent", "Working");
@@ -590,7 +590,7 @@ test("volatile steering is pending until consumed and survives a service restart
   assert.equal(state.records()[1]?.subagent?.completionDelivery, "pending");
   state.service.dispose();
   const restarted = new SubagentService(state.manager, async () => state.records(), state.update);
-  t.after(() => restarted.dispose());
+  t.onTestFinished(() => restarted.dispose());
   await restarted.initialize();
   // Simulate a lost volatile queue: the fake never put steering in its history.
   await restarted.flushCompletions();
@@ -604,7 +604,7 @@ test("volatile steering is pending until consumed and survives a service restart
 
 test("concurrent drains deliver one batch and a failed ack does not resend", async (t) => {
   const state = harness([record("parent"), pendingChild(), pendingChild("second")]);
-  t.after(() => { state.service.dispose(); state.manager.disposeAll(); });
+  t.onTestFinished(() => { state.service.dispose(); state.manager.disposeAll(); });
   await Promise.all([state.service.flushCompletions(), state.service.flushCompletions()]);
   await waitForStatus(state.manager, "parent", "idle");
   assert.equal(state.sessions.get("parent")!.prompts.length, 1);
@@ -614,7 +614,7 @@ test("concurrent drains deliver one batch and a failed ack does not resend", asy
     if (refuseWrite) throw new Error("Disk temporarily unavailable");
     return state.update(mutate);
   });
-  t.after(() => restarted.dispose());
+  t.onTestFinished(() => restarted.dispose());
   await restarted.flushCompletions();
   assert.equal(state.records()[1]?.subagent?.completionDelivery, "pending");
   refuseWrite = false;
@@ -629,7 +629,7 @@ test("restart groups completed and interrupted siblings into one recoverable eve
   running.subagent!.status = "running";
   delete running.subagent!.completionDelivery;
   const state = harness([record("parent"), pendingChild(), running]);
-  t.after(() => { state.service.dispose(); state.manager.disposeAll(); });
+  t.onTestFinished(() => { state.service.dispose(); state.manager.disposeAll(); });
   await state.service.initialize();
   await state.service.flushCompletions();
   const prompts = state.sessions.get("parent")!.prompts;
@@ -640,20 +640,21 @@ test("restart groups completed and interrupted siblings into one recoverable eve
 
 test("the retry timer recovers a transient failure without another completion", async (t) => {
   const state = harness([record("parent"), pendingChild()]);
-  t.after(() => { state.service.dispose(); state.manager.disposeAll(); });
+  t.onTestFinished(() => { state.service.dispose(); state.manager.disposeAll(); });
   state.manager.ensure(record("parent"));
   await waitForStatus(state.manager, "parent", "idle");
-  t.mock.timers.enable({ apis: ["setTimeout"] });
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  t.onTestFinished(() => { vi.useRealTimers(); });
   const original = state.manager.prompt.bind(state.manager);
   let reject = true;
-  t.mock.method(state.manager, "prompt", async (id: string, text: string) => {
+  vi.spyOn(state.manager, "prompt").mockImplementation(async (id: string, text: string) => {
     if (reject) throw new Error("Temporary refusal");
     await original(id, text);
   });
   await state.service.flushCompletions();
   reject = false;
   const accepted = state.sessions.get("parent")!.waitForPrompt(() => true);
-  t.mock.timers.tick(5_000);
+  vi.advanceTimersByTime(5_000);
   await accepted;
   await state.service.flushCompletions();
   assert.equal(state.sessions.get("parent")!.prompts.length, 1);
@@ -662,7 +663,7 @@ test("the retry timer recovers a transient failure without another completion", 
 test("new descendants inherit the archived state of their parent", async (t) => {
   const parent = record("parent", { archived: true });
   const state = harness([parent]);
-  t.after(() => { state.service.dispose(); state.manager.disposeAll(); });
+  t.onTestFinished(() => { state.service.dispose(); state.manager.disposeAll(); });
   await state.service.handle(parent.id, "sessions_spawn", { task: "Return a result" });
   assert.equal(state.records().find((r) => r.id === "child-1")?.archived, true);
 });
@@ -679,7 +680,7 @@ test("a child registered just before parent deletion cannot clear its deletion g
     }
     return registered;
   });
-  t.after(() => { service.dispose(); state.service.dispose(); state.manager.disposeAll(); });
+  t.onTestFinished(() => { service.dispose(); state.service.dispose(); state.manager.disposeAll(); });
   await service.handle("parent", "sessions_spawn", { task: "Do not resurrect" });
   assert.deepEqual(state.starts, []);
   assert.deepEqual(state.records(), []);
@@ -687,7 +688,7 @@ test("a child registered just before parent deletion cannot clear its deletion g
 
 test("forgetting a deleted subtree removes its background-task projections", async (t) => {
   const state = harness([record("parent"), pendingChild(), pendingChild("other")]);
-  t.after(() => { state.service.dispose(); state.manager.disposeAll(); });
+  t.onTestFinished(() => { state.service.dispose(); state.manager.disposeAll(); });
   await state.service.initialize();
   assert.equal(state.service.snapshot("parent").length, 2);
   state.service.forgetSessions(new Set(["done"]));
@@ -697,14 +698,14 @@ test("forgetting a deleted subtree removes its background-task projections", asy
 });
 
 /** Worker sessions scripted in memory: a prompt runs there until the test ends it. */
-function scriptedWorker(t: TestContext) {
+function scriptedWorker() {
   const sinks = new Map<string, RemoteSessionSink>();
   const running = new Set<string>();
   const histories = new Map<string, TranscriptEntry[]>();
   const prompts = new Map<string, () => void>();
   let seq = 0;
   const state = (key: string) => ({ sessionId: key, isStreaming: running.has(key), resumesInterruptedRuns: true });
-  t.mock.method(workers, "startSession", async (...[, key, , , sink]: Parameters<typeof workers.startSession>) => {
+  vi.spyOn(workers, "startSession").mockImplementation(async (...[, key, , , sink]: Parameters<typeof workers.startSession>) => {
     sinks.set(key, sink);
     const history = histories.get(key) ?? [];
     histories.set(key, history);
@@ -738,8 +739,8 @@ function scriptedWorker(t: TestContext) {
   };
 }
 
-async function spawnRemoteChild(t: TestContext) {
-  const worker = scriptedWorker(t);
+async function spawnRemoteChild() {
+  const worker = scriptedWorker();
   const parent = record("remote-parent", { worker: "w" });
   const state = harness([parent]);
   state.manager.ensure(parent);
@@ -759,8 +760,8 @@ async function spawnRemoteChild(t: TestContext) {
   return { ...state, worker, parent, child, finished };
 }
 
-test("a remote subagent whose run finished while HUI was away completes once HUI reattaches", async (t) => {
-  const state = await spawnRemoteChild(t);
+test("a remote subagent whose run finished while HUI was away completes once HUI reattaches", async () => {
+  const state = await spawnRemoteChild();
   state.worker.lose("child-1", true, "Done remotely");
   await waitForStatus(state.manager, "child-1", "reconnecting");
   state.manager.ensure(state.child(), true);
@@ -770,8 +771,8 @@ test("a remote subagent whose run finished while HUI was away completes once HUI
   state.manager.disposeAll();
 });
 
-test("a remote subagent fails when HUI is disconnected from its machine", async (t) => {
-  const state = await spawnRemoteChild(t);
+test("a remote subagent fails when HUI is disconnected from its machine", async () => {
+  const state = await spawnRemoteChild();
   state.worker.lose("child-1", false);
   await state.finished("failed");
   assert.match(state.child().subagent?.error ?? "", /disconnected/u);

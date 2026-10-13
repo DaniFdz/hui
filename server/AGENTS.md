@@ -20,7 +20,7 @@ reads, long-lived session lifecycle, and runtime adapters.
 
 ## Tests
 
-- Keep `*.test.ts` beside its owner and use `node:test` plus strict assertions.
+- Keep `*.test.ts` beside its owner and use Vitest plus `node:assert/strict` assertions.
 - Use temporary directories, synthetic config/transcripts, and controllable fake
   runtimes. Never mutate real `~/.pi` or `~/.config/hui` data in a test.
 - Prove lifecycle edges: duplicate opens, busy prompts, abort/exit, reconnect,

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import { visibleContext } from "../../server/model-routing.ts";
 import { sessionDigest } from "../../server/session-digest.ts";
 import { DRAFT_CASES } from "./cases.ts";

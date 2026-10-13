@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test } from "vitest";
 import { fileLanguage } from "./file-languages.ts";
 
 test("files get their language from their name", () => {

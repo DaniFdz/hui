@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import { conversationFocusIndex, conversationMarkers, conversationPosition } from "./position-rail-model.ts";
 import { projectChatTranscript } from "./projection.ts";
 import type { TranscriptItem } from "../../lib/sessions-store.ts";

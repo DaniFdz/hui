@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import { sessionGroupLabel, type SessionGroup, type SessionView } from "./sessions-store.ts";
 import {
   DEFAULT_SIDEBAR_SESSION_OPTIONS as defaults,

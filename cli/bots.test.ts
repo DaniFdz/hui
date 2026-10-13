@@ -3,7 +3,7 @@ import { createServer, type ServerResponse } from "node:http";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { test, type TestContext } from "node:test";
+import { test, type TestContext } from "vitest";
 import { botKickoffText, BOTS_OFF_MESSAGE, type BotCatalog, type BotCatalogTool, type BotMessageResult, type BotView } from "../shared/bots.ts";
 import type { AutomationTask } from "../src/lib/automation-types.ts";
 import { botCommand, findBot, formatBot, formatBots, formatLook, lookColor, parseDuration, parseZoom, questionAnswer, routineSchedule, type BotIO } from "./bots.ts";
@@ -149,10 +149,10 @@ async function fakeGateway(t: TestContext) {
     reply(404, { error: "not found" });
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  t.after(() => {
+  t.onTestFinished(() => {
     for (const stream of streams.values()) stream.end();
     server.closeAllConnections();
-    return new Promise((resolve) => server.close(resolve));
+    return new Promise((resolve) => server.close(() => resolve()));
   });
   const address = server.address() as { port: number };
   return {
@@ -239,7 +239,7 @@ test("with bots off on the gateway every hui bot command fails with its refusal,
     response.end(JSON.stringify({ error: BOTS_OFF_MESSAGE }));
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  t.after(() => new Promise((resolve) => server.close(resolve)));
+  t.onTestFinished(() => new Promise((resolve) => server.close(() => resolve())));
   const base = `http://127.0.0.1:${(server.address() as { port: number }).port}/`;
   for (const [action, operands, flags] of [
     ["list", [], {}], ["list", [], { json: true }], ["add", [], { name: "Kim" }], ["show", ["kim"], {}], ["send", ["kim", "hi"], { wait: true }],
@@ -271,7 +271,7 @@ test("bots are found by id, handle or exact name, archived ones included, and sh
 test("list, show, add, edit, remove, restore and stop talk to the bot routes and print for people or --json", async (t) => {
   const gateway = await fakeGateway(t);
   const dir = await mkdtemp(join(tmpdir(), "hui-cli-bots-"));
-  t.after(() => rm(dir, { recursive: true, force: true }));
+  t.onTestFinished(() => rm(dir, { recursive: true, force: true }));
   const term = terminal();
   term.io.cwd = dir;
   assert.equal(await botCommand(gateway.base, "list", [], {}, term.io), 0);
@@ -395,7 +395,7 @@ test("delete removes any bot for good once confirmed: a terminal is asked, anyth
 test("soul prints SOUL.md or says the bot has none yet, and --file replaces it from a file or stdin; empty removes it", async (t) => {
   const gateway = await fakeGateway(t);
   const dir = await mkdtemp(join(tmpdir(), "hui-cli-soul-"));
-  t.after(() => rm(dir, { recursive: true, force: true }));
+  t.onTestFinished(() => rm(dir, { recursive: true, force: true }));
   const shown = terminal();
   assert.equal(await botCommand(gateway.base, "soul", ["ada"], {}, shown.io), 0);
   assert.equal(shown.out, "# Who I am\nAda, a researcher.\n");
@@ -510,7 +510,7 @@ test("send reads - from stdin and exits 0 when answered, 1 on failure or timeout
 test("memory prints the status and view, zooms a line and saves the browse page", async (t) => {
   const gateway = await fakeGateway(t);
   const dir = await mkdtemp(join(tmpdir(), "hui-cli-memory-"));
-  t.after(() => rm(dir, { recursive: true, force: true }));
+  t.onTestFinished(() => rm(dir, { recursive: true, force: true }));
   const term = terminal();
   await botCommand(gateway.base, "memory", ["ada"], {}, term.io);
   assert.equal(term.out, "12 messages · 11 summaries built · 1 pending · view 4 KB in 9 lines · summarizing · compactor 3 calls, 6200 tokens in, 400 out, $0.0123\n<chat>\n0+8|user: plans\n</chat>\n");

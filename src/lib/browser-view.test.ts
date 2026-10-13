@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test } from "vitest";
 import { decodeBrowserFrame, encodeBrowserFrame, parseBrowserViewMessage, type BrowserViewState } from "../../shared/browser.ts";
 import { browserPreviewDisplay, browserTabOptions, browserViewEmptyMessage, browserViewStatus, fitFrame, pointPosition, relativeTime } from "./browser-view.ts";
 

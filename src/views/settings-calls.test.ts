@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
-import { test } from "node:test";
+import { test } from "vitest";
 
 import { callsReady } from "../../shared/calls.ts";
 import { chatGptLoginSummary } from "./settings-calls.ts";

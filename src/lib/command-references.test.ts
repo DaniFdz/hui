@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import { commandReference, resolveCommandReference, type CallableCommand } from "./command-references.ts";
 
 const catalog: CallableCommand[] = [

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test } from "vitest";
 
 import type { BotRecord } from "../shared/bots.ts";
 import { CALL_LIMITS, chunkUtf8, GPT_LIVE_MODEL } from "../shared/calls.ts";

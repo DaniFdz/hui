@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { test } from "node:test";
+import { test } from "vitest";
 import { checkNightly, checkRelease, downloadRelease, githubReadWith, newerVersion, nightlyRelease, parseNightly, parseRelease, type GithubRead } from "./releases.ts";
 
 const bytes = Buffer.from("synthetic archive");
@@ -49,7 +49,7 @@ test("nightly resolution reads the rolling tag and reports a missing nightly as 
   await assert.rejects(nightlyRelease(async () => { throw new Error("No stable HUI release is published yet."); }), /No HUI nightly is published/u);
 
   const root = await mkdtemp(join(tmpdir(), "hui-nightly-check-"));
-  t.after(() => rm(root, { recursive: true, force: true }));
+  t.onTestFinished(() => rm(root, { recursive: true, force: true }));
   const installed = join(root, "node_modules/hui");
   const install = async (version: string) => {
     for (const [file, value] of Object.entries({ "package.json": JSON.stringify({ name: "hui", version }), "build/release.json": JSON.stringify({ format: 1, version }),
@@ -106,7 +106,7 @@ test("download verifies asset identity, exact length and digest before writing a
 
 test("checks distinguish availability, unpublished releases and source-managed installations without writes", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "hui-release-check-"));
-  t.after(() => rm(root, { recursive: true, force: true }));
+  t.onTestFinished(() => rm(root, { recursive: true, force: true }));
   const installed = join(root, "node_modules/hui");
   for (const [file, value] of Object.entries({ "package.json": JSON.stringify({ name: "hui", version: "0.1.0" }), "build/release.json": JSON.stringify({ format: 1, version: "0.1.0" }),
     "dist/index.html": "", "build/cli/main.js": "", "build/cli/gateway-run.js": "", "build/server/runtimes/pi-sdk-worker.js": "" })) {

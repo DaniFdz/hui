@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 
 import { pullRequestAccessibleLabel, pullRequestReference, type SessionPullRequest } from "../../shared/pull-requests.ts";
 

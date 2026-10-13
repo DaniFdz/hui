@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import type { ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { test } from "node:test";
+import { test } from "vitest";
 import { waitFor } from "./test-support/wait-for.ts";
 
 // Keep all filesystem-backed module state isolated, including on a failed

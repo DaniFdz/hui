@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { after, test } from "node:test";
+import { afterAll, test } from "vitest";
 
 import {
   agentToolEnvironment,
@@ -8,7 +8,7 @@ import {
 } from "./agent-tools-bridge.ts";
 import { invokeHuiBridge } from "./runtimes/bridge-client.mjs";
 
-after(() => stopAgentToolBridge());
+afterAll(() => stopAgentToolBridge());
 
 test("the agent bridge authenticates a loopback caller and preserves its session identity", async () => {
   registerAgentToolHandler(async (invocation) => ({

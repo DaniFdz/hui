@@ -11,7 +11,7 @@ import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { after, before, test } from "node:test";
+import { afterAll, beforeAll, test } from "vitest";
 import { fileURLToPath } from "node:url";
 import { completeLines } from "./test-support/json-lines.ts";
 
@@ -91,7 +91,7 @@ async function remoteContents(): Promise<Array<[file: string, text: string]>> {
   }, "one pass over the remote files that none was replaced during");
 }
 
-before(async () => {
+beforeAll(async () => {
   await mkdir(join(agentDir, "skills", "gateway-skill"), { recursive: true });
   await mkdir(join(agentDir, "extensions"), { recursive: true });
   await mkdir(join(root, "gateway", "package", "skills", "package-skill"), { recursive: true });
@@ -156,7 +156,7 @@ before(async () => {
   workerId = (await workers.create({ name: "test remote", command: command.map((word) => `'${word}'`).join(" ") })).id;
 });
 
-after(async () => {
+afterAll(async () => {
   workers.disconnectAll();
   provider?.kill();
   // The host is durable by design; stop the one this suite started.

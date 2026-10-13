@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import { ariaShortcut, formatShortcut, shortcutChord } from "./shortcut-binding.ts";
 import { AVOIDED_SHORTCUTS, avoidedShortcut, WORK_SHORTCUTS } from "./work-shortcuts.ts";
 import { WORK_PANE_MAXIMIZE_SHORTCUT, WORK_PANE_TOGGLE_SHORTCUT } from "./work-pane.ts";

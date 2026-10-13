@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import test from "node:test";
+import { test } from "vitest";
 
 import { HUI_PAGES } from "../lib/pages.ts";
 import { DEFAULT_SETTINGS, normalizeSettings, type Settings } from "../lib/settings.ts";

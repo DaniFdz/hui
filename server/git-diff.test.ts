@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtemp, readdir, readFile, rename, rm, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { after, before, test } from "node:test";
+import { afterAll, beforeAll, test } from "vitest";
 import {
   diffChanges,
   diffFile,
@@ -70,8 +70,8 @@ async function stack(): Promise<string> {
   return root;
 }
 
-before(async () => { scratch = await mkdtemp(join(tmpdir(), "hui-git-diff-")); });
-after(async () => { await rm(scratch, { recursive: true, force: true }); });
+beforeAll(async () => { scratch = await mkdtemp(join(tmpdir(), "hui-git-diff-")); });
+afterAll(async () => { await rm(scratch, { recursive: true, force: true }); });
 
 /* ── parsing ── */
 

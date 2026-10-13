@@ -6,7 +6,7 @@ import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { after, before, test } from "node:test";
+import { afterAll, beforeAll, test } from "vitest";
 import { botKickoffName, BOTS_OFF_MESSAGE, BOTS_OFF_ROUTINE_MESSAGE, type BotCatalog, type BotMemoryStatus, type BotQuestion, type BotsUpdate, type BotView } from "../shared/bots.ts";
 import type { BotIO } from "../cli/bots.ts";
 import type { TranscriptEntry } from "./runtimes/types.ts";
@@ -21,7 +21,7 @@ await mkdir(workspace);
 process.env["HOME"] = dir;
 process.env["XDG_CONFIG_HOME"] = join(dir, "config");
 process.env["PI_CODING_AGENT_DIR"] = agentDir;
-// No gh: startup would run the operator's in the background, writing into this home while after() removes it.
+// No gh: startup would run the operator's in the background, writing into this home while afterAll() removes it.
 process.env["HUI_GITHUB_CLI"] = join(dir, "no-gh");
 const log = join(dir, "requests.jsonl");
 const provider = spawn(process.execPath, [fileURLToPath(new URL("../e2e/pi-provider-fixture.mjs", import.meta.url))], {
@@ -56,7 +56,7 @@ const { durableContext } = await import("./runtimes/durable-host.ts");
 let origin = "";
 const server = createServer((request, response) => middleware(request, response, () => { response.writeHead(404).end(); }));
 
-before(async () => {
+beforeAll(async () => {
   await startBackend();
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
@@ -65,7 +65,7 @@ before(async () => {
   origin = `http://127.0.0.1:${address.port}`;
 });
 
-after(async () => {
+afterAll(async () => {
   await stopBackend();
   server.closeAllConnections();
   await new Promise<void>((resolve) => server.close(() => resolve()));
@@ -676,7 +676,7 @@ test("a bot without a soul speaks first on the primary model, writes SOUL.md its
   // Settings' primary model, which a bot without a model of its own starts on, as a new session does.
   const settingsFile = join(dir, "config", "hui", "settings.json");
   await writeFile(settingsFile, JSON.stringify({ models: { primary: "hui-e2e/other" }, labs: { bots: true } }));
-  t.after(() => writeFile(settingsFile, BOTS_ON));
+  t.onTestFinished(() => writeFile(settingsFile, BOTS_ON));
   const created = await call("/__hui/bots", "POST", { name: "Nova" });
   assert.equal(created.status, 201);
   const nova = botOf(created);

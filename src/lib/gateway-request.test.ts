@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test } from "vitest";
 import { fetchWithResponseDeadline, gatewayRequestError } from "./gateway-request.ts";
 
 /** Answers after `headersMs`; its body then streams for `bodyMs` more. */

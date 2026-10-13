@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import test from "node:test";
+import { test } from "vitest";
 import { HUI_PAGES } from "./pages.ts";
 import { isObservabilitySurface } from "../views/observability.ts";
 import { isOwnedSurface } from "../views/hui-owned-surfaces.ts";

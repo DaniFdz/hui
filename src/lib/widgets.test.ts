@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import { WIDGET_CODE_MAX_BYTES, WIDGET_SANDBOX_METHOD_PREFIX } from "../../shared/widgets.ts";
 import { clampWidgetHeight, openableWidgetUrl, parseWidgetFrameMessage, widgetErrorText, widgetHostContext, widgetView } from "./widgets.ts";
 

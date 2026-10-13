@@ -3,7 +3,7 @@
  * platform's real templates), and the detection that picks the importer.
  */
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import { crc32 } from "node:zlib";
 import { BOT_FACE_COLORS } from "../../shared/bots.ts";
 import { cardFromPng, parseCharacterCard } from "./character-card.ts";

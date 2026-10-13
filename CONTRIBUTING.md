@@ -65,9 +65,10 @@ npm run test:package
 
 The Test workflow runs `npm run typecheck` and `npm test` on every pull request
 and push to `main`, on Node 22 (the oldest version `engines` allows, and the one
-the Nightly uses) and Node 24. `npm test` fails and names a test that runs longer
-than five minutes, and on Node 22 also a test file that does, instead of waiting
-for it.
+the Nightly uses) and Node 24. `npm test` runs the suite with Vitest and fails,
+naming it, a test or hook that runs longer than five minutes instead of waiting
+for it. The workflow reports every run to Datadog Test Optimization, using the
+repository's `DD_API_KEY` secret.
 
 User-visible changes also need a real Browser-tool E2E check. Documentation-only
 changes need at least `git diff --check` and verification that commands and links

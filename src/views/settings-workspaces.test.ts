@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import test from "node:test";
+import { test } from "vitest";
 
 const settingsSource = readFileSync(new URL("./settings.ts", import.meta.url), "utf8");
 const homeSource = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
