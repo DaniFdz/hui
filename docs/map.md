@@ -54,7 +54,7 @@ Pi Durable owns conversations, runs, queues and crash recovery.
 | PI configuration | `pi-config.ts` (read-only view), `pi-mutations.ts`, `pi-paths.ts`, `providers.ts`, `provider-accounts.ts`, `model-routing.ts` |
 | Git and GitHub | `worktrees.ts`, `worktree-inventory.ts`, `github*.ts`, `pull-requests.ts` |
 | Diff view | `git-diff.ts` (read-only Git comparisons: previous and default branch detection, patches with caps, untracked files through a temporary index), `diff-routes.ts` (`/__hui/sessions/:id/diff…`); contract in `shared/diff.ts` |
-| Integrations | `jira*.ts`, `slack.ts` and `slack-routes.ts` (the Slack connection Slack triggers read through), `backlog.ts` (Kanban), `automation.ts` |
+| Integrations | `jira*.ts`, `backlog.ts` (Kanban), `automation.ts` |
 | Terminals and browser | `terminals.ts`, `terminal-replay.ts` (bounded replay bytes), `terminal-transport.ts` (wire format in `shared/terminal-stream.ts`), `browser/` (managed Chromium over a CDP pipe), `browser-transport.ts` |
 | Files view | `files.ts` (list, search, read, save, upload, delete inside a working directory; which chat paths exist there), `file-routes.ts` (`/__hui/sessions/:id/files…`) |
 | VS Code view | `vscode.ts` (running the shared VS Code server, license consent, tickets and cookie secrets), `vscode-providers.ts` (finding VS Code desktop's `code serve-web`, servers on PATH or a configured path; launch flags), `vscode-install.ts` (the pinned, checksum-verified openvscode-server install on Linux), `vscode-proxy.ts` (the cookie-guarded HTTP and WebSocket proxy under `/__hui/vscode/`); contract in `shared/vscode.ts` |

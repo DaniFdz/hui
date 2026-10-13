@@ -5,6 +5,7 @@
  */
 import { gatewayStatus as currentGatewayStatus, type GatewayStatus } from "./gateway.ts";
 import { piSessionsCheck } from "./doctor-pi-sessions.ts";
+import { triggersCheck } from "./doctor-triggers.ts";
 import { withLifecycleLock } from "./state.ts";
 
 export type DoctorItem = {
@@ -37,7 +38,7 @@ export type DoctorCheck = {
 
 export type DoctorReport = { ok: boolean; checks: DoctorResult[] };
 
-export const DOCTOR_CHECKS: readonly DoctorCheck[] = [piSessionsCheck];
+export const DOCTOR_CHECKS: readonly DoctorCheck[] = [piSessionsCheck, triggersCheck];
 
 export async function runDoctor(options: {
   fix?: boolean;

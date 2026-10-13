@@ -416,7 +416,7 @@ test("a bot has every tool and skill a session in its directory has until the op
     "its own tools wait until it has a use for them");
   assert.deepEqual(names(session.botOffer()), [...plainTools, "message_bot", "triggers", "routines"], "the operator can turn off any of them but its essentials");
   assert.deepEqual(session.botOffer().find((tool) => tool.name === "triggers"), {
-    name: "triggers", label: "Triggers", description: "Add, change and remove its own triggers: GitHub and session events that wake it", group: "bots", source: "HUI", powerful: false,
+    name: "triggers", label: "Triggers", description: "List and remove its own triggers: what its listeners report wakes it", group: "bots", source: "HUI", powerful: false,
   }, "triggers is an ordinary switch under Bots, not powerful");
   assert.ok(plainTools.includes("secret_request"), "secret_request among them, on like every HUI tool");
   assert.equal(session.botOffer().find((tool) => tool.name === "fixture_other")?.group, "extension");

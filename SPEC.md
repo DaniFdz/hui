@@ -479,7 +479,10 @@ HUI holds, with events HUI streams to the browser.
 ## Installed gateway
 
 HUI ships a local npm archive with compiled CLI/server/SDK worker, built web
-assets, themes and a pinned dependency shrinkwrap. Production uses Node directly;
+assets, themes and its lockfile as a shrinkwrap. npm installs the archive from
+`package.json` alone, ignoring that shrinkwrap, so `package.json` pins every PI
+package at its locked version; other dependencies resolve within their ranges.
+Production uses Node directly;
 Vite and the desktop launcher remain source-development tools. `hui gateway`
 provides start/stop/restart/status/logs and foreground run; `hui ui` opens or
 prints the existing gateway URL without starting another process. The default
@@ -1656,15 +1659,15 @@ everything the Bots tab can, through the same routes.
   bot asks for it back with `request_access`, which only the operator answers.
   Tools are the boundary, not a sandbox.
 - **Triggers** wake a bot when something happens elsewhere, beside its routines
-  (decisions below): pull requests on GitHub, read through the gateway's `gh`
-  with one conditional poller per repo; the sessions it started finishing,
-  failing or asking; a webhook URL with a secret token, on the tailnet; or a
-  Slack message that pings the operator, read as them through a read-only user
-  token, its delivery carrying the pull requests it links to.
-  Each delivery is `[trigger: <name> · <summary>] <prompt>` in its chat;
+  (decisions below). HUI reads no other service for them itself: a listener, a
+  program the operator runs, watches what it watches and reports to the
+  trigger's URL, a secret on the tailnet; each event wakes the bot once, its
+  delivery carrying the pull requests it links to, read through the gateway's
+  `gh`. Each delivery is `[trigger: <name> · <summary>] <prompt>` in its chat;
   a cooldown coalesces events into one delivery and an hourly cap holds the
-  rest. The Routines tab lists them, `hui bot trigger` manages them, and the
-  bot can manage its own with a `triggers` tool.
+  rest. The Routines tab lists them and `hui bot trigger` manages them; only
+  the operator adds or changes one, and the bot's `triggers` tool lists and
+  removes its own.
 - **Bots talk to bots** with a `message_bot` tool only bots' chats have,
   beside a byte-stable list of the other bots in their system prompt. A message
   arrives as `[from @handle] …`; chains stop after three hops and each bot sends
@@ -1722,11 +1725,11 @@ everything the Bots tab can, through the same routes.
   next run, who made one when the bot did and a temporary one's limits (*made by
   @ada*, *until 18:00*, *3 runs left*), an enable switch, Run now and Delete, adds routines every N
   minutes/hours/days, daily, weekly or once in the browser's time zone, and shows
-  the latest runs; under them, Triggers lists the bot's triggers (source, what
-  they watch, last fired, cooldown, events waiting, an enable switch, Test,
-  Delete and, for a webhook, New URL), shows a new webhook URL once with Copy,
-  adds triggers for each source and shows their latest runs, read again every
-  few seconds while it shows. Memory shows messages, the view against its 128 KB budget
+  the latest runs; under them, Triggers lists the bot's triggers (what they let
+  through, last fired, the listener's last report or its silence, cooldown,
+  events waiting, an enable switch, Test, New URL and Delete), shows a new
+  trigger's URL once with Copy, adds triggers and shows their latest runs, read
+  again every few seconds while it shows. Memory shows messages, the view against its 128 KB budget
   (a full view merges back to 64 KB in one batch), its lines, pending summaries, what the summarizer spent since the gateway
   started (calls, tokens, a cost once one is reported), *Summarizing memory…*
   and failures, and lists the view's `id+n|text` lines (a click opens a line
@@ -1775,6 +1778,71 @@ everything the Bots tab can, through the same routes.
 The contract is [docs/api.md#bots](docs/api.md#bots).
 
 ## Decisions
+
+### Listeners are the only triggers (2026-10-09)
+
+Asked whether the listener was now the only way to add a trigger, the owner
+answered: "It should be the only one". This supersedes the GitHub, session and
+webhook sources of [Triggers wake bots on GitHub, session and webhook
+events](#triggers-wake-bots-on-github-session-and-webhook-events-2026-10-07) and
+all of [Slack triggers wake bots on review
+pings](#slack-triggers-wake-bots-on-review-pings-2026-10-08); the rest of the
+first stands, and so does the listeners' decision below. A listener can watch
+any of those services instead. The contract is
+[docs/api.md#triggers](docs/api.md#triggers).
+
+- **What went.** HUI's GitHub pollers, its watch of the sessions a bot started,
+  webhook calls, the Slack poller and HUI's Slack connection (Settings →
+  Integrations → Slack, `/__hui/slack`, `hui slack`), the add form's choice of
+  source and its Review requests preset, and the `triggers` tool's `add` and
+  `update`.
+- **What stays.** Listener triggers and their URL on the tailnet, their filters,
+  each event once, the listener's health on its trigger, cooldowns, the hourly
+  cap, catch-ups, the linked pull requests read into a delivery, Test, New URL,
+  `hui bot trigger`, and the tool's `list` and `remove`.
+- **Only the operator adds or changes a trigger.** Every trigger's URL is a
+  secret, and what its listener reports can be the operator's own messages: the
+  reasons webhook, Slack and listener triggers were already the operator's.
+- **Stored data.** `bot-triggers.json` keeps loading: a trigger of a kind that
+  went is a record HUI can't read, kept aside and never run. `hui doctor`
+  reports those triggers and the files their kinds left
+  (`bot-trigger-cursors.json`, `bot-trigger-slack.json`, and `slack.json` with its
+  token); `hui doctor --fix` deletes them, the triggers' runs included. Asked
+  whether to keep a copy, the owner chose deleting with none.
+
+### Listeners report what HUI doesn't read itself (2026-10-08)
+
+The owner can't create a Slack app in his organization, so Slack triggers' own
+connection is closed to him, while the Slack MCP his job gives him (Claude's
+Slack app) reads the same pings. Wiring that MCP into HUI was built and set
+aside before it shipped: "this mcp is only related to my job, so what we want to
+implement is accepting a kind of 'listener' that would allow us to configure
+this mcp". Of the shapes offered he chose a push endpoint, a source any program
+can feed rather than one for Slack, and HUI's side first. The contract is
+[docs/api.md#triggers](docs/api.md#triggers).
+
+- **A source anyone's program feeds.** A listener trigger has a URL with a secret
+  token, made, shown once and replaced like a webhook's and answered by the same
+  route on the tailnet. The program (a listener) watches what it watches, as
+  often as it likes, and after every check posts `{ events }`: each with its own
+  id, one line, details, a time, links and fields. Nothing about any one service
+  is in HUI; the work Slack listener lives with the owner's job setup.
+- **HUI keeps each event once; the listener keeps its place.** HUI remembers the
+  ids a trigger was told in the same write as the delivery they decide, so a
+  report sent again (the listener never heard the answer, or restarted) wakes
+  nobody, and an event older than the trigger never does. The listener tracks
+  what it has read: HUI refusing a report (bots off) records nothing, and the
+  listener sends those events again later.
+- **Slack's safeguards, when the event says so.** A trigger narrows events by a
+  field (`fields.channel`), by a linked pull request, which the delivery carries
+  as a Slack trigger's does, and leaves out events the listener marks as a bot's
+  or from outside the operator's organization unless it allows them.
+- **Silence shows.** An empty report is a check-in: no delivery, no turn. The
+  trigger shows the latest report, the problem a listener reported, and that it
+  has said nothing for five minutes or since the gateway started, so a listener
+  that stopped never looks like one that watches.
+- **Not yet.** The work listener itself, and one listener feeding several
+  triggers (it reports to each URL instead).
 
 ### Bot faces get more shapes and ears, and bots can restyle themselves (2026-10-08)
 
@@ -2411,6 +2479,14 @@ commit, then the registry record switches to `durable:<id>`; a rerun reuses the
 copy of an unchanged file. The registry is backed up before its first change.
 Sessions with an interrupted run stay on PI so the gateway can recover them,
 and entries on abandoned branches stay only in the PI file.
+
+The second check deletes what the trigger kinds that went left behind
+([Listeners are the only triggers](#listeners-are-the-only-triggers-2026-10-09)):
+their records in `bot-triggers.json`, kept aside by the gateway and never run,
+with their runs, through the same serialized store the gateway writes, and the
+files `bot-trigger-cursors.json`, `bot-trigger-slack.json` and `slack.json`.
+Listener triggers and records HUI can't read for another reason stay. Nothing
+is copied first.
 
 ### HUI owns an isolated PI SDK backend, not a PI fork
 
