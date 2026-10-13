@@ -145,7 +145,9 @@ function renderActions(props: WorktreesPageProps, row: WorktreeRow) {
   const removal = removalState(props, row);
   if (removal) {
     return html`<span class="worktree-actions worktree-removal" data-removal=${removal}>
-      ${removal === "removing" ? html`<span class="session-run-spinner" aria-hidden="true"></span>Removing…` : "Queued"}
+      ${removal === "removing"
+        ? html`<span class="session-run-spinner" aria-hidden="true" data-hui-tooltip="Removing…"></span><span class="sr-only">Removing…</span>`
+        : "Queued"}
     </span>`;
   }
   return html`<span class="worktree-actions">

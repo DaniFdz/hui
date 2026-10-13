@@ -94,7 +94,7 @@ test("a removal in progress keeps the page usable and says which worktree runs a
     removing: new Set(["/a", "/b"]),
   } as unknown as WorktreesPageProps)).replace(/\s+/gu, " ");
   assert.match(page, /role="status"> <span class="session-run-spinner"[^>]*><\/span> <span>Removing <span class="mono">hui\/big<\/span> \(3\.0 GiB\)… 1 more queued\./u);
-  assert.match(page, /data-removal=removing> <span class="session-run-spinner" aria-hidden="true"><\/span>Removing…/u);
+  assert.match(page, /data-removal=removing> <span class="session-run-spinner"[^>]*><\/span><span class="sr-only">Removing…<\/span>/u);
   assert.match(page, /data-removal=queued> Queued/u);
   // Only the untouched row keeps its remove button, and cleanup offers only it.
   assert.deepEqual(page.match(/aria-label=Remove \S+/gu), ["aria-label=Remove hui/other"]);
