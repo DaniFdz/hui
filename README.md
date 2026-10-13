@@ -38,16 +38,16 @@ PI transcripts into its own storage.
 
 ## See it in action
 
-https://github.com/user-attachments/assets/3f8484e0-8793-40cf-a138-48fcc029615c
+https://github.com/user-attachments/assets/9644fe52-b634-4214-b3ff-22a34bb377ba
 
 <table>
 <tr>
-<td width="50%"><img src="https://github.com/user-attachments/assets/1d8379da-763f-45a1-8dc5-d8f91e31c97b" alt="Kanban board with sessions across stages"><br><b>Kanban.</b> Every session is a card in the stage its work is in, agents move their own cards, and a backlog item starts in its own worktree. <a href="https://github.com/user-attachments/assets/7e7f45cf-71bc-45e4-9bcb-331976f49792">Watch</a></td>
-<td width="50%"><img src="https://github.com/user-attachments/assets/32b5ffb1-4c6d-4370-814a-85432e78f559" alt="Agent-driven browser with GitHub and Slack cards"><br><b>Rich results.</b> Interactive widgets, a browser the agent drives with a live preview, and GitHub and Slack links that unfurl. <a href="https://github.com/user-attachments/assets/14e95b9c-3df9-4bb0-a044-ab7b89ae18cf">Watch</a></td>
+<td width="50%"><img src="https://github.com/user-attachments/assets/1d8379da-763f-45a1-8dc5-d8f91e31c97b" alt="Kanban board with sessions across stages"><br><b>Kanban.</b> Every session is a card in the stage its work is in, agents move their own cards, and a backlog item starts in its own worktree. <a href="https://github.com/user-attachments/assets/f09527cc-27f3-4df6-98df-a0a49e193e42">Watch</a></td>
+<td width="50%"><img src="https://github.com/user-attachments/assets/32b5ffb1-4c6d-4370-814a-85432e78f559" alt="Agent-driven browser with GitHub and Slack cards"><br><b>Rich results.</b> Interactive widgets, a browser the agent drives with a live preview, and GitHub and Slack links that unfurl. <a href="https://github.com/user-attachments/assets/a2c90287-5569-4ad1-a105-7e7032a40c7f">Watch</a></td>
 </tr>
 <tr>
-<td><img src="https://github.com/user-attachments/assets/34304263-f535-4471-8aed-1ba96f3a7b90" alt="Subagents and a watcher that merged on green"><br><b>Subagents and watchers.</b> Parallel reviewers in their own sessions, and a watcher that waits for CI and merges. <a href="https://github.com/user-attachments/assets/6fc52c93-3b56-43a1-b1cd-8307e4908388">Watch</a></td>
-<td><img src="https://github.com/user-attachments/assets/fb9171ff-f989-4f41-a88e-223ea23860b7" alt="A bot's chat, routine and memory"><br><b>Bots</b> (Settings → Labs). Long-lived agents with a face, one chat, a memory and routines they schedule themselves. <a href="https://github.com/user-attachments/assets/632c9c43-c5ea-497c-bbfa-58f70de32354">Watch</a></td>
+<td><img src="https://github.com/user-attachments/assets/34304263-f535-4471-8aed-1ba96f3a7b90" alt="Subagents and a watcher that merged on green"><br><b>Subagents and watchers.</b> Parallel reviewers in their own sessions, and a watcher that waits for CI and merges. <a href="https://github.com/user-attachments/assets/489f8307-389e-4a01-86d3-946a125aaeac">Watch</a></td>
+<td><img src="https://github.com/user-attachments/assets/fb9171ff-f989-4f41-a88e-223ea23860b7" alt="A bot's chat, routine and memory"><br><b>Bots</b> (Settings → Labs). Long-lived agents with a face, one chat, a memory and routines they schedule themselves. <a href="https://github.com/user-attachments/assets/f17df652-9156-4960-b2f0-f0c87db669b2">Watch</a></td>
 </tr>
 </table>
 
