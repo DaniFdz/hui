@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import { botChatCommandRefusal, completeCommandReference, completeSlashCommand, composerCommands, filterSlashCommands, parseClearCommand, parseReloadCommand, parseUpdateCommand, slashCommandQuery, parseCompactCommand } from "./slash-commands.ts";
+import { botChatCommandRefusal, completeCommandReference, completeSlashCommand, composerCommands, filterSlashCommands, parseClearCommand, parseReloadCommand, parseUpdateCommand, skillCommands, slashCommandQuery, parseCompactCommand } from "./slash-commands.ts";
 import type { RuntimeCommand } from "./sessions-store.ts";
 
 test("slash suggestions are limited to the leading token and current caret", () => {
@@ -106,4 +106,11 @@ test("/compact takes optional focus text and leaves other commands alone", () =>
   assert.deepEqual(parseCompactCommand("  /compact   keep the API decisions\n and errors "), { instructions: "keep the API decisions\n and errors" });
   assert.equal(parseCompactCommand("/compacted"), undefined);
   assert.equal(parseCompactCommand("please /compact"), undefined);
+});
+
+test("a new session offers its enabled local skills as /skill: commands", () => {
+  const skill = (name: string) => ({ id: name, name, description: `${name} help`, path: `/skills/${name}/SKILL.md`, root: "/skills" });
+  const commands = skillCommands([skill("configure-model"), skill("off")], [{ path: "/skills/off/SKILL.md" }]);
+  assert.deepEqual(commands, [{ name: "skill:configure-model", description: "configure-model help", source: "skill" }]);
+  assert.equal(filterSlashCommands(composerCommands(commands), "configure-m")[0]?.name, "skill:configure-model");
 });

@@ -208,6 +208,12 @@ hui-session-multiplexer {
 .pi-install-form > .btn {
   flex: 0 0 auto;
 }
+/* Settings list filter: rows it hides keep their own display rules otherwise. */
+.settings-list-filter { display: block; margin-block: 0 12px; }
+.settings-list-filter__input { width: 100%; }
+.settings-list-filter__empty { margin: 8px 0 0; }
+.settings-list-filter__empty:empty { margin: 0; }
+[data-filter][hidden], .settings-section[hidden] { display: none; }
 @media (pointer: coarse), (max-width: 640px) {
   .settings-row__control .btn.pi-resource-read-button {
     width: 44px;
