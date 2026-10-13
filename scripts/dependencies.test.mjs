@@ -1,6 +1,6 @@
 /**
  * Keeps an installed archive on the PI release HUI was tested with. npm installs the archive (`npm install -g`,
- * `hui update`) from package.json's ranges alone and ignores the npm-shrinkwrap.json the build ships, and PI
+ * `hui update`) from package.json's ranges alone and ignores the lockfile the build ships, and PI
  * publishes its packages in lockstep, where a minor release can drop an export the previous ones import.
  */
 import assert from "node:assert/strict";

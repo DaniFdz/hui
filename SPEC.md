@@ -479,9 +479,10 @@ HUI holds, with events HUI streams to the browser.
 ## Installed gateway
 
 HUI ships a local npm archive with compiled CLI/server/SDK worker, built web
-assets, themes and its lockfile as a shrinkwrap. npm installs the archive from
-`package.json` alone, ignoring that shrinkwrap, so `package.json` pins every PI
-package at its locked version; other dependencies resolve within their ranges.
+assets, themes and its lockfile as `build/package-lock.json`, which remote workers
+install from. npm installs the archive from `package.json` alone, ignoring that
+lockfile, so `package.json` pins every PI package at its locked version; other
+dependencies resolve within their ranges.
 Production uses Node directly;
 Vite and the desktop launcher remain source-development tools. `hui gateway`
 provides start/stop/restart/status/logs and foreground run; `hui ui` opens or
