@@ -312,7 +312,7 @@ export type BotAccessDeps = {
 };
 
 type Result = ToolExecutionResult;
-const text = (value: string, isError = false): Result => ({ content: [{ type: "text", text: value }], ...(isError ? { isError: true } : {}) });
+const text = (value: string, isError = false): Result => ({ output: [{ type: "text", text: value }], ...(isError ? { isError: true } : {}) });
 const unique = (values: readonly string[] | undefined) => [...new Set((values ?? []).map((value) => value.trim()).filter(Boolean))];
 
 /** Who started the turn that asks, when it wasn't the operator; the operator answers either way. */
@@ -441,7 +441,7 @@ export function botAccessParts(deps: BotAccessDeps): { tools: ToolRegistration[]
       const loader = skills.length > 0 && !SKILL_READERS.some((name) => current.has(name));
       const names = [...tools.map((tool) => tool.name), ...skills.map((skill) => `the ${skill.name} skill`)];
       return {
-        content: [{ type: "text", text: `The operator allowed it: you now have ${listed(names)}, from your next step.${loader ? " Load a skill with load_skill." : ""}` }],
+        output: [{ type: "text", text: `The operator allowed it: you now have ${listed(names)}, from your next step.${loader ? " Load a skill with load_skill." : ""}` }],
         // Should offering them again have failed, Durable still adds them to this run's tools when the round ends.
         control: { addTools: [...tools.map((tool) => tool.name), ...(loader ? [LOAD_SKILL_TOOL] : [])] },
       };

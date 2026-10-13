@@ -36,7 +36,7 @@ import type {
   TranscriptEntry,
 } from "./types.ts";
 
-export const DURABLE_VERSION = "1.0.1";
+export const DURABLE_VERSION = "1.2.0";
 const REFERENCE_PREFIX = "durable:";
 /** Entries per store read; a read yields to the event loop between pages. */
 const HISTORY_PAGE = 200;

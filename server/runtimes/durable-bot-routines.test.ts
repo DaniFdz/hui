@@ -72,7 +72,7 @@ async function fixture(t: TestContext, answer: (invocation: AgentToolInvocation)
   return { cwd, host, invocations, bot, api, tool };
 }
 
-const textOf = (result: { content?: unknown }) => JSON.stringify(result.content);
+const textOf = (result: { output?: unknown }) => JSON.stringify(result.output);
 
 test("routines is a bot tool of the hui-bots-tools extension: it asks HUI as the chat's session, and only from a bot's chat", { timeout: 60_000 }, async (t) => {
   const f = await fixture(t, (invocation) => invocation.params["action"] === "add"

@@ -454,7 +454,7 @@ export class DurableExtensions {
           const result = await definition.execute(api.callId, args as never, signal, onUpdate as never, this.#runner.createToolContext(api.callId, signal));
           const details = jsonSafe(result.details);
           return {
-            content: result.content ?? [],
+            output: result.content ?? [],
             ...(details === undefined ? {} : { details }),
             ...(result.isError ? { isError: true } : {}),
             ...(result.usage ? { usage: result.usage } : {}),
@@ -463,7 +463,7 @@ export class DurableExtensions {
         } catch (error) {
           if (signal?.aborted) throw error;
           // A thrown error is the model's error result, as in PI.
-          return { content: [{ type: "text", text: errorText(error) }], isError: true };
+          return { output: [{ type: "text", text: errorText(error) }], isError: true };
         }
       },
     });
@@ -554,13 +554,13 @@ export class DurableExtensions {
           if (!this.#runner.hasHandlers("tool_result")) return undefined;
           const replaced = await this.#runner.emitToolResult({
             type: "tool_result", toolName: call.name, toolCallId: call.id, input: call.arguments,
-            content: result.content ?? [], details: result.details, isError: result.isError === true, usage: result.usage,
+            content: result.output ?? [], details: result.details, isError: result.isError === true, usage: result.usage,
           } as never);
           if (!replaced) return undefined;
           const details = jsonSafe(replaced.details);
           return {
             ...result,
-            ...(replaced.content ? { content: replaced.content } : {}),
+            ...(replaced.content ? { output: replaced.content } : {}),
             ...(details === undefined ? {} : { details }),
             ...(replaced.isError === undefined ? {} : { isError: replaced.isError }),
             ...(replaced.usage ? { usage: replaced.usage } : {}),
@@ -770,7 +770,7 @@ export class DurableExtensions {
     this.#promptOptions = base;
     let added: CustomMessage[] = [];
     if (this.#runner.hasHandlers("before_agent_start") && !this.#abortRequested) {
-      const result = await this.#runner.emitBeforeAgentStart(prompt, images.length ? [...images] : undefined, structuredClone(base));
+      const result = await this.#runner.emitBeforeAgentStart({ messageType: "user", prompt, ...(images.length ? { images: [...images] } : {}) }, structuredClone(base));
       const options = result.systemPromptOptions;
       // An edited tool selection becomes the active tools; otherwise the live selection stays authoritative.
       if (!isDeepStrictEqual(options.selectedTools, active)) { this.#active = new Set(options.selectedTools); this.#applyTools(); }

@@ -2379,7 +2379,7 @@ models "beneath the interface".
 
 ### New sessions run on Pi Durable
 
-New sessions use the `durable` runtime (`@earendil-works/pi-durable` 1.0.1).
+New sessions use the `durable` runtime (`@earendil-works/pi-durable` 1.2.0).
 One harness per gateway owns their conversations, runs, inbox and crash
 recovery in a single SQLite store, `~/.config/hui/durable/harness.sqlite`
 (`HUI_DURABLE_DIR` overrides it), locked to one gateway at a time. Every
@@ -2495,7 +2495,7 @@ Sessions on the `pi` runtime (sessions created before Durable that
 `HUI_SESSION_RUNTIME=pi`)
 keep this design. Each active one runs a
 Node child with the pinned
-`@earendil-works/pi-coding-agent` SDK (1.0.1). HUI owns the versioned default
+`@earendil-works/pi-coding-agent` SDK (1.2.0). HUI owns the versioned default
 prompt, HUI tool definitions and runtime inspection; PI still owns its agent
 loop, configuration, credentials, resources and JSONL transcript writer. For
 these sessions the gateway neither embeds the agent loop nor runs their

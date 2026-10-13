@@ -267,7 +267,7 @@ working directory, transcript and model travel in the private
 tools start: endpoint security agents can SIGKILL a script launch whose working
 directory plus one argument reaches `MAXPATHLEN` (1024 bytes).
 
-The worker pins `@earendil-works/pi-coding-agent@1.0.1` and uses its public
+The worker pins `@earendil-works/pi-coding-agent@1.2.0` and uses its public
 `runRpcMode`. `HUI_PI_BACKEND=cli` opts into the previous adapter;
 `HUI_PI_CLI` optionally pins its executable (otherwise HUI runs the bundled SDK
 CLI with Node, without relying on a global `pi` or npm's PATH). PI package
