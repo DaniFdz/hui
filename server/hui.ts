@@ -32,8 +32,7 @@ import { remoteBots } from "./bot-remote.ts";
 import { BOT_MEMORY_PAGE, BOTS_EVENTS_ROUTE, BOTS_ROUTE, createBotRoutes, type BotRouteRequest } from "./bot-routes.ts";
 import { BOT_TRIGGERS_ROUTE } from "./bot-trigger-routes.ts";
 import { createGatewayTriggers } from "./bot-triggers-gateway.ts";
-import { isHookPath } from "./bot-triggers-webhook.ts";
-import { SLACK_ROUTE } from "./slack-routes.ts";
+import { isHookPath } from "./bot-triggers-listener.ts";
 import { BotTemplateService } from "./bot-template-import.ts";
 import { createBotTemplateRoutes, sendDownload } from "./bot-template-routes.ts";
 import { fetchGrokBotPage } from "./bot-templates/fetch.ts";
@@ -441,7 +440,7 @@ registerAgentToolHandler(async (invocation) => {
   // A bot's gated tools judge its run by every input it took, as the host running the chat saw them (`runOrigins`).
   if (invocation.action === "set_profile") return bots.setProfile(invocation.callerSessionId, invocation.params, invocation.runOrigins);
   if (invocation.action === ROUTINES_TOOL) return botRoutines.handle(invocation.callerSessionId, invocation.params, invocation.runOrigins);
-  if (invocation.action === "triggers") return triggers.service.tool(invocation.callerSessionId, invocation.params, invocation.runOrigins);
+  if (invocation.action === "triggers") return triggers.service.tool(invocation.callerSessionId, invocation.params);
   if (invocation.action === "suggest_task" || invocation.action === "dismiss_task") {
     const caller = (await readRegistry()).find(({ id }) => id === invocation.callerSessionId);
     if (!caller) throw new TaskSuggestionInputError("Conversation no longer exists.");
@@ -649,13 +648,6 @@ async function writeSettings(raw: unknown): Promise<Settings> {
   await vscode.applySettings(settings.vscode);
   macPower?.setKeepAwake(settings.power.keepAwake);
   if (botsWereOn && !botsEnabled(settings)) quietBots();
-  // Triggers' pollers stop while bots are off and resume from their cursors once they are on again.
-  if (botsWereOn !== botsEnabled(settings)) {
-    void triggers.service.setActive(botsEnabled(settings)).catch((error: unknown) => recordDiagnosticEvent({
-      area: "session", level: "warning", action: "triggers_toggle_failed", summary: "Triggers could not follow bots being turned on or off",
-      detail: error instanceof Error ? error.message : String(error),
-    }));
-  }
   return settings;
 }
 
@@ -1254,13 +1246,11 @@ export function sessionMutationErrorStatus(error: unknown): 400 | 500 {
  * `gh`; HUI never sees the token. `HUI_GITHUB_CLI` points E2E at a fake executable. */
 const GH_COMMAND = process.env["HUI_GITHUB_CLI"] || "gh";
 const githubCli = new GitHubCli({ command: GH_COMMAND });
-/** Bots' triggers (HUI-18): GitHub pollers through the same `gh`, the sessions bots start, webhook calls, and the Slack
- * messages that ping the operator, through the Slack connection of Settings → Integrations (`slack.ts`). */
+/** Bots' triggers (HUI-18): what listeners the operator runs report, with the pull requests it links to read through the
+ * same `gh`. */
 const triggers = createGatewayTriggers({
   send: (botId, message) => bots.send(botId, message),
   listBots: () => botRegistry.list(),
-  readSessions: readRegistry,
-  sessions: liveSessions,
   active: botsOn,
   ghCommand: GH_COMMAND,
   report: (event) => recordDiagnosticEvent({ area: "session", ...event }),
@@ -2677,7 +2667,7 @@ async function handleRequest(
     return;
   }
 
-  // A webhook trigger's caller is another program: its token is the credential, not x-hui (`bot-triggers-webhook.ts`).
+  // A trigger's listener is another program: its token is the credential, not x-hui (`bot-triggers-listener.ts`).
   if (isHookPath(path)) {
     const result = await triggers.hook(request, path);
     sendJson(response, result.status, result.body);
@@ -3351,14 +3341,6 @@ async function handleRequest(
     } catch (error) {
       sendJson(response, error instanceof GitHubCliError ? error.status : 500, { error: error instanceof Error ? error.message : "Could not sign in to GitHub." });
     }
-    return;
-  }
-
-  if (path === SLACK_ROUTE) {
-    const verify = new URL(request.url ?? "/", "http://localhost").searchParams.get("verify") === "1";
-    const result = await triggers.slackRoutes.handle({ method: request.method ?? "GET", path, verify, body: (maxBytes) => readBody(request, maxBytes) });
-    if (!result) sendJson(response, 404, { error: `unknown route: ${path}` });
-    else sendJson(response, result.status, result.body);
     return;
   }
 
@@ -4350,7 +4332,7 @@ export async function startBackend(): Promise<void> {
   }));
   initializeWatchers();
   initializeSubagents();
-  // Triggers: what waited for a cooldown across the restart, the session watch and, while bots are on, the pollers.
+  // Triggers: what waited for a cooldown across the restart goes out once its cooldown ends.
   void triggers.start().catch((error: unknown) => recordDiagnosticEvent({
     area: "session", level: "warning", action: "triggers_start_failed", summary: "Bots' triggers did not start",
     detail: error instanceof Error ? error.message : String(error),
