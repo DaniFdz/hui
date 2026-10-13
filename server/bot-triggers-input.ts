@@ -1,13 +1,12 @@
 /**
- * Triggers' input and stored shape (HUI-18): what `POST`/`PATCH /__hui/bots/:id/triggers`, a bot's `triggers` tool
- * and `bot-triggers.json` may hold, checked at the gateway's boundary. Input that does not validate is refused with
- * what to fix (400); a stored record that does not validate is kept aside in the file, untouched, and not used.
+ * Triggers' input and stored shape (HUI-18): what `POST`/`PATCH /__hui/bots/:id/triggers` and `bot-triggers.json` may
+ * hold, checked at the gateway's boundary. Input that does not validate is refused with what to fix (400); a stored
+ * record that does not validate (one of a source HUI no longer has among them, which `hui doctor` reports) is kept
+ * aside in the file, untouched, and not used.
  */
 import {
-  BOT_TRIGGER_LIMITS, BOT_TRIGGER_SOURCES, GITHUB_TRIGGER_EVENTS, HOOK_TRIGGER_SOURCES, SESSION_TRIGGER_EVENTS, SLACK_TRIGGER_EVENTS,
-  type BotTriggerFilters, type BotTriggerInput, type BotTriggerPatch, type BotTriggerRecord, type BotTriggerSource, type GitHubTriggerEvent,
-  type GitHubTriggerFilter, type ListenerTriggerFilter, type SessionTriggerEvent, type SessionTriggerFilter, type SlackTriggerEvent, type SlackTriggerFilter,
-  type WebhookTriggerFilter, type WebhookTriggerMatch,
+  BOT_TRIGGER_LIMITS, BOT_TRIGGER_SOURCES,
+  type BotTriggerFilter, type BotTriggerInput, type BotTriggerPatch, type BotTriggerRecord, type BotTriggerSource, type TriggerMatch,
 } from "../shared/bot-triggers.ts";
 
 /** Rejected input (400), with what to fix. */
@@ -20,29 +19,17 @@ export class TriggerNotFoundError extends Error {
   override name = "TriggerNotFoundError";
 }
 
-/** Valid, but refused now (409): a name taken, the per-bot cap, a turn that may not add triggers. */
+/** Valid, but refused now (409): a name taken, the per-bot cap, a bot that is archived. */
 export class TriggerConflictError extends Error {
   override name = "TriggerConflictError";
 }
 
 const ID = /^[A-Za-z0-9_-]{1,100}$/u;
-/** `owner/name` as GitHub allows them. */
-export const REPO = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/[A-Za-z0-9._-]{1,100}$/u;
-/** A login, an app's included (`dependabot[bot]`). */
-const LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})(?:\[bot\])?$/u;
-/** A branch name without spaces or the characters git refuses in refs. */
-const BRANCH = /^[^\s~^:?*[\\\p{Cc}]{1,100}$/u;
-/** A dot path into a JSON body: names of letters, digits, `_`, `-` and `$`, or list indexes. */
+/** A dot path into an event: names of letters, digits, `_`, `-` and `$`, or list indexes. */
 const FIELD = /^[A-Za-z0-9_$-]{1,64}(?:\.[A-Za-z0-9_$-]{1,64}){0,15}$/u;
 const CONTROL = /\p{Cc}/u;
 const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/u;
-const GITHUB_EVENTS: ReadonlySet<string> = new Set(GITHUB_TRIGGER_EVENTS);
-const SESSION_EVENTS: ReadonlySet<string> = new Set(SESSION_TRIGGER_EVENTS);
-const SLACK_EVENTS: ReadonlySet<string> = new Set(SLACK_TRIGGER_EVENTS);
-/** A Slack member as a filter names them: an id, or a handle, display or real name (no `@`). */
-const SLACK_PERSON = /^[^\s<>@#,|][^<>,|\p{Cc}]{0,79}$/u;
-/** A Slack conversation as a filter names it: an id, or a channel name (lowercase letters, digits, `-`, `_`, `.`). */
-const SLACK_CHANNEL = /^(?:[CG][A-Z0-9]{2,39}|[\p{Ll}\p{Lo}\p{N}_.-]{1,80})$/u;
+const FILTER_KEYS = ["match", "prLinks", "bots", "external"] as const;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -77,72 +64,12 @@ function cooldownField(raw: unknown): number {
   return raw as number;
 }
 
-/** `owner/name`, also from a GitHub URL (`https://github.com/owner/name`, `.git` and a trailing slash dropped). */
-export function repoName(raw: string): string | undefined {
-  const value = raw.trim().replace(/^https?:\/\/(?:www\.)?github\.com\//iu, "").replace(/\.git$/u, "").replace(/\/+$/u, "");
-  return REPO.test(value) ? value : undefined;
-}
-
-/** A list of distinct texts (any case counts once), each checked by `valid`; `what` names it in errors. */
-function textList(raw: unknown, what: string, valid: (value: string) => string | undefined, options: { min?: number; max?: number } = {}): string[] {
-  const max = options.max ?? BOT_TRIGGER_LIMITS.values;
-  if (!Array.isArray(raw) || raw.length > max) throw new TriggerInputError(`${what} must be a list of at most ${max}.`);
-  const values: string[] = [];
-  for (const item of raw) {
-    const value = typeof item === "string" ? valid(item.trim()) : undefined;
-    if (value === undefined) throw new TriggerInputError(`${what}: ${JSON.stringify(item)} is not valid.`);
-    if (!values.some((each) => each.toLowerCase() === value.toLowerCase())) values.push(value);
-  }
-  if (values.length < (options.min ?? 0)) throw new TriggerInputError(`${what} needs at least ${options.min}.`);
-  return values;
-}
-
-function eventList<T extends string>(raw: unknown, known: ReadonlySet<string>, all: readonly T[], what: string): T[] {
-  if (!Array.isArray(raw) || !raw.length || raw.length > all.length) throw new TriggerInputError(`${what} must list 1-${all.length} of: ${all.join(", ")}.`);
-  const unknown = raw.filter((item) => typeof item !== "string" || !known.has(item));
-  if (unknown.length) throw new TriggerInputError(`Unknown ${what}: ${unknown.map((item) => JSON.stringify(item)).join(", ")}. Choose from: ${all.join(", ")}.`);
-  return all.filter((event) => raw.includes(event));
-}
-
-const label = (value: string) => (value && value.length <= BOT_TRIGGER_LIMITS.value && !CONTROL.test(value) ? value : undefined);
-
-function githubFilter(raw: Record<string, unknown>): GitHubTriggerFilter {
-  refuseUnknown(raw, ["repos", "events", "authors", "labels", "base", "pullRequests", "draft"], "GitHub filter");
-  const filter: GitHubTriggerFilter = {
-    repos: textList(raw["repos"], "repos (owner/name)", repoName, { min: 1, max: BOT_TRIGGER_LIMITS.repos }),
-    events: eventList<GitHubTriggerEvent>(raw["events"], GITHUB_EVENTS, GITHUB_TRIGGER_EVENTS, "GitHub events"),
-  };
-  const authors = raw["authors"] == null ? [] : textList(raw["authors"], "authors (GitHub logins)", (value) => (LOGIN.test(value) ? value : undefined));
-  const labels = raw["labels"] == null ? [] : textList(raw["labels"], "labels", label);
-  const base = raw["base"] == null ? [] : textList(raw["base"], "base branches", (value) => (BRANCH.test(value) ? value : undefined));
-  if (authors.length) filter.authors = authors;
-  if (labels.length) filter.labels = labels;
-  if (base.length) filter.base = base;
-  if (raw["pullRequests"] != null) {
-    const numbers = raw["pullRequests"];
-    if (!Array.isArray(numbers) || numbers.length > BOT_TRIGGER_LIMITS.values || !numbers.every((value) => Number.isInteger(value) && value >= 1 && value <= 1_000_000_000)) {
-      throw new TriggerInputError(`pullRequests must be a list of at most ${BOT_TRIGGER_LIMITS.values} pull request numbers.`);
-    }
-    if (numbers.length) filter.pullRequests = [...new Set(numbers as number[])];
-  }
-  if (raw["draft"] != null) {
-    if (typeof raw["draft"] !== "boolean") throw new TriggerInputError("draft must be true (only drafts), false (only ready pull requests) or left out (both).");
-    filter.draft = raw["draft"];
-  }
-  return filter;
-}
-
-function sessionFilter(raw: Record<string, unknown>): SessionTriggerFilter {
-  refuseUnknown(raw, ["events"], "session filter");
-  return { events: eventList<SessionTriggerEvent>(raw["events"], SESSION_EVENTS, SESSION_TRIGGER_EVENTS, "session events") };
-}
-
-export function webhookMatch(raw: unknown): WebhookTriggerMatch {
+export function triggerMatch(raw: unknown): TriggerMatch {
   if (!isRecord(raw)) throw new TriggerInputError("match must be { field, op, value }.");
   refuseUnknown(raw, ["field", "op", "value"], "match");
   const field = typeof raw["field"] === "string" ? raw["field"].trim() : undefined;
   if (field === undefined || (field !== "" && (field.length > BOT_TRIGGER_LIMITS.field || !FIELD.test(field)))) {
-    throw new TriggerInputError("match.field must be a dot path into the JSON body, such as action or pull_request.state (\"\" is the whole body).");
+    throw new TriggerInputError("match.field must be a dot path into the event, such as fields.channel or summary (\"\" is the whole event).");
   }
   if (raw["op"] !== "equals" && raw["op"] !== "contains") throw new TriggerInputError("match.op must be equals or contains.");
   const value = typeof raw["value"] === "string" ? raw["value"] : undefined;
@@ -150,85 +77,51 @@ export function webhookMatch(raw: unknown): WebhookTriggerMatch {
   return { field, op: raw["op"], value };
 }
 
-function webhookFilter(raw: Record<string, unknown>): WebhookTriggerFilter {
-  refuseUnknown(raw, ["match"], "webhook filter");
-  return raw["match"] == null ? {} : { match: webhookMatch(raw["match"]) };
-}
-
-/** An optional switch of a Slack filter: `true` sets it; `false` and `null` leave it out. */
+/** An optional switch: `true` sets it; `false` and `null` leave it out. */
 function flag(raw: unknown, what: string): true | undefined {
   if (raw == null || raw === false) return undefined;
   if (raw !== true) throw new TriggerInputError(`${what} must be true or false.`);
   return true;
 }
 
-function slackFilter(raw: Record<string, unknown>): SlackTriggerFilter {
-  refuseUnknown(raw, ["events", "prLinks", "from", "in", "external", "bots"], "Slack filter");
-  const filter: SlackTriggerFilter = { events: eventList<SlackTriggerEvent>(raw["events"], SLACK_EVENTS, SLACK_TRIGGER_EVENTS, "Slack events") };
-  const from = raw["from"] == null ? [] : textList(raw["from"], "from (Slack people)", (value) => {
-    const person = value.replace(/^@/u, "").trim();
-    return SLACK_PERSON.test(person) ? person : undefined;
-  });
-  const channels = raw["in"] == null ? [] : textList(raw["in"], "in (Slack channels)", (value) => {
-    const channel = value.replace(/^#/u, "").trim();
-    return SLACK_CHANNEL.test(channel) ? channel : undefined;
-  });
-  if (flag(raw["prLinks"], "prLinks")) filter.prLinks = true;
-  if (from.length) filter.from = from;
-  if (channels.length) filter.in = channels;
-  if (flag(raw["external"], "external")) filter.external = true;
-  if (flag(raw["bots"], "bots")) filter.bots = true;
-  return filter;
-}
-
-function listenerFilter(raw: Record<string, unknown>): ListenerTriggerFilter {
-  refuseUnknown(raw, ["match", "prLinks", "bots", "external"], "listener filter");
-  const filter: ListenerTriggerFilter = raw["match"] == null ? {} : { match: webhookMatch(raw["match"]) };
-  if (flag(raw["prLinks"], "prLinks")) filter.prLinks = true;
-  if (flag(raw["bots"], "bots")) filter.bots = true;
-  if (flag(raw["external"], "external")) filter.external = true;
-  return filter;
-}
-
-/** A source's filter, every key checked. */
-export function triggerFilter<S extends BotTriggerSource>(source: S, raw: unknown): BotTriggerFilters[S] {
-  if (raw === undefined && HOOK_TRIGGER_SOURCES.has(source)) return {} as BotTriggerFilters[S];
+/** A trigger's filter, every key checked. */
+export function triggerFilter(raw: unknown): BotTriggerFilter {
+  if (raw === undefined) return {};
   if (!isRecord(raw)) throw new TriggerInputError("filter must be an object.");
-  switch (source) {
-    case "github": return githubFilter(raw) as BotTriggerFilters[S];
-    case "session": return sessionFilter(raw) as BotTriggerFilters[S];
-    case "slack": return slackFilter(raw) as BotTriggerFilters[S];
-    case "listener": return listenerFilter(raw) as BotTriggerFilters[S];
-    default: return webhookFilter(raw) as BotTriggerFilters[S];
-  }
+  refuseUnknown(raw, FILTER_KEYS, "filter");
+  const filter: BotTriggerFilter = raw["match"] == null ? {} : { match: triggerMatch(raw["match"]) };
+  if (flag(raw["prLinks"], "prLinks")) filter.prLinks = true;
+  if (flag(raw["bots"], "bots")) filter.bots = true;
+  if (flag(raw["external"], "external")) filter.external = true;
+  return filter;
 }
 
 function sourceField(raw: unknown): BotTriggerSource {
-  const source = BOT_TRIGGER_SOURCES.find((candidate) => candidate === raw);
-  if (!source) throw new TriggerInputError(`source must be one of: ${BOT_TRIGGER_SOURCES.join(", ")}.`);
+  const source = BOT_TRIGGER_SOURCES.find((candidate) => candidate === (raw ?? "listener"));
+  if (!source) throw new TriggerInputError("source must be listener: a program you run reports what it watches to the trigger's URL. HUI no longer reads GitHub, sessions, webhooks or Slack for triggers itself.");
   return source;
 }
 
-/** Validates `POST /__hui/bots/:id/triggers`. */
+/** Validates `POST /__hui/bots/:id/triggers`; `source` may be left out. */
 export function normalizeTriggerInput(value: unknown): BotTriggerInput {
   if (!isRecord(value)) throw new TriggerInputError("A trigger must be an object.");
   refuseUnknown(value, ["name", "source", "filter", "prompt", "enabled", "cooldownSeconds"], "trigger");
-  const source = sourceField(value["source"]);
   const prompt = value["prompt"] === undefined ? "" : promptField(value["prompt"]);
   if (value["enabled"] !== undefined && typeof value["enabled"] !== "boolean") throw new TriggerInputError("enabled must be a boolean.");
   return {
     name: triggerName(value["name"]),
-    ...({ source, filter: triggerFilter(source, value["filter"]) } as Pick<BotTriggerInput, "source" | "filter">),
+    source: sourceField(value["source"]),
+    filter: triggerFilter(value["filter"]),
     ...(prompt ? { prompt } : {}),
     enabled: value["enabled"] !== false,
     cooldownSeconds: value["cooldownSeconds"] === undefined ? BOT_TRIGGER_LIMITS.cooldownDefault : cooldownField(value["cooldownSeconds"]),
-  } as BotTriggerInput;
+  };
 }
 
-/** Validates `PATCH /__hui/bots/:id/triggers/:trigger` against the trigger's source; the filter is checked once merged. */
+/** Validates `PATCH /__hui/bots/:id/triggers/:trigger`; the filter is checked once merged. */
 export function normalizeTriggerPatch(value: unknown): BotTriggerPatch {
   if (!isRecord(value)) throw new TriggerInputError("A trigger change must be an object.");
-  if ("source" in value) throw new TriggerInputError("A trigger's source can't change: add a new trigger instead.");
+  if ("source" in value) throw new TriggerInputError("A trigger's source can't change.");
   refuseUnknown(value, ["name", "filter", "prompt", "enabled", "cooldownSeconds"], "trigger");
   if (!Object.keys(value).length) throw new TriggerInputError("Nothing to change.");
   const patch: BotTriggerPatch = {};
@@ -246,27 +139,17 @@ export function normalizeTriggerPatch(value: unknown): BotTriggerPatch {
   return patch;
 }
 
-const FILTER_KEYS: Readonly<Record<BotTriggerSource, readonly string[]>> = {
-  github: ["repos", "events", "authors", "labels", "base", "pullRequests", "draft"],
-  session: ["events"],
-  webhook: ["match"],
-  slack: ["events", "prLinks", "from", "in", "external", "bots"],
-  listener: ["match", "prLinks", "bots", "external"],
-};
-
-/** The filter after a patch's keys: each given key replaces, `null` or an empty list clears an optional one. Only the
- * source's own keys are taken. */
-export function patchedFilter<S extends BotTriggerSource>(source: S, current: BotTriggerFilters[S], change: Record<string, unknown>): BotTriggerFilters[S] {
-  refuseUnknown(change, FILTER_KEYS[source], `${source} filter`);
+/** The filter after a patch's keys: each given key replaces, `null` or `false` clears it. */
+export function patchedFilter(current: BotTriggerFilter, change: Record<string, unknown>): BotTriggerFilter {
+  refuseUnknown(change, FILTER_KEYS, "filter");
   const entries = new Map<string, unknown>(Object.entries(current));
-  for (const key of FILTER_KEYS[source]) {
+  for (const key of FILTER_KEYS) {
     if (!Object.hasOwn(change, key)) continue;
     const value = change[key];
-    // A Slack or listener filter's switches turn off with false too.
-    if (value === null || (value === false && (source === "slack" || source === "listener")) || (Array.isArray(value) && !value.length && key !== "repos" && key !== "events")) entries.delete(key);
+    if (value === null || value === false) entries.delete(key);
     else entries.set(key, value);
   }
-  return triggerFilter(source, Object.fromEntries(entries));
+  return triggerFilter(Object.fromEntries(entries));
 }
 
 function storedText(raw: unknown, max: number): string | undefined {
@@ -274,8 +157,8 @@ function storedText(raw: unknown, max: number): string | undefined {
 }
 
 /**
- * A stored record, or undefined when anything required is missing or invalid: a trigger HUI can't read exactly is
- * kept aside rather than run with a guessed filter.
+ * A stored record, or undefined when anything required is missing or invalid: a trigger HUI can't read exactly (one
+ * of a source it no longer has among them) is kept aside rather than run with a guessed filter.
  */
 export function parseTriggerRecord(raw: unknown): BotTriggerRecord | undefined {
   if (!isRecord(raw)) return undefined;
@@ -285,8 +168,10 @@ export function parseTriggerRecord(raw: unknown): BotTriggerRecord | undefined {
     const createdAt = String(raw["createdAt"] ?? "");
     const updatedAt = String(raw["updatedAt"] ?? "");
     if (!ID.test(id) || !ID.test(botId) || !ISO.test(createdAt) || !ISO.test(updatedAt)) return undefined;
+    // Only the one source a record names: one without `source` is from no HUI that wrote this file.
+    if (raw["source"] === undefined) return undefined;
     const source = sourceField(raw["source"]);
-    const filter = triggerFilter(source, raw["filter"] ?? (HOOK_TRIGGER_SOURCES.has(source) ? {} : undefined));
+    const filter = triggerFilter(raw["filter"] ?? {});
     if (typeof raw["enabled"] !== "boolean") return undefined;
     const cooldownSeconds = cooldownField(raw["cooldownSeconds"]);
     const createdBy = raw["createdBy"] === "bot" ? "bot" : raw["createdBy"] === "operator" ? "operator" : undefined;
@@ -295,16 +180,15 @@ export function parseTriggerRecord(raw: unknown): BotTriggerRecord | undefined {
     const lastFiredAt = typeof raw["lastFiredAt"] === "string" && ISO.test(raw["lastFiredAt"]) ? raw["lastFiredAt"] : undefined;
     const tokenHash = typeof raw["tokenHash"] === "string" && /^[0-9a-f]{64}$/u.test(raw["tokenHash"]) ? raw["tokenHash"] : undefined;
     const tokenHint = typeof raw["tokenHint"] === "string" && /^[A-Za-z0-9_-]{4}$/u.test(raw["tokenHint"]) ? raw["tokenHint"] : undefined;
-    // A webhook or listener trigger without its token's hash could never be called: it is not a trigger HUI can run.
-    if (HOOK_TRIGGER_SOURCES.has(source) && !tokenHash) return undefined;
+    // A trigger without its token's hash could never be called: it is not a trigger HUI can run.
+    if (!tokenHash) return undefined;
     return {
-      id, botId, name: triggerName(raw["name"]),
-      ...({ source, filter } as Pick<BotTriggerRecord, "source" | "filter">),
+      id, botId, name: triggerName(raw["name"]), source, filter,
       ...(prompt ? { prompt } : {}),
       enabled: raw["enabled"], cooldownSeconds, createdBy, createdAt, updatedAt,
       ...(lastFiredAt ? { lastFiredAt } : {}),
-      ...(HOOK_TRIGGER_SOURCES.has(source) && tokenHash ? { tokenHash, ...(tokenHint ? { tokenHint } : {}) } : {}),
-    } as BotTriggerRecord;
+      tokenHash, ...(tokenHint ? { tokenHint } : {}),
+    };
   } catch {
     return undefined;
   }

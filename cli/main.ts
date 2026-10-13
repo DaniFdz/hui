@@ -62,18 +62,10 @@ export const HELP = `Usage:
   hui bot routine run <bot> <routine>
   hui bot routine remove <bot> <routine> [--json]
   hui bot trigger list <bot> [--json]
-  hui bot trigger add <bot> --name <name> (--github <owner/name,…> --on <events> [--author <a,b>] [--label <a,b>]
-              [--base <branch,…>] [--pr <n,…>] [--draft|--ready] | --session --on <finished,failed,waiting>
-              | --webhook [--match <field=value|field~value>] | --slack --on <mention,dm> [--pr-links]
-              [--from <people>] [--in <channels>] [--allow-bots] [--allow-external]
-              | --listener [--match <field=value|field~value>] [--pr-links] [--allow-bots] [--allow-external])
-              [--prompt <text>]
-              [--cooldown <0|30s|5m|1h>] [--json]
+  hui bot trigger add <bot> --name <name> [--match <field=value|field~value>] [--pr-links] [--allow-bots]
+              [--allow-external] [--prompt <text>] [--cooldown <0|30s|5m|1h>] [--json]
   hui bot trigger remove <bot> <trigger> [--json]
   hui bot trigger test <bot> <trigger> [--json]
-  hui slack connect [--json]
-  hui slack status [--json]
-  hui slack disconnect [--json]
   hui schedule list [--bot <bot> | --session <session>] [--json]
   hui schedule show <schedule> [--json]
   hui schedule add --name <name> --prompt <text> (--at <ISO time> | --every <duration> | --cron <expr> [--timezone <tz>])
@@ -161,37 +153,19 @@ failure or timeout, 2 while the bot waits for an answer (give it in chat).
 Routines are Automation tasks aimed at the bot's chat. --every takes 30s, 5m,
 2h or 1d (Automation allows one minute at least); --cron uses this machine's
 time zone unless --timezone names another.
-Triggers wake a bot when something happens, as [trigger: <name> · <summary>]
-<prompt> in its chat: --github watches pull requests of those repos for the
---on events (pr_opened, pr_pushed, checks_failed, checks_succeeded,
-review_approved, review_changes_requested, review_commented, comment, mention,
-pr_merged, pr_closed), through the gateway's gh login; --session watches the
-sessions the bot itself starts; --webhook makes a URL, shown once, that
-programs on this machine or the tailnet POST to (--match keeps only calls whose
-JSON field equals, or with ~ contains, a value); --slack wakes it when someone
-pings you in Slack, read as you through the connection of hui slack connect:
---on mention (a message that @-mentions you in a channel or group DM), dm (a
-direct message to you); --pr-links keeps only messages linking a GitHub pull
-request (a thread reply counts its thread's), --from and --in name people and
-channels, and bots, apps and people outside your workspace (Slack Connect)
-wake it only with --allow-bots and --allow-external. Its delivery carries the
-linked pull requests (description, files and diff) read through the gateway's
-gh, so a bot can review without a shell. Only you add Slack triggers.
---listener makes a URL, shown once, for a program you run (a listener) that
-watches something HUI doesn't read itself and, after every check, POSTs
-{ "events": [{ "id", "summary", ... }] } to it: each event wakes the bot once,
-an empty list only says the listener is alive, and the trigger says when it
-last reported. --match keeps only events whose field (fields.channel, summary)
-equals or contains a value, --pr-links those linking a GitHub pull request
-(read into the delivery), and events it marks as from bots or from outside
-your organization wake it only with --allow-bots and --allow-external. Events
+Triggers wake a bot when a program you run (a listener) reports something, as
+[trigger: <name> · <summary>] <prompt> in its chat. add makes the trigger's
+URL, shown once: the listener watches what HUI doesn't read itself (a Slack, a
+Jira board) and, after every check, POSTs { "events": [{ "id", "summary", ...
+}] } to it from this machine or the tailnet. Each event wakes the bot once, an
+empty list only says the listener is alive, and the trigger says when it last
+reported. --match keeps only events whose field (fields.channel, summary)
+equals, or with ~ contains, a value, --pr-links those linking a GitHub pull
+request (read into the delivery through the gateway's gh, so a bot can review
+without a shell), and events it marks as from bots or from outside your
+organization wake it only with --allow-bots and --allow-external. Events
 within --cooldown (default 5m) of the last delivery arrive together. <trigger>
 is a name or id; test sends a sample event now.
-Slack connects HUI to your workspace with the User OAuth Token (xoxp-…) of a
-Slack app you create from HUI's manifest (docs/guide.md, Triggers → Slack):
-connect asks for it at a hidden prompt, or reads it from stdin; it is never an
-argument. Status says who and which workspace it is, and whether Slack still
-accepts the token; disconnect removes it from the gateway's machine.
 Schedules are every Automation task: a prompt HUI sends a session, or a bot's
 chat (its routines), on a schedule, as on the Automations page; "schedules"
 works as "schedule". <schedule> is an id or an exact name, <session> a
@@ -220,20 +194,11 @@ export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {
     prompt: { type: "string" }, at: { type: "string" }, every: { type: "string" }, cron: { type: "string" }, timezone: { type: "string" },
     allow: { type: "string" }, deny: { type: "string" }, "deny-tools": { type: "string" }, "deny-skills": { type: "string" },
     bot: { type: "string" }, session: { type: "string" }, description: { type: "string" }, until: { type: "string" }, runs: { type: "string" }, disabled: { type: "boolean" },
-    github: { type: "string" }, webhook: { type: "boolean" }, listener: { type: "boolean" }, on: { type: "string" }, author: { type: "string" },
-    label: { type: "string" }, base: { type: "string" }, pr: { type: "string" }, draft: { type: "boolean" }, ready: { type: "boolean" },
     match: { type: "string" }, cooldown: { type: "string" },
-    slack: { type: "boolean" }, "pr-links": { type: "boolean" }, in: { type: "string" }, "allow-bots": { type: "boolean" }, "allow-external": { type: "boolean" },
+    "pr-links": { type: "boolean" }, "allow-bots": { type: "boolean" }, "allow-external": { type: "boolean" },
     agent: { type: "string" }, out: { type: "string" }, memory: { type: "boolean" },
   } as const;
-  // --session names a session to hui schedule but is a flag to hui bot trigger add (--session --on finished): a first
-  // read that never throws finds the command, and only a bot trigger command reads --session as a flag. Its type is
-  // then the command's, the one each command's reader (scheduleCommand, triggerBody) takes.
-  const [noun, verb] = parseArgs({ args, allowPositionals: true, strict: false, options }).positionals;
-  const sessionFlag = (noun === "bot" || noun === "bots") && (verb === "trigger" || verb === "triggers");
-  const parsed = parseArgs({ args, allowPositionals: true, strict: true, options: { ...options, session: { type: sessionFlag ? "boolean" : "string" } } });
-  const values: Omit<typeof parsed.values, "session"> & { session?: any } = parsed.values;
-  const { positionals } = parsed;
+  const { values, positionals } = parseArgs({ args, allowPositionals: true, strict: true, options });
   if (values.help || !args.length) return { command: "help", values };
   if (values.version) return { command: "version", values };
   // VoiceStudio is gone (2026-10-06): its flags say what took their place instead of failing as unknown options.
@@ -242,12 +207,10 @@ export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {
   const [first, second, ...extra] = positionals;
   const bots = first === "bot" || first === "bots";
   const schedules = first === "schedule" || first === "schedules";
-  const slack = first === "slack";
   const routine = bots && (second === "routine" || second === "routines");
   const trigger = bots && (second === "trigger" || second === "triggers");
   const command = bots ? (routine ? `bot routine ${extra.shift() ?? "list"}` : trigger ? `bot trigger ${extra.shift() ?? "list"}` : `bot ${second ?? "list"}`)
     : schedules ? `schedule ${second ?? "list"}`
-    : slack ? `slack ${second ?? "status"}`
     : first === "gateway" ? `gateway ${second ?? "run"}` : first === "workers" ? `workers ${second ?? "list"}` : first;
   // `workers edit` and `workers remove` name the worker they act on.
   const target = command === "workers edit" || command === "workers remove" ? extra.shift() : undefined;
@@ -267,14 +230,11 @@ export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {
     "bot memory": ["zoom", "html", "json"], "bot routine list": ["json"],
     "bot routine add": ["name", "prompt", "at", "every", "cron", "timezone", "json"], "bot routine run": [], "bot routine remove": ["json"],
     "bot trigger list": ["json"], "bot trigger remove": ["json"], "bot trigger test": ["json"],
-    "bot trigger add": ["name", "prompt", "github", "session", "webhook", "slack", "listener", "on", "author", "label", "base", "pr", "draft", "ready", "match", "cooldown", "pr-links", "from", "in", "allow-bots", "allow-external", "json"],
-    "slack connect": ["json"], "slack status": ["json"], "slack disconnect": ["json"],
+    "bot trigger add": ["name", "prompt", "match", "cooldown", "pr-links", "allow-bots", "allow-external", "json"],
     "schedule list": ["bot", "session", "json"], "schedule show": ["json"], "schedule add": [...SCHEDULE_FIELDS, "json"], "schedule edit": [...SCHEDULE_FIELDS, "json"],
     "schedule pause": ["json"], "schedule resume": ["json"], "schedule run": ["json"], "schedule remove": ["json"],
   };
-  // A token is never an argument: it would stay in the shell's history and the process list.
-  if (command === "slack connect" && extra.length) throw new Error("hui slack connect takes no token on the command line: paste it at the prompt, or pipe it on stdin.");
-  if (!command || !allowed[command] || extra.length || first !== "gateway" && first !== "workers" && !bots && !schedules && !slack && second) throw new Error("Unknown command. Run hui --help.");
+  if (!command || !allowed[command] || extra.length || first !== "gateway" && first !== "workers" && !bots && !schedules && second) throw new Error("Unknown command. Run hui --help.");
   // Where a bot runs is chosen once; an edit cannot move it.
   if (command === "bot edit" && values.worker !== undefined) throw new Error("A bot stays on the machine it was created on: --worker only applies to bot add.");
   if (command === "bot edit" && values["soul-file"] !== undefined) throw new Error("bot edit does not change SOUL.md: use hui bot soul <bot> --file <path|->.");
@@ -455,13 +415,6 @@ export async function main(args: string[], installation: Installation): Promise<
     if (status.status !== "running" || !status.url) throw new Error("Gateway is not running. Start it with hui gateway start.");
     const { botCommand, terminalBotIO } = await import("./bots.ts");
     process.exitCode = await botCommand(status.url, command.slice("bot ".length), operands ?? [], values, terminalBotIO());
-    return;
-  }
-  if (command.startsWith("slack ")) {
-    const status = await gatewayStatus();
-    if (status.status !== "running" || !status.url) throw new Error("Gateway is not running. Start it with hui gateway start.");
-    const { slackCommand, terminalSlackIO } = await import("./slack.ts");
-    process.exitCode = await slackCommand(status.url, command.slice("slack ".length), values, terminalSlackIO());
     return;
   }
   if (command.startsWith("schedule ")) {

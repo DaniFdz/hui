@@ -2,13 +2,10 @@
  * Where triggers live (HUI-18), beside `bots.json` and only written by HUI:
  *
  *   ~/.config/hui/bot-triggers.json        { version: 1, triggers, runs, pending, deliveries, seen }
- *   ~/.config/hui/bot-trigger-cursors.json { version: 1, repos }   (GitHub pollers' cursors)
- *   ~/.config/hui/bot-trigger-slack.json   { version: 1, cursor }  (the Slack poller's cursor)
  *
  * Like `bots.json`: owner-only, every write a temporary file and a rename, every read/modify/write serialized; a record
- * that does not validate is kept in the file untouched and not used (reported once); a file that is not JSON or comes
- * from a newer HUI is refused and never overwritten. The cursors file is separate so a poll that moves a cursor never
- * rewrites the triggers.
+ * that does not validate (one of a source HUI no longer has among them) is kept in the file untouched and not used
+ * (reported once); a file that is not JSON or comes from a newer HUI is refused and never overwritten.
  */
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
@@ -19,8 +16,6 @@ import { parseTriggerRecord } from "./bot-triggers-input.ts";
 import { CONFIG_DIR } from "./paths.ts";
 
 export const TRIGGERS_FILE = join(CONFIG_DIR, "bot-triggers.json");
-export const TRIGGER_CURSORS_FILE = join(CONFIG_DIR, "bot-trigger-cursors.json");
-export const SLACK_TRIGGER_CURSOR_FILE = join(CONFIG_DIR, "bot-trigger-slack.json");
 export const TRIGGERS_VERSION = 1;
 
 /** A store file can't be read or written safely; it is left untouched (500). */
@@ -28,11 +23,11 @@ export class TriggerStoreError extends Error {
   override name = "TriggerStoreError";
 }
 
-/** An event as it waits for a trigger's cooldown: already rendered, so it survives a restart without its source. A
- * Slack or listener event keeps the pull requests it links to, which its delivery reads when it goes out. */
+/** An event as it waits for a trigger's cooldown: already rendered, so it survives a restart without its listener. It
+ * keeps the pull requests it links to, which its delivery reads when it goes out. */
 export type PendingEvent = { summary: string; details: string; at: string; links?: string[] };
 
-/** The GitHub pull request URLs a pending Slack event keeps, as `pullRequestLinks` makes them. */
+/** The GitHub pull request URLs a pending event keeps, as `parseListenerReport` makes them. */
 const PULL_LINK = /^https:\/\/github\.com\/[A-Za-z0-9][A-Za-z0-9-]{0,38}\/[A-Za-z0-9._-]{1,100}\/pull\/[1-9]\d{0,8}$/u;
 
 /** Events waiting for a trigger's next delivery; `more` counts those past `BOT_TRIGGER_LIMITS.pending`. */
@@ -46,14 +41,12 @@ export type TriggerState = {
   pending: Record<string, TriggerPending>;
   /** Bot id → its deliveries in the last hour, for the hourly cap. */
   deliveries: Record<string, string[]>;
-  /** Listener trigger id → the event ids its listener reported, newest last, so one reported again never wakes the bot
-   * twice. Written with the delivery they decide. */
+  /** Trigger id → the event ids its listener reported, newest last, so one reported again never wakes the bot twice.
+   * Written with the delivery they decide. */
   seen: Record<string, string[]>;
   /** Records that did not validate, written back untouched. */
   invalid: unknown[];
 };
-
-export type CursorState = { repos: Record<string, unknown> };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -77,12 +70,12 @@ function parseRun(raw: unknown): BotTriggerRun | undefined {
   };
 }
 
-function parsePending(raw: unknown, detailsLimit: number = BOT_TRIGGER_LIMITS.details): TriggerPending | undefined {
+function parsePending(raw: unknown): TriggerPending | undefined {
   if (!isRecord(raw) || !Array.isArray(raw["events"]) || typeof raw["since"] !== "string" || !ISO.test(raw["since"])) return undefined;
   const events = raw["events"].flatMap((event): PendingEvent[] => {
     if (!isRecord(event) || typeof event["summary"] !== "string" || typeof event["at"] !== "string") return [];
-    const links = Array.isArray(event["links"]) ? event["links"].filter((link): link is string => typeof link === "string" && PULL_LINK.test(link)).slice(0, BOT_TRIGGER_LIMITS.slackLinks) : [];
-    return [{ summary: line(event["summary"], 300), details: line(event["details"], detailsLimit), at: event["at"], ...(links.length ? { links } : {}) }];
+    const links = Array.isArray(event["links"]) ? event["links"].filter((link): link is string => typeof link === "string" && PULL_LINK.test(link)).slice(0, BOT_TRIGGER_LIMITS.links) : [];
+    return [{ summary: line(event["summary"], 300), details: line(event["details"], BOT_TRIGGER_LIMITS.details), at: event["at"], ...(links.length ? { links } : {}) }];
   }).slice(0, BOT_TRIGGER_LIMITS.pending);
   const more = Number.isInteger(raw["more"]) && (raw["more"] as number) > 0 ? raw["more"] as number : 0;
   if (!events.length && !more) return undefined;
@@ -105,16 +98,12 @@ function parseTriggerState(raw: Record<string, unknown>): TriggerState {
   }
   const runs = (Array.isArray(raw["runs"]) ? raw["runs"] : []).flatMap((run) => parseRun(run) ?? []);
   // Built with fromEntries, so no key a hand edit puts in the file (`__proto__` included) is more than a key.
-  // A Slack event's details hold the message and its thread parent, and a listener's what it found: they keep more
-  // than other sources' do.
-  const long = new Set(triggers.filter((trigger) => trigger.source === "slack" || trigger.source === "listener").map((trigger) => trigger.id));
   const pending: Record<string, TriggerPending> = Object.fromEntries(Object.entries(isRecord(raw["pending"]) ? raw["pending"] : {}).flatMap(([id, value]): [string, TriggerPending][] => {
-    const parsed = parsePending(value, long.has(id) ? BOT_TRIGGER_LIMITS.slackDetails : BOT_TRIGGER_LIMITS.details);
+    const parsed = parsePending(value);
     return parsed && ids.has(id) ? [[id, parsed]] : [];
   }));
-  const listeners = new Set(triggers.filter((trigger) => trigger.source === "listener").map((trigger) => trigger.id));
   const seen: Record<string, string[]> = Object.fromEntries(Object.entries(isRecord(raw["seen"]) ? raw["seen"] : {}).flatMap(([id, events]): [string, string[]][] =>
-    listeners.has(id) && Array.isArray(events) ? [[id, events.filter((event): event is string => typeof event === "string" && event.length > 0 && event.length <= 200).slice(-BOT_TRIGGER_LIMITS.listenerSeen)]] : []));
+    ids.has(id) && Array.isArray(events) ? [[id, events.filter((event): event is string => typeof event === "string" && event.length > 0 && event.length <= 200).slice(-BOT_TRIGGER_LIMITS.seen)]] : []));
   const deliveries: Record<string, string[]> = Object.fromEntries(Object.entries(isRecord(raw["deliveries"]) ? raw["deliveries"] : {}).flatMap(([botId, times]): [string, string[]][] =>
     /^[A-Za-z0-9_-]{1,100}$/u.test(botId) && Array.isArray(times) ? [[botId, times.filter((time): time is string => typeof time === "string" && ISO.test(time)).slice(-100)]] : []));
   return { triggers, runs, pending, deliveries, seen, invalid };
@@ -221,26 +210,6 @@ export function triggerStore(file = TRIGGERS_FILE, onInvalid: (count: number) =>
       return state;
     },
     serialize: (state) => ({ triggers: [...state.triggers, ...state.invalid], runs: state.runs, pending: state.pending, deliveries: state.deliveries, seen: state.seen }),
-  });
-}
-
-/** `bot-trigger-cursors.json`: each repo's cursor as its poller left it, read back by `bot-triggers-github.ts`. */
-export function cursorStore(file = TRIGGER_CURSORS_FILE): JsonStateFile<CursorState> {
-  return new JsonStateFile<CursorState>(file, {
-    label: "trigger cursors",
-    empty: () => ({ repos: {} }),
-    parse: (raw) => ({ repos: isRecord(raw["repos"]) ? { ...raw["repos"] } : {} }),
-    serialize: (state) => ({ repos: state.repos }),
-  });
-}
-
-/** `bot-trigger-slack.json`: where the Slack poller stands, read back by `bot-triggers-slack.ts`. */
-export function slackCursorStore(file = SLACK_TRIGGER_CURSOR_FILE): JsonStateFile<{ cursor?: unknown }> {
-  return new JsonStateFile<{ cursor?: unknown }>(file, {
-    label: "Slack trigger cursor",
-    empty: () => ({}),
-    parse: (raw) => (raw["cursor"] === undefined ? {} : { cursor: raw["cursor"] }),
-    serialize: (state) => (state.cursor === undefined ? {} : { cursor: state.cursor }),
   });
 }
 

@@ -1,18 +1,16 @@
 /**
- * The GitHub pull requests a Slack trigger's delivery links to (HUI-18), read through the gateway's GitHub CLI when
- * the delivery goes out: title, author, state, base and head, the description, the changed files with their additions
- * and deletions, and the diff, each bounded, with what was cut said. A bot reviews from the delivery alone, so it
- * needs no shell, and a Slack message can't make it run commands or act on GitHub as the operator. A pull request gh
- * can't read says so instead.
+ * The GitHub pull requests a trigger's delivery links to (HUI-18), read through the gateway's GitHub CLI when the
+ * delivery goes out: title, author, state, base and head, the description, the changed files with their additions and
+ * deletions, and the diff, each bounded, with what was cut said. A bot reviews from the delivery alone, so it needs no
+ * shell, and a listener's event can't make it run commands or act on GitHub as the operator. A pull request gh can't
+ * read says so instead.
  *
- * Requests go through `gh api --include` with argument arrays (never a shell), as the GitHub pollers' do
- * (`bot-triggers-github.ts`); `HUI_GITHUB_CLI` points tests at a fake.
+ * Requests go through `gh api --include` with argument arrays (never a shell); `HUI_GITHUB_CLI` points tests at a fake.
  */
 import { execFile } from "node:child_process";
 
 import { BOT_TRIGGER_LIMITS } from "../shared/bot-triggers.ts";
 import { parseGitHubUrl } from "../shared/github-links.ts";
-import { parseGhInclude } from "./bot-triggers-github.ts";
 import { GH_ENV } from "./github.ts";
 
 /** A diff's text read at most: gh stops past it, and what came is cut to the delivery's budget. */
@@ -26,6 +24,21 @@ export type GhRaw = (path: string, accept?: string) => Promise<{ status: number;
 /** Why gh gave nothing to read. */
 export class GhReadError extends Error {
   override name = "GhReadError";
+}
+
+/** `gh api --include`'s output: the status line, the headers (lowercased) and the body. */
+export function parseGhInclude(stdout: string): { status: number; headers: Record<string, string>; body: string } | undefined {
+  const start = /^HTTP\/[\d.]+ (\d{3})[^\n]*\n/u.exec(stdout);
+  if (!start) return undefined;
+  const rest = stdout.slice(start[0].length);
+  const end = /\r?\n\r?\n/u.exec(rest);
+  const head = end ? rest.slice(0, end.index) : rest;
+  const headers: Record<string, string> = {};
+  for (const line of head.split(/\r?\n/u)) {
+    const colon = line.indexOf(":");
+    if (colon > 0) headers[line.slice(0, colon).trim().toLowerCase()] = line.slice(colon + 1).trim();
+  }
+  return { status: Number(start[1]), headers, body: end ? rest.slice(end.index + end[0].length) : "" };
 }
 
 /** `gh api --include -H "Accept: …" <path>`, run with argument arrays. */
@@ -85,6 +98,12 @@ function quote(body: string, max: number): string {
 }
 
 const STATUS_MARKS: Readonly<Record<string, string>> = { added: "A", removed: "D", modified: "M", renamed: "R", copied: "C", changed: "M", unchanged: "=" };
+
+/** `acme/widgets#42` for a pull request URL. */
+export function pullRequestName(url: string): string {
+  const ref = parseGitHubUrl(url);
+  return ref && ref.kind !== "repo" ? `${ref.owner}/${ref.repo}#${ref.number}` : url;
+}
 
 /** A fence longer than any run of backticks in the text, so the diff can't close it. */
 function fence(body: string): string {

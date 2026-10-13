@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { BOT_TRIGGER_LIMITS } from "../shared/bot-triggers.ts";
 import { createGitHubFake, type FakeGitHubState } from "../e2e/github-triggers-fixture.mjs";
-import { boundedDiff, GhReadError, pullRequestReader, readPullRequest, type GhRaw } from "./bot-triggers-slack-prs.ts";
+import { boundedDiff, GhReadError, parseGhInclude, pullRequestReader, readPullRequest, type GhRaw } from "./bot-triggers-prs.ts";
 
 const URL = "https://github.com/acme/widgets/pull/42";
 const DIFF = [
@@ -43,7 +43,7 @@ function gh(state: FakeGitHubState, calls: { path: string; accept?: string }[] =
   const fake = createGitHubFake(state);
   return async (path, accept) => {
     calls.push({ path, ...(accept ? { accept } : {}) });
-    const answer = fake.respond(path, undefined, accept);
+    const answer = fake.respond(path, accept);
     return { status: answer.status, text: answer.text ? String(answer.body) : JSON.stringify(answer.body) };
   };
 }
@@ -110,4 +110,11 @@ test("one delivery reads each pull request once, and their diffs share the budge
   assert.deepEqual([...read.keys()], [URL, "https://github.com/acme/widgets/pull/43"]);
   assert.equal(calls.length, 6, "three requests per pull request, each read once");
   for (const text of read.values()) assert.match(text, /Diff \(the first 10,000 of 30,000 characters; the rest is cut\):/u);
+});
+
+test("gh's --include output parses into status, headers and body", () => {
+  assert.deepEqual(parseGhInclude("HTTP/1.1 200 OK\nEtag: W/\"abc\"\r\nX-Poll-Interval: 60\r\n\r\n[1,2]"), { status: 200, headers: { etag: "W/\"abc\"", "x-poll-interval": "60" }, body: "[1,2]" });
+  const notFound = parseGhInclude("HTTP/2.0 404 Not Found\r\nContent-Type: application/json\r\n\r\n{\"message\":\"Not Found\"}");
+  assert.deepEqual([notFound?.status, notFound?.headers["content-type"], notFound?.body], [404, "application/json", "{\"message\":\"Not Found\"}"]);
+  assert.equal(parseGhInclude("gh: not logged in"), undefined, "no status line: gh never reached GitHub");
 });

@@ -7,40 +7,24 @@ import { HELP, parseCli } from "./main.ts";
 test("hui bot trigger parses list, add, remove and test with their operands and only their own flags", () => {
   assert.equal(parseCli(["bot", "trigger", "list", "ada"]).command, "bot trigger list");
   assert.equal(parseCli(["bots", "triggers", "list", "ada", "--json"]).command, "bot trigger list");
-  const github = parseCli(["bot", "trigger", "add", "ada", "--name", "CI", "--github", "acme/widgets,acme/gadgets", "--on", "checks_failed,mention", "--author", "dependabot[bot]", "--label", "ci", "--base", "main", "--pr", "#12,14", "--ready", "--prompt", "Look.", "--cooldown", "10m"]);
-  assert.deepEqual([github.command, github.operands], ["bot trigger add", ["ada"]]);
-  assert.deepEqual(triggerBody(github.values), {
-    name: "CI", prompt: "Look.", cooldownSeconds: 600, source: "github",
-    filter: { repos: ["acme/widgets", "acme/gadgets"], events: ["checks_failed", "mention"], authors: ["dependabot[bot]"], labels: ["ci"], base: ["main"], pullRequests: [12, 14], draft: false },
-  });
-  assert.deepEqual(triggerBody(parseCli(["bot", "trigger", "add", "ada", "--name", "Kids", "--session", "--on", "finished,waiting"]).values), { name: "Kids", source: "session", filter: { events: ["finished", "waiting"] } });
-  assert.deepEqual(triggerBody(parseCli(["bot", "trigger", "add", "ada", "--name", "Deploys", "--webhook", "--match", "deploy.status=failed", "--cooldown", "0"]).values),
-    { name: "Deploys", cooldownSeconds: 0, source: "webhook", filter: { match: { field: "deploy.status", op: "equals", value: "failed" } } });
-  assert.deepEqual(triggerBody(parseCli(["bot", "trigger", "add", "ada", "--name", "Reviews", "--listener", "--match", "fields.channel=G01M4T1JFLK", "--pr-links", "--allow-external", "--cooldown", "0", "--prompt", "Review these."]).values),
+  const reviews = parseCli(["bot", "trigger", "add", "ada", "--name", "Reviews", "--match", "fields.channel=G01M4T1JFLK", "--pr-links", "--allow-external", "--cooldown", "0", "--prompt", "Review these."]);
+  assert.deepEqual([reviews.command, reviews.operands], ["bot trigger add", ["ada"]]);
+  assert.deepEqual(triggerBody(reviews.values),
     { name: "Reviews", prompt: "Review these.", cooldownSeconds: 0, source: "listener", filter: { match: { field: "fields.channel", op: "equals", value: "G01M4T1JFLK" }, prLinks: true, external: true } });
-  assert.deepEqual(triggerBody(parseCli(["bot", "trigger", "add", "ada", "--name", "Anything", "--listener"]).values), { name: "Anything", source: "listener", filter: {} });
+  assert.deepEqual(triggerBody(parseCli(["bot", "trigger", "add", "ada", "--name", "Anything", "--allow-bots"]).values), { name: "Anything", source: "listener", filter: { bots: true } });
   assert.deepEqual(parseCli(["bot", "trigger", "remove", "ada", "CI", "--json"]).operands, ["ada", "CI"]);
   assert.deepEqual(parseCli(["bot", "trigger", "test", "ada", "CI"]).operands, ["ada", "CI"]);
   for (const [args, message] of [
-    [["bot", "trigger", "add", "ada", "--github", "a/b", "--on", "pr_opened"], /needs --name/u],
-    [["bot", "trigger", "add", "ada", "--name", "x"], /exactly one of --github <owner\/name,…>, --session, --webhook, --slack or --listener/u],
-    [["bot", "trigger", "add", "ada", "--name", "x", "--listener", "--on", "mention"], /--on doesn't apply to --listener/u],
-    [["bot", "trigger", "add", "ada", "--name", "x", "--listener", "--from", "maria"], /--from only applies to --slack/u],
-    [["bot", "trigger", "add", "ada", "--name", "x", "--session", "--on", "finished", "--allow-bots"], /--allow-bots only applies to --slack or --listener/u],
-    [["bot", "trigger", "add", "ada", "--name", "x", "--session", "--webhook"], /exactly one/u],
-    [["bot", "trigger", "add", "ada", "--name", "x", "--github", "a/b"], /--on takes GitHub events/u],
-    [["bot", "trigger", "add", "ada", "--name", "x", "--github", "a/b", "--on", "pr_teleported"], /--on takes GitHub events/u],
-    [["bot", "trigger", "add", "ada", "--name", "x", "--session", "--on", "pr_opened"], /--on takes session events/u],
-    [["bot", "trigger", "add", "ada", "--name", "x", "--session", "--on", "finished", "--label", "ci"], /--label only applies to --github/u],
-    [["bot", "trigger", "add", "ada", "--name", "x", "--webhook", "--on", "finished"], /--on doesn't apply to --webhook/u],
-    [["bot", "trigger", "add", "ada", "--name", "x", "--session", "--on", "finished", "--match", "a=b"], /--match only applies to --webhook/u],
-    [["bot", "trigger", "add", "ada", "--name", "x", "--webhook", "--match", "nothing"], /field=value/u],
-    [["bot", "trigger", "add", "ada", "--name", "x", "--github", "a/b", "--on", "pr_opened", "--draft", "--ready"], /either --draft/u],
-    [["bot", "trigger", "add", "ada", "--name", "x", "--github", "a/b", "--on", "pr_opened", "--cooldown", "soon"], /--cooldown takes 0 or a duration/u],
-    [["bot", "trigger", "add", "ada", "--name", "x", "--github", "a/b", "--on", "pr_opened", "--pr", "twelve"], /--pr takes pull request numbers/u],
+    [["bot", "trigger", "add", "ada", "--pr-links"], /needs --name/u],
+    [["bot", "trigger", "add", "ada", "--name", "x", "--match", "nothing"], /field=value/u],
+    [["bot", "trigger", "add", "ada", "--name", "x", "--cooldown", "soon"], /--cooldown takes 0 or a duration/u],
+    [["bot", "trigger", "add", "ada", "--name", "x", "--github", "a/b"], /Unknown option '--github'/u],
+    [["bot", "trigger", "add", "ada", "--name", "x", "--slack"], /Unknown option '--slack'/u],
+    [["bot", "trigger", "add", "ada", "--name", "x", "--session", "kids"], /--session is not valid for bot trigger add/u],
     [["bot", "trigger", "remove", "ada"], /needs <bot> <trigger>/u],
-    [["bot", "trigger", "test", "ada", "CI", "--github", "a/b"], /--github is not valid for bot trigger test/u],
+    [["bot", "trigger", "test", "ada", "CI", "--match", "a=b"], /--match is not valid for bot trigger test/u],
     [["bot", "trigger", "pause", "ada"], /Unknown command/u],
+    [["slack", "status"], /Unknown command/u],
   ] as const) {
     assert.throws(() => parseCli([...args]), message, args.join(" "));
   }
@@ -56,7 +40,7 @@ test("cooldowns and matches read as the help says", () => {
   assert.deepEqual(parseMatch("action~open"), { field: "action", op: "contains", value: "open" });
   assert.deepEqual(parseMatch("=ping"), { field: "", op: "equals", value: "ping" });
   assert.deepEqual(parseMatch("url=https://x.test/?a=b"), { field: "url", op: "equals", value: "https://x.test/?a=b" }, "the first = splits");
-  assert.doesNotThrow(() => checkTriggerAdd({ name: "x", webhook: true }));
+  assert.doesNotThrow(() => checkTriggerAdd({ name: "x", match: "fields.channel=C0123" }));
 });
 
 test("the list says what each trigger watches, how it stands, and the hour's deliveries", () => {
@@ -64,24 +48,25 @@ test("the list says what each trigger watches, how it stands, and the hour's del
   assert.match(formatTriggers({ handle: "ada" }, empty), /@ada has no triggers\. Add one with hui bot trigger add ada/u);
   const list: BotTriggersList = {
     triggers: [{
-      id: "3f2a1b2c-0000", botId: "id-ada", name: "CI", source: "github", filter: { repos: ["acme/widgets"], events: ["checks_failed"] }, enabled: true, cooldownSeconds: 300,
-      createdBy: "operator", createdAt: "", updatedAt: "", lastFiredAt: "2026-10-07T10:00:00.000Z", pending: { events: 2, until: "2026-10-07T10:05:00.000Z" }, watch: { error: "gh is not signed in to GitHub" },
+      id: "3f2a1b2c-0000", botId: "id-ada", name: "Reviews", source: "listener", filter: { match: { field: "fields.channel", op: "equals", value: "C0123" }, prLinks: true }, enabled: true, cooldownSeconds: 300,
+      createdBy: "operator", createdAt: "", updatedAt: "", lastFiredAt: "2026-10-07T10:00:00.000Z", pending: { events: 2, until: "2026-10-07T10:05:00.000Z" }, watch: { error: "No report from the listener for 7 min." },
     }],
     runs: [],
     deliveries: { lastHour: 1, perHour: 12 },
   };
   assert.equal(formatTriggers({ handle: "ada" }, list), [
-    "CI (3f2a1b2c) · GitHub · acme/widgets · Checks failed · cooldown 5 min · on · last fired 2026-10-07T10:00:00.000Z · 2 waiting until 2026-10-07T10:05:00.000Z · GitHub: gh is not signed in to GitHub",
+    "Reviews (3f2a1b2c) · Listener · fields.channel equals \"C0123\" · PR links only · cooldown 5 min · on · last fired 2026-10-07T10:00:00.000Z · 2 waiting until 2026-10-07T10:05:00.000Z · Listener: No report from the listener for 7 min.",
     "Deliveries in the last hour: 1 of 12.",
   ].join("\n"));
 });
 
-test("HELP lists the trigger commands and what each source watches", () => {
+test("HELP lists the trigger commands and what a listener sends", () => {
   for (const line of [
     "hui bot trigger list <bot> [--json]",
-    "hui bot trigger add <bot> --name <name> (--github <owner/name,…> --on <events> [--author <a,b>] [--label <a,b>]",
+    "hui bot trigger add <bot> --name <name> [--match <field=value|field~value>] [--pr-links] [--allow-bots]",
     "hui bot trigger remove <bot> <trigger> [--json]",
     "hui bot trigger test <bot> <trigger> [--json]",
   ]) assert.ok(HELP.includes(line), line);
-  assert.match(HELP, /--session watches the\nsessions the bot itself starts; --webhook makes a URL, shown once/u);
+  assert.match(HELP, /Triggers wake a bot when a program you run \(a listener\) reports something/u);
+  assert.doesNotMatch(HELP, /hui slack|--github|--webhook/u);
 });

@@ -25,7 +25,6 @@ import "./settings-vscode.ts";
 import "./settings-jira.ts";
 import "./settings-calls.ts";
 import "./settings-github.ts";
-import "./settings-slack.ts";
 import "./settings-providers.ts";
 import "./settings-workers.ts";
 import { renderAutomationPage, type AutomationProps } from "./settings-automation.ts";
@@ -648,13 +647,12 @@ function renderSkillsPage(props: SettingsProps) {
   `;
 }
 
-/** One section per external service: Jira, GitHub, then Slack. */
+/** One section per external service: Jira, then GitHub. */
 function renderIntegrationsPage() {
   return html`
     <p class="settings-page__intro">Connect HUI to external services. Credentials stay on this machine and are never sent to the browser.</p>
     <hui-jira-settings></hui-jira-settings>
     <hui-github-settings></hui-github-settings>
-    <hui-slack-settings></hui-slack-settings>
   `;
 }
 
