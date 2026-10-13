@@ -143,7 +143,8 @@ export class Director {
       await this.send("Input.insertText", { text: character });
       await sleep(perCharacter + (character === " " ? 24 : Math.random() * 20));
     }
-    if (!(await this.stage<boolean>(`Boolean(window.found?.value?.endsWith(${JSON.stringify(text)}))`))) throw new Error(`Typing "${text}" did not reach the field.`);
+    const typed = await this.stage<boolean>(`Boolean(document.getElementById("app").contentDocument.activeElement?.value?.endsWith(${JSON.stringify(text)}))`);
+    if (!typed) throw new Error(`Typing "${text}" did not reach the field.`);
   }
 
   async press(name: string) {
@@ -299,6 +300,8 @@ function encode(frames: { file: string; t: number }[], end: number, list: string
 async function record(scene: Scene, out: string) {
   const work = await mkdtemp(join(tmpdir(), `hui-demo-${scene.name}-`));
   const frames: { file: string; t: number }[] = [];
+  const writes: Promise<void>[] = [];
+  let recording = true;
   let end = 0;
   let hui: Awaited<ReturnType<typeof launchHui>> | undefined;
   let chrome: Awaited<ReturnType<typeof startChrome>> | undefined;
@@ -334,13 +337,12 @@ async function record(scene: Scene, out: string) {
       await scene.setup?.(context);
     }
 
-    const writes: Promise<void>[] = [];
     const framesDir = join(work, "frames");
     await mkdir(framesDir, { recursive: true });
     cdp.on((event) => {
       if (event.method !== "Page.screencastFrame" || event.sessionId !== sessionId) return;
       void cdp.send("Page.screencastFrameAck", { sessionId: event.params["sessionId"] }, sessionId).catch(() => undefined);
-      if (director.cutting) return;
+      if (director.cutting || !recording) return;
       const file = join(framesDir, `${String(frames.length).padStart(6, "0")}.jpg`);
       frames.push({ file, t: director.clock() });
       writes.push(writeFile(file, Buffer.from(String(event.params["data"]), "base64")));
@@ -372,6 +374,8 @@ async function record(scene: Scene, out: string) {
     await Promise.all(writes);
     if (stills) process.stdout.write(`${stills} stills of ${scene.name}\n`);
   } catch (error) {
+    recording = false;
+    await Promise.allSettled(writes);
     if (!keep) await rm(work, { recursive: true, force: true });
     throw error;
   } finally {
