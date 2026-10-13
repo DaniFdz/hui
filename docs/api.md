@@ -1216,7 +1216,7 @@ whose values ride in `sync-commit`'s `env`. The host keeps them in memory
 environment variables, its own reads and those of the PI workers it starts,
 while leaving them out of every environment a process it starts inherits. Values PI resolves itself (`$NAME`, `${NAME}`, `!command`) are
 mirrored unchanged; an invalid models.json is not mirrored. The worker needs
-Node.js 22.19 or newer.
+Node.js 24 or newer.
 
 ### `GET /__hui/workers`
 
@@ -3600,7 +3600,7 @@ downloads
 `https://github.com/gitpod-io/openvscode-server/releases/download/openvscode-server-v<v>/openvscode-server-v<v>-linux-<arch>.tar.gz`
 (`HUI_OPENVSCODE_SERVER_MIRROR` replaces the base for a mirror serving the same
 files) with Node's HTTP client and an agent built from the gateway's
-`HTTP_PROXY`/`HTTPS_PROXY`/`NO_PROXY` (Node 22.21+ and 24.5+), following up to five
+`HTTP_PROXY`/`HTTPS_PROXY`/`NO_PROXY` (Node 24.5+), following up to five
 redirects, into `<install dir>/.download-<id>.tar.gz`. A body larger or shorter
 than the pinned size, or with another SHA-256, is refused. `tar -xzf
 --no-same-owner` unpacks it into `.staging-<id>`; the executable must exist and
