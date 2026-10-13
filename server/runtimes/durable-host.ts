@@ -18,6 +18,8 @@ import { CompactionTask, createRegistry, defineExtension, GenerationTask, Harnes
 import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import { CodingTools } from "@earendil-works/pi-durable/tools";
+import { createCodemodeExtension } from "@earendil-works/pi-durable/codemode";
+import { CodemodeSandbox } from "@earendil-works/pi-codemode";
 import { SettingsManager, type ModelRuntime, type ResourceLoader } from "@earendil-works/pi-coding-agent";
 import { recordDiagnosticEvent } from "../observability.ts";
 import { CONFIG_DIR } from "../paths.ts";
@@ -34,6 +36,9 @@ import { botRoutinesTool } from "./durable-bot-routines.ts";
 import { botSkillsDir } from "../bot-skills.ts";
 import { invokeAgentTool } from "../agent-tools-bridge.ts";
 
+/** The tools of `extension` the model may call: not the ones only other tools call, such as codemode's `models.*`. */
+export const modelCallable = (extension: Extension): ToolRegistration[] =>
+  (extension.tools ?? []).filter((tool) => tool.callers?.includes("model") ?? true);
 /** Durable APIs take a cancellation context; HUI's own calls are not scoped. */
 export const durableContext = BACKGROUND_CONTEXT;
 /** Longest interrupted runs wait for their sessions to load their PI extensions again before they resume anyway. */
@@ -214,6 +219,9 @@ export class DurableHost implements ExtensionHost {
   #readyChats = new WeakSet<BotChat>();
   #models = new CurrentModels((options) => this.#requestEnv(options), (options) => this.#requestCallbacks(options));
   #registry: Registry = createRegistry();
+  /** PI's `codemode` tool and its prompt section, selected by default; Settings → Tools → Codemode off removes it.
+   * Each script runs in a worker thread of its own, which closing the store stops by aborting the call. */
+  readonly codemode = createCodemodeExtension({ sandbox: new CodemodeSandbox({ memoryLimitBytes: 256 * 1024 * 1024 }) });
   /** Each live session's PI extensions, by HUI session. */
   #extensions = new Map<string, DurableExtensions>();
   /** Each attributed request's identity, by its task invocation's abort signal. */
@@ -361,11 +369,19 @@ export class DurableHost implements ExtensionHost {
     }
   }
   untrackChat(chat: BotChat & { conversation(): Conversation }): void { this.#chats.delete(chat); }
+  /** Every open session offers its tools again, from its next request: a Settings change decides them (Codemode). */
+  async applyTools(): Promise<void> {
+    await Promise.all([...this.#chats].map((chat) => chat.applyTools().catch((error: unknown) => recordDiagnosticEvent({
+      area: "runtime", level: "warning", action: "durable_apply_tools_failed", summary: "A Durable session kept its previous tools",
+      detail: error instanceof Error ? error.message : String(error),
+    }))));
+  }
 
   /** The tools every bot's chat has before extensions that the operator can turn off: what a chat that isn't running
    * here is checked against. Never the ones that act on another machine (`gatewayOnlyTools`). */
-  builtinBotOffer(): OfferedTool[] {
-    return builtinOffer(this.codingTools, this.huiTools.filter((tool) => !this.gatewayOnlyTools.includes(tool.name)), this.botTools);
+  async builtinBotOffer(): Promise<OfferedTool[]> {
+    const codemode = (await this.settings()).codemode.enabled ? modelCallable(this.codemode) : [];
+    return builtinOffer(this.codingTools, this.huiTools.filter((tool) => !this.gatewayOnlyTools.includes(tool.name)), this.botTools, codemode);
   }
 
   /** The live session following the conversation now; a rewind moves a session to its fork. */
@@ -465,7 +481,8 @@ export class DurableHost implements ExtensionHost {
       // OptChat's hooks come before every session's PI extensions: its compaction decline is the first decision, and its
       // request is what their context handlers see. OptChat's tools and bots' tools are installed but not in the default
       // selection: only an OptChat conversation, or a bot's chat, adds them.
-      const base = [CodingTools, this.#tools, this.prompt.extension, this.#identity, this.optchat.extension, this.#bots.section];
+      // Codemode is in the default selection, last, so a conversation stores nothing while Settings keep it on.
+      const base = [CodingTools, this.#tools, this.prompt.extension, this.#identity, this.optchat.extension, this.#bots.section, this.codemode];
       for (const extension of [...base, this.optchat.toolsExtension, this.#bots.tools]) this.#registry.install(extension);
       const harness = await Harness.open(await openNodeSqliteStorage(join(this.dir, "harness.sqlite")), {
         models: this.#models.view,
@@ -480,6 +497,14 @@ export class DurableHost implements ExtensionHost {
       }, durableContext);
       this.optchat.attach(harness, { follow: this.#resume });
       this.#harness = harness;
+      // Since Durable 1.2.0 a storage error closes the whole harness; every later call rejects until the gateway restarts.
+      void harness.closed.then((end) => {
+        if (end.reason === "failed") recordDiagnosticEvent({
+          area: "runtime", level: "error", action: "durable_store_failed",
+          summary: "The Durable store failed and closed; restart the gateway to reopen it",
+          detail: end.error instanceof Error ? end.error.message : String(end.error),
+        });
+      });
       // Unfinished generations and tool calls continue even before any browser
       // reopens their session. Without it, nothing is scheduled: the store is
       // only read and written in commits.

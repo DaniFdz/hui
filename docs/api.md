@@ -185,6 +185,31 @@ one that starts or steers a turn is input whose text part carries its
 `customType`. The transcript leaves both out, as for PI sessions. Load errors and handler failures appear in the session's tool
 inspection `diagnostics`; handler failures are also `notice`s.
 
+Every Durable conversation also offers PI's `codemode` tool
+(`@earendil-works/pi-durable/codemode`, one `CodemodeSandbox` per gateway, a
+worker thread and a 256 MB QuickJS heap per script). The model writes a script
+that calls the conversation's other tools as nested calls; only the script's
+output reaches the model, and a gateway restart replays a running script from
+its journal. Codemode is in the harness's default selection, so a conversation
+stores nothing while it is on. Settings → Tools → Codemode off
+(`settings.codemode.enabled: false`, on by default) makes every open session
+configure `extensions: { remove: [codemode] }` from its next request, and new
+and reopened sessions start that way; a session on a remote worker follows once
+it reopens there. A bot's chat also goes without it when its Tools tab turns
+`codemode` off. Scripts reach only the tools the conversation has: a tool
+removed from it (browser off, a bot's disabled tools) is not callable from
+scripts either. A script has no deadline unless it sets `timeout_ms` in its
+`// @options:` line; Stop aborts it. The PI worker's SDK sessions never load
+codemode; its CLI fallback follows PI's own `defaultTools`.
+
+A script's calls are tool events with `parentToolCallId`. The session never
+turns them into tool rows of their own: each start and end becomes a
+`tool_update` of the codemode call with `details: { calls }`, the list the
+result's `details.calls` holds once the script ends (`name`, `args` cut to 200
+characters, `status` `running`, `ok`, `error` or `cancelled`, `durationMs`,
+`error` cut to 500 characters; `models.*` calls by that name). PI extensions get
+those events with `parentToolCallId`, as in PI.
+
 `hui doctor --fix` moves a PI session into a new conversation
 (`server/runtimes/pi-import.ts`) with the gateway stopped. One commit writes the
 active branch's entries, the spend HUI totalled for the PI file into

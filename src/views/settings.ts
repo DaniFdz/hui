@@ -119,6 +119,7 @@ export type SettingsProps = AutomationProps & {
   onChangeBrowser: (next: Settings["browser"]) => Promise<unknown> | void;
   /** Resolves once the settings write lands, so the VS Code section can re-read status. */
   onChangeVscode: (next: Settings["vscode"]) => Promise<unknown> | void;
+  onChangeCodemode: (next: Settings["codemode"]) => void;
   onChangeModels: (next: Settings["models"]) => void;
   onChangeCalls: (next: Settings["calls"]) => void;
   onChangePower: (next: Settings["power"]) => void;
@@ -660,6 +661,19 @@ function renderToolsPage(props: SettingsProps) {
   return html`
     <p class="settings-page__intro">HUI owns the tools, the managed browser, the VS Code server and the default prompt. Inspect the shipped catalog without opening a session, or inspect an already-running session.</p>
     <hui-browser-settings .settings=${props.settings.browser} .onChange=${props.onChangeBrowser}></hui-browser-settings>
+    <section class="settings-section" data-settings-section="codemode">
+      <div class="settings-section__header"><div class="settings-section__copy">
+        <h2 class="settings-section__heading">Codemode</h2>
+        <p class="settings-section__desc">Agents can write one JavaScript script that calls their other tools, several at once, and get back only what the script prints. The chat shows each script as one card with the calls it made.</p>
+      </div></div>
+      <div class="settings-group"><div class="settings-row">
+        <div class="settings-row__text">
+          <span class="settings-row__title">Codemode tool</span>
+          <span class="settings-row__desc">Offer codemode to every session, from its next request. A script that is already running finishes. Sessions still on the older PI worker don't get it.</span>
+        </div>
+        <div class="settings-row__control">${renderSettingsToggle("Codemode tool", props.settings.codemode.enabled, (enabled) => props.onChangeCodemode({ enabled }))}</div>
+      </div></div>
+    </section>
     <hui-vscode-settings .settings=${props.settings.vscode} .onChange=${props.onChangeVscode}></hui-vscode-settings>
     <hui-tools-settings .sessions=${props.sessions.filter((session) => !session.bot)}></hui-tools-settings>`;
 }

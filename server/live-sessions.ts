@@ -1433,6 +1433,8 @@ export class LiveSessions {
           live.transcript[index] = {
             ...prior,
             ...(event.output !== undefined ? { output: event.output } : {}),
+            // A codemode script's calls so far, or a tool's result details: what a newly attached view shows.
+            ...(event.details !== undefined ? { details: event.details } : {}),
             ...(event.type === "tool_end" && event.failed !== undefined ? { failed: event.failed } : {}),
           };
         }

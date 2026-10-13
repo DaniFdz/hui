@@ -922,3 +922,67 @@ wa-dropdown.session-menu.task-suggestion__start-menu { --menu-item-height: 26px;
     padding: 10px 12px 12px;
   }
 }
+
+/* PI's codemode tool (views/chat/codemode-tool-card.ts): the script, its calls and its output in one card. */
+.chat-tool-codemode__time {
+  flex: none;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.chat-tool-codemode__script .tok-keyword, .chat-tool-codemode__script .tok-operatorKeyword, .chat-tool-codemode__script .tok-controlKeyword, .chat-tool-codemode__script .tok-definitionKeyword, .chat-tool-codemode__script .tok-modifier { color: var(--hljs-keyword); }
+.chat-tool-codemode__script .tok-string, .chat-tool-codemode__script .tok-string2, .chat-tool-codemode__script .tok-regexp { color: var(--hljs-string); }
+.chat-tool-codemode__script .tok-number, .chat-tool-codemode__script .tok-bool, .chat-tool-codemode__script .tok-null, .chat-tool-codemode__script .tok-atom { color: var(--hljs-number); }
+.chat-tool-codemode__script .tok-comment, .chat-tool-codemode__script .tok-lineComment, .chat-tool-codemode__script .tok-blockComment { color: var(--muted); font-style: italic; }
+.chat-tool-codemode__script .tok-variableName.tok-definition, .chat-tool-codemode__script .tok-function { color: var(--hljs-title); }
+.chat-tool-codemode__script .tok-propertyName { color: var(--hljs-attribute); }
+
+.chat-tool-codemode__calls {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: min(360px, 50vh);
+  overflow: auto;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.chat-tool-codemode__call {
+  display: grid;
+  grid-template-columns: 1.25em auto minmax(0, 1fr) auto;
+  gap: 2px 8px;
+  align-items: baseline;
+  padding: 3px 0;
+}
+
+.chat-tool-codemode__call + .chat-tool-codemode__call { border-top: 1px solid var(--border); }
+.chat-tool-codemode__status { text-align: center; color: var(--muted); }
+.chat-tool-codemode__call[data-status="ok"] .chat-tool-codemode__status { color: var(--ok); }
+.chat-tool-codemode__call[data-status="error"] .chat-tool-codemode__status { color: var(--danger); }
+.chat-tool-codemode__call[data-status="running"] .chat-tool-codemode__status { color: var(--warn); }
+.chat-tool-codemode__name { color: var(--text); font-weight: 600; }
+
+.chat-tool-codemode__args {
+  min-width: 0;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+  background: none;
+  border: 0;
+  padding: 0;
+  font-size: inherit;
+}
+
+.chat-tool-codemode__duration { color: var(--muted); font-variant-numeric: tabular-nums; }
+
+.chat-tool-codemode__error,
+.chat-tool-codemode__script-error {
+  color: var(--danger);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.chat-tool-codemode__error { grid-column: 2 / -1; }

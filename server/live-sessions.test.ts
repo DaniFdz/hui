@@ -1939,13 +1939,18 @@ test("a reconnect snapshot replays the projected in-flight turn and settle repla
   started[0]?.emit({ type: "tool_start", id: "call-1", name: "read", args: { path: "a.txt" } });
   started[0]?.emit({ type: "tool_update", id: "call-1", name: "read", output: "par" });
   started[0]?.emit({ type: "tool_end", id: "call-1", name: "read", output: "partial", failed: false });
+  // A codemode script still running: its calls so far are in its details.
+  const calls = [{ name: "read", args: "{}", status: "running" }];
+  started[0]?.emit({ type: "tool_start", id: "call-2", name: "codemode", args: { code: "x" } });
+  started[0]?.emit({ type: "tool_update", id: "call-2", name: "codemode", details: { calls } });
   started[0]?.emit({ type: "text", delta: "Hello " });
 
   const watched = manager.watch("replay", () => {});
-  assert.deepEqual(watched.snapshot.transcript.slice(-4), [
+  assert.deepEqual(watched.snapshot.transcript.slice(-5), [
     { kind: "message", role: "user", text: "stream this" },
     { kind: "thinking", text: "checking" },
     { kind: "tool", id: "call-1", name: "read", args: { path: "a.txt" }, output: "partial", failed: false },
+    { kind: "tool", id: "call-2", name: "codemode", args: { code: "x" }, details: { calls } },
     { kind: "message", role: "assistant", text: "Hello " },
   ]);
   assert.equal(watched.snapshot.status, "running");

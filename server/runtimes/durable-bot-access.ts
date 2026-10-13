@@ -96,6 +96,7 @@ const CODING_TOOLS: Readonly<Record<string, { group: BotToolGroup; label: string
   write: { group: "files", label: "Write files", description: "Create or replace files" },
   edit: { group: "files", label: "Edit files", description: "Apply exact text replacements to files" },
   bash: { group: "shell", label: "Shell", description: "Run shell commands" },
+  codemode: { group: "shell", label: "Codemode", description: "Run JavaScript that calls its other tools" },
 };
 const BOT_TOOLS: Readonly<Record<string, { label: string; description: string }>> = {
   [MESSAGE_BOT_TOOL]: { label: "Message bots", description: "Message another bot of this HUI, which answers in its own chat" },
@@ -143,12 +144,15 @@ export function describeTool(tool: { readonly name: string; readonly description
   }
 }
 
-/** The tools every bot's chat has, before extensions, that the operator can turn off: the coding tools, HUI's and
- * `message_bot`. What a chat that isn't running here can be checked against. */
-export function builtinOffer(coding: readonly ToolRegistration[], hui: readonly ToolRegistration[], bots: readonly ToolRegistration[]): OfferedTool[] {
+/** The tools every bot's chat has, before extensions, that the operator can turn off: the coding tools, HUI's,
+ * codemode while Settings offer it and `message_bot`. What a chat that isn't running here can be checked against. */
+export function builtinOffer(
+  coding: readonly ToolRegistration[], hui: readonly ToolRegistration[], bots: readonly ToolRegistration[], codemode: readonly ToolRegistration[] = [],
+): OfferedTool[] {
   return [
     ...coding.map((tool) => describeTool(tool, { kind: "coding" })),
     ...hui.map((tool) => describeTool(tool, { kind: "hui" })),
+    ...codemode.map((tool) => describeTool(tool, { kind: "coding" })),
     ...bots.filter((tool) => !BOT_OWN_TOOLS.includes(tool.name)).map((tool) => describeTool(tool, { kind: "bot" })),
   ];
 }

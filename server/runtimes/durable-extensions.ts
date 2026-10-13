@@ -130,6 +130,9 @@ function jsonSafe(value: unknown): JsonValue | undefined {
 }
 
 const errorText = (error: unknown) => error instanceof Error ? error.message : String(error);
+/** PI's `parentToolCallId`, on events and hooks of a call another tool (a codemode script) made. */
+const nestedIn = ({ parentToolCallId }: { parentToolCallId?: string }) => parentToolCallId ? { parentToolCallId } : {};
+const parentOf = (call: { parent?: { callId: string } }) => nestedIn({ parentToolCallId: call.parent?.callId });
 const textOf = (content: unknown): string => typeof content === "string" ? content : Array.isArray(content)
   ? content.flatMap((part) => (part as { type?: unknown }).type === "text" ? [String((part as { text?: unknown }).text ?? "")] : []).join("")
   : "";
@@ -546,7 +549,7 @@ export class DurableExtensions {
           if (!this.#runner.hasHandlers("tool_call")) return undefined;
           const input = structuredClone(call.arguments);
           // Handlers edit `input` in place; a throw blocks the call, as in PI.
-          const result = await this.#runner.emitToolCall({ type: "tool_call", toolName: call.name, toolCallId: call.id, input } as never);
+          const result = await this.#runner.emitToolCall({ type: "tool_call", toolName: call.name, toolCallId: call.id, input, ...parentOf(call) } as never);
           if (result?.block) return { block: result.reason || "Blocked by an extension" };
           return isDeepStrictEqual(input, call.arguments) ? undefined : { arguments: input as never };
         },
@@ -554,7 +557,7 @@ export class DurableExtensions {
           if (!this.#runner.hasHandlers("tool_result")) return undefined;
           const replaced = await this.#runner.emitToolResult({
             type: "tool_result", toolName: call.name, toolCallId: call.id, input: call.arguments,
-            content: result.output ?? [], details: result.details, isError: result.isError === true, usage: result.usage,
+            content: result.output ?? [], details: result.details, isError: result.isError === true, usage: result.usage, ...parentOf(call),
           } as never);
           if (!replaced) return undefined;
           const details = jsonSafe(replaced.details);
@@ -658,7 +661,7 @@ export class DurableExtensions {
     return id;
   }
 
-  /** Projected at once, as PI appends it; stored as a write, so mid-run Durable places it at the next boundary. */
+  /** Projected at once, as PI appends it; stored as a data-only write, which Durable appends at once, mid-run too. */
   #appendEntry(customType: string, data: unknown): void {
     const json = jsonSafe(data);
     this.#project().appendCustomEntry(customType, json);
@@ -889,12 +892,13 @@ export class DurableExtensions {
           else this.#messageEvents(event.entry);
           break;
         case "tool_execution_start":
-          this.#emit({ type: "tool_execution_start", toolCallId: event.toolCallId, toolName: event.toolName, args: event.args });
+          this.#emit({ type: "tool_execution_start", toolCallId: event.toolCallId, toolName: event.toolName, args: event.args, ...nestedIn(event) });
           break;
         case "tool_execution_end": {
-          // Durable reports the result's message right after, as `message_end`.
-          const result = event.entry?.model?.[0] as { content?: unknown; details?: unknown; isError?: boolean } | undefined;
-          this.#emit({ type: "tool_execution_end", toolCallId: event.toolCallId, toolName: event.toolName, result: { content: result?.content ?? [], details: result?.details }, isError: result?.isError === true });
+          // Durable reports a model-issued call's result message right after, as `message_end`; a nested call (a
+          // codemode script's) ends with its `result`, whose output stayed with the script.
+          const result = (event.entry?.model?.[0] ?? event.result) as { content?: unknown; details?: unknown; isError?: boolean } | undefined;
+          this.#emit({ type: "tool_execution_end", toolCallId: event.toolCallId, toolName: event.toolName, result: { content: result?.content ?? [], details: result?.details }, isError: result?.isError === true, ...nestedIn(event) });
           break;
         }
         case "run_settled":

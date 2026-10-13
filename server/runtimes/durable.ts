@@ -14,13 +14,14 @@ import {
   type AgentEvent, type AgentState, type CompactionResult, type Conversation, type ConversationId, type Cursor,
   type EntryId, type EntryRecord, type Harness, type TaskId, type ToolRegistration,
 } from "@earendil-works/pi-durable";
+import { CODEMODE_TOOL_NAME, type CodemodeNestedCall } from "@earendil-works/pi-durable/codemode";
 // The estimators Durable's own compaction uses, so the meter matches its thresholds.
 import { calculateContextTokens, estimateMessageTokens } from "@earendil-works/pi-ai/utils/estimate";
 import { SettingsManager, type Skill } from "@earendil-works/pi-coding-agent";
 import { botTurnOrigin, type BotTurnOrigin } from "../../shared/bots.ts";
 import { resolveCommandReference } from "../../src/lib/command-references.ts";
 import type { RuntimeInspection } from "../../src/lib/tools-types.ts";
-import { durableContext as context, durableHost, type DurableHost } from "./durable-host.ts";
+import { durableContext as context, durableHost, modelCallable, type DurableHost } from "./durable-host.ts";
 import { CallEntry } from "./durable-bots.ts";
 import { botSkills, describeTool, planBotTools, skillBlock, type BotChat, type OfferedTool, type ToolOrigin } from "./durable-bot-access.ts";
 import { QuestionBox, type QuestionDraft } from "./question-box.ts";
@@ -58,6 +59,19 @@ type Compaction = { readonly reason: CompactionReason; readonly blocking: boolea
 /** How input reaches the conversation: `reject` starts a run, the others queue into one. */
 type Delivery = "reject" | "steer" | "followUp";
 type Sending = { readonly attachments?: readonly PromptAttachment[]; readonly images?: readonly ImageContent[]; readonly source: "rpc" | "extension"; readonly expand: boolean };
+/** One call of a running codemode script, as `@earendil-works/pi-durable/codemode` lists it in its result's
+ * `details.calls` once the script ends: `models.*` calls by that name, arguments and errors cut for display. */
+type CodemodeCall = Omit<CodemodeNestedCall, "id">;
+const cut = (text: string, max: number) => text.length > max ? `${text.slice(0, max - 3)}...` : text;
+const startedCall = (name: string, args: unknown): CodemodeCall => ({
+  name: name.replace(/^pi\.codemode\./u, ""), args: cut(args === undefined ? "" : JSON.stringify(args) ?? "", 200), status: "running",
+});
+/** Without how it ended, the call was cut off: it left with its script or its run. */
+const endedCall = (call: CodemodeCall, end?: { isError: boolean; durationMs?: number; error?: string }): CodemodeCall => end ? {
+  ...call, status: end.isError ? "error" : "ok",
+  ...(end.durationMs === undefined ? {} : { durationMs: end.durationMs }),
+  ...(end.isError && end.error ? { error: cut(end.error, 500) } : {}),
+} : { ...call, status: "cancelled" };
 
 /**
  * Durable's kinds of compaction: one a generation owns is `blocking`, and its run waits for the summary; a manual one
@@ -225,6 +239,10 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
   #agent: AgentState = {};
   #queue: RuntimeQueue = { steering: [], followUp: [] };
   #toolOutput = new Map<string, string>();
+  /** The calls each running codemode script made so far, by its call ID, as its result's `details.calls` will list them. */
+  #nestedCalls = new Map<string, Map<string, CodemodeCall>>();
+  /** Scripts whose calls changed in the event batch being handled: their card gets the list once, after it. */
+  #changedCalls = new Set<string>();
   /** Text each block of the in-flight answer has streamed, per content index: Durable sends a first partial, a
    * short answer or a replaced block whole, and the live view gets what it adds. */
   #streamedText = new Map<number, string>();
@@ -296,10 +314,12 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
    * conversation has OptChat, `message_bot` and a bot's own tools when it is a bot's chat, and drops the browser when
    * Settings turns it off. A bot's chat goes without the tools the operator turned off, without its own tools while
    * it has no use for them (`durable-bot-access.ts`), and without the HUI tools that act on another machine than this
-   * host's (`gatewayOnlyTools`, on a worker), which it is never offered. Applies per conversation, at start and on
+   * host's (`gatewayOnlyTools`, on a worker), which it is never offered. Codemode, in the default selection, goes with
+   * Settings → Tools → Codemode off, or a bot's chat that has it turned off. Applies per conversation, at start and on
    * every change. */
   async applyTools(): Promise<void> {
-    const browserEnabled = (await this.#host.settings()).browser.enabled !== false;
+    const { browser, codemode } = await this.#host.settings();
+    const browserEnabled = browser.enabled !== false;
     const bot = await this.#host.botStateFor(this.#conversation.id);
     const inactive = new Map([
       ...(browserEnabled ? [] : this.#host.toolsNamed(["browser"])),
@@ -311,6 +331,7 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
     const optchat = await this.#host.optchat.toolsFor(this.#conversation.id);
     const botTools = bot ? await this.#host.botToolsFor(this.#conversation.id) : undefined;
     const added = [...(this.#extensions ? [this.#extensions.extension] : []), ...(optchat ? [optchat] : []), ...(botTools ? [botTools] : [])];
+    let withCodemode = codemode.enabled;
     const remove = [...inactive.values()];
     this.#botOffer = [];
     if (bot) {
@@ -318,6 +339,7 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
       const offered = this.#composed([
         [this.#host.codingTools, () => ({ kind: "coding" })],
         [this.#host.huiTools, () => ({ kind: "hui" })],
+        [withCodemode ? modelCallable(this.#host.codemode) : [], () => ({ kind: "coding" })],
         [this.#extensions?.extension.tools ?? [], (tool) => ({ kind: "extension", ...this.#extensions!.describe(tool.name) })],
         [optchat?.tools ?? [], () => ({ kind: "hui" })],
         [botTools?.tools ?? [], () => ({ kind: "bot" })],
@@ -328,10 +350,13 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
       this.#botOffer = plan.listable.map(({ tool, origin }) => describeTool(tool, origin));
       // Removed by name, so a tool that appears later is on until the operator turns it off.
       remove.push(...plan.removed.map(({ tool }) => tool));
+      // Without its tool, the chat goes without codemode's prompt section too.
+      if (plan.removed.some(({ name }) => name === CODEMODE_TOOL_NAME)) withCodemode = false;
     }
+    const extensions = { ...(added.length ? { add: added } : {}), ...(withCodemode ? {} : { remove: [this.#host.codemode] }) };
     await this.#conversation.configure({
       // A view with no HUI session (a probe) leaves the selection of the session that owns the conversation alone.
-      ...(this.#huiSessionId === undefined ? {} : { extensions: added.length ? { add: added } : null }),
+      ...(this.#huiSessionId === undefined ? {} : { extensions: Object.keys(extensions).length ? extensions : null }),
       tools: remove.length ? { remove } : null,
     }, context);
     this.#host.chatReady(this);
@@ -486,6 +511,7 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
     stream.start(async (events) => {
       this.#follow(events);
       for (const event of events) await this.#onEvent(event);
+      this.#emitChangedCalls();
       // Extensions' failures are theirs: they must never stop this view from following the conversation.
       try {
         if (!this.#disposed) this.#extensions?.flush();
@@ -503,7 +529,31 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
   #syncSnapshot(snapshot: SnapshotEvent): void {
     this.#agent = snapshot.agent;
     this.#streaming = snapshot.run !== undefined;
-    for (const slot of snapshot.tools) this.#toolOutput.set(slot.callId, slot.output ?? "");
+    for (const slot of snapshot.tools) {
+      this.#toolOutput.set(slot.callId, slot.output ?? "");
+      if (slot.name === CODEMODE_TOOL_NAME && !this.#nestedCalls.has(slot.callId)) this.#nestedCalls.set(slot.callId, new Map());
+    }
+    for (const slot of snapshot.nestedTools) {
+      const started = startedCall(slot.name, slot.arguments);
+      this.#nestedCalls.get(slot.parentCallId)?.set(slot.callId, slot.status === "done" ? endedCall(started, slot.summary) : started);
+    }
+  }
+
+  /** A codemode script's call started or ended: its card shows the script's calls so far. Calls of other tools' nested
+   * calls, and of a script this view never saw start, have no card. */
+  #nestedCall(parent: string, id: string, call: (current?: CodemodeCall) => CodemodeCall): void {
+    const calls = this.#nestedCalls.get(parent);
+    if (!calls) return;
+    calls.set(id, call(calls.get(id)));
+    this.#changedCalls.add(parent);
+  }
+
+  #emitChangedCalls(): void {
+    for (const parent of this.#changedCalls) {
+      const calls = this.#nestedCalls.get(parent);
+      if (calls) this.#emit({ type: "tool_update", id: parent, name: CODEMODE_TOOL_NAME, details: { calls: [...calls.values()] } });
+    }
+    this.#changedCalls.clear();
   }
 
   /** The history the store holds past `#readThrough` (all of it the first time), read newest first in pages that
@@ -651,10 +701,17 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
         if (event.type === "entry_appended" && CallEntry.is(event.entry) && !this.#streaming) this.#emit({ type: "history" });
         return;
       case "tool_execution_start":
+        if (event.parentToolCallId) {
+          this.#nestedCall(event.parentToolCallId, event.toolCallId, () => startedCall(event.toolName, event.args));
+          return;
+        }
         this.#toolOutput.set(event.toolCallId, "");
+        if (event.toolName === CODEMODE_TOOL_NAME) this.#nestedCalls.set(event.toolCallId, new Map());
         this.#emit({ type: "tool_start", id: event.toolCallId, name: event.toolName, args: event.args });
         return;
       case "tool_execution_update": {
+        // A script's call shows only its row; its output went to the script.
+        if (event.parentToolCallId) return;
         let output = this.#toolOutput.get(event.toolCallId) ?? "";
         if (event.output && "set" in event.output) output = event.output.set;
         else if (event.output) output = output.slice(event.output.trimStart ?? 0) + (event.output.append ?? "");
@@ -666,6 +723,17 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
         return;
       }
       case "tool_execution_end": {
+        if (event.parentToolCallId) {
+          const { result } = event;
+          this.#nestedCall(event.parentToolCallId, event.toolCallId, (current = startedCall(event.toolName, undefined)) => endedCall(current, result && {
+            isError: result.isError, durationMs: result.durationMs,
+            error: result.diagnostics.filter((diagnostic) => diagnostic.severity === "error").map((diagnostic) => diagnostic.message).join("\n"),
+          }));
+          return;
+        }
+        // Its result lists the calls; a live list still pending would replace that list.
+        this.#nestedCalls.delete(event.toolCallId);
+        this.#changedCalls.delete(event.toolCallId);
         if (event.entry) this.#add(event.entry);
         const result = event.entry?.model?.[0] as (Message & { isError?: boolean; details?: unknown }) | undefined;
         this.#toolOutput.delete(event.toolCallId);
@@ -1217,6 +1285,8 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
     this.#host.bindCallerLike(this.#conversation.id, next.id);
     this.#conversation = next;
     this.#toolOutput.clear();
+    this.#nestedCalls.clear();
+    this.#changedCalls.clear();
     await this.attach();
     // A fork keeps its parent's agent; a conversation started over needs the session's extensions and tools again, and
     // a fork of an OptChat conversation, which starts without OptChat, gives up its tools.

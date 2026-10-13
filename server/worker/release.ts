@@ -14,7 +14,7 @@ import { gzipSync } from "node:zlib";
 
 /** Everything the host, Pi Durable and the PI SDK worker import from npm
  * (release.test.ts traces the imports). */
-const WORKER_DEPENDENCIES = ["@earendil-works/chord", "@earendil-works/pi-ai", "@earendil-works/pi-coding-agent", "@earendil-works/pi-durable", "typebox"];
+const WORKER_DEPENDENCIES = ["@earendil-works/chord", "@earendil-works/pi-ai", "@earendil-works/pi-codemode", "@earendil-works/pi-coding-agent", "@earendil-works/pi-durable", "typebox"];
 
 export type WorkerRelease = {
   id: string;

@@ -639,7 +639,8 @@ async function ensureConfigDir(): Promise<void> {
 
 async function writeSettings(raw: unknown): Promise<Settings> {
   const settings = normalizeSettings(raw);
-  const botsWereOn = botsEnabled(await readSettings());
+  const before = await readSettings();
+  const botsWereOn = botsEnabled(before);
   await ensureConfigDir();
   await writeFile(SETTINGS_FILE, `${JSON.stringify(settings, null, 2)}\n`, "utf8");
   // A changed browser mode or executable must not leave the old process running.
@@ -648,6 +649,7 @@ async function writeSettings(raw: unknown): Promise<Settings> {
   await vscode.applySettings(settings.vscode);
   macPower?.setKeepAwake(settings.power.keepAwake);
   if (botsWereOn && !botsEnabled(settings)) quietBots();
+  if (before.codemode.enabled !== settings.codemode.enabled) await durableHost().applyTools();
   return settings;
 }
 

@@ -435,6 +435,16 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   Commands retain their full input in the expanded terminal while the row uses
   the original bounded, shell-aware preview. Tool output copying uses the
   context menu; HUI does not fabricate a workspace-file or side-panel action.
+- A `codemode` call is one card: its row names the tools the script called
+  (`read ×3, bash`), with a **failed** badge for a failed script or **N failed**
+  for calls that failed in a script that completed, and the wall time once it
+  ends. Expanded, it shows the script with JavaScript colours, one row per call
+  in call order (status, tool, one-line arguments, duration, error under it)
+  and the output the model got, without PI's "Script completed / Wall time"
+  header, script errors in error colour and a **Full output** file reference
+  when PI cut the output. The calls fill in live while the script runs and
+  never appear as tool rows of their own. Settings → Tools → Codemode turns the
+  tool off for every session from its next request; it is on by default.
 - The desktop transcript has OpenClaw's left conversation-position rail: one
   marker per visible user/assistant message, a bounded text preview, current and
   visible-position feedback, and click/keyboard jumps. Collapsed activity is not

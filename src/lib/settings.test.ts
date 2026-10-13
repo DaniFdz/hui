@@ -78,6 +78,11 @@ test("a file from before Labs → Bots keeps bots on where Show the Bots tab was
   assert.equal(normalizeSettings({ labs: { bots: true }, bots: { showTab: false } }).labs.bots, true);
 });
 
+test("codemode is on unless explicitly switched off", () => {
+  assert.deepEqual([undefined, {}, { codemode: "off" }, { codemode: { enabled: "no" } }, { codemode: { enabled: false } }]
+    .map((raw) => normalizeSettings(raw).codemode.enabled), [true, true, true, true, false]);
+});
+
 test("the managed browser is on and headless unless explicitly changed", () => {
   assert.deepEqual(DEFAULT_SETTINGS.browser, { enabled: true, headless: true, executablePath: "" });
   assert.deepEqual(normalizeSettings({}).browser, DEFAULT_SETTINGS.browser);

@@ -1229,3 +1229,44 @@ test("clearing the session cancels a pending ctx.compact() once; a later compact
   assert.deepEqual(outcomes(await entries()).map((entry) => `${String(entry["event"])}:${String(entry["tag"])}:${String(entry["message"] ?? "")}`),
     ["error:A:Compaction cancelled", "complete:B:"]);
 });
+
+test("a codemode script's calls show on its own tool row, live and once it ends; Settings → Tools → Codemode takes it from open sessions", { timeout: 60_000 }, async (t) => {
+  const f = await fixture(t);
+  const huiSettings = normalizeSettings(undefined);
+  const host = f.host({ huiSettings });
+  const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-codemode" }, host);
+  assert.ok((await session.inspect()).tools.some((tool) => tool.name === "codemode"), "on by default");
+  const events: RuntimeEvent[] = [];
+  session.subscribe((event) => { events.push(event); });
+  const code = [
+    'const [found, missing] = await Promise.allSettled([tools.read({ path: "fixture.txt" }), tools.read({ path: "missing.txt" })]);',
+    "text(`${found.status} ${missing.status}`);",
+  ].join("\n");
+  const settled = nextEvent(session, (event) => event.type === "settled");
+  await session.prompt(`E2E_CALL:${Buffer.from(JSON.stringify({ name: "codemode", input: { code } })).toString("base64url")}`);
+  await settled;
+
+  const starts = events.filter((event) => event.type === "tool_start");
+  assert.deepEqual(starts.map((event) => event.name), ["codemode"], "the script's reads are no tool rows of their own");
+  const { id } = starts[0]!;
+  const live = events.flatMap((event) => event.type === "tool_update" && event.id === id ? [(event.details as { calls: { status: string }[] }).calls] : []);
+  assert.ok(live.some((calls) => calls.some((call) => call.status === "running")), `its row shows the calls while they run: ${JSON.stringify(live)}`);
+  const end = events.find((event) => event.type === "tool_end");
+  assert(end?.type === "tool_end" && end.id === id && !end.failed, JSON.stringify(end));
+  assert.match(end.output ?? "", /^Script completed\nWall time [\d.]+ seconds\nOutput:\nfulfilled rejected/u);
+  const calls = (end.details as { calls: { name: string; status: string; error?: string }[] }).calls;
+  assert.deepEqual(calls.map(({ name, status }) => `${name}:${status}`), ["read:ok", "read:error"]);
+  assert.match(calls[1]!.error ?? "", /missing\.txt/u, "a failed call says why");
+  assert.deepEqual(session.transcript().filter((entry) => entry.kind === "tool").map((entry) => entry.kind === "tool" && entry.name), ["codemode"]);
+
+  huiSettings.codemode = { enabled: false };
+  await host.applyTools();
+  assert.ok(!(await session.inspect()).tools.some((tool) => tool.name === "codemode"), "off: the open session goes without it");
+  await settledAfter(session, "hello after codemode");
+  const request = (await providerRequests(f.log)).at(-1) as { system?: unknown; tools?: { name?: string }[] };
+  assert.ok(!request.tools?.some((tool) => tool.name === "codemode"), "the next request offers no codemode");
+  assert.doesNotMatch(JSON.stringify(request.system), /<codemode>/u, "nor its prompt section");
+  huiSettings.codemode = { enabled: true };
+  await host.applyTools();
+  assert.ok((await session.inspect()).tools.some((tool) => tool.name === "codemode"), "on again: back from the next request");
+});
