@@ -6,6 +6,7 @@
 node e2e/demo/record.ts                 # every clip, then overview.mp4
 node e2e/demo/record.ts kanban bots     # only these clips
 node e2e/demo/record.ts --out ~/Movies/hui-demo
+node e2e/demo/record.ts bots --keep     # keep frames, logs and the demo HUI's folders
 ```
 
 Needs ffmpeg with libx264 and a Chromium-family browser (the same one the agent

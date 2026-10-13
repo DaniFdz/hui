@@ -109,8 +109,8 @@ export const scenes: Scene[] = [
       await d.pause(1_600);
       await d.click({ x: widget.x + 40, y: widget.y + 24 });
       await d.pause(900);
-      await d.still("widget");
       await d.zoom();
+      await d.still("widget");
 
       await d.caption("It drives a real browser, live in the chat");
       await send(d, "Check that signup still works on staging");
@@ -124,8 +124,8 @@ export const scenes: Scene[] = [
       await d.waitFor({ css: ".github-embed" });
       await d.zoom({ css: ".github-embed" }, 1.35);
       await d.pause(2_200);
-      await d.still("browser");
       await d.zoom();
+      await d.still("browser");
       await d.caption();
     },
   },
