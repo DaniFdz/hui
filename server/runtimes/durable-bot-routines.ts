@@ -70,11 +70,11 @@ export function botRoutinesTool(options: BotRoutinesToolOptions): ToolRegistrati
         const text = typeof result === "object" && result !== null && typeof (result as { text?: unknown }).text === "string"
           ? (result as { text: string }).text
           : "Done.";
-        return { content: [{ type: "text", text }] };
+        return { output: [{ type: "text", text }] };
       } catch (error) {
         if (context.abortSignal?.aborted) throw error;
         // A refusal (another bot's turn, the cap, an unknown routine, a bad schedule) is the model's to read and fix.
-        return { content: [{ type: "text", text: error instanceof Error ? error.message : String(error) }], isError: true };
+        return { output: [{ type: "text", text: error instanceof Error ? error.message : String(error) }], isError: true };
       }
     },
   });

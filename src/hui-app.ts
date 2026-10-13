@@ -6145,6 +6145,7 @@ export class HuiApp extends HuiElement {
           onChangeChat: (chat) => void this.save({ chat }),
           onChangeBrowser: (browser) => this.save({ browser }),
           onChangeVscode: (vscode) => this.save({ vscode }),
+          onChangeCodemode: (codemode) => void this.save({ codemode }),
           onChangeCalls: (calls) => void this.save({ calls }),
           onChangePower: (power) => void this.save({ power }).then(() => this.refreshPower()),
           onSetLidAwake: this.setLidAwakeFromUi,

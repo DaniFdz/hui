@@ -60,6 +60,7 @@ import { conversationMarkers } from "./chat/position-rail-model.ts";
 import { positionRail } from "./chat/position-rail.ts";
 import { readToolPresentation, renderReadToolCard, renderToolFileReference, toolFilePath } from "./chat/read-tool-card.ts";
 import { commandToolPresentation, renderCommandToolCard } from "./chat/command-tool-card.ts";
+import { codemodeToolPresentation, renderCodemodeToolCard } from "./chat/codemode-tool-card.ts";
 import { renderTaskSuggestionCard, type TaskSuggestionCardProps } from "./chat/task-suggestion-card.ts";
 import { renderWatcherActivity, type WatcherActivityProps } from "./chat/watcher-activity.ts";
 import { browserToolSummary } from "../lib/browser-tool-display.ts";
@@ -920,7 +921,8 @@ function renderActivityItem(props: HomeProps, item: ChatActivity): TemplateResul
     return html`<p class="chat-run-error" role="alert">${item.text}</p>`;
   }
   const status = item.status ?? "running";
-  const toolRenderer = readToolPresentation(item) ? renderReadToolCard : commandToolPresentation(item) ? renderCommandToolCard : null;
+  const toolRenderer = readToolPresentation(item) ? renderReadToolCard : commandToolPresentation(item) ? renderCommandToolCard
+    : codemodeToolPresentation(item) ? renderCodemodeToolCard : null;
   if (toolRenderer) {
     const expansionId = `${props.session?.id ?? "session"}:tool:${props.transcript.indexOf(item)}:${item.id}`;
     const expanded = props.expandedActivityIds.has(expansionId);
