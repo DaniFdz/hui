@@ -18,6 +18,7 @@ import type { ObservabilitySnapshot } from "../lib/observability.ts";
 import { icons } from "../lib/icons.ts";
 import { hasOpenWebAwesomePopup } from "../lib/web-awesome.ts";
 import { renderPicker, renderSettingsPicker } from "./settings-picker.ts";
+import { renderListFilter } from "./list-filter.ts";
 import { renderSettingsToggle } from "./settings-toggle.ts";
 import "./settings-tools.ts";
 import "./settings-browser.ts";
@@ -610,6 +611,7 @@ function renderSkillsPage(props: SettingsProps) {
       renderPiUrlForm(props, "Skill URL", "https://github.com/owner/skill", "Install skill", props.onInstallSkill),
     )}
     ${renderPiOperation(props, "skill-install")}
+    ${pi.skills.length ? renderListFilter("Search skills") : nothing}
     ${renderSection(
       "Installed skills",
       pi.skills.length === 1 ? "1 skill available" : `${pi.skills.length} skills available`,
@@ -624,7 +626,7 @@ function renderSkillsPage(props: SettingsProps) {
               (skill) => {
                 const enabled = skillIsEnabled(skill, props.settings.disabledSkills);
                 return html`
-                <article class="settings-row plugins-item">
+                <article class="settings-row plugins-item" data-filter=${`${skill.name} ${skill.description} ${skill.tags?.join(" ") ?? ""}`}>
                   <div class="settings-row__text" title=${skill.path}>
                     <span class="settings-row__title">${skill.name} ${skill.tags?.map((tag) => html`<span class="capability-badge">${tag}</span>`)}</span>
                     <span class="settings-row__desc">${skill.description || "No description provided."}</span>
@@ -632,6 +634,7 @@ function renderSkillsPage(props: SettingsProps) {
                   </div>
                   <div class="settings-row__control pi-package-actions">
                     <button type="button" class="btn btn--icon pi-resource-read-button" aria-label=${`Read ${skill.name}`} title=${`Read ${skill.name}`} @click=${() => props.onReadSkill(skill)}>${icons.eye}</button>
+                    ${skill.origin === "hui" ? nothing : html`<a class="btn btn--icon pi-resource-read-button" href=${`vscode://file${skill.path.split("/").map(encodeURIComponent).join("/")}`} aria-label=${`Edit ${skill.name} in VS Code`} title=${`Edit ${skill.name} in VS Code`}>${icons.edit}</a>`}
                     ${renderSettingsToggle(
                       `Enable ${skill.name} in HUI`,
                       enabled,
@@ -675,6 +678,7 @@ function renderToolsPage(props: SettingsProps) {
       </div></div>
     </section>
     <hui-vscode-settings .settings=${props.settings.vscode} .onChange=${props.onChangeVscode}></hui-vscode-settings>
+    ${renderListFilter("Search tools")}
     <hui-tools-settings .sessions=${props.sessions.filter((session) => !session.bot)}></hui-tools-settings>`;
 }
 
@@ -884,13 +888,14 @@ function renderPluginsPage(props: SettingsProps) {
     )}
     ${renderPiOperation(props, "package-install")}
     ${renderPiOperation(props, "package-remove")}
+    ${resources.length ? renderListFilter("Search plugins") : nothing}
     ${renderSection(
       "Installed",
       resources.length ? `${resources.length} configured source${resources.length === 1 ? "" : "s"}` : "No packages or extensions configured.",
       resources.length
         ? html`<div>${resources.map((resource) => {
           const enabled = !props.settings.disabledPlugins.some((entry) => entry.id === resource.id);
-          return html`<article class="settings-row plugins-item"><div class="settings-row__text"><span class="settings-row__title">${resource.label}</span><span class="settings-row__desc">${resource.kind === "package" ? "Managed by PI" : "Direct extension"} · applies on next runtime start</span></div><div class="settings-row__control pi-package-actions">
+          return html`<article class="settings-row plugins-item" data-filter=${resource.label}><div class="settings-row__text"><span class="settings-row__title">${resource.label}</span><span class="settings-row__desc">${resource.kind === "package" ? "Managed by PI" : "Direct extension"} · applies on next runtime start</span></div><div class="settings-row__control pi-package-actions">
             <button type="button" class="btn btn--icon pi-resource-read-button" aria-label=${`Read ${resource.label}`} title=${`Read ${resource.label}`} @click=${() => props.onReadPlugin(resource)}>${icons.eye}</button>
             ${renderSettingsToggle(`Enable ${resource.label} in HUI`, enabled, (checked) => props.onSetPluginEnabled(resource, checked))}
             ${resource.kind === "package" ? props.piRemoveCandidate === resource.label

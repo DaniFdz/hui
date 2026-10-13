@@ -489,9 +489,10 @@ HUI holds, with events HUI streams to the browser.
 ## Installed gateway
 
 HUI ships a local npm archive with compiled CLI/server/SDK worker, built web
-assets, themes and its lockfile as a shrinkwrap. npm installs the archive from
-`package.json` alone, ignoring that shrinkwrap, so `package.json` pins every PI
-package at its locked version; other dependencies resolve within their ranges.
+assets, themes and its lockfile as `build/package-lock.json`, which remote workers
+install from. npm installs the archive from `package.json` alone, ignoring that
+lockfile, so `package.json` pins every PI package at its locked version; other
+dependencies resolve within their ranges.
 Production uses Node directly;
 Vite and the desktop launcher remain source-development tools. `hui gateway`
 provides start/stop/restart/status/logs and foreground run; `hui ui` opens or
@@ -1119,8 +1120,16 @@ expansion and extension execution, including queue and settle behavior.
 
 Arrow keys navigate across groups, Enter/Tab complete without sending, and Escape
 dismisses. Catalog and path loading/error/retry states are independent. New
-Session offers **Start session & browse commands**, preserving the draft without
-a model call, alongside available path results. HUI does not advertise PI's
+Session lists the enabled skills PI reports for a local launch before any
+runtime exists, and offers **Start session & browse commands** for project
+skills, prompts and extension commands, preserving the draft without a model
+call, alongside available path results.
+
+Settings → Skills, Plugins and Tools (and the standalone Skills and Plugins
+pages) carry a search field that narrows the list by name and description;
+Cmd/Ctrl+F focuses it, since the desktop app has no find bar. A PI-owned skill
+also links to its `SKILL.md` through `vscode://file`, which the desktop app
+hands to the OS; HUI's bundled read-only skills have no edit link. HUI does not advertise PI's
 terminal-only commands or plugins without callable actions.
 
 Typing `@`, `./`, `../`, `~/`, or an absolute path after whitespace opens the

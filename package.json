@@ -13,7 +13,6 @@
     "build/",
     "dist/",
     "THIRD_PARTY_NOTICES.md",
-    "npm-shrinkwrap.json",
     "desktop/*.cjs",
     "desktop/*.mjs",
     "!desktop/*.test.mjs"

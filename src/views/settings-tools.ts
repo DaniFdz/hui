@@ -69,7 +69,7 @@ export class HuiToolsSettings extends LitElement {
           <h2 class="settings-section__heading">Live tools · ${live.tools.filter((tool) => tool.active).length} active / ${live.tools.length} registered</h2>
           <p class="settings-section__desc">${live.backend} ${live.version} · snapshot ${live.revision}. Refresh after extensions or active tools change.</p>
           <div class="settings-group">${live.tools.map((tool) => html`
-            <details class="tools-definition">
+            <details class="tools-definition" data-filter=${`${tool.name} ${tool.source} ${tool.description}`}>
               <summary><strong>${tool.name}</strong><span>${tool.source} · ${tool.active ? "Active" : "Inactive"}</span></summary>
               <p>${tool.description}</p><pre aria-label=${`${tool.name} schema`}>${JSON.stringify(tool.parameters, null, 2)}</pre>
             </details>`)}
@@ -87,7 +87,7 @@ export class HuiToolsSettings extends LitElement {
           <h2 class="settings-section__heading">Shipped tools · ${catalog.tools.length}</h2>
           <p class="settings-section__desc">New sessions use ${catalog.backend === "sdk" ? `HUI SDK ${catalog.sdkVersion}` : "the CLI fallback"}. Defaults below describe the SDK; settings and extensions can change a session's active tools.</p>
           <div class="settings-group">${[...catalog.tools].sort((a, b) => a.source.localeCompare(b.source)).map((tool) => html`
-            <div class="settings-row">
+            <div class="settings-row" data-filter=${`${tool.name} ${tool.source} ${tool.description}`}>
               <div class="settings-row__text"><span class="settings-row__title">${tool.name}</span><span class="settings-row__desc">${tool.description}</span></div>
               <div class="settings-row__control"><span class="settings-row__muted">${tool.source} · ${tool.defaultEnabled ? "Default" : "Optional"}</span></div>
             </div>`)}</div>

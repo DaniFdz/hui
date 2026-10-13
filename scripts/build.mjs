@@ -1,6 +1,6 @@
 /** Produces the package build: compiles the server and CLI, bundles the web app, copies themes and skills, and stamps
  * the release marker that installs and updates verify. It writes generated output only; the repository lockfile is
- * copied to npm-shrinkwrap.json for the package, never changed. */
+ * copied into build/ for the package, never changed. */
 import { execFileSync } from "node:child_process";
 import { cp, readFile, rm, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
@@ -9,15 +9,18 @@ const root = fileURLToPath(new URL("../", import.meta.url));
 const pkg = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
 // This is generated output, never a configuration or user-data directory.
 await rm(new URL("../build/", import.meta.url), { recursive: true, force: true });
+// Earlier builds copied the lockfile to the checkout as npm-shrinkwrap.json,
+// which npm reads instead of package-lock.json, so a stale copy breaks npm ci.
+await rm(new URL("../npm-shrinkwrap.json", import.meta.url), { force: true });
 for (const [script, args] of [
   ["typescript/bin/tsc", ["-p", "tsconfig.server.json"]],
   ["vite/bin/vite.js", ["build"]],
 ]) execFileSync(process.execPath, [`${root}node_modules/${script}`, ...args], { cwd: root, stdio: "inherit" });
 await cp(new URL("../themes/", import.meta.url), new URL("../build/themes/", import.meta.url), { recursive: true });
 await cp(new URL("../skills/", import.meta.url), new URL("../build/skills/", import.meta.url), { recursive: true });
-// npm pack never ships package-lock.json, so the verified graph ships as a
-// shrinkwrap, which the remote worker release installs as its lockfile.
+// npm pack never ships the root package-lock.json, so the verified graph ships
+// in build/, which the remote worker release installs as its lockfile.
 // Installing the archive itself ignores it: npm resolves package.json alone,
 // which is why that pins every PI package (scripts/dependencies.test.mjs).
-await cp(new URL("../package-lock.json", import.meta.url), new URL("../npm-shrinkwrap.json", import.meta.url));
+await cp(new URL("../package-lock.json", import.meta.url), new URL("../build/package-lock.json", import.meta.url));
 await writeFile(new URL("../build/release.json", import.meta.url), JSON.stringify({ format: 1, version: pkg.version }) + "\n");
