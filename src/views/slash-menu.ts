@@ -57,7 +57,7 @@ export function renderSlashMenu(props: SlashMenuProps) {
                   @pointerdown=${(event: PointerEvent) => event.preventDefault()}
                   @click=${() => props.onSelect(command)}>
                   <span class="slash-menu-icon" aria-hidden="true">${source === "extension" ? icons.terminal : source === "skill" ? icons.book : icons.fileText}</span>
-                  <span class="slash-menu-copy"><span class="slash-menu-name">${commandReference(command, props.catalog ?? props.commands)}</span><span class="slash-menu-desc">${command.description}</span></span>
+                  <span class="slash-menu-copy"><span class="slash-menu-name">${props.browseSession && command.source === "skill" ? `/${command.name}` : commandReference(command, props.catalog ?? props.commands)}</span><span class="slash-menu-desc">${command.description}</span></span>
                 </button>`)}
             </div>`;
           })}
@@ -79,7 +79,7 @@ export function renderSlashMenu(props: SlashMenuProps) {
             })}
           </div>` : nothing}
         </div>
-        ${props.browseSession ? html`<div class="slash-menu__status">Start a session to load its skills and extension commands.</div>
+        ${props.browseSession ? html`<div class="slash-menu__status">Start a session to load project skills, prompts and extension commands.</div>
           <button type="submit" value="commands" class="slash-menu-item"><span class="slash-menu-icon" aria-hidden="true">${icons.terminal}</span><span class="slash-menu-name">Start session & browse commands</span></button>` : nothing}
         ${props.streaming ? html`<div class="slash-menu__status">Skills and templates can be queued. Run extension commands after this turn.</div>` : nothing}
       </div>
