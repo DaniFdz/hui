@@ -1334,18 +1334,27 @@ test("a storage error ends the store's sessions; the host releases it and a sess
   const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-store-failure" }, host);
   await settledAfter(session, "hello before");
   const exited = new Promise<unknown>((resolve) => session.onExit!(resolve));
-  const released = new Promise<void>((resolve) => { host.storeFailed = resolve; });
+  // The cause outlasts the first attempt to open the store again, which fails as well, and is gone before the second.
+  let blocker!: import("node:sqlite").DatabaseSync;
+  let attempts = 0;
+  const released = new Promise<void>((resolve) => {
+    host.storeFailed = async () => {
+      assert.equal(host.isOpen, false, "the failed store is released first");
+      if (++attempts < 2) return;
+      blocker.exec("ROLLBACK");
+      blocker.close();
+      resolve();
+    };
+  });
   // Another connection holds the write lock: the harness's next commit waits out SQLite's busy timeout and fails.
   const { DatabaseSync } = await import("node:sqlite");
-  const blocker = new DatabaseSync(join(f.store, "harness.sqlite"));
+  blocker = new DatabaseSync(join(f.store, "harness.sqlite"));
   blocker.exec("BEGIN EXCLUSIVE");
   await session.prompt("hello while the store is locked").catch(() => undefined);
   const unreachable = await exited;
   assert(unreachable instanceof Error && (unreachable as { reconnecting?: boolean }).reconnecting === true, String(unreachable));
   await released;
-  assert.equal(host.isOpen, false, "the failed store is released");
-  blocker.exec("ROLLBACK");
-  blocker.close();
+  assert.equal(attempts, 2, "a store that does not open is tried again");
 
   const again = await startDurable({ cwd: f.cwd, sessionFile: session.sessionFile, huiSessionId: "durable-store-failure" }, host);
   await settledAfter(again, "hello after");

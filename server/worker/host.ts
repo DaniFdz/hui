@@ -175,8 +175,6 @@ export class WorkerHost {
     });
     // A bot's chat here lists the other bots as the gateway that owns them says.
     this.#durable.botSection = (botId) => this.#botSection(botId);
-    // A failed store was released: it opens again, which resumes the runs here; the gateway's sessions reopen theirs.
-    this.#durable.storeFailed = () => void this.#durable.open().catch(() => undefined);
     this.#bots = hostBots({
       durable: this.#durable, home: paths.home, botsDir: join(paths.dataDir, "bots"),
       // A bot without a model of its own starts on Settings' primary model, as on the gateway.

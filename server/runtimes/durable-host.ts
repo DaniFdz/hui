@@ -212,9 +212,11 @@ export class DurableHost implements ExtensionHost {
   /** Mirrors a bot's lists into the gateway's roster after the operator allowed one of its requests; a worker host
    * leaves it unset. */
   botAccessRecorded: ((botId: string, access: BotAccess) => Promise<void>) | undefined;
-  /** The store failed and was released: the gateway reattaches the sessions that had it open, which reopens it. */
-  storeFailed: (() => void) | undefined;
+  /** The store failed, was released and is about to open again: the gateway reattaches the sessions it ended. */
+  storeFailed: (() => Promise<void>) | undefined;
   #openedAt = 0;
+  /** Set while a failed store waits to open again; any close ends that wait. */
+  #reopening: symbol | undefined;
   /** Store failures in a row, each within a minute of the store opening again. */
   #failures = 0;
   /** Live sessions that answer for their conversation: a bot's own tools ask the operator through them. */
@@ -518,20 +520,39 @@ export class DurableHost implements ExtensionHost {
     }
   }
 
-  /** The store failed: released, then `storeFailed` after a pause that doubles with each failure following a reopen
-   * that lasted under a minute (up to a minute), so a store that keeps failing is not reopened in a tight loop. */
+  /** The store failed: it is released, then opened again (`#reopen`). */
   async #failed(harness: Harness, error: unknown): Promise<void> {
     if (this.#harness !== harness) return;
     this.#failures = Date.now() - this.#openedAt < 60_000 ? this.#failures + 1 : 1;
-    const pause = Math.min(60_000, 1_000 * 2 ** (this.#failures - 1));
     recordDiagnosticEvent({
-      area: "runtime", level: "error", action: "durable_store_failed",
-      summary: `The Durable store failed; it was released and is reopened in ${pause / 1000} s`,
+      area: "runtime", level: "error", action: "durable_store_failed", summary: "The Durable store failed; it was released to open again",
       detail: error instanceof Error ? error.message : String(error),
     });
     await this.close().catch(() => undefined);
-    await new Promise((resolve) => setTimeout(resolve, pause));
-    this.storeFailed?.();
+    const reopening = this.#reopening = Symbol("reopen");
+    await this.#reopen(reopening);
+  }
+
+  /** Opens the released store again after a pause that doubles with each failure in a row (up to a minute), so a store
+   * that keeps failing is not reopened in a tight loop. `storeFailed` comes first, so the sessions it ended reattach and
+   * the runs it resumes find their extensions. A store that does not open is tried again, after a longer pause. */
+  async #reopen(reopening: symbol): Promise<void> {
+    for (;;) {
+      await new Promise((resolve) => setTimeout(resolve, Math.min(60_000, 1_000 * 2 ** (this.#failures - 1))).unref());
+      // A close since (the gateway stopping) ends it.
+      if (this.#reopening !== reopening) return;
+      try {
+        await this.storeFailed?.();
+        await this.open();
+        return;
+      } catch (error) {
+        this.#failures += 1;
+        recordDiagnosticEvent({
+          area: "runtime", level: "warning", action: "durable_reopen_failed", summary: "The Durable store did not open again; HUI tries again",
+          detail: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
   }
 
   async #resumeWhenReady(harness: Harness): Promise<void> {
@@ -640,6 +661,7 @@ export class DurableHost implements ExtensionHost {
    * It settles once the store is released. An open in progress finishes
    * first, and a close called meanwhile shares the one already running. */
   close(): Promise<void> {
+    this.#reopening = undefined;
     const opening = this.#opening;
     this.#opening = undefined;
     if (!opening) return this.#closing ?? Promise.resolve();
