@@ -1,6 +1,6 @@
 <!doctype html>
 <!-- The demo recorder's stage: HUI in a framed window on a gradient, with a
-     synthetic cursor, step captions and title cards. Recorded at 1920×1080. -->
+     synthetic cursor, step captions and a chapter tag. Recorded at 1920×1080. -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -32,13 +32,11 @@
     background: rgb(14 15 20 / 84%); backdrop-filter: blur(14px); box-shadow: 0 12px 40px rgb(0 0 0 / 45%), 0 0 0 1px rgb(255 255 255 / 10%);
     font-size: 30px; font-weight: 600; letter-spacing: -.01em; white-space: nowrap; opacity: 0; transition: opacity 320ms, transform 320ms; z-index: 20; }
   #caption.on { opacity: 1; transform: translate(-50%, 0); }
-  #card { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; opacity: 0; transition: opacity 500ms; z-index: 30; pointer-events: none;
-    background: radial-gradient(900px 600px at 50% 40%, rgb(124 92 255 / 30%), transparent 70%), #08090d; }
-  #card.on { opacity: 1; }
-  #card .brand { display: inline-flex; align-items: center; gap: 12px; font-size: 26px; font-weight: 700; letter-spacing: .14em; color: rgb(255 255 255 / 70%); }
-  #card .brand i { width: 14px; height: 14px; border-radius: 4px; background: linear-gradient(135deg, #a78bfa, #38bdf8); }
-  #card h1 { margin: 26px 0 18px; font-size: 84px; line-height: 1.05; letter-spacing: -.03em; font-weight: 750; }
-  #card p { margin: 0 auto; max-width: 1200px; font-size: 34px; line-height: 1.35; color: rgb(255 255 255 / 66%); }
+  /* The chapter tag, under the window's left edge in the caption band. */
+  #chip { position: absolute; bottom: 38px; display: flex; align-items: center; gap: 14px; font-size: 25px; font-weight: 650; color: rgb(255 255 255 / 82%);
+    opacity: 0; transform: translateY(12px); transition: opacity 400ms, transform 400ms; z-index: 20; }
+  #chip.on { opacity: 1; transform: none; }
+  #chip i { display: inline-grid; place-items: center; height: 40px; padding: 0 12px; border-radius: 10px; background: rgb(255 255 255 / 10%); font-style: normal; font-size: 21px; color: rgb(255 255 255 / 70%); }
 </style>
 </head>
 <body>
@@ -54,7 +52,7 @@
   </div>
 </div>
 <div id="caption"></div>
-<div id="card"><div><div class="brand"><i></i>HUI</div><h1></h1><p></p></div></div>
+<div id="chip"><i></i><span></span></div>
 <script>
   // App coordinates are CSS pixels inside the iframe; the camera maps them to the stage.
   // The window sits above a band for captions, so they never cover the composer.
@@ -69,6 +67,7 @@
     for (const element of [$("viewport"), $("app")]) element.style.height = `${height}px`;
     base = Math.min((1920 - 160) / width, (1080 - TOP - BAND) / (height + CHROME));
     origin = { x: (1920 - width * base) / 2, y: TOP };
+    $("chip").style.left = `${origin.x}px`;
     place(origin.x, origin.y, base);
     stage.cursorTo(width * 0.62, height * 0.7, 0);
   }
@@ -123,11 +122,10 @@
       caption.classList.toggle("on", Boolean(text));
       if (text) caption.textContent = text;
     },
-    card(title, subtitle) {
-      $("card").classList.toggle("on", Boolean(title));
-      if (!title) return;
-      $("card").querySelector("h1").textContent = title;
-      $("card").querySelector("p").textContent = subtitle ?? "";
+    chip(number, label) {
+      $("chip").querySelector("i").textContent = String(number).padStart(2, "0");
+      $("chip").querySelector("span").textContent = label;
+      $("chip").classList.add("on");
     },
     /** Stage (page) coordinates of an app point, for real input events. */
     toStage(x, y) {

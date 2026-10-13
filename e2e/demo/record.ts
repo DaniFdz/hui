@@ -12,7 +12,7 @@ import { once } from "node:events";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import type { Readable, Writable } from "node:stream";
 
 import { CdpConnection, type CdpEvent } from "../../server/browser/cdp.ts";
@@ -218,10 +218,6 @@ export class Director {
     await this.stage(`stage.caption(${JSON.stringify(text)})`);
   }
 
-  async card(title = "", subtitle = "") {
-    await this.stage(`stage.card(${JSON.stringify(title)}, ${JSON.stringify(subtitle)})`);
-  }
-
   /** Lets the viewer read; the only fixed waits in a scene are pacing, never synchronization. */
   pause(ms: number) {
     return sleep(ms);
@@ -297,7 +293,7 @@ function encode(frames: { file: string; t: number }[], end: number, list: string
   ]));
 }
 
-async function record(scene: Scene, out: string) {
+async function record(scene: Scene, chapter: number, out: string) {
   const work = await mkdtemp(join(tmpdir(), `hui-demo-${scene.name}-`));
   const frames: { file: string; t: number }[] = [];
   const writes: Promise<void>[] = [];
@@ -306,8 +302,7 @@ async function record(scene: Scene, out: string) {
   let hui: Awaited<ReturnType<typeof launchHui>> | undefined;
   let chrome: Awaited<ReturnType<typeof startChrome>> | undefined;
   try {
-    // A title card needs only the stage; a clip needs a fresh HUI.
-    if (scene.run) hui = await launchHui();
+    hui = await launchHui();
     chrome = await startChrome(join(work, "profile"));
     const { cdp } = chrome;
     const { targetId } = await cdp.send<{ targetId: string }>("Target.createTarget", { url: "about:blank" });
@@ -318,24 +313,21 @@ async function record(scene: Scene, out: string) {
     await director.send("Page.bringToFront");
     await director.send("Emulation.setDeviceMetricsOverride", { ...STAGE, deviceScaleFactor: 1, mobile: false });
     await director.send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: "dark" }, { name: "prefers-reduced-motion", value: "no-preference" }] });
-    await director.send("Page.navigate", { url: hui ? new URL("/__demo/stage", hui.url).href : pathToFileURL(join(here, "stage.html")).href });
+    await director.send("Page.navigate", { url: new URL("/__demo/stage", hui.url).href });
     await director.stage(`new Promise((done) => document.readyState === "complete" ? done() : addEventListener("load", done))`);
-    await director.card(scene.title, scene.subtitle);
     const api = async (method: string, path: string, body?: unknown) => {
       const response = await fetch(new URL(path, hui!.url), { method, headers: { "x-hui": "1", "content-type": "application/json" }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
       if (!response.ok) throw new Error(`${method} ${path}: ${response.status} ${await response.text()}`);
       return response.json() as Promise<Record<string, any>>;
     };
     const context = { director, api };
-    if (hui) {
-      const [width, height] = scene.viewport ?? [1440, 810];
-      // View preferences, such as the board's grouping, go into the localStorage HUI reads when it loads: the stage shares its origin.
-      await director.stage(`Object.entries(${JSON.stringify(scene.storage ?? {})}).forEach(([key, value]) => localStorage.setItem(key, value))`);
-      await director.stage(`stage.load(${JSON.stringify(new URL(scene.path ?? "/", hui.url).href)}, ${width}, ${height})`);
-      await director.waitFor(scene.ready ?? "Settings", 60_000);
-      // Behind the title card, so it is not recorded.
-      await scene.setup?.(context);
-    }
+    const [width, height] = scene.viewport ?? [1440, 810];
+    // View preferences, such as the board's grouping, go into the localStorage HUI reads when it loads: the stage shares its origin.
+    await director.stage(`Object.entries(${JSON.stringify(scene.storage ?? {})}).forEach(([key, value]) => localStorage.setItem(key, value))`);
+    await director.stage(`stage.load(${JSON.stringify(new URL(scene.path ?? "/", hui.url).href)}, ${width}, ${height})`);
+    await director.waitFor(scene.ready ?? "Settings", 60_000);
+    // Before recording starts: the clip opens on the loaded app.
+    await scene.setup?.(context);
 
     const framesDir = join(work, "frames");
     await mkdir(framesDir, { recursive: true });
@@ -358,17 +350,15 @@ async function record(scene: Scene, out: string) {
       stills++;
     });
     await director.send("Page.startScreencast", { format: "jpeg", quality: 92, maxWidth: STAGE.width, maxHeight: STAGE.height, everyNthFrame: 1 });
-    await director.pause(scene.run ? 2_200 : scene.hold ?? 3_000);
-    if (scene.run) {
-      await director.card();
-      await director.pause(600);
-      await scene.run(context).catch(async (error) => {
-        const { data } = await director.send<{ data: string }>("Page.captureScreenshot", { format: "png" });
-        await writeFile(join(out, `${scene.name}-failed.png`), Buffer.from(data, "base64"));
-        throw new Error(`${scene.name} failed; its screen is in ${join(out, `${scene.name}-failed.png`)}`, { cause: error });
-      });
-      await director.pause(1_200);
-    }
+    await director.pause(300);
+    await director.stage(`stage.chip(${chapter}, ${JSON.stringify(scene.chapter)})`);
+    await director.pause(700);
+    await scene.run(context).catch(async (error) => {
+      const { data } = await director.send<{ data: string }>("Page.captureScreenshot", { format: "png" });
+      await writeFile(join(out, `${scene.name}-failed.png`), Buffer.from(data, "base64"));
+      throw new Error(`${scene.name} failed; its screen is in ${join(out, `${scene.name}-failed.png`)}`, { cause: error });
+    });
+    await director.pause(1_200);
     end = director.clock();
     await director.send("Page.stopScreencast");
     await Promise.all(writes);
@@ -390,11 +380,20 @@ async function record(scene: Scene, out: string) {
   process.stdout.write(`${output} (${frames.length} frames, ${(end - frames[0]!.t).toFixed(1)} s)\n`);
 }
 
-/** The overview: every clip in order at 1.2× speed, compressed harder to stay under GitHub's 10 MB attachment limit. */
+/** The overview: every clip in order, crossfaded, at 1.2× speed, compressed harder to stay under GitHub's 10 MB attachment limit. */
 function overview(out: string, names: string[]) {
-  const inputs = names.flatMap((name) => ["-i", join(out, `${name}.mp4`)]);
-  const filter = `${names.map((_, index) => `[${index}:v]`).join("")}concat=n=${names.length}:v=1:a=0,setpts=PTS/1.2,fps=30[v]`;
-  execFileSync("ffmpeg", ["-y", "-loglevel", "error", ...inputs, "-filter_complex", filter, "-map", "[v]", "-c:v", "libx264", "-preset", "slow", "-crf", "26", "-movflags", "+faststart", join(out, "overview.mp4")]);
+  const FADE = 0.5;
+  const files = names.map((name) => join(out, `${name}.mp4`));
+  const seconds = files.map((file) => Number(execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", file], { encoding: "utf8" })));
+  let filter = "", previous = "[0:v]", offset = 0;
+  for (let index = 1; index < files.length; index++) {
+    // Each fade starts FADE seconds before the end of everything joined so far.
+    offset += seconds[index - 1]! - FADE;
+    filter += `${previous}[${index}:v]xfade=transition=fade:duration=${FADE}:offset=${offset.toFixed(3)}[joined${index}];`;
+    previous = `[joined${index}]`;
+  }
+  execFileSync("ffmpeg", ["-y", "-loglevel", "error", ...files.flatMap((file) => ["-i", file]), "-filter_complex", `${filter}${previous}setpts=PTS/1.2,fps=30[v]`,
+    "-map", "[v]", "-c:v", "libx264", "-preset", "slow", "-crf", "26", "-movflags", "+faststart", join(out, "overview.mp4")]);
 }
 
 const args = process.argv.slice(2);
@@ -405,7 +404,7 @@ const wanted = args.filter((arg) => !arg.startsWith("--"));
 const selected = wanted.length ? scenes.filter((scene) => wanted.includes(scene.name)) : scenes;
 if (selected.length !== (wanted.length || scenes.length)) throw new Error(`Unknown scene. Scenes: ${scenes.map((scene) => scene.name).join(", ")}`);
 await mkdir(out, { recursive: true });
-for (const scene of selected) await record(scene, out);
+for (const scene of selected) await record(scene, scenes.indexOf(scene) + 1, out);
 if (!wanted.length) {
   overview(out, scenes.map((scene) => scene.name));
   process.stdout.write(`${join(out, "overview.mp4")}\n`);

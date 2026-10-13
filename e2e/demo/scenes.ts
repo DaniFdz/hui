@@ -4,8 +4,8 @@ import type { Director, Target } from "./record.ts";
 export type SceneContext = { director: Director; api: (method: string, path: string, body?: unknown) => Promise<Record<string, any>> };
 export type Scene = {
   name: string;
-  title: string;
-  subtitle: string;
+  /** The chapter tag under the window. */
+  chapter: string;
   /** HUI path the clip opens on, and text that shows it is ready. */
   path?: string;
   ready?: Target;
@@ -13,11 +13,9 @@ export type Scene = {
   viewport?: [number, number];
   /** localStorage entries HUI loads with, such as view preferences. */
   storage?: Record<string, string>;
-  /** Runs behind the title card, before recording. */
+  /** Runs before recording starts. */
   setup?: (context: SceneContext) => Promise<void>;
-  /** The clip; without it the scene is a title card held for `hold` ms. */
-  run?: (context: SceneContext) => Promise<void>;
-  hold?: number;
+  run: (context: SceneContext) => Promise<void>;
 };
 
 const card = (title: string, column?: string): Target => ({ css: `${column ? `.kanban-cell--${column} ` : ""}.kanban-card__title`, text: title });
@@ -34,11 +32,9 @@ async function send(d: Director, prompt: string) {
 }
 
 export const scenes: Scene[] = [
-  { name: "intro", title: "Your coding agents, in one place", subtitle: "HUI is a local, browser-first workspace for agent sessions, built on PI.", hold: 3_200 },
   {
     name: "kanban",
-    title: "Every agent on one board",
-    subtitle: "Sessions move through stages as the work does, and backlog items start in their own worktree.",
+    chapter: "Kanban",
     path: "/kanban",
     ready: { contains: "Drag a backlog item" },
     // Lanes by custom group, Storefront first, instead of long project paths.
@@ -90,8 +86,7 @@ export const scenes: Scene[] = [
   },
   {
     name: "integrations",
-    title: "Rich results, right in the chat",
-    subtitle: "Interactive widgets, a browser the agent drives while you watch, and links that unfurl.",
+    chapter: "Rich chat",
     viewport: [1280, 720],
     ready: "Apple Pay at checkout",
     async run({ director: d }) {
@@ -131,8 +126,7 @@ export const scenes: Scene[] = [
   },
   {
     name: "subagents",
-    title: "Agents that delegate",
-    subtitle: "Subagents work in parallel in their own sessions, and watchers wait on CI so you don't have to.",
+    chapter: "Subagents and watchers",
     viewport: [1280, 720],
     ready: "Apple Pay at checkout",
     async run({ director: d }) {
@@ -174,8 +168,7 @@ export const scenes: Scene[] = [
   },
   {
     name: "bots",
-    title: "Bots that stay",
-    subtitle: "Long-lived agents with a face, one chat, a memory and routines they schedule themselves.",
+    chapter: "Bots",
     viewport: [1280, 720],
     ready: "Apple Pay at checkout",
     async setup({ api }) {
@@ -213,5 +206,4 @@ export const scenes: Scene[] = [
       await d.caption();
     },
   },
-  { name: "outro", title: "Try HUI", subtitle: "Install the latest release from github.com/DaniFdz/hui, then run hui gateway start.", hold: 3_600 },
 ];

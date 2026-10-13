@@ -12,8 +12,9 @@ node e2e/demo/record.ts bots --keep     # keep frames, logs and the demo HUI's f
 Needs ffmpeg with libx264 and a Chromium-family browser (the same one the agent
 browser tool finds). Output goes to `$TMPDIR/hui-demo-videos` unless `--out`
 says otherwise: one 1920×1080, 30 fps MP4 per clip, `overview.mp4` (every clip
-at 1.2× speed, under 10 MB for GitHub attachments) and window-only PNG stills
-for the README. Videos and stills never go into Git.
+crossfaded at 1.2× speed, under 10 MB for GitHub attachments) and window-only
+PNG stills for the README. Clips open straight on the app, with a chapter tag
+under the window and a caption per step; there are no title slides. Videos and stills never go into Git.
 
 ## How it works
 
