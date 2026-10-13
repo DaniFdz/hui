@@ -18,6 +18,7 @@ const {
   forkRequest,
   forkSession,
   readAttachments,
+  reattachAfterStoreFailure,
   recoverInterruptedSessions,
   reopenDurableSessions,
   renameWithGeneratedTitle,
@@ -67,6 +68,24 @@ test("interrupted Durable work waits for its owning sessions to open", async () 
   booted();
   await reopening;
   assert.equal(settled, true);
+});
+
+test("after a store failure, the open sessions on this machine reattach once their boots settle, then the store reopens", async () => {
+  const now = new Date().toISOString();
+  const base: SessionRecord = { id: "open", title: "Open", group: "", cwd: tmpdir(), tool: "durable", createdAt: now, updatedAt: now };
+  const steps: string[] = [];
+  let booted!: () => void;
+  const booting = new Promise<void>((resolve) => { booted = resolve; });
+  const reattaching = reattachAfterStoreFailure([base, { ...base, id: "closed" }, { ...base, id: "remote", worker: "w1" }], {
+    isLive: (id) => id !== "closed",
+    booted: async (id) => { steps.push(`booted:${id}`); await booting; },
+    ensure: (record, reattach) => { steps.push(`ensure:${record.id}:${reattach}`); return true; },
+  }, async () => { steps.push("open"); });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(steps, ["booted:open"], "a boot underway settles first; a session nobody has open and a worker's are left alone");
+  booted();
+  await reattaching;
+  assert.deepEqual(steps, ["booted:open", "ensure:open:true", "open"], "the store opens again even with no session open");
 });
 
 class FakeResponse extends EventEmitter {

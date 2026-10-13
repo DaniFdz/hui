@@ -1327,3 +1327,29 @@ test("an extension tool's ctx.executeTool() runs nested calls, and tool_result r
   assert.doesNotMatch(script.output ?? "", /REDACT_ME/u, "a script never gets what the handler took out");
   assert.match(script.output ?? "", /\[redacted\]/u, "it gets the replaced text, as the error of its call");
 });
+
+test("a storage error ends the store's sessions; the host releases it and a session that attaches again carries on", { timeout: 90_000 }, async (t) => {
+  const f = await fixture(t);
+  const host = f.host();
+  const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-store-failure" }, host);
+  await settledAfter(session, "hello before");
+  const exited = new Promise<unknown>((resolve) => session.onExit!(resolve));
+  const released = new Promise<void>((resolve) => { host.storeFailed = resolve; });
+  // Another connection holds the write lock: the harness's next commit waits out SQLite's busy timeout and fails.
+  const { DatabaseSync } = await import("node:sqlite");
+  const blocker = new DatabaseSync(join(f.store, "harness.sqlite"));
+  blocker.exec("BEGIN EXCLUSIVE");
+  await session.prompt("hello while the store is locked").catch(() => undefined);
+  const unreachable = await exited;
+  assert(unreachable instanceof Error && (unreachable as { reconnecting?: boolean }).reconnecting === true, String(unreachable));
+  await released;
+  assert.equal(host.isOpen, false, "the failed store is released");
+  blocker.exec("ROLLBACK");
+  blocker.close();
+
+  const again = await startDurable({ cwd: f.cwd, sessionFile: session.sessionFile, huiSessionId: "durable-store-failure" }, host);
+  await settledAfter(again, "hello after");
+  assert.ok(answered("Fixture response.")(again.transcript()));
+  assert.deepEqual(again.transcript().flatMap((entry) => entry.kind === "message" && entry.role === "user" ? [entry.text] : []).filter((text) => text !== "hello while the store is locked"),
+    ["hello before", "hello after"], "the conversation is the one it was");
+});

@@ -137,6 +137,14 @@ store is closed and unlocked. The development server restarts the backend in
 its own process when a server file changes, and starts the new backend only
 after the previous one has stopped. Each HUI session is one Durable
 conversation and stores `durable:<conversationId>` in `piSessionFile`.
+A storage error closes the whole harness (Durable 1.2.0): its sessions end as
+unreachable-and-reconnecting (`RuntimeUnreachableError`), the host records a
+`durable_store_failed` diagnostic and releases the store, and after a pause (1 s,
+doubling for each failure within a minute of reopening, up to a minute) the
+gateway reattaches every open session on this machine and opens the store
+again, which resumes the runs nobody has open too. A worker reopens its own
+store the same way; the gateway's sessions on it show the error until they are
+opened again.
 
 Opening the store resumes every unfinished run, once the gateway has reopened
 the sessions that own them and they have loaded their PI extensions again

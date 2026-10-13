@@ -212,6 +212,11 @@ export class DurableHost implements ExtensionHost {
   /** Mirrors a bot's lists into the gateway's roster after the operator allowed one of its requests; a worker host
    * leaves it unset. */
   botAccessRecorded: ((botId: string, access: BotAccess) => Promise<void>) | undefined;
+  /** The store failed and was released: the gateway reattaches the sessions that had it open, which reopens it. */
+  storeFailed: (() => void) | undefined;
+  #openedAt = 0;
+  /** Store failures in a row, each within a minute of the store opening again. */
+  #failures = 0;
   /** Live sessions that answer for their conversation: a bot's own tools ask the operator through them. */
   #chats = new Set<BotChat & { conversation(): Conversation }>();
   /** Access requests waiting for a conversation's chat to open again (`whenChat`), and the chats that can take them. */
@@ -497,14 +502,10 @@ export class DurableHost implements ExtensionHost {
       }, durableContext);
       this.optchat.attach(harness, { follow: this.#resume });
       this.#harness = harness;
-      // Since Durable 1.2.0 a storage error closes the whole harness; every later call rejects until the gateway restarts.
-      void harness.closed.then((end) => {
-        if (end.reason === "failed") recordDiagnosticEvent({
-          area: "runtime", level: "error", action: "durable_store_failed",
-          summary: "The Durable store failed and closed; restart the gateway to reopen it",
-          detail: end.error instanceof Error ? end.error.message : String(end.error),
-        });
-      });
+      this.#openedAt = Date.now();
+      // Since Durable 1.2.0 a storage error closes the whole harness: its sessions end (`DurableSession.onExit`), and once
+      // the store is released the next `open()` reopens it and resumes their runs.
+      void harness.closed.then((end) => { if (end.reason === "failed") void this.#failed(harness, end.error); });
       // Unfinished generations and tool calls continue even before any browser
       // reopens their session. Without it, nothing is scheduled: the store is
       // only read and written in commits.
@@ -515,6 +516,22 @@ export class DurableHost implements ExtensionHost {
       this.#release = undefined;
       throw error;
     }
+  }
+
+  /** The store failed: released, then `storeFailed` after a pause that doubles with each failure following a reopen
+   * that lasted under a minute (up to a minute), so a store that keeps failing is not reopened in a tight loop. */
+  async #failed(harness: Harness, error: unknown): Promise<void> {
+    if (this.#harness !== harness) return;
+    this.#failures = Date.now() - this.#openedAt < 60_000 ? this.#failures + 1 : 1;
+    const pause = Math.min(60_000, 1_000 * 2 ** (this.#failures - 1));
+    recordDiagnosticEvent({
+      area: "runtime", level: "error", action: "durable_store_failed",
+      summary: `The Durable store failed; it was released and is reopened in ${pause / 1000} s`,
+      detail: error instanceof Error ? error.message : String(error),
+    });
+    await this.close().catch(() => undefined);
+    await new Promise((resolve) => setTimeout(resolve, pause));
+    this.storeFailed?.();
   }
 
   async #resumeWhenReady(harness: Harness): Promise<void> {

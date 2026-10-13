@@ -280,6 +280,10 @@ function forWorkerSessions(workerId: string, act: (record: SessionRecord) => voi
 }
 workers.onConnected((workerId) => forWorkerSessions(workerId, (record) => liveSessions.ensure(record, true)));
 workers.onStopped((workerId) => forWorkerSessions(workerId, (record) => liveSessions.stopReconnecting(record.id)));
+durableHost().storeFailed = () => void readRegistry().then((records) => reattachAfterStoreFailure(records)).catch((error: unknown) => recordDiagnosticEvent({
+  area: "runtime", level: "warning", action: "durable_open_failed", summary: "The Durable session store did not open again",
+  detail: error instanceof Error ? error.message : String(error),
+}));
 /** Bots (HUI-18): their registry, and the service that runs each one's forever chat as an ordinary Durable session
  * whose memory is OptChat's (docs/optchat.md). */
 const botMemory = optChatBotMemory(durableHost());
@@ -4365,6 +4369,21 @@ export async function reopenDurableSessions(
   const references = new Set(conversations.map((id) => `durable:${String(id)}`));
   const owners = records.filter((record) => record.piSessionFile && references.has(record.piSessionFile));
   await Promise.all(owners.map((record) => sessions.ensure(record) ? sessions.booted(record.id) : undefined));
+}
+
+/** A failed Durable store was released (`DurableHost.storeFailed`): the sessions on this machine it ended reattach,
+ * once a boot underway settles (one that got the failed store ends then too), and the store opens again, which resumes
+ * the runs of sessions nobody has open, as at startup. */
+export async function reattachAfterStoreFailure(
+  records: readonly SessionRecord[],
+  sessions: Pick<typeof liveSessions, "ensure" | "booted" | "isLive"> = liveSessions,
+  open: () => Promise<unknown> = () => durableHost().open(),
+): Promise<void> {
+  await Promise.all(records.filter((record) => !record.worker && sessions.isLive(record.id)).map(async (record) => {
+    await sessions.booted(record.id);
+    sessions.ensure(record, true);
+  }));
+  await open();
 }
 
 /** Startup recovery is eager: interrupted work resumes even when no browser

@@ -36,6 +36,7 @@ import type {
   RuntimeQuestionResponse, RuntimeQueue, RuntimeRewindOptions, RuntimeRewindTarget, RuntimeSession, RuntimeUsage, StartOptions,
   TranscriptEntry,
 } from "./types.ts";
+import { RuntimeUnreachableError } from "./types.ts";
 
 export const DURABLE_VERSION = "1.2.0";
 const REFERENCE_PREFIX = "durable:";
@@ -1367,6 +1368,18 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
       diagnostics: [...(this.#extensionFailure ? [this.#extensionFailure] : []), ...(this.#extensions?.diagnostics ?? [])],
     };
     return { ...data, revision: createHash("sha256").update(JSON.stringify(data)).digest("hex").slice(0, 16) };
+  }
+
+  /** A storage error closed the harness this view follows. The conversation is still in the store: once the host has
+   * released it, a session that attaches again (the gateway reattaches it) reopens the store and carries on. */
+  onExit(listener: (unreachable?: RuntimeUnreachableError) => void): () => void {
+    let listening = true;
+    void this.#harness.closed.then((end) => {
+      if (!listening || this.#disposed || end.reason !== "failed") return;
+      listener(new RuntimeUnreachableError("HUI's Durable store failed; HUI is reopening it.", true));
+      this.dispose();
+    });
+    return () => { listening = false; };
   }
 
   /** Detaches this view, and shuts its extensions down. The conversation keeps running in the harness. */
