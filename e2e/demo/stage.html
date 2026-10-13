@@ -1,0 +1,141 @@
+<!doctype html>
+<!-- The demo recorder's stage: HUI in a framed window on a gradient, with a
+     synthetic cursor, step captions and title cards. Recorded at 1920×1080. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>HUI demo stage</title>
+<style>
+  html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background: #08090d; }
+  body { font-family: -apple-system, "SF Pro Display", "Inter", system-ui, sans-serif; color: #f4f4f6; -webkit-font-smoothing: antialiased; }
+  #bg { position: absolute; inset: 0; background:
+    radial-gradient(1100px 760px at 12% 8%, rgb(124 92 255 / 38%), transparent 62%),
+    radial-gradient(1000px 820px at 92% 96%, rgb(32 156 196 / 30%), transparent 60%),
+    linear-gradient(160deg, #11121a, #07080c); }
+  #camera { position: absolute; left: 0; top: 0; transform-origin: 0 0; transition: transform 1000ms cubic-bezier(.65, 0, .35, 1); }
+  #window { width: 1440px; border-radius: 12px; overflow: hidden; background: #111216;
+    box-shadow: 0 40px 120px rgb(0 0 0 / 55%), 0 0 0 1px rgb(255 255 255 / 9%); }
+  #chrome { position: relative; height: 36px; display: flex; align-items: center; gap: 8px; padding: 0 14px; background: #1a1b21; border-bottom: 1px solid rgb(255 255 255 / 6%); }
+  .dot { width: 12px; height: 12px; border-radius: 50%; }
+  #url { position: absolute; left: 50%; transform: translateX(-50%); min-width: 360px; padding: 4px 14px; border-radius: 7px; background: rgb(255 255 255 / 6%); color: rgb(255 255 255 / 55%); font-size: 13px; text-align: center; }
+  #viewport { position: relative; width: 1440px; height: 810px; }
+  iframe { display: block; width: 1440px; height: 810px; border: 0; background: #111216; }
+  #ghost { position: absolute; left: 0; top: 0; pointer-events: none; opacity: 0; border-radius: 10px; box-shadow: 0 18px 40px rgb(0 0 0 / 45%); transform-origin: 0 0; transition: opacity 150ms; z-index: 9; }
+  #cursor { position: absolute; left: 0; top: 0; width: 26px; height: 26px; pointer-events: none; z-index: 10;
+    transition: transform var(--move, 600ms) cubic-bezier(.45, 0, .25, 1), opacity 200ms; filter: drop-shadow(0 2px 3px rgb(0 0 0 / 45%)); }
+  #cursor svg { position: absolute; left: -3px; top: -2px; transition: transform 120ms; }
+  #cursor.down svg { transform: scale(.86); }
+  .ripple { position: absolute; width: 44px; height: 44px; margin: -22px 0 0 -22px; border-radius: 50%; pointer-events: none; z-index: 9;
+    border: 2px solid rgb(255 255 255 / 85%); background: rgb(124 92 255 / 30%); animation: ripple 520ms ease-out forwards; }
+  @keyframes ripple { from { transform: scale(.3); opacity: 1; } to { transform: scale(1.35); opacity: 0; } }
+  #caption { position: absolute; left: 50%; bottom: 22px; transform: translate(-50%, 16px); max-width: 1400px; padding: 14px 30px; border-radius: 999px;
+    background: rgb(14 15 20 / 84%); backdrop-filter: blur(14px); box-shadow: 0 12px 40px rgb(0 0 0 / 45%), 0 0 0 1px rgb(255 255 255 / 10%);
+    font-size: 30px; font-weight: 600; letter-spacing: -.01em; white-space: nowrap; opacity: 0; transition: opacity 320ms, transform 320ms; z-index: 20; }
+  #caption.on { opacity: 1; transform: translate(-50%, 0); }
+  #card { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; opacity: 0; transition: opacity 500ms; z-index: 30; pointer-events: none;
+    background: radial-gradient(900px 600px at 50% 40%, rgb(124 92 255 / 30%), transparent 70%), #08090d; }
+  #card.on { opacity: 1; }
+  #card .brand { display: inline-flex; align-items: center; gap: 12px; font-size: 26px; font-weight: 700; letter-spacing: .14em; color: rgb(255 255 255 / 70%); }
+  #card .brand i { width: 14px; height: 14px; border-radius: 4px; background: linear-gradient(135deg, #a78bfa, #38bdf8); }
+  #card h1 { margin: 26px 0 18px; font-size: 84px; line-height: 1.05; letter-spacing: -.03em; font-weight: 750; }
+  #card p { margin: 0 auto; max-width: 1200px; font-size: 34px; line-height: 1.35; color: rgb(255 255 255 / 66%); }
+</style>
+</head>
+<body>
+<div id="bg"></div>
+<div id="camera">
+  <div id="window">
+    <div id="chrome"><span class="dot" style="background:#ff5f57"></span><span class="dot" style="background:#febc2e"></span><span class="dot" style="background:#28c840"></span><span id="url">localhost</span></div>
+    <div id="viewport">
+      <iframe id="app" title="HUI"></iframe>
+      <img id="ghost" alt="">
+      <div id="cursor"><svg width="26" height="30" viewBox="0 0 26 30"><path d="M3 2 L3 24 L9 18.5 L13 27 L17 25.2 L13 16.8 L21 16.5 Z" fill="#111" stroke="#fff" stroke-width="2" stroke-linejoin="round"/></svg></div>
+    </div>
+  </div>
+</div>
+<div id="caption"></div>
+<div id="card"><div><div class="brand"><i></i>HUI</div><h1></h1><p></p></div></div>
+<script>
+  // App coordinates are CSS pixels inside the iframe; the camera maps them to the stage.
+  // The window sits above a band for captions, so they never cover the composer.
+  const APP = { width: 1440, height: 810 }, CHROME = 36, TOP = 34, BAND = 112;
+  const $ = (id) => document.getElementById(id);
+  let base, origin, cursor, grab = { x: 0, y: 0 };
+  const place = (x, y, scale) => { $("camera").style.transform = `translate(${x}px, ${y}px) scale(${scale})`; };
+  /** A smaller app viewport shows larger text: chat clips use 1280×720, the board 1440×810. */
+  function size(width, height) {
+    Object.assign(APP, { width, height });
+    for (const element of [$("window"), $("viewport"), $("app")]) element.style.width = `${width}px`;
+    for (const element of [$("viewport"), $("app")]) element.style.height = `${height}px`;
+    base = Math.min((1920 - 160) / width, (1080 - TOP - BAND) / (height + CHROME));
+    origin = { x: (1920 - width * base) / 2, y: TOP };
+    place(origin.x, origin.y, base);
+    stage.cursorTo(width * 0.62, height * 0.7, 0);
+  }
+  window.stage = {
+    load(url, width = 1440, height = 810) {
+      size(width, height);
+      $("app").src = url;
+    },
+    /** Zoom so app point (x, y) sits near the centre, never showing past the window's edges. */
+    zoom(x, y, factor = 1) {
+      if (factor <= 1) return place(origin.x, origin.y, base);
+      const scale = base * factor;
+      const width = APP.width * scale, height = (APP.height + CHROME) * scale;
+      const clamp = (value, size, span) => Math.min(0, Math.max(span - size, value));
+      place(clamp(960 - x * scale, width, 1920), clamp(540 - (y + CHROME) * scale, height, 1080), scale);
+    },
+    cursorTo(x, y, ms) {
+      const style = $("cursor").style;
+      style.setProperty("--move", `${ms}ms`);
+      style.transform = `translate(${x}px, ${y}px)`;
+      cursor = { x, y };
+    },
+    cursor: () => cursor,
+    /** Instantly, for stills. */
+    hideCursor(hidden) {
+      Object.assign($("cursor").style, { transition: hidden ? "none" : "", opacity: hidden ? "0" : "1" });
+    },
+    press(down) { $("cursor").classList.toggle("down", down); },
+    ripple() {
+      const ring = document.createElement("div");
+      ring.className = "ripple";
+      ring.style.left = `${cursor.x}px`;
+      ring.style.top = `${cursor.y}px`;
+      $("viewport").append(ring);
+      setTimeout(() => ring.remove(), 600);
+    },
+    ghost(src, width, height, x, y) {
+      const ghost = $("ghost");
+      if (!src) { ghost.style.opacity = "0"; return; }
+      Object.assign(ghost.style, { width: `${width}px`, height: `${height}px`, opacity: ".92", transition: "opacity 150ms" });
+      ghost.src = src;
+      grab = { x, y };
+      stage.moveGhost(cursor.x, cursor.y, 0);
+    },
+    moveGhost(x, y, ms) {
+      const ghost = $("ghost");
+      ghost.style.transition = `opacity 150ms, transform ${ms}ms cubic-bezier(.45, 0, .25, 1)`;
+      ghost.style.transform = `translate(${x - grab.x}px, ${y - grab.y}px) rotate(-2deg)`;
+    },
+    caption(text) {
+      const caption = $("caption");
+      caption.classList.toggle("on", Boolean(text));
+      if (text) caption.textContent = text;
+    },
+    card(title, subtitle) {
+      $("card").classList.toggle("on", Boolean(title));
+      if (!title) return;
+      $("card").querySelector("h1").textContent = title;
+      $("card").querySelector("p").textContent = subtitle ?? "";
+    },
+    /** Stage (page) coordinates of an app point, for real input events. */
+    toStage(x, y) {
+      const box = $("app").getBoundingClientRect();
+      return { x: box.left + x * (box.width / APP.width), y: box.top + y * (box.height / APP.height) };
+    },
+  };
+  size(APP.width, APP.height);
+</script>
+</body>
+</html>

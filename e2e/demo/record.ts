@@ -1,0 +1,404 @@
+#!/usr/bin/env node
+/**
+ * Records HUI demo videos: each scene launches a fresh isolated HUI with the
+ * scripted demo model (`visual-verification.mjs launch --demo`), plays it in a
+ * framed stage page in headless Chrome with a synthetic cursor, captions and
+ * zoom, and encodes the screencast to MP4 with ffmpeg. See README.md here.
+ *
+ *   node e2e/demo/record.ts [scene ...] [--out <dir>] [--keep]
+ */
+import { execFileSync, spawn } from "node:child_process";
+import { once } from "node:events";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import type { Readable, Writable } from "node:stream";
+
+import { CdpConnection, type CdpEvent } from "../../server/browser/cdp.ts";
+import { resolveBrowserExecutable } from "../../server/browser/executable.ts";
+import { parseKey } from "../../server/browser/keys.ts";
+import { browserLaunchArguments } from "../../server/browser/manager.ts";
+import { scenes, type Scene } from "./scenes.ts";
+
+const here = dirname(fileURLToPath(import.meta.url));
+const repo = resolve(here, "../..");
+const STAGE = { width: 1920, height: 1080 };
+const sleep = (ms: number) => new Promise((done) => setTimeout(done, ms));
+
+/** Visible text, an aria-label, a placeholder or a CSS selector, searched through shadow roots. */
+export type Target = string | { text?: string; contains?: string; label?: string; placeholder?: string; css?: string; nth?: number; last?: boolean };
+type Box = { x: number; y: number; width: number; height: number };
+
+// Runs on the stage, which shares HUI's origin: the innermost visible element in HUI's frame matching the target.
+const FIND = `(target) => {
+  const frame = document.getElementById("app").contentWindow;
+  const norm = (value) => (value ?? "").replace(/\\s+/g, " ").trim();
+  const all = [];
+  const walk = (root) => { for (const element of root.querySelectorAll("*")) { all.push(element); if (element.shadowRoot) walk(element.shadowRoot); } };
+  walk(frame.document);
+  const visible = (element) => {
+    const box = element.getBoundingClientRect();
+    if (box.width < 1 || box.height < 1 || box.bottom < 0 || box.right < 0 || box.top > frame.innerHeight || box.left > frame.innerWidth) return false;
+    const style = frame.getComputedStyle(element);
+    return style.visibility !== "hidden" && style.opacity !== "0";
+  };
+  const text = (element) => norm(element.innerText ?? element.textContent);
+  let found = all.filter((element) =>
+    (!target.css || element.matches(target.css)) &&
+    (!target.label || norm(element.getAttribute("aria-label")) === target.label) &&
+    (!target.placeholder || element.getAttribute("placeholder") === target.placeholder) &&
+    (!target.text || text(element) === target.text) &&
+    (!target.contains || text(element).includes(target.contains)) && visible(element));
+  if (!target.css) found = found.filter((element) => !found.some((other) => other !== element && element.contains(other)));
+  const element = target.last ? found.at(-1) : found[target.nth ?? 0];
+  if (!element) return null;
+  const box = element.getBoundingClientRect();
+  return { x: box.x, y: box.y, width: box.width, height: box.height };
+}`;
+
+export class Director {
+  readonly #cdp: CdpConnection;
+  readonly #session: string;
+  constructor(cdp: CdpConnection, session: string) {
+    this.#cdp = cdp;
+    this.#session = session;
+  }
+
+  async send<T extends Record<string, unknown> = Record<string, unknown>>(method: string, params: Record<string, unknown> = {}) {
+    const started = Date.now();
+    try {
+      return await this.#cdp.send<T>(method, params, this.#session);
+    } finally {
+      if (process.env["HUI_DEMO_DEBUG"] && Date.now() - started > 1_500) process.stderr.write(`slow ${method} ${Date.now() - started} ms ${JSON.stringify(params).slice(0, 120)}\n`);
+    }
+  }
+
+  /** Evaluates on the stage page. */
+  async stage<T>(expression: string): Promise<T> {
+    const result = await this.send<{ result: { value: T }; exceptionDetails?: { text: string } }>("Runtime.evaluate", { expression, returnByValue: true, awaitPromise: true });
+    if (result.exceptionDetails) throw new Error(`Stage: ${result.exceptionDetails.text} in ${expression}`);
+    return result.result.value;
+  }
+
+  find(target: Target): Promise<Box | null> {
+    return this.stage<Box | null>(`(${FIND})(${JSON.stringify(typeof target === "string" ? { text: target } : target)})`);
+  }
+
+  /** Waits until the target is visible; the scripted model makes every wait short. */
+  async waitFor(target: Target, timeout = 20_000): Promise<Box> {
+    if (process.env["HUI_DEMO_DEBUG"]) process.stderr.write(`${new Date().toISOString()} waitFor ${JSON.stringify(target)}\n`);
+    const deadline = Date.now() + timeout;
+    for (;;) {
+      const box = await this.find(target);
+      if (box) return box;
+      if (Date.now() > deadline) throw new Error(`Timed out waiting for ${JSON.stringify(target)}`);
+      await sleep(100);
+    }
+  }
+
+  async #point(target: Target | { x: number; y: number }) {
+    if (typeof target === "object" && "x" in target && typeof target.x === "number") return target;
+    const box = await this.waitFor(target as Target);
+    return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  }
+
+  async #mouse(type: string, x: number, y: number, extra: Record<string, unknown> = {}) {
+    const point = await this.stage<{ x: number; y: number }>(`stage.toStage(${x}, ${y})`);
+    await this.send("Input.dispatchMouseEvent", { type, x: point.x, y: point.y, button: "none", ...extra });
+  }
+
+  /** Glides the cursor to a target, sending real mouse moves on the way for hover states. */
+  async move(target: Target | { x: number; y: number }) {
+    const to = await this.#point(target);
+    const from = await this.stage<{ x: number; y: number }>("stage.cursor()");
+    const ms = Math.round(Math.min(1_000, 380 + Math.hypot(to.x - from.x, to.y - from.y) * 0.45));
+    await this.stage(`stage.cursorTo(${to.x}, ${to.y}, ${ms})`);
+    const steps = 6;
+    for (let step = 1; step <= steps; step++) {
+      const eased = 1 - (1 - step / steps) ** 2;
+      await this.#mouse("mouseMoved", from.x + (to.x - from.x) * eased, from.y + (to.y - from.y) * eased);
+      await sleep(ms / steps);
+    }
+    return to;
+  }
+
+  async click(target: Target | { x: number; y: number }) {
+    const { x, y } = await this.move(target);
+    await sleep(120);
+    await this.stage("stage.press(true)");
+    await this.#mouse("mousePressed", x, y, { button: "left", buttons: 1, clickCount: 1 });
+    await sleep(70);
+    await this.#mouse("mouseReleased", x, y, { button: "left", buttons: 0, clickCount: 1 });
+    await this.stage("stage.press(false); stage.ripple()");
+    await sleep(250);
+  }
+
+  /** Types like a person: one character at a time into the focused field. */
+  async type(text: string, perCharacter = 26) {
+    for (const character of text) {
+      await this.send("Input.insertText", { text: character });
+      await sleep(perCharacter + (character === " " ? 24 : Math.random() * 20));
+    }
+  }
+
+  async press(name: string) {
+    const stroke = parseKey(name);
+    const base = { modifiers: stroke.modifiers, key: stroke.key, code: stroke.code, windowsVirtualKeyCode: stroke.keyCode, nativeVirtualKeyCode: stroke.keyCode };
+    await this.send("Input.dispatchKeyEvent", { type: stroke.text ? "keyDown" : "rawKeyDown", ...base, ...(stroke.text ? { text: stroke.text, unmodifiedText: stroke.text } : {}) });
+    await this.send("Input.dispatchKeyEvent", { type: "keyUp", ...base });
+    await sleep(150);
+  }
+
+  /** HTML5 drag and drop through Chrome's drag interception, with a ghost of the dragged element. */
+  async drag(from: Target, to: Target) {
+    const source = await this.waitFor(from);
+    const start = { x: source.x + Math.min(40, source.width / 2), y: source.y + Math.min(24, source.height / 2) };
+    await this.move(start);
+    const shot = await this.#shot(source);
+    const end = await this.#point(to);
+    await this.send("Input.setInterceptDrags", { enabled: true });
+    const intercepted = new Promise<Record<string, unknown>>((done, fail) => {
+      const timer = setTimeout(() => { off(); fail(new Error(`No drag started from ${JSON.stringify(from)}`)); }, 5_000);
+      const off = this.#cdp.on((event: CdpEvent) => {
+        if (event.method === "Input.dragIntercepted" && event.sessionId === this.#session) { off(); clearTimeout(timer); done(event.params["data"] as Record<string, unknown>); }
+      });
+    });
+    await this.stage("stage.press(true)");
+    await this.#mouse("mousePressed", start.x, start.y, { button: "left", buttons: 1, clickCount: 1 });
+    await this.#mouse("mouseMoved", start.x + 12, start.y + 6, { button: "left", buttons: 1 });
+    const data = await intercepted;
+    await this.stage(`stage.ghost(${JSON.stringify(shot)}, ${source.width}, ${source.height}, ${start.x - source.x}, ${start.y - source.y})`);
+    const drag = async (type: string, x: number, y: number) => {
+      const point = await this.stage<{ x: number; y: number }>(`stage.toStage(${x}, ${y})`);
+      await this.send("Input.dispatchDragEvent", { type, x: point.x, y: point.y, data, modifiers: 0 });
+    };
+    await drag("dragEnter", start.x, start.y);
+    const ms = Math.round(Math.min(1_400, 600 + Math.hypot(end.x - start.x, end.y - start.y) * 0.5));
+    await this.stage(`stage.cursorTo(${end.x}, ${end.y}, ${ms}); stage.moveGhost(${end.x}, ${end.y}, ${ms})`);
+    const steps = 12;
+    for (let step = 1; step <= steps; step++) {
+      const eased = 0.5 - Math.cos((Math.PI * step) / steps) / 2;
+      await drag("dragOver", start.x + (end.x - start.x) * eased, start.y + (end.y - start.y) * eased);
+      await sleep(ms / steps);
+    }
+    await sleep(250);
+    await drag("drop", end.x, end.y);
+    await this.stage("stage.ghost(null); stage.press(false)");
+    await this.#mouse("mouseReleased", end.x, end.y, { button: "left", buttons: 0, clickCount: 1 });
+    await this.send("Input.setInterceptDrags", { enabled: false });
+    await sleep(300);
+  }
+
+  async #shot(box: Box): Promise<string> {
+    const topLeft = await this.stage<{ x: number; y: number }>(`stage.toStage(${box.x}, ${box.y})`);
+    const bottomRight = await this.stage<{ x: number; y: number }>(`stage.toStage(${box.x + box.width}, ${box.y + box.height})`);
+    const { data } = await this.send<{ data: string }>("Page.captureScreenshot", {
+      format: "png", clip: { x: topLeft.x, y: topLeft.y, width: bottomRight.x - topLeft.x, height: bottomRight.y - topLeft.y, scale: 1 },
+    });
+    return `data:image/png;base64,${data}`;
+  }
+
+  /** Zooms the camera onto a target (factor > 1) or back out (no target). */
+  async zoom(target?: Target | { x: number; y: number }, factor = 1.5) {
+    if (!target) await this.stage("stage.zoom(0, 0, 1)");
+    else {
+      const { x, y } = await this.#point(target);
+      await this.stage(`stage.zoom(${x}, ${y}, ${factor})`);
+    }
+    await sleep(1_050);
+  }
+
+  async caption(text = "") {
+    await this.stage(`stage.caption(${JSON.stringify(text)})`);
+  }
+
+  async card(title = "", subtitle = "") {
+    await this.stage(`stage.card(${JSON.stringify(title)}, ${JSON.stringify(subtitle)})`);
+  }
+
+  /** Lets the viewer read; the only fixed waits in a scene are pacing, never synchronization. */
+  pause(ms: number) {
+    return sleep(ms);
+  }
+
+  /** Recording time in seconds, which stands still during a cut. */
+  clock = () => (Date.now() - this.#cutMs) / 1000;
+  cutting = false;
+  #cutMs = 0;
+
+  /** Waits without recording: the clip jumps from before to after, like an edit. */
+  async cut(work: () => Promise<unknown>) {
+    const started = Date.now();
+    this.cutting = true;
+    try {
+      await work();
+    } finally {
+      this.cutting = false;
+      this.#cutMs += Date.now() - started;
+    }
+  }
+
+  /** A still of HUI's window, for the README. */
+  still: (name: string) => Promise<void> = async () => undefined;
+}
+
+/** A fresh isolated HUI with the scripted demo model, from the launcher; `stop` also removes its temporary folders. */
+async function launchHui() {
+  const branch = execFileSync("git", ["-C", repo, "branch", "--show-current"], { encoding: "utf8" }).trim() || "HEAD";
+  const child = spawn(process.execPath, [join(repo, "e2e/visual-verification.mjs"), "launch", "--branch", branch, "--demo"], { cwd: repo, stdio: ["ignore", "pipe", "inherit"] });
+  const stop = async () => {
+    if (child.exitCode === null && child.signalCode === null) { child.kill("SIGTERM"); await once(child, "exit"); }
+  };
+  let output = "";
+  const receipt = await new Promise<Record<string, string>>((done, fail) => {
+    child.stdout!.on("data", (chunk) => {
+      output += chunk;
+      const line = output.split("\n").find((value) => value.startsWith("{"));
+      if (line) done(JSON.parse(line));
+    });
+    child.once("exit", (code) => fail(new Error(`HUI launch exited (${code}).`)));
+  }).catch(async (error) => { await stop(); throw error; });
+  return {
+    url: receipt["url"]!,
+    stop: async () => {
+      await stop();
+      if (keep) return;
+      for (const path of [dirname(receipt["receipt"]!), receipt["workspace"]!]) await rm(path, { recursive: true, force: true });
+    },
+  };
+}
+
+async function startChrome(profile: string) {
+  const resolved = await resolveBrowserExecutable("");
+  if (!resolved.executable) throw new Error(resolved.error);
+  const args = browserLaunchArguments({ profileDir: profile, headless: true, width: STAGE.width, height: STAGE.height }).filter((arg) => arg !== "about:blank");
+  const child = spawn(resolved.executable.path, args, { stdio: ["ignore", "ignore", "ignore", "pipe", "pipe"] });
+  const cdp = new CdpConnection(child.stdio[3] as Writable, child.stdio[4] as Readable);
+  return { child, cdp };
+}
+
+/** Encodes screencast frames (shown until the next one arrives) to 30 fps H.264. */
+function encode(frames: { file: string; t: number }[], end: number, list: string, output: string) {
+  const lines = ["ffconcat version 1.0"];
+  frames.forEach((frame, index) => {
+    lines.push(`file '${frame.file}'`, `duration ${Math.max(0.001, (frames[index + 1]?.t ?? end) - frame.t).toFixed(4)}`);
+  });
+  lines.push(`file '${frames.at(-1)!.file}'`);
+  return writeFile(list, `${lines.join("\n")}\n`).then(() => execFileSync("ffmpeg", [
+    "-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", list,
+    "-vf", `fps=30,scale=${STAGE.width}:${STAGE.height}:flags=lanczos,format=yuv420p`,
+    "-c:v", "libx264", "-preset", "slow", "-crf", "22", "-movflags", "+faststart", "-an", output,
+  ]));
+}
+
+async function record(scene: Scene, out: string) {
+  const work = await mkdtemp(join(tmpdir(), `hui-demo-${scene.name}-`));
+  const frames: { file: string; t: number }[] = [];
+  let end = 0;
+  let hui: Awaited<ReturnType<typeof launchHui>> | undefined;
+  let chrome: Awaited<ReturnType<typeof startChrome>> | undefined;
+  try {
+    // A title card needs only the stage; a clip needs a fresh HUI.
+    if (scene.run) hui = await launchHui();
+    chrome = await startChrome(join(work, "profile"));
+    const { cdp } = chrome;
+    const { targetId } = await cdp.send<{ targetId: string }>("Target.createTarget", { url: "about:blank" });
+    const { sessionId } = await cdp.send<{ sessionId: string }>("Target.attachToTarget", { targetId, flatten: true });
+    const director = new Director(cdp, sessionId);
+    await director.send("Page.enable");
+    // A background tab paints no frames, and input to it waits for one.
+    await director.send("Page.bringToFront");
+    await director.send("Emulation.setDeviceMetricsOverride", { ...STAGE, deviceScaleFactor: 1, mobile: false });
+    await director.send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: "dark" }, { name: "prefers-reduced-motion", value: "no-preference" }] });
+    await director.send("Page.navigate", { url: hui ? new URL("/__demo/stage", hui.url).href : pathToFileURL(join(here, "stage.html")).href });
+    await director.stage(`new Promise((done) => document.readyState === "complete" ? done() : addEventListener("load", done))`);
+    await director.card(scene.title, scene.subtitle);
+    const api = async (method: string, path: string, body?: unknown) => {
+      const response = await fetch(new URL(path, hui!.url), { method, headers: { "x-hui": "1", "content-type": "application/json" }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+      if (!response.ok) throw new Error(`${method} ${path}: ${response.status} ${await response.text()}`);
+      return response.json() as Promise<Record<string, any>>;
+    };
+    const context = { director, api };
+    if (hui) {
+      const [width, height] = scene.viewport ?? [1440, 810];
+      // View preferences, such as the board's grouping, go into the localStorage HUI reads when it loads: the stage shares its origin.
+      await director.stage(`Object.entries(${JSON.stringify(scene.storage ?? {})}).forEach(([key, value]) => localStorage.setItem(key, value))`);
+      await director.stage(`stage.load(${JSON.stringify(new URL(scene.path ?? "/", hui.url).href)}, ${width}, ${height})`);
+      await director.waitFor(scene.ready ?? "Settings", 60_000);
+      // Behind the title card, so it is not recorded.
+      await scene.setup?.(context);
+    }
+
+    const writes: Promise<void>[] = [];
+    const framesDir = join(work, "frames");
+    await mkdir(framesDir, { recursive: true });
+    cdp.on((event) => {
+      if (event.method !== "Page.screencastFrame" || event.sessionId !== sessionId) return;
+      void cdp.send("Page.screencastFrameAck", { sessionId: event.params["sessionId"] }, sessionId).catch(() => undefined);
+      if (director.cutting) return;
+      const file = join(framesDir, `${String(frames.length).padStart(6, "0")}.jpg`);
+      frames.push({ file, t: director.clock() });
+      writes.push(writeFile(file, Buffer.from(String(event.params["data"]), "base64")));
+    });
+    let stills = 0;
+    director.still = (name) => director.cut(async () => {
+      // The window alone, without the caption band or cursor: a README screenshot. The cut keeps the hidden cursor out of the clip.
+      await director.stage("stage.hideCursor(true)");
+      const clip = await director.stage<Box>(`(() => { const box = document.getElementById("window").getBoundingClientRect(); return { x: box.x, y: box.y, width: box.width, height: box.height }; })()`);
+      const { data } = await director.send<{ data: string }>("Page.captureScreenshot", { format: "png", clip: { ...clip, scale: 1 } });
+      await writeFile(join(out, `${scene.name}-${name}.png`), Buffer.from(data, "base64"));
+      await director.stage("stage.hideCursor(false)");
+      stills++;
+    });
+    await director.send("Page.startScreencast", { format: "jpeg", quality: 92, maxWidth: STAGE.width, maxHeight: STAGE.height, everyNthFrame: 1 });
+    await director.pause(scene.run ? 2_200 : scene.hold ?? 3_000);
+    if (scene.run) {
+      await director.card();
+      await director.pause(600);
+      await scene.run(context).catch(async (error) => {
+        const { data } = await director.send<{ data: string }>("Page.captureScreenshot", { format: "png" });
+        await writeFile(join(out, `${scene.name}-failed.png`), Buffer.from(data, "base64"));
+        throw new Error(`${scene.name} failed; its screen is in ${join(out, `${scene.name}-failed.png`)}`, { cause: error });
+      });
+      await director.pause(1_200);
+    }
+    end = director.clock();
+    await director.send("Page.stopScreencast");
+    await Promise.all(writes);
+    if (stills) process.stdout.write(`${stills} stills of ${scene.name}\n`);
+  } catch (error) {
+    if (!keep) await rm(work, { recursive: true, force: true });
+    throw error;
+  } finally {
+    chrome?.cdp.close();
+    if (chrome && chrome.child.exitCode === null && chrome.child.signalCode === null) { chrome.child.kill(); await once(chrome.child, "exit"); }
+    await hui?.stop();
+  }
+  // Encoded once HUI and Chrome are gone.
+  const output = join(out, `${scene.name}.mp4`);
+  await encode(frames, end, join(work, "frames.txt"), output);
+  if (!keep) await rm(work, { recursive: true, force: true });
+  process.stdout.write(`${output} (${frames.length} frames, ${(end - frames[0]!.t).toFixed(1)} s)\n`);
+}
+
+/** The overview: every clip in order at 1.2× speed, compressed harder to stay under GitHub's 10 MB attachment limit. */
+function overview(out: string, names: string[]) {
+  const inputs = names.flatMap((name) => ["-i", join(out, `${name}.mp4`)]);
+  const filter = `${names.map((_, index) => `[${index}:v]`).join("")}concat=n=${names.length}:v=1:a=0,setpts=PTS/1.2,fps=30[v]`;
+  execFileSync("ffmpeg", ["-y", "-loglevel", "error", ...inputs, "-filter_complex", filter, "-map", "[v]", "-c:v", "libx264", "-preset", "slow", "-crf", "26", "-movflags", "+faststart", join(out, "overview.mp4")]);
+}
+
+const args = process.argv.slice(2);
+const option = (name: string) => { const index = args.indexOf(name); return index === -1 ? undefined : args.splice(index, 2)[1]; };
+const out = resolve(option("--out") ?? join(tmpdir(), "hui-demo-videos"));
+const keep = args.includes("--keep");
+const wanted = args.filter((arg) => !arg.startsWith("--"));
+const selected = wanted.length ? scenes.filter((scene) => wanted.includes(scene.name)) : scenes;
+if (selected.length !== (wanted.length || scenes.length)) throw new Error(`Unknown scene. Scenes: ${scenes.map((scene) => scene.name).join(", ")}`);
+await mkdir(out, { recursive: true });
+for (const scene of selected) await record(scene, out);
+if (!wanted.length) {
+  overview(out, scenes.map((scene) => scene.name));
+  process.stdout.write(`${join(out, "overview.mp4")}\n`);
+}
