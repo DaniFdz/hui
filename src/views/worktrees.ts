@@ -31,7 +31,8 @@ export type WorktreesPageProps = {
   filter: WorktreeFilter;
   /** A worktree path awaiting confirmation, or `merged` for the bulk cleanup. */
   confirm: string;
-  removing: boolean;
+  /** Paths this browser asked to remove and is still waiting on. */
+  removing: ReadonlySet<string>;
   results: readonly WorktreeRemovalResult[];
   onQuery: (value: string) => void;
   onFilter: (filter: WorktreeFilter) => void;
@@ -135,11 +136,21 @@ function riskHint(row: WorktreeRow) {
   return risk ? html`<span class="worktree-risk" data-risk=${risk}>${RISK_COPY[risk].label}</span>` : nothing;
 }
 
+/** The server knows which removal runs; a request it has not started is queued. */
+function removalState(props: WorktreesPageProps, row: WorktreeRow): WorktreeRow["removal"] {
+  return row.removal ?? (props.removing.has(row.path) ? "queued" : undefined);
+}
+
 function renderActions(props: WorktreesPageProps, row: WorktreeRow) {
+  const removal = removalState(props, row);
+  if (removal) {
+    return html`<span class="worktree-actions worktree-removal" data-removal=${removal}>
+      ${removal === "removing" ? html`<span class="session-run-spinner" aria-hidden="true"></span>Removing…` : "Queued"}
+    </span>`;
+  }
   return html`<span class="worktree-actions">
     ${riskHint(row)}
     <button type="button" class="btn btn--sm"
-      ?disabled=${props.removing}
       data-hui-tooltip="Remove this worktree"
       aria-label=${`Remove ${label(row)}`}
       @click=${() => props.onRequestRemove(row.path)}>${icons.trash}</button>
@@ -183,8 +194,8 @@ export function renderRemoveDialog(props: WorktreesPageProps): TemplateResult | 
         ? `${row.sessions.length === 1 ? "Its session stays" : "Its sessions stay"} in HUI but will point at a missing directory. `
         : ""}${branchNote(row)}</p>
       <div class="exec-approval-actions">
-        <button type="button" class="btn danger" ?disabled=${props.removing}
-          @click=${() => props.onConfirmRemove(row.path, row.risks)}>${props.removing ? "Removing…" : destructive ? "Delete worktree and changes" : "Remove worktree"}</button>
+        <button type="button" class="btn danger"
+          @click=${() => props.onConfirmRemove(row.path, row.risks)}>${destructive ? "Delete worktree and changes" : "Remove worktree"}</button>
         <button type="button" class="btn worktree-remove-cancel" autofocus @click=${props.onCancel}>Cancel</button>
       </div>
     </div>
@@ -205,7 +216,7 @@ function body(props: WorktreesPageProps): TemplateResult {
     );
   }
   return html`${rows.map((row) => html`
-    <tr class="session-data-row worktree-row" data-worktree-path=${row.path}>
+    <tr class="session-data-row worktree-row" data-worktree-path=${row.path} data-removal=${removalState(props, row) ?? nothing}>
       <td class="data-table-key-col">
         <div class="session-key-cell">
           <span class="session-avatar session-avatar--direct" aria-hidden="true">${branchIcon()}</span>
@@ -243,16 +254,27 @@ function renderCleanupConfirm(props: WorktreesPageProps, candidates: readonly Wo
     </div>
     <div class="worktree-cleanup__actions">
       <button type="button" class="btn btn--sm" @click=${props.onCancel}>Cancel</button>
-      <button type="button" class="btn btn--sm danger" ?disabled=${props.removing}
-        @click=${() => props.onConfirmCleanup(candidates.map((row) => row.path))}>
-        ${props.removing ? "Removing…" : `Remove ${candidates.length}`}
-      </button>
+      <button type="button" class="btn btn--sm danger"
+        @click=${() => props.onConfirmCleanup(candidates.map((row) => row.path))}>Remove ${candidates.length}</button>
     </div>
   </div>`;
 }
 
 function plural(count: number, one: string, many = `${one}s`) {
   return `${count} ${count === 1 ? one : many}`;
+}
+
+/** Git deletes a large checkout file by file, which can take minutes; say what
+ * is happening while the rest of the page stays usable. */
+function renderProgress(props: WorktreesPageProps, rows: readonly WorktreeRow[]) {
+  const pending = rows.filter((row) => removalState(props, row));
+  const current = pending.find((row) => removalState(props, row) === "removing");
+  if (!current) return nothing;
+  return html`<div class="callout worktree-progress" role="status">
+    <span class="session-run-spinner" aria-hidden="true"></span>
+    <span>Removing <span class="mono">${label(current)}</span>${current.bytes === undefined ? "" : ` (${formatBytes(current.bytes)})`}…${
+      pending.length > 1 ? ` ${pending.length - 1} more queued.` : ""} Large worktrees can take a few minutes; you can keep using HUI.</span>
+  </div>`;
 }
 
 function renderResults(props: WorktreesPageProps) {
@@ -276,7 +298,7 @@ function renderResults(props: WorktreesPageProps) {
 
 export function renderWorktreesPage(props: WorktreesPageProps): TemplateResult {
   const rows = props.inventory?.worktrees ?? [];
-  const candidates = rows.filter(isMergedCleanupCandidate);
+  const candidates = rows.filter((row) => isMergedCleanupCandidate(row) && !removalState(props, row));
   const managed = rows.filter((row) => row.managed).length;
   return html`
     <p class="settings-page__intro">Linked worktrees of the Git repositories your HUI sessions use, plus those New Session created in ~/.config/hui/worktrees. Main checkouts are not listed.</p>
@@ -296,12 +318,13 @@ export function renderWorktreesPage(props: WorktreesPageProps): TemplateResult {
                 <button type="button" class="btn btn--sm" ?disabled=${props.loading} @click=${props.onRefresh}>${icons.refresh} Refresh</button>
                 <span class="worktree-tooltip-wrap" data-hui-tooltip=${candidates.length ? "Remove HUI worktrees with a merged PR, no active session and no local changes" : "No HUI worktree has a merged PR, no active session and no local changes"}>
                   <button type="button" class="btn btn--sm" data-worktree-cleanup
-                    ?disabled=${candidates.length === 0 || props.removing}
+                    ?disabled=${candidates.length === 0}
                     @click=${props.onRequestCleanup}>${icons.trash} Clean up merged${candidates.length ? ` (${candidates.length})` : ""}</button>
                 </span>
               </div>
             </div>
             ${props.confirm === "merged" && candidates.length ? renderCleanupConfirm(props, candidates) : nothing}
+            ${renderProgress(props, rows)}
             ${renderResults(props)}
             ${renderRemoveDialog(props)}
             ${props.error && props.inventory ? html`<div class="callout warning" role="alert">${props.error}</div>` : nothing}

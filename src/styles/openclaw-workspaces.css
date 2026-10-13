@@ -655,3 +655,16 @@ wa-switch::part(base) { min-width: inherit; min-height: inherit; }
 }
 
 .sessions-delete-dialog__option small { display: block; }
+
+.worktrees-table .worktree-row[data-removal] > td:not(.session-actions-cell) { opacity: 0.55; }
+.worktrees-table .worktree-removal {
+  color: var(--muted);
+  font-size: var(--control-ui-text-sm);
+  white-space: nowrap;
+}
+.worktree-progress {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}

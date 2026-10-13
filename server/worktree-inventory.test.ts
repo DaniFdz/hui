@@ -237,3 +237,42 @@ test("a worktree created outside HUI is removable once confirmed, without --forc
   assert.equal((await runCommand("git", ["-C", f.repo, "show-ref", "--verify", "refs/heads/external"])).code, 0);
   assert.equal(calls.some((args) => args.includes("--force")), false);
 });
+
+test("the inventory shows which worktree is being removed and which wait, without re-reading them", async () => {
+  const f = await fixture();
+  const calls: string[][] = [];
+  let release!: () => void;
+  const gate = new Promise<void>((resolveGate) => { release = resolveGate; });
+  let started!: () => void;
+  const removing = new Promise<void>((resolveStarted) => { started = resolveStarted; });
+  const base = runner({}, calls);
+  const service = new WorktreeService({
+    root: f.root,
+    run: async (file, args, options) => {
+      if (args.includes("remove") && args.includes(f.managed("open"))) {
+        started();
+        await gate;
+      }
+      return base(file, args, options);
+    },
+  });
+  await service.inventory([]);
+  await service.settled();
+  const removal = service.remove([], [f.managed("open"), f.managed("merged")], "single");
+  // The first removal reached Git, which holds it until released.
+  await removing;
+  calls.length = 0;
+  const during = await service.inventory([]);
+  const byBranch = new Map(during.worktrees.map((row) => [row.branch, row]));
+  assert.equal(byBranch.get("hui/open")?.removal, "removing");
+  assert.equal(typeof byBranch.get("hui/open")?.bytes, "number");
+  assert.equal(byBranch.get("hui/merged")?.removal, "queued");
+  assert.equal(byBranch.get("hui/dirty")?.removal, undefined);
+  assert.equal(during.pending, true);
+  assert.equal(calls.some((args) => args.includes(f.managed("open")) && (args[0] === "du" || args.includes("status"))), false);
+  release();
+  await removal;
+  const after = await service.inventory([]);
+  assert.equal(after.worktrees.some((row) => row.removal), false);
+  assert.equal(after.worktrees.some((row) => row.branch === "hui/open"), false);
+});

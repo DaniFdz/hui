@@ -192,6 +192,11 @@ class FactCache<T> {
     await Promise.all([...this.#entries.values()].map((entry) => entry.running));
   }
 
+  /** The last confirmed value, without starting a refresh. */
+  peek(key: string): T | undefined {
+    return this.#entries.get(key)?.value;
+  }
+
   delete(key: string): void {
     this.#entries.delete(key);
   }
@@ -253,6 +258,8 @@ export class WorktreeService {
   readonly #pullRequests: FactCache<PullRequestFact[]>;
   readonly #diskWalk = limiter(2);
   #removal: Promise<unknown> = Promise.resolve();
+  /** Requested paths still waiting for or undergoing removal. */
+  readonly #removals = new Map<string, "queued" | "removing">();
 
   constructor(options: WorktreeServiceOptions = {}) {
     const now = options.now ?? Date.now;
@@ -274,6 +281,14 @@ export class WorktreeService {
     const { rows, diagnostics } = await this.#rows(sessions);
     let pending = false;
     const worktrees = rows.map((row) => {
+      const removal = this.#removals.get(row.base.path);
+      if (removal) {
+        // Git is deleting it: a fresh `git status` or `du` would only see a
+        // half-deleted tree. Keep what was known and poll until it is gone.
+        pending = true;
+        const { path } = row.base;
+        return { ...this.#finish(row.base, this.#dirty.peek(path), this.#bytes.peek(path), this.#pullRequests.peek(this.#prKey(row))), removal };
+      }
       if (row.missing) return this.#finish(row.base, undefined, undefined, undefined);
       const dirty = this.#dirty.get(row.base.path, () => this.#readDirty(row.base.path));
       const bytes = this.#bytes.get(row.base.path, () => this.#diskWalk(() => this.#readBytes(row.base.path)));
@@ -303,7 +318,10 @@ export class WorktreeService {
     mode: WorktreeRemovalMode,
     acknowledged: readonly WorktreeRisk[] = [],
   ): Promise<WorktreeRemovalResult[]> {
-    const next = this.#removal.then(() => this.#removeAll(sessions, paths, mode, acknowledged));
+    for (const path of paths) this.#removals.set(resolve(path), "queued");
+    const next = this.#removal
+      .then(() => this.#removeAll(sessions, paths, mode, acknowledged))
+      .finally(() => { for (const path of paths) this.#removals.delete(resolve(path)); });
     this.#removal = next.catch(() => undefined);
     return next;
   }
@@ -323,7 +341,9 @@ export class WorktreeService {
         results.push({ path: requested, label: basename(requested), removed: false, branchDeleted: false, error: "It is no longer listed; refresh the page." });
         continue;
       }
+      this.#removals.set(resolve(requested), "removing");
       results.push(await this.#removeOne(row, mode, acknowledged));
+      this.#removals.delete(resolve(requested));
     }
     return results;
   }

@@ -4,7 +4,7 @@ import test from "node:test";
 import type { WorktreeRow } from "../../shared/worktrees.ts";
 import { isMergedCleanupCandidate } from "../../shared/worktrees.ts";
 import { formatBytes } from "../lib/worktrees.ts";
-import { matchingWorktrees } from "./worktrees.ts";
+import { matchingWorktrees, renderWorktreesPage, type WorktreesPageProps } from "./worktrees.ts";
 
 function row(overrides: Partial<WorktreeRow>): WorktreeRow {
   return {
@@ -71,4 +71,32 @@ test("any worktree can be removed manually, with its risks spelled out in a moda
   assert.doesNotMatch(source, /worktree-blocked|removable/u);
   assert.match(source, /class="hui-modal-dialog worktree-remove-dialog"/u);
   assert.match(source, /Delete worktree and changes/u);
+});
+
+function text(value: unknown): string {
+  if (Array.isArray(value)) return value.map(text).join("");
+  if (value && typeof value === "object" && "strings" in value && "values" in value) {
+    const template = value as { strings: readonly string[]; values: unknown[] };
+    return template.strings.map((part, i) => part + text(template.values[i])).join("");
+  }
+  return typeof value === "string" || typeof value === "number" ? String(value) : "";
+}
+
+test("a removal in progress keeps the page usable and says which worktree runs and which wait", () => {
+  const rows = [
+    row({ path: "/a", branch: "hui/big", bytes: 3 * 1024 ** 3, removal: "removing", merged: true }),
+    row({ path: "/b", branch: "hui/next", merged: true }),
+    row({ path: "/c", branch: "hui/other", merged: true }),
+  ];
+  const page = text(renderWorktreesPage({
+    inventory: { worktrees: rows, diagnostics: [], pending: true },
+    loading: false, error: "", query: "", filter: "all", confirm: "", results: [],
+    removing: new Set(["/a", "/b"]),
+  } as unknown as WorktreesPageProps)).replace(/\s+/gu, " ");
+  assert.match(page, /role="status"> <span class="session-run-spinner"[^>]*><\/span> <span>Removing <span class="mono">hui\/big<\/span> \(3\.0 GiB\)… 1 more queued\./u);
+  assert.match(page, /data-removal=removing> <span class="session-run-spinner" aria-hidden="true"><\/span>Removing…/u);
+  assert.match(page, /data-removal=queued> Queued/u);
+  // Only the untouched row keeps its remove button, and cleanup offers only it.
+  assert.deepEqual(page.match(/aria-label=Remove \S+/gu), ["aria-label=Remove hui/other"]);
+  assert.match(page, /Clean up merged \(1\)/u);
 });
