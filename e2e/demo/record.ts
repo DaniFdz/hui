@@ -315,23 +315,24 @@ async function encode(frames: { file: string; t: number }[], end: number, list: 
   });
   lines.push(`file '${frames.at(-1)!.file}'`);
   await writeFile(list, `${lines.join("\n")}\n`);
-  // Clock times are absolute; the clip starts at its first frame. Video and audio are cut to the same length, which the
-  // overview's crossfades rely on.
-  const start = frames[0]!.t, seconds = end - start;
-  const video = `[0:v]fps=30,scale=${STAGE.width}:${STAGE.height}:flags=lanczos,format=yuv420p,trim=duration=${seconds}[video]`;
-  const encodeVideo = ["-map", "[video]", "-c:v", "libx264", "-preset", "slow", "-crf", "22", "-movflags", "+faststart"];
-  const frameList = ["-f", "concat", "-safe", "0", "-i", list];
-  if (!voiceModel && !music) return void execFileSync("ffmpeg", ["-y", "-loglevel", "error", ...frameList, "-filter_complex", video, ...encodeVideo, "-an", output]);
+  // Clock times are absolute; the clip starts at its first frame. Every output is cut to the same length with -t, which
+  // the overview's crossfades rely on.
+  const start = frames[0]!.t, length = ["-t", (end - start).toFixed(3)];
+  const video = ["-f", "concat", "-safe", "0", "-i", list];
+  const encodeVideo = ["-vf", `fps=30,scale=${STAGE.width}:${STAGE.height}:flags=lanczos,format=yuv420p`, "-c:v", "libx264", "-preset", "slow", "-crf", "22", "-movflags", "+faststart"];
+  if (!voiceModel && !music) return void execFileSync("ffmpeg", ["-y", "-loglevel", "error", ...video, ...encodeVideo, "-an", ...length, output]);
+  // The audio is mixed on its own first: in one graph with the frame list, ffmpeg's audio timestamps go backwards.
   const stem = join(dirname(output), ".voice", `${basename(output, ".mp4")}.wav`);
+  const mix = join(dirname(list), "mix.wav");
   await mkdir(dirname(stem), { recursive: true });
-  const placed = spoken.map((line, index) => `[${index + 1}:a]adelay=${Math.round((line.at - start) * 1_000)}:all=1[line${index}]`);
+  const placed = spoken.map((line, index) => `[${index}:a]adelay=${Math.round((line.at - start) * 1_000)}:all=1[line${index}]`);
   const voiceTrack = spoken.length
-    ? `${placed.join(";")};${spoken.map((_, index) => `[line${index}]`).join("")}amix=inputs=${spoken.length}:normalize=0,volume=${VOICE_GAIN_DB}dB,aresample=48000,aformat=channel_layouts=stereo,apad=whole_dur=${seconds},atrim=duration=${seconds}`
-    : `anullsrc=r=48000:cl=stereo,atrim=duration=${seconds}`;
-  const inputs = [...frameList, ...spoken.flatMap((line) => ["-i", line.file]), ...(music ? ["-stream_loop", "-1", "-i", music] : [])];
-  const filter = `${video};${voiceTrack},asplit=2[voice][stem];${mixWithMusic("[voice]", music ? `[${spoken.length + 1}:a]` : "", seconds)}[audio]`;
-  execFileSync("ffmpeg", ["-y", "-loglevel", "error", ...inputs, "-filter_complex", filter,
-    ...encodeVideo, "-map", "[audio]", "-c:a", "aac", "-b:a", "160k", output, "-map", "[stem]", stem]);
+    ? `${placed.join(";")};${spoken.map((_, index) => `[line${index}]`).join("")}amix=inputs=${spoken.length}:normalize=0,volume=${VOICE_GAIN_DB}dB,aresample=48000,aformat=channel_layouts=stereo,apad`
+    : "anullsrc=r=48000:cl=stereo";
+  const filter = `${voiceTrack},asplit=2[voice][stem];${mixWithMusic("[voice]", music ? `[${spoken.length}:a]` : "", end - start)}[audio]`;
+  execFileSync("ffmpeg", ["-y", "-loglevel", "error", ...spoken.flatMap((line) => ["-i", line.file]), ...(music ? ["-stream_loop", "-1", "-i", music] : []),
+    "-filter_complex", filter, "-map", "[audio]", ...length, mix, "-map", "[stem]", ...length, stem]);
+  execFileSync("ffmpeg", ["-y", "-loglevel", "error", ...video, "-i", mix, "-map", "0:v", "-map", "1:a", ...encodeVideo, "-c:a", "aac", "-b:a", "160k", ...length, output]);
 }
 
 /** Lays the music bed (looped when short) under a voice track: quiet, faded in and out, and ducked further while the voice speaks. */
@@ -339,7 +340,7 @@ function mixWithMusic(voice: string, bed: string, seconds: number): string {
   if (!bed) return `${voice}alimiter=limit=0.95`;
   return `${voice}asplit=2[speech][key];${bed}aresample=48000,aformat=channel_layouts=stereo,atrim=duration=${seconds},volume=${MUSIC_GAIN_DB}dB,`
     + `afade=t=in:d=2,afade=t=out:st=${Math.max(0, seconds - 3)}:d=3[bed];[bed][key]sidechaincompress=threshold=0.02:ratio=4:attack=20:release=500[ducked];`
-    + `[ducked][speech]amix=inputs=2:normalize=0,alimiter=limit=0.95`;
+    + `[ducked][speech]amix=inputs=2:normalize=0:duration=first,alimiter=limit=0.95`;
 }
 
 async function record(scene: Scene, chapter: number, out: string, voice?: Map<string, Line>) {
@@ -459,7 +460,7 @@ function overview(out: string, names: string[]) {
   const kbps = Math.floor((9.5 * 8_000) / total) - (audio ? 128 : 0);
   const args = ["-y", "-loglevel", "error", ...files.flatMap((file) => ["-i", file]), ...stems, ...(audio && music ? ["-stream_loop", "-1", "-i", music] : []),
     "-filter_complex", `${filter}${video}fps=30[video]`, "-map", "[video]", ...(audio ? ["-map", "[audio]", "-c:a", "aac", "-b:a", "128k"] : ["-an"]),
-    "-c:v", "libx264", "-preset", "slow", "-b:v", `${kbps}k`, "-maxrate", `${Math.round(kbps * 1.5)}k`, "-bufsize", `${kbps * 2}k`];
+    "-c:v", "libx264", "-preset", "slow", "-b:v", `${kbps}k`, "-maxrate", `${Math.round(kbps * 1.5)}k`, "-bufsize", `${kbps * 2}k`, "-t", total.toFixed(3)];
   // Two passes hit the bitrate, and so the size, closely.
   const log = join(out, ".voice", "overview-pass");
   execFileSync("ffmpeg", [...args, "-pass", "1", "-passlogfile", log, "-f", "null", "/dev/null"]);
