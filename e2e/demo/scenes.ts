@@ -25,8 +25,9 @@ const link = (text: string): Target => ({ css: "a", text });
 /** A subagent's sidebar row, whose link also shows its run time. */
 const child = (title: string): Target => ({ css: "a", contains: title });
 
+/** Sends a follow-up once the session is idle, whose composer reads "Send a message…" (a busy one reads "Add to this run…"). */
 async function send(d: Director, prompt: string) {
-  await d.click({ css: "textarea" });
+  await d.click({ placeholder: "Send a message…" });
   await d.type(prompt);
   await d.pause(300);
   await d.press("Enter");

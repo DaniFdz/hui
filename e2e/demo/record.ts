@@ -143,6 +143,7 @@ export class Director {
       await this.send("Input.insertText", { text: character });
       await sleep(perCharacter + (character === " " ? 24 : Math.random() * 20));
     }
+    if (!(await this.stage<boolean>(`Boolean(window.found?.value?.endsWith(${JSON.stringify(text)}))`))) throw new Error(`Typing "${text}" did not reach the field.`);
   }
 
   async press(name: string) {
