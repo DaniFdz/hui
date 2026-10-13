@@ -53,7 +53,8 @@ export function workerRelease(): Promise<WorkerRelease> {
     files.push({ path: "package.json", mode: 0o644, data: Buffer.from(`${JSON.stringify({ name: "hui-worker", version: pkg.version ?? "0.0.0", private: true, type: "module", dependencies }, null, 2)}\n`) });
     for (const lock of ["npm-shrinkwrap.json", "package-lock.json"]) {
       if (existsSync(join(root, lock))) {
-        files.push({ path: lock, mode: 0o644, data: await readFile(join(root, lock)) });
+        // npm 12 ignores npm-shrinkwrap.json, the name an installed package carries it under.
+        files.push({ path: "package-lock.json", mode: 0o644, data: await readFile(join(root, lock)) });
         break;
       }
     }
