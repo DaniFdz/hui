@@ -85,12 +85,11 @@
 .bot-trigger-form__body { display: flex; flex-direction: column; gap: 10px; padding: 0 12px 12px; }
 .bot-trigger-form__check { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; color: var(--text); font-size: var(--control-ui-text-sm); }
 .bot-trigger-form__check input { margin: 0; accent-color: var(--accent); }
-.bot-trigger-form__match { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 6px; }
+/* The panel is narrow on any screen: the field takes a row, the comparison and the value share the next. */
+.bot-trigger-form__match { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px; }
+.bot-trigger-form__match > :first-child { grid-column: 1 / -1; }
 .bot-trigger-form__cooldown .settings-input { width: auto; align-self: flex-start; }
 .bot-trigger-form__actions { display: flex; justify-content: flex-end; }
-@media (max-width: 420px) {
-  .bot-trigger-form__match { grid-template-columns: minmax(0, 1fr); }
-}
 @media (pointer: coarse) {
   .bot-trigger-form__check { min-height: 40px; }
 }
