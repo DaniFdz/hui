@@ -52,6 +52,7 @@ const FIND = `(target) => {
     (!target.contains || text(element).includes(target.contains)) && visible(element));
   if (!target.css) found = found.filter((element) => !found.some((other) => other !== element && element.contains(other)));
   const element = target.last ? found.at(-1) : found[target.nth ?? 0];
+  window.found = element;
   if (!element) return null;
   const box = element.getBoundingClientRect();
   return { x: box.x, y: box.y, width: box.width, height: box.height };
@@ -134,8 +135,10 @@ export class Director {
     await sleep(250);
   }
 
-  /** Types like a person: one character at a time into the focused field. */
+  /** Types like a person, one character at a time, into the field the cursor clicked. Focus is set too: after a click in
+   * a widget's frame, Chrome keeps sending text there. */
   async type(text: string, perCharacter = 26) {
+    await this.stage("window.found?.focus()");
     for (const character of text) {
       await this.send("Input.insertText", { text: character });
       await sleep(perCharacter + (character === " " ? 24 : Math.random() * 20));
