@@ -1109,8 +1109,16 @@ expansion and extension execution, including queue and settle behavior.
 
 Arrow keys navigate across groups, Enter/Tab complete without sending, and Escape
 dismisses. Catalog and path loading/error/retry states are independent. New
-Session offers **Start session & browse commands**, preserving the draft without
-a model call, alongside available path results. HUI does not advertise PI's
+Session lists the enabled skills PI reports for a local launch before any
+runtime exists, and offers **Start session & browse commands** for project
+skills, prompts and extension commands, preserving the draft without a model
+call, alongside available path results.
+
+Settings → Skills, Plugins and Tools (and the standalone Skills and Plugins
+pages) carry a search field that narrows the list by name and description;
+Cmd/Ctrl+F focuses it, since the desktop app has no find bar. A PI-owned skill
+also links to its `SKILL.md` through `vscode://file`, which the desktop app
+hands to the OS; HUI's bundled read-only skills have no edit link. HUI does not advertise PI's
 terminal-only commands or plugins without callable actions.
 
 Typing `@`, `./`, `../`, `~/`, or an absolute path after whitespace opens the

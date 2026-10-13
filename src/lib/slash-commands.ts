@@ -5,6 +5,7 @@
  */
 import { commandReference } from "./command-references.ts";
 import type { RuntimeCommand } from "./sessions-store.ts";
+import { skillIsEnabled, type PiSkill } from "./pi.ts";
 
 export type ComposerCommand = Omit<RuntimeCommand, "source"> & { source: RuntimeCommand["source"] | "hui" };
 export const HUI_COMMANDS: readonly ComposerCommand[] = [{ name: "update", description: "Check for HUI updates and install the latest release", source: "hui" }];
@@ -15,6 +16,11 @@ export const HUI_SESSION_COMMANDS: readonly ComposerCommand[] = [
   { name: "btw", description: "Ask a quick side question without changing session context", source: "hui" },
   { name: "side", description: "Alias for /btw", source: "hui" },
 ];
+/** The `/skill:` commands a new local session will offer, before its runtime exists. */
+export function skillCommands(skills: readonly PiSkill[], disabled: readonly { path: string }[]): RuntimeCommand[] {
+  return skills.filter((skill) => skillIsEnabled(skill, disabled))
+    .map((skill) => ({ name: `skill:${skill.name}`, description: skill.description, source: "skill" }));
+}
 /** A bot's chat is permanent: the gateway refuses to reset or compact it. */
 export const BOT_CHAT_REFUSED_COMMANDS: readonly string[] = ["clear", "compact"];
 /** `botChat` leaves out the commands a bot's permanent chat refuses; their
