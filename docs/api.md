@@ -170,7 +170,15 @@ still busy for HUI, while its extensions see the run over. Prompts pass
 `input` handlers, then skill and template expansion, then
 `before_agent_start`; the prompt request returns once the input is submitted or
 a handler first asks something, as for PI sessions. The session is not running
-until the input is submitted, and Stop meanwhile sends nothing.
+until the input is submitted, and Stop meanwhile sends nothing. As in PI 1.2.0,
+a run an extension starts with `sendMessage(..., { triggerTurn: true })` while
+idle goes through `before_agent_start` too (`messageType: "custom"`, with the
+pending `nextTurn` messages), and extensions see a run that is starting as busy:
+`ctx.isIdle()` is false, a message sent meanwhile goes into that run once it has
+started (with `triggerTurn: false`, it is context written ahead of its input),
+and `sendUserMessage()` needs `deliverAs`. HUI also sees such a start as busy:
+a prompt is refused as for a running turn, and a steer or follow-up waits until
+the run has started.
 `session_start` holds a session's opening only until it ends or first asks
 something. Each lifecycle handler's `ctx.signal` is the signal of the run its
 event belongs to, aborted by Stop. An extension command runs when sent as `/name` (or the
@@ -182,7 +190,17 @@ as a `hui.pi-entry` entry. A custom message is a `hui.pi-message` entry the
 model reads as user input, written before the prompt `before_agent_start` added
 it to (PI places it after), so a rewind to before that prompt leaves it out too;
 one that starts or steers a turn is input whose text part carries its
-`customType`. The transcript leaves both out, as for PI sessions. Load errors and handler failures appear in the session's tool
+`customType`. The transcript leaves both out, as for PI sessions. An
+extension tool's `ctx.executeTool()` runs a nested call through Durable's
+`executeTool` (validation, the `tool_call`/`tool_result` hooks), and `ctx.tools`
+lists what it can call. Durable keeps no model output for a nested call: the
+outcome's content is the tool's bounded output, or its JSON value for a tool
+with a schema, which is also its `structuredContent`; the options' `signal` and
+`onUpdate` are not used. A `tool_result` handler sees a schema tool's value as
+`structuredContent`, and replacing the content without it drops that value, as
+in PI, so a script or a calling tool never gets what the handler took out.
+Where PI's script then gets the replaced text, Durable requires a schema tool's
+value unless the call failed: such a nested call fails with the replaced text. Load errors and handler failures appear in the session's tool
 inspection `diagnostics`; handler failures are also `notice`s.
 
 Every Durable conversation also offers PI's `codemode` tool
@@ -203,8 +221,9 @@ scripts either. A script has no deadline unless it sets `timeout_ms` in its
 codemode; its CLI fallback follows PI's own `defaultTools`.
 
 A script's calls are tool events with `parentToolCallId`. The session never
-turns them into tool rows of their own: each start and end becomes a
-`tool_update` of the codemode call with `details: { calls }`, the list the
+turns them into tool rows of their own: the calls that started or ended in an
+event batch become one `tool_update` of the codemode call with
+`details: { calls }`, the list the
 result's `details.calls` holds once the script ends (`name`, `args` cut to 200
 characters, `status` `running`, `ok`, `error` or `cancelled`, `durationMs`,
 `error` cut to 500 characters; `models.*` calls by that name). PI extensions get

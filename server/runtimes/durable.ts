@@ -250,6 +250,8 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
   #streaming = false;
   /** Prompts passing their extension handlers before anything is submitted. */
   #starting = 0;
+  /** Runs an extension's custom message is starting: HUI sees them busy, as it sees a prompt it sent as pending. */
+  #customStarts = 0;
   /** Runs that ended whose extensions' end-of-run handlers still run. */
   #settling = 0;
   #disposed = false;
@@ -280,9 +282,11 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
   get sessionId(): string { return String(this.#conversation.id); }
   get sessionFile(): string { return durableReference(this.#conversation.id); }
   /** HUI's view: a run is over once its extensions' end-of-run handlers ran, as in PI. */
-  get isStreaming(): boolean { return this.#streaming || this.#settling > 0; }
+  get isStreaming(): boolean { return this.#streaming || this.#settling > 0 || this.#customStarts > 0; }
   /** The extensions' view: from the submit of a run's input to its end. */
   get running(): boolean { return this.#streaming; }
+  get starting(): boolean { return this.#starting > 0 && !this.#streaming; }
+  whenStarted(): Promise<void> { return this.#until(() => !this.starting, Number.POSITIVE_INFINITY); }
   get cwd(): string { return this.#cwd; }
   conversation(): Conversation { return this.#conversation; }
 
@@ -960,7 +964,7 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
     }
     if (sending.expand) text = await this.#expand(text);
     if (extensions && whenBusy === "reject") {
-      const start = await extensions.beforeAgentStart(text, images);
+      const start = await extensions.beforeAgentStart({ messageType: "user", prompt: text, images });
       if (start.aborted) return false;
       // PI sends them after the prompt; Durable admits input in a commit of its own, so they go just before it.
       if (start.messages.length) await extensions.writeMessages(start.messages, true);
@@ -1031,6 +1035,8 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
   async #queueInput(text: string, attachments: readonly PromptAttachment[], whenBusy: "steer" | "followUp"): Promise<void> {
     text = await this.#alias(text);
     if (this.#extensions?.isCommand(text)) throw new Error(`Extension command "${text.split(/\s/u)[0]}" cannot be queued. Send it when the session is idle.`);
+    // Steering a run that is still starting (an extension's custom message) waits until there is a run to steer.
+    while (this.starting) await this.whenStarted();
     await this.#send(text, whenBusy, { attachments, source: "rpc", expand: true });
   }
 
@@ -1044,6 +1050,9 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
 
   /** `pi.sendUserMessage`: input from an extension, with no command or template expansion, as in PI. */
   async sendUserMessage(text: string, images: readonly ImageContent[], deliverAs?: "steer" | "followUp"): Promise<void> {
+    // As in PI 1.2.0, a run that is starting counts as busy: the message goes into it once it has started.
+    if (this.starting && !deliverAs) throw new Error("The session is already working. Send the message with deliverAs \"steer\" or \"followUp\".");
+    while (this.starting) await this.whenStarted();
     if (!this.#streaming) return this.#start(text, { images, source: "extension", expand: false });
     if (!deliverAs) throw new Error("The session is already working. Send the message with deliverAs \"steer\" or \"followUp\".");
     await this.#send(text, deliverAs, { images, source: "extension", expand: false });
@@ -1057,7 +1066,23 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
     // Providers refuse an empty text part: one with only images is labelled.
     const text = index === -1 ? { type: "text" as const, text: `[${message.customType}]` } : parts.splice(index, 1)[0] as TextContent;
     const tagged: TextContent & Pick<CustomMessage, "customType" | "display"> = { ...text, customType: message.customType, display: message.display };
-    await this.#submit([tagged, ...parts], whenBusy);
+    const extensions = this.#extensions;
+    if (whenBusy !== "reject" || !extensions) return this.#submit([tagged, ...parts], whenBusy);
+    // As in PI 1.2.0, a run it starts goes through `before_agent_start` too, whose messages are written just before it.
+    this.#starting += 1;
+    this.#customStarts += 1;
+    try {
+      const start = await extensions.beforeAgentStart({ messageType: "custom", message });
+      if (start.aborted) return;
+      if (start.messages.length) await extensions.writeMessages(start.messages, true);
+      await extensions.writesAdmitted();
+      if (extensions.startAborted) return;
+      await this.#submit([tagged, ...parts], whenBusy);
+    } finally {
+      this.#starting -= 1;
+      this.#customStarts -= 1;
+      this.#notifyQuiet();
+    }
   }
 
   /** Starts a manual compaction, which Durable runs beside the conversation: input is admitted meanwhile and the
