@@ -5,13 +5,15 @@
  * framed stage page in headless Chrome with a synthetic cursor, captions and
  * zoom, and encodes the screencast to MP4 with ffmpeg. See README.md here.
  *
- *   node e2e/demo/record.ts [scene ...] [--out <dir>] [--keep]
+ *   node e2e/demo/record.ts [scene ...] [--out <dir>] [--voice <model>/<voice>] [--music <file>] [--keep]
  */
 import { execFileSync, spawn } from "node:child_process";
+import { createHash } from "node:crypto";
+import { existsSync } from "node:fs";
 import { once } from "node:events";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Readable, Writable } from "node:stream";
 
@@ -24,11 +26,15 @@ import { scenes, type Scene } from "./scenes.ts";
 const here = dirname(fileURLToPath(import.meta.url));
 const repo = resolve(here, "../..");
 const STAGE = { width: 1920, height: 1080 };
+/** Kokoro speaks near -19 LUFS: a little louder reads well; the bed sits about 15 LU under it. */
+const VOICE_GAIN_DB = 3;
+const MUSIC_GAIN_DB = -17;
 const sleep = (ms: number) => new Promise((done) => setTimeout(done, ms));
 
 /** Visible text, an aria-label, a placeholder or a CSS selector, searched through shadow roots. */
 export type Target = string | { text?: string; contains?: string; label?: string; placeholder?: string; css?: string; nth?: number; last?: boolean };
 type Box = { x: number; y: number; width: number; height: number };
+type Line = { file: string; seconds: number };
 
 // Runs on the stage, which shares HUI's origin: the innermost visible element in HUI's frame matching the target.
 const FIND = `(target) => {
@@ -223,6 +229,27 @@ export class Director {
     return sleep(ms);
   }
 
+  /** The scene's narration, synthesized before recording; absent without --voice. */
+  voice: Map<string, Line> | undefined;
+  /** Where each spoken line starts, in recording time. */
+  readonly spoken: { file: string; at: number }[] = [];
+  #speakingUntil = 0;
+
+  /** Starts a line of the scene's narration once the previous one has ended, and returns while it plays. */
+  async say(key: string) {
+    if (!this.voice) return;
+    const line = this.voice.get(key);
+    if (!line) throw new Error(`The scene has no narration line "${key}".`);
+    await this.quiet();
+    this.spoken.push({ file: line.file, at: this.clock() });
+    this.#speakingUntil = this.clock() + line.seconds + 0.3;
+  }
+
+  /** Waits until the narrator has finished speaking, in recording time: a cut does not shorten a line. */
+  async quiet() {
+    while (this.clock() < this.#speakingUntil) await sleep(50);
+  }
+
   /** Recording time in seconds, which stands still during a cut. */
   clock = () => (Date.now() - this.#cutMs) / 1000;
   cutting = false;
@@ -279,24 +306,47 @@ async function startChrome(profile: string) {
   return { child, cdp };
 }
 
-/** Encodes screencast frames (shown until the next one arrives) to 30 fps H.264. */
-function encode(frames: { file: string; t: number }[], end: number, list: string, output: string) {
+/** Encodes screencast frames (shown until the next one arrives) to 30 fps H.264, with the narration and music when
+ * there are any. The voice alone also goes to `.voice/<clip>.wav` for the overview. */
+async function encode(frames: { file: string; t: number }[], end: number, list: string, output: string, spoken: { file: string; at: number }[]) {
   const lines = ["ffconcat version 1.0"];
   frames.forEach((frame, index) => {
     lines.push(`file '${frame.file}'`, `duration ${Math.max(0.001, (frames[index + 1]?.t ?? end) - frame.t).toFixed(4)}`);
   });
   lines.push(`file '${frames.at(-1)!.file}'`);
-  return writeFile(list, `${lines.join("\n")}\n`).then(() => execFileSync("ffmpeg", [
-    "-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", list,
-    "-vf", `fps=30,scale=${STAGE.width}:${STAGE.height}:flags=lanczos,format=yuv420p`,
-    "-c:v", "libx264", "-preset", "slow", "-crf", "22", "-movflags", "+faststart", "-an", output,
-  ]));
+  await writeFile(list, `${lines.join("\n")}\n`);
+  // Clock times are absolute; the clip starts at its first frame. Video and audio are cut to the same length, which the
+  // overview's crossfades rely on.
+  const start = frames[0]!.t, seconds = end - start;
+  const video = `[0:v]fps=30,scale=${STAGE.width}:${STAGE.height}:flags=lanczos,format=yuv420p,trim=duration=${seconds}[video]`;
+  const encodeVideo = ["-map", "[video]", "-c:v", "libx264", "-preset", "slow", "-crf", "22", "-movflags", "+faststart"];
+  const frameList = ["-f", "concat", "-safe", "0", "-i", list];
+  if (!voiceModel && !music) return void execFileSync("ffmpeg", ["-y", "-loglevel", "error", ...frameList, "-filter_complex", video, ...encodeVideo, "-an", output]);
+  const stem = join(dirname(output), ".voice", `${basename(output, ".mp4")}.wav`);
+  await mkdir(dirname(stem), { recursive: true });
+  const placed = spoken.map((line, index) => `[${index + 1}:a]adelay=${Math.round((line.at - start) * 1_000)}:all=1[line${index}]`);
+  const voiceTrack = spoken.length
+    ? `${placed.join(";")};${spoken.map((_, index) => `[line${index}]`).join("")}amix=inputs=${spoken.length}:normalize=0,volume=${VOICE_GAIN_DB}dB,aresample=48000,aformat=channel_layouts=stereo,apad=whole_dur=${seconds},atrim=duration=${seconds}`
+    : `anullsrc=r=48000:cl=stereo,atrim=duration=${seconds}`;
+  const inputs = [...frameList, ...spoken.flatMap((line) => ["-i", line.file]), ...(music ? ["-stream_loop", "-1", "-i", music] : [])];
+  const filter = `${video};${voiceTrack},asplit=2[voice][stem];${mixWithMusic("[voice]", music ? `[${spoken.length + 1}:a]` : "", seconds)}[audio]`;
+  execFileSync("ffmpeg", ["-y", "-loglevel", "error", ...inputs, "-filter_complex", filter,
+    ...encodeVideo, "-map", "[audio]", "-c:a", "aac", "-b:a", "160k", output, "-map", "[stem]", stem]);
 }
 
-async function record(scene: Scene, chapter: number, out: string) {
+/** Lays the music bed (looped when short) under a voice track: quiet, faded in and out, and ducked further while the voice speaks. */
+function mixWithMusic(voice: string, bed: string, seconds: number): string {
+  if (!bed) return `${voice}alimiter=limit=0.95`;
+  return `${voice}asplit=2[speech][key];${bed}aresample=48000,aformat=channel_layouts=stereo,atrim=duration=${seconds},volume=${MUSIC_GAIN_DB}dB,`
+    + `afade=t=in:d=2,afade=t=out:st=${Math.max(0, seconds - 3)}:d=3[bed];[bed][key]sidechaincompress=threshold=0.02:ratio=4:attack=20:release=500[ducked];`
+    + `[ducked][speech]amix=inputs=2:normalize=0,alimiter=limit=0.95`;
+}
+
+async function record(scene: Scene, chapter: number, out: string, voice?: Map<string, Line>) {
   const work = await mkdtemp(join(tmpdir(), `hui-demo-${scene.name}-`));
   const frames: { file: string; t: number }[] = [];
   const writes: Promise<void>[] = [];
+  let spoken: { file: string; at: number }[] = [];
   let recording = true;
   let end = 0;
   let hui: Awaited<ReturnType<typeof launchHui>> | undefined;
@@ -328,6 +378,8 @@ async function record(scene: Scene, chapter: number, out: string) {
     await director.waitFor(scene.ready ?? "Settings", 60_000);
     // Before recording starts: the clip opens on the loaded app.
     await scene.setup?.(context);
+    director.voice = voice;
+    spoken = director.spoken;
 
     const framesDir = join(work, "frames");
     await mkdir(framesDir, { recursive: true });
@@ -358,6 +410,7 @@ async function record(scene: Scene, chapter: number, out: string) {
       await writeFile(join(out, `${scene.name}-failed.png`), Buffer.from(data, "base64"));
       throw new Error(`${scene.name} failed; its screen is in ${join(out, `${scene.name}-failed.png`)}`, { cause: error });
     });
+    await director.quiet();
     await director.pause(1_200);
     end = director.clock();
     await director.send("Page.stopScreencast");
@@ -375,36 +428,81 @@ async function record(scene: Scene, chapter: number, out: string) {
   }
   // Encoded once HUI and Chrome are gone.
   const output = join(out, `${scene.name}.mp4`);
-  await encode(frames, end, join(work, "frames.txt"), output);
+  await encode(frames, end, join(work, "frames.txt"), output, spoken);
   if (!keep) await rm(work, { recursive: true, force: true });
   process.stdout.write(`${output} (${frames.length} frames, ${(end - frames[0]!.t).toFixed(1)} s)\n`);
 }
 
-/** The overview: every clip in order, crossfaded, at 1.2× speed, compressed harder to stay under GitHub's 10 MB attachment limit. */
+/** The overview: every clip in order, crossfaded, with their voices and one continuous music bed. Its bitrate keeps it
+ * under GitHub's 10 MB attachment limit. */
 function overview(out: string, names: string[]) {
   const FADE = 0.5;
   const files = names.map((name) => join(out, `${name}.mp4`));
-  const seconds = files.map((file) => Number(execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", file], { encoding: "utf8" })));
-  let filter = "", previous = "[0:v]", offset = 0;
+  const seconds = files.map((file) => Number(execFileSync("ffprobe", ["-v", "error", "-select_streams", "v", "-show_entries", "stream=duration", "-of", "csv=p=0", file], { encoding: "utf8" })));
+  const total = seconds.reduce((sum, value) => sum + value, 0) - FADE * (files.length - 1);
+  const audio = Boolean(voiceModel || music);
+  // Each voice is cut to its clip's video, so the crossfades line up.
+  let filter = audio ? seconds.map((value, index) => `[${files.length + index}:a]apad=whole_dur=${value},atrim=duration=${value}[stem${index}];`).join("") : "";
+  let video = "[0:v]", voice = "[stem0]", offset = 0;
   for (let index = 1; index < files.length; index++) {
     // Each fade starts FADE seconds before the end of everything joined so far.
     offset += seconds[index - 1]! - FADE;
-    filter += `${previous}[${index}:v]xfade=transition=fade:duration=${FADE}:offset=${offset.toFixed(3)}[joined${index}];`;
-    previous = `[joined${index}]`;
+    filter += `${video}[${index}:v]xfade=transition=fade:duration=${FADE}:offset=${offset.toFixed(3)}[video${index}];`;
+    video = `[video${index}]`;
+    if (audio) {
+      filter += `${voice}[stem${index}]acrossfade=d=${FADE}[voice${index}];`;
+      voice = `[voice${index}]`;
+    }
   }
-  execFileSync("ffmpeg", ["-y", "-loglevel", "error", ...files.flatMap((file) => ["-i", file]), "-filter_complex", `${filter}${previous}setpts=PTS/1.2,fps=30[v]`,
-    "-map", "[v]", "-c:v", "libx264", "-preset", "slow", "-crf", "26", "-movflags", "+faststart", join(out, "overview.mp4")]);
+  const stems = audio ? names.flatMap((name) => ["-i", join(out, ".voice", `${name}.wav`)]) : [];
+  if (audio) filter += `${mixWithMusic(voice, music ? `[${files.length * 2}:a]` : "", total)}[audio];`;
+  const kbps = Math.floor((9.5 * 8_000) / total) - (audio ? 128 : 0);
+  const args = ["-y", "-loglevel", "error", ...files.flatMap((file) => ["-i", file]), ...stems, ...(audio && music ? ["-stream_loop", "-1", "-i", music] : []),
+    "-filter_complex", `${filter}${video}fps=30[video]`, "-map", "[video]", ...(audio ? ["-map", "[audio]", "-c:a", "aac", "-b:a", "128k"] : ["-an"]),
+    "-c:v", "libx264", "-preset", "slow", "-b:v", `${kbps}k`, "-maxrate", `${Math.round(kbps * 1.5)}k`, "-bufsize", `${kbps * 2}k`];
+  // Two passes hit the bitrate, and so the size, closely.
+  const log = join(out, ".voice", "overview-pass");
+  execFileSync("ffmpeg", [...args, "-pass", "1", "-passlogfile", log, "-f", "null", "/dev/null"]);
+  execFileSync("ffmpeg", [...args, "-pass", "2", "-passlogfile", log, "-movflags", "+faststart", join(out, "overview.mp4")]);
+}
+
+/** The scene's narration lines as audio files, synthesized once per text and voice by VoiceStudio's OpenAI-style speech API. */
+async function narrate(scene: Scene): Promise<Map<string, Line> | undefined> {
+  if (!voiceModel) return undefined;
+  const [model, voiceName] = voiceModel.split("/");
+  const lines = new Map<string, Line>();
+  await mkdir(join(out, ".voice"), { recursive: true });
+  for (const [key, text] of Object.entries(scene.narration ?? {})) {
+    const file = join(out, ".voice", `${createHash("sha256").update(`${voiceModel}\n${text}`).digest("hex").slice(0, 16)}.wav`);
+    if (!existsSync(file)) {
+      const response = await fetch(new URL("/v1/audio/speech", voiceUrl), {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ model, voice: voiceName, input: text, response_format: "wav", language: "en" }),
+      });
+      if (!response.ok || !response.headers.get("content-type")?.startsWith("audio/")) throw new Error(`VoiceStudio could not say "${text}": ${response.status} ${await response.text()}`);
+      await writeFile(file, Buffer.from(await response.arrayBuffer()));
+    }
+    lines.set(key, { file, seconds: Number(execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", file], { encoding: "utf8" })) });
+  }
+  return lines;
 }
 
 const args = process.argv.slice(2);
 const option = (name: string) => { const index = args.indexOf(name); return index === -1 ? undefined : args.splice(index, 2)[1]; };
 const out = resolve(option("--out") ?? join(tmpdir(), "hui-demo-videos"));
 const keep = args.includes("--keep");
+// --voice <model>/<voice> narrates through VoiceStudio (VOICESTUDIO_URL, default its local port), e.g. mlx-audio/af_heart.
+const voiceModel = option("--voice");
+if (voiceModel && !/^[^/]+\/[^/]+$/u.test(voiceModel)) throw new Error("--voice takes <model>/<voice>, for example mlx-audio/af_heart.");
+const voiceUrl = process.env["VOICESTUDIO_URL"] ?? "http://127.0.0.1:3900";
+// --music <file> lays a quiet bed under each clip and the overview.
+const musicFile = option("--music");
+const music = musicFile && resolve(musicFile);
 const wanted = args.filter((arg) => !arg.startsWith("--"));
 const selected = wanted.length ? scenes.filter((scene) => wanted.includes(scene.name)) : scenes;
 if (selected.length !== (wanted.length || scenes.length)) throw new Error(`Unknown scene. Scenes: ${scenes.map((scene) => scene.name).join(", ")}`);
 await mkdir(out, { recursive: true });
-for (const scene of selected) await record(scene, scenes.indexOf(scene) + 1, out);
+for (const scene of selected) await record(scene, scenes.indexOf(scene) + 1, out, await narrate(scene));
 if (!wanted.length) {
   overview(out, scenes.map((scene) => scene.name));
   process.stdout.write(`${join(out, "overview.mp4")}\n`);

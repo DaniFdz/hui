@@ -13,6 +13,8 @@ export type Scene = {
   viewport?: [number, number];
   /** localStorage entries HUI loads with, such as view preferences. */
   storage?: Record<string, string>;
+  /** What the narrator says, by key: `director.say(key)` speaks a line during the clip (with --voice). */
+  narration?: Record<string, string>;
   /** Runs before recording starts. */
   setup?: (context: SceneContext) => Promise<void>;
   run: (context: SceneContext) => Promise<void>;
@@ -39,12 +41,21 @@ export const scenes: Scene[] = [
     ready: { contains: "Drag a backlog item" },
     // Lanes by custom group, Storefront first, instead of long project paths.
     storage: { "hui.kanban-options": JSON.stringify({ groupBy: "custom" }) },
+    narration: {
+      board: "This is H U I's Kanban board. Every agent session is a card, in the stage its work is in.",
+      drag: "When the work moves on, drag the card along.",
+      backlog: "A backlog item starts its own session, in a fresh Git worktree, with a branch name suggested for you.",
+      work: "The agent gets going right away: it reads the code, writes the change, and runs the tests.",
+      stage: "Agents keep the board up to date themselves. Tell this one that CI passed, and it moves its own card to Testing.",
+    },
     async run({ director: d }) {
       await d.caption("Every session is a card, in the stage its work is in");
+      await d.say("board");
       await d.move(card("Apple Pay at checkout"));
       await d.pause(1_600);
 
       await d.caption("Drag a card when the work moves on");
+      await d.say("drag");
       await d.zoom({ css: ".kanban-cell--testing", nth: 0 }, 1.35);
       await d.drag({ css: ".kanban-card", contains: "Search results skeleton" }, { css: ".kanban-cell--done", nth: 0 });
       await d.waitFor(card("Search results skeleton", "done"));
@@ -52,6 +63,7 @@ export const scenes: Scene[] = [
       await d.zoom();
 
       await d.caption("Start a backlog item in its own worktree");
+      await d.say("backlog");
       await d.click(card("Add CSV export to the orders page"));
       await d.waitFor("New worktree");
       await d.zoom({ css: "dialog" }, 1.3);
@@ -64,6 +76,7 @@ export const scenes: Scene[] = [
       await d.pause(800);
 
       await d.caption("The agent gets to work right away");
+      await d.say("work");
       await d.click(card("Add CSV export to the orders page", "investigation"));
       await d.zoom({ x: 860, y: 430 }, 1.3);
       await d.waitFor({ contains: "node --test" }, 30_000);
@@ -71,6 +84,7 @@ export const scenes: Scene[] = [
       await d.zoom();
 
       await d.caption("Agents report their own stage");
+      await d.say("stage");
       await d.click(link("Apple Pay at checkout"));
       await send(d, "CI passed on Apple Pay. Move it to review.");
       await d.waitFor({ contains: "moved this card to" }, 30_000);
@@ -89,13 +103,21 @@ export const scenes: Scene[] = [
     chapter: "Rich chat",
     viewport: [1280, 720],
     ready: "Apple Pay at checkout",
+    narration: {
+      chart: "Answers don't have to be walls of text. Ask for a chart of this week's builds,",
+      widget: "and the agent draws an interactive widget, right in the chat, on your theme.",
+      browser: "It can drive a real browser too. You watch the page live while it fills in the signup form.",
+      cards: "Links unfurl into cards, like the merged pull request and the Slack thread behind it.",
+    },
     async run({ director: d }) {
       await d.caption("Ask for a chart");
+      await d.say("chart");
       await d.click({ label: "New session in STOREFRONT" });
       await d.click({ placeholder: "What should this session work on?" });
       await d.type("Chart this week's build times from ci/build-times.csv");
       await d.press("Enter");
       await d.caption("…and get an interactive widget, on your theme");
+      await d.say("widget");
       await d.waitFor({ contains: "Toggle the series" }, 30_000);
       await d.zoom({ css: ".hui-widget-card__frame" }, 1.3);
       // The widget runs in its own sandboxed frame; its toggle sits at the top left.
@@ -108,6 +130,7 @@ export const scenes: Scene[] = [
       await d.still("widget");
 
       await d.caption("It drives a real browser, live in the chat");
+      await d.say("browser");
       await send(d, "Check that signup still works on staging");
       await d.waitFor({ css: ".hui-browser-preview" }, 30_000);
       await d.zoom({ css: ".hui-browser-preview" }, 1.35);
@@ -116,6 +139,7 @@ export const scenes: Scene[] = [
       await d.pause(600);
       await d.zoom();
       await d.caption("Links unfurl into cards");
+      await d.say("cards");
       await d.waitFor({ css: ".github-embed" });
       await d.zoom({ css: ".github-embed" }, 1.35);
       await d.pause(2_200);
@@ -129,21 +153,32 @@ export const scenes: Scene[] = [
     chapter: "Subagents and watchers",
     viewport: [1280, 720],
     ready: "Apple Pay at checkout",
+    narration: {
+      ask: "Big jobs can be split up. Here, one code review becomes three, running in parallel.",
+      children: "Each subagent works in its own session, right there in the sidebar.",
+      report: "As they finish, they report back, and the parent sums up what they found.",
+      open: "You can open any of them to see exactly what it did.",
+      watcher: "For things that take a while, like CI, the agent leaves a watcher behind. It waits in the background, and merges once the checks go green.",
+    },
     async run({ director: d }) {
       await d.caption("Ask for a review that splits three ways");
+      await d.say("ask");
       await d.click({ label: "New session in PAYMENTS" });
       await d.click({ placeholder: "What should this session work on?" });
       await d.type("Review PR #142 before we merge: security, performance and test coverage, in parallel");
       await d.press("Enter");
       await d.caption("Each subagent runs in its own session");
+      await d.say("children");
       await d.waitFor(child("Test coverage review"), 30_000);
       await d.zoom(child("Performance review"), 1.6);
       await d.pause(2_400);
       await d.zoom();
       await d.caption("…and reports back when it's done");
+      await d.say("report");
       await d.waitFor({ contains: "All three reviews are in" }, 40_000);
       await d.pause(2_200);
       await d.caption("Open any subagent to see its work");
+      await d.say("open");
       await d.click(child("Security review"));
       await d.waitFor({ contains: "1 blocking issue" });
       await d.zoom({ contains: "1 blocking issue" }, 1.4);
@@ -151,6 +186,7 @@ export const scenes: Scene[] = [
       await d.zoom();
       await d.click({ label: "Open parent" });
       await d.caption("Watchers wait on CI for you");
+      await d.say("watcher");
       await send(d, "Fix the ownership check, then merge once CI is green");
       await d.waitFor({ css: ".chat-watcher" }, 30_000);
       await d.zoom({ css: ".chat-watcher" }, 1.4);
@@ -178,8 +214,15 @@ export const scenes: Scene[] = [
       await api("POST", "/__hui/bots", { name: "Owl", title: "On-call buddy", avatar: { emoji: "🦉" }, soul: soul("Owl, who watches the pager overnight.") });
       await api("POST", `/__hui/bots/${bot.id}/messages`, { text: "Heads-up: refunds roll out to 10% of stores on Monday, and Priya owns the rollback.", wait: true });
     },
+    narration: {
+      roster: "Bots are agents that stay. Each one has a face, a single long-running chat, and a memory.",
+      routine: "They schedule their own routines. Ask Scout for a weekday digest, and it sets one up.",
+      run: "Run it now, and the digest already knows what you told it earlier.",
+      memory: "And everything it remembers is right here, for you to read.",
+    },
     async run({ director: d }) {
       await d.caption("Bots are agents that stay: a face, one chat and a memory");
+      await d.say("roster");
       await d.click({ css: "#sidebar-tab-bots" });
       await d.waitFor("Owl");
       await d.zoom({ css: ".bot-roster" }, 1.8);
@@ -187,16 +230,19 @@ export const scenes: Scene[] = [
       await d.zoom();
       await d.click({ css: ".bot-row__name", text: "Scout" });
       await d.caption("They schedule their own routines");
+      await d.say("routine");
       await send(d, "Every weekday at 9, post a digest of open PRs and today's rollouts");
       await d.waitFor({ contains: "runs every weekday at 9:00" }, 30_000);
       await d.pause(1_000);
       await d.caption("Run one now, and it remembers what you told it");
+      await d.say("run");
       await d.click({ label: "Run now: Morning digest" });
       await d.waitFor({ contains: "Nothing is blocked" }, 30_000);
       await d.zoom({ contains: "Priya owns the rollback" , last: true }, 1.4);
       await d.pause(2_200);
       await d.zoom();
       await d.caption("Its memory is yours to read");
+      await d.say("memory");
       await d.click({ css: ".bot-panel__tab[data-tab=memory]" });
       await d.pause(800);
       await d.still("memory");

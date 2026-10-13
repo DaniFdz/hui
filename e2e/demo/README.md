@@ -7,6 +7,7 @@ node e2e/demo/record.ts                 # every clip, then overview.mp4
 node e2e/demo/record.ts kanban bots     # only these clips
 node e2e/demo/record.ts --out ~/Movies/hui-demo
 node e2e/demo/record.ts bots --keep     # keep frames, logs and the demo HUI's folders
+node e2e/demo/record.ts --voice mlx-audio/af_heart --music ~/Music/bed.mp3   # narrated, with music
 ```
 
 Needs ffmpeg with libx264 and a Chromium-family browser (the same one the agent
@@ -15,6 +16,23 @@ says otherwise: one 1920×1080, 30 fps MP4 per clip, `overview.mp4` (every clip
 crossfaded at 1.2× speed, under 10 MB for GitHub attachments) and window-only
 PNG stills for the README. Clips open straight on the app, with a chapter tag
 under the window and a caption per step; there are no title slides. Videos and stills never go into Git.
+
+## Narration and music
+
+`--voice <model>/<voice>` narrates each clip through
+[VoiceStudio](https://github.com/debpalash/VoiceStudio)'s OpenAI-style
+`/v1/audio/speech`, at `VOICESTUDIO_URL` (default `http://127.0.0.1:3900`).
+`mlx-audio/af_heart` is Kokoro 82M (Apache-2.0) on Apple Silicon, a warm female
+voice; VoiceStudio's default OmniVoice weights are non-commercial. The lines are
+each scene's `narration`; `director.say(key)` starts one once the previous line
+ends, so the clip waits for the narrator. Lines are synthesized before
+recording and cached in `<out>/.voice`. "HUI" is written "H U I" so it is spelled out.
+
+`--music <file>` lays any audio file under the voice, about 15 LU quieter and
+ducked while she speaks; the overview gets one continuous bed. Use a track
+whose license allows it in videos (the published videos use Mixkit's
+"Atoms in Peace" by Alejandro Magaña, under the Mixkit Stock Music Free
+License), and keep it out of Git.
 
 ## How it works
 
