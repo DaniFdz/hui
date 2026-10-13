@@ -73,7 +73,8 @@ import {
 } from "./lib/sessions-store.ts";
 import { readAttachment, readTranscriptAttachments, validateAttachmentTotal } from "./lib/attachments.ts";
 import { resolveLaunchModel } from "./lib/model-selection.ts";
-import { botChatCommandRefusal, completeCommandReference, composerCommands, filterSlashCommands, parseClearCommand, parseCompactCommand, parseReloadCommand, parseUpdateCommand, slashCommandQuery, type ComposerCommand } from "./lib/slash-commands.ts";
+import { botChatCommandRefusal, completeCommandReference, composerCommands, filterSlashCommands, parseClearCommand, parseCompactCommand, parseReloadCommand, parseUpdateCommand, completeSlashCommand, skillCommands, slashCommandQuery, type ComposerCommand } from "./lib/slash-commands.ts";
+import { isListFilterShortcut } from "./views/list-filter.ts";
 import {
   applyBotsUpdate,
   archiveBot,
@@ -731,6 +732,16 @@ export class HuiApp extends HuiElement {
     if (this.embeddedPane) return;
     if (event.key === "Escape") {
       this.handleGlobalEscape(event);
+      return;
+    }
+    // The desktop app has no find bar: on a filterable settings list, Cmd/Ctrl+F searches it. An open dialog or
+    // palette keeps the browser's own find.
+    const listFilter = isListFilterShortcut(event) && !this.commandPaletteOpen && !document.querySelector("dialog[open]")
+      ? this.renderRoot.querySelector<HTMLInputElement>(".settings-list-filter__input") : null;
+    if (listFilter) {
+      event.preventDefault();
+      listFilter.focus();
+      listFilter.select();
       return;
     }
     if (isBotSettingsShortcut(event)) {
@@ -2854,6 +2865,18 @@ export class HuiApp extends HuiElement {
     });
   };
 
+  /** A draft has no runtime yet: offer the local PI skills it will start with. */
+  private runtimeCommands(): readonly RuntimeCommand[] {
+    if (this.selected) return this.commands;
+    return this.launchWorker ? [] : skillCommands(this.pi?.skills ?? [], this.settings.disabledSkills);
+  }
+
+  private menuCommands(): ComposerCommand[] {
+    const query = this.slashQuery ?? "";
+    const runtime = this.runtimeCommands();
+    return filterSlashCommands(query.startsWith("$") ? runtime : composerCommands(runtime, !!this.selected, Boolean(this.selected?.bot)), query);
+  }
+
   private setCommandQuery = (query: string | null) => {
     // Assigning an equal value still schedules a Lit update, and this runs on
     // every keystroke: only a changed query may schedule one.
@@ -2865,7 +2888,10 @@ export class HuiApp extends HuiElement {
   };
 
   private selectSlashCommand = (command: ComposerCommand) => {
-    const completed = completeCommandReference(this.draft, command, this.commands);
+    // A draft's catalog lacks the extension commands a short `$name` could later collide with: insert `/skill:name`.
+    const completed = this.selected || command.source !== "skill"
+      ? completeCommandReference(this.draft, command, this.commands)
+      : completeSlashCommand(this.draft.replace(/^\$/u, "/"), command.name);
     this.updateDraft(completed.text);
     this.resetLocalPaths();
     this.slashQuery = null;
@@ -2880,7 +2906,7 @@ export class HuiApp extends HuiElement {
 
   private commandKeydown = (event: KeyboardEvent) => {
     if (this.slashQuery === null || event.isComposing || !(event.target instanceof HTMLTextAreaElement)) return;
-    const commands = filterSlashCommands(this.slashQuery?.startsWith("$") ? this.commands : composerCommands(this.selected ? this.commands : [], !!this.selected, Boolean(this.selected?.bot)), this.slashQuery);
+    const commands = this.menuCommands();
     const paths = this.localPathQuery ? this.localPaths : [];
     const count = commands.length + paths.length;
     if (event.key === "Escape") {
@@ -5742,8 +5768,8 @@ export class HuiApp extends HuiElement {
       onDraftInput: this.typeDraft,
       commandMenu: {
         open: this.slashQuery !== null && !this.sending && !this.opening && !this.launching && (!this.selected || this.connection === "live"),
-        commands: filterSlashCommands(this.slashQuery?.startsWith("$") ? this.commands : composerCommands(this.selected ? this.commands : [], !!this.selected, Boolean(this.selected?.bot)), this.slashQuery ?? ""),
-        catalog: this.commands,
+        commands: this.menuCommands(),
+        catalog: this.runtimeCommands(),
         paths: this.localPathQuery ? this.localPaths : undefined,
         pathsLoading: this.localPathsLoading,
         pathsError: this.localPathsError,
