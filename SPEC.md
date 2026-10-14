@@ -1553,11 +1553,11 @@ worker's host; its conversation lives in that worker's own store. `hui doctor`
 leaves worker records unchanged.
 
 - **Setup through the command only.** Each step runs `<command> sh -s` with a
-  script on stdin. HUI looks for Node.js 22.19+ (Pi Durable needs its
-  built-in SQLite) with npm on the remote and, if missing, downloads the
-  gateway's own Node version from nodejs.org (curl or wget required). Those
+  script on stdin. HUI looks for Node.js 24+ with npm on the remote and, if
+  missing, downloads the gateway's own Node version from nodejs.org (curl or wget
+  required). Those
   builds need glibc: on Alpine or another musl system HUI stops with a message
-  asking for Node.js 22.19+ from the system's packages. It then uploads its own
+  asking for Node.js 24+ from the system's packages. It then uploads its own
   worker code (the same HUI version) and installs the PI SDK, Pi Durable and
   their peers with `npm install`, at the versions HUI's lockfile pins. Everything lives under `~/.local/share/hui-worker` (or
   `$XDG_DATA_HOME/hui-worker`); the remote user's own files are not touched.
