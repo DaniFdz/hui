@@ -1474,6 +1474,9 @@ unavailable rather than guessed.
 Paths are shown with `~` for the home directory and truncate from the start, so
 the distinguishing tail stays visible; a copy button copies the full path.
 Worktrees HUI did not create (by hand or another tool) are labelled External.
+Branch names and session titles wrap, so the whole table, including each row's
+remove button, fits beside the settings navigation from a 1280 px window; a
+narrower one (or a phone) scrolls the table sideways.
 
 Any listed worktree can be removed from its row. The button opens an "are you
 sure?" modal with the full path that lists every risk: local changes that will be
