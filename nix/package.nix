@@ -88,8 +88,7 @@ buildNpmPackage {
         "$out/lib/node_modules/hui/node_modules/.bin/electron"
     ''}
     ${lib.optionalString withDesktop ''
-      mkdir -p "$out/share/icons/hicolor/256x256/apps"
-      node --input-type=module -e 'import {appIcon} from "./desktop/icon.mjs"; import {writeFileSync} from "node:fs"; writeFileSync(process.argv[1], appIcon().png)' "$out/share/icons/hicolor/256x256/apps/hui.png"
+      install -Dm644 public/pi-logo-3d.png "$out/share/icons/hicolor/512x512/apps/hui.png"
     ''}
     # PI's shrinkwrap retains esbuild binaries for other operating systems.
     # Keep only this platform; Solaris ELF files cannot be patched for Linux.
