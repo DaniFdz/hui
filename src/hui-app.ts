@@ -330,6 +330,9 @@ export class HuiApp extends HuiElement {
   @state() private worktreeConfirm = "";
   /** Paths sent for removal whose request has not answered yet. */
   @state() private worktreeRemovals: ReadonlySet<string> = new Set();
+  /** Sizes of everything sent for removal since the queue was last empty,
+   * so the total progress still counts rows that are already gone. */
+  @state() private worktreeRemovalSizes: ReadonlyMap<string, number> = new Map();
   @state() private worktreeResults: readonly WorktreeRemovalResult[] = [];
   private worktreePoll?: number;
   private worktreeRemovalQueue: Promise<unknown> = Promise.resolve();
@@ -5392,6 +5395,9 @@ export class HuiApp extends HuiElement {
   /** Sends one removal request at a time: each can stay open for minutes and
    * browsers allow only a few connections per host. Never rejects. */
   private requestWorktreeRemoval(paths: readonly string[], mode: "single" | "merged", acknowledged: readonly WorktreeRisk[] = []) {
+    const sizes = new Map(this.worktreeRemovals.size ? this.worktreeRemovalSizes : []);
+    for (const path of paths) sizes.set(path, this.worktreeInventory?.worktrees.find((row) => row.path === path)?.bytes ?? 0);
+    this.worktreeRemovalSizes = sizes;
     this.worktreeRemovals = new Set([...this.worktreeRemovals, ...paths]);
     const next = this.worktreeRemovalQueue
       .then(() => removeWorktrees(paths, mode, acknowledged))
@@ -5439,7 +5445,8 @@ export class HuiApp extends HuiElement {
     let worktrees: string[] | undefined;
     try {
       // Read links before deleting: the inventory forgets a deleted session.
-      const rows = withWorktrees ? (await loadWorktrees()).worktrees : undefined;
+      if (withWorktrees) this.worktreeInventory = await loadWorktrees();
+      const rows = withWorktrees ? this.worktreeInventory?.worktrees : undefined;
       for (const id of ids) {
         if (deleted.has(id)) continue; // Already gone with its parent.
         try {
@@ -6121,6 +6128,7 @@ export class HuiApp extends HuiElement {
             filter: this.worktreeFilter,
             confirm: this.worktreeConfirm,
             removing: this.worktreeRemovals,
+            removalSizes: this.worktreeRemovalSizes,
             results: this.worktreeResults,
             onQuery: (value) => { this.worktreeQuery = value; },
             onFilter: (filter) => { this.worktreeFilter = filter; },

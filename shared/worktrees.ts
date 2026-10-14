@@ -46,6 +46,9 @@ export type WorktreeRow = {
   /** A removal request is waiting its turn (`queued`) or running (`removing`).
    * Its facts are the last ones read before; nothing is re-read meanwhile. */
   removal?: "queued" | "removing";
+  /** While `removing`: disk usage still left of `bytes`, measured every few
+   * seconds. Absent until first measured. */
+  remainingBytes?: number;
 };
 
 /** `dirty`: local changes will be deleted. `unknown`: they could not be read.

@@ -238,10 +238,11 @@ test("a worktree created outside HUI is removable once confirmed, without --forc
   assert.equal(calls.some((args) => args.includes("--force")), false);
 });
 
-test("the inventory shows which worktree is being removed and which wait, without re-reading them", async () => {
+test("the inventory shows which worktree is being removed, how much of it is left and which wait", async () => {
   const f = await fixture();
   const calls: string[][] = [];
   let release!: () => void;
+  let deleting = false;
   const gate = new Promise<void>((resolveGate) => { release = resolveGate; });
   let started!: () => void;
   const removing = new Promise<void>((resolveStarted) => { started = resolveStarted; });
@@ -250,8 +251,15 @@ test("the inventory shows which worktree is being removed and which wait, withou
     root: f.root,
     run: async (file, args, options) => {
       if (args.includes("remove") && args.includes(f.managed("open"))) {
+        deleting = true;
         started();
         await gate;
+        deleting = false;
+      }
+      // `du` over a tree Git is deleting exits 1 for vanished files; its total holds.
+      if (file === "du" && args.includes(f.managed("open")) && deleting) {
+        calls.push([file, ...args]);
+        return { code: 1, stdout: `8\t${f.managed("open")}\n`, stderr: "du: cannot access 'x': No such file or directory" };
       }
       return base(file, args, options);
     },
@@ -262,14 +270,18 @@ test("the inventory shows which worktree is being removed and which wait, withou
   // The first removal reached Git, which holds it until released.
   await removing;
   calls.length = 0;
+  await service.inventory([]);
+  await service.settled();
   const during = await service.inventory([]);
   const byBranch = new Map(during.worktrees.map((row) => [row.branch, row]));
   assert.equal(byBranch.get("hui/open")?.removal, "removing");
   assert.equal(typeof byBranch.get("hui/open")?.bytes, "number");
+  assert.equal(byBranch.get("hui/open")?.remainingBytes, 8 * 1024);
   assert.equal(byBranch.get("hui/merged")?.removal, "queued");
+  assert.equal(byBranch.get("hui/merged")?.remainingBytes, undefined);
   assert.equal(byBranch.get("hui/dirty")?.removal, undefined);
   assert.equal(during.pending, true);
-  assert.equal(calls.some((args) => args.includes(f.managed("open")) && (args[0] === "du" || args.includes("status"))), false);
+  assert.equal(calls.some((args) => args.includes(f.managed("open")) && args.includes("status")), false);
   release();
   await removal;
   const after = await service.inventory([]);

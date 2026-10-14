@@ -33,6 +33,8 @@ export type WorktreesPageProps = {
   confirm: string;
   /** Paths this browser asked to remove and is still waiting on. */
   removing: ReadonlySet<string>;
+  /** Sizes of every path sent for removal since the queue was last empty. */
+  removalSizes: ReadonlyMap<string, number>;
   results: readonly WorktreeRemovalResult[];
   onQuery: (value: string) => void;
   onFilter: (filter: WorktreeFilter) => void;
@@ -137,7 +139,7 @@ function riskHint(row: WorktreeRow) {
 }
 
 /** The server knows which removal runs; a request it has not started is queued. */
-function removalState(props: WorktreesPageProps, row: WorktreeRow): WorktreeRow["removal"] {
+function removalState(props: Pick<WorktreesPageProps, "removing">, row: WorktreeRow): WorktreeRow["removal"] {
   return row.removal ?? (props.removing.has(row.path) ? "queued" : undefined);
 }
 
@@ -266,16 +268,41 @@ function plural(count: number, one: string, many = `${one}s`) {
   return `${count} ${count === 1 ? one : many}`;
 }
 
+/** Share of the bytes sent for removal that are gone: finished rows count in
+ * full, the one Git is deleting by what is left of it, queued ones not yet.
+ * Undefined while no size is known. */
+export function removalProgress(props: Pick<WorktreesPageProps, "removing" | "removalSizes">, rows: readonly WorktreeRow[]): number | undefined {
+  // A reload forgets this browser's requests; the gateway still reports its own.
+  const sizes = new Map(props.removalSizes);
+  for (const row of rows) if (row.removal) sizes.set(row.path, row.bytes ?? sizes.get(row.path) ?? 0);
+  let total = 0;
+  let done = 0;
+  for (const [path, size] of sizes) {
+    const row = rows.find((item) => item.path === path);
+    const state = row && removalState(props, row);
+    total += size;
+    if (!state) done += size;
+    else if (state === "removing" && row.remainingBytes !== undefined) done += Math.max(0, size - row.remainingBytes);
+  }
+  return total > 0 ? Math.min(done / total, 1) : undefined;
+}
+
 /** Git deletes a large checkout file by file, which can take minutes; say what
  * is happening while the rest of the page stays usable. */
 function renderProgress(props: WorktreesPageProps, rows: readonly WorktreeRow[]) {
   const pending = rows.filter((row) => removalState(props, row));
   const current = pending.find((row) => removalState(props, row) === "removing");
   if (!current) return nothing;
-  return html`<div class="callout worktree-progress" role="status">
+  const progress = removalProgress(props, rows);
+  // Floor, so it never says 100% while Git is still deleting.
+  const percent = progress === undefined ? undefined : Math.floor(progress * 100);
+  return html`<div class="callout worktree-progress">
     <span class="session-run-spinner" aria-hidden="true"></span>
-    <span>Removing <span class="mono">${label(current)}</span>${current.bytes === undefined ? "" : ` (${formatBytes(current.bytes)})`}…${
+    <span role="status">Removing <span class="mono">${label(current)}</span>${current.bytes === undefined ? "" : ` (${formatBytes(current.bytes)})`}…${
       pending.length > 1 ? ` ${pending.length - 1} more queued.` : ""} Large worktrees can take a few minutes; you can keep using HUI.</span>
+    ${percent === undefined ? nothing : html`<span class="worktree-progress__percent">
+      <progress max="100" value=${percent} aria-label="Worktree removal progress"></progress>${percent}%
+    </span>`}
   </div>`;
 }
 

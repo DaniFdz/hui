@@ -255,6 +255,8 @@ export class WorktreeService {
   readonly #stopSession: (sessionId: string) => void;
   readonly #dirty: FactCache<boolean>;
   readonly #bytes: FactCache<number>;
+  /** Disk usage left in a tree Git is deleting, for removal progress. */
+  readonly #remaining: FactCache<number>;
   readonly #pullRequests: FactCache<PullRequestFact[]>;
   readonly #diskWalk = limiter(2);
   #removal: Promise<unknown> = Promise.resolve();
@@ -270,6 +272,7 @@ export class WorktreeService {
     this.#stopSession = options.stopSession ?? (() => undefined);
     this.#dirty = new FactCache(() => 10_000, 30_000, now);
     this.#bytes = new FactCache(() => 5 * 60_000, 5 * 60_000, now);
+    this.#remaining = new FactCache(() => 3_000, 3_000, now);
     this.#pullRequests = new FactCache(
       (list) => (list.some((pr) => pr.state === "open" || pr.state === "draft") ? 60_000 : 15 * 60_000),
       5 * 60_000,
@@ -283,11 +286,15 @@ export class WorktreeService {
     const worktrees = rows.map((row) => {
       const removal = this.#removals.get(row.base.path);
       if (removal) {
-        // Git is deleting it: a fresh `git status` or `du` would only see a
-        // half-deleted tree. Keep what was known and poll until it is gone.
+        // Git is deleting it: a fresh `git status` would only see a
+        // half-deleted tree. Keep what was known; measure only what is left.
         pending = true;
         const { path } = row.base;
-        return { ...this.#finish(row.base, this.#dirty.peek(path), this.#bytes.peek(path), this.#pullRequests.peek(this.#prKey(row))), removal };
+        const finished = { ...this.#finish(row.base, this.#dirty.peek(path), this.#bytes.peek(path), this.#pullRequests.peek(this.#prKey(row))), removal };
+        const left = removal === "removing" && finished.bytes !== undefined
+          ? this.#remaining.get(path, () => this.#diskWalk(() => this.#readRemaining(path))).value
+          : undefined;
+        return left === undefined ? finished : { ...finished, remainingBytes: left };
       }
       if (row.missing) return this.#finish(row.base, undefined, undefined, undefined);
       const dirty = this.#dirty.get(row.base.path, () => this.#readDirty(row.base.path));
@@ -307,7 +314,7 @@ export class WorktreeService {
 
   /** Test helper: resolves once background facts started so far are known. */
   async settled(): Promise<void> {
-    await Promise.all([this.#dirty.settled(), this.#bytes.settled(), this.#pullRequests.settled()]);
+    await Promise.all([this.#dirty.settled(), this.#bytes.settled(), this.#remaining.settled(), this.#pullRequests.settled()]);
   }
 
   /** Removes the requested worktrees one at a time, re-validating each path
@@ -344,6 +351,7 @@ export class WorktreeService {
       this.#removals.set(resolve(requested), "removing");
       results.push(await this.#removeOne(row, mode, acknowledged));
       this.#removals.delete(resolve(requested));
+      this.#remaining.delete(row.base.path);
     }
     return results;
   }
@@ -527,6 +535,16 @@ export class WorktreeService {
     const kib = Number(result.stdout.trim().split(/\s+/u, 1)[0]);
     if (result.code !== 0 || !Number.isFinite(kib)) throw new Error(firstLine(result, "du failed"));
     return kib * 1024;
+  }
+
+  /** Files vanish while `du` walks a tree Git is deleting, so it exits 1;
+   * its total still holds. A tree that is gone has nothing left. */
+  async #readRemaining(path: string): Promise<number> {
+    const result = await this.#run("du", ["-sk", "--", path], { timeoutMs: 60_000 });
+    const total = result.stdout.trim().split("\n").pop()?.split(/\s+/u, 1)[0] ?? "";
+    if (/^\d+$/u.test(total)) return Number(total) * 1024;
+    if (!(await stat(path).then(() => true, () => false))) return 0;
+    throw new Error(firstLine(result, "du failed"));
   }
 
   async #readPullRequests(repository: string, branch: string): Promise<PullRequestFact[]> {

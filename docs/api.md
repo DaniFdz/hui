@@ -669,7 +669,8 @@ and HUI's worktree root; each repository's main checkout is not listed. `dirty`,
 background `git status`, `du` or `gh pr list --head <branch>` answers; a failed
 lookup is listed in `unavailable`. A row whose removal was requested carries
 `removal: "queued" | "removing"` and keeps its last known facts without
-re-reading them. `pending` is true while any lookup or removal runs.
+re-reading them; while `removing`, `remainingBytes` is the disk usage still
+left of `bytes`, re-measured with `du` every few seconds. `pending` is true while any lookup or removal runs.
 
 ### `POST /__hui/worktrees/remove`
 
