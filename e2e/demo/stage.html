@@ -109,9 +109,10 @@
       cursor = { x, y };
     },
     cursor: () => cursor,
-    /** Instantly, for stills. */
+    /** Instantly, with any tap ripple, for stills. */
     hideCursor(hidden) {
       Object.assign($("cursor").style, { transition: hidden ? "none" : "", opacity: hidden ? "0" : "1" });
+      for (const ring of document.querySelectorAll(".ripple")) ring.style.display = hidden ? "none" : "";
     },
     press(down) { $("cursor").classList.toggle("down", down); },
     ripple() {
