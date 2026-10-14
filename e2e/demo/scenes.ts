@@ -35,6 +35,9 @@ async function send(d: Director, prompt: string) {
   await d.type(prompt);
   await d.pause(300);
   await d.press("Enter");
+  // Sometimes the chat stops following the bottom (seen after a widget); a user would tap "Scroll to latest".
+  await d.pause(600);
+  if (await d.find({ css: ".chat-scroll-to-bottom[data-visible='true']" })) await d.click({ label: "Scroll to latest" });
 }
 
 export const scenes: Scene[] = [
