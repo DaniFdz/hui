@@ -44,6 +44,36 @@ real. No operator transcript, credential or GitHub account was used.
   development warnings (Lit dev mode and lit `change-in-update` scheduling
   warnings).
 
+## Agent dismissal at the limit (`b6ec976`)
+
+Run on 2026-10-14 against commit `b6ec976` of
+`dani.fernandez/free-finished-watcher-slots` with the same launcher, on a
+Durable session. The fixture's `E2E_CALL:<base64url JSON>` made the real
+`watcher` tool calls, so the provider was the only mock; the watcher ids for
+the dismiss calls came from the `list` answer.
+
+1. Ten `start` calls whose commands print one line and exit. The summary read
+   *10 watchers · None running*.
+2. Two `start` calls for *Wait for reviews on #7* and *#8*: both answered
+   *This conversation already has 10 watchers. Dismiss finished ones first.*
+3. `list`, then in one turn `restart` of *Finished check 10* with a new purpose
+   and command, and `dismiss` of checks 1 and 2. The restart answered *restart
+   re-runs the recorded command and takes only an id. To run something else,
+   start a new watcher.*; check 10 stayed *Done* with its one log line. Each
+   dismiss answered `{ id, status: "dismissed" }`, the summary turned *8
+   watchers · None running* without a reload, and the two watchers' log, exit
+   record and script were gone from the watchers directory.
+4. The same two `start` calls now succeeded: *10 watchers · 2 running · Wait
+   for reviews on #7*.
+5. `dismiss` of the running #7 watcher answered *Stop the watcher before
+   dismissing it.* and the row kept running. After *Stop* in its opened row,
+   the same `dismiss` removed it: *9 watchers · None running*.
+
+The opened rows and the 390×844 layout behaved as in the first journey. The
+console held only the same Lit development warnings. Its screenshots (desktop
+at the limit, the dismiss turn and after it; mobile after it) go with its pull
+request, not this repository.
+
 ## Evidence
 
 Screenshots captured from the running instance (desktop 1440×900 and mobile
