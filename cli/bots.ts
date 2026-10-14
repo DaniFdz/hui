@@ -564,7 +564,8 @@ export async function botChat(base: string, bot: BotView, io: BotIO): Promise<nu
   const announce = (transcript: readonly ChatEntry[]) => {
     const messages = transcript.slice(seen).filter(isUserMessage);
     for (const entry of messages.slice(users)) received(entry.text!);
-    users = Math.max(users, messages.length);
+    // A refused prompt is withdrawn by a later snapshot: count what is there now.
+    users = messages.length;
   };
   const adopt = (snapshot: ChatSnapshot) => {
     status = snapshot.status;

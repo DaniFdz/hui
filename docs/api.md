@@ -1793,9 +1793,9 @@ Model and thinking changes stay allowed. The prompt route already refuses
 A bot's chat has several writers: its routines, other bots, the bot messages
 route and every client of the session routes. So that each sees a message
 another sent before the reply to it, the chat's session stream sends a
-`snapshot` as soon as it accepts a prompt (its transcript ends with that user
-message); steering already arrives that way when a turn takes it in. Ordinary
-sessions send no such frame. `hui bot chat` prints each user message it did
+`snapshot` ending with that user message before its run starts, as every
+session does (see the session events below); steering already arrives that way
+when a turn takes it in. `hui bot chat` prints each user message it did
 not send itself as a `> ` line, as the Bots tab shows it.
 
 ### Routines
@@ -2777,8 +2777,12 @@ data: { "level": "high" }
 
 While a turn is live, HUI keeps a replay projection of user messages, thinking,
 tool cards and text deltas. A reconnecting stream receives that projection in
-its snapshot. At `settled`, PI's refreshed transcript normally replaces the
-projection as the authoritative durable history and a final snapshot is emitted.
+its snapshot. Each prompt the session accepts, whoever sent it (a client, a
+routine, a subagent's result, an automation), is sent first as a `snapshot`
+ending with that user message, before the `running` status and the run's
+events; a prompt the runtime refuses is removed again with another snapshot.
+At `settled`, PI's refreshed transcript normally replaces the projection as
+the authoritative durable history and a final snapshot is emitted.
 That snapshot also carries PI's `get_session_stats` context usage plus the
 input, output and reported cost summed from the latest run's assistant messages
 and tool results (PI attributes nested tool and model calls to the calling tool's

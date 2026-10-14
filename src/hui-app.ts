@@ -135,7 +135,7 @@ import {
   writeComposerDraft,
 } from "./lib/composer-drafts.ts";
 import { attachmentPreview } from "./lib/attachments.ts";
-import { appendPendingUser, localTranscriptId, normalizeTranscript, reduceTranscript, settlePendingUser } from "./lib/transcript-state.ts";
+import { appendPendingUser, keepSentPreviews, localTranscriptId, normalizeTranscript, reduceTranscript, settlePendingUser } from "./lib/transcript-state.ts";
 import { SendRequests } from "./lib/send-requests.ts";
 import { CONTINUE_AFTER_ERROR_PROMPT, latestRunError } from "./lib/run-error.ts";
 import {
@@ -2429,9 +2429,9 @@ export class HuiApp extends HuiElement {
   }
 
   private applySnapshot(snapshot: SessionSnapshot) {
-    this.transcript = normalizeTranscript(snapshot.transcript, {
+    this.transcript = keepSentPreviews(normalizeTranscript(snapshot.transcript, {
       streaming: streamingForStatus(snapshot.status),
-    });
+    }), this.transcript);
     this.queue = snapshot.queue;
     if (this.queueEditingId && !snapshot.queue.items?.some((item) => item.id === this.queueEditingId)) {
       this.queueEditingId = "";
@@ -3167,8 +3167,9 @@ export class HuiApp extends HuiElement {
       "started",
       session.status,
     );
+    const sentAttachments = attachments.map((item) => ({ name: item.name, kind: item.kind, mimeType: item.mimeType, ...(attachmentPreview(item) ? { url: attachmentPreview(item) } : {}) }));
     if (mode === "prompt") {
-      this.transcript = appendPendingUser(this.transcript, pendingId, trimmed, attachments.map((item) => ({ name: item.name, kind: item.kind, mimeType: item.mimeType, ...(attachmentPreview(item) ? { url: attachmentPreview(item) } : {}) })));
+      this.transcript = appendPendingUser(this.transcript, pendingId, trimmed, sentAttachments);
     }
     const request = mode === "steer" ? steerSession : mode === "followUp" ? followUpSession : sendPrompt;
     // A resend of a send that failed on the way keeps its id, whatever the mode is now: a prompt the gateway took
@@ -3190,7 +3191,9 @@ export class HuiApp extends HuiElement {
       .catch(async (error: unknown) => {
         this.sendRequests.failed(session.id, requestId, trimmed, attachments, mode === "prompt" ? pendingId : undefined);
         const stillSelected = isSelectedSession(session.id, this.selected?.id);
-        if (stillSelected && mode === "prompt") this.transcript = settlePendingUser(this.transcript, pendingId, false);
+        // The gateway's snapshots may have replaced the local row and then withdrawn theirs: show it failed again.
+        if (stillSelected && mode === "prompt") this.transcript = settlePendingUser(this.transcript.some((item) => item.id === pendingId)
+          ? this.transcript : appendPendingUser(this.transcript, pendingId, trimmed, sentAttachments), pendingId, false);
         const stored = stillSelected
           ? { text: this.draft, attachments: this.attachments }
           : await readComposerDraft(sessionDraftKey(session.id));

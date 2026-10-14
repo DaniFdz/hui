@@ -93,6 +93,11 @@ test("settling the same turn hides intermediate updates and leaves the final res
   assert.deepEqual(settled.map((row) => row.kind), ["messages", "activity", "messages"]);
   assert.equal(settled[1]?.kind === "activity" && settled[1].items.length, 4);
   assert.equal(settled[2]?.kind === "messages" && settled[2].messages[0]?.text, "Fixed.");
+
+  // Once PI's history holds the reply, the turn stays folded while the session is busy again
+  // (a compaction, or a run whose prompt has not reached this screen yet).
+  const persisted = transcript.map((item) => item.kind === "message" ? { ...item, entryId: `e-${item.id}` } : item);
+  assert.deepEqual(projectChatTranscript(persisted, true), projectChatTranscript(persisted, false));
 });
 
 test("keeps presented media visible outside collapsed run details", () => {
