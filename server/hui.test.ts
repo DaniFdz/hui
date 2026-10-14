@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { after, test } from "node:test";
+import { afterAll, test } from "vitest";
 
 import type { ThemeEntry } from "./hui.ts";
 import type { SessionStreamMessage } from "./live-sessions.ts";
@@ -13,7 +13,7 @@ const root = await mkdtemp(join(tmpdir(), "hui-gateway-home-"));
 process.env["HOME"] = root;
 process.env["XDG_CONFIG_HOME"] = join(root, "config");
 process.env["PI_CODING_AGENT_DIR"] = join(root, "agent");
-after(() => rm(root, { recursive: true, force: true }));
+afterAll(() => rm(root, { recursive: true, force: true }));
 const { sessionGroupPatch, discoverThemes, markBackgroundWork, mergeThemes, registryUrlFor, waitForAutomationRun, waitForSessionReady } = await import("./hui.ts");
 
 async function dirOf(files: Record<string, string>): Promise<string> {

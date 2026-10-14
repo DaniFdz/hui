@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test } from "vitest";
 import { brotliDecompressSync, gunzipSync } from "node:zlib";
 import { compressBody, isCompressible, negotiateEncoding } from "./http-compression.ts";
 

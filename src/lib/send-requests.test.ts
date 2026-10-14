@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test } from "vitest";
 import { SendRequests } from "./send-requests.ts";
 import type { Attachment } from "./sessions-store.ts";
 

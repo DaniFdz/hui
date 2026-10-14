@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import { credentialEmail, providerEmail } from "./provider-identity.ts";
 const jwt = (claims: unknown) => `header.${Buffer.from(JSON.stringify(claims)).toString("base64url")}.signature`;
 test("Codex identity exposes only display email from OAuth claims, never API keys", () => {

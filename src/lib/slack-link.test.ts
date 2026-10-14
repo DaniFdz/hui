@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import { parseSlackLink } from "./slack-link.ts";
 
 test("parses canonical Slack message and channel links without network access", () => {

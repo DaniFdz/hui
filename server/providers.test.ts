@@ -2,15 +2,15 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import test from "node:test";
+import { test, type TestContext, vi } from "vitest";
 import { ProviderService, ProviderInputError } from "./providers.ts";
 import { createSessionModelRuntime, readProviderSelections, writeProviderSelections } from "./runtimes/hui-models.ts";
 import { filterConfiguredModels } from "./runtimes/pi-models.ts";
 import { waitFor } from "./test-support/wait-for.ts";
 
-async function fixture(t: test.TestContext) {
+async function fixture(t: TestContext) {
   const dir = await mkdtemp(join(tmpdir(), "hui-provider-test-"));
-  t.after(() => rm(dir, { recursive: true, force: true }));
+  t.onTestFinished(() => rm(dir, { recursive: true, force: true }));
   return { dir, service: new ProviderService(dir) };
 }
 async function until<T extends object>(read: () => Promise<T>, predicate: (value: T) => boolean): Promise<T> {
@@ -204,7 +204,7 @@ test("a disconnected preferred account does not hide a connected backup from the
 test("quota cooldown uses account scope, never model, feature or spending budgets", async (t) => {
   const reset = Math.floor(Date.now() / 1000) + 3600;
   let globalPercent = 12;
-  t.mock.method(globalThis, "fetch", async () => new Response(JSON.stringify({
+  vi.stubGlobal("fetch", async () => new Response(JSON.stringify({
     rate_limit: { primary_window: { used_percent: globalPercent, reset_at: reset } },
     additional_rate_limits: [{ limit_name: "New model", rate_limit: { primary_window: { used_percent: 100, reset_at: reset + 5000 } } }],
     code_review_rate_limit: { primary_window: { used_percent: 100, reset_at: reset + 10000 } },
@@ -244,7 +244,7 @@ test("Go quota uses and caches each HUI account key independently, with monthly 
   for (const id of ["default", backup]) await credentialStore(service.accounts.authPath(id)).modify("opencode-go", async () => ({ type: "api_key", key: `synthetic-${id}` }));
   const calls: string[] = [];
   const reset = new Date(Date.now() + 3600000).toISOString();
-  t.mock.method(globalThis, "fetch", async (url: string, init: RequestInit) => {
+  vi.stubGlobal("fetch", async (url: string, init: RequestInit) => {
     assert.equal(url, "https://opencode.ai/zen/go/v1/usage");
     const key = (init.headers as Record<string, string>).Authorization!; calls.push(key);
     return new Response(JSON.stringify({ usage: { rolling: { percent: 1 }, weekly: { percent: 2 }, monthly: { percent: key.endsWith("default") ? 100 : 3, resetsAt: reset } } }));

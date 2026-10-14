@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 
 import { latestRunError } from "./run-error.ts";
 import type { TranscriptItem } from "./sessions-store.ts";

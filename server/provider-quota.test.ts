@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import { fetchProviderQuota, parseProviderQuota } from "./provider-quota.ts";
 
 test("quota parsing keeps zero, finite measured windows and exact reset times", () => {

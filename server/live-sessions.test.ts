@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { test, type TestContext } from "node:test";
+import { test, vi } from "vitest";
 
 import type {
   AgentRuntime,
@@ -2105,7 +2105,7 @@ test("HUI-owned follow-ups can be edited, reordered, removed and steered before 
 /** A worker connection scripted in memory: a prompt streams on the worker
  * until `settle`, and `hold` keeps the next prompt on its way there. A start
  * fails with `unreachable` while it is set, as a worker HUI cannot reach. */
-function scriptedWorker(t: TestContext) {
+function scriptedWorker() {
   const calls: string[] = [];
   let streaming = false;
   let seq = 1;
@@ -2118,7 +2118,7 @@ function scriptedWorker(t: TestContext) {
     history: [] as TranscriptEntry[],
     unreachable: undefined as RuntimeUnreachableError | undefined,
   };
-  t.mock.method(workers, "startSession", async (...args: Parameters<typeof workers.startSession>) => {
+  vi.spyOn(workers, "startSession").mockImplementation(async (...args: Parameters<typeof workers.startSession>) => {
     control.starts += 1;
     if (control.unreachable) throw control.unreachable;
     sink = args[4];
@@ -2163,8 +2163,8 @@ function scriptedWorker(t: TestContext) {
   });
 }
 
-test("a worker session hands a follow-up to its runtime only while a run streams there and none waits in HUI's queue", async (t) => {
-  const worker = scriptedWorker(t);
+test("a worker session hands a follow-up to its runtime only while a run streams there and none waits in HUI's queue", async () => {
+  const worker = scriptedWorker();
   const id = "remote-follow-up";
   const manager = new LiveSessions(factory([]));
   manager.ensure({ ...recordFor(id), worker: "w" });
@@ -2193,8 +2193,8 @@ test("a worker session hands a follow-up to its runtime only while a run streams
   manager.disposeAll();
 });
 
-test("follow-ups HUI holds for an unreachable worker session hold up a gateway restart and run once it reattaches", async (t) => {
-  const worker = scriptedWorker(t);
+test("follow-ups HUI holds for an unreachable worker session hold up a gateway restart and run once it reattaches", async () => {
+  const worker = scriptedWorker();
   const id = "remote-reattach-follow-up";
   const record = { ...recordFor(id), worker: "w" };
   const manager = new LiveSessions(factory([]));
@@ -2228,8 +2228,8 @@ const failures = (seen: readonly SessionStreamMessage[]) =>
   seen.filter((message) => message.kind === "closed" || (message.kind === "event" && message.event.type === "error")
     || (message.kind === "status" && message.status === "error"));
 
-test("a worker session whose connection drops is reconnecting, not failed, and comes back caught up", async (t) => {
-  const worker = scriptedWorker(t);
+test("a worker session whose connection drops is reconnecting, not failed, and comes back caught up", async () => {
+  const worker = scriptedWorker();
   const id = "remote-drop";
   const record = { ...recordFor(id), worker: "w" };
   const manager = new LiveSessions(factory([]));
@@ -2260,8 +2260,8 @@ test("a worker session whose connection drops is reconnecting, not failed, and c
   manager.disposeAll();
 });
 
-test("a worker session HUI stopped reconnecting is disconnected until it is reattached explicitly", async (t) => {
-  const worker = scriptedWorker(t);
+test("a worker session HUI stopped reconnecting is disconnected until it is reattached explicitly", async () => {
+  const worker = scriptedWorker();
   const id = "remote-disconnected";
   const record = { ...recordFor(id), worker: "w" };
   const manager = new LiveSessions(factory([]));
@@ -2290,8 +2290,8 @@ test("a worker session HUI stopped reconnecting is disconnected until it is reat
   manager.disposeAll();
 });
 
-test("a run that finished on the worker while HUI was away settles for what waits on it when HUI reattaches", async (t) => {
-  const worker = scriptedWorker(t);
+test("a run that finished on the worker while HUI was away settles for what waits on it when HUI reattaches", async () => {
+  const worker = scriptedWorker();
   const id = "remote-settled-away";
   let records: SessionRecord[] = [{ ...recordFor(id), worker: "w" }];
   // As the gateway reattaches: with the record the registry holds.
@@ -2318,8 +2318,8 @@ test("a run that finished on the worker while HUI was away settles for what wait
   manager.disposeAll();
 });
 
-test("a worker HUI cannot reach leaves a session reconnecting while HUI retries, else disconnected", async (t) => {
-  const worker = scriptedWorker(t);
+test("a worker HUI cannot reach leaves a session reconnecting while HUI retries, else disconnected", async () => {
+  const worker = scriptedWorker();
   const manager = new LiveSessions(factory([]));
   worker.unreachable = new RuntimeUnreachableError("Connection refused", true);
   const record = { ...recordFor("remote-unreachable"), worker: "w" };

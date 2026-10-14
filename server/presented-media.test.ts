@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import test from "node:test";
+import { test } from "vitest";
 
 import { servePresentedMedia, stagePresentedMedia } from "./presented-media.ts";
 
@@ -11,7 +11,7 @@ const FIXTURE_ID = "12345678-1234-4123-8123-123456789abc";
 
 test("stages typed media behind an opaque URL without exposing its local path", async (t) => {
   const dir = await mkdtemp(join(tmpdir(), "hui-presented-media-"));
-  t.after(() => rm(dir, { recursive: true, force: true }));
+  t.onTestFinished(() => rm(dir, { recursive: true, force: true }));
   await writeFile(join(dir, "clip.mp4"), Buffer.from("video-bytes"));
   const [media] = await stagePresentedMedia(dir, ["clip.mp4"], join(dir, "store"), () => FIXTURE_ID);
   assert.deepEqual(media, {
@@ -28,7 +28,7 @@ test("stages typed media behind an opaque URL without exposing its local path", 
 
 test("serves byte ranges for native media playback and rejects a wrong display name", async (t) => {
   const dir = await mkdtemp(join(tmpdir(), "hui-presented-media-route-"));
-  t.after(() => rm(dir, { recursive: true, force: true }));
+  t.onTestFinished(() => rm(dir, { recursive: true, force: true }));
   await writeFile(join(dir, "sound.mp3"), Buffer.from("0123456789"));
   await stagePresentedMedia(dir, ["sound.mp3"], join(dir, "store"), () => FIXTURE_ID);
   const server = createServer(async (request, response) => {
@@ -39,7 +39,7 @@ test("serves byte ranges for native media playback and rejects a wrong display n
     }
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  t.after(() => server.close());
+  t.onTestFinished(() => { server.close(); });
   const address = server.address();
   assert(address && typeof address !== "string");
   const base = `http://127.0.0.1:${address.port}/media/${FIXTURE_ID}`;
@@ -58,7 +58,7 @@ test("serves byte ranges for native media playback and rejects a wrong display n
 
 test("rejects missing files and more than eight media paths", async (t) => {
   const dir = await mkdtemp(join(tmpdir(), "hui-presented-media-invalid-"));
-  t.after(() => rm(dir, { recursive: true, force: true }));
+  t.onTestFinished(() => rm(dir, { recursive: true, force: true }));
   await assert.rejects(stagePresentedMedia(dir, ["missing.png"], join(dir, "store")), /does not exist/u);
   await assert.rejects(stagePresentedMedia(dir, Array(9).fill("x"), join(dir, "store")), /between 1 and 8/u);
 });

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { test, type TestContext } from "node:test";
+import { test, type TestContext } from "vitest";
 
 import { BOT_FACE_EARS, BOT_FACE_SHAPES, BOT_KICKOFF_MARKER, botKickoffName, botKickoffText, handleFromName, previewLine, type BotRecord } from "../shared/bots.ts";
 import {
@@ -12,7 +12,7 @@ import {
 
 async function tempFile(t: TestContext): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), "hui-bots-registry-"));
-  t.after(() => rm(dir, { recursive: true, force: true }));
+  t.onTestFinished(() => rm(dir, { recursive: true, force: true }));
   return join(dir, "bots.json");
 }
 

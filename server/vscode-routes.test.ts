@@ -4,7 +4,7 @@ import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer, type IncomingMessage } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { test } from "node:test";
+import { test } from "vitest";
 import { fileURLToPath } from "node:url";
 import { WebSocket } from "ws";
 
@@ -36,7 +36,7 @@ test("VS Code routes: x-hui still guards every other route, the cookie opens onl
   const address = server.address();
   assert.ok(address && typeof address === "object");
   const origin = `http://127.0.0.1:${address.port}`;
-  t.after(async () => {
+  t.onTestFinished(async () => {
     detach();
     await stopBackend();
     server.closeAllConnections();

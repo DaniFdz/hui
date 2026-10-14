@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { test } from "node:test";
+import { test } from "vitest";
 import { resolveBrowserExecutable } from "./browser/executable.ts";
 
 const detected = await resolveBrowserExecutable("");
@@ -32,7 +32,7 @@ test("browser routes are guarded and the agent bridge drives conversation-scoped
   const pagesAddress = pages.address();
   assert.ok(address && typeof address !== "string" && pagesAddress && typeof pagesAddress !== "string");
   const origin = `http://127.0.0.1:${address.port}`;
-  t.after(async () => {
+  t.onTestFinished(async () => {
     await stopBackend();
     server.closeAllConnections();
     pages.close();
@@ -89,7 +89,7 @@ test("browser routes are guarded and the agent bridge drives conversation-scoped
   await saveBrowser({ enabled: true });
 
   if (!detected.executable) {
-    t.diagnostic("No Chromium-family browser is installed; skipped the live tab checks.");
+    console.log("No Chromium-family browser is installed; skipped the live tab checks.");
     return;
   }
   const opened = await tool("alpha", { action: "open", url: `http://127.0.0.1:${pagesAddress.port}/` });

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import { appendPendingUser, normalizeTranscript, reduceTranscript, settlePendingUser } from "./transcript-state.ts";
 
 test("tool calls correlate by id even when names match and output is empty", () => {

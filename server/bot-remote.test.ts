@@ -2,14 +2,14 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { after, test } from "node:test";
+import { afterAll, test } from "vitest";
 import type { WorkerView } from "../shared/workers.ts";
 import { waitFor } from "./test-support/wait-for.ts";
 
 // Paths are resolved at import time: never the operator's own configuration.
 const config = await mkdtemp(join(tmpdir(), "hui-bot-remote-"));
 process.env["XDG_CONFIG_HOME"] = config;
-after(() => rm(config, { recursive: true, force: true }));
+afterAll(() => rm(config, { recursive: true, force: true }));
 const { remoteBots, reportedStatus } = await import("./bot-remote.ts");
 const { BotConflictError, BotInputError, BotWorkerOfflineError } = await import("./bots.ts");
 const { BotMemoryUnavailableError } = await import("./bot-memory.ts");

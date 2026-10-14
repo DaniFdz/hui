@@ -33,4 +33,12 @@ jobs:
       - run: npm install -g npm@11
       - run: npm ci --ignore-scripts
       - run: npm run typecheck
+      # Reports each run to Datadog Test Optimization. The tracer is preloaded for this step only: npm ci must not
+      # load it, and vitest.setup.ts keeps it out of the processes the tests spawn.
       - run: npm test
+        env:
+          NODE_OPTIONS: --import dd-trace/register.js -r dd-trace/ci/init
+          DD_CIVISIBILITY_AGENTLESS_ENABLED: "true"
+          DD_API_KEY: ${{ secrets.DD_API_KEY }}
+          DD_ENV: ci
+          DD_TEST_SESSION_NAME: test-node-${{ matrix.node }}

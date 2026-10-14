@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import { paneColumnMinimum, paneTrackSizes, sessionPaneGeometry } from "./session-pane-geometry.ts";
 import { closeSessionPane, moveSessionPane, resizeSessionLayout, singleSessionLayout, splitSessionPane } from "./session-multiplexer.ts";
 

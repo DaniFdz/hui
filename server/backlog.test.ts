@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { test } from "node:test";
+import { test, type TestContext } from "vitest";
 
 import {
   ASSIGNED_TODO_JQL,
@@ -18,9 +18,9 @@ import {
 import { JiraClient, type JiraFetch } from "./jira.ts";
 import { backlogItemPrompt } from "../shared/backlog.ts";
 
-async function tempStore(t: { after: (fn: () => Promise<void>) => void }) {
+async function tempStore(t: TestContext) {
   const dir = await mkdtemp(join(tmpdir(), "hui-backlog-"));
-  t.after(() => rm(dir, { recursive: true, force: true }));
+  t.onTestFinished(() => rm(dir, { recursive: true, force: true }));
   let n = 0;
   await mkdir(join(dir, "hui"));
   const path = join(dir, "hui", "backlog.json");

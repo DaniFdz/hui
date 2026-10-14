@@ -6,7 +6,7 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { after, before, test, type TestContext } from "node:test";
+import { afterAll, beforeAll, test, type TestContext } from "vitest";
 import type { BotTriggerCreated, BotTriggersList } from "../shared/bot-triggers.ts";
 import { BOTS_OFF_MESSAGE, type BotView } from "../shared/bots.ts";
 import type { BotIO } from "../cli/bots.ts";
@@ -53,7 +53,7 @@ const { liveSessions } = await import("./live-sessions.ts");
 let origin = "";
 const server = createServer((request, response) => middleware(request, response, () => { response.writeHead(404).end(); }));
 
-before(async () => {
+beforeAll(async () => {
   await startBackend();
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
@@ -62,7 +62,7 @@ before(async () => {
   origin = `http://127.0.0.1:${address.port}`;
 });
 
-after(async () => {
+afterAll(async () => {
   // The backend first: its triggers' last writes settle before their directory goes.
   await stopBackend();
   server.closeAllConnections();
@@ -134,7 +134,7 @@ const gated = (who: string) => [
 async function standingRoutine(t: TestContext, ...names: string[]): Promise<void> {
   const made = await call("/__hui/automation/tasks", "POST", { name: "Standing", sessionId: ada.sessionId, prompt: "E2E_STANDING look", schedule: { kind: "every", everyMs: 3_600_000 } });
   assert.equal(made.status, 201, JSON.stringify(made.body));
-  t.after(async () => {
+  t.onTestFinished(async () => {
     const { tasks } = (await call("/__hui/automation")).body as { tasks: Array<{ id: string; name: string; sessionId: string }> };
     for (const task of tasks.filter((each) => each.sessionId === ada.sessionId && ["Standing", ...names].includes(each.name))) {
       await call(`/__hui/automation/tasks/${task.id}`, "DELETE");
@@ -183,7 +183,7 @@ const triggerNamed = async (name: string) => ((await call(`/__hui/bots/${ada.id}
 /** Once the test ends, however it went: Ada's triggers named here go, and her title and SOUL.md are as they were. */
 function restoreAfter(t: TestContext, ...triggers: string[]): void {
   const before = Promise.all([profileOf(), soulOf()]);
-  t.after(async () => {
+  t.onTestFinished(async () => {
     for (const name of triggers) await call(`/__hui/bots/${ada.id}/triggers/${encodeURIComponent(name)}`, "DELETE");
     const [profile, soul] = await before;
     await call(`/__hui/bots/${ada.id}`, "PATCH", { title: profile.title ?? "" });
@@ -284,7 +284,7 @@ test("the same for another bot's message steered into the operator's turn, and a
   restoreAfter(t);
   await standingRoutine(t, "Added by @bob", "Added by a routine");
   const bob = (await call("/__hui/bots", "POST", { name: "Bob", soul: "# Bob\nAnother fixture bot." })).body["bot"] as BotView;
-  t.after(async () => { await call(`/__hui/bots/${bob.id}?permanent=1`, "DELETE"); });
+  t.onTestFinished(async () => { await call(`/__hui/bots/${bob.id}?permanent=1`, "DELETE"); });
   const before = { profile: await profileOf(), soul: await soulOf() };
   await holdOperatorTurn();
   const relay = { name: "message_bot", input: { to: "@ada", message: call64(gated("@bob")) } };
@@ -299,7 +299,7 @@ test("the same for another bot's message steered into the operator's turn, and a
   assert.equal(await routineNamed("Added by @bob"), undefined);
 
   const task = (await call("/__hui/automation/tasks", "POST", { name: "Tidy", sessionId: ada.sessionId, prompt: call64(gated("a routine")), schedule: { kind: "every", everyMs: 3_600_000 } })).body["task"] as { id: string };
-  t.after(async () => {
+  t.onTestFinished(async () => {
     await until("the routine's run to end", async () => ((await call("/__hui/automation")).body as { runs: Array<{ taskId: string; finishedAt?: string }> }).runs.every((run) => run.taskId !== task.id || run.finishedAt) || undefined);
     await call(`/__hui/automation/tasks/${task.id}`, "DELETE");
   });

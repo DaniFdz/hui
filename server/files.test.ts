@@ -3,11 +3,11 @@ import { execFileSync } from "node:child_process";
 import { chmod, mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { after, test } from "node:test";
+import { afterAll, test } from "vitest";
 import { contentEtag, decodeText, FilesError, FilesRoot, normalizeFilesPath, parseIfMatch, searchRank, validEntryName } from "./files.ts";
 
 const base = await realpath(await mkdtemp(join(tmpdir(), "hui-files-")));
-after(() => rm(base, { recursive: true, force: true }));
+afterAll(() => rm(base, { recursive: true, force: true }));
 let counter = 0;
 
 /** A fresh working directory beside a sibling "outside" folder the view must never reach. */

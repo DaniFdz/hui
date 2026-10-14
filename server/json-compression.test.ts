@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer, request as httpRequest, type IncomingHttpHeaders } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { test } from "node:test";
+import { test } from "vitest";
 import { brotliDecompressSync, gunzipSync } from "node:zlib";
 
 /** A raw request, so the test sees the bytes on the wire rather than a decoded body. */
@@ -36,7 +36,7 @@ test("large JSON answers are compressed for clients that accept it and identical
   const address = server.address();
   assert.ok(address && typeof address !== "string");
   const url = `http://127.0.0.1:${address.port}/__hui/sessions`;
-  t.after(async () => {
+  t.onTestFinished(async () => {
     await stopBackend();
     server.closeAllConnections();
     await new Promise<void>((resolve) => server.close(() => resolve()));

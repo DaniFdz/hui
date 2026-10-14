@@ -5,7 +5,7 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { after, test, type TestContext } from "node:test";
+import { afterAll, test, type TestContext } from "vitest";
 import { AgentDoc, defineDoc, type ConversationId, type ToolExecutionApi } from "@earendil-works/pi-durable";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { normalizeSettings } from "../../src/lib/settings.ts";
@@ -22,7 +22,7 @@ import { QuestionsClosedError } from "./question-box.ts";
 const root = await mkdtemp(join(tmpdir(), "hui-bot-access-home-"));
 process.env["HOME"] = root;
 process.env["XDG_CONFIG_HOME"] = join(root, "config");
-after(() => rm(root, { recursive: true, force: true }));
+afterAll(() => rm(root, { recursive: true, force: true }));
 const { DurableHost, durableContext } = await import("./durable-host.ts");
 const { startDurable, durableConversationId } = await import("./durable.ts");
 const { BotDoc } = await import("./durable-bots.ts");
@@ -309,7 +309,7 @@ async function fixture(t: TestContext, hostOptions: { gatewayOnlyTools?: readonl
     env: { ...process.env, HUI_E2E_PROVIDER_PORT: "0", HUI_E2E_WORKSPACE: cwd, HUI_E2E_PROVIDER_LOG: log },
   });
   const hosts: DurableHost[] = [];
-  t.after(async () => {
+  t.onTestFinished(async () => {
     for (const host of hosts) await host.close().catch(() => {});
     const exit = once(provider, "exit");
     provider.kill();

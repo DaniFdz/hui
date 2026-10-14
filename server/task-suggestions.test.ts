@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test, type TestContext } from "vitest";
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -7,9 +7,9 @@ import { tmpdir } from "node:os";
 import { TaskSuggestionInputError, TaskSuggestionNotFoundError, TaskSuggestionStore } from "./task-suggestions.ts";
 import { parseTaskSuggestions, taskSuggestionJiraDescription, taskSuggestionLocation, taskSuggestionPreview, taskSuggestionPrompt } from "../shared/task-suggestions.ts";
 
-async function fixture(t: { after: (fn: () => Promise<void>) => void }) {
+async function fixture(t: TestContext) {
   const dir = await mkdtemp(join(tmpdir(), "hui-suggestions-"));
-  t.after(() => rm(dir, { recursive: true, force: true }));
+  t.onTestFinished(() => rm(dir, { recursive: true, force: true }));
   const changes: string[] = [];
   let next = 0;
   const store = new TaskSuggestionStore({

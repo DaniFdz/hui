@@ -6,7 +6,7 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { after, before, test } from "node:test";
+import { afterAll, beforeAll, test } from "vitest";
 import { waitFor } from "./test-support/wait-for.ts";
 
 // One isolated gateway on Pi Durable: its home, HUI's directory, PI's agent directory and a deterministic provider,
@@ -19,7 +19,7 @@ await mkdir(workspace);
 process.env["HOME"] = dir;
 process.env["XDG_CONFIG_HOME"] = join(dir, "config");
 process.env["PI_CODING_AGENT_DIR"] = agentDir;
-// No gh: startup would run the operator's in the background, writing into this home while after() removes it.
+// No gh: startup would run the operator's in the background, writing into this home while afterAll() removes it.
 process.env["HUI_GITHUB_CLI"] = join(dir, "no-gh");
 const provider = spawn(process.execPath, [fileURLToPath(new URL("../e2e/pi-provider-fixture.mjs", import.meta.url))], {
   stdio: ["ignore", "pipe", "pipe"],
@@ -41,7 +41,7 @@ const { liveSessions } = await import("./live-sessions.ts");
 let origin = "";
 const server = createServer((request, response) => middleware(request, response, () => { response.writeHead(404).end(); }));
 
-before(async () => {
+beforeAll(async () => {
   await startBackend();
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
@@ -50,7 +50,7 @@ before(async () => {
   origin = `http://127.0.0.1:${address.port}`;
 });
 
-after(async () => {
+afterAll(async () => {
   await stopBackend();
   server.closeAllConnections();
   await new Promise<void>((resolve) => server.close(() => resolve()));

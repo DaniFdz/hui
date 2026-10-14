@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test } from "vitest";
 import { mixedLineEndings, parseHunks, patchLineCount, splitRows } from "./diff-hunks.ts";
 
 test("hunks number their lines from the @@ header on both sides", () => {

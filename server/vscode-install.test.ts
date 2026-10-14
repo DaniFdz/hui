@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { test, type TestContext } from "node:test";
+import { test, type TestContext } from "vitest";
 import {
   OPENVSCODE_SERVER_RELEASE, openvscodeArch, openvscodeAssetUrl, VscodeInstaller, type OpenvscodeRelease,
 } from "./vscode-install.ts";
@@ -66,7 +66,7 @@ async function releaseServer(t: TestContext, serve: (request: IncomingMessage, r
   await once(server, "listening");
   const address = server.address();
   assert.ok(address && typeof address === "object");
-  t.after(async () => { server.closeAllConnections(); await new Promise<void>((resolve) => server.close(() => resolve())); });
+  t.onTestFinished(async () => { server.closeAllConnections(); await new Promise<void>((resolve) => server.close(() => resolve())); });
   return { origin: `http://127.0.0.1:${address.port}`, requests, server };
 }
 
@@ -78,7 +78,7 @@ const accept = async () => undefined;
 
 test("an install downloads through a redirect, checks the pinned SHA-256, unpacks and lands atomically", { timeout: 60_000 }, async (t) => {
   const dir = await mkdtemp(join(tmpdir(), "hui-vscode-install-"));
-  t.after(() => rm(dir, { recursive: true, force: true }));
+  t.onTestFinished(() => rm(dir, { recursive: true, force: true }));
   const body = await archive(dir, "9.9.9", "arm64");
   const release = await releaseServer(t, (_request, response) => { response.writeHead(200, { "content-length": body.length }).end(body); });
   const verified: string[] = [];
@@ -109,7 +109,7 @@ test("an install downloads through a redirect, checks the pinned SHA-256, unpack
 
 test("a download that does not match its pinned checksum or size installs nothing and leaves nothing", { timeout: 60_000 }, async (t) => {
   const dir = await mkdtemp(join(tmpdir(), "hui-vscode-install-bad-"));
-  t.after(() => rm(dir, { recursive: true, force: true }));
+  t.onTestFinished(() => rm(dir, { recursive: true, force: true }));
   const body = await archive(dir, "9.9.9", "x64");
   const tampered = Buffer.from(body);
   tampered[tampered.length - 1] = (tampered[tampered.length - 1] ?? 0) ^ 0xff;
@@ -135,7 +135,7 @@ test("a download that does not match its pinned checksum or size installs nothin
 
 test("a download cut off midway is cleaned up", { timeout: 60_000 }, async (t) => {
   const dir = await mkdtemp(join(tmpdir(), "hui-vscode-install-cut-"));
-  t.after(() => rm(dir, { recursive: true, force: true }));
+  t.onTestFinished(() => rm(dir, { recursive: true, force: true }));
   const body = await archive(dir, "9.9.9", "x64");
   const release = await releaseServer(t, (_request, response) => {
     response.writeHead(200, { "content-length": body.length });
@@ -149,7 +149,7 @@ test("a download cut off midway is cleaned up", { timeout: 60_000 }, async (t) =
 
 test("a server that does not run on this machine is not installed, and the reason names it", { timeout: 60_000 }, async (t) => {
   const dir = await mkdtemp(join(tmpdir(), "hui-vscode-install-verify-"));
-  t.after(() => rm(dir, { recursive: true, force: true }));
+  t.onTestFinished(() => rm(dir, { recursive: true, force: true }));
   const body = await archive(dir, "9.9.9", "x64");
   const release = await releaseServer(t, (_request, response) => { response.writeHead(200).end(body); });
   const root = join(dir, "installs");
@@ -165,7 +165,7 @@ test("a server that does not run on this machine is not installed, and the reaso
 
 test("cancel stops a running download and removes it; a second install joins the first", { timeout: 60_000 }, async (t) => {
   const dir = await mkdtemp(join(tmpdir(), "hui-vscode-install-cancel-"));
-  t.after(() => rm(dir, { recursive: true, force: true }));
+  t.onTestFinished(() => rm(dir, { recursive: true, force: true }));
   const body = await archive(dir, "9.9.9", "x64");
   const release = await releaseServer(t, (_request, response) => {
     response.writeHead(200, { "content-length": body.length });
@@ -186,7 +186,7 @@ test("cancel stops a running download and removes it; a second install joins the
 
 test("the download goes through the gateway's HTTP proxy", { timeout: 60_000 }, async (t) => {
   const dir = await mkdtemp(join(tmpdir(), "hui-vscode-install-proxy-"));
-  t.after(() => rm(dir, { recursive: true, force: true }));
+  t.onTestFinished(() => rm(dir, { recursive: true, force: true }));
   const body = await archive(dir, "9.9.9", "x64");
   // A proxy that answers for a host that does not exist: only a proxied request can reach it.
   const proxy = await releaseServer(t, (_request, response) => { response.writeHead(200).end(body); });

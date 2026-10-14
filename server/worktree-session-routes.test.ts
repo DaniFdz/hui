@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test } from "vitest";
 import { createServer } from "node:http";
 import { once } from "node:events";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -18,7 +18,7 @@ test("a failed worktree launch stays listed with its prompt until dismissed", { 
   const address = server.address();
   assert.ok(address && typeof address !== "string");
   const origin = `http://127.0.0.1:${address.port}`;
-  t.after(async () => {
+  t.onTestFinished(async () => {
     await stopBackend();
     server.closeAllConnections();
     await new Promise<void>((r) => server.close(() => r()));

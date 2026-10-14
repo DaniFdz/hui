@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test, type TestContext } from "vitest";
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -34,7 +34,7 @@ function processGroupAlive(pid: number): boolean {
   }
 }
 
-async function fixture(t: { after: (fn: () => Promise<void> | void) => void }, options: Partial<WatcherServiceOptions> = {}) {
+async function fixture(t: TestContext, options: Partial<WatcherServiceOptions> = {}) {
   const dir = await mkdtemp(join(tmpdir(), "hui-watchers-"));
   const changes: string[] = [];
   let next = 0;
@@ -47,7 +47,7 @@ async function fixture(t: { after: (fn: () => Promise<void> | void) => void }, o
     ...options,
   });
   await service.initialize();
-  t.after(async () => {
+  t.onTestFinished(async () => {
     service.dispose();
     await rm(dir, { recursive: true, force: true });
   });
@@ -195,7 +195,7 @@ test("start rejects malformed input before spawning anything", async (t) => {
 
 test("a watcher whose registry write fails is stopped, not left orphaned", async (t) => {
   const dir = await mkdtemp(join(tmpdir(), "hui-watchers-orphan-"));
-  t.after(() => rm(dir, { recursive: true, force: true }));
+  t.onTestFinished(() => rm(dir, { recursive: true, force: true }));
   const readonly = join(dir, "readonly");
   await mkdir(readonly, { recursive: true, mode: 0o500 });
   const signals: Array<{ pid: number; signal: NodeJS.Signals }> = [];
@@ -210,7 +210,7 @@ test("a watcher whose registry write fails is stopped, not left orphaned", async
     pollMs: 50,
   });
   await service.initialize();
-  t.after(() => service.dispose());
+  t.onTestFinished(() => service.dispose());
   await assert.rejects(service.start("alpha", { purpose: "Doomed", command: "sleep 1" }), WatcherStoreError);
   assert.deepEqual(signals, [{ pid: 424_242, signal: "SIGKILL" }]);
   assert.deepEqual(service.list("alpha"), []);
@@ -230,7 +230,7 @@ test("the command runs in the conversation's directory", async (t) => {
 
 test("initialize reconciles a registry written by a previous gateway", async (t) => {
   const dir = await mkdtemp(join(tmpdir(), "hui-watchers-restart-"));
-  t.after(() => rm(dir, { recursive: true, force: true }));
+  t.onTestFinished(() => rm(dir, { recursive: true, force: true }));
   const file = join(dir, "watchers.json");
   const logDir = join(dir, "logs");
   await mkdir(logDir, { recursive: true });
@@ -276,11 +276,11 @@ test("log returns a bounded tail and forget takes a deleted conversation's watch
 
 test("a corrupt registry fails initialize without starting, and a retry recovers", async (t) => {
   const dir = await mkdtemp(join(tmpdir(), "hui-watchers-corrupt-"));
-  t.after(() => rm(dir, { recursive: true, force: true }));
+  t.onTestFinished(() => rm(dir, { recursive: true, force: true }));
   const file = join(dir, "watchers.json");
   await writeFile(file, "not json");
   const service = new WatcherService({ file, logDir: join(dir, "logs"), ownsProcess: async () => false, signalGroup: () => {} });
-  t.after(() => service.dispose());
+  t.onTestFinished(() => service.dispose());
   await assert.rejects(service.initialize(), WatcherStoreError);
   await writeFile(file, JSON.stringify({ version: 1, watchers: [] }));
   await service.initialize();

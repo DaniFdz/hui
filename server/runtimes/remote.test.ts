@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { after, mock, test } from "node:test";
+import { afterAll, test, vi } from "vitest";
 
 const root = await mkdtemp(join(tmpdir(), "hui-remote-runtime-"));
 process.env["HOME"] = root;
@@ -17,13 +17,13 @@ type Sink = Parameters<typeof workers.startSession>[4];
 type Link = Awaited<ReturnType<typeof workers.startSession>>;
 type State = Link["started"]["state"];
 
-after(() => rm(root, { recursive: true, force: true }));
+afterAll(() => rm(root, { recursive: true, force: true }));
 
 const state = (patch: Partial<State> = {}): State => ({ sessionId: "s", isStreaming: false, resumesInterruptedRuns: true, ...patch });
 
 /** Starts a session over a connection that `script` drives through its sink. */
 async function start(script: (sink: Sink) => Partial<Link> | void = () => undefined) {
-  mock.method(workers, "startSession", async (...args: Parameters<typeof workers.startSession>): Promise<Link> => ({
+  vi.spyOn(workers, "startSession").mockImplementation(async (...args: Parameters<typeof workers.startSession>): Promise<Link> => ({
     started: { state: state(), seq: 1, transcript: [], methods: [] },
     call: async () => ({ state: state(), seq: 1 }),
     transcript: async () => [],
@@ -33,7 +33,7 @@ async function start(script: (sink: Sink) => Partial<Link> | void = () => undefi
   try {
     return await remoteRuntime("durable").start({ cwd: "/remote", worker: "w", huiSessionId: "k" });
   } finally {
-    mock.restoreAll();
+    vi.restoreAllMocks();
   }
 }
 

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test } from "vitest";
 import { createServer } from "node:http";
 import { once } from "node:events";
 import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
@@ -28,7 +28,7 @@ test("guarded HTTP, one-use same-origin WebSocket tickets and agent bridge share
   const address = server.address();
   assert.ok(address && typeof address !== "string");
   const origin = `http://127.0.0.1:${address.port}`;
-  t.after(async () => { detach(); await stopBackend(); server.closeAllConnections(); await new Promise<void>((resolve) => server.close(() => resolve())); await rm(dir, { recursive: true, force: true }); });
+  t.onTestFinished(async () => { detach(); await stopBackend(); server.closeAllConnections(); await new Promise<void>((resolve) => server.close(() => resolve())); await rm(dir, { recursive: true, force: true }); });
   const api = (path: string, body?: unknown, guard = true) => fetch(origin + path, { method: body === undefined ? "GET" : "POST", headers: { ...(guard ? { "x-hui": "1" } : {}), "content-type": "application/json" }, ...(body !== undefined ? { body: JSON.stringify(body) } : {}) });
   const path = "/__hui/sessions/alpha/terminals";
   assert.equal((await api(path, {}, false)).status, 403);

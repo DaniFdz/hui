@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 
 import { mayUseComposerDraftKey, mergeComposerDraft, NEW_SESSION_DRAFT_KEY, sessionDraftKey, sessionIdFromDraftKey } from "./composer-drafts.ts";
 

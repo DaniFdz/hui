@@ -3,14 +3,14 @@ import { execFileSync } from "node:child_process";
 import { mkdtemp, mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { after, test } from "node:test";
+import { afterAll, test } from "vitest";
 import { CONTINUE_PROMPT } from "../src/lib/subagent-completion.ts";
 import type { SessionRecord } from "./sessions.ts";
 
 // HUI's configuration directory is resolved at import time; never read the operator's own.
 const configDir = await mkdtemp(join(tmpdir(), "hui-activity-config-"));
 process.env["XDG_CONFIG_HOME"] = configDir;
-after(() => rm(configDir, { recursive: true, force: true }));
+afterAll(() => rm(configDir, { recursive: true, force: true }));
 const { activityRange, durableScan, readSessionActivity, repositoryName } = await import("./session-activity.ts");
 const { DurableHost, durableContext } = await import("./runtimes/durable-host.ts");
 const { AssistantEntry, CompactionEntry, ToolResultEntry, UserEntry } = await import("@earendil-works/pi-durable");
@@ -93,7 +93,7 @@ test("a Durable conversation's stored messages become its blocks", async (t) => 
   const agentDir = join(dir, "agent");
   await mkdir(agentDir);
   const host = new DurableHost({ dir: join(dir, "store"), agentDir, resume: false, lookupCaller: async () => undefined });
-  t.after(async () => { await host.close(); await rm(dir, { recursive: true, force: true }); });
+  t.onTestFinished(async () => { await host.close(); await rm(dir, { recursive: true, force: true }); });
   const harness = await host.open();
   // The day before is history the scan must stop at: newest entries come first.
   const entries = [user(-1440, "Yesterday's work"), user(0, "Build the week view"), answer(2), tool(3), user(90, "Polish it")];
@@ -115,7 +115,7 @@ test("a Durable conversation's stored messages become its blocks", async (t) => 
 
 test("a session's project is its repository, shared by its worktrees and subdirectories", async (t) => {
   const dir = await mkdtemp(join(tmpdir(), "hui-activity-repos-"));
-  t.after(() => rm(dir, { recursive: true, force: true }));
+  t.onTestFinished(() => rm(dir, { recursive: true, force: true }));
   const repo = join(dir, "checkout-api");
   await mkdir(join(repo, "services", "charge"), { recursive: true });
   const git = (...args: string[]) => execFileSync("git", ["-C", repo, ...args], { stdio: "ignore" });

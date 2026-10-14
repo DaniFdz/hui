@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import { renderWatcherActivity, watcherTargetLabel, type WatcherActivityProps } from "./watcher-activity.ts";
 import type { Watcher } from "../../lib/watchers.ts";
 

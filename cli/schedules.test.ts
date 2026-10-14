@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
-import { test, type TestContext } from "node:test";
+import { test, type TestContext } from "vitest";
 import { BOTS_OFF_MESSAGE, type BotView } from "../shared/bots.ts";
 import type { AutomationRun, AutomationTask } from "../src/lib/automation-types.ts";
 import type { BotIO } from "./bots.ts";
@@ -82,7 +82,7 @@ async function fakeGateway(t: TestContext) {
     reply(404, { error: "not found" });
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  t.after(() => { server.closeAllConnections(); return new Promise((resolve) => server.close(resolve)); });
+  t.onTestFinished(() => { server.closeAllConnections(); return new Promise((resolve) => server.close(() => resolve())); });
   return { base: `http://127.0.0.1:${(server.address() as { port: number }).port}/`, state, tasks, calls, sessions: new Map(sessions.map((each) => [each.id, each])) };
 }
 

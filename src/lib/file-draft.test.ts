@@ -1,6 +1,6 @@
-// Ported from AgentsInTheCloud's packages/files/test/file-draft.test.ts (MIT), adapted to etags and node:test.
+// Ported from AgentsInTheCloud's packages/files/test/file-draft.test.ts (MIT), adapted to etags and Vitest.
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test } from "vitest";
 import { draftKey, draftStatus, existingDraft, FileDraft, forgetDraft, openDraft, releaseDraft, type SaveRequest, type SaveResult } from "./file-draft.ts";
 import { editFileText, editorText } from "./editable-text.ts";
 

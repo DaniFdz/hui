@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import { base64, downloadName, importSource, parseBotImportPreview, pickedFile, pickedFolder } from "./bot-templates.ts";
 
 test("a picked file or folder becomes a source, refused here when the gateway would refuse it", async () => {

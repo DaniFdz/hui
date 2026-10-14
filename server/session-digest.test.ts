@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import type { TranscriptEntry } from "./runtimes/types.ts";
 import { interruptedRunOriginal, interruptedRunPrompt, INTERRUPTED_RUN_PROMPT } from "./interrupted-run.ts";
 import { operatorText, sessionDigest } from "./session-digest.ts";

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import { BOT_LIMITS } from "../../shared/bots.ts";
 import { TemplateFormatError } from "./common.ts";
 import { composeSoul, KNOWN_HEADING, matchIntegration, normalizeTemplate, resolveModel } from "./mapping.ts";

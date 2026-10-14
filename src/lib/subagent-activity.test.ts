@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import { formatElapsed, subagentElapsed, subagentVisualState } from "./subagent-activity.ts";
 
 test("formatElapsed matches OpenClaw duration style", () => {

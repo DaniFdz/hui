@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { after, test, type TestContext } from "node:test";
+import { afterAll, test, type TestContext } from "vitest";
 import type { ConversationId, ToolExecutionApi } from "@earendil-works/pi-durable";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { normalizeSettings } from "../../src/lib/settings.ts";
@@ -13,7 +13,7 @@ import type { BotMemory } from "../bot-memory.ts";
 const root = await mkdtemp(join(tmpdir(), "hui-bot-routines-tool-home-"));
 process.env["HOME"] = root;
 process.env["XDG_CONFIG_HOME"] = join(root, "config");
-after(() => rm(root, { recursive: true, force: true }));
+afterAll(() => rm(root, { recursive: true, force: true }));
 const { DurableHost, durableContext } = await import("./durable-host.ts");
 const { startDurable, durableConversationId } = await import("./durable.ts");
 const { BotDoc } = await import("./durable-bots.ts");
@@ -50,7 +50,7 @@ async function fixture(t: TestContext, answer: (invocation: AgentToolInvocation)
     invokeTool: async (invocation) => { invocations.push(invocation); return answer(invocation); },
     lookupCaller: async () => undefined,
   });
-  t.after(async () => {
+  t.onTestFinished(async () => {
     await host.close().catch(() => {});
     await rm(dir, { recursive: true, force: true });
   });

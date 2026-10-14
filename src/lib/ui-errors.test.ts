@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test, vi } from "vitest";
 
 import {
   installUiErrorReporting,
@@ -130,7 +130,7 @@ test("a refused batch is dropped rather than retried", async () => {
 
 test("page handlers report uncaught errors and rejections, skipping noise", async (t) => {
   resetUiErrorReporting();
-  t.after(resetUiErrorReporting);
+  t.onTestFinished(resetUiErrorReporting);
   const clock = fakeTimers();
   const { batches, send } = recorder();
   const target = new EventTarget();
@@ -154,7 +154,7 @@ test("page handlers report uncaught errors and rejections, skipping noise", asyn
 
 test("trackedFetch reports HUI requests that cannot connect, once, and nothing else", async (t) => {
   resetUiErrorReporting();
-  t.after(resetUiErrorReporting);
+  t.onTestFinished(resetUiErrorReporting);
   const clock = fakeTimers();
   const { batches, send } = recorder();
   const target = new EventTarget();
@@ -166,7 +166,7 @@ test("trackedFetch reports HUI requests that cannot connect, once, and nothing e
     new TypeError("Failed to fetch"),
     new Response("{}", { status: 200 }),
   ];
-  t.mock.method(globalThis, "fetch", async () => {
+  vi.stubGlobal("fetch", async () => {
     const next = responses.shift()!;
     if (next instanceof Error) throw next;
     return next;
@@ -183,10 +183,10 @@ test("trackedFetch reports HUI requests that cannot connect, once, and nothing e
   assert.equal((await trackedFetch("/__hui/settings")).status, 200);
 });
 
-test("the report request carries the client header and maps statuses to outcomes", async (t) => {
+test("the report request carries the client header and maps statuses to outcomes", async () => {
   const seen: Array<{ url: string; init?: RequestInit }> = [];
   const statuses: Array<number | Error> = [202, 503, 400, new TypeError("Failed to fetch")];
-  t.mock.method(globalThis, "fetch", async (url: string, init?: RequestInit) => {
+  vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
     seen.push({ url, init });
     const next = statuses.shift()!;
     if (next instanceof Error) throw next;

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import { addSessionTab, isChatPane, moveSessionPane, visibleSessionPanes, sessionPaneMoveTarget } from "./session-multiplexer.ts";
 import { activeSessionPane, closeSessionPane, focusSessionPane, locateSessionPane, parseSessionLayout, replacePaneSession, resizeSessionLayout, resizeSessionWeights, SESSION_SPLIT_MEDIA, sessionDropRect, sessionDropZone, sessionPanes, singleSessionLayout, splitSessionPane, type SessionLayout, type SessionPane, type SplitDirection } from "./session-multiplexer.ts";
 

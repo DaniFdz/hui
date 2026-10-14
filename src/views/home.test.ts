@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import test from "node:test";
+import { test } from "vitest";
 
 test("effort preview owns a textContent property without destroying Lit child markers", () => {
   const source = readFileSync(new URL("./home.ts", import.meta.url), "utf8");

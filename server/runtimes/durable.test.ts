@@ -6,7 +6,7 @@ import { mkdtemp, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { after, test, type TestContext } from "node:test";
+import { afterAll, test, type TestContext } from "vitest";
 import { normalizeSettings } from "../../src/lib/settings.ts";
 import type { DurableSession } from "./durable.ts";
 import type { AgentToolInvocation } from "../agent-tools-bridge.ts";
@@ -20,7 +20,7 @@ import { completeLines } from "../test-support/json-lines.ts";
 const root = await mkdtemp(join(tmpdir(), "hui-durable-home-"));
 process.env["HOME"] = root;
 process.env["XDG_CONFIG_HOME"] = join(root, "config");
-after(() => rm(root, { recursive: true, force: true }));
+afterAll(() => rm(root, { recursive: true, force: true }));
 const { DurableHost, durableContext, registryCaller } = await import("./durable-host.ts");
 // The estimate Durable's compaction thresholds use; the package root does not export it.
 const { estimateContext } = await import(new URL("./harness/compaction.js", import.meta.resolve("@earendil-works/pi-durable")).href) as {
@@ -51,7 +51,7 @@ async function fixture(t: TestContext, options: { contextWindow?: number; settin
   });
   const hosts: DurableHost[] = [];
   const children: ReturnType<typeof spawn>[] = [];
-  t.after(async () => {
+  t.onTestFinished(async () => {
     for (const host of hosts) await host.close().catch(() => {});
     for (const child of children) child.kill("SIGKILL");
     const exit = once(provider, "exit"); provider.kill(); await exit;
@@ -307,7 +307,7 @@ test("secret_request keeps the value out of the store and the model, and Stop ca
   const changed: Array<() => void> = [];
   const requests = new SecretRequests({ onChange: () => { for (const wake of changed.splice(0)) wake(); } });
   const files = new SecretFiles(f.dir);
-  t.after(() => { requests.dispose(); files.dispose(); });
+  t.onTestFinished(() => { requests.dispose(); files.dispose(); });
   const pending = async (count: number) => {
     while (requests.questions("durable-secret").length !== count) await new Promise<void>((wake) => changed.push(wake));
     return requests.questions("durable-secret");
@@ -744,7 +744,7 @@ test("overlapping closes settle once the store is released, and a reopen waits f
 test("Durable requests give each HUI session its own PI_CLIENT_SESSION_ID for provider headers", async (t) => {
   const inherited = process.env["PI_CLIENT_SESSION_ID"];
   delete process.env["PI_CLIENT_SESSION_ID"];
-  t.after(() => {
+  t.onTestFinished(() => {
     if (inherited === undefined) delete process.env["PI_CLIENT_SESSION_ID"];
     else process.env["PI_CLIENT_SESSION_ID"] = inherited;
   });
@@ -874,7 +874,7 @@ async function settledAfter(session: DurableSession, text: string): Promise<void
 
 async function extensionFixture(t: TestContext, options: Parameters<typeof fixture>[1] = {}) {
   const dir = await mkdtemp(join(tmpdir(), "hui-durable-extension-log-"));
-  t.after(() => rm(dir, { recursive: true, force: true }));
+  t.onTestFinished(() => rm(dir, { recursive: true, force: true }));
   const events = join(dir, "extension.jsonl");
   const f = await fixture(t, { ...options, extensions: { "fixture.js": fixtureExtension(events), ...options.extensions } });
   return { ...f, events, eventsDir: dir };
@@ -936,7 +936,7 @@ test("end-of-run handlers see a Stop in ctx.signal and hold the settle, not the 
   const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-end-handlers" }, f.host());
   let release!: () => void;
   (globalThis as { fixtureHoldAgentEnd?: Promise<void> }).fixtureHoldAgentEnd = new Promise((resolve) => { release = resolve; });
-  t.after(() => { release(); delete (globalThis as { fixtureHoldAgentEnd?: Promise<void> }).fixtureHoldAgentEnd; });
+  t.onTestFinished(() => { release(); delete (globalThis as { fixtureHoldAgentEnd?: Promise<void> }).fixtureHoldAgentEnd; });
   const settled = nextEvent(session, (event) => event.type === "settled");
   const holding = nextEvent(session, (event) => event.type === "notice" && event.message === "agent_end is holding");
   await session.prompt("E2E_RICH read the fixture");
@@ -1175,7 +1175,7 @@ export default function (pi) {
 
 async function compactionFixture(t: TestContext, options: Parameters<typeof fixture>[1]) {
   const dir = await mkdtemp(join(tmpdir(), "hui-durable-compaction-log-"));
-  t.after(() => rm(dir, { recursive: true, force: true }));
+  t.onTestFinished(() => rm(dir, { recursive: true, force: true }));
   const log = join(dir, "extension.jsonl");
   const f = await fixture(t, { ...options, extensions: { "compaction.js": compactingExtension(log) } });
   const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-extension-compaction" }, f.host());

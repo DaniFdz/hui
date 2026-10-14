@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import type { BotTriggersList } from "../shared/bot-triggers.ts";
 import { checkTriggerAdd, formatTriggers, parseCooldown, parseMatch, triggerBody } from "./bot-triggers.ts";
 import { HELP, parseCli } from "./main.ts";

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test } from "vitest";
 import { vscodeWorkViewKind } from "./vscode.ts";
 import { WORK_SHORTCUTS } from "../work-shortcuts.ts";
 

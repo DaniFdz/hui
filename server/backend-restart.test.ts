@@ -6,7 +6,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { test } from "node:test";
+import { test } from "vitest";
 import { fileURLToPath } from "node:url";
 import type { SessionSnapshot } from "./live-sessions.ts";
 
@@ -83,7 +83,7 @@ test("the backend stops and restarts in-process, and its Durable sessions open a
   await once(server, "listening");
   const address = server.address();
   assert(address && typeof address !== "string");
-  t.after(async () => {
+  t.onTestFinished(async () => {
     await stopBackend();
     server.closeAllConnections();
     await new Promise<void>((resolve) => server.close(() => resolve()));

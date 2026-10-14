@@ -6,7 +6,7 @@ import { copyFile, mkdtemp, mkdir, readFile, writeFile, readdir, rm } from "node
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { after, test, type TestContext } from "node:test";
+import { afterAll, test, type TestContext } from "vitest";
 import type { PiSession } from "./pi.ts";
 import type { RuntimeEvent } from "./types.ts";
 import { shippedTools } from "./tool-catalog.ts";
@@ -22,7 +22,7 @@ const root = await mkdtemp(join(tmpdir(), "hui-sdk-home-"));
 const configDir = join(root, "config");
 process.env["HOME"] = root;
 process.env["XDG_CONFIG_HOME"] = configDir;
-after(() => rm(root, { recursive: true, force: true }));
+afterAll(() => rm(root, { recursive: true, force: true }));
 const { piRuntime } = await import("./pi.ts");
 
 function nextEvent(session: PiSession, predicate: (event: RuntimeEvent) => boolean): Promise<RuntimeEvent> {
@@ -46,7 +46,7 @@ async function fixture(t: TestContext) {
     stdio: ["ignore", "pipe", "pipe"],
     env: { ...process.env, HUI_E2E_PROVIDER_PORT: "0", HUI_E2E_WORKSPACE: cwd, HUI_E2E_PROVIDER_LOG: log },
   });
-  t.after(async () => {
+  t.onTestFinished(async () => {
     for (const session of sessions) session.dispose();
     // dispose() only signals PI, which still writes under agent/ (auth.json, models-store.json) as it shuts down.
     const alive = (pid: number | undefined) => { try { return pid !== undefined && process.kill(pid, 0); } catch { return false; } };
@@ -282,7 +282,7 @@ for (const backend of ["sdk", "cli"] as const) {
     const settingsPath = join(configDir, "hui", "settings.json");
     await mkdir(join(configDir, "hui"), { recursive: true });
     await writeFile(settingsPath, "{}");
-    t.after(() => writeFile(settingsPath, "{}"));
+    t.onTestFinished(() => writeFile(settingsPath, "{}"));
     // PI's CLI deliberately excludes untrusted project resources. Establish
     // trust only inside this throwaway fixture, not by changing HUI policy.
     const piSettingsPath = join(f.agentDir, "settings.json");
@@ -332,7 +332,7 @@ test("SDK registers the browser tool only while Settings leave it on", { timeout
   const f = await fixture(t);
   const settingsPath = join(configDir, "hui", "settings.json");
   await mkdir(join(configDir, "hui"), { recursive: true });
-  t.after(() => writeFile(settingsPath, "{}"));
+  t.onTestFinished(() => writeFile(settingsPath, "{}"));
   const lastRequest = async () => JSON.parse(completeLines(await readFile(f.log, "utf8")).at(-1)!) as { system: unknown; tools?: Array<{ name: string }> };
   const turn = async (session: PiSession) => {
     const settled = nextEvent(session, (event) => event.type === "settled");
@@ -368,7 +368,7 @@ test("SDK honors HUI skill disable controls without changing PI files", { timeou
   const settingsPath = join(configDir, "hui", "settings.json");
   await mkdir(join(configDir, "hui"), { recursive: true });
   await writeFile(settingsPath, JSON.stringify({ disabledSkills: [skills[1]] }));
-  t.after(() => writeFile(settingsPath, "{}"));
+  t.onTestFinished(() => writeFile(settingsPath, "{}"));
   const session = await f.start({ noSession: true });
   const initial = await session.inspect!();
   assert.match(initial.prompt, /enabled-fixture/u);
@@ -436,7 +436,7 @@ test("SDK excludes disabled packages and direct extensions before their code loa
     { id: configuredResourceId("package", "./fixture-plugin"), name: "fixture-plugin", kind: "package" },
     { id: configuredResourceId("extension", "./direct-extension.mjs"), name: "direct-extension.mjs", kind: "extension" },
   ] }));
-  t.after(() => writeFile(settingsPath, "{}"));
+  t.onTestFinished(() => writeFile(settingsPath, "{}"));
 
   const session = await f.start({ noSession: true });
   const toolNames = (await session.inspect!()).tools.map((tool) => tool.name);
@@ -453,7 +453,7 @@ test("SDK secret_request gives the agent a file the operator filled, never the v
   const changed: Array<() => void> = [];
   const requests = new SecretRequests({ onChange: () => { for (const wake of changed.splice(0)) wake(); } });
   const files = new SecretFiles(f.dir);
-  t.after(() => { requests.dispose(); files.dispose(); });
+  t.onTestFinished(() => { requests.dispose(); files.dispose(); });
   const pending = async (count: number) => {
     while (requests.questions("secret-sdk").length !== count) await new Promise<void>((wake) => changed.push(wake));
     return requests.questions("secret-sdk");

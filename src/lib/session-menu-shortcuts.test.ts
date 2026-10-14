@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test } from "vitest";
 import { sessionMenuAction, sessionMenuShortcuts } from "./session-menu-shortcuts.ts";
 
 const key = (value: string) => ({ key: value, ctrlKey: false, metaKey: false, altKey: false, repeat: false, isComposing: false });

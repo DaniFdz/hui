@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test } from "vitest";
 
 import { githubRefKey, githubRefsInText, MAX_GITHUB_EMBEDS, parseGitHubUrl } from "../../shared/github-links.ts";
 

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import { isListFilterShortcut } from "./list-filter.ts";
 
 test("Cmd+F on Apple and Ctrl+F elsewhere focus the list filter; Ctrl+F on a Mac stays a cursor move", () => {

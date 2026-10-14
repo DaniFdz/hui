@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mock, test } from "node:test";
+import { test, vi } from "vitest";
 
 import {
   reconnectDelay,
@@ -103,8 +103,8 @@ test("the browser demultiplexes lifecycle snapshot and status frames", async () 
 });
 
 test("a status stream that goes silent reconnects to resync", async (t) => {
-  mock.timers.enable({ apis: ["setTimeout"] });
-  t.after(() => mock.timers.reset());
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  t.onTestFinished(() => { vi.useRealTimers(); });
   let connections = 0;
   const fetcher = (async () => {
     connections += 1;
@@ -115,16 +115,16 @@ test("a status stream that goes silent reconnects to resync", async (t) => {
     }), { status: 200, headers: { "content-type": "text/event-stream" } });
   }) as typeof fetch;
   const stop = subscribeSessionStatuses({ onSnapshot: () => {}, onStatus: () => {} }, fetcher);
-  t.after(stop);
+  t.onTestFinished(stop);
   const settle = async () => { for (let i = 0; i < 10; i += 1) await new Promise(setImmediate); };
 
   await settle();
-  mock.timers.tick(STATUS_STREAM_STALL_MS - 1);
+  vi.advanceTimersByTime(STATUS_STREAM_STALL_MS - 1);
   await settle();
   assert.equal(connections, 1);
-  mock.timers.tick(1);
+  vi.advanceTimersByTime(1);
   await settle();
-  mock.timers.tick(reconnectDelay(1, () => 1));
+  vi.advanceTimersByTime(reconnectDelay(1, () => 1));
   await settle();
   assert.equal(connections, 2);
 });

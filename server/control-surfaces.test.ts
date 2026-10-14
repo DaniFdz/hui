@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, mkdir, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import test from "node:test";
+import { test } from "vitest";
 
 import { inspectWorkspaces, parseWorktreePorcelain } from "./control-surfaces.ts";
 import type { SessionRecord } from "./sessions.ts";

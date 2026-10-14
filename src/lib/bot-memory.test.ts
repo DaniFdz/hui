@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import { formatKilobytes, formatMemoryCost, memoryBudgetLabel, memoryChildren, memoryStatusChanged, memoryUsageDetail, memoryUsageLabel, MemoryZoomError, parseMemoryView, parseMemoryZoom } from "./bot-memory.ts";
 import type { BotMemoryStatus } from "./bots.ts";
 

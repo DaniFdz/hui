@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test } from "vitest";
 import { diffQuery } from "./diff-store.ts";
 
 test("the query sends a picked branch and the uncommitted choice only where they apply", () => {

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test } from "vitest";
 import type { DiffInfo } from "../../shared/diff.ts";
 import { chosenParent, clearDiffViewState, initialComparison, normalizeDiffViewState, readDiffViewState, writeDiffViewState } from "./diff-view-state.ts";
 

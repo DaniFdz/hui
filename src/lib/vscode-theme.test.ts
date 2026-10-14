@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test } from "vitest";
 import { canvasColorHex, vscodeThemeFrom, type ColorCanvas } from "./vscode-theme.ts";
 
 /** A canvas that, like a browser's, ignores a fillStyle it cannot parse: `light-dark()` and `var()` among them. */

@@ -87,7 +87,7 @@ Pi Durable owns conversations, runs, queues and crash recovery.
 | `shared/` | Types and pure helpers imported by both browser and gateway; no Node or DOM APIs |
 | `desktop/` | Electron wrapper (`main.cjs`, `policy.cjs`) and macOS app registration (`install.mjs`) |
 | `bin/` | Entry points: `hui.mjs` (installed CLI), `hui-dev.mjs` (`npm run dev`) |
-| `scripts/` | Build, test runner, release and nightly versioning |
+| `scripts/` | Build, release and nightly versioning |
 | `e2e/` | Browser-tool E2E procedures (`*.browser.md`), fixtures and the package test |
 | `nix/` | Flake package, NixOS module and smoke checks |
 | `skills/` | Skills shipped with HUI |

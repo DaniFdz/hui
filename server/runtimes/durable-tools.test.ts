@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test } from "vitest";
 import { huiDurableTools } from "./durable-tools.ts";
 
 test("only HUI tools that just read rerun after a crash; every other one is reported as interrupted", () => {

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import {
   HUI_SESSION_DRAG_TYPE,
   MAX_SESSION_PANE_RATIO,

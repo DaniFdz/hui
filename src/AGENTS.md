@@ -20,7 +20,7 @@ tokens. It consumes typed HUI APIs; it does not own PI or filesystem behavior.
 ## Tests and visual proof
 
 - Unit-test deterministic stores, normalizers, parsers, and catalog rules beside
-  their owners with `node:test`. Test behavior rather than Lit implementation details.
+  their owners with Vitest. Test behavior rather than Lit implementation details.
 - Every user-visible change requires Browser-tool E2E proof in the real app: navigate
   from a user-reachable entry, exercise the changed interaction, inspect the final
   rendered state, and check relevant responsive/keyboard states.

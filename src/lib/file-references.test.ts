@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test } from "vitest";
 import { parseFileLinkTarget, parseFileReference } from "./file-references.ts";
 
 test("relative, dotted, absolute and home paths are file references", () => {

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mock, test } from "node:test";
+import { test, vi } from "vitest";
 import { encodeBrowserFrame } from "../../shared/browser.ts";
 import { BrowserViewController, forgetRecentBrowserFrames } from "./browser-view-controller.ts";
 
@@ -38,7 +38,7 @@ const state = (overrides: Record<string, unknown> = {}) => ({
 });
 
 test("a snapshot keeps one frame, disconnects and seeds later views of the conversation", async (t) => {
-  t.after(forgetRecentBrowserFrames);
+  t.onTestFinished(forgetRecentBrowserFrames);
   const { controller, sockets, opened } = harness();
   controller.connect("alpha", "snapshot");
   assert.equal(controller.connection, "connecting");
@@ -75,9 +75,8 @@ test("a snapshot of a conversation without a tab stops at once", async () => {
   assert.equal(controller.frame, undefined);
 });
 
-test("a stream follows state, actions and frames, marks clicks and releases replaced frames", async (t) => {
-  const revoked = mock.method(URL, "revokeObjectURL");
-  t.after(() => revoked.mock.restore());
+test("a stream follows state, actions and frames, marks clicks and releases replaced frames", async () => {
+  const revoked = vi.spyOn(URL, "revokeObjectURL");
   const { controller, sockets } = harness();
   controller.connect("gamma", "stream");
   await settle();
@@ -93,7 +92,7 @@ test("a stream follows state, actions and frames, marks clicks and releases repl
   assert.equal(controller.pointer?.key, key, "a click in another tab does not move the marker");
   socket.frame("t1", [0xff, 0xd8, 1, 0xff, 0xd9]);
   assert.notEqual(controller.frame!.src, first);
-  assert.ok(revoked.mock.calls.some((call) => call.arguments[0] === first), "the replaced frame's URL is revoked");
+  assert.ok(revoked.mock.calls.some((call) => call[0] === first), "the replaced frame's URL is revoked");
   controller.select("t2");
   controller.select(null);
   assert.deepEqual(socket.sent.map((message) => JSON.parse(message) as unknown), [{ action: "select", tabId: "t2" }, { action: "select", tabId: null }]);
@@ -107,20 +106,21 @@ test("a stream follows state, actions and frames, marks clicks and releases repl
 });
 
 test("a stream reconnects with backoff, gives up after repeated failures and restarts on connect", async (t) => {
-  t.mock.timers.enable({ apis: ["setTimeout"] });
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  t.onTestFinished(() => { vi.useRealTimers(); });
   const { controller, sockets, opened } = harness();
   controller.connect("delta", "stream");
   await settle();
   sockets[0]!.onclose?.();
   assert.equal(controller.connection, "reconnecting");
-  t.mock.timers.tick(1_000);
+  vi.advanceTimersByTime(1_000);
   await settle();
   assert.equal(opened.length, 2);
   sockets[1]!.text(state());
   assert.equal(controller.connection, "live", "a state resets the retry budget");
   for (let attempt = 0; attempt < 6; attempt += 1) {
     sockets.at(-1)!.onclose?.();
-    t.mock.timers.tick(10_000);
+    vi.advanceTimersByTime(10_000);
     await settle();
   }
   assert.equal(controller.connection, "disconnected");

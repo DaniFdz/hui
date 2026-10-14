@@ -30,7 +30,7 @@ jobs:
       # Match the npm major used to generate the committed lockfile.
       - run: npm install -g npm@11
       - run: npm ci --ignore-scripts
-      - run: node --test cli/release-workflow.test.mjs
+      - run: npx vitest run cli/release-workflow.test.mjs
       - run: npm run typecheck
       - run: npm test
       # The installed-package proof derives its fixture versions from a stable

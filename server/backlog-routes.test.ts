@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test } from "vitest";
 import { createServer, type IncomingMessage } from "node:http";
 import { once } from "node:events";
 import { mkdtemp, mkdir, readFile, writeFile, rm } from "node:fs/promises";
@@ -56,7 +56,7 @@ test("backlog routes merge Jira and local items, regroup, link and save suggesti
   const address = server.address();
   assert.ok(address && typeof address !== "string");
   const origin = `http://127.0.0.1:${address.port}`;
-  t.after(async () => {
+  t.onTestFinished(async () => {
     await stopBackend();
     server.closeAllConnections();
     jira.closeAllConnections();

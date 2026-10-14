@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { mkdir, mkdtemp, realpath, rm, stat, symlink, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { test } from "node:test";
+import { test } from "vitest";
 import { createDiffRoutes, parseDiffRequest, REMOTE_DIFF_REASON } from "./diff-routes.ts";
 import type { GitRunner } from "./git-diff.ts";
 
@@ -35,7 +35,7 @@ test("a request names a comparison from the fixed list and a branch only as a fu
 
 test("diff routes stay inside the conversation's directory and explain remote and non-Git sessions", async (t) => {
   const { dir, cwd } = await workspace();
-  t.after(() => rm(dir, { recursive: true, force: true }));
+  t.onTestFinished(() => rm(dir, { recursive: true, force: true }));
   await symlink(join(dir, "secret.txt"), join(cwd, "escape.txt"));
   const sessions: Record<string, { cwd: string; worker?: string }> = {
     local: { cwd },
@@ -102,7 +102,7 @@ test("a same-size edit made in the second of the last index write still shows", 
   // Racy Git: with ctime ignored, the edited file and the index share one mtime, so only the index's own time tells
   // Git to compare a.txt by content. The temporary index HUI diffs with must keep that time.
   const { dir, cwd } = await workspace();
-  t.after(() => rm(dir, { recursive: true, force: true }));
+  t.onTestFinished(() => rm(dir, { recursive: true, force: true }));
   git(cwd, "config", "core.trustctime", "false");
   const recorded = await stat(join(cwd, "a.txt"));
   const committed = new Date(Math.floor(recorded.mtimeMs / 1000) * 1000);

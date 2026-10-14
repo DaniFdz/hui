@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test } from "vitest";
 import { createFileLinkResolver, type ResolveTransport } from "./file-link-store.ts";
 import { MAX_RESOLVE_PATHS, type FilesResolve } from "../../shared/files.ts";
 

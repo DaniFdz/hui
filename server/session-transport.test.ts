@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { once } from "node:events";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
-import { test } from "node:test";
+import { test } from "vitest";
 import { WebSocket as NodeWebSocket } from "ws";
 import { attachSessionTransport, sessionStreamTicket } from "./session-transport.ts";
 import { subscribeSession, type SessionConnection, type SessionStatus } from "../src/lib/sessions-store.ts";
@@ -34,7 +34,7 @@ test("session views stream over one-use, same-origin WebSocket tickets", { timeo
     location: { href: `${origin}/` },
     WebSocket: class extends NodeWebSocket { constructor(url: URL) { super(url, { origin }); } },
   });
-  t.after(async () => {
+  t.onTestFinished(async () => {
     Object.assign(globalThis, saved);
     detach();
     server.closeAllConnections();
@@ -72,7 +72,7 @@ test("session views stream over one-use, same-origin WebSocket tickets", { timeo
   });
 
   const stops = [subscribeSession("alpha", handlers("alpha: "))];
-  t.after(() => stops.forEach((stop) => stop()));
+  t.onTestFinished(() => stops.forEach((stop) => stop()));
   await until(() => snapshots === 1);
   assert.deepEqual(connections, [["live", "alpha: "]]);
   emit("status", { status: "running" });
@@ -103,7 +103,7 @@ test("a large session frame is deflated on the wire and arrives intact", { timeo
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
   const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-  t.after(async () => {
+  t.onTestFinished(async () => {
     detach();
     server.closeAllConnections();
     await new Promise<void>((resolve) => server.close(() => resolve()));

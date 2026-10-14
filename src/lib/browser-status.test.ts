@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test } from "vitest";
 import { normalizeBrowserStatus, type BrowserStatus } from "../../shared/browser.ts";
 import { browserStatusLabel, browserVersionLabel } from "./browser-status.ts";
 

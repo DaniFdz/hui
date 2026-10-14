@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import { clipboardKey, ControlLatch, controlModifiedText, TERMINAL_BAR_KEYS } from "./terminal-keys.ts";
 
 test("the key bar offers Esc, Tab, Ctrl and the arrows", () => {

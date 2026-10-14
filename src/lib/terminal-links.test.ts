@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import { terminalLinkAt, textLinkAt, webLink, type LinkRow } from "./terminal-links.ts";
 
 test("OSC 8 destinations open only web pages", () => {

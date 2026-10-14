@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test } from "vitest";
 import { parseSafeChartSpec } from "./chart-spec.ts";
 
 test("accepts self-contained Vega-Lite JSON with inline values", () => {

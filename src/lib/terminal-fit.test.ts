@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import { prepareReflow, ptyResize, skipHiddenFits, wrappedRowsAbove } from "./terminal-fit.ts";
 
 const host = { clientWidth: 800, clientHeight: 600 };

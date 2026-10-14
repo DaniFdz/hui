@@ -5,7 +5,7 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { after, test, type TestContext } from "node:test";
+import { afterAll, test, type TestContext } from "vitest";
 import { AgentDoc, defineDoc, type ConversationId, type ToolExecutionApi } from "@earendil-works/pi-durable";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { normalizeSettings } from "../../src/lib/settings.ts";
@@ -20,7 +20,7 @@ import { completeLines } from "../test-support/json-lines.ts";
 const root = await mkdtemp(join(tmpdir(), "hui-durable-bots-home-"));
 process.env["HOME"] = root;
 process.env["XDG_CONFIG_HOME"] = join(root, "config");
-after(() => rm(root, { recursive: true, force: true }));
+afterAll(() => rm(root, { recursive: true, force: true }));
 const { DurableHost, durableContext } = await import("./durable-host.ts");
 const { startDurable, durableConversationId, durableReference } = await import("./durable.ts");
 const { BotDoc, MESSAGE_BOT_TOOL, SET_PROFILE_TOOL, WRITE_SOUL_TOOL, firstConversationSection, readSoulFile, soulSection, soulToolText } = await import("./durable-bots.ts");
@@ -67,7 +67,7 @@ async function fixture(t: TestContext) {
     env: { ...process.env, HUI_E2E_PROVIDER_PORT: "0", HUI_E2E_WORKSPACE: cwd, HUI_E2E_PROVIDER_LOG: log },
   });
   const hosts: DurableHost[] = [];
-  t.after(async () => {
+  t.onTestFinished(async () => {
     for (const host of hosts) await host.close().catch(() => {});
     const exit = once(provider, "exit");
     provider.kill();
@@ -339,7 +339,7 @@ test("the first conversation: greet, ask what the operator expects a question or
 
 test("SOUL.md is read trimmed, as none when missing or blank, and at most 256 KiB", async (t) => {
   const dir = await mkdtemp(join(tmpdir(), "hui-soul-read-"));
-  t.after(() => rm(dir, { recursive: true, force: true }));
+  t.onTestFinished(() => rm(dir, { recursive: true, force: true }));
   const file = join(dir, "SOUL.md");
   assert.equal(await readSoulFile(file), undefined);
   assert.equal(await readSoulFile(join(dir, "missing", "SOUL.md")), undefined);

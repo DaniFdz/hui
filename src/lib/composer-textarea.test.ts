@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
-import test, { type TestContext } from "node:test";
+import { test, type TestContext } from "vitest";
 import { adjustTextareaHeight, disconnectTextareaOverflowObserver, observeTextareaOverflow, scheduleTextareaHeightAdjustment } from "./composer-textarea.ts";
 
 function replaceGlobal(t: TestContext, name: string, value: unknown) {
   const previous = Object.getOwnPropertyDescriptor(globalThis, name);
   Object.defineProperty(globalThis, name, { configurable: true, writable: true, value });
-  t.after(() => {
+  t.onTestFinished(() => {
     if (previous) Object.defineProperty(globalThis, name, previous);
     else Reflect.deleteProperty(globalThis, name);
   });
