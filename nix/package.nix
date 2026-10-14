@@ -58,7 +58,7 @@ buildNpmPackage {
 
   # PI ships its own shrinkwrap; cache URL metadata as well as tarball integrity.
   npmDepsFetcherVersion = 2;
-  npmDepsHash = "sha256-BLMUPpyWZjVMvgpwx8IMZCo3WNjZbOZcFAalnyEgEJg=";
+  npmDepsHash = "sha256-J/9lDFfZtEF0yoLPb8hN7jmqwR/cu1y6L7ozNkODNTQ=";
   npmFlags = [ "--ignore-scripts" ];
 
   nativeBuildInputs = [
@@ -88,8 +88,7 @@ buildNpmPackage {
         "$out/lib/node_modules/hui/node_modules/.bin/electron"
     ''}
     ${lib.optionalString withDesktop ''
-      mkdir -p "$out/share/icons/hicolor/256x256/apps"
-      node --input-type=module -e 'import {appIcon} from "./desktop/icon.mjs"; import {writeFileSync} from "node:fs"; writeFileSync(process.argv[1], appIcon().png)' "$out/share/icons/hicolor/256x256/apps/hui.png"
+      install -Dm644 public/pi-logo-3d.png "$out/share/icons/hicolor/512x512/apps/hui.png"
     ''}
     # PI's shrinkwrap retains esbuild binaries for other operating systems.
     # Keep only this platform; Solaris ELF files cannot be patched for Linux.

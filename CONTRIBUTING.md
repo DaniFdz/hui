@@ -237,6 +237,13 @@ version relative to the PR base, it:
    changelog. The changelog is also available in the planning job summary and a
    separate artifact, even if packaging fails.
 
+When the release adds user-visible features, it also gets a demo video of them,
+filmed with `e2e/demo/record.ts` as the
+[release video skill](.agents/skills/hui-release-video/SKILL.md) describes: new
+clips land in their own PR first, and each feature's clip goes into the
+version-bump PR's description and, once published, the GitHub Release notes. Releases with only
+fixes or maintenance say so instead.
+
 Review the changelog and download the candidate package from the PR's Actions
 run before approving. Commit subjects are listed chronologically with commit
 links, plus a full comparison link. Merge commits are omitted to avoid duplicate

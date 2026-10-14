@@ -33,7 +33,7 @@ function durableTool(tool: ToolDefinition, invoke: ConversationInvoker): ToolReg
         () => tool.execute(api.callId, args as never, context.abortSignal, undefined, undefined as never),
       );
       return {
-        content: result.content,
+        output: result.content,
         ...(result.details === undefined ? {} : { details: result.details as never }),
       };
     },

@@ -35,6 +35,8 @@ export type Settings = {
   branchPrefix: string;
   /** Settings → Tools → Browser: HUI's managed, agent-only browser profile. */
   browser: BrowserSettings;
+  /** Settings → Tools → Codemode: offer PI's `codemode` tool in Durable sessions. On unless switched off. */
+  codemode: { enabled: boolean };
   /** Settings → Tools → VS Code: how the Work pane's VS Code view runs VS Code on this machine. */
   vscode: VscodeSettings;
   /** Settings → Gateway → Power (macOS). Lid-close prevention is deliberately not
@@ -114,6 +116,7 @@ export const DEFAULT_SETTINGS: Settings = {
   profileHandle: "",
   branchPrefix: DEFAULT_BRANCH_PREFIX,
   browser: DEFAULT_BROWSER_SETTINGS,
+  codemode: { enabled: true },
   vscode: DEFAULT_VSCODE_SETTINGS,
   power: { keepAwake: true },
   models: { primary: "", fallback: "", utility: "" },
@@ -147,6 +150,7 @@ export function normalizeSettings(raw: unknown): Settings {
     profileHandle: boundedText(source["profileHandle"], "", 80),
     branchPrefix: normalizeBranchPrefix(source["branchPrefix"]),
     browser: normalizeBrowserSettings(source["browser"]),
+    codemode: { enabled: !isRecord(source["codemode"]) || source["codemode"]["enabled"] !== false },
     vscode: normalizeVscodeSettings(source["vscode"]),
     power: normalizePower(source["power"]),
     // VoiceStudio's `voice` (its voice-notes switch) is not read either: the next save leaves it out.

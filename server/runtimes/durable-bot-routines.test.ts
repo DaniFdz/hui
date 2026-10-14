@@ -72,7 +72,7 @@ async function fixture(t: TestContext, answer: (invocation: AgentToolInvocation)
   return { cwd, host, invocations, bot, api, tool };
 }
 
-const textOf = (result: { content?: unknown }) => JSON.stringify(result.content);
+const textOf = (result: { output?: unknown }) => JSON.stringify(result.output);
 
 test("routines is a bot tool of the hui-bots-tools extension: it asks HUI as the chat's session, and only from a bot's chat", { timeout: 60_000 }, async (t) => {
   const f = await fixture(t, (invocation) => invocation.params["action"] === "add"
@@ -106,7 +106,7 @@ test("the Tools catalog offers it as a normal switch, Manage its own routines, o
   const f = await fixture(t);
   const entry = { name: ROUTINES_TOOL, label: "Manage its own routines", description: "List, add, change and remove its own routines, temporary ones included", group: "bots", source: "HUI", powerful: false };
   assert.deepEqual(describeTool({ name: ROUTINES_TOOL }, { kind: "bot" }), entry);
-  assert.deepEqual(f.host.builtinBotOffer().find((tool) => tool.name === ROUTINES_TOOL), entry, "listed while its chat isn't running too");
+  assert.deepEqual((await f.host.builtinBotOffer()).find((tool) => tool.name === ROUTINES_TOOL), entry, "listed while its chat isn't running too");
   assert.equal(POWERFUL_TOOLS.has(ROUTINES_TOOL), false);
   const on = await f.bot([], "on-chat");
   assert.deepEqual(on.session.botOffer().find((tool) => tool.name === ROUTINES_TOOL), entry, "on, and the operator's to turn off");

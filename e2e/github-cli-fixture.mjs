@@ -12,6 +12,7 @@
  *                  served by `api -X GET search/commits`, `api graphql` pull request
  *                  searches (both logged to search-log) and `api user`;
  *                  `rate-limit-once` fails the next commit search with a rate limit
+ *   api.json — `{ "repos/…": payload }` added to or replacing the canned `api` reads
  * HUI_FAKE_GH_CODE overrides the printed one-time code; HUI_FAKE_GH_PROTOCOL
  * is the configured git protocol. Each login writes its arguments to login-args. */
 import { appendFileSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -105,6 +106,7 @@ if (args[0] === "--version") {
     "repos/acme/web/issues/13": { number: 13, pull_request: {} },
     "repos/acme/web/issues/7": { number: 7, title: "Checkout button overlaps footer on mobile", state: "closed", state_reason: "completed", user: { login: "lana" }, comments: 4, labels: [{ name: "bug" }, { name: "mobile" }], body: "Seen on iOS Safari." },
   };
+  if (existsSync(file("api.json"))) Object.assign(payloads, JSON.parse(readFileSync(file("api.json"), "utf8")));
   const payload = payloads[args[1]];
   if (!payload) {
     process.stderr.write("gh: Not Found (HTTP 404)\n");

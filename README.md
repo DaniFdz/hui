@@ -36,6 +36,44 @@ PI transcripts into its own storage.
 <tr><td><b>Safe updates</b></td><td>Transactional local updates with verification and rollback support.</td></tr>
 </table>
 
+## See it in action
+
+### Kanban
+
+Every session is a card in the stage its work is in, agents move their own cards, and a backlog item starts in its own worktree.
+
+https://github.com/user-attachments/assets/f1f798d9-a3be-45ce-a21e-f7e359fc4ada
+
+### Rich results in the chat
+
+Interactive widgets, a browser the agent drives with a live preview, and GitHub and Slack links that unfurl.
+
+https://github.com/user-attachments/assets/282a7c75-b24b-49e5-b2d1-c79a41c04c27
+
+### Work pane
+
+A terminal you share with the agent, and the Diff, Files and VS Code views of what it changed, beside the chat.
+
+https://github.com/user-attachments/assets/96c1f282-71da-4e71-911e-a0df05a5e5c3
+
+### Subagents and watchers
+
+Parallel reviewers in their own sessions, and a watcher that waits for CI and merges.
+
+https://github.com/user-attachments/assets/f6740992-95e7-4bb1-b07b-06e3a17a963c
+
+### Bots
+
+Long-lived agents (Settings → Labs) with a face, one chat, a memory and routines they schedule themselves.
+
+https://github.com/user-attachments/assets/42487a00-26d2-4642-8b1c-a2b47022a767
+
+### On your phone
+
+Open the gateway over Tailscale and check in on your agents, or the board, from anywhere.
+
+https://github.com/user-attachments/assets/710f8134-3746-45cf-8f58-5b459683605a
+
 ## Install
 
 Requirements:

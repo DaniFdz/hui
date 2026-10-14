@@ -23,7 +23,7 @@ let socket;
 const exec = promisify(execFile);
 try {
   assert.match(await readFile(join(output, "share/applications/hui.desktop"), "utf8"), /Exec=hui desktop/);
-  assert.ok((await readFile(join(output, "share/icons/hicolor/256x256/apps/hui.png"))).length > 100);
+  assert.ok((await readFile(join(output, "share/icons/hicolor/512x512/apps/hui.png"))).length > 100);
   const { launchDesktop } = await import(pathToFileURL(join(root, "desktop/launch.mjs")).href);
   let stderr = "";
   const debuggerUrl = new Promise((resolve, reject) => {

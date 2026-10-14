@@ -131,7 +131,7 @@ export function durableBotConversations(host: DurableHost, memory: BotMemory, op
       const own = id === undefined ? [] : await host.skillDirsFor(id);
       const skills = chat ? await chat.availableSkills() : (await host.prompt.loader(cwd, own)).getSkills().skills;
       return {
-        tools: chat ? [...chat.botOffer()] : host.builtinBotOffer(),
+        tools: chat ? [...chat.botOffer()] : await host.builtinBotOffer(),
         skills: skills.map((skill) => own.some((dir) => skill.filePath.startsWith(`${dir}/`)) ? { ...offeredSkill(skill), source: BOT_OWN_SKILLS_SOURCE } : offeredSkill(skill)),
         alwaysOn: [...BOT_ALWAYS_ON],
         live: Boolean(chat),
@@ -162,8 +162,8 @@ export function durableBotConversations(host: DurableHost, memory: BotMemory, op
       return requested && known ? clampThinkingLevel(known, requested as ModelThinkingLevel) : "off";
     },
 
-    // One passive write: Durable appends it at once while the chat is idle and at the running turn's next boundary
-    // otherwise. Admitted once the store schedules work, as extensions' writes are.
+    // One passive, data-only write: Durable appends it at once, during a running turn too. Admitted once the store
+    // schedules work, as extensions' writes are.
     async writeCallRecord(reference, record) {
       const found = await conversation(reference);
       await host.resumed;
