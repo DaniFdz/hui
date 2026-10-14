@@ -1261,14 +1261,18 @@ tool that runs those waits as HUI-owned background processes instead of
 invisible `nohup` scripts, and lists them in the conversation that started
 them.
 
-`watcher` has five actions: `start`, `list`, `stop`, `restart` and `log`.
-`start` records the watcher against the calling session — a one-line purpose,
-an optional target URL, an optional outcome (`post /merge`) and the shell
-command — then runs the command detached, in the conversation's working
+`watcher` has six actions: `start`, `list`, `stop`, `restart`, `dismiss` and
+`log`. `start` records the watcher against the calling session — a one-line
+purpose, an optional target URL, an optional outcome (`post /merge`) and the
+shell command — then runs the command detached, in the conversation's working
 directory, in its own process group. HUI appends
 the command's output to a HUI-owned log and has the wrapper write the exit
 status beside it, so the watcher keeps running after the turn and after the
-gateway stops; at most ten watchers live per conversation.
+gateway stops. A conversation holds at most ten watchers, settled ones
+included; `dismiss` removes a settled one and its log, as the operator's
+*Dismiss* does, so the agent can free a slot itself. `restart` re-runs the
+recorded command and refuses a new one: watching something else takes a new
+watcher.
 
 The owning conversation lists its watchers at the end of the transcript in the
 same compact rows as background agents: a status icon (the agents' orbit while

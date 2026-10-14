@@ -292,13 +292,25 @@ export class WatcherService {
       .toSorted((a, b) => b.startedAt.localeCompare(a.startedAt));
   }
 
-  /** The bridge-facing tool contract: `watcher` with its five actions. */
+  /** The bridge-facing tool contract: `watcher` with its six actions. */
   async tool(sessionId: string, params: Record<string, unknown>, cwd = process.cwd()): Promise<unknown> {
     const action = typeof params["action"] === "string" ? params["action"] : "";
     if (action === "start") return this.start(sessionId, params, cwd);
     if (action === "list") return { watchers: this.list(sessionId) };
     if (action === "stop") return this.stop(sessionId, this.#watcherId(params));
-    if (action === "restart") return this.restart(sessionId, this.#watcherId(params));
+    if (action === "restart") {
+      // Ignoring a new definition would quietly re-run the old command instead.
+      // Empty values are what some models send for fields they leave unset.
+      if (["command", "purpose", "target", "outcome"].some((field) => params[field])) {
+        throw new WatcherInputError("restart re-runs the recorded command and takes only an id. To run something else, start a new watcher.");
+      }
+      return this.restart(sessionId, this.#watcherId(params));
+    }
+    if (action === "dismiss") {
+      const id = this.#watcherId(params);
+      await this.remove(sessionId, id);
+      return { id, status: "dismissed" };
+    }
     if (action === "log") {
       const lines = params["lines"];
       if (lines !== undefined && (!Number.isInteger(lines) || (lines as number) < 1 || (lines as number) > WATCHER_LIMITS.logLines)) {
