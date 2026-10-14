@@ -151,6 +151,13 @@ test("restart respawns a settled watcher and is refused while running", async (t
   assert.equal(restarted.startedAt >= watcher.startedAt, true);
   await waitFor(() => service.list("alpha")[0]?.state === "done");
   assert.equal(service.list("alpha")[0]?.lastLine, "first");
+  // Restart only re-runs the recorded command: a new one is refused, not silently ignored,
+  await assert.rejects(service.tool("alpha", { action: "restart", id: watcher.id, command: "printf 'second\\n'" }), /re-runs the recorded command/u);
+  assert.equal(service.list("alpha")[0]?.pid, restarted.pid);
+  // while the empty optional fields some models send are not a new definition.
+  const again = await service.tool("alpha", { action: "restart", id: watcher.id, target: "", outcome: "" }) as { pid: number };
+  assert.notEqual(again.pid, restarted.pid);
+  await waitFor(() => service.list("alpha")[0]?.state === "done");
 
   const running = await service.start("alpha", { purpose: "Busy", command: "sleep 30" });
   await assert.rejects(service.restart("alpha", running.id), WatcherConflictError);
@@ -172,12 +179,17 @@ test("remove deletes a settled watcher and its files, but never a running one", 
 });
 
 test("watchers are scoped to their conversation and bounded per conversation", async (t) => {
-  const { service } = await fixture(t, { launch: () => 424_242, ownsProcess: async () => false, signalGroup: () => {} });
+  // With no settling time the fake processes read dead at once: every watcher here is finished.
+  const { service } = await fixture(t, { launch: () => 424_242, ownsProcess: async () => false, signalGroup: () => {}, settleMs: 0 });
   const watcher = await service.start("alpha", { purpose: "Scoped", command: "sleep 1" });
   await assert.rejects(service.log("beta", watcher.id), WatcherNotFoundError);
   await assert.rejects(service.stop("beta", watcher.id), WatcherNotFoundError);
+  await assert.rejects(service.tool("beta", { action: "dismiss", id: watcher.id }), WatcherNotFoundError);
   for (let index = 1; index < 10; index += 1) await service.start("alpha", { purpose: `Extra ${index}`, command: "sleep 1" });
+  // Finished watchers still count; the agent frees a slot by dismissing one.
   await assert.rejects(service.start("alpha", { purpose: "One too many", command: "sleep 1" }), /already has 10 watchers/u);
+  assert.deepEqual(await service.tool("alpha", { action: "dismiss", id: watcher.id }), { id: watcher.id, status: "dismissed" });
+  await service.start("alpha", { purpose: "Replacement", command: "sleep 1" });
   await service.start("beta", { purpose: "Other conversation", command: "sleep 1" });
 });
 

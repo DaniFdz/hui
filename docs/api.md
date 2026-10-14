@@ -3707,10 +3707,11 @@ and forgets it.
 
 | Tool | Contract |
 |---|---|
-| `watcher { action: "start", purpose ≤200, command ≤4000, target? ≤500, outcome? ≤200 }` | Records the watcher against the calling session and starts it in the session's working directory. `target` must be an http(s) URL when present. Returns the `Watcher` view. At most 10 watchers per conversation |
+| `watcher { action: "start", purpose ≤200, command ≤4000, target? ≤500, outcome? ≤200 }` | Records the watcher against the calling session and starts it in the session's working directory. `target` must be an http(s) URL when present. Returns the `Watcher` view. At most 10 watchers per conversation, settled ones included |
 | `watcher { action: "list" }` | `{ watchers: Watcher[] }` of the calling session, newest first |
 | `watcher { action: "stop", id }` | Signals the watcher's process group (`SIGTERM`, `SIGKILL` after 2s), records `stopped` and returns the view. A settled watcher is returned unchanged |
-| `watcher { action: "restart", id }` | Runs the recorded command again after clearing the exit record; refused while the watcher is running |
+| `watcher { action: "restart", id }` | Runs the recorded command again after clearing the exit record; refused while the watcher is running, and when a non-empty `command`, `purpose`, `target` or `outcome` is passed |
+| `watcher { action: "dismiss", id }` | Removes a settled watcher, its log and its exit record, like the operator's `DELETE`; returns `{ id, status: "dismissed" }`. Refused while the watcher is running |
 | `watcher { action: "log", id, lines? }` | `{ id, lines, truncated }`: at most `lines` (default 100, max 400) from the end of the log, reading at most 256 KiB |
 
 Operator routes (all require `x-hui`, scoped to the owning session; unknown
