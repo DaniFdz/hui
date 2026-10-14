@@ -83,9 +83,11 @@ function signalGroup(child: ChildProcess, signal: NodeJS.Signals): void {
   } catch { /* already gone */ }
 }
 
+/** Whether anything of a process group is left. EPERM says so too: for another user's members, and on macOS for members
+ * that exited but are not yet reaped, where Linux answers success. */
 function groupAlive(pid: number): boolean {
   if (process.platform === "win32") return false;
-  try { process.kill(-pid, 0); return true; } catch { return false; }
+  try { process.kill(-pid, 0); return true; } catch (error) { return (error as NodeJS.ErrnoException).code === "EPERM"; }
 }
 
 /** Process groups of servers this gateway runs, signalled if the gateway exits without stopping them. */
@@ -250,9 +252,12 @@ export class VscodeService {
 
   /** The running server, if there is one. The proxy uses only this: a frame's requests never start VS Code, so a
    * crashed server is not restarted by its own reconnecting workbench. */
-  current(): { port: number; token: string; instance: number; flavor: VscodeFlavor } | undefined {
+  current(): { port: number; token: string; instance: number; flavor: VscodeFlavor; label: string } | undefined {
     const running = this.#running;
-    return running && !running.stopping ? { port: running.port, token: running.token, instance: running.instance, flavor: running.provider.flavor } : undefined;
+    return running && !running.stopping ? {
+      port: running.port, token: running.token, instance: running.instance, flavor: running.provider.flavor,
+      label: `${running.provider.name} ${running.provider.version}`,
+    } : undefined;
   }
 
   /** The running server, started now if it is not. Concurrent callers share one start. Refuses with `setup` while

@@ -237,9 +237,14 @@ const server = createServer(async (request, response) => {
 
   // Tool calls a test chooses: E2E_CALL:<base64url JSON of { name, input }, or an array of them> calls them all in one
   // response, and the next answer quotes every result.
+  // E2E_ASK_USER:<name> does the same with ask_user_question and the workspace's `ask-<name>.json`: its input, or an
+  // array of inputs for parallel calls.
   const chosen = /E2E_CALL:([A-Za-z0-9_-]+)/u.exec(source)?.[1];
-  if (chosen) {
-    const calls = [JSON.parse(Buffer.from(chosen, "base64url").toString("utf8"))].flat();
+  const asked = /E2E_ASK_USER:([a-z0-9-]+)/u.exec(source)?.[1];
+  if (chosen || asked) {
+    const calls = asked
+      ? [JSON.parse(await readFile(`${workspace}/ask-${asked}.json`, "utf8"))].flat().map((input) => ({ name: "ask_user_question", input }))
+      : [JSON.parse(Buffer.from(chosen, "base64url").toString("utf8"))].flat();
     calls.forEach((call, index) => toolUse(response, `tool-e2e-call-${index}`, call.name, call.input ?? {}, index));
     return finish(response, "tool_use");
   }
@@ -375,6 +380,21 @@ const server = createServer(async (request, response) => {
 
   if (source.includes("E2E_CODE_PARITY")) {
     text(response, `\`\`\`unknown\n${Array.from({ length: 10 }, (_, index) => `line ${index + 1}: ${"fixture ".repeat(24)}`).join("\n")}\n\`\`\``);
+    return finish(response);
+  }
+
+  if (source.includes("E2E_FILE_LINKS")) {
+    text(response, [
+      "I looked at `src/lib/greeting.ts:3`, `README.md` and the folder `docs/`; the filler ends at `src/lib/greeting.ts#L58`.",
+      "",
+      "`src/lib/missing.ts` and `notes/todo.md:12` do not exist; run `npm test`, call `greet()` and keep version `1.2.3`.",
+      "",
+      "See [the design notes](docs/design.md#L2), [a missing page](docs/missing.md) and [the website](https://example.com/docs/design.md).",
+      "",
+      "```ts",
+      "import { greet } from \"./src/lib/greeting.ts\";",
+      "```",
+    ].join("\n"));
     return finish(response);
   }
 

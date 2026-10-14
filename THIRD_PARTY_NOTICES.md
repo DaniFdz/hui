@@ -90,7 +90,8 @@ rules and its localStorage backup (`src/file-draft.ts`,
 editor text helpers, copied with their tests (`src/editable-text.ts` →
 `src/lib/editable-text.ts`); the CodeMirror extension set, highlight mapping
 and language loading (`src/client/file-editor.ts`,
-`src/client/editor-language.ts` → `src/lib/file-editor.ts`); and the read,
+`src/client/editor-language.ts` → `src/lib/file-editor.ts`, with the language
+loading now in `src/lib/code-languages.ts`, which the Diff view shares); and the read,
 save, upload and delete rules of `src/server/editable-file.ts` and
 `src/server/files.ts` (`server/files.ts`). HUI reimplements the view in Lit,
 the routes in its own gateway with Node's fs, and its own markup and styles; no

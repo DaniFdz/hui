@@ -19,6 +19,10 @@ import type { SessionRecord } from "./sessions.ts";
 import type { TaskSuggestion } from "../shared/task-suggestions.ts";
 import type { Watcher } from "../shared/watchers.ts";
 import type { SecretQuestion } from "./secret-requests.ts";
+import type { QuestionnairePrompt } from "./questionnaires.ts";
+
+/** A question HUI itself asks: a `secret_request` or an `ask_user_question` card. */
+export type HuiQuestion = SecretQuestion | QuestionnairePrompt;
 import { SessionRegistryError, updateRegistry } from "./sessions.ts";
 import { piRuntime } from "./runtimes/pi.ts";
 import { durableRuntime } from "./runtimes/durable.ts";
@@ -80,8 +84,8 @@ export type SessionSnapshot = {
   usage?: RuntimeUsage;
   thinking?: string;
   queue: RuntimeQueue;
-  /** The runtime's questions, then HUI's pending `secret_request` prompts. */
-  questions: readonly (RuntimeQuestion | SecretQuestion)[];
+  /** The runtime's questions, then HUI's own pending ones. */
+  questions: readonly (RuntimeQuestion | HuiQuestion)[];
   subagents: readonly SubagentTaskView[];
   /** Pending `suggest_task` cards; omitted when there are none. */
   suggestions?: readonly TaskSuggestion[];
@@ -169,6 +173,8 @@ type Live = {
   lastPrompt?: { text: string; attachments?: readonly PromptAttachment[] };
   turnProducedOutput: boolean;
   fallbackAttempted: boolean;
+  /** The session's own model while one turn is retried on the fallback. */
+  fallbackRestore?: RuntimeModel;
   /** A model turn began since the last settlement. Commands settle without
    * one and must not re-report a failure that still ends the transcript. */
   turnStarted?: boolean;
@@ -248,7 +254,7 @@ export class LiveSessions {
   #subagentSnapshot: (parentId: string) => readonly SubagentTaskView[] = () => [];
   #suggestionSnapshot: (sessionId: string) => readonly TaskSuggestion[] = () => [];
   #watcherSnapshot: (sessionId: string) => readonly Watcher[] = () => [];
-  #secretQuestions: (sessionId: string) => readonly SecretQuestion[] = () => [];
+  #huiQuestions: (sessionId: string) => readonly HuiQuestion[] = () => [];
   #aborted: (sessionId: string) => void = () => {};
 
   /** Injectable so the state machine can be exercised without waiting to boot a
@@ -356,10 +362,10 @@ export class LiveSessions {
     this.#watcherSnapshot = provider;
   }
 
-  /** HUI's own pending `secret_request` prompts: shown and answered like the
-   * runtime's questions, and like them they leave the session waiting. */
-  setSecretRequestProvider(provider: (sessionId: string) => readonly SecretQuestion[]): void {
-    this.#secretQuestions = provider;
+  /** HUI's own pending questions (`secret_request`, `ask_user_question`): shown and
+   * answered like the runtime's, and like them they leave the session waiting. */
+  setHuiQuestionProvider(provider: (sessionId: string) => readonly HuiQuestion[]): void {
+    this.#huiQuestions = provider;
   }
 
   /** Every stop (the Stop button, rewind, automations, subagents) passes here. */
@@ -372,7 +378,7 @@ export class LiveSessions {
   notifySnapshot(id: string): void {
     const live = this.#live.get(id);
     if (!live) return;
-    // A secret prompt starts or ends a wait, which the session list shows.
+    // A HUI question starts or ends a wait, which the session list shows.
     this.#setStatus(live, this.#reported(live));
     this.#broadcast(live, { kind: "snapshot", snapshot: this.snapshot(id) });
   }
@@ -412,7 +418,7 @@ export class LiveSessions {
     if (["starting", "error", "reconnecting", "disconnected"].includes(live.status)) {
       return live.status;
     }
-    if (live.questions.size > 0 || this.#secretQuestions(live.record.id).length > 0) {
+    if (live.questions.size > 0 || this.#huiQuestions(live.record.id).length > 0) {
       return "waiting";
     }
     return live.promptPending || live.runtime?.isStreaming || this.#compactionBlocks(live) ? "running" : "idle";
@@ -453,7 +459,7 @@ export class LiveSessions {
       ...(usage ? { usage } : {}),
       ...(live.thinking ? { thinking: live.thinking } : {}),
       queue: this.#queueSnapshot(live),
-      questions: [...live.questions.values(), ...this.#secretQuestions(id)],
+      questions: [...live.questions.values(), ...this.#huiQuestions(id)],
       subagents: [...this.#subagentSnapshot(id)],
       ...this.#suggestionField(id),
       ...this.#watcherField(id),
@@ -1427,6 +1433,8 @@ export class LiveSessions {
           live.transcript[index] = {
             ...prior,
             ...(event.output !== undefined ? { output: event.output } : {}),
+            // A codemode script's calls so far, or a tool's result details: what a newly attached view shows.
+            ...(event.details !== undefined ? { details: event.details } : {}),
             ...(event.type === "tool_end" && event.failed !== undefined ? { failed: event.failed } : {}),
           };
         }
@@ -1471,6 +1479,7 @@ export class LiveSessions {
   }
 
   async #routeSettledTurn(live: Live, runtime: RuntimeSession): Promise<void> {
+    await this.#restoreAfterFallback(live, runtime);
     const retried = await this.#retryWithFallback(live, runtime).catch(() => false);
     if (!retried) {
       if (live.readers === 0) this.#setUnread(live, true);
@@ -1501,6 +1510,7 @@ export class LiveSessions {
     const separator = routes.fallback.indexOf("/");
     if (separator < 1) return false;
     live.fallbackAttempted = true;
+    if (current) live.fallbackRestore = current;
     const prompt = live.lastPrompt;
     this.#broadcast(live, {
       kind: "event",
@@ -1517,6 +1527,7 @@ export class LiveSessions {
       return true;
     } catch (error) {
       live.promptPending = false;
+      await this.#restoreAfterFallback(live, runtime);
       this.#setStatus(live, this.#reported(live));
       recordDiagnosticEvent({ area: "session", level: "error", action: "fallback_failed", summary: "Fallback retry failed", detail: failureDetail(error), sessionId: live.record.id });
       this.#broadcast(live, {
@@ -1524,6 +1535,19 @@ export class LiveSessions {
         event: { type: "error", message: error instanceof Error ? error.message : "The fallback model failed." },
       });
       return false;
+    }
+  }
+
+  /** The fallback answers one failed turn; the session keeps its own model. */
+  async #restoreAfterFallback(live: Live, runtime: RuntimeSession): Promise<void> {
+    const model = live.fallbackRestore;
+    if (!model || live.runtime !== runtime || !runtime.setModel) return;
+    live.fallbackRestore = undefined;
+    try {
+      await runtime.setModel(model.provider, model.id);
+      this.#broadcast(live, { kind: "model", model: runtime.currentModel?.() ?? model });
+    } catch (error) {
+      recordDiagnosticEvent({ area: "session", level: "error", action: "fallback_restore_failed", summary: "Could not switch back from the fallback model", detail: failureDetail(error), sessionId: live.record.id });
     }
   }
 

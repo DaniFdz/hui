@@ -15,6 +15,7 @@ import type {
   RuntimeModel,
   RuntimeUsage,
   RuntimeQuestion,
+  QuestionResponse,
   PromptMode,
   QueueSnapshot,
   RewindTarget,
@@ -39,10 +40,13 @@ import { icons } from "../lib/icons.ts";
 import { forkPoint } from "../lib/fork-point.ts";
 import { closeDropdownOnEscape, labelDropdown } from "../lib/web-awesome.ts";
 import type { SplitDirection } from "../lib/session-multiplexer.ts";
-import { renderMarkdown } from "../lib/markdown.ts";
+import { renderAgentMarkdown, renderMarkdown } from "../lib/markdown.ts";
+import "../components/file-link.ts";
 import "../components/github-embeds.ts";
 import "../components/browser-preview.ts";
 import "../components/widget-card.ts";
+import "../components/questionnaire-card.ts";
+import type { QuestionnaireResult } from "../../server/questionnaires.ts";
 import { handleCodeBlockDisclosure, markdownBlocks } from "../lib/markdown-blocks.ts";
 import { openMessageContextMenu } from "../lib/message-context-menu.ts";
 import { progressCardFromTranscript } from "../lib/progress-card.ts";
@@ -54,8 +58,9 @@ import { parseSlackLink } from "../lib/slack-link.ts";
 import { activityLabel, browserPreviewRow, projectChatTranscript, workingLabel, type ChatActivity, type ChatMessage, type ChatProjectionRow } from "./chat/projection.ts";
 import { conversationMarkers } from "./chat/position-rail-model.ts";
 import { positionRail } from "./chat/position-rail.ts";
-import { readToolPresentation, renderReadToolCard } from "./chat/read-tool-card.ts";
+import { readToolPresentation, renderReadToolCard, renderToolFileReference, toolFilePath } from "./chat/read-tool-card.ts";
 import { commandToolPresentation, renderCommandToolCard } from "./chat/command-tool-card.ts";
+import { codemodeToolPresentation, renderCodemodeToolCard } from "./chat/codemode-tool-card.ts";
 import { renderTaskSuggestionCard, type TaskSuggestionCardProps } from "./chat/task-suggestion-card.ts";
 import { renderWatcherActivity, type WatcherActivityProps } from "./chat/watcher-activity.ts";
 import { browserToolSummary } from "../lib/browser-tool-display.ts";
@@ -200,6 +205,8 @@ function focusComposerFromSurface(event: MouseEvent) {
 
 export type HomeProps = {
   session: SessionView | undefined;
+  /** File references in the agent's replies and tool cards may open in this conversation's Files view. */
+  fileLinks?: boolean;
   mobileNavLayout?: boolean;
   groups: readonly SessionGroup[];
   transcript: readonly TranscriptItem[];
@@ -312,7 +319,7 @@ export type HomeProps = {
   onRemoveAttachment: (index: number) => void;
   onCopy: (text: string, id: string) => Promise<boolean>;
   onActivityExpanded: (id: string, expanded: boolean) => void;
-  onAnswerQuestion: (answer: { value?: string; confirmed?: boolean; cancelled?: boolean }) => void;
+  onAnswerQuestion: (answer: QuestionResponse) => void;
   onTranscriptScroll: (element: HTMLElement) => void;
   onTranscriptNavigate: (thread: HTMLElement, top: number) => void;
   onScrollToBottom: () => void;
@@ -895,7 +902,7 @@ function renderMessage(props: HomeProps, item: ChatMessage): TemplateResult {
           ${item.attachments.map((attachment) => renderMessageAttachment(attachment))}
         </div>`
       : nothing}
-    ${item.role === "user" ? renderUserText(props, item) : html`<div class="chat-text">${renderMarkdown(item.text)}</div>`}
+    ${item.role === "user" ? renderUserText(props, item) : html`<div class="chat-text">${renderAgentMarkdown(item.text)}</div>`}
     ${item.pending || item.failed || !props.chatPreferences.githubEmbeds ? nothing : html`<hui-github-embeds .text=${item.text}></hui-github-embeds>`}
     ${renderMetrics(item)}
     ${item.pending ? html`<span class="chat-send-status" role="status">Sending…</span>` : nothing}
@@ -905,7 +912,7 @@ function renderMessage(props: HomeProps, item: ChatMessage): TemplateResult {
 
 function renderActivityItem(props: HomeProps, item: ChatActivity): TemplateResult {
   if (item.kind === "message") {
-    return html`<div class="chat-activity-message">${renderMarkdown(item.text)}</div>`;
+    return html`<div class="chat-activity-message">${renderAgentMarkdown(item.text)}</div>`;
   }
   if (item.kind === "thinking") {
     return html`<div class="chat-activity-message">${renderMarkdown(item.text)}</div>`;
@@ -914,7 +921,8 @@ function renderActivityItem(props: HomeProps, item: ChatActivity): TemplateResul
     return html`<p class="chat-run-error" role="alert">${item.text}</p>`;
   }
   const status = item.status ?? "running";
-  const toolRenderer = readToolPresentation(item) ? renderReadToolCard : commandToolPresentation(item) ? renderCommandToolCard : null;
+  const toolRenderer = readToolPresentation(item) ? renderReadToolCard : commandToolPresentation(item) ? renderCommandToolCard
+    : codemodeToolPresentation(item) ? renderCodemodeToolCard : null;
   if (toolRenderer) {
     const expansionId = `${props.session?.id ?? "session"}:tool:${props.transcript.indexOf(item)}:${item.id}`;
     const expanded = props.expandedActivityIds.has(expansionId);
@@ -926,6 +934,7 @@ function renderActivityItem(props: HomeProps, item: ChatActivity): TemplateResul
   }
   const statusLabel = status === "running" ? "Running" : status === "failed" ? "Failed" : "Completed";
   const summary = item.name === "browser" ? browserToolSummary(item.args) : "";
+  const filePath = toolFilePath(item);
   return html`<details class="chat-tool-msg-collapse ${status === "running" ? "chat-tool-row--running" : ""}"
     @toggle=${(event: Event) => { const details = event.currentTarget as HTMLDetailsElement; details.classList.toggle("is-open", details.open); }}>
     <summary class="chat-inline-disclosure chat-tool-msg-summary">
@@ -938,7 +947,7 @@ function renderActivityItem(props: HomeProps, item: ChatActivity): TemplateResul
     </summary>
     <div class="chat-tool-msg-body">
       <div class="chat-tool-card">
-        <div class="chat-tool-card__header"><span class="chat-tool-card__detail">${item.name}</span>
+        <div class="chat-tool-card__header"><span class="chat-tool-card__detail">${item.name}${filePath ? html` · ${renderToolFileReference(filePath)}` : nothing}</span>
           ${item.output !== undefined ? html`<div class="chat-tool-card__actions">${renderCopy(props, item.output, `tool-${item.id}`, "Copy output")}</div>` : nothing}
         </div>
         ${item.args !== undefined ? html`<section class="chat-tool-card__block"><div class="chat-tool-card__block-header"><span class="chat-tool-card__block-label">Input</span></div><pre class="chat-tool-card__block-content"><code>${printable(item.args)}</code></pre></section>` : nothing}
@@ -993,6 +1002,29 @@ function widgetActivity(items: readonly ChatActivity[]): WidgetView | undefined 
   const item = items.length === 1 ? items[0] : undefined;
   const view = item?.kind === "tool" ? widgetView(item) : undefined;
   return view?.state === "failed" ? undefined : view;
+}
+
+/** An answered `ask_user_question` call: what the operator chose, kept in sight
+ * like the card it replaced. A running or failed one stays an ordinary tool row. */
+function questionnaireSummary(items: readonly ChatActivity[]): QuestionnaireResult | undefined {
+  const item = items.length === 1 ? items[0] : undefined;
+  if (item?.kind !== "tool" || item.name !== "ask_user_question" || item.status !== "succeeded") return undefined;
+  const details = item.details as Partial<QuestionnaireResult> | undefined;
+  // Only HUI's own result: a PI extension's call of the same name (older transcripts) has another shape.
+  const answers = details?.answers;
+  return Array.isArray(answers) && answers.every((answer) => typeof answer?.header === "string" && Array.isArray(answer.selected))
+    ? { cancelled: details?.cancelled === true, answers }
+    : undefined;
+}
+
+function renderQuestionnaireSummary(id: string, result: QuestionnaireResult): TemplateResult {
+  return html`<div class="chat-group tool chat-group--with-footer" data-chat-row-key=${id}>
+    <div class="chat-group-messages"><div class="chat-question-summary" role="note" aria-label="Your answers">
+      ${result.cancelled || !result.answers.length
+        ? html`<div class="chat-question-summary__line"><span>You declined to answer.</span></div>`
+        : result.answers.map((answer) => html`<div class="chat-question-summary__line" title=${answer.question}><strong>${answer.header}</strong><span>${answer.selected.join(", ")}</span></div>`)}
+    </div></div>
+  </div>`;
 }
 
 function renderWidgetRow(id: string, widget: WidgetView): TemplateResult {
@@ -1115,6 +1147,8 @@ function renderTranscriptRows(props: HomeProps, rows: readonly ChatProjectionRow
       }
       const widget = widgetActivity(row.items);
       if (widget) return renderWidgetRow(row.id, widget);
+      const answers = questionnaireSummary(row.items);
+      if (answers) return renderQuestionnaireSummary(row.id, answers);
       const expansionId = `${props.session?.id ?? "session"}:${row.id}`;
       return html`<div class="chat-group tool chat-group--activity chat-group--with-footer" data-chat-row-key=${row.id}>
         <div class="chat-group-messages">
@@ -2035,6 +2069,12 @@ function selectQuestionOption(form: HTMLFormElement, value: string) {
 function renderQuestion(props: HomeProps) {
   const question = props.question;
   if (!question) return nothing;
+  if (question.method === "questionnaire") {
+    // Its previews' code blocks copy and wrap as the transcript's do.
+    return html`<div class="agent-chat__question-dock" aria-live="polite" @click=${(event: Event) => { void copyCodeBlock(event, props); }}>
+      <hui-questionnaire-card .prompt=${question} .onAnswer=${props.onAnswerQuestion} .idPrefix=${sessionControlId(props, "questionnaire")}></hui-questionnaire-card>
+    </div>`;
+  }
   const submit = (event: SubmitEvent) => {
     event.preventDefault();
     const form = event.currentTarget as HTMLFormElement;
@@ -2309,7 +2349,7 @@ function renderTranscript(props: HomeProps, session: SessionView) {
                     @scroll=${(event: Event) => props.onTranscriptScroll(event.currentTarget as HTMLElement)}
                     @click=${(event: Event) => { void copyCodeBlock(event, props); }}>
                     ${positionRail({ sessionId: session.id, markers: props.opening || session.status === "starting" ? [] : conversationMarkers(rows), onNavigate: props.onTranscriptNavigate })}
-                    <div class="chat-thread-inner" ${markdownBlocks()}>${renderTranscriptBody(props, rows)}${renderSubagentActivity(props)}${props.watchers ? renderWatcherActivity(props.watchers) : nothing}</div>
+                    <div class="chat-thread-inner" data-hui-files-session=${props.fileLinks ? session.id : nothing} ${markdownBlocks()}>${renderTranscriptBody(props, rows)}${renderSubagentActivity(props)}${props.watchers ? renderWatcherActivity(props.watchers) : nothing}</div>
                   </div>
                 </div>
                 <div class="chat-scroll-to-bottom-wrap"><button type="button" class="chat-scroll-to-bottom" data-visible=${String(props.showScrollToBottom)} ?inert=${!props.showScrollToBottom} aria-hidden=${String(!props.showScrollToBottom)} @click=${props.onScrollToBottom} aria-label="Scroll to latest">${icons.arrowDown}</button></div>

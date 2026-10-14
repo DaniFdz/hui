@@ -28,7 +28,55 @@ function secretRequestText(result) {
     : `The operator cancelled the request for ${label}.`;
 }
 
+/** What the model reads back from `ask_user_question`, worded like the PI extension it replaces. */
+function questionnaireText(result) {
+  const answers = Array.isArray(result?.answers) ? result.answers : [];
+  if (result?.cancelled || !answers.length) return "User declined to answer questions";
+  const segments = answers.map((answer) => {
+    const parts = [`"${answer.question}"="${answer.selected.join(", ")}"`];
+    if (answer.preview) parts.push(`selected preview: ${answer.preview}`);
+    return `${parts.join(". ")}.`;
+  });
+  return `User has answered your questions: ${segments.join(" ")} You can now continue with the user's answers in mind.`;
+}
+
+/** A day: the gateway's `QUESTIONNAIRE_WAIT_MS` (server/questionnaires.ts). */
+const QUESTIONNAIRE_WAIT_MS = 24 * 60 * 60_000;
+
+const questionOption = Type.Object({
+  label: Type.String({ minLength: 1, maxLength: 60, description: "MAX 60 CHARACTERS. The text the user sees and selects: concise (1-5 words) and clear." }),
+  description: Type.String({ maxLength: 500, description: "What this option means or what choosing it does: its trade-offs." }),
+  preview: Type.Optional(Type.String({ maxLength: 2_500, description: "Optional Markdown shown beside the options while this one is focused: a mockup, code snippet, diagram or config to compare. Single-select only." })),
+});
+
 export default function agentToolsExtension(pi) {
+  pi.registerTool({
+    name: "ask_user_question",
+    label: "Ask user question",
+    description: `Ask the user one or more structured questions in a card in this HUI conversation and wait for the answers. Use it to gather preferences or requirements, clarify ambiguous instructions, get decisions on implementation choices, or offer choices of direction.
+
+Every question also offers a free-text answer the card adds itself, and the user can cancel the whole card. Previews are Markdown shown beside the options of a single-select question while one is focused; use them only when the user needs to compare concrete artifacts (mockups, code, diagrams, configs).`,
+    promptSnippet: "Ask the user up to 4 structured questions (2-4 options each) when requirements are ambiguous",
+    promptGuidelines: [
+      "Use ask_user_question whenever the user's request is underspecified and you cannot proceed without concrete decisions. Group all clarifying questions into one call, up to 4; do not stack calls back-to-back.",
+      "Each question needs a header (≤16 characters), the full question and 2-4 options, each with a concise label and a description of what it means. The card adds a free-text answer to every question: never author \"Other\", \"Type something.\" or \"Next\" options.",
+      "Set multiSelect: true when several answers can apply. If you recommend an option, put it first and end its label with \"(Recommended)\".",
+      "If the user declines, do not ask the same questions again in chat; continue with sensible defaults or ask what they want.",
+    ],
+    parameters: Type.Object({
+      questions: Type.Array(Type.Object({
+        question: Type.String({ minLength: 1, maxLength: 500, description: "The complete question, ending with a question mark." }),
+        header: Type.String({ minLength: 1, maxLength: 16, description: "MAX 16 CHARACTERS. A very short tag for the question, such as \"Auth method\" or \"Library\"." }),
+        options: Type.Array(questionOption, { minItems: 2, maxItems: 4, description: "2-4 distinct choices. Mutually exclusive unless multiSelect is set." }),
+        multiSelect: Type.Optional(Type.Boolean({ description: "Let the user choose several options." })),
+      }), { minItems: 1, maxItems: 4, description: "1-4 questions, asked together in one card." }),
+    }),
+    async execute(_toolCallId, params, signal) {
+      const result = await invokeHuiBridge("ask_user_question", params, { timeoutMs: QUESTIONNAIRE_WAIT_MS, signal });
+      return { content: [{ type: "text", text: questionnaireText(result) }], details: result };
+    },
+  });
+
   pi.registerTool({
     name: "terminal",
     label: "Shared terminal",

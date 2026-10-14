@@ -30,7 +30,7 @@ Date: 2026-09-24. Linux, Node 24, HUI 0.1.0, PI SDK 0.87.1.
 `npm run test:package` builds and tests the actual packed archive, not a Vite
 proxy or fake gateway. It verifies:
 
-- Only compiled runtime/web/themes and shrinkwrap ship; no personal media,
+- Only compiled runtime/web/themes and the lockfile ship; no personal media,
   source tests, Vite runtime dependency or global `pi` requirement.
 - Port collision, idempotent start, status/UI URL, Host denial, x-hui guard,
   built themes and deep-link static serving.

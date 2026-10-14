@@ -136,8 +136,8 @@ test("+ creates a bot at once, without a name, and opens its chat, as in Grok Bo
   assert.match(create, /if \(this\.botCreating\) return;/u, "one at a time");
   assert.match(create, /void createBot\(worker \? \{ worker \} : \{\}\)/u, "no name (the gateway calls it New Bot and its first turn asks for one), on the machine chosen, everything else on the defaults");
   assert.match(create, /this\.navigate\(\{ kind: "bot", id: bot\.id \}\);/u, "its chat opens");
-  assert.match(create, /this\.botNotice = error instanceof Error \? error\.message : "Could not create a bot\.";\n\s+this\.botNoticeFailed = true;/u, "a refusal (an offline worker, say) shows in the roster");
-  assert.match(create, /this\.botNotice = `Creating a bot on \$\{this\.launchWorkers\.find\(\(candidate\) => candidate\.id === worker\)\?\.name \?\? "the worker"\}…`;/u, "a worker can take a moment: the roster says where");
+  assert.match(create, /this\.notify\(error instanceof Error \? error\.message : "Could not create a bot\.", true\);/u, "a refusal (an offline worker, say) shows as an error toast");
+  assert.match(create, /this\.notify\(`Creating a bot on \$\{this\.launchWorkers\.find\(\(candidate\) => candidate\.id === worker\)\?\.name \?\? "the worker"\}…`\);/u, "a worker can take a moment: a toast says where");
   assert.match(app, /onNew: \(\) => this\.createNewBot\(\),\n\s+workers: this\.launchWorkers,\n\s+onCreate: \(worker\) => this\.createNewBot\(worker\),\n\s+onImport: this\.botImports\.openImport,\n\s+onWorkersMenu: \(\) => this\.loadLaunchWorkers\(\),\n\s+creating: this\.botCreating,/u, "+ and its menu create the same way");
   assert.doesNotMatch(app, /\bNEW_BOT_NAME\b|createBotOn/u, "one way to create a bot, without a name");
   const source = read("./bots.ts");
@@ -265,7 +265,7 @@ test("the roster's + is a menu, New bot (on Local or on each worker while a work
   const create = between(app, "private createNewBot = ", "/** The roster's Edit");
   assert.match(create, /createBot\(worker \? \{ worker \} : \{\}\)/u, "created at once, where it was chosen, without a name: its first conversation asks for one");
   assert.match(create, /this\.navigate\(\{ kind: "bot", id: bot\.id \}\);/u, "and its chat opens");
-  assert.match(create, /this\.botNoticeFailed = true;/u, "a refusal (an offline worker) shows in the roster");
+  assert.match(create, /this\.notify\([^;]+, true\);/u, "a refusal (an offline worker) shows as an error toast");
 });
 
 test("Settings → Workspace shows the machine a bot runs on, read-only, and offers only that machine's folders", () => {

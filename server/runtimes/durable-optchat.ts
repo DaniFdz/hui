@@ -720,8 +720,8 @@ export class OptChatManager {
 
   async #answer(conversationId: ConversationId, ask: (memory: OptChatMemory) => string): Promise<ToolExecutionResult> {
     const handle = await this.#current(conversationId);
-    if (!handle) return { content: [{ type: "text", text: "OptChat memory is not enabled in this conversation." }], isError: true };
-    return { content: [{ type: "text", text: ask(handle.memory) }] };
+    if (!handle) return { output: [{ type: "text", text: "OptChat memory is not enabled in this conversation." }], isError: true };
+    return { output: [{ type: "text", text: ask(handle.memory) }] };
   }
 
   /**

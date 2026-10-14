@@ -50,9 +50,6 @@ export async function packCandidate(installed, root, version) {
   for (const file of ["bin", "build", "dist", "desktop"]) await cp(join(installed, file), join(directory, file), { recursive: true });
   const pkg = JSON.parse(await readFile(join(installed, "package.json"), "utf8"));
   await writeFile(join(directory, "package.json"), JSON.stringify({ ...pkg, version }));
-  const lock = JSON.parse(await readFile(join(installed, "npm-shrinkwrap.json"), "utf8"));
-  lock.version = version; lock.packages[""].version = version;
-  await writeFile(join(directory, "npm-shrinkwrap.json"), JSON.stringify(lock));
   await writeFile(join(directory, "build/release.json"), JSON.stringify({ format: 1, version }));
   const [packed] = JSON.parse((await exec("npm", ["pack", "--ignore-scripts", "--json", "--pack-destination", root], { cwd: directory })).stdout);
   return join(root, packed.filename);

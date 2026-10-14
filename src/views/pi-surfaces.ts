@@ -10,6 +10,7 @@ import type { HuiPage } from "../lib/pages.ts";
 import { skillIsEnabled, type PiMutationState, type PiSnapshot } from "../lib/pi.ts";
 import { icons } from "../lib/icons.ts";
 import { renderProviderBrandIcon } from "../lib/provider-icons.ts";
+import { renderListFilter } from "./list-filter.ts";
 import { renderSettingsToggle } from "./settings-toggle.ts";
 
 export type PiSurfaceProps = {
@@ -57,8 +58,8 @@ function status(kind: "ok" | "warn" | "muted", label: string) {
   return html`<span class="settings-status ${kind === "muted" ? "" : `settings-status--${kind}`}"><span class="settings-status__dot" aria-hidden="true"></span>${label}</span>`;
 }
 
-function row(title: string | TemplateResult, description: string, value: TemplateResult | string) {
-  return html`<div class="settings-row">
+function row(title: string | TemplateResult, description: string, value: TemplateResult | string, filter?: string) {
+  return html`<div class="settings-row" data-filter=${filter ?? nothing}>
     <div class="settings-row__text">
       <span class="settings-row__title">${title}</span>
       <span class="settings-row__desc">${description}</span>
@@ -254,6 +255,7 @@ function renderSkills(props: PiSurfaceProps) {
         </div>`,
       )}
       ${operationNotice(props, "skill-install")}
+      ${pi.skills.length ? renderListFilter("Search skills") : nothing}
       ${[...byRoot.entries()].map(([root, skills]) => section(
         root,
         root === "HUI defaults" ? "Included with HUI · enabled by default · optional" : `${skills.length} skill${skills.length === 1 ? "" : "s"}`,
@@ -262,9 +264,10 @@ function renderSkills(props: PiSurfaceProps) {
           return row(
             html`${skill.name} ${skill.tags?.map((tag) => html`<span class="capability-badge">${tag}</span>`)}`,
             skill.description || "No description provided.",
-            html`<button type="button" class="btn btn--icon pi-resource-read-button" aria-label=${`Read ${skill.name}`} title=${`Read ${skill.name}`} @click=${() => props.onReadSkill(skill)}>${icons.eye}</button>${renderSettingsToggle(
+            html`<button type="button" class="btn btn--icon pi-resource-read-button" aria-label=${`Read ${skill.name}`} title=${`Read ${skill.name}`} @click=${() => props.onReadSkill(skill)}>${icons.eye}</button>${skill.origin === "hui" ? nothing : html`<a class="btn btn--icon pi-resource-read-button" href=${`vscode://file${skill.path.split("/").map(encodeURIComponent).join("/")}`} aria-label=${`Edit ${skill.name} in VS Code`} title=${`Edit ${skill.name} in VS Code`}>${icons.edit}</a>`}${renderSettingsToggle(
               `Enable ${skill.name} in HUI`, enabled, (checked) => props.onSetSkillEnabled(skill, checked),
             )}`,
+            `${skill.name} ${skill.description} ${skill.tags?.join(" ") ?? ""}`,
           );
         })}`,
       ))}
@@ -294,6 +297,7 @@ function renderExtensions(props: PiSurfaceProps, workshop: boolean) {
       )}
       ${operationNotice(props, "package-install")}
       ${operationNotice(props, "package-remove")}
+      ${resources.length ? renderListFilter("Search plugins") : nothing}
       ${section(
         "Installed",
         resources.length ? `${resources.length} configured source${resources.length === 1 ? "" : "s"}` : "PI is running without configured packages or extensions.",
@@ -312,6 +316,7 @@ function renderExtensions(props: PiSurfaceProps, workshop: boolean) {
             : resource.kind === "package" ? html`
                 <button type="button" class="btn" ?disabled=${props.operation?.status === "running"} @click=${() => props.onRequestRemovePackage(resource.label)} aria-label=${`Remove ${resource.label}`}>Remove</button>
               ` : nothing}`,
+          resource.label,
         ))}` : row("No extensions", "Add a package from pi.dev above.", status("muted", "Empty")),
       )}
     </div>`;

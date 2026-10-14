@@ -178,7 +178,7 @@ test("request_access lets one request per bot wait for the operator; the next ma
   assert.match(JSON.stringify(asked[0]), /First\.\\n\\nAsked during the routine \\"Morning digest\\"\./u, "a routine's turn may ask; the operator is told");
   const second = await tool.execute({ tools: ["edit"], reason: "Second." } as never, fakeApi(state), BACKGROUND_CONTEXT);
   assert.equal(second.isError, true);
-  assert.match(JSON.stringify(second.content), /Another access request is already waiting for the operator/u);
+  assert.match(JSON.stringify(second.output), /Another access request is already waiting for the operator/u);
   assert.equal(asked.length, 1, "the second never reached the operator");
   answer({ value: "Allow" });
   const done = await first;
@@ -188,7 +188,7 @@ test("request_access lets one request per bot wait for the operator; the next ma
   const again = tool.execute({ tools: ["edit"], reason: "Now." } as never, fakeApi(state), BACKGROUND_CONTEXT);
   await waitFor("the second access request", () => asked.length >= 2, { state: () => asked });
   answer({ value: "Deny" });
-  assert.match(JSON.stringify((await again).content), /The operator denied the request/u);
+  assert.match(JSON.stringify((await again).output), /The operator denied the request/u);
   assert.deepEqual(state.disabledTools, ["edit"]);
   assert.equal(applied, 1);
 });
@@ -229,7 +229,7 @@ test("request_access applies an answer an interrupted attempt kept instead of as
   assert.equal(tool.replay, "safe", "a restart reruns it");
   const denied = { bot: "bot-a", disabledTools: ["write"], disabledSkills: [] as BotSkillRef[] };
   const kept = await tool.execute({ tools: ["write"], reason: "Notes." } as never, fakeApi(denied, new Map<string, unknown>([["asked", true], ["answer", "Deny"]])), BACKGROUND_CONTEXT);
-  assert.match(JSON.stringify(kept.content), /The operator denied the request/u);
+  assert.match(JSON.stringify(kept.output), /The operator denied the request/u);
   const allowed = { bot: "bot-a", disabledTools: ["write"], disabledSkills: [] as BotSkillRef[] };
   const granted = await tool.execute({ tools: ["write"], reason: "Notes." } as never, fakeApi(allowed, new Map<string, unknown>([["asked", true], ["answer", "Allow"]])), BACKGROUND_CONTEXT);
   assert.deepEqual(granted.control, { addTools: ["write"] });
@@ -270,7 +270,7 @@ test("request_access asks again in the chat that opens after its chat closed, an
   assert.deepEqual((await rerun).control, { addTools: ["write"] });
   // A first attempt with no chat open still says so at once.
   const fresh = await tool.execute({ tools: ["write"], reason: "Notes." } as never, fakeApi({ bot: "bot-c", disabledTools: ["write"], disabledSkills: [] }), BACKGROUND_CONTEXT);
-  assert.match(JSON.stringify(fresh.content), /Your chat isn't open in HUI/u);
+  assert.match(JSON.stringify(fresh.output), /Your chat isn't open in HUI/u);
 });
 
 /* ── a bot's chat in a real harness ──────────────────────────────────── */
@@ -416,7 +416,7 @@ test("a bot has every tool and skill a session in its directory has until the op
     "its own tools wait until it has a use for them");
   assert.deepEqual(names(session.botOffer()), [...plainTools, "message_bot", "triggers", "routines"], "the operator can turn off any of them but its essentials");
   assert.deepEqual(session.botOffer().find((tool) => tool.name === "triggers"), {
-    name: "triggers", label: "Triggers", description: "Add, change and remove its own triggers: GitHub and session events that wake it", group: "bots", source: "HUI", powerful: false,
+    name: "triggers", label: "Triggers", description: "List and remove its own triggers: what its listeners report wakes it", group: "bots", source: "HUI", powerful: false,
   }, "triggers is an ordinary switch under Bots, not powerful");
   assert.ok(plainTools.includes("secret_request"), "secret_request among them, on like every HUI tool");
   assert.equal(session.botOffer().find((tool) => tool.name === "fixture_other")?.group, "extension");
@@ -469,7 +469,7 @@ test("the HUI tool bridge refuses a bot's call to a HUI tool the operator turned
   const messageBot = f.host.botTools.find((tool) => tool.name === "message_bot")!;
   const refused = await messageBot.execute({ to: "bob", message: "hi" } as never, api("c3"), BACKGROUND_CONTEXT);
   assert.equal(refused.isError, true);
-  assert.match(JSON.stringify(refused.content), /turned off message_bot/u, "message_bot can be turned off too");
+  assert.match(JSON.stringify(refused.output), /turned off message_bot/u, "message_bot can be turned off too");
   assert.equal(f.invocations.length, 0, "nothing reached HUI");
   await huiTool("sessions_list").execute({} as never, api("c4"), BACKGROUND_CONTEXT);
   assert.deepEqual(f.invocations.map((invocation) => invocation.action), ["sessions_list"], "a tool that is on reaches HUI");
@@ -587,9 +587,9 @@ test("request_access refuses unknown names with the ones that are off, and asks 
 test("on a worker's host a bot's chat is never offered the tools that stay on the gateway's machine: not in its requests, its offer or what it can ask for; other sessions there keep them", { timeout: 60_000 }, async (t) => {
   const f = await fixture(t, { gatewayOnlyTools: GATEWAY_ONLY_TOOLS });
   const gatewayOnly = (tools: readonly (string | undefined)[]) => tools.filter((name) => name !== undefined && GATEWAY_ONLY_TOOLS.includes(name));
-  assert.deepEqual(gatewayOnly(names(f.host.builtinBotOffer())), [], "what a chat that isn't running yet is checked against");
+  assert.deepEqual(gatewayOnly(names((await f.host.builtinBotOffer()))), [], "what a chat that isn't running yet is checked against");
   // A secret's card is answered on the gateway and its file written here (the host's secret-request), so it stays.
-  assert.ok(names(f.host.builtinBotOffer()).includes("secret_request"));
+  assert.ok(names((await f.host.builtinBotOffer())).includes("secret_request"));
   const plain = await startDurable({ cwd: f.cwd, huiSessionId: "plain" }, f.host);
   assert.deepEqual(gatewayOnly(names((await plain.inspect()).tools)).sort(), [...GATEWAY_ONLY_TOOLS].sort(), "an ordinary session keeps them, and the gateway's bridge refuses their calls");
   // bash off, and terminal in its list too, as a list written before its host left terminal out could hold it.

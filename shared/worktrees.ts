@@ -43,6 +43,12 @@ export type WorktreeRow = {
   /** Background facts whose last lookup failed (for example `gh` missing or
    * offline). They stay absent rather than being guessed. */
   unavailable?: readonly ("pullRequests" | "dirty" | "bytes")[];
+  /** A removal request is waiting its turn (`queued`) or running (`removing`).
+   * Its facts are the last ones read before; nothing is re-read meanwhile. */
+  removal?: "queued" | "removing";
+  /** While `removing`: disk usage still left of `bytes`, measured every few
+   * seconds. Absent until first measured. */
+  remainingBytes?: number;
 };
 
 /** `dirty`: local changes will be deleted. `unknown`: they could not be read.
@@ -53,7 +59,7 @@ export type WorktreeRisk = "dirty" | "unknown" | "locked" | "running" | "missing
 export type WorktreeInventory = {
   worktrees: readonly WorktreeRow[];
   diagnostics: readonly string[];
-  /** A background fact is still being computed; poll again. */
+  /** A background fact is still being computed or a removal runs; poll again. */
   pending: boolean;
 };
 

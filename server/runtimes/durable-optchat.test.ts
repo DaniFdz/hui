@@ -22,7 +22,7 @@ const root = await mkdtemp(join(tmpdir(), "hui-optchat-home-"));
 process.env["HOME"] = root;
 process.env["XDG_CONFIG_HOME"] = join(root, "config");
 after(() => rm(root, { recursive: true, force: true }));
-const { DurableHost, durableContext } = await import("./durable-host.ts");
+const { DurableHost, durableContext, modelCallable } = await import("./durable-host.ts");
 const { durableReference, startDurable } = await import("./durable.ts");
 const {
   configureOptChat, enableOptChat, freshTurn, freshTurnRequest, OPTCHAT_EXTENSION, OPTCHAT_TOOLS_EXTENSION, OptChatDoc, projectEntry,
@@ -257,8 +257,8 @@ test("a conversation without OptChat sends Durable's requests unchanged and is n
   assert.deepEqual(second.messages.map((message) => message.role), ["user", "assistant", "user"], "the history goes as it is");
   assert.equal(blocks(second.messages[0]!)[0]!.text, "PLAIN_ONE first");
   assert.doesNotMatch(JSON.stringify(requests), /<chat>|You keep no memory between turns/u);
-  const offered = [...host.codingTools, ...host.huiTools].map((tool) => tool.name);
-  assert.deepEqual([toolNames(first), toolNames(second)], [offered, offered], "the coding and HUI tools, as before OptChat");
+  const offered = [...host.codingTools, ...host.huiTools, ...modelCallable(host.codemode)].map((tool) => tool.name);
+  assert.deepEqual([toolNames(first), toolNames(second)], [offered, offered], "the coding and HUI tools and codemode, as before OptChat");
   assert.deepEqual((await session.inspect()).tools.map((tool) => tool.name), offered);
   const id = Number(session.sessionId) as ConversationId;
   const harness = await host.open();

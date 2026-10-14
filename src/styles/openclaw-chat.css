@@ -379,6 +379,29 @@ hui-widget-card { display: block; width: 100%; }
   hui-widget-card .session-run-spinner { animation: none; }
 }
 
+/* A file the agent named that exists in the conversation's working directory
+   (components/file-link.ts). Until the gateway confirms it, it is plain text or
+   a plain code chip; confirming changes only colour and cursor, so the
+   transcript never reflows. The hover underline follows OpenClaw's file links. */
+hui-file-ref.is-linked,
+hui-file-ref.is-linked > code {
+  color: var(--link);
+  cursor: pointer;
+}
+
+hui-file-ref.is-linked:hover,
+hui-file-ref.is-linked:hover > code {
+  color: var(--link-hover, var(--link));
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+}
+
+hui-file-ref.is-linked:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
 /* Rich Markdown embeds stay bounded by the transcript and fail locally: one
    malformed diagram or blocked provider must not blank the assistant turn. */
 hui-mermaid,
@@ -681,6 +704,12 @@ hui-math.markdown-math--inline .markdown-rich-embed__error {
 .chat-operation-toast[data-level="error"] .app-toast__icon { color: var(--danger); }
 /* HUI's icons carry no intrinsic size; match the 16px glyph of the other toast variants. */
 .chat-operation-toast .app-toast__dismiss svg { width: 16px; height: 16px; }
+/* Sidebar, Kanban, Sessions and bot action outcomes share the chat toast's place. */
+.action-toast {
+  top: var(--app-toast-shell-top, calc(64px + var(--safe-area-top)));
+}
+.action-toast[data-level="error"] .app-toast__icon { color: var(--danger); }
+.action-toast .app-toast__dismiss svg { width: 16px; height: 16px; }
 
 /* Suggested task card (OpenClaw task-suggestion port). HUI adds a secondary
    Jira action beside the primary start action instead of a split button.
@@ -775,3 +804,185 @@ wa-dropdown.session-menu.task-suggestion__start-menu { --menu-item-height: 26px;
   .chat-watcher > summary { grid-template-columns: 16px minmax(0, 1fr) auto; }
   .chat-watcher > summary .chat-subagents__snippet { display: none; }
 }
+
+/* HUI's `ask_user_question` card (components/questionnaire-card.ts): OpenClaw's
+   question panel with a question strip and a preview of the focused option. */
+.questionnaire-card__tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.questionnaire-card__tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 26px;
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: var(--control-ui-text-sm);
+  cursor: var(--cursor-action);
+}
+
+.questionnaire-card__tab:hover,
+.questionnaire-card__tab:focus-visible {
+  background: var(--panel-hover);
+  color: var(--text);
+  outline: none;
+}
+
+.questionnaire-card__tab:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+
+.questionnaire-card__tab[aria-selected="true"] {
+  border-color: color-mix(in srgb, var(--accent) 58%, var(--border));
+  background: color-mix(in srgb, var(--accent-subtle) 55%, var(--panel));
+  color: var(--text-strong);
+  font-weight: 600;
+}
+
+.questionnaire-card__tab-check {
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.questionnaire-card__tab-check:empty {
+  display: none;
+}
+
+.questionnaire-card__hint {
+  margin-top: -6px;
+  color: var(--muted);
+  font-size: var(--control-ui-text-sm);
+}
+
+.questionnaire-card__body--preview {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+  align-items: start;
+  gap: 10px;
+}
+
+.questionnaire-card__preview {
+  min-width: 0;
+  max-height: 22rem;
+  overflow: auto;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: calc(11px * var(--openclaw-corner-radius-scale));
+  background: color-mix(in srgb, var(--panel) 72%, transparent);
+  font-size: var(--control-ui-text-sm);
+}
+
+.questionnaire-card__preview .chat-text > :first-child { margin-top: 0; }
+.questionnaire-card__preview .chat-text > :last-child { margin-bottom: 0; }
+
+/* The question card dock is as wide as the composer: a wide card makes room
+   for its preview, a narrow one stacks it under the options. */
+@media (max-width: 720px) {
+  .questionnaire-card__body--preview {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .questionnaire-card__preview {
+    max-height: 14rem;
+  }
+}
+
+.questionnaire-card__options[role="radiogroup"] .chat-question-panel__option--other .chat-question-panel__option-marker {
+  border-radius: var(--radius-full);
+}
+
+/* Four options, a preview or a phone's height can make the card scroll: its
+   actions stay in reach at the bottom, and never cover the focused row. */
+.questionnaire-card {
+  scroll-padding-bottom: 64px;
+}
+
+.questionnaire-card > .chat-question-panel__footer {
+  position: sticky;
+  bottom: -14px;
+  z-index: 1;
+  margin: 0 -14px -14px;
+  padding: 10px 14px 14px;
+  background: var(--chat-composer-surface, var(--popover));
+}
+
+@media (max-width: 640px) {
+  .questionnaire-card > .chat-question-panel__footer {
+    bottom: -12px;
+    margin: 0 -12px -12px;
+    padding: 10px 12px 12px;
+  }
+}
+
+/* PI's codemode tool (views/chat/codemode-tool-card.ts): the script, its calls and its output in one card. */
+.chat-tool-codemode__time {
+  flex: none;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.chat-tool-codemode__script .tok-keyword, .chat-tool-codemode__script .tok-operatorKeyword, .chat-tool-codemode__script .tok-controlKeyword, .chat-tool-codemode__script .tok-definitionKeyword, .chat-tool-codemode__script .tok-modifier { color: var(--hljs-keyword); }
+.chat-tool-codemode__script .tok-string, .chat-tool-codemode__script .tok-string2, .chat-tool-codemode__script .tok-regexp { color: var(--hljs-string); }
+.chat-tool-codemode__script .tok-number, .chat-tool-codemode__script .tok-bool, .chat-tool-codemode__script .tok-null, .chat-tool-codemode__script .tok-atom { color: var(--hljs-number); }
+.chat-tool-codemode__script .tok-comment, .chat-tool-codemode__script .tok-lineComment, .chat-tool-codemode__script .tok-blockComment { color: var(--muted); font-style: italic; }
+.chat-tool-codemode__script .tok-variableName.tok-definition, .chat-tool-codemode__script .tok-function { color: var(--hljs-title); }
+.chat-tool-codemode__script .tok-propertyName { color: var(--hljs-attribute); }
+
+.chat-tool-codemode__calls {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: min(360px, 50vh);
+  overflow: auto;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.chat-tool-codemode__call {
+  display: grid;
+  grid-template-columns: 1.25em auto minmax(0, 1fr) auto;
+  gap: 2px 8px;
+  align-items: baseline;
+  padding: 3px 0;
+}
+
+.chat-tool-codemode__call + .chat-tool-codemode__call { border-top: 1px solid var(--border); }
+.chat-tool-codemode__status { text-align: center; color: var(--muted); }
+.chat-tool-codemode__call[data-status="ok"] .chat-tool-codemode__status { color: var(--ok); }
+.chat-tool-codemode__call[data-status="error"] .chat-tool-codemode__status { color: var(--danger); }
+.chat-tool-codemode__call[data-status="running"] .chat-tool-codemode__status { color: var(--warn); }
+.chat-tool-codemode__name { color: var(--text); font-weight: 600; }
+
+.chat-tool-codemode__args {
+  min-width: 0;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+  background: none;
+  border: 0;
+  padding: 0;
+  font-size: inherit;
+}
+
+.chat-tool-codemode__duration { color: var(--muted); font-variant-numeric: tabular-nums; }
+
+.chat-tool-codemode__error,
+.chat-tool-codemode__script-error {
+  color: var(--danger);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.chat-tool-codemode__error { grid-column: 2 / -1; }

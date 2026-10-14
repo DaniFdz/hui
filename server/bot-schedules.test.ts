@@ -57,7 +57,7 @@ before(async () => {
 });
 
 after(async () => {
-  stopBackend();
+  await stopBackend();
   server.closeAllConnections();
   await new Promise<void>((resolve) => server.close(() => resolve()));
   const exit = once(provider, "exit");
