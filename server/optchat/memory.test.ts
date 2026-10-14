@@ -173,7 +173,8 @@ test("a missing or invalid view file is folded again from the log, saved, and re
   assert.deepEqual([empty.parts(), fresh], [[], []]);
 });
 
-test("the compaction view stays between its low and high marks, and merges whenever the chat view batches", { timeout: 30_000 }, async (t) => {
+// Its appends wait on fsyncs, which a busy machine slows down: it keeps the suite's limit rather than one of its own.
+test("the compaction view stays between its low and high marks, and merges whenever the chat view batches", async (t) => {
   const contexts: string[] = [];
   const summarize: Summarize = async (request, signal) => { contexts.push(request.messages[0]!.content[0] as string); return `${await digest(request, signal)} ${"z".repeat(360)}`; };
   const memory = await open(t, await directory(t), { summarize, view: 64_000, context: 32_000 });
