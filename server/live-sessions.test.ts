@@ -386,9 +386,10 @@ test("every session announces a prompt with a snapshot before its run, so screen
     unsubscribe();
     return frames;
   };
-  assert.deepEqual(await framesOf({ ...recordFor("bot-chat"), bot: "bot-1" }), ["snapshot: user hello | user [routine: Morning] check", "running"],
+  // Fresh ids: the registry outlives this test, and a reused id would boot into the unsettled run left here.
+  assert.deepEqual(await framesOf({ ...recordFor(`bot-chat-${crypto.randomUUID()}`), bot: "bot-1" }), ["snapshot: user hello | user [routine: Morning] check", "running"],
     "every screen and terminal sees a message another client sent, before its run");
-  assert.deepEqual(await framesOf(recordFor("plain-chat")), ["snapshot: user hello | user [routine: Morning] check", "running"],
+  assert.deepEqual(await framesOf(recordFor(`plain-chat-${crypto.randomUUID()}`)), ["snapshot: user hello | user [routine: Morning] check", "running"],
     "a subagent's or automation's prompt in an ordinary session too");
   manager.disposeAll();
 });
