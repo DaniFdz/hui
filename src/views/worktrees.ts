@@ -291,18 +291,22 @@ export function removalProgress(props: Pick<WorktreesPageProps, "removing" | "re
  * is happening while the rest of the page stays usable. */
 function renderProgress(props: WorktreesPageProps, rows: readonly WorktreeRow[]) {
   const pending = rows.filter((row) => removalState(props, row));
+  if (pending.length === 0) return nothing;
+  // Between two requests nothing is removing for a moment; keep the line.
   const current = pending.find((row) => removalState(props, row) === "removing");
-  if (!current) return nothing;
+  const queued = pending.length - 1;
   const progress = removalProgress(props, rows);
-  // Floor, so it never says 100% while Git is still deleting.
-  const percent = progress === undefined ? undefined : Math.floor(progress * 100);
+  // Floor, so it never says 100% while Git is still deleting. The first
+  // measurement of a huge tree takes a while; a 0% bar would look stuck.
+  const percent = progress === undefined ? 0 : Math.floor(progress * 100);
   return html`<div class="callout worktree-progress">
     <span class="session-run-spinner" aria-hidden="true"></span>
-    <span role="status">Removing <span class="mono">${label(current)}</span>${current.bytes === undefined ? "" : ` (${formatBytes(current.bytes)})`}…${
-      pending.length > 1 ? ` ${pending.length - 1} more queued.` : ""} Large worktrees can take a few minutes; you can keep using HUI.</span>
-    ${percent === undefined ? nothing : html`<span class="worktree-progress__percent">
+    <span role="status">${current
+      ? html`Removing <span class="mono">${label(current)}</span>${current.bytes === undefined ? "" : ` (${formatBytes(current.bytes)})`}…`
+      : "Starting the next removal…"}${queued ? ` ${queued} more queued.` : ""} Large worktrees can take a few minutes; you can keep using HUI.</span>
+    ${percent > 0 ? html`<span class="worktree-progress__percent">
       <progress max="100" value=${percent} aria-label="Worktree removal progress"></progress>${percent}%
-    </span>`}
+    </span>` : nothing}
   </div>`;
 }
 

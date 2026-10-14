@@ -119,3 +119,14 @@ test("removal progress counts finished worktrees in full, the one being deleted 
   // Nothing is known about sizes yet.
   assert.equal(removalProgress({ removing: new Set(["/b"]), removalSizes: new Map([["/b", 0]]) }, [row({ path: "/b", bytes: undefined })]), undefined);
 });
+
+test("the status line stays between two removals and shows no percentage before anything is measured", () => {
+  const page = text(renderWorktreesPage({
+    inventory: { worktrees: [row({ path: "/b", branch: "hui/next" }), row({ path: "/c", branch: "hui/last" })], diagnostics: [], pending: true },
+    loading: false, error: "", query: "", filter: "all", confirm: "", results: [],
+    removing: new Set(["/b", "/c"]),
+    removalSizes: new Map([["/b", 1024], ["/c", 1024]]),
+  } as unknown as WorktreesPageProps)).replace(/\s+/gu, " ");
+  assert.match(page, /<span role="status">Starting the next removal… 1 more queued\./u);
+  assert.doesNotMatch(page, /<progress/u);
+});
