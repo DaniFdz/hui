@@ -163,7 +163,7 @@ export const scenes: Scene[] = [
       agent: "The agent can use the same terminal. You watch it run the tests, live.",
       diff: "The Diff view shows exactly what changed, file by file.",
       files: "Click a file to open it in the Files view,",
-      vscode: "or open the whole project in VS Code, without leaving the browser.",
+      vscode: "or open the whole project in V S Code, without leaving the browser.",
     },
     async run({ director: d }) {
       await d.caption("Every conversation has a Work pane");

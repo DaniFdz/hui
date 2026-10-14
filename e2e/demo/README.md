@@ -38,7 +38,8 @@ Videos and stills never go into Git.
 voice; VoiceStudio's default OmniVoice weights are non-commercial. The lines are
 each scene's `narration`; `director.say(key)` starts one once the previous line
 ends, so the clip waits for the narrator. Lines are synthesized before
-recording and cached in `<out>/.voice`. "HUI" is written "H U I" so it is spelled out.
+recording and cached in `<out>/.voice`. Names read letter by letter are spaced ("H U I", "V S Code"); check new ones by
+transcribing the clip.
 
 `--music <file>` lays any audio file under the voice, about 15 LU quieter and
 ducked while she speaks; the overview gets one continuous bed. Use a track

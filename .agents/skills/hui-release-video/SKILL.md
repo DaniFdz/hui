@@ -48,7 +48,7 @@ In a feature branch from `origin/main`:
 
 - `scenes.ts`: a `chapter` (two or three words), where it opens (`path`, `ready`),
   `narration` lines (one or two short sentences per step, written to be heard;
-  "H U I" so the name is spelled out) and `run`: a `caption` (three to seven
+  letters to spell out are spaced, as in "H U I" and "V S Code") and `run`: a `caption` (three to seven
   words) and `say` per step, then real `click`/`type`/`drag`/`swipe` input,
   `zoom` on the detail, `cut` for waits the viewer should not sit through and
   `still` for README images. `device: "phone"` films the phone layout with touch
