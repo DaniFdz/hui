@@ -5,7 +5,7 @@
  * framed stage page in headless Chrome with a synthetic cursor, captions and
  * zoom, and encodes the screencast to MP4 with ffmpeg. See README.md here.
  *
- *   node e2e/demo/record.ts [scene ...] [--out <dir>] [--voice <model>/<voice>] [--music <file>] [--keep]
+ *   node e2e/demo/record.ts [scene ...] [--out <dir>] [--voice <model>/<voice>] [--music <file>] [--accept-vscode-license] [--keep]
  */
 import { execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -31,20 +31,30 @@ const VOICE_GAIN_DB = 3;
 const MUSIC_GAIN_DB = -17;
 const sleep = (ms: number) => new Promise((done) => setTimeout(done, ms));
 
-/** Visible text, an aria-label, a placeholder or a CSS selector, searched through shadow roots. */
+/** Visible text, an aria-label, a placeholder or a CSS selector, searched through shadow roots and same-origin frames
+ * (such as the VS Code view's). */
 export type Target = string | { text?: string; contains?: string; label?: string; placeholder?: string; css?: string; nth?: number; last?: boolean };
 type Box = { x: number; y: number; width: number; height: number };
 type Line = { file: string; seconds: number };
 
-// Runs on the stage, which shares HUI's origin: the innermost visible element in HUI's frame matching the target.
+// Runs on the stage, which shares HUI's origin: the innermost visible element in HUI's frame matching the target, with
+// its box in HUI's frame coordinates.
 const FIND = `(target) => {
-  const frame = document.getElementById("app").contentWindow;
   const norm = (value) => (value ?? "").replace(/\\s+/g, " ").trim();
-  const all = [];
-  const walk = (root) => { for (const element of root.querySelectorAll("*")) { all.push(element); if (element.shadowRoot) walk(element.shadowRoot); } };
-  walk(frame.document);
+  const all = [], place = new Map();
+  const walk = (root, frame, dx, dy) => {
+    for (const element of root.querySelectorAll("*")) {
+      all.push(element);
+      place.set(element, { frame, dx, dy });
+      if (element.shadowRoot) walk(element.shadowRoot, frame, dx, dy);
+      let inner;
+      try { inner = element.tagName === "IFRAME" && element.contentDocument; } catch { inner = undefined; }
+      if (inner) { const box = element.getBoundingClientRect(); walk(inner, element.contentWindow, dx + box.x + element.clientLeft, dy + box.y + element.clientTop); }
+    }
+  };
+  walk(document.getElementById("app").contentDocument, document.getElementById("app").contentWindow, 0, 0);
   const visible = (element) => {
-    const box = element.getBoundingClientRect();
+    const { frame } = place.get(element), box = element.getBoundingClientRect();
     if (box.width < 1 || box.height < 1 || box.bottom < 0 || box.right < 0 || box.top > frame.innerHeight || box.left > frame.innerWidth) return false;
     const style = frame.getComputedStyle(element);
     return style.visibility !== "hidden" && style.opacity !== "0";
@@ -60,8 +70,8 @@ const FIND = `(target) => {
   const element = target.last ? found.at(-1) : found[target.nth ?? 0];
   window.found = element;
   if (!element) return null;
-  const box = element.getBoundingClientRect();
-  return { x: box.x, y: box.y, width: box.width, height: box.height };
+  const box = element.getBoundingClientRect(), { dx, dy } = place.get(element);
+  return { x: box.x + dx, y: box.y + dy, width: box.width, height: box.height };
 }`;
 
 export class Director {
@@ -115,12 +125,23 @@ export class Director {
     await this.send("Input.dispatchMouseEvent", { type, x: point.x, y: point.y, button: "none", ...extra });
   }
 
-  /** Glides the cursor to a target, sending real mouse moves on the way for hover states. */
+  /** On a phone, input is touch: taps and swipes, and no hover on the way. */
+  touch = false;
+  async #touch(type: string, points: { x: number; y: number }[]) {
+    const touchPoints = await Promise.all(points.map((point) => this.stage<{ x: number; y: number }>(`stage.toStage(${point.x}, ${point.y})`)));
+    await this.send("Input.dispatchTouchEvent", { type, touchPoints });
+  }
+
+  /** Glides the cursor to a target, sending real mouse moves on the way for hover states (a finger just lands). */
   async move(target: Target | { x: number; y: number }) {
     const to = await this.#point(target);
     const from = await this.stage<{ x: number; y: number }>("stage.cursor()");
     const ms = Math.round(Math.min(1_000, 380 + Math.hypot(to.x - from.x, to.y - from.y) * 0.45));
     await this.stage(`stage.cursorTo(${to.x}, ${to.y}, ${ms})`);
+    if (this.touch) {
+      await sleep(ms);
+      return to;
+    }
     const steps = 6;
     for (let step = 1; step <= steps; step++) {
       const eased = 1 - (1 - step / steps) ** 2;
@@ -134,23 +155,45 @@ export class Director {
     const { x, y } = await this.move(target);
     await sleep(120);
     await this.stage("stage.press(true)");
-    await this.#mouse("mousePressed", x, y, { button: "left", buttons: 1, clickCount: 1 });
-    await sleep(70);
-    await this.#mouse("mouseReleased", x, y, { button: "left", buttons: 0, clickCount: 1 });
+    if (this.touch) {
+      await this.#touch("touchStart", [{ x, y }]);
+      await sleep(70);
+      await this.#touch("touchEnd", []);
+    } else {
+      await this.#mouse("mousePressed", x, y, { button: "left", buttons: 1, clickCount: 1 });
+      await sleep(70);
+      await this.#mouse("mouseReleased", x, y, { button: "left", buttons: 0, clickCount: 1 });
+    }
     await this.stage("stage.press(false); stage.ripple()");
     await sleep(250);
   }
 
   /** Types like a person, one character at a time, into the field the cursor clicked. Focus is set too: after a click in
-   * a widget's frame, Chrome keeps sending text there. */
-  async type(text: string, perCharacter = 26) {
-    await this.stage("window.found?.focus()");
+   * a widget's frame, Chrome keeps sending text there. A terminal clears its input as it goes, so it is not checked. */
+  async type(text: string, options: { terminal?: boolean } = {}) {
+    if (!options.terminal) await this.stage("window.found?.focus()");
     for (const character of text) {
       await this.send("Input.insertText", { text: character });
-      await sleep(perCharacter + (character === " " ? 24 : Math.random() * 20));
+      await sleep(26 + (character === " " ? 24 : Math.random() * 20));
     }
+    if (options.terminal) return;
     const typed = await this.stage<boolean>(`Boolean(document.getElementById("app").contentDocument.activeElement?.value?.endsWith(${JSON.stringify(text)}))`);
     if (!typed) throw new Error(`Typing "${text}" did not reach the field.`);
+  }
+
+  /** On a phone, scrolls the content under a target by (deltaX, deltaY): the finger drags the other way. */
+  async swipe(target: Target, deltaX: number, deltaY = 0) {
+    const { x, y } = await this.#point(target);
+    await this.move({ x, y });
+    await this.#touch("touchStart", [{ x, y }]);
+    for (let step = 1; step <= 12; step++) {
+      const [tx, ty] = [x - (deltaX * step) / 12, y - (deltaY * step) / 12];
+      await this.#touch("touchMove", [{ x: tx, y: ty }]);
+      await this.stage(`stage.cursorTo(${tx}, ${ty}, 40)`);
+      await sleep(40);
+    }
+    await this.#touch("touchEnd", []);
+    await sleep(700);
   }
 
   async press(name: string) {
@@ -274,7 +317,9 @@ export class Director {
 /** A fresh isolated HUI with the scripted demo model, from the launcher; `stop` also removes its temporary folders. */
 async function launchHui() {
   const branch = execFileSync("git", ["-C", repo, "branch", "--show-current"], { encoding: "utf8" }).trim() || "HEAD";
-  const child = spawn(process.execPath, [join(repo, "e2e/visual-verification.mjs"), "launch", "--branch", branch, "--demo"], { cwd: repo, stdio: ["ignore", "pipe", "inherit"] });
+  // HUI_DEMO_CACHE keeps VS Code's server download (about 220 MB) between clips and runs.
+  const child = spawn(process.execPath, [join(repo, "e2e/visual-verification.mjs"), "launch", "--branch", branch, "--demo"],
+    { cwd: repo, stdio: ["ignore", "pipe", "inherit"], env: { ...process.env, HUI_DEMO_CACHE: join(out, ".cache") } });
   const stop = async () => {
     if (child.exitCode === null && child.signalCode === null) { child.kill("SIGTERM"); await once(child, "exit"); }
   };
@@ -349,6 +394,7 @@ async function record(scene: Scene, chapter: number, out: string, voice?: Map<st
   const writes: Promise<void>[] = [];
   let spoken: { file: string; at: number }[] = [];
   let recording = true;
+  let failure: unknown;
   let end = 0;
   let hui: Awaited<ReturnType<typeof launchHui>> | undefined;
   let chrome: Awaited<ReturnType<typeof startChrome>> | undefined;
@@ -363,7 +409,12 @@ async function record(scene: Scene, chapter: number, out: string, voice?: Map<st
     // A background tab paints no frames, and input to it waits for one.
     await director.send("Page.bringToFront");
     await director.send("Emulation.setDeviceMetricsOverride", { ...STAGE, deviceScaleFactor: 1, mobile: false });
-    await director.send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: "dark" }, { name: "prefers-reduced-motion", value: "no-preference" }] });
+    const phone = scene.device === "phone";
+    if (phone) await director.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 });
+    director.touch = phone;
+    await director.send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: "dark" }, { name: "prefers-reduced-motion", value: "no-preference" },
+      // A phone has a finger, not a mouse: HUI's touch layout keys on these.
+      ...(phone ? [{ name: "pointer", value: "coarse" }, { name: "any-pointer", value: "coarse" }, { name: "hover", value: "none" }, { name: "any-hover", value: "none" }] : [])] });
     await director.send("Page.navigate", { url: new URL("/__demo/stage", hui.url).href });
     await director.stage(`new Promise((done) => document.readyState === "complete" ? done() : addEventListener("load", done))`);
     const api = async (method: string, path: string, body?: unknown) => {
@@ -372,11 +423,13 @@ async function record(scene: Scene, chapter: number, out: string, voice?: Map<st
       return response.json() as Promise<Record<string, any>>;
     };
     const context = { director, api };
-    const [width, height] = scene.viewport ?? [1440, 810];
+    const [width, height] = phone ? [390, 844] : scene.viewport ?? [1440, 810];
     // View preferences, such as the board's grouping, go into the localStorage HUI reads when it loads: the stage shares its origin.
     await director.stage(`Object.entries(${JSON.stringify(scene.storage ?? {})}).forEach(([key, value]) => localStorage.setItem(key, value))`);
-    await director.stage(`stage.load(${JSON.stringify(new URL(scene.path ?? "/", hui.url).href)}, ${width}, ${height})`);
+    await director.stage(`stage.load(${JSON.stringify(new URL(scene.path ?? "/", hui.url).href)}, ${width}, ${height}, ${JSON.stringify(scene.device ?? "desktop")})`);
     await director.waitFor(scene.ready ?? "Settings", 60_000);
+    // Only on the operator's explicit --accept-vscode-license: HUI runs code serve-web only after that acceptance.
+    if (scene.vscode) await api("POST", "/__hui/vscode-server", { action: "accept-license" });
     // Before recording starts: the clip opens on the loaded app.
     await scene.setup?.(context);
     director.voice = voice;
@@ -419,13 +472,17 @@ async function record(scene: Scene, chapter: number, out: string, voice?: Map<st
     if (stills) process.stdout.write(`${stills} stills of ${scene.name}\n`);
   } catch (error) {
     recording = false;
-    await Promise.allSettled(writes);
-    if (!keep) await rm(work, { recursive: true, force: true });
-    throw error;
+    failure = error;
   } finally {
     chrome?.cdp.close();
     if (chrome && chrome.child.exitCode === null && chrome.child.signalCode === null) { chrome.child.kill(); await once(chrome.child, "exit"); }
     await hui?.stop();
+  }
+  // Only now that Chrome is gone can its profile go.
+  if (failure) {
+    await Promise.allSettled(writes);
+    if (!keep) await rm(work, { recursive: true, force: true });
+    throw failure;
   }
   // Encoded once HUI and Chrome are gone.
   const output = join(out, `${scene.name}.mp4`);
@@ -492,6 +549,7 @@ const args = process.argv.slice(2);
 const option = (name: string) => { const index = args.indexOf(name); return index === -1 ? undefined : args.splice(index, 2)[1]; };
 const out = resolve(option("--out") ?? join(tmpdir(), "hui-demo-videos"));
 const keep = args.includes("--keep");
+const acceptVscodeLicense = args.includes("--accept-vscode-license");
 // --voice <model>/<voice> narrates through VoiceStudio (VOICESTUDIO_URL, default its local port), e.g. mlx-audio/af_heart.
 const voiceModel = option("--voice");
 if (voiceModel && !/^[^/]+\/[^/]+$/u.test(voiceModel)) throw new Error("--voice takes <model>/<voice>, for example mlx-audio/af_heart.");
@@ -502,9 +560,14 @@ const music = musicFile && resolve(musicFile);
 const wanted = args.filter((arg) => !arg.startsWith("--"));
 const selected = wanted.length ? scenes.filter((scene) => wanted.includes(scene.name)) : scenes;
 if (selected.length !== (wanted.length || scenes.length)) throw new Error(`Unknown scene. Scenes: ${scenes.map((scene) => scene.name).join(", ")}`);
+const needsLicense = selected.filter((scene) => scene.vscode).map((scene) => scene.name);
+if (needsLicense.length && !acceptVscodeLicense) {
+  throw new Error(`${needsLicense.join(", ")} opens VS Code through Microsoft's code serve-web. Pass --accept-vscode-license to accept the VS Code Server license (https://aka.ms/vscode-server-license) for the demo HUI, or leave the clip out.`);
+}
 await mkdir(out, { recursive: true });
-for (const scene of selected) await record(scene, scenes.indexOf(scene) + 1, out, await narrate(scene));
-if (!wanted.length) {
-  overview(out, scenes.map((scene) => scene.name));
+for (const [index, scene] of selected.entries()) await record(scene, index + 1, out, await narrate(scene));
+// Several clips also make an overview: every clip for the README, a release's new ones for its notes.
+if (selected.length > 1) {
+  overview(out, selected.map((scene) => scene.name));
   process.stdout.write(`${join(out, "overview.mp4")}\n`);
 }

@@ -4,18 +4,30 @@
 
 ```sh
 node e2e/demo/record.ts                 # every clip, then overview.mp4
-node e2e/demo/record.ts kanban bots     # only these clips
+node e2e/demo/record.ts kanban bots     # only these clips, and their overview
 node e2e/demo/record.ts --out ~/Movies/hui-demo
 node e2e/demo/record.ts bots --keep     # keep frames, logs and the demo HUI's folders
-node e2e/demo/record.ts --voice mlx-audio/af_heart --music ~/Music/bed.mp3   # narrated, with music
+node e2e/demo/record.ts --voice mlx-audio/af_heart --music ~/Music/bed.mp3 --accept-vscode-license   # all, narrated
 ```
+
+Filming a release's video is a procedure of its own:
+[hui-release-video](../../.agents/skills/hui-release-video/SKILL.md).
 
 Needs ffmpeg with libx264 and a Chromium-family browser (the same one the agent
 browser tool finds). Output goes to `$TMPDIR/hui-demo-videos` unless `--out`
-says otherwise: one 1920×1080, 30 fps MP4 per clip, `overview.mp4` (every clip
-crossfaded at 1.2× speed, under 10 MB for GitHub attachments) and window-only
-PNG stills for the README. Clips open straight on the app, with a chapter tag
-under the window and a caption per step; there are no title slides. Videos and stills never go into Git.
+says otherwise: one 1920×1080, 30 fps MP4 per clip, `overview.mp4` when two or
+more clips were recorded (crossfaded, bitrate-capped under GitHub's 10 MB
+attachment limit) and window-only PNG stills for the README. Clips open straight
+on the app with a chapter tag and a caption per step; there are no title slides.
+Videos and stills never go into Git.
+
+- The `workpane` clip opens VS Code through Microsoft's `code serve-web`, which
+  HUI runs only after the VS Code Server license was accepted:
+  `--accept-vscode-license` accepts it for the demo HUI. Its server download
+  (about 220 MB) is kept in `<out>/.cache`.
+- The `phone` clip shows HUI at 390×844 in a phone frame, with touch input and
+  `pointer: coarse` / `hover: none`, as a phone browser over Tailscale would.
+- Demo terminals run a plain zsh with a short prompt, not your own shell setup.
 
 ## Narration and music
 

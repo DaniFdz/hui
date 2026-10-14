@@ -3,7 +3,7 @@
 import { spawn, execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { once } from "node:events";
-import { createWriteStream } from "node:fs";
+import { createWriteStream, existsSync } from "node:fs";
 import { copyFile, lstat, mkdir, mkdtemp, readFile, readlink, realpath, rename, writeFile } from "node:fs/promises";
 import { request as httpRequest } from "node:http";
 import { connect } from "node:net";
@@ -342,7 +342,13 @@ export async function launch(expectedBranch) {
     }
     if (demo) {
       serverEnv.HUI_DEMO_STAGE = join(repo, "e2e", "demo", "stage.html");
-      execFileSync(process.execPath, [join(repo, "e2e", "demo", "seed.ts")], { cwd: repo, env: { ...env, HUI_E2E_WORKSPACE: workspace, HUI_FAKE_GH_DIR: join(dir, "gh") }, stdio: ["ignore", "ignore", "inherit"] });
+      // Terminals open a plain zsh with a short prompt, not the operator's own shell setup.
+      serverEnv.ZDOTDIR = join(dir, "zdotdir");
+      await mkdir(serverEnv.ZDOTDIR, { recursive: true });
+      await writeFile(join(serverEnv.ZDOTDIR, ".zshrc"), "PROMPT='%F{blue}%1~%f %F{magenta}❯%f '\nunsetopt PROMPT_SP\nHISTFILE=/dev/null\n");
+      if (existsSync("/bin/zsh")) serverEnv.SHELL = "/bin/zsh";
+      execFileSync(process.execPath, [join(repo, "e2e", "demo", "seed.ts")], { cwd: repo, stdio: ["ignore", "ignore", "inherit"],
+        env: { ...env, HUI_E2E_WORKSPACE: workspace, HUI_FAKE_GH_DIR: join(dir, "gh"), ...(process.env.HUI_DEMO_CACHE ? { HUI_DEMO_CACHE: process.env.HUI_DEMO_CACHE } : {}) } });
     }
     if (process.argv.includes("--activity-fixture")) {
       // Two weeks of synthetic Durable sessions for Contributions → Calendar.

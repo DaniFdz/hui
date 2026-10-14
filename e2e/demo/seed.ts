@@ -5,7 +5,7 @@
  * with XDG_CONFIG_HOME, PI_CODING_AGENT_DIR, HUI_E2E_WORKSPACE and HUI_FAKE_GH_DIR.
  */
 import { execFileSync } from "node:child_process";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, symlink, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, relative } from "node:path";
 import { AssistantEntry, UserEntry } from "@earendil-works/pi-durable";
@@ -61,6 +61,8 @@ const seeds: Seed[] = [
   { title: "JPY rounding fix", repo: "payments-api", group: "Payments", stage: "done", ago: 300, ask: "Totals in JPY round to the wrong yen", answer: "Fixed: zero-decimal currencies skip the cents conversion." },
   { title: "Offline receipts", repo: "mobile-app", group: "Mobile", stage: "investigation", ago: 25, ask: "Can receipts work offline?", answer: "Yes, with a small local queue. I'm sketching the sync rules." },
   { title: "Dark mode receipts", repo: "mobile-app", group: "Mobile", stage: "implementation", ago: 18, ask: "Receipts are unreadable in dark mode", answer: "Receipt colors now come from the theme tokens; checking contrast on every screen." },
+  // The Work pane clip's conversation (demo-10).
+  { title: "Order totals as currency", repo: "storefront", group: "Storefront", stage: "investigation", ago: 2, ask: "Order totals show up as raw numbers, like 1234.5. Format them as currency.", answer: "I'll add a small formatter and use it on the orders page. Open a terminal and I'll run the tests there, so you can watch." },
 ];
 
 const text = (value: string) => [{ type: "text", text: value }];
@@ -104,4 +106,10 @@ await writeFile(join(ghDir, "api.json"), JSON.stringify({
   "repos/acme/storefront/pulls/482": pull(482, "Fix double submit on the signup form", "Disables **Create account** while the request is in flight, so a double click no longer creates two trials.", { state: "closed", merged: true, additions: 41, deletions: 9, changed_files: 3 }),
   "repos/acme/payments-api/pulls/142": pull(142, "Partial refunds endpoint", "Adds `POST /refunds` with per-line refunds and an over-refund guard."),
 }));
+// VS Code's serve-web downloads its server build into the cli folder; a link keeps it between demo runs.
+if (process.env["HUI_DEMO_CACHE"]) {
+  await mkdir(join(process.env["HUI_DEMO_CACHE"], "vscode-cli"), { recursive: true });
+  await mkdir(join(CONFIG_DIR, "vscode", "serve-web"), { recursive: true });
+  await symlink(join(process.env["HUI_DEMO_CACHE"], "vscode-cli"), join(CONFIG_DIR, "vscode", "serve-web", "cli"));
+}
 process.stdout.write(`Seeded ${sessions.length} demo sessions in ${workspace}.\n`);

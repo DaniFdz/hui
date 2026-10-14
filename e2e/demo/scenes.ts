@@ -11,6 +11,10 @@ export type Scene = {
   ready?: Target;
   /** CSS size of HUI's window; smaller shows larger text. */
   viewport?: [number, number];
+  /** On a phone: 390×844 in a phone frame, with touch input. */
+  device?: "phone";
+  /** Opens VS Code, which needs --accept-vscode-license. */
+  vscode?: boolean;
   /** localStorage entries HUI loads with, such as view preferences. */
   storage?: Record<string, string>;
   /** What the narrator says, by key: `director.say(key)` speaks a line during the clip (with --voice). */
@@ -149,6 +153,78 @@ export const scenes: Scene[] = [
     },
   },
   {
+    name: "workpane",
+    chapter: "Terminal, diff and VS Code",
+    path: "/sessions/demo-10",
+    ready: { contains: "Format them as currency" },
+    vscode: true,
+    narration: {
+      terminal: "Every conversation has a Work pane beside it. Open a terminal, already in the project's folder.",
+      agent: "The agent can use the same terminal. You watch it run the tests, live.",
+      diff: "The Diff view shows exactly what changed, file by file.",
+      files: "Click a file to open it in the Files view,",
+      vscode: "or open the whole project in VS Code, without leaving the browser.",
+    },
+    async run({ director: d }) {
+      await d.caption("Every conversation has a Work pane");
+      await d.say("terminal");
+      await d.click({ label: "Open terminal" });
+      await d.waitFor({ contains: "Shared · Connected" });
+      const terminal = await d.waitFor({ css: ".hui-terminal-surface" });
+      // The prompt and output sit at the top of the terminal.
+      const output = { x: terminal.x + terminal.width / 2, y: terminal.y + 150 };
+      await d.zoom(output, 1.5);
+      await d.click({ x: terminal.x + 120, y: terminal.y + 40 });
+      await d.type("git status --short && git log --oneline -1", { terminal: true });
+      await d.press("Enter");
+      await d.pause(1_400);
+      await d.zoom();
+
+      await d.caption("The agent can type in your terminal too");
+      await d.say("agent");
+      await send(d, "Go ahead, and run the tests in my terminal");
+      await d.zoom(output, 1.5);
+      await d.waitFor({ contains: "3 tests pass in your terminal" }, 40_000);
+      await d.pause(1_200);
+      await d.zoom();
+
+      await d.caption("Every change, in the Diff view");
+      await d.say("diff");
+      await d.click({ label: "Maximize Work pane" });
+      await d.click({ label: "Open Work view" });
+      await d.click({ css: ".work-pane__menu-item[value='launch:diff']" });
+      await d.click({ css: ".hui-diff-file[data-path='src/orders/orders-page.js']" });
+      await d.click({ css: ".hui-diff-segmented__option", text: "Side by side" });
+      await d.waitFor({ contains: "formatTotal(order.total" });
+      await d.still("diff");
+      await d.zoom({ css: ".hui-diff-main" }, 1.4);
+      await d.pause(2_200);
+      await d.zoom();
+
+      await d.caption("Open a file in Files");
+      await d.say("files");
+      await d.click({ css: ".hui-diff-main__open" });
+      await d.waitFor({ css: ".hui-files-editor" });
+      await d.pause(1_800);
+
+      await d.caption("…or the whole project in VS Code");
+      await d.say("vscode");
+      await d.click({ label: "Open Work view" });
+      await d.click({ css: ".work-pane__menu-item[value='launch:vscode']" });
+      // VS Code's server starts (and downloads its build the first time); the clip skips the wait.
+      await d.cut(() => d.waitFor({ css: "[aria-label^='Source Control']" }, 300_000));
+      await d.pause(800);
+      await d.click({ css: "[aria-label^='Source Control']" });
+      await d.click({ css: ".monaco-list-row", contains: "orders-page.js" });
+      await d.pause(1_000);
+      await d.zoom({ css: ".monaco-workbench" }, 1.3);
+      await d.pause(2_400);
+      await d.zoom();
+      await d.still("vscode");
+      await d.caption();
+    },
+  },
+  {
     name: "subagents",
     chapter: "Subagents and watchers",
     viewport: [1280, 720],
@@ -249,6 +325,49 @@ export const scenes: Scene[] = [
       await d.zoom({ css: ".bot-panel__tab[data-tab=memory]" }, 1.5);
       await d.pause(2_400);
       await d.zoom();
+      await d.caption();
+    },
+  },
+  {
+    name: "phone",
+    chapter: "On your phone",
+    device: "phone",
+    path: "/sessions/demo-1",
+    ready: { contains: "Add Apple Pay to checkout" },
+    storage: { "hui.kanban-options": JSON.stringify({ groupBy: "custom" }) },
+    narration: {
+      phone: "And it all works on your phone. Reach your laptop over Tailscale, and your sessions are right there.",
+      ask: "Check in on an agent from anywhere,",
+      board: "or keep an eye on the whole board, wherever you are.",
+    },
+    async run({ director: d }) {
+      await d.caption("HUI works on your phone too");
+      await d.say("phone");
+      await d.pause(2_000);
+      await d.caption("Check in from anywhere");
+      await d.say("ask");
+      await d.click({ placeholder: "Send a message…" });
+      await d.type("Quick status on Apple Pay?");
+      // On a touch screen Return adds a line; the send button sends.
+      await d.click({ label: "Send message" });
+      await d.waitFor({ contains: "Want me to open the pull request?" }, 30_000);
+      await d.zoom({ contains: "Want me to open the pull request?" }, 1.35);
+      await d.pause(1_600);
+      await d.zoom();
+      await d.still("chat");
+      await d.caption("The board fits in your pocket");
+      await d.say("board");
+      await d.click({ label: "Open navigation" });
+      await d.pause(900);
+      await d.click(link("Kanban"));
+      await d.waitFor({ contains: "Drag a backlog item" });
+      await d.pause(800);
+      // Each lane scrolls sideways through the stages.
+      await d.swipe({ css: ".kanban-cell--backlog", nth: 0 }, 260);
+      await d.pause(900);
+      await d.swipe({ css: ".kanban-cell--investigation", nth: 0 }, 300);
+      await d.waitFor(card("Apple Pay at checkout"));
+      await d.pause(1_800);
       await d.caption();
     },
   },

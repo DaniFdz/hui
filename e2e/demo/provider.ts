@@ -20,6 +20,17 @@ type Turn = { wait?: number; think?: string; say?: string | ((results: string[])
 type Script = { when: string; title?: string; branch?: string; turns: Turn[] };
 
 const page = (path: string) => `http://127.0.0.1:${port}${path}`;
+/** The shared terminal a terminal tool result names, latest first; none fails the turn. */
+function terminalId(results: string[]): string {
+  for (const result of results) {
+    try {
+      const value = JSON.parse(result) as { terminals?: { id: string }[]; terminal?: { id: string } };
+      const id = value.terminals?.[0]?.id ?? value.terminal?.id;
+      if (id) return id;
+    } catch { /* Not a terminal result. */ }
+  }
+  throw new Error("No shared terminal is open in this conversation.");
+}
 /** A browser snapshot's ref for an element, from the latest result that has it; a page without it fails the turn. */
 function ref(results: string[], pattern: RegExp): string {
   for (const result of results) {
@@ -169,6 +180,33 @@ const scripts: Script[] = [
         command: "for job in lint unit-tests integration e2e; do sleep 1.5; echo \"✓ $job passed\"; done; echo 'CI green, merged #142'",
       } }] },
       { say: "Pushed the ownership check. A watcher is waiting for CI and will merge **#142** as soon as it's green; you can close this tab." },
+    ],
+  },
+  // Work pane: the agent changes the code, then runs the tests in the terminal the operator opened.
+  {
+    when: "Go ahead, and run the tests in my terminal",
+    turns: [
+      { wait: 900, think: "A formatter on Intl.NumberFormat, used by the orders page, with tests.", calls: [{ name: "write", input: { path: "src/orders/format-total.js", content: "/** An order total as currency, in the store's locale. */\nexport function formatTotal(amount, currency = \"USD\", locale = \"en-US\") {\n  return new Intl.NumberFormat(locale, { style: \"currency\", currency }).format(amount);\n}\n" } }] },
+      { wait: 700, calls: [{ name: "edit", input: { path: "src/orders/orders-page.js", edits: [
+        { oldText: "import { listOrders } from \"../api.js\";\n", newText: "import { listOrders } from \"../api.js\";\nimport { formatTotal } from \"./format-total.js\";\n" },
+        { oldText: "rows: orders };", newText: "rows: orders.map((order) => ({ ...order, total: formatTotal(order.total, order.currency) })) };" },
+      ] } }] },
+      { wait: 700, calls: [{ name: "write", input: { path: "test/format-total.test.js", content: "import { test } from \"node:test\";\nimport assert from \"node:assert/strict\";\nimport { formatTotal } from \"../src/orders/format-total.js\";\n\ntest(\"formats dollars\", () => assert.equal(formatTotal(1234.5), \"$1,234.50\"));\ntest(\"formats euros\", () => assert.equal(formatTotal(42, \"EUR\"), \"€42.00\"));\ntest(\"formats yen without decimals\", () => assert.equal(formatTotal(1500, \"JPY\"), \"¥1,500\"));\n" } }] },
+      { wait: 600, calls: [{ name: "terminal", input: { action: "list" } }] },
+      { wait: 300, calls: (results) => [{ name: "terminal", input: { action: "read", sessionId: terminalId(results) } }] },
+      { wait: 300, calls: (results) => [{ name: "terminal", input: { action: "input", sessionId: terminalId(results), data: "node --test test/format-total.test.js\r" } }] },
+      { wait: 2_500, calls: (results) => [{ name: "terminal", input: { action: "read", sessionId: terminalId(results) } }] },
+      { say: (results) => /pass 3\b/u.test(results[0] ?? "")
+        ? "Done: totals now show as **$1,234.50**. The formatter is in `src/orders/format-total.js`, and its 3 tests pass in your terminal."
+        : `The tests did not pass in your terminal: ${(results[0] ?? "").slice(-300)}` },
+    ],
+  },
+  // Phone: checking in on a session.
+  {
+    when: "Quick status on Apple Pay?",
+    turns: [
+      { wait: 800, calls: [{ name: "bash", input: { command: "git log --oneline -3", timeout: 30 } }] },
+      { say: "Merchant validation is in and the unit tests pass.\n\n- **Done:** payment sheet, merchant validation\n- **Next:** the Safari e2e test\n\nWant me to open the pull request?" },
     ],
   },
   // Bots: a remembered note, a routine the bot schedules itself, and its run.
