@@ -74,8 +74,6 @@ Open the gateway over Tailscale and check in on your agents, or the board, from 
 
 https://github.com/user-attachments/assets/710f8134-3746-45cf-8f58-5b459683605a
 
-The videos use a scripted agent in an isolated HUI; `node e2e/demo/record.ts` records them again ([how](e2e/demo/README.md)). Narration: Kokoro's af_heart voice through [VoiceStudio](https://github.com/debpalash/VoiceStudio). Music: "Atoms in Peace" by Alejandro Magaña (A. M.), [Mixkit Stock Music Free License](https://mixkit.co/license/#musicFree).
-
 ## Install
 
 Requirements:
