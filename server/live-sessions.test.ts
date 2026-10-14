@@ -371,7 +371,7 @@ test("a follow-up reports its queue item, which leaves the queue when HUI sends 
   manager.disposeAll();
 });
 
-test("a bot's chat announces each prompt it accepts with a snapshot; other sessions' streams stay as they were", async () => {
+test("every session announces a prompt with a snapshot before its run, so screens show it above the reply", async () => {
   const started: FakeSession[] = [];
   const manager = new LiveSessions(factory(started));
   const framesOf = async (record: SessionRecord): Promise<string[]> => {
@@ -386,9 +386,10 @@ test("a bot's chat announces each prompt it accepts with a snapshot; other sessi
     unsubscribe();
     return frames;
   };
-  assert.deepEqual(await framesOf({ ...recordFor("bot-chat"), bot: "bot-1" }), ["running", "snapshot: user hello | user [routine: Morning] check"],
-    "every screen and terminal sees a message another client sent, before its reply");
-  assert.deepEqual(await framesOf(recordFor("plain-chat")), ["running"], "an ordinary session gets no extra frame");
+  assert.deepEqual(await framesOf({ ...recordFor("bot-chat"), bot: "bot-1" }), ["snapshot: user hello | user [routine: Morning] check", "running"],
+    "every screen and terminal sees a message another client sent, before its run");
+  assert.deepEqual(await framesOf(recordFor("plain-chat")), ["snapshot: user hello | user [routine: Morning] check", "running"],
+    "a subagent's or automation's prompt in an ordinary session too");
   manager.disposeAll();
 });
 
@@ -879,6 +880,7 @@ test("a refused runtime prompt releases the manager-owned busy guard", async () 
 
   await assert.rejects(() => manager.prompt("refused", "first"), /runtime refused/);
   assert.equal(manager.status("refused"), "idle");
+  assert.deepEqual(manager.snapshot("refused").transcript, [], "the refused prompt left the conversation it was shown in");
   await assert.rejects(() => manager.prompt("refused", "retry"), /runtime refused/);
   assert.equal(attempts, 2, "the retry reached the runtime instead of being rejected as busy");
 });

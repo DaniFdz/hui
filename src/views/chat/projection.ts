@@ -129,7 +129,10 @@ export function projectChatTranscript(
     }
     assistantTurn.push(item);
   }
-  if (liveLastTurn) flushLiveAssistantTurn();
+  // A turn whose reply is already in PI's history has finished: it stays folded while the
+  // session works on something else (a compaction, a run whose prompt is on its way).
+  const last = assistantTurn.at(-1);
+  if (liveLastTurn && !(last?.kind === "message" && last.entryId)) flushLiveAssistantTurn();
   else flushCompletedAssistantTurn();
   return rows;
 }

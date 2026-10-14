@@ -250,6 +250,20 @@ export function appendPendingUser(
   ];
 }
 
+/** The gateway's copy of a prompt this screen just sent has no image previews until PI's history
+ * holds it: keep the local previews meanwhile, rather than flipping the images to file cards. */
+export function keepSentPreviews(next: TranscriptItem[], previous: readonly TranscriptItem[]): TranscriptItem[] {
+  const isUser = (item: TranscriptItem) => item.kind === "message" && item.role === "user";
+  const hasPreview = (item: TranscriptItem | undefined) =>
+    item?.kind === "message" && item.attachments?.some((attachment) => typeof attachment !== "string" && attachment.url);
+  const index = next.findLastIndex(isUser);
+  const incoming = next[index];
+  const local = previous.findLast(isUser);
+  if (incoming?.kind !== "message" || local?.kind !== "message" || !incoming.attachments?.length
+    || hasPreview(incoming) || !hasPreview(local) || local.text !== incoming.text) return next;
+  return next.with(index, { ...incoming, attachments: local.attachments! });
+}
+
 export function settlePendingUser(
   items: readonly TranscriptItem[],
   id: string,

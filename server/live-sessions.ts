@@ -568,6 +568,19 @@ export class LiveSessions {
     live.lastPrompt = { text, ...(attachments?.length ? { attachments } : {}) };
     live.turnProducedOutput = false;
     live.fallbackAttempted = false;
+    // Every screen on this session gets the prompt before the run is announced: a chat
+    // that hears "running" first treats the finished turn above as live and redraws it,
+    // and one that never hears the prompt (sent by a routine, a subagent, an automation
+    // or another screen) shows its reply as part of that turn. The settle's refresh from
+    // PI replaces this row, even when an extension settles before the call returns.
+    const prompted: TranscriptEntry = {
+      kind: "message",
+      role: "user",
+      text,
+      ...(attachments?.length ? { attachments: attachments.map((item) => ({ name: item.name, kind: item.kind, ...(item.kind === "image" ? { mimeType: item.mimeType } : {}) })) } : {}),
+    };
+    live.transcript.push(prompted);
+    this.#broadcast(live, { kind: "snapshot", snapshot: this.snapshot(id) });
     this.#setStatus(live, "running");
     live.submissions += 1;
     try {
@@ -590,24 +603,14 @@ export class LiveSessions {
         runRecoveryAttempts: previousRecoveryAttempts,
       }).catch(() => {});
       live.promptPending = false;
+      // A refused prompt never joined the conversation.
+      const at = live.transcript.lastIndexOf(prompted);
+      if (at >= 0) live.transcript.splice(at, 1);
       this.#setStatus(live, this.#reported(live));
+      this.#broadcast(live, { kind: "snapshot", snapshot: this.snapshot(id) });
       throw error;
     } finally {
       live.submissions -= 1;
-    }
-    // A synchronous extension can settle before its prompt acknowledgement.
-    // Do not append an invented user turn after PI's authoritative refresh.
-    if (live.promptPending) {
-      live.transcript.push({
-        kind: "message",
-        role: "user",
-        text,
-        ...(attachments?.length ? { attachments: attachments.map((item) => ({ name: item.name, kind: item.kind, ...(item.kind === "image" ? { mimeType: item.mimeType } : {}) })) } : {}),
-      });
-      // A bot's chat has many writers (its routines, other bots, every Bots
-      // screen and `hui bot chat`): each sees a message another one sent before
-      // the reply it starts. Other sessions keep their stream as it was.
-      if (live.record.bot) this.#broadcast(live, { kind: "snapshot", snapshot: this.snapshot(id) });
     }
     // Activity is what orders the sidebar, and the write is one small record on
     // a prompt rather than one per token; a failed save must not fail a prompt
@@ -880,7 +883,6 @@ export class LiveSessions {
     // prompt path so it is recorded and shown like any prompt.
     if (this.#compactingAlongside(live) && !live.promptPending && !live.runtime?.isStreaming) {
       await this.prompt(id, text, attachments);
-      this.#broadcast(live, { kind: "snapshot", snapshot: this.snapshot(id) });
       return;
     }
     if (!live.runtime?.steer) throw new Error(`${live.record.tool} cannot steer in this build.`);
