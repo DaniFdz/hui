@@ -1494,6 +1494,19 @@ pull request's head is exactly the branch's current commit; otherwise it is
 kept. Removals are serialized and each path is re-validated against a fresh
 inventory.
 
+Git deletes a large worktree file by file, which can take minutes, so a removal
+never holds the page: the confirmation closes at once, the row shows *Removing…*
+(or *Queued* while another removal runs) instead of its button, and a status
+line names the worktree being removed, its size, how many wait and the total
+percentage done: finished worktrees count in full, the one Git is deleting by
+how much of its measured size is left, queued ones not yet. Other rows,
+*Clean up merged* and the rest of HUI stay usable, and further removals queue.
+The rows' last known facts are kept rather than re-read while Git deletes them,
+and the page polls until each row is gone; a reload still shows removals the
+gateway is running. Deleting sessions with their worktrees from Sessions closes
+its dialog once the sessions are deleted and reports the worktrees when they
+are removed.
+
 ## Git workspace sessions
 
 New Session may explicitly change the selected Git checkout before launch or
