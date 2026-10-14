@@ -1,0 +1,52 @@
+/** The demo model plays its scripts: a prompt starts one, a tool result continues it, and a bot's memory view is not a prompt. */
+import assert from "node:assert/strict";
+import { spawn, type ChildProcess } from "node:child_process";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { after, before, test } from "node:test";
+
+let url = "";
+let dir = "";
+let provider: ChildProcess;
+
+before(async () => {
+  dir = await mkdtemp(join(tmpdir(), "hui-demo-provider-"));
+  provider = spawn(process.execPath, [new URL("./provider.ts", import.meta.url).pathname], {
+    env: { ...process.env, HUI_E2E_PROVIDER_PORT: "0", HUI_E2E_PROVIDER_LOG: join(dir, "log.jsonl") }, stdio: ["ignore", "pipe", "inherit"],
+  });
+  url = await new Promise((done, fail) => {
+    provider.once("exit", (code) => fail(new Error(`The demo provider exited (${code}).`)));
+    provider.stdout!.on("data", (chunk) => {
+      const found = /http:\/\/127\.0\.0\.1:\d+/u.exec(String(chunk));
+      if (found) done(found[0]);
+    });
+  });
+});
+after(async () => {
+  provider.kill();
+  await rm(dir, { recursive: true, force: true });
+});
+
+/** The streamed reply's tool calls and text. */
+async function reply(content: unknown) {
+  const response = await fetch(`${url}/v1/messages`, { method: "POST", body: JSON.stringify({ messages: [{ role: "user", content }] }) });
+  const events = (await response.text()).split("\n").filter((line) => line.startsWith("data: ")).map((line) => JSON.parse(line.slice(6)));
+  return {
+    tools: events.filter((event) => event.content_block?.type === "tool_use").map((event) => ({ id: event.content_block.id, name: event.content_block.name })),
+    text: events.map((event) => event.delta?.text ?? "").join(""),
+  };
+}
+
+test("a demo prompt starts its script and the tool result continues it", async () => {
+  const first = await reply("Chart this week's build times from ci/build-times.csv");
+  assert.equal(first.tools[0]?.name, "bash");
+  const second = await reply([{ type: "tool_result", tool_use_id: first.tools[0]!.id, content: "day,branch,median_minutes" }]);
+  assert.equal(second.tools[0]?.name, "show_widget");
+});
+
+test("a bot's memory view does not start the scripts it mentions", async () => {
+  const answer = await reply([{ type: "text", text: "<chat>\nuser: Every weekday at 9, post a digest\n</chat>" }, { type: "text", text: "Thanks!" }]);
+  assert.deepEqual(answer.tools, []);
+  assert.equal(answer.text, "Done.");
+});

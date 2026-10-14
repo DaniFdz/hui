@@ -3,18 +3,18 @@
 import { spawn, execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { once } from "node:events";
-import { createWriteStream } from "node:fs";
+import { createWriteStream, existsSync } from "node:fs";
 import { copyFile, lstat, mkdir, mkdtemp, readFile, readlink, realpath, rename, writeFile } from "node:fs/promises";
 import { request as httpRequest } from "node:http";
 import { connect } from "node:net";
 import { tmpdir } from "node:os";
-import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repo = dirname(dirname(fileURLToPath(import.meta.url)));
 const help = `HUI visual verification (run from the checkout being reviewed)
 
-  node e2e/visual-verification.mjs launch --branch <expected-branch> [--pi-sessions] [--quota-fixture | --jira-fixture | --github-fixture | --activity-fixture]
+  node e2e/visual-verification.mjs launch --branch <expected-branch> [--pi-sessions] [--quota-fixture | --jira-fixture | --github-fixture | --activity-fixture | --demo]
   node e2e/visual-verification.mjs doctor --receipt <absolute-receipt.json>
   node e2e/visual-verification.mjs cleanup --receipt <absolute-receipt.json>
 
@@ -202,7 +202,8 @@ export async function launch(expectedBranch) {
   const relativeDir = relative(checkout.root, dir);
   if (relativeDir === "" || (!relativeDir.startsWith("..") && !isAbsolute(relativeDir))) throw new Error("Temporary artifacts must be outside the checkout.");
   const artifacts = join(dir, "artifacts");
-  const workspace = join(dir, "workspace");
+  // --demo shows the workspace path on screen, so it gets a short one.
+  const workspace = process.argv.includes("--demo") ? await mkdtemp("/tmp/acme-") : join(dir, "workspace");
   const agentDir = join(dir, "agent");
   for (const path of [artifacts, workspace, join(agentDir, "extensions"), join(agentDir, "skills", "sdk-fixture")]) await mkdir(path, { recursive: true });
   await writeFile(join(workspace, "fixture.txt"), "Real SDK browser fixture\n");
@@ -255,7 +256,7 @@ export async function launch(expectedBranch) {
   function start(script, extraEnv, ipc = false) {
     if (stopping) throw new Error("Fixture startup was cancelled.");
     const child = spawn(process.execPath, [join(repo, "e2e", script)], { cwd: repo, env: { ...env, ...extraEnv }, stdio: ["ignore", "pipe", "pipe", ...(ipc ? ["ipc"] : [])] });
-    const log = createWriteStream(join(artifacts, `${script}.log`), { mode: 0o600 });
+    const log = createWriteStream(join(artifacts, `${basename(script)}.log`), { mode: 0o600 });
     child.stdout.pipe(log, { end: false });
     child.stderr.pipe(log, { end: false });
     child.once("close", () => log.end());
@@ -270,7 +271,9 @@ export async function launch(expectedBranch) {
     return child;
   }
   try {
-    const provider = start("pi-provider-fixture.mjs", { HUI_E2E_PROVIDER_PORT: "0", HUI_E2E_WORKSPACE: workspace, HUI_E2E_PROVIDER_LOG: join(artifacts, "provider.jsonl") });
+    // --demo: the scripted model and seeded world of the demo videos (e2e/demo), with the fake GitHub CLI.
+    const demo = process.argv.includes("--demo");
+    const provider = start(demo ? "demo/provider.ts" : "pi-provider-fixture.mjs", { HUI_E2E_PROVIDER_PORT: "0", HUI_E2E_WORKSPACE: workspace, HUI_E2E_PROVIDER_LOG: join(artifacts, "provider.jsonl") });
     receipt.providerPid = provider.pid;
     receipt.providerUrl = await ready(provider, (done) => {
       let output = "";
@@ -283,7 +286,7 @@ export async function launch(expectedBranch) {
     // below every launcher session on Durable would compact by itself after a few turns.
     await writeFile(join(agentDir, "models.json"), JSON.stringify({ providers: { "hui-e2e": {
       baseUrl: receipt.providerUrl, api: "anthropic-messages", headers: { "x-client-session-id": "${PI_CLIENT_SESSION_ID}" }, apiKey: "e2e-not-a-secret",
-      models: [{ id: "fixture", name: "HUI SDK Fixture", reasoning: true, input: ["text", "image"], contextWindow: 200000, maxTokens: 4096, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } }],
+      models: [{ id: "fixture", name: demo ? "Demo model" : "HUI SDK Fixture", reasoning: true, input: ["text", "image"], contextWindow: 200000, maxTokens: 4096, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } }],
     } } }));
     // A small kept window lets /compact and /fixture-compact summarize a few short turns.
     await writeFile(join(agentDir, "settings.json"), JSON.stringify({ defaultProvider: "hui-e2e", defaultModel: "fixture", defaultThinkingLevel: "high", compaction: { keepRecentTokens: 400 } }));
@@ -312,7 +315,7 @@ export async function launch(expectedBranch) {
         session("e2e-jira-docs", "Docs cleanup"),
       ] }));
     }
-    if (process.argv.includes("--github-fixture")) {
+    if (process.argv.includes("--github-fixture") || demo) {
       // Fake gh (e2e/github-cli-fixture.mjs) signed in to two synthetic accounts
       // with deterministic commits and pull requests since they were created.
       const gh = join(dir, "gh");
@@ -336,6 +339,16 @@ export async function launch(expectedBranch) {
         "hui-e2e-personal": activity("2019-08-02T18:00:00Z", 2, 9, 0.15),
       }));
       Object.assign(serverEnv, { HUI_GITHUB_CLI: join(repo, "e2e", "github-cli-fixture.mjs"), HUI_FAKE_GH_DIR: gh });
+    }
+    if (demo) {
+      serverEnv.HUI_DEMO_STAGE = join(repo, "e2e", "demo", "stage.html");
+      // Terminals open a plain zsh with a short prompt, not the operator's own shell setup.
+      serverEnv.ZDOTDIR = join(dir, "zdotdir");
+      await mkdir(serverEnv.ZDOTDIR, { recursive: true });
+      await writeFile(join(serverEnv.ZDOTDIR, ".zshrc"), "PROMPT='%F{blue}%1~%f %F{magenta}❯%f '\nunsetopt PROMPT_SP\nHISTFILE=/dev/null\n");
+      if (existsSync("/bin/zsh")) serverEnv.SHELL = "/bin/zsh";
+      execFileSync(process.execPath, [join(repo, "e2e", "demo", "seed.ts")], { cwd: repo, stdio: ["ignore", "ignore", "inherit"],
+        env: { ...env, HUI_E2E_WORKSPACE: workspace, HUI_FAKE_GH_DIR: join(dir, "gh"), ...(process.env.HUI_DEMO_CACHE ? { HUI_DEMO_CACHE: process.env.HUI_DEMO_CACHE } : {}) } });
     }
     if (process.argv.includes("--activity-fixture")) {
       // Two weeks of synthetic Durable sessions for Contributions → Calendar.
@@ -371,7 +384,7 @@ async function main() {
   const [command, ...args] = process.argv.slice(2);
   if (!command || command === "--help" || args.includes("--help")) return process.stdout.write(help);
   // Trailing launch options; `launch` reads them from argv.
-  if (command === "launch") while (["--pi-sessions", "--quota-fixture", "--jira-fixture", "--github-fixture", "--activity-fixture"].includes(args.at(-1))) args.pop();
+  if (command === "launch") while (["--pi-sessions", "--quota-fixture", "--jira-fixture", "--github-fixture", "--activity-fixture", "--demo"].includes(args.at(-1))) args.pop();
   const option = command === "launch" ? "--branch" : "--receipt";
   if (!["launch", "doctor", "cleanup"].includes(command) || args.length !== 2 || args[0] !== option) throw new Error("Invalid arguments. Run with --help.");
   if (command === "launch") return launch(args[1]);
