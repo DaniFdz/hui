@@ -1,12 +1,14 @@
 <!doctype html>
 <!-- The demo recorder's stage: HUI in a framed browser window or phone on a gradient, with a
-     synthetic cursor (a fingertip on the phone), step captions and a chapter tag. Recorded at 1920×1080. -->
+     synthetic cursor (a fingertip on the phone), step captions and a chapter tag. Laid out at 1920×1080 and
+     drawn twice as large, so the page is captured at 3840×2160 with sharp text. -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <title>HUI demo stage</title>
 <style>
-  html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background: #08090d; }
+  html, body { margin: 0; width: 3840px; height: 2160px; overflow: hidden; background: #08090d; }
+  #root { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; transform: scale(2); transform-origin: 0 0; }
   body { font-family: -apple-system, "SF Pro Display", "Inter", system-ui, sans-serif; color: #f4f4f6; -webkit-font-smoothing: antialiased; }
   #bg { position: absolute; inset: 0; background:
     radial-gradient(1100px 760px at 12% 8%, rgb(124 92 255 / 38%), transparent 62%),
@@ -52,6 +54,7 @@
 </style>
 </head>
 <body>
+<div id="root">
 <div id="bg"></div>
 <div id="camera">
   <div id="window"><div id="screen">
@@ -68,6 +71,7 @@
 </div>
 <div id="caption"></div>
 <div id="chip"><i></i><span></span></div>
+</div>
 <script>
   // App coordinates are CSS pixels inside the iframe; the camera maps them to the stage.
   // The window sits above a band for captions, so they never cover the composer.

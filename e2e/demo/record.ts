@@ -9,7 +9,7 @@
  */
 import { execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import { once } from "node:events";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -25,7 +25,8 @@ import { scenes, type Scene } from "./scenes.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repo = resolve(here, "../..");
-const STAGE = { width: 1920, height: 1080 };
+/** The stage is captured at 4K (its 1920×1080 layout drawn at 2×, for sharp text) and the clips keep that size. */
+const STAGE = { width: 3840, height: 2160 };
 /** Kokoro speaks near -19 LUFS: a little louder reads well; the bed sits about 15 LU under it. */
 const VOICE_GAIN_DB = 3;
 const MUSIC_GAIN_DB = -17;
@@ -364,7 +365,7 @@ async function encode(frames: { file: string; t: number }[], end: number, list: 
   // the overview's crossfades rely on.
   const start = frames[0]!.t, length = ["-t", (end - start).toFixed(3)];
   const video = ["-f", "concat", "-safe", "0", "-i", list];
-  const encodeVideo = ["-vf", `fps=30,scale=${STAGE.width}:${STAGE.height}:flags=lanczos,format=yuv420p`, "-c:v", "libx264", "-preset", "slow", "-crf", "22", "-movflags", "+faststart"];
+  const encodeVideo = ["-vf", "fps=30,format=yuv420p", "-c:v", "libx264", "-preset", "slow", "-crf", "20", "-movflags", "+faststart"];
   if (!voiceModel && !music) return void execFileSync("ffmpeg", ["-y", "-loglevel", "error", ...video, ...encodeVideo, "-an", ...length, output]);
   // The audio is mixed on its own first: in one graph with the frame list, ffmpeg's audio timestamps go backwards.
   const stem = join(dirname(output), ".voice", `${basename(output, ".mp4")}.wav`);
@@ -491,8 +492,7 @@ async function record(scene: Scene, chapter: number, out: string, voice?: Map<st
   process.stdout.write(`${output} (${frames.length} frames, ${(end - frames[0]!.t).toFixed(1)} s)\n`);
 }
 
-/** The overview: every clip in order, crossfaded, with their voices and one continuous music bed. Its bitrate keeps it
- * under GitHub's 10 MB attachment limit. */
+/** The overview: every clip in order, crossfaded, with their voices and one continuous music bed. */
 function overview(out: string, names: string[]) {
   const FADE = 0.5;
   const files = names.map((name) => join(out, `${name}.mp4`));
@@ -514,14 +514,13 @@ function overview(out: string, names: string[]) {
   }
   const stems = audio ? names.flatMap((name) => ["-i", join(out, ".voice", `${name}.wav`)]) : [];
   if (audio) filter += `${mixWithMusic(voice, music ? `[${files.length * 2}:a]` : "", total)}[audio];`;
-  const kbps = Math.floor((9.5 * 8_000) / total) - (audio ? 128 : 0);
-  const args = ["-y", "-loglevel", "error", ...files.flatMap((file) => ["-i", file]), ...stems, ...(audio && music ? ["-stream_loop", "-1", "-i", music] : []),
-    "-filter_complex", `${filter}${video}fps=30[video]`, "-map", "[video]", ...(audio ? ["-map", "[audio]", "-c:a", "aac", "-b:a", "128k"] : ["-an"]),
-    "-c:v", "libx264", "-preset", "slow", "-b:v", `${kbps}k`, "-maxrate", `${Math.round(kbps * 1.5)}k`, "-bufsize", `${kbps * 2}k`, "-t", total.toFixed(3)];
-  // Two passes hit the bitrate, and so the size, closely.
-  const log = join(out, ".voice", "overview-pass");
-  execFileSync("ffmpeg", [...args, "-pass", "1", "-passlogfile", log, "-f", "null", "/dev/null"]);
-  execFileSync("ffmpeg", [...args, "-pass", "2", "-passlogfile", log, "-movflags", "+faststart", join(out, "overview.mp4")]);
+  const output = join(out, "overview.mp4");
+  execFileSync("ffmpeg", ["-y", "-loglevel", "error", ...files.flatMap((file) => ["-i", file]), ...stems, ...(audio && music ? ["-stream_loop", "-1", "-i", music] : []),
+    "-filter_complex", `${filter}${video}fps=30[video]`, "-map", "[video]", ...(audio ? ["-map", "[audio]", "-c:a", "aac", "-b:a", "160k"] : ["-an"]),
+    "-c:v", "libx264", "-preset", "slow", "-crf", "22", "-t", total.toFixed(3), "-movflags", "+faststart", output]);
+  // GitHub takes videos up to 100 MB on a paid plan and 10 MB on a free one.
+  const megabytes = statSync(output).size / 1e6;
+  if (megabytes > 100) process.stderr.write(`overview.mp4 is ${megabytes.toFixed(0)} MB: too big for a GitHub attachment; record fewer clips.\n`);
 }
 
 /** The scene's narration lines as audio files, synthesized once per text and voice by VoiceStudio's OpenAI-style speech API. */

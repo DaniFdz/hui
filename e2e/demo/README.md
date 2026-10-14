@@ -15,9 +15,10 @@ Filming a release's video is a procedure of its own:
 
 Needs ffmpeg with libx264 and a Chromium-family browser (the same one the agent
 browser tool finds). Output goes to `$TMPDIR/hui-demo-videos` unless `--out`
-says otherwise: one 1920×1080, 30 fps MP4 per clip, `overview.mp4` when two or
-more clips were recorded (crossfaded, bitrate-capped under GitHub's 10 MB
-attachment limit) and window-only PNG stills for the README. Clips open straight
+says otherwise: one 3840×2160, 30 fps MP4 per clip (the 1920×1080 stage drawn
+at 2×, so text stays sharp), `overview.mp4` when two or more clips were recorded
+(crossfaded) and window-only PNG stills for the README. GitHub takes videos up
+to 100 MB on paid plans and 10 MB on free ones. Clips open straight
 on the app with a chapter tag and a caption per step; there are no title slides.
 Videos and stills never go into Git.
 

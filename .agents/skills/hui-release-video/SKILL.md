@@ -75,7 +75,8 @@ a failure saves `<scene>-failed.png` and `HUI_DEMO_DEBUG=1` logs every wait.
   in order, none overlapping. Whisper invents words over music-only stretches;
   that is not narration.
 - `ffprobe` the video and audio durations of each file (they match) and its
-  size: GitHub attachments must stay under 10 MB.
+  size: GitHub takes videos up to 100 MB on the owner's paid plan (10 MB on a
+  free one). Look at a frame at full size too: text must be sharp.
 - You cannot hear it: say so, and ask the owner to watch with sound on.
 
 ## 5. Publish
