@@ -435,6 +435,16 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   Commands retain their full input in the expanded terminal while the row uses
   the original bounded, shell-aware preview. Tool output copying uses the
   context menu; HUI does not fabricate a workspace-file or side-panel action.
+- A `codemode` call is one card: its row names the tools the script called
+  (`read ×3, bash`), with a **failed** badge for a failed script or **N failed**
+  for calls that failed in a script that completed, and the wall time once it
+  ends. Expanded, it shows the script with JavaScript colours, one row per call
+  in call order (status, tool, one-line arguments, duration, error under it)
+  and the output the model got, without PI's "Script completed / Wall time"
+  header, script errors in error colour and a **Full output** file reference
+  when PI cut the output. The calls fill in live while the script runs and
+  never appear as tool rows of their own. Settings → Tools → Codemode turns the
+  tool off for every session from its next request; it is on by default.
 - The desktop transcript has OpenClaw's left conversation-position rail: one
   marker per visible user/assistant message, a bounded text preview, current and
   visible-position feedback, and click/keyboard jumps. Collapsed activity is not
@@ -479,9 +489,10 @@ HUI holds, with events HUI streams to the browser.
 ## Installed gateway
 
 HUI ships a local npm archive with compiled CLI/server/SDK worker, built web
-assets, themes and its lockfile as a shrinkwrap. npm installs the archive from
-`package.json` alone, ignoring that shrinkwrap, so `package.json` pins every PI
-package at its locked version; other dependencies resolve within their ranges.
+assets, themes and its lockfile as `build/package-lock.json`, which remote workers
+install from. npm installs the archive from `package.json` alone, ignoring that
+lockfile, so `package.json` pins every PI package at its locked version; other
+dependencies resolve within their ranges.
 Production uses Node directly;
 Vite and the desktop launcher remain source-development tools. `hui gateway`
 provides start/stop/restart/status/logs and foreground run; `hui ui` opens or
@@ -520,7 +531,11 @@ do not change the HUI registry or PI transcript/config formats. Source-linked,
 Nix-store and Homebrew installations must use their owning update workflow.
 `hui update` resolves the latest stable release in the public GitHub repository
 using GitHub's public API, downloads its bounded archive and SHA-256
-sidecar, and reuses that transaction. `--check` is read-only. Releases must have a
+sidecar, and reuses that transaction. API reads carry the operator's token when
+one is available (`GITHUB_TOKEN`, then `GH_TOKEN`, then `gh auth token`), so a
+shared network's anonymous 60-an-hour limit does not block updates; the token is
+sent only to `api.github.com`, never along a download's storage redirect, and
+without one the reads stay anonymous. `--check` is read-only. Releases must have a
 matching stable tag, package version and checksum; no automatic downgrade occurs.
 Tag-triggered CI validates and publishes the archive and checksum. A missing or
 inaccessible release is reported explicitly, never treated as up-to-date.
@@ -1463,6 +1478,9 @@ unavailable rather than guessed.
 Paths are shown with `~` for the home directory and truncate from the start, so
 the distinguishing tail stays visible; a copy button copies the full path.
 Worktrees HUI did not create (by hand or another tool) are labelled External.
+Branch names and session titles wrap, so the whole table, including each row's
+remove button, fits beside the settings navigation from a 1280 px window; a
+narrower one (or a phone) scrolls the table sideways.
 
 Any listed worktree can be removed from its row. The button opens an "are you
 sure?" modal with the full path that lists every risk: local changes that will be
@@ -1479,6 +1497,19 @@ no longer linked). The list is re-read each time the page opens. The local branc
 pull request's head is exactly the branch's current commit; otherwise it is
 kept. Removals are serialized and each path is re-validated against a fresh
 inventory.
+
+Git deletes a large worktree file by file, which can take minutes, so a removal
+never holds the page: the confirmation closes at once, the row shows *Removing…*
+(or *Queued* while another removal runs) instead of its button, and a status
+line names the worktree being removed, its size, how many wait and the total
+percentage done: finished worktrees count in full, the one Git is deleting by
+how much of its measured size is left, queued ones not yet. Other rows,
+*Clean up merged* and the rest of HUI stay usable, and further removals queue.
+The rows' last known facts are kept rather than re-read while Git deletes them,
+and the page polls until each row is gone; a reload still shows removals the
+gateway is running. Deleting sessions with their worktrees from Sessions closes
+its dialog once the sessions are deleted and reports the worktrees when they
+are removed.
 
 ## Git workspace sessions
 
@@ -2387,7 +2418,7 @@ models "beneath the interface".
 
 ### New sessions run on Pi Durable
 
-New sessions use the `durable` runtime (`@earendil-works/pi-durable` 1.0.1).
+New sessions use the `durable` runtime (`@earendil-works/pi-durable` 1.2.0).
 One harness per gateway owns their conversations, runs, inbox and crash
 recovery in a single SQLite store, `~/.config/hui/durable/harness.sqlite`
 (`HUI_DURABLE_DIR` overrides it), locked to one gateway at a time. Every
@@ -2503,7 +2534,7 @@ Sessions on the `pi` runtime (sessions created before Durable that
 `HUI_SESSION_RUNTIME=pi`)
 keep this design. Each active one runs a
 Node child with the pinned
-`@earendil-works/pi-coding-agent` SDK (1.0.1). HUI owns the versioned default
+`@earendil-works/pi-coding-agent` SDK (1.2.0). HUI owns the versioned default
 prompt, HUI tool definitions and runtime inspection; PI still owns its agent
 loop, configuration, credentials, resources and JSONL transcript writer. For
 these sessions the gateway neither embeds the agent loop nor runs their

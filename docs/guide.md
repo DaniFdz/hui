@@ -914,6 +914,29 @@ load scripts, styles and fonts from a few public CDNs (cdnjs, jsDelivr, esm.sh,
 unpkg, Google and Bunny fonts), which then see your IP address.
 [docs/api.md](api.md#agent-widgets) has the full contract.
 
+## Codemode: one script, many tool calls
+
+Sessions can use PI's **codemode** tool: instead of calling tools one at a time,
+the agent writes a short JavaScript script that calls them, often several at
+once, and gets back only what the script prints. It saves round trips and keeps
+large tool output out of the conversation.
+
+- Each script is one card in the chat. Its row lists the tools the script
+  called, a **failed** badge if the script failed (or **2 failed** if some of
+  its calls failed but the script finished) and how long it took.
+- Open the card to see the script, every call it made with its status and
+  duration, and the output the agent got. A call that failed shows why under
+  its row. When the output was too long for the agent, **Full output** opens the
+  whole text in the Files view.
+- While the script runs, its calls appear as they start and finish.
+- Right-click (or the context-menu key on) the script or the output to copy it.
+
+Codemode is on by default. **Settings → Tools → Codemode** turns it off for
+every session from its next request (a session on a remote worker once it
+reopens); a script already running finishes. A bot's **Tools** tab can turn it
+off for that bot alone. **Stop** ends a script that runs too long. Sessions still on the
+older PI worker (before `hui doctor --fix` moved them) never get it.
+
 ## Giving an agent a secret
 
 When an agent needs an API key, a token, a password or a one-time login code,

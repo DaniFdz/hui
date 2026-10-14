@@ -45,11 +45,11 @@ export function triggersTool(options: {
         const params = Object.fromEntries(Object.entries(args).filter(([, value]) => value !== undefined));
         const result = await options.invoke(api.conversationId, TRIGGERS_TOOL, params);
         const text = typeof result === "object" && result !== null && typeof (result as { text?: unknown }).text === "string" ? (result as { text: string }).text : "Done.";
-        return { content: [{ type: "text", text }] };
+        return { output: [{ type: "text", text }] };
       } catch (error) {
         if (context.abortSignal?.aborted) throw error;
         // A refusal (an unknown trigger, bots off) is the model's to read and act on.
-        return { content: [{ type: "text", text: error instanceof Error ? error.message : String(error) }], isError: true };
+        return { output: [{ type: "text", text: error instanceof Error ? error.message : String(error) }], isError: true };
       }
     },
   });

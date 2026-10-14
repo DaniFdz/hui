@@ -107,6 +107,8 @@ details in the owning directory guide.
 - User installation and developer onboarding live in `README.md`, with longer
   user reference in `docs/guide.md`; the fuller contribution loop and release
   checklist live in `CONTRIBUTING.md`.
+- A release that adds user-visible features ships with a narrated demo video of
+  them: follow [hui-release-video](.agents/skills/hui-release-video/SKILL.md).
 - The repository is private and HUI is distributed as a `.tgz`, not through the
   public npm registry. A new machine can clone `main`, run `npm ci` and `npm pack`,
   or download a checksum-paired archive from a GitHub Release once one exists.

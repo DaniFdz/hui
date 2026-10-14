@@ -270,11 +270,11 @@ export function huiBotsExtensions(options: BotsExtensionOptions): { section: Ext
         const text = typeof result === "object" && result !== null && typeof (result as { text?: unknown }).text === "string"
           ? (result as { text: string }).text
           : "Sent.";
-        return { content: [{ type: "text", text }] };
+        return { output: [{ type: "text", text }] };
       } catch (error) {
         if (context.abortSignal?.aborted) throw error;
         // A refusal (unknown bot, hop limit, rate limit) is the model's to read and act on.
-        return { content: [{ type: "text", text: error instanceof Error ? error.message : String(error) }], isError: true };
+        return { output: [{ type: "text", text: error instanceof Error ? error.message : String(error) }], isError: true };
       }
     },
   });
@@ -305,12 +305,12 @@ export function huiBotsExtensions(options: BotsExtensionOptions): { section: Ext
         const first = (await readSoulFile(file)) === undefined;
         await writeSoulFile(file, soul);
         const saved = `Saved your SOUL.md (${soul.length.toLocaleString("en-US")} characters); it applies from your next request.`;
-        return { content: [{ type: "text", text: first
+        return { output: [{ type: "text", text: first
           ? `${saved} This ends your first conversation: now tell the operator you saved your SOUL.md, sum it up in a few lines, and end by telling them how to change it later: in the Soul tab of your panel in HUI, or by just telling you.`
           : `${saved} Tell the operator what you changed.` }] };
       } catch (error) {
         if (context.abortSignal?.aborted) throw error;
-        return { content: [{ type: "text", text: error instanceof Error ? error.message : String(error) }], isError: true };
+        return { output: [{ type: "text", text: error instanceof Error ? error.message : String(error) }], isError: true };
       }
     },
   });
@@ -336,10 +336,10 @@ export function huiBotsExtensions(options: BotsExtensionOptions): { section: Ext
         const text = typeof result === "object" && result !== null && typeof (result as { text?: unknown }).text === "string"
           ? (result as { text: string }).text
           : "Saved.";
-        return { content: [{ type: "text", text }] };
+        return { output: [{ type: "text", text }] };
       } catch (error) {
         if (context.abortSignal?.aborted) throw error;
-        return { content: [{ type: "text", text: error instanceof Error ? error.message : String(error) }], isError: true };
+        return { output: [{ type: "text", text: error instanceof Error ? error.message : String(error) }], isError: true };
       }
     },
   });

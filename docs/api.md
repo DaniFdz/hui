@@ -137,6 +137,14 @@ store is closed and unlocked. The development server restarts the backend in
 its own process when a server file changes, and starts the new backend only
 after the previous one has stopped. Each HUI session is one Durable
 conversation and stores `durable:<conversationId>` in `piSessionFile`.
+A storage error closes the whole harness (Durable 1.2.0): its sessions end as
+unreachable-and-reconnecting (`RuntimeUnreachableError`), the host records a
+`durable_store_failed` diagnostic and releases the store, and after a pause (1 s,
+doubling for each failure in a row, up to a minute) the gateway reattaches every
+open session on this machine and the host opens the store again, which resumes
+the runs nobody has open too. A store that does not open yet is tried again
+after the next pause. A worker reopens its own store the same way; the
+gateway's sessions on it show the error until they are opened again.
 
 Opening the store resumes every unfinished run, once the gateway has reopened
 the sessions that own them and they have loaded their PI extensions again
@@ -170,7 +178,15 @@ still busy for HUI, while its extensions see the run over. Prompts pass
 `input` handlers, then skill and template expansion, then
 `before_agent_start`; the prompt request returns once the input is submitted or
 a handler first asks something, as for PI sessions. The session is not running
-until the input is submitted, and Stop meanwhile sends nothing.
+until the input is submitted, and Stop meanwhile sends nothing. As in PI 1.2.0,
+a run an extension starts with `sendMessage(..., { triggerTurn: true })` while
+idle goes through `before_agent_start` too (`messageType: "custom"`, with the
+pending `nextTurn` messages), and extensions see a run that is starting as busy:
+`ctx.isIdle()` is false, a message sent meanwhile goes into that run once it has
+started (with `triggerTurn: false`, it is context written ahead of its input),
+and `sendUserMessage()` needs `deliverAs`. HUI also sees such a start as busy:
+a prompt is refused as for a running turn, and a steer or follow-up waits until
+the run has started.
 `session_start` holds a session's opening only until it ends or first asks
 something. Each lifecycle handler's `ctx.signal` is the signal of the run its
 event belongs to, aborted by Stop. An extension command runs when sent as `/name` (or the
@@ -182,8 +198,44 @@ as a `hui.pi-entry` entry. A custom message is a `hui.pi-message` entry the
 model reads as user input, written before the prompt `before_agent_start` added
 it to (PI places it after), so a rewind to before that prompt leaves it out too;
 one that starts or steers a turn is input whose text part carries its
-`customType`. The transcript leaves both out, as for PI sessions. Load errors and handler failures appear in the session's tool
+`customType`. The transcript leaves both out, as for PI sessions. An
+extension tool's `ctx.executeTool()` runs a nested call through Durable's
+`executeTool` (validation, the `tool_call`/`tool_result` hooks), and `ctx.tools`
+lists what it can call. Durable keeps no model output for a nested call: the
+outcome's content is the tool's bounded output, or its JSON value for a tool
+with a schema, which is also its `structuredContent`; the options' `signal` and
+`onUpdate` are not used. A `tool_result` handler sees a schema tool's value as
+`structuredContent`, and replacing the content without it drops that value, as
+in PI, so a script or a calling tool never gets what the handler took out.
+Where PI's script then gets the replaced text, Durable requires a schema tool's
+value unless the call failed: such a nested call fails with the replaced text. Load errors and handler failures appear in the session's tool
 inspection `diagnostics`; handler failures are also `notice`s.
+
+Every Durable conversation also offers PI's `codemode` tool
+(`@earendil-works/pi-durable/codemode`, one `CodemodeSandbox` per gateway, a
+worker thread and a 256 MB QuickJS heap per script). The model writes a script
+that calls the conversation's other tools as nested calls; only the script's
+output reaches the model, and a gateway restart replays a running script from
+its journal. Codemode is in the harness's default selection, so a conversation
+stores nothing while it is on. Settings → Tools → Codemode off
+(`settings.codemode.enabled: false`, on by default) makes every open session
+configure `extensions: { remove: [codemode] }` from its next request, and new
+and reopened sessions start that way; a session on a remote worker follows once
+it reopens there. A bot's chat also goes without it when its Tools tab turns
+`codemode` off. Scripts reach only the tools the conversation has: a tool
+removed from it (browser off, a bot's disabled tools) is not callable from
+scripts either. A script has no deadline unless it sets `timeout_ms` in its
+`// @options:` line; Stop aborts it. The PI worker's SDK sessions never load
+codemode; its CLI fallback follows PI's own `defaultTools`.
+
+A script's calls are tool events with `parentToolCallId`. The session never
+turns them into tool rows of their own: the calls that started or ended in an
+event batch become one `tool_update` of the codemode call with
+`details: { calls }`, the list the
+result's `details.calls` holds once the script ends (`name`, `args` cut to 200
+characters, `status` `running`, `ok`, `error` or `cancelled`, `durationMs`,
+`error` cut to 500 characters; `models.*` calls by that name). PI extensions get
+those events with `parentToolCallId`, as in PI.
 
 `hui doctor --fix` moves a PI session into a new conversation
 (`server/runtimes/pi-import.ts`) with the gateway stopped. One commit writes the
@@ -267,7 +319,7 @@ working directory, transcript and model travel in the private
 tools start: endpoint security agents can SIGKILL a script launch whose working
 directory plus one argument reaches `MAXPATHLEN` (1024 bytes).
 
-The worker pins `@earendil-works/pi-coding-agent@1.0.1` and uses its public
+The worker pins `@earendil-works/pi-coding-agent@1.2.0` and uses its public
 `runRpcMode`. `HUI_PI_BACKEND=cli` opts into the previous adapter;
 `HUI_PI_CLI` optionally pins its executable (otherwise HUI runs the bundled SDK
 CLI with Node, without relying on a global `pi` or npm's PATH). PI package
@@ -615,7 +667,10 @@ Returns `{ worktrees, diagnostics, pending }` (`WorktreeInventory` in
 `shared/worktrees.ts`). Repositories come from registered session directories
 and HUI's worktree root; each repository's main checkout is not listed. `dirty`, `bytes` and `pullRequests` are absent until a
 background `git status`, `du` or `gh pr list --head <branch>` answers; a failed
-lookup is listed in `unavailable`. `pending` is true while any lookup runs.
+lookup is listed in `unavailable`. A row whose removal was requested carries
+`removal: "queued" | "removing"` and keeps its last known facts without
+re-reading them; while `removing`, `remainingBytes` is the disk usage still
+left of `bytes`, re-measured with `du` every few seconds. `pending` is true while any lookup or removal runs.
 
 ### `POST /__hui/worktrees/remove`
 
@@ -629,8 +684,10 @@ HUI-created worktree with no risk, a merged pull request and no active session (
 linked session archived), all
 re-read at removal time, and never forces. The local branch is deleted only when
 a merged pull request's head equals the branch's commit. Returns
-`{ results: [{ path, removed, branchDeleted, error? }], inventory }`; refused
-items are reported per path with HTTP 200. Malformed bodies return 400.
+`{ results: [{ path, removed, branchDeleted, error? }], inventory }` once every
+path is done, which can take minutes for a large checkout; poll `GET` meanwhile.
+The browser sends one removal request at a time. Refused items are reported per
+path with HTTP 200. Malformed bodies return 400.
 
 ### `GET /__hui/git-checkout?cwd=<directory>`
 

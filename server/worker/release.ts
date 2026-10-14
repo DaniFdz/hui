@@ -14,7 +14,7 @@ import { gzipSync } from "node:zlib";
 
 /** Everything the host, Pi Durable and the PI SDK worker import from npm
  * (release.test.ts traces the imports). */
-const WORKER_DEPENDENCIES = ["@earendil-works/chord", "@earendil-works/pi-ai", "@earendil-works/pi-coding-agent", "@earendil-works/pi-durable", "typebox"];
+const WORKER_DEPENDENCIES = ["@earendil-works/chord", "@earendil-works/pi-ai", "@earendil-works/pi-codemode", "@earendil-works/pi-coding-agent", "@earendil-works/pi-durable", "typebox"];
 
 export type WorkerRelease = {
   id: string;
@@ -51,13 +51,8 @@ export function workerRelease(): Promise<WorkerRelease> {
     const pkg = JSON.parse(await readFile(join(root, "package.json"), "utf8")) as { version?: string; dependencies?: Record<string, string> };
     const dependencies = Object.fromEntries(WORKER_DEPENDENCIES.map((name) => [name, pkg.dependencies?.[name] ?? "*"]));
     files.push({ path: "package.json", mode: 0o644, data: Buffer.from(`${JSON.stringify({ name: "hui-worker", version: pkg.version ?? "0.0.0", private: true, type: "module", dependencies }, null, 2)}\n`) });
-    for (const lock of ["npm-shrinkwrap.json", "package-lock.json"]) {
-      if (existsSync(join(root, lock))) {
-        // npm 12 ignores npm-shrinkwrap.json, the name an installed package carries it under.
-        files.push({ path: "package-lock.json", mode: 0o644, data: await readFile(join(root, lock)) });
-        break;
-      }
-    }
+    // A package carries the lockfile it was built with in build/ (scripts/build.mjs).
+    files.push({ path: "package-lock.json", mode: 0o644, data: await readFile(join(root, SOURCE ? "package-lock.json" : "build/package-lock.json")) });
     files.sort((a, b) => a.path.localeCompare(b.path));
     const hash = createHash("sha256");
     for (const file of files) hash.update(file.path).update("\0").update(file.data).update("\0");

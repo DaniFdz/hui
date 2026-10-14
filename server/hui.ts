@@ -280,6 +280,7 @@ function forWorkerSessions(workerId: string, act: (record: SessionRecord) => voi
 }
 workers.onConnected((workerId) => forWorkerSessions(workerId, (record) => liveSessions.ensure(record, true)));
 workers.onStopped((workerId) => forWorkerSessions(workerId, (record) => liveSessions.stopReconnecting(record.id)));
+durableHost().storeFailed = async () => reattachAfterStoreFailure(await readRegistry());
 /** Bots (HUI-18): their registry, and the service that runs each one's forever chat as an ordinary Durable session
  * whose memory is OptChat's (docs/optchat.md). */
 const botMemory = optChatBotMemory(durableHost());
@@ -639,7 +640,8 @@ async function ensureConfigDir(): Promise<void> {
 
 async function writeSettings(raw: unknown): Promise<Settings> {
   const settings = normalizeSettings(raw);
-  const botsWereOn = botsEnabled(await readSettings());
+  const before = await readSettings();
+  const botsWereOn = botsEnabled(before);
   await ensureConfigDir();
   await writeFile(SETTINGS_FILE, `${JSON.stringify(settings, null, 2)}\n`, "utf8");
   // A changed browser mode or executable must not leave the old process running.
@@ -648,6 +650,7 @@ async function writeSettings(raw: unknown): Promise<Settings> {
   await vscode.applySettings(settings.vscode);
   macPower?.setKeepAwake(settings.power.keepAwake);
   if (botsWereOn && !botsEnabled(settings)) quietBots();
+  if (before.codemode.enabled !== settings.codemode.enabled) await durableHost().applyTools();
   return settings;
 }
 
@@ -4363,6 +4366,19 @@ export async function reopenDurableSessions(
   const references = new Set(conversations.map((id) => `durable:${String(id)}`));
   const owners = records.filter((record) => record.piSessionFile && references.has(record.piSessionFile));
   await Promise.all(owners.map((record) => sessions.ensure(record) ? sessions.booted(record.id) : undefined));
+}
+
+/** A failed Durable store is about to open again (`DurableHost.storeFailed`): the sessions on this machine it ended
+ * reattach, once a boot underway settles (one that got the failed store ends then too). Their boots open the store;
+ * the host opens it anyway, which resumes the runs of sessions nobody has open, as at startup. */
+export async function reattachAfterStoreFailure(
+  records: readonly SessionRecord[],
+  sessions: Pick<typeof liveSessions, "ensure" | "booted" | "isLive"> = liveSessions,
+): Promise<void> {
+  await Promise.all(records.filter((record) => !record.worker && sessions.isLive(record.id)).map(async (record) => {
+    await sessions.booted(record.id);
+    sessions.ensure(record, true);
+  }));
 }
 
 /** Startup recovery is eager: interrupted work resumes even when no browser
