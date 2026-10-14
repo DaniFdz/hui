@@ -16,11 +16,12 @@ Filming a release's video is a procedure of its own:
 Needs ffmpeg with libx264 and a Chromium-family browser (the same one the agent
 browser tool finds). Output goes to `$TMPDIR/hui-demo-videos` unless `--out`
 says otherwise: one 3840×2160, 30 fps MP4 per clip (the 1920×1080 stage drawn
-at 2×, so text stays sharp), `overview.mp4` when two or more clips were recorded
-(crossfaded) and window-only PNG stills for the README. GitHub takes videos up
-to 100 MB on paid plans and 10 MB on free ones. Clips open straight
+at 2×, so text stays sharp) and, when two or more clips were recorded,
+`overview.mp4`: the clips crossfaded, for sharing outside GitHub. On GitHub each
+feature gets its own player instead. GitHub takes videos up to 100 MB on paid
+plans and 10 MB on free ones. Clips open straight
 on the app with a chapter tag and a caption per step; there are no title slides.
-Videos and stills never go into Git.
+Videos never go into Git.
 
 - The `workpane` clip opens VS Code through Microsoft's `code serve-web`, which
   HUI runs only after the VS Code Server license was accepted:

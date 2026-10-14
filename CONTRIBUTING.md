@@ -239,8 +239,8 @@ version relative to the PR base, it:
 When the release adds user-visible features, it also gets a demo video of them,
 filmed with `e2e/demo/record.ts` as the
 [release video skill](.agents/skills/hui-release-video/SKILL.md) describes: new
-clips land in their own PR first, and the video goes into the version-bump PR's
-description and, once published, the GitHub Release notes. Releases with only
+clips land in their own PR first, and each feature's clip goes into the
+version-bump PR's description and, once published, the GitHub Release notes. Releases with only
 fixes or maintenance say so instead.
 
 Review the changelog and download the candidate package from the PR's Actions

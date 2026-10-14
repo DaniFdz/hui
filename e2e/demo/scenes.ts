@@ -102,7 +102,6 @@ export const scenes: Scene[] = [
       await d.pause(2_000);
       await d.zoom();
       await d.caption();
-      await d.still("board");
     },
   },
   {
@@ -134,7 +133,6 @@ export const scenes: Scene[] = [
       await d.click({ x: widget.x + 40, y: widget.y + 24 });
       await d.pause(900);
       await d.zoom();
-      await d.still("widget");
 
       await d.caption("It drives a real browser, live in the chat");
       await d.say("browser");
@@ -151,7 +149,6 @@ export const scenes: Scene[] = [
       await d.zoom({ css: ".github-embed" }, 1.35);
       await d.pause(2_200);
       await d.zoom();
-      await d.still("browser");
       await d.caption();
     },
   },
@@ -199,7 +196,6 @@ export const scenes: Scene[] = [
       await d.click({ css: ".hui-diff-file[data-path='src/orders/orders-page.js']" });
       await d.click({ css: ".hui-diff-segmented__option", text: "Side by side" });
       await d.waitFor({ contains: "formatTotal(order.total" });
-      await d.still("diff");
       await d.zoom({ css: ".hui-diff-main" }, 1.4);
       await d.pause(2_200);
       await d.zoom();
@@ -223,7 +219,6 @@ export const scenes: Scene[] = [
       await d.zoom({ css: ".monaco-workbench" }, 1.3);
       await d.pause(2_400);
       await d.zoom();
-      await d.still("vscode");
       await d.caption();
     },
   },
@@ -277,7 +272,6 @@ export const scenes: Scene[] = [
       await d.waitFor({ css: ".chat-watcher__log" });
       await d.pause(2_200);
       await d.zoom();
-      await d.still("watcher");
       await d.caption();
     },
   },
@@ -324,7 +318,6 @@ export const scenes: Scene[] = [
       await d.say("memory");
       await d.click({ css: ".bot-panel__tab[data-tab=memory]" });
       await d.pause(800);
-      await d.still("memory");
       await d.zoom({ css: ".bot-panel__tab[data-tab=memory]" }, 1.5);
       await d.pause(2_400);
       await d.zoom();
@@ -357,7 +350,6 @@ export const scenes: Scene[] = [
       await d.zoom({ contains: "Want me to open the pull request?" }, 1.35);
       await d.pause(1_600);
       await d.zoom();
-      await d.still("chat");
       await d.caption("The board fits in your pocket");
       await d.say("board");
       await d.click({ label: "Open navigation" });

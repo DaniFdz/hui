@@ -1,6 +1,6 @@
 ---
 name: hui-release-video
-description: "Film HUI's demo video for a release: find the new user-visible features, script narrated clips for them with the scripted demo agent, record them and an overview with e2e/demo/record.ts, review them, and attach them to the release PR and GitHub Release. Use when preparing a release (a `chore: release vX.Y.Z` PR) or when asked to film or update HUI's demo videos."
+description: "Film HUI's demo video for a release: find the new user-visible features, script narrated clips for them with the scripted demo agent, record them with e2e/demo/record.ts, review them, and attach one clip per feature to the release PR and GitHub Release. Use when preparing a release (a `chore: release vX.Y.Z` PR) or when asked to film or update HUI's demo videos."
 ---
 
 # HUI release video
@@ -50,8 +50,8 @@ In a feature branch from `origin/main`:
   `narration` lines (one or two short sentences per step, written to be heard;
   letters to spell out are spaced, as in "H U I" and "V S Code") and `run`: a `caption` (three to seven
   words) and `say` per step, then real `click`/`type`/`drag`/`swipe` input,
-  `zoom` on the detail, `cut` for waits the viewer should not sit through and
-  `still` for README images. `device: "phone"` films the phone layout with touch
+  `zoom` on the detail and `cut` for waits the viewer should not sit through.
+  `device: "phone"` films the phone layout with touch
   input (tap the send button; Return adds a line there).
 - `provider.ts`: the scripted agent's turns, keyed by the prompt's `when`. Its
   tool calls run for real, so they must work in the repositories `seed.ts` creates.
@@ -84,21 +84,22 @@ a failure saves `<scene>-failed.png` and `HUI_DEMO_DEBUG=1` logs every wait.
 1. Commit the new scenes, open their PR (`feat:` or `docs:`) with the clips
    attached to its description (`gh pr edit <n> --attach clip.mp4`; the account
    needs write access), and merge it before the release.
-2. From the merged `main`, record the release's clips together, which also joins
-   them into `overview.mp4`:
+2. From the merged `main`, record the release's clips together:
    `node e2e/demo/record.ts <scenes> --voice mlx-audio/af_heart --music <track> --out <dir>`.
+   It also joins them into `overview.mp4`; hand that to the owner for sharing
+   outside GitHub. On GitHub every feature gets its own player.
    When the README's videos no longer show HUI as it is, record every scene
-   and update its "See it in action" links in a `docs:` PR, never in the
-   release commit.
-3. Attach the release overview to the version-bump PR's description under
-   **Release video**.
+   and update its "See it in action" section (a heading, one line and the clip
+   per feature) in a `docs:` PR, never in the release commit.
+3. Attach the release's clips to the version-bump PR's description under
+   **Release video**: a `###` heading per feature with its clip's URL on its own
+   line, where GitHub shows a player.
 4. Once the Release workflow has published `vX.Y.Z`, and with the owner's
-   go-ahead, put the same attachment URL at the top of its notes:
+   go-ahead, put the same headings and URLs at the top of its notes:
    `gh release view vX.Y.Z --json body -q .body > notes.md`, add
-   `## What's new` with the URL on its own line, then
-   `gh release edit vX.Y.Z --notes-file notes.md`.
+   `## What's new` with them, then `gh release edit vX.Y.Z --notes-file notes.md`.
 
-Videos, stills and music never go into Git.
+Videos and music never go into Git.
 
 **Done:** the release PR and the GitHub Release show the video, and the
 transcript, frames and sizes were checked.

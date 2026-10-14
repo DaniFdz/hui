@@ -310,9 +310,6 @@ export class Director {
       this.#cutMs += Date.now() - started;
     }
   }
-
-  /** A still of HUI's window, for the README. */
-  still: (name: string) => Promise<void> = async () => undefined;
 }
 
 /** A fresh isolated HUI with the scripted demo model, from the launcher; `stop` also removes its temporary folders. */
@@ -446,16 +443,6 @@ async function record(scene: Scene, chapter: number, out: string, voice?: Map<st
       frames.push({ file, t: director.clock() });
       writes.push(writeFile(file, Buffer.from(String(event.params["data"]), "base64")));
     });
-    let stills = 0;
-    director.still = (name) => director.cut(async () => {
-      // The window alone, without the caption band or cursor: a README screenshot. The cut keeps the hidden cursor out of the clip.
-      await director.stage("stage.hideCursor(true)");
-      const clip = await director.stage<Box>(`(() => { const box = document.getElementById("window").getBoundingClientRect(); return { x: box.x, y: box.y, width: box.width, height: box.height }; })()`);
-      const { data } = await director.send<{ data: string }>("Page.captureScreenshot", { format: "png", clip: { ...clip, scale: 1 } });
-      await writeFile(join(out, `${scene.name}-${name}.png`), Buffer.from(data, "base64"));
-      await director.stage("stage.hideCursor(false)");
-      stills++;
-    });
     await director.send("Page.startScreencast", { format: "jpeg", quality: 92, maxWidth: STAGE.width, maxHeight: STAGE.height, everyNthFrame: 1 });
     await director.pause(300);
     await director.stage(`stage.chip(${chapter}, ${JSON.stringify(scene.chapter)})`);
@@ -470,7 +457,6 @@ async function record(scene: Scene, chapter: number, out: string, voice?: Map<st
     end = director.clock();
     await director.send("Page.stopScreencast");
     await Promise.all(writes);
-    if (stills) process.stdout.write(`${stills} stills of ${scene.name}\n`);
   } catch (error) {
     recording = false;
     failure = error;
