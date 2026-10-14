@@ -38,20 +38,20 @@ PI transcripts into its own storage.
 
 ## See it in action
 
-https://github.com/user-attachments/assets/83fc8946-318d-4acc-93d1-ab38ea6463f5
+https://github.com/user-attachments/assets/b6cf555b-2f73-4553-85cb-ebd0623ac02f
 
 <table>
 <tr>
-<td width="50%"><img src="https://github.com/user-attachments/assets/2ebba247-45cd-4063-b375-e9b773dcead4" alt="Kanban board with sessions across stages"><br><b>Kanban.</b> Every session is a card in the stage its work is in, agents move their own cards, and a backlog item starts in its own worktree. <a href="https://github.com/user-attachments/assets/2beff6f3-60e1-4743-95a4-6fc64651ea26">Watch</a></td>
-<td width="50%"><img src="https://github.com/user-attachments/assets/662d0f4a-afe0-4094-9ce8-2de5e9daf92f" alt="Agent-driven browser with GitHub and Slack cards"><br><b>Rich results.</b> Interactive widgets, a browser the agent drives with a live preview, and GitHub and Slack links that unfurl. <a href="https://github.com/user-attachments/assets/a7922055-0524-468e-8a35-6fbeb1ccec6e">Watch</a></td>
+<td width="50%"><img src="https://github.com/user-attachments/assets/80c9b554-9274-4d31-87e7-4f635891355a" alt="Kanban board with sessions across stages"><br><b>Kanban.</b> Every session is a card in the stage its work is in, agents move their own cards, and a backlog item starts in its own worktree. <a href="https://github.com/user-attachments/assets/f1f798d9-a3be-45ce-a21e-f7e359fc4ada">Watch</a></td>
+<td width="50%"><img src="https://github.com/user-attachments/assets/6b98e0fd-7eef-44c0-9676-43f2a83f82f3" alt="Agent-driven browser with GitHub and Slack cards"><br><b>Rich results.</b> Interactive widgets, a browser the agent drives with a live preview, and GitHub and Slack links that unfurl. <a href="https://github.com/user-attachments/assets/282a7c75-b24b-49e5-b2d1-c79a41c04c27">Watch</a></td>
 </tr>
 <tr>
-<td><img src="https://github.com/user-attachments/assets/3d11ee53-71af-4f91-a777-8451c4dafb59" alt="The Work pane's Diff view of the agent's change"><br><b>Work pane.</b> A terminal you share with the agent, and the Diff, Files and VS Code views of what it changed, beside the chat. <a href="https://github.com/user-attachments/assets/c2c9c985-8c01-4ace-871c-af201775cdc8">Watch</a></td>
-<td><img src="https://github.com/user-attachments/assets/87126d9b-1325-4700-b0ce-4aced9678ccd" alt="Subagents and a watcher that merged on green"><br><b>Subagents and watchers.</b> Parallel reviewers in their own sessions, and a watcher that waits for CI and merges. <a href="https://github.com/user-attachments/assets/921413b6-43a0-4764-b0cc-4cf39a8142ff">Watch</a></td>
+<td><img src="https://github.com/user-attachments/assets/6394fbb0-df5b-4d0b-9511-b9aea0f9f832" alt="The Work pane's Diff view of the agent's change"><br><b>Work pane.</b> A terminal you share with the agent, and the Diff, Files and VS Code views of what it changed, beside the chat. <a href="https://github.com/user-attachments/assets/96c1f282-71da-4e71-911e-a0df05a5e5c3">Watch</a></td>
+<td><img src="https://github.com/user-attachments/assets/fe04fb13-a067-4a6b-a653-b19059bf0749" alt="Subagents and a watcher that merged on green"><br><b>Subagents and watchers.</b> Parallel reviewers in their own sessions, and a watcher that waits for CI and merges. <a href="https://github.com/user-attachments/assets/f6740992-95e7-4bb1-b07b-06e3a17a963c">Watch</a></td>
 </tr>
 <tr>
-<td><img src="https://github.com/user-attachments/assets/35456d2d-3df5-4d18-9033-995ac11e479b" alt="A bot's chat, routine and memory"><br><b>Bots</b> (Settings → Labs). Long-lived agents with a face, one chat, a memory and routines they schedule themselves. <a href="https://github.com/user-attachments/assets/63e78773-529f-48d0-a04e-fa78982c71e3">Watch</a></td>
-<td align="center"><img src="https://github.com/user-attachments/assets/a97d578b-3123-4d43-9604-517971426415" alt="HUI on a phone" width="190"><br><b>On your phone.</b> Open the gateway over Tailscale and check in on your agents, or the board, from anywhere. <a href="https://github.com/user-attachments/assets/3a40378b-549d-4781-b674-be06cfc50a7e">Watch</a></td>
+<td><img src="https://github.com/user-attachments/assets/b668179b-39ce-4638-acba-6519bc971190" alt="A bot's chat, routine and memory"><br><b>Bots</b> (Settings → Labs). Long-lived agents with a face, one chat, a memory and routines they schedule themselves. <a href="https://github.com/user-attachments/assets/42487a00-26d2-4642-8b1c-a2b47022a767">Watch</a></td>
+<td align="center"><img src="https://github.com/user-attachments/assets/77526d6b-7034-4951-a4c3-b581417c8b6c" alt="HUI on a phone" width="190"><br><b>On your phone.</b> Open the gateway over Tailscale and check in on your agents, or the board, from anywhere. <a href="https://github.com/user-attachments/assets/710f8134-3746-45cf-8f58-5b459683605a">Watch</a></td>
 </tr>
 </table>
 
